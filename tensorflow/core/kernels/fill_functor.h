@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,8 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_KERNELS_FILL_FUNCTOR_H_
 #define TENSORFLOW_KERNELS_FILL_FUNCTOR_H_
 
+#define EIGEN_USE_THREADS
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/framework/types.h"
 
 namespace tensorflow {
 namespace functor {
@@ -33,6 +36,19 @@ template <typename Device, typename T>
 struct SetZeroFunctor {
   // Computes on device "d": out = out.setZero(),
   void operator()(const Device& d, typename TTypes<T>::Flat out);
+};
+
+// Partial specialization of SetZeroFunctor<Device=Eigen::ThreadPoolDevice, T>.
+template <typename T>
+struct SetZeroFunctor<Eigen::ThreadPoolDevice, T> {
+  void operator()(const Eigen::ThreadPoolDevice& d,
+                  typename TTypes<T>::Flat out);
+};
+
+template <>
+struct SetZeroFunctor<Eigen::ThreadPoolDevice, string> {
+  void operator()(const Eigen::ThreadPoolDevice& d,
+                  typename TTypes<string>::Flat out);
 };
 
 }  // namespace functor

@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -46,11 +46,11 @@ class SummaryImageOpTest(tf.test.TestCase):
 
   def testImageSummary(self):
     np.random.seed(7)
-    with self.test_session() as sess:
-      for depth in 1, 3, 4:
-        shape = (4, 5, 7) + (depth,)
-        bad_color = [255, 0, 0, 255][:depth]
-        for positive in False, True:
+    for depth in (1, 3, 4):
+      for positive in False, True:
+        with self.test_session(graph=tf.Graph()) as sess:
+          shape = (4, 5, 7) + (depth,)
+          bad_color = [255, 0, 0, 255][:depth]
           # Build a mostly random image with one nan
           const = np.random.randn(*shape).astype(np.float32)
           const[0, 1, 2] = 0  # Make the nan entry not the max
@@ -65,7 +65,7 @@ class SummaryImageOpTest(tf.test.TestCase):
           const[0, 1, 2, depth // 2] = np.nan
 
           # Summarize
-          summ = tf.image_summary("img", const)
+          summ = tf.summary.image("img", const)
           value = sess.run(summ)
           self.assertEqual([], summ.get_shape())
           image_summ = self._AsSummary(value)
@@ -82,8 +82,8 @@ class SummaryImageOpTest(tf.test.TestCase):
 
   def testImageSummaryUint8(self):
     np.random.seed(7)
-    with self.test_session() as sess:
-      for depth in 1, 3, 4:
+    for depth in (1, 3, 4):
+      with self.test_session(graph=tf.Graph()) as sess:
         shape = (4, 5, 7) + (depth,)
 
         # Build a random uint8 image
@@ -92,7 +92,7 @@ class SummaryImageOpTest(tf.test.TestCase):
         self.assertEqual(tf_images.dtype, tf.uint8)
 
         # Summarize
-        summ = tf.image_summary("img", tf_images)
+        summ = tf.summary.image("img", tf_images)
         value = sess.run(summ)
         self.assertEqual([], summ.get_shape())
         image_summ = self._AsSummary(value)

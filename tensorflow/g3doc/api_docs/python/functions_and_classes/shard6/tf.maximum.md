@@ -1,6 +1,9 @@
 ### `tf.maximum(x, y, name=None)` {#maximum}
 
-Returns the max of x and y (i.e. x > y ? x : y) element-wise, broadcasts.
+Returns the max of x and y (i.e. x > y ? x : y) element-wise.
+
+*NOTE*: `Maximum` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
 

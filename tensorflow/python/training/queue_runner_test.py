@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@ class QueueRunnerTest(tf.test.TestCase):
       var = tf.Variable(zero64)
       count_up_to = var.count_up_to(3)
       queue = tf.FIFOQueue(10, tf.float32)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       qr = tf.train.QueueRunner(queue, [count_up_to])
       threads = qr.create_threads(sess)
       for t in threads:
@@ -54,7 +54,7 @@ class QueueRunnerTest(tf.test.TestCase):
       queue = tf.FIFOQueue(10, tf.float32)
       qr = tf.train.QueueRunner(queue, [count_up_to_3, count_up_to_30])
       threads = qr.create_threads(sess)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       for t in threads:
         t.start()
       for t in threads:
@@ -68,7 +68,7 @@ class QueueRunnerTest(tf.test.TestCase):
       queue = tf.FIFOQueue(10, tf.float32)
       qr = tf.train.QueueRunner(queue, ["i fail", "so fail"])
       threads = qr.create_threads(sess)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       for t in threads:
         t.start()
       for t in threads:
@@ -113,7 +113,7 @@ class QueueRunnerTest(tf.test.TestCase):
       var = tf.Variable(zero64)
       count_up_to = var.count_up_to(3)
       queue = tf.FIFOQueue(10, tf.float32)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       qr = tf.train.QueueRunner(queue, [count_up_to])
       # As the coordinator to stop.  The queue runner should
       # finish immediately.
@@ -122,7 +122,7 @@ class QueueRunnerTest(tf.test.TestCase):
       threads = qr.create_threads(sess, coord)
       for t in threads:
         t.start()
-      coord.join(threads)
+      coord.join()
       self.assertEqual(0, len(qr.exceptions_raised))
       # The variable should be 0.
       self.assertEqual(0, var.eval())
@@ -137,7 +137,7 @@ class QueueRunnerTest(tf.test.TestCase):
         t.start()
       # The exception should be re-raised when joining.
       with self.assertRaisesRegexp(ValueError, "Operation not in the graph"):
-        coord.join(threads)
+        coord.join()
 
   def testGracePeriod(self):
     with self.test_session() as sess:
@@ -147,14 +147,29 @@ class QueueRunnerTest(tf.test.TestCase):
       dequeue = queue.dequeue()
       qr = tf.train.QueueRunner(queue, [enqueue])
       coord = tf.train.Coordinator()
-      threads = qr.create_threads(sess, coord, start=True)
+      qr.create_threads(sess, coord, start=True)
       # Dequeue one element and then request stop.
       dequeue.op.run()
       time.sleep(0.02)
       coord.request_stop()
       # We should be able to join because the RequestStop() will cause
       # the queue to be closed and the enqueue to terminate.
-      coord.join(threads, stop_grace_period_secs=0.05)
+      coord.join(stop_grace_period_secs=0.05)
+
+  def testMultipleSessions(self):
+    with self.test_session() as sess:
+      with tf.Session() as other_sess:
+        zero64 = tf.constant(0, dtype=tf.int64)
+        var = tf.Variable(zero64)
+        count_up_to = var.count_up_to(3)
+        queue = tf.FIFOQueue(10, tf.float32)
+        tf.global_variables_initializer().run()
+        coord = tf.train.Coordinator()
+        qr = tf.train.QueueRunner(queue, [count_up_to])
+        # NOTE that this test does not actually start the threads.
+        threads = qr.create_threads(sess, coord=coord)
+        other_threads = qr.create_threads(other_sess, coord=coord)
+        self.assertEqual(len(threads), len(other_threads))
 
   def testIgnoreMultiStarts(self):
     with self.test_session() as sess:
@@ -163,15 +178,14 @@ class QueueRunnerTest(tf.test.TestCase):
       var = tf.Variable(zero64)
       count_up_to = var.count_up_to(3)
       queue = tf.FIFOQueue(10, tf.float32)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       coord = tf.train.Coordinator()
       qr = tf.train.QueueRunner(queue, [count_up_to])
       threads = []
+      # NOTE that this test does not actually start the threads.
       threads.extend(qr.create_threads(sess, coord=coord))
       new_threads = qr.create_threads(sess, coord=coord)
       self.assertEqual([], new_threads)
-      coord.request_stop()
-      coord.join(threads, stop_grace_period_secs=0.5)
 
   def testThreads(self):
     with self.test_session() as sess:
@@ -180,7 +194,7 @@ class QueueRunnerTest(tf.test.TestCase):
       var = tf.Variable(zero64)
       count_up_to = var.count_up_to(3)
       queue = tf.FIFOQueue(10, tf.float32)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       qr = tf.train.QueueRunner(queue, [count_up_to, "bad op"])
       threads = qr.create_threads(sess, start=True)
       for t in threads:
@@ -211,7 +225,7 @@ class QueueRunnerTest(tf.test.TestCase):
     var = tf.Variable(zero64)
     count_up_to = var.count_up_to(3)
     queue = tf.FIFOQueue(10, tf.float32)
-    init_op = tf.initialize_all_variables()
+    init_op = tf.global_variables_initializer()
     qr = tf.train.QueueRunner(queue, [count_up_to])
     tf.train.add_queue_runner(qr)
     with self.test_session() as sess:
@@ -231,7 +245,7 @@ class QueueRunnerTest(tf.test.TestCase):
       var = tf.Variable(zero64)
       count_up_to = var.count_up_to(3)
       queue = tf.FIFOQueue(10, tf.float32)
-      init_op = tf.initialize_all_variables()
+      init_op = tf.global_variables_initializer()
       qr = tf.train.QueueRunner(queue, [count_up_to])
       tf.train.add_queue_runner(qr)
     with self.test_session(graph=graph) as sess:
@@ -242,6 +256,42 @@ class QueueRunnerTest(tf.test.TestCase):
       self.assertEqual(0, len(qr.exceptions_raised))
       # The variable should be 3.
       self.assertEqual(3, var.eval())
+
+  def testQueueRunnerSerializationRoundTrip(self):
+    graph = tf.Graph()
+    with graph.as_default():
+      queue = tf.FIFOQueue(10, tf.float32, name="queue")
+      enqueue_op = tf.no_op(name="enqueue")
+      close_op = tf.no_op(name="close")
+      cancel_op = tf.no_op(name="cancel")
+      qr0 = tf.train.QueueRunner(
+          queue, [enqueue_op], close_op, cancel_op,
+          queue_closed_exception_types=(
+              tf.errors.OutOfRangeError, tf.errors.CancelledError))
+      qr0_proto = tf.train.QueueRunner.to_proto(qr0)
+      qr0_recon = tf.train.QueueRunner.from_proto(qr0_proto)
+      self.assertEqual("queue", qr0_recon.queue.name)
+      self.assertEqual(1, len(qr0_recon.enqueue_ops))
+      self.assertEqual(enqueue_op, qr0_recon.enqueue_ops[0])
+      self.assertEqual(close_op, qr0_recon.close_op)
+      self.assertEqual(cancel_op, qr0_recon.cancel_op)
+      self.assertEqual(
+          (tf.errors.OutOfRangeError, tf.errors.CancelledError),
+          qr0_recon.queue_closed_exception_types)
+
+      # Assert we reconstruct an OutOfRangeError for QueueRunners
+      # created before QueueRunnerDef had a queue_closed_exception_types field.
+      del qr0_proto.queue_closed_exception_types[:]
+      qr0_legacy_recon = tf.train.QueueRunner.from_proto(qr0_proto)
+      self.assertEqual("queue", qr0_legacy_recon.queue.name)
+      self.assertEqual(1, len(qr0_legacy_recon.enqueue_ops))
+      self.assertEqual(enqueue_op, qr0_legacy_recon.enqueue_ops[0])
+      self.assertEqual(close_op, qr0_legacy_recon.close_op)
+      self.assertEqual(cancel_op, qr0_legacy_recon.cancel_op)
+      self.assertEqual(
+          (tf.errors.OutOfRangeError,),
+          qr0_legacy_recon.queue_closed_exception_types)
+
 
 if __name__ == "__main__":
   tf.test.main()

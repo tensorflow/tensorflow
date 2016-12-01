@@ -10,10 +10,11 @@ package(default_visibility = ["//tensorflow:__subpackages__"])
 cc_library(
     name = "set_kernels",
     srcs = ["set_kernels.cc"],
+    copts = ["-Wno-sign-compare"],
     deps = [
-        "@protobuf//:protobuf",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
+        "@protobuf//:protobuf",
     ],
     alwayslink = 1,
 )

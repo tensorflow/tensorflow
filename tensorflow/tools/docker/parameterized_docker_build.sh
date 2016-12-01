@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -58,8 +58,14 @@
 #     If set to a valid binary/script path, will call the script with the final
 #     tagged image name with an argument, to push the image to a central repo
 #     such as gcr.io or Docker Hub.
-
-# TODO(cais): Add support for TF_DOCKER_BUILD_PYTHON_VERSION (PYTHON2/PYTHON3)
+#
+#   TF_DOCKER_BUILD_PYTHON_VERSION
+#     (Optional)
+#     Specifies the desired Python version. Defaults to PYTHON2.
+#
+#   TF_DOCKER_BUILD_OPTIONS
+#     (Optional)
+#     Specifices the desired build options. Defaults to OPT.
 
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -76,6 +82,8 @@ mark_check_failed() {
 TF_DOCKER_BUILD_TYPE=$(to_lower ${TF_DOCKER_BUILD_TYPE})
 TF_DOCKER_BUILD_IS_DEVEL=$(to_lower ${TF_DOCKER_BUILD_IS_DEVEL})
 TF_DOCKER_BUILD_CENTRAL_PIP=$(to_lower ${TF_DOCKER_BUILD_CENTRAL_PIP})
+TF_DOCKER_BUILD_PYTHON_VERSION=$(to_lower ${TF_DOCKER_BUILD_PYTHON_VERSION:-PYTHON2})
+TF_DOCKER_BUILD_OPTIONS=$(to_lower ${TF_DOCKER_BUILD_OPTIONS:-OPT})
 
 echo "Required build parameters:"
 echo "  TF_DOCKER_BUILD_TYPE=${TF_DOCKER_BUILD_TYPE}"
@@ -120,8 +128,10 @@ else
 fi
 
 if [[ ${TF_DOCKER_BUILD_TYPE} == "cpu" ]]; then
-  :
+  DOCKER_BINARY="docker"
 elif   [[ ${TF_DOCKER_BUILD_TYPE} == "gpu" ]]; then
+  DOCKER_BINARY="nvidia-docker"
+
   FINAL_TAG="${FINAL_TAG}-gpu"
   if [[ ${ORIG_DOCKERFILE} == *"."* ]]; then
     # There is already a dot in the tag, use "-"
@@ -175,9 +185,14 @@ if [[ "${DO_PIP_BUILD}" == "1" ]]; then
 
   # Perform local build of the required PIP whl file
   export TF_BUILD_CONTAINER_TYPE=${TF_DOCKER_BUILD_TYPE}
-  export TF_BUILD_PYTHON_VERSION="PYTHON2"
-  export TF_BUILD_IS_OPT="OPT"
+  export TF_BUILD_PYTHON_VERSION=${TF_DOCKER_BUILD_PYTHON_VERSION}
+  export TF_BUILD_OPTIONS=${TF_DOCKER_BUILD_OPTIONS}
   export TF_BUILD_IS_PIP="PIP"
+
+  if [[ "${TF_DOCKER_BUILD_TYPE}" == "gpu" ]]; then
+    export TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS=\
+"${TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS} -e TF_CUDA_COMPUTE_CAPABILITIES=3.0,3.5,5.2"
+  fi
 
   pushd "${SCRIPT_DIR}/../../../"
   rm -rf pip_test/whl &&
@@ -190,14 +205,15 @@ if [[ "${DO_PIP_BUILD}" == "1" ]]; then
     die "FAIL: Failed to build pip file locally"
   fi
 
-  PIP_WHL=$(ls pip_test/whl/*.whl)
+  PIP_WHL=$(ls pip_test/whl/*.whl | head -1)
   if [[ -z "${PIP_WHL}" ]]; then
     die "ERROR: Cannot locate the locally-built pip whl file"
   fi
   echo "Locally-built PIP whl file is at: ${PIP_WHL}"
 
   # Copy the pip file to tmp directory
-  cp "${PIP_WHL}" "${TMP_DIR}/"
+  cp "${PIP_WHL}" "${TMP_DIR}/" || \
+      die "ERROR: Failed to copy wheel file: ${PIP_WHL}"
 
   # Use string replacement to put the correct file name into the Dockerfile
   PIP_WHL=$(basename "${PIP_WHL}")
@@ -229,17 +245,18 @@ fi
 IMG="${USER}/tensorflow:${FINAL_TAG}"
 echo "Building docker image with image name and tag: ${IMG}"
 
-docker build -t "${IMG}" -f "${DOCKERFILE}" "${TMP_DIR}"
+"${DOCKER_BINARY}" build --no-cache -t "${IMG}" -f "${DOCKERFILE}" "${TMP_DIR}"
 if [[ $? == "0" ]]; then
-  echo "docker build of ${IMG} succeeded"
+  echo "${DOCKER_BINARY} build of ${IMG} succeeded"
 else
-  die "FAIL: docker build of ${IMG} with Dockerfile ${DOCKERFILE} failed"
+  die "FAIL: ${DOCKER_BINARY} build of ${IMG} with Dockerfile ${DOCKERFILE} "\
+"failed"
 fi
 
 
 # Make sure that there is no other containers of the same image running
 # TODO(cais): Move to an earlier place.
-if [[ ! -z $(docker ps | grep "${IMG}") ]]; then
+if [[ ! -z $("${DOCKER_BINARY}" ps | grep "${IMG}") ]]; then
   die "ERROR: It appears that there are docker containers of the image "\
 "${IMG} running. Please stop them before proceeding"
 fi
@@ -252,7 +269,7 @@ echo "  (Log file is at: ${DOCKER_RUN_LOG}"
 echo ""
 
 if [[ "${TF_DOCKER_BUILD_IS_DEVEL}" == "no" ]]; then
-  docker run --rm -p ${CONTAINER_PORT}:${CONTAINER_PORT} \
+  "${DOCKER_BINARY}" run --rm -p ${CONTAINER_PORT}:${CONTAINER_PORT} \
       -v ${TMP_DIR}/notebooks:/root/notebooks "${IMG}" \
       2>&1 > "${DOCKER_RUN_LOG}" &
 
@@ -261,7 +278,7 @@ if [[ "${TF_DOCKER_BUILD_IS_DEVEL}" == "no" ]]; then
   while [[ -z ${CONTAINER_ID} ]]; do
     sleep 1
     echo "Polling for container ID..."
-    CONTAINER_ID=$(docker ps | grep "${IMG}" | awk '{print $1}')
+    CONTAINER_ID=$("${DOCKER_BINARY}" ps | grep "${IMG}" | awk '{print $1}')
   done
 
   echo "ID of the running docker container: ${CONTAINER_ID}"
@@ -287,10 +304,10 @@ if [[ "${TF_DOCKER_BUILD_IS_DEVEL}" == "no" ]]; then
 
   # Stop the running docker container
   sleep 1
-  docker stop --time=0 ${CONTAINER_ID}
+  "${DOCKER_BINARY}" stop --time=0 ${CONTAINER_ID}
 
 else
-  docker run --rm -p ${CONTAINER_PORT}:${CONTAINER_PORT} \
+  "${DOCKER_BINARY}" run --rm -p ${CONTAINER_PORT}:${CONTAINER_PORT} \
       -v ${TMP_DIR}/notebooks:/root/notebooks "${IMG}" \
       bash -c \
       "cd /tensorflow; tensorflow/tools/ci_build/builds/test_tutorials.sh"
@@ -317,7 +334,21 @@ fi
 
 # Apply the final image name and tag
 FINAL_IMG="${FINAL_IMAGE_NAME}:${FINAL_TAG}"
-docker tag -f "${IMG}" "${FINAL_IMG}" || \
+
+DOCKER_VER=$("${DOCKER_BINARY}" version | grep Version | head -1 | awk '{print $NF}')
+if [[ -z "${DOCKER_VER}" ]]; then
+  die "ERROR: Failed to determine ${DOCKER_BINARY} version"
+fi
+DOCKER_MAJOR_VER=$(echo "${DOCKER_VER}" | cut -d. -f 1)
+DOCKER_MINOR_VER=$(echo "${DOCKER_VER}" | cut -d. -f 2)
+
+FORCE_TAG=""
+if [[ "${DOCKER_MAJOR_VER}" -le 1 ]] && \
+   [[ "${DOCKER_MINOR_VER}" -le 9 ]]; then
+  FORCE_TAG="--force"
+fi
+
+"${DOCKER_BINARY}" tag ${FORCE_TAG} "${IMG}" "${FINAL_IMG}" || \
     die "Failed to tag intermediate docker image ${IMG} as ${FINAL_IMG}"
 
 echo ""
@@ -327,8 +358,6 @@ echo "Successfully tagged docker image: ${FINAL_IMG}"
 # Optional: call command specified by TF_DOCKER_BUILD_PUSH_CMD to push image
 if [[ ! -z "${TF_DOCKER_BUILD_PUSH_CMD}" ]]; then
   ${TF_DOCKER_BUILD_PUSH_CMD} ${FINAL_IMG}
-
-  echo ""
   if [[ $? == "0" ]]; then
     echo "Successfully pushed Docker image ${FINAL_IMG}"
   else

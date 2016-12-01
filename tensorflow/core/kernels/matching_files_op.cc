@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/io/match.h"
 #include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
@@ -37,9 +36,8 @@ class MatchingFilesOp : public OpKernel {
                     "Input pattern tensor must be scalar, but had shape: ",
                     pattern->shape().DebugString()));
     std::vector<string> fnames;
-    OP_REQUIRES_OK(context,
-                   io::GetMatchingFiles(context->env(),
-                                        pattern->scalar<string>()(), &fnames));
+    OP_REQUIRES_OK(context, context->env()->GetMatchingPaths(
+                                pattern->scalar<string>()(), &fnames));
     const int num_out = fnames.size();
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(

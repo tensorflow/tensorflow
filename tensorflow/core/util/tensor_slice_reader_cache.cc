@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -52,7 +52,7 @@ const TensorSliceReader* TensorSliceReaderCache::GetReader(
     TensorSliceReader::OpenTableFunction open_function, int preferred_shard) {
   mutex_lock l(mu_);
 
-#ifdef __GXX_RTTI
+#if defined(__GXX_RTTI) ||  defined(_CPPRTTI)
   // Get the function pointer from the open_function value.
   TensorSliceReaderCache::OpenFuncType* func_ptr =
       open_function.target<TensorSliceReaderCache::OpenFuncType>();

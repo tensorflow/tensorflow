@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -49,17 +49,18 @@ class CastOpTest : public OpsTestBase {
     TF_EXPECT_OK(InitOp());
   }
 
-  template <typename IN, typename OUT>
+  template <typename INPUT, typename OUTPUT>
   void CheckCast() {
-    DataType in_type = DataTypeToEnum<IN>::v();
-    DataType out_type = DataTypeToEnum<OUT>::v();
+    DataType in_type = DataTypeToEnum<INPUT>::v();
+    DataType out_type = DataTypeToEnum<OUTPUT>::v();
     MakeOp(in_type, out_type);
-    AddInputFromArray<IN>(TensorShape({1, 2, 2, 1}),
-                          {IN(1), IN(2), IN(3), IN(4)});
+    AddInputFromArray<INPUT>(TensorShape({1, 2, 2, 1}),
+                             {INPUT(1), INPUT(2), INPUT(3), INPUT(4)});
     TF_ASSERT_OK(RunOpKernel());
     Tensor expected(allocator(), out_type, TensorShape({1, 2, 2, 1}));
-    test::FillValues<OUT>(&expected, {OUT(1), OUT(2), OUT(3), OUT(4)});
-    test::ExpectTensorEqual<OUT>(expected, *GetOutput(0));
+    test::FillValues<OUTPUT>(&expected,
+                             {OUTPUT(1), OUTPUT(2), OUTPUT(3), OUTPUT(4)});
+    test::ExpectTensorEqual<OUTPUT>(expected, *GetOutput(0));
   }
 };
 

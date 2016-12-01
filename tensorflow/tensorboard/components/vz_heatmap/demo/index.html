@@ -1,0 +1,160 @@
+<!doctype html>
+<!--
+@license
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Heatmap example</title>
+  <link rel="import" href="../vz-heatmap.html">
+  <link rel="import" href="../../iron-demo-helpers/demo-snippet.html">
+</head>
+<script>
+  function generateRandomMatrix() {
+    var rows = getRandomArbitrary(10, 20);
+    var columns = getRandomArbitrary(10, 20);
+    var data = [];
+    // Generate new data array.
+    for (var row = 0; row < rows; row++) {
+      var currentRow = [];
+      for (var col = 0; col < columns; col++) {
+        currentRow[col] = getRandomArbitrary(0, 20);
+      }
+      data[row] = currentRow;
+    }
+    return data;
+  }
+
+  // Returns a random number between min (inclusive) and max (exclusive)
+  function getRandomArbitrary(min, max) {
+    return Math.random() * (max - min) + min;
+  }
+
+  function getRandomColorRange() {
+    return [getRandomColor(), getRandomColor()];
+  }
+
+  function getRandomColor() {
+    var letters = '0123456789ABCDEF';
+    var color = '#';
+    for (var i = 0; i < 6; i++) {
+      color += letters[Math.floor(Math.random() * 16)];
+    }
+    return color;
+  }
+</script>
+<body>
+<h1>Initialized with data</h1>
+<div style="width: 30%">
+  <demo-snippet>
+    <template>
+      <vz-heatmap data="[[1,2],[3,4]]"></vz-heatmap>
+    </template>
+  </demo-snippet>
+</div>
+
+<h1>Initialized with data and custom data range</h1>
+<div style="width: 30%">
+  <demo-snippet>
+    <template>
+      <vz-heatmap data="[[1,2],[3,4]]" values="[0,10]"></vz-heatmap>
+    </template>
+  </demo-snippet>
+</div>
+
+<h1>Initialized with data and colors</h1>
+<div style="width: 30%">
+  <demo-snippet>
+    <template>
+      <vz-heatmap data="[[1,2],[3,4]]" colors='["yellow", "red"]'></vz-heatmap>
+    </template>
+  </demo-snippet>
+</div>
+
+<h1>Initialized with data and colors and threshold values</h1>
+<div style="width: 30%">
+  <demo-snippet>
+    <template>
+      <vz-heatmap data="[[1,2],[3,4]]"
+                  values="[0, 10]"
+                  colors='["yellow", "red"]'
+      ></vz-heatmap>
+    </template>
+  </demo-snippet>
+</div>
+<h1>Initialized with data and color function</h1>
+<div style="width: 30%">
+  <demo-snippet>
+    <template>
+      <vz-heatmap id="color_function" data="[[1,2],[3,4]]"
+      ></vz-heatmap>
+    </template>
+  </demo-snippet>
+  <script>
+    setTimeout(function () {
+      var heatmapColor = document.getElementById('color_function');
+      heatmapColor.colorFunction =
+          d3.scale.linear().range(['white', 'black']).domain([0, 5]);
+    }, 1500);
+  </script>
+</div>
+
+<h1>Initialized with data and updated data</h1>
+<h3>Click on the heatmap to create new random data.</h3>
+<div style="width: 30%">
+  <demo-snippet>
+    <template>
+      <vz-heatmap data="[[1,2],[3,4]]"
+                  onclick="this.data = generateRandomMatrix()"
+      >
+      </vz-heatmap>
+    </template>
+  </demo-snippet>
+</div>
+
+<h1>Initialized with data and updated color update</h1>
+<h3>Click on the heatmap to update the color scheme.</h3>
+<div style="width: 30%">
+  <demo-snippet>
+    <template>
+      <vz-heatmap id="data_color_update" data="[[1,2],[3,4]]"
+                  onclick="this.colors = getRandomColorRange();
+                       this.data = generateRandomMatrix()"
+      >
+      </vz-heatmap>
+    </template>
+  </demo-snippet>
+</div>
+
+<h2>Let's try to actually break it... *Puts on fedora*</h2>
+<p>Code below is not meant to be seen, but to ensure that no errors are
+  thrown when invalid data is passed into the Polymer element.</p>
+<demo-snippet>
+  <template>
+    <vz-heatmap id="break_the_heatmap" data="undefined"></vz-heatmap>
+  </template>
+</demo-snippet>
+<script>
+  var bth = document.getElementById('break_the_heatmap');
+  bth.data = []; // Empty 1D array.
+  bth.data = [[]]; // Empty 2D array.
+  bth.colors = ['yellow', 'blue', '']; // More than 2 elements in colors array.
+  bth.values = [1, 2, 3]; // More than 2 elements in values array.
+</script>
+
+</body>
+</html>

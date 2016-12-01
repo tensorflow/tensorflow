@@ -30,19 +30,37 @@ Static helper routines for ` TensorShape `. Includes a few common predicates on 
 
 
 
+#### `static bool tensorflow::TensorShapeUtils::IsSquareMatrix(const TensorShape &shape)` {#static_bool_tensorflow_TensorShapeUtils_IsSquareMatrix}
+
+
+
+
+
 #### `static bool tensorflow::TensorShapeUtils::IsMatrixOrHigher(const TensorShape &shape)` {#static_bool_tensorflow_TensorShapeUtils_IsMatrixOrHigher}
 
 
 
 
 
-#### `static Status tensorflow::TensorShapeUtils::MakeShape(const int32 *dims, int n, TensorShape *out)` {#static_Status_tensorflow_TensorShapeUtils_MakeShape}
+#### `static Status tensorflow::TensorShapeUtils::MakeShape(const int32 *dims, int64 n, TensorShape *out)` {#static_Status_tensorflow_TensorShapeUtils_MakeShape}
 
 Returns a ` TensorShape ` whose dimensions are `dims[0]`, `dims[1]`, ..., `dims[n-1]`.
 
 
 
-#### `static Status tensorflow::TensorShapeUtils::MakeShape(const int64 *dims, int n, TensorShape *out)` {#static_Status_tensorflow_TensorShapeUtils_MakeShape}
+#### `static Status tensorflow::TensorShapeUtils::MakeShape(const int64 *dims, int64 n, TensorShape *out)` {#static_Status_tensorflow_TensorShapeUtils_MakeShape}
+
+
+
+
+
+#### `static Status tensorflow::TensorShapeUtils::MakeShape(gtl::ArraySlice< int32 > shape, TensorShape *out)` {#static_Status_tensorflow_TensorShapeUtils_MakeShape}
+
+
+
+
+
+#### `static Status tensorflow::TensorShapeUtils::MakeShape(gtl::ArraySlice< int64 > shape, TensorShape *out)` {#static_Status_tensorflow_TensorShapeUtils_MakeShape}
 
 
 
@@ -54,8 +72,14 @@ Returns a ` TensorShape ` whose dimensions are `dims[0]`, `dims[1]`, ..., `dims[
 
 
 
-#### `bool tensorflow::TensorShapeUtils::StartsWith(const TensorShape &shape0, const TensorShape &shape1)` {#bool_tensorflow_TensorShapeUtils_StartsWith}
+#### `bool tensorflow::TensorShapeUtils::StartsWith(const TensorShape &shape, const TensorShape &prefix)` {#bool_tensorflow_TensorShapeUtils_StartsWith}
+
+Returns true iff `shape` starts with `prefix`.
 
 
+
+#### `bool tensorflow::TensorShapeUtils::EndsWith(const TensorShape &shape, const TensorShape &suffix)` {#bool_tensorflow_TensorShapeUtils_EndsWith}
+
+Returns true iff `shape` ends with `suffix`.
 
 

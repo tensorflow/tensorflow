@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -50,9 +50,6 @@ class OAuthClient {
   virtual Status ParseOAuthResponse(StringPiece response,
                                     uint64 request_timestamp_sec, string* token,
                                     uint64* expiration_timestamp_sec);
-
-  /// The max size of the JSON response from an OAuth 2.0 server, in bytes.
-  static constexpr size_t kResponseBufferSize = 1000;
 
  private:
   std::unique_ptr<HttpRequest::Factory> http_request_factory_;

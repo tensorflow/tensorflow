@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -60,6 +60,20 @@ class SparseMatMulTest(tf.test.TestCase):
   def testBasic(self):
     x = np.arange(0., 4.).reshape([4, 1]).astype(np.float32)
     y = np.arange(-1., 1.).reshape([1, 2]).astype(np.float32)
+    for x_dtype in (tf.float32, tf.bfloat16):
+      for y_dtype in (tf.float32, tf.bfloat16):
+        self._testCpuMatmul(x, y, x_dtype=x_dtype, y_dtype=y_dtype)
+
+  def testZeroDim(self):
+    x = np.ones((4, 0)).astype(np.float32)
+    y = np.ones((0, 3)).astype(np.float32)
+    for x_dtype in (tf.float32, tf.bfloat16):
+      for y_dtype in (tf.float32, tf.bfloat16):
+        self._testCpuMatmul(x, y, x_dtype=x_dtype, y_dtype=y_dtype)
+
+  def testEmpty(self):
+    x = np.ones((0, 0)).astype(np.float32)
+    y = np.ones((0, 0)).astype(np.float32)
     for x_dtype in (tf.float32, tf.bfloat16):
       for y_dtype in (tf.float32, tf.bfloat16):
         self._testCpuMatmul(x, y, x_dtype=x_dtype, y_dtype=y_dtype)

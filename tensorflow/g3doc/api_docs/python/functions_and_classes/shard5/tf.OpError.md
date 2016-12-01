@@ -39,11 +39,18 @@ Creates a new `OpError` indicating that a particular op failed.
 ##### Args:
 
 
-*  <b>`node_def`</b>: The `graph_pb2.NodeDef` proto representing the op that failed,
-    if known; otherwise None.
+*  <b>`node_def`</b>: The `node_def_pb2.NodeDef` proto representing the op that
+    failed, if known; otherwise None.
 *  <b>`op`</b>: The `ops.Operation` that failed, if known; otherwise None.
 *  <b>`message`</b>: The message string describing the failure.
 *  <b>`error_code`</b>: The `error_codes_pb2.Code` describing the error.
+
+
+- - -
+
+#### `tf.OpError.__str__()` {#OpError.__str__}
+
+
 
 
 - - -

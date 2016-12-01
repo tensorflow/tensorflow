@@ -6,7 +6,7 @@ were the top priorities. Using floating point arithmetic was the easiest way to
 preserve accuracy, and GPUs were well-equipped to accelerate those calculations,
 so it's natural that not much attention was paid to other numerical formats.
 
-These days, we actually have a lot of models being being deployed in commercial
+These days, we actually have a lot of models being deployed in commercial
 applications. The computation demands of training grow with the number of
 researchers, but the cycles needed for inference expand in proportion to users.
 That means pure inference efficiency has become a burning issue for a lot of
@@ -105,15 +105,23 @@ versus 91MB). You can still run this model using exactly the same inputs and
 outputs though, and you should get equivalent results. Here's an example:
 
 ```sh
+# Note: You need to add the dependencies of the quantization operation to the
+#       cc_binary in the BUILD file of the label_image program:
+#
+#     //tensorflow/contrib/quantization:cc_ops
+#     //tensorflow/contrib/quantization/kernels:quantized_ops
+
 bazel build tensorflow/examples/label_image:label_image
 bazel-bin/tensorflow/examples/label_image/label_image \
---input_graph=/tmp/quantized_graph.pb \
+--image=<input-image> \
+--graph=/tmp/quantized_graph.pb \
+--labels=/tmp/imagenet_synset_to_human_label_map.txt \
 --input_width=299 \
 --input_height=299 \
---mean_value=128 \
---std_value=128 \
---input_layer_name="Mul:0" \
---output_layer_name="softmax:0"
+--input_mean=128 \
+--input_std=128 \
+--input_layer="Mul:0" \
+--output_layer="softmax:0"
 ```
 
 You'll see that this runs the newly-quantized graph, and outputs a very similar
@@ -135,13 +143,13 @@ conversion functions before and after to move the data between float and
 eight-bit. Below is an example of what they look like. First here's the original
 Relu operation, with float inputs and outputs:
 
-![Relu Diagram](../../images/quantization0.png)
+![Relu Diagram](https://www.tensorflow.org/images/quantization0.png)
 
 Then, this is the equivalent converted subgraph, still with float inputs and
 outputs, but with internal conversions so the calculations are done in eight
 bit.
 
-![Converted Diagram](../../images/quantization1.png)
+![Converted Diagram](https://www.tensorflow.org/images/quantization1.png)
 
 The min and max operations actually look at the values in the input float
 tensor, and then feeds them into the Dequantize operation that converts the
@@ -154,7 +162,7 @@ operations that all have float equivalents, then there will be a lot of adjacent
 Dequantize/Quantize ops. This stage spots that pattern, recognizes that they
 cancel each other out, and removes them, like this:
 
-![Stripping Diagram](../../images/quantization2.png)
+![Stripping Diagram](https://www.tensorflow.org/images/quantization2.png)
 
 Applied on a large scale to models where all of the operations have quantized
 equivalents, this gives a graph where all of the tensor calculations are done in
@@ -192,10 +200,9 @@ Quantized | Float
 The advantages of this format are that it can represent arbitrary magnitudes of
 ranges, they don't have to be symmetrical, it can represent signed and unsigned
 values, and the linear spread makes doing multiplications straightforward. There
-are alternatives like [Song Han's code books]
-(http://arxiv.org/pdf/1510.00149.pdf) that can use lower bit depths by
-non-linearly distributing the float values across the representation, but these
-tend to be more expensive to calculate on.
+are alternatives like [Song Han's code books](http://arxiv.org/pdf/1510.00149.pdf)
+that can use lower bit depths by non-linearly distributing the float values
+across the representation, but these tend to be more expensive to calculate on.
 
 The advantage of having a strong and clear definition of the quantized format is
 that it's always possible to convert back and forth from float for operations
@@ -218,11 +225,11 @@ results from 8-bit inputs.
 
 We've found that we can get extremely good performance on mobile and embedded
 devices by using eight-bit arithmetic rather than floating-point. You can see
-the framework we use to optimize matrix multiplications at [gemmlowp]
-(https://github.com/google/gemmlowp). We still need to apply all the lessons
-we've learned to the TensorFlow ops to get maximum performance on mobile, but
-we're actively working on that. Right now, this quantized implementation is a
-reasonably fast and accurate reference implementation that we're hoping will
-enable wider support for our eight-bit models on a wider variety of devices. We
-also hope that this demonstration will encourage the community to explore what's
-possible with low-precision neural networks.
+the framework we use to optimize matrix multiplications at
+[gemmlowp](https://github.com/google/gemmlowp). We still need to apply all the
+lessons we've learned to the TensorFlow ops to get maximum performance on
+mobile, but we're actively working on that. Right now, this quantized
+implementation is a reasonably fast and accurate reference implementation that
+we're hoping will enable wider support for our eight-bit models on a wider
+variety of devices. We also hope that this demonstration will encourage the
+community to explore what's possible with low-precision neural networks.

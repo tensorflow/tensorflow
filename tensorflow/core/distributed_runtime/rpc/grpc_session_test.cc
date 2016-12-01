@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -75,6 +75,9 @@ static SessionOptions Options(const string& target, int placement_period) {
   // string.
   options.target = strings::StrCat("grpc://", target);
   options.config.set_placement_period(placement_period);
+  options.config.mutable_graph_options()
+      ->mutable_optimizer_options()
+      ->set_opt_level(OptimizerOptions::L0);
   return options;
 }
 
@@ -176,10 +179,8 @@ TEST(GrpcSessionTest, NonLocalWithFilters) {
   {
     GraphDef graph_copy(graph);
     graph::SetDefaultDevice(cluster->devices()[1].name(), &graph_copy);
-    TF_CHECK_OK(session->Create(graph_copy));
-    auto status = session->Run({}, {}, {node_names[2]}, nullptr);
+    auto status = session->Create(graph_copy);
     EXPECT_EQ(tensorflow::error::INVALID_ARGUMENT, status.code());
-    TF_CHECK_OK(session->Close());
   }
 }
 
@@ -307,14 +308,82 @@ TEST(GrpcSessionTest, MultiDevices) {
         TF_CHECK_OK(session->Create(def));
         {
           std::vector<Tensor> outputs;
-          TF_CHECK_OK(session->Run({}, {c->name()}, {}, &outputs));
+          RunOptions options;
+          options.set_trace_level(RunOptions::FULL_TRACE);
+          RunMetadata metadata;
+          TF_CHECK_OK(
+              session->Run(options, {}, {c->name()}, {}, &outputs, &metadata));
           ASSERT_EQ(1, outputs.size());
           IsSingleFloatValue(outputs[0], 6.0 * kSize);
+
+          const StepStats& ss = metadata.step_stats();
+          // NOTE(mrry): We only assert that `c` is placed correctly,
+          // because the current placement algorithm will move its
+          // inputs to be colocated with it, when it is the sole
+          // consumer.
+          bool c_placed_correctly = false;
+          for (const auto& dev : ss.dev_stats()) {
+            for (const auto& node : dev.node_stats()) {
+              if (node.node_name() == c->name() &&
+                  dev.device() == c_dev.name()) {
+                c_placed_correctly = true;
+              }
+            }
+          }
+          ASSERT_TRUE(c_placed_correctly);
         }
         TF_CHECK_OK(session->Close());
       }
     }
   }
+}
+
+TEST(GrpcSessionTest, LargeTensorSend) {
+  std::unique_ptr<test::TestCluster> cluster;
+  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
+
+  Graph graph(OpRegistry::Global());
+
+  // Define a 3 GB fill result.
+  Tensor fill_shape_tensor(DT_INT32, TensorShape({4}));
+  fill_shape_tensor.vec<int32>()(0) = 1;
+  fill_shape_tensor.vec<int32>()(1) = 256;
+  fill_shape_tensor.vec<int32>()(2) = 1024;
+  fill_shape_tensor.vec<int32>()(3) = 1024;
+  Node* fill_shape_node = test::graph::Constant(&graph, fill_shape_tensor);
+
+  Tensor fill_val_tensor(DT_FLOAT, TensorShape({}));
+  fill_val_tensor.flat<float>()(0) = 1.0;
+  Node* fill_val_node = test::graph::Constant(&graph, fill_val_tensor);
+
+  Node* fill_node =
+      test::graph::Binary(&graph, "Fill", fill_shape_node, fill_val_node);
+
+  Tensor max_axes_tensor(DT_INT32, TensorShape({4}));
+  max_axes_tensor.vec<int32>()(0) = 0;
+  max_axes_tensor.vec<int32>()(1) = 1;
+  max_axes_tensor.vec<int32>()(2) = 2;
+  max_axes_tensor.vec<int32>()(3) = 3;
+  Node* max_axes_node = test::graph::Constant(&graph, max_axes_tensor);
+  Node* max_node = test::graph::Reduce(&graph, "Max", fill_node, max_axes_node);
+
+  GraphDef def;
+  test::graph::ToGraphDef(&graph, &def);
+
+  SetDevice(&def, fill_node->name(), cluster->devices()[0].name());
+  SetDevice(&def, fill_node->name(), cluster->devices()[1].name());
+
+  std::unique_ptr<Session> session(
+      NewRemote(Options(cluster->targets()[0], 1000)));
+  ASSERT_TRUE(session != nullptr);
+  TF_CHECK_OK(session->Create(def));
+  {
+    std::vector<Tensor> outputs;
+    TF_CHECK_OK(session->Run({}, {max_node->name()}, {}, &outputs));
+    ASSERT_EQ(1, outputs.size());
+    IsSingleFloatValue(outputs[0], 1.0);
+  }
+  TF_CHECK_OK(session->Close());
 }
 
 TEST(GrpcSessionTest, MultiDevices_String) {
@@ -344,25 +413,23 @@ TEST(GrpcSessionTest, MultiDevices_String) {
       SetDevice(&def, a->name(), a_dev.name());
       SetDevice(&def, b->name(), b_dev.name());
 
-      TF_CHECK_OK(session->Create(def));
-      {
+      Status s = session->Create(def);
+      if (s.ok()) {
         std::vector<Tensor> outputs;
-        Status s = session->Run({}, {b->name()}, {}, &outputs);
-        if (s.ok()) {
-          ASSERT_EQ(1, outputs.size());
-          ASSERT_EQ(outputs[0].dtype(), DT_STRING);
-          ASSERT_EQ(outputs[0].NumElements(), 4);
-          for (int i = 0; i < outputs[0].NumElements(); ++i) {
-            EXPECT_EQ(outputs[0].flat<string>()(i), "hello, world");
-          }
-        } else {
-          LOG(ERROR) << "Error: " << s;
-          ASSERT_TRUE((a_dev.device_type() == DEVICE_GPU) ||
-                      (b_dev.device_type() == DEVICE_GPU));
-          ASSERT_FALSE(s.ok());
+        TF_CHECK_OK(session->Run({}, {b->name()}, {}, &outputs));
+        ASSERT_EQ(1, outputs.size());
+        ASSERT_EQ(outputs[0].dtype(), DT_STRING);
+        ASSERT_EQ(outputs[0].NumElements(), 4);
+        for (int i = 0; i < outputs[0].NumElements(); ++i) {
+          EXPECT_EQ(outputs[0].flat<string>()(i), "hello, world");
         }
+        TF_CHECK_OK(session->Close());
+      } else {
+        LOG(ERROR) << "Error: " << s;
+        ASSERT_TRUE((a_dev.device_type() == DEVICE_GPU) ||
+                    (b_dev.device_type() == DEVICE_GPU));
+        ASSERT_FALSE(s.ok());
       }
-      TF_CHECK_OK(session->Close());
     }
   }
 }

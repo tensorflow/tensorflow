@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -40,6 +40,7 @@ void Split<Eigen::ThreadPoolDevice, T>::operator()(
 #define DEFINE_CPU_KERNELS(T) template struct Split<Eigen::ThreadPoolDevice, T>;
 
 TF_CALL_ALL_TYPES(DEFINE_CPU_KERNELS)
+DEFINE_CPU_KERNELS(quint8)
 
 }  // namespace functor
 }  // namespace tensorflow

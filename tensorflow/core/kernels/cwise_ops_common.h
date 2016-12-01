@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,7 +20,12 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#ifdef TENSORFLOW_USE_SYCL
+#include "tensorflow/core/kernels/cwise_ops_sycl_common.h"
+#endif
+
 #include "tensorflow/core/kernels/cwise_ops.h"
+#include "tensorflow/core/kernels/cwise_ops_gradients.h"
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -32,6 +37,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif
 
 class BinaryOpShared : public OpKernel {
  public:
@@ -64,7 +72,7 @@ class BinaryOpShared : public OpKernel {
 
 // Coefficient-wise binary operations:
 //   Device: E.g., CPUDevice, GPUDevice.
-//   Functor: defined in cwise_functors.h. E.g., functor::add2.
+//   Functor: defined in cwise_ops.h. E.g., functor::add.
 template <typename Device, typename Functor>
 class BinaryOp : public BinaryOpShared {
  public:
@@ -95,32 +103,46 @@ class BinaryOp : public BinaryOpShared {
       if (state.in1_num_elements == 1) {
         // tensor op scalar
         functor::BinaryFunctor<Device, Functor, 1>().Right(
-            eigen_device, out_flat, in0.flat<Tin>(), in1.scalar<Tin>(),
-            error_ptr);
+            eigen_device, out_flat, in0.template flat<Tin>(),
+            in1.template scalar<Tin>(), error_ptr);
       } else if (state.in0_num_elements == 1) {
         // scalar op tensor
         functor::BinaryFunctor<Device, Functor, 1>().Left(
-            eigen_device, out_flat, in0.scalar<Tin>(), in1.flat<Tin>(),
-            error_ptr);
+            eigen_device, out_flat, in0.template scalar<Tin>(),
+            in1.template flat<Tin>(), error_ptr);
       } else {
         functor::BinaryFunctor<Device, Functor, 1>()(
-            eigen_device, out_flat, in0.flat<Tin>(), in1.flat<Tin>(),
-            error_ptr);
+            eigen_device, out_flat, in0.template flat<Tin>(),
+            in1.template flat<Tin>(), error_ptr);
       }
     } else if (ndims == 2) {
       functor::BinaryFunctor<Device, Functor, 2>().BCast(
           eigen_device, out->shaped<Tout, 2>(bcast->result_shape()),
-          in0.shaped<Tin, 2>(bcast->x_reshape()),
+          in0.template shaped<Tin, 2>(bcast->x_reshape()),
           BCast::ToIndexArray<2>(bcast->x_bcast()),
-          in1.shaped<Tin, 2>(bcast->y_reshape()),
+          in1.template shaped<Tin, 2>(bcast->y_reshape()),
           BCast::ToIndexArray<2>(bcast->y_bcast()), error_ptr);
     } else if (ndims == 3) {
       functor::BinaryFunctor<Device, Functor, 3>().BCast(
           eigen_device, out->shaped<Tout, 3>(bcast->result_shape()),
-          in0.shaped<Tin, 3>(bcast->x_reshape()),
+          in0.template shaped<Tin, 3>(bcast->x_reshape()),
           BCast::ToIndexArray<3>(bcast->x_bcast()),
-          in1.shaped<Tin, 3>(bcast->y_reshape()),
+          in1.template shaped<Tin, 3>(bcast->y_reshape()),
           BCast::ToIndexArray<3>(bcast->y_bcast()), error_ptr);
+    } else if (ndims == 4) {
+      functor::BinaryFunctor<Device, Functor, 4>().BCast(
+          eigen_device, out->shaped<Tout, 4>(bcast->result_shape()),
+          in0.template shaped<Tin, 4>(bcast->x_reshape()),
+          BCast::ToIndexArray<4>(bcast->x_bcast()),
+          in1.template shaped<Tin, 4>(bcast->y_reshape()),
+          BCast::ToIndexArray<4>(bcast->y_bcast()), error_ptr);
+    } else if (ndims == 5) {
+      functor::BinaryFunctor<Device, Functor, 5>().BCast(
+          eigen_device, out->shaped<Tout, 5>(bcast->result_shape()),
+          in0.template shaped<Tin, 5>(bcast->x_reshape()),
+          BCast::ToIndexArray<5>(bcast->x_bcast()),
+          in1.template shaped<Tin, 5>(bcast->y_reshape()),
+          BCast::ToIndexArray<5>(bcast->y_bcast()), error_ptr);
     } else {
       SetUnimplementedError(ctx);
     }
@@ -130,9 +152,38 @@ class BinaryOp : public BinaryOpShared {
   }
 };
 
+// Basic coefficient-wise binary operations that are known to not require
+// any broadcasting. This is the case for example of the gradients of
+// unary operations.
+//   Device: E.g., CPUDevice, GPUDevice.
+//   Functor: defined above. E.g., functor::tanh_grad.
+template <typename Device, typename Functor>
+class SimpleBinaryOp : public OpKernel {
+ public:
+  typedef typename Functor::in_type Tin;    // Input scalar data type.
+  typedef typename Functor::out_type Tout;  // Output scalar data type.
+
+  explicit SimpleBinaryOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& in0 = ctx->input(0);
+    const Tensor& in1 = ctx->input(1);
+
+    Tensor* out;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, in0.shape(), &out));
+    auto out_flat = out->flat<Tout>();
+    auto in0_flat = in0.flat<Tin>();
+    auto in1_flat = in1.flat<Tin>();
+    const Device& eigen_device = ctx->eigen_device<Device>();
+
+    functor::SimpleBinaryFunctor<Device, Functor>()(eigen_device, out_flat,
+                                                    in0_flat, in1_flat);
+  }
+};
+
 // Coefficient-wise unary operations:
 //   Device: E.g., CPUDevice, GPUDevice.
-//   Functor: defined in cwise_functors.h. E.g., functor::sqrt.
+//   Functor: defined in cwise_ops.h. E.g., functor::sqrt.
 template <typename Device, typename Functor>
 class UnaryOp : public OpKernel {
  public:
@@ -157,8 +208,8 @@ class UnaryOp : public OpKernel {
 
 namespace functor {
 
-template <typename D, typename OUT, typename RHS>
-void Assign(const D& d, OUT out, RHS rhs) {
+template <typename D, typename Out, typename Rhs>
+void Assign(const D& d, Out out, Rhs rhs) {
   out.device(d) = rhs;
 }
 
@@ -367,6 +418,7 @@ struct UnaryFunctor<CPUDevice, Functor> {
 // the functor "F" (e.g., functor:sqrt).
 
 #if defined(__ANDROID_TYPES_SLIM__)
+// Note that __ANDROID_TYPES_SLIM__ is also checked in the cwise_ops*.cc files.
 // Normally Android TensorFlow is built with a reduced number of types (float).
 // Override on the command-line "--define ANDROID_TYPES=__ANDROID_TYPES_FULL__"
 // to generate a library with full type support with a consequent increase in
@@ -381,13 +433,6 @@ struct UnaryFunctor<CPUDevice, Functor> {
 #define REGISTER8(OP, D, N, F, T0, T1, T2, T3, T4, T5, T6, T7) \
   REGISTER(OP, D, N, F, T0)
 #define REGISTER9(OP, D, N, F, T0, T1, T2, T3, T4, T5, T6, T7, T8) \
-  REGISTER(OP, D, N, F, T0)
-#define REGISTER10(OP, D, N, F, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9) \
-  REGISTER(OP, D, N, F, T0)
-#define REGISTER11(OP, D, N, F, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10) \
-  REGISTER(OP, D, N, F, T0)
-#define REGISTER12(OP, D, N, F, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, \
-                   T11)                                                      \
   REGISTER(OP, D, N, F, T0)
 #else  // !defined(__ANDROID_TYPES_SLIM__)
 #define REGISTER2(OP, D, N, F, T0, T1) \
@@ -414,16 +459,10 @@ struct UnaryFunctor<CPUDevice, Functor> {
 #define REGISTER9(OP, D, N, F, T0, T1, T2, T3, T4, T5, T6, T7, T8) \
   REGISTER5(OP, D, N, F, T0, T1, T2, T3, T4)                       \
   REGISTER4(OP, D, N, F, T5, T6, T7, T8)
-#define REGISTER10(OP, D, N, F, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9) \
-  REGISTER5(OP, D, N, F, T0, T1, T2, T3, T4)                            \
-  REGISTER5(OP, D, N, F, T5, T6, T7, T8, T9)
-#define REGISTER11(OP, D, N, F, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10) \
-  REGISTER5(OP, D, N, F, T0, T1, T2, T3, T4)                                 \
-  REGISTER6(OP, D, N, F, T5, T6, T7, T8, T9, T10)
-#define REGISTER12(OP, D, N, F, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, \
-                   T11)                                                      \
-  REGISTER6(OP, D, N, F, T0, T1, T2, T3, T4, T5)                             \
-  REGISTER6(OP, D, N, F, T6, T7, T8, T9, T10, T11)
+
+// Instead of adding REGISTER10, etc., shard the .cc files - see
+// cwise_op_equal_to_*.cc for an example.
+
 #endif  // defined(__ANDROID_TYPES_SLIM__)
 
 }  // end namespace tensorflow

@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,16 +22,14 @@ Train and evaluate TensorFlow models.
 
 @@BaseEstimator
 @@Estimator
+@@Trainable
+@@Evaluable
 @@ModeKeys
-@@TensorFlowClassifier
-@@TensorFlowDNNClassifier
-@@TensorFlowDNNRegressor
-@@TensorFlowEstimator
-@@TensorFlowLinearClassifier
-@@TensorFlowLinearRegressor
-@@TensorFlowRNNClassifier
-@@TensorFlowRNNRegressor
-@@TensorFlowRegressor
+@@DNNClassifier
+@@DNNRegressor
+@@LinearClassifier
+@@LinearRegressor
+@@LogisticRegressor
 
 ## Graph actions
 
@@ -67,6 +64,7 @@ from __future__ import print_function
 
 # pylint: disable=wildcard-import
 from tensorflow.contrib.learn.python.learn import *
+# pylint: enable=wildcard-import
 from tensorflow.python.util.all_util import make_all
 
 __all__ = make_all(__name__)

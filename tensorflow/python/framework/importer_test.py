@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,7 +26,35 @@ from google.protobuf import text_format
 
 from tensorflow.core.framework import op_def_pb2
 from tensorflow.python.framework import device
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import op_def_registry
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
+
+
+def _unknown_shape(op):
+  return [tensor_shape.unknown_shape() for _ in op.outputs]
+
+
+# NOTE(cwhipkey): Dummy shape registration for ops used in the tests, since they
+# don't have C++ op registrations on which to attach C++ shape fns.
+ops.RegisterShape("If")(_unknown_shape)
+ops.RegisterShape("Iff")(_unknown_shape)
+ops.RegisterShape("Ii")(_unknown_shape)
+ops.RegisterShape("Iif")(_unknown_shape)
+ops.RegisterShape("Iii")(_unknown_shape)
+ops.RegisterShape("In")(_unknown_shape)
+ops.RegisterShape("Iri")(_unknown_shape)
+ops.RegisterShape("None")(_unknown_shape)
+ops.RegisterShape("Of")(_unknown_shape)
+ops.RegisterShape("Oi")(_unknown_shape)
+ops.RegisterShape("Oif")(_unknown_shape)
+ops.RegisterShape("Oii")(_unknown_shape)
+ops.RegisterShape("OpWithDefaultAttr")(_unknown_shape)
+ops.RegisterShape("OpWithFutureDefaultAttr")(_unknown_shape)
+ops.RegisterShape("Or")(_unknown_shape)
+ops.RegisterShape("Otl")(_unknown_shape)
+ops.RegisterShape("Unary")(_unknown_shape)
 
 
 _op_list = op_def_pb2.OpList()
@@ -113,7 +141,7 @@ text_format.Merge("""
 op_def_registry.register_op_list(_op_list)
 # NOTE(mrry): Dummy shape registrations for ops used in the tests.
 for op_def in _op_list.op:
-  tf.RegisterShape(op_def.name)(None)
+  ops.RegisterShape(op_def.name)(None)
 
 
 class ImportGraphDefTest(tf.test.TestCase):
@@ -308,11 +336,11 @@ class ImportGraphDefTest(tf.test.TestCase):
       self.assertEqual(d.inputs[0], a.outputs[0])
       self.assertEqual(d.inputs[1], b.outputs[0])
 
-      self.assertEqual(a.outputs[0].dtype, tf.int32_ref)
+      self.assertEqual(a.outputs[0].dtype, dtypes.int32_ref)
       self.assertEqual(c._input_dtypes, [tf.int32, tf.int32])
       self.assertEqual(c.outputs, [])
       self.assertEqual(d._input_dtypes,
-                       [tf.int32_ref, tf.int32])
+                       [dtypes.int32_ref, tf.int32])
       self.assertEqual(d.outputs, [])
 
   def testCyclic(self):
@@ -340,6 +368,38 @@ class ImportGraphDefTest(tf.test.TestCase):
       self.assertTrue(
           "Cannot convert a tensor of type int32 to an input of type float" in
           str(e.exception))
+
+  def testShapeWhitelist(self):
+    # Barrier's shape is an output vector of 2, but the
+    # graph says it's a scalar.  This is currently whitelisted.
+    with tf.Graph().as_default():
+      _ = tf.import_graph_def(
+          self._MakeGraphDef("""
+          node { name: 'A' op: 'Barrier'
+                 attr { key: '_output_shapes'
+                        value { list { shape { } } } } }
+          """),
+          return_elements=["A"],
+          name="import")
+
+  def testShapeWhitelistViolation(self):
+    # L2 loss produces a scalar shape, but the graph
+    # has the wrong shape, so raise an error.
+    with tf.Graph().as_default():
+      with self.assertRaises(ValueError) as e:
+        _ = tf.import_graph_def(
+            self._MakeGraphDef("""
+              node { name: 'A' op: 'Of' }
+              node { name: 'B' op: 'L2Loss'
+                     input: 'A:0'
+                     attr { key: 'T' value { type: DT_FLOAT } }
+                     attr { key: '_output_shapes'
+                            value { list { shape { dim { size: 43 } } } } } }
+            """),
+            return_elements=["B"],
+            name="import")
+        self.assertTrue(
+            "Shapes () and (43,) are not compatible" in str(e.exception))
 
   def testInvalidSignatureTooManyInputsInGraphDef(self):
     with tf.Graph().as_default():
@@ -579,6 +639,12 @@ class ImportGraphDefTest(tf.test.TestCase):
                             input_map=[tf.constant(5.0)])
       self.assertEqual("input_map must be a dictionary mapping strings to "
                        "Tensor objects.", str(e.exception))
+      with self.assertRaises(ValueError) as e:
+        tf.import_graph_def(self._MakeGraphDef(""),
+                            input_map={"a:0": tf.constant(5.0)},
+                            name="")
+      self.assertEqual("tf.import_graph_def() requires a non-empty `name` "
+                       "if `input_map` is used.", str(e.exception))
 
   def testInvalidInputForReturnOperations(self):
     with tf.Graph().as_default():
@@ -590,7 +656,7 @@ class ImportGraphDefTest(tf.test.TestCase):
   def testWithExtensionAndAttr(self):
     with tf.Graph().as_default() as g:
       c = tf.constant(5.0, dtype=tf.float32, name="c")
-      tf.pack([c, c], name="pack")
+      tf.stack([c, c], name="pack")
     gdef = g.as_graph_def()
 
     with self.test_session():
@@ -652,7 +718,7 @@ class ImportGraphDefTest(tf.test.TestCase):
     # We'll use the following device function to observe ops with two inputs.
     ops_with_two_inputs = []
     def input_counter(op):
-      if any(in_t.dtype.is_ref_dtype for in_t in op.inputs):
+      if any(in_t.dtype._is_ref_dtype for in_t in op.inputs):  # pylint: disable=protected-access
         ops_with_two_inputs.append(op)
       return ""
 
@@ -692,10 +758,10 @@ class ImportGraphDefTest(tf.test.TestCase):
   def testLargeGraph(self):
     with self.test_session():
       # The default message byte limit is 64M. Ours is 2G with a warning at 512.
-      # Adding a 150M entries float32 tensor should blow through the warning,
-      # but not the hard limit.
-      input_shape = [150, 1024, 1024]
-      tensor_input = np.random.rand(*input_shape).astype(np.float32)
+      # Adding a 130M entries float32 tensor should exceed the warning, but not
+      # the hard limit.
+      input_shape = [130, 1000, 1000]
+      tensor_input = np.ones(input_shape, dtype=np.float32)
       t = tf.constant(tensor_input, shape=input_shape)
       g = tf.identity(t)
       g.eval()
@@ -774,7 +840,6 @@ class ImportGraphDefTest(tf.test.TestCase):
           """),
           return_elements=["A"], producer_op_list=producer_op_list)
       self.assertEqual(987, a[0].get_attr("default_int"))
-
 
 if __name__ == "__main__":
   tf.test.main()

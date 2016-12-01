@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,7 +32,9 @@ class NodeDefBuilderTest : public ::testing::Test {
  protected:
   // Specify an OpDef via an OpDefBuilder.
   void Op(const OpDefBuilder& op_def_builder) {
-    TF_EXPECT_OK(op_def_builder.Finalize(&op_def_));
+    OpRegistrationData op_reg_data;
+    TF_EXPECT_OK(op_def_builder.Finalize(&op_reg_data));
+    op_def_ = op_reg_data.op_def;
   }
 
   // Resets builder_ with a new NodeDefBuilder using the Op from the last call

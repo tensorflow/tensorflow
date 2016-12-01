@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@ class AssignOpTest(tf.test.TestCase):
       p = tf.Variable(tf.zeros([1024, 1024]))
       adds = [tf.assign_add(p, ones_t, use_locking=False)
               for _ in range(20)]
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       def run_add(add_op):
         sess.run(add_op)
@@ -55,7 +55,7 @@ class AssignOpTest(tf.test.TestCase):
       p = tf.Variable(tf.zeros([1024, 1024]))
       assigns = [tf.assign(p, tf.mul(ones_t, float(i)), False)
                  for i in range(1, 21)]
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       def run_assign(assign_op):
         sess.run(assign_op)

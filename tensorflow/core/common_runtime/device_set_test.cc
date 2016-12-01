@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -68,13 +68,19 @@ TEST_F(DeviceSetTest, PrioritizedDeviceTypeList) {
       (std::vector<DeviceType>{DeviceType(DEVICE_GPU), DeviceType(DEVICE_CPU)}),
       types());
 
+  AddDevice("SYCL", "/job:a/replica:0/task:0/device:sycl:0");
+  EXPECT_EQ(
+      (std::vector<DeviceType>{DeviceType(DEVICE_SYCL), DeviceType(DEVICE_GPU),
+                               DeviceType(DEVICE_CPU)}),
+      types());
+
   AddDevice("T1", "/job:a/replica:0/task:0/device:T1:0");
   AddDevice("T1", "/job:a/replica:0/task:0/device:T1:1");
   AddDevice("T2", "/job:a/replica:0/task:0/device:T2:0");
-  EXPECT_EQ(
-      (std::vector<DeviceType>{DeviceType("T1"), DeviceType("T2"),
-                               DeviceType(DEVICE_GPU), DeviceType(DEVICE_CPU)}),
-      types());
+  EXPECT_EQ((std::vector<DeviceType>{DeviceType(DEVICE_SYCL), DeviceType("T1"),
+                                     DeviceType("T2"), DeviceType(DEVICE_GPU),
+                                     DeviceType(DEVICE_CPU)}),
+            types());
 }
 
 }  // namespace

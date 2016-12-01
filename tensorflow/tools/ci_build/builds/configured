@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,6 +30,8 @@ shift 1
 
 # Enable support for Google Cloud Platform (GCP)
 export TF_NEED_GCP=1
+# Enable support for HDFS
+export TF_NEED_HDFS=1
 
 if [[ "$1" == "--disable-gcp" ]]; then
   export TF_NEED_GCP=0
@@ -47,7 +49,7 @@ else
 fi
 
 pushd "${CI_TENSORFLOW_SUBMODULE_PATH:-.}"
-./configure
+yes "" | ./configure
 popd
 
 # Gather and print build information

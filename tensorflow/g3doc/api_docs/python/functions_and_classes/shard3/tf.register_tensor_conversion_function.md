@@ -4,8 +4,10 @@ Registers a function for converting objects of `base_type` to `Tensor`.
 
 The conversion function must have the following signature:
 
+```python
     def conversion_func(value, dtype=None, name=None, as_ref=False):
       # ...
+```
 
 It must return a `Tensor` with the given `dtype` if specified. If the
 conversion function creates a new `Tensor`, it should use the given

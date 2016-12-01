@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -85,13 +85,27 @@ class AbortOpTest : public OpsTestBase {
  protected:
 };
 
+#ifdef PLATFORM_WINDOWS
+#define SIGABRT 3
+
+class KilledBySignal {
+ public:
+  explicit KilledBySignal(int signum) : signum_(signum) {}
+  bool operator()(int exit_status) const { return exit_status == signum_; }
+ private:
+  const int signum_;
+};
+#else
+#define KilledBySignal ::testing::KilledBySignal
+#endif
+
 // Pass an error message to the op.
 TEST_F(AbortOpTest, pass_error_msg) {
   TF_ASSERT_OK(NodeDefBuilder("abort_op", "Abort")
                    .Attr("error_msg", "abort_op_test")
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
-  EXPECT_EXIT(RunOpKernel(), ::testing::KilledBySignal(SIGABRT),
+  EXPECT_EXIT(RunOpKernel(), KilledBySignal(SIGABRT),
               "Abort_op intentional failure; abort_op_test");
 }
 
@@ -99,7 +113,7 @@ TEST_F(AbortOpTest, pass_error_msg) {
 TEST_F(AbortOpTest, default_msg) {
   TF_ASSERT_OK(NodeDefBuilder("abort_op", "Abort").Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
-  EXPECT_EXIT(RunOpKernel(), ::testing::KilledBySignal(SIGABRT),
+  EXPECT_EXIT(RunOpKernel(), KilledBySignal(SIGABRT),
               "Abort_op intentional failure; ");
 }
 

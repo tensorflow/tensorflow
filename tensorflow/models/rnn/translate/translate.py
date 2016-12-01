@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -36,6 +36,7 @@ import os
 import random
 import sys
 import time
+import logging
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -66,6 +67,8 @@ tf.app.flags.DEFINE_boolean("decode", False,
                             "Set to True for interactive decoding.")
 tf.app.flags.DEFINE_boolean("self_test", False,
                             "Run a self-test if this is set to True.")
+tf.app.flags.DEFINE_boolean("use_fp16", False,
+                            "Train using fp16 instead of fp32.")
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -114,18 +117,26 @@ def read_data(source_path, target_path, max_size=None):
 
 def create_model(session, forward_only):
   """Create translation model and initialize or load parameters in session."""
+  dtype = tf.float16 if FLAGS.use_fp16 else tf.float32
   model = seq2seq_model.Seq2SeqModel(
-      FLAGS.en_vocab_size, FLAGS.fr_vocab_size, _buckets,
-      FLAGS.size, FLAGS.num_layers, FLAGS.max_gradient_norm, FLAGS.batch_size,
-      FLAGS.learning_rate, FLAGS.learning_rate_decay_factor,
-      forward_only=forward_only)
+      FLAGS.en_vocab_size,
+      FLAGS.fr_vocab_size,
+      _buckets,
+      FLAGS.size,
+      FLAGS.num_layers,
+      FLAGS.max_gradient_norm,
+      FLAGS.batch_size,
+      FLAGS.learning_rate,
+      FLAGS.learning_rate_decay_factor,
+      forward_only=forward_only,
+      dtype=dtype)
   ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
-  if ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
+  if ckpt and tf.train.checkpoint_exists(ckpt.model_checkpoint_path):
     print("Reading model parameters from %s" % ckpt.model_checkpoint_path)
     model.saver.restore(session, ckpt.model_checkpoint_path)
   else:
     print("Created model with fresh parameters.")
-    session.run(tf.initialize_all_variables())
+    session.run(tf.global_variables_initializer())
   return model
 
 
@@ -179,7 +190,7 @@ def train():
       # Once in a while, we save checkpoint, print statistics, and run evals.
       if current_step % FLAGS.steps_per_checkpoint == 0:
         # Print statistics for the previous epoch.
-        perplexity = math.exp(loss) if loss < 300 else float('inf')
+        perplexity = math.exp(float(loss)) if loss < 300 else float("inf")
         print ("global step %d learning rate %.4f step-time %.2f perplexity "
                "%.2f" % (model.global_step.eval(), model.learning_rate.eval(),
                          step_time, perplexity))
@@ -200,7 +211,8 @@ def train():
               dev_set, bucket_id)
           _, eval_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
                                        target_weights, bucket_id, True)
-          eval_ppx = math.exp(eval_loss) if eval_loss < 300 else float('inf')
+          eval_ppx = math.exp(float(eval_loss)) if eval_loss < 300 else float(
+              "inf")
           print("  eval: bucket %d perplexity %.2f" % (bucket_id, eval_ppx))
         sys.stdout.flush()
 
@@ -227,8 +239,14 @@ def decode():
       # Get token-ids for the input sentence.
       token_ids = data_utils.sentence_to_token_ids(tf.compat.as_bytes(sentence), en_vocab)
       # Which bucket does it belong to?
-      bucket_id = min([b for b in xrange(len(_buckets))
-                       if _buckets[b][0] > len(token_ids)])
+      bucket_id = len(_buckets) - 1
+      for i, bucket in enumerate(_buckets):
+        if bucket[0] >= len(token_ids):
+          bucket_id = i
+          break
+      else:
+        logging.warning("Sentence truncated: %s", sentence) 
+
       # Get a 1-element batch to feed the sentence to the model.
       encoder_inputs, decoder_inputs, target_weights = model.get_batch(
           {bucket_id: [(token_ids, [])]}, bucket_id)
@@ -254,7 +272,7 @@ def self_test():
     # Create model with vocabularies of 10, 2 small buckets, 2 layers of 32.
     model = seq2seq_model.Seq2SeqModel(10, 10, [(3, 3), (6, 6)], 32, 2,
                                        5.0, 32, 0.3, 0.99, num_samples=8)
-    sess.run(tf.initialize_all_variables())
+    sess.run(tf.global_variables_initializer())
 
     # Fake data set for both the (3, 3) and (6, 6) bucket.
     data_set = ([([1, 1], [2, 2]), ([3, 3], [4]), ([5], [6])],

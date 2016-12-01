@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ limitations under the License.
 namespace tensorflow {
 namespace strings {
 
-void Scanner::ScanEscapedUntilImpl(char end_ch) {
+void Scanner::ScanUntilImpl(char end_ch, bool escaped) {
   for (;;) {
     if (cur_.empty()) {
       Error();
@@ -30,7 +30,7 @@ void Scanner::ScanEscapedUntilImpl(char end_ch) {
     }
 
     cur_.remove_prefix(1);
-    if (ch == '\\') {
+    if (escaped && ch == '\\') {
       // Escape character, skip next character.
       if (cur_.empty()) {
         Error();

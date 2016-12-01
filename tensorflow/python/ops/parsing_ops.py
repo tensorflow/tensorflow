@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,14 +21,13 @@ from __future__ import print_function
 import collections
 import re
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import common_shapes
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_parsing_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import,undefined-variable
@@ -36,8 +35,9 @@ from tensorflow.python.ops.gen_parsing_ops import *
 # pylint: enable=wildcard-import,undefined-variable
 
 
-ops.NoGradient("DecodeRaw")
-ops.NoGradient("StringToNumber")
+ops.NotDifferentiable("DecodeRaw")
+ops.NotDifferentiable("ParseTensor")
+ops.NotDifferentiable("StringToNumber")
 
 
 class VarLenFeature(collections.namedtuple("VarLenFeature", ["dtype"])):
@@ -153,8 +153,7 @@ def parse_example(serialized, features, name=None, example_names=None):
   # pylint: disable=line-too-long
   """Parses `Example` protos into a `dict` of tensors.
 
-  Parses a number of serialized [`Example`]
-  (https://www.tensorflow.org/code/tensorflow/core/example/example.proto)
+  Parses a number of serialized [`Example`](https://www.tensorflow.org/code/tensorflow/core/example/example.proto)
   protos given in `serialized`.
 
   `example_names` may contain descriptive names for the corresponding serialized
@@ -348,7 +347,7 @@ def _parse_example_raw(serialized,
     ValueError: If sparse and dense key sets intersect, or input lengths do not
       match up.
   """
-  with ops.op_scope([serialized, names], name, "ParseExample"):
+  with ops.name_scope(name, "ParseExample", [serialized, names]):
     names = [] if names is None else names
     dense_defaults = {} if dense_defaults is None else dense_defaults
     sparse_keys = [] if sparse_keys is None else sparse_keys
@@ -407,8 +406,9 @@ def _parse_example_raw(serialized,
 
     (sparse_indices, sparse_values, sparse_shapes, dense_values) = outputs
 
-    sparse_tensors = [ops.SparseTensor(ix, val, shape) for (ix, val, shape)
-                      in zip(sparse_indices, sparse_values, sparse_shapes)]
+    sparse_tensors = [
+        sparse_tensor.SparseTensor(ix, val, shape) for (ix, val, shape)
+        in zip(sparse_indices, sparse_values, sparse_shapes)]
 
     return dict(
         zip(sparse_keys + dense_keys, sparse_tensors + dense_values))
@@ -483,7 +483,7 @@ def _parse_single_example_raw(serialized,
   Raises:
     ValueError: if any feature is invalid.
   """
-  with ops.op_scope([serialized, names], name, "ParseSingleExample"):
+  with ops.name_scope(name, "ParseSingleExample", [serialized, names]):
     serialized = ops.convert_to_tensor(serialized)
     serialized_shape = serialized.get_shape()
     if serialized_shape.ndims is not None:
@@ -491,7 +491,7 @@ def _parse_single_example_raw(serialized,
         raise ValueError("Input serialized must be a scalar")
     else:
       serialized = control_flow_ops.with_dependencies(
-          [logging_ops.Assert(
+          [control_flow_ops.Assert(
               math_ops.equal(array_ops.rank(serialized), 0),
               ["Input serialized must be a scalar"],
               name="SerializedIsScalar")],
@@ -506,7 +506,7 @@ def _parse_single_example_raw(serialized,
           raise ValueError("Input names must be a scalar")
       else:
         names = control_flow_ops.with_dependencies(
-            [logging_ops.Assert(
+            [control_flow_ops.Assert(
                 math_ops.equal(array_ops.rank(names), 0),
                 ["Input names must be a scalar"],
                 name="NamesIsScalar")],
@@ -531,7 +531,7 @@ def _parse_single_example_raw(serialized,
     if sparse_keys is not None:
       for s in sparse_keys:
         s_name = re.sub("[^A-Za-z0-9_.\\-/]", "_", s)
-        outputs[s] = ops.SparseTensor(
+        outputs[s] = sparse_tensor.SparseTensor(
             array_ops.slice(outputs[s].indices,
                             [0, 1], [-1, -1], name="Slice_Indices_%s" % s_name),
             outputs[s].values,
@@ -540,34 +540,13 @@ def _parse_single_example_raw(serialized,
     return outputs
 
 
-@ops.RegisterShape("ParseExample")
-def _ParseExampleShape(op):  # pylint: disable=invalid-name
-  """Shape function for the ParseExample op."""
-  input_shape = op.inputs[0].get_shape().with_rank(1)
-  op.inputs[1].get_shape().with_rank(1)  # names
-  num_sparse = op.get_attr("Nsparse")
-  num_dense = op.get_attr("Ndense")
-  dense_shapes = op.get_attr("dense_shapes")
-  sparse_index_shapes = [
-      tensor_shape.matrix(None, 2) for _ in range(num_sparse)]
-  sparse_value_shapes = [tensor_shape.vector(None) for _ in range(num_sparse)]
-  sparse_shape_shapes = [tensor_shape.vector(2) for _ in range(num_sparse)]
-  assert num_dense == len(dense_shapes)
-  dense_shapes = [
-      input_shape.concatenate(dense_shape)
-      for dense_shape in dense_shapes]
-  return (sparse_index_shapes + sparse_value_shapes + sparse_shape_shapes +
-          dense_shapes)
-
-
 def parse_single_sequence_example(
     serialized, context_features=None, sequence_features=None,
     example_name=None, name=None):
   # pylint: disable=line-too-long
   """Parses a single `SequenceExample` proto.
 
-  Parses a single serialized [`SequenceExample`]
-  (https://www.tensorflow.org/code/tensorflow/core/example/example.proto)
+  Parses a single serialized [`SequenceExample`](https://www.tensorflow.org/code/tensorflow/core/example/example.proto)
   proto given in `serialized`.
 
   This op parses a serialize sequence example into a tuple of dictionaries
@@ -596,6 +575,10 @@ def parse_single_sequence_example(
   `FixedLenSequenceFeature` is mapped to a `Tensor`, each of the specified type.
   The shape will be `(T,) + df.shape` for `FixedLenSequenceFeature` `df`, where
   `T` is the length of the associated `FeatureList` in the `SequenceExample`.
+  For instance, `FixedLenSequenceFeature([])` yields a scalar 1-D `Tensor` of
+  static shape `[None]` and dynamic shape `[T]`, while
+  `FixedLenSequenceFeature([k])` (for `int k >= 1`) yields a 2-D matrix `Tensor`
+  of static shape `[None, k]` and dynamic shape `[T, k]`.
 
   Each `SparseTensor` corresponding to `sequence_features` represents a ragged
   vector.  Its indices are `[time, index]`, where `time` is the `FeatureList`
@@ -723,7 +706,7 @@ def _parse_single_sequence_example_raw(serialized,
       feature_list_dense_defaults is not None.
     TypeError: if feature_list_dense_defaults is not either None or a dict.
   """
-  with ops.op_scope([serialized], name, "ParseSingleSequenceExample"):
+  with ops.name_scope(name, "ParseSingleSequenceExample", [serialized]):
     context_dense_defaults = (
         {} if context_dense_defaults is None else context_dense_defaults)
     context_sparse_keys = (
@@ -856,13 +839,13 @@ def _parse_single_sequence_example_raw(serialized,
      feature_list_sparse_shapes, feature_list_dense_values) = outputs
 
     context_sparse_tensors = [
-        ops.SparseTensor(ix, val, shape) for (ix, val, shape)
+        sparse_tensor.SparseTensor(ix, val, shape) for (ix, val, shape)
         in zip(context_sparse_indices,
                context_sparse_values,
                context_sparse_shapes)]
 
     feature_list_sparse_tensors = [
-        ops.SparseTensor(ix, val, shape) for (ix, val, shape)
+        sparse_tensor.SparseTensor(ix, val, shape) for (ix, val, shape)
         in zip(feature_list_sparse_indices,
                feature_list_sparse_values,
                feature_list_sparse_shapes)]
@@ -875,65 +858,3 @@ def _parse_single_sequence_example_raw(serialized,
             feature_list_sparse_tensors + feature_list_dense_values))
 
     return (context_output, feature_list_output)
-
-
-@ops.RegisterShape("ParseSingleSequenceExample")
-def _ParseSingleSequenceExampleShape(op):  # pylint: disable=invalid-name
-  """Shape function for the ParseExample op."""
-  op.inputs[0].get_shape().with_rank(0)  # input
-  # feature_list_dense_missing_assumed_empty
-  op.inputs[1].get_shape().with_rank(1)
-  num_context_sparse = op.get_attr("Ncontext_sparse")
-  num_context_dense = op.get_attr("Ncontext_dense")
-  num_feature_list_dense = op.get_attr("Nfeature_list_dense")
-  context_dense_shapes = op.get_attr("context_dense_shapes")
-  num_feature_list_sparse = op.get_attr("Nfeature_list_sparse")
-  feature_list_dense_shapes = op.get_attr("feature_list_dense_shapes")
-  context_sparse_index_shapes = [
-      tensor_shape.matrix(None, 1) for _ in range(num_context_sparse)]
-  context_sparse_value_shapes = [
-      tensor_shape.vector(None) for _ in range(num_context_sparse)]
-  context_sparse_shape_shapes = [
-      tensor_shape.vector(1) for _ in range(num_context_sparse)]
-  context_dense_shapes = [
-      tensor_shape.TensorShape(dense_shape)
-      for dense_shape in context_dense_shapes]
-  feature_list_sparse_index_shapes = [
-      tensor_shape.matrix(None, 2) for _ in range(num_feature_list_sparse)]
-  feature_list_sparse_value_shapes = [
-      tensor_shape.vector(None) for _ in range(num_feature_list_sparse)]
-  feature_list_sparse_shape_shapes = [
-      tensor_shape.vector(2) for _ in range(num_feature_list_sparse)]
-  feature_list_dense_shapes = [
-      tensor_shape.vector(None).concatenate(dense_shape)
-      for dense_shape in feature_list_dense_shapes]
-  assert num_context_dense == len(context_dense_shapes)
-  assert num_feature_list_dense == len(feature_list_dense_shapes)
-  return (context_sparse_index_shapes + context_sparse_value_shapes +
-          context_sparse_shape_shapes + context_dense_shapes +
-          feature_list_sparse_index_shapes + feature_list_sparse_value_shapes +
-          feature_list_sparse_shape_shapes + feature_list_dense_shapes)
-
-
-ops.RegisterShape("DecodeJSONExample")(common_shapes.unchanged_shape)
-ops.RegisterShape("StringToNumber")(common_shapes.unchanged_shape)
-
-
-@ops.RegisterShape("DecodeRaw")
-def _DecodeRawShape(op):  # pylint: disable=invalid-name
-  """Shape function for the DecodeRaw op."""
-  # NOTE(mrry): Last dimension is data-dependent.
-  return [op.inputs[0].get_shape().concatenate([None])]
-
-
-@ops.RegisterShape("DecodeCSV")
-def _DecodeCSVShape(op):  # pylint: disable=invalid-name
-  """Shape function for the DecodeCSV op."""
-  input_shape = op.inputs[0].get_shape()
-  # Optionally check that all of other inputs are scalar or empty.
-  for default_input in op.inputs[1:]:
-    default_input_shape = default_input.get_shape().with_rank(1)
-    if default_input_shape[0] > 1:
-      raise ValueError(
-          "Shape of a default must be a length-0 or length-1 vector.")
-  return [input_shape] * len(op.outputs)

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -71,11 +71,13 @@ class InvertPermutationOp : public OpKernel {
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("InvertPermutation").Device(DEVICE_CPU),
-                        InvertPermutationOp);
+REGISTER_KERNEL_BUILDER(
+    Name("InvertPermutation").Device(DEVICE_CPU).TypeConstraint<int32>("T"),
+    InvertPermutationOp);
 
 REGISTER_KERNEL_BUILDER(Name("InvertPermutation")
                             .Device(DEVICE_GPU)
+                            .TypeConstraint<int32>("T")
                             .HostMemory("x")
                             .HostMemory("y"),
                         InvertPermutationOp);
@@ -123,13 +125,16 @@ void TransposeOp::Compute(OpKernelContext* ctx) {
   // Check whether permutation is a permutation of integers of [0 .. dims).
   gtl::InlinedVector<bool, 8> bits(dims);
   bool is_identity = true;
+  int32 non_singleton_dims = 0;
   for (int i = 0; i < dims; ++i) {
     const int32 d = permutation[i];
     OP_REQUIRES(
         ctx, 0 <= d && d < dims,
         errors::InvalidArgument(d, " is out of range [0 .. ", dims, ")"));
     bits[d] = true;
-    shape.AddDim(input.dim_size(d));
+    const auto dim_size = input.dim_size(d);
+    shape.AddDim(dim_size);
+    non_singleton_dims += dim_size != 1 ? 1 : 0;
     if (d != i) {
       is_identity = false;
     }
@@ -143,6 +148,12 @@ void TransposeOp::Compute(OpKernelContext* ctx) {
   // 0-D, 1-D, and identity transposes do nothing.
   if (dims <= 1 || is_identity) {
     ctx->set_output(0, input);
+    return;
+  } else if (non_singleton_dims <= 1) {
+    Tensor output;
+    OP_REQUIRES(ctx, output.CopyFrom(input, shape),
+                errors::Unknown("Error reshaping Tensor."));
+    ctx->set_output(0, output);
     return;
   }
 
@@ -160,11 +171,12 @@ Status TransposeCpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
                                    out);
 }
 
-#define REGISTER(T)                                   \
-  REGISTER_KERNEL_BUILDER(Name("Transpose")           \
-                              .Device(DEVICE_CPU)     \
-                              .TypeConstraint<T>("T") \
-                              .HostMemory("perm"),    \
+#define REGISTER(T)                                           \
+  REGISTER_KERNEL_BUILDER(Name("Transpose")                   \
+                              .Device(DEVICE_CPU)             \
+                              .TypeConstraint<T>("T")         \
+                              .TypeConstraint<int32>("Tperm") \
+                              .HostMemory("perm"),            \
                           TransposeCpuOp);
 TF_CALL_ALL_TYPES(REGISTER)
 REGISTER(bfloat16);
@@ -178,11 +190,12 @@ Status TransposeGpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
                                    out);
 }
 
-#define REGISTER(T)                                   \
-  REGISTER_KERNEL_BUILDER(Name("Transpose")           \
-                              .Device(DEVICE_GPU)     \
-                              .TypeConstraint<T>("T") \
-                              .HostMemory("perm"),    \
+#define REGISTER(T)                                           \
+  REGISTER_KERNEL_BUILDER(Name("Transpose")                   \
+                              .Device(DEVICE_GPU)             \
+                              .TypeConstraint<T>("T")         \
+                              .TypeConstraint<int32>("Tperm") \
+                              .HostMemory("perm"),            \
                           TransposeGpuOp);
 TF_CALL_POD_TYPES(REGISTER);
 #undef REGISTER

@@ -9,7 +9,7 @@ communicate with any other server in the same cluster.
 
 - - -
 
-#### `tf.train.Server.__init__(server_or_cluster_def, job_name=None, task_index=None, protocol=None, start=True)` {#Server.__init__}
+#### `tf.train.Server.__init__(server_or_cluster_def, job_name=None, task_index=None, protocol=None, config=None, start=True)` {#Server.__init__}
 
 Creates a new server with the given definition.
 
@@ -32,6 +32,8 @@ override any information provided in `server_or_cluster_def`.
 *  <b>`protocol`</b>: (Optional.) Specifies the protocol to be used by the server.
     Acceptable values include `"grpc"`. Defaults to the value in
     `server_or_cluster_def`, if specified. Otherwise defaults to `"grpc"`.
+*  <b>`config`</b>: (Options.) A `tf.ConfigProto` that specifies default
+    configuration options for all sessions that run on this server.
 *  <b>`start`</b>: (Optional.) Boolean, indicating whether to start the server
     after creating it. Defaults to `True`.
 
@@ -43,7 +45,7 @@ override any information provided in `server_or_cluster_def`.
 
 - - -
 
-#### `tf.train.Server.create_local_server(start=True)` {#Server.create_local_server}
+#### `tf.train.Server.create_local_server(config=None, start=True)` {#Server.create_local_server}
 
 Creates a new single-process cluster running on the local host.
 
@@ -55,6 +57,8 @@ single-process cluster containing a single task in a job called
 ##### Args:
 
 
+*  <b>`config`</b>: (Options.) A `tf.ConfigProto` that specifies default
+    configuration options for all sessions that run on this server.
 *  <b>`start`</b>: (Optional.) Boolean, indicating whether to start the server after
     creating it. Defaults to `True`.
 
@@ -82,6 +86,18 @@ with tf.Session(server.target):
 ##### Returns:
 
   A string containing a session target for this server.
+
+
+- - -
+
+#### `tf.train.Server.server_def` {#Server.server_def}
+
+Returns the `tf.train.ServerDef` for this server.
+
+##### Returns:
+
+  A `tf.train.ServerDef` protocol buffer that describes the configuration
+  of this server.
 
 
 

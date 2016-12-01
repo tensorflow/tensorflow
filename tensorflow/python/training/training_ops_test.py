@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,9 +24,9 @@ import itertools
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework.test_util import TensorFlowTestCase
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import training_ops
@@ -52,7 +52,7 @@ class TrainingOpsTest(TensorFlowTestCase):
     self.setUp()
     with self.test_session(use_gpu=use_gpu):
       var = variables.Variable(x)
-      variables.initialize_all_variables().run()
+      variables.global_variables_initializer().run()
       self.assertAllCloseAccordingToType(x, var.eval())
       apply_sgd = training_ops.apply_gradient_descent(var, alpha, delta)
       out = apply_sgd.eval()
@@ -72,7 +72,7 @@ class TrainingOpsTest(TensorFlowTestCase):
     with self.test_session(use_gpu=use_gpu):
       var = variables.Variable(x)
       accum = variables.Variable(y)
-      variables.initialize_all_variables().run()
+      variables.global_variables_initializer().run()
 
       self.assertAllCloseAccordingToType(x, var.eval())
       apply_adagrad = training_ops.apply_adagrad(var, accum, lr, grad)
@@ -89,7 +89,7 @@ class TrainingOpsTest(TensorFlowTestCase):
       var = variables.Variable(x)
       accum = variables.Variable(y)
       linear = variables.Variable(z)
-      variables.initialize_all_variables().run()
+      variables.global_variables_initializer().run()
 
       self.assertAllCloseAccordingToType(x, var.eval())
       apply_ftrl = training_ops.apply_ftrl(var, accum, linear, grad, lr, l1, l2,
@@ -139,7 +139,7 @@ class TrainingOpsTest(TensorFlowTestCase):
     with self.test_session(use_gpu=False):
       var = variables.Variable(x)
       accum = variables.Variable(y)
-      variables.initialize_all_variables().run()
+      variables.global_variables_initializer().run()
 
       self.assertAllCloseAccordingToType(x, var.eval())
       sparse_apply_adagrad = training_ops.sparse_apply_adagrad(
@@ -162,7 +162,7 @@ class TrainingOpsTest(TensorFlowTestCase):
       var = variables.Variable(x)
       accum = variables.Variable(y)
       linear = variables.Variable(z)
-      variables.initialize_all_variables().run()
+      variables.global_variables_initializer().run()
 
       self.assertAllCloseAccordingToType(x, var.eval())
       sparse_apply_ftrl = training_ops.sparse_apply_ftrl(
@@ -250,7 +250,7 @@ class TrainingOpsTest(TensorFlowTestCase):
       beta2_power_t = variables.Variable(beta2_power)
       lr_t = constant_op.constant(lr, self._toType(var.dtype), [])
       epsilon_t = constant_op.constant(epsilon, self._toType(var.dtype), [])
-      variables.initialize_all_variables().run()
+      variables.global_variables_initializer().run()
 
       self.assertAllCloseAccordingToType(var, var_t.eval())
       new_var, _, _ = self._adamUpdateNumpy(var, grad, t, m, v,

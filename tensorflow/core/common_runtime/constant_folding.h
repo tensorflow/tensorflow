@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,6 +31,7 @@ namespace tensorflow {
 // assumed to execute.
 // Returns true if and only if "graph" has been mutated.
 bool DoConstantFolding(const ConstantFoldingOptions& opts,
+                       FunctionLibraryRuntime* function_library, Env* env,
                        Device* partition_device, Graph* graph);
 
 typedef std::pair<Node*, int> NodeAndOutput;

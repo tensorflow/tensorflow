@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,6 +22,14 @@ limitations under the License.
 
 namespace tensorflow {
 namespace functor {
+
+template <typename Device, typename T>
+struct SplitCustom {
+  void operator()(const Device& d, typename TTypes<T, 2>::Tensor output,
+                  typename TTypes<T, 2>::ConstTensor input,
+                  const Eigen::DSizes<Eigen::DenseIndex, 2>& slice_indices,
+                  const Eigen::DSizes<Eigen::DenseIndex, 2>& slice_sizes);
+};
 
 template <typename Device, typename T>
 struct Split {

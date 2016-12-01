@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,11 +29,11 @@ using tensorflow::ReadFileToString;
 using tensorflow::Thread;
 using tensorflow::WriteStringToFile;
 
-inline bool FileExists(const string& filename) {
+inline Status FileExists(const string& filename) {
   return Env::Default()->FileExists(filename);
 }
 
-inline bool FileExists(const port::StringPiece& filename) {
+inline Status FileExists(const port::StringPiece& filename) {
   return Env::Default()->FileExists(filename.ToString());
 }
 

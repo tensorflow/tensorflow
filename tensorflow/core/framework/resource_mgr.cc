@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,10 +16,10 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 
 #include "tensorflow/core/framework/node_def_util.h"
-#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/scanner.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/demangle.h"
 
@@ -136,7 +136,8 @@ Status ResourceMgr::Cleanup(const string& container) {
     mutex_lock l(mu_);
     auto iter = containers_.find(container);
     if (iter == containers_.end()) {
-      return errors::NotFound("Container ", container, " does not exist.");
+      // Nothing to cleanup, it's OK.
+      return Status::OK();
     }
     b = iter->second;
     containers_.erase(iter);
@@ -195,6 +196,10 @@ string ContainerInfo::DebugString() const {
   return strings::StrCat("[", container(), ",", name(), ",",
                          resource_is_private_to_kernel() ? "private" : "public",
                          "]");
+}
+
+ResourceHandle HandleFromInput(OpKernelContext* ctx, int input) {
+  return ctx->input(input).flat<ResourceHandle>()(0);
 }
 
 }  //  end namespace tensorflow

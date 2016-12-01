@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ class FtrlOptimizerTest(tf.test.TestCase):
                                      l1_regularization_strength=0.0,
                                      l2_regularization_strength=0.0)
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
 
         v0_val, v1_val = sess.run([var0, var1])
         self.assertAllClose([0.0, 0.0], v0_val)
@@ -65,7 +65,7 @@ class FtrlOptimizerTest(tf.test.TestCase):
                                      l1_regularization_strength=0.0,
                                      l2_regularization_strength=0.0)
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
 
         v0_val, v1_val = sess.run([var0, var1])
         self.assertAllCloseAccordingToType([1.0, 2.0], v0_val)
@@ -93,7 +93,7 @@ class FtrlOptimizerTest(tf.test.TestCase):
                                      l1_regularization_strength=0.001,
                                      l2_regularization_strength=0.0)
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
 
         v0_val, v1_val = sess.run([var0, var1])
         self.assertAllCloseAccordingToType([1.0, 2.0], v0_val)
@@ -123,7 +123,7 @@ class FtrlOptimizerTest(tf.test.TestCase):
                                      l1_regularization_strength=0.001,
                                      l2_regularization_strength=2.0)
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
 
         v0_val, v1_val = sess.run([var0, var1])
         self.assertAllCloseAccordingToType([1.0, 2.0], v0_val)
@@ -156,7 +156,7 @@ class FtrlOptimizerTest(tf.test.TestCase):
       grads1 = tf.constant([0.01, 0.02], dtype=dtype)
 
     update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-    tf.initialize_all_variables().run()
+    tf.global_variables_initializer().run()
 
     sess = tf.get_default_session()
     v0_val, v1_val = sess.run([var0, var1])
@@ -222,7 +222,7 @@ class FtrlOptimizerTest(tf.test.TestCase):
       self.assertAllCloseAccordingToType(val0, val2)
       self.assertAllCloseAccordingToType(val1, val3)
 
-  def testEquivSparseGradientDescentwithoutRegularizaion(self):
+  def testEquivSparseGradientDescentwithoutRegularization(self):
     for dtype in [tf.half, tf.float32]:
       with self.test_session():
         val0, val1 = self.applyOptimizer(
@@ -242,7 +242,7 @@ class FtrlOptimizerTest(tf.test.TestCase):
       self.assertAllCloseAccordingToType(val0, val2)
       self.assertAllCloseAccordingToType(val1, val3)
 
-  def testEquivGradientDescentwithoutRegularizaion(self):
+  def testEquivGradientDescentwithoutRegularization(self):
     for dtype in [tf.half, tf.float32]:
       with self.test_session():
         val0, val1 = self.applyOptimizer(

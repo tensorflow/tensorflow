@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -57,7 +57,6 @@ TEST(ThreadPool, DoWork) {
   }
 }
 
-#ifdef EIGEN_USE_NONBLOCKING_THREAD_POOL
 TEST(ThreadPool, ParallelFor) {
   // Make ParallelFor use as many threads as possible.
   int64 kHugeCost = 1 << 30;
@@ -80,7 +79,6 @@ TEST(ThreadPool, ParallelFor) {
     }
   }
 }
-#endif
 
 static void BM_Sequential(int iters) {
   ThreadPool pool(Env::Default(), "test", kNumThreads);

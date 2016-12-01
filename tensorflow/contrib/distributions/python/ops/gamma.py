@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,18 +18,25 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops.distribution import ContinuousDistribution  # pylint: disable=line-too-long
-from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util  # pylint: disable=line-too-long
+import numpy as np
+
+from tensorflow.contrib.distributions.python.ops import distribution
+from tensorflow.contrib.distributions.python.ops import distribution_util
+from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
+from tensorflow.python.framework import common_shapes
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
+from tensorflow.python.ops import random_ops
 
 
-class Gamma(ContinuousDistribution):
+class Gamma(distribution.Distribution):
   """The `Gamma` distribution with parameter alpha and beta.
 
   The parameters are the shape and inverse scale parameters alpha, beta.
@@ -44,6 +51,9 @@ class Gamma(ContinuousDistribution):
 
   where GammaInc is the incomplete lower Gamma function.
 
+  WARNING: This distribution may draw 0-valued samples for small alpha values.
+      See the note on `tf.random_gamma`.
+
   Examples:
 
   ```python
@@ -53,54 +63,62 @@ class Gamma(ContinuousDistribution):
 
   """
 
-  def __init__(self, alpha, beta, name="Gamma"):
+  def __init__(self,
+               alpha,
+               beta,
+               validate_args=False,
+               allow_nan_stats=True,
+               name="Gamma"):
     """Construct Gamma distributions with parameters `alpha` and `beta`.
 
     The parameters `alpha` and `beta` must be shaped in a way that supports
     broadcasting (e.g. `alpha + beta` is a valid operation).
 
     Args:
-      alpha: `float` or `double` tensor, the shape params of the
+      alpha: Floating point tensor, the shape params of the
         distribution(s).
         alpha must contain only positive values.
-      beta: `float` or `double` tensor, the inverse scale params of the
+      beta: Floating point tensor, the inverse scale params of the
         distribution(s).
         beta must contain only positive values.
+      validate_args: `Boolean`, default `False`.  Whether to assert that
+        `a > 0`, `b > 0`, and that `x > 0` in the methods `prob(x)` and
+        `log_prob(x)`.  If `validate_args` is `False` and the inputs are
+        invalid, correct behavior is not guaranteed.
+      allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
+        exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+        batch member.  If `True`, batch members with valid parameters leading to
+        undefined statistics will return NaN for this statistic.
       name: The name to prepend to all ops created by this distribution.
 
     Raises:
       TypeError: if `alpha` and `beta` are different dtypes.
     """
-    with ops.op_scope([alpha, beta], name):
+    parameters = locals()
+    parameters.pop("self")
+    with ops.name_scope(name, values=[alpha, beta]) as ns:
       with ops.control_dependencies([
-          check_ops.assert_positive(alpha), check_ops.assert_positive(beta)]):
-        alpha = array_ops.identity(alpha, name="alpha")
-        beta = array_ops.identity(beta, name="beta")
+          check_ops.assert_positive(alpha),
+          check_ops.assert_positive(beta),
+      ] if validate_args else []):
+        self._alpha = array_ops.identity(alpha, name="alpha")
+        self._beta = array_ops.identity(beta, name="beta")
+        contrib_tensor_util.assert_same_float_dtype((self._alpha, self._beta))
+    super(Gamma, self).__init__(
+        dtype=self._alpha.dtype,
+        validate_args=validate_args,
+        allow_nan_stats=allow_nan_stats,
+        is_continuous=True,
+        is_reparameterized=False,
+        parameters=parameters,
+        graph_parents=[self._alpha, self._beta],
+        name=ns)
 
-        contrib_tensor_util.assert_same_float_dtype((alpha, beta))
-
-        with ops.name_scope("mean"):
-          self._mean = alpha / beta
-
-        with ops.name_scope("variance"):
-          self._variance = alpha / math_ops.square(beta)
-
-    self._get_batch_shape = self._mean.get_shape()
-    self._get_event_shape = tensor_shape.TensorShape([])
-
-    self._alpha = alpha
-    self._beta = beta
-    self._name = name
-
-  @property
-  def name(self):
-    """Name to prepend to all ops."""
-    return self._name
-
-  @property
-  def dtype(self):
-    """dtype of samples from this distribution."""
-    return self._alpha.dtype
+  @staticmethod
+  def _param_shapes(sample_shape):
+    return dict(
+        zip(("alpha", "beta"), ([ops.convert_to_tensor(
+            sample_shape, dtype=dtypes.int32)] * 2)))
 
   @property
   def alpha(self):
@@ -112,165 +130,113 @@ class Gamma(ContinuousDistribution):
     """Inverse scale parameter."""
     return self._beta
 
-  def batch_shape(self, name="batch_shape"):
-    """Batch dimensions of this instance as a 1-D int32 `Tensor`.
+  def _batch_shape(self):
+    return array_ops.shape(self.alpha + self.beta)
 
-    The product of the dimensions of the `batch_shape` is the number of
-    independent distributions of this kind the instance represents.
+  def _get_batch_shape(self):
+    return common_shapes.broadcast_shape(self.alpha.get_shape(),
+                                         self.beta.get_shape())
 
-    Args:
-      name: name to give to the op
+  def _event_shape(self):
+    return constant_op.constant([], dtype=dtypes.int32)
 
-    Returns:
-      `Tensor` `batch_shape`
-    """
-    with ops.name_scope(self.name):
-      return array_ops.shape(self._mean, name=name)
+  def _get_event_shape(self):
+    return tensor_shape.scalar()
 
-  def get_batch_shape(self):
-    """`TensorShape` available at graph construction time.
+  def _sample_n(self, n, seed=None):
+    """See the documentation for tf.random_gamma for more details."""
+    return random_ops.random_gamma([n],
+                                   self.alpha,
+                                   beta=self.beta,
+                                   dtype=self.dtype,
+                                   seed=seed)
 
-    Same meaning as `batch_shape`. May be only partially defined.
+  def _log_prob(self, x):
+    x = control_flow_ops.with_dependencies([check_ops.assert_positive(x)] if
+                                           self.validate_args else [], x)
+    contrib_tensor_util.assert_same_float_dtype(tensors=[x],
+                                                dtype=self.dtype)
+    return (self.alpha * math_ops.log(self.beta) +
+            (self.alpha - 1.) * math_ops.log(x) -
+            self.beta * x -
+            math_ops.lgamma(self.alpha))
 
-    Returns:
-      `TensorShape` object.
-    """
-    return self._get_batch_shape
+  def _prob(self, x):
+    return math_ops.exp(self._log_prob(x))
 
-  def event_shape(self, name="event_shape"):
-    """Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
+  def _log_cdf(self, x):
+    x = control_flow_ops.with_dependencies([check_ops.assert_positive(x)] if
+                                           self.validate_args else [], x)
+    contrib_tensor_util.assert_same_float_dtype(tensors=[x], dtype=self.dtype)
+    # Note that igamma returns the regularized incomplete gamma function,
+    # which is what we want for the CDF.
+    return math_ops.log(math_ops.igamma(self.alpha, self.beta * x))
 
-    Args:
-      name: name to give to the op
+  def _cdf(self, x):
+    return math_ops.igamma(self.alpha, self.beta * x)
 
-    Returns:
-      `Tensor` `event_shape`
-    """
-    with ops.name_scope(self.name):
-      return constant_op.constant(1, name=name)
+  @distribution_util.AppendDocstring(
+      """This is defined to be
 
-  def get_event_shape(self):
-    """`TensorShape` available at graph construction time.
+      ```
+      entropy = alpha - log(beta) + log(Gamma(alpha))
+      + (1-alpha)digamma(alpha)
+      ```
 
-    Same meaning as `event_shape`. May be only partially defined.
+      where digamma(alpha) is the digamma function.
+      """)
+  def _entropy(self):
+    return (self.alpha -
+            math_ops.log(self.beta) +
+            math_ops.lgamma(self.alpha) +
+            (1. - self.alpha) * math_ops.digamma(self.alpha))
 
-    Returns:
-      `TensorShape` object.
-    """
-    return self._get_event_shape
+  def _mean(self):
+    return self.alpha / self.beta
 
-  @property
-  def mean(self):
-    """Mean of each batch member."""
-    return self._mean
+  def _variance(self):
+    return self.alpha / math_ops.square(self.beta)
 
-  @property
-  def variance(self):
-    """Variance of each batch member."""
-    return self._variance
+  def _std(self):
+    return math_ops.sqrt(self.alpha) / self.beta
 
-  def log_pdf(self, x, name="log_pdf"):
-    """Log pdf of observations in `x` under these Gamma distribution(s).
+  @distribution_util.AppendDocstring(
+      """The mode of a gamma distribution is `(alpha - 1) / beta` when
+      `alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
+      an exception will be raised rather than returning `NaN`.""")
+  def _mode(self):
+    mode = (self.alpha - 1.) / self.beta
+    if self.allow_nan_stats:
+      nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
+      return math_ops.select(
+          self.alpha >= 1.,
+          mode,
+          array_ops.fill(self.batch_shape(), nan, name="nan"))
+    else:
+      return control_flow_ops.with_dependencies([
+          check_ops.assert_less(
+              array_ops.ones((), self.dtype),
+              self.alpha,
+              message="mode not defined for components of alpha <= 1"),
+          ], mode)
 
-    Args:
-      x: tensor of dtype `dtype`, must be broadcastable with `alpha` and `beta`.
-      name: The name to give this op.
 
-    Returns:
-      log_pdf: tensor of dtype `dtype`, the log-PDFs of `x`.
+class GammaWithSoftplusAlphaBeta(Gamma):
+  """Gamma with softplus transform on `alpha` and `beta`."""
 
-    Raises:
-      TypeError: if `x` and `alpha` are different dtypes.
-    """
-    with ops.op_scope([self._alpha, self._beta, x], self.name):
-      with ops.name_scope(name):
-        alpha = self._alpha
-        beta = self._beta
-        x = ops.convert_to_tensor(x)
-        x = control_flow_ops.with_dependencies(
-            [check_ops.assert_positive(x)], x)
-        contrib_tensor_util.assert_same_float_dtype(tensors=[x,],
-                                                    dtype=self.dtype)
-
-        return (alpha * math_ops.log(beta) + (alpha - 1) * math_ops.log(x) -
-                beta * x - math_ops.lgamma(self._alpha))
-
-  def pdf(self, x, name="pdf"):
-    """Pdf of observations in `x` under these Gamma distribution(s).
-
-    Args:
-      x: tensor of dtype `dtype`, must be broadcastable with `alpha` and `beta`.
-      name: The name to give this op.
-
-    Returns:
-      pdf: tensor of dtype `dtype`, the PDFs of `x`
-
-    Raises:
-      TypeError: if `x` and `alpha` are different dtypes.
-    """
-    with ops.name_scope(name):
-      return math_ops.exp(self.log_pdf(x, name))
-
-  def log_cdf(self, x, name="log_cdf"):
-    """Log CDF of observations `x` under these Gamma distribution(s).
-
-    Args:
-      x: tensor of dtype `dtype`, must be broadcastable with `alpha` and `beta`.
-      name: The name to give this op.
-
-    Returns:
-      log_cdf: tensor of dtype `dtype`, the log-CDFs of `x`.
-    """
-    with ops.op_scope([self._alpha, self._beta, x], self.name):
-      with ops.name_scope(name):
-        x = ops.convert_to_tensor(x)
-        x = control_flow_ops.with_dependencies(
-            [check_ops.assert_positive(x)], x)
-        contrib_tensor_util.assert_same_float_dtype(tensors=[x,],
-                                                    dtype=self.dtype)
-        # Note that igamma returns the regularized incomplete gamma function,
-        # which is what we want for the CDF.
-        return math_ops.log(math_ops.igamma(self._alpha, self._beta * x))
-
-  def cdf(self, x, name="cdf"):
-    """CDF of observations `x` under these Gamma distribution(s).
-
-    Args:
-      x: tensor of dtype `dtype`, must be broadcastable with `alpha` and `beta`.
-      name: The name to give this op.
-
-    Returns:
-      cdf: tensor of dtype `dtype`, the CDFs of `x`.
-    """
-    with ops.op_scope([self._alpha, self._beta, x], self.name):
-      with ops.name_scope(name):
-        return math_ops.igamma(self._alpha, self._beta * x)
-
-  def entropy(self, name="entropy"):
-    """The entropy of Gamma distribution(s).
-
-    This is defined to be
-
-    ```
-    entropy = alpha - log(beta) + log(Gamma(alpha))
-                 + (1-alpha)digamma(alpha)
-    ```
-
-    where digamma(alpha) is the digamma function.
-
-    Args:
-      name: The name to give this op.
-
-    Returns:
-      entropy: tensor of dtype `dtype`, the entropy.
-    """
-    with ops.op_scope([self.alpha, self._beta], self.name):
-      with ops.name_scope(name):
-        alpha = self._alpha
-        beta = self._beta
-        return (alpha - math_ops.log(beta) + math_ops.lgamma(alpha) +
-                (1 - alpha) * math_ops.digamma(alpha))
-
-  @property
-  def is_reparameterized(self):
-    return False
+  def __init__(self,
+               alpha,
+               beta,
+               validate_args=False,
+               allow_nan_stats=True,
+               name="GammaWithSoftplusAlphaBeta"):
+    parameters = locals()
+    parameters.pop("self")
+    with ops.name_scope(name, values=[alpha, beta]) as ns:
+      super(GammaWithSoftplusAlphaBeta, self).__init__(
+          alpha=nn.softplus(alpha),
+          beta=nn.softplus(beta),
+          validate_args=validate_args,
+          allow_nan_stats=allow_nan_stats,
+          name=ns)
+    self._parameters = parameters

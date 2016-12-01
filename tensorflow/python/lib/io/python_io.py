@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,6 +21,8 @@ suitable if fast sharding or other non-sequential access is desired.
 
 @@TFRecordWriter
 @@tf_record_iterator
+@@TFRecordCompressionType
+@@TFRecordOptions
 
 - - -
 
@@ -49,7 +51,8 @@ from __future__ import print_function
 # pylint: disable=wildcard-import
 from tensorflow.python.lib.io.tf_record import *
 # pylint: enable=wildcard-import
-from tensorflow.python.util.all_util import make_all
+from tensorflow.python.util.all_util import remove_undocumented
 
+_allowed_symbols = []
 
-__all__ = make_all(__name__)
+remove_undocumented(__name__, _allowed_symbols)

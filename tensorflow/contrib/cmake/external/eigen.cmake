@@ -7,16 +7,30 @@
 
 include (ExternalProject)
 
-set(eigen_archive_hash "f3a13643ac1f")
+# We parse the current Eigen version and archive hash from the bazel configuration
+file(STRINGS ${PROJECT_SOURCE_DIR}/../../workspace.bzl workspace_contents)
+foreach(line ${workspace_contents})
+    string(REGEX MATCH ".*eigen_version.*=.*\"(.*)\"" has_version ${line})
+    if(has_version)
+        set(eigen_version ${CMAKE_MATCH_1})
+        break()
+    endif()
+endforeach()
+foreach(line ${workspace_contents})
+    string(REGEX MATCH ".*eigen_sha256.*=.*\"(.*)\"" has_hash ${line})
+    if(has_hash)
+        set(eigen_hash ${CMAKE_MATCH_1})
+        break()
+    endif()
+endforeach()
 
 set(eigen_INCLUDE_DIRS
     ${CMAKE_CURRENT_BINARY_DIR}
     ${CMAKE_CURRENT_BINARY_DIR}/external/eigen_archive
-    ${CMAKE_CURRENT_BINARY_DIR}/external/eigen_archive/eigen-eigen-${eigen_archive_hash}
     ${tensorflow_source_dir}/third_party/eigen3
 )
-set(eigen_URL https://bitbucket.org/eigen/eigen/get/${eigen_archive_hash}.tar.gz)
-set(eigen_HASH SHA256=a9266e60366cddb371a23d86b11a297eee86372a89ef4b38a3509012f9cc37ec)
+set(eigen_URL https://bitbucket.org/eigen/eigen/get/${eigen_version}.tar.gz)
+set(eigen_HASH SHA256=${eigen_hash})
 set(eigen_BUILD ${CMAKE_CURRENT_BINARY_DIR}/eigen/src/eigen)
 set(eigen_INSTALL ${CMAKE_CURRENT_BINARY_DIR}/eigen/install)
 
@@ -30,5 +44,5 @@ ExternalProject_Add(eigen
         -DCMAKE_BUILD_TYPE:STRING=Release
         -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
         -DCMAKE_INSTALL_PREFIX:STRING=${eigen_INSTALL}
-        -DINCLUDE_INSTALL_DIR:STRING=${CMAKE_CURRENT_BINARY_DIR}/external/eigen_archive/eigen-eigen-${eigen_archive_hash}
+        -DINCLUDE_INSTALL_DIR:STRING=${CMAKE_CURRENT_BINARY_DIR}/external/eigen_archive
 )

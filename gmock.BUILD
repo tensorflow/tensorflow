@@ -1,19 +1,25 @@
+# Description:
+#   Google C++ Mocking Framework, a library for creating and using C++
+#   mock classes.
+
+licenses(["notice"])  # 3-clause BSD
+
 cc_library(
     name = "gtest",
     srcs = [
-        "gmock-1.7.0/gtest/src/gtest-all.cc",
-        "gmock-1.7.0/src/gmock-all.cc",
+        "gtest/src/gtest-all.cc",
+        "src/gmock-all.cc",
     ],
     hdrs = glob([
-        "gmock-1.7.0/**/*.h",
-        "gmock-1.7.0/gtest/src/*.cc",
-        "gmock-1.7.0/src/*.cc",
+        "**/*.h",
+        "gtest/src/*.cc",
+        "src/*.cc",
     ]),
     includes = [
-        "gmock-1.7.0",
-        "gmock-1.7.0/gtest",
-        "gmock-1.7.0/gtest/include",
-        "gmock-1.7.0/include",
+        ".",
+        "gtest",
+        "gtest/include",
+        "include",
     ],
     linkopts = ["-pthread"],
     visibility = ["//visibility:public"],
@@ -21,7 +27,7 @@ cc_library(
 
 cc_library(
     name = "gtest_main",
-    srcs = ["gmock-1.7.0/src/gmock_main.cc"],
+    srcs = ["src/gmock_main.cc"],
     linkopts = ["-pthread"],
     visibility = ["//visibility:public"],
     deps = [":gtest"],

@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,11 +19,11 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.learn.python.learn.dataframe import transform
-from tensorflow.python.ops import constant_op
+from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import parsing_ops
 
 
-class CSVParser(transform.Transform):
+class CSVParser(transform.TensorFlowTransform):
   """A Transform that parses lines from a CSV file."""
 
   def __init__(self, column_names, default_values):
@@ -58,7 +58,7 @@ class CSVParser(transform.Transform):
   def default_values(self):
     return self._default_values
 
-  def _apply_transform(self, input_tensors):
+  def _apply_transform(self, input_tensors, **kwargs):
     default_consts = [constant_op.constant(d, shape=[1])
                       for d in self._default_values]
     parsed_values = parsing_ops.decode_csv(input_tensors[0],

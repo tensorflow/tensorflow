@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,8 +26,8 @@ namespace tensorflow {
 // TODO(zhifengc/tucker): Figure out the bytes of available RAM.
 class ThreadPoolDeviceFactory : public DeviceFactory {
  public:
-  void CreateDevices(const SessionOptions& options, const string& name_prefix,
-                     std::vector<Device*>* devices) override {
+  Status CreateDevices(const SessionOptions& options, const string& name_prefix,
+                       std::vector<Device*>* devices) override {
     // TODO(zhifengc/tucker): Figure out the number of available CPUs
     // and/or NUMA configuration.
     int n = 1;
@@ -37,9 +37,11 @@ class ThreadPoolDeviceFactory : public DeviceFactory {
     }
     for (int i = 0; i < n; i++) {
       string name = strings::StrCat(name_prefix, "/cpu:", i);
-      devices->push_back(new ThreadPoolDevice(options, name, Bytes(256 << 20),
-                                              BUS_ANY, cpu_allocator()));
+      devices->push_back(new ThreadPoolDevice(
+          options, name, Bytes(256 << 20), DeviceLocality(), cpu_allocator()));
     }
+
+    return Status::OK();
   }
 };
 REGISTER_LOCAL_DEVICE_FACTORY("CPU", ThreadPoolDeviceFactory);

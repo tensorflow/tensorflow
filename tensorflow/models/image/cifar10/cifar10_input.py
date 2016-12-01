@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -179,7 +179,7 @@ def distorted_inputs(data_dir, batch_size):
                                              lower=0.2, upper=1.8)
 
   # Subtract off the mean and divide by the variance of the pixels.
-  float_image = tf.image.per_image_whitening(distorted_image)
+  float_image = tf.image.per_image_standardization(distorted_image)
 
   # Ensure that the random shuffling has good mixing properties.
   min_fraction_of_examples_in_queue = 0.4
@@ -234,7 +234,7 @@ def inputs(eval_data, data_dir, batch_size):
                                                          width, height)
 
   # Subtract off the mean and divide by the variance of the pixels.
-  float_image = tf.image.per_image_whitening(resized_image)
+  float_image = tf.image.per_image_standardization(resized_image)
 
   # Ensure that the random shuffling has good mixing properties.
   min_fraction_of_examples_in_queue = 0.4

@@ -36,6 +36,13 @@ you understand the dataflow graph and debug it.
 [View Tutorial](graph_viz/index.md)
 
 
+## TensorBoard: Embedding Visualization
+
+This tutorial describes how to use the embedding projector in TensorBoard to
+visualize your embeddings.
+
+[View Tutorial](embedding_viz/index.md)
+
 ## Reading Data
 
 This tutorial describes the three main methods of getting data into your
@@ -69,8 +76,8 @@ compose in your graph, but here are the details of how to add you own custom Op.
 
 ## How to write TensorFlow code
 
-Tensorflow Style Guide is set of style decisions that both developers
-and users of Tensorflow should follow to increase the readability of their code,
+TensorFlow Style Guide is set of style decisions that both developers
+and users of TensorFlow should follow to increase the readability of their code,
 reduce the number of errors, and promote consistency.
 
 [View Style Guide](style_guide.md)
@@ -142,3 +149,17 @@ quantized parameters and calculations. It also describes how the quantization
 process works under the hood.
 
 [View Tutorial](../how_tos/quantization/index.md)
+
+## How to run TensorFlow on Hadoop
+
+This tutorial shows how to read and write HDFS files, and will later describe
+running on cluster managers.
+
+[View Tutorial](../how_tos/hadoop/index.md)
+
+## TensorFlow in other languages
+
+This guide describes how TensorFlow features can be provided in other
+programming languages.
+
+[View Tutorial](language_bindings/index.md)

@@ -1,5 +1,5 @@
 # Description:
-#   Tensorflow camera demo app for Android.
+#   TensorFlow camera demo app for Android.
 
 package(default_visibility = ["//visibility:public"])
 
@@ -9,12 +9,14 @@ load("//tensorflow:tensorflow.bzl", "tf_copts")
 
 exports_files(["LICENSE"])
 
+LINKER_SCRIPT = "//tensorflow/contrib/android:jni/version_script.lds"
+
 cc_binary(
     name = "libtensorflow_demo.so",
     srcs = glob([
         "jni/**/*.cc",
         "jni/**/*.h",
-    ]) + [":libpthread.so"],
+    ]),
     copts = tf_copts(),
     linkopts = [
         "-landroid",
@@ -23,8 +25,8 @@ cc_binary(
         "-lm",
         "-z defs",
         "-s",
-        "-Wl,--icf=all",  # Identical Code Folding
-        "-Wl,--exclude-libs,ALL",  # Exclude syms in all libs from auto export
+        "-Wl,--version-script",  # This line must be directly followed by LINKER_SCRIPT.
+        LINKER_SCRIPT,
     ],
     linkshared = 1,
     linkstatic = 1,
@@ -32,28 +34,16 @@ cc_binary(
         "manual",
         "notap",
     ],
-    deps = ["//tensorflow/core:android_tensorflow_lib"],
-)
-
-# This library only exists as a workaround to satisfy dependencies
-# that declare -lpthread in their linkopts. Although Android supports
-# pthreads, it does not provide it as a separate library.
-cc_binary(
-    name = "libpthread.so",
-    srcs = [],
-    linkopts = ["-shared"],
-    tags = [
-        "manual",
-        "notap",
+    deps = [
+        "//tensorflow/contrib/android:android_tensorflow_inference_jni",
+        "//tensorflow/core:android_tensorflow_lib",
+        LINKER_SCRIPT,
     ],
 )
 
 cc_library(
     name = "tensorflow_native_libs",
-    srcs = [
-        ":libpthread.so",
-        ":libtensorflow_demo.so",
-    ],
+    srcs = [":libtensorflow_demo.so"],
     tags = [
         "manual",
         "notap",
@@ -65,8 +55,13 @@ android_binary(
     srcs = glob([
         "src/**/*.java",
     ]),
-    assets = glob(["assets/**"]),
-    assets_dir = "assets",
+    # Package assets from assets dir as well as all model targets. Remove undesired models
+    # (and corresponding Activities in source) to reduce APK size.
+    assets = [
+        "//tensorflow/examples/android/assets:asset_files",
+        "@inception5h//:model_files",
+    ],
+    assets_dir = "",
     custom_package = "org.tensorflow.demo",
     inline_constants = 1,
     manifest = "AndroidManifest.xml",
@@ -77,6 +72,7 @@ android_binary(
     ],
     deps = [
         ":tensorflow_native_libs",
+        "//tensorflow/contrib/android:android_tensorflow_inference_java",
     ],
 )
 
@@ -89,6 +85,8 @@ filegroup(
             "**/OWNERS",
             "bin/**",
             "gen/**",
+            "gradleBuild/**",
+            "libs/**",
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],

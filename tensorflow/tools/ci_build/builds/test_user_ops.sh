@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -184,11 +184,23 @@ else
       -I "${TF_INC}" -D GOOGLE_CUDA=1 -x cu -Xcompiler -fPIC || \
       die "nvcc compilation of ${OP_KERNEL_CC} FAILED"
 
+  CUDA_LIB_DIR="/usr/local/cuda/lib64"
+  if [[ ! -d "${CUDA_LIB_DIR}" ]]; then
+    CUDA_LIB_DIR="/usr/local/cuda/lib"
+  fi
+  if [[ ! -d "${CUDA_LIB_DIR}" ]]; then
+    die "ERROR: Failed to find CUDA library directory at either of "
+"/usr/local/cuda/lib and /usr/local/cuda/lib64"
+  fi
+
+  echo "Found CUDA library diretory at: ${CUDA_LIB_DIR}"
+  echo ""
+
   # USER_OP_SO=$(basename $(echo "${OP_KERNEL_CC}" | sed -e 's/\.cc/\.so/'))
   USER_OP_SO="add_one.so"
   "${GPP_BIN}" -std=c++11 ${EXTRA_GPP_FLAGS} \
       -shared -o "${USER_OP_SO}" "${OP_KERNEL_CC}" \
-      "${OP_KERNEL_O}" -I "${TF_INC}" -L "/usr/local/cuda/lib64" \
+      "${OP_KERNEL_O}" -I "${TF_INC}" -L "${CUDA_LIB_DIR}" \
       -fPIC -lcudart || \
       die "g++ compilation of ${OP_KERNEL_CC}" FAILED
 fi

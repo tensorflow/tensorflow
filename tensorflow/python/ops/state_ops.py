@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,17 +22,22 @@
 TensorFlow provides a set of functions to help manage the set of variables
 collected in the graph.
 
-@@all_variables
-@@trainable_variables
+@@global_variables
 @@local_variables
+@@model_variables
+@@trainable_variables
 @@moving_average_variables
 
-@@initialize_all_variables
-@@initialize_variables
-@@initialize_local_variables
+@@global_variables_initializer
+@@local_variables_initializer
+@@variables_initializer
 @@is_variable_initialized
 @@report_uninitialized_variables
 @@assert_variables_initialized
+
+@@assign
+@@assign_add
+@@assign_sub
 
 ## Saving and Restoring Variables
 
@@ -64,10 +69,13 @@ create variables contingent on certain conditions.
 @@uniform_unit_scaling_initializer
 @@zeros_initializer
 @@ones_initializer
+@@orthogonal_initializer
 
 ## Variable Partitioners for Sharding
 
+@@fixed_size_partitioner
 @@variable_axis_size_partitioner
+@@min_max_variable_partitioner
 
 ## Sparse Variable Updates
 
@@ -86,14 +94,30 @@ automatically by the optimizers in most cases.
 @@scatter_update
 @@scatter_add
 @@scatter_sub
+@@scatter_mul
+@@scatter_div
+@@scatter_nd_update
+@@scatter_nd_add
+@@scatter_nd_sub
 @@sparse_mask
 @@IndexedSlices
+
+### Read-only Lookup Tables
+
+@@initialize_all_tables
 
 
 ## Exporting and Importing Meta Graphs
 
 @@export_meta_graph
 @@import_meta_graph
+
+# Deprecated functions (removed after 2017-03-02). Please don't use them.
+
+@@all_variables
+@@initialize_all_variables
+@@initialize_local_variables
+@@initialize_variables
 
 """
 
@@ -103,8 +127,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
-from tensorflow.python.ops import common_shapes
+from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import gen_state_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -135,6 +158,8 @@ def variable_op(shape, dtype, name="Variable", set_shape=True, container="",
   Returns:
     A variable tensor.
   """
+  if not set_shape:
+    shape = tensor_shape.unknown_shape()
   ret = gen_state_ops._variable(shape=shape, dtype=dtype, name=name,
                                 container=container, shared_name=shared_name)
   # TODO(mrry): Move this to where it is used, so we can get rid of this op
@@ -142,25 +167,6 @@ def variable_op(shape, dtype, name="Variable", set_shape=True, container="",
   if set_shape:
     ret.set_shape(shape)
   return ret
-
-
-# NOTE(mrry): Shapes are conditionally set in the Python wrapper.
-ops.RegisterShape("Variable")(common_shapes.unknown_shape)
-
-ops.RegisterShape("IsVariableInitialized")(common_shapes.scalar_shape)
-
-
-@ops.RegisterShape("TemporaryVariable")
-def _TemporaryVariableShape(op):
-  """Shape function for the TemporaryVariable op."""
-  shape = tensor_util.TensorShapeProtoToList(op.get_attr("shape"))
-  return [tensor_shape.TensorShape(shape)]
-
-
-@ops.RegisterShape("DestroyTemporaryVariable")
-def _DestroyTemporaryVariableShape(op):
-  """Shape function for the DestroyTemporaryVariable op."""
-  return [op.inputs[0].get_shape()]
 
 
 def init_variable(v, init, name="init"):
@@ -182,7 +188,7 @@ def init_variable(v, init, name="init"):
   Returns:
     The operation that initializes v.
   """
-  with ops.op_scope([v, init], None, v.op.name + "/"):
+  with ops.name_scope(None, v.op.name + "/", [v, init]):
     with ops.name_scope(name) as scope:
       with ops.colocate_with(v):
         if callable(init):
@@ -198,38 +204,22 @@ def init_variable(v, init, name="init"):
           return gen_state_ops.assign(v, init, name=scope)
 
 
-@ops.RegisterShape("Assign")
-def _AssignShape(op):
-  """Shape function for the Assign op."""
-  if op.get_attr("validate_shape"):
-    # NOTE(mrry): Return a known shape here. This makes it awkward to
-    # chain a validated-shape assignment and a reshaping assignment,
-    # but that is a sufficiently niche case that supporting it does
-    # not seem worthwhile.
-    return [op.inputs[0].get_shape().merge_with(op.inputs[1].get_shape())]
-  return [op.inputs[1].get_shape()]
+def is_variable_initialized(ref, name=None):
+  """Checks whether a tensor has been initialized.
 
+  Outputs boolean scalar indicating whether the tensor has been initialized.
 
-@ops.RegisterShape("AssignAdd")
-@ops.RegisterShape("AssignSub")
-def _AssignUpdateShape(op):
-  """Shape function for the AssignAdd and AssignSub dense update ops."""
-  return [op.inputs[0].get_shape().merge_with(op.inputs[1].get_shape())]
+  Args:
+    ref: A mutable `Tensor`.
+      Should be from a `Variable` node. May be uninitialized.
+    name: A name for the operation (optional).
 
-
-@ops.RegisterShape("CountUpTo")
-def _CountUpToShape(op):
-  """Shape function for the CountUpTo op."""
-  return [op.inputs[0].get_shape().merge_with(tensor_shape.scalar())]
-
-
-@ops.RegisterShape("ScatterAdd")
-@ops.RegisterShape("ScatterSub")
-@ops.RegisterShape("ScatterUpdate")
-def _ScatterUpdateShape(op):
-  """Shape function for the sparse update ops."""
-  var_shape = op.inputs[0].get_shape()
-  indices_shape = op.inputs[1].get_shape()
-  unused_updates_shape = op.inputs[2].get_shape().merge_with(
-      indices_shape.concatenate(var_shape[1:]))
-  return [var_shape]
+  Returns:
+    A `Tensor` of type `bool`.
+  """
+  if ref.dtype._is_ref_dtype:
+    return gen_state_ops.is_variable_initialized(ref=ref, name=name)
+  # Handle resource variables.
+  if ref.op.type == "ReadVariableOp":
+    return gen_resource_variable_ops.var_is_initialized_op(ref.op.inputs[0],
+                                                           name=name)

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -146,7 +146,7 @@ test_mnist_with_summaries() {
 
   run_in_directory "${TEST_DIR}" "${LOG_FILE}" \
     tensorflow/examples/tutorials/mnist/mnist_with_summaries.py \
-    --data_dir="${TUT_TEST_DATA_DIR}/mnist" --summaries_dir="${SUMMARIES_DIR}"
+    --data_dir="${TUT_TEST_DATA_DIR}/mnist" --log_dir="${SUMMARIES_DIR}"
 
   # Verify final accuracy
   FINAL_ACCURACY=$(grep "Accuracy at step" "${LOG_FILE}" \
@@ -198,13 +198,6 @@ test_cifar10_train() {
     return 1
   fi
 
-  # Check ckpt files
-  if [[ ! -f "${TUT_TEST_ROOT}/cifar10_train/model.ckpt-0" ]] ||
-    [[ ! -f "${TUT_TEST_ROOT}/cifar10_train/model.ckpt-49" ]]; then
-    echo "FAILED: cifar10_train did not generate expected model checkpoint files"
-    return 1
-  fi
-
   return 0
 }
 
@@ -244,7 +237,9 @@ test_ptb_word_lm() {
 
     mkdir -p ${DATA_DIR}
     pushd ${DATA_DIR} > /dev/null
-    curl -O "${PTB_DATA_URL}"
+    curl --retry 5 --retry-delay 10 -O "${PTB_DATA_URL}" || \
+        die "Failed to download data file for ptb_world_lm tutorial from "\
+"${PTB_DATA_URL}"
     tar -xzf $(basename "${PTB_DATA_URL}")
     rm -f $(basename "${PTB_DATA_URL}")
     popd > /dev/null

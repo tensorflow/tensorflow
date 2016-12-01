@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -116,7 +116,7 @@ class SkipgramOp : public OpKernel {
   int32 vocab_size_ = 0;
   Tensor word_;
   Tensor freq_;
-  int32 corpus_size_ = 0;
+  int64 corpus_size_ = 0;
   std::vector<int32> corpus_;
   std::vector<Example> precalc_examples_;
   int precalc_index_ = 0;

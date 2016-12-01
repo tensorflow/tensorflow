@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,7 +33,6 @@ namespace tensorflow {
 namespace ctc {
 
 template <typename CTCBeamState = ctc_beam_search::EmptyBeamState,
-          class CTCBeamScorer = BaseBeamScorer<CTCBeamState>,
           typename CTCBeamComparer =
               ctc_beam_search::BeamComparer<CTCBeamState>>
 class CTCBeamSearchDecoder : public CTCDecoder {
@@ -72,20 +71,23 @@ class CTCBeamSearchDecoder : public CTCDecoder {
   typedef ctc_beam_search::BeamProbability BeamProbability;
 
  public:
-  CTCBeamSearchDecoder(int num_classes, int beam_width)
-      : CTCDecoder(num_classes, 1, false),
-        beam_width_(beam_width),
-        leaves_(beam_width),
-        beam_scorer_(new CTCBeamScorer) {
-    Reset();
-  }
+  typedef BaseBeamScorer<CTCBeamState> DefaultBeamScorer;
 
-  CTCBeamSearchDecoder(int num_classes, int beam_width, int batch_size,
-                       bool merge_repeated)
+  // The beam search decoder is constructed specifying the beam_width (number of
+  // candidates to keep at each decoding timestep) and a beam scorer (used for
+  // custom scoring, for example enabling the use of a language model).
+  // The ownership of the scorer remains with the caller. The default
+  // implementation, CTCBeamSearchDecoder<>::DefaultBeamScorer, generates the
+  // standard beam search.
+  CTCBeamSearchDecoder(int num_classes, int beam_width,
+                       BaseBeamScorer<CTCBeamState>* scorer, int batch_size = 1,
+                       bool merge_repeated = false)
       : CTCDecoder(num_classes, batch_size, merge_repeated),
         beam_width_(beam_width),
         leaves_(beam_width),
-        beam_scorer_(new CTCBeamScorer) {}
+        beam_scorer_(CHECK_NOTNULL(scorer)) {
+    Reset();
+  }
 
   ~CTCBeamSearchDecoder() override {}
 
@@ -100,7 +102,7 @@ class CTCBeamSearchDecoder : public CTCDecoder {
   void Step(const Vector& log_input_t);
 
   // Retrieve the beam scorer instance used during decoding.
-  CTCBeamScorer* GetBeamScorer() { return beam_scorer_.get(); }
+  BaseBeamScorer<CTCBeamState>* GetBeamScorer() const { return beam_scorer_; }
 
   // Set label selection parameters for faster decoding.
   // See comments for label_selection_size_ and label_selection_margin_.
@@ -135,16 +137,16 @@ class CTCBeamSearchDecoder : public CTCDecoder {
 
   gtl::TopN<BeamEntry*, CTCBeamComparer> leaves_;
   std::unique_ptr<BeamEntry> beam_root_;
-  std::unique_ptr<CTCBeamScorer> beam_scorer_;
+  BaseBeamScorer<CTCBeamState>* beam_scorer_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CTCBeamSearchDecoder);
 };
 
-template <typename CTCBeamState, class CTCBeamScorer, typename CTCBeamComparer>
-void CTCBeamSearchDecoder<CTCBeamState, CTCBeamScorer, CTCBeamComparer>::Decode(
+template <typename CTCBeamState, typename CTCBeamComparer>
+void CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::Decode(
     const CTCDecoder::SequenceLength& seq_len,
-    const std::vector<CTCDecoder::Input>& input, std::vector<CTCDecoder::Output>* output,
-    ScoreOutput* scores) {
+    const std::vector<CTCDecoder::Input>& input,
+    std::vector<CTCDecoder::Output>* output, ScoreOutput* scores) {
   // Storage for top paths.
   std::vector<std::vector<int>> beams;
   std::vector<float> beam_log_probabilities;
@@ -183,9 +185,9 @@ void CTCBeamSearchDecoder<CTCBeamState, CTCBeamScorer, CTCBeamComparer>::Decode(
   }  // for (int b...
 }
 
-template <typename CTCBeamState, class CTCBeamScorer, typename CTCBeamComparer>
+template <typename CTCBeamState, typename CTCBeamComparer>
 template <typename Vector>
-void CTCBeamSearchDecoder<CTCBeamState, CTCBeamScorer, CTCBeamComparer>::Step(
+void CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::Step(
     const Vector& raw_input) {
   Eigen::ArrayXf input = raw_input;
   // Remove the max for stability when performing log-prob calculations.
@@ -308,9 +310,8 @@ void CTCBeamSearchDecoder<CTCBeamState, CTCBeamScorer, CTCBeamComparer>::Step(
   }      // for (BeamEntry* b...
 }
 
-template <typename CTCBeamState, class CTCBeamScorer, typename CTCBeamComparer>
-void CTCBeamSearchDecoder<CTCBeamState, CTCBeamScorer,
-                          CTCBeamComparer>::Reset() {
+template <typename CTCBeamState, typename CTCBeamComparer>
+void CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::Reset() {
   leaves_.Reset();
 
   // This beam root, and all of its children, will be in memory until
@@ -323,15 +324,13 @@ void CTCBeamSearchDecoder<CTCBeamState, CTCBeamScorer,
   leaves_.push(beam_root_.get());
 
   // Call initialize state on the root object.
-  if (beam_scorer_) {
-    beam_scorer_->InitializeState(&beam_root_->state);
-  }
+  beam_scorer_->InitializeState(&beam_root_->state);
 }
 
-template <typename CTCBeamState, class CTCBeamScorer, typename CTCBeamComparer>
-void CTCBeamSearchDecoder<CTCBeamState, CTCBeamScorer, CTCBeamComparer>::
-    TopPaths(int n, std::vector<std::vector<int>>* paths,
-             std::vector<float>* log_probs, bool merge_repeated) const {
+template <typename CTCBeamState, typename CTCBeamComparer>
+void CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::TopPaths(
+    int n, std::vector<std::vector<int>>* paths, std::vector<float>* log_probs,
+    bool merge_repeated) const {
   CHECK_NOTNULL(paths)->clear();
   CHECK_NOTNULL(log_probs)->clear();
   CHECK_LE(n, beam_width_) << "Requested more paths than the beam width.";

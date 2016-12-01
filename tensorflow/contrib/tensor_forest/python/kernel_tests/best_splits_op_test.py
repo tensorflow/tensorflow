@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,14 +30,16 @@ class BestSplitsClassificationTests(test_util.TensorFlowTestCase):
   def setUp(self):
     self.finished = [3, 5]
     self.node_map = [-1, -1, -1, 0, -1, 3, -1, -1, -1]
-    self.candidate_counts = [[[50., 60., 40., 3.], [70., 30., 70., 30.]],
-                             [[0., 0., 0., 0.], [0., 0., 0., 0.]],
-                             [[0., 0., 0., 0.], [0., 0., 0., 0.]],
-                             [[10., 10., 10., 10.], [10., 5., 5., 10.]]]
-    self.total_counts = [[100., 100., 100., 100.],
-                         [0., 0., 0., 0.],
-                         [0., 0., 0., 0.],
-                         [100., 100., 100., 100.]]
+    self.candidate_counts = [[[153., 50., 60., 40., 3.],
+                              [200., 70., 30., 70., 30.]],
+                             [[0., 0., 0., 0., 0.], [0., 0., 0., 0., 0.]],
+                             [[0., 0., 0., 0., 0.], [0., 0., 0., 0., 0.]],
+                             [[40., 10., 10., 10., 10.],
+                              [30., 10., 5., 5., 10.]]]
+    self.total_counts = [[400., 100., 100., 100., 100.],
+                         [0., 0., 0., 0., 0.],
+                         [0., 0., 0., 0., 0.],
+                         [400., 100., 100., 100., 100.]]
     self.squares = []
     self.ops = training_ops.Load()
 

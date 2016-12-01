@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -128,10 +128,16 @@ class Scanner {
   Scanner& AnySpace() { return Any(SPACE); }
 
   // This scans input until <end_ch> is reached. <end_ch> is NOT consumed.
+  Scanner& ScanUntil(char end_ch) {
+    ScanUntilImpl(end_ch, false);
+    return *this;
+  }
+
+  // This scans input until <end_ch> is reached. <end_ch> is NOT consumed.
   // Backslash escape sequences are skipped.
   // Used for implementing quoted string scanning.
   Scanner& ScanEscapedUntil(char end_ch) {
-    ScanEscapedUntilImpl(end_ch);
+    ScanUntilImpl(end_ch, true);
     return *this;
   }
 
@@ -154,7 +160,7 @@ class Scanner {
                  StringPiece* capture = nullptr);
 
  private:
-  void ScanEscapedUntilImpl(char end_ch);
+  void ScanUntilImpl(char end_ch, bool escaped);
 
   Scanner& Error() {
     error_ = true;

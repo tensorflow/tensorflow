@@ -1,6 +1,6 @@
 Writes `Summary` protocol buffers to event files.
 
-The `SummaryWriter` class provides a mechanism to create an event file in a
+The `FileWriter` class provides a mechanism to create an event file in a
 given directory and add summaries and events to it. The class updates the
 file contents asynchronously. This allows a training program to call methods
 to add data to the file directly from the training loop, without slowing down
@@ -10,7 +10,7 @@ training.
 
 #### `tf.train.SummaryWriter.__init__(logdir, graph=None, max_queue=10, flush_secs=120, graph_def=None)` {#SummaryWriter.__init__}
 
-Creates a `SummaryWriter` and an event file.
+Creates a `FileWriter` and an event file.
 
 On construction the summary writer creates a new event file in `logdir`.
 This event file will contain `Event` protocol buffers constructed when you
@@ -82,7 +82,7 @@ commonly done to report evaluation results in event files.
 
 Adds a `SessionLog` protocol buffer to the event file.
 
-This method wraps the provided session in an `Event` procotol buffer
+This method wraps the provided session in an `Event` protocol buffer
 and adds it to the event file.
 
 ##### Args:
@@ -148,6 +148,13 @@ Adds a metadata information for a single session.run() call.
 *  <b>`ValueError`</b>: If the provided tag was already used for this type of event.
 
 
+- - -
+
+#### `tf.train.SummaryWriter.get_logdir()` {#SummaryWriter.get_logdir}
+
+Returns the directory where event file will be written.
+
+
 
 - - -
 
@@ -166,5 +173,19 @@ disk.
 Flushes the event file to disk and close the file.
 
 Call this method when you do not need the summary writer anymore.
+
+
+
+#### Other Methods
+- - -
+
+#### `tf.train.SummaryWriter.reopen()` {#SummaryWriter.reopen}
+
+Reopens the EventFileWriter.
+
+Can be called after `close()` to add more events in the same directory.
+The events will go into a new events file.
+
+Does nothing if the EventFileWriter was not closed.
 
 

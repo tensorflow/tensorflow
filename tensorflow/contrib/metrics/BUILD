@@ -8,10 +8,15 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_tests")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load(
+    "//tensorflow/core:platform/default/build_config.bzl",
+    "tf_kernel_tests_linkstatic",
+)
 
 tf_custom_op_library(
     # TODO(sibyl-Mooth6ku,ptucker): Understand why 'python/ops/_' is needed and fix it.
@@ -36,7 +41,7 @@ tf_gen_op_wrapper_py(
         "SparseToSparseSetOperation",
         "SetSize",
     ],
-    deps = ["//tensorflow/contrib/metrics:set_ops_op_lib"],
+    deps = [":set_ops_op_lib"],
 )
 
 tf_kernel_library(
@@ -66,6 +71,30 @@ py_test(
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_cc_tests(
+    size = "small",
+    srcs = [
+        "ops/set_ops_test.cc",
+    ],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":set_ops_op_lib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//third_party/eigen3",
     ],
 )
 
@@ -110,6 +139,7 @@ py_test(
 py_test(
     name = "metric_ops_test",
     srcs = ["python/ops/metric_ops_test.py"],
+    shard_count = 3,
     srcs_version = "PY2AND3",
     deps = [
         ":metrics_py",

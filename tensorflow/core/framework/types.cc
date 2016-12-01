@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -37,6 +37,7 @@ std::ostream& operator<<(std::ostream& os, const DeviceType& d) {
 
 const char* const DEVICE_CPU = "CPU";
 const char* const DEVICE_GPU = "GPU";
+const char* const DEVICE_SYCL = "SYCL";
 
 string DataTypeString(DataType dtype) {
   if (IsRefType(dtype)) {
@@ -84,6 +85,8 @@ string DataTypeString(DataType dtype) {
       return "bfloat16";
     case DT_HALF:
       return "half";
+    case DT_RESOURCE:
+      return "resource";
     default:
       LOG(FATAL) << "Unrecognized DataType enum value " << dtype;
       return "";
@@ -159,6 +162,9 @@ bool DataTypeFromString(StringPiece sp, DataType* dt) {
   } else if (sp == "half" || sp == "float16") {
     *dt = DT_HALF;
     return true;
+  } else if (sp == "resource") {
+    *dt = DT_RESOURCE;
+    return true;
   }
   return false;
 }
@@ -178,10 +184,10 @@ DataTypeVector AllTypes() {
   return {DT_FLOAT,   DT_DOUBLE, DT_INT32,  DT_UINT8,     DT_INT16,
           DT_UINT16,  DT_INT8,   DT_STRING, DT_COMPLEX64, DT_COMPLEX128,
           DT_INT64,   DT_BOOL,   DT_QINT8,  DT_QUINT8,    DT_QINT16,
-          DT_QUINT16, DT_QINT32, DT_HALF};
+          DT_QUINT16, DT_QINT32, DT_HALF,   DT_RESOURCE};
 }
 
-#if !defined(__ANDROID__)
+#if !defined(IS_MOBILE_PLATFORM) || defined(SUPPORT_SELECTIVE_REGISTRATION)
 
 DataTypeVector RealNumberTypes() {
   return {DT_FLOAT, DT_DOUBLE, DT_INT32,  DT_INT64, DT_UINT8,
@@ -224,7 +230,7 @@ DataTypeVector RealAndQuantizedTypes() {
           DT_QINT16, DT_QUINT16, DT_QINT32, DT_HALF};
 }
 
-#else  // defined(__ANDROID__) && !defined(__ANDROID_TYPES_FULL__)
+#else  // defined(IS_MOBILE_PLATFORM) && !defined(__ANDROID_TYPES_FULL__)
 
 DataTypeVector RealNumberTypes() { return {DT_FLOAT, DT_INT32}; }
 
@@ -241,7 +247,7 @@ DataTypeVector RealAndQuantizedTypes() {
           DT_QINT16, DT_QUINT16, DT_QINT32};
 }
 
-#endif  // defined(__ANDROID__)
+#endif  // defined(IS_MOBILE_PLATFORM)
 
 // TODO(jeff): Maybe unify this with Tensor::CanUseDMA, or the underlying
 // is_simple<T> in tensor.cc (and possible choose a more general name?)

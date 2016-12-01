@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -63,10 +63,13 @@ class DeviceMemory;
 class Timer;
 
 namespace dnn {
-struct BatchDescriptor;
-struct FilterDescriptor;
-struct ConvolutionDescriptor;
-struct ProfileResult;
+class BatchDescriptor;
+class FilterDescriptor;
+class ConvolutionDescriptor;
+class BatchDescriptor;
+class FilterDescriptor;
+class ConvolutionDescriptor;
+class ProfileResult;
 typedef int64 AlgorithmType;
 }  // namespace dnn
 
@@ -212,6 +215,27 @@ class Stream {
   //
   // See DnnSupport::* for comments on the following methods.
 
+  Stream &ThenBatchNormalizationForward(
+      const DeviceMemory<float> &x, const DeviceMemory<float> &scale,
+      const DeviceMemory<float> &offset,
+      const DeviceMemory<float> &estimated_mean,
+      const DeviceMemory<float> &estimated_variance,
+      const dnn::BatchDescriptor &x_desc,
+      const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
+      DeviceMemory<float> *y, DeviceMemory<float> *batch_mean,
+      DeviceMemory<float> *batch_var, DeviceMemory<float> *saved_mean,
+      DeviceMemory<float> *saved_inv_var, bool is_training,
+      std::function<const DeviceMemory<float> &()> var_to_inv_var,
+      std::function<void()> inv_var_to_var);
+
+  Stream &ThenBatchNormalizationBackward(
+      const DeviceMemory<float> &y_backprop, const DeviceMemory<float> &x,
+      const DeviceMemory<float> &scale, const DeviceMemory<float> &mean,
+      const DeviceMemory<float> &variance, const dnn::BatchDescriptor &x_desc,
+      const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
+      DeviceMemory<float> *x_backprop, DeviceMemory<float> *scale_backprop,
+      DeviceMemory<float> *offset_backprop);
+
   // TODO(leary) add double-precision version of this interface.
   Stream &ThenConvolve(const dnn::BatchDescriptor &input_descriptor,
                        const DeviceMemory<float> &input_data,
@@ -247,7 +271,8 @@ class Stream {
       const dnn::ConvolutionDescriptor &convolution_descriptor,
       const dnn::BatchDescriptor &output_descriptor,
       DeviceMemory<float> *output, ScratchAllocator *scratch_allocator,
-      dnn::AlgorithmType algorithm, dnn::ProfileResult *output_profile_result);
+      const dnn::AlgorithmConfig &algorithm_config,
+      dnn::ProfileResult *output_profile_result);
 
   Stream &ThenConvolveWithAlgorithm(
       const dnn::BatchDescriptor &input_descriptor,
@@ -257,7 +282,8 @@ class Stream {
       const dnn::ConvolutionDescriptor &convolution_descriptor,
       const dnn::BatchDescriptor &output_descriptor,
       DeviceMemory<Eigen::half> *output, ScratchAllocator *scratch_allocator,
-      dnn::AlgorithmType algorithm, dnn::ProfileResult *output_profile_result);
+      const dnn::AlgorithmConfig &algorithm_config,
+      dnn::ProfileResult *output_profile_result);
 
   Stream &ThenSeparableConvolve(
       const dnn::BatchDescriptor &input_descriptor,
@@ -306,7 +332,8 @@ class Stream {
       const dnn::ConvolutionDescriptor &convolution_descriptor,
       const dnn::BatchDescriptor &input_descriptor,
       DeviceMemory<float> *backward_input_data,
-      ScratchAllocator *scratch_allocator, dnn::AlgorithmType algorithm,
+      ScratchAllocator *scratch_allocator,
+      const dnn::AlgorithmConfig &algorithm_config,
       dnn::ProfileResult *output_profile_result);
 
   Stream &ThenConvolveBackwardDataWithAlgorithm(
@@ -317,7 +344,8 @@ class Stream {
       const dnn::ConvolutionDescriptor &convolution_descriptor,
       const dnn::BatchDescriptor &input_descriptor,
       DeviceMemory<Eigen::half> *backward_input_data,
-      ScratchAllocator *scratch_allocator, dnn::AlgorithmType algorithm,
+      ScratchAllocator *scratch_allocator,
+      const dnn::AlgorithmConfig &algorithm_config,
       dnn::ProfileResult *output_profile_result);
 
   Stream &ThenConvolveBackwardFilter(
@@ -357,7 +385,8 @@ class Stream {
       const dnn::ConvolutionDescriptor &convolution_descriptor,
       const dnn::FilterDescriptor &filter_descriptor,
       DeviceMemory<float> *backward_filter_data,
-      ScratchAllocator *scratch_allocator, dnn::AlgorithmType algorithm,
+      ScratchAllocator *scratch_allocator,
+      const dnn::AlgorithmConfig &algorithm_config,
       dnn::ProfileResult *output_profile_result);
 
   Stream &ThenConvolveBackwardFilterWithAlgorithm(
@@ -368,7 +397,8 @@ class Stream {
       const dnn::ConvolutionDescriptor &convolution_descriptor,
       const dnn::FilterDescriptor &filter_descriptor,
       DeviceMemory<Eigen::half> *backward_filter_data,
-      ScratchAllocator *scratch_allocator, dnn::AlgorithmType algorithm,
+      ScratchAllocator *scratch_allocator,
+      const dnn::AlgorithmConfig &algorithm_config,
       dnn::ProfileResult *output_profile_result);
 
   Stream &ThenConvolveBackwardBias(const dnn::BatchDescriptor &input_descriptor,
@@ -418,6 +448,12 @@ class Stream {
                           const dnn::BatchDescriptor &output_dimensions,
                           DeviceMemory<float> *output_data);
 
+  Stream &ThenPoolForward(const dnn::PoolingDescriptor &pooling_dimensions,
+                          const dnn::BatchDescriptor &input_dimensions,
+                          const DeviceMemory<Eigen::half> &input_data,
+                          const dnn::BatchDescriptor &output_dimensions,
+                          DeviceMemory<Eigen::half> *output_data);
+
   Stream &ThenPoolBackward(const dnn::PoolingDescriptor &pooling_dimensions,
                            const dnn::BatchDescriptor &input_dimensions,
                            const DeviceMemory<float> &input_data,
@@ -426,9 +462,32 @@ class Stream {
                            const DeviceMemory<float> &input_diff_data,
                            DeviceMemory<float> *output_diff_data);
 
+  Stream &ThenPoolBackward(const dnn::PoolingDescriptor &pooling_dimensions,
+                           const dnn::BatchDescriptor &input_dimensions,
+                           const DeviceMemory<Eigen::half> &input_data,
+                           const dnn::BatchDescriptor &output_dimensions,
+                           const DeviceMemory<Eigen::half> &output_data,
+                           const DeviceMemory<Eigen::half> &input_diff_data,
+                           DeviceMemory<Eigen::half> *output_diff_data);
+
   Stream &ThenNormalize(const dnn::NormalizeDescriptor &normalize_descriptor,
                         const DeviceMemory<float> &input_data,
                         DeviceMemory<float> *output_data);
+
+  // Similar to ThenNormalize, but normalizes across feature maps and allows for
+  // specifying the dimensions of the tensor.
+  Stream &ThenNormalizeWithDimensions(
+      const dnn::NormalizeDescriptor &normalize_descriptor,
+      const dnn::BatchDescriptor &dimensions,
+      const DeviceMemory<float> &input_data, DeviceMemory<float> *output_data);
+
+  Stream &ThenNormalizeBackwardWithDimensions(
+      const dnn::NormalizeDescriptor &normalize_descriptor,
+      const dnn::BatchDescriptor &dimensions,
+      const DeviceMemory<float> &raw_data,
+      const DeviceMemory<float> &normalized_data,
+      const DeviceMemory<float> &normalized_variable_gradient,
+      DeviceMemory<float> *raw_variable_gradient);
 
   Stream &ThenActivate(dnn::ActivationMode activation_mode,
                        const dnn::BatchDescriptor &dimensions,
@@ -1257,7 +1316,7 @@ class Stream {
   // back-end implementation will be appropriately seeded by default.
   // At a minimum 16 bytes of data are required in the seed buffer.
   //
-  // To seed with good (non-reproducable) data:
+  // To seed with good (non-reproducible) data:
   //   File* f = File::Open("/dev/random", "r");
   //   int64 bytes_read = f->Read(seed_data, bytes_to_read);
   //   < error checking >
@@ -1297,7 +1356,7 @@ class Stream {
                      uint64 size);
 
   // Alternative interface for memcpying from device to host that takes an
-  // array slice. Checks that the destination size can accomodate the host
+  // array slice. Checks that the destination size can accommodate the host
   // slice size.
   template <typename T>
   Stream &ThenMemcpyD2H(const DeviceMemory<T> &gpu_src,
@@ -1308,7 +1367,7 @@ class Stream {
   }
 
   // Alternative interface for memcpying from host to device that takes an
-  // array slice. Checks that the destination size can accomodate the host
+  // array slice. Checks that the destination size can accommodate the host
   // slice size.
   template <typename T>
   Stream &ThenMemcpyH2D(port::ArraySlice<T> host_src,
@@ -1339,11 +1398,56 @@ class Stream {
 
   // Entrain onto the stream: a memset of a 32-bit pattern at a GPU location
   // of
-  // size bytes, where bytes must be evenly 32-bit sized (i.e. evently
+  // size bytes, where bytes must be evenly 32-bit sized (i.e. evenly
   // divisible
   // by 4). The location must not be null.
   Stream &ThenMemset32(DeviceMemoryBase *location, const uint32 &pattern,
                        uint64 size);
+
+  // Enqueue a forward operation of the RNN model onto the stream.
+  // See DnnSupport::DoRnnForward for more details.
+  Stream &ThenRnnForward(const dnn::RnnDescriptor &rnn_desc,
+                         const dnn::RnnSequenceTensorDescriptor &input_desc,
+                         const DeviceMemory<float> &input_data,
+                         const dnn::RnnStateTensorDescriptor &input_h_desc,
+                         const DeviceMemory<float> &input_h_data,
+                         const dnn::RnnStateTensorDescriptor &input_c_desc,
+                         const DeviceMemory<float> &input_c_data,
+                         const DeviceMemory<float> &params,
+                         const dnn::RnnSequenceTensorDescriptor &output_desc,
+                         DeviceMemory<float> *output_data,
+                         const dnn::RnnStateTensorDescriptor &output_h_desc,
+                         DeviceMemory<float> *output_h_data,
+                         const dnn::RnnStateTensorDescriptor &output_c_desc,
+                         DeviceMemory<float> *output_c_data, bool is_training,
+                         ScratchAllocator *reserve_space_allocator,
+                         ScratchAllocator *workspace_allocator);
+
+  // Enqueue a backward operation of the RNN model onto the stream.
+  // See DnnSupport::DoRnnBackward for more details.
+  Stream &ThenRnnBackward(const dnn::RnnDescriptor &rnn_desc,
+                          const dnn::RnnSequenceTensorDescriptor &input_desc,
+                          const DeviceMemory<float> &input_data,
+                          const dnn::RnnStateTensorDescriptor &input_h_desc,
+                          const DeviceMemory<float> &input_h_data,
+                          const dnn::RnnStateTensorDescriptor &input_c_desc,
+                          const DeviceMemory<float> &input_c_data,
+                          const DeviceMemory<float> &params,
+                          const dnn::RnnSequenceTensorDescriptor &output_desc,
+                          const DeviceMemory<float> &output_data,
+                          const dnn::RnnStateTensorDescriptor &output_h_desc,
+                          const DeviceMemory<float> &output_h_data,
+                          const dnn::RnnStateTensorDescriptor &output_c_desc,
+                          const DeviceMemory<float> &output_c_data,
+                          const DeviceMemory<float> &output_backprop_data,
+                          const DeviceMemory<float> &output_h_backprop_data,
+                          const DeviceMemory<float> &output_c_backprop_data,
+                          DeviceMemory<float> *input_backprop_data,
+                          DeviceMemory<float> *input_h_backprop_data,
+                          DeviceMemory<float> *input_c_backprop_data,
+                          DeviceMemory<float> *params_backprop_data,
+                          DeviceMemory<uint8> *reserve_space_data,
+                          ScratchAllocator *workspace_allocator);
 
   // (Synchronously) block the host code waiting for the operations
   // entrained on the stream (enqueued to this point in program

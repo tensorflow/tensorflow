@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,14 +22,18 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-from tensorflow.python.ops import variable_scope
-
-# pylint: disable=protected-access
-get_partitioned_variable_list = variable_scope._get_partitioned_variable_list
-# pylint: enable=protected-access
-
 
 class PartitionerCreatorsTest(tf.test.TestCase):
+
+  def testFixedSizePartitioner(self):
+    with self.test_session():
+      partitioner = tf.fixed_size_partitioner(5, axis=0)
+      with tf.variable_scope("root", partitioner=partitioner):
+        v0 = tf.get_variable("v0", dtype=tf.float32, shape=(10, 10))
+        v0_list = v0._get_variable_list()
+        v0_part = v0._get_partitions()
+        self.assertEqual(len(v0_list), 5)
+        self.assertAllEqual(v0_part, (5, 1))
 
   def _testVariableAxisSizePartitioner(self, name, axis, max_shard_bytes,
                                        expected_axis_shards,
@@ -39,8 +43,9 @@ class PartitionerCreatorsTest(tf.test.TestCase):
         axis=axis, max_shard_bytes=max_shard_bytes, max_shards=max_shards)
 
     with tf.variable_scope("root", partitioner=partitioner):
-      v0_list, v0_part = get_partitioned_variable_list(
-          name, dtype=tf.float32, shape=(4, 8, 16, 32))
+      v0 = tf.get_variable(name, dtype=tf.float32, shape=(4, 8, 16, 32))
+      v0_list = v0._get_variable_list()
+      v0_part = v0._get_partitions()
       self.assertEqual(len(v0_list), expected_axis_shards)
       self.assertAllEqual(v0_part, expected_partitions)
 
@@ -118,10 +123,13 @@ class PartitionerCreatorsTest(tf.test.TestCase):
           axis=3, max_shard_bytes=32768, bytes_per_string_element=8)
 
       with tf.variable_scope("root", partitioner=partitioner_axis3_str):
-        v3str_list, v3str_part = get_partitioned_variable_list(
+        v3str = tf.get_variable(
             "v3str",
-            initializer=np.array([""] * 4*8*16*32).reshape(4, 8, 16, 32),
-            dtype=tf.string, shape=(4, 8, 16, 32))
+            initializer=np.array([""] * 4 * 8 * 16 * 32).reshape(4, 8, 16, 32),
+            dtype=tf.string,
+            shape=(4, 8, 16, 32))
+        v3str_list = v3str._get_variable_list()
+        v3str_part = v3str._get_partitions()
 
         # Now the estimated bytes_per_slice = 4*8*16*bytes_per_string_element
         # which is equal to 4096.  Setting a max_shard_bytes of 32768
@@ -133,8 +141,95 @@ class PartitionerCreatorsTest(tf.test.TestCase):
         self.assertEqual(len(v3str_list), 4)
         self.assertAllEqual(v3str_part, (1, 1, 1, 4))
 
+  def _testMinMaxVariablePartitioner(self, max_partitions, axis, min_slice_size,
+                                     var_name, var_shape,
+                                     expected_axis_shards, expected_partitions):
+    partitioner = tf.min_max_variable_partitioner(max_partitions=max_partitions,
+                                                  axis=axis,
+                                                  min_slice_size=min_slice_size)
+    with tf.variable_scope("root", partitioner=partitioner):
+      v0 = tf.get_variable(var_name, dtype=tf.float32, shape=var_shape)
+      v0_list = v0._get_variable_list()
+      v0_part = v0._get_partitions()
+      self.assertEqual(len(v0_list), expected_axis_shards)
+      self.assertAllEqual(v0_part, expected_partitions)
 
-def _IotaInitializer(shape, dtype=tf.float32):
+  def testMinMaxVariablePartitioner(self):
+    with self.test_session():
+      # Partitioning a variable of shape=[2048] with a minimum of 2K per slice.
+      self._testMinMaxVariablePartitioner(max_partitions=100, axis=0,
+                                          min_slice_size=2 << 10,
+                                          var_name="v0_0", var_shape=[2048],
+                                          expected_axis_shards=4,
+                                          expected_partitions=[4])
+
+      # Partitioning a variable of shape=[2048, 1024] with a minimum of 256K per
+      # slice.
+      self._testMinMaxVariablePartitioner(max_partitions=100, axis=0,
+                                          min_slice_size=256 << 10,
+                                          var_name="v0", var_shape=[2048, 1024],
+                                          expected_axis_shards=32,
+                                          expected_partitions=[32, 1])
+
+      # max_partitions restricts partitioning of the variable.
+      self._testMinMaxVariablePartitioner(max_partitions=16, axis=0,
+                                          min_slice_size=256 << 10,
+                                          var_name="v1_max",
+                                          var_shape=[2048, 1024],
+                                          expected_axis_shards=16,
+                                          expected_partitions=[16, 1])
+      self._testMinMaxVariablePartitioner(max_partitions=1, axis=0,
+                                          min_slice_size=256 << 10,
+                                          var_name="v2_max",
+                                          var_shape=[2048, 1024],
+                                          expected_axis_shards=1,
+                                          expected_partitions=[1, 1])
+
+      # Reducing/Increasing min_slice_size proportionately increases/reduces the
+      # number of partitions.
+      self._testMinMaxVariablePartitioner(max_partitions=100, axis=0,
+                                          min_slice_size=128 << 10,
+                                          var_name="v3_slice",
+                                          var_shape=[2048, 1024],
+                                          expected_axis_shards=64,
+                                          expected_partitions=[64, 1])
+      self._testMinMaxVariablePartitioner(max_partitions=100, axis=0,
+                                          min_slice_size=512 << 10,
+                                          var_name="v4_slice",
+                                          var_shape=[2048, 1024],
+                                          expected_axis_shards=16,
+                                          expected_partitions=[16, 1])
+
+      # Partitioning the variable along a different axis.
+      self._testMinMaxVariablePartitioner(max_partitions=100, axis=1,
+                                          min_slice_size=256 << 10,
+                                          var_name="v5_axis",
+                                          var_shape=[64, 1024, 1, 3],
+                                          expected_axis_shards=3,
+                                          expected_partitions=[1, 3, 1, 1])
+      self._testMinMaxVariablePartitioner(max_partitions=100, axis=3,
+                                          min_slice_size=256 << 10,
+                                          var_name="v6_axis",
+                                          var_shape=[64, 1024, 1, 3],
+                                          expected_axis_shards=3,
+                                          expected_partitions=[1, 1, 1, 3])
+
+      # Can not partition the variable more than what its shape allows.
+      self._testMinMaxVariablePartitioner(max_partitions=100, axis=0,
+                                          min_slice_size=256 << 10,
+                                          var_name="v7_shape",
+                                          var_shape=[16, 128, 1024],
+                                          expected_axis_shards=16,
+                                          expected_partitions=[16, 1, 1])
+      self._testMinMaxVariablePartitioner(max_partitions=100, axis=0,
+                                          min_slice_size=256 << 10,
+                                          var_name="v8_shape",
+                                          var_shape=[4, 512, 1024],
+                                          expected_axis_shards=4,
+                                          expected_partitions=[4, 1, 1])
+
+
+def _IotaInitializer(shape, dtype=tf.float32, partition_info=None):
   assert dtype == tf.float32
   if len(shape) == 1:
     return range(shape[0])
@@ -154,7 +249,7 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
     with self.test_session():
       rnd_par = tf.constant([1, 2, 3, 4])
       vs = tf.create_partitioned_variables([4], [4], rnd_par)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       val = tf.concat(0, vs).eval()
       rnd = rnd_par.eval()
       self.assertAllClose(rnd, val)
@@ -165,7 +260,7 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
     with self.test_session():
       rnd_par = tf.constant([[1, 2, 3, 4], [5, 6, 7, 8]])
       vs = tf.create_partitioned_variables([2, 4], [1, 2], rnd_par)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       val = tf.concat(1, vs).eval()
       rnd = rnd_par.eval()
       self.assertAllClose(rnd, val)
@@ -178,7 +273,7 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
       with tf.variable_scope("hi"):
         vs1 = tf.create_partitioned_variables([2, 4], [1, 2], rnd_par)
         vs2 = tf.create_partitioned_variables([2, 4], [1, 2], rnd_par)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       var1_name = vs1[0]._save_slice_info.full_name
       var2_name = vs2[0]._save_slice_info.full_name
       self.assertEqual("hi/PartitionedVariable", var1_name)
@@ -191,10 +286,12 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
     with self.test_session():
       rnd_par = tf.constant([[1, 2, 3, 4], [5, 6, 7, 8]])
       with tf.variable_scope("hola") as vs:
-        vs1 = tf.create_partitioned_variables([2, 4], [1, 2], rnd_par)
+        vs1 = tf.create_partitioned_variables(
+            [2, 4], [1, 2], rnd_par, dtype=tf.int32)
       with tf.variable_scope(vs, reuse=True):
-        vs2 = tf.create_partitioned_variables([2, 4], [1, 2], rnd_par)
-      tf.initialize_all_variables().run()
+        vs2 = tf.create_partitioned_variables(
+            [2, 4], [1, 2], rnd_par, dtype=tf.int32)
+      tf.global_variables_initializer().run()
       var1_name = vs1[0]._save_slice_info.full_name
       var2_name = vs2[0]._save_slice_info.full_name
       self.assertEqual("hola/PartitionedVariable", var1_name)
@@ -209,7 +306,7 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
       with tf.name_scope("ola"):
         vs1 = tf.create_partitioned_variables([2, 4], [1, 2], rnd_par)
         vs2 = tf.create_partitioned_variables([2, 4], [1, 2], rnd_par)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       var1_name = vs1[0]._save_slice_info.full_name
       var2_name = vs2[0]._save_slice_info.full_name
       # Currently, the name scope 'ola' has no effect.
@@ -225,7 +322,7 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
       rnd = tf.Variable(tf.random_uniform([200, 40]))
       vs = tf.create_partitioned_variables(
           rnd.get_shape(), [1, 10], rnd.initialized_value())
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       val = tf.concat(1, vs).eval()
       rnd = rnd.eval()
       self.assertAllClose(rnd, val)
@@ -250,7 +347,7 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
               rnd.get_shape(), [1, i],
               rnd.initialized_value())
           for i in xrange(1, 10)]
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       rnd_val = rnd.eval()
       # Only check the slice save specs for the first 5 tf.
       save_specs = [
@@ -287,7 +384,7 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
       rnd = tf.Variable(tf.random_uniform([10, 43]))
       vs = tf.create_partitioned_variables(
           rnd.get_shape(), [1, 1], rnd.initialized_value())
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       val = tf.concat(0, vs).eval()
       rnd = rnd.eval()
       self.assertAllClose(rnd, val)
@@ -298,7 +395,7 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
       rnd = tf.Variable(tf.random_uniform([10, 43]))
       vs = tf.create_partitioned_variables(
           rnd.get_shape(), [10, 1], rnd.initialized_value())
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       val = tf.concat(0, vs).eval()
       rnd = rnd.eval()
       self.assertAllClose(rnd, val)
@@ -319,7 +416,7 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
                         _IotaInitializer([4, 2]))
     with self.test_session():
       vs = tf.create_partitioned_variables([13, 5], [3, 1], _IotaInitializer)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       slice0 = _IotaInitializer([5, 5])
       slice1 = _IotaInitializer([4, 5])
       slice2 = _IotaInitializer([4, 5])
@@ -335,7 +432,7 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
     with self.test_session():
       var0, var1 = tf.create_partitioned_variables(
           [20, 12], [1, 2], tf.random_uniform_initializer())
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       val0, val1 = var0.eval().flatten(), var1.eval().flatten()
       self.assertTrue(np.linalg.norm(val0 - val1) > 1e-6)
     # Negative test that proves that slices have the same values if
@@ -343,7 +440,7 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
     with self.test_session():
       var0, var1 = tf.create_partitioned_variables(
           [20, 12], [1, 2], tf.random_uniform_initializer(seed=201))
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       val0, val1 = var0.eval().flatten(), var1.eval().flatten()
       self.assertAllClose(val0, val1)
 
@@ -368,6 +465,52 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
       with self.assertRaises(ValueError):
         tf.create_partitioned_variables(
             [10, 43], [1, 50], rnd.initialized_value())
+
+  def testControlDepsNone(self):
+    with self.test_session() as session:
+      c = tf.constant(1.0)
+      with tf.control_dependencies([c]):
+        # d get the control dependency.
+        d = tf.constant(2.0)
+        # Partitioned variables do not.
+        var_x = tf.get_variable(
+            "x",
+            shape=[2],
+            initializer=tf.ones_initializer(),
+            partitioner=tf.variable_axis_size_partitioner(4))
+
+        ops_before_read = session.graph.get_operations()
+        var_x.as_tensor()  # Caches the ops for subsequent reads.
+        reading_ops = [op for op in session.graph.get_operations()
+                       if op not in ops_before_read]
+
+      self.assertEqual([c.op], d.op.control_inputs)
+      # Tests that no control dependencies are added to reading a partitioned
+      # variable which is similar to reading a variable.
+      for op in reading_ops:
+        self.assertEqual([], op.control_inputs)
+
+  def testConcat(self):
+    with self.test_session() as session:
+      var_x = tf.get_variable(
+          "x",
+          initializer=tf.constant([1., 2.]),
+          partitioner=tf.variable_axis_size_partitioner(4))
+
+      c = tf.constant(1.0)
+      with tf.control_dependencies([c]):
+        ops_before_concat = session.graph.get_operations()
+        value = var_x._concat()  # pylint: disable=protected-access
+        concat_ops = [op for op in session.graph.get_operations()
+                      if op not in ops_before_concat]
+
+      concat_control_inputs = [ci for op in concat_ops
+                               for ci in op.control_inputs]
+      self.assertTrue(
+          c.op in concat_control_inputs,
+          "var_x._concat() should get control dependencies from its scope.")
+      tf.global_variables_initializer().run()
+      self.assertAllClose(value.eval(), var_x.as_tensor().eval())
 
 
 if __name__ == "__main__":

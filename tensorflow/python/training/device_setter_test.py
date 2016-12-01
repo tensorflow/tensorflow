@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ class DeviceSetterTest(tf.test.TestCase):
       "ps": ["ps0:2222", "ps1:2222"],
       "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]})
 
-  def testPS2TasksWithCluserSpecClass(self):
+  def testPS2TasksWithClusterSpecClass(self):
     with tf.device(tf.train.replica_device_setter(cluster=self._cluster_spec)):
       v = tf.Variable([1, 2])
       w = tf.Variable([2, 1])
@@ -76,6 +76,23 @@ class DeviceSetterTest(tf.test.TestCase):
       self.assertDeviceEqual("/job:moon/task:0", v.initializer.device)
       self.assertDeviceEqual("/job:moon/task:1", w.device)
       self.assertDeviceEqual("/job:moon/task:1", w.initializer.device)
+      self.assertDeviceEqual("/job:sun", a.device)
+
+  def testPS2TasksWithCPUConstraint(self):
+    cluster_spec = tf.train.ClusterSpec({
+        "sun": ["sun0:2222", "sun1:2222", "sun2:2222"],
+        "moon": ["moon0:2222", "moon1:2222"]})
+
+    with tf.device(tf.train.replica_device_setter(
+        ps_device="/job:moon/cpu:0", worker_device="/job:sun",
+        cluster=cluster_spec.as_cluster_def())):
+      v = tf.Variable([1, 2])
+      w = tf.Variable([2, 1])
+      a = v + w
+      self.assertDeviceEqual("/job:moon/task:0/cpu:0", v.device)
+      self.assertDeviceEqual("/job:moon/task:0/cpu:0", v.initializer.device)
+      self.assertDeviceEqual("/job:moon/task:1/cpu:0", w.device)
+      self.assertDeviceEqual("/job:moon/task:1/cpu:0", w.initializer.device)
       self.assertDeviceEqual("/job:sun", a.device)
 
 

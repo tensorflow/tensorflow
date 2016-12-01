@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 import tensorflow as tf
 
 
@@ -56,6 +57,17 @@ class DecodeRawOpTest(tf.test.TestCase):
           "Input to DecodeRaw has length 3 that is not a multiple of 2, the "
           "size of int16"):
         decode.eval(feed_dict={in_bytes: ["123", "456"]})
+
+  def testToFloat16(self):
+    with self.test_session():
+      in_bytes = tf.placeholder(tf.string, shape=[None])
+      decode = tf.decode_raw(in_bytes, out_type=tf.float16)
+      self.assertEqual([None, None], decode.get_shape().as_list())
+
+      expected_result = np.matrix([[1, -2, -3, 4]], dtype=np.float16)
+      result = decode.eval(feed_dict={in_bytes: [expected_result.tostring()]})
+
+      self.assertAllEqual(expected_result, result)
 
 if __name__ == "__main__":
   tf.test.main()

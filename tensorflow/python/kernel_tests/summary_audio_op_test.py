@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -44,19 +44,17 @@ class SummaryAudioOpTest(tf.test.TestCase):
 
   def testAudioSummary(self):
     np.random.seed(7)
-    with self.test_session() as sess:
-      num_frames = 7
-      for channels in 1, 2, 5, 8:
+    for channels in (1, 2, 5, 8):
+      with self.test_session(graph=tf.Graph()) as sess:
+        num_frames = 7
         shape = (4, num_frames, channels)
         # Generate random audio in the range [-1.0, 1.0).
         const = 2.0 * np.random.random(shape) - 1.0
 
         # Summarize
         sample_rate = 8000
-        summ = tf.audio_summary("snd",
-                                const,
-                                max_outputs=3,
-                                sample_rate=sample_rate)
+        summ = tf.summary.audio(
+            "snd", const, max_outputs=3, sample_rate=sample_rate)
         value = sess.run(summ)
         self.assertEqual([], summ.get_shape())
         audio_summ = self._AsSummary(value)

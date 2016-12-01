@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -90,10 +90,12 @@ class ListDiffOp : public OpKernel {
   }
 };
 
-#define REGISTER_LISTDIFF(type)                                      \
-  REGISTER_KERNEL_BUILDER(                                           \
-      Name("ListDiff").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
-      ListDiffOp<type>)
+#define REGISTER_LISTDIFF(type)                                  \
+  REGISTER_KERNEL_BUILDER(Name("ListDiff")                       \
+                              .Device(DEVICE_CPU)                \
+                              .TypeConstraint<type>("T")         \
+                              .TypeConstraint<int32>("out_idx"), \
+                          ListDiffOp<type>)
 
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_LISTDIFF);
 REGISTER_LISTDIFF(string);

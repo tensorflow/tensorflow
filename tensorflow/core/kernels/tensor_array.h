@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ limitations under the License.
 #include <limits.h>
 #include <vector>
 
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -124,13 +125,15 @@ TF_CALL_GPU_NUMBER_TYPES(TENSOR_ARRAY_SET_ZERO_GPU);
 //
 class TensorArray : public ResourceBase {
  public:
+  static std::atomic<int64> tensor_array_counter;
+
   // Construct a TensorArray for holding Tensors of type 'dtype' with
   // 'N' elements.  While the underlying storage is a std::vector and
   // can hold more than MAX_INT entries, in practice we do not expect
   // users to construct this many Tensors for storage in a TensorArray.
   TensorArray(const DataType& dtype, const Tensor& handle, int32 N,
-              bool dynamic_size, bool multiple_writes_aggregate,
-              bool clear_after_read)
+              bool dynamic_size, bool multiple_writes_aggregate, bool is_grad,
+              int32 marked_size, bool clear_after_read)
       : dtype_(dtype),
         handle_(handle),
         closed_(false),
@@ -138,6 +141,8 @@ class TensorArray : public ResourceBase {
         multiple_writes_aggregate_(multiple_writes_aggregate),
         gradients_disallowed_(false),
         clear_after_read_(clear_after_read),
+        is_grad_(is_grad),
+        marked_size_(marked_size),
         tensors_(N) {}
 
   // Write PersistentTensor 'value' to index 'index'.
@@ -164,7 +169,7 @@ class TensorArray : public ResourceBase {
   //    - The underlying Tensors in 'value' and from the first write
   //      are released and a local PersistentTensor is created.
   //    - Index 'index' is also marked as local_copy.
-  //    - The gradient_disallowed flag is set true (GradientAllowed()
+  //    - The gradients_disallowed flag is set true (GradientsAllowed()
   //      will now return false).
   //
   // Note, value is passed as a pointer because we its underlying
@@ -178,10 +183,13 @@ class TensorArray : public ResourceBase {
 
   template <typename Device, typename T>
   Status WriteOrAggregateMany(OpKernelContext* ctx,
+                              const std::vector<int32>& indices,
                               std::vector<PersistentTensor>* values) {
     mutex_lock l(mu_);
-    for (int32 i = values->size() - 1; i >= 0; --i) {
-      Status s = LockedWriteOrAggregate<Device, T>(ctx, i, &(*values)[i]);
+    int32 i = 0;
+    for (const int32 ix : indices) {
+      Status s = LockedWriteOrAggregate<Device, T>(ctx, ix, &(*values)[i]);
+      ++i;
       TF_RETURN_IF_ERROR(s);
     }
     return Status::OK();
@@ -210,12 +218,15 @@ class TensorArray : public ResourceBase {
   }
 
   template <typename Device, typename T>
-  Status ReadMany(OpKernelContext* ctx, std::vector<PersistentTensor>* values) {
+  Status ReadMany(OpKernelContext* ctx, const std::vector<int32>& indices,
+                  std::vector<PersistentTensor>* values) {
     mutex_lock l(mu_);
     values->clear();
-    values->resize(tensors_.size());
-    for (std::size_t i = 0; i < tensors_.size(); ++i) {
-      Status s = LockedRead<Device, T>(ctx, i, &(*values)[i]);
+    values->resize(indices.size());
+    int32 i = 0;
+    for (const int32 ix : indices) {
+      Status s = LockedRead<Device, T>(ctx, ix, &(*values)[i]);
+      ++i;
       if (!s.ok()) return s;
     }
     return Status::OK();
@@ -234,11 +245,37 @@ class TensorArray : public ResourceBase {
     return closed_;
   }
 
-  // Return the Size of the TensorArray.
+  // Return the size of the TensorArray.
   Status Size(int32* size) {
     mutex_lock l(mu_);
     TF_RETURN_IF_ERROR(LockedReturnIfClosed());
     *size = tensors_.size();
+    return Status::OK();
+  }
+
+  // Record the size of the TensorArray after an unpack or split.
+  Status SetMarkedSize(int32 size) {
+    mutex_lock l(mu_);
+    TF_RETURN_IF_ERROR(LockedReturnIfClosed());
+    if (!is_grad_) {
+      marked_size_ = size;
+    }
+    return Status::OK();
+  }
+
+  // Return the marked size of the TensorArray.
+  Status MarkedSize(int32* size) {
+    mutex_lock l(mu_);
+    TF_RETURN_IF_ERROR(LockedReturnIfClosed());
+    *size = marked_size_;
+    return Status::OK();
+  }
+
+  // Return the size that should be used by pack or concat op.
+  Status PackOrConcatSize(int32* size) {
+    mutex_lock l(mu_);
+    TF_RETURN_IF_ERROR(LockedReturnIfClosed());
+    *size = is_grad_ ? marked_size_ : tensors_.size();
     return Status::OK();
   }
 
@@ -322,6 +359,13 @@ class TensorArray : public ResourceBase {
   // release memory.
   bool clear_after_read_;
 
+  // True iff this is a gradient tensor array.
+  bool is_grad_;
+
+  // The size of the TensorArray after an unpack or split is performed.
+  // -1 if there has been no unpack or split performed on the TensorArray.
+  int32 marked_size_;
+
   // TensorAndState is used to keep track of the PersistentTensors
   // stored in the TensorArray, along with their shapes, and a boolean
   // that determines whether they have already been read or not.
@@ -403,7 +447,7 @@ Status TensorArray::LockedWriteOrAggregate(OpKernelContext* ctx,
           " but the new input shape is ", value_t->shape().DebugString(), ".");
     }
 
-    if (!t.tensor.IsInitialized()) {
+    if (!t.tensor.IsInitialized() || t.tensor.NumElements() == 0) {
       // If existing_t == nullptr but written == true, then what was stored
       // was just a shape, which just means zeros.  So all we must do in this
       // case is copy the reference over and return early.
@@ -455,6 +499,7 @@ Status TensorArray::LockedRead(OpKernelContext* ctx, const int32 index,
                                    index,
                                    " because it has not yet been written to.");
   }
+
   if (t.cleared) {
     return errors::InvalidArgument("TensorArray ", handle_.vec<string>()(1),
                                    ": Could not read index ", index,
@@ -463,7 +508,7 @@ Status TensorArray::LockedRead(OpKernelContext* ctx, const int32 index,
                                    "clear_after_read = false?).");
   }
 
-  if (!t.tensor.IsInitialized()) {
+  if (!t.tensor.IsInitialized() || t.tensor.NumElements() == 0) {
     // We stored just a shape, but no value.  This means create and
     // return zeros of the appropriate shape.
     Tensor* tensor_t;

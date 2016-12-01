@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,9 +32,8 @@ static Status ReadEntireFile(Env* env, const string& filename,
   uint64 file_size = 0;
   TF_RETURN_IF_ERROR(env->GetFileSize(filename, &file_size));
   contents->resize(file_size);
-  RandomAccessFile* file;
+  std::unique_ptr<RandomAccessFile> file;
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(filename, &file));
-  std::unique_ptr<RandomAccessFile> make_sure_file_gets_deleted(file);
   StringPiece data;
   TF_RETURN_IF_ERROR(file->Read(0, file_size, &data, &(*contents)[0]));
   if (data.size() != file_size) {
@@ -120,4 +119,28 @@ class ReadFileOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("ReadFile").Device(DEVICE_CPU), ReadFileOp);
 
+class WriteFileOp : public OpKernel {
+ public:
+  using OpKernel::OpKernel;
+  void Compute(OpKernelContext* context) override {
+    const Tensor* filename_input;
+    const Tensor* contents_input;
+    OP_REQUIRES_OK(context, context->input("filename", &filename_input));
+    OP_REQUIRES_OK(context, context->input("contents", &contents_input));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(filename_input->shape()),
+                errors::InvalidArgument(
+                    "Input filename tensor must be scalar, but had shape: ",
+                    filename_input->shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(contents_input->shape()),
+                errors::InvalidArgument(
+                    "Contents tensor must be scalar, but had shape: ",
+                    contents_input->shape().DebugString()));
+    OP_REQUIRES_OK(
+        context,
+        WriteStringToFile(context->env(), filename_input->scalar<string>()(),
+                          contents_input->scalar<string>()()));
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("WriteFile").Device(DEVICE_CPU), WriteFileOp);
 }  // namespace tensorflow

@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,56 +19,59 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.learn.python.learn.dataframe import transform
-from tensorflow.python.framework import dtypes
-from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.training import input as input_ops
-from tensorflow.python.training import queue_runner
 
 
-class ReaderSource(transform.Transform):
-  """A `ReaderSource` produces `Tensor`s of keys and values using a `tf.Reader`.
-
-  Parameters:
-    reader_cls: A subclass of `tesorflow.ReaderBase` that will be used to read
-      from `work_units`.
-    work_units: A list that describes the source(s) of data to read. Typically,
-      this is a list of filenames.
-    reader_kwargs: A dictionary of kwargs to be passed to `reader_cls` when it
-      is constructed.
-    batch_size: The desired batch size of output. Defaults to 1.
-    queue_capacity: Capacity of the queue. Defaults to 10 * `batch_size`.
-    shuffle: Whether records will be shuffled before returning. Defaults to
-      false.
-    min_after_dequeue: Minimum number of elements in the queue to allow a
-      dequeue operation. Only used when `shuffle` is true. Defaults to
-      `queue_capacity` / 4.
-    num_threads: Number of threads that will be used for reading. Each thread
-      has its own instance of `reader_cls`.
-    seed: A seed used for shuffling. Only used if `shuffle` is true.
-  """
+class ReaderSource(transform.TensorFlowTransform):
+  """Produces `Tensor`s of keys and values using a `tf.Reader`."""
 
   def __init__(self,
                reader_cls,
                work_units,
                reader_kwargs=None,
+               enqueue_size=None,
                batch_size=1,
                queue_capacity=None,
                shuffle=False,
                min_after_dequeue=None,
                num_threads=1,
                seed=None):
+    """Initializes a ReaderSource.
+
+    Args:
+      reader_cls: A subclass of `tensorflow.ReaderBase` that will be used to
+        read from `work_units`.
+      work_units: A list that describes the source(s) of data to read.
+        Typically, this is a list of filenames.
+      reader_kwargs: A dictionary of kwargs to be passed to `reader_cls` when it
+        is constructed.
+      enqueue_size: block size for each read operation.
+      batch_size: The desired batch size of output. Defaults to 1.
+      queue_capacity: Capacity of the queue. Defaults to 10 * `batch_size`.
+      shuffle: Whether records will be shuffled before returning. Defaults to
+        false.
+      min_after_dequeue: Minimum number of elements in the queue to allow a
+        dequeue operation. Only used when `shuffle` is true. Defaults to
+        `queue_capacity` / 4.
+      num_threads: Number of threads that will be used for reading. Each thread
+        has its own instance of `reader_cls`.
+      seed: A seed used for shuffling. Only used if `shuffle` is true.
+    """
     super(ReaderSource, self).__init__()
     self._reader_cls = reader_cls
     self._reader_kwargs = reader_kwargs
     self._work_units = work_units
     self._reader_kwargs = {} if reader_kwargs is None else reader_kwargs
+    if enqueue_size is None:
+      enqueue_size = max(1, int(batch_size / num_threads))
+    self._enqueue_size = enqueue_size
     self._batch_size = batch_size
-    self._queue_capacity = (batch_size * 64
-                            if queue_capacity is None else queue_capacity)
+    self._queue_capacity = (batch_size * 10 if queue_capacity is None else
+                            queue_capacity)
     self._shuffle = shuffle
-    self._min_after_dequeue = (self.queue_capacity / 4 if
-                               min_after_dequeue is None else min_after_dequeue)
+    self._min_after_dequeue = int(self.queue_capacity / 4 if min_after_dequeue
+                                  is None else min_after_dequeue)
     self._num_threads = num_threads
     self._seed = seed
 
@@ -83,6 +86,10 @@ class ReaderSource(transform.Transform):
   @transform.parameter
   def reader_kwargs(self):
     return self._reader_kwargs
+
+  @transform.parameter
+  def enqueue_size(self):
+    return self._enqueue_size
 
   @transform.parameter
   def batch_size(self):
@@ -120,31 +127,35 @@ class ReaderSource(transform.Transform):
   def _output_names(self):
     return ("index", "value")
 
-  def _apply_transform(self, transform_input):
-    filename_queue = input_ops.string_input_producer(self._work_units,
-                                                     shuffle=self.shuffle,
-                                                     seed=self._seed)
-
-    if self.shuffle:
-      queue = data_flow_ops.RandomShuffleQueue(
-          capacity=self.queue_capacity,
-          min_after_dequeue=self.min_after_dequeue,
-          dtypes=[dtypes.string, dtypes.string],
-          shapes=[[], []],
-          seed=self.seed)
-    else:
-      queue = data_flow_ops.FIFOQueue(capacity=self.queue_capacity,
-                                      dtypes=[dtypes.string, dtypes.string],
-                                      shapes=[[], []])
-
-    enqueue_ops = []
+  def _apply_transform(self, transform_input, **kwargs):
+    filename_queue = input_ops.string_input_producer(
+        self.work_units,
+        num_epochs=kwargs.get("num_epochs"),
+        shuffle=self.shuffle,
+        seed=self.seed)
+    reader_ops = []
     for _ in range(self.num_threads):
       reader = self._reader_cls(**self._reader_kwargs)
-      enqueue_ops.append(queue.enqueue(reader.read(filename_queue)))
+      reader_ops.append(reader.read_up_to(filename_queue, self.enqueue_size))
 
-    runner = queue_runner.QueueRunner(queue, enqueue_ops)
-    queue_runner.add_queue_runner(runner)
-    dequeued = queue.dequeue_many(self.batch_size)
+    if self.shuffle:
+      dequeued = input_ops.shuffle_batch_join(
+          reader_ops,
+          self.batch_size,
+          capacity=self.queue_capacity,
+          min_after_dequeue=self.min_after_dequeue,
+          seed=self.seed,
+          enqueue_many=True,
+          shared_name=None,
+          name=None)
+    else:
+      dequeued = input_ops.batch_join(reader_ops,
+                                      self.batch_size,
+                                      capacity=self.queue_capacity,
+                                      enqueue_many=True,
+                                      dynamic_pad=False,
+                                      shared_name=None,
+                                      name=None)
 
     # pylint: disable=not-callable
     return self.return_type(*dequeued)
@@ -153,25 +164,41 @@ class ReaderSource(transform.Transform):
 # `ReaderSource`s for common `tf.ReaderBase` types.
 def TextFileSource(file_names,
                    reader_kwargs=None,
+                   enqueue_size=1,
                    batch_size=1,
                    queue_capacity=None,
                    shuffle=False,
                    min_after_dequeue=None,
                    num_threads=1,
                    seed=None):
-  return ReaderSource(io_ops.TextLineReader, file_names, reader_kwargs,
-                      batch_size, queue_capacity, shuffle, min_after_dequeue,
-                      num_threads, seed)
+  return ReaderSource(io_ops.TextLineReader,
+                      work_units=file_names,
+                      reader_kwargs=reader_kwargs,
+                      enqueue_size=enqueue_size,
+                      batch_size=batch_size,
+                      queue_capacity=queue_capacity,
+                      shuffle=shuffle,
+                      min_after_dequeue=min_after_dequeue,
+                      num_threads=num_threads,
+                      seed=seed)
 
 
 def TFRecordSource(file_names,
                    reader_kwargs=None,
+                   enqueue_size=1,
                    batch_size=1,
                    queue_capacity=None,
                    shuffle=False,
                    min_after_dequeue=None,
                    num_threads=1,
                    seed=None):
-  return ReaderSource(io_ops.TFRecordReader, file_names, reader_kwargs,
-                      batch_size, queue_capacity, shuffle, min_after_dequeue,
-                      num_threads, seed)
+  return ReaderSource(io_ops.TFRecordReader,
+                      work_units=file_names,
+                      reader_kwargs=reader_kwargs,
+                      enqueue_size=enqueue_size,
+                      batch_size=batch_size,
+                      queue_capacity=queue_capacity,
+                      shuffle=shuffle,
+                      min_after_dequeue=min_after_dequeue,
+                      num_threads=num_threads,
+                      seed=seed)

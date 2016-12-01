@@ -1,4 +1,4 @@
-A queue implementation that dequeues elements in first-in-first out order.
+A queue implementation that dequeues elements in first-in first-out order.
 
 See [`tf.QueueBase`](#QueueBase) for a description of the methods on
 this class.

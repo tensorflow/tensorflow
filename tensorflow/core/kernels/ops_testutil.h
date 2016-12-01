@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -185,6 +185,7 @@ class OpsTestBase : public ::testing::Test {
     test::SetOutputAttrs(params_.get(), &attrs);
     checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_wrapper;
     params_.get()->slice_reader_cache = &slice_reader_cache_wrapper;
+    params_.get()->resource_manager = device_.get()->resource_manager();
 
     context_.reset(new OpKernelContext(params_.get()));
     device_->Compute(kernel_.get(), context_.get());

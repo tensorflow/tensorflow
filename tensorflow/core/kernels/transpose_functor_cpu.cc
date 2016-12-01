@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -80,6 +80,7 @@ Status DoTranspose<Device>(const Device& d, const Tensor& in,
       break;
 
     case DT_BFLOAT16:
+    case DT_HALF:
     case DT_INT16:
     case DT_QINT16:
     case DT_QUINT16:

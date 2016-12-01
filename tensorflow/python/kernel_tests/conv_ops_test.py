@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,6 +17,9 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+import os
+import time
 
 import numpy as np
 import tensorflow as tf
@@ -155,7 +158,7 @@ def GetTestConfigs():
     all the valid test configs as tuples of data_format and use_gpu.
   """
   test_configs = [("NHWC", False), ("NHWC", True)]
-  if test_util.IsGoogleCudaEnabled():
+  if tf.test.is_gpu_available():
     # "NCHW" format is not currently supported on CPU.
     test_configs += [("NCHW", True)]
   return test_configs
@@ -163,13 +166,13 @@ def GetTestConfigs():
 
 class Conv2DTest(tf.test.TestCase):
 
-  def _DtypesToTest(self):
-    if test_util.CudaSupportsHalfMatMulAndConv():
+  def _DtypesToTest(self, use_gpu):
+    if use_gpu and not test_util.CudaSupportsHalfMatMulAndConv():
+      return [tf.float32]
+    else:
       # It is important that float32 comes before float16 here,
       # as we will be using its gradients as reference for fp16 gradients.
       return [tf.float32, tf.float16]
-    else:
-      return [tf.float32]
 
   def _SetupValuesForDevice(self, tensor_in_sizes, filter_in_sizes, strides,
                             padding, data_format, dtype, use_gpu):
@@ -255,10 +258,9 @@ class Conv2DTest(tf.test.TestCase):
 
   def _VerifyValues(self, tensor_in_sizes, filter_in_sizes, strides,
                     padding, expected):
-    for dtype in self._DtypesToTest():
-      print(dtype)
-      tensors = []
-      for (data_format, use_gpu) in GetTestConfigs():
+    tensors = []
+    for (data_format, use_gpu) in GetTestConfigs():
+      for dtype in self._DtypesToTest(use_gpu):
         result = self._SetupValuesForDevice(tensor_in_sizes,
                                             filter_in_sizes,
                                             strides,
@@ -274,7 +276,10 @@ class Conv2DTest(tf.test.TestCase):
           value = values[i]
           print("expected = ", expected)
           print("actual = ", value)
-          self.assertAllCloseAccordingToType(expected, np.ravel(value))
+          tol = 1e-5
+          if value.dtype == np.float16:
+            tol = 1e-3
+          self.assertAllClose(expected, np.ravel(value), atol=tol, rtol=tol)
           self.assertShapeEqual(value, conv)
 
   def testConv2D1x1Filter(self):
@@ -360,10 +365,10 @@ class Conv2DTest(tf.test.TestCase):
     #                   strides=[4, 4], padding="SAME",
     #                   expected=[72, 112, 392, 432])
 
-  # Testing for backprops
+    # Testing for backprops
   def _RunAndVerifyBackpropInput(self, input_sizes, filter_sizes, output_sizes,
                                  strides, padding, expected, data_format,
-                                 use_gpu):
+                                 use_gpu, err):
     total_output_size = 1
     total_filter_size = 1
     for s in output_sizes:
@@ -397,7 +402,7 @@ class Conv2DTest(tf.test.TestCase):
       self.assertShapeEqual(value, conv)
     print("expected = ", expected)
     print("actual = ", value)
-    self.assertArrayNear(expected, value.flatten(), 1e-5)
+    self.assertArrayNear(expected, value.flatten(), err)
 
   def _CompareBackpropInput(self, input_sizes, filter_sizes, output_sizes,
                             conv_strides, padding):
@@ -444,7 +449,8 @@ class Conv2DTest(tf.test.TestCase):
                                       padding="VALID",
                                       expected=expected_output,
                                       data_format=data_format,
-                                      use_gpu=use_gpu)
+                                      use_gpu=use_gpu,
+                                      err=1e-5)
 
   def testConv2D2x2Depth3ValidBackpropInput(self):
     expected_output = [14.0, 32.0, 50.0,
@@ -454,6 +460,8 @@ class Conv2DTest(tf.test.TestCase):
                        478.0, 541.0, 604.0,
                        437.0, 482.0, 527.0]
     for (data_format, use_gpu) in GetTestConfigs():
+      # The GPU version of this test is not very stable. So adjusting the
+      # error threshold to 1e-4.
       self._RunAndVerifyBackpropInput(input_sizes=[1, 2, 3, 3],
                                       filter_sizes=[2, 2, 3, 3],
                                       output_sizes=[1, 1, 2, 3],
@@ -461,7 +469,8 @@ class Conv2DTest(tf.test.TestCase):
                                       padding="VALID",
                                       expected=expected_output,
                                       data_format=data_format,
-                                      use_gpu=use_gpu)
+                                      use_gpu=use_gpu,
+                                      err=1e-4)
 
   def testConv2D2x2Depth3ValidBackpropInputStride1x2(self):
     expected_output = [1.0, 2.0, 2.0, 4.0, 3.0, 6.0,
@@ -475,7 +484,8 @@ class Conv2DTest(tf.test.TestCase):
                                       padding="VALID",
                                       expected=expected_output,
                                       data_format=data_format,
-                                      use_gpu=use_gpu)
+                                      use_gpu=use_gpu,
+                                      err=1e-5)
 
   def testConv2DStrideTwoFilterOneSameBackpropInput(self):
     expected_output = [1.0, 0.0, 2.0, 0.0,
@@ -490,7 +500,8 @@ class Conv2DTest(tf.test.TestCase):
                                       padding="SAME",
                                       expected=expected_output,
                                       data_format=data_format,
-                                      use_gpu=use_gpu)
+                                      use_gpu=use_gpu,
+                                      err=1e-5)
 
   # Testing for backprops
   def _RunAndVerifyBackpropFilter(self, input_sizes, filter_sizes, output_sizes,
@@ -506,7 +517,7 @@ class Conv2DTest(tf.test.TestCase):
     # numbers from 1.
     x0 = [f * 1.0 for f in range(1, total_input_size + 1)]
     x2 = [f * 1.0 for f in range(1, total_output_size + 1)]
-    for dtype in self._DtypesToTest():
+    for dtype in self._DtypesToTest(use_gpu=use_gpu):
       with self.test_session(use_gpu=use_gpu) as sess:
         t0 = tf.constant(x0, shape=input_sizes, dtype=dtype)
         t1 = tf.constant(filter_sizes, shape=[len(filter_sizes)])
@@ -635,7 +646,7 @@ class Conv2DTest(tf.test.TestCase):
     # a problem in the way Eigen's Conv2DGrad works for double.
     # So we disable the DOUBLE path.  We should re-enable this
     # when double support returns for CPU and/or GPU.
-    for dtype in self._DtypesToTest():
+    for dtype in self._DtypesToTest(use_gpu=use_gpu):
       with self.test_session(use_gpu=use_gpu):
         input_tensor = tf.constant(input_data, shape=input_shape,
                                    dtype=dtype, name="input")
@@ -908,32 +919,45 @@ class Conv2DTest(tf.test.TestCase):
                                           shape=[4, 4, 2, 2]),
                     strides=[1, 1, 1, 1], padding="SAME")
 
-    # Illegal strides.
-    with self.assertRaisesRegexp(ValueError, "strides in the batch and depth"):
-      tf.nn.conv2d(tf.placeholder(tf.float32),
-                    tf.placeholder(tf.float32),
-                    strides=[2, 1, 1, 1], padding="SAME")
-    with self.assertRaisesRegexp(ValueError, "strides in the batch and depth"):
-      tf.nn.conv2d(tf.placeholder(tf.float32),
-                    tf.placeholder(tf.float32),
-                    strides=[1, 1, 1, 2], padding="SAME")
+  def testOpEdgeCases(self):
+    with self.test_session() as sess:
+      # Illegal strides.
+      with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
+                                   "strides in the batch and depth"):
+        sess.run(
+            tf.nn.conv2d(
+                tf.placeholder(tf.float32),
+                tf.placeholder(tf.float32),
+                strides=[2, 1, 1, 1],
+                padding="SAME"))
+      with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
+                                   "strides in the batch and depth"):
+        sess.run(
+            tf.nn.conv2d(
+                tf.placeholder(tf.float32),
+                tf.placeholder(tf.float32),
+                strides=[1, 1, 1, 2],
+                padding="SAME"))
 
-    # Filter larger than input.
-    with self.assertRaisesRegexp(ValueError,
-                                 "Filter must not be larger than the input"):
-      tf.nn.conv2d(tf.placeholder(tf.float32,
-                                          shape=[32, 20, 20, 3]),
-                    tf.placeholder(tf.float32,
-                                          shape=[20, 21, 3, 2]),
-                    strides=[1, 1, 1, 1], padding="SAME")
-    with self.assertRaisesRegexp(ValueError,
-                                 "Filter must not be larger than the input"):
-      tf.nn.conv2d(tf.placeholder(tf.float32,
-                                          shape=[32, 20, 20, 3]),
-                    tf.placeholder(tf.float32,
-                                          shape=[21, 20, 3, 2]),
-                    strides=[1, 1, 1, 1], padding="SAME")
-
+      # Filter larger than input.
+      with self.assertRaisesRegexp(ValueError, "Negative dimension size"):
+        sess.run(
+            tf.nn.conv2d(
+                tf.placeholder(
+                    tf.float32, shape=[32, 20, 20, 3]),
+                tf.placeholder(
+                    tf.float32, shape=[20, 21, 3, 2]),
+                strides=[1, 1, 1, 1],
+                padding="VALID"))
+      with self.assertRaisesRegexp(ValueError, "Negative dimension size"):
+        sess.run(
+            tf.nn.conv2d(
+                tf.placeholder(
+                    tf.float32, shape=[32, 20, 20, 3]),
+                tf.placeholder(
+                    tf.float32, shape=[21, 20, 3, 2]),
+                strides=[1, 1, 1, 1],
+                padding="VALID"))
 
 
 # This is only a very simple test. More comprehensive tests live in
@@ -1139,6 +1163,86 @@ class SeparableConv2DTest(tf.test.TestCase):
                          pointwise_filter_in_sizes=[1, 1, 6, 5],
                          stride=1, padding="SAME",
                          expected=None)
+
+
+class DeepConv2DTest(tf.test.TestCase):
+
+  def _CompareFwdConv2D(self, tensor_in_sizes, filter_in_sizes,
+                        conv_strides, padding):
+    """Verifies that DeepConv2D and Conv2D produce the same values.
+
+    Args:
+      tensor_in_sizes: Input tensor dimensions in
+        [batch, input_rows, input_cols, input_depth].
+      filter_in_sizes: Filter tensor dimensions in
+        [kernel_rows, kernel_cols, input_depth, output_depth].
+      conv_strides: [row_stride, col_stride] for the convolution;
+      padding: Padding type.
+    """
+    x1 = np.random.rand(*tensor_in_sizes).astype(np.float32)
+    x2 = np.random.rand(*filter_in_sizes).astype(np.float32)
+
+    with self.test_session(use_gpu=False) as sess:
+      t1 = tf.constant(x1, shape=tensor_in_sizes)
+      t2 = tf.constant(x2, shape=filter_in_sizes)
+      strides = [1] + conv_strides + [1]
+
+      conv = tf.nn.conv2d(t1, t2, strides=strides, padding=padding)
+
+      os.environ["TF_USE_DEEP_CONV2D"] = "0"
+      values_expect = sess.run([conv])
+
+      os.environ["TF_USE_DEEP_CONV2D"] = "1"
+      values_test = sess.run([conv])
+
+      self.assertAllClose(values_expect, values_test, rtol=1e-5, atol=1e-5)
+
+  def _RunTestCases(self, conv_strides, padding):
+    input_sizes = [[5, 5, 5, 1248], [3, 17, 17, 192], [2, 35, 35, 288],
+                   [2, 6, 8, 517], [2, 7, 4, 81], [3, 11, 3, 77]]
+    filter_sizes = [[3, 3, 1248, 128], [3, 3, 192, 192], [3, 3, 288, 384],
+                    [3, 3, 517, 64], [3, 3, 81, 77], [3, 3, 77, 181]]
+    for input_shape, filter_shape in zip(input_sizes, filter_sizes):
+      self._CompareFwdConv2D(input_shape, filter_shape, conv_strides, padding)
+
+  def testConv2D3x3FilterStride1x1Valid(self):
+    self._RunTestCases([1, 1], "VALID")
+
+  def testConv2D3x3FilterStride1x1Same(self):
+    self._RunTestCases([1, 1], "SAME")
+
+
+class Conv2DBenchmark(tf.test.Benchmark):
+
+  def benchmarkGPUConvStackFirst(self):
+    # Benchmark the first iteration of a conv-net with many identical conv
+    # operations.
+    if not tf.test.is_gpu_available():
+      return
+
+    with tf.Graph().as_default(), tf.Session() as session:
+      batch_size = 1
+      timesteps = 600
+      features = 1
+
+      inputs = tf.random_uniform(
+          [batch_size, 1, timesteps, features], seed=1234)
+      num_outputs_list = [512] * 40 + [1]
+      kernel_w = 3
+      x = inputs
+      for num_outputs in num_outputs_list:
+        x = tf.contrib.layers.convolution2d(x, num_outputs, [1, kernel_w])
+      outputs = x
+
+      tf.global_variables_initializer().run()
+      num_iterations = 4
+      for iter_index in xrange(num_iterations):
+        start = time.time()
+        session.run(outputs)
+        wall_time = time.time() - start
+        self.report_benchmark(
+            name="conv_stack_iter_%d" % iter_index, wall_time=wall_time)
+        print("conv_stack_iter_%d: %.4f" % (iter_index, wall_time))
 
 
 def GetInceptionFwdTest(input_size, filter_size, stride, padding):

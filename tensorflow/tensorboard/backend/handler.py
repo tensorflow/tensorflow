@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,13 +24,12 @@ from __future__ import division
 from __future__ import print_function
 
 import csv
-import gzip
+import functools
 import imghdr
-import json
 import mimetypes
 import os
 
-from six import BytesIO
+from six import StringIO
 from six.moves import BaseHTTPServer
 from six.moves import urllib
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -39,13 +38,15 @@ from six.moves.urllib import parse as urlparse
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import event_accumulator
-from tensorflow.python.util import compat
 from tensorflow.tensorboard.backend import process_graph
-from tensorflow.tensorboard.lib.python import json_util
+from tensorflow.tensorboard.lib.python import http
+from tensorflow.tensorboard.plugins import REGISTERED_PLUGINS
 
 
 DATA_PREFIX = '/data'
+LOGDIR_ROUTE = '/logdir'
 RUNS_ROUTE = '/runs'
+PLUGIN_PREFIX = '/plugin'
 SCALARS_ROUTE = '/' + event_accumulator.SCALARS
 IMAGES_ROUTE = '/' + event_accumulator.IMAGES
 AUDIO_ROUTE = '/' + event_accumulator.AUDIO
@@ -91,9 +92,51 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
   # How many samples to include in sampling API calls by default.
   DEFAULT_SAMPLE_COUNT = 10
 
-  def __init__(self, multiplexer, *args):
+  # NOTE TO MAINTAINERS: An accurate Content-Length MUST be specified on all
+  #                      responses using send_header.
+  protocol_version = 'HTTP/1.1'
+
+  def __init__(self, multiplexer, logdir, *args):
     self._multiplexer = multiplexer
+    self._logdir = logdir
+    self._setup_data_handlers()
     BaseHTTPServer.BaseHTTPRequestHandler.__init__(self, *args)
+
+  def _setup_data_handlers(self):
+    self.data_handlers = {
+        DATA_PREFIX + LOGDIR_ROUTE: self._serve_logdir,
+        DATA_PREFIX + SCALARS_ROUTE: self._serve_scalars,
+        DATA_PREFIX + GRAPH_ROUTE: self._serve_graph,
+        DATA_PREFIX + RUN_METADATA_ROUTE: self._serve_run_metadata,
+        DATA_PREFIX + HISTOGRAMS_ROUTE: self._serve_histograms,
+        DATA_PREFIX + COMPRESSED_HISTOGRAMS_ROUTE:
+            self._serve_compressed_histograms,
+        DATA_PREFIX + IMAGES_ROUTE: self._serve_images,
+        DATA_PREFIX + INDIVIDUAL_IMAGE_ROUTE: self._serve_image,
+        DATA_PREFIX + AUDIO_ROUTE: self._serve_audio,
+        DATA_PREFIX + INDIVIDUAL_AUDIO_ROUTE: self._serve_individual_audio,
+        DATA_PREFIX + RUNS_ROUTE: self._serve_runs,
+        '/app.js': self._serve_js
+    }
+
+    # Serve the routes from the registered plugins using their name as the route
+    # prefix. For example if plugin z has two routes /a and /b, they will be
+    # served as /data/plugin/z/a and /data/plugin/z/b.
+    for name in REGISTERED_PLUGINS:
+      try:
+        plugin = REGISTERED_PLUGINS[name]
+        plugin_handlers = plugin.get_plugin_handlers(
+            self._multiplexer.RunPaths(), self._logdir)
+      except Exception as e:  # pylint: disable=broad-except
+        logging.warning('Plugin %s failed. Exception: %s', name, str(e))
+        continue
+      for route, handler in plugin_handlers.items():
+        path = DATA_PREFIX + PLUGIN_PREFIX + '/' + name + route
+        self.data_handlers[path] = functools.partial(handler, self)
+
+  def respond(self, *args, **kwargs):
+    """Delegates to http.Respond."""
+    http.Respond(self, *args, **kwargs)
 
   # We use underscore_names for consistency with inherited methods.
 
@@ -162,60 +205,10 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     prefix = os.path.commonprefix([base, absolute_path])
     return prefix == base
 
-  def _send_gzip_response(self, content, content_type, code=200):
-    """Writes the given content as gzip response using the given content type.
-
-    Args:
-      content: The content to respond with.
-      content_type: The mime type of the content.
-      code: The numeric HTTP status code to use.
+  def _serve_logdir(self, unused_query_params):
+    """Writes out the logdir argument with which this tensorboard was started.
     """
-    out = BytesIO()
-    f = gzip.GzipFile(fileobj=out, mode='wb')
-    f.write(compat.as_bytes(content))
-    f.close()
-    gzip_content = out.getvalue()
-    self.send_response(code)
-    self.send_header('Content-Type', content_type)
-    self.send_header('Content-Length', len(gzip_content))
-    self.send_header('Content-Encoding', 'gzip')
-    self.end_headers()
-    self.wfile.write(gzip_content)
-
-  def _send_json_response(self, obj, code=200):
-    """Writes out the given object as JSON using the given HTTP status code.
-
-    This also replaces special float values with stringified versions.
-
-    Args:
-      obj: The object to respond with.
-      code: The numeric HTTP status code to use.
-    """
-
-    output = json.dumps(json_util.WrapSpecialFloats(obj))
-
-    self.send_response(code)
-    self.send_header('Content-Type', 'application/json')
-    self.send_header('Content-Length', len(output))
-    self.end_headers()
-    self.wfile.write(compat.as_bytes(output))
-
-  def _send_csv_response(self, serialized_csv, code=200):
-    """Writes out the given string, which represents CSV data.
-
-    Unlike _send_json_response, this does *not* perform the CSV serialization
-    for you. It only sets the proper headers.
-
-    Args:
-      serialized_csv: A string containing some CSV data.
-      code: The numeric HTTP status code to use.
-    """
-
-    self.send_response(code)
-    self.send_header('Content-Type', 'text/csv')
-    self.send_header('Content-Length', len(serialized_csv))
-    self.end_headers()
-    self.wfile.write(serialized_csv)
+    self.respond({'logdir': self._logdir}, 'application/json')
 
   def _serve_scalars(self, query_params):
     """Given a tag and single run, return array of ScalarEvents.
@@ -232,7 +225,8 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     run = query_params.get('run')
     if tag is None and run is None:
       if query_params.get('format') == _OutputFormat.CSV:
-        self.send_error(400, 'Scalar sample values only supports JSON output')
+        self.respond('Scalar sample values only supports JSON output',
+                     'text/plain', 400)
         return
 
       sample_count = int(query_params.get('sample_count',
@@ -248,19 +242,19 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       values = self._multiplexer.Scalars(run, tag)
 
     if query_params.get('format') == _OutputFormat.CSV:
-      string_io = BytesIO()
+      string_io = StringIO()
       writer = csv.writer(string_io)
       writer.writerow(['Wall time', 'Step', 'Value'])
       writer.writerows(values)
-      self._send_csv_response(string_io.getvalue())
+      self.respond(string_io.getvalue(), 'text/csv')
     else:
-      self._send_json_response(values)
+      self.respond(values, 'application/json')
 
   def _serve_graph(self, query_params):
     """Given a single run, return the graph definition in json format."""
     run = query_params.get('run', None)
     if run is None:
-      self.send_error(400, 'query parameter "run" is required')
+      self.respond('query parameter "run" is required', 'text/plain', 400)
       return
 
     try:
@@ -274,8 +268,8 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       try:
         limit_attr_size = int(limit_attr_size)
       except ValueError:
-        self.send_error(400, 'The query param `limit_attr_size` must be'
-                        'an integer')
+        self.respond('query parameter `limit_attr_size` must be integer',
+                     'text/plain', 400)
         return
 
     large_attrs_key = query_params.get('large_attrs_key', None)
@@ -283,41 +277,34 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       process_graph.prepare_graph_for_ui(graph, limit_attr_size,
                                          large_attrs_key)
     except ValueError as e:
-      self.send_error(400, e.message)
+      self.respond(e.message, 'text/plain', 400)
       return
 
-    # Serialize the graph to pbtxt format.
-    graph_pbtxt = str(graph)
-    # Gzip it and send it to the user.
-    self._send_gzip_response(graph_pbtxt, 'text/plain')
+    self.respond(str(graph), 'text/x-protobuf')  # pbtxt
 
   def _serve_run_metadata(self, query_params):
     """Given a tag and a TensorFlow run, return the session.run() metadata."""
     tag = query_params.get('tag', None)
     run = query_params.get('run', None)
     if tag is None:
-      self.send_error(400, 'query parameter "tag" is required')
+      self.respond('query parameter "tag" is required', 'text/plain', 400)
       return
     if run is None:
-      self.send_error(400, 'query parameter "run" is required')
+      self.respond('query parameter "run" is required', 'text/plain', 400)
       return
-
     try:
       run_metadata = self._multiplexer.RunMetadata(run, tag)
     except ValueError:
       self.send_response(404)
       return
-    # Serialize to pbtxt format.
-    run_metadata_pbtxt = str(run_metadata)
-    # Gzip it and send it to the user.
-    self._send_gzip_response(run_metadata_pbtxt, 'text/plain')
+    self.respond(str(run_metadata), 'text/x-protobuf')  # pbtxt
 
   def _serve_histograms(self, query_params):
     """Given a tag and single run, return an array of histogram values."""
     tag = query_params.get('tag')
     run = query_params.get('run')
     values = self._multiplexer.Histograms(run, tag)
-    self._send_json_response(values)
+    self.respond(values, 'application/json')
 
   def _serve_compressed_histograms(self, query_params):
     """Given a tag and single run, return an array of compressed histograms."""
@@ -325,7 +312,7 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     run = query_params.get('run')
     compressed_histograms = self._multiplexer.CompressedHistograms(run, tag)
     if query_params.get('format') == _OutputFormat.CSV:
-      string_io = BytesIO()
+      string_io = StringIO()
       writer = csv.writer(string_io)
 
       # Build the headers; we have two columns for timing and two columns for
@@ -342,9 +329,9 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         for value in compressed_histogram.compressed_histogram_values:
           row += [value.rank_in_bps, value.value]
         writer.writerow(row)
-      self._send_csv_response(string_io.getvalue())
+      self.respond(string_io.getvalue(), 'text/csv')
     else:
-      self._send_json_response(compressed_histograms)
+      self.respond(compressed_histograms, 'application/json')
 
   def _serve_images(self, query_params):
     """Given a tag and list of runs, serve a list of images.
@@ -362,7 +349,7 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     images = self._multiplexer.Images(run, tag)
     response = self._image_response_for_run(images, run, tag)
-    self._send_json_response(response)
+    self.respond(response, 'application/json')
 
   def _serve_image(self, query_params):
     """Serves an individual image."""
@@ -372,12 +359,7 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     image = self._multiplexer.Images(run, tag)[index]
     encoded_image_string = image.encoded_image_string
     content_type = _content_type_for_image(encoded_image_string)
-
-    self.send_response(200)
-    self.send_header('Content-Type', content_type)
-    self.send_header('Content-Length', len(encoded_image_string))
-    self.end_headers()
-    self.wfile.write(encoded_image_string)
+    self.respond(encoded_image_string, content_type)
 
   def _query_for_individual_image(self, run, tag, index):
     """Builds a URL for accessing the specified image.
@@ -419,7 +401,7 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     audio_list = self._multiplexer.Audio(run, tag)
     response = self._audio_response_for_run(audio_list, run, tag)
-    self._send_json_response(response)
+    self.respond(response, 'application/json')
 
   def _serve_individual_audio(self, query_params):
     """Serves an individual audio clip."""
@@ -427,14 +409,7 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     run = query_params.get('run')
     index = int(query_params.get('index'))
     audio = self._multiplexer.Audio(run, tag)[index]
-    encoded_audio_string = audio.encoded_audio_string
-    content_type = audio.content_type
-
-    self.send_response(200)
-    self.send_header('Content-Type', content_type)
-    self.send_header('Content-Length', len(encoded_audio_string))
-    self.end_headers()
-    self.wfile.write(encoded_audio_string)
+    self.respond(audio.encoded_audio_string, audio.content_type)
 
   def _query_for_individual_audio(self, run, tag, index):
     """Builds a URL for accessing the specified audio.
@@ -468,9 +443,19 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       {runName: {images: [tag1, tag2, tag3],
                  audio: [tag4, tag5, tag6],
                  scalars: [tagA, tagB, tagC],
-                 histograms: [tagX, tagY, tagZ]}}
+                 histograms: [tagX, tagY, tagZ],
+                 firstEventTimestamp: 123456.789}}
     """
-    self._send_json_response(self._multiplexer.Runs())
+    runs = self._multiplexer.Runs()
+    for run_name, run_data in runs.items():
+      try:
+        run_data['firstEventTimestamp'] = self._multiplexer.FirstEventTimestamp(
+            run_name)
+      except ValueError:
+        logging.warning('Unable to get first event timestamp for run %s',
+                        run_name)
+        run_data['firstEventTimestamp'] = None
+    self.respond(runs, 'application/json')
 
   def _serve_index(self, unused_query_params):
     """Serves the index page (i.e., the tensorboard app itself)."""
@@ -487,39 +472,39 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       path: The path of the static file, relative to the tensorboard/ directory.
     """
     # Strip off the leading forward slash.
-    path = path.lstrip('/')
-    if not self._path_is_safe(path):
-      logging.info('path %s not safe, sending 404', path)
-      # Traversal attack, so 404.
-      self.send_error(404)
+    orig_path = path.lstrip('/')
+    if not self._path_is_safe(orig_path):
+      logging.warning('path not safe: %s', orig_path)
+      self.respond('Naughty naughty!', 'text/plain', 400)
       return
-
-    if path.startswith('external'):
+    # Resource loader wants a path relative to //WORKSPACE/tensorflow.
+    path = os.path.join('tensorboard', orig_path)
+    # Open the file and read it.
+    try:
+      contents = resource_loader.load_resource(path)
+    except IOError:
       # For compatibility with latest version of Bazel, we renamed bower
       # packages to use '_' rather than '-' in their package name.
       # This means that the directory structure is changed too.
       # So that all our recursive imports work, we need to modify incoming
       # requests to map onto the new directory structure.
+      path = orig_path
       components = path.split('/')
-      components[1] = components[1].replace('-', '_')
+      components[0] = components[0].replace('-', '_')
       path = ('/').join(components)
-      path = os.path.join('../', path)
-    else:
-      path = os.path.join('tensorboard', path)
-    # Open the file and read it.
-    try:
-      contents = resource_loader.load_resource(path)
-    except IOError:
-      logging.info('path %s not found, sending 404', path)
-      self.send_error(404)
-      return
-
-    self.send_response(200)
-
-    mimetype = mimetypes.guess_type(path)[0] or 'application/octet-stream'
-    self.send_header('Content-Type', mimetype)
-    self.end_headers()
-    self.wfile.write(contents)
+      # Bazel keeps all the external dependencies in //WORKSPACE/external.
+      # and resource loader wants a path relative to //WORKSPACE/tensorflow/.
+      path = os.path.join('../external', path)
+      try:
+        contents = resource_loader.load_resource(path)
+      except IOError:
+        logging.info('path %s not found, sending 404', path)
+        self.respond('Not found', 'text/plain', 404)
+        return
+    mimetype, content_encoding = mimetypes.guess_type(path)
+    mimetype = mimetype or 'application/octet-stream'
+    self.respond(contents, mimetype, expires=3600,
+                 content_encoding=content_encoding)
 
   def do_GET(self):  # pylint: disable=invalid-name
     """Handler for all get requests."""
@@ -530,39 +515,38 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     if clean_path.endswith('/'):
       clean_path = clean_path[:-1]
 
-    data_handlers = {
-        DATA_PREFIX + SCALARS_ROUTE: self._serve_scalars,
-        DATA_PREFIX + GRAPH_ROUTE: self._serve_graph,
-        DATA_PREFIX + RUN_METADATA_ROUTE: self._serve_run_metadata,
-        DATA_PREFIX + HISTOGRAMS_ROUTE: self._serve_histograms,
-        DATA_PREFIX + COMPRESSED_HISTOGRAMS_ROUTE:
-            self._serve_compressed_histograms,
-        DATA_PREFIX + IMAGES_ROUTE: self._serve_images,
-        DATA_PREFIX + INDIVIDUAL_IMAGE_ROUTE: self._serve_image,
-        DATA_PREFIX + AUDIO_ROUTE: self._serve_audio,
-        DATA_PREFIX + INDIVIDUAL_AUDIO_ROUTE: self._serve_individual_audio,
-        DATA_PREFIX + RUNS_ROUTE: self._serve_runs,
-        '/app.js': self._serve_js
-    }
-
     query_params = urlparse.parse_qs(parsed_url.query)
     # parse_qs returns a list of values for each key; we're only interested in
     # the first.
     for key in query_params:
       value_count = len(query_params[key])
       if value_count != 1:
-        self.send_error(
-            400, 'query parameter %s should have exactly one value, had %d' %
-            (key, value_count))
+        self.respond(
+            'query parameter %s should have exactly one value, had %d' %
+            (key, value_count), 'text/plain', 400)
         return
       query_params[key] = query_params[key][0]
 
-    if clean_path in data_handlers:
-      data_handlers[clean_path](query_params)
+    if clean_path in self.data_handlers:
+      self.data_handlers[clean_path](query_params)
     elif clean_path in TAB_ROUTES:
       self._serve_index(query_params)
     else:
       self._serve_static_file(clean_path)
+
+  # @Override
+  def log_message(self, *args):
+    """Logs message."""
+    # By default, BaseHTTPRequestHandler logs to stderr.
+    logging.info(*args)
+
+  # @Override
+  def log_request(self, *args):
+    """Does nothing."""
+    # This is called by BaseHTTPRequestHandler.send_response() which causes it
+    # to log every request. We've configured http.Respond() to only log
+    # requests with >=400 status code.
+    pass
 
 
 def _uniform_sample(values, count):

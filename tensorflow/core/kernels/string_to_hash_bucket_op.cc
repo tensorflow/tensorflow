@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,9 +23,9 @@ namespace tensorflow {
 
 // Deprecated class. It also uses `string_tensor` as Op argument instead of
 // `input`.
-class LegacyStringToHashBuckeOp : public OpKernel {
+class LegacyStringToHashBucketOp : public OpKernel {
  public:
-  explicit LegacyStringToHashBuckeOp(OpKernelConstruction* ctx)
+  explicit LegacyStringToHashBucketOp(OpKernelConstruction* ctx)
       : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("num_buckets", &num_buckets_));
   }
@@ -55,12 +55,12 @@ class LegacyStringToHashBuckeOp : public OpKernel {
  private:
   int64 num_buckets_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(LegacyStringToHashBuckeOp);
+  TF_DISALLOW_COPY_AND_ASSIGN(LegacyStringToHashBucketOp);
 };
 
 // StringToHashBucket is deprecated in favor of StringToHashBucketFast/Strong.
 REGISTER_KERNEL_BUILDER(Name("StringToHashBucket").Device(DEVICE_CPU),
-                        LegacyStringToHashBuckeOp);
+                        LegacyStringToHashBucketOp);
 
 REGISTER_KERNEL_BUILDER(Name("StringToHashBucketFast").Device(DEVICE_CPU),
                         StringToHashBucketOp<Fingerprint64>);

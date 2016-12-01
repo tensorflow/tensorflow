@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -49,8 +49,8 @@ static Graph* BM_AdjustContrast(int batches, int width, int height) {
 // Benchmark results as of cl/109478777
 // (note that the definition has changed to perform no min/max or clamping,
 // so a comparison to cl/106323955 is inherently unfair)
-// The GPU test ran with -c opt --config=gcudacc --copt=-mavx, CPU ran without
-// --config=gcudacc because for some reason that killed throughput measurement.
+// The GPU test ran with -c opt --config=cuda --copt=-mavx, CPU ran without
+// --config=cuda because for some reason that killed throughput measurement.
 // CPU: Intel Haswell with HyperThreading (6 cores) dL1:32KB dL2:256KB dL3:15MB
 // GPU: Tesla K40m
 // BM_AdjustContrast_cpu_1_299_299     179084     340186  2181  751.9M items/s

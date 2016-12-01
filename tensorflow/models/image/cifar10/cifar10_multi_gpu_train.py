@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -87,23 +87,14 @@ def tower_loss(scope):
   # Calculate the total loss for the current tower.
   total_loss = tf.add_n(losses, name='total_loss')
 
-  # Compute the moving average of all individual losses and the total loss.
-  loss_averages = tf.train.ExponentialMovingAverage(0.9, name='avg')
-  loss_averages_op = loss_averages.apply(losses + [total_loss])
-
   # Attach a scalar summary to all individual losses and the total loss; do the
   # same for the averaged version of the losses.
   for l in losses + [total_loss]:
     # Remove 'tower_[0-9]/' from the name in case this is a multi-GPU training
     # session. This helps the clarity of presentation on tensorboard.
     loss_name = re.sub('%s_[0-9]*/' % cifar10.TOWER_NAME, '', l.op.name)
-    # Name each loss as '(raw)' and name the moving average version of the loss
-    # as the original loss name.
-    tf.scalar_summary(loss_name +' (raw)', l)
-    tf.scalar_summary(loss_name, loss_averages.average(l))
+    tf.scalar_summary(loss_name, l)
 
-  with tf.control_dependencies([loss_averages_op]):
-    total_loss = tf.identity(total_loss)
   return total_loss
 
 
@@ -226,7 +217,7 @@ def train():
     summary_op = tf.merge_summary(summaries)
 
     # Build an initialization operation to run below.
-    init = tf.initialize_all_variables()
+    init = tf.global_variables_initializer()
 
     # Start running operations on the Graph. allow_soft_placement must be set to
     # True to build towers on GPU, as some of the ops do not have GPU

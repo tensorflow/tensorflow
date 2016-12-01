@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,10 +22,17 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import tensor_array_ops
 
 
-ops.NoGradient("TensorArray")
-ops.NoGradient("TensorArrayGrad")
-ops.NoGradient("TensorArraySize")
-ops.NoGradient("TensorArrayClose")
+# TODO(b/31222613): These ops may be differentiable, and there may be
+# latent bugs here.
+ops.NotDifferentiable("TensorArray")
+ops.NotDifferentiable("TensorArrayGrad")
+ops.NotDifferentiable("TensorArraySize")
+ops.NotDifferentiable("TensorArrayClose")
+
+ops.NotDifferentiable("TensorArrayV2")
+ops.NotDifferentiable("TensorArrayGradV2")
+ops.NotDifferentiable("TensorArraySizeV2")
+ops.NotDifferentiable("TensorArrayCloseV2")
 
 
 def _GetGradSource(op_or_tensor):
@@ -66,6 +73,7 @@ def _GetGradSource(op_or_tensor):
 
 
 @ops.RegisterGradient("TensorArrayRead")
+@ops.RegisterGradient("TensorArrayReadV2")
 def _TensorArrayReadGrad(op, grad):
   """Gradient for TensorArrayRead.
 
@@ -94,6 +102,7 @@ def _TensorArrayReadGrad(op, grad):
 
 
 @ops.RegisterGradient("TensorArrayWrite")
+@ops.RegisterGradient("TensorArrayWriteV2")
 def _TensorArrayWriteGrad(op, flow):
   """Gradient for TensorArrayWrite.
 
@@ -116,13 +125,14 @@ def _TensorArrayWriteGrad(op, flow):
   return [None, None, grad, flow]
 
 
-@ops.RegisterGradient("TensorArrayPack")
-def _TensorArrayPackGrad(op, grad):
-  """Gradient for TensorArrayPack.
+@ops.RegisterGradient("TensorArrayGather")
+@ops.RegisterGradient("TensorArrayGatherV2")
+def _TensorArrayGatherGrad(op, grad):
+  """Gradient for TensorArrayGather.
 
   Args:
-    op: Forward TensorArrayPack op.
-    grad: Gradient `Tensor` to TensorArrayPack.
+    op: Forward TensorArrayGather op.
+    grad: Gradient `Tensor` to TensorArrayGather.
 
   Returns:
     A flow `Tensor`, which can be used in control dependencies to
@@ -134,36 +144,40 @@ def _TensorArrayPackGrad(op, grad):
   # For this we need to wait until it has been created by depending on
   # the input flow of the original op.
   handle = op.inputs[0]
-  flow = op.inputs[1]
+  indices = op.inputs[1]
+  flow = op.inputs[2]
   dtype = op.get_attr("dtype")
   grad_source = _GetGradSource(grad)
   g = tensor_array_ops.TensorArray(dtype=dtype, handle=handle).grad(
       source=grad_source, flow=flow)
-  u_g = g.unpack(grad)
-  return [None, u_g.flow]
+  u_g = g.scatter(indices, grad)
+  return [None, None, u_g.flow]
 
 
-@ops.RegisterGradient("TensorArrayUnpack")
-def _TensorArrayUnpackGrad(op, flow):
-  """Gradient for TensorArrayUnpack.
+@ops.RegisterGradient("TensorArrayScatter")
+@ops.RegisterGradient("TensorArrayScatterV2")
+def _TensorArrayScatterGrad(op, flow):
+  """Gradient for TensorArrayScatter.
 
   Args:
-    op: Forward TensorArrayUnpack op.
-    flow: Gradient `Tensor` flow to TensorArrayUnpack.
+    op: Forward TensorArrayScatter op.
+    flow: Gradient `Tensor` flow to TensorArrayScatter.
 
   Returns:
     A grad `Tensor`, the gradient created in upstream ReadGrads or PackGrad.
   """
   handle = op.inputs[0]
+  indices = op.inputs[1]
   dtype = op.get_attr("T")
   grad_source = _GetGradSource(flow)
   g = tensor_array_ops.TensorArray(dtype=dtype, handle=handle).grad(
       source=grad_source, flow=flow)
-  grad = g.pack()
-  return [None, grad, flow]
+  grad = g.gather(indices)
+  return [None, None, grad, flow]
 
 
 @ops.RegisterGradient("TensorArrayConcat")
+@ops.RegisterGradient("TensorArrayConcatV2")
 def _TensorArrayConcatGrad(op, grad, unused_lengths_grad):
   """Gradient for TensorArrayConcat.
 
@@ -193,6 +207,7 @@ def _TensorArrayConcatGrad(op, grad, unused_lengths_grad):
 
 
 @ops.RegisterGradient("TensorArraySplit")
+@ops.RegisterGradient("TensorArraySplitV2")
 def _TensorArraySplitGrad(op, flow):
   """Gradient for TensorArraySplit.
 

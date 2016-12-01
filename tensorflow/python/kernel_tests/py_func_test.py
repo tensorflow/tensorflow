@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,10 +18,12 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+from six.moves import queue
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import script_ops
 
 
@@ -31,6 +33,13 @@ class PyOpTest(tf.test.TestCase):
 
     def my_func(x, y):
       return np.sinh(x) + np.cosh(y)
+
+    # single type
+    with self.test_session():
+      x = tf.constant(1.0, tf.float32)
+      y = tf.constant(2.0, tf.float32)
+      z = tf.py_func(my_func, [x, y], tf.float32)
+      self.assertEqual(z.eval(), my_func(1.0, 2.0).astype(np.float32))
 
     # scalar
     with self.test_session():
@@ -89,6 +98,13 @@ class PyOpTest(tf.test.TestCase):
       self.assertAllClose(y.eval(), 0.0)
       self.assertAllClose(z.eval(), 1.0)
 
+    # returns a tuple, Tout and inp a tuple
+    with self.test_session():
+      x = tf.constant(0.0, tf.float64)
+      y, z = tf.py_func(tuple_func, (x,), (tf.float64, tf.float64))
+      self.assertAllClose(y.eval(), 0.0)
+      self.assertAllClose(z.eval(), 1.0)
+
   def testStrings(self):
 
     def read_fixed_length_numpy_strings():
@@ -102,6 +118,12 @@ class PyOpTest(tf.test.TestCase):
       y, = tf.py_func(read_fixed_length_numpy_strings, [], [tf.string])
       z, = tf.py_func(read_and_return_strings, [x, y], [tf.string])
       self.assertListEqual(list(z.eval()), [b"hello there", b"hi there"])
+
+  def testStringPadding(self):
+    correct = [b"this", b"is", b"a", b"test"]
+    with self.test_session():
+      s, = tf.py_func(lambda: [correct], [], [tf.string])
+      self.assertAllEqual(s.eval(), correct)
 
   def testLarge(self):
     with self.test_session() as sess:
@@ -124,22 +146,28 @@ class PyOpTest(tf.test.TestCase):
         _ = tf.py_func(lambda x: x + 1, [c], [tf.float32])
     self.assertTrue(script_ops._py_funcs.size() < 100)
 
-  def testError(self):
+  def testBadNumpyReturnType(self):
     with self.test_session():
 
-      def bad1():
+      def bad():
         # Structured numpy arrays aren't supported.
         return np.array([], dtype=[("foo", np.float32)])
 
-      def bad2():
-        # Non-string python objects aren't supported.
-        return tf.float32
+      y, = tf.py_func(bad, [], [tf.float32])
 
-      y, = tf.py_func(bad1, [], [tf.string])
-      z, = tf.py_func(bad2, [], [tf.float64])
       with self.assertRaisesRegexp(errors.UnimplementedError,
                                    "Unsupported numpy type"):
         y.eval()
+
+  def testBadReturnType(self):
+    with self.test_session():
+
+      def bad():
+        # Non-string python objects aren't supported.
+        return tf.float32
+
+      z, = tf.py_func(bad, [], [tf.float64])
+
       with self.assertRaisesRegexp(errors.UnimplementedError,
                                    "Unsupported object type"):
         z.eval()
@@ -153,11 +181,84 @@ class PyOpTest(tf.test.TestCase):
       self.assertEqual(sess.run(x), 1)
       self.assertEqual(sess.run(x), 2)
 
+  def testStateless(self):
+    # Not using self.test_session(), which disables optimization.
+    with tf.Session() as sess:
+      producer = iter(range(3))
+      x, = tf.py_func(lambda: next(producer), [], [tf.int64], stateful=False)
+      self.assertEqual(sess.run(x), 0)
+      self.assertEqual(sess.run(x), 0)
+      self.assertEqual(sess.run(x), 0)
+
+  def testGradientFunction(self):
+    # Input to tf.py_func is necessary, otherwise get_gradient_function()
+    # returns None per default.
+    a = tf.constant(0)
+    x, = tf.py_func(lambda a: 0, [a], [tf.int64])
+    y, = tf.py_func(lambda a: 0, [a], [tf.int64], stateful=False)
+    self.assertEqual(None, ops.get_gradient_function(x.op))
+    self.assertEqual(None, ops.get_gradient_function(y.op))
+
   def testCOrder(self):
     with self.test_session():
       val = [[1, 2], [3, 4]]
       x, = tf.py_func(lambda: np.array(val, order="F"), [], [tf.int64])
       self.assertAllEqual(val, x.eval())
+
+  def testParallel(self):
+    # Tests that tf.py_func's can run in parallel if they release the GIL.
+    with self.test_session() as session:
+      q = queue.Queue(1)
+
+      def blocking_put():
+        q.put(42)
+        q.join()  # Wait for task_done().
+        return 42
+
+      def blocking_get():
+        v = q.get(block=True)  # Wait for put().
+        q.task_done()
+        return v
+
+      x, = tf.py_func(blocking_put, [], [tf.int64])
+      y, = tf.py_func(blocking_get, [], [tf.int64])
+
+      # This will result in a deadlock if the py_func's don't run in parallel.
+      session.run([x, y])
+
+  def testNoReturnValueStateful(self):
+
+    class State(object):
+
+      def __init__(self):
+        self._value = np.array([1], np.int64)
+
+      def _increment(self, diff):
+        self._value += diff
+
+      def increment(self, diff):
+        return tf.py_func(self._increment, [diff], [], stateful=True)
+
+      @property
+      def value(self):
+        return self._value
+
+    with self.test_session() as sess:
+      s = State()
+      op = s.increment(tf.constant(2, tf.int64))
+      ret = sess.run(op)
+      self.assertIsNone(ret)
+      self.assertAllEqual([3], s.value)
+
+  def testNoReturnValueStateless(self):
+
+    def do_nothing(unused_x):
+      pass
+
+    f = tf.py_func(do_nothing, [tf.constant(3, tf.int64)], [], stateful=False)
+    with self.test_session() as sess:
+      self.assertEqual(sess.run(f), [])
+
 
 if __name__ == "__main__":
   tf.test.main()

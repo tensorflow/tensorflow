@@ -1,9 +1,9 @@
-### `tf.train.batch_join(tensors_list, batch_size, capacity=32, enqueue_many=False, shapes=None, dynamic_pad=False, shared_name=None, name=None)` {#batch_join}
+### `tf.train.batch_join(tensors_list, batch_size, capacity=32, enqueue_many=False, shapes=None, dynamic_pad=False, allow_smaller_final_batch=False, shared_name=None, name=None)` {#batch_join}
 
 Runs a list of tensors to fill a queue to create batches of examples.
 
 The `tensors_list` argument is a list of tuples of tensors, or a list of
-dictionaries of tensors.  Each element in the list is treated similarily
+dictionaries of tensors.  Each element in the list is treated similarly
 to the `tensors` argument of `tf.train.batch()`.
 
 Enqueues a different list of tensors in different threads.
@@ -49,6 +49,13 @@ on the right to the maximum shape of the tensors in the current minibatch.
 For numbers, this padding takes value 0.  For strings, this padding is
 the empty string.  See `PaddingFIFOQueue` for more info.
 
+If `allow_smaller_final_batch` is `True`, a smaller batch value than
+`batch_size` is returned when the queue is closed and there are not enough
+elements to fill the batch, otherwise the pending elements are discarded.
+In addition, all output tensors' static shapes, as accessed via the
+`get_shape` method will have a first `Dimension` value of `None`, and
+operations that depend on fixed batch_size would fail.
+
 ##### Args:
 
 
@@ -62,6 +69,8 @@ the empty string.  See `PaddingFIFOQueue` for more info.
 *  <b>`dynamic_pad`</b>: Boolean.  Allow variable dimensions in input shapes.
     The given dimensions are padded upon dequeue so that tensors within a
     batch have the same shapes.
+*  <b>`allow_smaller_final_batch`</b>: (Optional) Boolean. If `True`, allow the final
+    batch to be smaller if there are insufficient items left in the queue.
 *  <b>`shared_name`</b>: (Optional) If set, this queue will be shared under the given
     name across multiple sessions.
 *  <b>`name`</b>: (Optional) A name for the operations.

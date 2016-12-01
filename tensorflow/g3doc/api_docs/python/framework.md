@@ -24,7 +24,7 @@ A default `Graph` is always registered, and accessible by calling
 To add an operation to the default graph, simply call one of the functions
 that defines a new `Operation`:
 
-```
+```python
 c = tf.constant(4.0)
 assert c.graph is tf.get_default_graph()
 ```
@@ -360,6 +360,12 @@ with g.name_scope('my_layer') as scope:
   output = tf.nn.relu(affine, name=scope)
 ```
 
+NOTE: This constructor validates the given `name`. Valid scope
+names match one of the following regular expressions:
+
+    [A-Za-z0-9.][A-Za-z0-9_.\\-/]* (for scopes at the root)
+    [A-Za-z0-9_.\\-/]* (for other scopes)
+
 ##### Args:
 
 
@@ -369,13 +375,18 @@ with g.name_scope('my_layer') as scope:
 
   A context manager that installs `name` as a new name scope.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `name` is not a valid scope name. The rules are the
+
 
 
 A `Graph` instance supports an arbitrary number of "collections"
 that are identified by name. For convenience when building a large
 graph, collections can store groups of related objects: for
 example, the `tf.Variable` uses a collection (named
-[`tf.GraphKeys.VARIABLES`](../../api_docs/python/framework.md#GraphKeys)) for
+[`tf.GraphKeys.GLOBAL_VARIABLES`](../../api_docs/python/framework.md#GraphKeys)) for
 all variables that are created during the construction of a graph. The caller
 may define additional collections by specifying a new name.
 
@@ -634,8 +645,8 @@ Note that this is unrelated to the
 
 The GraphDef version information of this graph.
 
-For details on the meaning of each version, see [`GraphDef`]
-(https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto).
+For details on the meaning of each version, see
+[`GraphDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto).
 
 ##### Returns:
 
@@ -736,6 +747,26 @@ with tf.Graph().as_default() as g:
 #### Other Methods
 - - -
 
+#### `tf.Graph.building_function` {#Graph.building_function}
+
+Returns True iff this graph represents a function.
+
+
+- - -
+
+#### `tf.Graph.clear_collection(name)` {#Graph.clear_collection}
+
+Clears all values in a collection.
+
+##### Args:
+
+
+*  <b>`name`</b>: The key for the collection. The `GraphKeys` class contains many
+    standard names for collections.
+
+
+- - -
+
 #### `tf.Graph.colocate_with(op, ignore_existing=False)` {#Graph.colocate_with}
 
 Returns a context manager that specifies an op to colocate with.
@@ -754,23 +785,79 @@ with g.colocate_with(a):
 `b` and `c` will always be colocated with `a`, no matter where `a`
 is eventually placed.
 
+**NOTE** Using a colocation scope resets any existing device constraints.
+
+If `op` is `None` then `ignore_existing` must be `True` and the new
+scope resets all colocation and device constraints.
+
 ##### Args:
 
 
-*  <b>`op`</b>: The op to colocate all created ops with.
+*  <b>`op`</b>: The op to colocate all created ops with, or `None`.
 *  <b>`ignore_existing`</b>: If true, only applies colocation of this op within
     the context, rather than applying all colocation properties
-    on the stack.
+    on the stack.  If `op` is `None`, this value must be `True`.
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if op is None.
+*  <b>`ValueError`</b>: if op is None but ignore_existing is False.
 
 ##### Yields:
 
   A context manager that specifies the op with which to colocate
   newly created ops.
+
+
+- - -
+
+#### `tf.Graph.container(container_name)` {#Graph.container}
+
+Returns a context manager that specifies the resource container to use.
+
+Stateful operations, such as variables and queues, can maintain their
+states on devices so that they can be shared by multiple processes.
+A resource container is a string name under which these stateful
+operations are tracked. These resources can be released or cleared
+with `tf.Session.reset()`.
+
+For example:
+
+```python
+with g.container('experiment0'):
+  # All stateful Operations constructed in this context will be placed
+  # in resource container "experiment0".
+  v1 = tf.Variable([1.0])
+  v2 = tf.Variable([2.0])
+  with g.container("experiment1"):
+    # All stateful Operations constructed in this context will be
+    # placed in resource container "experiment1".
+    v3 = tf.Variable([3.0])
+    q1 = tf.FIFOQueue(10, tf.float32)
+  # All stateful Operations constructed in this context will be
+  # be created in the "experiment0".
+  v4 = tf.Variable([4.0])
+  q1 = tf.FIFOQueue(20, tf.float32)
+  with g.container(""):
+    # All stateful Operations constructed in this context will be
+    # be placed in the default resource container.
+    v5 = tf.Variable([5.0])
+    q3 = tf.FIFOQueue(30, tf.float32)
+
+# Resets container "experiment0", after which the state of v1, v2, v4, q1
+# will become undefined (such as uninitialized).
+tf.Session.reset(target, ["experiment0"])
+```
+
+##### Args:
+
+
+*  <b>`container_name`</b>: container name string.
+
+##### Returns:
+
+  A context manager for defining resource containers for stateful ops,
+    yields the container name.
 
 
 - - -
@@ -789,9 +876,23 @@ Returns `True` if and only if `tensor` is feedable.
 
 - - -
 
+#### `tf.Graph.is_fetchable(tensor_or_op)` {#Graph.is_fetchable}
+
+Returns `True` if and only if `tensor_or_op` is fetchable.
+
+
+- - -
+
 #### `tf.Graph.prevent_feeding(tensor)` {#Graph.prevent_feeding}
 
 Marks the given `tensor` as unfeedable in this graph.
+
+
+- - -
+
+#### `tf.Graph.prevent_fetching(op)` {#Graph.prevent_fetching}
+
+Marks the given `op` as unfetchable in this graph.
 
 
 
@@ -947,13 +1048,13 @@ NOTE: This constructor validates the name of the `Operation` (passed
 as `node_def.name`). Valid `Operation` names match the following
 regular expression:
 
-    [A-Za-z0-9.][A-Za-z0-9_.\-/]*
+    [A-Za-z0-9.][A-Za-z0-9_.\\-/]*
 
 ##### Args:
 
 
-*  <b>`node_def`</b>: `graph_pb2.NodeDef`.  `NodeDef` for the `Operation`.
-    Used for attributes of `graph_pb2.NodeDef`, typically `name`,
+*  <b>`node_def`</b>: `node_def_pb2.NodeDef`.  `NodeDef` for the `Operation`.
+    Used for attributes of `node_def_pb2.NodeDef`, typically `name`,
     `op`, and `device`.  The `input` attribute is irrelevant here
     as it will be computed when generating the model.
 *  <b>`g`</b>: `Graph`. The parent graph.
@@ -986,6 +1087,13 @@ regular expression:
 
 - - -
 
+#### `tf.Operation.__str__()` {#Operation.__str__}
+
+
+
+
+- - -
+
 #### `tf.Operation.colocation_groups()` {#Operation.colocation_groups}
 
 Returns the list of colocation groups of the op.
@@ -1000,7 +1108,7 @@ Returns a serialized `NodeDef` representation of this operation.
 ##### Returns:
 
   A
-  [`NodeDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto)
+  [`NodeDef`](https://www.tensorflow.org/code/tensorflow/core/framework/node_def.proto)
   protocol buffer.
 
 
@@ -1029,7 +1137,7 @@ DEPRECATED: Use outputs.
 
 ### `class tf.Tensor` {#Tensor}
 
-Represents a value produced by an `Operation`.
+Represents one of the outputs of an `Operation`.
 
 A `Tensor` is a symbolic handle to one of the outputs of an
 `Operation`. It does not hold the values of that operation's output,
@@ -1149,9 +1257,9 @@ available, or `session` must be specified explicitly.
 Returns the `TensorShape` that represents the shape of this tensor.
 
 The shape is computed using shape inference functions that are
-registered for each `Operation` type using `tf.RegisterShape`.
-See [`TensorShape`](../../api_docs/python/framework.md#TensorShape) for more
-details of what a shape represents.
+registered in the Op for each `Operation`.  See
+[`TensorShape`](../../api_docs/python/framework.md#TensorShape)
+for more details of what a shape represents.
 
 The inferred shape of a tensor is used to provide shape
 information without having to launch the graph in a session. This
@@ -1232,6 +1340,260 @@ print(image.get_shape())
 #### Other Methods
 - - -
 
+#### `tf.Tensor.__abs__(x, name=None)` {#Tensor.__abs__}
+
+Computes the absolute value of a tensor.
+
+Given a tensor of real numbers `x`, this operation returns a tensor
+containing the absolute value of each element in `x`. For example, if x is
+an input element and y is an output element, this operation computes
+\\(y = |x|\\).
+
+See [`tf.complex_abs()`](#tf_complex_abs) to compute the absolute value of a
+complex
+number.
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor` or `SparseTensor` of type `float32`, `float64`, `int32`, or
+    `int64`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` or `SparseTensor` the same size and type as `x` with absolute
+    values.
+
+
+- - -
+
+#### `tf.Tensor.__add__(x, y)` {#Tensor.__add__}
+
+Returns x + y element-wise.
+
+*NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `complex128`, `string`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `x`.
+
+
+- - -
+
+#### `tf.Tensor.__and__(x, y)` {#Tensor.__and__}
+
+Returns the truth value of x AND y element-wise.
+
+*NOTE*: `LogicalAnd` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor` of type `bool`.
+*  <b>`y`</b>: A `Tensor` of type `bool`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `bool`.
+
+
+- - -
+
+#### `tf.Tensor.__bool__()` {#Tensor.__bool__}
+
+Dummy method to prevent a tensor from being used as a Python `bool`.
+
+This overload raises a `TypeError` when the user inadvertently
+treats a `Tensor` as a boolean (e.g. in an `if` statement). For
+example:
+
+```python
+if tf.constant(True):  # Will raise.
+  # ...
+
+if tf.constant(5) < tf.constant(7):  # Will raise.
+  # ...
+```
+
+This disallows ambiguities between testing the Python value vs testing the
+dynamic condition of the `Tensor`.
+
+##### Raises:
+
+  `TypeError`.
+
+
+- - -
+
+#### `tf.Tensor.__div__(x, y)` {#Tensor.__div__}
+
+
+
+
+- - -
+
+#### `tf.Tensor.__eq__(other)` {#Tensor.__eq__}
+
+
+
+
+- - -
+
+#### `tf.Tensor.__floordiv__(x, y)` {#Tensor.__floordiv__}
+
+Divides `x / y` elementwise, rounding toward the most negative integer.
+
+The same as `tf.div(x,y)` for integers, but uses `tf.floor(tf.div(x,y))` for
+floating point arguments so that the result is always an integer (though
+possibly an integer represented as floating point).  This op is generated by
+`x // y` floor division in Python 3 and in Python 2.7 with
+`from __future__ import division`.
+
+Note that for efficiency, `floordiv` uses C semantics for negative numbers
+(unlike Python and Numpy).
+
+`x` and `y` must have the same type, and the result will have the same type
+as well.
+
+##### Args:
+
+
+*  <b>`x`</b>: `Tensor` numerator of real numeric type.
+*  <b>`y`</b>: `Tensor` denominator of real numeric type.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  `x / y` rounded down (except possibly towards zero for negative integers).
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If the inputs are complex.
+
+
+- - -
+
+#### `tf.Tensor.__ge__(x, y, name=None)` {#Tensor.__ge__}
+
+Returns the truth value of (x >= y) element-wise.
+
+*NOTE*: `GreaterEqual` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `bool`.
+
+
+- - -
+
+#### `tf.Tensor.__getitem__(tensor, slice_spec, var=None)` {#Tensor.__getitem__}
+
+Overload for Tensor.__getitem__.
+
+This operation extracts the specified region from the tensor.
+The notation is similar to NumPy with the restriction that
+currently only support basic indexing. That means that
+using a tensor as input is not currently allowed
+
+Some useful examples:
+
+```python
+# strip leading and trailing 2 elements
+foo = tf.constant([1,2,3,4,5,6])
+print(foo[2:-2].eval()) # => [3,4]
+
+# skip every row and reverse every column
+foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
+print(foo[::2,::-1].eval()) # => [[3,2,1], [9,8,7]]
+
+# Insert another dimension
+foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
+print(foo[tf.newaxis, :, :].eval()) # => [[[3,2,1], [9,8,7]]]
+print(foo[:, tf.newaxis, :].eval()) # => [[[3,2,1]], [[9,8,7]]]
+print(foo[:, :, tf.newaxis].eval()) # => [[[3],[2],[1]], [[9],[8],[7]]]
+
+# Ellipses (3 equivalent operations)
+print(foo[tf.newaxis, :, :].eval()) # => [[[3,2,1], [9,8,7]]]
+print(foo[tf.newaxis, ...].eval()) # => [[[3,2,1], [9,8,7]]]
+print(foo[tf.newaxis].eval()) # => [[[3,2,1], [9,8,7]]]
+```
+
+##### Notes:
+
+  - `tf.newaxis` is `None` as in NumPy.
+  - An implicit ellipsis is placed at the end of the `slice_spec`
+  - NumPy advanced indexing is currently not supported.
+
+##### Args:
+
+
+*  <b>`tensor`</b>: An ops.Tensor object.
+*  <b>`slice_spec`</b>: The arguments to Tensor.__getitem__.
+*  <b>`var`</b>: In the case of variable slice assignment, the Variable
+    object to slice (i.e. tensor is the read-only view of this
+    variable).
+
+##### Returns:
+
+  The appropriate slice of "tensor", based on "slice_spec".
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If a slice range is negative size.
+*  <b>`TypeError`</b>: If the slice indices aren't int, slice, or Ellipsis.
+
+
+- - -
+
+#### `tf.Tensor.__gt__(x, y, name=None)` {#Tensor.__gt__}
+
+Returns the truth value of (x > y) element-wise.
+
+*NOTE*: `Greater` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `bool`.
+
+
+- - -
+
+#### `tf.Tensor.__hash__()` {#Tensor.__hash__}
+
+
+
+
+- - -
+
 #### `tf.Tensor.__init__(op, value_index, dtype)` {#Tensor.__init__}
 
 Creates a new `Tensor`.
@@ -1248,6 +1610,498 @@ Creates a new `Tensor`.
 
 
 *  <b>`TypeError`</b>: If the op is not an `Operation`.
+
+
+- - -
+
+#### `tf.Tensor.__invert__(x, name=None)` {#Tensor.__invert__}
+
+Returns the truth value of NOT x element-wise.
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor` of type `bool`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `bool`.
+
+
+- - -
+
+#### `tf.Tensor.__iter__()` {#Tensor.__iter__}
+
+Dummy method to prevent iteration. Do not call.
+
+NOTE(mrry): If we register __getitem__ as an overloaded operator,
+Python will valiantly attempt to iterate over the Tensor from 0 to
+infinity.  Declaring this method prevents this unintended
+behavior.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: when invoked.
+
+
+- - -
+
+#### `tf.Tensor.__le__(x, y, name=None)` {#Tensor.__le__}
+
+Returns the truth value of (x <= y) element-wise.
+
+*NOTE*: `LessEqual` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `bool`.
+
+
+- - -
+
+#### `tf.Tensor.__lt__(x, y, name=None)` {#Tensor.__lt__}
+
+Returns the truth value of (x < y) element-wise.
+
+*NOTE*: `Less` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `bool`.
+
+
+- - -
+
+#### `tf.Tensor.__mod__(x, y)` {#Tensor.__mod__}
+
+Returns element-wise remainder of division. When `x < 0` xor `y < 0` is
+
+true, this follows Python semantics in that the result here is consistent
+with a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.
+
+*NOTE*: `FloorMod` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`, `float32`, `float64`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `x`.
+
+
+- - -
+
+#### `tf.Tensor.__mul__(x, y)` {#Tensor.__mul__}
+
+Dispatches cwise mul for "Dense*Dense" and "Dense*Sparse".
+
+
+- - -
+
+#### `tf.Tensor.__neg__(x, name=None)` {#Tensor.__neg__}
+
+Computes numerical negative value element-wise.
+
+I.e., \\(y = -x\\).
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `x`.
+
+
+- - -
+
+#### `tf.Tensor.__nonzero__()` {#Tensor.__nonzero__}
+
+Dummy method to prevent a tensor from being used as a Python `bool`.
+
+This is the Python 2.x counterpart to `__bool__()` above.
+
+##### Raises:
+
+  `TypeError`.
+
+
+- - -
+
+#### `tf.Tensor.__or__(x, y)` {#Tensor.__or__}
+
+Returns the truth value of x OR y element-wise.
+
+*NOTE*: `LogicalOr` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor` of type `bool`.
+*  <b>`y`</b>: A `Tensor` of type `bool`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `bool`.
+
+
+- - -
+
+#### `tf.Tensor.__pow__(x, y)` {#Tensor.__pow__}
+
+Computes the power of one value to another.
+
+Given a tensor `x` and a tensor `y`, this operation computes \\(x^y\\) for
+corresponding elements in `x` and `y`. For example:
+
+```
+# tensor 'x' is [[2, 2], [3, 3]]
+# tensor 'y' is [[8, 16], [2, 3]]
+tf.pow(x, y) ==> [[256, 65536], [9, 27]]
+```
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
+   or `complex128`.
+*  <b>`y`</b>: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
+   or `complex128`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`.
+
+
+- - -
+
+#### `tf.Tensor.__radd__(y, x)` {#Tensor.__radd__}
+
+Returns x + y element-wise.
+
+*NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `complex128`, `string`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `x`.
+
+
+- - -
+
+#### `tf.Tensor.__rand__(y, x)` {#Tensor.__rand__}
+
+Returns the truth value of x AND y element-wise.
+
+*NOTE*: `LogicalAnd` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor` of type `bool`.
+*  <b>`y`</b>: A `Tensor` of type `bool`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `bool`.
+
+
+- - -
+
+#### `tf.Tensor.__rdiv__(y, x)` {#Tensor.__rdiv__}
+
+
+
+
+- - -
+
+#### `tf.Tensor.__repr__()` {#Tensor.__repr__}
+
+
+
+
+- - -
+
+#### `tf.Tensor.__rfloordiv__(y, x)` {#Tensor.__rfloordiv__}
+
+Divides `x / y` elementwise, rounding toward the most negative integer.
+
+The same as `tf.div(x,y)` for integers, but uses `tf.floor(tf.div(x,y))` for
+floating point arguments so that the result is always an integer (though
+possibly an integer represented as floating point).  This op is generated by
+`x // y` floor division in Python 3 and in Python 2.7 with
+`from __future__ import division`.
+
+Note that for efficiency, `floordiv` uses C semantics for negative numbers
+(unlike Python and Numpy).
+
+`x` and `y` must have the same type, and the result will have the same type
+as well.
+
+##### Args:
+
+
+*  <b>`x`</b>: `Tensor` numerator of real numeric type.
+*  <b>`y`</b>: `Tensor` denominator of real numeric type.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  `x / y` rounded down (except possibly towards zero for negative integers).
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If the inputs are complex.
+
+
+- - -
+
+#### `tf.Tensor.__rmod__(y, x)` {#Tensor.__rmod__}
+
+Returns element-wise remainder of division. When `x < 0` xor `y < 0` is
+
+true, this follows Python semantics in that the result here is consistent
+with a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.
+
+*NOTE*: `FloorMod` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`, `float32`, `float64`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `x`.
+
+
+- - -
+
+#### `tf.Tensor.__rmul__(y, x)` {#Tensor.__rmul__}
+
+Dispatches cwise mul for "Dense*Dense" and "Dense*Sparse".
+
+
+- - -
+
+#### `tf.Tensor.__ror__(y, x)` {#Tensor.__ror__}
+
+Returns the truth value of x OR y element-wise.
+
+*NOTE*: `LogicalOr` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor` of type `bool`.
+*  <b>`y`</b>: A `Tensor` of type `bool`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `bool`.
+
+
+- - -
+
+#### `tf.Tensor.__rpow__(y, x)` {#Tensor.__rpow__}
+
+Computes the power of one value to another.
+
+Given a tensor `x` and a tensor `y`, this operation computes \\(x^y\\) for
+corresponding elements in `x` and `y`. For example:
+
+```
+# tensor 'x' is [[2, 2], [3, 3]]
+# tensor 'y' is [[8, 16], [2, 3]]
+tf.pow(x, y) ==> [[256, 65536], [9, 27]]
+```
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
+   or `complex128`.
+*  <b>`y`</b>: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
+   or `complex128`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`.
+
+
+- - -
+
+#### `tf.Tensor.__rsub__(y, x)` {#Tensor.__rsub__}
+
+Returns x - y element-wise.
+
+*NOTE*: `Sub` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `x`.
+
+
+- - -
+
+#### `tf.Tensor.__rtruediv__(y, x)` {#Tensor.__rtruediv__}
+
+Divides x / y elementwise, always producing floating point results.
+
+The same as `tf.div` for floating point arguments, but casts integer arguments
+to floating point before dividing so that the result is always floating point.
+This op is generated by normal `x / y` division in Python 3 and in Python 2.7
+with `from __future__ import division`.  If you want integer division that
+rounds down, use `x // y` or `tf.floordiv`.
+
+`x` and `y` must have the same numeric type.  If the inputs are floating
+point, the output will have the same type.  If the inputs are integral, the
+inputs are cast to `float32` for `int8` and `int16` and `float64` for `int32`
+and `int64` (matching the behavior of Numpy).
+
+##### Args:
+
+
+*  <b>`x`</b>: `Tensor` numerator of numeric type.
+*  <b>`y`</b>: `Tensor` denominator of numeric type.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  `x / y` evaluated in floating point.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `x` and `y` have different dtypes.
+
+
+- - -
+
+#### `tf.Tensor.__rxor__(y, x)` {#Tensor.__rxor__}
+
+x ^ y = (x | y) & ~(x & y).
+
+
+- - -
+
+#### `tf.Tensor.__str__()` {#Tensor.__str__}
+
+
+
+
+- - -
+
+#### `tf.Tensor.__sub__(x, y)` {#Tensor.__sub__}
+
+Returns x - y element-wise.
+
+*NOTE*: `Sub` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `x`.
+
+
+- - -
+
+#### `tf.Tensor.__truediv__(x, y)` {#Tensor.__truediv__}
+
+Divides x / y elementwise, always producing floating point results.
+
+The same as `tf.div` for floating point arguments, but casts integer arguments
+to floating point before dividing so that the result is always floating point.
+This op is generated by normal `x / y` division in Python 3 and in Python 2.7
+with `from __future__ import division`.  If you want integer division that
+rounds down, use `x // y` or `tf.floordiv`.
+
+`x` and `y` must have the same numeric type.  If the inputs are floating
+point, the output will have the same type.  If the inputs are integral, the
+inputs are cast to `float32` for `int8` and `int16` and `float64` for `int32`
+and `int64` (matching the behavior of Numpy).
+
+##### Args:
+
+
+*  <b>`x`</b>: `Tensor` numerator of numeric type.
+*  <b>`y`</b>: `Tensor` denominator of numeric type.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  `x / y` evaluated in floating point.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `x` and `y` have different dtypes.
+
+
+- - -
+
+#### `tf.Tensor.__xor__(x, y)` {#Tensor.__xor__}
+
+x ^ y = (x | y) & ~(x & y).
 
 
 - - -
@@ -1275,23 +2129,20 @@ The following `DType` objects are defined:
 * `tf.bfloat16`: 16-bit truncated floating-point.
 * `tf.complex64`: 64-bit single-precision complex.
 * `tf.complex128`: 128-bit double-precision complex.
-
 * `tf.int8`: 8-bit signed integer.
 * `tf.uint8`: 8-bit unsigned integer.
 * `tf.uint16`: 16-bit unsigned integer.
 * `tf.int16`: 16-bit signed integer.
 * `tf.int32`: 32-bit signed integer.
 * `tf.int64`: 64-bit signed integer.
-
 * `tf.bool`: Boolean.
-
 * `tf.string`: String.
-
 * `tf.qint8`: Quantized 8-bit signed integer.
 * `tf.quint8`: Quantized 8-bit unsigned integer.
 * `tf.qint16`: Quantized 16-bit signed integer.
 * `tf.quint16`: Quantized 16-bit unsigned integer.
 * `tf.qint32`: Quantized 32-bit signed integer.
+* `tf.resource`: Handle to a mutable resource.
 
 In addition, variants of these types with the `_ref` suffix are
 defined for reference-typed tensors.
@@ -1307,7 +2158,7 @@ Returns True if the `other` DType will be converted to this DType.
 
 The conversion rules are as follows:
 
-```
+```python
 DType(T)       .is_compatible_with(DType(T))        == True
 DType(T)       .is_compatible_with(DType(T).as_ref) == True
 DType(T).as_ref.is_compatible_with(DType(T))        == False
@@ -1348,23 +2199,9 @@ Returns the dtype correspond to this dtype's real part.
 
 - - -
 
-#### `tf.DType.is_ref_dtype` {#DType.is_ref_dtype}
-
-Returns `True` if this `DType` represents a reference type.
-
-
-- - -
-
-#### `tf.DType.as_ref` {#DType.as_ref}
-
-Returns a reference `DType` based on this `DType`.
-
-
-- - -
-
 #### `tf.DType.is_floating` {#DType.is_floating}
 
-Returns whether this is a (real) floating point type.
+Returns whether this is a (non-quantized, real) floating point type.
 
 
 - - -
@@ -1418,7 +2255,38 @@ Returns a `types_pb2.DataType` enum value based on this `DType`.
 
 
 
+- - -
+
+#### `tf.DType.limits` {#DType.limits}
+
+Return intensity limits, i.e. (min, max) tuple, of the dtype.
+
+##### Args:
+
+  clip_negative : bool, optional
+      If True, clip the negative range (i.e. return 0 for min intensity)
+      even if the image dtype allows negative values.
+Returns
+  min, max : tuple
+    Lower and upper intensity limits.
+
+
+
 #### Other Methods
+- - -
+
+#### `tf.DType.__eq__(other)` {#DType.__eq__}
+
+Returns True iff this DType refers to the same type as `other`.
+
+
+- - -
+
+#### `tf.DType.__hash__()` {#DType.__hash__}
+
+
+
+
 - - -
 
 #### `tf.DType.__init__(type_enum)` {#DType.__init__}
@@ -1438,6 +2306,34 @@ construct a `DataType` object directly. Instead, use the
 
 
 *  <b>`TypeError`</b>: If `type_enum` is not a value `types_pb2.DataType`.
+
+
+- - -
+
+#### `tf.DType.__ne__(other)` {#DType.__ne__}
+
+Returns True iff self != other.
+
+
+- - -
+
+#### `tf.DType.__repr__()` {#DType.__repr__}
+
+
+
+
+- - -
+
+#### `tf.DType.__str__()` {#DType.__str__}
+
+
+
+
+- - -
+
+#### `tf.DType.is_numpy_compatible` {#DType.is_numpy_compatible}
+
+
 
 
 - - -
@@ -1523,23 +2419,61 @@ for more details.
 
 - - -
 
-### `tf.name_scope(name)` {#name_scope}
+### `tf.container(container_name)` {#container}
 
-Wrapper for `Graph.name_scope()` using the default graph.
-
-See
-[`Graph.name_scope()`](../../api_docs/python/framework.md#Graph.name_scope)
-for more details.
+Wrapper for `Graph.container()` using the default graph.
 
 ##### Args:
 
 
-*  <b>`name`</b>: A name for the scope.
+*  <b>`container_name`</b>: The container string to use in the context.
 
 ##### Returns:
 
-  A context manager that installs `name` as a new name scope in the
-  default graph.
+  A context manager that specifies the default container to use for newly
+  created stateful ops.
+
+
+- - -
+
+### `tf.name_scope(name, default_name=None, values=None)` {#name_scope}
+
+Returns a context manager for use when defining a Python op.
+
+This context manager validates that the given `values` are from the
+same graph, makes that graph the default graph, and pushes a
+name scope in that graph (see
+[`Graph.name_scope()`](../../api_docs/python/framework.md#Graph.name_scope)
+for more details on that).
+
+For example, to define a new Python op called `my_op`:
+
+```python
+def my_op(a, b, c, name=None):
+  with tf.name_scope(name, "MyOp", [a, b, c]) as scope:
+    a = tf.convert_to_tensor(a, name="a")
+    b = tf.convert_to_tensor(b, name="b")
+    c = tf.convert_to_tensor(c, name="c")
+    # Define some computation that uses `a`, `b`, and `c`.
+    return foo_op(..., name=scope)
+```
+
+##### Args:
+
+
+*  <b>`name`</b>: The name argument that is passed to the op function.
+*  <b>`default_name`</b>: The default name to use if the `name` argument is `None`.
+*  <b>`values`</b>: The list of `Tensor` arguments that are passed to the op function.
+
+##### Returns:
+
+  A context manager for use in defining Python ops. Yields the name scope.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if neither `name` nor `default_name` is provided
+    but `values` are.
 
 
 - - -
@@ -1567,7 +2501,7 @@ for more details.
 
 - - -
 
-### `tf.convert_to_tensor(value, dtype=None, name=None, as_ref=False)` {#convert_to_tensor}
+### `tf.convert_to_tensor(value, dtype=None, name=None, preferred_dtype=None)` {#convert_to_tensor}
 
 Converts the given `value` to a `Tensor`.
 
@@ -1601,12 +2535,15 @@ and scalars in addition to `Tensor` objects.
 *  <b>`dtype`</b>: Optional element type for the returned tensor. If missing, the
     type is inferred from the type of `value`.
 *  <b>`name`</b>: Optional name to use if a new `Tensor` is created.
-*  <b>`as_ref`</b>: True if we want the result as a ref tensor. Only used if a new
-    `Tensor` is created.
+*  <b>`preferred_dtype`</b>: Optional element type for the returned tensor,
+    used when dtype is None. In some cases, a caller may not have a
+    dtype in mind when converting to a tensor, so preferred_dtype
+    can be used as a soft preference.  If the conversion to
+    `preferred_dtype` is not possible, this argument has no effect.
 
 ##### Returns:
 
-  A `Tensor` based on `value`.
+  An `Output` based on `value`.
 
 ##### Raises:
 
@@ -1617,7 +2554,7 @@ and scalars in addition to `Tensor` objects.
 
 - - -
 
-### `tf.convert_to_tensor_or_indexed_slices(value, dtype=None, name=None, as_ref=False)` {#convert_to_tensor_or_indexed_slices}
+### `tf.convert_to_tensor_or_indexed_slices(value, dtype=None, name=None)` {#convert_to_tensor_or_indexed_slices}
 
 Converts the given object to a `Tensor` or an `IndexedSlices`.
 
@@ -1633,7 +2570,6 @@ unmodified. Otherwise, it is converted to a `Tensor` using
 *  <b>`dtype`</b>: (Optional.) The required `DType` of the returned `Tensor` or
     `IndexedSlices`.
 *  <b>`name`</b>: (Optional.) A name to use if a new `Tensor` is created.
-*  <b>`as_ref`</b>: True if the caller wants the results as ref tensors.
 
 ##### Returns:
 
@@ -1764,7 +2700,11 @@ Loads a TensorFlow plugin, containing custom ops and kernels.
 
 Pass "library_filename" to a platform-specific mechanism for dynamically
 loading a library. The rules for determining the exact location of the
-library are platform-specific and are not documented here.
+library are platform-specific and are not documented here. When the
+library is loaded, ops and kernels registered in the library via the
+`REGISTER_*` macros are made available in the TensorFlow process. Note
+that ops with the same name as an existing op are rejected and not
+registered with the process.
 
 ##### Args:
 
@@ -1869,10 +2809,18 @@ variables.
 
 The following standard keys are defined:
 
-* `VARIABLES`: the `Variable` objects that comprise a model, and
-  must be saved and restored together. See
-  [`tf.all_variables()`](../../api_docs/python/state_ops.md#all_variables)
+* `GLOBAL_VARIABLES`: the default collection of `Variable` objects, shared
+  across distributed environment (model variables are subset of these). See
+  [`tf.global_variables()`](../../api_docs/python/state_ops.md#global_variables)
   for more details.
+  Commonly, all `TRAINABLE_VARIABLES` variables will be in `MODEL_VARIABLES`,
+  and all `MODEL_VARIABLES` variables will be in `GLOBAL_VARIABLES`.
+* `LOCAL_VARIABLES`: the subset of `Variable` objects that are local to each
+  machine. Usually used for temporarily variables, like counters.
+  Note: use `tf.contrib.framework.local_variable` to add to this collection.
+* `MODEL_VARIABLES`: the subset of `Variable` objects that are used in the
+  model for inference (feed forward). Note: use
+  `tf.contrib.framework.model_variable` to add to this collection.
 * `TRAINABLE_VARIABLES`: the subset of `Variable` objects that will
   be trained by an optimizer. See
   [`tf.trainable_variables()`](../../api_docs/python/state_ops.md#trainable_variables)
@@ -1894,6 +2842,17 @@ The following standard keys are defined:
 * `WEIGHTS`: weights inside neural network layers
 * `BIASES`: biases inside neural network layers
 * `ACTIVATIONS`: activations of neural network layers
+- - -
+
+#### `tf.GraphKeys.VARIABLES` {#GraphKeys.VARIABLES}
+
+DEPRECATED FUNCTION
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2017-03-02.
+Instructions for updating:
+VARIABLES collection name is deprecated, please use GLOBAL_VARIABLES instead
+
+
 
 
 ## Defining new operations
@@ -1939,19 +2898,37 @@ Creates a new decorator with `op_type` as the Operation type.
 
 
 
+#### Other Methods
 - - -
 
-### `tf.NoGradient(op_type)` {#NoGradient}
+#### `tf.RegisterGradient.__call__(f)` {#RegisterGradient.__call__}
 
-Specifies that ops of type `op_type` do not have a defined gradient.
+Registers the function `f` as gradient function for `op_type`.
+
+
+
+- - -
+
+### `tf.NotDifferentiable(op_type)` {#NotDifferentiable}
+
+Specifies that ops of type `op_type` is not differentiable.
+
+This function should *not* be used for operations that have a
+well-defined gradient that is not yet implemented.
 
 This function is only used when defining a new op type. It may be
 used for ops such as `tf.size()` that are not differentiable.  For
 example:
 
 ```python
-tf.NoGradient("Size")
+tf.NotDifferentiable("Size")
 ```
+
+The gradient computed for 'op_type' will then propagate zeros.
+
+For ops that have a well-defined gradient but are not yet implemented,
+no declaration should be made, and an error *must* be thrown if
+an attempt to request its gradient is made.
 
 ##### Args:
 
@@ -1967,34 +2944,37 @@ tf.NoGradient("Size")
 
 - - -
 
-### `class tf.RegisterShape` {#RegisterShape}
+### `tf.NoGradient(op_type)` {#NoGradient}
 
-A decorator for registering the shape function for an op type.
+Specifies that ops of type `op_type` is not differentiable.
 
-This decorator is only used when defining a new op type. A shape
-function is a function from an `Operation` object to a list of
-`TensorShape` objects, with one `TensorShape` for each output of the
-operation.
+This function should *not* be used for operations that have a
+well-defined gradient that is not yet implemented.
 
-For example, assuming that operations of type `"Sub"` take two
-inputs `x` and `y`, and return a single output `x - y`, all with the
-same shape, the following shape function would be registered:
+This function is only used when defining a new op type. It may be
+used for ops such as `tf.size()` that are not differentiable.  For
+example:
 
 ```python
-@tf.RegisterShape("Sub")
-def _sub_shape(op):
-  return [op.inputs[0].get_shape().merge_with(op.inputs[1].get_shape())]
+tf.NotDifferentiable("Size")
 ```
 
-The decorator argument `op_type` is the string type of an
-operation. This corresponds to the `OpDef.name` field for the proto
-that defines the operation.
-- - -
+The gradient computed for 'op_type' will then propagate zeros.
 
-#### `tf.RegisterShape.__init__(op_type)` {#RegisterShape.__init__}
+For ops that have a well-defined gradient but are not yet implemented,
+no declaration should be made, and an error *must* be thrown if
+an attempt to request its gradient is made.
 
-Saves the `op_type` as the `Operation` type.
+##### Args:
 
+
+*  <b>`op_type`</b>: The string type of an operation. This corresponds to the
+    `OpDef.name` field for the proto that defines the operation.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `op_type` is not a string.
 
 
 - - -
@@ -2015,10 +2995,11 @@ A `TensorShape` represents a possibly-partial shape specification for a
 
 If a tensor is produced by an operation of type `"Foo"`, its shape
 may be inferred if there is a registered shape function for
-`"Foo"`. See [`tf.RegisterShape()`](../../api_docs/python/framework.md#RegisterShape)
-for details of shape
-functions and how to register them. Alternatively, the shape may be set
-explicitly using [`Tensor.set_shape()`](../../api_docs/python/framework.md#Tensor.set_shape).
+`"Foo"`. See [`Shape functions in
+C++`](../../how_tos/adding_an_op/index.md#shape-functions-in-c) for
+details of shape functions and how to register them. Alternatively,
+the shape may be set explicitly using
+[`Tensor.set_shape()`](../../api_docs/python/framework.md#Tensor.set_shape).
 
 - - -
 
@@ -2086,11 +3067,16 @@ Returns a list of Dimensions, or None if the shape is unspecified.
 
 #### `tf.TensorShape.as_list()` {#TensorShape.as_list}
 
-Returns a list of integers or None for each dimension.
+Returns a list of integers or `None` for each dimension.
 
 ##### Returns:
 
-  A list of integers or None for each dimension.
+  A list of integers or `None` for each dimension.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `self` is an unknown shape with an unknown rank.
 
 
 - - -
@@ -2294,6 +3280,45 @@ Raises an exception if `self` is not fully defined in every dimension.
 #### Other Methods
 - - -
 
+#### `tf.TensorShape.__bool__()` {#TensorShape.__bool__}
+
+Returns True if this shape contains non-zero information.
+
+
+- - -
+
+#### `tf.TensorShape.__eq__(other)` {#TensorShape.__eq__}
+
+Returns True if `self` is equivalent to `other`.
+
+
+- - -
+
+#### `tf.TensorShape.__getitem__(key)` {#TensorShape.__getitem__}
+
+Returns the value of a dimension or a shape, depending on the key.
+
+##### Args:
+
+
+*  <b>`key`</b>: If `key` is an integer, returns the dimension at that index;
+    otherwise if `key` is a slice, returns a TensorShape whose
+    dimensions are those selected by the slice from `self`.
+
+##### Returns:
+
+  A dimension if `key` is an integer, or a `TensorShape` if `key` is a
+  slice.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `key` is a slice, and any of its elements are negative, or
+    if `self` is completely unknown and the step is set.
+
+
+- - -
+
 #### `tf.TensorShape.__init__(dims)` {#TensorShape.__init__}
 
 Creates a new TensorShape with the given dimensions.
@@ -2312,6 +3337,48 @@ Creates a new TensorShape with the given dimensions.
 
 - - -
 
+#### `tf.TensorShape.__iter__()` {#TensorShape.__iter__}
+
+Returns `self.dims` if the rank is known, otherwise raises ValueError.
+
+
+- - -
+
+#### `tf.TensorShape.__len__()` {#TensorShape.__len__}
+
+Returns the rank of this shape, or raises ValueError if unspecified.
+
+
+- - -
+
+#### `tf.TensorShape.__ne__(other)` {#TensorShape.__ne__}
+
+Returns True if `self` is known to be different from `other`.
+
+
+- - -
+
+#### `tf.TensorShape.__nonzero__()` {#TensorShape.__nonzero__}
+
+Returns True if this shape contains non-zero information.
+
+
+- - -
+
+#### `tf.TensorShape.__repr__()` {#TensorShape.__repr__}
+
+
+
+
+- - -
+
+#### `tf.TensorShape.__str__()` {#TensorShape.__str__}
+
+
+
+
+- - -
+
 #### `tf.TensorShape.num_elements()` {#TensorShape.num_elements}
 
 Returns the total number of elements, or none for incomplete shapes.
@@ -2325,9 +3392,285 @@ Returns the total number of elements, or none for incomplete shapes.
 Represents the value of one dimension in a TensorShape.
 - - -
 
+#### `tf.Dimension.__add__(other)` {#Dimension.__add__}
+
+Returns the sum of `self` and `other`.
+
+Dimensions are summed as follows:
+
+  Dimension(m)    + Dimension(n)    == Dimension(m + n)
+  Dimension(m)    + Dimension(None) == Dimension(None)
+  Dimension(None) + Dimension(n)    == Dimension(None)
+  Dimension(None) + Dimension(None) == Dimension(None)
+
+##### Args:
+
+
+*  <b>`other`</b>: Another Dimension.
+
+##### Returns:
+
+  A Dimension whose value is the sum of `self` and `other`.
+
+
+- - -
+
+#### `tf.Dimension.__div__(other)` {#Dimension.__div__}
+
+DEPRECATED: Use `__floordiv__` via `x // y` instead.
+
+This function exists only for backwards compatibility purposes; new code
+should use `__floordiv__` via the syntax `x // y`.  Using `x // y`
+communicates clearly that the result rounds down, and is forward compatible
+to Python 3.
+
+##### Args:
+
+
+*  <b>`other`</b>: Another `Dimension`.
+
+##### Returns:
+
+  A `Dimension` whose value is the integer quotient of `self` and `other`.
+
+
+- - -
+
+#### `tf.Dimension.__eq__(other)` {#Dimension.__eq__}
+
+Returns true if `other` has the same known value as this Dimension.
+
+
+- - -
+
+#### `tf.Dimension.__floordiv__(other)` {#Dimension.__floordiv__}
+
+Returns the quotient of `self` and `other` rounded down.
+
+Dimensions are divided as follows:
+
+  Dimension(m)    // Dimension(n)    == Dimension(m // n)
+  Dimension(m)    // Dimension(None) == Dimension(None)
+  Dimension(None) // Dimension(n)    == Dimension(None)
+  Dimension(None) // Dimension(None) == Dimension(None)
+
+##### Args:
+
+
+*  <b>`other`</b>: Another `Dimension`.
+
+##### Returns:
+
+  A `Dimension` whose value is the integer quotient of `self` and `other`.
+
+
+- - -
+
+#### `tf.Dimension.__ge__(other)` {#Dimension.__ge__}
+
+Returns True if `self` is known to be greater than or equal to `other`.
+
+Dimensions are compared as follows:
+
+  Dimension(m)    >= Dimension(n)    == m >= n
+  Dimension(m)    >= Dimension(None) == None
+  Dimension(None) >= Dimension(n)    == None
+  Dimension(None) >= Dimension(None) == None
+
+##### Args:
+
+
+*  <b>`other`</b>: Another Dimension.
+
+##### Returns:
+
+  The value of `self.value >= other.value` if both are known, otherwise
+  None.
+
+
+- - -
+
+#### `tf.Dimension.__gt__(other)` {#Dimension.__gt__}
+
+Returns True if `self` is known to be greater than `other`.
+
+Dimensions are compared as follows:
+
+  Dimension(m)    > Dimension(n)    == m > n
+  Dimension(m)    > Dimension(None) == None
+  Dimension(None) > Dimension(n)    == None
+  Dimension(None) > Dimension(None) == None
+
+##### Args:
+
+
+*  <b>`other`</b>: Another Dimension.
+
+##### Returns:
+
+  The value of `self.value > other.value` if both are known, otherwise
+  None.
+
+
+- - -
+
+#### `tf.Dimension.__index__()` {#Dimension.__index__}
+
+
+
+
+- - -
+
 #### `tf.Dimension.__init__(value)` {#Dimension.__init__}
 
 Creates a new Dimension with the given value.
+
+
+- - -
+
+#### `tf.Dimension.__int__()` {#Dimension.__int__}
+
+
+
+
+- - -
+
+#### `tf.Dimension.__le__(other)` {#Dimension.__le__}
+
+Returns True if `self` is known to be less than or equal to `other`.
+
+Dimensions are compared as follows:
+
+  Dimension(m)    <= Dimension(n)    == m <= n
+  Dimension(m)    <= Dimension(None) == None
+  Dimension(None) <= Dimension(n)    == None
+  Dimension(None) <= Dimension(None) == None
+
+##### Args:
+
+
+*  <b>`other`</b>: Another Dimension.
+
+##### Returns:
+
+  The value of `self.value <= other.value` if both are known, otherwise
+  None.
+
+
+- - -
+
+#### `tf.Dimension.__lt__(other)` {#Dimension.__lt__}
+
+Returns True if `self` is known to be less than `other`.
+
+Dimensions are compared as follows:
+
+  Dimension(m)    < Dimension(n)    == m < n
+  Dimension(m)    < Dimension(None) == None
+  Dimension(None) < Dimension(n)    == None
+  Dimension(None) < Dimension(None) == None
+
+##### Args:
+
+
+*  <b>`other`</b>: Another Dimension.
+
+##### Returns:
+
+  The value of `self.value < other.value` if both are known, otherwise
+  None.
+
+
+- - -
+
+#### `tf.Dimension.__mod__(other)` {#Dimension.__mod__}
+
+Returns `self` modulo `other.
+
+Dimension moduli are computed  as follows:
+
+  Dimension(m)    % Dimension(n)     == Dimension(m % n)
+  Dimension(m)    % Dimension(None)  == Dimension(None)
+  Dimension(None) % Dimension(n)     == Dimension(None)
+  Dimension(None) %  Dimension(None) == Dimension(None)
+
+##### Args:
+
+
+*  <b>`other`</b>: Another Dimension.
+
+##### Returns:
+
+  A Dimension whose value is `self` modulo `other`.
+
+
+- - -
+
+#### `tf.Dimension.__mul__(other)` {#Dimension.__mul__}
+
+Returns the product of `self` and `other`.
+
+Dimensions are summed as follows:
+
+```
+  Dimension(m)    * Dimension(n)    == Dimension(m * n)
+  Dimension(m)    * Dimension(None) == Dimension(None)
+  Dimension(None) * Dimension(n)    == Dimension(None)
+  Dimension(None) * Dimension(None) == Dimension(None)
+```
+
+##### Args:
+
+
+*  <b>`other`</b>: Another Dimension.
+
+##### Returns:
+
+  A Dimension whose value is the product of `self` and `other`.
+
+
+- - -
+
+#### `tf.Dimension.__ne__(other)` {#Dimension.__ne__}
+
+Returns true if `other` has a different known value from `self`.
+
+
+- - -
+
+#### `tf.Dimension.__repr__()` {#Dimension.__repr__}
+
+
+
+
+- - -
+
+#### `tf.Dimension.__str__()` {#Dimension.__str__}
+
+
+
+
+- - -
+
+#### `tf.Dimension.__sub__(other)` {#Dimension.__sub__}
+
+Returns the subtraction of `other` from `self`.
+
+Dimensions are subtracted as follows:
+
+  Dimension(m)    - Dimension(n)    == Dimension(m - n)
+  Dimension(m)    - Dimension(None) == Dimension(None)
+  Dimension(None) - Dimension(n)    == Dimension(None)
+  Dimension(None) - Dimension(None) == Dimension(None)
+
+##### Args:
+
+
+*  <b>`other`</b>: Another Dimension.
+
+##### Returns:
+
+  A Dimension whose value is the subtraction of sum of `other` from `self`.
 
 
 - - -
@@ -2375,11 +3718,13 @@ Returns a Dimension that combines the information in `self` and `other`.
 
 Dimensions are combined as follows:
 
+```python
     Dimension(n)   .merge_with(Dimension(n))    == Dimension(n)
     Dimension(n)   .merge_with(Dimension(None)) == Dimension(n)
     Dimension(None).merge_with(Dimension(n))    == Dimension(n)
     Dimension(None).merge_with(Dimension(None)) == Dimension(None)
     Dimension(n)   .merge_with(Dimension(m)) raises ValueError for n != m
+```
 
 ##### Args:
 
@@ -2410,39 +3755,7 @@ The value of this dimension, or None if it is unknown.
 
 ### `tf.op_scope(values, name, default_name=None)` {#op_scope}
 
-Returns a context manager for use when defining a Python op.
-
-This context manager validates that the given `values` are from the
-same graph, ensures that graph is the default graph, and pushes a
-name scope.
-
-For example, to define a new Python op called `my_op`:
-
-```python
-def my_op(a, b, c, name=None):
-  with tf.op_scope([a, b, c], name, "MyOp") as scope:
-    a = tf.convert_to_tensor(a, name="a")
-    b = tf.convert_to_tensor(b, name="b")
-    c = tf.convert_to_tensor(c, name="c")
-    # Define some computation that uses `a`, `b`, and `c`.
-    return foo_op(..., name=scope)
-```
-
-##### Args:
-
-
-*  <b>`values`</b>: The list of `Tensor` arguments that are passed to the op function.
-*  <b>`name`</b>: The name argument that is passed to the op function.
-*  <b>`default_name`</b>: The default name to use if the `name` argument is `None`.
-
-##### Returns:
-
-  A context manager for use in defining Python ops. Yields the name scope.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: if neither `name` nor `default_name` is provided.
+DEPRECATED. Same as name_scope above, just different argument order.
 
 
 - - -
@@ -2481,8 +3794,10 @@ Registers a function for converting objects of `base_type` to `Tensor`.
 
 The conversion function must have the following signature:
 
+```python
     def conversion_func(value, dtype=None, name=None, as_ref=False):
       # ...
+```
 
 It must return a `Tensor` with the given `dtype` if specified. If the
 conversion function creates a new `Tensor`, it should use the given
@@ -2531,6 +3846,7 @@ and computations occur. Using `DeviceSpec` allows you to parse device spec
 strings to verify their validity, merge them or compose them programmatically.
 
 Example:
+
 ```python
 # Place the operations on device "GPU:0" in the "ps" job.
 device_spec = DeviceSpec(job="ps", device_type="GPU", device_index=0)
@@ -2670,13 +3986,4 @@ Return a string representation of this `DeviceSpec`.
   /job:<name>/replica:<id>/task:<id>/device:<device_type>:<id>.
 
 
-
-- - -
-
-### `class tf.bytes` {#bytes}
-
-str(object='') -> string
-
-Return a nice string representation of the object.
-If the argument is a string, the return value is the same object.
 

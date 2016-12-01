@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -91,7 +91,7 @@ class SparseDenseBinaryOpShared : public OpKernel {
     auto VecGreaterEq = [](ArraySlice<int64> lhs, ArraySlice<int64> rhs) {
       if (lhs.size() > rhs.size()) return true;
       if (lhs.size() < rhs.size()) return false;
-      for (int i = 0; i < lhs.size(); ++i) {
+      for (size_t i = 0; i < lhs.size(); ++i) {
         if (lhs[i] < rhs[i]) return false;
       }
       return true;

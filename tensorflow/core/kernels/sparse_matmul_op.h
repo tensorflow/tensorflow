@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,10 @@ limitations under the License.
 
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/platform/types.h"
+
+#if defined(PLATFORM_WINDOWS)
+#include "tensorflow/core/platform/windows/intrinsics_port.h"
+#endif
 
 namespace Eigen {
 namespace internal {
@@ -39,6 +43,36 @@ EIGEN_DEVICE_FUNC inline Packet pexpand_bf16_u(const Packet& from) {
       (reinterpret_cast<const tensorflow::uint32&>(from)) & 0xffff0000;
   return reinterpret_cast<const float&>(tmp);
 }
+
+// Specialization non-scalar version on non-sse.
+#if defined(EIGEN_VECTORIZE_ALTIVEC) || defined(EIGEN_VECTORIZE_VSX) || \
+    defined(EIGEN_VECTORIZE_NEON)
+template <typename Packet>
+EIGEN_DEVICE_FUNC inline Packet4f pexpand_bf16_l(const Packet4f& from) {
+  float r[4];
+  tensorflow::uint32 p[4];
+  pstoreu(r, from);
+  tensorflow::uint32 * ir = reinterpret_cast<tensorflow::uint32 *>(r);
+  p[0] = (ir[0] << 16) & 0xffff0000;
+  p[1] = ir[0]& 0xffff0000;
+  p[2] = (ir[1] << 16) & 0xffff0000;
+  p[3] = ir[1] & 0xffff0000;
+  return ploadu<Packet4f>(reinterpret_cast<float *>(p));
+}
+
+template <typename Packet>
+EIGEN_DEVICE_FUNC inline Packet4f pexpand_bf16_u(const Packet4f& from) {
+  float r[4];
+  tensorflow::uint32 p[4];
+  pstoreu(r, from);
+  tensorflow::uint32 * ir = reinterpret_cast<tensorflow::uint32 *>(r);
+  p[0] = (ir[2] << 16) & 0xffff0000;
+  p[1] = ir[2] & 0xffff0000;
+  p[2] = (ir[3] << 16) & 0xffff0000;
+  p[3] = ir[3] & 0xffff0000;
+  return ploadu<Packet4f>(reinterpret_cast<float *>(p));
+}
+#endif
 
 template <typename Packet>
 EIGEN_DEVICE_FUNC inline Packet pinterleave4x64(const Packet& from) {
@@ -72,15 +106,41 @@ template <typename Packet>
 EIGEN_DEVICE_FUNC inline Packet pload4bf16(
     const typename unpacket_traits<Packet>::type* from) {
   assert(false && "Not applicable to Scalar Values");
-  return *from;
+  return Packet();
 }
 
 template <typename Packet>
 EIGEN_DEVICE_FUNC inline Packet pload2bf16(
     const typename unpacket_traits<Packet>::type* from) {
   assert(false && "Not applicable to Scalar Values");
-  return *from;
+  return Packet();
 }
+
+// Specialization for pload4bf16 and pload2bf16 for non-sse.
+#if defined(EIGEN_VECTORIZE_ALTIVEC) || defined(EIGEN_VECTORIZE_VSX) || \
+    defined(EIGEN_VECTORIZE_NEON)
+template <>
+EIGEN_STRONG_INLINE Packet4f pload4bf16<Packet4f>(const float* from) {
+  tensorflow::uint32 p[4];
+  const tensorflow::uint32* ir = reinterpret_cast<const tensorflow::uint32 *>(from);
+  p[0] = (ir[0] << 16) & 0xffff0000;
+  p[1] = ir[0]& 0xffff0000;
+  p[2] = (ir[1] << 16) & 0xffff0000;
+  p[3] = ir[1] & 0xffff0000;
+  return ploadu<Packet4f>(reinterpret_cast<float *>(p));
+}
+
+template <>
+EIGEN_STRONG_INLINE Packet4f pload2bf16<Packet4f>(const float* from) {
+  tensorflow::uint32 p[4];
+  const tensorflow::uint32* ir = reinterpret_cast<const tensorflow::uint32 *>(from);
+  p[0] = (ir[0] << 16) & 0xffff0000;
+  p[1] = ir[0]& 0xffff0000;
+  p[2] = (ir[0] << 16) & 0xffff0000;
+  p[3] = ir[0] & 0xffff0000;
+  return ploadu<Packet4f>(reinterpret_cast<float *>(p));  
+}
+#endif
 
 #ifdef EIGEN_VECTORIZE_SSE2
 // For PacketSize of 4 floats the Packet is not modified
@@ -157,10 +217,15 @@ EIGEN_STRONG_INLINE Packet8f pinterleave4x64<Packet8f>(const Packet8f& from) {
   return _mm256_castsi256_ps(_mm256_permute4x64_epi64(_mm256_castps_si256(from),
                                                       _MM_SHUFFLE(3, 1, 2, 0)));
 #else
-  __int64_t tmp1 = _mm256_extract_epi64(_mm256_castps_si256(from), 1);
-  __int64_t tmp2 = _mm256_extract_epi64(_mm256_castps_si256(from), 2);
-  __m256i tmp3 = _mm256_insert_epi64(_mm256_castps_si256(from), tmp1, 2);
-  return _mm256_castsi256_ps(_mm256_insert_epi64(tmp3, tmp2, 1));
+  auto tmp1 = _mm256_extract_epi32(_mm256_castps_si256(from), 2);
+  auto tmp2 = _mm256_extract_epi32(_mm256_castps_si256(from), 3);
+  auto tmp3 = _mm256_extract_epi32(_mm256_castps_si256(from), 4);
+  auto tmp4 = _mm256_extract_epi32(_mm256_castps_si256(from), 5);
+  auto tmp5 = _mm256_insert_epi32(_mm256_castps_si256(from), tmp1, 4);
+  tmp5 = _mm256_insert_epi32(tmp5, tmp2, 5);
+  tmp5 = _mm256_insert_epi32(tmp5, tmp3, 2);
+  tmp5 = _mm256_insert_epi32(tmp5, tmp4, 3);
+  return _mm256_castsi256_ps(tmp5);
 #endif
 }
 // Return a Packet with 4 floats loaded from 4 bfloat16 values

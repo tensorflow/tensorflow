@@ -13,7 +13,7 @@ z = tf.mul(a, b)
 result = tf.cond(x < y, lambda: tf.add(x, z), lambda: tf.square(y))
 ```
 
-If x < y, the tf.add operation will be executed and tf.square
+If x < y, the `tf.add` operation will be executed and tf.square
 operation will not be executed. Since z is needed for at least one
 branch of the cond, the tf.mul operation is always executed, unconditionally.
 Although this behavior is consistent with the dataflow model of TensorFlow,

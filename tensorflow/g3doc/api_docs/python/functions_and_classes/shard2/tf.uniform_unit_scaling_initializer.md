@@ -1,4 +1,4 @@
-### `tf.uniform_unit_scaling_initializer(factor=1.0, seed=None, dtype=tf.float32, full_shape=None)` {#uniform_unit_scaling_initializer}
+### `tf.uniform_unit_scaling_initializer(factor=1.0, seed=None, dtype=tf.float32)` {#uniform_unit_scaling_initializer}
 
 Returns an initializer that generates tensors without scaling variance.
 
@@ -18,12 +18,6 @@ See [Sussillo et al., 2014](https://arxiv.org/abs/1412.6558)
 and the calculation of constants. In section 2.3 there, the constants were
 numerically computed: for a linear layer it's 1.0, relu: ~1.43, tanh: ~1.15.
 
-If the shape tuple `full_shape` is provided, the scale will be calculated from
-this predefined shape.  This is useful when a `Variable` is being partitioned
-across several shards, and each shard has a smaller shape than the whole.
-Since the shards are usually concatenated when used, the scale should be
-based on the shape of the whole.
-
 ##### Args:
 
 
@@ -32,9 +26,6 @@ based on the shape of the whole.
     [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
     for behavior.
 *  <b>`dtype`</b>: The data type. Only floating point types are supported.
-*  <b>`full_shape`</b>: Tuple or list of integers.  The shape used for calculating
-    scale normalization (instead of the shape passed at creation time).
-    Useful when creating sharded variables via partitioning.
 
 ##### Returns:
 

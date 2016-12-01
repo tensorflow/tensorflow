@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -36,11 +36,11 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/master.h"
 #include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_call.h"
+#include "tensorflow/core/distributed_runtime/rpc/grpc_master_service_impl.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/protobuf/master.pb.h"
-#include "tensorflow/core/protobuf/master_service.grpc.pb.h"
 
 namespace tensorflow {
 
@@ -101,7 +101,7 @@ class GrpcMasterService : public AsyncServiceInterface {
     }                                                                         \
   } while (0)
 
-  void HandleRPCsLoop() {
+  void HandleRPCsLoop() override {
     ENQUEUE_REQUEST(CreateSession, true);
     ENQUEUE_REQUEST(ExtendSession, false);
     for (int i = 0; i < 100; ++i) {
@@ -118,7 +118,6 @@ class GrpcMasterService : public AsyncServiceInterface {
           static_cast<UntypedCall<GrpcMasterService>::Tag*>(tag);
       if (callback_tag) {
         callback_tag->OnCompleted(this, ok);
-        delete callback_tag;
       } else {
         // NOTE(mrry): A null `callback_tag` indicates that this is
         // the shutdown alarm.

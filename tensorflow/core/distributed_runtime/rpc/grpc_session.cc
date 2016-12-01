@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -162,6 +162,8 @@ Status GrpcSession::Run(const RunOptions& run_options,
   RunStepRequest req;
   RunStepResponse resp;
 
+  *req.mutable_options() = run_options;
+
   for (const auto& it : inputs) {
     Tensor input_tensor = it.second;
     auto feed = req.add_feed();
@@ -204,6 +206,10 @@ Status GrpcSession::Run(const RunOptions& run_options,
     }
 
     (*outputs)[fetch_it->second] = output;
+  }
+
+  if (run_metadata) {
+    run_metadata->Swap(resp.mutable_metadata());
   }
 
   return Status::OK();
@@ -289,6 +295,22 @@ void GrpcSession::SetRemoteMaster(MasterInterface* master) {
   master_.reset(master);
 }
 
+// Static method.
+Status GrpcSession::Reset(const SessionOptions& options,
+                          const std::vector<string>& containers) {
+  SharedGrpcChannelPtr master_channel =
+      NewHostPortGrpcChannel(options.target.substr(kSchemePrefixLength));
+  auto master = NewGrpcMaster(master_channel);
+  ResetRequest req;
+  for (const auto& c : containers) req.add_container(c);
+  ResetResponse resp;
+  CallOptions call_options;
+  call_options.SetTimeout(options.config.operation_timeout_in_ms());
+  Status ret = master->Reset(&call_options, &req, &resp);
+  delete master;
+  return ret;
+}
+
 class GrpcSessionFactory : public SessionFactory {
  public:
   bool AcceptsOptions(const SessionOptions& options) override {
@@ -304,6 +326,12 @@ class GrpcSessionFactory : public SessionFactory {
       LOG(ERROR) << "Error during session construction: " << s.ToString();
       return nullptr;
     }
+  }
+
+  // Invokes the session specific static method to reset containers.
+  Status Reset(const SessionOptions& options,
+               const std::vector<string>& containers) override {
+    return GrpcSession::Reset(options, containers);
   }
 };
 

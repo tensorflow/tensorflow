@@ -36,6 +36,13 @@ Create a LooperThread.
 
 - - -
 
+#### `tf.train.LooperThread.__repr__()` {#LooperThread.__repr__}
+
+
+
+
+- - -
+
 #### `tf.train.LooperThread.daemon` {#LooperThread.daemon}
 
 A boolean value indicating whether this thread is a daemon thread (True) or not (False).

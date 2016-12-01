@@ -7,6 +7,9 @@ Note: Functions taking `Tensor` arguments can also take anything accepted by
 
 [TOC]
 
+Note: Elementwise binary operations in TensorFlow follow [numpy-style
+broadcasting](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).
+
 ## Arithmetic Operators
 
 TensorFlow provides several operations that you can use to add basic arithmetic
@@ -18,7 +21,8 @@ operators to your graph.
 
 Returns x + y element-wise.
 
-*NOTE*: Add supports broadcasting. AddN does not.
+*NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
 
@@ -34,9 +38,12 @@ Returns x + y element-wise.
 
 - - -
 
-### `tf.sub(x, y, name=None)` {#sub}
+### `tf.subtract(x, y, name=None)` {#subtract}
 
 Returns x - y element-wise.
+
+*NOTE*: `Sub` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
 
@@ -52,14 +59,17 @@ Returns x - y element-wise.
 
 - - -
 
-### `tf.mul(x, y, name=None)` {#mul}
+### `tf.multiply(x, y, name=None)` {#multiply}
 
 Returns x * y element-wise.
+
+*NOTE*: `Mul` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -70,20 +80,42 @@ Returns x * y element-wise.
 
 - - -
 
-### `tf.div(x, y, name=None)` {#div}
+### `tf.scalar_mul(scalar, x)` {#scalar_mul}
 
-Returns x / y element-wise.
+Multiplies a scalar times a `Tensor` or `IndexedSlices` object.
+
+Intended for use in gradient code which might deal with `IndexedSlices`
+objects, which are easy to multiply by a scalar but more expensive to
+multiply with arbitrary tensors.
 
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
-*  <b>`name`</b>: A name for the operation (optional).
+*  <b>`scalar`</b>: A 0-D scalar `Tensor`. Must have known shape.
+*  <b>`x`</b>: A `Tensor` or `IndexedSlices` to be scaled.
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  `scalar * x` of the same type (`Tensor` or `IndexedSlices`) as `x`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if scalar is not a 0-D `scalar`.
+
+
+- - -
+
+### `tf.div(x, y, name=None)` {#div}
+
+
+
+
+- - -
+
+### `tf.divide(x, y, name=None)` {#divide}
+
+Computes Python style division of `x` by `y`.
 
 
 - - -
@@ -124,7 +156,7 @@ and `int64` (matching the behavior of Numpy).
 
 ### `tf.floordiv(x, y, name=None)` {#floordiv}
 
-Divides `x / y` elementwise, rounding down for floating point.
+Divides `x / y` elementwise, rounding toward the most negative integer.
 
 The same as `tf.div(x,y)` for integers, but uses `tf.floor(tf.div(x,y))` for
 floating point arguments so that the result is always an integer (though
@@ -157,9 +189,133 @@ as well.
 
 - - -
 
+### `tf.realdiv(x, y, name=None)` {#realdiv}
+
+Returns x / y element-wise for real types.
+
+If `x` and `y` are reals, this will return the floating-point division.
+
+*NOTE*: `Div` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `x`.
+
+
+- - -
+
+### `tf.truncatediv(x, y, name=None)` {#truncatediv}
+
+Returns x / y element-wise for integer types.
+
+Truncation designates that negative numbers will round fractional quantities
+toward zero. I.e. -7 / 5 = 1. This matches C semantics but it is different
+than Python semantics. See `FloorDiv` for a division function that matches
+Python Semantics.
+
+*NOTE*: `TruncateDiv` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `x`.
+
+
+- - -
+
+### `tf.floor_div(x, y, name=None)` {#floor_div}
+
+Returns x // y element-wise.
+
+*NOTE*: `FloorDiv` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `x`.
+
+
+- - -
+
+### `tf.truncatemod(x, y, name=None)` {#truncatemod}
+
+Returns element-wise remainder of division. This emulates C semantics where
+
+true, this follows C semantics in that the result here is consistent
+with a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.
+
+*NOTE*: `Mod` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`, `float32`, `float64`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `x`.
+
+
+- - -
+
+### `tf.floormod(x, y, name=None)` {#floormod}
+
+Returns element-wise remainder of division. When `x < 0` xor `y < 0` is
+
+true, this follows Python semantics in that the result here is consistent
+with a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.
+
+*NOTE*: `FloorMod` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`, `float32`, `float64`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `x`.
+
+
+- - -
+
 ### `tf.mod(x, y, name=None)` {#mod}
 
-Returns element-wise remainder of division.
+Returns element-wise remainder of division. When `x < 0` xor `y < 0` is
+
+true, this follows Python semantics in that the result here is consistent
+with a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.
+
+*NOTE*: `FloorMod` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
 
@@ -208,18 +364,23 @@ mathematical functions to your graph.
 
 ### `tf.add_n(inputs, name=None)` {#add_n}
 
-Add all input tensors element wise.
+Adds all input tensors element-wise.
 
 ##### Args:
 
 
-*  <b>`inputs`</b>: A list of at least 1 `Tensor` objects of the same type in: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
-    Must all be the same size and shape.
+*  <b>`inputs`</b>: A list of `Tensor` objects, each with same shape and type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `inputs`.
+  A `Tensor` of same shape and type as the elements of `inputs`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `inputs` don't all have same shape and dtype or the shape
+  cannot be inferred.
 
 
 - - -
@@ -233,23 +394,26 @@ containing the absolute value of each element in `x`. For example, if x is
 an input element and y is an output element, this operation computes
 \\(y = |x|\\).
 
-See [`tf.complex_abs()`](#tf_complex_abs) to compute the absolute value of a complex
+See [`tf.complex_abs()`](#tf_complex_abs) to compute the absolute value of a
+complex
 number.
 
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor` of type `float`, `double`, `int32`, or `int64`.
+*  <b>`x`</b>: A `Tensor` or `SparseTensor` of type `float32`, `float64`, `int32`, or
+    `int64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-   A `Tensor` the same size and type as `x` with absolute values.
+  A `Tensor` or `SparseTensor` the same size and type as `x` with absolute
+    values.
 
 
 - - -
 
-### `tf.neg(x, name=None)` {#neg}
+### `tf.negative(x, name=None)` {#negative}
 
 Computes numerical negative value element-wise.
 
@@ -279,17 +443,18 @@ For complex numbers, `y = sign(x) = x / |x|` if `x != 0`, otherwise `y = 0`.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+    `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
 
 
 - - -
 
-### `tf.inv(x, name=None)` {#inv}
+### `tf.reciprocal(x, name=None)` {#reciprocal}
 
 Computes the reciprocal of x element-wise.
 
@@ -312,17 +477,18 @@ I.e., \\(y = 1 / x\\).
 
 Computes square of x element-wise.
 
-I.e., \\(y = x * x = x^2\\).
+I.e., \(y = x * x = x^2\).
 
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+    `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Tensor` or `SparseTensor`. Has the same type as `x`.
 
 
 - - -
@@ -331,17 +497,19 @@ I.e., \\(y = x * x = x^2\\).
 
 Rounds the values of a tensor to the nearest integer, element-wise.
 
+Rounds half to even.  Also known as bankers rounding. If you want to round
+according to the current system rounding mode use tf::cint.
 For example:
 
 ```python
-# 'a' is [0.9, 2.5, 2.3, -4.4]
-tf.round(a) ==> [ 1.0, 3.0, 2.0, -4.0 ]
+# 'a' is [0.9, 2.5, 2.3, 1.5, -4.5]
+tf.round(a) ==> [ 1.0, 2.0, 2.0, 2.0, -4.0 ]
 ```
 
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor` of type `float` or `double`.
+*  <b>`x`</b>: A `Tensor` of type `float32` or `float64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -355,17 +523,18 @@ tf.round(a) ==> [ 1.0, 3.0, 2.0, -4.0 ]
 
 Computes square root of x element-wise.
 
-I.e., \\(y = \sqrt{x} = x^{1/2}\\).
+I.e., \(y = \sqrt{x} = x^{1/2}\).
 
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+    `float32`, `float64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
 
 
 - - -
@@ -405,8 +574,10 @@ tf.pow(x, y) ==> [[256, 65536], [9, 27]]
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor` of type `float`, `double`, `int32`, `complex64`, or `int64`.
-*  <b>`y`</b>: A `Tensor` of type `float`, `double`, `int32`, `complex64`, or `int64`.
+*  <b>`x`</b>: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
+   or `complex128`.
+*  <b>`y`</b>: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
+   or `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -438,6 +609,25 @@ Computes exponential of x element-wise.  \\(y = e^x\\).
 Computes natural logarithm of x element-wise.
 
 I.e., \\(y = \log_e x\\).
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `complex64`, `complex128`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `x`.
+
+
+- - -
+
+### `tf.log1p(x, name=None)` {#log1p}
+
+Computes natural logarithm of (1 + x) element-wise.
+
+I.e., \\(y = \log_e (1 + x)\\).
 
 ##### Args:
 
@@ -488,7 +678,10 @@ Returns element-wise largest integer not greater than x.
 
 ### `tf.maximum(x, y, name=None)` {#maximum}
 
-Returns the max of x and y (i.e. x > y ? x : y) element-wise, broadcasts.
+Returns the max of x and y (i.e. x > y ? x : y) element-wise.
+
+*NOTE*: `Maximum` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
 
@@ -506,7 +699,10 @@ Returns the max of x and y (i.e. x > y ? x : y) element-wise, broadcasts.
 
 ### `tf.minimum(x, y, name=None)` {#minimum}
 
-Returns the min of x and y (i.e. x < y ? x : y) element-wise, broadcasts.
+Returns the min of x and y (i.e. x < y ? x : y) element-wise.
+
+*NOTE*: `Minimum` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
 
@@ -590,6 +786,74 @@ bivariate beta function.
 
 - - -
 
+### `tf.tan(x, name=None)` {#tan}
+
+Computes tan of x element-wise.
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `x`.
+
+
+- - -
+
+### `tf.acos(x, name=None)` {#acos}
+
+Computes acos of x element-wise.
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `x`.
+
+
+- - -
+
+### `tf.asin(x, name=None)` {#asin}
+
+Computes asin of x element-wise.
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `x`.
+
+
+- - -
+
+### `tf.atan(x, name=None)` {#atan}
+
+Computes atan of x element-wise.
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `x`.
+
+
+- - -
+
 ### `tf.lgamma(x, name=None)` {#lgamma}
 
 Computes the log of the absolute value of `Gamma(x)` element-wise.
@@ -633,12 +897,13 @@ Computes the Gauss error function of `x` element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`.
+*  <b>`x`</b>: A `Tensor` of `SparseTensor`. Must be one of the following types: `half`,
+    `float32`, `float64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
 
 
 - - -
@@ -664,6 +929,9 @@ Computes the complementary error function of `x` element-wise.
 
 Returns (x - y)(x - y) element-wise.
 
+*NOTE*: `SquaredDifference` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
 ##### Args:
 
 
@@ -685,7 +953,7 @@ Compute the lower regularized incomplete Gamma function `Q(a, x)`.
 The lower regularized incomplete Gamma function is defined as:
 
 ```
-P(a, x) = gamma(a, x) / Gamma(x) = 1 - Q(a, x)
+P(a, x) = gamma(a, x) / Gamma(a) = 1 - Q(a, x)
 ```
 where
 ```
@@ -717,7 +985,7 @@ Compute the upper regularized incomplete Gamma function `Q(a, x)`.
 The upper regularized incomplete Gamma function is defined as:
 
 ```
-Q(a, x) = Gamma(a, x) / Gamma(x) = 1 - P(a, x)
+Q(a, x) = Gamma(a, x) / Gamma(a) = 1 - P(a, x)
 ```
 where
 ```
@@ -789,169 +1057,71 @@ where \\(\psi(x)\\) is the digamma function.
   A `Tensor`. Has the same type as `a`.
 
 
+- - -
+
+### `tf.betainc(a, b, x, name=None)` {#betainc}
+
+Compute the regularized incomplete beta integral \\(I_x(a, b)\\).
+
+The regularized incomplete beta integral is defined as:
+
+```
+I_x(a, b) = \frac{B(x; a, b)}{B(a, b)}
+```
+where
+
+```
+B(x; a, b) = \int_0^x t^{a-1} (1 - t)^{b-1} dt
+```
+
+is the incomplete beta function and \\(B(a, b)\\) is the *complete*
+beta function.
+
+##### Args:
+
+
+*  <b>`a`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`b`</b>: A `Tensor`. Must have the same type as `a`.
+*  <b>`x`</b>: A `Tensor`. Must have the same type as `a`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `a`.
+
+
+- - -
+
+### `tf.rint(x, name=None)` {#rint}
+
+Returns element-wise integer closest to x.
+
+If the result is midway between two representable values,
+the even representable is chosen.
+For example:
+
+```
+rint(-1.5) ==> -2.0
+rint(0.5000001) ==> 1.0
+rint([-1.7, -1.5, -0.2, 0.2, 1.5, 1.7, 2.0]) ==> [-2., -2., -0., 0., 2., 2., 2.]
+```
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `x`.
+
+
 
 ## Matrix Math Functions
 
 TensorFlow provides several operations that you can use to add linear algebra
 functions on matrices to your graph.
-
-- - -
-
-### `tf.batch_matrix_diag(diagonal, name=None)` {#batch_matrix_diag}
-
-Returns a batched diagonal tensor with a given batched diagonal values.
-
-Given a `diagonal`, this operation returns a tensor with the `diagonal` and
-everything else padded with zeros. The diagonal is computed as follows:
-
-Assume `diagonal` has `k` dimensions `[I, J, K, ..., N]`, then the output is a
-tensor of rank `k+1` with dimensions [I, J, K, ..., N, N]` where:
-
-`output[i, j, k, ..., m, n] = 1{m=n} * diagonal[i, j, k, ..., n]`.
-
-For example:
-
-```prettyprint
-# 'diagonal' is [[1, 2, 3, 4], [5, 6, 7, 8]]
-
-and diagonal.shape = (2, 4)
-
-tf.batch_matrix_diag(diagonal) ==> [[[1, 0, 0, 0]
-                                     [0, 2, 0, 0]
-                                     [0, 0, 3, 0]
-                                     [0, 0, 0, 4]],
-                                    [[5, 0, 0, 0]
-                                     [0, 6, 0, 0]
-                                     [0, 0, 7, 0]
-                                     [0, 0, 0, 8]]]
-
-which has shape (2, 4, 4)
-```
-
-##### Args:
-
-
-*  <b>`diagonal`</b>: A `Tensor`. Rank `k`, where `k >= 1`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `diagonal`.
-  Rank `k+1`, with `output.shape = diagonal.shape + [diagonal.shape[-1]]`.
-
-
-- - -
-
-### `tf.batch_matrix_diag_part(input, name=None)` {#batch_matrix_diag_part}
-
-Returns the batched diagonal part of a batched tensor.
-
-This operation returns a tensor with the `diagonal` part
-of the batched `input`. The `diagonal` part is computed as follows:
-
-Assume `input` has `k` dimensions `[I, J, K, ..., N, N]`, then the output is a
-tensor of rank `k - 1` with dimensions `[I, J, K, ..., N]` where:
-
-`diagonal[i, j, k, ..., n] = input[i, j, k, ..., n, n]`.
-
-The input must be at least a matrix.
-
-For example:
-
-```prettyprint
-# 'input' is [[[1, 0, 0, 0]
-               [0, 2, 0, 0]
-               [0, 0, 3, 0]
-               [0, 0, 0, 4]],
-              [[5, 0, 0, 0]
-               [0, 6, 0, 0]
-               [0, 0, 7, 0]
-               [0, 0, 0, 8]]]
-
-and input.shape = (2, 4, 4)
-
-tf.batch_matrix_diag_part(input) ==> [[1, 2, 3, 4], [5, 6, 7, 8]]
-
-which has shape (2, 4)
-```
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor`.
-    Rank `k` tensor where `k >= 2` and the last two dimensions are equal.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `input`.
-  The extracted diagonal(s) having shape
-  `diagonal.shape = input.shape[:-1]`.
-
-
-- - -
-
-### `tf.batch_matrix_band_part(input, num_lower, num_upper, name=None)` {#batch_matrix_band_part}
-
-Copy a tensor setting everything outside a central band in each innermost matrix
-
-to zero.
-
-The `band` part is computed as follows:
-Assume `input` has `k` dimensions `[I, J, K, ..., M, N]`, then the output is a
-tensor with the same shape where
-
-`band[i, j, k, ..., m, n] = in_band(m, n) * input[i, j, k, ..., m, n]`.
-
-The indicator function 'in_band(m, n)` is one if
-`(num_lower < 0 || (m-n) <= num_lower)) &&
-(num_upper < 0 || (n-m) <= num_upper)`, and zero otherwise.
-
-For example:
-
-```prettyprint
-# if 'input' is [[ 0,  1,  2, 3]
-                 [-1,  0,  1, 2]
-                 [-2, -1,  0, 1]
-                 [-3, -2, -1, 0]],
-
-tf.batch_matrix_band_part(input, 1, -1) ==> [[ 0,  1,  2, 3]
-                                             [-1,  0,  1, 2]
-                                             [ 0, -1,  0, 1]
-                                             [ 0,  0, -1, 0]],
-
-tf.batch_matrix_band_part(input, 2, 1) ==> [[ 0,  1,  0, 0]
-                                            [-1,  0,  1, 0]
-                                            [-2, -1,  0, 1]
-                                            [ 0, -2, -1, 0]]
-```
-
-Useful special cases:
-
-```prettyprint
- tf.batch_matrix_band_part(input, 0, -1) ==> Upper triangular part.
- tf.batch_matrix_band_part(input, -1, 0) ==> Lower triangular part.
- tf.batch_matrix_band_part(input, 0, 0) ==> Diagonal.
-```
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor`. Rank `k` tensor.
-*  <b>`num_lower`</b>: A `Tensor` of type `int64`.
-    0-D tensor. Number of subdiagonals to keep. If negative, keep entire
-    lower triangle.
-*  <b>`num_upper`</b>: A `Tensor` of type `int64`.
-    0-D tensor. Number of superdiagonals to keep. If negative, keep
-    entire upper triangle.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `input`.
-  Rank `k` tensor of the same shape as input. The extracted banded tensor.
-
-
 
 - - -
 
@@ -980,7 +1150,7 @@ tf.diag(diagonal) ==> [[1, 0, 0, 0]
 ##### Args:
 
 
-*  <b>`diagonal`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `complex64`.
+*  <b>`diagonal`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
     Rank k tensor where k is at most 3.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -1017,7 +1187,7 @@ tf.diag_part(input) ==> [1, 2, 3, 4]
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `complex64`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
     Rank k tensor where k is 2, 4, or 6.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -1032,25 +1202,37 @@ tf.diag_part(input) ==> [1, 2, 3, 4]
 
 Compute the trace of a tensor `x`.
 
-`trace(x)` returns the sum of along the diagonal.
+`trace(x)` returns the sum along the main diagonal of each inner-most matrix
+in x. If x is of rank `k` with shape `[I, J, K, ..., L, M, N]`, then output
+is a tensor of rank `k-2` with dimensions `[I, J, K, ..., L]` where
+
+`output[i, j, k, ..., l] = trace(x[i, j, i, ..., l, :, :])`
 
 For example:
 
 ```python
-# 'x' is [[1, 1],
-#         [1, 1]]
-tf.trace(x) ==> 2
+# 'x' is [[1, 2],
+#         [3, 4]]
+tf.trace(x) ==> 5
 
 # 'x' is [[1,2,3],
 #         [4,5,6],
 #         [7,8,9]]
 tf.trace(x) ==> 15
+
+# 'x' is [[[1,2,3],
+#          [4,5,6],
+#          [7,8,9]],
+#         [[-1,-2,-3],
+#          [-4,-5,-6],
+#          [-7,-8,-9]]]
+tf.trace(x) ==> [15,-15]
 ```
 
 ##### Args:
 
 
-*  <b>`x`</b>: 2-D tensor.
+*  <b>`x`</b>: tensor.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -1113,22 +1295,292 @@ tf.transpose(x, perm=[0, 2, 1]) ==> [[[1  4]
 
 - - -
 
-### `tf.matmul(a, b, transpose_a=False, transpose_b=False, a_is_sparse=False, b_is_sparse=False, name=None)` {#matmul}
+### `tf.eye(num_rows, num_columns=None, batch_shape=None, dtype=tf.float32, name=None)` {#eye}
+
+Construct an identity matrix, or a batch of matrices.
+
+```python
+# Construct one identity matrix.
+tf.eye(2)
+==> [[1., 0.],
+     [0., 1.]]
+
+# Construct a batch of 3 identity matricies, each 2 x 2.
+# batch_identity[i, :, :] is a 2 x 2 identity matrix, i = 0, 1, 2.
+batch_identity = tf.eye(2, batch_shape=[3])
+
+# Construct one 2 x 3 "identity" matrix
+tf.eye(2, num_columns=3)
+==> [[ 1.,  0.,  0.],
+     [ 0.,  1.,  0.]]
+```
+
+##### Args:
+
+
+*  <b>`num_rows`</b>: Non-negative `int32` scalar `Tensor` giving the number of rows
+    in each batch matrix.
+*  <b>`num_columns`</b>: Optional non-negative `int32` scalar `Tensor` giving the number
+    of columns in each batch matrix.  Defaults to `num_rows`.
+*  <b>`batch_shape`</b>: `int32` `Tensor`.  If provided, returned `Tensor` will have
+    leading batch dimensions of this shape.
+*  <b>`dtype`</b>: The type of an element in the resulting `Tensor`
+*  <b>`name`</b>: A name for this `Op`.  Defaults to "eye".
+
+##### Returns:
+
+  A `Tensor` of shape `batch_shape + [num_rows, num_columns]`
+
+
+- - -
+
+### `tf.matrix_diag(diagonal, name=None)` {#matrix_diag}
+
+Returns a batched diagonal tensor with a given batched diagonal values.
+
+Given a `diagonal`, this operation returns a tensor with the `diagonal` and
+everything else padded with zeros. The diagonal is computed as follows:
+
+Assume `diagonal` has `k` dimensions `[I, J, K, ..., N]`, then the output is a
+tensor of rank `k+1` with dimensions [I, J, K, ..., N, N]` where:
+
+`output[i, j, k, ..., m, n] = 1{m=n} * diagonal[i, j, k, ..., n]`.
+
+For example:
+
+```prettyprint
+# 'diagonal' is [[1, 2, 3, 4], [5, 6, 7, 8]]
+
+and diagonal.shape = (2, 4)
+
+tf.matrix_diag(diagonal) ==> [[[1, 0, 0, 0]
+                                     [0, 2, 0, 0]
+                                     [0, 0, 3, 0]
+                                     [0, 0, 0, 4]],
+                                    [[5, 0, 0, 0]
+                                     [0, 6, 0, 0]
+                                     [0, 0, 7, 0]
+                                     [0, 0, 0, 8]]]
+
+which has shape (2, 4, 4)
+```
+
+##### Args:
+
+
+*  <b>`diagonal`</b>: A `Tensor`. Rank `k`, where `k >= 1`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `diagonal`.
+  Rank `k+1`, with `output.shape = diagonal.shape + [diagonal.shape[-1]]`.
+
+
+- - -
+
+### `tf.matrix_diag_part(input, name=None)` {#matrix_diag_part}
+
+Returns the batched diagonal part of a batched tensor.
+
+This operation returns a tensor with the `diagonal` part
+of the batched `input`. The `diagonal` part is computed as follows:
+
+Assume `input` has `k` dimensions `[I, J, K, ..., M, N]`, then the output is a
+tensor of rank `k - 1` with dimensions `[I, J, K, ..., min(M, N)]` where:
+
+`diagonal[i, j, k, ..., n] = input[i, j, k, ..., n, n]`.
+
+The input must be at least a matrix.
+
+For example:
+
+```prettyprint
+# 'input' is [[[1, 0, 0, 0]
+               [0, 2, 0, 0]
+               [0, 0, 3, 0]
+               [0, 0, 0, 4]],
+              [[5, 0, 0, 0]
+               [0, 6, 0, 0]
+               [0, 0, 7, 0]
+               [0, 0, 0, 8]]]
+
+and input.shape = (2, 4, 4)
+
+tf.matrix_diag_part(input) ==> [[1, 2, 3, 4], [5, 6, 7, 8]]
+
+which has shape (2, 4)
+```
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor`. Rank `k` tensor where `k >= 2`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `input`.
+  The extracted diagonal(s) having shape
+  `diagonal.shape = input.shape[:-2] + [min(input.shape[-2:])]`.
+
+
+- - -
+
+### `tf.matrix_band_part(input, num_lower, num_upper, name=None)` {#matrix_band_part}
+
+Copy a tensor setting everything outside a central band in each innermost matrix
+
+to zero.
+
+The `band` part is computed as follows:
+Assume `input` has `k` dimensions `[I, J, K, ..., M, N]`, then the output is a
+tensor with the same shape where
+
+`band[i, j, k, ..., m, n] = in_band(m, n) * input[i, j, k, ..., m, n]`.
+
+The indicator function
+
+`in_band(m, n) = (num_lower < 0 || (m-n) <= num_lower)) &&
+                 (num_upper < 0 || (n-m) <= num_upper)`.
+
+For example:
+
+```prettyprint
+# if 'input' is [[ 0,  1,  2, 3]
+                 [-1,  0,  1, 2]
+                 [-2, -1,  0, 1]
+                 [-3, -2, -1, 0]],
+
+tf.matrix_band_part(input, 1, -1) ==> [[ 0,  1,  2, 3]
+                                       [-1,  0,  1, 2]
+                                       [ 0, -1,  0, 1]
+                                       [ 0,  0, -1, 0]],
+
+tf.matrix_band_part(input, 2, 1) ==> [[ 0,  1,  0, 0]
+                                      [-1,  0,  1, 0]
+                                      [-2, -1,  0, 1]
+                                      [ 0, -2, -1, 0]]
+```
+
+Useful special cases:
+
+```prettyprint
+ tf.matrix_band_part(input, 0, -1) ==> Upper triangular part.
+ tf.matrix_band_part(input, -1, 0) ==> Lower triangular part.
+ tf.matrix_band_part(input, 0, 0) ==> Diagonal.
+```
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor`. Rank `k` tensor.
+*  <b>`num_lower`</b>: A `Tensor` of type `int64`.
+    0-D tensor. Number of subdiagonals to keep. If negative, keep entire
+    lower triangle.
+*  <b>`num_upper`</b>: A `Tensor` of type `int64`.
+    0-D tensor. Number of superdiagonals to keep. If negative, keep
+    entire upper triangle.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `input`.
+  Rank `k` tensor of the same shape as input. The extracted banded tensor.
+
+
+- - -
+
+### `tf.matrix_set_diag(input, diagonal, name=None)` {#matrix_set_diag}
+
+Returns a batched matrix tensor with new batched diagonal values.
+
+Given `input` and `diagonal`, this operation returns a tensor with the
+same shape and values as `input`, except for the main diagonal of the
+innermost matrices.  These will be overwritten by the values in `diagonal`.
+
+The output is computed as follows:
+
+Assume `input` has `k+1` dimensions `[I, J, K, ..., M, N]` and `diagonal` has
+`k` dimensions `[I, J, K, ..., min(M, N)]`.  Then the output is a
+tensor of rank `k+1` with dimensions `[I, J, K, ..., M, N]` where:
+
+  * `output[i, j, k, ..., m, n] = diagonal[i, j, k, ..., n]` for `m == n`.
+  * `output[i, j, k, ..., m, n] = input[i, j, k, ..., m, n]` for `m != n`.
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor`. Rank `k+1`, where `k >= 1`.
+*  <b>`diagonal`</b>: A `Tensor`. Must have the same type as `input`.
+    Rank `k`, where `k >= 1`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `input`.
+  Rank `k+1`, with `output.shape = input.shape`.
+
+
+- - -
+
+### `tf.matrix_transpose(a, name='matrix_transpose')` {#matrix_transpose}
+
+Transposes last two dimensions of tensor `a`.
+
+For example:
+
+```python
+# Matrix with no batch dimension.
+# 'x' is [[1 2 3]
+#         [4 5 6]]
+tf.matrix_transpose(x) ==> [[1 4]
+                                 [2 5]
+                                 [3 6]]
+
+# Matrix with two batch dimensions.
+# x.shape is [1, 2, 3, 4]
+# tf.matrix_transpose(x) is shape [1, 2, 4, 3]
+```
+
+##### Args:
+
+
+*  <b>`a`</b>: A `Tensor` with `rank >= 2`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A transposed batch matrix `Tensor`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `a` is determined statically to have `rank < 2`.
+
+
+
+- - -
+
+### `tf.matmul(a, b, transpose_a=False, transpose_b=False, adjoint_a=False, adjoint_b=False, a_is_sparse=False, b_is_sparse=False, name=None)` {#matmul}
 
 Multiplies matrix `a` by matrix `b`, producing `a` * `b`.
 
-The inputs must be two-dimensional matrices, with matching inner dimensions,
-possibly after transposition.
+The inputs must be matrices (or tensors of rank > 2, representing batches of
+matrices), with matching inner dimensions, possibly after transposition.
 
 Both matrices must be of the same type. The supported types are:
-`float`, `double`, `int32`, `complex64`.
+`float16`, `float32`, `float64`, `int32`, `complex64`, `complex128`.
 
-Either matrix can be transposed on the fly by setting the corresponding flag
-to `True`. This is `False` by default.
+Either matrix can be transposed or adjointed (conjugated and transposed) on
+the fly by setting one of the corresponding flag to `True`. These are `False`
+by default.
 
 If one or both of the matrices contain a lot of zeros, a more efficient
 multiplication algorithm can be used by setting the corresponding
 `a_is_sparse` or `b_is_sparse` flag to `True`. These are `False` by default.
+This optimization is only available for plain matrices (rank-2 tensors) with
+datatypes `bfloat16` or `float32`.
 
 For example:
 
@@ -1142,22 +1594,57 @@ b = tf.constant([7, 8, 9, 10, 11, 12], shape=[3, 2]) => [[7. 8.]
                                                          [11. 12.]]
 c = tf.matmul(a, b) => [[58 64]
                         [139 154]]
+
+
+# 3-D tensor `a`
+a = tf.constant(np.arange(1,13), shape=[2, 2, 3]) => [[[ 1.  2.  3.]
+                                                       [ 4.  5.  6.]],
+                                                      [[ 7.  8.  9.]
+                                                       [10. 11. 12.]]]
+
+# 3-D tensor `b`
+b = tf.constant(np.arange(13,25), shape=[2, 3, 2]) => [[[13. 14.]
+                                                        [15. 16.]
+                                                        [17. 18.]],
+                                                       [[19. 20.]
+                                                        [21. 22.]
+                                                        [23. 24.]]]
+c = tf.matmul(a, b) => [[[ 94 100]
+                         [229 244]],
+                        [[508 532]
+                         [697 730]]]
 ```
 
 ##### Args:
 
 
-*  <b>`a`</b>: `Tensor` of type `float`, `double`, `int32` or `complex64`.
-*  <b>`b`</b>: `Tensor` with same type as `a`.
+*  <b>`a`</b>: `Tensor` of type `float16`, `float32`, `float64`, `int32`, `complex64`,
+    `complex128` and rank > 1.
+*  <b>`b`</b>: `Tensor` with same type and rank as `a`.
 *  <b>`transpose_a`</b>: If `True`, `a` is transposed before multiplication.
 *  <b>`transpose_b`</b>: If `True`, `b` is transposed before multiplication.
+*  <b>`adjoint_a`</b>: If `True`, `a` is conjugated and transposed before
+    multiplication.
+*  <b>`adjoint_b`</b>: If `True`, `b` is conjugated and transposed before
+    multiplication.
 *  <b>`a_is_sparse`</b>: If `True`, `a` is treated as a sparse matrix.
 *  <b>`b_is_sparse`</b>: If `True`, `b` is treated as a sparse matrix.
 *  <b>`name`</b>: Name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of the same type as `a`.
+  A `Tensor` of the same type as `a` and `b` where each inner-most matrix is
+  the product of the corresponding matrices in `a` and `b, e.g. if all
+  transpose or adjoint attributes are `False`:
+
+  output[..., :, :] = a[..., :, :] * b[..., :, :] ,
+
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If transpose_a and adjoint_a, or transpose_b and adjoint_b
+    are both set to True.
 
 
 - - -
@@ -1209,29 +1696,10 @@ It is computed as:
 
 ### `tf.matrix_determinant(input, name=None)` {#matrix_determinant}
 
-Calculates the determinant of a square matrix.
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
-    A tensor of shape `[M, M]`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `input`.
-  A scalar, equal to the determinant of the input.
-
-
-- - -
-
-### `tf.batch_matrix_determinant(input, name=None)` {#batch_matrix_determinant}
-
-Calculates the determinants for a batch of square matrices.
+Computes the determinant of one ore more square matrices.
 
 The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
-form square matrices. The output is a 1-D tensor containing the determinants
+form square matrices. The output is a tensor containing the determinants
 for all input submatrices `[..., :, :]`.
 
 ##### Args:
@@ -1246,44 +1714,13 @@ for all input submatrices `[..., :, :]`.
   A `Tensor`. Has the same type as `input`. Shape is `[...]`.
 
 
-
 - - -
 
 ### `tf.matrix_inverse(input, adjoint=None, name=None)` {#matrix_inverse}
 
-Calculates the inverse of a square invertible matrix or its adjoint (conjugate
+Computes the inverse of one or more square invertible matrices or their
 
-transpose).
-
-The op uses LU decomposition with partial pivoting to compute the inverse.
-
-If the matrix is not invertible there is no guarantee what the op does. It
-may detect the condition and raise an exception or it may simply return a
-garbage result.
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float64`, `float32`.
-    Shape is `[M, M]`.
-*  <b>`adjoint`</b>: An optional `bool`. Defaults to `False`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `input`.
-  Shape is `[M, M]`. If `adjoint` is `False` then `output` contains the
-  matrix inverse of `input`. If `adjoint` is `True` then `output` contains the
-  matrix inverse of the adjoint of `input`.
-
-
-- - -
-
-### `tf.batch_matrix_inverse(input, adjoint=None, name=None)` {#batch_matrix_inverse}
-
-Calculates the inverse of square invertible matrices or their adjoints
-
-(conjugate transposes).
+adjoints (conjugate transposes).
 
 The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
 form square matrices. The output is a tensor of the same shape as the input
@@ -1307,38 +1744,16 @@ garbage result.
 
   A `Tensor`. Has the same type as `input`. Shape is `[..., M, M]`.
 
+  @compatibility(numpy)
+  Equivalent to np.linalg.inv
+  @end_compatibility
 
 
 - - -
 
 ### `tf.cholesky(input, name=None)` {#cholesky}
 
-Calculates the Cholesky decomposition of a square matrix.
-
-The input has to be symmetric and positive definite. Only the lower-triangular
-part of the input will be used for this operation. The upper-triangular part
-will not be read.
-
-The result is the lower-triangular matrix of the Cholesky decomposition of the
-input, `L`, so that `input = L L^*`.
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float64`, `float32`.
-    Shape is `[M, M]`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `input`. Shape is `[M, M]`.
-
-
-- - -
-
-### `tf.batch_cholesky(input, name=None)` {#batch_cholesky}
-
-Calculates the Cholesky decomposition of a batch of square matrices.
+Computes the Cholesky decomposition of one or more square matrices.
 
 The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
 form square matrices, with the same constraints as the single matrix Cholesky
@@ -1361,52 +1776,14 @@ containing the Cholesky decompositions for all input submatrices `[..., :, :]`.
 
 ### `tf.cholesky_solve(chol, rhs, name=None)` {#cholesky_solve}
 
-Solve linear equations `A X = RHS`, given Cholesky factorization of `A`.
+Solves systems of linear eqns `A X = RHS`, given Cholesky factorizations.
 
 ```python
-# Solve one system of linear equations (K = 1).
-A = [[3, 1], [1, 3]]
-RHS = [[2], [22]]  # shape 2 x 1
-chol = tf.cholesky(A)
-X = tf.cholesky_solve(chol, RHS)
-# tf.matmul(A, X) ~ RHS
-X[:, 0]  # Solution to the linear system A x = RHS[:, 0]
-
-# Solve five systems of linear equations (K = 5).
-A = [[3, 1], [1, 3]]
-RHS = [[1, 2, 3, 4, 5], [11, 22, 33, 44, 55]]  # shape 2 x 5
-...
-X[:, 2]  # Solution to the linear system A x = RHS[:, 2]
-```
-
-##### Args:
-
-
-*  <b>`chol`</b>: A `Tensor`.  Must be `float32` or `float64`, shape is `[M, M]`.
-    Cholesky factorization of `A`, e.g. `chol = tf.cholesky(A)`.  For that
-    reason, only the lower triangular part (including the diagonal) of `chol`
-    is used.  The strictly upper part is assumed to be zero and not accessed.
-*  <b>`rhs`</b>: A `Tensor`, same type as `chol`, shape is `[M, K]`, designating `K`
-    systems of linear equations.
-*  <b>`name`</b>: A name to give this `Op`.  Defaults to `cholesky_solve`.
-
-##### Returns:
-
-  Solution to `A X = RHS`, shape `[M, K]`.  The solutions to the `K` systems.
-
-
-- - -
-
-### `tf.batch_cholesky_solve(chol, rhs, name=None)` {#batch_cholesky_solve}
-
-Solve batches of linear eqns `A X = RHS`, given Cholesky factorizations.
-
-```python
-# Solve one linear system (K = 1) for every member of the length 10 batch.
+# Solve 10 separate 2x2 linear systems:
 A = ... # shape 10 x 2 x 2
 RHS = ... # shape 10 x 2 x 1
-chol = tf.batch_cholesky(A)  # shape 10 x 2 x 2
-X = tf.batch_cholesky_solve(chol, RHS)  # shape 10 x 2 x 1
+chol = tf.cholesky(A)  # shape 10 x 2 x 2
+X = tf.cholesky_solve(chol, RHS)  # shape 10 x 2 x 1
 # tf.matmul(A, X) ~ RHS
 X[3, :, 0]  # Solution to the linear system A[3, :, :] x = RHS[3, :, 0]
 
@@ -1421,110 +1798,35 @@ X[3, :, 2]  # Solution to the linear system A[3, :, :] x = RHS[3, :, 2]
 
 
 *  <b>`chol`</b>: A `Tensor`.  Must be `float32` or `float64`, shape is `[..., M, M]`.
-    Cholesky factorization of `A`, e.g. `chol = tf.batch_cholesky(A)`.
+    Cholesky factorization of `A`, e.g. `chol = tf.cholesky(A)`.
     For that reason, only the lower triangular parts (including the diagonal)
     of the last two dimensions of `chol` are used.  The strictly upper part is
     assumed to be zero and not accessed.
 *  <b>`rhs`</b>: A `Tensor`, same type as `chol`, shape is `[..., M, K]`.
-*  <b>`name`</b>: A name to give this `Op`.  Defaults to `batch_cholesky_solve`.
+*  <b>`name`</b>: A name to give this `Op`.  Defaults to `cholesky_solve`.
 
 ##### Returns:
 
   Solution to `A x = rhs`, shape `[..., M, K]`.
 
 
-
-- - -
-
-### `tf.self_adjoint_eig(input, name=None)` {#self_adjoint_eig}
-
-Calculates the Eigen Decomposition of a square Self-Adjoint matrix.
-
-Only the lower-triangular part of the input will be used in this case. The
-upper-triangular part will not be read.
-
-The result is a M+1 x M matrix whose first row is the eigenvalues, and
-subsequent rows are eigenvectors.
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float64`, `float32`.
-    Shape is `[M, M]`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `input`. Shape is `[M+1, M]`.
-
-
-- - -
-
-### `tf.batch_self_adjoint_eig(input, name=None)` {#batch_self_adjoint_eig}
-
-Calculates the Eigen Decomposition of a batch of square self-adjoint matrices.
-
-The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
-form square matrices, with the same constraints as the single matrix
-SelfAdjointEig.
-
-The result is a '[..., M+1, M] matrix with [..., 0,:] containing the
-eigenvalues, and subsequent [...,1:, :] containing the eigenvectors.
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float64`, `float32`.
-    Shape is `[..., M, M]`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `input`. Shape is `[..., M+1, M]`.
-
-
-
 - - -
 
 ### `tf.matrix_solve(matrix, rhs, adjoint=None, name=None)` {#matrix_solve}
 
-Solves a system of linear equations. Checks for invertibility.
+Solves systems of linear equations.
+
+`Matrix` is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
+form square matrices. `Rhs` is a tensor of shape `[..., M, K]`. The `output` is
+a tensor shape `[..., M, K]`.  If `adjoint` is `False` then each output matrix
+satisfies `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.
+If `adjoint` is `True` then each output matrix satisfies
+`adjoint(matrix[..., :, :]) * output[..., :, :] = rhs[..., :, :]`.
 
 ##### Args:
 
 
-*  <b>`matrix`</b>: A `Tensor`. Must be one of the following types: `float64`, `float32`.
-    Shape is `[M, M]`.
-*  <b>`rhs`</b>: A `Tensor`. Must have the same type as `matrix`. Shape is `[M, K]`.
-*  <b>`adjoint`</b>: An optional `bool`. Defaults to `False`.
-    Boolean indicating whether to solve with `matrix` or its adjoint.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `matrix`.
-  Shape is `[M, K]`. If `adjoint` is `False` then `output` that solves
-  `matrix` * `output` = `rhs`. If `adjoint` is `True` then `output` that solves
-  `adjoint(matrix)` * `output` = `rhs`.
-
-
-- - -
-
-### `tf.batch_matrix_solve(matrix, rhs, adjoint=None, name=None)` {#batch_matrix_solve}
-
-Solves systems of linear equations. Checks for invertibility.
-
-Matrix is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
-form square matrices. Rhs is a tensor of shape
-`[..., M, K]`. The output is a tensor shape `[..., M, K]`.  If `adjoint` is `False` then each output
-matrix satisfies `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.
-If `adjoint` is `True` then each output
-matrix satisfies `adjoint(matrix[..., :, :]) * output[..., :, :] = rhs[..., :, :]`.
-
-##### Args:
-
-
-*  <b>`matrix`</b>: A `Tensor`. Must be one of the following types: `float64`, `float32`.
+*  <b>`matrix`</b>: A `Tensor`. Must be one of the following types: `float64`, `float32`, `complex64`, `complex128`.
     Shape is `[..., M, M]`.
 *  <b>`rhs`</b>: A `Tensor`. Must have the same type as `matrix`.
     Shape is `[..., M, K]`.
@@ -1538,48 +1840,9 @@ matrix satisfies `adjoint(matrix[..., :, :]) * output[..., :, :] = rhs[..., :, :
   A `Tensor`. Has the same type as `matrix`. Shape is `[..., M, K]`.
 
 
-
 - - -
 
 ### `tf.matrix_triangular_solve(matrix, rhs, lower=None, adjoint=None, name=None)` {#matrix_triangular_solve}
-
-Solves a system of linear equations with an upper or lower triangular matrix by
-
-backsubstitution.
-
-`matrix` is a matrix of shape `[M, M]`. If `lower` is `True` then the strictly
-upper triangular part of `matrix` is assumed to be zero and not accessed.
-If `lower` is False then the strictly lower triangular part of `matrix` is
-assumed to be zero and not accessed.
-`rhs` is a matrix of shape [M, K]`.
-
-The output is a matrix of shape `[M, K]`. If `adjoint` is `False` the output
-satisfies the matrix equation `matrix` * `output` = `rhs`.
-If `adjoint` is `False` then `output` satisfies the matrix equation
-`matrix` * `output` = `rhs`.
-If `adjoint` is `True` then `output` satisfies the matrix equation
-`adjoint(matrix)` * `output` = `rhs`.
-
-##### Args:
-
-
-*  <b>`matrix`</b>: A `Tensor`. Must be one of the following types: `float64`, `float32`.
-    Shape is `[M, M]`.
-*  <b>`rhs`</b>: A `Tensor`. Must have the same type as `matrix`. Shape is `[M, K]`.
-*  <b>`lower`</b>: An optional `bool`. Defaults to `True`.
-    Boolean indicating whether `matrix` is lower or upper triangular
-*  <b>`adjoint`</b>: An optional `bool`. Defaults to `False`.
-    Boolean indicating whether to solve with `matrix` or its adjoint.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `matrix`. Shape is `[M, K]`.
-
-
-- - -
-
-### `tf.batch_matrix_triangular_solve(matrix, rhs, lower=None, adjoint=None, name=None)` {#batch_matrix_triangular_solve}
 
 Solves systems of linear equations with upper or lower triangular matrices by
 
@@ -1590,10 +1853,10 @@ square matrices. If `lower` is `True` then the strictly upper triangular part
 of each inner-most matrix is assumed to be zero and not accessed.
 If `lower` is False then the strictly lower triangular part of each inner-most
 matrix is assumed to be zero and not accessed.
-`rhs` is a tensor of shape [..., M, K]`.
+`rhs` is a tensor of shape `[..., M, K]`.
 
-The output is a tensor of shape `[..., M, K]`. If `adjoint` is `True` then the
-innermost matrices in output` satisfy matrix equations
+The output is a tensor of shape `[..., M, K]`. If `adjoint` is
+`True` then the innermost matrices in output` satisfy matrix equations
 `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.
 If `adjoint` is `False` then the strictly then the  innermost matrices in
 `output` satisfy matrix equations
@@ -1611,7 +1874,12 @@ If `adjoint` is `False` then the strictly then the  innermost matrices in
     lower or upper triangular.
 *  <b>`adjoint`</b>: An optional `bool`. Defaults to `False`.
     Boolean indicating whether to solve with `matrix` or its (block-wise)
-    adjoint.
+             adjoint.
+
+    @compatibility(numpy)
+    Equivalent to np.linalg.triangular_solve
+    @end_compatibility
+
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -1619,62 +1887,11 @@ If `adjoint` is `False` then the strictly then the  innermost matrices in
   A `Tensor`. Has the same type as `matrix`. Shape is `[..., M, K]`.
 
 
-
 - - -
 
 ### `tf.matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None)` {#matrix_solve_ls}
 
-Solves a linear least-squares problem.
-
-Below we will use the following notation
-`matrix`=\\(A \in \Re^{m \times n}\\),
-`rhs`=\\(B  \in \Re^{m \times k}\\),
-`output`=\\(X  \in \Re^{n \times k}\\),
-`l2_regularizer`=\\(\lambda\\).
-
-If `fast` is `True`, then the solution is computed by solving the normal
-equations using Cholesky decomposition. Specifically, if \\(m \ge n\\) then
-\\(X = (A^T A + \lambda I)^{-1} A^T B\\), which solves the regularized
-least-squares problem \\(X = \mathrm{argmin}_{Z \in \Re^{n \times k}}
-||A Z - B||_F^2 + \lambda ||Z||_F^2\\). If \\(m \lt n\\) then `output` is
-computed as \\(X = A^T (A A^T + \lambda I)^{-1} B\\),
-which (for \\(\lambda = 0\\)) is the minimum-norm solution to the
-under-determined linear system, i.e.
-\\(X = \mathrm{argmin}_{Z \in \Re^{n \times k}} ||Z||_F^2 \\),
-subject to \\(A Z = B\\).
-Notice that the fast path is only numerically stable when \\(A\\) is
-numerically full rank and has a condition number
-\\(\mathrm{cond}(A) \lt \frac{1}{\sqrt{\epsilon_{mach}}}\\)
-or \\(\lambda\\) is sufficiently large.
-
-If `fast` is `False` then the solution is computed using the rank revealing
-QR decomposition with column pivoting. This will always compute a
-least-squares solution that minimizes the residual norm
-\\(||A X - B||_F^2 \\), even when \\(A\\) is rank deficient or
-ill-conditioned. Notice: The current version does not compute a minimum norm
-solution. If `fast` is `False` then `l2_regularizer` is ignored.
-
-##### Args:
-
-
-*  <b>`matrix`</b>: 2-D `Tensor` of shape `[M, N]`.
-*  <b>`rhs`</b>: 2-D `Tensor` of shape is `[M, K]`.
-*  <b>`l2_regularizer`</b>: 0-D  `double` `Tensor`. Ignored if `fast=False`.
-*  <b>`fast`</b>: bool. Defaults to `True`.
-*  <b>`name`</b>: string, optional name of the operation.
-
-##### Returns:
-
-
-*  <b>`output`</b>: Matrix of shape `[N, K]` containing the matrix that solves
-    `matrix * output = rhs` in the least-squares sense.
-
-
-- - -
-
-### `tf.batch_matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None)` {#batch_matrix_solve_ls}
-
-Solves multiple linear least-squares problems.
+Solves one or more linear least-squares problems.
 
 `matrix` is a tensor of shape `[..., M, N]` whose inner-most 2 dimensions
 form `M`-by-`N` matrices. Rhs is a tensor of shape `[..., M, K]` whose
@@ -1684,8 +1901,8 @@ matrices that solve the equations
 `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]` in the least squares
 sense.
 
-Below we will use the following notation for each pair of
-matrix and right-hand sides in the batch:
+Below we will use the following notation for each pair of matrix and
+right-hand sides in the batch:
 
 `matrix`=\\(A \in \Re^{m \times n}\\),
 `rhs`=\\(B  \in \Re^{m \times k}\\),
@@ -1727,6 +1944,133 @@ typically 6-7 times slower than the fast path. If `fast` is `False` then
     `M`-by-`K` matrices that solve the equations
     `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]` in the least
     squares sense.
+
+
+- - -
+
+### `tf.qr(input, full_matrices=None, name=None)` {#qr}
+
+Computes the QR decompositions of one or more matrices.
+
+Computes the QR decomposition of each inner matrix in `tensor` such that
+`tensor[..., :, :] = q[..., :, :] * r[..., :,:])`
+
+```prettyprint
+# a is a tensor.
+# q is a tensor of orthonormal matrices.
+# r is a tensor of upper triangular matrices.
+q, r = qr(a)
+q_full, r_full = qr(a, full_matrices=True)
+```
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float64`, `float32`, `complex64`, `complex128`.
+    A tensor of shape `[..., M, N]` whose inner-most 2 dimensions
+    form matrices of size `[M, N]`. Let `P` be the minimum of `M` and `N`.
+*  <b>`full_matrices`</b>: An optional `bool`. Defaults to `False`.
+    If true, compute full-sized `q` and `r`. If false
+    (the default), compute only the leading `P` columns of `q`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A tuple of `Tensor` objects (q, r).
+
+*  <b>`q`</b>: A `Tensor`. Has the same type as `input`. Orthonormal basis for range of `a`. If `full_matrices` is `False` then
+    shape is `[..., M, P]`; if `full_matrices` is `True` then shape is
+    `[..., M, M]`.
+*  <b>`r`</b>: A `Tensor`. Has the same type as `input`. Triangular factor. If `full_matrices` is `False` then shape is
+    `[..., P, N]`. If `full_matrices` is `True` then shape is `[..., M, N]`.
+
+
+- - -
+
+### `tf.self_adjoint_eig(tensor, name=None)` {#self_adjoint_eig}
+
+Computes the eigen decomposition of a batch of self-adjoint matrices.
+
+Computes the eigenvalues and eigenvectors of the innermost N-by-N matrices
+in `tensor` such that
+`tensor[...,:,:] * v[..., :,i] = e[..., i] * v[...,:,i]`, for i=0...N-1.
+
+##### Args:
+
+
+*  <b>`tensor`</b>: `Tensor` of shape `[..., N, N]`. Only the lower triangular part of
+    each inner inner matrix is referenced.
+*  <b>`name`</b>: string, optional name of the operation.
+
+##### Returns:
+
+
+*  <b>`e`</b>: Eigenvalues. Shape is `[..., N]`.
+*  <b>`v`</b>: Eigenvectors. Shape is `[..., N, N]`. The columns of the inner most
+    matrices contain eigenvectors of the corresponding matrices in `tensor`
+
+
+- - -
+
+### `tf.self_adjoint_eigvals(tensor, name=None)` {#self_adjoint_eigvals}
+
+Computes the eigenvalues of one or more self-adjoint matrices.
+
+##### Args:
+
+
+*  <b>`tensor`</b>: `Tensor` of shape `[..., N, N]`.
+*  <b>`name`</b>: string, optional name of the operation.
+
+##### Returns:
+
+
+*  <b>`e`</b>: Eigenvalues. Shape is `[..., N]`. The vector `e[..., :]` contains the `N`
+    eigenvalues of `tensor[..., :, :]`.
+
+
+- - -
+
+### `tf.svd(tensor, full_matrices=False, compute_uv=True, name=None)` {#svd}
+
+Computes the singular value decompositions of one or more matrices.
+
+Computes the SVD of each inner matrix in `tensor` such that
+`tensor[..., :, :] = u[..., :, :] * diag(s[..., :, :]) * transpose(v[..., :,
+:])`
+
+```prettyprint
+# a is a tensor.
+# s is a tensor of singular values.
+# u is a tensor of left singular vectors.
+# v is a tensor of right singular vectors.
+s, u, v = svd(a)
+s = svd(a, compute_uv=False)
+```
+
+##### Args:
+
+
+*  <b>`matrix`</b>: `Tensor` of shape `[..., M, N]`. Let `P` be the minimum of `M` and
+    `N`.
+*  <b>`full_matrices`</b>: If true, compute full-sized `u` and `v`. If false
+    (the default), compute only the leading `P` singular vectors.
+    Ignored if `compute_uv` is `False`.
+*  <b>`compute_uv`</b>: If `True` then left and right singular vectors will be
+    computed and returned in `u` and `v`, respectively. Otherwise, only the
+    singular values will be computed, which can be significantly faster.
+*  <b>`name`</b>: string, optional name of the operation.
+
+##### Returns:
+
+
+*  <b>`s`</b>: Singular values. Shape is `[..., P]`.
+*  <b>`u`</b>: Right singular vectors. If `full_matrices` is `False` (default) then
+    shape is `[..., M, P]`; if `full_matrices` is `True` then shape is
+    `[..., M, M]`. Not returned if `compute_uv` is `False`.
+*  <b>`v`</b>: Left singular vectors. If `full_matrices` is `False` (default) then
+    shape is `[..., N, P]`. If `full_matrices` is `True` then shape is
+    `[..., N, N]`. Not returned if `compute_uv` is `False`.
 
 
 
@@ -1775,7 +2119,7 @@ tf.complex(real, imag) ==> [[2.25 + 4.75j], [3.25 + 5.75j]]
 Computes the complex absolute value of a tensor.
 
 Given a tensor `x` of complex numbers, this operation returns a tensor of type
-`float` or `double` that is the absolute value of each element in `x`. All
+`float32` or `float64` that is the absolute value of each element in `x`. All
 elements in `x` must be complex numbers of the form \\(a + bj\\). The
 absolute value is computed as \\( \sqrt{a^2 + b^2}\\).
 
@@ -1799,7 +2143,7 @@ tf.complex_abs(x) ==> [5.25594902, 6.60492229]
 
 - - -
 
-### `tf.conj(input, name=None)` {#conj}
+### `tf.conj(x, name=None)` {#conj}
 
 Returns the complex conjugate of a complex number.
 
@@ -1812,20 +2156,25 @@ The complex conjugate returned by this operation is of the form \\(a - bj\\).
 
 For example:
 
-```
-# tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
-tf.conj(input) ==> [-2.25 - 4.75j, 3.25 - 5.75j]
-```
+    # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
+    tf.conj(input) ==> [-2.25 - 4.75j, 3.25 - 5.75j]
+
+If `x` is real, it is returned unchanged.
 
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `complex64`, `complex128`.
+*  <b>`x`</b>: `Tensor` to conjugate.  Must have numeric type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `input`.
+  A `Tensor` that is the conjugate of `x` (with the same type).
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `x` is not a numeric tensor.
 
 
 - - -
@@ -1835,7 +2184,7 @@ tf.conj(input) ==> [-2.25 - 4.75j, 3.25 - 5.75j]
 Returns the imaginary part of a complex number.
 
 Given a tensor `input` of complex numbers, this operation returns a tensor of
-type `float` or `double` that is the imaginary part of each element in
+type `float32` or `float64` that is the imaginary part of each element in
 `input`. All elements in `input` must be complex numbers of the form \(a +
 bj\), where *a* is the real part and *b* is the imaginary part returned by
 this operation.
@@ -1850,12 +2199,13 @@ tf.imag(input) ==> [4.75, 5.75]
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `complex64`, `complex128`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `complex64`,
+    `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `float` or `double`.
+  A `Tensor` of type `float32` or `float64`.
 
 
 - - -
@@ -1865,7 +2215,7 @@ tf.imag(input) ==> [4.75, 5.75]
 Returns the real part of a complex number.
 
 Given a tensor `input` of complex numbers, this operation returns a tensor of
-type `float` or `double` that is the real part of each element in `input`.
+type `float32` or `float64` that is the real part of each element in `input`.
 All elements in `input` must be complex numbers of the form \(a + bj\),
 where *a* is the real part returned by this operation and *b* is the
 imaginary part.
@@ -1877,126 +2227,28 @@ For example:
 tf.real(input) ==> [-2.25, 3.25]
 ```
 
+If `input` is already real, it is returned unchanged.
+
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `complex64`,
-       `complex128`.
+*  <b>`input`</b>: A `Tensor`. Must have numeric type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `float` or `double`.
+  A `Tensor` of type `float32` or `float64`.
 
+
+
+## Fourier Transform Functions
+
+TensorFlow provides several operations that you can use to add discrete
+Fourier transform functions to your graph.
 
 - - -
 
 ### `tf.fft(input, name=None)` {#fft}
-
-Compute the 1-dimensional discrete Fourier Transform.
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 vector.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor` of type `complex64`. The 1D Fourier Transform of `input`.
-
-
-- - -
-
-### `tf.ifft(input, name=None)` {#ifft}
-
-Compute the inverse 1-dimensional discrete Fourier Transform.
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 vector.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor` of type `complex64`.
-  The inverse 1D Fourier Transform of `input`.
-
-
-- - -
-
-### `tf.fft2d(input, name=None)` {#fft2d}
-
-Compute the 2-dimensional discrete Fourier Transform.
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 matrix.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor` of type `complex64`. The 2D Fourier Transform of `input`.
-
-
-- - -
-
-### `tf.ifft2d(input, name=None)` {#ifft2d}
-
-Compute the inverse 2-dimensional discrete Fourier Transform.
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 matrix.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor` of type `complex64`.
-  The inverse 2D Fourier Transform of `input`.
-
-
-- - -
-
-### `tf.fft3d(input, name=None)` {#fft3d}
-
-Compute the 3-dimensional discrete Fourier Transform.
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 3-D tensor.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor` of type `complex64`. The 3D Fourier Transform of `input`.
-
-
-- - -
-
-### `tf.ifft3d(input, name=None)` {#ifft3d}
-
-Compute the inverse 3-dimensional discrete Fourier Transform.
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 3-D tensor.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor` of type `complex64`.
-  The inverse 3D Fourier Transform of `input`.
-
-
-- - -
-
-### `tf.batch_fft(input, name=None)` {#batch_fft}
 
 Compute the 1-dimensional discrete Fourier Transform over the inner-most
 
@@ -2017,7 +2269,7 @@ dimension of `input`.
 
 - - -
 
-### `tf.batch_ifft(input, name=None)` {#batch_ifft}
+### `tf.ifft(input, name=None)` {#ifft}
 
 Compute the inverse 1-dimensional discrete Fourier Transform over the inner-most
 
@@ -2038,7 +2290,7 @@ dimension of `input`.
 
 - - -
 
-### `tf.batch_fft2d(input, name=None)` {#batch_fft2d}
+### `tf.fft2d(input, name=None)` {#fft2d}
 
 Compute the 2-dimensional discrete Fourier Transform over the inner-most
 
@@ -2054,12 +2306,16 @@ Compute the 2-dimensional discrete Fourier Transform over the inner-most
 
   A `Tensor` of type `complex64`.
   A complex64 tensor of the same shape as `input`. The inner-most 2
-  dimensions of `input` are replaced with their 2D Fourier Transform.
+    dimensions of `input` are replaced with their 2D Fourier Transform.
+
+  @compatibility(numpy)
+  Equivalent to np.fft2
+  @end_compatibility
 
 
 - - -
 
-### `tf.batch_ifft2d(input, name=None)` {#batch_ifft2d}
+### `tf.ifft2d(input, name=None)` {#ifft2d}
 
 Compute the inverse 2-dimensional discrete Fourier Transform over the inner-most
 
@@ -2075,12 +2331,16 @@ Compute the inverse 2-dimensional discrete Fourier Transform over the inner-most
 
   A `Tensor` of type `complex64`.
   A complex64 tensor of the same shape as `input`. The inner-most 2
-  dimensions of `input` are replaced with their inverse 2D Fourier Transform.
+    dimensions of `input` are replaced with their inverse 2D Fourier Transform.
+
+  @compatibility(numpy)
+  Equivalent to np.ifft2
+  @end_compatibility
 
 
 - - -
 
-### `tf.batch_fft3d(input, name=None)` {#batch_fft3d}
+### `tf.fft3d(input, name=None)` {#fft3d}
 
 Compute the 3-dimensional discrete Fourier Transform over the inner-most 3
 
@@ -2096,12 +2356,16 @@ dimensions of `input`.
 
   A `Tensor` of type `complex64`.
   A complex64 tensor of the same shape as `input`. The inner-most 3
-  dimensions of `input` are replaced with their 3D Fourier Transform.
+    dimensions of `input` are replaced with their 3D Fourier Transform.
+
+  @compatibility(numpy)
+  Equivalent to np.fft3
+  @end_compatibility
 
 
 - - -
 
-### `tf.batch_ifft3d(input, name=None)` {#batch_ifft3d}
+### `tf.ifft3d(input, name=None)` {#ifft3d}
 
 Compute the inverse 3-dimensional discrete Fourier Transform over the inner-most
 
@@ -2117,7 +2381,11 @@ Compute the inverse 3-dimensional discrete Fourier Transform over the inner-most
 
   A `Tensor` of type `complex64`.
   A complex64 tensor of the same shape as `input`. The inner-most 3
-  dimensions of `input` are replaced with their inverse 3D Fourier Transform.
+    dimensions of `input` are replaced with their inverse 3D Fourier Transform.
+
+  @compatibility(numpy)
+  Equivalent to np.fft3
+  @end_compatibility
 
 
 
@@ -2128,16 +2396,16 @@ common math computations that reduce various dimensions of a tensor.
 
 - - -
 
-### `tf.reduce_sum(input_tensor, reduction_indices=None, keep_dims=False, name=None)` {#reduce_sum}
+### `tf.reduce_sum(input_tensor, axis=None, keep_dims=False, name=None, reduction_indices=None)` {#reduce_sum}
 
 Computes the sum of elements across dimensions of a tensor.
 
-Reduces `input_tensor` along the dimensions given in `reduction_indices`.
+Reduces `input_tensor` along the dimensions given in `axis`.
 Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
-entry in `reduction_indices`. If `keep_dims` is true, the reduced dimensions
+entry in `axis`. If `keep_dims` is true, the reduced dimensions
 are retained with length 1.
 
-If `reduction_indices` has no entries, all dimensions are reduced, and a
+If `axis` has no entries, all dimensions are reduced, and a
 tensor with a single element is returned.
 
 For example:
@@ -2156,112 +2424,132 @@ tf.reduce_sum(x, [0, 1]) ==> 6
 
 
 *  <b>`input_tensor`</b>: The tensor to reduce. Should have numeric type.
-*  <b>`reduction_indices`</b>: The dimensions to reduce. If `None` (the default),
+*  <b>`axis`</b>: The dimensions to reduce. If `None` (the default),
     reduces all dimensions.
 *  <b>`keep_dims`</b>: If true, retains reduced dimensions with length 1.
 *  <b>`name`</b>: A name for the operation (optional).
+*  <b>`reduction_indices`</b>: The old (deprecated) name for axis.
 
 ##### Returns:
 
   The reduced tensor.
 
+@compatibility(numpy)
+Equivalent to np.sum
+@end_compatibility
+
 
 - - -
 
-### `tf.reduce_prod(input_tensor, reduction_indices=None, keep_dims=False, name=None)` {#reduce_prod}
+### `tf.reduce_prod(input_tensor, axis=None, keep_dims=False, name=None, reduction_indices=None)` {#reduce_prod}
 
 Computes the product of elements across dimensions of a tensor.
 
-Reduces `input_tensor` along the dimensions given in `reduction_indices`.
+Reduces `input_tensor` along the dimensions given in `axis`.
 Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
-entry in `reduction_indices`. If `keep_dims` is true, the reduced dimensions
+entry in `axis`. If `keep_dims` is true, the reduced dimensions
 are retained with length 1.
 
-If `reduction_indices` has no entries, all dimensions are reduced, and a
+If `axis` has no entries, all dimensions are reduced, and a
 tensor with a single element is returned.
 
 ##### Args:
 
 
 *  <b>`input_tensor`</b>: The tensor to reduce. Should have numeric type.
-*  <b>`reduction_indices`</b>: The dimensions to reduce. If `None` (the default),
+*  <b>`axis`</b>: The dimensions to reduce. If `None` (the default),
     reduces all dimensions.
 *  <b>`keep_dims`</b>: If true, retains reduced dimensions with length 1.
 *  <b>`name`</b>: A name for the operation (optional).
+*  <b>`reduction_indices`</b>: The old (deprecated) name for axis.
 
 ##### Returns:
 
   The reduced tensor.
 
+@compatibility(numpy)
+Equivalent to np.prod
+@end_compatibility
+
 
 - - -
 
-### `tf.reduce_min(input_tensor, reduction_indices=None, keep_dims=False, name=None)` {#reduce_min}
+### `tf.reduce_min(input_tensor, axis=None, keep_dims=False, name=None, reduction_indices=None)` {#reduce_min}
 
 Computes the minimum of elements across dimensions of a tensor.
 
-Reduces `input_tensor` along the dimensions given in `reduction_indices`.
+Reduces `input_tensor` along the dimensions given in `axis`.
 Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
-entry in `reduction_indices`. If `keep_dims` is true, the reduced dimensions
+entry in `axis`. If `keep_dims` is true, the reduced dimensions
 are retained with length 1.
 
-If `reduction_indices` has no entries, all dimensions are reduced, and a
+If `axis` has no entries, all dimensions are reduced, and a
 tensor with a single element is returned.
 
 ##### Args:
 
 
 *  <b>`input_tensor`</b>: The tensor to reduce. Should have numeric type.
-*  <b>`reduction_indices`</b>: The dimensions to reduce. If `None` (the default),
+*  <b>`axis`</b>: The dimensions to reduce. If `None` (the default),
     reduces all dimensions.
 *  <b>`keep_dims`</b>: If true, retains reduced dimensions with length 1.
 *  <b>`name`</b>: A name for the operation (optional).
+*  <b>`reduction_indices`</b>: The old (deprecated) name for axis.
 
 ##### Returns:
 
   The reduced tensor.
 
+@compatibility(numpy)
+Equivalent to np.min
+@end_compatibility
+
 
 - - -
 
-### `tf.reduce_max(input_tensor, reduction_indices=None, keep_dims=False, name=None)` {#reduce_max}
+### `tf.reduce_max(input_tensor, axis=None, keep_dims=False, name=None, reduction_indices=None)` {#reduce_max}
 
 Computes the maximum of elements across dimensions of a tensor.
 
-Reduces `input_tensor` along the dimensions given in `reduction_indices`.
+Reduces `input_tensor` along the dimensions given in `axis`.
 Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
-entry in `reduction_indices`. If `keep_dims` is true, the reduced dimensions
+entry in `axis`. If `keep_dims` is true, the reduced dimensions
 are retained with length 1.
 
-If `reduction_indices` has no entries, all dimensions are reduced, and a
+If `axis` has no entries, all dimensions are reduced, and a
 tensor with a single element is returned.
 
 ##### Args:
 
 
 *  <b>`input_tensor`</b>: The tensor to reduce. Should have numeric type.
-*  <b>`reduction_indices`</b>: The dimensions to reduce. If `None` (the default),
+*  <b>`axis`</b>: The dimensions to reduce. If `None` (the default),
     reduces all dimensions.
 *  <b>`keep_dims`</b>: If true, retains reduced dimensions with length 1.
 *  <b>`name`</b>: A name for the operation (optional).
+*  <b>`reduction_indices`</b>: The old (deprecated) name for axis.
 
 ##### Returns:
 
   The reduced tensor.
 
+@compatibility(numpy)
+Equivalent to np.max
+@end_compatibility
+
 
 - - -
 
-### `tf.reduce_mean(input_tensor, reduction_indices=None, keep_dims=False, name=None)` {#reduce_mean}
+### `tf.reduce_mean(input_tensor, axis=None, keep_dims=False, name=None, reduction_indices=None)` {#reduce_mean}
 
 Computes the mean of elements across dimensions of a tensor.
 
-Reduces `input_tensor` along the dimensions given in `reduction_indices`.
+Reduces `input_tensor` along the dimensions given in `axis`.
 Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
-entry in `reduction_indices`. If `keep_dims` is true, the reduced dimensions
+entry in `axis`. If `keep_dims` is true, the reduced dimensions
 are retained with length 1.
 
-If `reduction_indices` has no entries, all dimensions are reduced, and a
+If `axis` has no entries, all dimensions are reduced, and a
 tensor with a single element is returned.
 
 For example:
@@ -2278,28 +2566,33 @@ tf.reduce_mean(x, 1) ==> [1.,  2.]
 
 
 *  <b>`input_tensor`</b>: The tensor to reduce. Should have numeric type.
-*  <b>`reduction_indices`</b>: The dimensions to reduce. If `None` (the default),
+*  <b>`axis`</b>: The dimensions to reduce. If `None` (the default),
     reduces all dimensions.
 *  <b>`keep_dims`</b>: If true, retains reduced dimensions with length 1.
 *  <b>`name`</b>: A name for the operation (optional).
+*  <b>`reduction_indices`</b>: The old (deprecated) name for axis.
 
 ##### Returns:
 
   The reduced tensor.
 
+@compatibility(numpy)
+Equivalent to np.mean
+@end_compatibility
+
 
 - - -
 
-### `tf.reduce_all(input_tensor, reduction_indices=None, keep_dims=False, name=None)` {#reduce_all}
+### `tf.reduce_all(input_tensor, axis=None, keep_dims=False, name=None, reduction_indices=None)` {#reduce_all}
 
 Computes the "logical and" of elements across dimensions of a tensor.
 
-Reduces `input_tensor` along the dimensions given in `reduction_indices`.
+Reduces `input_tensor` along the dimensions given in `axis`.
 Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
-entry in `reduction_indices`. If `keep_dims` is true, the reduced dimensions
+entry in `axis`. If `keep_dims` is true, the reduced dimensions
 are retained with length 1.
 
-If `reduction_indices` has no entries, all dimensions are reduced, and a
+If `axis` has no entries, all dimensions are reduced, and a
 tensor with a single element is returned.
 
 For example:
@@ -2316,28 +2609,33 @@ tf.reduce_all(x, 1) ==> [True, False]
 
 
 *  <b>`input_tensor`</b>: The boolean tensor to reduce.
-*  <b>`reduction_indices`</b>: The dimensions to reduce. If `None` (the default),
+*  <b>`axis`</b>: The dimensions to reduce. If `None` (the default),
     reduces all dimensions.
 *  <b>`keep_dims`</b>: If true, retains reduced dimensions with length 1.
 *  <b>`name`</b>: A name for the operation (optional).
+*  <b>`reduction_indices`</b>: The old (deprecated) name for axis.
 
 ##### Returns:
 
   The reduced tensor.
 
+@compatibility(numpy)
+Equivalent to np.all
+@end_compatibility
+
 
 - - -
 
-### `tf.reduce_any(input_tensor, reduction_indices=None, keep_dims=False, name=None)` {#reduce_any}
+### `tf.reduce_any(input_tensor, axis=None, keep_dims=False, name=None, reduction_indices=None)` {#reduce_any}
 
 Computes the "logical or" of elements across dimensions of a tensor.
 
-Reduces `input_tensor` along the dimensions given in `reduction_indices`.
+Reduces `input_tensor` along the dimensions given in `axis`.
 Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
-entry in `reduction_indices`. If `keep_dims` is true, the reduced dimensions
+entry in `axis`. If `keep_dims` is true, the reduced dimensions
 are retained with length 1.
 
-If `reduction_indices` has no entries, all dimensions are reduced, and a
+If `axis` has no entries, all dimensions are reduced, and a
 tensor with a single element is returned.
 
 For example:
@@ -2354,14 +2652,110 @@ tf.reduce_any(x, 1) ==> [True, False]
 
 
 *  <b>`input_tensor`</b>: The boolean tensor to reduce.
-*  <b>`reduction_indices`</b>: The dimensions to reduce. If `None` (the default),
+*  <b>`axis`</b>: The dimensions to reduce. If `None` (the default),
     reduces all dimensions.
 *  <b>`keep_dims`</b>: If true, retains reduced dimensions with length 1.
 *  <b>`name`</b>: A name for the operation (optional).
+*  <b>`reduction_indices`</b>: The old (deprecated) name for axis.
 
 ##### Returns:
 
   The reduced tensor.
+
+@compatibility(numpy)
+Equivalent to np.any
+@end_compatibility
+
+
+- - -
+
+### `tf.reduce_logsumexp(input_tensor, axis=None, keep_dims=False, name=None, reduction_indices=None)` {#reduce_logsumexp}
+
+Computes log(sum(exp(elements across dimensions of a tensor))).
+
+Reduces `input_tensor` along the dimensions given in `axis`.
+Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
+entry in `axis`. If `keep_dims` is true, the reduced dimensions
+are retained with length 1.
+
+If `axis` has no entries, all dimensions are reduced, and a
+tensor with a single element is returned.
+
+This function is more numerically stable than log(sum(exp(input))). It avoids
+overflows caused by taking the exp of large inputs and underflows caused by
+taking the log of small inputs.
+
+For example:
+
+```python
+# 'x' is [[0, 0, 0]]
+#         [0, 0, 0]]
+tf.reduce_logsumexp(x) ==> log(6)
+tf.reduce_logsumexp(x, 0) ==> [log(2), log(2), log(2)]
+tf.reduce_logsumexp(x, 1) ==> [log(3), log(3)]
+tf.reduce_logsumexp(x, 1, keep_dims=True) ==> [[log(3)], [log(3)]]
+tf.reduce_logsumexp(x, [0, 1]) ==> log(6)
+```
+
+##### Args:
+
+
+*  <b>`input_tensor`</b>: The tensor to reduce. Should have numeric type.
+*  <b>`axis`</b>: The dimensions to reduce. If `None` (the default),
+    reduces all dimensions.
+*  <b>`keep_dims`</b>: If true, retains reduced dimensions with length 1.
+*  <b>`name`</b>: A name for the operation (optional).
+*  <b>`reduction_indices`</b>: The old (deprecated) name for axis.
+
+##### Returns:
+
+  The reduced tensor.
+
+
+- - -
+
+### `tf.count_nonzero(input_tensor, axis=None, keep_dims=False, dtype=tf.int64, name=None, reduction_indices=None)` {#count_nonzero}
+
+Computes number of nonzero elements across dimensions of a tensor.
+
+Reduces `input_tensor` along the dimensions given in `axis`.
+Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
+entry in `axis`. If `keep_dims` is true, the reduced dimensions
+are retained with length 1.
+
+If `axis` has no entries, all dimensions are reduced, and a
+tensor with a single element is returned.
+
+**NOTE** Floating point comparison to zero is done by exact floating point
+equality check.  Small values are **not** rounded to zero for purposes of
+the nonzero check.
+
+For example:
+
+```python
+# 'x' is [[0, 1, 0]
+#         [1, 1, 0]]
+tf.count_nonzero(x) ==> 3
+tf.count_nonzero(x, 0) ==> [1, 2, 0]
+tf.count_nonzero(x, 1) ==> [1, 2]
+tf.count_nonzero(x, 1, keep_dims=True) ==> [[1], [2]]
+tf.count_nonzero(x, [0, 1]) ==> 3
+```
+
+##### Args:
+
+
+*  <b>`input_tensor`</b>: The tensor to reduce. Should be of numeric type, or `bool`.
+*  <b>`axis`</b>: The dimensions to reduce. If `None` (the default),
+    reduces all dimensions.
+*  <b>`keep_dims`</b>: If true, retains reduced dimensions with length 1.
+*  <b>`dtype`</b>: The output dtype; defaults to `tf.int64`.
+*  <b>`name`</b>: A name for the operation (optional).
+*  <b>`reduction_indices`</b>: The old (deprecated) name for axis.
+
+##### Returns:
+
+  The reduced tensor (number of nonzero values).
 
 
 
@@ -2373,6 +2767,9 @@ Returns the element-wise sum of a list of tensors.
 
 Optionally, pass `shape` and `tensor_dtype` for shape and type checking,
 otherwise, these are inferred.
+
+NOTE: This operation is not differentiable and cannot be used if inputs depend
+on trainable variables. Please use `tf.add_n` for such cases.
 
 For example:
 
@@ -2403,6 +2800,180 @@ tf.accumulate_n([a, b, a], shape=[2, 2], tensor_dtype=tf.int32)
 
 *  <b>`ValueError`</b>: If `inputs` don't all have same shape and dtype or the shape
   cannot be inferred.
+
+
+
+- - -
+
+### `tf.einsum(equation, *inputs)` {#einsum}
+
+A generalized contraction between tensors of arbitrary dimension.
+
+This function returns a tensor whose elements are defined by `equation`,
+which is written in a shorthand form inspired by the Einstein summation
+convention.  As an example, consider multiplying two matrices
+A and B to form a matrix C.  The elements of C are given by:
+
+```
+  C[i,k] = sum_j A[i,j] * B[j,k]
+```
+
+The corresponding `equation` is:
+
+```
+  ij,jk->ik
+```
+
+In general, the `equation` is obtained from the more familiar element-wise
+equation by
+  1. removing variable names, brackets, and commas,
+  2. replacing "*" with ",",
+  3. dropping summation signs, and
+  4. moving the output to the right, and replacing "=" with "->".
+
+Many common operations can be expressed in this way.  For example:
+
+# Matrix multiplication
+>>> einsum('ij,jk->ik', m0, m1)  # output[i,k] = sum_j m0[i,j] * m1[j, k]
+
+# Dot product
+>>> einsum('i,i->', u, v)  # output = sum_i u[i]*v[i]
+
+# Outer product
+>>> einsum('i,j->ij', u, v)  # output[i,j] = u[i]*v[j]
+
+# Transpose
+>>> einsum('ij->ji', m)  # output[j,i] = m[i,j]
+
+# Batch matrix multiplication
+>>> einsum('aij,ajk->aik', s, t)  # out[a,i,k] = sum_j s[a,i,j] * t[a, j, k]
+
+This function behaves like `numpy.einsum`, but does not support:
+* Ellipses (subscripts like `ij...,jk...->ik...`)
+* Subscripts where an axis appears more than once for a single input
+  (e.g. `ijj,k->ik`).
+* Subscripts that are summed across multiple inputs (e.g., `ij,ij,jk->ik`).
+
+##### Args:
+
+
+*  <b>`equation`</b>: a `str` describing the contraction, in the same format as
+    `numpy.einsum`.
+*  <b>`inputs`</b>: the inputs to contract (each one a `Tensor`), whose shapes should
+    be consistent with `equation`.
+
+##### Returns:
+
+  The contracted `Tensor`, with shape determined by `equation`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If
+    - the format of `equation` is incorrect,
+    - the number of inputs implied by `equation` does not match `len(inputs)`,
+    - an axis appears in the output subscripts but not in any of the inputs,
+    - the number of dimensions of an input differs from the number of
+      indices in its subscript, or
+    - the input shapes are inconsistent along a particular axis.
+
+
+
+## Scan
+
+TensorFlow provides several operations that you can use to perform scans
+(running totals) across one axis of a tensor.
+
+- - -
+
+### `tf.cumsum(x, axis=0, exclusive=False, reverse=False, name=None)` {#cumsum}
+
+Compute the cumulative sum of the tensor `x` along `axis`.
+
+By default, this op performs an inclusive cumsum, which means that the first
+element of the input is identical to the first element of the output:
+```prettyprint
+tf.cumsum([a, b, c]) ==> [a, a + b, a + b + c]
+```
+
+By setting the `exclusive` kwarg to `True`, an exclusive cumsum is performed
+instead:
+```prettyprint
+tf.cumsum([a, b, c], exclusive=True) ==> [0, a, a + b]
+```
+
+By setting the `reverse` kwarg to `True`, the cumsum is performed in the
+opposite direction:
+```prettyprint
+tf.cumsum([a, b, c], reverse=True) ==> [a + b + c, b + c, c]
+```
+This is more efficient than using separate `tf.reverse` ops.
+
+The `reverse` and `exclusive` kwargs can also be combined:
+```prettyprint
+tf.cumsum([a, b, c], exclusive=True, reverse=True) ==> [b + c, c, 0]
+```
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`,
+     `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,
+     `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+*  <b>`axis`</b>: A `Tensor` of type `int32` (default: 0).
+*  <b>`reverse`</b>: A `bool` (default: False).
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `x`.
+
+
+- - -
+
+### `tf.cumprod(x, axis=0, exclusive=False, reverse=False, name=None)` {#cumprod}
+
+Compute the cumulative product of the tensor `x` along `axis`.
+
+By default, this op performs an inclusive cumprod, which means that the
+first
+element of the input is identical to the first element of the output:
+```prettyprint
+tf.cumprod([a, b, c]) ==> [a, a * b, a * b * c]
+```
+
+By setting the `exclusive` kwarg to `True`, an exclusive cumprod is
+performed
+instead:
+```prettyprint
+tf.cumprod([a, b, c], exclusive=True) ==> [1, a, a * b]
+```
+
+By setting the `reverse` kwarg to `True`, the cumprod is performed in the
+opposite direction:
+```prettyprint
+tf.cumprod([a, b, c], reverse=True) ==> [a * b * c, b * c, c]
+```
+This is more efficient than using separate `tf.reverse` ops.
+
+The `reverse` and `exclusive` kwargs can also be combined:
+```prettyprint
+tf.cumprod([a, b, c], exclusive=True, reverse=True) ==> [b * c, c, 1]
+```
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`,
+     `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,
+     `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+*  <b>`axis`</b>: A `Tensor` of type `int32` (default: 0).
+*  <b>`reverse`</b>: A `bool` (default: False).
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `x`.
 
 
 
@@ -2447,7 +3018,7 @@ that `segment_ids[j] == i`.
 ##### Args:
 
 
-*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
 *  <b>`segment_ids`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A 1-D tensor whose rank is equal to the rank of `data`'s
     first dimension.  Values should be sorted and can be repeated.
@@ -2481,7 +3052,7 @@ that `segment_ids[j] == i`.
 ##### Args:
 
 
-*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
 *  <b>`segment_ids`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A 1-D tensor whose rank is equal to the rank of `data`'s
     first dimension.  Values should be sorted and can be repeated.
@@ -2608,10 +3179,10 @@ Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
 of segments.
 
 Computes a tensor such that
-\\(output_i = \sum_j data_j\\) where sum is over `j` such
-that `segment_ids[j] == i`. Unlike `SegmentSum`, `segment_ids`
+`(output[i] = sum_{j...} data[j...]` where the sum is over tuples `j...` such
+that `segment_ids[j...] == i`.  Unlike `SegmentSum`, `segment_ids`
 need not be sorted and need not cover all values in the full
-  range of valid values.
+range of valid values.
 
 If the sum is empty for a given segment ID `i`, `output[i] = 0`.
 
@@ -2624,18 +3195,18 @@ If the sum is empty for a given segment ID `i`, `output[i] = 0`.
 ##### Args:
 
 
-*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
 *  <b>`segment_ids`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
-    A 1-D tensor whose rank is equal to the rank of `data`'s
-    first dimension.
+    A tensor whose shape is a prefix of `data.shape`.
 *  <b>`num_segments`</b>: A `Tensor` of type `int32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
   A `Tensor`. Has the same type as `data`.
-  Has same shape as data, except for dimension 0 which
-  has size `num_segments`.
+  Has same shape as data, except for the first `segment_ids.rank`
+  dimensions, which are replaced with a single dimension which has size
+  `num_segments`.
 
 
 
@@ -2679,7 +3250,7 @@ tf.segment_sum(c, tf.constant([0, 0, 1]))
 
 
 *  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
-*  <b>`indices`</b>: A `Tensor` of type `int32`.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A 1-D tensor. Has same rank as `segment_ids`.
 *  <b>`segment_ids`</b>: A `Tensor` of type `int32`.
     A 1-D tensor. Values should be sorted and can be repeated.
@@ -2709,7 +3280,7 @@ dimension, selecting a subset of dimension 0, specified by `indices`.
 
 
 *  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
-*  <b>`indices`</b>: A `Tensor` of type `int32`.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A 1-D tensor. Has same rank as `segment_ids`.
 *  <b>`segment_ids`</b>: A `Tensor` of type `int32`.
     A 1-D tensor. Values should be sorted and can be repeated.
@@ -2738,7 +3309,7 @@ of segments.
 
 
 *  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
-*  <b>`indices`</b>: A `Tensor` of type `int32`.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A 1-D tensor. Has same rank as `segment_ids`.
 *  <b>`segment_ids`</b>: A `Tensor` of type `int32`.
     A 1-D tensor. Values should be sorted and can be repeated.
@@ -2762,17 +3333,17 @@ a tensor.
 
 - - -
 
-### `tf.argmin(input, dimension, name=None)` {#argmin}
+### `tf.argmin(input, axis=None, name=None, dimension=None)` {#argmin}
 
-Returns the index with the smallest value across dimensions of a tensor.
+Returns the index with the smallest value across axiss of a tensor.
 
 ##### Args:
 
 
 *  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
-*  <b>`dimension`</b>: A `Tensor` of type `int32`.
-    int32, 0 <= dimension < rank(input).  Describes which dimension
-    of the input Tensor to reduce across. For vectors, use dimension = 0.
+*  <b>`axis`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+    int32, 0 <= axis < rank(input).  Describes which axis
+    of the input Tensor to reduce across. For vectors, use axis = 0.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -2782,17 +3353,17 @@ Returns the index with the smallest value across dimensions of a tensor.
 
 - - -
 
-### `tf.argmax(input, dimension, name=None)` {#argmax}
+### `tf.argmax(input, axis=None, name=None, dimension=None)` {#argmax}
 
-Returns the index with the largest value across dimensions of a tensor.
+Returns the index with the largest value across axiss of a tensor.
 
 ##### Args:
 
 
 *  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
-*  <b>`dimension`</b>: A `Tensor` of type `int32`.
-    int32, 0 <= dimension < rank(input).  Describes which dimension
-    of the input Tensor to reduce across. For vectors, use dimension = 0.
+*  <b>`axis`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+    int32, 0 <= axis < rank(input).  Describes which axis
+    of the input Tensor to reduce across. For vectors, use axis = 0.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -2803,7 +3374,7 @@ Returns the index with the largest value across dimensions of a tensor.
 
 - - -
 
-### `tf.listdiff(x, y, name=None)` {#listdiff}
+### `tf.setdiff1d(x, y, index_dtype=tf.int32, name=None)` {#setdiff1d}
 
 Computes the difference between two lists of numbers or strings.
 
@@ -2834,6 +3405,7 @@ idx ==> [1, 3, 5]
 
 *  <b>`x`</b>: A `Tensor`. 1-D. Values to keep.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`. 1-D. Values to remove.
+*  <b>`out_idx`</b>: An optional `tf.DType` from: `tf.int32, tf.int64`. Defaults to `tf.int32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -2841,61 +3413,62 @@ idx ==> [1, 3, 5]
   A tuple of `Tensor` objects (out, idx).
 
 *  <b>`out`</b>: A `Tensor`. Has the same type as `x`. 1-D. Values present in `x` but not in `y`.
-*  <b>`idx`</b>: A `Tensor` of type `int32`. 1-D. Positions of `x` values preserved in `out`.
+*  <b>`idx`</b>: A `Tensor` of type `out_idx`. 1-D. Positions of `x` values preserved in `out`.
 
 
 - - -
 
-### `tf.where(input, name=None)` {#where}
+### `tf.where(condition, x=None, y=None, name=None)` {#where}
 
-Returns locations of true values in a boolean tensor.
+Return the elements, either from `x` or `y`, depending on the `condition`.
 
-This operation returns the coordinates of true elements in `input`. The
-coordinates are returned in a 2-D tensor where the first dimension (rows)
-represents the number of true elements, and the second dimension (columns)
-represents the coordinates of the true elements. Keep in mind, the shape of
-the output tensor can vary depending on how many true values there are in
-`input`. Indices are output in row-major order.
+If both `x` and `y` are None, then this operation returns the coordinates of
+true elements of `condition`.  The coordinates are returned in a 2-D tensor
+where the first dimension (rows) represents the number of true elements, and
+the second dimension (columns) represents the coordinates of the true
+elements. Keep in mind, the shape of the output tensor can vary depending on
+how many true values there are in input. Indices are output in row-major
+order.
 
-For example:
+If both non-None, `x` and `y` must have the same shape.
+The `condition` tensor must be a scalar if `x` and `y` are scalar.
+If `x` and `y` are vectors or higher rank, then `condition` must be either a
+vector with size matching the first dimension of `x`, or must have the same
+shape as `x`.
 
-```prettyprint
-# 'input' tensor is [[True, False]
-#                    [True, False]]
-# 'input' has two true values, so output has two coordinates.
-# 'input' has rank of 2, so coordinates have two indices.
-where(input) ==> [[0, 0],
-                  [1, 0]]
+The `condition` tensor acts as a mask that chooses, based on the value at each
+element, whether the corresponding element / row in the output should be taken
+from `x` (if true) or `y` (if false).
 
-# `input` tensor is [[[True, False]
-#                     [True, False]]
-#                    [[False, True]
-#                     [False, True]]
-#                    [[False, False]
-#                     [False, True]]]
-# 'input' has 5 true values, so output has 5 coordinates.
-# 'input' has rank of 3, so coordinates have three indices.
-where(input) ==> [[0, 0, 0],
-                  [0, 1, 0],
-                  [1, 0, 1],
-                  [1, 1, 1],
-                  [2, 1, 1]]
-```
+If `condition` is a vector and `x` and `y` are higher rank matrices, then it
+chooses which row (outer dimension) to copy from `x` and `y`. If `condition`
+has the same shape as `x` and `y`, then it chooses which element to copy from
+`x` and `y`.
 
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor` of type `bool`.
-*  <b>`name`</b>: A name for the operation (optional).
+*  <b>`condition`</b>: A `Tensor` of type `bool`
+*  <b>`x`</b>: A Tensor which may have the same shape as `condition`. If `condition` is
+    rank 1, `x` may have higher rank, but its first dimension must match the
+    size of `condition`.
+*  <b>`y`</b>: A `tensor` with the same shape and type as `x`.
+*  <b>`name`</b>: A name of the operation (optional)
 
 ##### Returns:
 
-  A `Tensor` of type `int64`.
+  A `Tensor` with the same type and shape as `x`, `y` if they are non-None.
+  A `Tensor` with shape `(num_true, dim_size(condition))`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: When exactly one of `x` or `y` is non-None.
 
 
 - - -
 
-### `tf.unique(x, name=None)` {#unique}
+### `tf.unique(x, out_idx=None, name=None)` {#unique}
 
 Finds unique elements in a 1-D tensor.
 
@@ -2919,6 +3492,7 @@ idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
 
 
 *  <b>`x`</b>: A `Tensor`. 1-D.
+*  <b>`out_idx`</b>: An optional `tf.DType` from: `tf.int32, tf.int64`. Defaults to `tf.int32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -2926,7 +3500,7 @@ idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
   A tuple of `Tensor` objects (y, idx).
 
 *  <b>`y`</b>: A `Tensor`. Has the same type as `x`. 1-D.
-*  <b>`idx`</b>: A `Tensor` of type `int32`. 1-D.
+*  <b>`idx`</b>: A `Tensor` of type `out_idx`. 1-D.
 
 
 
@@ -3024,66 +3598,75 @@ invert_permutation(x) ==> [2, 4, 3, 0, 1]
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor` of type `int32`. 1-D.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`. 1-D.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `int32`. 1-D.
+  A `Tensor`. Has the same type as `x`. 1-D.
 
 
 
 ## Other Functions and Classes
 - - -
 
-### `tf.scalar_mul(scalar, x)` {#scalar_mul}
+### `tf.mul(x, y, name=None)` {#mul}
 
-Multiplies a scalar times a `Tensor` or `IndexedSlices` object.
+Returns x * y element-wise.
 
-Intended for use in gradient code which might deal with `IndexedSlices`
-objects, which are easy to multiply by a scalar but more expensive to
-multiply with arbitrary tensors.
-
-##### Args:
-
-
-*  <b>`scalar`</b>: A 0-D scalar `Tensor`. Must have known shape.
-*  <b>`x`</b>: A `Tensor` or `IndexedSlices` to be scaled.
-
-##### Returns:
-
-  `scalar * x` of the same type (`Tensor` or `IndexedSlices`) as `x`.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: if scalar is not a 0-D `scalar`.
-
-
-- - -
-
-### `tf.sparse_segment_sqrt_n_grad(grad, indices, segment_ids, output_dim0, name=None)` {#sparse_segment_sqrt_n_grad}
-
-Computes gradients for SparseSegmentSqrtN.
-
-Returns tensor "output" with same shape as grad, except for dimension 0 whose
-value is output_dim0.
+*NOTE*: `Mul` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
 
 
-*  <b>`grad`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
-    gradient propagated to the SparseSegmentSqrtN op.
-*  <b>`indices`</b>: A `Tensor` of type `int32`.
-    indices passed to the corresponding SparseSegmentSqrtN op.
-*  <b>`segment_ids`</b>: A `Tensor` of type `int32`.
-    segment_ids passed to the corresponding SparseSegmentSqrtN op.
-*  <b>`output_dim0`</b>: A `Tensor` of type `int32`.
-    dimension 0 of "data" passed to SparseSegmentSqrtN op.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `grad`.
+  A `Tensor`. Has the same type as `x`.
+
+
+- - -
+
+### `tf.neg(x, name=None)` {#neg}
+
+Computes numerical negative value element-wise.
+
+I.e., \(y = -x\).
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+    `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+
+- - -
+
+### `tf.sub(x, y, name=None)` {#sub}
+
+Returns x - y element-wise.
+
+*NOTE*: `Sub` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `x`.
 
 

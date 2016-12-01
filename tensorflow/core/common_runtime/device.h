@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -85,7 +85,7 @@ class Device : public DeviceBase {
   // Asynchronous kernel's compute.
   virtual void ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
                             AsyncOpKernel::DoneCallback done) {
-    op_kernel->ComputeAsync(context, done);
+    op_kernel->ComputeAsync(context, std::move(done));
   }
 
   // Takes ownership of the references in tensors. If necessary, a
@@ -141,14 +141,13 @@ class Device : public DeviceBase {
   // Assembles the parameter components into a complete DeviceAttributes value.
   static DeviceAttributes BuildDeviceAttributes(
       const string& name, DeviceType device, Bytes memory_limit,
-      BusAdjacency bus_adjacency, const string& physical_device_desc);
+      const DeviceLocality& locality, const string& physical_device_desc);
 
-  static DeviceAttributes BuildDeviceAttributes(const string& name,
-                                                DeviceType device,
-                                                Bytes memory_limit,
-                                                BusAdjacency bus_adjacency) {
+  static DeviceAttributes BuildDeviceAttributes(
+      const string& name, DeviceType device, Bytes memory_limit,
+      const DeviceLocality& locality) {
     // Pass in an empty string as physical device name.
-    return BuildDeviceAttributes(name, device, memory_limit, bus_adjacency, "");
+    return BuildDeviceAttributes(name, device, memory_limit, locality, "");
   }
 
  private:

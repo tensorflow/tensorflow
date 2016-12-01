@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -244,13 +244,8 @@ TEST_F(DirectSessionMinusAXTest, InvalidDevice) {
   (*options.config.mutable_device_count())["CPU"] = 2;
   std::unique_ptr<Session> session(NewSession(options));
   ASSERT_TRUE(session != nullptr);
-  TF_ASSERT_OK(session->Create(def));
-  std::vector<std::pair<string, Tensor>> inputs;
-  std::vector<string> output_names = {y->name() + ":0"};
-  std::vector<Tensor> outputs;
-
   // Should return an error.
-  ASSERT_FALSE(session->Run(inputs, output_names, {}, &outputs).ok());
+  ASSERT_FALSE(session->Create(def).ok());
 
   // Fix placement and run again
   def.Clear();
@@ -258,7 +253,8 @@ TEST_F(DirectSessionMinusAXTest, InvalidDevice) {
   test::graph::ToGraphDef(&graph, &def);
   session.reset(NewSession(options));
   TF_ASSERT_OK(session->Create(def));
-  TF_ASSERT_OK(session->Run(inputs, output_names, {}, &outputs));
+  std::vector<Tensor> outputs;
+  TF_ASSERT_OK(session->Run({}, {y->name() + ":0"}, {}, &outputs));
 }
 
 TEST_F(DirectSessionMinusAXTest, RunSimpleNetworkWithOpts) {
@@ -397,6 +393,14 @@ TEST(DirectSessionTest, MultipleFeedTest) {
   ASSERT_EQ(2, outputs.size());
   ASSERT_EQ(11.0, outputs[0].flat<float>()(0));
   ASSERT_EQ(22.0, outputs[1].flat<float>()(0));
+
+  // Feed [first_const, first_const]
+  s = session->Run(
+      {{first_const->name(), value_11}, {first_const->name(), value_22}},
+      {first_identity->name() + ":0", second_identity->name() + ":0"}, {},
+      &outputs);
+  EXPECT_TRUE(errors::IsInvalidArgument(s));
+  EXPECT_TRUE(StringPiece(s.error_message()).contains("fed more than once"));
 }
 
 REGISTER_OP("Darth")
@@ -446,12 +450,10 @@ TEST(DirectSessionTest, PlacePrunedGraph) {
     test::graph::ToGraphDef(&g, &def);
 
     // By default, we place the entire graph, so we should fail the
-    // call to Run, even if we don't run the bad op.
+    // call to Create.
     SessionOptions options;
     std::unique_ptr<Session> sess(NewSession(options));
-    TF_ASSERT_OK(sess->Create(def));
-    std::vector<Tensor> outputs;
-    auto s = sess->Run({}, {x->name() + ":0"}, {}, &outputs);
+    auto s = sess->Create(def);
     EXPECT_TRUE(errors::IsInvalidArgument(s));
   }
 
@@ -805,6 +807,7 @@ class BlockingOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     blocking_op_state->MoveToState(0, 1);
     blocking_op_state->AwaitState(2);
+    blocking_op_state->MoveToState(2, 3);
 
     Tensor* out = nullptr;
     const Tensor& in = ctx->input(0);
@@ -815,14 +818,34 @@ class BlockingOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("BlockingOp").Device(DEVICE_CPU), BlockingOp);
 REGISTER_OP("BlockingOp").Input("x: float").Output("y: float").Doc("");
 
-TEST(DirectSessionTest, TestSessionInterOpThreads) {
-  Graph g(OpRegistry::Global());
+REGISTER_KERNEL_BUILDER(Name("BlockingOp").Device(DEVICE_SYCL), BlockingOp);
+
+static void TestSessionInterOpThreadsImpl(bool use_function_lib) {
+  FunctionDefLibrary library_graph_def;
+  if (use_function_lib) {
+    const string lib = R"proto(
+        signature: {
+          name: "BlockingOpFn" input_arg: { name: "x" type: DT_FLOAT }
+                               output_arg: { name: "y" type: DT_FLOAT }}
+        node: { ret: "y" op: "BlockingOp" arg: "x" })proto";
+    CHECK(protobuf::TextFormat::ParseFromString(
+        lib, library_graph_def.add_function()));
+  }
+
+  FunctionLibraryDefinition flib(OpRegistry::Global(), library_graph_def);
+  Graph g(&flib);
   Tensor t(DT_FLOAT, TensorShape({}));
-  t.scalar<float>()() = {1.2};
+  t.scalar<float>()() = {1.2f};
   Node* x = test::graph::Constant(&g, t);
-  Node* y = test::graph::Unary(&g, "BlockingOp", x);
+  Node* y;
+  if (use_function_lib) {
+    y = test::graph::Unary(&g, "BlockingOpFn", x);
+  } else {
+    y = test::graph::Unary(&g, "BlockingOp", x);
+  }
   GraphDef def;
   test::graph::ToGraphDef(&g, &def);
+  *def.mutable_library() = library_graph_def;
 
   // Create session with two inter-op thread pools.
   SessionOptions options;
@@ -832,9 +855,14 @@ TEST(DirectSessionTest, TestSessionInterOpThreads) {
       ->mutable_optimizer_options()
       ->set_opt_level(OptimizerOptions_Level_L0);
   (*options.config.mutable_device_count())["CPU"] = 2;
+  (*options.config.mutable_device_count())["GPU"] = 0;
+
+  options.config.add_session_inter_op_thread_pool();
   auto* p = options.config.add_session_inter_op_thread_pool();
-  p->set_num_threads(1);  // This one has only one thread.
-  p = options.config.add_session_inter_op_thread_pool();
+  p->set_num_threads(1);
+  const int kLargePool = 0;
+  const int kSmallPool = 1;
+
   std::unique_ptr<Session> session(NewSession(options));
   ASSERT_TRUE(session != nullptr);
   TF_ASSERT_OK(session->Create(def));
@@ -850,7 +878,7 @@ TEST(DirectSessionTest, TestSessionInterOpThreads) {
       Status s = session->Run(run_options, {} /* inputs */,
                               {node->name() + ":0"} /* output_names */, {},
                               &outputs, nullptr /* run_metadata */);
-      TF_ASSERT_OK(s);
+      TF_CHECK_OK(s);
       ASSERT_EQ(1, outputs.size());
       auto flat = outputs[0].flat<float>();
       EXPECT_FLOAT_EQ(1.2, flat(0));
@@ -862,19 +890,30 @@ TEST(DirectSessionTest, TestSessionInterOpThreads) {
   // For blocking states:
   // - Starts at 0, BlockingOp::Compute will move to 1.
   // - This main thread will wait for 1, then move to 2 when other ops are done.
-  //   Moving to 2 unblocks the blocking op.
+  //   Moving to 2 unblocks the blocking op, which then moves to state 3.
+
+  // Run the graph once on the non-limited pool.
+  thread::ThreadPool* tp1 = new thread::ThreadPool(Env::Default(), "tp1", 1);
+  blocking_op_state = new BlockingOpState();
+  add_session_run_call(tp1, y, kLargePool);
+  blocking_op_state->AwaitState(1);
+  blocking_op_state->MoveToState(1, 2);
+  blocking_op_state->AwaitState(3);
+  blocking_op_state->MoveToState(3, 0);
+  delete tp1;
+  num_done = 0;
+
+  tp1 = new thread::ThreadPool(Env::Default(), "tp1", 5);
 
   // Launch 2 session run calls. Neither will finish until the blocking op is
-  // unblocked, because it is using all threads in inter_op pool #0.
-  thread::ThreadPool* tp1 = new thread::ThreadPool(Env::Default(), "tp1", 5);
-  blocking_op_state = new BlockingOpState();
-  add_session_run_call(tp1, y, 0 /* inter_op_pool */);
+  // unblocked, because it is using all threads in the small pool.
+  add_session_run_call(tp1, y, kSmallPool);
   blocking_op_state->AwaitState(1);  // Wait for the blocking op to Compute.
 
   // These will block on <BlockingOpState>.
   const int kBlockedThreads = 3;
   for (int i = 0; i < kBlockedThreads; ++i) {
-    add_session_run_call(tp1, x, 0 /* inter_op_pool */);
+    add_session_run_call(tp1, x, kSmallPool);
   }
 
   // Launch session calls using the other inter-op pool. These will finish
@@ -882,7 +921,7 @@ TEST(DirectSessionTest, TestSessionInterOpThreads) {
   thread::ThreadPool* tp2 = new thread::ThreadPool(Env::Default(), "tp2", 3);
   const int kUnblockedThreads = 4;
   for (int i = 0; i < kUnblockedThreads; ++i) {
-    add_session_run_call(tp2, x, 1 /* inter_op_pool */);
+    add_session_run_call(tp2, x, kLargePool);
   }
   delete tp2;
   EXPECT_EQ(kUnblockedThreads, num_done.load());
@@ -895,10 +934,18 @@ TEST(DirectSessionTest, TestSessionInterOpThreads) {
   blocking_op_state = nullptr;
 }
 
+TEST(DirectSessionTest, TestSessionInterOpThreads) {
+  TestSessionInterOpThreadsImpl(false /* use_function_lib */);
+}
+
+TEST(DirectSessionTest, TestSessionInterOpThreadsWithFunctions) {
+  TestSessionInterOpThreadsImpl(true /* use_function_lib */);
+}
+
 TEST(DirectSessionTest, TestSessionInterOpThreadsInvalidOptions) {
   Graph g(OpRegistry::Global());
   Tensor t(DT_FLOAT, TensorShape({}));
-  t.scalar<float>()() = {1.2};
+  t.scalar<float>()() = {1.2f};
   Node* x = test::graph::Constant(&g, t);
   GraphDef def;
   test::graph::ToGraphDef(&g, &def);
@@ -926,6 +973,130 @@ TEST(DirectSessionTest, TestSessionInterOpThreadsInvalidOptions) {
                   "Invalid argument: Invalid inter_op_thread_pool: ", pool_num),
               s.ToString());
   }
+}
+
+TEST(DirectSessionTest, TestDirectSessionRunClose) {
+  // Construct a graph with a variable and a single assign.
+  Graph g(OpRegistry::Global());
+  Tensor t(DT_FLOAT, TensorShape({}));
+  t.scalar<float>()() = {1.2f};
+  Node* var_val = test::graph::Constant(&g, t);
+  Node* var = test::graph::Var(&g, DT_FLOAT, {});
+  Node* var_assign = test::graph::Assign(&g, var, var_val);
+  GraphDef def;
+  test::graph::ToGraphDef(&g, &def);
+
+  SessionOptions options;
+  (*options.config.mutable_device_count())["CPU"] = 2;
+  std::unique_ptr<Session> session(NewSession(options));
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def));
+
+  // Assign a value to the var.
+  TF_ASSERT_OK(session->Run({} /* inputs */, {},
+                            {var_assign->name()} /* target_nodes */, nullptr));
+
+  // Run a read on the variable to ensure that it works.
+  std::vector<Tensor> outputs;
+  TF_ASSERT_OK(session->Run(
+      {} /* inputs */, {var->name() + ":0"} /* output_names */, {}, &outputs));
+  EXPECT_EQ(t.scalar<float>()(), outputs[0].scalar<float>()());
+  outputs.clear();
+
+  // Close the session.
+  session->Close();
+
+  // Run the read on the variable to get an error.
+  Status s = session->Run({} /* inputs */, {},
+                          {var_assign->name()} /* target_nodes */, nullptr);
+  EXPECT_EQ("Cancelled: Session has been closed.", s.ToString());
+}
+
+TEST(DirectSessionTest, TestDirectSessionPRunClose) {
+  GraphDef def;
+  Graph g(OpRegistry::Global());
+
+  Tensor first_value(DT_FLOAT, TensorShape({}));
+  first_value.scalar<float>()() = 1.0;
+  Node* first_const = test::graph::Constant(&g, first_value);
+  Node* first_identity = test::graph::Identity(&g, first_const);
+
+  Tensor second_value(DT_FLOAT, TensorShape({}));
+  second_value.scalar<float>()() = 2.0;
+  Node* second_const = test::graph::Constant(&g, second_value);
+  Node* second_identity = test::graph::Identity(&g, second_const);
+
+  Node* third = test::graph::Add(&g, first_identity, second_identity);
+  Node* third_identity = test::graph::Identity(&g, third);
+
+  test::graph::ToGraphDef(&g, &def);
+
+  std::unique_ptr<Session> session(CreateSession());
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def));
+
+  std::vector<Tensor> outputs;
+
+  string handle;
+  Status s = session->PRunSetup(
+      {first_const->name(), second_const->name()},
+      {first_identity->name() + ":0", second_identity->name() + ":0",
+       third_identity->name() + ":0"},
+      {}, &handle);
+  TF_ASSERT_OK(s);
+
+  Tensor value_11(DT_FLOAT, TensorShape({}));
+  value_11.scalar<float>()() = 11.0;
+  Tensor value_22(DT_FLOAT, TensorShape({}));
+  value_22.scalar<float>()() = 22.0;
+
+  // Close the session.
+  session->Close();
+
+  // Feed first_const, fetch first_identity
+  s = session->PRun(handle, {{first_const->name(), value_11}},
+                    {first_identity->name() + ":0"}, &outputs);
+  EXPECT_EQ("Cancelled: Session has been closed.", s.ToString());
+}
+
+TEST(DirectSessionTest, TestDirectSessionReset) {
+  // Construct a graph with a variable and a single assign.
+  Graph g(OpRegistry::Global());
+  Tensor t(DT_FLOAT, TensorShape({}));
+  t.scalar<float>()() = {1.2f};
+  Node* var_val = test::graph::Constant(&g, t);
+  Node* var = test::graph::Var(&g, DT_FLOAT, {});
+  Node* var_assign = test::graph::Assign(&g, var, var_val);
+  GraphDef def;
+  test::graph::ToGraphDef(&g, &def);
+
+  SessionOptions options;
+  (*options.config.mutable_device_count())["CPU"] = 2;
+  std::unique_ptr<Session> session(NewSession(options));
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def));
+
+  // Assign a value to the var.
+  TF_ASSERT_OK(session->Run({} /* inputs */, {},
+                            {var_assign->name()} /* target_nodes */, nullptr));
+
+  // Run a read on the variable to ensure that it works.
+  std::vector<Tensor> outputs;
+  TF_ASSERT_OK(session->Run(
+      {} /* inputs */, {var->name() + ":0"} /* output_names */, {}, &outputs));
+  EXPECT_EQ(t.scalar<float>()(), outputs[0].scalar<float>()());
+  outputs.clear();
+
+  // Reset the containers.
+  Reset(options, {});
+
+  // Run the read on the variable to get an error.
+  // TODO(suharshs): This test only works because we close the Session in Reset.
+  // If we change the behavior of Reset to not close the Session, this test will
+  // fail, since the Variable buffer is cached by var.
+  Status s = session->Run({} /* inputs */, {},
+                          {var_assign->name()} /* target_nodes */, nullptr);
+  EXPECT_EQ("Cancelled: Session has been closed.", s.ToString());
 }
 
 }  // namespace

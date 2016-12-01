@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ limitations under the License.
 // IWYU pragma: private, include "third_party/tensorflow/core/platform/stream_executor.h"
 // IWYU pragma: friend third_party/tensorflow/core/platform/stream_executor.h
 
+#include "tensorflow/core/platform/default/from_stream_executor_status.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/dnn.h"
 #include "tensorflow/stream_executor/dso_loader.h"
@@ -29,18 +30,5 @@ limitations under the License.
 #include "tensorflow/stream_executor/scratch_allocator.h"
 #include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor.h"
-
-namespace tensorflow {
-
-namespace gpu = ::perftools::gputools;
-
-// On the open-source platform, stream_executor currently uses
-// tensorflow::Status
-inline Status FromStreamExecutorStatus(
-    const perftools::gputools::port::Status& s) {
-  return s;
-}
-
-}  // namespace tensorflow
 
 #endif  // TENSORFLOW_PLATFORM_DEFAULT_STREAM_EXECUTOR_H_

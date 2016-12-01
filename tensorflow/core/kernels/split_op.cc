@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -251,6 +251,7 @@ class SplitOpGPU : public SplitOpBase<GPUDevice, T> {
                           SplitOpCPU<type>)
 
 TF_CALL_ALL_TYPES(REGISTER_SPLIT);
+REGISTER_SPLIT(quint8);
 
 #undef REGISTER_SPLIT
 

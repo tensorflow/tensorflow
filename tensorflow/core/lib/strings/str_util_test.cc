@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -143,6 +143,8 @@ void TestConsumeLeadingDigits(StringPiece s, int64 expected,
 }
 
 TEST(ConsumeLeadingDigits, Basic) {
+  using str_util::ConsumeLeadingDigits;
+
   TestConsumeLeadingDigits("123", 123, "");
   TestConsumeLeadingDigits("a123", -1, "a123");
   TestConsumeLeadingDigits("9_", 9, "_");
@@ -158,6 +160,9 @@ TEST(ConsumeLeadingDigits, Basic) {
   // 2^64-1
   TestConsumeLeadingDigits("18446744073709551615xyz", 18446744073709551615ull,
                            "xyz");
+  // (2^64-1)*10+9
+  TestConsumeLeadingDigits("184467440737095516159yz", -1,
+                           "184467440737095516159yz");
 }
 
 void TestConsumeNonWhitespace(StringPiece s, StringPiece expected,
@@ -217,6 +222,16 @@ TEST(JoinStrings, Basic) {
   EXPECT_EQ(str_util::Join(sp, "--"), "hi--there--strings");
 }
 
+TEST(JoinStrings, Join3) {
+  std::vector<string> s;
+  s = {"hi"};
+  auto l1 = [](string* out, string s) { *out += s; };
+  EXPECT_EQ(str_util::Join(s, " ", l1), "hi");
+  s = {"hi", "there", "strings"};
+  auto l2 = [](string* out, string s) { *out += s[0]; };
+  EXPECT_EQ(str_util::Join(s, " ", l2), "h t s");
+}
+
 TEST(Split, Basic) {
   EXPECT_TRUE(str_util::Split("", ',').empty());
   EXPECT_EQ(str_util::Join(str_util::Split("a", ','), "|"), "a");
@@ -233,7 +248,7 @@ TEST(Split, Basic) {
       "a|b|c");
 }
 
-TEST(SplitAndParseAsInts, Basic) {
+TEST(SplitAndParseAsInts, Int32) {
   std::vector<int32> nums;
   EXPECT_TRUE(str_util::SplitAndParseAsInts("", ',', &nums));
   EXPECT_EQ(nums.size(), 0);
@@ -248,6 +263,30 @@ TEST(SplitAndParseAsInts, Basic) {
   EXPECT_EQ(nums[1], 2);
   EXPECT_EQ(nums[2], 13);
   EXPECT_EQ(nums[3], -5);
+
+  EXPECT_FALSE(str_util::SplitAndParseAsInts("abc", ',', &nums));
+
+  EXPECT_FALSE(str_util::SplitAndParseAsInts("-13,abc", ',', &nums));
+
+  EXPECT_FALSE(str_util::SplitAndParseAsInts("13,abc,5", ',', &nums));
+}
+
+TEST(SplitAndParseAsInts, Int64) {
+  std::vector<int64> nums;
+  EXPECT_TRUE(str_util::SplitAndParseAsInts("", ',', &nums));
+  EXPECT_EQ(nums.size(), 0);
+
+  EXPECT_TRUE(str_util::SplitAndParseAsInts("134", ',', &nums));
+  EXPECT_EQ(nums.size(), 1);
+  EXPECT_EQ(nums[0], 134);
+
+  EXPECT_TRUE(
+      str_util::SplitAndParseAsInts("134,2,13,-4000000000", ',', &nums));
+  EXPECT_EQ(nums.size(), 4);
+  EXPECT_EQ(nums[0], 134);
+  EXPECT_EQ(nums[1], 2);
+  EXPECT_EQ(nums[2], 13);
+  EXPECT_EQ(nums[3], -4000000000);
 
   EXPECT_FALSE(str_util::SplitAndParseAsInts("abc", ',', &nums));
 

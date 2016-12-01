@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -287,7 +287,9 @@ class CTCBeamSearchDecoderOp : public OpKernel {
                                 batch_size, num_classes);
     }
 
-    ctc::CTCBeamSearchDecoder<> beam_search(num_classes, beam_width_);
+    ctc::CTCBeamSearchDecoder<> beam_search(num_classes, beam_width_,
+                                            &beam_scorer_, 1 /* batch_size */,
+                                            merge_repeated_);
     Tensor input_chip(DT_FLOAT, TensorShape({num_classes}));
     auto input_chip_t = input_chip.flat<float>();
 
@@ -320,6 +322,7 @@ class CTCBeamSearchDecoderOp : public OpKernel {
 
  private:
   CTCDecodeHelper decode_helper_;
+  ctc::CTCBeamSearchDecoder<>::DefaultBeamScorer beam_scorer_;
   bool merge_repeated_;
   int beam_width_;
   TF_DISALLOW_COPY_AND_ASSIGN(CTCBeamSearchDecoderOp);

@@ -61,7 +61,7 @@ output[2:, :, 3, :, ...] = input[2:, :, 3, :, ...]
 
 
 *  <b>`input`</b>: A `Tensor`. The input to reverse.
-*  <b>`seq_lengths`</b>: A `Tensor` of type `int64`.
+*  <b>`seq_lengths`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     1-D with length `input.dims(batch_dim)` and
     `max(seq_lengths) < input.dims(seq_dim)`
 *  <b>`seq_dim`</b>: An `int`. The dimension which is partially reversed.

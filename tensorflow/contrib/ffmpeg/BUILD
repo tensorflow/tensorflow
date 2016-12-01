@@ -117,6 +117,7 @@ py_library(
     ],
     data = [":ffmpeg.so"],
     srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
     deps = [
         ":decode_audio_op_py",
         ":encode_audio_op_py",

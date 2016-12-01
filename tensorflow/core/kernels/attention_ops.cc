@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ class ExtractGlimpseOp : public OpKernel {
   // depth).
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
-    const TensorShape input_shape = input.shape();
+    const TensorShape& input_shape = input.shape();
     const int32 num_dims = input_shape.dims();
     OP_REQUIRES(
         context, num_dims == 4,

@@ -26,5 +26,6 @@ lower-right corner is at
 
 
 *  <b>`ValueError`</b>: If the shape of `image` is incompatible with the `offset_*` or
-  `target_*` arguments
+    `target_*` arguments, or either `offset_height` or `offset_width` is
+    negative, or either `target_height` or `target_width` is not positive.
 

@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -33,20 +33,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 from datetime import datetime
 import math
+import sys
 import time
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-
-FLAGS = tf.app.flags.FLAGS
-
-tf.app.flags.DEFINE_integer('batch_size', 128,
-                            """Batch size.""")
-tf.app.flags.DEFINE_integer('num_batches', 100,
-                            """Number of batches to run.""")
+FLAGS = None
 
 
 def print_activations(t):
@@ -176,7 +172,7 @@ def time_tensorflow_run(session, target, info_string):
     start_time = time.time()
     _ = session.run(target)
     duration = time.time() - start_time
-    if i > num_steps_burn_in:
+    if i >= num_steps_burn_in:
       if not i % 10:
         print ('%s: step %d, duration = %.3f' %
                (datetime.now(), i - num_steps_burn_in, duration))
@@ -209,7 +205,7 @@ def run_benchmark():
     pool5, parameters = inference(images)
 
     # Build an initialization operation.
-    init = tf.initialize_all_variables()
+    init = tf.global_variables_initializer()
 
     # Start running operations on the Graph.
     config = tf.ConfigProto()
@@ -233,4 +229,18 @@ def main(_):
 
 
 if __name__ == '__main__':
-  tf.app.run()
+  parser = argparse.ArgumentParser()
+  parser.add_argument(
+      '--batch_size',
+      type=int,
+      default=128,
+      help='Batch size.'
+  )
+  parser.add_argument(
+      '--num_batches',
+      type=int,
+      default=100,
+      help='Number of batches to run.'
+  )
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

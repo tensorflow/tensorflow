@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,24 +21,23 @@ from __future__ import print_function
 import functools
 import re
 
+from tensorflow.python import summary
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import standard_ops
 
-__all__ = ['summarize_tensor', 'summarize_activation', 'summarize_tensors',
-           'summarize_collection', 'summarize_variables', 'summarize_weights',
-           'summarize_biases', 'summarize_activations']
+__all__ = [
+    'summarize_tensor',
+    'summarize_activation',
+    'summarize_tensors',
+    'summarize_collection',
+    'summarize_variables',
+    'summarize_weights',
+    'summarize_biases',
+    'summarize_activations',
+]
 
 # TODO(wicke): add more unit tests for summarization functions.
-
-
-def _assert_summary_tag_unique(tag):
-  for summary in ops.get_collection(ops.GraphKeys.SUMMARIES):
-    old_tag = tensor_util.constant_value(summary.op.inputs[0])
-    if tag.encode() == old_tag:
-      raise ValueError('Conflict with summary tag: %s exists on summary %s %s' %
-                       (tag, summary, old_tag))
 
 
 def _add_scalar_summary(tensor, tag=None):
@@ -55,9 +54,8 @@ def _add_scalar_summary(tensor, tag=None):
     ValueError: If the tag is already in use or the rank is not 0.
   """
   tensor.get_shape().assert_has_rank(0)
-  tag = tag or tensor.op.name
-  _assert_summary_tag_unique(tag)
-  return standard_ops.scalar_summary(tag, tensor, name='%s_summary' % tag)
+  tag = tag or '%s_summary' % tensor.op.name
+  return summary.scalar(tag, tensor)
 
 
 def _add_histogram_summary(tensor, tag=None):
@@ -73,9 +71,8 @@ def _add_histogram_summary(tensor, tag=None):
   Raises:
     ValueError: If the tag is already in use.
   """
-  tag = tag or tensor.op.name
-  _assert_summary_tag_unique(tag)
-  return standard_ops.histogram_summary(tag, tensor, name='%s_summary' % tag)
+  tag = tag or '%s_summary' % tensor.op.name
+  return summary.histogram(tag, tensor)
 
 
 def summarize_activation(op):
@@ -148,7 +145,7 @@ def summarize_collection(collection, name_filter=None,
 
 # Utility functions for commonly used collections
 summarize_variables = functools.partial(summarize_collection,
-                                        ops.GraphKeys.VARIABLES)
+                                        ops.GraphKeys.GLOBAL_VARIABLES)
 
 
 summarize_weights = functools.partial(summarize_collection,

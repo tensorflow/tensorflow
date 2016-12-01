@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,3 +20,6 @@ from __future__ import print_function
 
 # pylint: disable=wildcard-import
 from tensorflow.contrib.opt.python.training.external_optimizer import *
+from tensorflow.contrib.opt.python.training.moving_average_optimizer import *
+from tensorflow.contrib.opt.python.training.variable_clipping_optimizer import *
+# pylint: enable=wildcard-import

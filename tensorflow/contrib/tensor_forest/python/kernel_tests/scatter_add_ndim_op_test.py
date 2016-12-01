@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -37,7 +37,7 @@ class ScatterAddNdimTest(test_util.TensorFlowTestCase):
     updates = [100., 200.]
 
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.ops.scatter_add_ndim(input_data, indices, updates).run()
       self.assertAllEqual([1., 102., 3., 4., 5., 6.,
                            7., 8., 9., 10., 211., 12.], input_data.eval())
@@ -49,7 +49,7 @@ class ScatterAddNdimTest(test_util.TensorFlowTestCase):
     updates = [100., 200.]
 
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.ops.scatter_add_ndim(input_data, indices, updates).run()
       self.assertAllEqual([[[1., 102., 3.], [4., 5., 6.]],
                            [[7., 8., 9.], [10., 11., 212.]]], input_data.eval())
@@ -61,7 +61,7 @@ class ScatterAddNdimTest(test_util.TensorFlowTestCase):
     updates = []
 
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.ops.scatter_add_ndim(input_data, indices, updates).run()
       self.assertAllEqual(init_val, input_data.eval())
 
@@ -71,7 +71,7 @@ class ScatterAddNdimTest(test_util.TensorFlowTestCase):
     indices = [[0, 0, 1], [1, 1, 2]]
     updates = [100.]
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       with self.assertRaisesOpError(
           'Number of updates should be same as number of indices.'):
         self.ops.scatter_add_ndim(input_data, indices, updates).run()
@@ -84,7 +84,7 @@ class ScatterAddNdimTest(test_util.TensorFlowTestCase):
     updates = [[100., 200., 300.], [400., 500., 600.]]
 
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.ops.scatter_add_ndim(input_data, indices, updates).run()
       self.assertAllEqual([[[101., 202., 303.], [4., 5., 6.]],
                            [[7., 8., 9.], [410., 511., 612.]]],

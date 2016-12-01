@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,9 +17,12 @@ limitations under the License.
 
 namespace tensorflow {
 
-#define REGISTER_CPU_KERNELS(type)                              \
-  REGISTER_KERNEL_BUILDER(                                      \
-      Name("Min").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
+#define REGISTER_CPU_KERNELS(type)        \
+  REGISTER_KERNEL_BUILDER(                \
+      Name("Min")                         \
+          .Device(DEVICE_CPU)             \
+          .TypeConstraint<type>("T")      \
+          .TypeConstraint<int32>("Tidx"), \
       ReductionOp<CPUDevice, type, Eigen::internal::MinReducer<type>>);
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
@@ -31,10 +34,25 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
       Name("Min")                           \
           .Device(DEVICE_GPU)               \
           .TypeConstraint<type>("T")        \
+          .TypeConstraint<int32>("Tidx")    \
           .HostMemory("reduction_indices"), \
       ReductionOp<GPUDevice, type, Eigen::internal::MinReducer<type>>);
 REGISTER_GPU_KERNELS(float);
 REGISTER_GPU_KERNELS(double);
+
+// A special GPU kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
+REGISTER_KERNEL_BUILDER(
+    Name("Min")
+        .Device(DEVICE_GPU)
+        .HostMemory("reduction_indices")
+        .HostMemory("input")
+        .HostMemory("output")
+        .TypeConstraint<int32>("T")
+        .TypeConstraint<int32>("Tidx"),
+    ReductionOp<CPUDevice, int32, Eigen::internal::MinReducer<int32>>);
+
 #undef REGISTER_GPU_KERNELS
 
 #endif

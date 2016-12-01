@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -178,7 +178,7 @@ def _GetDenseDimensions(list_of_lists):
 
 
 def _FlattenToStrings(nested_strings):
-  if isinstance(nested_strings, list):
+  if isinstance(nested_strings, (list, tuple)):
     for inner in nested_strings:
       for flattened_string in _FlattenToStrings(inner):
         yield flattened_string
@@ -217,6 +217,18 @@ def _NotNone(v):
     return _Message("None")
   else:
     return v
+
+
+def _FilterTuple(v):
+  if not isinstance(v, (list, tuple)):
+    return v
+  if isinstance(v, tuple):
+    if not any(isinstance(x, (list, tuple)) for x in v):
+      return None
+  if isinstance(v, list):
+    if not any(isinstance(x, (list, tuple)) for x in v):
+      return _FirstNotNone([None if isinstance(x, (list, tuple)) else x for x in v])
+  return _FirstNotNone([_FilterTuple(x) for x in v])
 
 
 def _FilterInt(v):
@@ -259,29 +271,29 @@ def _FilterNotTensor(v):
 
 
 _TF_TO_IS_OK = {
-    dtypes.bool: _FilterBool,
-    dtypes.complex128: _FilterComplex,
-    dtypes.complex64: _FilterComplex,
-    dtypes.float32: _FilterFloat,
-    dtypes.float64: _FilterFloat,
-    dtypes.int16: _FilterInt,
-    dtypes.int32: _FilterInt,
-    dtypes.int64: _FilterInt,
-    dtypes.int8: _FilterInt,
-    dtypes.qint16: _FilterInt,
-    dtypes.qint32: _FilterInt,
-    dtypes.qint8: _FilterInt,
-    dtypes.quint16: _FilterInt,
-    dtypes.quint8: _FilterInt,
-    dtypes.string: _FilterStr,
-    dtypes.uint16: _FilterInt,
-    dtypes.uint8: _FilterInt,
+    dtypes.bool: [_FilterBool],
+    dtypes.complex128: [_FilterComplex],
+    dtypes.complex64: [_FilterComplex],
+    dtypes.float32: [_FilterFloat],
+    dtypes.float64: [_FilterFloat],
+    dtypes.int16: [_FilterInt],
+    dtypes.int32: [_FilterInt],
+    dtypes.int64: [_FilterInt],
+    dtypes.int8: [_FilterInt],
+    dtypes.qint16: [_FilterInt, _FilterTuple],
+    dtypes.qint32: [_FilterInt, _FilterTuple],
+    dtypes.qint8: [_FilterInt, _FilterTuple],
+    dtypes.quint16: [_FilterInt, _FilterTuple],
+    dtypes.quint8: [_FilterInt, _FilterTuple],
+    dtypes.string: [_FilterStr],
+    dtypes.uint16: [_FilterInt],
+    dtypes.uint8: [_FilterInt],
 }
 
 
 def _AssertCompatible(values, dtype):
-  fn = _TF_TO_IS_OK.get(dtype, _FilterNotTensor)
-  mismatch = fn(values)
+  fn_list = _TF_TO_IS_OK.get(dtype, [_FilterNotTensor])
+  mismatch = _FirstNotNone([fn(values) for fn in fn_list])
   if mismatch is not None:
     if dtype is None:
       raise TypeError("List of Tensors when single Tensor expected")
@@ -290,13 +302,14 @@ def _AssertCompatible(values, dtype):
                       (dtype.name, repr(mismatch), type(mismatch).__name__))
 
 
-def make_tensor_proto(values, dtype=None, shape=None):
+def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
   """Create a TensorProto.
 
   Args:
-    values:    Values to put in the TensorProto.
-    dtype:     Optional tensor_pb2 DataType value.
-    shape:     List of integers representing the dimensions of tensor.
+    values:         Values to put in the TensorProto.
+    dtype:          Optional tensor_pb2 DataType value.
+    shape:          List of integers representing the dimensions of tensor.
+    verify_shape:   Boolean that enables verification of a shape of values.
 
   Returns:
     A TensorProto. Depending on the type, it may contain data in the
@@ -306,7 +319,8 @@ def make_tensor_proto(values, dtype=None, shape=None):
 
   Raises:
     TypeError:  if unsupported types are provided.
-    ValueError: if arguments have inappropriate values.
+    ValueError: if arguments have inappropriate values or if verify_shape is
+     True and shape of values is not equals to a shape from the argument.
 
   make_tensor_proto accepts "values" of a python scalar, a python list, a
   numpy ndarray, or a numpy scalar.
@@ -382,7 +396,8 @@ def make_tensor_proto(values, dtype=None, shape=None):
   if is_quantized:
     numpy_dtype = dtype
 
-  if dtype is not None and not dtype.base_dtype == numpy_dtype.base_dtype:
+  if dtype is not None and (not hasattr(dtype, "base_dtype") or
+                            dtype.base_dtype != numpy_dtype.base_dtype):
     raise TypeError("Incompatible types: %s vs. %s" % (dtype, nparray.dtype))
 
   # If shape is not given, get the shape from the numpy array.
@@ -394,6 +409,11 @@ def make_tensor_proto(values, dtype=None, shape=None):
     shape = [int(dim) for dim in shape]
     shape_size = np.prod(shape)
     is_same_size = shape_size == nparray.size
+
+    if verify_shape:
+      if not nparray.shape == tuple(shape):
+        raise TypeError("Expected Tensor's shape: %s, got %s." %
+                        (tuple(shape), nparray.shape))
 
     if nparray.size > shape_size:
       raise ValueError(
@@ -455,6 +475,17 @@ def MakeNdarray(tensor):
 
   if tensor.tensor_content:
     return np.fromstring(tensor.tensor_content, dtype=dtype).reshape(shape)
+  elif tensor_dtype == dtypes.float16:
+    # the half_val field of the TensorProto stores the binary representation
+    # of the fp16: we need to reinterpret this as a proper float16
+    if len(tensor.half_val) == 1:
+      tmp = np.array(tensor.half_val[0], dtype=np.uint16)
+      tmp.dtype = np.float16
+      return np.repeat(tmp, num_elements).reshape(shape)
+    else:
+      tmp = np.fromiter(tensor.half_val, dtype=np.uint16)
+      tmp.dtype = np.float16
+      return tmp.reshape(shape)
   elif tensor_dtype == dtypes.float32:
     if len(tensor.float_val) == 1:
       return np.repeat(np.array(tensor.float_val[0], dtype=dtype),
@@ -562,7 +593,8 @@ def _ConstantValue(tensor):
   elif tensor.op.type == "Rank":
     input_shape = tensor.op.inputs[0].get_shape()
     if input_shape.ndims is not None:
-      return input_shape.ndims
+      return np.ndarray(shape=(), buffer=np.array([input_shape.ndims]),
+                        dtype=np.int32)
     else:
       return None
   elif tensor.op.type == "Range":
@@ -593,6 +625,25 @@ def _ConstantValue(tensor):
         return None
       values.append(value)
     return np.concatenate(values, axis=dim)
+  elif tensor.op.type == "ConcatV2":
+    dim = constant_value(tensor.op.inputs[-1])
+    if dim is None:
+      return None
+    values = []
+    for x in tensor.op.inputs[:-1]:
+      value = constant_value(x)
+      if value is None:
+        return None
+      values.append(value)
+    return np.concatenate(values, axis=dim)
+  elif tensor.op.type == "Pack":
+    values = []
+    for x in tensor.op.inputs:
+      value = constant_value(x)
+      if value is None:
+        return None
+      values.append(value)
+    return np.array(values)
   else:
     return None
 
@@ -628,3 +679,65 @@ def constant_value(tensor):
     # conservatively prevent it from being fed.
     tensor.graph.prevent_feeding(tensor)
   return ret
+
+
+def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
+  """A version of `constant_value()` that returns a `TensorShape`.
+
+  This version should be used when a constant tensor value is
+  interpreted as a (possibly partial) shape, e.g. in the shape
+  function for `tf.reshape()`. By explicitly requesting a
+  `TensorShape` as the return value, it is possible to represent
+  unknown dimensions; by contrast, `constant_value()` is
+  all-or-nothing.
+
+  Args:
+    tensor: The rank-1 Tensor to be evaluated.
+
+  Returns:
+    A `TensorShape` based on the constant value of the given `tensor`.
+  """
+  shape = tensor.get_shape().with_rank(1)
+  if tensor.get_shape() == [0]:
+    return tensor_shape.scalar()
+  elif tensor.op.type == "Shape":
+    return tensor.op.inputs[0].get_shape()
+  elif tensor.op.type == "Pack":
+    ret = tensor_shape.scalar()  # Empty list.
+    for pack_input in tensor.op.inputs:
+      # `pack_input` must be a scalar. Attempt to evaluate it, and append it
+      # to `ret`.
+      pack_input_val = constant_value(pack_input)
+      if pack_input_val is None or pack_input_val < 0:
+        new_dim = tensor_shape.Dimension(None)
+      else:
+        new_dim = tensor_shape.Dimension(pack_input_val)
+      ret = ret.concatenate([new_dim])
+    return ret
+  elif tensor.op.type == "Concat":
+    # We assume that `tensor.op.inputs[0]` evaluates to 0, as this is
+    # the only legal value when concatenating vectors, and it will
+    # have been checked by a previous shape function.
+    ret = tensor_shape.scalar()  # Empty list.
+    for concat_input in tensor.op.inputs[1:]:
+      # `concat_input` must be a vector. Attempt to evaluate it as a shape,
+      # and concatenate it with `ret`.
+      ret = ret.concatenate(constant_value_as_shape(concat_input))
+    return ret
+  elif tensor.op.type == "ConcatV2":
+    # We assume that `tensor.op.inputs[-1]` evaluates to 0, as this is
+    # the only legal value when concatenating vectors, and it will
+    # have been checked by a previous shape function.
+    ret = tensor_shape.scalar()  # Empty list.
+    for concat_input in tensor.op.inputs[:-1]:
+      # `concat_input` must be a vector. Attempt to evaluate it as a shape,
+      # and concatenate it with `ret`.
+      ret = ret.concatenate(constant_value_as_shape(concat_input))
+    return ret
+  else:
+    ret = tensor_shape.unknown_shape(shape[0].value)
+    value = constant_value(tensor)
+    if value is not None:
+      ret = ret.merge_with(tensor_shape.TensorShape(
+          [d if d != -1 else None for d in value]))
+    return ret

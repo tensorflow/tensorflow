@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/host_info.h"
+#include "tensorflow/core/platform/cpu_info.h"
 
 namespace tensorflow {
 
@@ -93,6 +93,7 @@ class DecodeRawOp : public OpKernel {
       Name("DecodeRaw").Device(DEVICE_CPU).TypeConstraint<type>("out_type"), \
       DecodeRawOp<type>)
 
+REGISTER(Eigen::half);
 REGISTER(float);
 REGISTER(double);
 REGISTER(int32);

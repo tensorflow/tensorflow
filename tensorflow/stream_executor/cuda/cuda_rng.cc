@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/cuda/cuda_rng.h"
 
-#include <dlfcn.h>
-
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/stream_executor/cuda/cuda_gpu_executor.h"
 #include "tensorflow/stream_executor/cuda/cuda_helpers.h"
@@ -24,11 +22,12 @@ limitations under the License.
 #include "tensorflow/stream_executor/cuda/cuda_stream.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/dso_loader.h"
+#include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/rng.h"
-#include "third_party/gpus/cuda/include/curand.h"
+#include "cuda/include/curand.h"
 
 // Formats curandStatus_t to output prettified values into a log stream.
 std::ostream &operator<<(std::ostream &in, const curandStatus_t &status) {
@@ -72,14 +71,20 @@ namespace dynload {
       static auto status = internal::CachedDsoLoader::GetCurandDsoHandle(); \
       return status.ValueOrDie();                                           \
     }                                                                       \
-    static FuncPointerT DynLoad() {                                         \
-      static void *f = dlsym(GetDsoHandle(), kName);                        \
-      CHECK(f != nullptr) << "could not find " << kName                     \
-                          << " in curand DSO; dlerror: " << dlerror();      \
+    static FuncPointerT LoadOrDie() {                                       \
+      void *f;                                                              \
+      port::Status s = port::Env::Default()->GetSymbolFromLibrary(          \
+          GetDsoHandle(), kName, &f);                                       \
+      CHECK(s.ok()) << "could not find " << kName                           \
+                    << " in curand DSO; dlerror: " << s.error_message();    \
       return reinterpret_cast<FuncPointerT>(f);                             \
     }                                                                       \
+    static FuncPointerT DynLoad() {                                         \
+      static FuncPointerT f = LoadOrDie();                                  \
+      return f;                                                             \
+    }                                                                       \
     template <typename... Args>                                             \
-    curandStatus_t operator()(CUDAExecutor * parent, Args... args) {        \
+    curandStatus_t operator()(CUDAExecutor *parent, Args... args) {         \
       cuda::ScopedActivateExecutorContext sac{parent};                      \
       return DynLoad()(args...);                                            \
     }                                                                       \

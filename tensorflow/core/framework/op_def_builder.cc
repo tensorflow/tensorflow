@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -491,7 +491,7 @@ void FinalizeDoc(const string& text, OpDef* op_def,
 }  // namespace
 
 OpDefBuilder::OpDefBuilder(StringPiece op_name) {
-  op_def_.set_name(op_name.ToString());  // NOLINT
+  op_def()->set_name(op_name.ToString());  // NOLINT
 }
 
 OpDefBuilder& OpDefBuilder::Attr(StringPiece spec) {
@@ -513,7 +513,7 @@ OpDefBuilder& OpDefBuilder::Output(StringPiece spec) {
 OpDefBuilder& OpDefBuilder::Doc(StringPiece text) {
   if (!doc_.empty()) {
     errors_.push_back(
-        strings::StrCat("Extra call to Doc() for Op ", op_def_.name()));
+        strings::StrCat("Extra call to Doc() for Op ", op_def()->name()));
   } else {
     doc_.assign(text.data(), text.size());
   }
@@ -522,41 +522,53 @@ OpDefBuilder& OpDefBuilder::Doc(StringPiece text) {
 #endif
 
 OpDefBuilder& OpDefBuilder::SetIsCommutative() {
-  op_def_.set_is_commutative(true);
+  op_def()->set_is_commutative(true);
   return *this;
 }
 
 OpDefBuilder& OpDefBuilder::SetIsAggregate() {
-  op_def_.set_is_aggregate(true);
+  op_def()->set_is_aggregate(true);
   return *this;
 }
 
 OpDefBuilder& OpDefBuilder::SetIsStateful() {
-  op_def_.set_is_stateful(true);
+  op_def()->set_is_stateful(true);
   return *this;
 }
 
 OpDefBuilder& OpDefBuilder::SetAllowsUninitializedInput() {
-  op_def_.set_allows_uninitialized_input(true);
+  op_def()->set_allows_uninitialized_input(true);
   return *this;
 }
 
 OpDefBuilder& OpDefBuilder::Deprecated(int version, StringPiece explanation) {
-  if (op_def_.has_deprecation()) {
+  if (op_def()->has_deprecation()) {
     errors_.push_back(
-        strings::StrCat("Deprecated called twice for Op ", op_def_.name()));
+        strings::StrCat("Deprecated called twice for Op ", op_def()->name()));
   } else {
-    OpDeprecation* deprecation = op_def_.mutable_deprecation();
+    OpDeprecation* deprecation = op_def()->mutable_deprecation();
     deprecation->set_version(version);
     deprecation->set_explanation(explanation.ToString());
   }
   return *this;
 }
 
-Status OpDefBuilder::Finalize(OpDef* op_def) const {
-  std::vector<string> errors = errors_;
-  *op_def = op_def_;
+OpDefBuilder& OpDefBuilder::SetShapeFn(
+    Status (*fn)(shape_inference::InferenceContext*)) {
+  if (op_reg_data_.shape_inference_fn != nullptr) {
+    errors_.push_back(
+        strings::StrCat("SetShapeFn called twice for Op ", op_def()->name()));
+  } else {
+    op_reg_data_.shape_inference_fn = OpShapeInferenceFn(fn);
+  }
+  return *this;
+}
 
+Status OpDefBuilder::Finalize(OpRegistrationData* op_reg_data) const {
+  std::vector<string> errors = errors_;
+  *op_reg_data = op_reg_data_;
+
+  OpDef* op_def = &op_reg_data->op_def;
   for (StringPiece attr : attrs_) {
     FinalizeAttr(attr, op_def, &errors);
   }

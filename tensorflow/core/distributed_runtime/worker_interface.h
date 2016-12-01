@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,10 +29,8 @@ namespace tensorflow {
 // Status callback.
 typedef std::function<void(const Status&)> StatusCallback;
 
-// Allocator callback for out-of-band transfers.
-class TensorShape;
-typedef std::function<void*(size_t, const DataType&, const TensorShape&)>
-    TensorBufAllocator;
+// Custom decoder for a response to RecvTensorAsync.
+class TensorResponse;
 
 // Interface for talking with the TensorFlow Worker service.
 class WorkerInterface {
@@ -65,8 +63,7 @@ class WorkerInterface {
 
   virtual void RecvTensorAsync(CallOptions* opts,
                                const RecvTensorRequest* request,
-                               RecvTensorResponse* response,
-                               TensorBufAllocator allocator,
+                               TensorResponse* response,
                                StatusCallback done) = 0;
 
   virtual void LoggingAsync(const LoggingRequest* request,

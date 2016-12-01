@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -82,7 +82,7 @@ def normal_conjugates_known_sigma_posterior(prior, sigma, s, n):
       sigma=math_ops.sqrt(sigmap_2))
 
 
-def normal_congugates_known_sigma_predictive(prior, sigma, s, n):
+def normal_conjugates_known_sigma_predictive(prior, sigma, s, n):
   """Posterior predictive Normal distribution w. conjugate prior on the mean.
 
   This model assumes that `n` observations (with sum `s`) come from a

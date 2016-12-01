@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -55,8 +55,9 @@ class ReaderVerbAsyncOpKernel : public AsyncOpKernel {
 
   void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
     ReaderInterface* reader;
-    OP_REQUIRES_OK(context,
-                   GetResourceFromContext(context, "reader_handle", &reader));
+    OP_REQUIRES_OK_ASYNC(
+        context, GetResourceFromContext(context, "reader_handle", &reader),
+        done);
     thread_pool_->Schedule([this, context, reader, done]() {
       ComputeWithReader(context, reader);
       reader->Unref();
@@ -96,6 +97,58 @@ class ReaderReadOp : public ReaderVerbAsyncOpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("ReaderRead").Device(DEVICE_CPU), ReaderReadOp);
+
+class ReaderReadUpToOp : public ReaderVerbAsyncOpKernel {
+ public:
+  using ReaderVerbAsyncOpKernel::ReaderVerbAsyncOpKernel;
+
+  void ComputeWithReader(OpKernelContext* context,
+                         ReaderInterface* reader) override {
+    QueueInterface* queue;
+
+    const Tensor* num_records_tensor;
+    OP_REQUIRES_OK(context, context->input("num_records", &num_records_tensor));
+    int64 num_records = num_records_tensor->scalar<int64>()();
+
+    OP_REQUIRES_OK(context,
+                   GetResourceFromContext(context, "queue_handle", &queue));
+    core::ScopedUnref unref_me(queue);
+
+    std::vector<string> keys_vec;
+    keys_vec.reserve(num_records);
+    std::vector<string> values_vec;
+    values_vec.reserve(num_records);
+
+    int64 num_actually_read =
+        reader->ReadUpTo(num_records, queue, &keys_vec, &values_vec, context);
+
+    OP_REQUIRES(context, num_actually_read == keys_vec.size(),
+                errors::InvalidArgument("num_actually_read != len(keys_vec"));
+
+    OP_REQUIRES(context, num_actually_read == values_vec.size(),
+                errors::InvalidArgument("num_actually_read != len(values_vec"));
+
+    Tensor* keys = nullptr;
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(
+                       "keys", TensorShape({num_actually_read}), &keys));
+
+    Tensor* values = nullptr;
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(
+                       "values", TensorShape({num_actually_read}), &values));
+
+    auto keys_t = keys->vec<string>();
+    auto values_t = values->vec<string>();
+    for (int i = 0; i < num_actually_read; ++i) {
+      keys_t(i) = std::move(keys_vec[i]);
+      values_t(i) = std::move(values_vec[i]);
+    }
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("ReaderReadUpTo").Device(DEVICE_CPU),
+                        ReaderReadUpToOp);
 
 class ReaderNumRecordsProducedOp : public ReaderVerbSyncOpKernel {
  public:

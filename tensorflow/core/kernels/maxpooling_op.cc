@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -160,7 +160,7 @@ static void SpatialMaxPoolWithArgMaxHelper(
       const int in_end = limit * in_size;
       EigenMatrixMap in_shard(input_backprop_flat.data() + in_start, 1,
                               in_end - in_start);
-      in_shard.setConstant(0);
+      in_shard.setConstant(T(0));
 
       // Backpropagate.
       const int out_size = out_height * out_width * depth;
@@ -187,8 +187,12 @@ static void SpatialMaxPoolWithArgMaxHelper(
         params.tensor_in_batch, shard_cost, shard);
 }
 
-REGISTER_KERNEL_BUILDER(Name("MaxPool").Device(DEVICE_CPU),
-                        MaxPoolingOp<CPUDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("MaxPool").Device(DEVICE_CPU).TypeConstraint<float>("T"),
+    MaxPoolingOp<CPUDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("MaxPool").Device(DEVICE_CPU).TypeConstraint<Eigen::half>("T"),
+    MaxPoolingOp<CPUDevice, Eigen::half>);
 
 #if GOOGLE_CUDA
 // Forward declarations for the functor specializations for GPU.
@@ -212,6 +216,7 @@ DECLARE_GPU_SPEC(float);
 // kernel_label_map.
 REGISTER_KERNEL_BUILDER(Name("MaxPool")
                             .Device(DEVICE_GPU)
+                            .TypeConstraint<float>("T")
                             .Label("eigen_tensor"),
                         MaxPoolingOp<Eigen::GpuDevice, float>);
 #endif  // GOOGLE_CUDA
@@ -230,9 +235,11 @@ class MaxPoolingGradOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
-    OP_REQUIRES(context, data_format_ == FORMAT_NHWC,
-                errors::InvalidArgument(
-                    "Default MaxPoolinGradgOp only supports NHWC."));
+    OP_REQUIRES(
+        context, data_format_ == FORMAT_NHWC,
+        errors::InvalidArgument("Default MaxPoolinGradOp only supports NHWC ",
+                                "on device type ",
+                                DeviceTypeString(context->device_type())));
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 4,
                 errors::InvalidArgument("Sliding window ksize field must "
@@ -265,7 +272,7 @@ class MaxPoolingGradOp : public OpKernel {
     OP_REQUIRES(context, out_backprop.dims() == 4,
                 errors::InvalidArgument("out_backprop must be 4-dimensional"));
 
-    TensorShape output_shape = tensor_in.shape();
+    const TensorShape& output_shape = tensor_in.shape();
 
     Tensor tensor_out_dup;
     OP_REQUIRES_OK(context,
@@ -297,11 +304,16 @@ class MaxPoolingGradOp : public OpKernel {
   TensorFormat data_format_;
 };
 
-REGISTER_KERNEL_BUILDER(Name("MaxPoolGrad").Device(DEVICE_CPU),
-                        MaxPoolingGradOp<CPUDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("MaxPoolGrad").Device(DEVICE_CPU).TypeConstraint<float>("T"),
+    MaxPoolingGradOp<CPUDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("MaxPoolGrad").Device(DEVICE_CPU).TypeConstraint<Eigen::half>("T"),
+    MaxPoolingGradOp<CPUDevice, Eigen::half>);
 
 #ifdef GOOGLE_CUDA
 
+template <typename T>
 static void MaxPoolingBackwardCustomKernel(
     OpKernelContext* context, const std::vector<int32>& size,
     const std::vector<int32>& stride, Padding padding, const Tensor* tensor_in,
@@ -318,12 +330,12 @@ static void MaxPoolingBackwardCustomKernel(
   }
 
   MaxPoolBackwardNoMask(
-      tensor_in->flat<float>().data(), params.tensor_in_batch,
+      tensor_in->flat<T>().data(), params.tensor_in_batch,
       params.tensor_in_rows, params.tensor_in_cols, params.depth,
       params.out_height, params.out_width, params.window_rows,
       params.window_cols, params.row_stride, params.col_stride, params.pad_rows,
-      params.pad_cols, out_backprop.flat<float>().data(),
-      output->flat<float>().data(), context->eigen_device<Eigen::GpuDevice>());
+      params.pad_cols, out_backprop.flat<T>().data(),
+      output->flat<T>().data(), context->eigen_device<Eigen::GpuDevice>());
 }
 
 template <class T>
@@ -378,8 +390,8 @@ class MaxPoolingGradOp<Eigen::GpuDevice, T> : public OpKernel {
     } else {
       CHECK(data_format_ == FORMAT_NHWC)
           << "Non-Cudnn MaxPoolGrad only supports NHWC format";
-      MaxPoolingBackwardCustomKernel(context, ksize_, stride_, padding_,
-                                     &tensor_in, out_backprop, output_shape);
+      MaxPoolingBackwardCustomKernel<T>(context, ksize_, stride_, padding_,
+                                        &tensor_in, out_backprop, output_shape);
     }
   }
 
@@ -391,8 +403,12 @@ class MaxPoolingGradOp<Eigen::GpuDevice, T> : public OpKernel {
   bool use_dnn_;
 };
 
-REGISTER_KERNEL_BUILDER(Name("MaxPoolGrad").Device(DEVICE_GPU),
-                        MaxPoolingGradOp<Eigen::GpuDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("MaxPoolGrad").Device(DEVICE_GPU).TypeConstraint<float>("T"),
+    MaxPoolingGradOp<Eigen::GpuDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("MaxPoolGrad").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
+    MaxPoolingGradOp<Eigen::GpuDevice, Eigen::half>);
 
 #endif  // GOOGLE_CUDA
 
@@ -408,9 +424,11 @@ class MaxPoolingNoMaskOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
-    OP_REQUIRES(context, data_format_ == FORMAT_NHWC,
-                errors::InvalidArgument(
-                    "Default MaxPoolingNoMaskOp only supports NHWC."));
+    OP_REQUIRES(
+        context, data_format_ == FORMAT_NHWC,
+        errors::InvalidArgument(
+            "Default MaxPoolingNoMaskOp only supports NHWC on device type ",
+            DeviceTypeString(context->device_type())));
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 4,
                 errors::InvalidArgument("Sliding window ksize field must "
@@ -625,8 +643,12 @@ struct LaunchMaxPoolingNoMask<Eigen::GpuDevice, T> {
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("MaxPool").Device(DEVICE_GPU),
-                        MaxPoolingNoMaskOp<Eigen::GpuDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("MaxPool").Device(DEVICE_GPU).TypeConstraint<float>("T"),
+    MaxPoolingNoMaskOp<Eigen::GpuDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("MaxPool").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
+    MaxPoolingNoMaskOp<Eigen::GpuDevice, Eigen::half>);
 
 template <typename T>
 struct LaunchMaxPoolingWithArgmax<Eigen::GpuDevice, T> {
@@ -649,8 +671,14 @@ struct LaunchMaxPoolingWithArgmax<Eigen::GpuDevice, T> {
 
 REGISTER_KERNEL_BUILDER(Name("MaxPoolWithArgmax")
                             .Device(DEVICE_GPU)
-                            .TypeConstraint<int64>("Targmax"),
+                            .TypeConstraint<int64>("Targmax")
+                            .TypeConstraint<float>("T"),
                         MaxPoolingWithArgmaxOp<Eigen::GpuDevice, float>);
+REGISTER_KERNEL_BUILDER(Name("MaxPoolWithArgmax")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<int64>("Targmax")
+                            .TypeConstraint<Eigen::half>("T"),
+                        MaxPoolingWithArgmaxOp<Eigen::GpuDevice, Eigen::half>);
 
 template <typename T>
 struct LaunchMaxPoolingGradWithArgmax<Eigen::GpuDevice, T> {
@@ -675,10 +703,18 @@ struct LaunchMaxPoolingGradWithArgmax<Eigen::GpuDevice, T> {
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("MaxPoolGradWithArgmax")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<int64>("Targmax"),
-                        MaxPoolingGradWithArgmaxOp<Eigen::GpuDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("MaxPoolGradWithArgmax")
+        .Device(DEVICE_GPU)
+        .TypeConstraint<float>("T")
+        .TypeConstraint<int64>("Targmax"),
+    MaxPoolingGradWithArgmaxOp<Eigen::GpuDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("MaxPoolGradWithArgmax")
+        .Device(DEVICE_GPU)
+        .TypeConstraint<Eigen::half>("T")
+        .TypeConstraint<int64>("Targmax"),
+    MaxPoolingGradWithArgmaxOp<Eigen::GpuDevice, Eigen::half>);
 
 #endif  // GOOGLE_CUDA
 

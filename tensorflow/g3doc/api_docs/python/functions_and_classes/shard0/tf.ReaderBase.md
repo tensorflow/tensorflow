@@ -86,6 +86,33 @@ finished with the previous file).
 
 - - -
 
+#### `tf.ReaderBase.read_up_to(queue, num_records, name=None)` {#ReaderBase.read_up_to}
+
+Returns up to num_records (key, value pairs) produced by a reader.
+
+Will dequeue a work unit from queue if necessary (e.g., when the
+Reader needs to start reading from a new file since it has
+finished with the previous file).
+It may return less than num_records even before the last batch.
+
+##### Args:
+
+
+*  <b>`queue`</b>: A Queue or a mutable string Tensor representing a handle
+    to a Queue, with string work items.
+*  <b>`num_records`</b>: Number of records to read.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A tuple of Tensors (keys, values).
+
+*  <b>`keys`</b>: A 1-D string Tensor.
+*  <b>`values`</b>: A 1-D string Tensor.
+
+
+- - -
+
 #### `tf.ReaderBase.reader_ref` {#ReaderBase.reader_ref}
 
 Op that implements the reader.

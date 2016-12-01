@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -61,16 +61,16 @@ class PadOpTest(tf.test.TestCase):
             [[1, 1], [1, 2]],
             mode="symmetric"))
 
-  def _testPad(self, np_inputs, paddings, mode, use_gpu=False):
+  def _testPad(self, np_inputs, paddings, mode):
     np_val = self._npPad(np_inputs, paddings, mode=mode)
-    with self.test_session(use_gpu=use_gpu):
+    with self.test_session(use_gpu=True):
       tf_val = tf.pad(np_inputs, paddings, mode=mode)
       out = tf_val.eval()
     self.assertAllEqual(np_val, out)
     self.assertShapeEqual(np_val, tf_val)
 
   def _testGradient(self, x, a, mode):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       inx = tf.convert_to_tensor(x)
       xs = list(x.shape)
       ina = tf.convert_to_tensor(a)
@@ -85,63 +85,66 @@ class PadOpTest(tf.test.TestCase):
     self.assertAllClose(jacob_t, jacob_n, rtol=1e-5, atol=1e-5)
 
   def _testAll(self, np_inputs, paddings):
-    for mode in ("CONSTANT", "REFLECT", "SYMMETRIC"):
-      self._testPad(np_inputs, paddings, mode=mode, use_gpu=False)
-      self._testPad(np_inputs, paddings, mode=mode, use_gpu=True)
-      if np_inputs.dtype == np.float32:
-        self._testGradient(np_inputs, paddings, mode=mode)
+    for mode in ("CONSTANT", "REFLECT", "SYMMETRIC", "reflect", "symmetric",
+                 "constant"):
+      # Zero-sized input is not allowed for REFLECT mode, but we still want
+      # zero-sized input test cases for the other modes.
+      if np_inputs.size or mode.upper() != "REFLECT":
+        self._testPad(np_inputs, paddings, mode=mode)
+        if np_inputs.dtype == np.float32:
+          self._testGradient(np_inputs, paddings, mode=mode)
 
   def testInputDims(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       with self.assertRaises(ValueError):
         tf.pad(
             tf.reshape([1, 2], shape=[1, 2, 1, 1, 1, 1]),
             tf.reshape([1, 2], shape=[1, 2]))
 
   def testPaddingsDim(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       with self.assertRaises(ValueError):
         tf.pad(
             tf.reshape([1, 2], shape=[1, 2]),
             tf.reshape([1, 2], shape=[2]))
 
   def testPaddingsDim2(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       with self.assertRaises(ValueError):
         tf.pad(
             tf.reshape([1, 2], shape=[1, 2]),
             tf.reshape([1, 2], shape=[2, 1]))
 
   def testPaddingsDim3(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       with self.assertRaises(ValueError):
         tf.pad(
             tf.reshape([1, 2], shape=[1, 2]),
             tf.reshape([1, 2], shape=[1, 2]))
 
   def testPaddingsDim4(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       with self.assertRaises(ValueError):
         tf.pad(
             tf.reshape([1, 2], shape=[1, 2]),
             tf.reshape([1, 2, 3, 4, 5, 6], shape=[3, 2]))
 
   def testPaddingsNonNegative(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       with self.assertRaisesRegexp(ValueError, "must be non-negative"):
         tf.pad(
             tf.constant([1], shape=[1]),
             tf.constant([-1, 0], shape=[1, 2]))
 
   def testPaddingsNonNegative2(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       with self.assertRaisesRegexp(ValueError, "must be non-negative"):
         tf.pad(
             tf.constant([1], shape=[1]),
             tf.constant([-1, 0], shape=[1, 2]))
 
   def testPaddingsMaximum(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       with self.assertRaises(Exception):
         tf.pad(
             tf.constant([1], shape=[2]),
@@ -153,22 +156,36 @@ class PadOpTest(tf.test.TestCase):
             tf.constant([0, 3], shape=[1, 2]),
             mode="SYMMETRIC").eval()
 
+  def testInvalid(self):
+    with self.test_session():
+      x = [[1, 2, 3], [4, 5, 6]]
+      with self.assertRaisesRegexp(ValueError, "Unknown padding mode"):
+        tf.pad(x, [[1, 0], [2, 1]], mode="weird").eval()
+
   def testIntTypes(self):
     # TODO(touts): Figure out why the padding tests do not work on GPU
     # for int types and rank > 2.
     for t in [np.int32, np.int64]:
-      self._testAll((np.random.rand(4, 4, 3) * 100).astype(t),
+      self._testAll(np.random.randint(-100, 100, (4, 4, 3)).astype(t),
                     [[1, 0], [2, 3], [0, 2]])
+      self._testAll(np.random.randint(-100, 100, (4, 2, 1, 3)).astype(t),
+                    [[0, 0], [0, 0], [0, 0], [0, 0]])
 
   def testFloatTypes(self):
     for t in [np.float32, np.float64]:
       self._testAll(np.random.rand(2, 5).astype(t),
                     [[1, 0], [2, 0]])
+      self._testAll(np.random.rand(2, 3, 4).astype(t),
+                    [[0, 0], [0, 0], [0, 0]])
+      self._testAll(np.random.rand(0, 3, 4).astype(t),
+                    [[0, 0], [2, 1], [2, 3]])
 
   def testComplexTypes(self):
     for t in [np.complex64, np.complex128]:
       x = np.random.rand(2, 5).astype(t)
-      self._testAll(x + 1j *x, [[1, 0], [2, 0]])
+      self._testAll(x + 1j * x, [[1, 0], [2, 0]])
+      x = np.random.rand(3, 2, 1, 1).astype(t)
+      self._testAll(x + 1j * x, [[0, 0], [0, 0], [0, 0], [0, 0]])
 
   def testShapeFunctionEdgeCases(self):
     # Unknown paddings shape.
@@ -189,12 +206,11 @@ class PadOpTest(tf.test.TestCase):
   def testScalars(self):
     paddings = np.zeros((0, 2), dtype=np.int32)
     inp = np.asarray(7)
-    for use_gpu in False, True:
-      with self.test_session(use_gpu=use_gpu):
-        tf_val = tf.pad(inp, paddings)
-        out = tf_val.eval()
-      self.assertAllEqual(inp, out)
-      self.assertShapeEqual(inp, tf_val)
+    with self.test_session(use_gpu=True):
+      tf_val = tf.pad(inp, paddings)
+      out = tf_val.eval()
+    self.assertAllEqual(inp, out)
+    self.assertShapeEqual(inp, tf_val)
 
 
 if __name__ == "__main__":

@@ -43,7 +43,7 @@ the implementation uses
 ##### Returns:
 
   A `Tensor` of the same shape as `logits` with the componentwise
-  weightedlogistic losses.
+  weighted logistic losses.
 
 ##### Raises:
 

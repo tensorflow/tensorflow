@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ from __future__ import print_function
 import tensorflow as tf
 
 from google.protobuf import text_format
-from tensorflow.python.client import graph_util
+from tensorflow.python.framework import graph_util
 
 
 FLAGS = tf.app.flags.FLAGS
@@ -80,7 +80,8 @@ def freeze_graph(input_graph, input_saver, input_binary, input_checkpoint,
     print("Input saver file '" + input_saver + "' does not exist!")
     return -1
 
-  if not tf.gfile.Glob(input_checkpoint):
+  # 'input_checkpoint' may be a prefix if we're using Saver V2 format
+  if not tf.train.checkpoint_exists(input_checkpoint):
     print("Input checkpoint '" + input_checkpoint + "' doesn't exist!")
     return -1
 
@@ -94,7 +95,7 @@ def freeze_graph(input_graph, input_saver, input_binary, input_checkpoint,
     if input_binary:
       input_graph_def.ParseFromString(f.read())
     else:
-      text_format.Merge(f.read(), input_graph_def)
+      text_format.Merge(f.read().decode("utf-8"), input_graph_def)
   # Remove all the explicit device specifications for this node. This helps to
   # make the graph more portable.
   if clear_devices:

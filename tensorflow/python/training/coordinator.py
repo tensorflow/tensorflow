@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -125,8 +125,21 @@ class Coordinator(object):
   ```
   """
 
-  def __init__(self):
-    """Create a new Coordinator."""
+  def __init__(self, clean_stop_exception_types=None):
+    """Create a new Coordinator.
+
+    Args:
+      clean_stop_exception_types: Optional tuple of Exception types that should
+        cause a clean stop of the coordinator. If an exception of one of these
+        types is reported to `request_stop(ex)` the coordinator will behave as
+        if `request_stop(None)` was called.  Defaults to
+        `(tf.errors.OutOfRangeError,)` which is used by input queues to signal
+        the end of input. When feeding training data from a Python iterator it
+        is common to add `StopIteration` to this list.
+    """
+    if clean_stop_exception_types is None:
+      clean_stop_exception_types = (errors.OutOfRangeError,)
+    self._clean_stop_exception_types = tuple(clean_stop_exception_types)
     # Protects all attributes.
     self._lock = threading.Lock()
     # Event set when threads must stop.
@@ -135,6 +148,13 @@ class Coordinator(object):
     # If not None, it should hold the returned value of sys.exc_info(), which is
     # a tuple containing exception (type, value, traceback).
     self._exc_info_to_raise = None
+    # True if we have called join() already.
+    self._joined = False
+    # Set of threads registered for joining when join() is called.  These
+    # threads will be joined in addition to the threads passed to the join()
+    # call.  It's ok if threads are both registered and passed to the join()
+    # call.
+    self._registered_threads = set()
 
   def _filter_exception(self, ex):
     """Check if the exception indicated in 'ex' should be ignored.
@@ -143,9 +163,8 @@ class Coordinator(object):
     reported to the users.  If yes, it returns `ex` as is, otherwise it returns
     None.
 
-    The code returns None for exceptions that are used for control flow such as
-    the OutOfRangeError raised by the dequeue operations to indicate that a
-    queue was closed after its contents were dequeued.
+    The code returns None for exception types listed in
+    `_clean_stop_exception_types`.
 
     Args:
       ex: None, an `Exception`, or a Python `exc_info` tuple as returned by
@@ -158,12 +177,7 @@ class Coordinator(object):
       ex2 = ex[1]
     else:
       ex2 = ex
-    # OutOfRangeError is used to indicate "end of input".  We do not want to
-    # report an exception for it.  TODO(touts): Likely also need to ignore
-    # some of the Aborted and Cancelled exceptions raised by queue ops after
-    # queues are closed, but this can only be done after these exceptions have
-    # been clearly identified.
-    if isinstance(ex2, (errors.OutOfRangeError)):
+    if isinstance(ex2, self._clean_stop_exception_types):
       # Ignore the exception.
       ex = None
     return ex
@@ -182,8 +196,19 @@ class Coordinator(object):
         `sys.exc_info()`.  If this is the first call to `request_stop()` the
         corresponding exception is recorded and re-raised from `join()`.
     """
-    ex = self._filter_exception(ex)
     with self._lock:
+      ex = self._filter_exception(ex)
+      # If we have already joined the coordinator the exception will not have a
+      # chance to be reported, so just raise it normally.  This can happen if
+      # you continue to use a session have having stopped and joined the
+      # coordinator threads.
+      if self._joined:
+        if isinstance(ex, tuple):
+          six.reraise(*ex)
+        elif ex is not None:
+          # NOTE(touts): This is bogus if request_stop() is not called
+          # from the exception handler that raised ex.
+          six.reraise(*sys.exc_info())
       if not self._stop_event.is_set():
         if ex and self._exc_info_to_raise is None:
           if isinstance(ex, tuple):
@@ -210,6 +235,8 @@ class Coordinator(object):
                   % self._exc_info_to_raise)
             except ValueError:
               # Record this error so it kills the coordinator properly.
+              # NOTE(touts): As above, this is bogus if request_stop() is not
+              # called from the exception handler that raised ex.
               self._exc_info_to_raise = sys.exc_info()
 
         self._stop_event.set()
@@ -220,6 +247,8 @@ class Coordinator(object):
     After this is called, calls to `should_stop()` will return `False`.
     """
     with self._lock:
+      self._joined = False
+      self._exc_info_to_raise = None
       if self._stop_event.is_set():
         self._stop_event.clear()
 
@@ -281,10 +310,22 @@ class Coordinator(object):
     """
     return self._stop_event.wait(timeout)
 
-  def join(self, threads, stop_grace_period_secs=120):
+  def register_thread(self, thread):
+    """Register a thread to join.
+
+    Args:
+      thread: A Python thread to join.
+    """
+    with self._lock:
+      self._registered_threads.add(thread)
+
+  def join(self, threads=None, stop_grace_period_secs=120):
     """Wait for threads to terminate.
 
-    Blocks until all `threads` have terminated or `request_stop()` is called.
+    This call blocks until a set of threads have terminated.  The set of thread
+    is the union of the threads passed in the `threads` argument and the list
+    of threads that registered with the coordinator by calling
+    `Coordinator.register_thread()`.
 
     After the threads stop, if an `exc_info` was passed to `request_stop`, that
     exception is re-raised.
@@ -296,7 +337,8 @@ class Coordinator(object):
     that `RuntimeError`.
 
     Args:
-      threads: List of `threading.Threads`. The started threads to join.
+      threads: List of `threading.Threads`. The started threads to join in
+        addition to the registered threads.
       stop_grace_period_secs: Number of seconds given to threads to stop after
         `request_stop()` has been called.
 
@@ -304,25 +346,58 @@ class Coordinator(object):
       RuntimeError: If any thread is still alive after `request_stop()`
         is called and the grace period expires.
     """
+    # Threads registered after this call will not be joined.
+    with self._lock:
+      if threads is None:
+        threads = self._registered_threads
+      else:
+        threads = self._registered_threads.union(set(threads))
+      # Copy the set into a list to avoid race conditions where a new thread
+      # is added while we are waiting.
+      threads = list(threads)
+
     # Wait for all threads to stop or for request_stop() to be called.
     while any(t.is_alive() for t in threads) and not self.wait_for_stop(1.0):
       pass
 
     # If any thread is still alive, wait for the grace period to expire.
+    # By the time this check is executed, threads may still be shutting down,
+    # so we add a sleep of increasing duration to give them a chance to shut
+    # down without loosing too many cycles.
+    # The sleep duration is limited to the remaining grace duration.
+    stop_wait_secs = 0.001
     while any(t.is_alive() for t in threads) and stop_grace_period_secs >= 0.0:
-      stop_grace_period_secs -= 1.0
-      time.sleep(1.0)
+      time.sleep(stop_wait_secs)
+      stop_grace_period_secs -= stop_wait_secs
+      stop_wait_secs = 2 * stop_wait_secs
+      # Keep the waiting period within sane bounds.
+      # The minimum value is to avoid decreasing stop_wait_secs to a value
+      # that could cause stop_grace_period_secs to remain unchanged.
+      stop_wait_secs = max(min(stop_wait_secs, stop_grace_period_secs), 0.001)
 
     # List the threads still alive after the grace period.
     stragglers = [t.name for t in threads if t.is_alive()]
 
     # Terminate with an exception if appropriate.
     with self._lock:
+      self._joined = True
+      self._registered_threads = set()
       if self._exc_info_to_raise:
         six.reraise(*self._exc_info_to_raise)
       elif stragglers:
-        raise RuntimeError("Coordinator stopped with threads still running: %s",
-                           " ".join(stragglers))
+        raise RuntimeError(
+            "Coordinator stopped with threads still running: %s" %
+            " ".join(stragglers))
+
+  @property
+  def joined(self):
+    return self._joined
+
+  def raise_requested_exception(self):
+    """If an exception has been passed to `request_stop`, this raises it."""
+    with self._lock:
+      if self._exc_info_to_raise:
+        six.reraise(*self._exc_info_to_raise)
 
 
 # Threads for the standard services.
@@ -371,6 +446,7 @@ class LooperThread(threading.Thread):
     elif args or kwargs:
       raise ValueError("'args' and 'kwargs' argument require that you also "
                        "pass 'target'")
+    self._coord.register_thread(self)
 
   @staticmethod
   def loop(coord, timer_interval_secs, target, args=None, kwargs=None):

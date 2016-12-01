@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ class InitializerTest(tf.test.TestCase):
     with tf.Session() as sess:
       var = tf.get_variable(name='test', shape=shape, dtype=tf.float32,
                             initializer=initializer(uniform=uniform, seed=1))
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       values = var.eval()
       self.assertAllClose(np.var(values), variance, 1e-3, 1e-3)
 
@@ -47,6 +47,9 @@ class InitializerTest(tf.test.TestCase):
   def test_xavier_normal(self):
     self._test_xavier(tf.contrib.layers.xavier_initializer,
                       [100, 40], 2. / (100. + 40.), False)
+
+  def test_xavier_scalar(self):
+    self._test_xavier(tf.contrib.layers.xavier_initializer, [], 0.0, True)
 
   def test_xavier_conv2d_uniform(self):
     self._test_xavier(tf.contrib.layers.xavier_initializer_conv2d,
@@ -64,6 +67,11 @@ class VarianceScalingInitializerTest(tf.test.TestCase):
         TypeError,
         'Cannot create initializer for non-floating point type.'):
       tf.contrib.layers.variance_scaling_initializer(dtype=tf.int32)
+    initializer = tf.contrib.layers.variance_scaling_initializer()
+    with self.assertRaisesRegexp(
+        TypeError,
+        'Cannot create initializer for non-floating point type.'):
+      initializer([], dtype=tf.int32)
 
   def _test_variance(self, initializer, shape, variance, factor, mode, uniform):
     with tf.Graph().as_default() as g:
@@ -73,7 +81,7 @@ class VarianceScalingInitializerTest(tf.test.TestCase):
                                                       mode=mode,
                                                       uniform=uniform,
                                                       seed=1))
-        sess.run(tf.initialize_all_variables())
+        sess.run(tf.global_variables_initializer())
         values = var.eval()
         self.assertAllClose(np.var(values), variance, 1e-3, 1e-3)
 
@@ -147,6 +155,14 @@ class VarianceScalingInitializerTest(tf.test.TestCase):
                         mode='FAN_AVG',
                         uniform=False)
 
+  def test_xavier_scalar(self):
+    self._test_variance(tf.contrib.layers.variance_scaling_initializer,
+                        shape=[],
+                        variance=0.0,
+                        factor=1.0,
+                        mode='FAN_AVG',
+                        uniform=False)
+
   def test_xavier_conv2d_uniform(self):
     self._test_variance(tf.contrib.layers.variance_scaling_initializer,
                         shape=[100, 40, 5, 7],
@@ -162,6 +178,33 @@ class VarianceScalingInitializerTest(tf.test.TestCase):
                         factor=1.0,
                         mode='FAN_AVG',
                         uniform=True)
+
+  def test_1d_shape_fan_in(self):
+    for uniform in [False, True]:
+      self._test_variance(tf.contrib.layers.variance_scaling_initializer,
+                          shape=[100],
+                          variance=2. / 100.,
+                          factor=2.0,
+                          mode='FAN_IN',
+                          uniform=uniform)
+
+  def test_1d_shape_fan_out(self):
+    for uniform in [False, True]:
+      self._test_variance(tf.contrib.layers.variance_scaling_initializer,
+                          shape=[100],
+                          variance=2. / 100.,
+                          factor=2.0,
+                          mode='FAN_OUT',
+                          uniform=uniform)
+
+  def test_1d_shape_fan_avg(self):
+    for uniform in [False, True]:
+      self._test_variance(tf.contrib.layers.variance_scaling_initializer,
+                          shape=[100],
+                          variance=4. / (100. + 100.),
+                          factor=2.0,
+                          mode='FAN_AVG',
+                          uniform=uniform)
 
 if __name__ == '__main__':
   tf.test.main()

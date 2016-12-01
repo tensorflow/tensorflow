@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,18 @@ limitations under the License.
 namespace tensorflow {
 REGISTER5(UnaryOp, CPU, "Exp", functor::exp, float, Eigen::half, double,
           complex64, complex128);
+
+#if TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(TYPE)                                    \
+  REGISTER_KERNEL_BUILDER(                                            \
+                          Name("Exp")                                 \
+                          .Device(DEVICE_SYCL)                        \
+                          .TypeConstraint<TYPE>("T"),                 \
+                          UnaryOp<SYCLDevice, functor::exp<TYPE>>);
+REGISTER_SYCL_KERNEL(float);
+#undef REGISTER_SYCL_KERNEL
+#endif // TENSORFLOW_USE_SYCL
+
 #if GOOGLE_CUDA
 REGISTER3(UnaryOp, GPU, "Exp", functor::exp, float, Eigen::half, double);
 #endif

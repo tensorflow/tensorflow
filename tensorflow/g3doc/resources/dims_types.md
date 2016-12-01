@@ -59,6 +59,7 @@ Data type | Python type | Description
 `DT_INT32` | `tf.int32` | 32 bits signed integer.
 `DT_INT64` | `tf.int64` | 64 bits signed integer.
 `DT_UINT8` | `tf.uint8` | 8 bits unsigned integer.
+`DT_UINT16` | `tf.uint16` | 16 bits unsigned integer.
 `DT_STRING` | `tf.string` | Variable length byte arrays.  Each element of a Tensor is a byte array.
 `DT_BOOL` | `tf.bool` | Boolean.
 `DT_COMPLEX64` | `tf.complex64` | Complex number made of two 32 bits floating points: real and imaginary parts.

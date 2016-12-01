@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -52,9 +52,9 @@ class SummaryOpsTest(tf.test.TestCase):
   def testMergeSummary(self):
     with self.test_session() as sess:
       const = tf.constant(10.0)
-      summ1 = tf.histogram_summary("h", const, name="histo")
-      summ2 = tf.scalar_summary("c", const, name="summ")
-      merge = tf.merge_summary([summ1, summ2])
+      summ1 = tf.summary.histogram("h", const)
+      summ2 = tf.scalar_summary("c", const)
+      merge = tf.summary.merge([summ1, summ2])
       value = sess.run(merge)
     self.assertEqual([], merge.get_shape())
     self.assertProtoEquals("""
@@ -80,11 +80,10 @@ class SummaryOpsTest(tf.test.TestCase):
   def testMergeAllSummaries(self):
     with tf.Graph().as_default():
       const = tf.constant(10.0)
-      summ1 = tf.histogram_summary("h", const, name="histo")
-      summ2 = tf.scalar_summary("o", const, name="oops",
-                                        collections=["foo_key"])
-      summ3 = tf.scalar_summary("c", const, name="summ")
-      merge = tf.merge_all_summaries()
+      summ1 = tf.summary.histogram("h", const)
+      summ2 = tf.summary.scalar("o", const, collections=["foo_key"])
+      summ3 = tf.summary.scalar("c", const)
+      merge = tf.summary.merge_all()
       self.assertEqual("MergeSummary", merge.op.type)
       self.assertEqual(2, len(merge.op.inputs))
       self.assertEqual(summ1, merge.op.inputs[0])
@@ -100,7 +99,7 @@ class SummaryOpsTest(tf.test.TestCase):
       for dtype in (tf.int8, tf.uint8, tf.int16, tf.int32,
                     tf.float32, tf.float64):
         const = tf.constant(10, dtype=dtype)
-        tf.histogram_summary("h", const, name="histo")
+        tf.summary.histogram("h", const)
 
 
 if __name__ == "__main__":

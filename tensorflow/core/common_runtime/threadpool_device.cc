@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,10 +31,10 @@ namespace tensorflow {
 
 ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
                                    const string& name, Bytes memory_limit,
-                                   BusAdjacency bus_adjacency,
+                                   const DeviceLocality& locality,
                                    Allocator* allocator)
     : LocalDevice(options, Device::BuildDeviceAttributes(
-                               name, DEVICE_CPU, memory_limit, bus_adjacency),
+                               name, DEVICE_CPU, memory_limit, locality),
                   allocator),
       allocator_(allocator) {}
 

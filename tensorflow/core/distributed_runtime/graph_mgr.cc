@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/common_runtime/process_util.h"
+#include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/log_memory.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_partition.h"
 #include "tensorflow/core/graph/validate.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
@@ -53,6 +53,9 @@ GraphMgr::~GraphMgr() {
 GraphMgr::Item::~Item() {
   for (const auto& unit : this->units) {
     CHECK_NOTNULL(unit.device);
+    if (!graph_mgr->skip_cost_models_) {
+      graph_mgr->cost_model_manager_.RemoveCostModelForGraph(unit.graph);
+    }
     delete unit.root;
     delete unit.lib;
     unit.device->op_segment()->RemoveHold(this->session);
@@ -93,7 +96,8 @@ static Status ValidateGraphDefForDevices(const GraphDef& gdef) {
 Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
                           const GraphOptions& graph_options, Item* item) {
   item->session = session;
-  item->lib_def = new FunctionLibraryDefinition(gdef.library());
+  item->lib_def =
+      new FunctionLibraryDefinition(OpRegistry::Global(), gdef.library());
 
   TF_RETURN_IF_ERROR(ValidateGraphDefForDevices(gdef));
 
@@ -118,7 +122,7 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
     mutex_lock l(mu_);
     return strings::StrCat(prefix, "_G", next_id_++);
   };
-  popts.get_incarnation = [this](const string& name) {
+  popts.get_incarnation = [this](const string& name) -> int64 {
     Device* device = nullptr;
     Status s = worker_env_->device_mgr->LookupDevice(name, &device);
     if (s.ok()) {
@@ -134,13 +138,11 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
     TF_RETURN_IF_ERROR(AddControlEdges(popts, &partitions));
   }
 
-  thread::ThreadPool* pool = worker_env_->compute_pool;
-  auto runner = [pool](std::function<void()> fn) { pool->Schedule(fn); };
-
   LocalExecutorParams params;
 
   Status s;
   item->units.reserve(partitions.size());
+  item->graph_mgr = this;
   const auto& optimizer_opts = graph_options.optimizer_options();
   GraphOptimizer optimizer(optimizer_opts);
   for (auto&& p : partitions) {
@@ -169,10 +171,10 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
     opseg->AddHold(session);
 
     // Function library runtime.
-    unit->lib =
-        NewFunctionLibraryRuntime(worker_env_->device_mgr, unit->device, runner,
-                                  def->versions().producer(), item->lib_def,
-                                  graph_options.optimizer_options());
+    unit->lib = NewFunctionLibraryRuntime(
+        worker_env_->device_mgr, worker_env_->env, unit->device,
+        def->versions().producer(), item->lib_def,
+        graph_options.optimizer_options());
 
     // Construct the root executor for the subgraph.
     params.device = unit->device;
@@ -199,7 +201,7 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
       }
     };
 
-    optimizer.Optimize(lib, params.device, &subgraph);
+    optimizer.Optimize(lib, worker_env_->env, params.device, &subgraph);
     s = EnsureMemoryTypes(DeviceType(unit->device->device_type()),
                           unit->device->name(), subgraph);
     if (!s.ok()) {
@@ -209,6 +211,11 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
     s = NewLocalExecutor(params, subgraph, &unit->root);
     if (!s.ok()) {
       break;
+    }
+    unit->graph = subgraph;
+    unit->build_cost_model = graph_options.build_cost_model();
+    if (unit->build_cost_model > 0) {
+      skip_cost_models_ = false;
     }
   }
   return s;
@@ -266,28 +273,65 @@ Status GraphMgr::DeregisterAll() {
   return Status::OK();
 }
 
-Status GraphMgr::Execute(const string& handle, const int64 step_id,
-                         const ExecutorOpts& opts,
-                         StepStatsCollector* collector,
-                         CancellationManager* cancellation_manager,
-                         const NamedTensors& in, NamedTensors* out) {
-  Notification n;
-  Status status;
-  ExecuteAsync(handle, step_id, opts, collector, cancellation_manager, in, out,
-               [&n, &status](const Status& s) {
-                 status = s;
-                 n.Notify();
-               });
-  n.WaitForNotification();
-  return status;
+Status GraphMgr::SendInputsToRendezvous(Rendezvous* rendezvous,
+                                        const NamedTensors& in) {
+  Rendezvous::ParsedKey parsed;
+  for (const auto& p : in) {
+    const string& key = p.first;
+    const Tensor& val = p.second;
+
+    Status s = Rendezvous::ParseKey(key, &parsed);
+    if (s.ok()) {
+      s = rendezvous->Send(parsed, Rendezvous::Args(), val, false);
+    }
+    if (!s.ok()) {
+      return s;
+    }
+  }
+  return Status::OK();
+}
+
+Status GraphMgr::RecvOutputsFromRendezvous(Rendezvous* rendezvous,
+                                           NamedTensors* out) {
+  // Receives values requested by the caller.
+  Rendezvous::ParsedKey parsed;
+  for (auto& p : *out) {
+    const string& key = p.first;
+    Tensor* val = &p.second;
+    bool is_dead = false;
+    Status s = Rendezvous::ParseKey(key, &parsed);
+    if (s.ok()) {
+      s = rendezvous->Recv(parsed, Rendezvous::Args(), val, &is_dead);
+    }
+    if (is_dead) {
+      s = errors::InvalidArgument("The tensor returned for ", key,
+                                  " was not valid.");
+    }
+    if (!s.ok()) return s;
+  }
+  return Status::OK();
+}
+
+Status GraphMgr::SendInputs(const int64 step_id, const NamedTensors& in) {
+  Rendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id);
+  Status s = SendInputsToRendezvous(rendezvous, in);
+  rendezvous->Unref();
+  return s;
+}
+
+Status GraphMgr::RecvOutputs(const int64 step_id, NamedTensors* out) {
+  Rendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id);
+  Status s = RecvOutputsFromRendezvous(rendezvous, out);
+  rendezvous->Unref();
+  return s;
 }
 
 void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
                             const ExecutorOpts& opts,
                             StepStatsCollector* collector,
+                            CostGraphDef* cost_graph,
                             CancellationManager* cancellation_manager,
-                            const NamedTensors& in, NamedTensors* out,
-                            StatusCallback done) {
+                            const NamedTensors& in, StatusCallback done) {
   // Lookup an item. Holds one ref while executing.
   Item* item = nullptr;
   {
@@ -304,31 +348,43 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
     return;
   }
 
-  const int num_units = item->units.size();
-  CHECK_GE(num_units, 1);
-
   Rendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id);
 
   // Sends values specified by the caller.
-  for (const auto& p : in) {
-    const string& key = p.first;
-    const Tensor& val = p.second;
-    const Status s = rendezvous->Send(key, Rendezvous::Args(), val, false);
-    if (!s.ok()) {
-      done(s);
-      item->Unref();
-      rendezvous->Unref();
-      return;
-    }
+  Status s = SendInputsToRendezvous(rendezvous, in);
+  if (!s.ok()) {
+    done(s);
+    item->Unref();
+    rendezvous->Unref();
+    return;
   }
 
-  // Starts parallel Executors.
-  //
-  // NOTE: Transfer one ref of rendezvous and one ref of item to
-  // RunAllDone.
+  StartParallelExecutors(handle, item, rendezvous, collector, cost_graph,
+                         cancellation_manager,
+                         [this, item, rendezvous, done](const Status& s) {
+                           done(s);
+                           rendezvous->Unref();
+                           item->Unref();
+                         });
+}
+
+void GraphMgr::StartParallelExecutors(const string& handle, Item* item,
+                                      Rendezvous* rendezvous,
+                                      StepStatsCollector* collector,
+                                      CostGraphDef* cost_graph,
+                                      CancellationManager* cancellation_manager,
+                                      StatusCallback done) {
+  const int num_units = item->units.size();
+  CHECK_GE(num_units, 1);
+  ResourceMgr* step_resource_manager = new ResourceMgr;
+  // NOTE: Transfer one ref of rendezvous and item.
   ExecutorBarrier* barrier = new ExecutorBarrier(
-      num_units, rendezvous, std::bind(&ME::RunAllDone, this, item, rendezvous,
-                                       out, done, std::placeholders::_1));
+      num_units, rendezvous, [this, item, collector, cost_graph,
+                              step_resource_manager, done](const Status& s) {
+        BuildCostModel(item, collector, cost_graph);
+        done(s);
+        delete step_resource_manager;
+      });
   Executor::Args args;
   {
     mutex_lock l(mu_);
@@ -337,35 +393,39 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
   args.rendezvous = rendezvous;
   args.cancellation_manager = cancellation_manager;
   args.stats_collector = collector;
+  args.step_resource_manager = step_resource_manager;
+  args.sync_on_finish = true;
   if (LogMemory::IsEnabled()) {
     LogMemory::RecordStep(args.step_id, handle);
   }
   thread::ThreadPool* pool = worker_env_->compute_pool;
-  args.runner = [pool](std::function<void()> fn) { pool->Schedule(fn); };
+  using namespace std::placeholders;
+  // Line below is equivalent to this code, but does one less indirect call:
+  //  args.runner = [pool](std::function<void()> fn) { pool->Schedule(fn); };
+  args.runner = std::bind(&thread::ThreadPool::Schedule, pool, _1);
   for (const auto& unit : item->units) {
     unit.root->RunAsync(args, barrier->Get());
   }
 }
 
-void GraphMgr::RunAllDone(Item* item, Rendezvous* rendezvous, NamedTensors* out,
-                          StatusCallback done, Status s) {
-  if (s.ok()) {
-    // Receives values requested by the caller.
-    for (auto& p : *out) {
-      const string& key = p.first;
-      Tensor* val = &p.second;
-      bool is_dead = false;
-      s = rendezvous->Recv(key, Rendezvous::Args(), val, &is_dead);
-      if (is_dead) {
-        s = errors::InvalidArgument("The tensor returned for ", key,
-                                    " was not valid.");
+void GraphMgr::BuildCostModel(Item* item, StepStatsCollector* collector,
+                              CostGraphDef* cost_graph) {
+  if (collector && !skip_cost_models_) {
+    // Build the cost model
+    std::unordered_map<string, const Graph*> device_to_graph;
+    for (const auto& unit : item->units) {
+      if (unit.build_cost_model > 0) {
+        device_to_graph[unit.device->name()] = unit.graph;
       }
-      if (!s.ok()) break;
+    }
+    collector->BuildCostModel(&cost_model_manager_, device_to_graph);
+
+    if (cost_graph != nullptr) {
+      for (const auto& unit : item->units) {
+        cost_model_manager_.AddToCostGraphDef(unit.graph, cost_graph);
+      }
     }
   }
-  done(s);
-  rendezvous->Unref();
-  item->Unref();
 }
 
 }  // end namespace tensorflow

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,20 +35,30 @@ typedef Eigen::GpuDevice GPUDevice;
 template <typename Device, typename T>
 class UnpackOp : public OpKernel {
  public:
-  explicit UnpackOp(OpKernelConstruction* c) : OpKernel(c) {}
+  explicit UnpackOp(OpKernelConstruction* context) : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("axis", &axis_));
+  }
 
   void Compute(OpKernelContext* context) override {
     const int32 num = num_outputs();
     const Tensor& input = context->input(0);
     const TensorShape& input_shape = input.shape();
 
-    OP_REQUIRES(context,
-                input_shape.dims() > 0 && input_shape.dim_size(0) == num,
-                errors::InvalidArgument("Input shape must start with ", num,
-                                        ", got ", input_shape.DebugString()));
+    int axis = axis_;
+    if (axis < 0) axis += input_shape.dims();
+
+    OP_REQUIRES(context, 0 <= axis && axis < input_shape.dims(),
+                errors::InvalidArgument("axis = ", axis_, " not in [",
+                                        -input_shape.dims(), ", ",
+                                        input_shape.dims(), ")"));
+
+    OP_REQUIRES(
+        context, input_shape.dims() > 0 && input_shape.dim_size(axis) == num,
+        errors::InvalidArgument("Input shape axis ", axis, " must equal ", num,
+                                ", got shape ", input_shape.DebugString()));
 
     auto output_shape = input_shape;
-    output_shape.RemoveDim(0);
+    output_shape.RemoveDim(axis);
     const int64 output_size = output_shape.num_elements();
     OP_REQUIRES(
         context, FastBoundsCheck(output_size,
@@ -62,7 +72,8 @@ class UnpackOp : public OpKernel {
     // because if the immediate consumer of the resulting tensors are
     // not using eigen for computation, its perfectly fine to avoid
     // the copying.
-    if (output_size == 0 || IsInnerDimsSizeAligned<T>(input_shape)) {
+    if (axis == 0 &&
+        (output_size == 0 || IsInnerDimsSizeAligned<T>(input_shape))) {
       for (int i = 0; i < num; ++i) {
         Tensor output;
         CHECK(output.CopyFrom(input.Slice(i, i + 1), output_shape));
@@ -71,23 +82,40 @@ class UnpackOp : public OpKernel {
       return;
     }
 
+    int64 before_dim = 1;
+    for (int i = 0; i < axis; ++i) {
+      before_dim *= input_shape.dim_size(i);
+    }
+
+    int64 after_dim = 1;
+    for (int i = axis + 1; i < input_shape.dims(); ++i) {
+      after_dim *= input_shape.dim_size(i);
+    }
+    const int64 axis_dim = input_shape.dim_size(axis);
+
     // Except for shape, unpack is a special case of split, so we reuse the
     // same computational kernels.
-    auto input_reshaped = input.shaped<T, 3>({1, num, output_size});
+    auto input_reshaped =
+        input.shaped<T, 3>({1, before_dim, axis_dim * after_dim});
 
     for (int i = 0; i < num; ++i) {
       Tensor* output;
       OP_REQUIRES_OK(context,
                      context->allocate_output(i, output_shape, &output));
-      auto output_shaped = output->shaped<T, 3>({1, 1, output_size});
 
-      Eigen::DSizes<Eigen::DenseIndex, 3> indices{0, i, 0};
-      Eigen::DSizes<Eigen::DenseIndex, 3> sizes{1, 1, output_size};
-      functor::Split<Device, T>()(context->eigen_device<Device>(),
-                                  output_shaped, input_reshaped, indices,
-                                  sizes);
+      if (output_shape.num_elements() > 0) {
+        auto output_shaped = output->shaped<T, 3>({1, before_dim, after_dim});
+        Eigen::DSizes<Eigen::DenseIndex, 3> indices{0, 0, i * after_dim};
+        Eigen::DSizes<Eigen::DenseIndex, 3> sizes{1, before_dim, after_dim};
+        functor::Split<Device, T>()(context->eigen_device<Device>(),
+                                    output_shaped, input_reshaped, indices,
+                                    sizes);
+      }
     }
   }
+
+ private:
+  int axis_;
 };
 
 #define REGISTER_UNPACK(type)                                      \

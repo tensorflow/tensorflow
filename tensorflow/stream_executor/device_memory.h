@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -144,23 +144,6 @@ class DeviceMemory final : public DeviceMemoryBase {
     DeviceMemoryBase::Reset(opaque, bytes);
   }
 
-  // ------------------------------------------------------------
-  // DO NOT USE - FASTR TEAM-INTERNAL FUNCTIONS
-  // Used internally by gcudacc.
-#ifdef __GCUDACC__
-  // Implicit conversion operators needed to support mixed mode. Since buffer
-  // sizes aren't used in the CUDA launching process, and since the constructed
-  // objects are all temporary, this is safe.
-  // Linter warning disabled as we require an implicit conversion.
-  DeviceMemory(const ElemT *opaque) :  // NOLINT
-        DeviceMemoryBase(reinterpret_cast<void *>(const_cast<ElemT *>(opaque)),
-                         0) {}
-
-  operator ElemT *() { return reinterpret_cast<ElemT *>(opaque()); }
-  operator const ElemT *() {
-    return const_cast<const ElemT *>(reinterpret_cast<ElemT *>(opaque()));
-  }
-#endif
   // ------------------------------------------------------------
 
  protected:

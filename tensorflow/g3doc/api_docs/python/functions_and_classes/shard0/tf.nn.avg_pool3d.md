@@ -9,7 +9,7 @@ Performs 3D average pooling on the input.
     Shape `[batch, depth, rows, cols, channels]` tensor to pool over.
 *  <b>`ksize`</b>: A list of `ints` that has length `>= 5`.
     1-D tensor of length 5. The size of the window for each dimension of
-    the input tensor. Must have `ksize[0] = ksize[1] = 1`.
+    the input tensor. Must have `ksize[0] = ksize[4] = 1`.
 *  <b>`strides`</b>: A list of `ints` that has length `>= 5`.
     1-D tensor of length 5. The stride of the sliding window for each
     dimension of `input`. Must have `strides[0] = strides[4] = 1`.

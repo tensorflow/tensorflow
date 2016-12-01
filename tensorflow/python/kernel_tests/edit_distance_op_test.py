@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -31,26 +31,49 @@ def ConstantOf(x):
 
 class EditDistanceTest(tf.test.TestCase):
 
-  def _testEditDistance(self, hypothesis, truth, normalize,
-                        expected_output, expected_err_re=None):
-    # hypothesis and truth are (index, value, shape) tuples
-    hypothesis_st = tf.SparseTensor(*[ConstantOf(x) for x in hypothesis])
-    truth_st = tf.SparseTensor(*[ConstantOf(x) for x in truth])
+  def _testEditDistanceST(
+      self, hypothesis_st, truth_st, normalize, expected_output,
+      expected_shape, expected_err_re=None):
     edit_distance = tf.edit_distance(
         hypothesis=hypothesis_st, truth=truth_st, normalize=normalize)
 
-    with self.test_session():
-      if expected_err_re is None:
-        # Shape inference figures out the shape from the shape variables
-        # Explicit tuple() needed since zip returns an iterator in Python 3.
-        expected_shape = [
-            max(h, t) for h, t in tuple(zip(hypothesis[2], truth[2]))[:-1]]
-        self.assertEqual(edit_distance.get_shape(), expected_shape)
-        output = edit_distance.eval()
-        self.assertAllClose(output, expected_output)
-      else:
-        with self.assertRaisesOpError(expected_err_re):
-          edit_distance.eval()
+    if expected_err_re is None:
+      self.assertEqual(edit_distance.get_shape(), expected_shape)
+      output = edit_distance.eval()
+      self.assertAllClose(output, expected_output)
+    else:
+      with self.assertRaisesOpError(expected_err_re):
+        edit_distance.eval()
+
+  def _testEditDistance(self, hypothesis, truth, normalize,
+                        expected_output, expected_err_re=None):
+    # Shape inference figures out the shape from the shape variables
+    # Explicit tuple() needed since zip returns an iterator in Python 3.
+    expected_shape = [
+        max(h, t) for h, t in tuple(zip(hypothesis[2], truth[2]))[:-1]]
+
+    # SparseTensorValue inputs.
+    with tf.Graph().as_default() as g, self.test_session(g):
+      # hypothesis and truth are (index, value, shape) tuples
+      self._testEditDistanceST(
+          hypothesis_st=tf.SparseTensorValue(
+              *[ConstantOf(x) for x in hypothesis]),
+          truth_st=tf.SparseTensorValue(*[ConstantOf(x) for x in truth]),
+          normalize=normalize,
+          expected_output=expected_output,
+          expected_shape=expected_shape,
+          expected_err_re=expected_err_re)
+
+    # SparseTensor inputs.
+    with tf.Graph().as_default() as g, self.test_session(g):
+      # hypothesis and truth are (index, value, shape) tuples
+      self._testEditDistanceST(
+          hypothesis_st=tf.SparseTensor(*[ConstantOf(x) for x in hypothesis]),
+          truth_st=tf.SparseTensor(*[ConstantOf(x) for x in truth]),
+          normalize=normalize,
+          expected_output=expected_output,
+          expected_shape=expected_shape,
+          expected_err_re=expected_err_re)
 
   def testEditDistanceNormalized(self):
     hypothesis_indices = [[0, 0], [0, 1],
@@ -136,7 +159,7 @@ class EditDistanceTest(tf.test.TestCase):
         normalize=True,
         expected_output=expected_output)
 
-  def testEditDistanceMissingHypothesis(self):
+  def testEditDistanceZeroLengthHypothesis(self):
     hypothesis_indices = np.empty((0, 2), dtype=np.int64)
     hypothesis_values = []
     hypothesis_shape = [1, 0]
@@ -151,14 +174,29 @@ class EditDistanceTest(tf.test.TestCase):
         normalize=True,
         expected_output=expected_output)
 
-  def testEditDistanceMissingTruth(self):
+  def testEditDistanceZeroLengthTruth(self):
     hypothesis_indices = [[0, 0]]
     hypothesis_values = [0]
     hypothesis_shape = [1, 1]
     truth_indices = np.empty((0, 2), dtype=np.int64)
     truth_values = []
     truth_shape = [1, 0]
-    expected_output = [np.inf]  # Normalized, divide by zero
+    expected_output = [np.inf]  # Normalized, loss is 1/0 = inf
+
+    self._testEditDistance(
+        hypothesis=(hypothesis_indices, hypothesis_values, hypothesis_shape),
+        truth=(truth_indices, truth_values, truth_shape),
+        normalize=True,
+        expected_output=expected_output)
+
+  def testEditDistanceZeroLengthHypothesisAndTruth(self):
+    hypothesis_indices = np.empty((0, 2), dtype=np.int64)
+    hypothesis_values = []
+    hypothesis_shape = [1, 0]
+    truth_indices = np.empty((0, 2), dtype=np.int64)
+    truth_values = []
+    truth_shape = [1, 0]
+    expected_output = [0]  # Normalized is 0 because of exact match
 
     self._testEditDistance(
         hypothesis=(hypothesis_indices, hypothesis_values, hypothesis_shape),

@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -64,7 +64,7 @@ class EventFileInspectorTest(test_util.TensorFlowTestCase):
       sw.close()
 
   def testEmptyLogdir(self):
-    # Nothing was wrriten to logdir
+    # Nothing was written to logdir
     units = efi.get_inspection_units(self.logdir)
     self.assertEqual([], units)
 

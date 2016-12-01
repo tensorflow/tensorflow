@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -60,7 +60,7 @@ class AUCUsingHistogramTest(tf.test.TestCase):
       score_range = [0, 1.]
       auc, update_op = tf.contrib.metrics.auc_using_histogram(labels, scores,
                                                               score_range)
-      tf.initialize_local_variables().run()
+      tf.local_variables_initializer().run()
       update_op.run()
       self.assertTrue(np.isnan(auc.eval()))
 
@@ -153,7 +153,7 @@ class AUCUsingHistogramTest(tf.test.TestCase):
                                                               scores,
                                                               score_range,
                                                               nbins=nbins)
-      tf.initialize_local_variables().run()
+      tf.local_variables_initializer().run()
       # Updates, then extract auc.
       for _ in range(num_updates):
         labels_a, scores_a = synthetic_data(desired_auc, score_range,
@@ -163,7 +163,7 @@ class AUCUsingHistogramTest(tf.test.TestCase):
                                           self.rng, frac_true)
       # Fetch current auc, and verify that fetching again doesn't change it.
       auc_eval = auc.eval()
-      self.assertEqual(auc_eval, auc.eval())
+      self.assertAlmostEqual(auc_eval, auc.eval(), places=5)
 
     msg = ('nbins: %s, desired_auc: %s, score_range: %s, '
            'num_records: %s, frac_true: %s, num_updates: %s') % (nbins,

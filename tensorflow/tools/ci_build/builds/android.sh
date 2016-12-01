@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,16 +15,6 @@
 # ==============================================================================
 
 set -e
-
-# Download model file.
-# Note: This is workaround. This should be done by bazel.
-model_file_name="inception5h.zip"
-tmp_model_file_name="${HOME}/.cache/tensorflow_models/${model_file_name}"
-mkdir -p $(dirname ${tmp_model_file_name})
-[ -e "${tmp_model_file_name}" ] || wget -c "https://storage.googleapis.com/download.tensorflow.org/models/${model_file_name}" -O "${tmp_model_file_name}"
-# We clean up after ourselves, but not if we exit with an error, so make sure we start clean
-rm -rf tensorflow/examples/android/assets/
-unzip -o "${tmp_model_file_name}" -d tensorflow/examples/android/assets/
 
 # Modify the WORKSPACE file.
 # Note: This is workaround. This should be done by bazel.

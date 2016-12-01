@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
-#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -140,6 +139,9 @@ REGISTER_KERNEL_BUILDER(Name("TestDevice").Device(DEVICE_GPU), DummyOp);
 REGISTER_OP("TestDeviceEnforce").Input("a: Ref(float)").Output("b: float");
 REGISTER_KERNEL_BUILDER(Name("TestDeviceEnforce").Device(DEVICE_CPU), DummyOp);
 REGISTER_KERNEL_BUILDER(Name("TestDeviceEnforce").Device(DEVICE_GPU), DummyOp);
+
+REGISTER_KERNEL_BUILDER(Name("Shape").Device(DEVICE_CPU), DummyOp);
+REGISTER_KERNEL_BUILDER(Name("Shape").Device(DEVICE_GPU), DummyOp);
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -286,6 +288,53 @@ TEST_F(SimplePlacerTest, TestDeviceTypeConstraints) {
   EXPECT_COLOCATED(g, "var_gpu", "assign_gpu");
 }
 
+TEST_F(SimplePlacerTest, TestMetadataColocatedWithInput) {
+  Graph g(OpRegistry::Global());
+  {  // Scope for temporary variables used to construct g.
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    Node* var_cpu = ops::SourceOp("VariableCPU", b.opts().WithName("var_cpu"));
+
+    // Normally, shape has a GPU implementation and would be placed
+    // on GPU.  However, because it is a metadata operation, it is
+    // placed on CPU to avoid transferring the data from CPU to GPU.
+    ops::UnaryOp("Shape", var_cpu, b.opts().WithName("shape_op"));
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+
+  TF_EXPECT_OK(Place(&g));
+  EXPECT_DEVICE_TYPE(g, "var_cpu", DEVICE_CPU);
+  EXPECT_DEVICE_TYPE(g, "shape_op", DEVICE_CPU);
+  EXPECT_COLOCATED(g, "var_cpu", "shape_op");
+}
+
+// Heuristic A implements "Island fusing": if a node only generates
+// an output and it has only one consumer, we place the node
+// with its consumer.
+TEST_F(SimplePlacerTest, TestHeuristicA) {
+  Graph g(OpRegistry::Global());
+  {  // Scope for temporary variables used to construct g.
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+
+    // A variable is only on CPU
+    Node* var_cpu = ops::SourceOp("VariableCPU", b.opts().WithName("var_cpu"));
+
+    // The constant to be assigned can be on both GPU or CPU.
+    //
+    // Because of the heuristic, it gets placed on CPU to avoid a
+    // copy.
+    Node* input = ops::SourceOp("TestCPUGPUOutput", b.opts().WithName("in"));
+
+    // The assign is bound to CPU by the reference edge.
+    ops::BinaryOp("TestAssign", var_cpu, input, b.opts().WithName("assign"));
+
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+
+  TF_EXPECT_OK(Place(&g));
+  EXPECT_COLOCATED(g, "var_cpu", "in");
+  EXPECT_COLOCATED(g, "assign", "in");
+}
+
 // Test that a graph with partial device specifications on the ops
 // will successfully
 TEST_F(SimplePlacerTest, TestPartialSpec) {
@@ -421,6 +470,65 @@ TEST_F(SimplePlacerTest, TestReferenceConnection) {
                     .contains("no device type supports both of those nodes"));
   }
   TF_EXPECT_OK(ReferenceTestHelper("VariableGPU", "AssignGPU", DEVICE_GPU));
+}
+
+// Handle-using dummy variable ops.
+REGISTER_OP("TestHandleVariable").Output("o: resource");
+REGISTER_KERNEL_BUILDER(Name("TestHandleVariable").Device(DEVICE_CPU), DummyOp);
+REGISTER_KERNEL_BUILDER(Name("TestHandleVariable").Device(DEVICE_GPU), DummyOp);
+
+REGISTER_OP("HandleVariableCPU").Output("o: resource");
+REGISTER_KERNEL_BUILDER(Name("HandleVariableCPU").Device(DEVICE_CPU), DummyOp);
+
+REGISTER_OP("HandleVariableGPU").Output("o: resource");
+REGISTER_KERNEL_BUILDER(Name("HandleVariableGPU").Device(DEVICE_GPU), DummyOp);
+
+REGISTER_OP("TestHandleAssign").Input("i: resource").Input("v: float");
+REGISTER_KERNEL_BUILDER(Name("TestHandleAssign").Device(DEVICE_CPU), DummyOp);
+REGISTER_KERNEL_BUILDER(Name("TestHandleAssign").Device(DEVICE_GPU), DummyOp);
+
+REGISTER_OP("HandleAssignCPU").Input("i: resource").Input("v: float");
+REGISTER_KERNEL_BUILDER(Name("HandleAssignCPU").Device(DEVICE_CPU), DummyOp);
+
+REGISTER_OP("HandleAssignGPU").Input("i: resource").Input("v: float");
+REGISTER_KERNEL_BUILDER(Name("HandleAssignGPU").Device(DEVICE_GPU), DummyOp);
+
+// Tests all combinations of resource handles and ops using them.
+TEST_F(SimplePlacerTest, TestResourceHandle) {
+  auto handle_test = [this](const string& var_op_name,
+                            const string& use_op_name, DeviceType device) {
+    Graph g(OpRegistry::Global());
+    {  // Scope for temporary variables used to construct g.
+      GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+      Node* input = ops::SourceOp("TestInput", b.opts().WithName("in"));
+      Node* var = ops::SourceOp(var_op_name, b.opts().WithName("var"));
+      ops::BinaryOp(use_op_name, var, input, b.opts().WithName("assign"));
+      TF_EXPECT_OK(BuildGraph(b, &g));
+    }
+
+    TF_RETURN_IF_ERROR(Place(&g));
+
+    EXPECT_COLOCATED(g, "var", "assign");
+    EXPECT_DEVICE_TYPE(g, "var", device);
+    EXPECT_DEVICE_TYPE(g, "assign", device);
+    return Status::OK();
+  };
+  TF_EXPECT_OK(
+      handle_test("TestHandleVariable", "TestHandleAssign", DEVICE_GPU));
+  TF_EXPECT_OK(
+      handle_test("TestHandleVariable", "HandleAssignCPU", DEVICE_CPU));
+  TF_EXPECT_OK(
+      handle_test("TestHandleVariable", "HandleAssignGPU", DEVICE_GPU));
+  TF_EXPECT_OK(
+      handle_test("HandleVariableCPU", "TestHandleAssign", DEVICE_CPU));
+  TF_EXPECT_OK(handle_test("HandleVariableCPU", "HandleAssignCPU", DEVICE_CPU));
+  TF_EXPECT_OK(handle_test("HandleVariableGPU", "HandleAssignGPU", DEVICE_GPU));
+  TF_EXPECT_OK(
+      handle_test("HandleVariableGPU", "TestHandleAssign", DEVICE_GPU));
+  EXPECT_FALSE(
+      handle_test("HandleVariableGPU", "HandleAssignCPU", DEVICE_CPU).ok());
+  EXPECT_FALSE(
+      handle_test("HandleVariableCPU", "HandleAssignGPU", DEVICE_CPU).ok());
 }
 
 // Test that an assignment of an operator to the wrong device
@@ -640,8 +748,9 @@ TEST_F(SimplePlacerTest,
   Status s = Place(&g);
   EXPECT_TRUE(
       StringPiece(s.error_message())
-          .contains("Cannot assign a device to node 'var3': Node had no "
-                    "OpKernel registered"));
+          .contains("Cannot colocate nodes 'var3' and 'assign3' because no "
+                    "device type supports both of those nodes and the other "
+                    "nodes colocated with them."));
 }
 
 TEST_F(SimplePlacerTest, TestColocationAndReferenceConnections) {
@@ -807,6 +916,8 @@ TEST_F(SimplePlacerTest, TestNoKernelsRegistered) {
       StringPiece(s.error_message())
           .contains(
               "No OpKernel was registered to support Op 'VariableNoKernels'"));
+  EXPECT_TRUE(
+      StringPiece(s.error_message()).contains("<no registered kernels>"));
 }
 
 // Test that placement fails when a kernel is registered but no known
@@ -829,6 +940,7 @@ TEST_F(SimplePlacerTest, TestNoDevicesRegistered) {
   EXPECT_TRUE(StringPiece(s.error_message())
                   .contains("No OpKernel was registered to support "
                             "Op 'VariableGPU'"));
+  EXPECT_TRUE(StringPiece(s.error_message()).contains("device='GPU'"));
 }
 
 // Test that placement fails when a requested device is malformed.

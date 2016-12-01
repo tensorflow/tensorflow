@@ -2,6 +2,9 @@
 
 Returns the truth value of x OR y element-wise.
 
+*NOTE*: `LogicalOr` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
 ##### Args:
 
 

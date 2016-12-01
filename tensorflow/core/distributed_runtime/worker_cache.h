@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,8 +19,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/distributed_runtime/worker_interface.h"  // for CallOptions
-#include "tensorflow/core/framework/device_attributes.pb.h"  // for BusAdjacency
+#include "tensorflow/core/distributed_runtime/worker_interface.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"  // for DeviceLocality
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
@@ -28,7 +28,6 @@ typedef std::function<void(const Status&)> StatusCallback;
 
 class ChannelCache;
 class StepStats;
-class WorkerInterface;
 
 class WorkerCacheInterface {
  public:
@@ -46,20 +45,30 @@ class WorkerCacheInterface {
   // ownership, not a cache lookup.
   virtual WorkerInterface* CreateWorker(const string& target) = 0;
 
-  // Set *ba with the BusAdjacency of the specified remote device
-  // within its local environment.  Returns true if the device bus
-  // affinity was set, using only locally cached data.  Returns false
-  // if status data for that device was not available.  Never blocks.
-  // TODO(mrry,tucker): Maybe remove.
-  virtual bool GetDeviceBusNonBlocking(const string& device,
-                                       BusAdjacency* ba) = 0;
+  // Release a worker previously returned by this->CreateWorker(target).
+  //
+  // TODO(jeff,sanjay): Consider moving target into WorkerInterface.
+  // TODO(jeff,sanjay): Consider disallowing direct deletion of WorkerInterface.
+  // TODO(jeff,sanjay): Unify all worker-cache impls and factor out a
+  //                    per-rpc-subsystem WorkerInterface creator.
+  virtual void ReleaseWorker(const string& target, WorkerInterface* worker) {
+    // Subclasses may override to reuse worker objects.
+    delete worker;
+  }
 
-  // Set *ba with the BusAdjacency of the specified remote device
-  // within its local environment.  Callback gets Status::OK if the
-  // device bus affinity was set.
-  // TODO(mrry,tucker): Maybe remove.
-  virtual void GetDeviceBusAsync(const string& device, BusAdjacency* ba,
-                                 StatusCallback done) = 0;
+  // Set *locality with the DeviceLocality of the specified remote device
+  // within its local environment.  Returns true if *locality
+  // was set, using only locally cached data.  Returns false
+  // if status data for that device was not available.  Never blocks.
+  virtual bool GetDeviceLocalityNonBlocking(const string& device,
+                                            DeviceLocality* locality) = 0;
+
+  // Set *locality with the DeviceLocality of the specified remote device
+  // within its local environment.  Callback gets Status::OK if *locality
+  // was set.
+  virtual void GetDeviceLocalityAsync(const string& device,
+                                      DeviceLocality* locality,
+                                      StatusCallback done) = 0;
 
   // Start/stop logging activity.
   virtual void SetLogging(bool active) {}

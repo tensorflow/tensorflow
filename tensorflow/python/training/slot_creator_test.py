@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ class SlotCreatorTest(tf.test.TestCase):
       v = tf.Variable([1.0, 2.5], name="var")
       slot = slot_creator.create_slot(v, v.initialized_value(), name="slot")
 
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       self.assertEqual(slot.op.name, "var/slot")
       self.assertEqual(slot.get_shape().as_list(), [2])
@@ -40,7 +40,7 @@ class SlotCreatorTest(tf.test.TestCase):
       v = tf.constant([1.0, 2.5], name="const")
       slot = slot_creator.create_slot(v, v * 2, name="slot")
 
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       self.assertEqual(slot.op.name, "const/slot")
       self.assertEqual(slot.get_shape().as_list(), [2])
@@ -53,7 +53,7 @@ class SlotCreatorTest(tf.test.TestCase):
       with tf.control_dependencies(None):
         slot = slot_creator.create_zeros_slot(v, name="slot", dtype=tf.float64)
 
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       self.assertEqual(slot.op.name, "var/slot")
       self.assertEqual(slot.get_shape().as_list(), [2])
@@ -66,12 +66,20 @@ class SlotCreatorTest(tf.test.TestCase):
       with tf.control_dependencies(None):
         slot = slot_creator.create_zeros_slot(v, name="slot")
 
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       self.assertEqual(slot.op.name, "const/slot")
       self.assertEqual(slot.get_shape().as_list(), [2])
       self.assertEqual(slot.dtype.base_dtype, tf.float32)
       self.assertAllEqual(slot.eval(), [0.0, 0.0])
+
+  def testCreateSlotFromVariableRespectsScope(self):
+    # See discussion on #2740.
+    with self.test_session():
+      with tf.variable_scope("scope"):
+        v = tf.Variable([1.0, 2.5], name="var")
+        slot = slot_creator.create_slot(v, v.initialized_value(), name="slot")
+        self.assertEqual(slot.op.name, "scope/scope/var/slot")
 
 if __name__ == "__main__":
   tf.test.main()

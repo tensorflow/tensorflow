@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@
 TensorFlow provides a convenience class inheriting from `unittest.TestCase`
 which adds methods relevant to TensorFlow tests.  Here is an example:
 
+```python
     import tensorflow as tf
 
 
@@ -32,18 +33,21 @@ which adds methods relevant to TensorFlow tests.  Here is an example:
 
     if __name__ == '__main__':
       tf.test.main()
-
+```
 
 `tf.test.TestCase` inherits from `unittest.TestCase` but adds a few additional
 methods.  We will document these methods soon.
 
 @@main
+@@TestCase
+@@test_src_dir_path
 
 ## Utilities
 
 @@assert_equal_graph_def
 @@get_temp_dir
 @@is_built_with_cuda
+@@is_gpu_available
 
 ## Gradient checking
 
@@ -59,26 +63,32 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import test_util
-from tensorflow.python.platform import googletest
-from tensorflow.python.util.all_util import make_all
+from tensorflow.python.client import device_lib as _device_lib
+from tensorflow.python.framework import test_util as _test_util
+from tensorflow.python.platform import googletest as _googletest
+from tensorflow.python.util.all_util import remove_undocumented
 
 # pylint: disable=unused-import
 from tensorflow.python.framework.test_util import TensorFlowTestCase as TestCase
 from tensorflow.python.framework.test_util import assert_equal_graph_def
 
-from tensorflow.python.kernel_tests.gradient_checker import compute_gradient_error
-from tensorflow.python.kernel_tests.gradient_checker import compute_gradient
+from tensorflow.python.ops.gradient_checker import compute_gradient_error
+from tensorflow.python.ops.gradient_checker import compute_gradient
 # pylint: enable=unused-import
 
+import sys
+if sys.version_info.major == 2:
+  import mock                # pylint: disable=g-import-not-at-top,unused-import
+else:
+  from unittest import mock  # pylint: disable=g-import-not-at-top
 
 # Import Benchmark class
-Benchmark = googletest.Benchmark  # pylint: disable=invalid-name
+Benchmark = _googletest.Benchmark  # pylint: disable=invalid-name
 
 
 def main():
   """Runs all unit tests."""
-  return googletest.main()
+  return _googletest.main()
 
 
 def get_temp_dir():
@@ -89,14 +99,56 @@ def get_temp_dir():
   Returns:
     The temporary directory.
   """
-  return googletest.GetTempDir()
+  return _googletest.GetTempDir()
+
+
+def test_src_dir_path(relative_path):
+  """Creates an absolute test srcdir path given a relative path.
+
+  Args:
+    relative_path: a path relative to tensorflow root.
+      e.g. "core/platform".
+
+  Returns:
+    An absolute path to the linked in runfiles.
+  """
+  return _googletest.test_src_dir_path(relative_path)
 
 
 def is_built_with_cuda():
   """Returns whether TensorFlow was built with CUDA (GPU) support."""
-  return test_util.IsGoogleCudaEnabled()
+  return _test_util.IsGoogleCudaEnabled()
 
 
-__all__ = make_all(__name__)
-# TODO(irving,vrv): Remove once TestCase is documented
-__all__.append('TestCase')
+def is_gpu_available(cuda_only=False):
+  """Returns whether TensorFlow can access a GPU.
+
+  Args:
+    cuda_only: limit the search to CUDA gpus.
+
+  Returns:
+    True iff a gpu device of the requested kind is available.
+  """
+  if cuda_only:
+    return any((x.device_type == 'GPU')
+               for x in _device_lib.list_local_devices())
+  else:
+    return any((x.device_type == 'GPU' or x.device_type == 'SYCL')
+               for x in _device_lib.list_local_devices())
+
+
+def gpu_device_name():
+  """Returns the name of a GPU device if available or the empty string."""
+  for x in _device_lib.list_local_devices():
+    if x.device_type == 'GPU' or x.device_type == 'SYCL':
+      return x.name()
+  return ''
+
+
+_allowed_symbols = [
+    # We piggy-back googletest documentation.
+    'Benchmark',
+    'mock',
+]
+
+remove_undocumented(__name__, _allowed_symbols)

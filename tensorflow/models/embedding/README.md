@@ -14,7 +14,9 @@ To download the example text and evaluation data:
 ```shell
 wget http://mattmahoney.net/dc/text8.zip -O text8.zip
 unzip text8.zip
-wget https://word2vec.googlecode.com/svn/trunk/questions-words.txt
+wget https://storage.googleapis.com/google-code-archive-source/v2/code.google.com/word2vec/source-archive.zip
+unzip -p source-archive.zip  word2vec/trunk/questions-words.txt > questions-words.txt
+rm source-archive.zip
 ```
 
 Assuming you are using the pip package install and have cloned the git
@@ -41,7 +43,7 @@ Here is a short overview of what is in this directory.
 
 File | What's in it?
 --- | ---
-`word2vec.py` | A version of word2vec implemented using Tensorflow ops and minibatching.
+`word2vec.py` | A version of word2vec implemented using TensorFlow ops and minibatching.
 `word2vec_test.py` | Integration test for word2vec.
 `word2vec_optimized.py` | A version of word2vec implemented using C ops that does no minibatching.
 `word2vec_optimized_test.py` | Integration test for word2vec_optimized.

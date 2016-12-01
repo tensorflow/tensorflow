@@ -1,15 +1,20 @@
 ### `tf.add_n(inputs, name=None)` {#add_n}
 
-Add all input tensors element wise.
+Adds all input tensors element-wise.
 
 ##### Args:
 
 
-*  <b>`inputs`</b>: A list of at least 1 `Tensor` objects of the same type in: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
-    Must all be the same size and shape.
+*  <b>`inputs`</b>: A list of `Tensor` objects, each with same shape and type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `inputs`.
+  A `Tensor` of same shape and type as the elements of `inputs`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `inputs` don't all have same shape and dtype or the shape
+  cannot be inferred.
 

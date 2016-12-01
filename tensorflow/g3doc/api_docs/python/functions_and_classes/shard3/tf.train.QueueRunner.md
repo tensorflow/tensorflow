@@ -14,7 +14,7 @@ and reporting exceptions, etc.
 The `QueueRunner`, combined with the `Coordinator`, helps handle these issues.
 - - -
 
-#### `tf.train.QueueRunner.__init__(queue=None, enqueue_ops=None, close_op=None, cancel_op=None, queue_runner_def=None)` {#QueueRunner.__init__}
+#### `tf.train.QueueRunner.__init__(queue=None, enqueue_ops=None, close_op=None, cancel_op=None, queue_closed_exception_types=None, queue_runner_def=None, import_scope=None)` {#QueueRunner.__init__}
 
 Create a QueueRunner.
 
@@ -34,9 +34,16 @@ to all be the same op, but it is expected that they all enqueue tensors in
 *  <b>`enqueue_ops`</b>: List of enqueue ops to run in threads later.
 *  <b>`close_op`</b>: Op to close the queue. Pending enqueue ops are preserved.
 *  <b>`cancel_op`</b>: Op to close the queue and cancel pending enqueue ops.
+*  <b>`queue_closed_exception_types`</b>: Optional tuple of Exception types that
+    indicate that the queue has been closed when raised during an enqueue
+    operation.  Defaults to `(tf.errors.OutOfRangeError,)`.  Another common
+    case includes `(tf.errors.OutOfRangeError, tf.errors.CancelledError)`,
+    when some of the enqueue ops may dequeue from other Queues.
 *  <b>`queue_runner_def`</b>: Optional `QueueRunnerDef` protocol buffer. If specified,
     recreates the QueueRunner from its contents. `queue_runner_def` and the
     other arguments are mutually exclusive.
+*  <b>`import_scope`</b>: Optional `string`. Name scope to add. Only used when
+    initializing from protocol buffer.
 
 ##### Raises:
 
@@ -64,19 +71,19 @@ to all be the same op, but it is expected that they all enqueue tensors in
 
 #### `tf.train.QueueRunner.create_threads(sess, coord=None, daemon=False, start=False)` {#QueueRunner.create_threads}
 
-Create threads to run the enqueue ops.
+Create threads to run the enqueue ops for the given session.
 
 This method requires a session in which the graph was launched.  It creates
 a list of threads, optionally starting them.  There is one thread for each
 op passed in `enqueue_ops`.
 
-The `coord` argument is an optional coordinator, that the threads will use
+The `coord` argument is an optional coordinator that the threads will use
 to terminate together and report exceptions.  If a coordinator is given,
 this method starts an additional thread to close the queue when the
 coordinator requests a stop.
 
-This method may be called again as long as all threads from a previous call
-have stopped.
+If previously created threads for the given session are still running, no
+new threads will be created.
 
 ##### Args:
 
@@ -91,12 +98,6 @@ have stopped.
 ##### Returns:
 
   A list of threads.
-
-##### Raises:
-
-
-*  <b>`RuntimeError`</b>: If threads from a previous call to `create_threads()` are
-  still running.
 
 
 - - -
@@ -129,7 +130,7 @@ depending on whether or not a `Coordinator` was passed to
 
 - - -
 
-#### `tf.train.QueueRunner.from_proto(queue_runner_def)` {#QueueRunner.from_proto}
+#### `tf.train.QueueRunner.from_proto(queue_runner_def, import_scope=None)` {#QueueRunner.from_proto}
 
 Returns a `QueueRunner` object created from `queue_runner_def`.
 
@@ -150,12 +151,25 @@ The string name of the underlying Queue.
 
 - - -
 
-#### `tf.train.QueueRunner.to_proto()` {#QueueRunner.to_proto}
+#### `tf.train.QueueRunner.queue_closed_exception_types` {#QueueRunner.queue_closed_exception_types}
+
+
+
+
+- - -
+
+#### `tf.train.QueueRunner.to_proto(export_scope=None)` {#QueueRunner.to_proto}
 
 Converts this `QueueRunner` to a `QueueRunnerDef` protocol buffer.
 
+##### Args:
+
+
+*  <b>`export_scope`</b>: Optional `string`. Name scope to remove.
+
 ##### Returns:
 
-  A `QueueRunnerDef` protocol buffer.
+  A `QueueRunnerDef` protocol buffer, or `None` if the `Variable` is not in
+  the specified name scope.
 
 

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -95,7 +95,7 @@ void EventMgr::ThenDeleteTensors(perftools::gputools::Stream* stream,
     FlushAccumulatedTensors();
   }
   accumulated_stream_ = stream;
-  for (auto t : tensors) {
+  for (const auto& t : tensors) {
     // accumulated_tensors_ takes over ownership of the reference to "t"
     accumulated_tensors_->push_back(t);
     accumulated_tensor_bytes_ += t.TotalBytes();

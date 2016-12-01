@@ -10,7 +10,7 @@ results in a rounded value.)
 
 *  <b>`string_tensor`</b>: A `Tensor` of type `string`.
 *  <b>`out_type`</b>: An optional `tf.DType` from: `tf.float32, tf.int32`. Defaults to `tf.float32`.
-    The numeric type to interpret each string in string_tensor as.
+    The numeric type to interpret each string in `string_tensor` as.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:

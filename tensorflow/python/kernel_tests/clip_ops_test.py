@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -58,7 +58,12 @@ class ClipTest(tf.test.TestCase):
       ans = tf.clip_by_norm(x, clip_norm)
       tf_ans = ans.eval()
 
+      clip_tensor = tf.constant(4.0)
+      ans = tf.clip_by_norm(x, clip_norm)
+      tf_ans_tensor = ans.eval()
+
     self.assertAllClose(np_ans, tf_ans)
+    self.assertAllClose(np_ans, tf_ans_tensor)
 
   def testClipByNormNotClipped(self):
     # No norm clipping when clip_norm >= 5
@@ -86,6 +91,46 @@ class ClipTest(tf.test.TestCase):
 
     self.assertAllClose(np_ans, tf_ans)
 
+  def testClipByNormClippedWithDim0(self):
+    # Norm clipping when clip_norm < 5
+    with self.test_session():
+      x = tf.constant([-3.0, 0.0, 0.0, 4.0, 0.0, 3.0], shape=[2, 3])
+      # Norm of x[:, 0] = sqrt(3^2 + 4^2) = 5, x[:, 2] = 3
+      np_ans = [[-2.4, 0.0, 0.0],
+                [3.2, 0.0, 3.0]]
+      clip_norm = 4.0
+      ans = tf.clip_by_norm(x, clip_norm, [0])
+      tf_ans = ans.eval()
+
+    self.assertAllClose(np_ans, tf_ans)
+
+  def testClipByNormClippedWithDim1(self):
+    # Norm clipping when clip_norm < 5
+    with self.test_session():
+      x = tf.constant([-3.0, 0.0, 0.0, 4.0, 0.0, 3.0], shape=[2, 3])
+      # Norm of x[0, :] = 3, x[1, :] = sqrt(3^2 + 4^2) = 5
+      np_ans = [[-3.0, 0.0, 0.0],
+                [3.2, 0.0, 2.4]]
+      clip_norm = 4.0
+      ans = tf.clip_by_norm(x, clip_norm, [1])
+      tf_ans = ans.eval()
+
+    self.assertAllClose(np_ans, tf_ans)
+
+  def testClipByNormNotClippedWithAxes(self):
+    # No norm clipping when clip_norm >= 5
+    with self.test_session():
+      x = tf.constant([-3.0, 0.0, 0.0, 4.0, 0.0, 3.0], shape=[2, 3])
+      # Norm of x[0, :] = 3, x[1, :] = sqrt(3^2 + 4^2) = 5
+      np_ans = [[-3.0, 0.0, 0.0],
+                [4.0, 0.0, 3.0]]
+      clip_norm = 6.0
+      ans = tf.clip_by_norm(x, clip_norm, [1])
+      tf_ans = ans.eval()
+
+    self.assertAllClose(np_ans, tf_ans)
+
+  # ClipByGlobalNorm tests
   def testClipByGlobalNormClipped(self):
     # Norm clipping when clip_norm < 5
     with self.test_session():
@@ -93,6 +138,28 @@ class ClipTest(tf.test.TestCase):
       x1 = tf.constant([1.0, -2.0])
       # Global norm of x0 and x1 = sqrt(1 + 4^2 + 2^2 + 2^2) = 5
       clip_norm = 4.0
+
+      # Answers are the original tensors scaled by 4.0/5.0
+      np_ans_0 = [[-1.6, 0.0, 0.0],
+                  [3.2, 0.0, 0.0]]
+      np_ans_1 = [0.8, -1.6]
+
+      ans, norm = tf.clip_by_global_norm((x0, x1), clip_norm)
+      tf_ans_1 = ans[0].eval()
+      tf_ans_2 = ans[1].eval()
+      tf_norm = norm.eval()
+
+    self.assertAllClose(tf_norm, 5.0)
+    self.assertAllClose(np_ans_0, tf_ans_1)
+    self.assertAllClose(np_ans_1, tf_ans_2)
+
+  def testClipByGlobalNormClippedTensor(self):
+    # Norm clipping when clip_norm < 5
+    with self.test_session():
+      x0 = tf.constant([-2.0, 0.0, 0.0, 4.0, 0.0, 0.0], shape=[2, 3])
+      x1 = tf.constant([1.0, -2.0])
+      # Global norm of x0 and x1 = sqrt(1 + 4^2 + 2^2 + 2^2) = 5
+      clip_norm = tf.constant(4.0)
 
       # Answers are the original tensors scaled by 4.0/5.0
       np_ans_0 = [[-1.6, 0.0, 0.0],
@@ -132,7 +199,6 @@ class ClipTest(tf.test.TestCase):
     self.assertAllClose(np_ans_0, tf_ans_1)
     self.assertAllClose(np_ans_1, tf_ans_2)
 
-  # ClipByGlobalNorm tests
   def testClipByGlobalNormWithIndexedSlicesClipped(self):
     # Norm clipping when clip_norm < 5
     with self.test_session():
@@ -215,6 +281,19 @@ class ClipTest(tf.test.TestCase):
       np_ans = [[-2.88, 0.0, 0.0],
                 [3.84, 0.0, 0.0]]
       clip_norm = 0.8
+      ans = tf.clip_by_average_norm(x, clip_norm)
+      tf_ans = ans.eval()
+
+    self.assertAllClose(np_ans, tf_ans)
+
+  def testClipByAverageNormClippedTensor(self):
+    # Norm clipping when average clip_norm < 0.83333333
+    with self.test_session():
+      x = tf.constant([-3.0, 0.0, 0.0, 4.0, 0.0, 0.0], shape=[2, 3])
+      # Average norm of x = sqrt(3^2 + 4^2) / 6 = 0.83333333
+      np_ans = [[-2.88, 0.0, 0.0],
+                [3.84, 0.0, 0.0]]
+      clip_norm = tf.constant(0.8)
       ans = tf.clip_by_average_norm(x, clip_norm)
       tf_ans = ans.eval()
 

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -180,17 +180,32 @@ class Session {
 
 /// \brief Create a new session with the given options.
 ///
-/// If a new `Session` object could not be created, this function will
-/// return nullptr.
-Session* NewSession(const SessionOptions& options);
-
-/// \brief Create a new session with the given options.
-///
 /// If session creation succeeds, the new `Session` will be stored in
 /// `*out_session`, the caller will take ownership of the returned
 /// `*out_session`, and this function will return `OK()`. Otherwise, this
 /// function will return an error status.
 Status NewSession(const SessionOptions& options, Session** out_session);
+
+/// \brief Resets resource containers associated with a target.
+///
+/// `containers` is a vector of string representation of resource container
+/// names. When a resource container is reset, the resources held by the
+/// container will be released. In particular, all Variables in the container
+/// will become undefined.
+///
+/// If Reset succeeds, this function will return `OK()`. Otherwise, this
+/// function will return an error status.
+Status Reset(const SessionOptions& options,
+             const std::vector<string>& containers);
+
+/// \brief Create a new session with the given options.
+///
+/// If a new `Session` object could not be created, this function will
+/// return nullptr.
+///
+/// *Strongly prefer* the version of NewSession that returns Status,
+/// which contains more helpful error information.
+Session* NewSession(const SessionOptions& options);
 
 }  // end namespace tensorflow
 

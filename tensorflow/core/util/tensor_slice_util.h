@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -76,6 +76,44 @@ struct CopyThatWorksWithStringPointer<string> {
                         *s(s_start[0] + i0, s_start[1] + i1, s_start[2] + i2,
                            s_start[3] + i3, s_start[4] + i4, s_start[5] + i5,
                            s_start[6] + i6, s_start[7] + i7);
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+};
+
+// Checkpointing of half is done by storing the raw 16 bits as a signed 32bit
+// integer. To restore the checkpoint we need to do the reverse operation by
+// reinterpreting the integer as a 16 bit float. This prevents us from using
+// the default cast operation.
+template <>
+struct CopyThatWorksWithStringPointer<Eigen::half> {
+  template <typename SrcTensor, typename DstTensor, typename Shape>
+  static void Copy(const SrcTensor& s, Shape s_start, Shape len, DstTensor& d,
+                   Shape d_start) {
+    typedef typename SrcTensor::Index Index;
+    static_assert(kTensorSliceMaxRank == 8,
+                  "If kTensorSliceMaxRank changes, modify the loop below.");
+    for (Index i0 = 0; i0 < len[0]; i0++) {
+      for (Index i1 = 0; i1 < len[1]; i1++) {
+        for (Index i2 = 0; i2 < len[2]; i2++) {
+          for (Index i3 = 0; i3 < len[3]; i3++) {
+            for (Index i4 = 0; i4 < len[4]; i4++) {
+              for (Index i5 = 0; i5 < len[5]; i5++) {
+                for (Index i6 = 0; i6 < len[6]; i6++) {
+                  for (Index i7 = 0; i7 < len[7]; i7++) {
+                    d(d_start[0] + i0, d_start[1] + i1, d_start[2] + i2,
+                      d_start[3] + i3, d_start[4] + i4, d_start[5] + i5,
+                      d_start[6] + i6, d_start[7] + i7) =
+                        Eigen::half_impl::raw_uint16_to_half(
+                            s(s_start[0] + i0, s_start[1] + i1, s_start[2] + i2,
+                              s_start[3] + i3, s_start[4] + i4, s_start[5] + i5,
+                              s_start[6] + i6, s_start[7] + i7));
                   }
                 }
               }

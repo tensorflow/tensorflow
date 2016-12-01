@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -65,7 +65,7 @@ class ScalarStrictTest(tf.test.TestCase):
 
   def testConcat(self):
     self.check(tf.concat, ([0], ([2], [3], [7])),
-               'Concat dim tensor should be a scalar integer', [2, 3, 7])
+               'concat_dim tensor should be a scalar integer', [2, 3, 7])
     for data in (2, 3, 7), (2, [3], 7), (2, 3, [7]):
       self.check(tf.concat, (0, data),
                  r'Expected \w+ dimensions in the range \[0, 0\)', [2, 3, 7])
@@ -76,9 +76,6 @@ class ScalarStrictTest(tf.test.TestCase):
   def testFill(self):
     self.check(tf.fill, (2, 3), 'dims must be a vector', [3, 3])
     self.check(tf.fill, ([2], [3]), 'value must be a scalar', [3, 3])
-
-  def testAssert(self):
-    self.check(tf.Assert, ([True], (7,)), 'should be a scalar', None)
 
   def testPad(self):
     self.check(tf.pad, (7, [[1, 2]]),

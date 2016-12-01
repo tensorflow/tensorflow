@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -59,7 +59,7 @@ class ArgOp : public OpKernel {
 
     OP_REQUIRES(context, dim >= 0, errors::InvalidArgument("dim must be >= 0"));
     OP_REQUIRES(context, dim < input_dims,
-                errors::InvalidArgument("Minimum tensor rank: ", dim,
+                errors::InvalidArgument("Minimum tensor rank: ", dim + 1,
                                         " but got: ", input_dims));
     OP_REQUIRES(
         context, input.dim_size(dim) > 0,
@@ -67,7 +67,7 @@ class ArgOp : public OpKernel {
                                 input.shape().DebugString()));
 
     TensorShape output_shape;
-    TensorShape input_shape = input.shape();
+    const TensorShape& input_shape = input.shape();
     for (int d = 0; d < input_dims - 1; ++d) {
       output_shape.AddDim(input_shape.dim_size((d < dim) ? d : d + 1));
     }
@@ -163,16 +163,18 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_CLASS);
 }  // namespace functor
 
 // Registration of the GPU implementations.
-#define REGISTER_ARGMAX_GPU(type)                        \
-  REGISTER_KERNEL_BUILDER(Name("ArgMax")                 \
-                              .Device(DEVICE_GPU)        \
-                              .TypeConstraint<type>("T") \
-                              .HostMemory("dimension"),  \
-                          ArgMaxOp<GPUDevice, type>);    \
-  REGISTER_KERNEL_BUILDER(Name("ArgMin")                 \
-                              .Device(DEVICE_GPU)        \
-                              .TypeConstraint<type>("T") \
-                              .HostMemory("dimension"),  \
+#define REGISTER_ARGMAX_GPU(type)                            \
+  REGISTER_KERNEL_BUILDER(Name("ArgMax")                     \
+                              .Device(DEVICE_GPU)            \
+                              .TypeConstraint<type>("T")     \
+                              .TypeConstraint<int32>("Tidx") \
+                              .HostMemory("dimension"),      \
+                          ArgMaxOp<GPUDevice, type>);        \
+  REGISTER_KERNEL_BUILDER(Name("ArgMin")                     \
+                              .Device(DEVICE_GPU)            \
+                              .TypeConstraint<type>("T")     \
+                              .TypeConstraint<int32>("Tidx") \
+                              .HostMemory("dimension"),      \
                           ArgMinOp<GPUDevice, type>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_ARGMAX_GPU);

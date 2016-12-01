@@ -11,11 +11,11 @@ To use TensorFlow you need to understand how TensorFlow:
 ## Overview
 
 TensorFlow is a programming system in which you represent computations as
-graphs.  Nodes in the graph are called *ops* (short for operations).  An op
-takes zero or more `Tensors`, performs some computation, and produces zero or
-more `Tensors`.  A `Tensor` is a typed multi-dimensional array. For example,
-you can represent a  mini-batch of images as a 4-D array of floating point
-numbers with dimensions `[batch, height, width, channels]`.
+graphs. Nodes in the graph are called *ops* (short for operations). An op takes
+zero or more `Tensors`, performs some computation, and produces zero or more
+`Tensors`. In TensorFlow terminology, a `Tensor` is a typed multi-dimensional
+array. For example, you can represent a mini-batch of images as a 4-D array of
+floating point numbers with dimensions `[batch, height, width, channels]`.
 
 A TensorFlow graph is a *description* of computations.  To compute anything,
 a graph must be launched in a `Session`.  A `Session` places the graph ops onto
@@ -99,7 +99,7 @@ sess = tf.Session()
 # The call 'run(product)' thus causes the execution of three ops in the
 # graph: the two constants and matmul.
 #
-# The output of the op is returned in 'result' as a numpy `ndarray` object.
+# The output of the matmul is returned in 'result' as a numpy `ndarray` object.
 result = sess.run(product)
 print(result)
 # ==> [[ 12.]]
@@ -236,7 +236,7 @@ update = tf.assign(state, new_value)
 
 # Variables must be initialized by running an `init` Op after having
 # launched the graph.  We first have to add the `init` Op to the graph.
-init_op = tf.initialize_all_variables()
+init_op = tf.global_variables_initializer()
 
 # Launch the graph and run the ops.
 with tf.Session() as sess:
@@ -319,6 +319,6 @@ with tf.Session() as sess:
 A `placeholder()` operation generates an error if you do not supply a feed for
 it. See the
 [MNIST fully-connected feed tutorial](../tutorials/mnist/tf/index.md)
-([source code](https://www.tensorflow.org/code/tensorflow/g3doc/tutorials/mnist/fully_connected_feed.py))
+([source code](https://www.tensorflow.org/code/tensorflow/examples/tutorials/mnist/fully_connected_feed.py))
 for a larger-scale example of feeds.
 

@@ -13,7 +13,8 @@ dimension `dim`.
 
 
 *  <b>`x`</b>: A `Tensor`.
-*  <b>`dim`</b>: Dimension along which to normalize.
+*  <b>`dim`</b>: Dimension along which to normalize.  A scalar or a vector of
+    integers.
 *  <b>`epsilon`</b>: A lower bound value for the norm. Will use `sqrt(epsilon)` as the
     divisor if `norm < sqrt(epsilon)`.
 *  <b>`name`</b>: A name for this operation (optional).

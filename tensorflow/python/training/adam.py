@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -64,6 +64,10 @@ class AdamOptimizer(optimizer.Optimizer):
     general. For example, when training an Inception network on ImageNet a
     current good choice is 1.0 or 0.1.
 
+    Note that in dense implement of this algorithm, m_t, v_t and variable will 
+    update even if g is zero, but in sparse implement, m_t, v_t and variable 
+    will not update in iterations g is zero.
+
     Args:
       learning_rate: A Tensor or a floating point value.  The learning rate.
       beta1: A float value or a constant float tensor.
@@ -101,7 +105,8 @@ class AdamOptimizer(optimizer.Optimizer):
   def _create_slots(self, var_list):
     # Create the beta1 and beta2 accumulators on the same device as the first
     # variable.
-    if self._beta1_power is None:
+    if (self._beta1_power is None or
+        self._beta1_power.graph is not var_list[0].graph):
       with ops.colocate_with(var_list[0]):
         self._beta1_power = variables.Variable(self._beta1,
                                                name="beta1_power",

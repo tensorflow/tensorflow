@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,36 +23,21 @@ limitations under the License.
 
 namespace tensorflow {
 
-// A switch op has two inputs and two outputs. It forwards the value of
-// Input:0 to the output specified by input:1. Input:1 is a boolean tensor.
-// Input:0 is forwarded to output:0 if input:1 is false, otherwise to
-// output:1.
-class SwitchOp : public OpKernel {
- public:
-  explicit SwitchOp(OpKernelConstruction* context) : OpKernel(context) {}
+void SwitchOp::Compute(OpKernelContext* context) {
+  const Tensor& outputPorts = context->input(1);
+  OP_REQUIRES(context, TensorShapeUtils::IsScalar(outputPorts.shape()),
+              errors::InvalidArgument("The second input must be a scalar, "
+                                      "but it has shape ",
+                                      outputPorts.shape().DebugString()));
 
-  void Compute(OpKernelContext* context) override {
-    const Tensor& outputPorts = context->input(1);
-    OP_REQUIRES(context, TensorShapeUtils::IsScalar(outputPorts.shape()),
-                errors::InvalidArgument("The second input must be a scalar, "
-                                        "but it has shape ",
-                                        outputPorts.shape().DebugString()));
-
-    bool pred = outputPorts.scalar<bool>()();
-    int port = (pred) ? 1 : 0;
-    if (IsRefType(context->input_dtype(0))) {
-      context->forward_ref_input_to_ref_output(0, port);
-    } else {
-      context->set_output(port, context->input(0));
-    }
+  bool pred = outputPorts.scalar<bool>()();
+  int port = (pred) ? 1 : 0;
+  if (IsRefType(context->input_dtype(0))) {
+    context->forward_ref_input_to_ref_output(0, port);
+  } else {
+    context->set_output(port, context->input(0));
   }
-
-  bool IsExpensive() override { return false; }
-
-  ~SwitchOp() override {}
-
-  TF_DISALLOW_COPY_AND_ASSIGN(SwitchOp);
-};
+}
 
 #define REGISTER_CPU_SWITCH(type)                         \
   REGISTER_KERNEL_BUILDER(Name("Switch")                  \
@@ -84,6 +69,7 @@ class SwitchOp : public OpKernel {
 
 TF_CALL_ALL_TYPES(REGISTER_CPU_SWITCH);
 TF_CALL_ALL_TYPES(REGISTER_CPU_REF_SWITCH);
+TF_CALL_QUANTIZED_TYPES(REGISTER_CPU_SWITCH);
 
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_SWITCH);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_REF_SWITCH);
@@ -126,6 +112,18 @@ REGISTER_GPU_HOST_REF_KERNEL(string);
 #undef REGISTER_GPU_HOST_KERNEL
 #undef REGISTER_GPU_HOST_REF_KERNEL
 
+#if TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(type)                       \
+  REGISTER_KERNEL_BUILDER(Name("Switch")                 \
+                              .Device(DEVICE_SYCL)       \
+                              .TypeConstraint<type>("T") \
+                              .HostMemory("pred"),       \
+                          SwitchOp)
+REGISTER_SYCL_KERNEL(bool);
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_SYCL_KERNEL);
+#undef REGISTER_SYCL_KERNEL
+#endif
+
 class RefSelectOp : public OpKernel {
  public:
   explicit RefSelectOp(OpKernelConstruction* context) : OpKernel(context) {
@@ -167,48 +165,36 @@ TF_CALL_ALL_TYPES(REGISTER_CPU_REF_SELECT);
 
 #undef REGISTER_CPU_REF_SWITCH
 
-// A merge op has n inputs and two outputs. It forwards the value of the
-// first input that becomes available to its first output, and the
-// index of the first input to its second output.
-class MergeOp : public OpKernel {
- public:
-  explicit MergeOp(OpKernelConstruction* context) : OpKernel(context) {
-    const DataType dt = context->input_type(0);
-    const int num_in = context->num_inputs();
-    OP_REQUIRES_OK(context, context->MatchSignature(DataTypeVector(num_in, dt),
-                                                    {dt, DT_INT32}));
-  }
+MergeOp::MergeOp(OpKernelConstruction* context) : OpKernel(context) {
+  const DataType dt = context->input_type(0);
+  const int num_in = context->num_inputs();
+  OP_REQUIRES_OK(context, context->MatchSignature(DataTypeVector(num_in, dt),
+                                                  {dt, DT_INT32}));
+}
 
-  void Compute(OpKernelContext* context) override {
-    bool input_seen = false;
-    for (int i = 0; i < context->num_inputs(); ++i) {
-      if (context->has_input(i)) {
-        if (input_seen) {
-          context->SetStatus(errors::Internal(
-              "Merge can not have more than one valid input."));
-          return;
-        }
-        input_seen = true;
-
-        if (IsRefType(context->input_dtype(i))) {
-          context->forward_ref_input_to_ref_output(i, 0);
-        } else {
-          context->set_output(0, context->input(i));
-        }
-        Tensor* value_index = nullptr;
-        OP_REQUIRES_OK(context, context->allocate_output(1, TensorShape({}),
-                                                         &value_index));
-        value_index->scalar<int32>()() = i;
+void MergeOp::Compute(OpKernelContext* context) {
+  bool input_seen = false;
+  for (int i = 0; i < context->num_inputs(); ++i) {
+    if (context->has_input(i)) {
+      if (input_seen) {
+        context->SetStatus(
+            errors::Internal("Merge can not have more than one valid input."));
+        return;
       }
+      input_seen = true;
+
+      if (IsRefType(context->input_dtype(i))) {
+        context->forward_ref_input_to_ref_output(i, 0);
+      } else {
+        context->set_output(0, context->input(i));
+      }
+      Tensor* value_index = nullptr;
+      OP_REQUIRES_OK(
+          context, context->allocate_output(1, TensorShape({}), &value_index));
+      value_index->scalar<int32>()() = i;
     }
   }
-
-  bool IsExpensive() override { return false; }
-
-  ~MergeOp() override {}
-
-  TF_DISALLOW_COPY_AND_ASSIGN(MergeOp);
-};
+}
 
 REGISTER_KERNEL_BUILDER(Name("Merge").Device(DEVICE_CPU), MergeOp);
 REGISTER_KERNEL_BUILDER(Name("RefMerge").Device(DEVICE_CPU), MergeOp);
@@ -235,6 +221,18 @@ REGISTER_GPU_REF_KERNEL(bool);
 #undef REGISTER_GPU_KERNEL
 #undef REGISTER_GPU_REF_KERNEL
 
+#if TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(type)                        \
+  REGISTER_KERNEL_BUILDER(Name("Merge")                   \
+                              .Device(DEVICE_SYCL)        \
+                              .TypeConstraint<type>("T")  \
+                              .HostMemory("value_index"), \
+                          MergeOp)
+REGISTER_SYCL_KERNEL(bool);
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_SYCL_KERNEL);
+#undef REGISTER_SYCL_KERNEL
+#endif
+
 // Special GPU kernels for int32 and string.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
@@ -259,27 +257,13 @@ REGISTER_GPU_HOST_KERNEL(string);
 
 #undef REGISTER_GPU_HOST_KERNEL
 
-// An enter op has one input and one output. It creates or finds
-// the child frame that is uniquely identified by the frame_name,
-// and makes its input available to the child frame.
-class EnterOp : public OpKernel {
- public:
-  explicit EnterOp(OpKernelConstruction* context) : OpKernel(context) {}
-
-  void Compute(OpKernelContext* context) override {
-    if (IsRefType(context->input_dtype(0))) {
-      context->forward_ref_input_to_ref_output(0, 0);
-    } else {
-      context->set_output(0, context->input(0));
-    }
+void EnterOp::Compute(OpKernelContext* context) {
+  if (IsRefType(context->input_dtype(0))) {
+    context->forward_ref_input_to_ref_output(0, 0);
+  } else {
+    context->set_output(0, context->input(0));
   }
-
-  bool IsExpensive() override { return false; }
-
-  ~EnterOp() override {}
-
-  TF_DISALLOW_COPY_AND_ASSIGN(EnterOp);
-};
+}
 
 REGISTER_KERNEL_BUILDER(Name("Enter").Device(DEVICE_CPU), EnterOp);
 REGISTER_KERNEL_BUILDER(Name("RefEnter").Device(DEVICE_CPU), EnterOp);
@@ -298,6 +282,15 @@ REGISTER_GPU_REF_KERNEL(bool);
 
 #undef REGISTER_GPU_KERNEL
 #undef REGISTER_GPU_REF_KERNEL
+
+#if TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(type)  \
+  REGISTER_KERNEL_BUILDER(          \
+      Name("Enter").Device(DEVICE_SYCL).TypeConstraint<type>("T"), EnterOp)
+REGISTER_SYCL_KERNEL(bool);
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_SYCL_KERNEL);
+#undef REGISTER_SYCL_KERNEL
+#endif
 
 // Special GPU kernels for int32 and string.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -326,27 +319,13 @@ REGISTER_GPU_HOST_REF_KERNEL(string);
 #undef REGISTER_GPU_HOST_KERNEL
 #undef REGISTER_GPU_HOST_REF_KERNEL
 
-// An exit op has one input and one output. It exits the current
-// frame to its parent frame, and makes its input available to the
-// parent frame.
-class ExitOp : public OpKernel {
- public:
-  explicit ExitOp(OpKernelConstruction* context) : OpKernel(context) {}
-
-  void Compute(OpKernelContext* context) override {
-    if (IsRefType(context->input_dtype(0))) {
-      context->forward_ref_input_to_ref_output(0, 0);
-    } else {
-      context->set_output(0, context->input(0));
-    }
+void ExitOp::Compute(OpKernelContext* context) {
+  if (IsRefType(context->input_dtype(0))) {
+    context->forward_ref_input_to_ref_output(0, 0);
+  } else {
+    context->set_output(0, context->input(0));
   }
-
-  bool IsExpensive() override { return false; }
-
-  ~ExitOp() override {}
-
-  TF_DISALLOW_COPY_AND_ASSIGN(ExitOp);
-};
+}
 
 REGISTER_KERNEL_BUILDER(Name("Exit").Device(DEVICE_CPU), ExitOp);
 REGISTER_KERNEL_BUILDER(Name("RefExit").Device(DEVICE_CPU), ExitOp);
@@ -363,6 +342,15 @@ REGISTER_GPU_KERNEL(bool);
 
 #undef REGISTER_GPU_KERNEL
 #undef REGISTER_GPU_REF_KERNEL
+
+#if TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(type)  \
+  REGISTER_KERNEL_BUILDER(          \
+  Name("Exit").Device(DEVICE_SYCL).TypeConstraint<type>("T"), ExitOp)
+REGISTER_SYCL_KERNEL(bool);
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_SYCL_KERNEL);
+#undef REGISTER_SYCL_KERNEL
+#endif
 
 // Special GPU kernels for int32 and string.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -386,26 +374,13 @@ REGISTER_GPU_HOST_KERNEL(string);
 
 #undef REGISTER_GPU_HOST_KERNEL
 
-// A next_iteration op has one input and one output. It makes its input
-// available to the next iteration.
-class NextIterationOp : public OpKernel {
- public:
-  explicit NextIterationOp(OpKernelConstruction* context) : OpKernel(context) {}
-
-  void Compute(OpKernelContext* context) override {
-    if (IsRefType(context->input_dtype(0))) {
-      context->forward_ref_input_to_ref_output(0, 0);
-    } else {
-      context->set_output(0, context->input(0));
-    }
+void NextIterationOp::Compute(OpKernelContext* context) {
+  if (IsRefType(context->input_dtype(0))) {
+    context->forward_ref_input_to_ref_output(0, 0);
+  } else {
+    context->set_output(0, context->input(0));
   }
-
-  bool IsExpensive() override { return false; }
-
-  ~NextIterationOp() override {}
-
-  TF_DISALLOW_COPY_AND_ASSIGN(NextIterationOp);
-};
+}
 
 REGISTER_KERNEL_BUILDER(Name("NextIteration").Device(DEVICE_CPU),
                         NextIterationOp);
@@ -446,6 +421,19 @@ REGISTER_GPU_HOST_KERNEL(int32);
 REGISTER_GPU_HOST_KERNEL(string);
 
 #undef REGISTER_GPU_HOST_KERNEL
+
+#if TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(type)  \
+  REGISTER_KERNEL_BUILDER(Name("NextIteration")           \
+                              .Device(DEVICE_SYCL)        \
+                              .HostMemory("data")         \
+                              .HostMemory("output")       \
+                              .TypeConstraint<type>("T"), \
+                          NextIterationOp)
+  REGISTER_SYCL_KERNEL(bool);
+  TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_SYCL_KERNEL);
+#undef REGISTER_SYCL_KERNEL
+#endif
 
 // A LoopCond op has one input and one output. The input is a boolean
 // scalar representing the taken branches of the "pivot" Switch that

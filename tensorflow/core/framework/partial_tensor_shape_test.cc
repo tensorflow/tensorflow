@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -220,7 +220,7 @@ TEST(PartialTensorShapeTest, PartialShapeMergeWith) {
 
 TEST(PartialTensorShapeTest, MakePartialShapeEmpty) {
   // Empty made partial shapes should still be fully defined
-  const int64 dims[0] = {};
+  const int64 dims[1] = {};
   PartialTensorShape shape;
   EXPECT_FALSE(shape.IsFullyDefined());
   TF_ASSERT_OK(PartialTensorShape::MakePartialShape(dims, 0, &shape));

@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ import tensorflow as tf
 """
 
 import ctypes
+import importlib
 import inspect
 import sys
 import traceback
@@ -33,23 +34,24 @@ import traceback
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import,g-bad-import-order,g-import-not-at-top
 
-# pywrap_tensorflow is a SWIG generated python library that dynamically loads
-# _pywrap_tensorflow.so. The default mode for loading keeps all the symbol
-# private and not visible to other libraries that may be loaded. Setting
-# the mode to RTLD_GLOBAL to make the symbols visible, so libraries such
-# as the ones implementing custom ops can have access to tensorflow
-# framework's symbols.
-# one catch is that numpy *must* be imported before the call to
-# setdlopenflags(), or there is a risk that later c modules will segfault
-# when importing numpy (gh-2034).
+# On UNIX-based platforms, pywrap_tensorflow is a SWIG-generated
+# python library that dynamically loads _pywrap_tensorflow.so. The
+# default mode for loading keeps all the symbol private and not
+# visible to other libraries that may be loaded. Setting the mode to
+# RTLD_GLOBAL to make the symbols visible, so that custom op libraries
+# imported using `tf.load_op_library()` can access symbols defined in
+# _pywrap_tensorflow.so.
 import numpy as np
-_default_dlopen_flags = sys.getdlopenflags()
-sys.setdlopenflags(_default_dlopen_flags | ctypes.RTLD_GLOBAL)
-from tensorflow.python import pywrap_tensorflow
-sys.setdlopenflags(_default_dlopen_flags)
-
 try:
-  from tensorflow.core.framework.graph_pb2 import *
+  if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
+    _default_dlopen_flags = sys.getdlopenflags()
+    sys.setdlopenflags(_default_dlopen_flags | ctypes.RTLD_GLOBAL)
+    from tensorflow.python import pywrap_tensorflow
+    sys.setdlopenflags(_default_dlopen_flags)
+  else:
+    # TODO(keveman,mrry): Support dynamic op loading on platforms that do not
+    # use `dlopen()` for dynamic loading.
+    from tensorflow.python import pywrap_tensorflow
 except ImportError:
   msg = """%s\n\nError importing tensorflow.  Unless you are using bazel,
 you should not try to import tensorflow from its source directory;
@@ -57,17 +59,19 @@ please exit the tensorflow source tree, and relaunch your python interpreter
 from there.""" % traceback.format_exc()
   raise ImportError(msg)
 
+# Protocol buffers
+from tensorflow.core.framework.graph_pb2 import *
+from tensorflow.core.framework.node_def_pb2 import *
 from tensorflow.core.framework.summary_pb2 import *
 from tensorflow.core.framework.attr_value_pb2 import *
 from tensorflow.core.protobuf.config_pb2 import *
 from tensorflow.core.util.event_pb2 import *
-# Import things out of contrib
-import tensorflow.contrib as contrib
 
 # Framework
 from tensorflow.python.framework.framework_lib import *
 from tensorflow.python.framework.versions import *
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import graph_util
 
 # Session
 from tensorflow.python.client.client_lib import *
@@ -75,11 +79,17 @@ from tensorflow.python.client.client_lib import *
 # Ops
 from tensorflow.python.ops.standard_ops import *
 
-# Bring in subpackages
+# pylint: enable=wildcard-import
+
+# Bring in subpackages.
+from tensorflow.python import layers
 from tensorflow.python.ops import nn
+from tensorflow.python.ops import resources
+from tensorflow.python.ops import sdca_ops as sdca
 from tensorflow.python.ops import image_ops as image
 from tensorflow.python.user_ops import user_ops
 from tensorflow.python.util import compat
+from tensorflow.python.summary import summary
 
 # Import the names from python/training.py as train.Name.
 from tensorflow.python.training import training as train
@@ -96,42 +106,33 @@ from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import sysconfig
 from tensorflow.python.platform import test
 
+from tensorflow.python.util.all_util import remove_undocumented
 from tensorflow.python.util.all_util import make_all
 
-# Import modules whose docstrings contribute, for use by make_all below.
+# Import modules whose docstrings contribute, for use by remove_undocumented
+# below.
 from tensorflow.python.client import client_lib
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import framework_lib
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import histogram_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resources
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import session_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import string_ops
-
-# Don't export modules except for the few we really want
-_whitelist = set([app, compat, contrib, errors, flags, gfile, image, logging,
-                  nn, python_io, resource_loader, sysconfig, test, train,
-                  user_ops])
-
-# Export all symbols directly accessible from 'tf.' by drawing on the doc
-# strings of other modules.
-__all__ = make_all(__name__, [framework_lib, array_ops, client_lib, check_ops,
-                              constant_op, control_flow_ops, functional_ops,
-                              histogram_ops, io_ops, math_ops, nn, script_ops,
-                              session_ops, sparse_ops, state_ops, string_ops,
-                              train])
+from tensorflow.python.ops import tensor_array_ops
 
 # Symbols whitelisted for export without documentation.
 # TODO(cwhipkey): review these and move to contrib, expose through
 # documentation, or remove.
-__all__.extend([
+_allowed_symbols = [
     'AttrValue',
     'ConfigProto',
     'DeviceSpec',
@@ -147,100 +148,112 @@ __all__.extend([
     'NameAttrList',
     'NodeDef',
     'OptimizerOptions',
-    'PaddingFIFOQueue',
     'RunOptions',
     'RunMetadata',
     'SessionLog',
     'Summary',
+]
+
+# The following symbols are kept for compatibility. It is our plan
+# to remove them in the future.
+_allowed_symbols.extend([
     'arg_max',
     'arg_min',
-    'assign',
-    'assign_add',
-    'assign_sub',
-    'bitcast',
-    'bytes',
-    'compat',
+    'mul',  # use tf.multiply instead.
+    'neg',  # use tf.negative instead.
+    'sub',  # use tf.subtract instead.
     'create_partitioned_variables',
     'deserialize_many_sparse',
-    'initialize_all_tables',
     'lin_space',
-    'list_diff',
+    'list_diff',  # Use tf.listdiff instead.
+    'listdiff',  # Use tf.listdiff instead.
     'parse_single_sequence_example',
-    'py_func',
-    'scalar_mul',
     'serialize_many_sparse',
     'serialize_sparse',
-    'shape_n',
-    'sparse_matmul',
-    'sparse_segment_mean_grad',
-    'sparse_segment_sqrt_n_grad',
-    'unique_with_counts',
-    'user_ops',
+    'sparse_matmul',   ## use tf.matmul instead.
+])
+
+# This is needed temporarily because we import it explicitly.
+_allowed_symbols.extend([
+    'platform',  ## This is included by the tf.learn main template.
+    'pywrap_tensorflow',
 ])
 
 # Dtypes exported by framework/dtypes.py.
 # TODO(cwhipkey): expose these through documentation.
-__all__.extend([
+_allowed_symbols.extend([
     'QUANTIZED_DTYPES',
     'bfloat16',
-    'bfloat16_ref',
     'bool',
-    'bool_ref',
     'complex64',
-    'complex64_ref',
     'complex128',
-    'complex128_ref',
     'double',
-    'double_ref',
     'half',
-    'half_ref',
     'float16',
-    'float16_ref',
     'float32',
-    'float32_ref',
     'float64',
-    'float64_ref',
     'int16',
-    'int16_ref',
     'int32',
-    'int32_ref',
     'int64',
-    'int64_ref',
     'int8',
-    'int8_ref',
     'qint16',
-    'qint16_ref',
     'qint32',
-    'qint32_ref',
     'qint8',
-    'qint8_ref',
     'quint16',
-    'quint16_ref',
     'quint8',
-    'quint8_ref',
     'string',
-    'string_ref',
     'uint16',
-    'uint16_ref',
     'uint8',
-    'uint8_ref',
+    'resource',
 ])
 
-# Export modules.
-__all__.extend([
+# Export modules and constants.
+_allowed_symbols.extend([
     'app',
-    'contrib',
+    'compat',
     'errors',
     'flags',
     'gfile',
+    'graph_util',
     'image',
     'logging',
+    'newaxis',
     'nn',
     'python_io',
+    'resources',
     'resource_loader',
+    'sdca',
+    'summary',
     'sysconfig',
     'test',
     'train',
+    'user_ops',
+    'layers',
 ])
 
-__all__.append('__version__')
+# Variables framework.versions:
+_allowed_symbols.extend([
+    'VERSION',
+    'GIT_VERSION',
+    'COMPILER_VERSION',
+])
+
+# Remove all extra symbols that don't have a docstring or are not explicitly
+# referenced in the whitelist.
+remove_undocumented(__name__, _allowed_symbols,
+                    [framework_lib, array_ops, client_lib, check_ops,
+                     compat, constant_op, control_flow_ops, functional_ops,
+                     histogram_ops, io_ops, math_ops, nn, resource_loader,
+                     resources, script_ops, session_ops, sparse_ops, state_ops,
+                     string_ops, summary, tensor_array_ops, train, layers])
+
+# Special dunders that we choose to export:
+_exported_dunders = set([
+    '__version__',
+    '__git_version__',
+    '__compiler_version__',
+])
+
+# Expose symbols minus dunders, unless they are whitelisted above.
+# This is necessary to export our dunders.
+__all__ = [s for s in dir() if s in _exported_dunders or not s.startswith('_')]

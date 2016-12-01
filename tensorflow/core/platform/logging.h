@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -36,6 +36,14 @@ namespace port {
 void AdjustFilenameForLogging(string* filename);
 
 }  // namespace port
+
+namespace internal {
+// Emit "message" as a log message to the log for the specified
+// "severity" as if it came from a LOG call at "fname:line"
+void LogString(const char* fname, int line, int severity,
+               const string& message);
+}  // namespace internal
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_PLATFORM_LOGGING_H_

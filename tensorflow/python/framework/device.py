@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ class DeviceSpec(object):
   strings to verify their validity, merge them or compose them programmatically.
 
   Example:
+
   ```python
   # Place the operations on device "GPU:0" in the "ps" job.
   device_spec = DeviceSpec(job="ps", device_type="GPU", device_index=0)

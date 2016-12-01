@@ -9,10 +9,18 @@ variables.
 
 The following standard keys are defined:
 
-* `VARIABLES`: the `Variable` objects that comprise a model, and
-  must be saved and restored together. See
-  [`tf.all_variables()`](../../api_docs/python/state_ops.md#all_variables)
+* `GLOBAL_VARIABLES`: the default collection of `Variable` objects, shared
+  across distributed environment (model variables are subset of these). See
+  [`tf.global_variables()`](../../api_docs/python/state_ops.md#global_variables)
   for more details.
+  Commonly, all `TRAINABLE_VARIABLES` variables will be in `MODEL_VARIABLES`,
+  and all `MODEL_VARIABLES` variables will be in `GLOBAL_VARIABLES`.
+* `LOCAL_VARIABLES`: the subset of `Variable` objects that are local to each
+  machine. Usually used for temporarily variables, like counters.
+  Note: use `tf.contrib.framework.local_variable` to add to this collection.
+* `MODEL_VARIABLES`: the subset of `Variable` objects that are used in the
+  model for inference (feed forward). Note: use
+  `tf.contrib.framework.model_variable` to add to this collection.
 * `TRAINABLE_VARIABLES`: the subset of `Variable` objects that will
   be trained by an optimizer. See
   [`tf.trainable_variables()`](../../api_docs/python/state_ops.md#trainable_variables)
@@ -34,3 +42,14 @@ The following standard keys are defined:
 * `WEIGHTS`: weights inside neural network layers
 * `BIASES`: biases inside neural network layers
 * `ACTIVATIONS`: activations of neural network layers
+- - -
+
+#### `tf.GraphKeys.VARIABLES` {#GraphKeys.VARIABLES}
+
+DEPRECATED FUNCTION
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2017-03-02.
+Instructions for updating:
+VARIABLES collection name is deprecated, please use GLOBAL_VARIABLES instead
+
+

@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,12 +13,18 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Load a file resource and return the contents."""
+"""## System configuration.
+
+@@get_include
+@@get_lib
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os.path
+import os.path as _os_path
+
+from tensorflow.python.util.all_util import remove_undocumented
 
 
 # pylint: disable=g-import-not-at-top
@@ -33,7 +39,7 @@ def get_include():
   # import at the top would cause a circular import, resulting in
   # the tensorflow module missing symbols that come after sysconfig.
   import tensorflow as tf
-  return os.path.join(os.path.dirname(tf.__file__), 'include')
+  return _os_path.join(_os_path.dirname(tf.__file__), 'include')
 
 
 def get_lib():
@@ -43,4 +49,7 @@ def get_lib():
     The directory as string.
   """
   import tensorflow as tf
-  return os.path.join(os.path.dirname(tf.__file__), 'core')
+  return _os_path.join(_os_path.dirname(tf.__file__), 'core')
+
+_allowed_symbols = []
+remove_undocumented(__name__, _allowed_symbols)

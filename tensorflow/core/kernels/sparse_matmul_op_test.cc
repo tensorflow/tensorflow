@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -238,25 +238,25 @@ class SparseMatmulOpTest : public ::testing::Test {
 
 TEST_F(SparseMatmulOpTest, BroadcastPacketTest) {
   for (int i = 0; i < PacketSize; ++i) ref[i] = data1[0];
-  internal::pstore(data2, internal::pbroadcast_first<Packet>(
-                              internal::pload<Packet>(data1)));
+  internal::pstoreu(data2, internal::pbroadcast_first<Packet>(
+                               internal::ploadu<Packet>(data1)));
   ASSERT_TRUE(areApprox(ref, data2, PacketSize));
   if (PacketSize > 1) {
     for (int i = 0; i < PacketSize; ++i) ref[i] = data1[1];
-    internal::pstore(data2, internal::pbroadcast_second<Packet>(
-                                internal::pload<Packet>(data1)));
+    internal::pstoreu(data2, internal::pbroadcast_second<Packet>(
+                                 internal::ploadu<Packet>(data1)));
     ASSERT_TRUE(areApprox(ref, data2, PacketSize));
 
     if (PacketSize > 2) {
       for (int i = 0; i < PacketSize; ++i) ref[i] = data1[2];
-      internal::pstore(data2, internal::pbroadcast_third<Packet>(
-                                  internal::pload<Packet>(data1)));
+      internal::pstoreu(data2, internal::pbroadcast_third<Packet>(
+                                   internal::ploadu<Packet>(data1)));
       ASSERT_TRUE(areApprox(ref, data2, PacketSize));
 
       if (PacketSize > 3) {
         for (int i = 0; i < PacketSize; ++i) ref[i] = data1[3];
-        internal::pstore(data2, internal::pbroadcast_fourth<Packet>(
-                                    internal::pload<Packet>(data1)));
+        internal::pstoreu(data2, internal::pbroadcast_fourth<Packet>(
+                                     internal::ploadu<Packet>(data1)));
         ASSERT_TRUE(areApprox(ref, data2, PacketSize));
       }
     }
@@ -276,8 +276,8 @@ TEST_F(SparseMatmulOpTest, InterleavePacketTest) {
     for (int i = 0; i < PacketSize; ++i) ref[i] = data1[i];
   }
 
-  internal::pstore(
-      data2, internal::pinterleave4x64<Packet>(internal::pload<Packet>(data1)));
+  internal::pstoreu(data2, internal::pinterleave4x64<Packet>(
+                               internal::ploadu<Packet>(data1)));
   ASSERT_TRUE(areApprox(ref, data2, PacketSize));
 }
 
@@ -294,8 +294,8 @@ TEST_F(SparseMatmulOpTest, Bfloat16ExpandTest) {
       ref[i] = data3[i];
     }
   }
-  internal::pstore(data2, internal::pexpand_bf16_l<Packet>(
-                              internal::pload<Packet>(data3_bfloat16)));
+  internal::pstoreu(data2, internal::pexpand_bf16_l<Packet>(
+                               internal::ploadu<Packet>(data3_bfloat16)));
   ASSERT_TRUE(areApprox(ref, data2, PacketSize));
 
   if (PacketSize == 8) {  // AVX
@@ -311,18 +311,18 @@ TEST_F(SparseMatmulOpTest, Bfloat16ExpandTest) {
     }
   }
 
-  internal::pstore(data2, internal::pexpand_bf16_u<Packet>(
-                              internal::pload<Packet>(data3_bfloat16)));
+  internal::pstoreu(data2, internal::pexpand_bf16_u<Packet>(
+                               internal::ploadu<Packet>(data3_bfloat16)));
   ASSERT_TRUE(areApprox(ref, data2, PacketSize));
 }
 
 TEST_F(SparseMatmulOpTest, Bfloat16LoadTest) {
   if (PacketSize >= 4) {
     for (int i = 0; i < 4; ++i) ref[i] = data3[i];
-    internal::pstore(data2, internal::pload4bf16<Packet>(data3_bfloat16));
+    internal::pstoreu(data2, internal::pload4bf16<Packet>(data3_bfloat16));
     ASSERT_TRUE(areApprox(ref, data2, 4));
 
-    internal::pstore(data2, internal::pload2bf16<Packet>(data3_bfloat16));
+    internal::pstoreu(data2, internal::pload2bf16<Packet>(data3_bfloat16));
     ASSERT_TRUE(areApprox(ref, data2, 2));
   }
 }

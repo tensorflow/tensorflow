@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -68,6 +68,21 @@ struct SpatialConvolution {
                   int col_stride, const Eigen::PaddingType& padding) {
     SpatialConvolutionFunc(d, output, input, filter, row_stride, col_stride,
                            padding);
+  }
+};
+
+template <typename Device>
+struct SpatialConvolution<Device, Eigen::half> {
+  void operator()(const Device& d,
+                  typename TTypes<Eigen::half, 4>::Tensor output,
+                  typename TTypes<Eigen::half, 4>::ConstTensor input,
+                  typename TTypes<Eigen::half, 4>::ConstTensor filter,
+                  int row_stride, int col_stride,
+                  const Eigen::PaddingType& padding) {
+    output.device(d) =
+        Eigen::SpatialConvolution(input.cast<float>(), filter.cast<float>(),
+                                  col_stride, row_stride, padding)
+            .cast<Eigen::half>();
   }
 };
 

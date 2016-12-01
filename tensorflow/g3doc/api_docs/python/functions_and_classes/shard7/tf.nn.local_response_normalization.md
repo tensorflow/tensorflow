@@ -12,13 +12,13 @@ each component is divided by the weighted, squared sum of inputs within
     output = input / (bias + alpha * sqr_sum) ** beta
 
 For details, see [Krizhevsky et al., ImageNet classification with deep
-convolutional neural networks (NIPS 2012)]
-(http://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks).
+convolutional neural networks (NIPS 2012)](http://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks).
 
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor` of type `float32`. 4-D.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `half`.
+    4-D.
 *  <b>`depth_radius`</b>: An optional `int`. Defaults to `5`.
     0-D.  Half-width of the 1-D normalization window.
 *  <b>`bias`</b>: An optional `float`. Defaults to `1`.
@@ -30,5 +30,5 @@ convolutional neural networks (NIPS 2012)]
 
 ##### Returns:
 
-  A `Tensor` of type `float32`.
+  A `Tensor`. Has the same type as `input`.
 

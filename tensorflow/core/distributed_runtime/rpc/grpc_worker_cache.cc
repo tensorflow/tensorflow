@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -38,7 +38,6 @@ class GrpcWorkerCache : public WorkerCachePartial {
           while (completion_queue_.Next(&tag, &ok)) {
             GrpcClientCQTag* callback_tag = static_cast<GrpcClientCQTag*>(tag);
             callback_tag->OnCompleted(ok);
-            delete callback_tag;
           }
         });
   }

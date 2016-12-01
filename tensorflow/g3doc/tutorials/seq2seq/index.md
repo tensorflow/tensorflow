@@ -25,14 +25,14 @@ prepare it for training and train. It takes about 20GB of disk space,
 and a while to download and prepare (see [later](#lets-run-it) for details),
 so you can start and leave it running while reading this tutorial.
 
-This tutorial references the following files from `models/rnn`.
+This tutorial references the following files.
 
 File | What's in it?
 --- | ---
-`seq2seq.py` | Library for building sequence-to-sequence models.
-`translate/seq2seq_model.py` | Neural translation sequence-to-sequence model.
-`translate/data_utils.py` | Helper functions for preparing translation data.
-`translate/translate.py` | Binary that trains and runs the translation model.
+`python/ops/seq2seq.py` | Library for building sequence-to-sequence models.
+`models/rnn/translate/seq2seq_model.py` | Neural translation sequence-to-sequence model.
+`models/rnn/translate/data_utils.py` | Helper functions for preparing translation data.
+`models/rnn/translate/translate.py` | Binary that trains and runs the translation model.
 
 
 ## Sequence-to-Sequence Basics
@@ -74,7 +74,7 @@ attention mechanism in the decoder looks like this.
 As you can see above, there are many different sequence-to-sequence
 models. Each of these models can use different RNN cells, but all
 of them accept encoder inputs and decoder inputs. This motivates
-the interfaces in the TensorFlow seq2seq library (`models/rnn/seq2seq.py`).
+the interfaces in the TensorFlow seq2seq library (`python/ops/seq2seq.py`).
 The basic RNN encoder-decoder sequence-to-sequence model works as follows.
 
 ```python
@@ -126,7 +126,7 @@ In the above invocation, we set `feed_previous` to False. This means that the
 decoder will use `decoder_inputs` tensors as provided. If we set `feed_previous`
 to True, the decoder would only use the first element of `decoder_inputs`.
 All other tensors from this list would be ignored, and instead the previous
-output of the encoder would be used. This is used for decoding translations
+output of the decoder would be used. This is used for decoding translations
 in our translation model, but it can also be used during training, to make
 the model more robust to its own mistakes, similar
 to [Bengio et al., 2015](http://arxiv.org/abs/1506.03099)
@@ -151,7 +151,7 @@ have similar interfaces, so we will not describe them in detail. We will use
 ## Neural Translation Model
 
 While the core of the sequence-to-sequence model is constructed by
-the functions in `models/rnn/seq2seq.py`, there are still a few tricks
+the functions in `python/ops/seq2seq.py`, there are still a few tricks
 that are worth mentioning that are used in our translation model in
 `models/rnn/translate/seq2seq_model.py`.
 

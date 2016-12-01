@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@ from tensorflow.python.summary import event_file_inspector as efi
 from tensorflow.python.summary import event_multiplexer
 from tensorflow.tensorboard.backend import server
 
-flags.DEFINE_string('logdir', None, """logdir specifies the directory where
+flags.DEFINE_string('logdir', '', """logdir specifies the directory where
 TensorBoard will look to find TensorFlow event files that it can display.
 TensorBoard will recursively walk the directory structure rooted at logdir,
 looking for .*tfevents.* files.
@@ -87,18 +87,19 @@ FLAGS = flags.FLAGS
 
 
 def main(unused_argv=None):
+  logdir = os.path.expanduser(FLAGS.logdir)
+  event_file = os.path.expanduser(FLAGS.event_file)
+
   if FLAGS.debug:
     logging.set_verbosity(logging.DEBUG)
     logging.info('TensorBoard is in debug mode.')
 
   if FLAGS.inspect:
     logging.info('Not bringing up TensorBoard, but inspecting event files.')
-    efi.inspect(logdir=FLAGS.logdir,
-                event_file=FLAGS.event_file,
-                tag=FLAGS.tag)
+    efi.inspect(logdir, event_file, FLAGS.tag)
     return 0
 
-  if not FLAGS.logdir:
+  if not logdir:
     msg = ('A logdir must be specified. Run `tensorboard --help` for '
            'details and examples.')
     logging.error(msg)
@@ -106,7 +107,7 @@ def main(unused_argv=None):
     return -1
 
   logging.info('Starting TensorBoard in directory %s', os.getcwd())
-  path_to_run = server.ParseEventFilesSpec(FLAGS.logdir)
+  path_to_run = server.ParseEventFilesSpec(logdir)
   logging.info('TensorBoard path_to_run is: %s', path_to_run)
 
   multiplexer = event_multiplexer.EventMultiplexer(
@@ -115,7 +116,7 @@ def main(unused_argv=None):
   server.StartMultiplexerReloadingThread(multiplexer, path_to_run,
                                          FLAGS.reload_interval)
   try:
-    tb_server = server.BuildServer(multiplexer, FLAGS.host, FLAGS.port)
+    tb_server = server.BuildServer(multiplexer, FLAGS.host, FLAGS.port, logdir)
   except socket.error:
     if FLAGS.port == 0:
       msg = 'Unable to find any open ports.'
@@ -132,12 +133,21 @@ def main(unused_argv=None):
     tag = resource_loader.load_resource('tensorboard/TAG').strip()
     logging.info('TensorBoard is tag: %s', tag)
   except IOError:
-    logging.warning('Unable to read TensorBoard tag')
+    logging.info('Unable to read TensorBoard tag')
     tag = ''
 
   status_bar.SetupStatusBarInsideGoogle('TensorBoard %s' % tag, FLAGS.port)
   print('Starting TensorBoard %s on port %d' % (tag, FLAGS.port))
-  print('(You can navigate to http://%s:%d)' % (FLAGS.host, FLAGS.port))
+
+  if FLAGS.host == "0.0.0.0":
+    try:
+      host = socket.gethostbyname(socket.gethostname())
+      print('(You can navigate to http://%s:%d)' % (host, FLAGS.port))
+    except socket.gaierror:
+      pass
+  else:
+    print('(You can navigate to http://%s:%d)' % (FLAGS.host, FLAGS.port))
+
   tb_server.serve_forever()
 
 

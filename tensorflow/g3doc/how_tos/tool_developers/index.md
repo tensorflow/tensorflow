@@ -11,11 +11,11 @@ those kind of tools.
 
 ## Protocol Buffers
 
-All of TensorFlow's file formats are based on [Protocol Buffers]
-(https://developers.google.com/protocol-buffers/?hl=en), so to start
-it's worth getting familiar with how they work. The summary is that you define
-data structures in text files, and the protobuf tools generate classes in C,
-Python, and other languages that can load, save, and access the data in a
+All of TensorFlow's file formats are based on
+[Protocol Buffers](https://developers.google.com/protocol-buffers/?hl=en), so to
+start it's worth getting familiar with how they work. The summary is that you
+define data structures in text files, and the protobuf tools generate classes in
+C, Python, and other languages that can load, save, and access the data in a
 friendly way. We often refer to Protocol Buffers as protobufs, and I'll use
 that convention in this guide.
 
@@ -56,7 +56,7 @@ Here we get a file handle for the path we've passed in to the script
 
 ```python
   if FLAGS.input_binary:
-    graph_def.ParseFromString(f.read)
+    graph_def.ParseFromString(f.read())
   else:
     text_format.Merge(f.read(), graph_def)
 ```
@@ -67,7 +67,7 @@ There are actually two different formats that a ProtoBuf can be saved in.
 TextFormat is a human-readable form, which makes it nice for debugging and
 editing, but can get large when there's numerical data like weights stored in
 it. You can see a small example of that in
-[graph_run_run2.pbtxt](https://github.com/tensorflow/tensorflow/blob/ae3c8479f88da1cd5636b974f653f27755cb0034/tensorflow/tensorboard/components/tf-tensorboard/test/data/graph_run_run2.pbtxt).
+[graph_run_run2.pbtxt](https://github.com/tensorflow/tensorflow/blob/ae3c8479f88da1cd5636b974f653f27755cb0034/tensorflow/tensorboard/components/tf_tensorboard/test/data/graph_run_run2.pbtxt).
 
 Binary format files are a lot smaller than their text equivalents, even though
 they're not as readable for us. In this script, we ask the user to supply a
@@ -90,9 +90,10 @@ of nodes stored in the node member. Here's the code that loops through those:
 for node in graph_def.node
 ```
 
-Each node is a `NodeDef` object, also defined in graph.proto. These are the
-fundamental building blocks of TensorFlow graphs, with each one defining a
-single operation along with its input connections. Here are the members of a
+Each node is a `NodeDef` object, defined in
+[tensorflow/core/framework/node_def.proto](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/node_def.proto). These
+are the fundamental building blocks of TensorFlow graphs, with each one defining
+a single operation along with its input connections. Here are the members of a
 `NodeDef`, and what they mean.
 
 ### `name`

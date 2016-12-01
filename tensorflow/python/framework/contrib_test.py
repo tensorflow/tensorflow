@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ class ContribTest(googletest.TestCase):
   def testContrib(self):
     # pylint: disable=g-import-not-at-top
     import tensorflow as tf
+    _ = tf.contrib.layers  # `tf.contrib` is loaded lazily on first use.
     assert inspect.ismodule(tf.contrib)
 
   def testLayers(self):

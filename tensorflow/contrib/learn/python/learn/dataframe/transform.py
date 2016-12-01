@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""A Transform takes a list of `Column` and returns a namedtuple of `Column`."""
+"""A Transform takes a list of `Series` and returns a namedtuple of `Series`."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -27,35 +26,35 @@ from abc import abstractproperty
 import collections
 import inspect
 
-from .column import Column
-from .column import TransformedColumn
+from .series import Series
+from .series import TransformedSeries
 
 
-def _make_list_of_column(x):
-  """Converts `x` into a list of `Column` if possible.
+def _make_list_of_series(x):
+  """Converts `x` into a list of `Series` if possible.
 
   Args:
-    x: a `Column`, a list of `Column` or `None`.
+    x: a `Series`, a list of `Series` or `None`.
 
   Returns:
-    `x` if it is a list of Column, `[x]` if `x` is a `Column`, `[]` if x is
+    `x` if it is a list of Series, `[x]` if `x` is a `Series`, `[]` if x is
     `None`.
 
   Raises:
-    TypeError: `x` is not a `Column` a list of `Column` or `None`.
+    TypeError: `x` is not a `Series` a list of `Series` or `None`.
   """
   if x is None:
     return []
-  elif isinstance(x, Column):
+  elif isinstance(x, Series):
     return [x]
-  elif isinstance(x, (list, tuple)):
+  elif isinstance(x, collections.Iterable):
     for i, y in enumerate(x):
-      if not isinstance(y, Column):
+      if not isinstance(y, Series):
         raise TypeError(
-            "Expected a tuple or list of Columns; entry %s has type %s." %
+            "Expected a tuple or list of Series; entry %s has type %s." %
             (i, type(y).__name__))
     return list(x)
-  raise TypeError("Expected a Column or list of Column; got %s" %
+  raise TypeError("Expected a Series or list of Series; got %s" %
                   type(x).__name__)
 
 
@@ -76,7 +75,7 @@ def _make_tuple_of_string(x):
     return ()
   elif isinstance(x, str):
     return (x,)
-  elif isinstance(x, (list, tuple)):
+  elif isinstance(x, collections.Iterable):
     for i, y in enumerate(x):
       if not isinstance(y, str):
         raise TypeError(
@@ -103,9 +102,9 @@ def parameter(func):
 
 
 class Transform(object):
-  """A function from a list of `Column` to a namedtuple of `Column`.
+  """A function from a list of `Series` to a namedtuple of `Series`.
 
-  Transforms map zero or more columns of a DataFrame to new columns.
+  Transforms map zero or more Series of a DataFrame to new Series.
   """
 
   __metaclass__ = ABCMeta
@@ -128,7 +127,7 @@ class Transform(object):
 
   @abstractproperty
   def input_valency(self):
-    """The number of `Column`s that the `Transform` should expect as input.
+    """The number of `Series` that the `Transform` should expect as input.
 
     `None` indicates that the transform can take a variable number of inputs.
 
@@ -141,7 +140,7 @@ class Transform(object):
 
   @property
   def output_names(self):
-    """The names of `Column`s output by the `Transform`.
+    """The names of `Series` output by the `Transform`.
 
     This function should depend only on `@parameter`s of this `Transform`.
 
@@ -152,7 +151,7 @@ class Transform(object):
 
   @abstractproperty
   def _output_names(self):
-    """The names of `Column`s output by the `Transform`.
+    """The names of `Series` output by the `Transform`.
 
     This function should depend only on `@parameter`s of this `Transform`.
 
@@ -171,7 +170,7 @@ class Transform(object):
     instantiating an object of this type with corresponding values.
 
     Note this output type is used both for `__call__`, in which case the
-    values are `TransformedColumn`s, and for `apply_transform`, in which case
+    values are `TransformedSeries`, and for `apply_transform`, in which case
     the values are `Tensor`s.
 
     Returns:
@@ -185,6 +184,61 @@ class Transform(object):
       self._return_type = collections.namedtuple(return_type_name,
                                                  self.output_names)
     return self._return_type
+
+  def __str__(self):
+    return self.name
+
+  def __repr__(self):
+    parameters_sorted = ["%s: %s" % (repr(k), repr(v))
+                         for k, v in sorted(self.parameters().items())]
+    parameters_joined = ", ".join(parameters_sorted)
+
+    return "%s({%s})" % (self.name, parameters_joined)
+
+  def __call__(self, input_series=None):
+    """Apply this `Transform` to the provided `Series`, producing 'Series'.
+
+    Args:
+      input_series: None, a `Series`, or a list of input `Series`, acting as
+         positional arguments.
+
+    Returns:
+      A namedtuple of the output `Series`.
+
+    Raises:
+      ValueError: `input_series` does not have expected length
+    """
+    input_series = _make_list_of_series(input_series)
+    if len(input_series) != self.input_valency:
+      raise ValueError("Expected %s input Series but received %s." %
+                       (self.input_valency, len(input_series)))
+    output_series = self._produce_output_series(input_series)
+
+    # pylint: disable=not-callable
+    return self.return_type(*output_series)
+
+  @abstractmethod
+  def _produce_output_series(self, input_series):
+    """Applies the transformation to the `transform_input`.
+
+    Args:
+      input_series: a list of Series representing the input to
+        the Transform.
+
+    Returns:
+        A list of Series representing the transformed output, in order
+        corresponding to `_output_names`.
+    """
+    raise NotImplementedError()
+
+
+class TensorFlowTransform(Transform):
+  """A function from a list of `Series` to a namedtuple of `Series`.
+
+  Transforms map zero or more Series of a DataFrame to new Series.
+  """
+
+  __metaclass__ = ABCMeta
 
   def _check_output_tensors(self, output_tensors):
     """Helper for `build(...)`; verifies the output of `_build_transform`.
@@ -201,63 +255,52 @@ class Transform(object):
           "Expected a NamedTuple of Tensors with elements %s; got %s." %
           (self.output_names, type(output_tensors).__name__))
 
-  def __call__(self, input_columns=None):
-    """Apply this `Transform` to the provided `Column`s, producing 'Column's.
+  def _produce_output_series(self, input_series=None):
+    """Apply this `Transform` to the provided `Series`, producing `Series`.
 
     Args:
-      input_columns: None, a `Column`, or a list of input `Column`s, acting as
+      input_series: None, a `Series`, or a list of input `Series`, acting as
          positional arguments.
 
     Returns:
-      A namedtuple of the output Columns.
-
-    Raises:
-      ValueError: `input_columns` does not have expected length
+      A namedtuple of the output `Series`.
     """
-    input_columns = _make_list_of_column(input_columns)
-    if len(input_columns) != self.input_valency:
-      raise ValueError("Expected %s input Columns but received %s." %
-                       (self.input_valency, len(input_columns)))
-    output_columns = [TransformedColumn(input_columns, self, output_name)
-                      for output_name in self.output_names]
+    return [TransformedSeries(input_series, self, output_name)
+            for output_name in self.output_names]
 
-    # pylint: disable=not-callable
-    return self.return_type(*output_columns)
-
-  def apply_transform(self, input_columns, cache=None):
-    """Apply this `Transform` to the provided `Column`s, producing 'Tensor's.
+  def build_transitive(self, input_series, cache=None, **kwargs):
+    """Apply this `Transform` to the provided `Series`, producing 'Tensor's.
 
     Args:
-      input_columns: None, a `Column`, or a list of input `Column`s, acting as
+      input_series: None, a `Series`, or a list of input `Series`, acting as
          positional arguments.
-      cache: a dict from Column reprs to Tensors.
+      cache: a dict from Series reprs to Tensors.
+      **kwargs: Additional keyword arguments, unused here.
 
     Returns:
       A namedtuple of the output Tensors.
 
     Raises:
-      ValueError: `input_columns` does not have expected length
+      ValueError: `input_series` does not have expected length
     """
     # pylint: disable=not-callable
     if cache is None:
       cache = {}
 
-    if len(input_columns) != self.input_valency:
-      raise ValueError("Expected %s input Columns but received %s." %
-                       (self.input_valency, len(input_columns)))
-    input_tensors = [input_column.build(cache)
-                     for input_column in input_columns]
+    if len(input_series) != self.input_valency:
+      raise ValueError("Expected %s input Series but received %s." %
+                       (self.input_valency, len(input_series)))
+    input_tensors = [series.build(cache, **kwargs) for series in input_series]
 
     # Note we cache each output individually, not just the entire output
     # tuple.  This allows using the graph as the cache, since it can sensibly
     # cache only individual Tensors.
-    output_reprs = [TransformedColumn.make_repr(input_columns, self,
-                                                output_name)
+    output_reprs = [TransformedSeries.make_repr(input_series, self, output_name)
                     for output_name in self.output_names]
     output_tensors = [cache.get(output_repr) for output_repr in output_reprs]
 
     if None in output_tensors:
-      result = self._apply_transform(input_tensors)
+      result = self._apply_transform(input_tensors, **kwargs)
       for output_name, output_repr in zip(self.output_names, output_reprs):
         cache[output_repr] = getattr(result, output_name)
     else:
@@ -267,24 +310,15 @@ class Transform(object):
     return result
 
   @abstractmethod
-  def _apply_transform(self, input_tensors):
+  def _apply_transform(self, input_tensors, **kwargs):
     """Applies the transformation to the `transform_input`.
 
     Args:
-        input_tensors: a list of Tensors representing the input to
+      input_tensors: a list of Tensors representing the input to
         the Transform.
+      **kwargs: Additional keyword arguments, unused here.
 
     Returns:
         A namedtuple of Tensors representing the transformed output.
     """
     raise NotImplementedError()
-
-  def __str__(self):
-    return self.name
-
-  def __repr__(self):
-    parameters_sorted = ["%s: %s" % (repr(k), repr(v))
-                         for k, v in sorted(self.parameters().items())]
-    parameters_joined = ", ".join(parameters_sorted)
-
-    return "%s({%s})" % (self.name, parameters_joined)

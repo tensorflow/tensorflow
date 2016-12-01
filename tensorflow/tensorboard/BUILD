@@ -10,17 +10,21 @@ exports_files(["LICENSE"])
 filegroup(
     name = "frontend",
     srcs = [
+        "TAG",
+        "dist/bazel-html-imports.html",
         "dist/index.html",
         "dist/tf-tensorboard.html",
-        "TAG",
-        "//tensorflow/tensorboard/bower:bower",
+        "//tensorflow/tensorboard/bower",
         "//tensorflow/tensorboard/lib:all_files",
     ],
 )
 
 py_binary(
     name = "tensorboard",
-    srcs = ["tensorboard.py"],
+    srcs = [
+        "__main__.py",
+        "tensorboard.py",
+    ],
     data = [":frontend"],
     srcs_version = "PY2AND3",
     deps = [
@@ -41,4 +45,40 @@ filegroup(
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
+)
+
+###### PLUGINS ######
+
+# Plugins don't have their own packages (BUILD files) because we want to
+# have only one BUILD file since each BUILD file needs special rewrite rules
+# in the git world.
+
+py_library(
+    name = "base_plugin",
+    srcs = ["plugins/base_plugin.py"],
+    srcs_version = "PY2AND3",
+)
+
+## Embedding projector ##
+py_library(
+    name = "projector",
+    srcs = glob(["plugins/projector/**/*.py"]),
+    srcs_version = "PY2AND3",
+    deps = [
+        ":base_plugin",
+        "//tensorflow/contrib/tensorboard:projector",
+        "//tensorflow/contrib/tensorboard:protos_all_py",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:training",
+    ],
+)
+
+py_library(
+    name = "plugins",
+    srcs = ["plugins/__init__.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        # All registered plugins go in here.
+        ":projector",
+    ],
 )

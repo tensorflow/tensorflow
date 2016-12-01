@@ -1,7 +1,7 @@
 // Protocol buffer representing the shape of tensors.
 
 syntax = "proto3";
-// option cc_enable_arenas = true;
+option cc_enable_arenas = true;
 option java_outer_classname = "TensorShapeProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";

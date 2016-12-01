@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -514,6 +514,45 @@ TEST(TensorShapeTest, Randomized) {
       sold = TensorShapeOld(sizes);
     }
   }
+}
+
+TEST(TensorShapeUtilsTest, StartsWith) {
+  EXPECT_TRUE(TensorShapeUtils::StartsWith(TensorShape({}), TensorShape({})));
+  EXPECT_TRUE(
+      TensorShapeUtils::StartsWith(TensorShape({2, 3}), TensorShape({})));
+  EXPECT_TRUE(
+      TensorShapeUtils::StartsWith(TensorShape({2, 3}), TensorShape({2})));
+  EXPECT_TRUE(
+      TensorShapeUtils::StartsWith(TensorShape({2, 3}), TensorShape({2, 3})));
+  EXPECT_TRUE(TensorShapeUtils::StartsWith(TensorShape({2, 3, 4}),
+                                           TensorShape({2, 3})));
+  EXPECT_FALSE(
+      TensorShapeUtils::StartsWith(TensorShape({2, 3}), TensorShape({3})));
+  EXPECT_FALSE(
+      TensorShapeUtils::StartsWith(TensorShape({2, 3}), TensorShape({2, 4})));
+  EXPECT_FALSE(TensorShapeUtils::StartsWith(TensorShape({2, 3}),
+                                            TensorShape({2, 3, 4})));
+  EXPECT_FALSE(TensorShapeUtils::StartsWith(TensorShape({2, 3, 4}),
+                                            TensorShape({3, 4})));
+}
+
+TEST(TensorShapeUtilsTest, EndsWith) {
+  EXPECT_TRUE(TensorShapeUtils::EndsWith(TensorShape({}), TensorShape({})));
+  EXPECT_TRUE(TensorShapeUtils::EndsWith(TensorShape({2, 3}), TensorShape({})));
+  EXPECT_TRUE(
+      TensorShapeUtils::EndsWith(TensorShape({2, 3}), TensorShape({3})));
+  EXPECT_TRUE(
+      TensorShapeUtils::EndsWith(TensorShape({2, 3}), TensorShape({2, 3})));
+  EXPECT_TRUE(
+      TensorShapeUtils::EndsWith(TensorShape({2, 3, 4}), TensorShape({3, 4})));
+  EXPECT_FALSE(
+      TensorShapeUtils::EndsWith(TensorShape({2, 3}), TensorShape({2})));
+  EXPECT_FALSE(
+      TensorShapeUtils::EndsWith(TensorShape({2, 3}), TensorShape({2, 4})));
+  EXPECT_FALSE(
+      TensorShapeUtils::EndsWith(TensorShape({2, 3}), TensorShape({2, 3, 4})));
+  EXPECT_FALSE(
+      TensorShapeUtils::EndsWith(TensorShape({2, 3, 4}), TensorShape({2, 3})));
 }
 
 // A few different test cases for tensor sizes for benchmarks

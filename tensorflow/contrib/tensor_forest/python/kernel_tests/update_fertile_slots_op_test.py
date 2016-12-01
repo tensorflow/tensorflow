@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -33,55 +33,55 @@ class UpdateFertileSlotsTest(test_util.TensorFlowTestCase):
     #     1       2
     #   3   4   5   6
     self.finished = [2]
-    self.depths = [1, 2, 2, 3, 3, 3, 3]
     self.non_fertile_leaves = [3, 4]
     self.non_fertile_leaf_scores = [10., 15.]
     self.end_of_tree = [5]
     self.node_map = [-1, -1, 0, -1, -1, -1, -1]
     self.total_counts = [[80., 40., 40.]]
     self.ops = training_ops.Load()
+    self.stale_leaves = []
+    self.node_sums = [[3, 1, 2], [4, 2, 2], [5, 2, 3], [6, 1, 5], [7, 5, 2],
+                      [8, 4, 4], [9, 7, 2]]
 
   def testSimple(self):
     with self.test_session():
-      (node_map_updates, accumulators_cleared, accumulators_allocated,
-       new_nfl, new_nfl_scores) = self.ops.update_fertile_slots(
+      (n2a_map_updates, a2n_map_updates, accumulators_cleared,
+       accumulators_allocated) = self.ops.update_fertile_slots(
            self.finished, self.non_fertile_leaves, self.non_fertile_leaf_scores,
-           self.end_of_tree, self.depths,
-           self.total_counts, self.node_map, max_depth=4)
+           self.end_of_tree, self.total_counts, self.node_map,
+           self.stale_leaves, self.node_sums)
 
-      self.assertAllEqual([[2, 4], [-1, 0]], node_map_updates.eval())
+      self.assertAllEqual([[2, 4], [-1, 0]], n2a_map_updates.eval())
+      self.assertAllEqual([[0], [4]], a2n_map_updates.eval())
       self.assertAllEqual([], accumulators_cleared.eval())
       self.assertAllEqual([0], accumulators_allocated.eval())
-      self.assertAllEqual([3, 5, 6], new_nfl.eval())
-      self.assertAllEqual([10., 1., 1.], new_nfl_scores.eval())
-
-  def testReachedMaxDepth(self):
-    with self.test_session():
-      (node_map_updates, accumulators_cleared, accumulators_allocated,
-       new_nfl, new_nfl_scores) = self.ops.update_fertile_slots(
-           self.finished, self.non_fertile_leaves, self.non_fertile_leaf_scores,
-           self.end_of_tree, self.depths,
-           self.total_counts, self.node_map, max_depth=3)
-
-      self.assertAllEqual([[2], [-1]], node_map_updates.eval())
-      self.assertAllEqual([0], accumulators_cleared.eval())
-      self.assertAllEqual([], accumulators_allocated.eval())
-      self.assertAllEqual([-1], new_nfl.eval())
-      self.assertAllEqual([0.0], new_nfl_scores.eval())
 
   def testNoFinished(self):
     with self.test_session():
-      (node_map_updates, accumulators_cleared, accumulators_allocated,
-       new_nfl, new_nfl_scores) = self.ops.update_fertile_slots(
+      (n2a_map_updates, a2n_map_updates, accumulators_cleared,
+       accumulators_allocated) = self.ops.update_fertile_slots(
            [], self.non_fertile_leaves, self.non_fertile_leaf_scores,
-           self.end_of_tree, self.depths,
-           self.total_counts, self.node_map, max_depth=4)
+           self.end_of_tree, self.total_counts, self.node_map,
+           self.stale_leaves, self.node_sums)
 
-      self.assertAllEqual((2, 0), node_map_updates.eval().shape)
+      self.assertAllEqual((2, 0), n2a_map_updates.eval().shape)
+      self.assertAllEqual((2, 0), a2n_map_updates.eval().shape)
       self.assertAllEqual([], accumulators_cleared.eval())
       self.assertAllEqual([], accumulators_allocated.eval())
-      self.assertAllEqual([4, 3], new_nfl.eval())
-      self.assertAllEqual([15., 10.], new_nfl_scores.eval())
+
+  def testPureCounts(self):
+    with self.test_session():
+      self.node_sums[4] = [10, 0, 10]
+      (n2a_map_updates, a2n_map_updates, accumulators_cleared,
+       accumulators_allocated) = self.ops.update_fertile_slots(
+           self.finished, self.non_fertile_leaves, self.non_fertile_leaf_scores,
+           self.end_of_tree, self.total_counts, self.node_map,
+           self.stale_leaves, self.node_sums)
+
+      self.assertAllEqual([[2, 3], [-1, 0]], n2a_map_updates.eval())
+      self.assertAllEqual([[0], [3]], a2n_map_updates.eval())
+      self.assertAllEqual([], accumulators_cleared.eval())
+      self.assertAllEqual([0], accumulators_allocated.eval())
 
   def testBadInput(self):
     del self.non_fertile_leaf_scores[-1]
@@ -89,11 +89,11 @@ class UpdateFertileSlotsTest(test_util.TensorFlowTestCase):
       with self.assertRaisesOpError(
           'Number of non fertile leaves should be the same in '
           'non_fertile_leaves and non_fertile_leaf_scores.'):
-        (node_map_updates, _, _, _, _) = self.ops.update_fertile_slots(
+        (n2a_map_updates, _, _, _) = self.ops.update_fertile_slots(
             self.finished, self.non_fertile_leaves,
-            self.non_fertile_leaf_scores, self.end_of_tree, self.depths,
-            self.total_counts, self.node_map, max_depth=4)
-        self.assertAllEqual((2, 0), node_map_updates.eval().shape)
+            self.non_fertile_leaf_scores, self.end_of_tree, self.total_counts,
+            self.node_map, self.stale_leaves, self.node_sums)
+        self.assertAllEqual((2, 0), n2a_map_updates.eval().shape)
 
 
 if __name__ == '__main__':

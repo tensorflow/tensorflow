@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -57,12 +57,13 @@ class RendezvousMgrInterface {
   // "done" when the tensor for "key" is produced or an error occurs.
   //
   // This method is used by the rpc handler of RecvTensor.
-  virtual void RecvLocalAsync(int64 step_id, const string& key,
+  virtual void RecvLocalAsync(int64 step_id,
+                              const Rendezvous::ParsedKey& parsed,
                               Rendezvous::DoneCallback done) = 0;
 
   // Synchronous wrapper for RecvLocalAsync.
-  virtual Status RecvLocal(int64 step_id, const string& key, Tensor* val,
-                           bool* is_dead) = 0;
+  virtual Status RecvLocal(int64 step_id, const Rendezvous::ParsedKey& parsed,
+                           Tensor* val, bool* is_dead) = 0;
 
   // Removes rendezvous for "step_id".
   //

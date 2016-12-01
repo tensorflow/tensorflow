@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -91,8 +91,8 @@ void Master::GC() {
     std::vector<string> handles;
     const int64 num_micros = static_cast<int64>(session_gc_seconds_ * 1000000);
     for (const auto& entry : sessions_) {
-      auto lat = entry.second->last_access_time_usec();
-      if (env->NowMicros() - lat > num_micros) {
+      int64 lat = entry.second->last_access_time_usec();
+      if (static_cast<int64>(env->NowMicros()) - lat > num_micros) {
         handles.push_back(entry.first);
         auto* sess = entry.second;
         SchedClosure([this, sess]() {
@@ -250,12 +250,14 @@ void Master::CreateSession(const CreateSessionRequest* req,
       finder.GetRemoteDevices(env_->local_devices, &remote_devices);
       SessionOptions options;
       options.config = req->config();
-      MasterSessionInterface* session =
+      MasterSession* session =
           env_->master_session_factory(options, env_, &remote_devices);
       GraphDef* gdef =
           const_cast<CreateSessionRequest*>(req)->mutable_graph_def();
       Status create_status = session->Create(gdef);
       if (!create_status.ok()) {
+        // Takes ownership of `session` (and destroys it).
+        session->Close();
         done(create_status);
         return;
       }
@@ -273,13 +275,14 @@ void Master::CreateSession(const CreateSessionRequest* req,
 void Master::ExtendSession(const ExtendSessionRequest* req,
                            ExtendSessionResponse* resp, MyClosure done) {
   mu_.lock();
-  MasterSessionInterface* session = nullptr;
+  MasterSession* session = nullptr;
   session = gtl::FindPtrOrNull(sessions_, req->session_handle());
   if (session == nullptr) {
     mu_.unlock();
     done(errors::Aborted("Session ", req->session_handle(), " is not found."));
     return;
   }
+  mu_.unlock();
 
   SchedClosure([session, req, resp, done]() {
     Status status = ValidateExternalGraphDefSyntax(req->graph_def());
@@ -288,20 +291,35 @@ void Master::ExtendSession(const ExtendSessionRequest* req,
     }
     done(status);
   });
+}
+
+void Master::PartialRunSetup(const PartialRunSetupRequest* req,
+                             PartialRunSetupResponse* resp, MyClosure done) {
+  mu_.lock();
+  MasterSession* session = gtl::FindPtrOrNull(sessions_, req->session_handle());
+  if (session == nullptr) {
+    mu_.unlock();
+    done(errors::Aborted("Session ", req->session_handle(), " is not found."));
+    return;
+  }
   mu_.unlock();
+
+  SchedClosure([this, session, req, resp, done]() {
+    done(session->PartialRunSetup(req, resp));
+  });
 }
 
 void Master::RunStep(CallOptions* opts, const RunStepRequest* req,
                      RunStepResponse* resp, MyClosure done) {
   mu_.lock();
   uint64 start_time = env_->env->NowMicros();
-  MasterSessionInterface* session =
-      gtl::FindPtrOrNull(sessions_, req->session_handle());
+  MasterSession* session = gtl::FindPtrOrNull(sessions_, req->session_handle());
   if (session == nullptr) {
     mu_.unlock();
     done(errors::Aborted("Session ", req->session_handle(), " is not found."));
     return;
   }
+  mu_.unlock();
 
   SchedClosure([this, start_time, session, opts, req, resp, done]() {
     Status status = session->Run(opts, req, resp);
@@ -311,12 +329,11 @@ void Master::RunStep(CallOptions* opts, const RunStepRequest* req,
     last_1000_steps_.AddValue((done_time - start_time) / 1e9);
     ++step_count_;
   });
-  mu_.unlock();
 }
 
 void Master::CloseSession(const CloseSessionRequest* req,
                           CloseSessionResponse* resp, MyClosure done) {
-  MasterSessionInterface* session = nullptr;
+  MasterSession* session = nullptr;
   {
     mu_.lock();
     auto iter = sessions_.find(req->session_handle());
@@ -382,7 +399,7 @@ void Master::CleanupWorkers(const ResetRequest& reset) {
       }
       ++c;
     }
-    for (int i = 0; i < n.size(); ++i) {
+    for (size_t i = 0; i < n.size(); ++i) {
       n[i].WaitForNotification();
     }
   }
@@ -392,7 +409,7 @@ void Master::Reset(const ResetRequest* req, ResetResponse* resp,
                    MyClosure done) {
   // Vector to hold the session pointers present in the sessions_
   // (string->Session*) map.
-  std::vector<MasterSessionInterface*> sessions;
+  std::vector<MasterSession*> sessions;
   {
     mutex_lock l(mu_);
     for (const auto& entry : sessions_) {
@@ -405,7 +422,7 @@ void Master::Reset(const ResetRequest* req, ResetResponse* resp,
 
   SchedClosure([sessions, done]() {
     Status s;
-    for (MasterSessionInterface* session : sessions) {
+    for (MasterSession* session : sessions) {
       s.Update(session->Close());
     }
     done(s);

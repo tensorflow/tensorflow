@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,8 +23,21 @@ import sys
 from tensorflow.python.platform import flags
 
 
-def run(main=None):
+def run(main=None, argv=None):
+  """Runs the program with an optional 'main' function and 'argv' list."""
   f = flags.FLAGS
-  f._parse_flags()
+
+  # Extract the args from the optional `argv` list.
+  args = argv[1:] if argv else None
+
+  # Parse the known flags from that list, or from the command
+  # line otherwise.
+  # pylint: disable=protected-access
+  flags_passthrough = f._parse_flags(args=args)
+  # pylint: enable=protected-access
+
   main = main or sys.modules['__main__'].main
-  sys.exit(main(sys.argv))
+
+  # Call the main function, passing through any arguments
+  # to the final program.
+  sys.exit(main(sys.argv[:1] + flags_passthrough))

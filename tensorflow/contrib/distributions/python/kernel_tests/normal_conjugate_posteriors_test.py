@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -97,7 +97,7 @@ class NormalTest(tf.test.TestCase):
       s = tf.reduce_sum(x)
       n = tf.size(x)
       prior = distributions.Normal(mu=mu0, sigma=sigma0)
-      predictive = distributions.normal_congugates_known_sigma_predictive(
+      predictive = distributions.normal_conjugates_known_sigma_predictive(
           prior=prior, sigma=sigma, s=s, n=n)
 
       # Smoke test
@@ -106,5 +106,5 @@ class NormalTest(tf.test.TestCase):
       self.assertEqual(predictive_log_pdf.shape, (6,))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   tf.test.main()

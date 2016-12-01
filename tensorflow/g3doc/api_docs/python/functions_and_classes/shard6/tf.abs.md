@@ -7,16 +7,19 @@ containing the absolute value of each element in `x`. For example, if x is
 an input element and y is an output element, this operation computes
 \\(y = |x|\\).
 
-See [`tf.complex_abs()`](#tf_complex_abs) to compute the absolute value of a complex
+See [`tf.complex_abs()`](#tf_complex_abs) to compute the absolute value of a
+complex
 number.
 
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor` of type `float`, `double`, `int32`, or `int64`.
+*  <b>`x`</b>: A `Tensor` or `SparseTensor` of type `float32`, `float64`, `int32`, or
+    `int64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-   A `Tensor` the same size and type as `x` with absolute values.
+  A `Tensor` or `SparseTensor` the same size and type as `x` with absolute
+    values.
 

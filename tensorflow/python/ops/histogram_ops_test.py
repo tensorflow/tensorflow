@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -125,7 +125,7 @@ class HistogramFixedWidthTest(tf.test.TestCase):
       hist_accum = tf.Variable(tf.zeros_initializer([3], dtype=tf.int64))
       hist_accum = hist_accum.assign_add(hist)
 
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       for _ in range(100):
         # Map the rv: U[0, 1] --> U[value_range[0], value_range[1]].

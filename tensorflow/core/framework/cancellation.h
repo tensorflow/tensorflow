@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,10 +18,11 @@ limitations under the License.
 
 #include <atomic>
 #include <functional>
-#include <unordered_map>
 
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
@@ -128,8 +129,7 @@ class CancellationManager {
   mutex mu_;
   Notification cancelled_notification_;
   CancellationToken next_cancellation_token_ GUARDED_BY(mu_);
-  std::unordered_map<CancellationToken, CancelCallback> callbacks_
-      GUARDED_BY(mu_);
+  gtl::FlatMap<CancellationToken, CancelCallback> callbacks_ GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

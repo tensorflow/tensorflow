@@ -160,13 +160,13 @@ are between 0 and 255 to the floating point values that the graph operates on.
 We control the scaling with the `input_mean` and `input_std` flags: we first subtract
 `input_mean` from each pixel value, then divide it by `input_std`.
 
-These values probably look somewhat magical, but they are just defined by the 
-original model author based on what he/she wanted to use as input images for 
+These values probably look somewhat magical, but they are just defined by the
+original model author based on what he/she wanted to use as input images for
 training. If you have a graph that you've trained yourself, you'll just need
 to adjust the values to match whatever you used during your training process.
 
-You can see how they're applied to an image in the [`ReadTensorFromImageFile()`]
-(https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/label_image/main.cc#L88)
+You can see how they're applied to an image in the
+[`ReadTensorFromImageFile()`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/label_image/main.cc#L88)
 function.
 
 ```C++
@@ -255,14 +255,14 @@ definition with the `ToGraphDef()` function.
   TF_RETURN_IF_ERROR(session->Run({}, {output_name}, {}, out_tensors));
   return Status::OK();
 ```
-Then we create a [`Session`](http://www.tensorflow.org/versions/master/api_docs/cc/ClassSession.html#class-tensorflow-session) 
-object, which is the interface to actually running the graph, and run it, 
+Then we create a [`Session`](http://www.tensorflow.org/versions/master/api_docs/cc/ClassSession.html#class-tensorflow-session)
+object, which is the interface to actually running the graph, and run it,
 specifying which node we want to get the output from, and where to put the
 output data.
 
 This gives us a vector of `Tensor` objects, which in this case we know will only be a
 single object long. You can think of a `Tensor` as a multi-dimensional array in this
-context, and it holds a 299 pixel high, 299 pixel width, 3 channel image as float
+context, and it holds a 299 pixel high, 299 pixel wide, 3 channel image as float
 values. If you have your own image-processing framework in your product already, you
 should be able to use that instead, as long as you apply the same transformations
 before you feed images into the main graph.
@@ -434,7 +434,7 @@ TensorFlow within your own products.
 > **EXERCISE**: Transfer learning is the idea that, if you know how to solve a task well, you
 should be able to transfer some of that understanding to solving related
 problems.  One way to perform transfer learning is to remove the final
-classification layer of the network and extract 
+classification layer of the network and extract
 the [next-to-last layer of the CNN](http://arxiv.org/abs/1310.1531), in this case a 2048 dimensional vector.
 There's a guide to doing this [in the how-to section](../../how_tos/image_retraining/index.html).
 
