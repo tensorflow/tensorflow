@@ -208,7 +208,7 @@ Split the values of a `Tensor` into the TensorArray.
 #### Other Methods
 - - -
 
-#### `tf.TensorArray.__init__(dtype, size=None, dynamic_size=None, clear_after_read=None, tensor_array_name=None, handle=None, flow=None, infer_shape=True, elem_shape=None, name=None)` {#TensorArray.__init__}
+#### `tf.TensorArray.__init__(dtype, size=None, dynamic_size=None, clear_after_read=None, tensor_array_name=None, handle=None, flow=None, infer_shape=True, element_shape=None, name=None)` {#TensorArray.__init__}
 
 Construct a new TensorArray or wrap an existing TensorArray handle.
 
@@ -239,8 +239,9 @@ is created within a `while_loop`.
     `TensorArray.flow`.
 *  <b>`infer_shape`</b>: (optional, default: True) If True, shape inference
     is enabled.  In this case, all elements must have the same shape.
-*  <b>`elem_shape`</b>: (optional, default: None) A TensorShape object specifying
-    the shape of all the elements of the TensorArray.
+*  <b>`element_shape`</b>: (optional, default: None) A `TensorShape` object specifying
+    the shape constraints of each of the elements of the TensorArray.
+    Need not be fully defined.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Raises:

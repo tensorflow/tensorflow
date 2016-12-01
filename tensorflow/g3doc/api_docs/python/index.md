@@ -415,7 +415,6 @@
   * [`transpose_image`](../../api_docs/python/image.md#transpose_image)
 
 * **[Sparse Tensors](../../api_docs/python/sparse_ops.md)**:
-  * [`shape`](../../api_docs/python/sparse_ops.md#shape)
   * [`sparse_add`](../../api_docs/python/sparse_ops.md#sparse_add)
   * [`sparse_concat`](../../api_docs/python/sparse_ops.md#sparse_concat)
   * [`sparse_fill_empty_rows`](../../api_docs/python/sparse_ops.md#sparse_fill_empty_rows)
