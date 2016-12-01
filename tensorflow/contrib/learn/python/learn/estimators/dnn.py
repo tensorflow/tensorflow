@@ -24,6 +24,8 @@ from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.layers.python.layers import optimizers
+#Importing batchnorm to be added to the DNN.
+from tensorflow.contrib.layers.python.layers import batch_norm
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import monitors as monitor_lib
 from tensorflow.contrib.learn.python.learn import trainable
@@ -37,6 +39,7 @@ from tensorflow.python import summary
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.platform import tf_logging as logging
 
 
 _CENTERED_BIAS_WEIGHT = "centered_bias_weight"
@@ -102,7 +105,9 @@ def _dnn_model_fn(features, labels, mode, params):
   activation_fn = params.get("activation_fn")
   dropout = params.get("dropout")
   gradient_clip_norm = params.get("gradient_clip_norm")
-  num_ps_replicas = params.get("num_ps_replicas", 0)
+  num_ps_replicas   = params.get("num_ps_replicas", 0)
+  normalizer_fn     = params.get("normalizer_fn")
+  normalizer_params = params.get("normalizer_params")
 
   features = _get_feature_dict(features)
   parent_scope = "dnn"
@@ -124,17 +129,23 @@ def _dnn_model_fn(features, labels, mode, params):
   hidden_layer_partitioner = (
       partitioned_variables.min_max_variable_partitioner(
           max_partitions=num_ps_replicas))
+
   for layer_id, num_hidden_units in enumerate(hidden_units):
     with variable_scope.variable_scope(
         parent_scope + "/hiddenlayer_%d" % layer_id,
         values=[net],
         partitioner=hidden_layer_partitioner) as scope:
+
       net = layers.fully_connected(
           net,
           num_hidden_units,
           activation_fn=activation_fn,
-          variables_collections=[parent_scope],
+#HL think we can add here the batch_norm.
+          normalizer_fn         = normalizer_fn,
+          normalizer_params     = normalizer_params,
+          variables_collections = [parent_scope],
           scope=scope)
+
       if dropout is not None and mode == model_fn.ModeKeys.TRAIN:
         net = layers.dropout(
             net,
@@ -149,6 +160,8 @@ def _dnn_model_fn(features, labels, mode, params):
         net,
         head.logits_dimension,
         activation_fn=None,
+        normalizer_fn=normalizer_fn,
+        normalizer_params=normalizer_params,
         variables_collections=[parent_scope],
         scope=scope)
   _add_hidden_layer_summary(logits, scope.name)
@@ -232,6 +245,8 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
                activation_fn=nn.relu,
                dropout=None,
                gradient_clip_norm=None,
+               normalizer_fn=None,
+               normalizer_params=None,
                enable_centered_bias=False,
                config=None,
                feature_engineering_fn=None):
@@ -295,6 +310,8 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
             "feature_columns": feature_columns,
             "optimizer": optimizer,
             "activation_fn": activation_fn,
+            "normalizer_fn": normalizer_fn,
+            "normalizer_params": normalizer_params,
             "dropout": dropout,
             "gradient_clip_norm": gradient_clip_norm,
             "num_ps_replicas": config.num_ps_replicas if config else 0,
