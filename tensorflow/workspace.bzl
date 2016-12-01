@@ -28,6 +28,19 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     build_file = str(Label("//:eigen.BUILD")),
   )
 
+  native.new_http_archive(
+    name = "libxsmm_archive",
+    url = "https://github.com/hfp/libxsmm/archive/1.5.tar.gz",
+    sha256 = "c52568c5e0e8dc9d8fcf869a716d73598e52f71c3d83af5a4c0b3be81403b423",
+    strip_prefix = "libxsmm-1.5",
+    build_file = str(Label("//:libxsmm.BUILD")),
+  )
+
+  native.bind(
+    name = "xsmm_avx",
+    actual = "@libxsmm_archive//:xsmm_avx",
+  )
+
   native.http_archive(
     name = "com_googlesource_code_re2",
     url = "http://github.com/google/re2/archive/b94b7cd42e9f02673cd748c1ac1d16db4052514c.tar.gz",
