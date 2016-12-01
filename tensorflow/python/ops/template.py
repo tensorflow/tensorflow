@@ -30,7 +30,7 @@ __all__ = ["make_template"]
 
 
 def make_template(name_, func_, create_scope_now_=False, unique_name_=None,
-                  **kwargs):
+                  custom_getter_=None, **kwargs):
   """Given an arbitrary function, wrap it so that it does variable sharing.
 
   This wraps `func_` in a Template and partially evaluates it. Templates are
@@ -118,6 +118,9 @@ def make_template(name_, func_, create_scope_now_=False, unique_name_=None,
     unique_name_: When used, it overrides name_ and is not made unique. If a
       template of the same scope/unique_name already exists and reuse is false,
       an error is raised. Defaults to None.
+    custom_getter_: Optional custom getter for variables used in `func_`. See
+      the [`get_variable`](#get_variable) `custom_getter` documentation for
+      more information.
     **kwargs: Keyword arguments to apply to `func_`.
 
   Returns:
@@ -136,7 +139,7 @@ def make_template(name_, func_, create_scope_now_=False, unique_name_=None,
     func_ = functools.partial(func_, **kwargs)
   return Template(
       name_, func_, create_scope_now=create_scope_now_,
-      unique_name=unique_name_)
+      unique_name=unique_name_, custom_getter=custom_getter_)
 
 
 def _skip_common_stack_elements(stacktrace, base_case):
@@ -159,7 +162,8 @@ class Template(object):
   call.
   """
 
-  def __init__(self, name, func, create_scope_now=False, unique_name=None):
+  def __init__(self, name, func, create_scope_now=False, unique_name=None,
+               custom_getter=None):
     """Creates a template for the given function.
 
     Args:
@@ -179,6 +183,7 @@ class Template(object):
       unique_name: When used, it overrides name_ and is not made unique. If a
         template of the same scope/unique_name already exists and reuse is
         false, an error is raised. Defaults to None.
+      custom_getter: optional custom getter to pass to variable_scope()
 
     Raises:
       ValueError: if the name is None.
@@ -187,11 +192,13 @@ class Template(object):
     self._stacktrace = traceback.format_stack()[:-2]
     self._name = name
     self._unique_name = unique_name
+    self._custom_getter = custom_getter
     if name is None:
       raise ValueError("name cannot be None.")
     if create_scope_now:
       with variable_scope.variable_scope(
-          self._unique_name, self._name) as vs:
+          self._unique_name, self._name,
+          custom_getter=self._custom_getter) as vs:
         self._var_scope = vs
     else:
       self._var_scope = None
@@ -262,7 +269,8 @@ class Template(object):
       # Subsequent calls should reuse variables.
       self._variables_created = True
       with variable_scope.variable_scope(
-          self._unique_name, self._name) as vs:
+          self._unique_name, self._name,
+          custom_getter=self._custom_getter) as vs:
         self._var_scope = vs
         return self._call_func(args, kwargs, check_for_new_variables=False)
 

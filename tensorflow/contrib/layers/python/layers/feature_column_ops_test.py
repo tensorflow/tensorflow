@@ -778,6 +778,25 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
       # score: (number of values)
       self.assertAllEqual(output.eval(), [[1.], [2.], [0.]])
 
+  def testEmbeddingColumnWithMaxNormForDNN(self):
+    hashed_sparse = tf.contrib.layers.sparse_column_with_hash_bucket("wire", 10)
+    wire_tensor = tf.SparseTensor(values=["omar", "stringer", "marlo"],
+                                  indices=[[0, 0], [1, 0], [1, 1]],
+                                  shape=[3, 2])
+    features = {"wire": wire_tensor}
+    embedded_sparse = tf.contrib.layers.embedding_column(
+        hashed_sparse,
+        1,
+        combiner="sum",
+        initializer=init_ops.ones_initializer(),
+        max_norm=0.5)
+    output = tf.contrib.layers.input_from_feature_columns(features,
+                                                          [embedded_sparse])
+    with self.test_session():
+      tf.global_variables_initializer().run()
+      # score: (number of values * 0.5)
+      self.assertAllClose(output.eval(), [[0.5], [1.], [0.]])
+
   def testEmbeddingColumnWithWeightedSparseColumnForDNN(self):
     ids = tf.contrib.layers.sparse_column_with_keys(
         "ids", ["marlo", "omar", "stringer"])

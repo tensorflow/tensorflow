@@ -24,7 +24,7 @@ cuda_py_tests(
 
 cuda_py_tests(
     name = "linear_operator_diag_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/linear_operator_diag_test.py"],
     additional_deps = [
         ":linalg_py",

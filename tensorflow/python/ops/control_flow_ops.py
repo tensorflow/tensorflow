@@ -2236,7 +2236,9 @@ class WhileContext(ControlFlowContext):
       if self.outer_context: self.outer_context.Exit()
     else:
       value = op.inputs[0]
-      if self.outer_context:
+      if (isinstance(self.outer_context, WhileContext) and
+          self.outer_context.grad_state is not None):
+        # We are in a nested while loop.
         forward_ctxt = self.grad_state.forward_context
         forward_ctxt.outer_context.Enter()
         zeros_shape = array_ops.shape_internal(value, optimize=False)
@@ -2250,8 +2252,10 @@ class WhileContext(ControlFlowContext):
         acc = array_ops.zeros(real_shape, grad.dtype)
         self.outer_context.Exit()
       else:
+        if self.outer_context: self.outer_context.Enter()
         zeros_shape = array_ops.shape_internal(value, optimize=False)
         acc = array_ops.zeros(zeros_shape, grad.dtype)
+        if self.outer_context: self.outer_context.Exit()
       acc._shape = grad.get_shape()  # pylint: disable=protected-access
 
     self.Enter()

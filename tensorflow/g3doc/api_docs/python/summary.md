@@ -41,7 +41,7 @@ the graph from the session in which you launched it:
 # Launch the graph in a session.
 sess = tf.Session()
 # Create a summary writer, add the 'graph' to the event file.
-writer = tf.train.SummaryWriter(<some-directory>, sess.graph)
+writer = tf.summary.FileWriter(<some-directory>, sess.graph)
 ```
 
 The other arguments to the constructor control the asynchronous writes to
@@ -199,6 +199,37 @@ Can be called after `close()` to add more events in the same directory.
 The events will go into a new events file.
 
 Does nothing if the EventFileWriter was not closed.
+
+
+
+- - -
+
+### `class tf.summary.FileWriterCache` {#FileWriterCache}
+
+Cache for file writers.
+
+This class caches file writers, one per directory.
+- - -
+
+#### `tf.summary.FileWriterCache.clear()` {#FileWriterCache.clear}
+
+Clear cached summary writers. Currently only used for unit tests.
+
+
+- - -
+
+#### `tf.summary.FileWriterCache.get(logdir)` {#FileWriterCache.get}
+
+Returns the FileWriter for the specified directory.
+
+##### Args:
+
+
+*  <b>`logdir`</b>: str, name of the directory.
+
+##### Returns:
+
+  A `FileWriter`.
 
 
 

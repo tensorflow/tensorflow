@@ -293,7 +293,7 @@ packages needed by TensorFlow.
 *  Activate the conda environment and install TensorFlow in it.
 *  After the install you will activate the conda environment each time you
    want to use TensorFlow.
-*  Optionally install ipython and other packages into the conda environment
+*  Optionally install ipython and other packages into the conda environment.
 
 Install Anaconda:
 

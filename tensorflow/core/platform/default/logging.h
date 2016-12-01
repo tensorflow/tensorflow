@@ -67,6 +67,8 @@ class LogMessageFatal : public LogMessage {
 #define _TF_LOG_FATAL \
   ::tensorflow::internal::LogMessageFatal(__FILE__, __LINE__)
 
+#define _TF_LOG_QFATAL _TF_LOG_FATAL
+
 #define LOG(severity) _TF_LOG_##severity
 
 // TODO(jeff): Define a proper implementation of VLOG_IS_ON

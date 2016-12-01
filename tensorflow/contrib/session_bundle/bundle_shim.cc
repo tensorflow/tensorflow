@@ -127,10 +127,16 @@ Status ConvertNamedSignaturesToSignatureDef(const Signatures& signatures,
     AddOutputToSignatureDef(map_entry.second.tensor_name(), map_entry.first,
                             &signature_def);
   }
-  // Add the `default` key to the signature def map of the meta graph def and
-  // map it to the constructed signature def.
-  (*meta_graph_def->mutable_signature_def())[kDefaultServingSignatureDefKey] =
-      signature_def;
+  // Add the constructed signature def to the signature def map of the meta
+  // graph def. Use the default key if it isn't already in use.
+  const bool already_has_default_signature =
+      meta_graph_def->signature_def().find(kDefaultServingSignatureDefKey) !=
+      meta_graph_def->signature_def().end();
+  const string signature_def_key =
+      already_has_default_signature
+          ? strings::StrCat(kDefaultServingSignatureDefKey, "_from_named")
+          : kDefaultServingSignatureDefKey;
+  (*meta_graph_def->mutable_signature_def())[signature_def_key] = signature_def;
   return Status::OK();
 }
 
@@ -138,9 +144,12 @@ Status ConvertSignaturesToSignatureDef(MetaGraphDef* meta_graph_def) {
   Signatures signatures;
   GetSignatures(*meta_graph_def, &signatures);
   if (signatures.has_default_signature()) {
-    return ConvertDefaultSignatureToSignatureDef(signatures, meta_graph_def);
-  } else if (!signatures.named_signatures().empty()) {
-    return ConvertNamedSignaturesToSignatureDef(signatures, meta_graph_def);
+    TF_RETURN_IF_ERROR(
+        ConvertDefaultSignatureToSignatureDef(signatures, meta_graph_def));
+  }
+  if (!signatures.named_signatures().empty()) {
+    TF_RETURN_IF_ERROR(
+        ConvertNamedSignaturesToSignatureDef(signatures, meta_graph_def));
   }
   return Status::OK();
 }

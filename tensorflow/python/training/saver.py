@@ -36,7 +36,6 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import file_io
@@ -60,6 +59,23 @@ _VARIABLE_OPS = set(["Variable",
                      "AutoReloadVariable",
                      "ReadVariableOp",
                      "ResourceGather"])
+
+
+def _set_cpu0(device_string):
+  """Creates a new device string based on `device_string` but using /CPU:0.
+
+  If the device is already on /CPU:0, this is a no-op.
+
+  Args:
+    device_string: A device string.
+
+  Returns:
+    A device string.
+  """
+  parsed_device = pydev.DeviceSpec.from_string(device_string)
+  parsed_device.device_type = "CPU"
+  parsed_device.device_index = 0
+  return parsed_device.to_string()
 
 
 class BaseSaverBuilder(object):
@@ -380,8 +396,7 @@ class BaseSaverBuilder(object):
       # available on the GPU.
       # TODO(touts): Re-enable restore on GPU when we can support annotating
       # string tensors as "HostMemory" inputs.
-      with ops.device(
-          graph_util.set_cpu0(saveable.device) if saveable.device else None):
+      with ops.device(_set_cpu0(saveable.device) if saveable.device else None):
         with ops.control_dependencies(restore_control_inputs):
           tensors = self.restore_op(filename_tensor, saveable, preferred_shard)
           shapes = None

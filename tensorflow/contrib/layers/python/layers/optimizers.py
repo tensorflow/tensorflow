@@ -360,7 +360,7 @@ def adaptive_clipping_fn(std_factor=2.,
       summary.scalar("global_norm/adaptive_max_gradient_norm", max_norm)
 
     # factor will be 1. if norm is smaller than max_norm
-    factor = math_ops.select(norm < max_norm,
+    factor = array_ops.where(norm < max_norm,
                              array_ops.ones_like(norm),
                              math_ops.exp(log_mean) / norm)
 

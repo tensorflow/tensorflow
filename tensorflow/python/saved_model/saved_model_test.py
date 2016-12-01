@@ -27,8 +27,8 @@ from tensorflow.python.lib.io import file_io
 from tensorflow.python.saved_model import builder as saved_model_builder
 from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import loader
+from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
-from tensorflow.python.saved_model import utils
 from tensorflow.python.util import compat
 
 
@@ -315,7 +315,8 @@ class SavedModelTest(tf.test.TestCase):
     with self.test_session(graph=tf.Graph()) as sess:
       self._init_and_validate_variable(sess, "v", 42)
       # Build and populate an empty SignatureDef for testing.
-      foo_signature = utils.build_signature_def(dict(), dict(), "foo")
+      foo_signature = signature_def_utils.build_signature_def(
+          dict(), dict(), "foo")
       builder.add_meta_graph_and_variables(
           sess, ["foo"], signature_def_map={"foo_key": foo_signature})
 
@@ -324,10 +325,12 @@ class SavedModelTest(tf.test.TestCase):
     with self.test_session(graph=tf.Graph()) as sess:
       self._init_and_validate_variable(sess, "v", 43)
       # Build and populate a different SignatureDef for testing.
-      bar_signature = utils.build_signature_def(dict(), dict(), "bar")
+      bar_signature = signature_def_utils.build_signature_def(
+          dict(), dict(), "bar")
       # Also, build a different SignatureDef corresponding to "foo_key" defined
       # in the previous graph.
-      foo_new_signature = utils.build_signature_def(dict(), dict(), "foo_new")
+      foo_new_signature = signature_def_utils.build_signature_def(
+          dict(), dict(), "foo_new")
       builder.add_meta_graph(
           ["bar"],
           signature_def_map={"bar_key": bar_signature,

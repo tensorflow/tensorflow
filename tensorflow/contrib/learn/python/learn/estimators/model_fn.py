@@ -49,12 +49,32 @@ class ModeKeys(object):
 # TODO(roumposg): Pass output_signature_fn instead of signature_fn.
 class ModelFnOps(collections.namedtuple(
     'ModelFnOps',
-    ['predictions', 'loss', 'train_op', 'eval_metric_ops', 'signature_fn'])):
+    ['predictions', 'loss', 'train_op', 'eval_metric_ops', 'signature_fn',
+     'output_alternatives'])):
   """Ops returned from a model_fn."""
 
+  # TODO(soergel): remove signature_fn once sessionbundle export is deprecated.
+
   def __new__(cls, mode, predictions=None, loss=None, train_op=None,
-              eval_metric_ops=None, signature_fn=None):
+              eval_metric_ops=None, signature_fn=None,
+              output_alternatives=None):
     """Creates a validated `ModelFnOps` instance.
+
+    For a multi-headed model, the predictions dict here will contain the outputs
+    of all of the heads.  However: at serving time, requests will be made
+    specifically for one or more heads, and the RPCs used for these requests may
+    differ by problem type (i.e., regression, classification, other).  The
+    purpose of the output_alternatives dict is to aid in exporting a SavedModel
+    from which such head-specific queries can be served.  These
+    output_alternatives will be combined with input_alternatives (see
+    `saved_model_export_utils`) to produce a set of `SignatureDef`s specifying
+    the valid requests that can be served from this model.
+
+    For a single-headed model, it is still adviseable to provide
+    output_alternatives with a single entry, because this is how the problem
+    type is communicated for export and serving.  If output_alternatives is not
+    given, the resulting SavedModel will support only one head of unspecified
+    type.
 
     Args:
       mode: One of `ModeKeys`. Specifies if this training, evaluation or
@@ -65,6 +85,14 @@ class ModelFnOps(collections.namedtuple(
       eval_metric_ops: Dict of metric results keyed by name. The values of the
         dict are the results of calling a metric function, such as `Tensor`.
       signature_fn: The signature_fn used for exporting.
+      output_alternatives: a dict of
+        `{submodel_name: (problem_type, {tensor_name: Tensor})}`, where
+        `submodel_name` is a submodel identifier that should be consistent
+        across the pipeline (here likely taken from the name of each `Head`,
+        for models that use them), `problem_type` is a `ProblemType`,
+        `tensor_name` is a symbolic name for an output Tensor possibly but not
+        necessarily taken from `PredictionKey`, and `Tensor` is the
+        corresponding output Tensor itself.
 
     Returns:
       A validated `ModelFnOps` object.
@@ -122,4 +150,5 @@ class ModelFnOps(collections.namedtuple(
         raise ValueError('signature_fn is not callable.')
 
     return super(ModelFnOps, cls).__new__(cls, predictions, loss, train_op,
-                                          eval_metric_ops, signature_fn)
+                                          eval_metric_ops, signature_fn,
+                                          output_alternatives)

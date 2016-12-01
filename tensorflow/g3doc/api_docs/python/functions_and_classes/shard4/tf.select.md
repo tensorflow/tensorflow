@@ -1,4 +1,4 @@
-### `tf.select(condition, t, e, name=None)` {#select}
+### `tf.select(*args, **kwargs)` {#select}
 
 Selects elements from `t` or `e`, depending on `condition`.
 

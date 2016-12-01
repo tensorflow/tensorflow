@@ -628,7 +628,7 @@ class Convolution2dTransposeTests(tf.test.TestCase):
         self.assertListEqual(list(output.eval().shape), expected_size)
 
   def testOutputSizeWithStrideOneValidPaddingNCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True) as sess:
         num_filters = 32
         input_size = [5, 3, 10, 12]
@@ -644,7 +644,7 @@ class Convolution2dTransposeTests(tf.test.TestCase):
         self.assertListEqual(list(output.eval().shape), expected_size)
 
   def testOutputSizeWithStrideTwoValidPaddingNCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True) as sess:
         num_filters = 32
         input_size = [5, 3, 9, 11]
@@ -661,7 +661,7 @@ class Convolution2dTransposeTests(tf.test.TestCase):
         self.assertListEqual(list(output.eval().shape), expected_size)
 
   def testOutputSizeWith1x1StrideTwoSamePaddingNCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True) as sess:
         num_filters = 1
         input_size = [1, 1, 1, 1]
@@ -678,7 +678,7 @@ class Convolution2dTransposeTests(tf.test.TestCase):
         self.assertListEqual(list(output.eval().shape), expected_size)
 
   def testOutputSizeWith1x1StrideTwoValidPaddingNCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True) as sess:
         num_filters = 1
         input_size = [1, 1, 1, 1]
@@ -693,7 +693,7 @@ class Convolution2dTransposeTests(tf.test.TestCase):
         self.assertListEqual(list(output.eval().shape), expected_size)
 
   def testOutputSizeWith2x2StrideTwoSamePaddingNCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True) as sess:
         num_filters = 1
         input_size = [1, 1, 2, 2]
@@ -708,7 +708,7 @@ class Convolution2dTransposeTests(tf.test.TestCase):
         self.assertListEqual(list(output.eval().shape), expected_size)
 
   def testOutputSizeWith2x2StrideTwoValidPaddingNCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True) as sess:
         num_filters = 1
         input_size = [1, 1, 2, 2]
@@ -723,7 +723,7 @@ class Convolution2dTransposeTests(tf.test.TestCase):
         self.assertListEqual(list(output.eval().shape), expected_size)
 
   def testOutputSizeWithStride2x1NCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True) as sess:
         num_filters = 1
         input_size = [1, 1, 3, 2]
@@ -738,7 +738,7 @@ class Convolution2dTransposeTests(tf.test.TestCase):
         self.assertListEqual(list(output.eval().shape), expected_size)
 
   def testOutputSizeWithStride2x4NCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True) as sess:
         num_filters = 1
         input_size = [1, 1, 3, 2]
@@ -753,7 +753,7 @@ class Convolution2dTransposeTests(tf.test.TestCase):
         self.assertListEqual(list(output.eval().shape), expected_size)
 
   def testOutputSizeWithStride2x5NCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True) as sess:
         num_filters = 1
         input_size = [1, 1, 3, 2]
@@ -1181,7 +1181,6 @@ class DropoutTest(tf.test.TestCase):
       is_training = tf.constant(True)
       images = tf.random_uniform((5, height, width, 3), seed=1)
       output = tf.contrib.layers.dropout(images, is_training=is_training)
-      self.assertEqual(output.op.name, 'Dropout/dropout/mul')
       output.get_shape().assert_is_compatible_with(images.get_shape())
 
   def testCreateDropoutWithConstantFalse(self):
@@ -1190,7 +1189,6 @@ class DropoutTest(tf.test.TestCase):
       is_training = tf.constant(False)
       images = tf.random_uniform((5, height, width, 3), seed=1)
       output = tf.contrib.layers.dropout(images, is_training=is_training)
-      self.assertEqual(output.op.name, 'Dropout/Identity')
       output.get_shape().assert_is_compatible_with(images.get_shape())
 
   def testCreateDropoutWithPlaceholder(self):
@@ -1220,8 +1218,8 @@ class DropoutTest(tf.test.TestCase):
       num_elem = tf.reduce_mean(tf.to_float(output > 0))
       sess.run(tf.global_variables_initializer())
       num_elem, num_elem_initial = sess.run([num_elem, num_elem_initial])
-      self.assertLess(num_elem, num_elem_initial/2 + 0.1)
-      self.assertGreater(num_elem, num_elem_initial/2 - 0.1)
+      self.assertLess(num_elem, num_elem_initial / 2 + 0.1)
+      self.assertGreater(num_elem, num_elem_initial / 2 - 0.1)
 
   def testCreateDropoutNoTraining(self):
     height, width = 3, 3
@@ -1246,8 +1244,8 @@ class DropoutTest(tf.test.TestCase):
       num_elem = tf.reduce_mean(tf.to_float(output > 0))
       sess.run(tf.global_variables_initializer())
       num_elem, num_elem_initial = sess.run([num_elem, num_elem_initial])
-      self.assertLess(num_elem, num_elem_initial/2 + 0.1)
-      self.assertGreater(num_elem, num_elem_initial/2 - 0.1)
+      self.assertLess(num_elem, num_elem_initial / 2 + 0.1)
+      self.assertGreater(num_elem, num_elem_initial / 2 - 0.1)
 
   def testCreateFCWithDropout(self):
     height, width = 3, 3

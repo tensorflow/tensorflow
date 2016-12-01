@@ -1218,8 +1218,8 @@ def crelu(features, name=None):
   """
   with ops.name_scope(name, "CRelu", [features]) as name:
     features = ops.convert_to_tensor(features, name="features")
-    return gen_nn_ops.relu(array_ops.concat(array_ops.rank(features) - 1,
-                                            [features, -features], name=name))
+    c = array_ops.concat(-1, [features, -features], name=name)
+    return gen_nn_ops.relu(c)
 
 
 def relu6(features, name=None):

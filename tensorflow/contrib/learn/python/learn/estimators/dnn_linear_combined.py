@@ -26,7 +26,9 @@ import six
 from tensorflow.contrib import layers
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
+from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
+from tensorflow.contrib.layers.python.layers import feature_column as feature_column_lib
 from tensorflow.contrib.layers.python.layers import feature_column_ops
 from tensorflow.contrib.layers.python.layers import optimizers
 from tensorflow.contrib.learn.python.learn import evaluable
@@ -365,6 +367,31 @@ def _add_hidden_layer_summary(value, tag):
   logging_ops.histogram_summary("%s:activation" % tag, value)
 
 
+def _get_embedding_variable(column, collection_key, input_layer_scope):
+  return ops.get_collection(collection_key,
+                            input_layer_scope + "/" + column.name)
+
+
+def _extract_embedding_lr_multipliers(embedding_lr_multipliers, collection_key,
+                                      input_layer_scope):
+  """Converts embedding lr multipliers to variable based gradient multiplier."""
+  if not embedding_lr_multipliers:
+    return None
+  gradient_multipliers = {}
+  for column, lr_mult in embedding_lr_multipliers.items():
+    if not isinstance(column, feature_column_lib._EmbeddingColumn):  # pylint: disable=protected-access
+      raise ValueError(
+          "learning rate multipler can only be defined for embedding columns. "
+          "It is defined for {}".format(column))
+    embedding = _get_embedding_variable(
+        column, collection_key, input_layer_scope)
+    if not embedding:
+      raise ValueError("Couldn't find a variable for column {}".format(column))
+    for v in embedding:
+      gradient_multipliers[v] = lr_mult
+  return gradient_multipliers
+
+
 def _dnn_linear_combined_model_fn(features, labels, mode, params):
   """Deep Neural Net and Linear combined model_fn.
 
@@ -396,6 +423,9 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params):
       * gradient_clip_norm: A float > 0. If provided, gradients are
           clipped to their global norm with this clipping ratio.
       * num_ps_replicas: The number of parameter server replicas.
+      * embedding_lr_multipliers: Optional. A dictionary from
+        `EmbeddingColumn` to a `float` multiplier. Multiplier will be used to
+        multiply with learning rate for the embedding variables.
 
   Returns:
     `ModelFnOps`
@@ -414,7 +444,8 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params):
   dnn_activation_fn = params.get("dnn_activation_fn")
   dnn_dropout = params.get("dnn_dropout")
   gradient_clip_norm = params.get("gradient_clip_norm")
-  num_ps_replicas = params["num_ps_replicas"]
+  num_ps_replicas = params.get("num_ps_replicas", 0)
+  embedding_lr_multipliers = params.get("embedding_lr_multipliers", {})
 
   if not linear_feature_columns and not dnn_feature_columns:
     raise ValueError(
@@ -432,8 +463,9 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params):
         partitioned_variables.min_max_variable_partitioner(
             max_partitions=num_ps_replicas,
             min_slice_size=64 << 20))
+    input_layer_scope = dnn_parent_scope + "/input_from_feature_columns"
     with variable_scope.variable_scope(
-        dnn_parent_scope + "/input_from_feature_columns",
+        input_layer_scope,
         values=features.values(),
         partitioner=input_layer_partitioner) as scope:
       net = layers.input_from_feature_columns(
@@ -521,6 +553,9 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params):
               global_step=contrib_variables.get_global_step(),
               learning_rate=_DNN_LEARNING_RATE,
               optimizer=_get_optimizer(dnn_optimizer),
+              gradient_multipliers=_extract_embedding_lr_multipliers(  # pylint: disable=protected-access
+                  embedding_lr_multipliers, dnn_parent_scope,
+                  input_layer_scope),
               clip_gradients=gradient_clip_norm,
               variables=ops.get_collection(dnn_parent_scope),
               name=dnn_parent_scope,
@@ -612,7 +647,8 @@ class DNNLinearCombinedClassifier(evaluable.Evaluable, trainable.Trainable):
                gradient_clip_norm=None,
                enable_centered_bias=False,
                config=None,
-               feature_engineering_fn=None):
+               feature_engineering_fn=None,
+               embedding_lr_multipliers=None):
     """Constructs a DNNLinearCombinedClassifier instance.
 
     Args:
@@ -656,6 +692,9 @@ class DNNLinearCombinedClassifier(evaluable.Evaluable, trainable.Trainable):
                         labels which are the output of `input_fn` and
                         returns features and labels which will be fed
                         into the model.
+      embedding_lr_multipliers: Optional. A dictionary from `EmbeddingColumn` to
+          a `float` multiplier. Multiplier will be used to multiply with
+          learning rate for the embedding variables.
 
     Raises:
       ValueError: If `n_classes` < 2.
@@ -695,6 +734,7 @@ class DNNLinearCombinedClassifier(evaluable.Evaluable, trainable.Trainable):
             "dnn_dropout": dnn_dropout,
             "gradient_clip_norm": gradient_clip_norm,
             "num_ps_replicas": config.num_ps_replicas if config else 0,
+            "embedding_lr_multipliers": embedding_lr_multipliers,
         },
         feature_engineering_fn=feature_engineering_fn)
 
@@ -827,6 +867,22 @@ class DNNLinearCombinedClassifier(evaluable.Evaluable, trainable.Trainable):
                       export.classification_signature_fn_with_prob),
         prediction_key=prediction_key.PredictionKey.PROBABILITIES,
         default_batch_size=default_batch_size,
+        exports_to_keep=exports_to_keep)
+
+  @experimental
+  def export_savedmodel(self,
+                        export_dir_base,
+                        input_fn,
+                        default_output_alternative_key=None,
+                        assets_extra=None,
+                        as_text=False,
+                        exports_to_keep=None):
+    return self._estimator.export_savedmodel(
+        export_dir_base,
+        input_fn,
+        default_output_alternative_key=default_output_alternative_key,
+        assets_extra=assets_extra,
+        as_text=as_text,
         exports_to_keep=exports_to_keep)
 
   @property

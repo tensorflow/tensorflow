@@ -19,10 +19,10 @@ limitations under the License.
  */
 export class LabelRenderParams {
   constructor(
-      public labelAccessor: (index: number) => string,
-      public pointIndices: Float32Array, public scaleFactors: Float32Array,
-      public useSceneOpacityFlags: Int8Array, public defaultFontSize: number,
-      public fillColors: Uint8Array, public strokeColors: Uint8Array) {}
+      public pointIndices: Float32Array, public labelStrings: string[],
+      public scaleFactors: Float32Array, public useSceneOpacityFlags: Int8Array,
+      public defaultFontSize: number, public fillColors: Uint8Array,
+      public strokeColors: Uint8Array) {}
 }
 
 /** Details about the camera projection being used to render the scene. */

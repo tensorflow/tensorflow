@@ -82,7 +82,7 @@ from tensorflow.python.ops.standard_ops import *
 # pylint: enable=wildcard-import
 
 # Bring in subpackages.
-from tensorflow.python import layers
+from tensorflow.python.layers import layers
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import resources
 from tensorflow.python.ops import sdca_ops as sdca

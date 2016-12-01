@@ -93,7 +93,7 @@ def tower_loss(scope):
     # Remove 'tower_[0-9]/' from the name in case this is a multi-GPU training
     # session. This helps the clarity of presentation on tensorboard.
     loss_name = re.sub('%s_[0-9]*/' % cifar10.TOWER_NAME, '', l.op.name)
-    tf.scalar_summary(loss_name, l)
+    tf.contrib.deprecated.scalar_summary(loss_name, l)
 
   return total_loss
 
@@ -187,20 +187,22 @@ def train():
     grads = average_gradients(tower_grads)
 
     # Add a summary to track the learning rate.
-    summaries.append(tf.scalar_summary('learning_rate', lr))
+    summaries.append(tf.contrib.deprecated.scalar_summary('learning_rate', lr))
 
     # Add histograms for gradients.
     for grad, var in grads:
       if grad is not None:
         summaries.append(
-            tf.histogram_summary(var.op.name + '/gradients', grad))
+            tf.contrib.deprecated.histogram_summary(var.op.name + '/gradients',
+                                                    grad))
 
     # Apply the gradients to adjust the shared variables.
     apply_gradient_op = opt.apply_gradients(grads, global_step=global_step)
 
     # Add histograms for trainable variables.
     for var in tf.trainable_variables():
-      summaries.append(tf.histogram_summary(var.op.name, var))
+      summaries.append(
+          tf.contrib.deprecated.histogram_summary(var.op.name, var))
 
     # Track the moving averages of all trainable variables.
     variable_averages = tf.train.ExponentialMovingAverage(
@@ -214,7 +216,7 @@ def train():
     saver = tf.train.Saver(tf.all_variables())
 
     # Build the summary operation from the last tower summaries.
-    summary_op = tf.merge_summary(summaries)
+    summary_op = tf.contrib.deprecated.merge_summary(summaries)
 
     # Build an initialization operation to run below.
     init = tf.global_variables_initializer()
@@ -230,7 +232,7 @@ def train():
     # Start the queue runners.
     tf.train.start_queue_runners(sess=sess)
 
-    summary_writer = tf.train.SummaryWriter(FLAGS.train_dir, sess.graph)
+    summary_writer = tf.summary.FileWriter(FLAGS.train_dir, sess.graph)
 
     for step in xrange(FLAGS.max_steps):
       start_time = time.time()

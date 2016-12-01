@@ -687,6 +687,7 @@
 * **[Summary Operations](../../api_docs/python/summary.md)**:
   * [`audio`](../../api_docs/python/summary.md#audio)
   * [`FileWriter`](../../api_docs/python/summary.md#FileWriter)
+  * [`FileWriterCache`](../../api_docs/python/summary.md#FileWriterCache)
   * [`get_summary_description`](../../api_docs/python/summary.md#get_summary_description)
   * [`histogram`](../../api_docs/python/summary.md#histogram)
   * [`image`](../../api_docs/python/summary.md#image)
@@ -957,7 +958,6 @@
   * [`sparse_column_with_hash_bucket`](../../api_docs/python/contrib.layers.md#sparse_column_with_hash_bucket)
   * [`sparse_column_with_integerized_feature`](../../api_docs/python/contrib.layers.md#sparse_column_with_integerized_feature)
   * [`sparse_column_with_keys`](../../api_docs/python/contrib.layers.md#sparse_column_with_keys)
-  * [`stack`](../../api_docs/python/contrib.layers.md#stack)
   * [`sum_regularizer`](../../api_docs/python/contrib.layers.md#sum_regularizer)
   * [`summarize_activation`](../../api_docs/python/contrib.layers.md#summarize_activation)
   * [`summarize_activations`](../../api_docs/python/contrib.layers.md#summarize_activations)

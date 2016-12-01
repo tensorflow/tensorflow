@@ -23,6 +23,7 @@ import contextlib
 from tensorflow.contrib import framework as contrib_framework
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import linalg_ops
 
 __all__ = ["LinearOperator"]
 
@@ -114,6 +115,19 @@ class LinearOperator(object):
   ### Performance
 
   FILL THIS IN
+
+  ### Matrix property hints
+
+  This `LinearOperator` is initialized with boolean flags of the form `is_X`,
+  for `X = non_singular, self_adjoint` etc...
+  These have the following meaning
+  * If `is_X == True`, callers should expect the operator to have the
+    property `X`.  This is a promise that should be fulfilled, but is *not* a
+    runtime assert.  For example, finite floating point precision may result
+    in these promises being violated.
+  * If `is_X == False`, callers should expect the operator to not have `X`.
+  * If `is_X == None` (the default), callers should have no expectation either
+    way.
   """
 
   def __init__(self,
@@ -123,20 +137,10 @@ class LinearOperator(object):
                is_self_adjoint=None,
                is_positive_definite=None,
                name=None):
-    """Initialize the `LinearOperator`.
+    r"""Initialize the `LinearOperator`.
 
     **This is a private method for subclass use.**
     **Subclasses should copy-paste this `__init__` documentation.**
-
-    For `X = non_singular, self_adjoint` etc...
-    `is_X` is a Python `bool` initialization argument with the following meaning
-    * If `is_X == True`, callers should expect the operator to have the
-      attribute `X`.  This is a promise that should be fulfilled, but is *not* a
-      runtime assert.  Issues, such as floating point error, could mean the
-      operator violates this promise.
-    * If `is_X == False`, callers should expect the operator to not have `X`.
-    * If `is_X == None` (the default), callers should have no expectation either
-      way.
 
     Args:
       dtype: The type of the this `LinearOperator`.  Arguments to `apply` and
@@ -146,18 +150,21 @@ class LinearOperator(object):
       is_non_singular:  Expect that this operator is non-singular.
       is_self_adjoint:  Expect that this operator is equal to its hermitian
         transpose.  If `dtype` is real, this is equivalent to being symmetric.
-      is_positive_definite:  Expect that this operator is positive definite.
-      name: A name for this `LinearOperator`. Default: subclass name.
+      is_positive_definite:  Expect that this operator is positive definite,
+        meaning the real part of all eigenvalues is positive.  We do not require
+        the operator to be self-adjoint to be positive-definite.  See:
+        https://en.wikipedia.org/wiki/Positive-definite_matrix\
+            #Extension_for_non_symmetric_matrices
+      name: A name for this `LinearOperator`.
 
     Raises:
       ValueError: if any member of graph_parents is `None` or not a `Tensor`.
     """
-    if is_positive_definite and not is_self_adjoint:
-      raise ValueError(
-          "A positive definite matrix is by definition self adjoint")
-    if is_positive_definite and not is_non_singular:
-      raise ValueError(
-          "A positive definite matrix is by definition non-singular")
+    # Check and auto-set flags.
+    if is_positive_definite:
+      if is_non_singular is False:
+        raise ValueError("A positive definite matrix is always non-singular.")
+      is_non_singular = True
 
     graph_parents = [] if graph_parents is None else graph_parents
     for i, t in enumerate(graph_parents):
@@ -384,9 +391,27 @@ class LinearOperator(object):
     raise NotImplementedError("assert_positive_definite is not implemented.")
 
   def assert_positive_definite(self, name="assert_positive_definite"):
-    """Returns an `Op` that asserts this operator is positive definite."""
+    """Returns an `Op` that asserts this operator is positive definite.
+
+    Here, positive definite means the real part of all eigenvalues is positive.
+    We do not require the operator to be self-adjoint.
+
+    Args:
+      name:  A name to give this `Op`.
+
+    Returns:
+      An `Op` that asserts this operator is positive definite.
+    """
     with self._name_scope(name):
       return self._assert_positive_definite()
+
+  def _assert_self_adjoint(self):
+    raise NotImplementedError("assert_self_adjoint is not implemented.")
+
+  def assert_self_adjoint(self, name="assert_self_adjoint"):
+    """Returns an `Op` that asserts this operator is self-adjoint."""
+    with self._name_scope(name):
+      return self._assert_self_adjoint()
 
   def _apply(self, x, adjoint=False):
     raise NotImplementedError("_apply is not implemented.")
@@ -485,9 +510,38 @@ class LinearOperator(object):
       return self._solve(rhs, adjoint=adjoint)
 
   def _to_dense(self):
-    raise NotImplementedError("_to_dense is not implemented.")
+    """Generic and often inefficient implementation.  Override often."""
+    if self.batch_shape.is_fully_defined():
+      batch_shape = self.batch_shape
+    else:
+      batch_shape = self.batch_shape_dynamic()
+
+    if self.domain_dimension.value is not None:
+      n = self.domain_dimension.value
+    else:
+      n = self.domain_dimension_dynamic()
+
+    eye = linalg_ops.eye(num_rows=n, batch_shape=batch_shape, dtype=self.dtype)
+    return self.apply(eye)
 
   def to_dense(self, name="to_dense"):
     """Return a dense (batch) matrix representing this operator."""
     with self._name_scope(name):
       return self._to_dense()
+
+  def _add_to_tensor(self, x):
+    raise NotImplementedError("_add_to_tensor is not implemented.")
+
+  def add_to_tensor(self, x, name="add_to_tensor"):
+    """Add matrix represented by this operator to `x`.  Equivalent to `A + x`.
+
+    Args:
+      x:  `Tensor` with same `dtype` and shape broadcastable to `self.shape`.
+      name:  A name to give this `Op`.
+
+    Returns:
+      A `Tensor` with broadcast shape and same `dtype` as `self`.
+    """
+    with self._name_scope(name, values=[x]):
+      x = ops.convert_to_tensor(x, name="x")
+      return self._add_to_tensor(x)
