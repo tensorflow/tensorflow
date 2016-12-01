@@ -314,16 +314,16 @@ class _RegressionHead(_Head):
     train_op = None
     eval_metric_ops = None
     if (mode != model_fn.ModeKeys.INFER) and (labels is not None):
-      labels = _check_labels(labels, self._label_name)
+      labels_tensor = _to_labels_tensor(labels, self._label_name)
       loss = _training_loss(
-          features, labels, logits,
+          features, labels_tensor, logits,
           loss_fn=self._loss_fn,
           weight_column_name=self._weight_column_name,
           head_name=self._head_name)
       if (mode == model_fn.ModeKeys.TRAIN) and (train_op_fn is not None):
         train_op = _train_op(
-            loss, labels, train_op_fn, centered_bias, self.logits_dimension,
-            self._loss_fn)
+            loss, labels_tensor, train_op_fn, centered_bias,
+            self.logits_dimension, self._loss_fn)
       eval_metric_ops = _eval_metric_ops(
           self._default_metrics(), features, labels, predictions)
 
@@ -440,16 +440,16 @@ class _BinaryLogisticHead(_Head):
     train_op = None
     eval_metric_ops = None
     if (mode != model_fn.ModeKeys.INFER) and (labels is not None):
-      labels = _check_labels(labels, self._label_name)
+      labels_tensor = _to_labels_tensor(labels, self._label_name)
       loss = _training_loss(
-          features, labels, logits,
+          features, labels_tensor, logits,
           loss_fn=self._loss_fn,
           weight_column_name=self._weight_column_name,
           head_name=self._head_name)
       if (mode == model_fn.ModeKeys.TRAIN) and (train_op_fn is not None):
         train_op = _train_op(
-            loss, labels, train_op_fn, centered_bias, self.logits_dimension,
-            self._loss_fn)
+            loss, labels_tensor, train_op_fn, centered_bias,
+            self.logits_dimension, self._loss_fn)
       eval_metric_ops = _eval_metric_ops(
           self._default_metrics(), features, labels, predictions)
 
@@ -625,16 +625,16 @@ class _MultiClassHead(_Head):
     train_op = None
     eval_metric_ops = None
     if (mode != model_fn.ModeKeys.INFER) and (labels is not None):
-      labels = _check_labels(labels, self._label_name)
+      labels_tensor = _to_labels_tensor(labels, self._label_name)
       loss = _training_loss(
-          features, labels, logits,
+          features, labels_tensor, logits,
           loss_fn=self._loss_fn,
           weight_column_name=self._weight_column_name,
           head_name=self._head_name)
       if (mode == model_fn.ModeKeys.TRAIN) and (train_op_fn is not None):
         train_op = _train_op(
-            loss, labels, train_op_fn, centered_bias, self._logits_dimension,
-            self._loss_fn)
+            loss, labels_tensor, train_op_fn, centered_bias,
+            self._logits_dimension, self._loss_fn)
       eval_metric_ops = _eval_metric_ops(
           self._default_metrics(), features, labels, predictions)
 
@@ -706,7 +706,7 @@ class _MultiClassHead(_Head):
     return metrics
 
 
-def _check_labels(labels, label_name):
+def _to_labels_tensor(labels, label_name):
   labels = labels[label_name] if isinstance(labels, dict) else labels
   if isinstance(labels, sparse_tensor.SparseTensor):
     raise ValueError("SparseTensor is not supported as labels.")
