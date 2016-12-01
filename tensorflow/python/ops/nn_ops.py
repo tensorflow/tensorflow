@@ -1008,7 +1008,6 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
 def atrous_conv2d_transpose(value,
                             filter,
                             rate,
-                            strides,
                             padding="SAME",
                             name=None):
   with ops.name_scope(name, "atrous_conv2d_transpose",
@@ -1098,7 +1097,7 @@ def atrous_conv2d_transpose(value,
     value = gen_nn_ops.conv2d_backprop_input(input_sizes=output_shape_temp_,
                                              filter=filter,
                                              out_backprop=value,
-                                             strides=strides,
+                                             strides=[1, 1, 1, 1],
                                              padding=padding,
                                              name=name)
     batch_to_space_crop = [[0, pad_bottom_extra], [0, pad_right_extra]]
