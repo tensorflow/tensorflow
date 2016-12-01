@@ -241,6 +241,17 @@ class SaverTest(tf.test.TestCase):
       # The names are different and will work.
       tf.train.Saver({"vee1": v1, "other": [v2]})
 
+      # Partitioned variables also cause name conflicts.
+      p_v1 = tf.get_variable(
+          "p_v1", shape=[4, 5],
+          partitioner=tf.fixed_size_partitioner(num_shards=2))
+      p_v2 = tf.get_variable(
+          "p_v2", shape=[4, 5],
+          partitioner=tf.fixed_size_partitioner(num_shards=2))
+      p_v2._name = "p_v1"
+      with self.assertRaisesRegexp(ValueError, "same name: p_v1"):
+        tf.train.Saver([p_v1, p_v2])
+
   def testSameName(self):
     with tf.Graph().as_default():
       v0 = tf.Variable([10.0], name="v0")
@@ -648,67 +659,98 @@ class SaveRestoreShardedTest(tf.test.TestCase):
     # Allows save/restore mechanism to work w/ different slicings.
     var_name = "my_var"
     saved_path = os.path.join(_TestDir("partitioned_variables"), "ckpt")
+    call_saver_with_dict = False  # updated by test loop below
 
-    def _save(slices):
+    def _save(slices=None, partitioner=None):
       with self.test_session(graph=tf.Graph()) as sess:
         # Calls .eval() to return the ndarray that makes up the full variable.
         rnd = tf.random_uniform(var_full_shape).eval()
 
         if slices:
+          assert not partitioner
           vs = tf.create_partitioned_variables(var_full_shape,
                                                slices,
                                                rnd,
                                                name=var_name)
+        elif partitioner:
+          vs = [tf.get_variable(var_name, shape=var_full_shape,
+                                initializer=rnd,
+                                partitioner=partitioner)]
         else:
           vs = [tf.Variable(rnd, name=var_name)]
 
         tf.global_variables_initializer().run()
-        saver = tf.train.Saver(vs)
+        if call_saver_with_dict:
+          saver = tf.train.Saver({var_name: (vs if slices else vs[0])})
+        else:
+          saver = tf.train.Saver(vs)
         actual_path = saver.save(sess, saved_path)
         self.assertEqual(saved_path, actual_path)
 
         return rnd
 
-    def _restore(slices):
+    def _restore(slices=None, partitioner=None):
       with self.test_session(graph=tf.Graph()) as sess:
         if slices:
+          assert not partitioner
           new_vs = tf.create_partitioned_variables(
               var_full_shape,
               slices,
               tf.zeros(var_full_shape),  # != original contents.
               name=var_name)
+        elif partitioner:
+          new_vs = [tf.get_variable(var_name, shape=var_full_shape,
+                                    initializer=tf.zeros(var_full_shape),
+                                    partitioner=partitioner)]
         else:
           new_vs = [tf.Variable(
               tf.zeros(shape=var_full_shape),  # != original contents.
               name=var_name)]
 
         tf.global_variables_initializer().run()
-        saver = tf.train.Saver(new_vs)
+        if call_saver_with_dict:
+          saver = tf.train.Saver({var_name: (new_vs if slices else new_vs[0])})
+        else:
+          saver = tf.train.Saver(new_vs)
         saver.restore(sess, saved_path)
 
-        if slices and slices[0] != 1:
+        if partitioner:
+          return new_vs[0].as_tensor().eval()
+        elif slices and slices[0] != 1:
           return tf.concat(0, new_vs).eval()
         elif slices and slices[1] != 1:
           return tf.concat(1, new_vs).eval()
         else:  # Non-sliced.
           return new_vs[0].eval()
 
-    # Saves 10 horizontal parts of a partitioned variable.
-    # Restores into a full variable, non-sliced.
-    saved_full = _save(slices=[10, 1])
-    restored_full = _restore(slices=None)
-    self.assertAllEqual(saved_full, restored_full)
+    for call_saver_with_dict in {False, True}:
+      # Save PartitionedVariable and restore into full variable.
+      saved_full = _save(
+          partitioner=tf.fixed_size_partitioner(num_shards=2))
+      restored_full = _restore()
+      self.assertAllEqual(saved_full, restored_full)
 
-    # Restores into a different number/orientation of slices.
-    restored_full = _restore(slices=[2, 1])  # 2 horizon parts.
-    self.assertAllEqual(saved_full, restored_full)
-    restored_full = _restore(slices=[1, 3])  # 3 vertical parts.
-    self.assertAllEqual(saved_full, restored_full)
+      # Saves 10 horizontal parts of a partitioned variable.
+      # Restores into a full variable, non-sliced.
+      saved_full = _save(slices=[10, 1])
+      restored_full = _restore()
+      self.assertAllEqual(saved_full, restored_full)
 
-    # Now, saves a full variable and restores in slices.
-    saved_full = _save(slices=None)
-    restored_full = _restore(slices=[1, 3])
-    self.assertAllEqual(saved_full, restored_full)
+      # Restores into a different number/orientation of slices.
+      restored_full = _restore(slices=[2, 1])  # 2 horizon parts.
+      self.assertAllEqual(saved_full, restored_full)
+      restored_full = _restore(slices=[1, 3])  # 3 vertical parts.
+      self.assertAllEqual(saved_full, restored_full)
+
+      # Restores into a PartitionedVariable
+      restored_full = _restore(
+          partitioner=tf.fixed_size_partitioner(num_shards=2))
+      self.assertAllEqual(saved_full, restored_full)
+
+      # Now, saves a full variable and restores in slices.
+      saved_full = _save()
+      restored_full = _restore(slices=[1, 3])
+      self.assertAllEqual(saved_full, restored_full)
 
 
 class MaxToKeepTest(tf.test.TestCase):

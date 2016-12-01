@@ -500,6 +500,11 @@ class BaseSaverBuilder(object):
     for var in op_list:
       if isinstance(var, BaseSaverBuilder.SaveableObject):
         names_to_saveables[var.name] = var
+      elif isinstance(var, variables.PartitionedVariable):
+        if var.name in names_to_saveables:
+          raise ValueError("At least two variables have the same name: %s" %
+                           var.name)
+        names_to_saveables[var.name] = var
       elif isinstance(var, variables.Variable) and var._save_slice_info:
         name = var._save_slice_info.full_name
         if name in names_to_saveables:
@@ -550,7 +555,9 @@ class BaseSaverBuilder(object):
       op = names_to_saveables[name]
       if isinstance(op, BaseSaverBuilder.SaveableObject):
         self._AddSaveable(saveables, seen_ops, op)
-      elif isinstance(op, (list, tuple)):
+      elif isinstance(op, (list, tuple, variables.PartitionedVariable)):
+        if isinstance(op, variables.PartitionedVariable):
+          op = list(op)
         # A set of slices.
         slice_name = None
         # pylint: disable=protected-access
