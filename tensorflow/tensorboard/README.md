@@ -16,12 +16,12 @@ For in-depth information on the Graph Visualizer, see this tutorial: [TensorBoar
 # Usage
 
 Before running TensorBoard, make sure you have generated summary data in a log
-directory by creating a `SummaryWriter`:
+directory by creating a summary writer:
 
 ``` python
 # sess.graph_def is the graph definition; that enables the Graph Visualizer.
 
-summary_writer = tf.train.SummaryWriter('/path/to/logs', sess.graph)
+file_writer = tf.summary.FileWriter('/path/to/logs', sess.graph)
 ```
 
 For more details, see [this
@@ -64,7 +64,7 @@ a TensorFlow graph. However, summary ops have a twist: the Tensors they produce
 contain serialized protobufs, which are written to disk and sent to TensorBoard.
 To visualize the summary data in TensorBoard, you should evaluate the summary
 op, retrieve the result, and then write that result to disk using a
-SummaryWriter. A full explanation, with examples, is in [the
+summary.FileWriter. A full explanation, with examples, is in [the
 tutorial](https://www.tensorflow.org/versions/r0.11/how_tos/summaries_and_tensorboard/index.html).
 
 ### Tags: Giving names to data
@@ -77,7 +77,7 @@ a lot of tags, we recommend grouping them with slashes.
 
 ### Event Files & LogDirs: How TensorBoard loads the data
 
-`SummaryWriters` take summary data from TensorFlow, and then write them to a
+`summary.FileWriters` take summary data from TensorFlow, and then write them to a
 specified directory, known as the `logdir`. Specifically, the data is written to
 an append-only record dump that will have "tfevents" in the filename.
 TensorBoard reads data from a full directory, and organizes it into the history
@@ -228,7 +228,7 @@ only reads one file at a time. Let's suppose we have files with timestamps `a`
 and `b`, where `a<b`. Once TensorBoard has read all the events in `a`, it will
 never return to it, because it assumes any new events are being written in the
 more recent file. This could cause an issue if, for example, you have two
-`SummaryWriters` simultaneously writing to the same directory. If you have
+`FileWriters` simultaneously writing to the same directory. If you have
 multiple summary writers, each one should be writing to a separate directory.
 
 ### Does TensorBoard support multiple or distributed summary writers?
@@ -249,7 +249,7 @@ with itself, there are a few possible explanations.
 directory. Please have each TensorFlow run write to its own logdir.
 
 * You may have a have a bug in your code where the global_step variable (passed
-to `SummaryWriter.add_summary`) is being maintained incorrectly.
+to `FileWriter.add_summary`) is being maintained incorrectly.
 
 * It may be that your TensorFlow job crashed, and was restarted from an earlier
 checkpoint. See *How to handle TensorFlow restarts*, below.
@@ -301,7 +301,7 @@ have the same tag name.
 
 This isn't yet possible. As a workaround, you could create your custom plot in
 your own code (e.g. matplotlib) and then write it into an `SummaryProto`
-(`core/framework/summary.proto`) and add it to your `SummaryWriter`. Then, your
+(`core/framework/summary.proto`) and add it to your `FileWriter`. Then, your
 custom plot will appear in the TensorBoard image tab.
 
 ### Is my data being downsampled? Am I really seeing all the data?

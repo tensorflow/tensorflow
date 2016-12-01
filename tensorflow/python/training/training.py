@@ -135,17 +135,15 @@ details.
 @@merge_summary
 @@merge_all_summaries
 
-## Adding Summaries to Event Files
+## Reading Summaries from Event Files
 
 See [Summaries and
 TensorBoard](../../how_tos/summaries_and_tensorboard/index.md) for an
 overview of summaries, event files, and visualization in TensorBoard.
 
-@@SummaryWriter
-@@SummaryWriterCache
 @@summary_iterator
 
-## Training utilities
+## Training Utilities
 
 @@global_step
 @@basic_train_loop
@@ -239,8 +237,6 @@ from tensorflow.python.training.session_run_hook import SessionRunContext
 from tensorflow.python.training.session_run_hook import SessionRunValues
 from tensorflow.python.training.session_manager import SessionManager
 from tensorflow.python.training.summary_io import summary_iterator
-from tensorflow.python.training.summary_io import SummaryWriter
-from tensorflow.python.training.summary_io import SummaryWriterCache
 from tensorflow.python.training.supervisor import Supervisor
 from tensorflow.python.training.training_util import write_graph
 from tensorflow.python.training.training_util import global_step
