@@ -73,7 +73,6 @@ load(
     "tf_generate_proto_text_sources",
     "tf_genrule_cmd_append_to_srcs",
     "tf_opts_nortti_if_android",
-    "tf_proto_text_protos_relative",
     "cc_header_only_library",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
@@ -105,18 +104,61 @@ load(
 # -----------------------------------------------------------------------------
 # Public targets
 
+# Protos which are needed for core tensorflow, including on mobile builds.
+#
+# Note that some protos are in neither additional_core_proto_srcs nor this
+# filegroup; e.g.  ones with individual proto_library targets.
+CORE_PROTO_SRCS = [
+    "example/example.proto",
+    "example/feature.proto",
+    "framework/allocation_description.proto",
+    "framework/attr_value.proto",
+    "framework/cost_graph.proto",
+    "framework/device_attributes.proto",
+    "framework/function.proto",
+    "framework/graph.proto",
+    "framework/kernel_def.proto",
+    "framework/log_memory.proto",
+    "framework/node_def.proto",
+    "framework/op_def.proto",
+    "framework/resource_handle.proto",
+    "framework/step_stats.proto",
+    "framework/summary.proto",
+    "framework/tensor.proto",
+    "framework/tensor_description.proto",
+    "framework/tensor_shape.proto",
+    "framework/tensor_slice.proto",
+    "framework/types.proto",
+    "framework/versions.proto",
+    "lib/core/error_codes.proto",
+    "protobuf/config.proto",
+    "protobuf/tensor_bundle.proto",
+    "protobuf/saver.proto",
+    "util/memmapped_file_system.proto",
+    "util/saved_tensor_slice.proto",
+]
+
+# Protos which are not needed on mobile builds, but should be included in
+# protos_all.
+#
+# Note that some protos are in neither core_proto_srcs nor this filegroup; e.g.
+# ones with individual proto_library targets.
+ADDITIONAL_CORE_PROTO_SRCS = [
+    "example/example_parser_configuration.proto",
+    "framework/variable.proto",
+    "protobuf/control_flow.proto",
+    "protobuf/meta_graph.proto",
+    "protobuf/named_tensor.proto",
+    "protobuf/queue_runner.proto",
+    "protobuf/saved_model.proto",
+    "protobuf/tensorflow_server.proto",
+    "util/event.proto",
+    "util/test_log.proto",
+]
+
 tf_proto_library(
     name = "protos_all",
-    srcs = glob(
-        ["**/*.proto"],
-        exclude = [
-            "debug/debug_service.proto",
-            "protobuf/worker.proto",
-            "protobuf/worker_service.proto",
-            "protobuf/master.proto",
-            "protobuf/master_service.proto",
-        ],
-    ),
+    srcs = CORE_PROTO_SRCS + ADDITIONAL_CORE_PROTO_SRCS,
     cc_api_version = 2,
     go_api_version = 2,
     java_api_version = 2,
@@ -646,7 +688,7 @@ load(
 # List of protos we want on android
 filegroup(
     name = "android_proto_srcs",
-    srcs = tf_android_core_proto_sources(),
+    srcs = tf_android_core_proto_sources(CORE_PROTO_SRCS),
     visibility = ["//visibility:public"],
 )
 
@@ -1102,7 +1144,7 @@ cc_library(
 
 proto_text_hdrs_and_srcs = tf_generate_proto_text_sources(
     name = "proto_text_srcs_all",
-    srcs = tf_proto_text_protos_relative(),
+    srcs = CORE_PROTO_SRCS,
     srcs_relative_dir = "tensorflow/core/",
 )
 

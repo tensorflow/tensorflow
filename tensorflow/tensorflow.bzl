@@ -50,54 +50,17 @@ load(
 )
 
 # List of proto files for android builds
-def tf_android_core_proto_sources():
+def tf_android_core_proto_sources(core_proto_sources_relative):
   return ["//tensorflow/core:" + p
-          for p in tf_android_core_proto_sources_relative()]
-
-# As tf_android_core_proto_sources, but paths relative to
-# //third_party/tensorflow/core.
-def tf_android_core_proto_sources_relative():
-    return [
-        "example/example.proto",
-        "example/feature.proto",
-        "framework/allocation_description.proto",
-        "framework/attr_value.proto",
-        "framework/cost_graph.proto",
-        "framework/device_attributes.proto",
-        "framework/function.proto",
-        "framework/graph.proto",
-        "framework/kernel_def.proto",
-        "framework/log_memory.proto",
-        "framework/node_def.proto",
-        "framework/op_def.proto",
-        "framework/resource_handle.proto",
-        "framework/step_stats.proto",
-        "framework/summary.proto",
-        "framework/tensor.proto",
-        "framework/tensor_description.proto",
-        "framework/tensor_shape.proto",
-        "framework/tensor_slice.proto",
-        "framework/types.proto",
-        "framework/versions.proto",
-        "lib/core/error_codes.proto",
-        "protobuf/config.proto",
-        "protobuf/tensor_bundle.proto",
-        "protobuf/saver.proto",
-        "util/memmapped_file_system.proto",
-        "util/saved_tensor_slice.proto",
-  ]
+          for p in core_proto_sources_relative]
 
 # Returns the list of pb.h and proto.h headers that are generated for
 # tf_android_core_proto_sources().
-def tf_android_core_proto_headers():
+def tf_android_core_proto_headers(core_proto_sources_relative):
   return (["//tensorflow/core/" + p.replace(".proto", ".pb.h")
-          for p in tf_android_core_proto_sources_relative()] +
+          for p in core_proto_sources_relative] +
          ["//tensorflow/core/" + p.replace(".proto", ".proto.h")
-          for p in tf_android_core_proto_sources_relative()])
-
-# Returns the list of protos for which proto_text headers should be generated.
-def tf_proto_text_protos_relative():
-  return [p for p in tf_android_core_proto_sources_relative()]
+          for p in core_proto_sources_relative])
 
 def if_android_arm(a):
   return select({
