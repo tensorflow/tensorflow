@@ -1020,6 +1020,7 @@
 * **[Linear Algebra (contrib)](../../api_docs/python/contrib.linalg.md)**:
   * [`LinearOperator`](../../api_docs/python/contrib.linalg.md#LinearOperator)
   * [`LinearOperatorDiag`](../../api_docs/python/contrib.linalg.md#LinearOperatorDiag)
+  * [`LinearOperatorTriL`](../../api_docs/python/contrib.linalg.md#LinearOperatorTriL)
 
 * **[Losses (contrib)](../../api_docs/python/contrib.losses.md)**:
   * [`absolute_difference`](../../api_docs/python/contrib.losses.md#absolute_difference)

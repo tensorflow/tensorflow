@@ -1,21 +1,22 @@
-`LinearOperator` acting like a [batch] square diagonal matrix.
+`LinearOperator` acting like a [batch] square lower triangular matrix.
 
 This operator acts like a [batch] matrix `A` with shape
 `[B1,...,Bb, N, N]` for some `b >= 0`.  The first `b` indices index a
 batch member.  For every batch index `(i1,...,ib)`, `A[i1,...,ib, : :]` is
-an `N x N` matrix.  This matrix `A` is not materialized, but for
-purposes of broadcasting this shape will be relevant.
+an `N x N` matrix.
 
-`LinearOperatorDiag` is initialized with a (batch) vector.
+`LinearOperatorTriL` is initialized with a `Tensor` having dimensions
+`[B1,...,Bb, N, N]`. The upper triangle of the last two dimensions is ignored.
 
 ```python
-# Create a 2 x 2 diagonal linear operator.
-diag = [1., -1.]
-operator = LinearOperatorDiag(diag)
+# Create a 2 x 2 lower-triangular linear operator.
+tril = [[1., 2.], [3., 4.]]
+operator = LinearOperatorTriL(tril)
 
+# The upper triangle is ignored.
 operator.to_dense()
-==> [[1.,  0.]
-     [0., -1.]]
+==> [[1., 0.]
+     [3., 4.]]
 
 operator.shape
 ==> [2, 2]
@@ -28,8 +29,8 @@ operator.apply(x)
 ==> Shape [2, 4] Tensor
 
 # Create a [2, 3] batch of 4 x 4 linear operators.
-diag = tf.random_normal(shape=[2, 3, 4])
-operator = LinearOperatorDiag(diag)
+tril = tf.random_normal(shape=[2, 3, 4, 4])
+operator = LinearOperatorTriL(tril)
 
 # Create a shape [2, 1, 4, 2] vector.  Note that this shape is compatible
 # since the batch dimensions, [2, 1], are brodcast to
@@ -46,17 +47,16 @@ This operator acts on [batch] matrix with compatible shape.
 
 ```
 operator.shape = [B1,...,Bb] + [N, N],  with b >= 0
-x.shape =   [C1,...,Cc] + [N, R],
-and [C1,...,Cc] broadcasts with [B1,...,Bb] to [D1,...,Dd]
+x.shape =        [B1,...,Bb] + [N, R],  with R >= 0.
 ```
 
 ### Performance
 
-Suppose `operator` is a `LinearOperatorDiag` of shape `[N, N]`,
+Suppose `operator` is a `LinearOperatorTriL` of shape `[N, N]`,
 and `x.shape = [N, R]`.  Then
 
-* `operator.apply(x)` involves `N*R` multiplications.
-* `operator.solve(x)` involves `N` divisions and `N*R` multiplications.
+* `operator.apply(x)` involves `N^2 * R` multiplications.
+* `operator.solve(x)` involves `N * R` size `N` back-substitutions.
 * `operator.determinant()` involves a size `N` `reduce_prod`.
 
 If instead `operator` and `x` have shape `[B1,...,Bb, N, N]` and
@@ -76,19 +76,23 @@ These have the following meaning
   way.
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorDiag.__init__(diag, is_non_singular=None, is_self_adjoint=None, is_positive_definite=None, name='LinearOperatorDiag')` {#LinearOperatorDiag.__init__}
+#### `tf.contrib.linalg.LinearOperatorTriL.__init__(tril, is_non_singular=None, is_self_adjoint=None, is_positive_definite=None, name='LinearOperatorTriL')` {#LinearOperatorTriL.__init__}
 
-Initialize a `LinearOperatorDiag`.
+Initialize a `LinearOperatorTriL`.
 
 ##### Args:
 
 
-*  <b>`diag`</b>: Shape `[B1,...,Bb, N]` `Tensor` with `b >= 0` `N >= 0`.
-    The diagonal of the operator.  Allowed dtypes: `float32`, `float64`,
-      `complex64`, `complex128`.
+*  <b>`tril`</b>: Shape `[B1,...,Bb, N, N]` with `b >= 0`, `N >= 0`.
+    The lower triangular part of `tril` defines this operator.  The strictly
+    upper triangle is ignored.  Allowed dtypes: `float32`, `float64`.
 *  <b>`is_non_singular`</b>: Expect that this operator is non-singular.
+    This operator is non-singular if and only if its diagonal elements are
+    all non-zero.
 *  <b>`is_self_adjoint`</b>: Expect that this operator is equal to its hermitian
-    transpose.  If `diag.dtype` is real, this is auto-set to `True`.
+    transpose.  This operator is self-adjoint only if it is diagonal with
+    real-valued diagonal entries.  In this case it is advised to use
+    `LinearOperatorDiag`.
 *  <b>`is_positive_definite`</b>: Expect that this operator is positive definite,
     meaning the real part of all eigenvalues is positive.  We do not require
     the operator to be self-adjoint to be positive-definite.  See:
@@ -100,12 +104,11 @@ Initialize a `LinearOperatorDiag`.
 
 
 *  <b>`TypeError`</b>: If `diag.dtype` is not an allowed type.
-*  <b>`ValueError`</b>: If `diag.dtype` is real, and `is_self_adjoint` is not `True`.
 
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorDiag.add_to_tensor(x, name='add_to_tensor')` {#LinearOperatorDiag.add_to_tensor}
+#### `tf.contrib.linalg.LinearOperatorTriL.add_to_tensor(x, name='add_to_tensor')` {#LinearOperatorTriL.add_to_tensor}
 
 Add matrix represented by this operator to `x`.  Equivalent to `A + x`.
 
@@ -122,7 +125,7 @@ Add matrix represented by this operator to `x`.  Equivalent to `A + x`.
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorDiag.apply(x, adjoint=False, name='apply')` {#LinearOperatorDiag.apply}
+#### `tf.contrib.linalg.LinearOperatorTriL.apply(x, adjoint=False, name='apply')` {#LinearOperatorTriL.apply}
 
 Transform `x` with left multiplication:  `x --> Ax`.
 
@@ -141,14 +144,14 @@ Transform `x` with left multiplication:  `x --> Ax`.
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorDiag.assert_non_singular(name='assert_non_singular')` {#LinearOperatorDiag.assert_non_singular}
+#### `tf.contrib.linalg.LinearOperatorTriL.assert_non_singular(name='assert_non_singular')` {#LinearOperatorTriL.assert_non_singular}
 
 Returns an `Op` that asserts this operator is non singular.
 
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorDiag.assert_positive_definite(name='assert_positive_definite')` {#LinearOperatorDiag.assert_positive_definite}
+#### `tf.contrib.linalg.LinearOperatorTriL.assert_positive_definite(name='assert_positive_definite')` {#LinearOperatorTriL.assert_positive_definite}
 
 Returns an `Op` that asserts this operator is positive definite.
 
@@ -167,14 +170,14 @@ We do not require the operator to be self-adjoint.
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorDiag.assert_self_adjoint(name='assert_self_adjoint')` {#LinearOperatorDiag.assert_self_adjoint}
+#### `tf.contrib.linalg.LinearOperatorTriL.assert_self_adjoint(name='assert_self_adjoint')` {#LinearOperatorTriL.assert_self_adjoint}
 
 Returns an `Op` that asserts this operator is self-adjoint.
 
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorDiag.batch_shape` {#LinearOperatorDiag.batch_shape}
+#### `tf.contrib.linalg.LinearOperatorTriL.batch_shape` {#LinearOperatorTriL.batch_shape}
 
 `TensorShape` of batch dimensions of this `LinearOperator`.
 
@@ -189,7 +192,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorDiag.batch_shape_dynamic(name='batch_shape_dynamic')` {#LinearOperatorDiag.batch_shape_dynamic}
+#### `tf.contrib.linalg.LinearOperatorTriL.batch_shape_dynamic(name='batch_shape_dynamic')` {#LinearOperatorTriL.batch_shape_dynamic}
 
 Shape of batch dimensions of this operator, determined at runtime.
 
@@ -209,7 +212,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorDiag.determinant(name='det')` {#LinearOperatorDiag.determinant}
+#### `tf.contrib.linalg.LinearOperatorTriL.determinant(name='det')` {#LinearOperatorTriL.determinant}
 
 Determinant for every batch member.
 
@@ -225,7 +228,7 @@ Determinant for every batch member.
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorDiag.domain_dimension` {#LinearOperatorDiag.domain_dimension}
+#### `tf.contrib.linalg.LinearOperatorTriL.domain_dimension` {#LinearOperatorTriL.domain_dimension}
 
 Dimension (in the sense of vector spaces) of the domain of this operator.
 
@@ -240,7 +243,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorDiag.domain_dimension_dynamic(name='domain_dimension_dynamic')` {#LinearOperatorDiag.domain_dimension_dynamic}
+#### `tf.contrib.linalg.LinearOperatorTriL.domain_dimension_dynamic(name='domain_dimension_dynamic')` {#LinearOperatorTriL.domain_dimension_dynamic}
 
 Dimension (in the sense of vector spaces) of the domain of this operator.
 
@@ -261,42 +264,42 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorDiag.dtype` {#LinearOperatorDiag.dtype}
+#### `tf.contrib.linalg.LinearOperatorTriL.dtype` {#LinearOperatorTriL.dtype}
 
 The `DType` of `Tensor`s handled by this `LinearOperator`.
 
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorDiag.graph_parents` {#LinearOperatorDiag.graph_parents}
+#### `tf.contrib.linalg.LinearOperatorTriL.graph_parents` {#LinearOperatorTriL.graph_parents}
 
 List of graph dependencies of this `LinearOperator`.
 
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorDiag.is_non_singular` {#LinearOperatorDiag.is_non_singular}
+#### `tf.contrib.linalg.LinearOperatorTriL.is_non_singular` {#LinearOperatorTriL.is_non_singular}
 
 
 
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorDiag.is_positive_definite` {#LinearOperatorDiag.is_positive_definite}
+#### `tf.contrib.linalg.LinearOperatorTriL.is_positive_definite` {#LinearOperatorTriL.is_positive_definite}
 
 
 
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorDiag.is_self_adjoint` {#LinearOperatorDiag.is_self_adjoint}
+#### `tf.contrib.linalg.LinearOperatorTriL.is_self_adjoint` {#LinearOperatorTriL.is_self_adjoint}
 
 
 
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorDiag.log_abs_determinant(name='log_abs_det')` {#LinearOperatorDiag.log_abs_determinant}
+#### `tf.contrib.linalg.LinearOperatorTriL.log_abs_determinant(name='log_abs_det')` {#LinearOperatorTriL.log_abs_determinant}
 
 Log absolute value of determinant for every batch member.
 
@@ -312,14 +315,14 @@ Log absolute value of determinant for every batch member.
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorDiag.name` {#LinearOperatorDiag.name}
+#### `tf.contrib.linalg.LinearOperatorTriL.name` {#LinearOperatorTriL.name}
 
 Name prepended to all ops created by this `LinearOperator`.
 
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorDiag.range_dimension` {#LinearOperatorDiag.range_dimension}
+#### `tf.contrib.linalg.LinearOperatorTriL.range_dimension` {#LinearOperatorTriL.range_dimension}
 
 Dimension (in the sense of vector spaces) of the range of this operator.
 
@@ -334,7 +337,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorDiag.range_dimension_dynamic(name='range_dimension_dynamic')` {#LinearOperatorDiag.range_dimension_dynamic}
+#### `tf.contrib.linalg.LinearOperatorTriL.range_dimension_dynamic(name='range_dimension_dynamic')` {#LinearOperatorTriL.range_dimension_dynamic}
 
 Dimension (in the sense of vector spaces) of the range of this operator.
 
@@ -355,7 +358,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorDiag.shape` {#LinearOperatorDiag.shape}
+#### `tf.contrib.linalg.LinearOperatorTriL.shape` {#LinearOperatorTriL.shape}
 
 `TensorShape` of this `LinearOperator`.
 
@@ -370,7 +373,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorDiag.shape_dynamic(name='shape_dynamic')` {#LinearOperatorDiag.shape_dynamic}
+#### `tf.contrib.linalg.LinearOperatorTriL.shape_dynamic(name='shape_dynamic')` {#LinearOperatorTriL.shape_dynamic}
 
 Shape of this `LinearOperator`, determined at runtime.
 
@@ -390,7 +393,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorDiag.solve(rhs, adjoint=False, name='solve')` {#LinearOperatorDiag.solve}
+#### `tf.contrib.linalg.LinearOperatorTriL.solve(rhs, adjoint=False, name='solve')` {#LinearOperatorTriL.solve}
 
 Solve `R` (batch) systems of equations exactly: `A X = rhs`.
 
@@ -432,7 +435,7 @@ X[3, :, 2]  # Solution to the linear system A[3, :, :] X = RHS[3, :, 2]
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorDiag.tensor_rank` {#LinearOperatorDiag.tensor_rank}
+#### `tf.contrib.linalg.LinearOperatorTriL.tensor_rank` {#LinearOperatorTriL.tensor_rank}
 
 Rank (in the sense of tensors) of matrix corresponding to this operator.
 
@@ -451,7 +454,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorDiag.tensor_rank_dynamic(name='tensor_rank_dynamic')` {#LinearOperatorDiag.tensor_rank_dynamic}
+#### `tf.contrib.linalg.LinearOperatorTriL.tensor_rank_dynamic(name='tensor_rank_dynamic')` {#LinearOperatorTriL.tensor_rank_dynamic}
 
 Rank (in the sense of tensors) of matrix corresponding to this operator.
 
@@ -470,7 +473,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorDiag.to_dense(name='to_dense')` {#LinearOperatorDiag.to_dense}
+#### `tf.contrib.linalg.LinearOperatorTriL.to_dense(name='to_dense')` {#LinearOperatorTriL.to_dense}
 
 Return a dense (batch) matrix representing this operator.
 
