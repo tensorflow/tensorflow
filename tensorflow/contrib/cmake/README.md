@@ -47,7 +47,7 @@ And for GPU support:
  - RequantizationRange
  - Requantize
 
-For further details on 0.12r, see the [release notes](https://github.com/tensorflow/tensorflow/blob/master/RELEASE.md)
+For further details on 0.12r, see the [release notes](https://github.com/tensorflow/tensorflow/blob/master/RELEASE.md) and [Google Blog post](https://developers.googleblog.com/2016/11/tensorflow-0-12-adds-support-for-windows.html).
 
 ## Building with CMake
 
