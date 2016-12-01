@@ -373,10 +373,6 @@ add_python_module("tensorflow/contrib/tensor_forest/hybrid/python/ops")
 add_python_module("tensorflow/contrib/tensor_forest/python")
 add_python_module("tensorflow/contrib/tensor_forest/python/kernel_tests")
 add_python_module("tensorflow/contrib/tensor_forest/python/ops")
-add_python_module("tensorflow/contrib/tensorboard")
-add_python_module("tensorflow/contrib/tensorboard")
-add_python_module("tensorflow/contrib/tensorboard/plugins")
-add_python_module("tensorflow/contrib/tensorboard/plugins/projector")
 add_python_module("tensorflow/contrib/testing")
 add_python_module("tensorflow/contrib/testing/python")
 add_python_module("tensorflow/contrib/testing/python/framework")
@@ -577,6 +573,7 @@ target_link_libraries(pywrap_tensorflow
 add_custom_target(tf_python_build_pip_package)
 add_dependencies(tf_python_build_pip_package
     pywrap_tensorflow
+    tensorboard_copy_dependencies
     tf_python_copy_scripts_to_destination
     tf_python_touchup_modules
     tf_python_ops)
@@ -615,6 +612,9 @@ add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
 add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/tensorflow/tensorboard/TAG
                                    ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/tensorboard/)
+add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_BINARY_DIR}/tensorboard_external
+                                             ${CMAKE_CURRENT_BINARY_DIR}/tf_python/external)
 
 if(${tensorflow_ENABLE_GPU})
   add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
