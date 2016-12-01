@@ -733,6 +733,83 @@ class BatchTest(tf.test.TestCase):
     x = tf.train.batch({"c": [12, 12]}, batch_size=8)
     self.assertAllEqual((8, 2), x["c"].get_shape().as_list())
 
+  def _testKeepInputHelper(self, num_threads, enqueue_many):
+    with self.test_session() as sess:
+      batch_size = 5
+      num_batches = 4
+      examples = tf.Variable(0)
+      counter = examples.count_up_to(num_batches * batch_size * 2)
+      sparse_counter = tf.SparseTensor(
+          indices=tf.zeros([1, 1], dtype=tf.int64),
+          values=tf.stack([tf.cast(counter, tf.float32)]),
+          shape=[1])
+      to_batch = [counter, sparse_counter, "string"]
+      if enqueue_many:
+        to_batch = tf.train.batch(to_batch, 1)
+      keep_input = tf.squeeze(tf.equal(0, tf.mod(to_batch[0], 2)))
+      batched = tf.train.maybe_batch(
+          to_batch, keep_input, batch_size, num_threads=num_threads,
+          enqueue_many=enqueue_many)
+      tf.initialize_all_variables().run()
+      tf.initialize_local_variables().run()
+      threads = tf.train.start_queue_runners()
+
+      for _ in range(num_batches):
+        results = sess.run(batched)
+        self.assertAllEqual([0] * batch_size, np.mod(results[0], 2))
+        self.assertAllEqual([0] * batch_size, np.mod(results[1].values, 2))
+        self.assertAllEqual([b"string"] * batch_size, results[2])
+
+      # Reached the limit.
+      with self.assertRaises(tf.errors.OutOfRangeError):
+        sess.run(batched)
+      for thread in threads:
+        thread.join()
+
+  def testSingleThreadKeepInput(self):
+    self._testKeepInputHelper(1, False)
+
+  def testSingleThreadKeepInputEnqueueMany(self):
+    self._testKeepInputHelper(1, True)
+
+  def testMultipleThreadKeepInput(self):
+    self._testKeepInputHelper(5, False)
+
+  def testMultipleThreadKeepInputEnqueueMany(self):
+    self._testKeepInputHelper(5, True)
+
+  def testMaybeBatchedSparseTensorInferredShape(self):
+    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], shape=[1])
+    self.assertAllEqual((1,), sparse.shape.get_shape().as_list())
+    batched = tf.train.maybe_batch([sparse], keep_input=True, batch_size=2)
+    self.assertAllEqual((2,), batched.shape.get_shape().as_list())
+
+  def testMaybeBatchedSparseTensorInferredShapeEnqueueMany(self):
+    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], shape=[1])
+    self.assertAllEqual((1,), sparse.shape.get_shape().as_list())
+    batched = tf.train.maybe_batch(
+        [sparse], keep_input=True, batch_size=2, enqueue_many=True)
+    self.assertAllEqual((1,), batched.shape.get_shape().as_list())
+
+  def testMaybeBatchedSparseTensorInferredShapeUnknownRank(self):
+    sparse = tf.SparseTensor(
+        indices=tf.placeholder(tf.int64),
+        values=tf.placeholder(tf.float32),
+        shape=tf.placeholder(tf.int64))
+    self.assertIs(None, sparse.shape.get_shape().num_elements())
+    batched = tf.train.maybe_batch([sparse], keep_input=True, batch_size=2)
+    self.assertIs(None, batched.shape.get_shape().num_elements())
+
+  def testMaybeBatchedSparseTensorInferredShapeUnknownRankEnqueueMany(self):
+    sparse = tf.SparseTensor(
+        indices=tf.placeholder(tf.int64),
+        values=tf.placeholder(tf.float32),
+        shape=tf.placeholder(tf.int64))
+    self.assertIs(None, sparse.shape.get_shape().num_elements())
+    batched = tf.train.maybe_batch(
+        [sparse], keep_input=True, batch_size=2, enqueue_many=True)
+    self.assertIs(None, batched.shape.get_shape().num_elements())
+
 
 class BatchJoinTest(tf.test.TestCase):
 
@@ -1125,6 +1202,85 @@ class BatchJoinTest(tf.test.TestCase):
     x = tf.train.batch_join([{"c": [12, 12]}], batch_size=8)
     self.assertAllEqual((8, 2), x["c"].get_shape().as_list())
 
+  def _testKeepInputHelper(self, num_threads, enqueue_many):
+    with self.test_session() as sess:
+      batch_size = 5
+      num_batches = 4
+      examples = tf.Variable(0)
+      counter = examples.count_up_to(num_batches * batch_size * 2)
+      sparse_counter = tf.SparseTensor(
+          indices=tf.zeros([1, 1], dtype=tf.int64),
+          values=tf.stack([tf.cast(counter, tf.float32)]),
+          shape=[1])
+      to_batch = [counter, sparse_counter, "string"]
+      if enqueue_many:
+        to_batch = tf.train.batch(to_batch, 1)
+      keep_input = tf.squeeze(tf.equal(0, tf.mod(to_batch[0], 2)))
+      batched = tf.train.maybe_batch_join(
+          [to_batch] * num_threads, keep_input, batch_size,
+          enqueue_many=enqueue_many)
+      tf.initialize_all_variables().run()
+      tf.initialize_local_variables().run()
+      threads = tf.train.start_queue_runners()
+
+      for _ in range(num_batches):
+        results = sess.run(batched)
+        self.assertAllEqual([0] * batch_size, np.mod(results[0], 2),)
+        self.assertAllEqual([0] * batch_size, np.mod(results[1].values, 2),)
+        self.assertAllEqual([b"string"] * batch_size, results[2])
+
+      # Reached the limit.
+      with self.assertRaises(tf.errors.OutOfRangeError):
+        sess.run(batched)
+      for thread in threads:
+        thread.join()
+
+  def testSingleThreadKeepInput(self):
+    self._testKeepInputHelper(1, False)
+
+  def testSingleThreadKeepInputEnqueueMany(self):
+    self._testKeepInputHelper(1, True)
+
+  def testMultipleThreadKeepInput(self):
+    self._testKeepInputHelper(5, False)
+
+  def testMultipleThreadKeepInputEnqueueMany(self):
+    self._testKeepInputHelper(5, True)
+
+  def testMaybeBatchedSparseTensorInferredShape(self):
+    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], shape=[1])
+    self.assertAllEqual((1,), sparse.shape.get_shape().as_list())
+    batched = tf.train.maybe_batch_join(
+        [[sparse]], keep_input=True, batch_size=2)
+    self.assertAllEqual((2,), batched.shape.get_shape().as_list())
+
+  def testMaybeBatchedSparseTensorInferredShapeEnqueueMany(self):
+    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], shape=[1])
+    self.assertAllEqual((1,), sparse.shape.get_shape().as_list())
+    batched = tf.train.maybe_batch_join(
+        [[sparse]], keep_input=True, batch_size=2, enqueue_many=True)
+    self.assertAllEqual((1,), batched.shape.get_shape().as_list())
+
+  def testMaybeBatchedSparseTensorInferredShapeUnknownRank(self):
+    sparse = tf.SparseTensor(
+        indices=tf.placeholder(tf.int64),
+        values=tf.placeholder(tf.float32),
+        shape=tf.placeholder(tf.int64))
+    self.assertIs(None, sparse.shape.get_shape().num_elements())
+    batched = tf.train.maybe_batch_join(
+        [[sparse]], keep_input=True, batch_size=2)
+    self.assertIs(None, batched.shape.get_shape().num_elements())
+
+  def testMaybeBatchedSparseTensorInferredShapeUnknownRankEnqueueMany(self):
+    sparse = tf.SparseTensor(
+        indices=tf.placeholder(tf.int64),
+        values=tf.placeholder(tf.float32),
+        shape=tf.placeholder(tf.int64))
+    self.assertIs(None, sparse.shape.get_shape().num_elements())
+    batched = tf.train.maybe_batch_join(
+        [[sparse]], keep_input=True, batch_size=2, enqueue_many=True)
+    self.assertIs(None, batched.shape.get_shape().num_elements())
+
 
 class ShuffleBatchTest(tf.test.TestCase):
 
@@ -1350,6 +1506,83 @@ class ShuffleBatchTest(tf.test.TestCase):
       self.assertProtoEquals(
           "s: 'SHARED_NAME_XYZ'",
           batched[0].op.inputs[0].op.node_def.attr["shared_name"])
+
+  def _testKeepInputHelper(self, num_threads, enqueue_many):
+    with self.test_session() as sess:
+      batch_size = 5
+      num_batches = 4
+      examples = tf.Variable(0)
+      counter = examples.count_up_to(num_batches * batch_size * 2)
+      sparse_counter = tf.SparseTensor(
+          indices=tf.zeros([1, 1], dtype=tf.int64),
+          values=tf.stack([tf.cast(counter, tf.float32)]),
+          shape=[1])
+      to_batch = [counter, sparse_counter, "string"]
+      if enqueue_many:
+        to_batch = tf.train.batch(to_batch, 1)
+      keep_input = tf.squeeze(tf.equal(0, tf.mod(to_batch[0], 2)))
+      batched = tf.train.maybe_shuffle_batch(
+          to_batch, batch_size, 10, 1, keep_input, num_threads=num_threads,
+          enqueue_many=enqueue_many)
+      tf.initialize_all_variables().run()
+      tf.initialize_local_variables().run()
+      threads = tf.train.start_queue_runners()
+
+      for _ in range(num_batches):
+        results = sess.run(batched)
+        self.assertAllEqual([0] * batch_size, np.mod(results[0], 2))
+        self.assertAllEqual([0] * batch_size, np.mod(results[1].values, 2))
+        self.assertAllEqual([b"string"] * batch_size, results[2])
+
+      # Reached the limit.
+      with self.assertRaises(tf.errors.OutOfRangeError):
+        sess.run(batched)
+      for thread in threads:
+        thread.join()
+
+  def testSingleThreadKeepInput(self):
+    self._testKeepInputHelper(1, False)
+
+  def testSingleThreadKeepInputEnqueueMany(self):
+    self._testKeepInputHelper(1, True)
+
+  def testMultipleThreadKeepInput(self):
+    self._testKeepInputHelper(5, False)
+
+  def testMultipleThreadKeepInputEnqueueMany(self):
+    self._testKeepInputHelper(5, True)
+
+  def testMaybeBatchedSparseTensorInferredShape(self):
+    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], shape=[1])
+    self.assertAllEqual((1,), sparse.shape.get_shape().as_list())
+    batched = tf.train.maybe_shuffle_batch([sparse], 2, 10, 1, True)
+    self.assertAllEqual((2,), batched.shape.get_shape().as_list())
+
+  def testMaybeBatchedSparseTensorInferredShapeEnqueueMany(self):
+    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], shape=[1])
+    self.assertAllEqual((1,), sparse.shape.get_shape().as_list())
+    batched = tf.train.maybe_shuffle_batch(
+        [sparse], 2, 10, 1, True, enqueue_many=True)
+    self.assertAllEqual((1,), batched.shape.get_shape().as_list())
+
+  def testMaybeBatchedSparseTensorInferredShapeUnknownRank(self):
+    sparse = tf.SparseTensor(
+        indices=tf.placeholder(tf.int64),
+        values=tf.placeholder(tf.float32),
+        shape=tf.placeholder(tf.int64))
+    self.assertIs(None, sparse.shape.get_shape().num_elements())
+    batched = tf.train.maybe_shuffle_batch([sparse], 2, 10, 1, True)
+    self.assertIs(None, batched.shape.get_shape().num_elements())
+
+  def testMaybeBatchedSparseTensorInferredShapeUnknownRankEnqueueMany(self):
+    sparse = tf.SparseTensor(
+        indices=tf.placeholder(tf.int64),
+        values=tf.placeholder(tf.float32),
+        shape=tf.placeholder(tf.int64))
+    self.assertIs(None, sparse.shape.get_shape().num_elements())
+    batched = tf.train.maybe_shuffle_batch(
+        [sparse], 2, 10, 1, True, enqueue_many=True)
+    self.assertIs(None, batched.shape.get_shape().num_elements())
 
 
 class ShuffleBatchJoinTest(tf.test.TestCase):
@@ -1580,6 +1813,83 @@ class ShuffleBatchJoinTest(tf.test.TestCase):
       self.assertProtoEquals(
           "s: 'SHARED_NAME_XYZ'",
           batched[0].op.inputs[0].op.node_def.attr["shared_name"])
+
+  def _testKeepInputHelper(self, num_threads, enqueue_many):
+    with self.test_session() as sess:
+      batch_size = 5
+      num_batches = 4
+      examples = tf.Variable(0)
+      counter = examples.count_up_to(num_batches * batch_size * 2)
+      sparse_counter = tf.SparseTensor(
+          indices=tf.zeros([1, 1], dtype=tf.int64),
+          values=tf.stack([tf.cast(counter, tf.float32)]),
+          shape=[1])
+      to_batch = [counter, sparse_counter, "string"]
+      if enqueue_many:
+        to_batch = tf.train.batch(to_batch, 1)
+      keep_input = tf.squeeze(tf.equal(0, tf.mod(to_batch[0], 2)))
+      batched = tf.train.maybe_shuffle_batch_join(
+          [to_batch] * num_threads, batch_size, 10, 1, keep_input,
+          enqueue_many=enqueue_many)
+      tf.initialize_all_variables().run()
+      tf.initialize_local_variables().run()
+      threads = tf.train.start_queue_runners()
+
+      for _ in range(num_batches):
+        results = sess.run(batched)
+        self.assertAllEqual([0] * batch_size, np.mod(results[0], 2))
+        self.assertAllEqual([0] * batch_size, np.mod(results[1].values, 2))
+        self.assertAllEqual([b"string"] * batch_size, results[2])
+
+      # Reached the limit.
+      with self.assertRaises(tf.errors.OutOfRangeError):
+        sess.run(batched)
+      for thread in threads:
+        thread.join()
+
+  def testSingleThreadKeepInput(self):
+    self._testKeepInputHelper(1, False)
+
+  def testSingleThreadKeepInputEnqueueMany(self):
+    self._testKeepInputHelper(1, True)
+
+  def testMultipleThreadKeepInput(self):
+    self._testKeepInputHelper(5, False)
+
+  def testMultipleThreadKeepInputEnqueueMany(self):
+    self._testKeepInputHelper(5, True)
+
+  def testMaybeBatchedSparseTensorInferredShape(self):
+    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], shape=[1])
+    self.assertAllEqual((1,), sparse.shape.get_shape().as_list())
+    batched = tf.train.maybe_shuffle_batch_join([[sparse]], 2, 10, 1, True)
+    self.assertAllEqual((2,), batched.shape.get_shape().as_list())
+
+  def testMaybeBatchedSparseTensorInferredShapeEnqueueMany(self):
+    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], shape=[1])
+    self.assertAllEqual((1,), sparse.shape.get_shape().as_list())
+    batched = tf.train.maybe_shuffle_batch_join(
+        [[sparse]], 2, 10, 1, True, enqueue_many=True)
+    self.assertAllEqual((1,), batched.shape.get_shape().as_list())
+
+  def testMaybeBatchedSparseTensorInferredShapeUnknownRank(self):
+    sparse = tf.SparseTensor(
+        indices=tf.placeholder(tf.int64),
+        values=tf.placeholder(tf.float32),
+        shape=tf.placeholder(tf.int64))
+    self.assertIs(None, sparse.shape.get_shape().num_elements())
+    batched = tf.train.maybe_shuffle_batch_join([[sparse]], 2, 10, 1, True)
+    self.assertIs(None, batched.shape.get_shape().num_elements())
+
+  def testMaybeBatchedSparseTensorInferredShapeUnknownRankEnqueueMany(self):
+    sparse = tf.SparseTensor(
+        indices=tf.placeholder(tf.int64),
+        values=tf.placeholder(tf.float32),
+        shape=tf.placeholder(tf.int64))
+    self.assertIs(None, sparse.shape.get_shape().num_elements())
+    batched = tf.train.maybe_shuffle_batch_join(
+        [[sparse]], 2, 10, 1, True, enqueue_many=True)
+    self.assertIs(None, batched.shape.get_shape().num_elements())
 
 
 if __name__ == "__main__":
