@@ -3,14 +3,14 @@ Cache for file writers.
 This class caches file writers, one per directory.
 - - -
 
-#### `tf.train.SummaryWriterCache.clear()` {#SummaryWriterCache.clear}
+#### `tf.contrib.learn.monitors.SummaryWriterCache.clear()` {#SummaryWriterCache.clear}
 
 Clear cached summary writers. Currently only used for unit tests.
 
 
 - - -
 
-#### `tf.train.SummaryWriterCache.get(logdir)` {#SummaryWriterCache.get}
+#### `tf.contrib.learn.monitors.SummaryWriterCache.get(logdir)` {#SummaryWriterCache.get}
 
 Returns the FileWriter for the specified directory.
 

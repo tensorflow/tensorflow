@@ -1,4 +1,4 @@
-#### `tf.train.SummaryWriterCache.get(logdir)` {#SummaryWriterCache.get}
+#### `tf.contrib.learn.monitors.SummaryWriterCache.get(logdir)` {#SummaryWriterCache.get}
 
 Returns the FileWriter for the specified directory.
 

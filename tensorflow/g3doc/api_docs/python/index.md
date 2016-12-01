@@ -674,8 +674,6 @@
   * [`StopAtStepHook`](../../api_docs/python/train.md#StopAtStepHook)
   * [`summary_iterator`](../../api_docs/python/train.md#summary_iterator)
   * [`SummarySaverHook`](../../api_docs/python/train.md#SummarySaverHook)
-  * [`SummaryWriter`](../../api_docs/python/train.md#SummaryWriter)
-  * [`SummaryWriterCache`](../../api_docs/python/train.md#SummaryWriterCache)
   * [`Supervisor`](../../api_docs/python/train.md#Supervisor)
   * [`SyncReplicasOptimizer`](../../api_docs/python/train.md#SyncReplicasOptimizer)
   * [`SyncReplicasOptimizerV2`](../../api_docs/python/train.md#SyncReplicasOptimizerV2)
@@ -1016,6 +1014,7 @@
   * [`StepCounter`](../../api_docs/python/contrib.learn.monitors.md#StepCounter)
   * [`StopAtStep`](../../api_docs/python/contrib.learn.monitors.md#StopAtStep)
   * [`SummarySaver`](../../api_docs/python/contrib.learn.monitors.md#SummarySaver)
+  * [`SummaryWriterCache`](../../api_docs/python/contrib.learn.monitors.md#SummaryWriterCache)
   * [`ValidationMonitor`](../../api_docs/python/contrib.learn.monitors.md#ValidationMonitor)
 
 * **[Linear Algebra (contrib)](../../api_docs/python/contrib.linalg.md)**:
