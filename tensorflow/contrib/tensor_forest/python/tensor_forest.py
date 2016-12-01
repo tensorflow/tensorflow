@@ -112,12 +112,10 @@ class ForestHParams(object):
     # regression and avoids having to recompute sums for classification.
     self.num_output_columns = self.num_classes + 1
 
-    # The Random Forest literature recommends sqrt(# features) for
-    # classification problems, and p/3 for regression problems.
-    # TODO(thomaswc): Consider capping this for large number of features.
-    self.num_splits_to_consider = (
-        self.num_splits_to_consider or
-        max(10, int(math.ceil(math.sqrt(self.num_features)))))
+    # Our experiments have found that num_splits_to_consider = num_features
+    # gives good accuracy.
+    self.num_splits_to_consider = self.num_splits_to_consider or min(
+        self.num_features, 1000)
 
     self.max_fertile_nodes = (self.max_fertile_nodes or
                               int(math.ceil(self.max_nodes / 2.0)))
