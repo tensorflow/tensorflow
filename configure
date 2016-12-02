@@ -279,7 +279,7 @@ while true; do
       TF_CUDNN_VERSION=${BASH_REMATCH[1]}
       echo "libcudnn.so resolves to libcudnn${TF_CUDNN_EXT}"
     elif [[ "$REALVAL" =~ ([0-9]*).dylib ]]; then
-      TF_CUDNN_EXT="."${BASH_REMATCH[1]}".dylib"
+      TF_CUDNN_EXT=${BASH_REMATCH[1]}".dylib"
       TF_CUDNN_VERSION=${BASH_REMATCH[1]}
       echo "libcudnn.dylib resolves to libcudnn${TF_CUDNN_EXT}"
     fi
