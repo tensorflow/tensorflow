@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tensorflow.ops.ops."""
 from __future__ import absolute_import
 from __future__ import division
@@ -35,7 +34,8 @@ def identicaltest(tc, init1, init2, shape=None):
     tc: An instance of TensorFlowTestCase.
     init1: An Initializer that generates a tensor of a given shape
     init2: An Initializer that generates a tensor of a given shape
-    shape: Shape of the tensor to initialize or `None` to use a vector of length 100.
+    shape: Shape of the tensor to initialize or `None` to use a vector of length
+      100.
   Returns:
     True or False as determined by test.
   """
@@ -60,7 +60,8 @@ def duplicated_initializer(tc, init, graph_seed, shape=None):
     tc: An instance of TensorFlowTestCase.
     init: An Initializer that generates a tensor of a given shape
     graph_seed: A graph-level seed to use.
-    shape: Shape of the tensor to initialize or `None` to use a vector of length 100.
+    shape: Shape of the tensor to initialize or `None` to use a vector of length
+      100.
   Returns:
     True or False as determined by test.
   """
@@ -83,9 +84,11 @@ def _init_sampler(tc, init, num):
   Returns:
     Function to generate a random tensor.
   """
+
   def func():
     with tc.test_session(use_gpu=True):
       return init([num]).eval()
+
   return func
 
 
@@ -108,16 +111,16 @@ class ConstantInitializersTest(tf.test.TestCase):
   def testConstantZeroInitializer(self):
     with self.test_session(use_gpu=True):
       shape = [2, 3]
-      x = tf.get_variable("x", shape=shape,
-                          initializer=tf.constant_initializer(0.0))
+      x = tf.get_variable(
+          "x", shape=shape, initializer=tf.constant_initializer(0.0))
       x.initializer.run()
       self.assertAllEqual(x.eval(), np.zeros(shape))
 
   def testConstantOneInitializer(self):
     with self.test_session(use_gpu=True):
       shape = [2, 3]
-      x = tf.get_variable("x", shape=shape,
-                          initializer=tf.constant_initializer(1.0))
+      x = tf.get_variable(
+          "x", shape=shape, initializer=tf.constant_initializer(1.0))
       x.initializer.run()
       self.assertAllEqual(x.eval(), np.ones(shape))
 
@@ -125,7 +128,9 @@ class ConstantInitializersTest(tf.test.TestCase):
     with self.test_session(use_gpu=True):
       shape = [2, 3]
       x = tf.get_variable(
-          "x", shape=shape, dtype=tf.int32,
+          "x",
+          shape=shape,
+          dtype=tf.int32,
           initializer=tf.constant_initializer(7))
       x.initializer.run()
       self.assertEqual(x.dtype.base_dtype, tf.int32)
@@ -148,13 +153,14 @@ class ConstantInitializersTest(tf.test.TestCase):
     expected = list(value)
 
     self._testNDimConstantInitializer("list", value, shape, expected)
-    self._testNDimConstantInitializer(
-        "ndarray", np.asarray(value), shape, expected)
-    self._testNDimConstantInitializer(
-        "2D-ndarray", np.asarray(value).reshape(tuple(shape)), shape, expected)
+    self._testNDimConstantInitializer("ndarray",
+                                      np.asarray(value), shape, expected)
+    self._testNDimConstantInitializer("2D-ndarray",
+                                      np.asarray(value).reshape(tuple(shape)),
+                                      shape, expected)
 
-  def _testNDimConstantInitializerLessValues(
-      self, name, value, shape, expected):
+  def _testNDimConstantInitializerLessValues(self, name, value, shape,
+                                             expected):
     with self.test_session(use_gpu=True):
       init = tf.constant_initializer(value, dtype=tf.int32)
       x = tf.get_variable(name, shape=shape, initializer=init)
@@ -173,8 +179,9 @@ class ConstantInitializersTest(tf.test.TestCase):
     expected = list(value)
 
     self._testNDimConstantInitializerLessValues("list", value, shape, expected)
-    self._testNDimConstantInitializerLessValues(
-        "ndarray", np.asarray(value), shape, expected)
+    self._testNDimConstantInitializerLessValues("ndarray",
+                                                np.asarray(value), shape,
+                                                expected)
     self._testNDimConstantInitializerLessValues(
         "2D-ndarray", np.asarray(value).reshape(tuple([2, 3])), shape, expected)
 
@@ -182,8 +189,8 @@ class ConstantInitializersTest(tf.test.TestCase):
     tf.reset_default_graph()
     with self.test_session(use_gpu=True):
       init = tf.constant_initializer(value, dtype=tf.int32)
-      self.assertRaises(ValueError, tf.get_variable,
-                        "x", shape=shape, initializer=init)
+      self.assertRaises(
+          ValueError, tf.get_variable, "x", shape=shape, initializer=init)
 
   def testNDimConstantInitializerMoreValues(self):
     value = [0, 1, 2, 3, 4, 5, 6, 7]
@@ -214,8 +221,7 @@ class RandomNormalInitializationTest(tf.test.TestCase):
 
   def testInvalidDataType(self):
     self.assertRaises(
-        ValueError,
-        tf.random_normal_initializer, 0.0, 1.0, dtype=tf.string)
+        ValueError, tf.random_normal_initializer, 0.0, 1.0, dtype=tf.string)
 
 
 class TruncatedNormalInitializationTest(tf.test.TestCase):
@@ -238,8 +244,7 @@ class TruncatedNormalInitializationTest(tf.test.TestCase):
 
   def testInvalidDataType(self):
     self.assertRaises(
-        ValueError,
-        tf.truncated_normal_initializer, 0.0, 1.0, dtype=tf.string)
+        ValueError, tf.truncated_normal_initializer, 0.0, 1.0, dtype=tf.string)
 
 
 class RandomUniformInitializationTest(tf.test.TestCase):
@@ -284,8 +289,8 @@ class UniformUnitScalingInitializationTest(tf.test.TestCase):
   def testZeroSize(self):
     shape = [0, 2]
     with self.test_session():
-      x = tf.get_variable("x", shape=shape,
-                          initializer=tf.uniform_unit_scaling_initializer())
+      x = tf.get_variable(
+          "x", shape=shape, initializer=tf.uniform_unit_scaling_initializer())
       self.assertAllEqual(shape, x.eval().shape)
 
   def testDuplicatedInitializer(self):
@@ -294,8 +299,7 @@ class UniformUnitScalingInitializationTest(tf.test.TestCase):
 
   def testInvalidDataType(self):
     self.assertRaises(
-        ValueError,
-        tf.uniform_unit_scaling_initializer, dtype=tf.string)
+        ValueError, tf.uniform_unit_scaling_initializer, dtype=tf.string)
 
 
 class RandomWalkShapeTest(tf.test.TestCase):
@@ -317,16 +321,15 @@ class RangeTest(tf.test.TestCase):
       return tf_ans.eval()
 
   def testBasic(self):
-    self.assertTrue(np.array_equal(
-        self._Range(0, 5, 1), np.array([0, 1, 2, 3, 4])))
-    self.assertTrue(np.array_equal(
-        self._Range(0, 5, 2), np.array([0, 2, 4])))
-    self.assertTrue(np.array_equal(
-        self._Range(0, 6, 2), np.array([0, 2, 4])))
-    self.assertTrue(np.array_equal(
-        self._Range(13, 32, 7), np.array([13, 20, 27])))
-    self.assertTrue(np.array_equal(
-        self._Range(100, 500, 100), np.array([100, 200, 300, 400])))
+    self.assertTrue(
+        np.array_equal(self._Range(0, 5, 1), np.array([0, 1, 2, 3, 4])))
+    self.assertTrue(np.array_equal(self._Range(0, 5, 2), np.array([0, 2, 4])))
+    self.assertTrue(np.array_equal(self._Range(0, 6, 2), np.array([0, 2, 4])))
+    self.assertTrue(
+        np.array_equal(self._Range(13, 32, 7), np.array([13, 20, 27])))
+    self.assertTrue(
+        np.array_equal(
+            self._Range(100, 500, 100), np.array([100, 200, 300, 400])))
     self.assertEqual(tf.range(0, 5, 1).dtype, tf.int32)
 
   def testLimitOnly(self):
@@ -352,7 +355,8 @@ class RangeTest(tf.test.TestCase):
     self.assertTrue(
         np.array_equal(self._Range(5, -1, -1), np.array([5, 4, 3, 2, 1, 0])))
     self.assertTrue(
-        np.allclose(self._Range(2.5, 0, -0.5), np.array([2.5, 2, 1.5, 1, 0.5])))
+        np.allclose(
+            self._Range(2.5, 0, -0.5), np.array([2.5, 2, 1.5, 1, 0.5])))
     self.assertTrue(
         np.array_equal(self._Range(-5, -10, -3), np.array([-5, -8])))
 
@@ -399,30 +403,32 @@ class LinSpaceTest(tf.test.TestCase):
     for self.force_gpu in self._gpu_modes():
       self.assertArrayNear(self._LinSpace(1., 5., 1), np.array([1.]), 1e-5)
       self.assertArrayNear(self._LinSpace(1., 5., 2), np.array([1., 5.]), 1e-5)
-      self.assertArrayNear(self._LinSpace(1., 5., 3),
-                           np.array([1., 3., 5.]), 1e-5)
-      self.assertArrayNear(self._LinSpace(1., 5., 4),
-                           np.array([1., 7. / 3., 11. / 3., 5.]), 1e-5)
+      self.assertArrayNear(
+          self._LinSpace(1., 5., 3), np.array([1., 3., 5.]), 1e-5)
+      self.assertArrayNear(
+          self._LinSpace(1., 5., 4),
+          np.array([1., 7. / 3., 11. / 3., 5.]), 1e-5)
 
   def testNegative(self):
     for self.force_gpu in self._gpu_modes():
       self.assertArrayNear(self._LinSpace(-1., -5., 1), np.array([-1.]), 1e-5)
-      self.assertArrayNear(self._LinSpace(-1., -5., 2),
-                           np.array([-1., -5.]), 1e-5)
-      self.assertArrayNear(self._LinSpace(-1., -5., 3),
-                           np.array([-1., -3., -5.]), 1e-5)
-      self.assertArrayNear(self._LinSpace(-1., -5., 4),
-                           np.array([-1., -7. / 3., -11. / 3., -5.]), 1e-5)
+      self.assertArrayNear(
+          self._LinSpace(-1., -5., 2), np.array([-1., -5.]), 1e-5)
+      self.assertArrayNear(
+          self._LinSpace(-1., -5., 3), np.array([-1., -3., -5.]), 1e-5)
+      self.assertArrayNear(
+          self._LinSpace(-1., -5., 4),
+          np.array([-1., -7. / 3., -11. / 3., -5.]), 1e-5)
 
   def testNegativeToPositive(self):
     for self.force_gpu in self._gpu_modes():
       self.assertArrayNear(self._LinSpace(-1., 5., 1), np.array([-1.]), 1e-5)
-      self.assertArrayNear(self._LinSpace(-1., 5., 2), np.array([-1., 5.]),
-                           1e-5)
-      self.assertArrayNear(self._LinSpace(-1., 5., 3),
-                           np.array([-1., 2., 5.]), 1e-5)
-      self.assertArrayNear(self._LinSpace(-1., 5., 4),
-                           np.array([-1., 1., 3., 5.]), 1e-5)
+      self.assertArrayNear(
+          self._LinSpace(-1., 5., 2), np.array([-1., 5.]), 1e-5)
+      self.assertArrayNear(
+          self._LinSpace(-1., 5., 3), np.array([-1., 2., 5.]), 1e-5)
+      self.assertArrayNear(
+          self._LinSpace(-1., 5., 4), np.array([-1., 1., 3., 5.]), 1e-5)
 
   def testPoint(self):
     for self.force_gpu in self._gpu_modes():
@@ -467,9 +473,7 @@ class OrthogonalInitializerTest(tf.test.TestCase):
     self.assertFalse(duplicated_initializer(self, init, 1, (10, 10)))
 
   def testInvalidDataType(self):
-    self.assertRaises(
-      ValueError,
-      tf.orthogonal_initializer, dtype=tf.string)
+    self.assertRaises(ValueError, tf.orthogonal_initializer, dtype=tf.string)
 
   def testInvalidShape(self):
     init1 = tf.orthogonal_initializer()
@@ -491,6 +495,7 @@ class OrthogonalInitializerTest(tf.test.TestCase):
     for dtype in [tf.float32, tf.float64]:
       for shape in [(10, 10), (10, 9, 8), (100, 5, 5), (50, 40), (40, 50)]:
         init = tf.orthogonal_initializer(dtype=dtype)
+        tol = 1e-5 if dtype == tf.float32 else 1e-12
         with self.test_session(graph=tf.Graph(), use_gpu=True):
           # Check the shape
           t = init(shape).eval()
@@ -498,9 +503,12 @@ class OrthogonalInitializerTest(tf.test.TestCase):
           # Check orthogonality by computing the inner product
           t = t.reshape((np.prod(t.shape[:-1]), t.shape[-1]))
           if t.shape[0] > t.shape[1]:
-            self.assertAllClose(np.dot(t.T, t), np.eye(t.shape[1]))
+            self.assertAllClose(
+                np.dot(t.T, t), np.eye(t.shape[1]), rtol=tol, atol=tol)
           else:
-            self.assertAllClose(np.dot(t, t.T), np.eye(t.shape[0]))
+            self.assertAllClose(
+                np.dot(t, t.T), np.eye(t.shape[0]), rtol=tol, atol=tol)
+
 
 if __name__ == "__main__":
   tf.test.main()

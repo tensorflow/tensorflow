@@ -26,6 +26,7 @@ from google.protobuf import json_format
 from google.protobuf import text_format
 from tensorflow.contrib.tensorboard.plugins.projector import PROJECTOR_FILENAME
 from tensorflow.contrib.tensorboard.plugins.projector.projector_config_pb2 import ProjectorConfig
+from tensorflow.python.framework import errors
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.pywrap_tensorflow import NewCheckpointReader
@@ -63,10 +64,13 @@ def _latest_checkpoints_changed(configs, run_path_pairs):
   """Returns true if the latest checkpoint has changed in any of the runs."""
   for run_name, logdir in run_path_pairs:
     if run_name not in configs:
-      continue
-    config = configs[run_name]
-    if not config.model_checkpoint_path:
-      continue
+      config = ProjectorConfig()
+      config_fpath = os.path.join(logdir, PROJECTOR_FILENAME)
+      if file_io.file_exists(config_fpath):
+        file_content = file_io.read_file_to_string(config_fpath).decode('utf-8')
+        text_format.Merge(file_content, config)
+    else:
+      config = configs[run_name]
 
     # See if you can find a checkpoint file in the logdir.
     ckpt_path = latest_checkpoint(logdir)
@@ -372,7 +376,11 @@ class ProjectorPlugin(TBPlugin):
                         (name, config.model_checkpoint_path),
                         'text/plain', 400)
         return
-      tensor = reader.get_tensor(name)
+      try:
+        tensor = reader.get_tensor(name)
+      except errors.InvalidArgumentError as e:
+        request.respond(str(e), 'text/plain', 400)
+        return
 
     if num_rows:
       tensor = tensor[:num_rows]

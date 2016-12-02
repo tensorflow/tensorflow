@@ -425,7 +425,7 @@ class Conv3DTest(tf.test.TestCase):
                                   padding="SAME",
                                   test_input=True)
 
-  def testFilterGradientSamePaddingDifferentStrides(self):
+  def disabledtestFilterGradientSamePaddingDifferentStrides(self):
     self.ConstructAndTestGradient(batch=1,
                                   input_planes=5,
                                   input_rows=8,

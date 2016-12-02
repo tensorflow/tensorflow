@@ -14,10 +14,13 @@
 # ==============================================================================
 """Variational inference.
 
+## Ops
+
 @@elbo
 @@elbo_with_log_joint
 @@ELBOForms
 @@register_prior
+
 """
 
 from __future__ import absolute_import

@@ -625,7 +625,7 @@ class VariableScopeTest(tf.test.TestCase):
           self.assertEqual(local_var.name, "outer/w:0")
 
       # Since variable is local, it should be in the local variable collection
-      # but not the the trainable collection.
+      # but not the trainable collection.
       self.assertIn(local_var, tf.get_collection(tf.GraphKeys.LOCAL_VARIABLES))
       self.assertIn(local_var, tf.get_collection("foo"))
       self.assertNotIn(

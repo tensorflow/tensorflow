@@ -17,8 +17,8 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   # These lines need to be changed when updating Eigen. They are parsed from
   # this file by the cmake and make builds to determine the eigen version and
   # hash.
-  eigen_version = "62bdceacdafa"
-  eigen_sha256 = "c66f4693a0fd1f5c2cf009e01eb49671ce9cbb56874c3d07d3b8928ffc132cec"
+  eigen_version = "346ecdb306e6"
+  eigen_sha256 = "161a0b5b616fd53bd724f631a6eb4f7bf27656dde12c480176dc2264cf88ef4f"
 
   native.new_http_archive(
     name = "eigen_archive",
@@ -46,7 +46,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     name = "farmhash_archive",
     url = "http://github.com/google/farmhash/archive/92e897b282426729f4724d91a637596c7e2fe28f.zip",
     sha256 = "4c626d1f306bda2c6804ab955892f803f5245f4dcaecb4979dc08b091256da54",
-    strip_prefix = "farmhash-92e897b282426729f4724d91a637596c7e2fe28f/src",
+    strip_prefix = "farmhash-92e897b282426729f4724d91a637596c7e2fe28f",
     build_file = str(Label("//:farmhash.BUILD")),
   )
 
@@ -90,7 +90,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     name = "gif_archive",
     url = "http://cdimage.debian.org/mirror/xbmc.org/build-deps/sources/giflib-5.1.4.tar.gz",
     sha256 = "34a7377ba834397db019e8eb122e551a49c98f49df75ec3fcc92b9a794a4f6d1",
-    strip_prefix = "giflib-5.1.4/lib",
+    strip_prefix = "giflib-5.1.4",
     build_file = str(Label("//:gif.BUILD")),
   )
 
@@ -193,6 +193,16 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     build_file = str(Label("//:linenoise.BUILD")),
   )
 
+  # TODO(phawkins): currently, this rule uses an unofficial LLVM mirror.
+  # Switch to an official source of snapshots if/when possible.
+  native.new_http_archive(
+    name = "llvm",
+    url = "http://github.com/llvm-mirror/llvm/archive/ad27fdae895df1b9ad11a93102de6622f63e1220.tar.gz",
+    sha256 = "ce7abf076586f2ef13dcd1c4e7ba13604a0826a0f44fe0a6faceeb9bdffc8544",
+    strip_prefix = "llvm-ad27fdae895df1b9ad11a93102de6622f63e1220",
+    build_file = str(Label("//third_party/llvm:llvm.BUILD")),
+  )
+
   native.new_http_archive(
     name = "jsoncpp_git",
     url = "http://github.com/open-source-parsers/jsoncpp/archive/11086dd6a7eba04289944367ca82cea71299ed70.tar.gz",
@@ -237,4 +247,16 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.bind(
     name = "zlib",
     actual = "@zlib_archive//:zlib",
+  )
+
+  # Make junit-4.12 available as //external:junit
+  native.http_jar(
+    name = "junit_jar",
+    url = "https://github.com/junit-team/junit4/releases/download/r4.12/junit-4.12.jar",
+    sha256 = "59721f0805e223d84b90677887d9ff567dc534d7c502ca903c0c2b17f05c116a",
+  )
+
+  native.bind(
+    name = "junit",
+    actual = "@junit_jar//jar",
   )

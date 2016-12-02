@@ -27,13 +27,14 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn_cell
+from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.util import nest
 
 
 # pylint: disable=protected-access
-_state_size_with_prefix = rnn_cell._state_size_with_prefix
+_state_size_with_prefix = rnn_cell_impl._state_size_with_prefix
 # pylint: enable=protected-access
 
 
@@ -113,7 +114,7 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
       dtype.
     sequence_length: Specifies the length of each sequence in inputs.
       An int32 or int64 vector (tensor) size `[batch_size]`, values in `[0, T)`.
-    scope: VariableScope for the created subgraph; defaults to "RNN".
+    scope: VariableScope for the created subgraph; defaults to "rnn".
 
   Returns:
     A pair (outputs, state) where:
@@ -139,7 +140,7 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
   # Create a new scope in which the caching device is either
   # determined by the parent scope, or is set to place the cached
   # Variable using the same placement as for the rest of the RNN.
-  with vs.variable_scope(scope or "RNN") as varscope:
+  with vs.variable_scope(scope or "rnn") as varscope:
     if varscope.caching_device is None:
       varscope.set_caching_device(lambda op: op.device)
 
@@ -246,7 +247,7 @@ def state_saving_rnn(cell, inputs, state_saver, state_name,
       be a single string.
     sequence_length: (optional) An int32/int64 vector size [batch_size].
       See the documentation for rnn() for more details about sequence_length.
-    scope: VariableScope for the created subgraph; defaults to "RNN".
+    scope: VariableScope for the created subgraph; defaults to "rnn".
 
   Returns:
     A pair (outputs, state) where:
@@ -365,7 +366,7 @@ def _rnn_step(
 
   def _copy_one_through(output, new_output):
     copy_cond = (time >= sequence_length)
-    return math_ops.select(copy_cond, output, new_output)
+    return array_ops.where(copy_cond, output, new_output)
 
   def _copy_some_through(flat_new_output, flat_new_state):
     # Use broadcasting select to determine which values should get
@@ -508,7 +509,8 @@ def bidirectional_rnn(cell_fw, cell_bw, inputs,
       either of the initial states are not provided.
     sequence_length: (optional) An int32/int64 vector, size `[batch_size]`,
       containing the actual lengths for each of the sequences.
-    scope: VariableScope for the created subgraph; defaults to "BiRNN"
+    scope: VariableScope for the created subgraph; defaults to
+      "bidirectional_rnn"
 
   Returns:
     A tuple (outputs, output_state_fw, output_state_bw) where:
@@ -531,14 +533,14 @@ def bidirectional_rnn(cell_fw, cell_bw, inputs,
   if not inputs:
     raise ValueError("inputs must not be empty")
 
-  with vs.variable_scope(scope or "BiRNN"):
+  with vs.variable_scope(scope or "bidirectional_rnn"):
     # Forward direction
-    with vs.variable_scope("FW") as fw_scope:
+    with vs.variable_scope("fw") as fw_scope:
       output_fw, output_state_fw = rnn(cell_fw, inputs, initial_state_fw, dtype,
                                        sequence_length, scope=fw_scope)
 
     # Backward direction
-    with vs.variable_scope("BW") as bw_scope:
+    with vs.variable_scope("bw") as bw_scope:
       reversed_inputs = _reverse_seq(inputs, sequence_length)
       tmp, output_state_bw = rnn(cell_bw, reversed_inputs, initial_state_bw,
                                  dtype, sequence_length, scope=bw_scope)
@@ -610,7 +612,8 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
       accepts input and emits output in batch-major form.
     dtype: (optional) The data type for the initial state.  Required if
       either of the initial states are not provided.
-    scope: VariableScope for the created subgraph; defaults to "BiRNN"
+    scope: VariableScope for the created subgraph; defaults to
+      "bidirectional_rnn"
 
   Returns:
     A tuple (outputs, output_states) where:
@@ -642,9 +645,9 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
   if not isinstance(cell_bw, rnn_cell.RNNCell):
     raise TypeError("cell_bw must be an instance of RNNCell")
 
-  with vs.variable_scope(scope or "BiRNN"):
+  with vs.variable_scope(scope or "bidirectional_rnn"):
     # Forward direction
-    with vs.variable_scope("FW") as fw_scope:
+    with vs.variable_scope("fw") as fw_scope:
       output_fw, output_state_fw = dynamic_rnn(
           cell=cell_fw, inputs=inputs, sequence_length=sequence_length,
           initial_state=initial_state_fw, dtype=dtype,
@@ -659,7 +662,7 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
       time_dim = 0
       batch_dim = 1
 
-    with vs.variable_scope("BW") as bw_scope:
+    with vs.variable_scope("bw") as bw_scope:
       inputs_reverse = array_ops.reverse_sequence(
           input=inputs, seq_lengths=sequence_length,
           seq_dim=time_dim, batch_dim=batch_dim)
@@ -746,7 +749,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
       transposes at the beginning and end of the RNN calculation.  However,
       most TensorFlow data is batch-major, so by default this function
       accepts input and emits output in batch-major form.
-    scope: VariableScope for the created subgraph; defaults to "RNN".
+    scope: VariableScope for the created subgraph; defaults to "rnn".
 
   Returns:
     A pair (outputs, state) where:
@@ -801,7 +804,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
   # Create a new scope in which the caching device is either
   # determined by the parent scope, or is set to place the cached
   # Variable using the same placement as for the rest of the RNN.
-  with vs.variable_scope(scope or "RNN") as varscope:
+  with vs.variable_scope(scope or "rnn") as varscope:
     if varscope.caching_device is None:
       varscope.set_caching_device(lambda op: op.device)
     input_shape = tuple(array_ops.shape(input_) for input_ in flat_input)
@@ -1161,7 +1164,7 @@ def raw_rnn(cell, loop_fn,
       but needed for back prop from GPU to CPU.  This allows training RNNs
       which would typically not fit on a single GPU, with very minimal (or no)
       performance penalty.
-    scope: VariableScope for the created subgraph; defaults to "RNN".
+    scope: VariableScope for the created subgraph; defaults to "rnn".
 
   Returns:
     A tuple `(emit_ta, final_state, final_loop_state)` where:
@@ -1201,7 +1204,7 @@ def raw_rnn(cell, loop_fn,
   # Create a new scope in which the caching device is either
   # determined by the parent scope, or is set to place the cached
   # Variable using the same placement as for the rest of the RNN.
-  with vs.variable_scope(scope or "RNN") as varscope:
+  with vs.variable_scope(scope or "rnn") as varscope:
     if varscope.caching_device is None:
       varscope.set_caching_device(lambda op: op.device)
 
@@ -1296,7 +1299,7 @@ def raw_rnn(cell, loop_fn,
         current_flat = nest.flatten(current)
         candidate_flat = nest.flatten(candidate)
         result_flat = [
-            math_ops.select(elements_finished, current_i, candidate_i)
+            array_ops.where(elements_finished, current_i, candidate_i)
             for (current_i, candidate_i) in zip(current_flat, candidate_flat)]
         return nest.pack_sequence_as(
             structure=current, flat_sequence=result_flat)

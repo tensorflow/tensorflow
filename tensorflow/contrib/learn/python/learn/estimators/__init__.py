@@ -173,6 +173,25 @@ estimator = LinearRegressor(
     feature_columns=my_features)
 ```
 
+### LogisticRegressor
+
+Logistic regression estimator for binary classification.
+
+```python
+# See tf.contrib.learn.Estimator(...) for details on model_fn structure
+def my_model_fn(...):
+  pass
+
+estimator = LogisticRegressor(model_fn=my_model_fn)
+
+# Input builders
+def input_fn_train:
+  pass
+
+estimator.fit(input_fn=input_fn_train)
+estimator.predict(x=x)
+```
+
 #### SVM - Support Vector Machine
 
 Support Vector Machine (SVM) model for binary classification.
@@ -190,6 +209,28 @@ estimator = SVM(
 #### TensorForestEstimator
 
 Supports regression and binary classification.
+
+```python
+params = tf.contrib.tensor_forest.python.tensor_forest.ForestHParams(
+    num_classes=2, num_features=40, num_trees=10, max_nodes=1000)
+
+# Estimator using the default graph builder.
+estimator = TensorForestEstimator(params, model_dir=model_dir)
+
+# Or estimator using TrainingLossForest as the graph builder.
+estimator = TensorForestEstimator(
+    params, graph_builder_class=tensor_forest.TrainingLossForest,
+    model_dir=model_dir)
+
+# Input builders
+def input_fn_train: # returns x, y
+  ...
+def input_fn_eval: # returns x, y
+  ...
+estimator.fit(input_fn=input_fn_train)
+estimator.evaluate(input_fn=input_fn_eval)
+estimator.predict(x=x)
+```
 
 ### Use the estimator
 
@@ -284,5 +325,8 @@ from tensorflow.contrib.learn.python.learn.estimators.model_fn import ModeKeys
 from tensorflow.contrib.learn.python.learn.estimators.prediction_key import PredictionKey
 from tensorflow.contrib.learn.python.learn.estimators.random_forest import TensorForestEstimator
 from tensorflow.contrib.learn.python.learn.estimators.random_forest import TensorForestLossHook
+from tensorflow.contrib.learn.python.learn.estimators.run_config import ClusterConfig
+from tensorflow.contrib.learn.python.learn.estimators.run_config import Environment
 from tensorflow.contrib.learn.python.learn.estimators.run_config import RunConfig
+from tensorflow.contrib.learn.python.learn.estimators.run_config import TaskType
 from tensorflow.contrib.learn.python.learn.estimators.svm import SVM

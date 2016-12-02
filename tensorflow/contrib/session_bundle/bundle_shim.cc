@@ -17,10 +17,10 @@ limitations under the License.
 
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/cc/saved_model/signature_constants.h"
-#include "tensorflow/contrib/session_bundle/bundle_shim_constants.h"
 #include "tensorflow/contrib/session_bundle/manifest.pb.h"
 #include "tensorflow/contrib/session_bundle/session_bundle.h"
 #include "tensorflow/contrib/session_bundle/signature.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
@@ -33,6 +33,9 @@ namespace internal {
 
 void AddInputToSignatureDef(const string& tensor_name, const string& map_key,
                             SignatureDef* signature_def) {
+  if (tensor_name.empty()) {
+    return;
+  }
   TensorInfo tensor_info;
   tensor_info.set_name(tensor_name);
   (*signature_def->mutable_inputs())[map_key] = tensor_info;
@@ -40,6 +43,9 @@ void AddInputToSignatureDef(const string& tensor_name, const string& map_key,
 
 void AddOutputToSignatureDef(const string& tensor_name, const string& map_key,
                              SignatureDef* signature_def) {
+  if (tensor_name.empty()) {
+    return;
+  }
   TensorInfo tensor_info;
   tensor_info.set_name(tensor_name);
   (*signature_def->mutable_outputs())[map_key] = tensor_info;
@@ -61,7 +67,7 @@ Status ConvertDefaultSignatureToSignatureDef(const Signatures& signatures,
                            kRegressInputs, &signature_def);
     AddOutputToSignatureDef(regression_signature.output().tensor_name(),
                             kRegressOutputs, &signature_def);
-    (*meta_graph_def->mutable_signature_def())[kDefaultSignatureDefKey] =
+    (*meta_graph_def->mutable_signature_def())[kDefaultServingSignatureDefKey] =
         signature_def;
     return Status::OK();
   } else if (default_signature.type_case() ==
@@ -76,7 +82,7 @@ Status ConvertDefaultSignatureToSignatureDef(const Signatures& signatures,
                             kClassifyOutputClasses, &signature_def);
     AddOutputToSignatureDef(classification_signature.scores().tensor_name(),
                             kClassifyOutputScores, &signature_def);
-    (*meta_graph_def->mutable_signature_def())[kDefaultSignatureDefKey] =
+    (*meta_graph_def->mutable_signature_def())[kDefaultServingSignatureDefKey] =
         signature_def;
     return Status::OK();
   }
@@ -121,10 +127,16 @@ Status ConvertNamedSignaturesToSignatureDef(const Signatures& signatures,
     AddOutputToSignatureDef(map_entry.second.tensor_name(), map_entry.first,
                             &signature_def);
   }
-  // Add the `default` key to the signature def map of the meta graph def and
-  // map it to the constructed signature def.
-  (*meta_graph_def->mutable_signature_def())[kDefaultSignatureDefKey] =
-      signature_def;
+  // Add the constructed signature def to the signature def map of the meta
+  // graph def. Use the default key if it isn't already in use.
+  const bool already_has_default_signature =
+      meta_graph_def->signature_def().find(kDefaultServingSignatureDefKey) !=
+      meta_graph_def->signature_def().end();
+  const string signature_def_key =
+      already_has_default_signature
+          ? strings::StrCat(kDefaultServingSignatureDefKey, "_from_named")
+          : kDefaultServingSignatureDefKey;
+  (*meta_graph_def->mutable_signature_def())[signature_def_key] = signature_def;
   return Status::OK();
 }
 
@@ -132,9 +144,12 @@ Status ConvertSignaturesToSignatureDef(MetaGraphDef* meta_graph_def) {
   Signatures signatures;
   GetSignatures(*meta_graph_def, &signatures);
   if (signatures.has_default_signature()) {
-    return ConvertDefaultSignatureToSignatureDef(signatures, meta_graph_def);
-  } else if (!signatures.named_signatures().empty()) {
-    return ConvertNamedSignaturesToSignatureDef(signatures, meta_graph_def);
+    TF_RETURN_IF_ERROR(
+        ConvertDefaultSignatureToSignatureDef(signatures, meta_graph_def));
+  }
+  if (!signatures.named_signatures().empty()) {
+    TF_RETURN_IF_ERROR(
+        ConvertNamedSignaturesToSignatureDef(signatures, meta_graph_def));
   }
   return Status::OK();
 }
@@ -168,8 +183,9 @@ Status LoadSavedModelFromLegacySessionBundlePath(
 
   // Build the session-bundle.
   SessionBundle session_bundle;
-  LoadSessionBundleFromPathUsingRunOptions(
-      session_options, run_options, session_bundle_export_dir, &session_bundle);
+  TF_RETURN_IF_ERROR(LoadSessionBundleFromPathUsingRunOptions(
+      session_options, run_options, session_bundle_export_dir,
+      &session_bundle));
 
   // Convert the session-bundle to a saved-model-bundle.
   return ConvertSessionBundleToSavedModelBundle(session_bundle,

@@ -11962,6 +11962,46 @@ op {
   summary: "A stateless version of PyFunc."
 }
 op {
+  name: "Qr"
+  input_arg {
+    name: "input"
+    description: "A tensor of shape `[..., M, N]` whose inner-most 2 dimensions\nform matrices of size `[M, N]`. Let `P` be the minimum of `M` and `N`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "q"
+    description: "Orthonormal basis for range of `a`. If `full_matrices` is `False` then\nshape is `[..., M, P]`; if `full_matrices` is `True` then shape is\n`[..., M, M]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "r"
+    description: "Triangular factor. If `full_matrices` is `False` then shape is\n`[..., P, N]`. If `full_matrices` is `True` then shape is `[..., M, N]`."
+    type_attr: "T"
+  }
+  attr {
+    name: "full_matrices"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If true, compute full-sized `q` and `r`. If false\n(the default), compute only the leading `P` columns of `q`."
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Computes the QR decompositions of one or more matrices."
+  description: "Computes the QR decomposition of each inner matrix in `tensor` such that\n`tensor[..., :, :] = q[..., :, :] * r[..., :,:])`\n\n```prettyprint\n# a is a tensor.\n# q is a tensor of orthonormal matrices.\n# r is a tensor of upper triangular matrices.\nq, r = qr(a)\nq_full, r_full = qr(a, full_matrices=True)\n```"
+}
+op {
   name: "QuantizeAndDequantize"
   input_arg {
     name: "input"
@@ -14967,6 +15007,29 @@ op {
   }
   summary: "Reverses specific dimensions of a tensor."
   description: "Given a `tensor`, and a `int32` tensor `axis` representing the set of\ndimensions of `tensor` to reverse. This operation reverses each dimension\n`i` for which there exists `j` s.t. `axis[j] == i`.\n\n`tensor` can have up to 8 dimensions. The number of dimensions specified\nin `axis` may be 0 or more entries. If an index is specified more than\nonce, a InvalidArgument error is raised.\n\nFor example:\n\n```prettyprint\n# tensor \'t\' is [[[[ 0,  1,  2,  3],\n#                  [ 4,  5,  6,  7],\n#                  [ 8,  9, 10, 11]],\n#                 [[12, 13, 14, 15],\n#                  [16, 17, 18, 19],\n#                  [20, 21, 22, 23]]]]\n# tensor \'t\' shape is [1, 2, 3, 4]\n\n# \'dims\' is [3] or \'dims\' is -1\nreverse(t, dims) ==> [[[[ 3,  2,  1,  0],\n                        [ 7,  6,  5,  4],\n                        [ 11, 10, 9, 8]],\n                       [[15, 14, 13, 12],\n                        [19, 18, 17, 16],\n                        [23, 22, 21, 20]]]]\n\n# \'dims\' is \'[1]\' (or \'dims\' is \'[-3]\')\nreverse(t, dims) ==> [[[[12, 13, 14, 15],\n                        [16, 17, 18, 19],\n                        [20, 21, 22, 23]\n                       [[ 0,  1,  2,  3],\n                        [ 4,  5,  6,  7],\n                        [ 8,  9, 10, 11]]]]\n\n# \'dims\' is \'[2]\' (or \'dims\' is \'[-2]\')\nreverse(t, dims) ==> [[[[8, 9, 10, 11],\n                        [4, 5, 6, 7],\n                        [0, 1, 2, 3]]\n                       [[20, 21, 22, 23],\n                        [16, 17, 18, 19],\n                        [12, 13, 14, 15]]]]\n```"
+}
+op {
+  name: "Rint"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Returns element-wise integer closest to x."
+  description: "If the result is midway between two representable values,\nthe even representable is chosen.\nFor example:\n\n```\nrint(-1.5) ==> -2.0\nrint(0.5000001) ==> 1.0\nrint([-1.7, -1.5, -0.2, 0.2, 1.5, 1.7, 2.0]) ==> [-2., -2., -0., 0., 2., 2., 2.]\n```"
 }
 op {
   name: "Round"
@@ -19966,7 +20029,7 @@ op {
   }
   input_arg {
     name: "delimiter"
-    description: "0-D. Delimiter character, or empty string."
+    description: "0-D. Delimiter characters (bytes), or empty string."
     type: DT_STRING
   }
   output_arg {
@@ -19985,7 +20048,7 @@ op {
     type: DT_INT64
   }
   summary: "Split elements of `input` based on `delimiter` into a `SparseTensor`."
-  description: "Let N be the size of source (typically N will be the batch size). Split each\nelement of `input` based on `delimiter` and return a `SparseTensor`\ncontaining the splitted tokens. Empty tokens are ignored.\n\n`delimiter` can be empty or a single-byte character. If `delimiter` is an empty\n string, each element of `input` is split into individual single-byte character\n strings, including splitting of UTF-8 multibyte sequences.\n\nFor example:\n  N = 2, input[0] is \'hello world\' and input[1] is \'a b c\', then the output\n  will be\n\n  indices = [0, 0;\n             0, 1;\n             1, 0;\n             1, 1;\n             1, 2]\n  shape = [2, 3]\n  values = [\'hello\', \'world\', \'a\', \'b\', \'c\']"
+  description: "Let N be the size of source (typically N will be the batch size). Split each\nelement of `input` based on `delimiter` and return a `SparseTensor`\ncontaining the splitted tokens. Empty tokens are ignored.\n\n`delimiter` can be empty, or a string of split characters. If `delimiter` is an\n empty string, each element of `input` is split into individual single-byte\n character strings, including splitting of UTF-8 multibyte sequences. Otherwise\n every character of `delimiter` is a potential split point.\n\nFor example:\n  N = 2, input[0] is \'hello world\' and input[1] is \'a b c\', then the output\n  will be\n\n  indices = [0, 0;\n             0, 1;\n             1, 0;\n             1, 1;\n             1, 2]\n  shape = [2, 3]\n  values = [\'hello\', \'world\', \'a\', \'b\', \'c\']"
 }
 op {
   name: "StringToHashBucket"
@@ -20229,12 +20292,12 @@ op {
   }
   output_arg {
     name: "u"
-    description: "Left singular vectors. If `full_matrices` is `False` then shape is\n`[..., M, M]`; if `full_matrices` is `True` then shape is\n`[..., M, P]`. Undefined if `compute_uv` is `False`."
+    description: "Left singular vectors. If `full_matrices` is `False` then shape is\n`[..., M, P]`; if `full_matrices` is `True` then shape is\n`[..., M, M]`. Undefined if `compute_uv` is `False`."
     type_attr: "T"
   }
   output_arg {
     name: "v"
-    description: "Left singular vectors. If `full_matrices` is `False` then shape is\n`[..., N, N]`. If `full_matrices` is `True` then shape is `[..., N, P]`.\nUndefined if `compute_uv` is false."
+    description: "Left singular vectors. If `full_matrices` is `False` then shape is\n`[..., N, P]`. If `full_matrices` is `True` then shape is `[..., N, N]`.\nUndefined if `compute_uv` is false."
     type_attr: "T"
   }
   attr {

@@ -20,16 +20,94 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import json
 import tempfile
 
 import numpy as np
 import tensorflow as tf
 
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn
+from tensorflow.contrib.learn.python.learn.estimators import dnn
+from tensorflow.contrib.learn.python.learn.estimators import dnn_linear_combined
 from tensorflow.contrib.learn.python.learn.estimators import estimator_test_utils
+from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
 from tensorflow.contrib.learn.python.learn.estimators import test_data
 from tensorflow.contrib.learn.python.learn.metric_spec import MetricSpec
 from tensorflow.python.ops import math_ops
+
+
+class EmbeddingMultiplierTest(tf.test.TestCase):
+  """dnn_model_fn tests."""
+
+  def testRaisesNonEmbeddingColumn(self):
+    one_hot_language = tf.contrib.layers.one_hot_column(
+        tf.contrib.layers.sparse_column_with_hash_bucket('language', 10))
+
+    params = {
+        'feature_columns': [one_hot_language],
+        'head': head_lib._multi_class_head(2),
+        'hidden_units': [1],
+        # Set lr mult to 0. to keep embeddings constant.
+        'embedding_lr_multipliers': {
+            one_hot_language: 0.0
+        },
+    }
+    features = {
+        'language':
+            tf.SparseTensor(
+                values=['en', 'fr', 'zh'],
+                indices=[[0, 0], [1, 0], [2, 0]],
+                shape=[3, 1]),
+    }
+    labels = tf.constant([[0], [0], [0]], dtype=tf.int32)
+    with self.assertRaisesRegexp(
+        ValueError, 'can only be defined for embedding columns'):
+      dnn._dnn_model_fn(features, labels,
+                        tf.contrib.learn.ModeKeys.TRAIN, params)
+
+  def testMultipliesGradient(self):
+    embedding_language = tf.contrib.layers.embedding_column(
+        tf.contrib.layers.sparse_column_with_hash_bucket('language', 10),
+        dimension=1, initializer=tf.constant_initializer(0.1))
+    embedding_wire = tf.contrib.layers.embedding_column(
+        tf.contrib.layers.sparse_column_with_hash_bucket('wire', 10),
+        dimension=1, initializer=tf.constant_initializer(0.1))
+
+    params = {
+        'feature_columns': [embedding_language, embedding_wire],
+        'head': head_lib._multi_class_head(2),
+        'hidden_units': [1],
+        # Set lr mult to 0. to keep embeddings constant.
+        'embedding_lr_multipliers': {
+            embedding_language: 0.0
+        },
+    }
+    features = {
+        'language':
+            tf.SparseTensor(
+                values=['en', 'fr', 'zh'],
+                indices=[[0, 0], [1, 0], [2, 0]],
+                shape=[3, 1]),
+        'wire':
+            tf.SparseTensor(
+                values=['omar', 'stringer', 'marlo'],
+                indices=[[0, 0], [1, 0], [2, 0]],
+                shape=[3, 1]),
+    }
+    labels = tf.constant([[0], [0], [0]], dtype=tf.int32)
+    model_ops = dnn._dnn_model_fn(features, labels,
+                                  tf.contrib.learn.ModeKeys.TRAIN, params)
+    with tf.train.MonitoredSession() as sess:
+      language_var = dnn_linear_combined._get_embedding_variable(
+          embedding_language, 'dnn', 'dnn/input_from_feature_columns')
+      wire_var = dnn_linear_combined._get_embedding_variable(
+          embedding_wire, 'dnn', 'dnn/input_from_feature_columns')
+      for _ in range(2):
+        _, language_value, wire_value = sess.run(
+            [model_ops.train_op, language_var, wire_var])
+      initial_value = np.full_like(language_value, 0.1)
+      self.assertTrue(np.all(np.isclose(language_value, initial_value)))
+      self.assertFalse(np.all(np.isclose(wire_value, initial_value)))
 
 
 class DNNClassifierTest(tf.test.TestCase):
@@ -41,6 +119,18 @@ class DNNClassifierTest(tf.test.TestCase):
   def testEstimatorContract(self):
     estimator_test_utils.assert_estimator_contract(
         self, tf.contrib.learn.DNNClassifier)
+
+  def testEmbeddingMultiplier(self):
+    embedding_language = tf.contrib.layers.embedding_column(
+        tf.contrib.layers.sparse_column_with_hash_bucket('language', 10),
+        dimension=1, initializer=tf.constant_initializer(0.1))
+    classifier = tf.contrib.learn.DNNClassifier(
+        feature_columns=[embedding_language],
+        hidden_units=[3, 3],
+        embedding_lr_multipliers={embedding_language: 0.8})
+    self.assertEqual(
+        {embedding_language: 0.8},
+        classifier._estimator.params['embedding_lr_multipliers'])
 
   def testLogisticRegression_MatrixData(self):
     """Tests binary classification using matrix data as input."""
@@ -117,10 +207,10 @@ class DNNClassifierTest(tf.test.TestCase):
     classifier = tf.contrib.learn.DNNClassifier(
         n_classes=2,
         feature_columns=feature_columns,
-        hidden_units=[3, 3],
+        hidden_units=[10, 10],
         config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
-    classifier.fit(input_fn=_input_fn, steps=5)
+    classifier.fit(input_fn=_input_fn, steps=50)
 
     scores = classifier.evaluate(input_fn=_input_fn, steps=1)
     self._assertInRange(0.0, 1.0, scores['accuracy'])
@@ -221,7 +311,7 @@ class DNNClassifierTest(tf.test.TestCase):
         n_classes=3,
         feature_columns=feature_columns,
         hidden_units=[3, 3],
-        config=tf.contrib.learn.RunConfig(tf_random_seed=3))
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
     classifier.fit(x=train_x, y=train_y, steps=200)
     scores = classifier.evaluate(x=train_x, y=train_y, steps=1)
@@ -309,7 +399,7 @@ class DNNClassifierTest(tf.test.TestCase):
         weight_column_name='w',
         feature_columns=[tf.contrib.layers.real_valued_column('x')],
         hidden_units=[3, 3],
-        config=tf.contrib.learn.RunConfig(tf_random_seed=3))
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
     classifier.fit(input_fn=_input_fn_train, steps=5)
     scores = classifier.evaluate(input_fn=_input_fn_eval, steps=1)
@@ -338,8 +428,8 @@ class DNNClassifierTest(tf.test.TestCase):
     classifier = tf.contrib.learn.DNNClassifier(
         n_classes=3,
         feature_columns=feature_columns,
-        hidden_units=[3, 3],
-        config=tf.contrib.learn.RunConfig(tf_random_seed=3))
+        hidden_units=[10, 10],
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
     classifier.fit(input_fn=_input_fn, steps=100)
 
@@ -516,16 +606,24 @@ class DNNClassifierTest(tf.test.TestCase):
         tf.contrib.layers.embedding_column(sparse_column, dimension=1)
     ]
 
+    tf_config = {
+        'cluster': {
+            tf.contrib.learn.TaskType.PS: ['fake_ps_0', 'fake_ps_1']
+        }
+    }
+    with tf.test.mock.patch.dict('os.environ',
+                                 {'TF_CONFIG': json.dumps(tf_config)}):
+      config = tf.contrib.learn.RunConfig(tf_random_seed=1)
+      # Because we did not start a distributed cluster, we need to pass an
+      # empty ClusterSpec, otherwise the device_setter will look for
+      # distributed jobs, such as "/job:ps" which are not present.
+      config._cluster_spec = tf.train.ClusterSpec({})
+
     classifier = tf.contrib.learn.DNNClassifier(
         n_classes=3,
         feature_columns=feature_columns,
         hidden_units=[3, 3],
-        # Because we did not start a distributed cluster, we need to pass an
-        # empty ClusterSpec, otherwise the device_setter will look for
-        # distributed jobs, such as "/job:ps" which are not present.
-        config=tf.contrib.learn.RunConfig(
-            num_ps_replicas=2, cluster_spec=tf.train.ClusterSpec({}),
-            tf_random_seed=5))
+        config=config)
 
     classifier.fit(input_fn=_input_fn, steps=5)
     scores = classifier.evaluate(input_fn=_input_fn, steps=1)
@@ -698,7 +796,7 @@ class DNNRegressorTest(tf.test.TestCase):
     regressor = tf.contrib.learn.DNNRegressor(
         feature_columns=[tf.contrib.layers.real_valued_column('x')],
         hidden_units=[3, 3],
-        config=tf.contrib.learn.RunConfig(tf_random_seed=3))
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
     regressor.fit(input_fn=_input_fn_train, steps=5)
     scores = regressor.evaluate(input_fn=_input_fn_train, steps=1)
@@ -763,7 +861,7 @@ class DNNRegressorTest(tf.test.TestCase):
         weight_column_name='w',
         feature_columns=[tf.contrib.layers.real_valued_column('x')],
         hidden_units=[3, 3],
-        config=tf.contrib.learn.RunConfig(tf_random_seed=3))
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
     regressor.fit(input_fn=_input_fn_train, steps=5)
     scores = regressor.evaluate(input_fn=_input_fn_eval, steps=1)
@@ -794,7 +892,7 @@ class DNNRegressorTest(tf.test.TestCase):
     regressor = tf.contrib.learn.DNNRegressor(
         feature_columns=feature_columns,
         hidden_units=[3, 3],
-        config=tf.contrib.learn.RunConfig(tf_random_seed=3))
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
     regressor.fit(input_fn=_input_fn, steps=200)
 
@@ -828,7 +926,7 @@ class DNNRegressorTest(tf.test.TestCase):
     regressor = tf.contrib.learn.DNNRegressor(
         feature_columns=feature_columns,
         hidden_units=[3, 3],
-        config=tf.contrib.learn.RunConfig(tf_random_seed=3))
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
     regressor.fit(input_fn=_input_fn, steps=200)
 
@@ -909,7 +1007,7 @@ class DNNRegressorTest(tf.test.TestCase):
         model_dir=model_dir,
         feature_columns=feature_columns,
         hidden_units=[3, 3],
-        config=tf.contrib.learn.RunConfig(tf_random_seed=3))
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
     regressor.fit(input_fn=_input_fn, steps=5)
     predict_input_fn = functools.partial(_input_fn, num_epochs=1)
@@ -920,7 +1018,7 @@ class DNNRegressorTest(tf.test.TestCase):
         model_dir=model_dir,
         feature_columns=feature_columns,
         hidden_units=[3, 3],
-        config=tf.contrib.learn.RunConfig(tf_random_seed=3))
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
     predictions2 = list(regressor2.predict(input_fn=predict_input_fn))
     self.assertAllClose(predictions, predictions2)
 
@@ -947,15 +1045,23 @@ class DNNRegressorTest(tf.test.TestCase):
         tf.contrib.layers.real_valued_column('age')
     ]
 
+    tf_config = {
+        'cluster': {
+            tf.contrib.learn.TaskType.PS: ['fake_ps_0', 'fake_ps_1']
+        }
+    }
+    with tf.test.mock.patch.dict('os.environ',
+                                 {'TF_CONFIG': json.dumps(tf_config)}):
+      config = tf.contrib.learn.RunConfig(tf_random_seed=1)
+      # Because we did not start a distributed cluster, we need to pass an
+      # empty ClusterSpec, otherwise the device_setter will look for
+      # distributed jobs, such as "/job:ps" which are not present.
+      config._cluster_spec = tf.train.ClusterSpec({})
+
     regressor = tf.contrib.learn.DNNRegressor(
         feature_columns=feature_columns,
         hidden_units=[3, 3],
-        # Because we did not start a distributed cluster, we need to pass an
-        # empty ClusterSpec, otherwise the device_setter will look for
-        # distributed jobs, such as "/job:ps" which are not present.
-        config=tf.contrib.learn.RunConfig(
-            num_ps_replicas=2, cluster_spec=tf.train.ClusterSpec({}),
-            tf_random_seed=1))
+        config=config)
 
     regressor.fit(input_fn=_input_fn, steps=5)
 
@@ -987,7 +1093,7 @@ class DNNRegressorTest(tf.test.TestCase):
         feature_columns=feature_columns,
         hidden_units=[3, 3],
         enable_centered_bias=True,
-        config=tf.contrib.learn.RunConfig(tf_random_seed=3))
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
     regressor.fit(input_fn=_input_fn, steps=5)
     self.assertIn('centered_bias_weight', regressor.get_variable_names())
@@ -1020,7 +1126,7 @@ class DNNRegressorTest(tf.test.TestCase):
         feature_columns=feature_columns,
         hidden_units=[3, 3],
         enable_centered_bias=False,
-        config=tf.contrib.learn.RunConfig(tf_random_seed=3))
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
     regressor.fit(input_fn=_input_fn, steps=5)
     self.assertNotIn('centered_bias_weight', regressor.get_variable_names())

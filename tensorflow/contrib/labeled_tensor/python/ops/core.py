@@ -279,7 +279,7 @@ class LabeledTensor(object):
     axes: lt.Axes containing axis names and coordinate labels.
   """
 
-  @tc.accepts(object, ops.Output,
+  @tc.accepts(object, ops.Tensor,
               tc.Union(Axes, tc.Collection(tc.Union(string_types, AxisLike))))
   def __init__(self, tensor, axes):
     """Construct a LabeledTenor.
@@ -489,7 +489,7 @@ class LabeledTensor(object):
 # typecheck type abbreviations:
 # abbreviations for third-party types with very long reprs
 tc.register_type_abbreviation(tensor_shape.Dimension, 'tensorflow.Dimension')
-tc.register_type_abbreviation(ops.Output, 'tensorflow.Output')
+tc.register_type_abbreviation(ops.Tensor, 'tensorflow.Tensor')
 tc.register_type_abbreviation(dtypes.DType, 'tensorflow.DType')
 # core LabeledTensor types
 tc.register_type_abbreviation(Axis, 'labeled_tensor.Axis')
@@ -497,11 +497,11 @@ tc.register_type_abbreviation(Axes, 'labeled_tensor.Axes')
 tc.register_type_abbreviation(LabeledTensor, 'labeled_tensor.LabeledTensor')
 
 
-@tc.returns(ops.Output)
+@tc.returns(ops.Tensor)
 @tc.accepts(LabeledTensor)
 def _convert_labeled_tensor_to_tensor(value, *args, **kwargs):
   # call ops.convert_to_tensor to handle optional arguments appropriately
-  return ops.convert_to_tensor(value.tensor, *args, **kwargs)
+  return ops.internal_convert_to_tensor(value.tensor, *args, **kwargs)
 
 
 ops.register_tensor_conversion_function(
@@ -510,7 +510,7 @@ ops.register_tensor_conversion_function(
 
 # tc class for anything that can be coerced into a LabeledTensor
 # pylint: disable=invalid-name
-LabeledTensorLike = tc.Union(LabeledTensor, ops.Output, np.ndarray, Scalar)
+LabeledTensorLike = tc.Union(LabeledTensor, ops.Tensor, np.ndarray, Scalar)
 # pylint: enable=invalid-name
 
 

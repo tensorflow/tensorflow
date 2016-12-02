@@ -656,7 +656,6 @@ filegroup(
     name = "android_srcs",
     srcs = [
         ":proto_text_srcs_all",
-        "//tensorflow/core/debug:android_srcs",
         "//tensorflow/core/kernels:android_srcs",
         "//tensorflow/core/platform/default/build_config:android_srcs",
         "//tensorflow/core/util/ctc:android_srcs",
@@ -685,6 +684,7 @@ filegroup(
             "**/*testutil*",
             "**/*testlib*",
             "**/*main.cc",
+            "debug/**/*",
             "graph/dot.*",
             "lib/jpeg/**/*",
             "lib/png/**/*",
@@ -723,7 +723,10 @@ filegroup(
 cc_library(
     name = "android_tensorflow_lib_lite",
     srcs = if_android(["//tensorflow/core:android_srcs"]),
-    copts = tf_copts() + ["-Os"],
+    copts = tf_copts() + [
+        "-Os",
+        "-DNOTFDBG",
+    ],
     linkopts = ["-lz"],
     tags = [
         "manual",
@@ -749,7 +752,7 @@ cc_library(
         "//tensorflow/core/kernels:android_core_ops",
         "//tensorflow/core/kernels:android_extended_ops",
     ]),
-    copts = tf_copts() + ["-Os"] + ["-std=c++11"],
+    copts = tf_copts() + ["-Os"] + ["-std=c++11"] + ["-DNOTFDBG"],
     visibility = ["//visibility:public"],
     deps = [
         ":protos_cc",
@@ -782,7 +785,7 @@ cc_library(
 cc_library(
     name = "android_tensorflow_lib",
     srcs = if_android([":android_op_registrations_and_gradients"]),
-    copts = tf_copts(),
+    copts = tf_copts() + ["-DNOTFDBG"],
     tags = [
         "manual",
         "notap",
@@ -807,6 +810,7 @@ cc_library(
     copts = tf_copts() + [
         "-Os",
         "-DSUPPORT_SELECTIVE_REGISTRATION",
+        "-DNOTFDBG",
     ],
     tags = [
         "manual",
@@ -893,12 +897,12 @@ cc_library(
 # Libraries with GPU facilities that are useful for writing kernels.
 cc_library(
     name = "gpu_lib",
-    srcs = if_not_windows([
+    srcs = [
         "common_runtime/gpu/gpu_event_mgr.cc",
-    ]),
-    hdrs = if_not_windows([
+    ],
+    hdrs = [
         "common_runtime/gpu/gpu_event_mgr.h",
-    ]),
+    ],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
@@ -908,7 +912,8 @@ cc_library(
         ":lib_internal",
         ":proto_text",
         ":protos_all_cc",
-    ] + if_not_windows([":stream_executor"]),
+        ":stream_executor",
+    ],
 )
 
 cc_library(
@@ -926,7 +931,7 @@ tf_proto_library_cc(
     name = "worker_proto",
     srcs = ["protobuf/worker.proto"],
     cc_api_version = 2,
-    cc_libs = [":protos_all_cc"],
+    protodeps = [":protos_all"],
     visibility = [
         "//tensorflow:internal",
     ],
@@ -937,8 +942,8 @@ tf_proto_library_cc(
     srcs = ["protobuf/worker_service.proto"],
     has_services = 1,
     cc_api_version = 2,
-    cc_libs = [":worker_proto_cc"],
     cc_stubby_versions = ["2"],
+    protodeps = [":worker_proto"],
     visibility = [
         "//tensorflow:internal",
     ],
@@ -948,7 +953,7 @@ tf_proto_library_cc(
     name = "master_proto",
     srcs = ["protobuf/master.proto"],
     cc_api_version = 2,
-    cc_libs = [":protos_all_cc"],
+    protodeps = [":protos_all"],
     visibility = [
         "//tensorflow:internal",
     ],
@@ -959,8 +964,8 @@ tf_proto_library_cc(
     srcs = ["protobuf/master_service.proto"],
     has_services = 1,
     cc_api_version = 2,
-    cc_libs = [":master_proto_cc"],
     cc_stubby_versions = ["2"],
+    protodeps = [":master_proto"],
     visibility = [
         "//tensorflow:internal",
     ],
@@ -1288,6 +1293,7 @@ cc_library(
         "platform/regexp.h",
     ],
     visibility = [
+        "//tensorflow/compiler:__subpackages__",
         "//tensorflow/tools/tfprof:__subpackages__",
     ],
     deps = [":lib_internal"],
@@ -1351,7 +1357,7 @@ tf_cuda_library(
 
 tf_cuda_library(
     name = "gpu_runtime",
-    srcs = if_not_windows([
+    srcs = [
         "common_runtime/gpu/gpu_bfc_allocator.cc",
         "common_runtime/gpu/gpu_debug_allocator.cc",
         "common_runtime/gpu/gpu_device.cc",
@@ -1363,8 +1369,8 @@ tf_cuda_library(
         "common_runtime/gpu/pool_allocator.cc",
         "common_runtime/gpu/process_state.cc",
         "common_runtime/gpu_device_context.h",
-    ]),
-    hdrs = if_not_windows([
+    ],
+    hdrs = [
         "common_runtime/gpu/gpu_bfc_allocator.h",
         "common_runtime/gpu/gpu_debug_allocator.h",
         "common_runtime/gpu/gpu_device.h",
@@ -1373,7 +1379,7 @@ tf_cuda_library(
         "common_runtime/gpu/gpu_util.h",
         "common_runtime/gpu/pool_allocator.h",
         "common_runtime/gpu/process_state.h",
-    ]),
+    ],
     copts = tf_copts(),
     linkstatic = 1,
     deps = [
@@ -1385,10 +1391,9 @@ tf_cuda_library(
         ":lib",
         ":lib_internal",
         ":protos_all_cc",
-        "//third_party/eigen3",
-    ] + if_not_windows([
         ":stream_executor",
-    ]),
+        "//third_party/eigen3",
+    ],
     alwayslink = 1,
 )
 
@@ -1683,6 +1688,7 @@ tf_cc_tests(
         "util/reporter_test.cc",
         "util/saved_tensor_slice_util_test.cc",
         "util/sparse/sparse_tensor_test.cc",
+        "util/semver_test.cc",
         "util/tensor_slice_reader_test.cc",
         "util/tensor_slice_set_test.cc",
         "util/tensor_slice_util_test.cc",

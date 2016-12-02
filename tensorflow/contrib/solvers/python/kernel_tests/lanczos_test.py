@@ -56,9 +56,9 @@ def _get_lanczos_tests(dtype_, use_static_shape_, shape_, orthogonalize_,
       # The computed factorization should satisfy the equations
       #  A * V = U * B
       #  A' * U[:, :-1] = V * B[:-1, :]'
-      av = tf.batch_matmul(a, lbd.v)
+      av = tf.matmul(a, lbd.v)
       ub = lanczos.bidiag_matmul(lbd.u, lbd.alpha, lbd.beta, adjoint_b=False)
-      atu = tf.batch_matmul(a, lbd.u[:, :-1], adj_x=True)
+      atu = tf.matmul(a, lbd.u[:, :-1], adjoint_a=True)
       vbt = lanczos.bidiag_matmul(lbd.v, lbd.alpha, lbd.beta, adjoint_b=True)
 
       if use_static_shape_:

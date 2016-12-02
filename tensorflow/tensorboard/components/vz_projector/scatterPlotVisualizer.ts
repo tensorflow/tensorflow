@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 import {RenderContext} from './renderContext';
-import {DataSet} from './data';
 
 /**
  * ScatterPlotVisualizer is an interface used by ScatterPlotContainer
@@ -33,14 +32,7 @@ export interface ScatterPlotVisualizer {
   /**
    * Called when the positions of the scatter plot points have changed.
    */
-  onPointPositionsChanged(
-      newWorldSpacePointPositions: Float32Array, dataSet: DataSet);
-  /**
-   * Called when the label accessor (functor that maps point ids to text labels)
-   * changes. The label accessor is also part of RenderContext, but visualizers
-   * may need it outside of a render call, to learn when it changes.
-   */
-  onSetLabelAccessor(labelAccessor: (index: number) => string);
+  onPointPositionsChanged(newWorldSpacePointPositions: Float32Array);
   /**
    * Called immediately before the main scatter plot performs a picking
    * (selection) render. Set up render state for any geometry to use picking IDs

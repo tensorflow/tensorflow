@@ -11,11 +11,11 @@ To use TensorFlow you need to understand how TensorFlow:
 ## Overview
 
 TensorFlow is a programming system in which you represent computations as
-graphs.  Nodes in the graph are called *ops* (short for operations).  An op
-takes zero or more `Tensors`, performs some computation, and produces zero or
-more `Tensors`.  A `Tensor` is a typed multi-dimensional array. For example,
-you can represent a  mini-batch of images as a 4-D array of floating point
-numbers with dimensions `[batch, height, width, channels]`.
+graphs. Nodes in the graph are called *ops* (short for operations). An op takes
+zero or more `Tensors`, performs some computation, and produces zero or more
+`Tensors`. In TensorFlow terminology, a `Tensor` is a typed multi-dimensional
+array. For example, you can represent a mini-batch of images as a 4-D array of
+floating point numbers with dimensions `[batch, height, width, channels]`.
 
 A TensorFlow graph is a *description* of computations.  To compute anything,
 a graph must be launched in a `Session`.  A `Session` places the graph ops onto

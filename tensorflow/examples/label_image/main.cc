@@ -93,7 +93,8 @@ Status ReadTensorFromImageFile(string file_name, const int input_height,
 
   string input_name = "file_reader";
   string output_name = "normalized";
-  auto file_reader = ReadFile(root.WithOpName(input_name), file_name);
+  auto file_reader = tensorflow::ops::ReadFile(root.WithOpName(input_name),
+                                               file_name);
   // Now try to figure out what kind of file it is and decode it.
   const int wanted_channels = 3;
   Output image_reader;

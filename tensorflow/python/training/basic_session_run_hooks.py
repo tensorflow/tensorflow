@@ -21,6 +21,7 @@
 @@NanLossDuringTrainingError
 @@NanTensorHook
 @@SummarySaverHook
+@@GlobalStepWaiterHook
 
 """
 
@@ -260,12 +261,14 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
 
   def before_run(self, run_context):  # pylint: disable=unused-argument
     if self._timer.last_triggered_step() is None:
-      # Write graph in the first call.
+      # We do write graph and saver_def at the first call of before_run.
+      # We cannot do this in begin, since we let other hooks to change graph and
+      # add variables in begin. Graph is finalized after all begin calls.
       training_util.write_graph(
           ops.get_default_graph().as_graph_def(add_shapes=True),
           self._checkpoint_dir,
           "graph.pbtxt")
-      saver_def = self._saver.saver_def if self._saver else None
+      saver_def = self._get_saver().saver_def if self._get_saver() else None
       graph = ops.get_default_graph()
       meta_graph_def = meta_graph.create_meta_graph_def(
           graph_def=graph.as_graph_def(add_shapes=True),
@@ -289,14 +292,18 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
   def _save(self, step, session):
     """Saves the latest checkpoint."""
     logging.info("Saving checkpoints for %d into %s.", step, self._save_path)
-    if self._saver is not None:
-      self._saver.save(session, self._save_path, global_step=step)
-    elif self._scaffold is not None:
-      self._scaffold.saver.save(session, self._save_path, global_step=step)
+    self._get_saver().save(session, self._save_path, global_step=step)
     self._summary_writer.add_session_log(
         SessionLog(
             status=SessionLog.CHECKPOINT, checkpoint_path=self._save_path),
         step)
+
+  def _get_saver(self):
+    if self._saver is not None:
+      return self._saver
+    elif self._scaffold is not None:
+      return self._scaffold.saver
+    return None
 
 
 class StepCounterHook(session_run_hook.SessionRunHook):
@@ -307,7 +314,6 @@ class StepCounterHook(session_run_hook.SessionRunHook):
                every_n_secs=None,
                output_dir=None,
                summary_writer=None):
-    self._summary_tag = "global_step/sec"
 
     if (every_n_steps is None) == (every_n_secs is None):
       raise ValueError(
@@ -321,6 +327,7 @@ class StepCounterHook(session_run_hook.SessionRunHook):
 
   def begin(self):
     self._global_step_tensor = training_util.get_global_step()
+    self._summary_tag = self._global_step_tensor.op.name + "/sec"
     if self._global_step_tensor is None:
       raise RuntimeError(
           "Global step should be created to use StepCounterHook.")
@@ -403,9 +410,11 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
       summary_writer: `SummaryWriter`. If `None` and an `output_dir` was passed,
           one will be created accordingly.
       scaffold: `Scaffold` to get summary_op if it's not provided.
-      summary_op: `Tensor` of type `string`. A serialized `Summary` protocol
-          buffer, as output by TF summary methods like `tf.summary.scalar` or
-          `tf.summary.merge_all`.
+      summary_op: `Tensor` of type `string` containing the serialized `Summary`
+          protocol buffer or a list of `Tensor`. They are most likely an output
+          by TF summary methods like `tf.summary.scalar` or
+          `tf.summary.merge_all`. It can be passed in as one tensor; if more
+          than one, they must be passed in as a list.
 
     Raises:
       ValueError: Exactly one of scaffold or summary_op should be set.
@@ -436,10 +445,8 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
         self._timer.should_trigger_for_step(self._next_step))
     requests = {"global_step": self._global_step_tensor}
     if self._request_summary:
-      if self._summary_op is not None:
-        requests["summary"] = self._summary_op
-      elif self._scaffold.summary_op is not None:
-        requests["summary"] = self._scaffold.summary_op
+      if self._get_summary_op() is not None:
+        requests["summary"] = self._get_summary_op()
 
     return SessionRunArgs(requests)
 
@@ -457,14 +464,80 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
     if self._request_summary:
       self._timer.update_last_triggered_step(global_step)
       if "summary" in run_values.results:
-        self._summary_writer.add_summary(run_values.results["summary"],
-                                         global_step)
+        for summary in run_values.results["summary"]:
+          self._summary_writer.add_summary(summary, global_step)
 
     self._next_step = global_step + 1
 
   def end(self, session=None):
     if self._summary_writer:
       self._summary_writer.flush()
+
+  def _get_summary_op(self):
+    """Fetches the summary op either from self._summary_op or self._scaffold.
+
+    Returns:
+      Returns a list of summary `Tensor`.
+    """
+    summary_op = None
+    if self._summary_op is not None:
+      summary_op = self._summary_op
+    elif self._scaffold.summary_op is not None:
+      summary_op = self._scaffold.summary_op
+
+    if summary_op is None:
+      return None
+
+    if not isinstance(summary_op, list):
+      return [summary_op]
+    return summary_op
+
+
+class GlobalStepWaiterHook(session_run_hook.SessionRunHook):
+  """Delay execution until global step reaches to wait_until_step.
+
+  This hook delays execution until global step reaches to `wait_until_step`. It
+  is used to gradually start workers in distributed settings. One example usage
+  would be setting `wait_until_step=int(K*log(task_id+1))` assuming that
+  task_id=0 is the chief.
+  """
+
+  def __init__(self, wait_until_step):
+    """Create a _GlobalStepWaiterHook.
+
+    Args:
+      wait_until_step: an `int` shows until which global step should we wait.
+    """
+    self._wait_until_step = wait_until_step
+
+  def begin(self):
+    self._worker_is_started = False
+    self._global_step_tensor = training_util.get_global_step()
+    if self._global_step_tensor is None:
+      raise RuntimeError(
+          "Global step should be created to use _GlobalStepWaiterHook.")
+
+  def before_run(self, run_context):
+    if self._worker_is_started:
+      return None
+
+    if self._wait_until_step <= 0:
+      self._worker_is_started = True
+      return None
+
+    logging.info("Waiting for global step %d before starting training.",
+                 self._wait_until_step)
+    last_logged_step = 0
+    while True:
+      current_step = run_context.session.run(self._global_step_tensor)
+      if current_step >= self._wait_until_step:
+        self._worker_is_started = True
+        return None
+      if current_step - last_logged_step > 1000:
+        logging.info("Waiting for global step %d before starting training. "
+                     "Current step is %d.", self._wait_until_step, current_step)
+        last_logged_step = current_step
+      time.sleep(0.5)
 
 
 def _as_graph_element(obj):

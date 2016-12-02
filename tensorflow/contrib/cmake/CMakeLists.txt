@@ -1,5 +1,5 @@
 # Minimum CMake required
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.5)
 
 # Project
 project(tensorflow C CXX)
@@ -28,9 +28,11 @@ option(tensorflow_BUILD_CONTRIB_KERNELS "Build OpKernels from tensorflow/contrib
 option(tensorflow_BUILD_CC_TESTS "Build cc unit tests " OFF)
 option(tensorflow_BUILD_PYTHON_TESTS "Build python unit tests " OFF)
 
-#Threads: defines CMAKE_THREAD_LIBS_INIT and adds -pthread compile option for
-# targets that link ${CMAKE_THREAD_LIBS_INIT}.
-find_package (Threads)
+if (NOT WIN32)
+  # Threads: defines CMAKE_THREAD_LIBS_INIT and adds -pthread compile option
+  # for targets that link ${CMAKE_THREAD_LIBS_INIT}.
+  find_package (Threads)
+endif()
 
 # [CLEANUP] Remove when done
 # For debugging
@@ -207,6 +209,7 @@ if(tensorflow_BUILD_CC_EXAMPLE)
   include(tf_label_image_example.cmake)
 endif()
 if(tensorflow_BUILD_PYTHON_BINDINGS)
+  include(tensorboard)
   include(tf_python.cmake)
 endif()
 if (tensorflow_BUILD_CC_TESTS OR tensorflow_BUILD_PYTHON_TESTS)

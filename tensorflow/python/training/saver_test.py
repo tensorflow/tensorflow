@@ -18,17 +18,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
 import math
 import os.path
-import time
-import contextlib
 import random
 import shutil
 import tempfile
+import time
 
-import tensorflow as tf
 import numpy as np
 import six
+import tensorflow as tf
 
 from google.protobuf.any_pb2 import Any
 
@@ -38,8 +38,9 @@ from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
 from tensorflow.python.framework import meta_graph
-from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_data_flow_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.training import saver as saver_module
 from tensorflow.python.util import compat
@@ -110,13 +111,13 @@ class CheckpointedOp(object):
 
 class SaverTest(tf.test.TestCase):
 
-  def testBasics(self):
+  def basicSaveRestore(self, variable_op):
     save_path = os.path.join(self.get_temp_dir(), "basics")
 
     # Build a graph with 2 parameter nodes, and Save and
     # Restore nodes for them.
-    v0 = tf.Variable(10.0, name="v0")
-    v1 = tf.Variable(20.0, name="v1")
+    v0 = variable_op(10.0, name="v0")
+    v1 = variable_op(20.0, name="v1")
     v2 = CheckpointedOp(name="v2")
     v2_init = v2.insert("k1", 30.0)
     save = tf.train.Saver(
@@ -143,17 +144,13 @@ class SaverTest(tf.test.TestCase):
     # Start a second session.  In that session the parameter nodes
     # have not been initialized either.
     with self.test_session() as sess:
-      v0 = tf.Variable(-1.0, name="v0")
-      v1 = tf.Variable(-1.0, name="v1")
+      v0 = variable_op(-1.0, name="v0")
+      v1 = variable_op(-1.0, name="v1")
       v2 = CheckpointedOp(name="v2")
       save = tf.train.Saver({"v0": v0, "v1": v1, "v2": v2.saveable})
 
-      with self.assertRaisesWithPredicateMatch(
-          tf.OpError, lambda e: "uninitialized value v0" in e.message):
-        sess.run(v0)
-      with self.assertRaisesWithPredicateMatch(
-          tf.OpError, lambda e: "uninitialized value v1" in e.message):
-        sess.run(v1)
+      # Assert that the variables are not initialized.
+      self.assertEqual(len(tf.report_uninitialized_variables().eval()), 2)
       self.assertEqual(0, len(v2.keys().eval()))
       self.assertEqual(0, len(v2.values().eval()))
 
@@ -168,8 +165,8 @@ class SaverTest(tf.test.TestCase):
     # Build another graph with 2 nodes, initialized
     # differently, and a Restore node for them.
     with self.test_session() as sess:
-      v0_2 = tf.Variable(1000.0, name="v0")
-      v1_2 = tf.Variable(2000.0, name="v1")
+      v0_2 = variable_op(1000.0, name="v0")
+      v1_2 = variable_op(2000.0, name="v1")
       v2_2 = CheckpointedOp(name="v2")
       save2 = tf.train.Saver({"v0": v0_2, "v1": v1_2, "v2": v2_2.saveable})
       v2_2.insert("k1000", 3000.0).run()
@@ -187,6 +184,12 @@ class SaverTest(tf.test.TestCase):
       self.assertEqual(20.0, v1_2.eval())
       self.assertEqual(b"k1", v2_2.keys().eval())
       self.assertEqual(30.0, v2_2.values().eval())
+
+  def testBasic(self):
+    self.basicSaveRestore(tf.Variable)
+
+  def testResourceBasic(self):
+    self.basicSaveRestore(resource_variable_ops.ResourceVariable)
 
   def testInvalidPath(self):
     v0 = tf.Variable(0, name="v0")
@@ -1243,6 +1246,10 @@ class MetaGraphTest(tf.test.TestCase):
       meta_graph_def = save.export_meta_graph(filename)
       self.assertTrue(meta_graph_def.HasField("saver_def"))
       self.assertTrue(meta_graph_def.HasField("graph_def"))
+      self.assertTrue(meta_graph_def.HasField("meta_info_def"))
+      self.assertNotEqual(meta_graph_def.meta_info_def.tensorflow_version, "")
+      self.assertNotEqual(meta_graph_def.meta_info_def.tensorflow_git_version,
+                          "")
       collection_def = meta_graph_def.collection_def
       self.assertEqual(len(collection_def), 12)
 

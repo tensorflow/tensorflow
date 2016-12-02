@@ -7,7 +7,7 @@ reduce the scale of forgetting in the beginning of the training.
 
 Unlike `rnn_cell.LSTMCell`, this is a monolithic op and should be much faster.
 The weight and bias matrixes should be compatible as long as the variable
-scope matches, and you use `use_compatible_names=True`.
+scope matches.
 - - -
 
 #### `tf.contrib.rnn.LSTMBlockCell.__call__(x, states_prev, scope=None)` {#LSTMBlockCell.__call__}
@@ -17,7 +17,7 @@ Long short-term memory cell (LSTM).
 
 - - -
 
-#### `tf.contrib.rnn.LSTMBlockCell.__init__(num_units, forget_bias=1.0, use_peephole=False, use_compatible_names=False)` {#LSTMBlockCell.__init__}
+#### `tf.contrib.rnn.LSTMBlockCell.__init__(num_units, forget_bias=1.0, use_peephole=False)` {#LSTMBlockCell.__init__}
 
 Initialize the basic LSTM cell.
 
@@ -27,8 +27,6 @@ Initialize the basic LSTM cell.
 *  <b>`num_units`</b>: int, The number of units in the LSTM cell.
 *  <b>`forget_bias`</b>: float, The bias added to forget gates (see above).
 *  <b>`use_peephole`</b>: Whether to use peephole connections or not.
-*  <b>`use_compatible_names`</b>: If True, use the same variable naming as
-    rnn_cell.LSTMCell
 
 
 - - -

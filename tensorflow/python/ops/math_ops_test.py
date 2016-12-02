@@ -24,6 +24,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
@@ -40,7 +41,17 @@ class ReduceTest(test_util.TensorFlowTestCase):
       y_tf = math_ops.reduce_sum(x).eval()
       self.assertEqual(y_tf, 21)
 
-  def testReduceExplicitDims(self):
+  def testReduceExplicitAxes(self):
+    x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
+    with self.test_session(use_gpu=True):
+      for axis in (0, -2, (0, 0), (0, -2)):
+        self.assertAllEqual(math_ops.reduce_sum(x, axis=axis).eval(), [5, 7, 9])
+      for axis in (1, -1, (1, 1), (1, -1)):
+        self.assertAllEqual(math_ops.reduce_sum(x, axis=axis).eval(), [6, 15])
+      for axis in (None, (0, 1), (-1, -2), (-2, -1, 0, 1)):
+        self.assertEqual(math_ops.reduce_sum(x, axis=axis).eval(), 21)
+
+  def testReduceInvalidAxis(self):
     x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
     axis = np.array([[0], [1]])
     with self.assertRaisesRegexp(ValueError, "must be at most rank 1"):
@@ -66,7 +77,7 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
         self.assertShapeEqual(y_np, y_tf)
         y_tf_np = y_tf.eval()
         self.assertAllClose(y_tf_np, y_np)
- 
+
   def testReductionIndices2(self):
     for dtype in [np.float16, np.float32, np.double]:
       x_np = np.random.rand(5, 5).astype(dtype)
@@ -295,11 +306,31 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       np_result = np.divide(nums, divs)
       self.assertAllEqual(tf_result, np_result)
 
+  def testComplexDiv(self):
+    foo = array_ops.constant([1.+3.j])
+    with self.test_session():
+      _ = math_ops.divide(foo, 1.).eval()
+      _ = math_ops.div(foo, 2.).eval()
+
+  def testFloorDivGrad(self):
+    with self.test_session():
+      a = variables.Variable(2.)
+      b = variables.Variable(4.)
+      with self.test_session() as sess:
+        sess.run(variables.initialize_all_variables())
+        c_grad = gradients.gradients(math_ops.divide(a, b), [a, b])
+        self.assertAllEqual([x.eval() for x in c_grad], [.25, -.125])
+        c_grad = gradients.gradients(math_ops.div(a, b), [a, b])
+        self.assertAllEqual([x.eval() for x in c_grad], [.25, -.125])
+        c_grad = gradients.gradients(math_ops.floordiv(a, b), [a, b])
+        self.assertAllEqual([None if x is None else x.eval() for x in c_grad],
+                            [None, None])
+
   def testConsistent(self):
     nums, divs = self.intTestData()
     with self.test_session():
       tf_result = (
-          math_ops.floor_div(nums, divs) * divs + math_ops.floor_mod(nums, divs)
+          math_ops.floor_div(nums, divs) * divs + math_ops.floormod(nums, divs)
       ).eval()
       tf_nums = array_ops.constant(nums)
       tf_divs = array_ops.constant(divs)

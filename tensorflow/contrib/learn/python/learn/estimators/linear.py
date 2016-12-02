@@ -27,6 +27,7 @@ import six
 from tensorflow.contrib import layers
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
+from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import monitors as monitor_lib
@@ -196,14 +197,17 @@ def sdca_model_fn(features, labels, mode, params):
   if not isinstance(optimizer, sdca_optimizer.SDCAOptimizer):
     raise ValueError("Optimizer must be of type SDCAOptimizer")
 
-  if isinstance(head, head_lib._BinarySvmHead):  # pylint: disable=protected-access
+  # pylint: disable=protected-access
+  if isinstance(head, head_lib._BinarySvmHead):
     loss_type = "hinge_loss"
-  elif isinstance(head, head_lib._MultiClassHead):  # pylint: disable=protected-access
+  elif isinstance(
+      head, (head_lib._MultiClassHead, head_lib._BinaryLogisticHead)):
     loss_type = "logistic_loss"
-  elif isinstance(head, head_lib._RegressionHead):  # pylint: disable=protected-access
+  elif isinstance(head, head_lib._RegressionHead):
     loss_type = "squared_loss"
   else:
-    return ValueError("Unsupported head type: {}".format(head))
+    raise ValueError("Unsupported head type: {}".format(head))
+  # pylint: enable=protected-access
 
   parent_scope = "linear"
 
@@ -516,6 +520,22 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
         default_batch_size=default_batch_size,
         exports_to_keep=exports_to_keep)
 
+  @experimental
+  def export_savedmodel(self,
+                        export_dir_base,
+                        input_fn,
+                        default_output_alternative_key=None,
+                        assets_extra=None,
+                        as_text=False,
+                        exports_to_keep=None):
+    return self._estimator.export_savedmodel(
+        export_dir_base,
+        input_fn,
+        default_output_alternative_key=default_output_alternative_key,
+        assets_extra=assets_extra,
+        as_text=as_text,
+        exports_to_keep=exports_to_keep)
+
   @property
   @deprecated("2016-10-30",
               "This method will be removed after the deprecation date. "
@@ -638,9 +658,10 @@ class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
     """
     self._feature_columns = feature_columns
     assert self._feature_columns
-    self._optimizer = _get_default_optimizer(feature_columns)
     if optimizer:
       self._optimizer = _get_optimizer(optimizer)
+    else:
+      self._optimizer = _get_default_optimizer(feature_columns)
 
     chief_hook = None
     if (isinstance(optimizer, sdca_optimizer.SDCAOptimizer) and
@@ -755,6 +776,22 @@ class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
         signature_fn=(signature_fn or export.regression_signature_fn),
         prediction_key=prediction_key.PredictionKey.SCORES,
         default_batch_size=default_batch_size,
+        exports_to_keep=exports_to_keep)
+
+  @experimental
+  def export_savedmodel(self,
+                        export_dir_base,
+                        input_fn,
+                        default_output_alternative_key=None,
+                        assets_extra=None,
+                        as_text=False,
+                        exports_to_keep=None):
+    return self._estimator.export_savedmodel(
+        export_dir_base,
+        input_fn,
+        default_output_alternative_key=default_output_alternative_key,
+        assets_extra=assets_extra,
+        as_text=as_text,
         exports_to_keep=exports_to_keep)
 
   @property

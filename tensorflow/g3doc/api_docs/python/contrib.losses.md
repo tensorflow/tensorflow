@@ -67,6 +67,7 @@ Instructions for updating:
   Args:
     losses: A tensor of size [batch_size, d1, ... dN].
     weights: A tensor of size [1] or [batch_size, d1, ... dK] where K < N.
+    scope: the scope for the operations performed in computing the loss.
     weight: Deprecated alias for `weights`.
 
   Returns:

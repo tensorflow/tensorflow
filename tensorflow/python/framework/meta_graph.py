@@ -31,12 +31,13 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import op_def_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saver_pb2
+from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import versions
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
 
 
@@ -351,8 +352,13 @@ def create_meta_graph_def(meta_info_def=None,
   # Creates a MetaGraphDef proto.
   meta_graph_def = meta_graph_pb2.MetaGraphDef()
   # Adds meta_info_def.
-  if meta_info_def:
-    meta_graph_def.meta_info_def.MergeFrom(meta_info_def)
+  if not meta_info_def:
+    meta_info_def = meta_graph_pb2.MetaGraphDef.MetaInfoDef()
+
+  # Set the tf version strings to the current tf build.
+  meta_info_def.tensorflow_version = versions.__version__
+  meta_info_def.tensorflow_git_version = versions.__git_version__
+  meta_graph_def.meta_info_def.MergeFrom(meta_info_def)
 
   # Adds graph_def or the default.
   if not graph_def:
@@ -638,7 +644,7 @@ def export_scoped_meta_graph(filename=None,
       **kwargs)
 
   if filename:
-    training_util.write_graph(
+    graph_io.write_graph(
         scoped_meta_graph_def,
         os.path.dirname(filename),
         os.path.basename(filename),

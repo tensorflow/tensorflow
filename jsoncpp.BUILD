@@ -1,5 +1,7 @@
 licenses(["unencumbered"])  # Public Domain or MIT
 
+exports_files(["LICENSE"])
+
 cc_library(
     name = "jsoncpp",
     srcs = [

@@ -104,6 +104,8 @@ class Rendezvous : public core::RefCounted {
 
   // Synchronous wrapper for RecvAsync.
   Status Recv(const ParsedKey& key, const Args& args, Tensor* val,
+              bool* is_dead, int64 timeout_ms);
+  Status Recv(const ParsedKey& key, const Args& args, Tensor* val,
               bool* is_dead);
 
   // Aborts all pending and future Send/Recv with the given "status".

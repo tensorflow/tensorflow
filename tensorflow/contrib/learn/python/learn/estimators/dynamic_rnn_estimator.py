@@ -26,6 +26,7 @@ from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.layers.python.layers import optimizers
 from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn.estimators import estimator
+from tensorflow.contrib.learn.python.learn.estimators import model_fn
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -45,6 +46,7 @@ class PredictionType(object):
   SINGLE_VALUE = 1
   MULTIPLE_VALUE = 2
 
+
 class RNNKeys(object):
   SEQUENCE_LENGTH_KEY = 'sequence_length'
   INITIAL_STATE_KEY = 'initial_state'
@@ -55,25 +57,6 @@ class RNNKeys(object):
 _CELL_TYPES = {'basic_rnn': rnn_cell.BasicRNNCell,
                'lstm': rnn_cell.LSTMCell,
                'gru': rnn_cell.GRUCell,}
-
-
-# TODO(jamieas): move `padding_mask` to array_ops.
-def padding_mask(sequence_lengths, padded_length):
-  """Creates a mask used for calculating losses with padded input.
-
-  Args:
-    sequence_lengths: A `Tensor` of shape `[batch_size]` containing the unpadded
-      length of  each sequence.
-    padded_length: A scalar `Tensor` indicating the length of the sequences
-      after padding
-  Returns:
-    A boolean `Tensor` M of shape `[batch_size, padded_length]` where
-    `M[i, j] == True` when `lengths[i] > j`.
-
-  """
-  range_tensor = math_ops.range(padded_length)
-  return math_ops.less(array_ops.expand_dims(range_tensor, 0),
-                       array_ops.expand_dims(sequence_lengths, 1))
 
 
 def mask_activations_and_labels(activations, labels, sequence_lengths):
@@ -87,7 +70,7 @@ def mask_activations_and_labels(activations, labels, sequence_lengths):
 
   Returns:
     activations_masked: `logit` values with those beyond `sequence_lengths`
-    removed for each batch. Batches are then concatenated. Shape
+      removed for each batch. Batches are then concatenated. Shape
       `[tf.sum(sequence_lengths), k]` if `sequence_lengths` is not `None` and
       shape `[batch_size * padded_length, k]` otherwise.
     labels_masked: Label values after removing unneeded entries. Shape
@@ -105,7 +88,7 @@ def mask_activations_and_labels(activations, labels, sequence_lengths):
                                              [flattened_dimension, -1])
       labels_masked = array_ops.reshape(labels, [flattened_dimension])
     else:
-      mask = padding_mask(sequence_lengths, padded_length)
+      mask = array_ops.sequence_mask(sequence_lengths, padded_length)
       activations_masked = array_ops.boolean_mask(activations, mask)
       labels_masked = array_ops.boolean_mask(labels, mask)
     return activations_masked, labels_masked
@@ -191,10 +174,10 @@ def _concatenate_context_input(sequence_input, context_input):
 
 
 def build_sequence_input(features,
-                          sequence_feature_columns,
-                          context_feature_columns,
-                          weight_collections=None,
-                          scope=None):
+                         sequence_feature_columns,
+                         context_feature_columns,
+                         weight_collections=None,
+                         scope=None):
   """Combine sequence and context features into input for an RNN.
 
   Args:
@@ -229,16 +212,16 @@ def build_sequence_input(features,
 
 
 def construct_rnn(initial_state,
-                   sequence_input,
-                   cell,
-                   num_label_columns,
-                   dtype=dtypes.float32,
-                   parallel_iterations=32,
-                   swap_memory=False):
+                  sequence_input,
+                  cell,
+                  num_label_columns,
+                  dtype=dtypes.float32,
+                  parallel_iterations=32,
+                  swap_memory=True):
   """Build an RNN and apply a fully connected layer to get the desired output.
 
   Args:
-    initial_state: The initial state to pass the the RNN. If `None`, the
+    initial_state: The initial state to pass the RNN. If `None`, the
       default starting state for `self._cell` is used.
     sequence_input: A `Tensor` with shape `[batch_size, padded_length, d]`
       that will be passed as input to the RNN.
@@ -271,6 +254,9 @@ def construct_rnn(initial_state,
         num_outputs=num_label_columns,
         activation_fn=None,
         trainable=True)
+    # Use `identitiy` to rename `final_state`.
+    final_state = array_ops.identity(
+        final_state, name=RNNKeys.FINAL_STATE_KEY)
     return activations, final_state
 
 
@@ -369,13 +355,15 @@ def _multi_value_predictions(
         probability_shape = array_ops.concat(0, [activations_shape[:2], [2]])
       else:
         probability_shape = activations_shape
-      probabilities = array_ops.reshape(flat_probabilities, probability_shape)
+      probabilities = array_ops.reshape(
+          flat_probabilities, probability_shape, name=RNNKeys.PROBABILITIES_KEY)
       prediction_dict[RNNKeys.PROBABILITIES_KEY] = probabilities
     else:
       flat_predictions = target_column.logits_to_predictions(
           flattened_activations, proba=False)
     predictions = array_ops.reshape(
-        flat_predictions, [activations_shape[0], activations_shape[1]])
+        flat_predictions, [activations_shape[0], activations_shape[1]],
+        name=RNNKeys.PREDICTIONS_KEY)
     prediction_dict[RNNKeys.PREDICTIONS_KEY] = predictions
     return prediction_dict
 
@@ -464,6 +452,33 @@ def _single_value_loss(
     return target_column.loss(last_activations, labels, features)
 
 
+def apply_dropout(
+    cell, input_keep_probability, output_keep_probability, random_seed=None):
+  """Apply dropout to the outputs and inputs of `cell`.
+
+  Args:
+    cell: An `RNNCell`.
+    input_keep_probability: Probability to keep inputs to `cell`. If `None`,
+      no dropout is applied.
+    output_keep_probability: Probability to keep outputs of `cell`. If `None`,
+      no dropout is applied.
+    random_seed: Seed for random dropout.
+
+  Returns:
+    An `RNNCell`, the result of applying the supplied dropouts to `cell`.
+  """
+  input_prob_none = input_keep_probability is None
+  output_prob_none = output_keep_probability is None
+  if input_prob_none and output_prob_none:
+    return cell
+  if input_prob_none:
+    input_keep_probability = 1.0
+  if output_prob_none:
+    output_keep_probability = 1.0
+  return rnn_cell.DropoutWrapper(
+      cell, input_keep_probability, output_keep_probability, random_seed)
+
+
 def _get_dynamic_rnn_model_fn(cell,
                               target_column,
                               problem_type,
@@ -474,17 +489,18 @@ def _get_dynamic_rnn_model_fn(cell,
                               predict_probabilities=False,
                               learning_rate=None,
                               gradient_clipping_norm=None,
+                              input_keep_probability=None,
+                              output_keep_probability=None,
                               sequence_length_key=RNNKeys.SEQUENCE_LENGTH_KEY,
                               initial_state_key=RNNKeys.INITIAL_STATE_KEY,
                               dtype=dtypes.float32,
                               parallel_iterations=None,
-                              swap_memory=False,
+                              swap_memory=True,
                               name='DynamicRNNModel'):
   """Creates an RNN model function for an `Estimator`.
 
   Args:
     cell: An initialized `RNNCell` to be used in the RNN.
-      'basic_rnn,' 'lstm' or 'gru'.
     target_column: An initialized `TargetColumn`, used to calculate prediction
       and loss.
     problem_type: `ProblemType.CLASSIFICATION` or`ProblemType.REGRESSION`.
@@ -496,19 +512,23 @@ def _get_dynamic_rnn_model_fn(cell,
       describing sequence features. All items in the set should be instances
       of classes derived from `FeatureColumn`.
     context_feature_columns: An iterable containing all the feature columns
-      describing context features i.e. features that apply accross all time
+      describing context features, i.e., features that apply accross all time
       steps. All items in the set should be instances of classes derived from
       `FeatureColumn`.
     predict_probabilities: A boolean indicating whether to predict probabilities
-      for all classes. Should only be used with `ProblemType.CLASSIFICATION`.
+      for all classes. Must only be used with `ProblemType.CLASSIFICATION`.
     learning_rate: Learning rate used for optimization. This argument has no
       effect if `optimizer` is an instance of an `Optimizer`.
     gradient_clipping_norm: A float. Gradients will be clipped to this value.
+    input_keep_probability: Probability to keep inputs to `cell`. If `None`,
+      no dropout is applied.
+    output_keep_probability: Probability to keep outputs of `cell`. If `None`,
+      no dropout is applied.
     sequence_length_key: The key that will be used to look up sequence length in
       the `features` dict.
     initial_state_key: The key that will be used to look up initial_state in
       the `features` dict.
-    dtype: The dtype of the state and output for the given `cell_num`
+    dtype: The dtype of the state and output of the given `cell`.
     parallel_iterations: Number of iterations to run in parallel. Values >> 1
       use more memory but take less time, while smaller values use less memory
       but computations take longer.
@@ -551,45 +571,61 @@ def _get_dynamic_rnn_model_fn(cell,
       initial_state = features.get(initial_state_key)
       sequence_length = features.get(sequence_length_key)
       sequence_input = build_sequence_input(features,
-                                             sequence_feature_columns,
-                                             context_feature_columns)
+                                            sequence_feature_columns,
+                                            context_feature_columns)
+      if mode == model_fn.ModeKeys.TRAIN:
+        cell_for_mode = apply_dropout(
+            cell, input_keep_probability, output_keep_probability)
+      else:
+        cell_for_mode = cell
       rnn_activations, final_state = construct_rnn(
           initial_state,
           sequence_input,
-          cell,
+          cell_for_mode,
           target_column.num_label_columns,
           dtype=dtype,
           parallel_iterations=parallel_iterations,
           swap_memory=swap_memory)
+
+      loss = None  # Created below for modes TRAIN and EVAL.
       if prediction_type == PredictionType.MULTIPLE_VALUE:
         prediction_dict = _multi_value_predictions(
             rnn_activations, target_column, predict_probabilities)
-        loss = _multi_value_loss(
-            rnn_activations, labels, sequence_length, target_column, features)
+        if mode != model_fn.ModeKeys.INFER:
+          loss = _multi_value_loss(
+              rnn_activations, labels, sequence_length, target_column, features)
       elif prediction_type == PredictionType.SINGLE_VALUE:
         prediction_dict = _single_value_predictions(
             rnn_activations, sequence_length, target_column,
             predict_probabilities)
-        loss = _single_value_loss(
-            rnn_activations, labels, sequence_length, target_column, features)
-      # TODO(roumposg): Return eval_metric_ops here, instead of default_metrics.
-      default_metrics = _get_default_metrics(
-          problem_type, prediction_type, sequence_length)
+        if mode != model_fn.ModeKeys.INFER:
+          loss = _single_value_loss(
+              rnn_activations, labels, sequence_length, target_column, features)
       prediction_dict[RNNKeys.FINAL_STATE_KEY] = final_state
-      eval_metric_ops = estimator._make_metrics_ops(  # pylint: disable=protected-access
-          default_metrics, features, labels, prediction_dict)
-      train_op = optimizers.optimize_loss(
-          loss=loss,
-          global_step=None,
-          learning_rate=learning_rate,
-          optimizer=optimizer,
-          clip_gradients=gradient_clipping_norm,
-          summaries=optimizers.OPTIMIZER_SUMMARIES)
-    return estimator.ModelFnOps(mode=mode,
-                                predictions=prediction_dict,
-                                loss=loss,
-                                train_op=train_op,
-                                eval_metric_ops=eval_metric_ops)
+
+      eval_metric_ops = None
+      if mode != model_fn.ModeKeys.INFER:
+        # TODO(roumposg): Return eval_metric_ops instead of default_metrics.
+        default_metrics = _get_default_metrics(
+            problem_type, prediction_type, sequence_length)
+        eval_metric_ops = estimator._make_metrics_ops(  # pylint: disable=protected-access
+            default_metrics, features, labels, prediction_dict)
+
+      train_op = None
+      if mode == model_fn.ModeKeys.TRAIN:
+        train_op = optimizers.optimize_loss(
+            loss=loss,
+            global_step=None,  # Get it internally.
+            learning_rate=learning_rate,
+            optimizer=optimizer,
+            clip_gradients=gradient_clipping_norm,
+            summaries=optimizers.OPTIMIZER_SUMMARIES)
+
+    return model_fn.ModelFnOps(mode=mode,
+                               predictions=prediction_dict,
+                               loss=loss,
+                               train_op=train_op,
+                               eval_metric_ops=eval_metric_ops)
   return _dynamic_rnn_model_fn
 
 
@@ -634,37 +670,43 @@ def multi_value_rnn_regressor(num_units,
                               optimizer_type='SGD',
                               learning_rate=0.1,
                               momentum=None,
-                              gradient_clipping_norm=10.0,
+                              gradient_clipping_norm=5.0,
+                              input_keep_probability=None,
+                              output_keep_probability=None,
                               model_dir=None,
                               config=None,
-                              params=None,
                               feature_engineering_fn=None):
-
   """Creates a RNN `Estimator` that predicts sequences of values.
 
   Args:
-    num_units: The size of the RNN cells.
+    num_units: The size of the RNN cells. This argument has no effect
+      if `cell_type` is an instance of `RNNCell`.
     sequence_feature_columns: An iterable containing all the feature columns
       describing sequence features. All items in the set should be instances
       of classes derived from `FeatureColumn`.
     context_feature_columns: An iterable containing all the feature columns
-      describing context features i.e. features that apply accross all time
+      describing context features, i.e., features that apply accross all time
       steps. All items in the set should be instances of classes derived from
       `FeatureColumn`.
-    cell_type: A subclass of `RNNCell`, an instance of an `RNNCell or one of
+    cell_type: A subclass of `RNNCell`, an instance of an `RNNCell` or one of
       'basic_rnn,' 'lstm' or 'gru'.
-    num_rnn_layers: Number of RNN layers.
+    num_rnn_layers: Number of RNN layers. Leave this at its default value 1
+      if passing a `cell_type` that is already a MultiRNNCell.
     optimizer_type: The type of optimizer to use. Either a subclass of
       `Optimizer`, an instance of an `Optimizer` or a string. Strings must be
       one of 'Adagrad', 'Momentum' or 'SGD'.
-    learning_rate: Learning rate.
+    learning_rate: Learning rate. This argument has no effect if `optimizer`
+      is an instance of an `Optimizer`.
     momentum: Momentum value. Only used if `optimizer_type` is 'Momentum'.
     gradient_clipping_norm: Parameter used for gradient clipping. If `None`,
       then no clipping is performed.
-    model_dir: Directory to use for The directory in which to save and restore
-      the model graph, parameters, etc.
+    input_keep_probability: Probability to keep inputs to `cell`. If `None`,
+      no dropout is applied.
+    output_keep_probability: Probability to keep outputs of `cell`. If `None`,
+      no dropout is applied.
+    model_dir: The directory in which to save and restore the model graph,
+      parameters, etc.
     config: A `RunConfig` instance.
-    params: `dict` of hyperparameters. Passed through to `Estimator`.
     feature_engineering_fn: Takes features and labels which are the output of
       `input_fn` and returns features and labels which will be fed into
       `model_fn`. Please check `model_fn` for a definition of features and
@@ -686,12 +728,13 @@ def multi_value_rnn_regressor(num_units,
       context_feature_columns=context_feature_columns,
       learning_rate=learning_rate,
       gradient_clipping_norm=gradient_clipping_norm,
+      input_keep_probability=input_keep_probability,
+      output_keep_probability=output_keep_probability,
       name='MultiValueRnnRegressor')
 
   return estimator.Estimator(model_fn=dynamic_rnn_model_fn,
                              model_dir=model_dir,
                              config=config,
-                             params=params,
                              feature_engineering_fn=feature_engineering_fn)
 
 
@@ -706,39 +749,46 @@ def multi_value_rnn_classifier(num_classes,
                                learning_rate=0.1,
                                predict_probabilities=False,
                                momentum=None,
-                               gradient_clipping_norm=10.0,
+                               gradient_clipping_norm=5.0,
+                               input_keep_probability=None,
+                               output_keep_probability=None,
                                model_dir=None,
                                config=None,
-                               params=None,
                                feature_engineering_fn=None):
   """Creates a RNN `Estimator` that predicts sequences of labels.
 
   Args:
     num_classes: The number of classes for categorization.
-    num_units: The size of the RNN cells.
+    num_units: The size of the RNN cells. This argument has no effect
+      if `cell_type` is an instance of `RNNCell`.
     sequence_feature_columns: An iterable containing all the feature columns
       describing sequence features. All items in the set should be instances
       of classes derived from `FeatureColumn`.
     context_feature_columns: An iterable containing all the feature columns
-      describing context features i.e. features that apply accross all time
+      describing context features, i.e., features that apply accross all time
       steps. All items in the set should be instances of classes derived from
       `FeatureColumn`.
     cell_type: A subclass of `RNNCell`, an instance of an `RNNCell or one of
       'basic_rnn,' 'lstm' or 'gru'.
-    num_rnn_layers: Number of RNN layers.
+    num_rnn_layers: Number of RNN layers. Leave this at its default value 1
+      if passing a `cell_type` that is already a MultiRNNCell.
     optimizer_type: The type of optimizer to use. Either a subclass of
       `Optimizer`, an instance of an `Optimizer` or a string. Strings must be
       one of 'Adagrad', 'Momentum' or 'SGD'.
-    learning_rate: Learning rate.
+    learning_rate: Learning rate. This argument has no effect if `optimizer`
+      is an instance of an `Optimizer`.
     predict_probabilities: A boolean indicating whether to predict probabilities
       for all classes.
     momentum: Momentum value. Only used if `optimizer_type` is 'Momentum'.
     gradient_clipping_norm: Parameter used for gradient clipping. If `None`,
       then no clipping is performed.
-    model_dir: Directory to use for The directory in which to save and restore
-      the model graph, parameters, etc.
+    input_keep_probability: Probability to keep inputs to `cell`. If `None`,
+      no dropout is applied.
+    output_keep_probability: Probability to keep outputs of `cell`. If `None`,
+      no dropout is applied.
+    model_dir: The directory in which to save and restore the model graph,
+      parameters, etc.
     config: A `RunConfig` instance.
-    params: `dict` of hyperparameters. Passed through to `Estimator`.
     feature_engineering_fn: Takes features and labels which are the output of
       `input_fn` and returns features and labels which will be fed into
       `model_fn`. Please check `model_fn` for a definition of features and
@@ -761,12 +811,13 @@ def multi_value_rnn_classifier(num_classes,
       predict_probabilities=predict_probabilities,
       learning_rate=learning_rate,
       gradient_clipping_norm=gradient_clipping_norm,
+      input_keep_probability=input_keep_probability,
+      output_keep_probability=output_keep_probability,
       name='MultiValueRnnClassifier')
 
   return estimator.Estimator(model_fn=dynamic_rnn_model_fn,
                              model_dir=model_dir,
                              config=config,
-                             params=params,
                              feature_engineering_fn=feature_engineering_fn)
 
 
@@ -779,36 +830,43 @@ def single_value_rnn_regressor(num_units,
                                optimizer_type='SGD',
                                learning_rate=0.1,
                                momentum=None,
-                               gradient_clipping_norm=10.0,
+                               gradient_clipping_norm=5.0,
+                               input_keep_probability=None,
+                               output_keep_probability=None,
                                model_dir=None,
                                config=None,
-                               params=None,
                                feature_engineering_fn=None):
   """Create a RNN `Estimator` that predicts single values.
 
   Args:
-    num_units: The size of the RNN cells.
+    num_units: The size of the RNN cells. This argument has no effect
+      if `cell_type` is an instance of `RNNCell`.
     sequence_feature_columns: An iterable containing all the feature columns
       describing sequence features. All items in the set should be instances
       of classes derived from `FeatureColumn`.
     context_feature_columns: An iterable containing all the feature columns
-      describing context features i.e. features that apply accross all time
+      describing context features, i.e., features that apply accross all time
       steps. All items in the set should be instances of classes derived from
       `FeatureColumn`.
     cell_type: A subclass of `RNNCell`, an instance of an `RNNCell or one of
       'basic_rnn,' 'lstm' or 'gru'.
-    num_rnn_layers: Number of RNN layers.
+    num_rnn_layers: Number of RNN layers. Leave this at its default value 1
+      if passing a `cell_type` that is already a MultiRNNCell.
     optimizer_type: The type of optimizer to use. Either a subclass of
       `Optimizer`, an instance of an `Optimizer` or a string. Strings must be
       one of 'Adagrad', 'Momentum' or 'SGD'.
-    learning_rate: Learning rate.
+    learning_rate: Learning rate. This argument has no effect if `optimizer`
+      is an instance of an `Optimizer`.
     momentum: Momentum value. Only used if `optimizer_type` is 'Momentum'.
     gradient_clipping_norm: Parameter used for gradient clipping. If `None`,
       then no clipping is performed.
-    model_dir: Directory to use for The directory in which to save and restore
-      the model graph, parameters, etc.
+    input_keep_probability: Probability to keep inputs to `cell`. If `None`,
+      no dropout is applied.
+    output_keep_probability: Probability to keep outputs of `cell`. If `None`,
+      no dropout is applied.
+    model_dir: The directory in which to save and restore the model graph,
+      parameters, etc.
     config: A `RunConfig` instance.
-    params: `dict` of hyperparameters. Passed through to `Estimator`.
     feature_engineering_fn: Takes features and labels which are the output of
       `input_fn` and returns features and labels which will be fed into
       `model_fn`. Please check `model_fn` for a definition of features and
@@ -830,12 +888,13 @@ def single_value_rnn_regressor(num_units,
       context_feature_columns=context_feature_columns,
       learning_rate=learning_rate,
       gradient_clipping_norm=gradient_clipping_norm,
+      input_keep_probability=input_keep_probability,
+      output_keep_probability=output_keep_probability,
       name='SingleValueRnnRegressor')
 
   return estimator.Estimator(model_fn=dynamic_rnn_model_fn,
                              model_dir=model_dir,
                              config=config,
-                             params=params,
                              feature_engineering_fn=feature_engineering_fn)
 
 
@@ -850,39 +909,46 @@ def single_value_rnn_classifier(num_classes,
                                 learning_rate=0.1,
                                 predict_probabilities=False,
                                 momentum=None,
-                                gradient_clipping_norm=10.0,
+                                gradient_clipping_norm=5.0,
+                                input_keep_probability=None,
+                                output_keep_probability=None,
                                 model_dir=None,
                                 config=None,
-                                params=None,
                                 feature_engineering_fn=None):
   """Creates a RNN `Estimator` that predicts single labels.
 
   Args:
     num_classes: The number of classes for categorization.
-    num_units: The size of the RNN cells.
+    num_units: The size of the RNN cells. This argument has no effect
+      if `cell_type` is an instance of `RNNCell`.
     sequence_feature_columns: An iterable containing all the feature columns
       describing sequence features. All items in the set should be instances
       of classes derived from `FeatureColumn`.
     context_feature_columns: An iterable containing all the feature columns
-      describing context features i.e. features that apply accross all time
+      describing context features, i.e., features that apply accross all time
       steps. All items in the set should be instances of classes derived from
       `FeatureColumn`.
     cell_type: A subclass of `RNNCell`, an instance of an `RNNCell or one of
       'basic_rnn,' 'lstm' or 'gru'.
-    num_rnn_layers: Number of RNN layers.
+    num_rnn_layers: Number of RNN layers. Leave this at its default value 1
+      if passing a `cell_type` that is already a MultiRNNCell.
     optimizer_type: The type of optimizer to use. Either a subclass of
       `Optimizer`, an instance of an `Optimizer` or a string. Strings must be
       one of 'Adagrad', 'Momentum' or 'SGD'.
-    learning_rate: Learning rate.
+    learning_rate: Learning rate. This argument has no effect if `optimizer`
+      is an instance of an `Optimizer`.
     predict_probabilities: A boolean indicating whether to predict probabilities
       for all classes.
     momentum: Momentum value. Only used if `optimizer_type` is 'Momentum'.
     gradient_clipping_norm: Parameter used for gradient clipping. If `None`,
       then no clipping is performed.
-    model_dir: Directory to use for The directory in which to save and restore
-      the model graph, parameters, etc.
+    input_keep_probability: Probability to keep inputs to `cell`. If `None`,
+      no dropout is applied.
+    output_keep_probability: Probability to keep outputs of `cell`. If `None`,
+      no dropout is applied.
+    model_dir: The directory in which to save and restore the model graph,
+      parameters, etc.
     config: A `RunConfig` instance.
-    params: `dict` of hyperparameters. Passed through to `Estimator`.
     feature_engineering_fn: Takes features and labels which are the output of
       `input_fn` and returns features and labels which will be fed into
       `model_fn`. Please check `model_fn` for a definition of features and
@@ -905,10 +971,11 @@ def single_value_rnn_classifier(num_classes,
       predict_probabilities=predict_probabilities,
       learning_rate=learning_rate,
       gradient_clipping_norm=gradient_clipping_norm,
+      input_keep_probability=input_keep_probability,
+      output_keep_probability=output_keep_probability,
       name='SingleValueRnnClassifier')
 
   return estimator.Estimator(model_fn=dynamic_rnn_model_fn,
                              model_dir=model_dir,
                              config=config,
-                             params=params,
                              feature_engineering_fn=feature_engineering_fn)

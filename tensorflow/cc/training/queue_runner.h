@@ -46,6 +46,12 @@ class QueueRunner : public RunnerInterface {
   static Status New(const QueueRunnerDef& queue_runner_def, Coordinator* coord,
                     std::unique_ptr<QueueRunner>* result);
 
+  // Adds a callback that the queue runner will call when it detects an error.
+  void AddErrorCallback(const std::function<void(Status)>& cb);
+
+  // Delete the previously registered callbacks.
+  void ClearErrorCallbacks();
+
   // The destructor would join all the threads.
   ~QueueRunner();
 
@@ -55,6 +61,11 @@ class QueueRunner : public RunnerInterface {
   // Starts the queue runner with the given session, and wait for up to the
   // specified time (in milliseconds) for the queues to start to fill up.
   Status Start(Session* sess, int wait_for_ms);
+
+  // Requests to stop and runs the cancel op. It would be called in a separate
+  // thread when coordinator is set. If there is no coordinator it should be
+  // called before calling Join.
+  void Stop(Session* sess);
 
   // Joins all the threads. Returns okay if all threads run successfully;
   // otherwise returns the first captured failure status.
@@ -71,10 +82,6 @@ class QueueRunner : public RunnerInterface {
 
   // The Run function for each thread.
   void Run(Session* sess, const string& enqueue_op);
-
-  // Requests to stop and runs the cancel op. It would be called in a separate
-  // thread when coordinator is set.
-  void Stop(Session* sess);
 
   // Updates the internal status; it only keeps OK or the first unexpected error
   // status.
@@ -100,6 +107,9 @@ class QueueRunner : public RunnerInterface {
   std::unique_ptr<BlockingCounter> counter_;
 
   Coordinator* coord_;
+
+  mutex cb_mu_;
+  std::vector<std::function<void(Status)>> callbacks_;
 };
 
 }  // namespace tensorflow

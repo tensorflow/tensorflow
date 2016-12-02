@@ -50,8 +50,8 @@ class TensorForestTest(test_util.TensorFlowTestCase):
         num_features=1000).fill()
     # sqrt(1000) = 31.63...
     self.assertEquals(32, hparams.num_splits_to_consider)
-    # 1000000 / 32 = 31250
-    self.assertEquals(31250, hparams.max_fertile_nodes)
+    # 1000000 / 2 = 500000
+    self.assertEquals(500000, hparams.max_fertile_nodes)
     # floor(31.63 / 25) = 1
     self.assertEquals(1, hparams.split_initializations_per_input)
 

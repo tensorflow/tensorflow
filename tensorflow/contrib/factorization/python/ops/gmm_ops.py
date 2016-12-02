@@ -256,7 +256,7 @@ class GmmAlgorithm(object):
     x2 = tf.square(diff)
     cov_expanded = tf.expand_dims(1.0 / (self._covs + 1e-3), 2)
     # num_classes X num_examples
-    x2_cov = tf.batch_matmul(x2, cov_expanded)
+    x2_cov = tf.matmul(x2, cov_expanded)
     x2_cov = tf.transpose(tf.squeeze(x2_cov, [2]))
     self._probs[shard_id] = -0.5 * (
         tf.to_float(self._dimensions) * tf.log(2.0 * np.pi) +
@@ -325,7 +325,7 @@ class GmmAlgorithm(object):
     x_mul_w = tf.concat(0, [
         tf.expand_dims(x_trans[k, :, :] * self._w[shard_id][:, k], 0)
         for k in range(self._num_classes)])
-    self._w_mul_x2.append(tf.batch_matmul(x_mul_w, x))
+    self._w_mul_x2.append(tf.matmul(x_mul_w, x))
 
   def _define_maximization_operation(self, num_batches):
     """Maximization operations."""
@@ -390,10 +390,11 @@ class GmmAlgorithm(object):
         inv_cov = tf.tile(
             tf.expand_dims(inverse, 0), tf.stack([self._num_examples, 1, 1]))
         diff = tf.transpose(shard - self._means[c, :, :], perm=[1, 0, 2])
-        m_left = tf.batch_matmul(diff, inv_cov)
-        all_scores.append(tf.sqrt(tf.batch_matmul(
-            m_left, tf.transpose(diff, perm=[0, 2, 1])
-        )))
+        m_left = tf.matmul(diff, inv_cov)
+        all_scores.append(
+            tf.sqrt(tf.matmul(
+                m_left, tf.transpose(
+                    diff, perm=[0, 2, 1]))))
       self._all_scores.append(
           tf.reshape(
               tf.concat(1, all_scores),

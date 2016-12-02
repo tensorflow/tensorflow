@@ -514,9 +514,23 @@ class TensorUtilTest(tf.test.TestCase):
     self.assertEquals(np.complex128, a.dtype)
     self.assertAllEqual(np.array([[(1+2j), (3+4j)], [(5+6j), (7+8j)]]), a)
 
-  def testUnsupportedDType(self):
+  def testUnsupportedDTypes(self):
     with self.assertRaises(TypeError):
       tensor_util.make_tensor_proto(np.array([1]), 0)
+    with self.assertRaises(TypeError):
+      tensor_util.make_tensor_proto(3, dtype=tf.qint8)
+    with self.assertRaises(TypeError):
+      tensor_util.make_tensor_proto([3], dtype=tf.qint8)
+
+  def testTensorShapeVerification(self):
+    array = np.array([[1], [2]])
+    correct_shape = (2, 1)
+    incorrect_shape = (1, 2)
+    tensor_util.make_tensor_proto(array, shape=correct_shape,
+        verify_shape=True)
+    with self.assertRaises(TypeError):
+      tensor_util.make_tensor_proto(array, shape=incorrect_shape,
+          verify_shape=True)
 
   def testShapeTooLarge(self):
     with self.assertRaises(ValueError):

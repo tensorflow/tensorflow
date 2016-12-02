@@ -52,36 +52,6 @@ dtype: the type of this variable. Must agree with the dtypes
 shape: The (possibly partially specified) shape of this variable.
 )");
 
-Status CreateAssignShapeFn(InferenceContext* c) {
-  DataType handle_dtype = c->input_handle_dtype(0);
-  DataType value_dtype;
-  c->GetAttr("dtype", &value_dtype);
-  if (handle_dtype != value_dtype) {
-    return errors::InvalidArgument(
-        "Trying to initialize handle for variable with wrong dtype. "
-        "Expected ",
-        handle_dtype, " got ", value_dtype);
-  }
-  ShapeHandle s = c->input_handle_shape(0);
-  ShapeHandle value_shape = c->input(1);
-  ShapeHandle unused;
-  TF_RETURN_IF_ERROR(c->Merge(s, value_shape, &unused));
-  return Status::OK();
-}
-
-REGISTER_OP("CreateVariableOp")
-    .Input("resource: resource")
-    .Input("value: dtype")
-    .Attr("dtype: type")
-    .SetShapeFn(CreateAssignShapeFn)
-    .Doc(R"(
-Creates a variable resource.
-
-resource: handle to the resource in which to store the variable.
-value: the value to set the new tensor to use.
-dtype: the dtype of the value.
-)");
-
 REGISTER_OP("ReadVariableOp")
     .Input("resource: resource")
     .Output("value: dtype")
@@ -113,6 +83,23 @@ resource: handle to the resource in which to store the variable.
 dtype: the dtype of the value.
 )");
 
+Status CreateAssignShapeFn(InferenceContext* c) {
+  DataType handle_dtype = c->input_handle_dtype(0);
+  DataType value_dtype;
+  c->GetAttr("dtype", &value_dtype);
+  if (handle_dtype != value_dtype) {
+    return errors::InvalidArgument(
+        "Trying to initialize handle for variable with wrong dtype. "
+        "Expected ",
+        handle_dtype, " got ", value_dtype);
+  }
+  ShapeHandle s = c->input_handle_shape(0);
+  ShapeHandle value_shape = c->input(1);
+  ShapeHandle unused;
+  TF_RETURN_IF_ERROR(c->Merge(s, value_shape, &unused));
+  return Status::OK();
+}
+
 REGISTER_OP("AssignVariableOp")
     .Input("resource: resource")
     .Input("value: dtype")
@@ -133,22 +120,7 @@ REGISTER_OP("AssignAddVariableOp")
     .Input("resource: resource")
     .Input("value: dtype")
     .Attr("dtype: type")
-    .SetShapeFn([](InferenceContext* c) {
-      DataType handle_dtype = c->input_handle_dtype(0);
-      DataType value_dtype;
-      c->GetAttr("dtype", &value_dtype);
-      if (handle_dtype != value_dtype) {
-        return errors::InvalidArgument(
-            "Trying to initialize handle for variable with wrong dtype. "
-            "Expected ",
-            handle_dtype, " got ", value_dtype);
-      }
-      ShapeHandle s = c->input_handle_shape(0);
-      ShapeHandle value_shape = c->input(1);
-      ShapeHandle unused;
-      TF_RETURN_IF_ERROR(c->Merge(s, value_shape, &unused));
-      return Status::OK();
-    })
+    .SetShapeFn(CreateAssignShapeFn)
     .Doc(R"(
 Adds a value to the current value of a variable.
 

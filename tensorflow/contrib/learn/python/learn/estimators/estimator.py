@@ -38,6 +38,8 @@ from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework import deprecated_args
 from tensorflow.contrib.framework import list_variables
 from tensorflow.contrib.framework import load_variable
+from tensorflow.contrib.framework.python.framework import experimental
+from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import graph_actions
 from tensorflow.contrib.learn.python.learn import metric_spec
@@ -51,14 +53,21 @@ from tensorflow.contrib.learn.python.learn.estimators import tensor_signature
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedError
 from tensorflow.contrib.learn.python.learn.learn_io import data_feeder
 from tensorflow.contrib.learn.python.learn.utils import export
-
+from tensorflow.contrib.learn.python.learn.utils import saved_model_export_utils
+from tensorflow.python.client import session as tf_session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import builder as saved_model_builder
+from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import device_setter
 from tensorflow.python.training import saver
+from tensorflow.python.util import compat
 
 
 AS_ITERABLE_DATE = '2016-09-15'
@@ -73,15 +82,6 @@ SCIKIT_DECOUPLE_INSTRUCTIONS = (
     'available in the SKCompat class, Estimator will only accept input_fn.\n'
     'Example conversion:\n'
     '  est = Estimator(...) -> est = SKCompat(Estimator(...))')
-
-
-# TODO(roumposg): Migrate external users to tf.learn.contrib.ModeKeys and delete
-# this.
-ModeKeys = model_fn_lib.ModeKeys  # pylint: disable=invalid-name
-
-
-# TODO(roumposg): Migrate external users to model.ModelFnOps and delete this.
-ModelFnOps = model_fn_lib.ModelFnOps  # pylint: disable=invalid-name
 
 
 def _get_input_fn(x, y, input_fn, feed_fn, batch_size, shuffle=False, epochs=1):
@@ -191,8 +191,8 @@ def _get_replica_device_setter(config):
       'MutableHashTableOfTensors', 'MutableDenseHashTable'
   ]
 
-  if config.job_name:
-    worker_device = '/job:%s/task:%d' % (config.job_name, config.task)
+  if config.task_type:
+    worker_device = '/job:%s/task:%d' % (config.task_type, config.task_id)
   else:
     worker_device = '/job:worker'
 
@@ -329,8 +329,8 @@ class BaseEstimator(
 
     # Features and labels TensorSignature objects.
     # TODO(wicke): Rename these to something more descriptive
-    self._features_info = None
-    self._labels_info = None
+    self._features_info = {}
+    self._labels_info = {}
 
     self._graph = None
 
@@ -562,13 +562,12 @@ class BaseEstimator(
         use_deprecated_input_fn=use_deprecated_input_fn,
         default_batch_size=default_batch_size,
         exports_to_keep=exports_to_keep)
-    # pylint: enable=protected-access
 
   @abc.abstractproperty
   def _get_train_ops(self, features, labels):
     """Method that builds model graph and returns trainer ops.
 
-    Expected to be overriden by sub-classes that require custom support.
+    Expected to be overridden by sub-classes that require custom support.
 
     Args:
       features: `Tensor` or `dict` of `Tensor` objects.
@@ -639,28 +638,29 @@ class BaseEstimator(
     return tensor_signature.create_example_parser_from_signatures(
         self._features_info, examples_batch)
 
-  def _check_inputs(self, features, labels):
-    if self._features_info is not None:
-      logging.debug('Given features: %s, required signatures: %s.',
-                    str(features), str(self._features_info))
-      if not tensor_signature.tensors_compatible(features, self._features_info):
-        raise ValueError('Features are incompatible with given information. '
+  def _check_inputs(self, features, labels, mode):
+    if mode in self._features_info:
+      logging.debug('Given features for mode %s: %s, required signatures: %s.',
+                    mode, str(features), str(self._features_info[mode]))
+
+      if not tensor_signature.tensors_compatible(features, self._features_info[mode]):
+        raise ValueError('Features for mode %s are incompatible with given information. '
                          'Given features: %s, required signatures: %s.' %
-                         (str(features), str(self._features_info)))
+                         (mode, str(features), str(self._features_info[mode])))
     else:
-      self._features_info = tensor_signature.create_signatures(features)
-      logging.debug('Setting feature info to %s.', str(self._features_info))
+      self._features_info[mode] = tensor_signature.create_signatures(features)
+      logging.debug('Setting feature info for mode %s to %s.', mode, str(self._features_info[mode]))
     if labels is not None:
-      if self._labels_info is not None:
+      if mode in self._labels_info:
         logging.debug('Given labels: %s, required signatures: %s.',
                       str(labels), str(self._labels_info))
-        if not tensor_signature.tensors_compatible(labels, self._labels_info):
-          raise ValueError('Labels are incompatible with given information. '
+        if not tensor_signature.tensors_compatible(labels, self._labels_info[mode]):
+          raise ValueError('Labels for mode %s are incompatible with given information. '
                            'Given labels: %s, required signatures: %s.' %
-                           (str(labels), str(self._labels_info)))
+                           (mode, str(labels), str(self._labels_info[mode])))
       else:
-        self._labels_info = tensor_signature.create_signatures(labels)
-        logging.debug('Setting labels info to %s', str(self._labels_info))
+        self._labels_info[mode] = tensor_signature.create_signatures(labels)
+        logging.debug('Setting labels info for mode %s to %s', mode, str(self._labels_info[mode]))
 
   def _train_model(self,
                    input_fn,
@@ -682,11 +682,11 @@ class BaseEstimator(
       # Stagger startup of worker sessions based on task id.
       sleep_secs = min(
           self._config.training_worker_max_startup_secs,
-          self._config.task *
+          self._config.task_id *
           self._config.training_worker_session_startup_stagger_secs)
       if sleep_secs:
         logging.info('Waiting %d secs before starting task %d.', sleep_secs,
-                     self._config.task)
+                     self._config.task_id)
         time.sleep(sleep_secs)
 
     # Device allocation
@@ -697,8 +697,7 @@ class BaseEstimator(
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step = contrib_framework.create_global_step(g)
       features, labels = input_fn()
-      self._check_inputs(features, labels)
-
+      self._check_inputs(features, labels, model_fn_lib.ModeKeys.TRAIN)
       # The default return type of _get_train_ops is ModelFnOps. But there are
       # some subclasses of tf.contrib.learn.Estimator which override this
       # method and use the legacy signature, namely _get_train_ops returns a
@@ -706,7 +705,7 @@ class BaseEstimator(
       # cases, but will soon be deleted after the subclasses are updated.
       # TODO(b/32664904): Update subclasses and delete the else-statement.
       train_ops = self._get_train_ops(features, labels)
-      if isinstance(train_ops, ModelFnOps):  # Default signature
+      if isinstance(train_ops, model_fn_lib.ModelFnOps):  # Default signature
         train_op = train_ops.train_op
         loss_op = train_ops.loss
       else:  # Legacy signature
@@ -790,8 +789,7 @@ class BaseEstimator(
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step = contrib_framework.create_global_step(g)
       features, labels = input_fn()
-      self._check_inputs(features, labels)
-
+      self._check_inputs(features, labels, model_fn_lib.ModeKeys.EVAL)
       # The default return type of _get_eval_ops is ModelFnOps. But there are
       # some subclasses of tf.contrib.learn.Estimator which override this
       # method and use the legacy signature, namely _get_eval_ops returns an
@@ -800,7 +798,7 @@ class BaseEstimator(
       # updated.
       # TODO(b/32664904): Update subclasses and delete the else-statement.
       eval_ops = self._get_eval_ops(features, labels, metrics)
-      if isinstance(eval_ops, ModelFnOps):  # Default signature
+      if isinstance(eval_ops, model_fn_lib.ModelFnOps):  # Default signature
         eval_dict = eval_ops.eval_metric_ops
       else:  # Legacy signature
         eval_dict = eval_ops
@@ -825,6 +823,25 @@ class BaseEstimator(
       return result[0]
     return result
 
+  def _set_infer_mode_feature_signature(self, features):
+    for mode in list(self._features_info.keys()):
+      if tensor_signature.tensors_compatible(features, self._features_info[mode]):
+        self._features_info[model_fn_lib.ModeKeys.INFER] = self._features_info[mode]
+        self._labels_info[model_fn_lib.ModeKeys.INFER] = self._labels_info[mode]
+        break
+
+    if model_fn_lib.ModeKeys.INFER not in self._features_info:
+      logging.warning('Features for mode %s are incompatible with neither train mode nor eval mode.'
+                      ' Given features: %s' % (model_fn_lib.ModeKeys.INFER, str(features)))
+      for mode in list(self._features_info.keys()):
+        logging.warning('Whereas %s mode signatures: %s' % (mode, str(self._features_info[mode])))
+      self._check_inputs(features, None, model_fn_lib.ModeKeys.INFER)
+      if model_fn_lib.ModeKeys.TRAIN in self._labels_info:
+        logging.warning('Setting labels info for mode infer equal to that of labels info for train mode')
+        self._labels_info[model_fn_lib.ModeKeys.INFER] = self._labels_info[model_fn_lib.ModeKeys.TRAIN]
+      else:
+        self._labels_info[model_fn_lib.ModeKeys.INFER] = {}
+
   def _infer_model(
       self, input_fn, feed_fn=None, outputs=None, as_iterable=True):
     # Check that model has been trained.
@@ -846,7 +863,7 @@ class BaseEstimator(
       # are updated.
       # TODO(b/32664904): Update subclasses and delete the else-statement.
       infer_ops = self._get_predict_ops(features)
-      if isinstance(infer_ops, ModelFnOps):  # Default signature
+      if isinstance(infer_ops, model_fn_lib.ModelFnOps):  # Default signature
         predictions = infer_ops.predictions
       else:  # Legacy signature
         predictions = infer_ops
@@ -1031,14 +1048,14 @@ class Estimator(BaseEstimator):
     else:
       model_fn_results = self._model_fn(features, labels)
 
-    if isinstance(model_fn_results, ModelFnOps):
+    if isinstance(model_fn_results, model_fn_lib.ModelFnOps):
       return model_fn_results
 
     # Here model_fn_ops should be a tuple with 3 elements.
     if len(model_fn_results) != 3:
       raise ValueError('Unrecognized value returned by model_fn, '
                        'please return ModelFnOps.')
-    return ModelFnOps(
+    return model_fn_lib.ModelFnOps(
         mode=mode,
         predictions=model_fn_results[0],
         loss=model_fn_results[1],
@@ -1058,7 +1075,7 @@ class Estimator(BaseEstimator):
     Returns:
       `ModelFnOps` object.
     """
-    return self._call_model_fn(features, labels, ModeKeys.TRAIN)
+    return self._call_model_fn(features, labels, model_fn_lib.ModeKeys.TRAIN)
 
   def _get_eval_ops(self, features, labels, metrics):
     """Method that builds model graph and returns evaluation ops.
@@ -1085,7 +1102,8 @@ class Estimator(BaseEstimator):
     Raises:
       ValueError: if `metrics` don't match `labels`.
     """
-    model_fn_ops = self._call_model_fn(features, labels, ModeKeys.EVAL)
+    model_fn_ops = self._call_model_fn(
+        features, labels, model_fn_lib.ModeKeys.EVAL)
 
     # Custom metrics should overwrite defaults.
     if metrics:
@@ -1110,12 +1128,114 @@ class Estimator(BaseEstimator):
     Returns:
       `ModelFnOps` object.
     """
+
+    self._set_infer_mode_feature_signature(features)
     labels = tensor_signature.create_placeholders_from_signatures(
-        self._labels_info)
-    return self._call_model_fn(features, labels, ModeKeys.INFER)
+        self._labels_info[model_fn_lib.ModeKeys.INFER])
+    return self._call_model_fn(features, labels, model_fn_lib.ModeKeys.INFER)
+
+  @experimental
+  def export_savedmodel(
+      self, export_dir_base, input_fn,
+      default_output_alternative_key=None,
+      assets_extra=None,
+      as_text=False,
+      exports_to_keep=None):
+    """Exports inference graph as a SavedModel into given dir.
+
+    Args:
+      export_dir_base: A string containing a directory to write the exported
+        graph and checkpoints.
+      input_fn: A function that takes no argument and
+        returns an `InputFnOps`.
+      default_output_alternative_key: the name of the head to serve when none is
+        specified.
+      assets_extra: A dict specifying how to populate the assets.extra directory
+        within the exported SavedModel.  Each key should give the destination
+        path (including the filename) relative to the assets.extra directory.
+        The corresponding value gives the full path of the source file to be
+        copied.  For example, the simple case of copying a single file without
+        renaming it is specified as
+        `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
+      as_text: whether to write the SavedModel proto in text format.
+      exports_to_keep: Number of exports to keep.
+
+    Returns:
+      The string path to the exported directory.
+
+    Raises:
+      ValueError: if an unrecognized export_type is requested.
+    """
+    if input_fn is None:
+      raise ValueError('input_fn must be defined.')
+
+    with ops.Graph().as_default() as g:
+      contrib_variables.create_global_step(g)
+
+      # Call the input_fn and collect the input alternatives.
+      input_ops = input_fn()
+      input_alternatives, features = (
+          saved_model_export_utils.get_input_alternatives(input_ops))
+
+      # Call the model_fn and collect the output alternatives.
+      model_fn_ops = self._call_model_fn(features, None,
+                                         model_fn_lib.ModeKeys.INFER)
+      output_alternatives, actual_default_output_alternative_key = (
+          saved_model_export_utils.get_output_alternatives(
+              model_fn_ops, default_output_alternative_key))
+
+      # Build the SignatureDefs from all pairs of input and output signatures
+      signature_def_map = saved_model_export_utils.build_all_signature_defs(
+          input_alternatives, output_alternatives,
+          actual_default_output_alternative_key)
+
+      # Locate the latest checkpoint
+      # TODO(soergel): does it help that we know we have one from this step?
+      checkpoint_path = saver.latest_checkpoint(self._model_dir)
+      if not checkpoint_path:
+        raise NotFittedError("Couldn't find trained model at %s."
+                             % self._model_dir)
+
+      export_dir = saved_model_export_utils.get_timestamped_export_dir(
+          export_dir_base)
+
+      with tf_session.Session('') as session:
+        variables.initialize_local_variables()
+        data_flow_ops.initialize_all_tables()
+        saver_for_restore = saver.Saver(
+            variables.global_variables(),
+            sharded=True)
+        saver_for_restore.restore(session, checkpoint_path)
+
+        init_op = control_flow_ops.group(
+            variables.local_variables_initializer(),
+            data_flow_ops.initialize_all_tables())
+
+        # Perform the export
+        builder = saved_model_builder.SavedModelBuilder(export_dir)
+        builder.add_meta_graph_and_variables(
+            session, [tag_constants.SERVING],
+            signature_def_map=signature_def_map,
+            assets_collection=ops.get_collection(
+                ops.GraphKeys.ASSET_FILEPATHS),
+            legacy_init_op=init_op)
+        builder.save(as_text)
+
+      # Add the extra assets
+      if assets_extra:
+        assets_extra_path = os.path.join(compat.as_bytes(export_dir),
+                                         compat.as_bytes('assets.extra'))
+        for dest_relative, source in assets_extra.items():
+          dest_absolute = os.path.join(compat.as_bytes(assets_extra_path),
+                                       compat.as_bytes(dest_relative))
+          dest_path = os.path.dirname(dest_absolute)
+          gfile.MakeDirs(dest_path)
+          gfile.Copy(source, dest_absolute)
+
+      return export_dir
 
 
-# For time of deprecation x,y from Estimator allow direct access.
+# For time of deprecation x,y from Estimator allow direct access
 # pylint: disable=protected-access
 class SKCompat(sklearn.BaseEstimator):
   """Scikit learn wrapper for TensorFlow Learn Estimator."""

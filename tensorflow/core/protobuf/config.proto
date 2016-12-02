@@ -78,6 +78,19 @@ message OptimizerOptions {
   }
 
   Level opt_level = 3;
+
+  // Control the use of the compiler/jit.  Experimental.
+  enum GlobalJitLevel {
+    DEFAULT = 0;  // Default setting ("off" now, but later expected to be "on")
+    OFF = -1;
+    // The following settings turn on compilation, with higher values being
+    // more aggressive.  Higher values may reduce opportunities for parallelism
+    // and may use more memory.  (At present, there is no distinction, but this
+    // is expected to change.)
+    ON_1 = 1;
+    ON_2 = 2;
+  }
+  GlobalJitLevel global_jit_level = 5;
 }
 
 message GraphOptions {

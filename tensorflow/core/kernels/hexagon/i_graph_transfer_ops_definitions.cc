@@ -21,4 +21,6 @@ namespace tensorflow {
     IGraphTransferOpsDefinitions::INPUT_OP_NAME;
 /* static */ constexpr const char* const
     IGraphTransferOpsDefinitions::OUTPUT_OP_NAME;
+/* static */ constexpr const char* const
+    IGraphTransferOpsDefinitions::FLATTEN_OP_NAME;
 }

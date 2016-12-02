@@ -835,7 +835,7 @@ static void TestSessionInterOpThreadsImpl(bool use_function_lib) {
   FunctionLibraryDefinition flib(OpRegistry::Global(), library_graph_def);
   Graph g(&flib);
   Tensor t(DT_FLOAT, TensorShape({}));
-  t.scalar<float>()() = {1.2};
+  t.scalar<float>()() = {1.2f};
   Node* x = test::graph::Constant(&g, t);
   Node* y;
   if (use_function_lib) {
@@ -945,7 +945,7 @@ TEST(DirectSessionTest, TestSessionInterOpThreadsWithFunctions) {
 TEST(DirectSessionTest, TestSessionInterOpThreadsInvalidOptions) {
   Graph g(OpRegistry::Global());
   Tensor t(DT_FLOAT, TensorShape({}));
-  t.scalar<float>()() = {1.2};
+  t.scalar<float>()() = {1.2f};
   Node* x = test::graph::Constant(&g, t);
   GraphDef def;
   test::graph::ToGraphDef(&g, &def);
@@ -979,7 +979,7 @@ TEST(DirectSessionTest, TestDirectSessionRunClose) {
   // Construct a graph with a variable and a single assign.
   Graph g(OpRegistry::Global());
   Tensor t(DT_FLOAT, TensorShape({}));
-  t.scalar<float>()() = {1.2};
+  t.scalar<float>()() = {1.2f};
   Node* var_val = test::graph::Constant(&g, t);
   Node* var = test::graph::Var(&g, DT_FLOAT, {});
   Node* var_assign = test::graph::Assign(&g, var, var_val);
@@ -1063,7 +1063,7 @@ TEST(DirectSessionTest, TestDirectSessionReset) {
   // Construct a graph with a variable and a single assign.
   Graph g(OpRegistry::Global());
   Tensor t(DT_FLOAT, TensorShape({}));
-  t.scalar<float>()() = {1.2};
+  t.scalar<float>()() = {1.2f};
   Node* var_val = test::graph::Constant(&g, t);
   Node* var = test::graph::Var(&g, DT_FLOAT, {});
   Node* var_assign = test::graph::Assign(&g, var, var_val);

@@ -78,7 +78,10 @@ can have speed penalty, specially in distributed settings.
     `batch_size`. The normalization is over all but the last dimension if
     `data_format` is `NHWC` and the second dimension if `data_format` is
     `NCHW`.
-*  <b>`decay`</b>: decay for the moving average.
+*  <b>`decay`</b>: decay for the moving average. Reasonable values for `decay` are close
+    to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc. Lower
+    `decay` value (recommend trying `decay`=0.9) if model experiences reasonably
+    good training performance but poor validation and/or test performance.
 *  <b>`center`</b>: If True, subtract `beta`. If False, `beta` is ignored.
 *  <b>`scale`</b>: If True, multiply by `gamma`. If False, `gamma` is
     not used. When the next layer is linear (also e.g. `nn.relu`), this can be
@@ -121,9 +124,8 @@ can have speed penalty, specially in distributed settings.
 
 *  <b>`ValueError`</b>: if `batch_weights` is not None and `fused` is True.
 *  <b>`ValueError`</b>: if `data_format` is neither `NHWC` nor `NCHW`.
-*  <b>`ValueError`</b>: if `data_format` is `NCHW` while `fused` is False.
 *  <b>`ValueError`</b>: if the rank of `inputs` is undefined.
-*  <b>`ValueError`</b>: if rank or last dimension of `inputs` is undefined.
+*  <b>`ValueError`</b>: if rank or channels dimension of `inputs` is undefined.
 
 
 - - -
@@ -381,7 +383,7 @@ prior to the initial matrix multiply by `weights`.
 
 ##### Returns:
 
-   the tensor variable representing the result of the series of operations.
+   The tensor variable representing the result of the series of operations.
 
 ##### Raises:
 
@@ -633,53 +635,6 @@ to produce the end result.
 
 - - -
 
-### `tf.stack(values, axis=0, name='stack')` {#stack}
-
-Stacks a list of rank-`R` tensors into one rank-`(R+1)` tensor.
-
-Packs the list of tensors in `values` into a tensor with rank one higher than
-each tensor in `values`, by packing them along the `axis` dimension.
-Given a list of length `N` of tensors of shape `(A, B, C)`;
-
-if `axis == 0` then the `output` tensor will have the shape `(N, A, B, C)`.
-if `axis == 1` then the `output` tensor will have the shape `(A, N, B, C)`.
-Etc.
-
-For example:
-
-```prettyprint
-# 'x' is [1, 4]
-# 'y' is [2, 5]
-# 'z' is [3, 6]
-stack([x, y, z]) => [[1, 4], [2, 5], [3, 6]]  # Pack along first dim.
-stack([x, y, z], axis=1) => [[1, 2, 3], [4, 5, 6]]
-```
-
-This is the opposite of unstack.  The numpy equivalent is
-
-    tf.stack([x, y, z]) = np.asarray([x, y, z])
-
-##### Args:
-
-
-*  <b>`values`</b>: A list of `Tensor` objects with the same shape and type.
-*  <b>`axis`</b>: An `int`. The axis to stack along. Defaults to the first dimension.
-    Supports negative indexes.
-*  <b>`name`</b>: A name for this operation (optional).
-
-##### Returns:
-
-
-*  <b>`output`</b>: A stacked `Tensor` with the same type as `values`.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If `axis` is out of the range [-(R+1), R+1).
-
-
-- - -
-
 ### `tf.contrib.layers.unit_norm(*args, **kwargs)` {#unit_norm}
 
 Normalizes the given input across the specified dimension to unit length.
@@ -707,6 +662,9 @@ Note that the rank of `input` must be known.
 
 Aliases for fully_connected which set a default activation function are
 available: `relu`, `relu6` and `linear`.
+
+`stack` operation is also available. It builds a stack of layers by applying
+a layer repeatedly.
 
 ## Regularizers
 
@@ -1228,7 +1186,7 @@ Creates a _CrossedColumn for performing feature crosses.
 
 - - -
 
-### `tf.contrib.layers.embedding_column(sparse_id_column, dimension, combiner=None, initializer=None, ckpt_to_load_from=None, tensor_name_in_ckpt=None)` {#embedding_column}
+### `tf.contrib.layers.embedding_column(sparse_id_column, dimension, combiner=None, initializer=None, ckpt_to_load_from=None, tensor_name_in_ckpt=None, max_norm=None)` {#embedding_column}
 
 Creates an `_EmbeddingColumn` for feeding sparse data into a DNN.
 
@@ -1256,6 +1214,8 @@ Creates an `_EmbeddingColumn` for feeding sparse data into a DNN.
 *  <b>`tensor_name_in_ckpt`</b>: (Optional). Name of the `Tensor` in the provided
     checkpoint from which to restore the column weights. Required if
     `ckpt_to_load_from` is not None.
+*  <b>`max_norm`</b>: (Optional). If not None, embedding values are l2-normalized to
+    the value of max_norm.
 
 ##### Returns:
 
@@ -1264,12 +1224,25 @@ Creates an `_EmbeddingColumn` for feeding sparse data into a DNN.
 
 - - -
 
-### `tf.contrib.layers.hashed_embedding_column(column_name, size, dimension, combiner=None, initializer=None)` {#hashed_embedding_column}
+### `tf.contrib.layers.scattered_embedding_column(column_name, size, dimension, hash_key, combiner=None, initializer=None)` {#scattered_embedding_column}
 
 Creates an embedding column of a sparse feature using parameter hashing.
 
 The i-th embedding component of a value v is found by retrieving an
 embedding weight whose index is a fingerprint of the pair (v,i).
+
+An embedding column with sparse_column_with_hash_bucket such as
+  embedding_column(
+      sparse_column_with_hash_bucket(column_name, bucket_size),
+      dimension)
+
+could be replaced by
+  scattered_embedding_column(
+      column_name, size=bucket_size * dimension, dimension=dimension,
+      hash_key=tf.contrib.layers.SPARSE_FEATURE_CROSS_DEFAULT_HASH_KEY)
+
+for the same number of embedding parameters and hopefully reduced impact of
+collisions with a cost of slowing down training.
 
 ##### Args:
 
@@ -1277,6 +1250,8 @@ embedding weight whose index is a fingerprint of the pair (v,i).
 *  <b>`column_name`</b>: A string defining sparse column name.
 *  <b>`size`</b>: An integer specifying the number of parameters in the embedding layer.
 *  <b>`dimension`</b>: An integer specifying dimension of the embedding.
+*  <b>`hash_key`</b>: Specify the hash_key that will be used by the `FingerprintCat64`
+    function to combine the crosses fingerprints on SparseFeatureCrossOp.
 *  <b>`combiner`</b>: A string specifying how to reduce if there are multiple entries
     in a single row. Currently "mean", "sqrtn" and "sum" are supported. Each
     of this can be thought as example level normalizations on the column:
@@ -1290,7 +1265,7 @@ embedding weight whose index is a fingerprint of the pair (v,i).
 
 ##### Returns:
 
-  A _HashedEmbeddingColumn.
+  A _ScatteredEmbeddingColumn.
 
 ##### Raises:
 
@@ -1565,7 +1540,7 @@ Creates a `_RealValuedColumn` for dense numeric data.
 
 - - -
 
-### `tf.contrib.layers.shared_embedding_columns(sparse_id_columns, dimension, combiner=None, shared_embedding_name=None, initializer=None, ckpt_to_load_from=None, tensor_name_in_ckpt=None)` {#shared_embedding_columns}
+### `tf.contrib.layers.shared_embedding_columns(sparse_id_columns, dimension, combiner=None, shared_embedding_name=None, initializer=None, ckpt_to_load_from=None, tensor_name_in_ckpt=None, max_norm=None)` {#shared_embedding_columns}
 
 Creates a list of `_EmbeddingColumn` sharing the same embedding.
 
@@ -1596,6 +1571,8 @@ Creates a list of `_EmbeddingColumn` sharing the same embedding.
 *  <b>`tensor_name_in_ckpt`</b>: (Optional). Name of the `Tensor` in the provided
     checkpoint from which to restore the column weights. Required if
     `ckpt_to_load_from` is not None.
+*  <b>`max_norm`</b>: (Optional). If not None, embedding values are l2-normalized to
+    the value of max_norm.
 
 ##### Returns:
 

@@ -22,22 +22,16 @@ import {getSearchPredicate, runAsyncTask, shuffle} from './util';
 import * as vector from './vector';
 
 export type DistanceFunction = (a: number[], b: number[]) => number;
-export type PointAccessor = (index: number) => number;
-export type PointAccessors3D = [PointAccessor, PointAccessor, PointAccessor];
+export type ProjectionComponents3D = [string, string, string];
 
-export interface PointMetadata {
-  [key: string]: number | string;
-}
+export interface PointMetadata { [key: string]: number|string; }
 
 export interface DataProto {
   shape: [number, number];
   tensor: number[];
   metadata: {
-    columns: Array<{
-      name: string;
-      stringValues: string[];
-      numericValues: number[];
-    }>;
+    columns: Array<
+        {name: string; stringValues: string[]; numericValues: number[];}>;
   };
 }
 
@@ -100,8 +94,8 @@ const IS_FIREFOX = navigator.userAgent.toLowerCase().indexOf('firefox') >= 0;
 /** Controls whether nearest neighbors computation is done on the GPU or CPU. */
 const KNN_GPU_ENABLED = WEBGL_SUPPORT && !IS_FIREFOX;
 
-/** Sampling is used when computing expensive operations such as T-SNE. */
-export const SAMPLE_SIZE = 10000;
+export const TSNE_SAMPLE_SIZE = 10000;
+export const PCA_SAMPLE_SIZE = 50000;
 /** Number of dimensions to sample when doing approximate PCA. */
 export const PCA_SAMPLE_DIM = 200;
 /** Number of pca components to compute. */
@@ -120,7 +114,7 @@ export class DataSet {
   points: DataPoint[];
   traces: DataTrace[];
 
-  sampledDataIndices: number[] = [];
+  shuffledDataIndices: number[] = [];
 
   /**
    * This keeps a list of all current projections so you can easily test to see
@@ -139,11 +133,10 @@ export class DataSet {
   private tsne: TSNE;
 
   /** Creates a new Dataset */
-  constructor(points: DataPoint[],
-      spriteAndMetadataInfo?: SpriteAndMetadataInfo) {
+  constructor(
+      points: DataPoint[], spriteAndMetadataInfo?: SpriteAndMetadataInfo) {
     this.points = points;
-    this.sampledDataIndices =
-        shuffle(d3.range(this.points.length)).slice(0, SAMPLE_SIZE);
+    this.shuffledDataIndices = shuffle(d3.range(this.points.length));
     this.traces = this.computeTraces(points);
     this.dim = [this.points.length, this.points[0].vector.length];
     this.spriteAndMetadataInfo = spriteAndMetadataInfo;
@@ -193,26 +186,7 @@ export class DataSet {
     return traces;
   }
 
-  getPointAccessors(projection: Projection, components: (number|string)[]):
-      [PointAccessor, PointAccessor, PointAccessor] {
-    if (components.length > 3) {
-      throw new RangeError('components length must be <= 3');
-    }
-    const accessors: [PointAccessor, PointAccessor, PointAccessor] =
-        [null, null, null];
-    const prefix = (projection === 'custom') ? 'linear' : projection;
-    for (let i = 0; i < components.length; ++i) {
-      if (components[i] == null) {
-        continue;
-      }
-      accessors[i] =
-          (index =>
-               this.points[index].projections[prefix + '-' + components[i]]);
-    }
-    return accessors;
-  }
-
-  projectionCanBeRendered(projection: Projection): boolean {
+  projectionCanBeRendered(projection: ProjectionType): boolean {
     if (projection !== 'tsne') {
       return true;
     }
@@ -228,8 +202,9 @@ export class DataSet {
    * @return A subset of the original dataset.
    */
   getSubset(subset?: number[]): DataSet {
-    let pointsSubset = subset && subset.length ?
-        subset.map(i => this.points[i]) : this.points;
+    const pointsSubset = ((subset != null) && (subset.length > 0)) ?
+        subset.map(i => this.points[i]) :
+        this.points;
     let points = pointsSubset.map(dp => {
       return {
         metadata: dp.metadata,
@@ -275,12 +250,15 @@ export class DataSet {
     return runAsyncTask('Computing PCA...', () => {
       // Approximate pca vectors by sampling the dimensions.
       let dim = this.points[0].vector.length;
-      let vectors = this.points.map(d => d.vector);
+      let vectors = this.shuffledDataIndices.map(i => this.points[i].vector);
       if (dim > PCA_SAMPLE_DIM) {
         vectors = vector.projectRandom(vectors, PCA_SAMPLE_DIM);
       }
+      let sampledVectors = vectors.slice(0, PCA_SAMPLE_SIZE);
+
       let sigma = numeric.div(
-          numeric.dot(numeric.transpose(vectors), vectors), vectors.length);
+          numeric.dot(numeric.transpose(sampledVectors), sampledVectors),
+          sampledVectors.length);
       let svd = numeric.svd(sigma);
 
       let variances: number[] = svd.S;
@@ -295,22 +273,23 @@ export class DataSet {
 
       let U: number[][] = svd.U;
       let pcaVectors = vectors.map(vector => {
-        let newV: number[] = [];
-        for (let d = 0; d < NUM_PCA_COMPONENTS; d++) {
+        let newV = new Float32Array(NUM_PCA_COMPONENTS);
+        for (let newDim = 0; newDim < NUM_PCA_COMPONENTS; newDim++) {
           let dot = 0;
-          for (let i = 0; i < vector.length; i++) {
-            dot += vector[i] * U[i][d];
+          for (let oldDim = 0; oldDim < vector.length; oldDim++) {
+            dot += vector[oldDim] * U[oldDim][newDim];
           }
-          newV.push(dot);
+          newV[newDim] = dot;
         }
         return newV;
       });
-      for (let j = 0; j < NUM_PCA_COMPONENTS; j++) {
-        let label = 'pca-' + j;
+      for (let d = 0; d < NUM_PCA_COMPONENTS; d++) {
+        let label = 'pca-' + d;
         this.projections.add(label);
-        this.points.forEach((d, i) => {
-          d.projections[label] = pcaVectors[i][j];
-        });
+        for (let i = 0; i < pcaVectors.length; i++) {
+          let pointIndex = this.shuffledDataIndices[i];
+          this.points[pointIndex].projections[label] = pcaVectors[i][d];
+        }
       }
     });
   }
@@ -326,6 +305,7 @@ export class DataSet {
     this.tSNEShouldStop = false;
     this.tSNEIteration = 0;
 
+    let sampledIndices = this.shuffledDataIndices.slice(0, TSNE_SAMPLE_SIZE);
     let step = () => {
       if (this.tSNEShouldStop) {
         stepCallback(null);
@@ -334,7 +314,7 @@ export class DataSet {
       }
       this.tsne.step();
       let result = this.tsne.getSolution();
-      this.sampledDataIndices.forEach((index, i) => {
+      sampledIndices.forEach((index, i) => {
         let dataPoint = this.points[index];
 
         dataPoint.projections['tsne-0'] = result[i * tsneDim + 0];
@@ -355,7 +335,7 @@ export class DataSet {
       // We found the nearest neighbors before and will reuse them.
       knnComputation = Promise.resolve(this.nearest);
     } else {
-      let sampledData = this.sampledDataIndices.map(i => this.points[i]);
+      let sampledData = sampledIndices.map(i => this.points[i]);
       this.nearestK = k;
       knnComputation = KNN_GPU_ENABLED ?
           knn.findKNNGPUCosine(sampledData, k, (d => d.vector)) :
@@ -382,7 +362,9 @@ export class DataSet {
         .forEach((m, i) => this.points[i].metadata = m);
   }
 
-  stopTSNE() { this.tSNEShouldStop = true; }
+  stopTSNE() {
+    this.tSNEShouldStop = true;
+  }
 
   /**
    * Finds the nearest neighbors of the query point using a
@@ -391,8 +373,8 @@ export class DataSet {
   findNeighbors(pointIndex: number, distFunc: DistanceFunction, numNN: number):
       knn.NearestEntry[] {
     // Find the nearest neighbors of a particular point.
-    let neighbors = knn.findKNNofPoint(this.points, pointIndex, numNN,
-        (d => d.vector), distFunc);
+    let neighbors = knn.findKNNofPoint(
+        this.points, pointIndex, numNN, (d => d.vector), distFunc);
     // TODO(smilkov): Figure out why we slice.
     let result = neighbors.slice(0, numNN);
     return result;
@@ -413,7 +395,14 @@ export class DataSet {
   }
 }
 
-export type Projection = 'tsne' | 'pca' | 'custom';
+export type ProjectionType = 'tsne' | 'pca' | 'custom';
+
+export class Projection {
+  constructor(
+      public projectionType: ProjectionType,
+      public projectionComponents: ProjectionComponents3D,
+      public dimensionality: number, public dataSet: DataSet) {}
+}
 
 export interface ColorOption {
   name: string;
@@ -438,7 +427,7 @@ export class State {
   isSelected: boolean = false;
 
   /** The selected projection tab. */
-  selectedProjection: Projection;
+  selectedProjection: ProjectionType;
 
   /** Dimensions of the DataSet. */
   dataSetDimensions: [number, number];
@@ -480,6 +469,23 @@ export class State {
 
   /** Label by option. */
   selectedLabelOption: string;
+}
+
+export function getProjectionComponents(
+    projection: ProjectionType,
+    components: (number|string)[]): ProjectionComponents3D {
+  if (components.length > 3) {
+    throw new RangeError('components length must be <= 3');
+  }
+  const projectionComponents: [string, string, string] = [null, null, null];
+  const prefix = (projection === 'custom') ? 'linear' : projection;
+  for (let i = 0; i < components.length; ++i) {
+    if (components[i] == null) {
+      continue;
+    }
+    projectionComponents[i] = prefix + '-' + components[i];
+  }
+  return projectionComponents;
 }
 
 export function stateGetAccessorDimensions(state: State): Array<number|string> {

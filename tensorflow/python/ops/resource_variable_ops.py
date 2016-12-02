@@ -19,7 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_resource_variable_ops
@@ -30,24 +29,14 @@ from tensorflow.python.ops import resources
 from tensorflow.python.ops.gen_resource_variable_ops import *
 # pylint: enable=wildcard-import
 
-ops.RegisterShape("VarHandleOp")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("CreateVariableOp")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ReadVariableOp")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("AssignVariableOp")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("AssignAddVariableOp")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("VarIsInitializedOp")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ResourceGather")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ResourceScatterAdd")(common_shapes.call_cpp_shape_fn)
-
 
 def _register_variable_read(read, collections, trainable):
   """Helper function to put a read from a variable in the collections."""
   if collections is None:
-    collections = []
-  if (trainable and
-      ops.GraphKeys.TRAINABLE_RESOURCE_VARIABLES not in collections):
-    collections = (list(collections) +
-                   [ops.GraphKeys.TRAINABLE_RESOURCE_VARIABLES])
+    collections = [ops.GraphKeys.GLOBAL_VARIABLES]
+  if (trainable and ops.GraphKeys.TRAINABLE_VARIABLES
+       not in collections):
+    collections = (list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES])
     ops.add_to_collections(collections, read)
 
 
@@ -59,19 +48,23 @@ class ResourceVariable(object):
 
   """
 
+  # pylint: disable=unused-argument
   def __init__(self,
                initial_value=None,
                name=None,
+               caching_device=None,
                trainable=True,
                collections=None,
                dtype=None,
                shape=None):
+
     """Creates a variable.
 
     Args:
       initial_value: A `Tensor` or Python object convertible to a `Tensor`
         representing the initial value of this variable.
       name: The name of this variable. Automatically uniquified.
+      caching_device: device where the variable value's read by default.
       trainable: Whether the global read of this variable will be used for
         training.
       collections: Additional collections to which the `read` operation for
@@ -83,6 +76,8 @@ class ResourceVariable(object):
         value but shape inference is desired.
     """
     if initial_value is not None:
+      if callable(initial_value):
+        initial_value = initial_value()
       initial_value = ops.convert_to_tensor(initial_value)
     if dtype is None:
       assert initial_value is not None, ("Trying to create a resource variable "
@@ -111,15 +106,22 @@ class ResourceVariable(object):
             gen_resource_variable_ops.var_is_initialized_op(self._handle))
       if initial_value is not None:
         with ops.name_scope("Create"):
-          self._initialize_op = gen_resource_variable_ops.create_variable_op(
+          self._initialize_op = gen_resource_variable_ops.assign_variable_op(
               self._handle, initial_value)
         resources.register_resource(self._handle,
                                     self._initialize_op,
                                     self._is_initialized_op)
 
       with ops.name_scope("Read"):
-        self._value = gen_resource_variable_ops.read_variable_op(
-            self._handle, dtype=self._dtype)
+        if caching_device is not None:
+          with ops.device(caching_device):
+            self._value = gen_resource_variable_ops.read_variable_op(
+                self._handle, dtype=self._dtype)
+        else:
+          self._value = gen_resource_variable_ops.read_variable_op(
+              self._handle, dtype=self._dtype)
+        # TODO(apassos) this is terrible
+        self._value.initializer = self._initialize_op
       _register_variable_read(
           self._value, trainable=trainable, collections=collections)
 
@@ -127,6 +129,15 @@ class ResourceVariable(object):
   def dtype(self):
     """The dtype of this variable."""
     return self._dtype
+
+  @property
+  def name(self):
+    """The name of the handle for this variable."""
+    return self._handle.name
+
+  def get_shape(self):
+    """The shape of this variable."""
+    return self._value.get_shape()
 
   @property
   def create(self):
@@ -142,6 +153,15 @@ class ResourceVariable(object):
   def value(self):
     """A cached operation which reads the value of this variable."""
     return self._value
+
+  def _as_graph_element(self):
+    """Conversion function for Graph.as_graph_element()."""
+    return self._value
+
+  @property
+  def initializer(self):
+    """The op responsible for initializing this variable."""
+    return self._initialize_op
 
   @property
   def op(self):
@@ -172,6 +192,7 @@ class ResourceVariable(object):
     return value
 
   def sparse_read(self, indices, collections=None, trainable=True, name=None):
+    """Reads the value of this variable sparsely, using `gather`."""
     with ops.name_scope("Gather" if name is None else name):
       value = gen_resource_variable_ops.resource_gather(
           self._handle, indices, dtype=self._dtype)

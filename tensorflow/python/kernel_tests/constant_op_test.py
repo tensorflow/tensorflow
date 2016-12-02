@@ -596,16 +596,16 @@ class PlaceholderTest(tf.test.TestCase):
 
   def testTensorStr(self):
     a = tf.placeholder(tf.float32, name="a")
-    self.assertEqual("<tf.Output 'a:0' shape=<unknown> dtype=float32>", repr(a))
+    self.assertEqual("<tf.Tensor 'a:0' shape=<unknown> dtype=float32>", repr(a))
 
     b = tf.placeholder(tf.int32, shape=(32, 40), name="b")
     self.assertEqual(
-        "<tf.Output 'b:0' shape=(32, 40) dtype=int32>",
+        "<tf.Tensor 'b:0' shape=(32, 40) dtype=int32>",
         repr(b))
 
     c = tf.placeholder(tf.qint32, shape=(32, None, 2), name="c")
     self.assertEqual(
-        "<tf.Output 'c:0' shape=(32, ?, 2) dtype=qint32>",
+        "<tf.Tensor 'c:0' shape=(32, ?, 2) dtype=qint32>",
         repr(c))
 
 
@@ -695,13 +695,13 @@ class PlaceholderV2Test(tf.test.TestCase):
 
   def testTensorStr(self):
     a = array_ops.placeholder_v2(tf.float32, shape=None, name="a")
-    self.assertEqual("<tf.Output 'a:0' shape=<unknown> dtype=float32>", repr(a))
+    self.assertEqual("<tf.Tensor 'a:0' shape=<unknown> dtype=float32>", repr(a))
 
     b = array_ops.placeholder_v2(tf.int32, shape=(32, 40), name="b")
-    self.assertEqual("<tf.Output 'b:0' shape=(32, 40) dtype=int32>", repr(b))
+    self.assertEqual("<tf.Tensor 'b:0' shape=(32, 40) dtype=int32>", repr(b))
 
     c = array_ops.placeholder_v2(tf.qint32, shape=(32, None, 2), name="c")
-    self.assertEqual("<tf.Output 'c:0' shape=(32, ?, 2) dtype=qint32>", repr(c))
+    self.assertEqual("<tf.Tensor 'c:0' shape=(32, ?, 2) dtype=qint32>", repr(c))
 
 
 class PlaceholderWithDefaultTest(tf.test.TestCase):

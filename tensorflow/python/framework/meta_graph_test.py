@@ -70,6 +70,10 @@ class SimpleMetaGraphTest(tf.test.TestCase):
           graph_def=tf.get_default_graph().as_graph_def(add_shapes=True),
           collection_list=["input_tensor", "output_tensor"],
           saver_def=None)
+      self.assertTrue(meta_graph_def.HasField("meta_info_def"))
+      self.assertNotEqual(meta_graph_def.meta_info_def.tensorflow_version, "")
+      self.assertNotEqual(meta_graph_def.meta_info_def.tensorflow_git_version,
+                          "")
       self.assertEqual({}, var_list)
 
     # Create a clean graph and import the MetaGraphDef nodes.

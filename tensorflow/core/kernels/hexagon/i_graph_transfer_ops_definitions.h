@@ -32,6 +32,8 @@ class IGraphTransferOpsDefinitions {
   static constexpr const char* const INPUT_OP_NAME = "INPUT";
   // Custom op name for output node
   static constexpr const char* const OUTPUT_OP_NAME = "OUTPUT";
+  // Custom op name for flatten node
+  static constexpr const char* const FLATTEN_OP_NAME = "FLATTEN";
 
   IGraphTransferOpsDefinitions() = default;
   virtual ~IGraphTransferOpsDefinitions() = default;

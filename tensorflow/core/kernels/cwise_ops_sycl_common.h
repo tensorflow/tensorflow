@@ -21,12 +21,10 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_CWISE_OPS_SYCL_COMMON_H_
 
 #define EIGEN_USE_SYCL
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #include "tensorflow/core/framework/register_types.h"
-
-#include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/cwise_ops.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -62,14 +60,14 @@ struct BinaryFunctor<SYCLDevice, Functor, NDIMS, has_errors> {
   void operator()(const SYCLDevice& d, typename Functor::tout_type out,
                   typename Functor::tin_type in0,
                   typename Functor::tin_type in1, bool* error) {
-    To32Bit(out).device(d) = To32Bit(in0).binaryExpr(in1, typename Functor::func());
+    To32Bit(out).device(d) = To32Bit(in0).binaryExpr(To32Bit(in1), typename Functor::func());
   }
 
   void Left(const SYCLDevice& d, typename Functor::tout_type out,
             typename Functor::tscalar_type scalar,
             typename Functor::tin_type in, bool* error) {
     typedef typename Functor::func Binary;
-    constexpr int NumDims = Functor::tin_type::NumDimensions; 
+    constexpr int NumDims = Functor::tin_type::NumDimensions;
     typedef typename Functor::tin_type::Scalar T;
     typedef typename Functor::tin_type::Index Index;
     Eigen::array<Index, NumDims> scalar_dim = GenerateArrayOfOnes<Index, NumDims>();

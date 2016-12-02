@@ -141,7 +141,7 @@ text_format.Merge("""
 op_def_registry.register_op_list(_op_list)
 # NOTE(mrry): Dummy shape registrations for ops used in the tests.
 for op_def in _op_list.op:
-  tf.RegisterShape(op_def.name)(None)
+  ops.RegisterShape(op_def.name)(None)
 
 
 class ImportGraphDefTest(tf.test.TestCase):
@@ -718,7 +718,7 @@ class ImportGraphDefTest(tf.test.TestCase):
     # We'll use the following device function to observe ops with two inputs.
     ops_with_two_inputs = []
     def input_counter(op):
-      if any(in_t.dtype.is_ref_dtype for in_t in op.inputs):
+      if any(in_t.dtype._is_ref_dtype for in_t in op.inputs):  # pylint: disable=protected-access
         ops_with_two_inputs.append(op)
       return ""
 

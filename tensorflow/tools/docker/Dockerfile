@@ -30,10 +30,11 @@ RUN pip --no-cache-dir install \
         numpy \
         scipy \
         sklearn \
+        Pillow \
         && \
     python -m ipykernel.kernelspec
 
-ENV TENSORFLOW_VERSION 0.11.0
+ENV TENSORFLOW_VERSION 0.12.0-rc0
 
 # --- DO NOT EDIT OR DELETE BETWEEN THE LINES --- #
 # These lines will be edited automatically by parameterized_docker_build.sh. #

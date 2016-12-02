@@ -18,6 +18,11 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Key in the signature def map for `default` serving signatures. The default
+// signature is used in inference requests where a specific signature was not
+// specified.
+static constexpr char kDefaultServingSignatureDefKey[] = "serving_default";
+
 ////////////////////////////////////////////////////////////////////////////////
 // Classification API constants.
 

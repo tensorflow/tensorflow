@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Note: Elementwise binary operations in TensorFlow follow [numpy-style
 broadcasting](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).
 
@@ -105,6 +104,7 @@ functions on matrices to your graph.
 @@matrix_solve
 @@matrix_triangular_solve
 @@matrix_solve_ls
+@@qr
 @@self_adjoint_eig
 @@self_adjoint_eigvals
 @@svd
@@ -235,6 +235,7 @@ from tensorflow.python.ops import state_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_math_ops import *
 # pylint: enable=wildcard-import
+from tensorflow.python.util.deprecation import deprecated
 
 # Aliases for some automatically-generated names.
 linspace = gen_math_ops.lin_space
@@ -248,6 +249,8 @@ def argmax(input, axis=None, name=None, dimension=None):
       raise ValueError("Cannot specify both 'axis' and 'dimension'")
     axis = dimension
   return gen_math_ops.arg_max(input, axis, name)
+
+
 argmax.__doc__ = gen_math_ops.arg_max.__doc__.replace("dimension", "axis")
 
 
@@ -258,7 +261,10 @@ def argmin(input, axis=None, name=None, dimension=None):
       raise ValueError("Cannot specify both 'axis' and 'dimension'")
     axis = dimension
   return gen_math_ops.arg_min(input, axis, name)
+
+
 argmin.__doc__ = gen_math_ops.arg_min.__doc__.replace("dimension", "axis")
+
 # pylint: enable=redefined-builtin
 
 
@@ -271,7 +277,8 @@ def abs(x, name=None):
   an input element and y is an output element, this operation computes
   \\\\(y = |x|\\\\).
 
-  See [`tf.complex_abs()`](#tf_complex_abs) to compute the absolute value of a complex
+  See [`tf.complex_abs()`](#tf_complex_abs) to compute the absolute value of a
+  complex
   number.
 
   Args:
@@ -286,8 +293,8 @@ def abs(x, name=None):
   with ops.name_scope(name, "Abs", [x]) as name:
     if isinstance(x, sparse_tensor.SparseTensor):
       if x.values.dtype in (dtypes.complex64, dtypes.complex128):
-        x_abs = gen_math_ops.complex_abs(x.values,
-            Tout=x.values.dtype.real_dtype, name=name)
+        x_abs = gen_math_ops.complex_abs(
+            x.values, Tout=x.values.dtype.real_dtype, name=name)
         return sparse_tensor.SparseTensor(
             indices=x.indices, values=x_abs, shape=x.shape)
       x_abs = gen_math_ops._abs(x.values, name=name)
@@ -304,6 +311,7 @@ def divide(x, y, name=None):
   """Computes Python style division of `x` by `y`."""
   with ops.name_scope(name, "Divide", [x]) as name:
     return x / y
+
 
 # Make Python Aliases
 multiply = gen_math_ops.mul
@@ -463,8 +471,8 @@ def scalar_mul(scalar, x):
   Raises:
     ValueError: if scalar is not a 0-D `scalar`.
   """
-  scalar = ops.convert_to_tensor(scalar, dtype=x.dtype.base_dtype,
-                                 name="scalar")
+  scalar = ops.convert_to_tensor(
+      scalar, dtype=x.dtype.base_dtype, name="scalar")
   shape = scalar.get_shape()
   if shape.ndims == 0:
     if isinstance(x, ops.IndexedSlices):
@@ -590,7 +598,8 @@ def imag(input, name=None):
   ```
 
   Args:
-    input: A `Tensor`. Must be one of the following types: `complex64`, `complex128`.
+    input: A `Tensor`. Must be one of the following types: `complex64`,
+      `complex128`.
     name: A name for the operation (optional).
 
   Returns:
@@ -688,11 +697,15 @@ def saturate_cast(value, dtype, name=None):
     value = ops.convert_to_tensor(value, name="value")
     dtype = dtypes.as_dtype(dtype).base_dtype
     if value.dtype.min < dtype.min:
-      value = gen_math_ops.maximum(value, ops.convert_to_tensor(
-          dtype.min, dtype=value.dtype, name="min"))
+      value = gen_math_ops.maximum(
+          value,
+          ops.convert_to_tensor(
+              dtype.min, dtype=value.dtype, name="min"))
     if value.dtype.max > dtype.max:
-      value = gen_math_ops.minimum(value, ops.convert_to_tensor(
-          dtype.max, dtype=value.dtype, name="max"))
+      value = gen_math_ops.minimum(
+          value,
+          ops.convert_to_tensor(
+              dtype.max, dtype=value.dtype, name="max"))
     return cast(value, dtype, name=name)
 
 
@@ -795,6 +808,7 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
     op_name: name of the operator being overridden
     clazz_object: class to override for.  Either `Tensor` or `SparseTensor`.
   """
+
   def binary_op_wrapper(x, y):
     with ops.name_scope(None, op_name, [x, y]) as name:
       if not isinstance(y, sparse_tensor.SparseTensor):
@@ -805,8 +819,9 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
     with ops.name_scope(None, op_name, [sp_x, y]) as name:
       y = ops.convert_to_tensor(y, dtype=sp_x.dtype.base_dtype, name="y")
       return sparse_tensor.SparseTensor(
-          sp_x.indices, func(sp_x.indices, sp_x.values,
-                             sp_x.shape, y, name=name),
+          sp_x.indices,
+          func(
+              sp_x.indices, sp_x.values, sp_x.shape, y, name=name),
           sp_x.shape)
 
   def r_binary_op_wrapper(y, x):
@@ -871,18 +886,65 @@ def _sparse_dense_truediv(sp_indices, sp_values, sp_shape, y, name=None):
     if dtype is not None:
       sp_values = cast(sp_values, dtype)
       y = cast(y, dtype)
-    return gen_sparse_ops.sparse_dense_cwise_div(sp_indices, sp_values,
-                                                 sp_shape, y, name=name)
+    return gen_sparse_ops.sparse_dense_cwise_div(
+        sp_indices, sp_values, sp_shape, y, name=name)
+
+
+def _truediv_python3(x, y, name=None):
+  with ops.name_scope(name, "truediv", [x, y]) as name:
+    x = ops.convert_to_tensor(x, name="x")
+    y = ops.convert_to_tensor(y, name="y")
+    x_dtype = x.dtype.base_dtype
+    y_dtype = y.dtype.base_dtype
+    if x_dtype != y_dtype:
+      raise TypeError("x and y must have the same dtype, got %r != %r" %
+                      (x_dtype, y_dtype))
+    try:
+      dtype = _TRUEDIV_TABLE[x_dtype]
+    except KeyError:
+      raise TypeError("Invalid dtype %r in __truediv__" % x_dtype)
+    if dtype is not None:
+      x = cast(x, dtype)
+      y = cast(y, dtype)
+    return gen_math_ops._real_div(x, y, name=name)
+
+
+def _div_python2(x, y, name=None):
+  """Divide two values using Python 2 semantics. Used for Tensor.__div__.
+
+  Args:
+    x: `Tensor` numerator of real numeric type.
+    y: `Tensor` denominator of real numeric type.
+    name: A name for the operation (optional).
+  Returns:
+    `x / y` returns the quotient of x and y.
+  """
+
+  with ops.name_scope(name, "div", [x, y]) as name:
+    x = ops.convert_to_tensor(x, name="x")
+    y = ops.convert_to_tensor(y, name="y", dtype=x.dtype.base_dtype)
+    x_dtype = x.dtype.base_dtype
+    y_dtype = y.dtype.base_dtype
+    if x_dtype != y_dtype:
+      raise TypeError("x and y must have the same dtype, got %r != %r" %
+                      (x_dtype, y_dtype))
+    if x_dtype.is_floating or x_dtype.is_complex:
+      return gen_math_ops._real_div(x, y, name=name)
+    else:
+      return gen_math_ops._floor_div(x, y, name=name)
 
 
 def truediv(x, y, name=None):
-  """Divides x / y elementwise, always producing floating point results.
+  """Divides x / y elementwise (using Python 3 division operator semantics).
 
-  The same as `tf.div` for floating point arguments, but casts integer arguments
-  to floating point before dividing so that the result is always floating point.
-  This op is generated by normal `x / y` division in Python 3 and in Python 2.7
-  with `from __future__ import division`.  If you want integer division that
-  rounds down, use `x // y` or `tf.floordiv`.
+  NOTE: Prefer using the Tensor operator or tf.divide which obey Python
+  division operator semantics.
+
+  This function forces Python 3 division operator semantics where all integer
+  arguments are cast to floating types first.   This op is generated by normal
+  `x / y` division in Python 3 and in Python 2.7 with
+  `from __future__ import division`.  If you want integer division that rounds
+  down, use `x // y` or `tf.floordiv`.
 
   `x` and `y` must have the same numeric type.  If the inputs are floating
   point, the output will have the same type.  If the inputs are integral, the
@@ -900,22 +962,32 @@ def truediv(x, y, name=None):
   Raises:
     TypeError: If `x` and `y` have different dtypes.
   """
-  with ops.name_scope(name, "truediv", [x, y]) as name:
-    x = ops.convert_to_tensor(x, name="x")
-    y = ops.convert_to_tensor(y, name="y")
-    x_dtype = x.dtype.base_dtype
-    y_dtype = y.dtype.base_dtype
-    if x_dtype != y_dtype:
-      raise TypeError("x and y must have the same dtype, got %r != %r" %
-                      (x_dtype, y_dtype))
-    try:
-      dtype = _TRUEDIV_TABLE[x_dtype]
-    except KeyError:
-      raise TypeError("Invalid dtype %r in __truediv__" % x_dtype)
-    if dtype is not None:
-      x = cast(x, dtype)
-      y = cast(y, dtype)
-    return gen_math_ops.div(x, y, name=name)
+  return _truediv_python3(x, y, name)
+
+
+def div(x, y, name=None):
+  """Divides x / y elementwise (using Python 2 division operator semantics).
+
+  NOTE: Prefer using the Tensor division operator or tf.divide which obey Python
+  division operator semantics.
+
+  This function divides `x` and `y`, forcing Python 2.7 semantics. That is,
+  if one of `x` or `y` is a float, then the result will be a float.
+  Otherwise, the output will be an integer type. Flooring semantics are used
+  for integer division.
+
+  Args:
+    x: `Tensor` numerator of real numeric type.
+    y: `Tensor` denominator of real numeric type.
+    name: A name for the operation (optional).
+  Returns:
+    `x / y` returns the quotient of x and y.
+  """
+  return _div_python2(x, y, name)
+
+
+# TODO(aselle): This should be removed
+mod = gen_math_ops._floor_mod
 
 
 # TODO(aselle): Deprecate this once all internal functionality uses
@@ -947,24 +1019,15 @@ def floordiv(x, y, name=None):
     TypeError: If the inputs are complex.
   """
   with ops.name_scope(name, "floordiv", [x, y]) as name:
-    x = ops.convert_to_tensor(x, name="x")
-    dtype = x.dtype
-    if dtype.is_floating:
-      return gen_math_ops.floor(gen_math_ops.div(x, y), name=name)
-    else:
-      if not dtype.is_integer:
-        raise TypeError("Expected floating point or integer, got %r" % dtype)
-      # TODO(aselle): Switch to math_ops.floor_div() when ready
-      # return gen_math_ops.floor_div(x, y, name=name)
-      return gen_math_ops.div(x, y, name=name)
+    return gen_math_ops._floor_div(x, y, name=name)
 
 
-realdiv = gen_math_ops.real_div
-truncatediv = gen_math_ops.truncate_div
+realdiv = gen_math_ops._real_div
+truncatediv = gen_math_ops._truncate_div
 # TODO(aselle): Rename this to floordiv when we can.
-floor_div = gen_math_ops.floor_div
-truncatemod = gen_math_ops.truncate_mod
-floormod = gen_math_ops.floor_mod
+floor_div = gen_math_ops._floor_div
+truncatemod = gen_math_ops._truncate_mod
+floormod = gen_math_ops._floor_mod
 
 
 def _mul_dispatch(x, y, name=None):
@@ -978,7 +1041,9 @@ def _mul_dispatch(x, y, name=None):
                                                      y.shape, x, name)
     return sparse_tensor.SparseTensor(y.indices, new_vals, y.shape)
 
-
+# NOTE(aselle): When integer division is added for sparse_dense_cwise,
+# div, truediv, and floordiv should be delegated appropriately for
+# Python sematnics, analogous to dense cwise tensor operations.
 _OverrideBinaryOperatorHelper(gen_sparse_ops.sparse_dense_cwise_div, "div",
                               sparse_tensor.SparseTensor)
 _OverrideBinaryOperatorHelper(_sparse_dense_truediv, "truediv",
@@ -986,16 +1051,15 @@ _OverrideBinaryOperatorHelper(_sparse_dense_truediv, "truediv",
 _OverrideBinaryOperatorHelper(gen_sparse_ops.sparse_dense_cwise_mul, "mul",
                               sparse_tensor.SparseTensor)
 
-
 _OverrideBinaryOperatorHelper(gen_math_ops.add, "add")
 _OverrideBinaryOperatorHelper(gen_math_ops.sub, "sub")
 _OverrideBinaryOperatorHelper(_mul_dispatch, "mul")
-_OverrideBinaryOperatorHelper(gen_math_ops.div, "div")
-_OverrideBinaryOperatorHelper(truediv, "truediv")
+_OverrideBinaryOperatorHelper(_div_python2, "div")
+_OverrideBinaryOperatorHelper(_truediv_python3, "truediv")
 _OverrideBinaryOperatorHelper(floordiv, "floordiv")
 # TODO(aselle): Switch mod to floor_mod when ready
 # _OverrideBinaryOperatorHelper(gen_math_ops.floor_mod, "mod")
-_OverrideBinaryOperatorHelper(gen_math_ops.mod, "mod")
+_OverrideBinaryOperatorHelper(gen_math_ops._floor_mod, "mod")
 _OverrideBinaryOperatorHelper(pow, "pow")
 
 
@@ -1006,6 +1070,7 @@ def logical_xor(x, y, name="LogicalXor"):
       gen_math_ops.logical_or(x, y),
       gen_math_ops.logical_not(gen_math_ops.logical_and(x, y)),
       name=name)
+
 
 _OverrideBinaryOperatorHelper(gen_math_ops.logical_and, "and")
 _OverrideBinaryOperatorHelper(gen_math_ops.logical_or, "or")
@@ -1075,8 +1140,9 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):
 
     # infer dtype if not explicitly provided
     if dtype is None:
-      dtype_hierarchy = [dtypes.int32, dtypes.int64, dtypes.float32,
-                         dtypes.float64]
+      dtype_hierarchy = [
+          dtypes.int32, dtypes.int64, dtypes.float32, dtypes.float64
+      ]
       assert all(arg.dtype in dtype_hierarchy for arg in [start, limit, delta])
       inferred_dtype = max([arg.dtype for arg in [start, limit, delta]],
                            key=dtype_hierarchy.index)
@@ -1101,8 +1167,8 @@ def _ReductionDims(x, axis, reduction_indices):
   else:
     # Fast path: avoid creating Rank and Range ops if ndims is known.
     if isinstance(x, ops.Tensor) and x.get_shape().ndims is not None:
-      return constant_op.constant(np.arange(x.get_shape().ndims),
-                                  dtype=dtypes.int32)
+      return constant_op.constant(
+          np.arange(x.get_shape().ndims), dtype=dtypes.int32)
     if (isinstance(x, sparse_tensor.SparseTensor) and
         x.shape.get_shape().is_fully_defined()):
       rank = x.shape.get_shape()[0].value  # sparse.shape is an 1-D tensor.
@@ -1112,8 +1178,11 @@ def _ReductionDims(x, axis, reduction_indices):
     return range(0, array_ops.rank(x))
 
 
-def reduce_sum(input_tensor, axis=None, keep_dims=False,
-               name=None, reduction_indices=None):
+def reduce_sum(input_tensor,
+               axis=None,
+               keep_dims=False,
+               name=None,
+               reduction_indices=None):
   """Computes the sum of elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
@@ -1151,14 +1220,19 @@ def reduce_sum(input_tensor, axis=None, keep_dims=False,
   Equivalent to np.sum
   @end_compatibility
   """
-  return gen_math_ops._sum(input_tensor, _ReductionDims(input_tensor,
-                                                        axis,
-                                                        reduction_indices),
-                           keep_dims, name=name)
+  return gen_math_ops._sum(
+      input_tensor,
+      _ReductionDims(input_tensor, axis, reduction_indices),
+      keep_dims,
+      name=name)
 
 
-def count_nonzero(input_tensor, axis=None, keep_dims=False,
-                  dtype=dtypes.int64, name=None, reduction_indices=None):
+def count_nonzero(input_tensor,
+                  axis=None,
+                  keep_dims=False,
+                  dtype=dtypes.int64,
+                  name=None,
+                  reduction_indices=None):
   """Computes number of nonzero elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
@@ -1210,8 +1284,11 @@ def count_nonzero(input_tensor, axis=None, keep_dims=False,
         dtype=dtype)
 
 
-def reduce_mean(input_tensor, axis=None, keep_dims=False,
-                name=None, reduction_indices=None):
+def reduce_mean(input_tensor,
+                axis=None,
+                keep_dims=False,
+                name=None,
+                reduction_indices=None):
   """Computes the mean of elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
@@ -1247,14 +1324,18 @@ def reduce_mean(input_tensor, axis=None, keep_dims=False,
   Equivalent to np.mean
   @end_compatibility
   """
-  return gen_math_ops._mean(input_tensor, _ReductionDims(input_tensor,
-                                                         axis,
-                                                         reduction_indices),
-                            keep_dims, name=name)
+  return gen_math_ops._mean(
+      input_tensor,
+      _ReductionDims(input_tensor, axis, reduction_indices),
+      keep_dims,
+      name=name)
 
 
-def reduce_prod(input_tensor, axis=None, keep_dims=False,
-                name=None, reduction_indices=None):
+def reduce_prod(input_tensor,
+                axis=None,
+                keep_dims=False,
+                name=None,
+                reduction_indices=None):
   """Computes the product of elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
@@ -1280,14 +1361,18 @@ def reduce_prod(input_tensor, axis=None, keep_dims=False,
   Equivalent to np.prod
   @end_compatibility
   """
-  return gen_math_ops._prod(input_tensor, _ReductionDims(input_tensor,
-                                                         axis,
-                                                         reduction_indices),
-                            keep_dims, name=name)
+  return gen_math_ops._prod(
+      input_tensor,
+      _ReductionDims(input_tensor, axis, reduction_indices),
+      keep_dims,
+      name=name)
 
 
-def reduce_min(input_tensor, axis=None, keep_dims=False,
-               name=None, reduction_indices=None):
+def reduce_min(input_tensor,
+               axis=None,
+               keep_dims=False,
+               name=None,
+               reduction_indices=None):
   """Computes the minimum of elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
@@ -1313,14 +1398,18 @@ def reduce_min(input_tensor, axis=None, keep_dims=False,
   Equivalent to np.min
   @end_compatibility
   """
-  return gen_math_ops._min(input_tensor, _ReductionDims(input_tensor,
-                                                        axis,
-                                                        reduction_indices),
-                           keep_dims, name=name)
+  return gen_math_ops._min(
+      input_tensor,
+      _ReductionDims(input_tensor, axis, reduction_indices),
+      keep_dims,
+      name=name)
 
 
-def reduce_max(input_tensor, axis=None, keep_dims=False,
-               name=None, reduction_indices=None):
+def reduce_max(input_tensor,
+               axis=None,
+               keep_dims=False,
+               name=None,
+               reduction_indices=None):
   """Computes the maximum of elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
@@ -1346,14 +1435,18 @@ def reduce_max(input_tensor, axis=None, keep_dims=False,
   Equivalent to np.max
   @end_compatibility
   """
-  return gen_math_ops._max(input_tensor, _ReductionDims(input_tensor,
-                                                        axis,
-                                                        reduction_indices),
-                           keep_dims, name=name)
+  return gen_math_ops._max(
+      input_tensor,
+      _ReductionDims(input_tensor, axis, reduction_indices),
+      keep_dims,
+      name=name)
 
 
-def reduce_all(input_tensor, axis=None, keep_dims=False,
-               name=None, reduction_indices=None):
+def reduce_all(input_tensor,
+               axis=None,
+               keep_dims=False,
+               name=None,
+               reduction_indices=None):
   """Computes the "logical and" of elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
@@ -1389,14 +1482,18 @@ def reduce_all(input_tensor, axis=None, keep_dims=False,
   Equivalent to np.all
   @end_compatibility
   """
-  return gen_math_ops._all(input_tensor, _ReductionDims(input_tensor,
-                                                        axis,
-                                                        reduction_indices),
-                           keep_dims, name=name)
+  return gen_math_ops._all(
+      input_tensor,
+      _ReductionDims(input_tensor, axis, reduction_indices),
+      keep_dims,
+      name=name)
 
 
-def reduce_any(input_tensor, axis=None, keep_dims=False,
-               name=None, reduction_indices=None):
+def reduce_any(input_tensor,
+               axis=None,
+               keep_dims=False,
+               name=None,
+               reduction_indices=None):
   """Computes the "logical or" of elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
@@ -1432,14 +1529,18 @@ def reduce_any(input_tensor, axis=None, keep_dims=False,
   Equivalent to np.any
   @end_compatibility
   """
-  return gen_math_ops._any(input_tensor, _ReductionDims(input_tensor,
-                                                        axis,
-                                                        reduction_indices),
-                           keep_dims, name=name)
+  return gen_math_ops._any(
+      input_tensor,
+      _ReductionDims(input_tensor, axis, reduction_indices),
+      keep_dims,
+      name=name)
 
 
-def reduce_logsumexp(input_tensor, axis=None, keep_dims=False,
-                     name=None, reduction_indices=None):
+def reduce_logsumexp(input_tensor,
+                     axis=None,
+                     keep_dims=False,
+                     name=None,
+                     reduction_indices=None):
   """Computes log(sum(exp(elements across dimensions of a tensor))).
 
   Reduces `input_tensor` along the dimensions given in `axis`.
@@ -1479,13 +1580,17 @@ def reduce_logsumexp(input_tensor, axis=None, keep_dims=False,
   """
   with ops.name_scope(name, "ReduceLogSumExp", [input_tensor]) as name:
     my_max = array_ops.stop_gradient(
-        reduce_max(input_tensor, axis=axis, reduction_indices=reduction_indices,
-                   keep_dims=True))
-    result = gen_math_ops.log(reduce_sum(
-        gen_math_ops.exp(input_tensor - my_max),
-        axis,
-        keep_dims=True,
-        reduction_indices=reduction_indices)) + my_max
+        reduce_max(
+            input_tensor,
+            axis=axis,
+            reduction_indices=reduction_indices,
+            keep_dims=True))
+    result = gen_math_ops.log(
+        reduce_sum(
+            gen_math_ops.exp(input_tensor - my_max),
+            axis,
+            keep_dims=True,
+            reduction_indices=reduction_indices)) + my_max
     if not keep_dims:
       if isinstance(axis, int):
         axis = [axis]
@@ -1535,24 +1640,32 @@ def trace(x, name=None):
     return reduce_sum(array_ops.matrix_diag_part(x), [-1], name=name)
 
 
-def matmul(a, b,
-           transpose_a=False, transpose_b=False,
-           a_is_sparse=False, b_is_sparse=False,
+def matmul(a,
+           b,
+           transpose_a=False,
+           transpose_b=False,
+           adjoint_a=False,
+           adjoint_b=False,
+           a_is_sparse=False,
+           b_is_sparse=False,
            name=None):
   """Multiplies matrix `a` by matrix `b`, producing `a` * `b`.
 
-  The inputs must be two-dimensional matrices, with matching inner dimensions,
-  possibly after transposition.
+  The inputs must be matrices (or tensors of rank > 2, representing batches of
+  matrices), with matching inner dimensions, possibly after transposition.
 
   Both matrices must be of the same type. The supported types are:
-  `float32`, `float64`, `int32`, `complex64`.
+  `float16`, `float32`, `float64`, `int32`, `complex64`, `complex128`.
 
-  Either matrix can be transposed on the fly by setting the corresponding flag
-  to `True`. This is `False` by default.
+  Either matrix can be transposed or adjointed (conjugated and transposed) on
+  the fly by setting one of the corresponding flag to `True`. These are `False`
+  by default.
 
   If one or both of the matrices contain a lot of zeros, a more efficient
   multiplication algorithm can be used by setting the corresponding
   `a_is_sparse` or `b_is_sparse` flag to `True`. These are `False` by default.
+  This optimization is only available for plain matrices (rank-2 tensors) with
+  datatypes `bfloat16` or `float32`.
 
   For example:
 
@@ -1566,23 +1679,87 @@ def matmul(a, b,
                                                            [11. 12.]]
   c = tf.matmul(a, b) => [[58 64]
                           [139 154]]
+
+
+  # 3-D tensor `a`
+  a = tf.constant(np.arange(1,13), shape=[2, 2, 3]) => [[[ 1.  2.  3.]
+                                                         [ 4.  5.  6.]],
+                                                        [[ 7.  8.  9.]
+                                                         [10. 11. 12.]]]
+
+  # 3-D tensor `b`
+  b = tf.constant(np.arange(13,25), shape=[2, 3, 2]) => [[[13. 14.]
+                                                          [15. 16.]
+                                                          [17. 18.]],
+                                                         [[19. 20.]
+                                                          [21. 22.]
+                                                          [23. 24.]]]
+  c = tf.matmul(a, b) => [[[ 94 100]
+                           [229 244]],
+                          [[508 532]
+                           [697 730]]]
   ```
 
   Args:
-    a: `Tensor` of type `float32`, `float64`, `int32` or `complex64`.
-    b: `Tensor` with same type as `a`.
+    a: `Tensor` of type `float16`, `float32`, `float64`, `int32`, `complex64`,
+      `complex128` and rank > 1.
+    b: `Tensor` with same type and rank as `a`.
     transpose_a: If `True`, `a` is transposed before multiplication.
     transpose_b: If `True`, `b` is transposed before multiplication.
+    adjoint_a: If `True`, `a` is conjugated and transposed before
+      multiplication.
+    adjoint_b: If `True`, `b` is conjugated and transposed before
+      multiplication.
     a_is_sparse: If `True`, `a` is treated as a sparse matrix.
     b_is_sparse: If `True`, `b` is treated as a sparse matrix.
     name: Name for the operation (optional).
 
   Returns:
-    A `Tensor` of the same type as `a`.
+    A `Tensor` of the same type as `a` and `b` where each inner-most matrix is
+    the product of the corresponding matrices in `a` and `b, e.g. if all
+    transpose or adjoint attributes are `False`:
+
+    output[..., :, :] = a[..., :, :] * b[..., :, :] ,
+
+
+  Raises:
+    ValueError: If transpose_a and adjoint_a, or transpose_b and adjoint_b
+      are both set to True.
   """
   with ops.name_scope(name, "MatMul", [a, b]) as name:
+    if transpose_a and adjoint_a:
+      raise ValueError("Only one of transpose_a and adjoint_a can be True.")
+    if transpose_b and adjoint_b:
+      raise ValueError("Only one of transpose_b and adjoint_b can be True.")
+
     a = ops.convert_to_tensor(a, name="a")
     b = ops.convert_to_tensor(b, name="b")
+    a_shape = a.get_shape()
+    b_shape = b.get_shape()
+    if (not a_is_sparse and not b_is_sparse) and (
+        (a_shape.ndims is None or a_shape.ndims > 2) and
+        (b_shape.ndims is None or b_shape.ndims > 2)):
+      # BatchMatmul does not support transpose, so we conjugate the matrix and
+      # use adjoint instead. Conj() is a noop for real matrices.
+      if transpose_a:
+        a = conj(a)
+        adjoint_a = True
+      if transpose_b:
+        b = conj(b)
+        adjoint_b = True
+      return gen_math_ops._batch_mat_mul(
+          a, b, adj_x=adjoint_a, adj_y=adjoint_b, name=name)
+
+    # Neither matmul nor sparse_matmul support adjoint, so we conjugate
+    # the matrix and use transpose instead. Conj() is a noop for real
+    # matrices.
+    if adjoint_a:
+      a = conj(a)
+      transpose_a = True
+    if adjoint_b:
+      b = conj(b)
+      transpose_b = True
+
     sparse_matmul_types = [dtypes.bfloat16, dtypes.float32]
     use_sparse_matmul = (a.dtype in sparse_matmul_types and
                          b.dtype in sparse_matmul_types and
@@ -1591,19 +1768,21 @@ def matmul(a, b,
       # matmul currently doesn't handle bfloat16 inputs.
       use_sparse_matmul = True
     if use_sparse_matmul:
-      return sparse_matmul(a, b,
-                           transpose_a=transpose_a,
-                           transpose_b=transpose_b,
-                           a_is_sparse=a_is_sparse,
-                           b_is_sparse=b_is_sparse,
-                           name=name)
+      return sparse_matmul(
+          a,
+          b,
+          transpose_a=transpose_a,
+          transpose_b=transpose_b,
+          a_is_sparse=a_is_sparse,
+          b_is_sparse=b_is_sparse,
+          name=name)
     else:
-      return gen_math_ops._mat_mul(a, b,
-                                   transpose_a=transpose_a,
-                                   transpose_b=transpose_b,
-                                   name=name)
+      return gen_math_ops._mat_mul(
+          a, b, transpose_a=transpose_a, transpose_b=transpose_b, name=name)
+
 
 sparse_matmul = gen_math_ops._sparse_mat_mul
+# TODO(rmlarsen): Remove Python interface to batch_matmul.
 batch_matmul = gen_math_ops._batch_mat_mul
 
 
@@ -1666,16 +1845,17 @@ def _as_indexed_slices_list(inputs, optimize=True):
   if not isinstance(inputs, (list, tuple)):
     raise TypeError("Expected a list or tuple, not a %s" % type(inputs))
   outputs = [_as_indexed_slices(i, optimize=optimize) for i in inputs]
-  with_int32_index = [o.indices for o in outputs
-                      if o.indices.dtype == dtypes.int32]
+  with_int32_index = [
+      o.indices for o in outputs if o.indices.dtype == dtypes.int32
+  ]
   if not with_int32_index or len(with_int32_index) == len(outputs):
     return outputs
   casted_outputs = []
   for o in outputs:
     if o.indices.dtype == dtypes.int32:
       casted_outputs.append(
-          ops.IndexedSlices(o.values, cast(o.indices, dtypes.int64),
-                            o.dense_shape))
+          ops.IndexedSlices(o.values,
+                            cast(o.indices, dtypes.int64), o.dense_shape))
     else:
       casted_outputs.append(o)
   return casted_outputs
@@ -1766,14 +1946,16 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   if tensor_dtype is None:
     tensor_dtype = inputs[0].dtype
   with ops.name_scope(name, "AccumulateN", inputs) as name:
-    var = gen_state_ops._temporary_variable(shape=tensor_shape.vector(0),
-                                            dtype=tensor_dtype)
+    var = gen_state_ops._temporary_variable(
+        shape=tensor_shape.vector(0), dtype=tensor_dtype)
     with ops.colocate_with(var):
       zeros = array_ops.zeros_like(gen_control_flow_ops._merge(inputs)[0])
       zeros.set_shape(shape)
       ref = state_ops.assign(var, zeros, validate_shape=False)
-      update_ops = [state_ops.assign_add(ref, input_tensor, use_locking=True)
-                    for input_tensor in inputs]
+      update_ops = [
+          state_ops.assign_add(
+              ref, input_tensor, use_locking=True) for input_tensor in inputs
+      ]
       with ops.control_dependencies(update_ops):
         return gen_state_ops._destroy_temporary_variable(
             ref, var_name=var.op.name, name=name)
@@ -1952,9 +2134,10 @@ def conj(x, name=None):
 
 def _BroadcastShape(op):
   """Common shape function for binary operators that broadcast their inputs."""
-  return [common_shapes.broadcast_shape(
-      op.inputs[0].get_shape(),
-      op.inputs[1].get_shape())]
+  return [
+      common_shapes.broadcast_shape(op.inputs[0].get_shape(),
+                                    op.inputs[1].get_shape())
+  ]
 
 
 def reduced_shape(input_shape, axes):
@@ -1968,14 +2151,28 @@ def reduced_shape(input_shape, axes):
   """
   # Example:
   # cast needed for SparseTensor reductions
-  input_shape = to_int32(input_shape)       # [2, 3, 5, 7]
-  axes = to_int32(axes)                     # [1, 2]
+  input_shape = to_int32(input_shape)  # [2, 3, 5, 7]
+  axes = to_int32(axes)  # [1, 2]
 
   input_rank = array_ops.size(input_shape)  # 4
   axes = (axes + input_rank) % input_rank
-  axes_shape = array_ops.shape(axes)        # [2]
+  axes_shape = array_ops.shape(axes)  # [2]
   return gen_data_flow_ops.dynamic_stitch(  # [2, 1, 1, 7]
-      [range(input_rank),                   # [0, 1, 2, 3]
-       axes],                               # [1, 2]
-      [input_shape,                         # [2, 3, 5, 7]
-       array_ops.fill(axes_shape, 1)])      # [1, 1]
+      [
+          range(input_rank),  # [0, 1, 2, 3]
+          axes
+      ],  # [1, 2]
+      [
+          input_shape,  # [2, 3, 5, 7]
+          array_ops.fill(axes_shape, 1)
+      ])  # [1, 1]
+
+
+@deprecated(
+    "2016-12-07",
+    "This op will be removed after the deprecation date. "
+    "Please switch to tf.where().")
+def select(condition, x, y, name=None):
+  return gen_math_ops._select(condition, x, y, name)
+select.__doc__ = gen_math_ops._select.__doc__
+

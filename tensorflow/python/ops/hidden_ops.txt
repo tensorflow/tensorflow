@@ -184,12 +184,16 @@ BatchIFFT2D
 BatchIFFT3D
 Complex
 Conj
+FloorDiv
+FloorMod
 Max
 Mean
 Min
 Pow
 Prod
 Range
+RealDiv
+Select
 SparseMatMul
 Sum
 MatMul
@@ -201,11 +205,14 @@ InvGrad
 ReciprocalGrad
 SqrtGrad
 RsqrtGrad
+TruncateDiv
+TruncateMod
 
 # nn_ops
 AvgPoolGrad  # "*Grad" accessible through nn_grad instead of nn_ops.
 BatchNormWithGlobalNormalization
 BatchNormWithGlobalNormalizationGrad
+FusedBatchNorm
 SoftmaxCrossEntropyWithLogits
 SparseSoftmaxCrossEntropyWithLogits
 LRNGrad

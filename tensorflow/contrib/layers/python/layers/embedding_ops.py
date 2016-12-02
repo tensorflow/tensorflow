@@ -31,8 +31,10 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 
-__all__ = ["safe_embedding_lookup_sparse", "hashed_embedding_lookup",
-           "hashed_embedding_lookup_sparse", "embedding_lookup_unique"]
+__all__ = [
+    "safe_embedding_lookup_sparse", "scattered_embedding_lookup",
+    "scattered_embedding_lookup_sparse", "embedding_lookup_unique"
+]
 
 
 def safe_embedding_lookup_sparse(embedding_weights,
@@ -148,7 +150,7 @@ def safe_embedding_lookup_sparse(embedding_weights,
           array_ops.reshape(is_row_empty, [-1, 1]),
           array_ops.pack([1, array_ops.shape(result)[1]]))
 
-      result = math_ops.select(is_row_empty,
+      result = array_ops.where(is_row_empty,
                                array_ops.zeros_like(result),
                                result,
                                name=scope)
@@ -176,8 +178,11 @@ def _prune_invalid_ids(sparse_ids, sparse_weights):
   return sparse_ids, sparse_weights
 
 
-def hashed_embedding_lookup(params, values, dimension, name=None,
-                            hash_key=None):
+def scattered_embedding_lookup(params,
+                               values,
+                               dimension,
+                               name=None,
+                               hash_key=None):
   """Looks up embeddings using parameter hashing for each value in `values`.
 
   The i-th embedding component of a value v in `values` is found by retrieving
@@ -223,7 +228,7 @@ def hashed_embedding_lookup(params, values, dimension, name=None,
   if not isinstance(params, list):
     params = [params]
 
-  with ops.name_scope(name, "hashed_embedding_lookup",
+  with ops.name_scope(name, "scattered_embedding_lookup",
                       params + [dimension, values]):
     if dimension <= 0:
       raise ValueError("Dimension should be >0 not %d" % dimension)
@@ -266,16 +271,16 @@ def hashed_embedding_lookup(params, values, dimension, name=None,
         0, [values_shape, [dimension]]))
 
 
-def hashed_embedding_lookup_sparse(params,
-                                   sparse_values,
-                                   dimension,
-                                   combiner=None,
-                                   default_value=None,
-                                   name=None,
-                                   hash_key=None):
+def scattered_embedding_lookup_sparse(params,
+                                      sparse_values,
+                                      dimension,
+                                      combiner=None,
+                                      default_value=None,
+                                      name=None,
+                                      hash_key=None):
   """Looks up embeddings of a sparse feature using parameter hashing.
 
-  See `tf.contrib.layers.hashed_embedding_lookup` for embedding with hashing.
+  See `tf.contrib.layers.scattered_embedding_lookup` for embedding with hashing.
 
   Args:
     params: A `Tensor`, `list` of `Tensors`, or `PartitionedVariable`.
@@ -311,7 +316,7 @@ def hashed_embedding_lookup_sparse(params,
   if not isinstance(sparse_values, sparse_tensor.SparseTensor):
     raise TypeError("sparse_values must be SparseTensor")
 
-  with ops.name_scope(name, "hashed_sparse_embedding_lookup",
+  with ops.name_scope(name, "scattered_embedding_lookup_sparse",
                       params + [sparse_values]) as scope:
     # Fill in the empty rows.
     if default_value is None:
@@ -330,8 +335,8 @@ def hashed_embedding_lookup_sparse(params,
     values = sparse_values.values
     values, idx = array_ops.unique(values)
 
-    embeddings = hashed_embedding_lookup(params, values, dimension,
-                                         hash_key=hash_key)
+    embeddings = scattered_embedding_lookup(
+        params, values, dimension, hash_key=hash_key)
 
     if combiner == "sum":
       embeddings = math_ops.sparse_segment_sum(embeddings, idx, segment_ids,

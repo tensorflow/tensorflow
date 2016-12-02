@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/posix/error.h"
 #include "third_party/hadoop/hdfs.h"
 
@@ -61,7 +62,7 @@ class LibHDFS {
   std::function<int(hdfsFS, hdfsFile)> hdfsCloseFile;
   std::function<tSize(hdfsFS, hdfsFile, tOffset, void*, tSize)> hdfsPread;
   std::function<tSize(hdfsFS, hdfsFile, const void*, tSize)> hdfsWrite;
-  std::function<int(hdfsFS, hdfsFile)> hdfsFlush;
+  std::function<int(hdfsFS, hdfsFile)> hdfsHFlush;
   std::function<int(hdfsFS, hdfsFile)> hdfsHSync;
   std::function<hdfsFile(hdfsFS, const char*, int, int, short, tSize)>
       hdfsOpenFile;
@@ -87,7 +88,7 @@ class LibHDFS {
       BIND_HDFS_FUNC(hdfsCloseFile);
       BIND_HDFS_FUNC(hdfsPread);
       BIND_HDFS_FUNC(hdfsWrite);
-      BIND_HDFS_FUNC(hdfsFlush);
+      BIND_HDFS_FUNC(hdfsHFlush);
       BIND_HDFS_FUNC(hdfsHSync);
       BIND_HDFS_FUNC(hdfsOpenFile);
       BIND_HDFS_FUNC(hdfsExists);
@@ -111,6 +112,11 @@ class LibHDFS {
     }
     string path = io::JoinPath(hdfs_home, "lib", "native", "libhdfs.so");
     status_ = TryLoadAndBind(path.c_str(), &handle_);
+    if (!status_.ok()) {
+      // try load libhdfs.so using dynamic loader's search path in case libhdfs.so
+      // is installed in non-standard location
+      status_ = TryLoadAndBind("libhdfs.so", &handle_);
+    }
     return;
   }
 
@@ -157,24 +163,53 @@ string HadoopFileSystem::TranslateName(const string& name) const {
 
 class HDFSRandomAccessFile : public RandomAccessFile {
  public:
-  HDFSRandomAccessFile(const string& fname, LibHDFS* hdfs, hdfsFS fs,
-                       hdfsFile file)
-      : filename_(fname), hdfs_(hdfs), fs_(fs), file_(file) {}
+  HDFSRandomAccessFile(const string& filename, const string& hdfs_filename,
+                       LibHDFS* hdfs, hdfsFS fs, hdfsFile file)
+      : filename_(filename),
+        hdfs_filename_(hdfs_filename),
+        hdfs_(hdfs),
+        fs_(fs),
+        file_(file) {}
 
-  ~HDFSRandomAccessFile() override { hdfs_->hdfsCloseFile(fs_, file_); }
+  ~HDFSRandomAccessFile() override {
+    if (file_ != nullptr) {
+      mutex_lock lock(mu_);
+      hdfs_->hdfsCloseFile(fs_, file_);
+    }
+  }
 
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
     Status s;
     char* dst = scratch;
+    bool eof_retried = false;
     while (n > 0 && s.ok()) {
+      // We lock inside the loop rather than outside so we don't block other
+      // concurrent readers.
+      mutex_lock lock(mu_);
       tSize r = hdfs_->hdfsPread(fs_, file_, static_cast<tOffset>(offset), dst,
                                  static_cast<tSize>(n));
       if (r > 0) {
         dst += r;
         n -= r;
         offset += r;
-      } else if (r == 0) {
+      } else if (!eof_retried && r == 0) {
+        // Always reopen the file upon reaching EOF to see if there's more data.
+        // If writers are streaming contents while others are concurrently
+        // reading, HDFS requires that we reopen the file to see updated
+        // contents.
+        //
+        // Fixes #5438
+        if (file_ != nullptr && hdfs_->hdfsCloseFile(fs_, file_) != 0) {
+          return IOError(filename_, errno);
+        }
+        file_ =
+            hdfs_->hdfsOpenFile(fs_, hdfs_filename_.c_str(), O_RDONLY, 0, 0, 0);
+        if (file_ == nullptr) {
+          return IOError(filename_, errno);
+        }
+        eof_retried = true;
+      } else if (eof_retried && r == 0) {
         s = Status(error::OUT_OF_RANGE, "Read less bytes than requested");
       } else if (errno == EINTR || errno == EAGAIN) {
         // hdfsPread may return EINTR too. Just retry.
@@ -188,9 +223,12 @@ class HDFSRandomAccessFile : public RandomAccessFile {
 
  private:
   string filename_;
+  string hdfs_filename_;
   LibHDFS* hdfs_;
   hdfsFS fs_;
-  hdfsFile file_;
+
+  mutable mutex mu_;
+  mutable hdfsFile file_ GUARDED_BY(mu_);
 };
 
 Status HadoopFileSystem::NewRandomAccessFile(
@@ -203,7 +241,8 @@ Status HadoopFileSystem::NewRandomAccessFile(
   if (file == nullptr) {
     return IOError(fname, errno);
   }
-  result->reset(new HDFSRandomAccessFile(fname, hdfs_, fs, file));
+  result->reset(
+      new HDFSRandomAccessFile(fname, TranslateName(fname), hdfs_, fs, file));
   return Status::OK();
 }
 
@@ -238,7 +277,7 @@ class HDFSWritableFile : public WritableFile {
   }
 
   Status Flush() override {
-    if (hdfs_->hdfsFlush(fs_, file_) != 0) {
+    if (hdfs_->hdfsHFlush(fs_, file_) != 0) {
       return IOError(filename_, errno);
     }
     return Status::OK();

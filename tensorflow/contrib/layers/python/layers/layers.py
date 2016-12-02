@@ -27,11 +27,10 @@ from tensorflow.contrib.framework.python.ops import add_arg_scope
 from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.layers.python.layers import initializers
 from tensorflow.contrib.layers.python.layers import utils
-
-
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.layers import core as core_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import init_ops
@@ -40,6 +39,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.training import moving_averages
 
 # TODO(b/28426988): Replace legacy_* fns migrated from slim.
@@ -173,7 +173,10 @@ def _fused_batch_norm(
       `batch_size`. The normalization is over all but the last dimension if
       `data_format` is `NHWC` and the second dimension if `data_format` is
       `NCHW`.
-    decay: decay for the moving average.
+    decay: decay for the moving average. Reasonable values for `decay` are close 
+      to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc. Lower 
+      `decay` value (recommend trying `decay`=0.9) if model experiences reasonably 
+      good training performance but poor validation and/or test performance.
     center: If True, subtract `beta`. If False, `beta` is ignored.
     scale: If True, multiply by `gamma`. If False, `gamma` is
       not used. When the next layer is linear (also e.g. `nn.relu`), this can be
@@ -220,14 +223,16 @@ def _fused_batch_norm(
     if original_rank is None:
       raise ValueError('Inputs %s has undefined rank' % inputs.name)
     elif original_rank not in [2, 4]:
-      raise ValueError('Inputs %s has unsupported rank. \
-          Expected 2 or 4 but got %d' % (inputs.name, original_rank))
+      raise ValueError('Inputs %s has unsupported rank.'
+                       ' Expected 2 or 4 but got %d' % (
+                           inputs.name, original_rank))
     if original_rank == 2:
       channels = inputs.get_shape()[-1].value
       if channels is None:
         raise ValueError('`C` dimension must be known but is None')
-      new_shape = [-1, channels, 1, 1] if data_format == DATA_FORMAT_NCHW else \
-          [-1, 1, 1, channels]
+      new_shape = [-1, 1, 1, channels]
+      if data_format == DATA_FORMAT_NCHW:
+        new_shape = [-1, channels, 1, 1]
       inputs = array_ops.reshape(inputs, new_shape)
     inputs_shape = inputs.get_shape()
     dtype = inputs.dtype.base_dtype
@@ -316,7 +321,7 @@ def _fused_batch_norm(
     need_updates = is_training_value is None or is_training_value
     if need_updates:
       if updates_collections is None:
-        _no_updates = lambda: outputs
+        no_updates = lambda: outputs
         def _force_updates():
           """Internal function forces updates moving_vars if is_training."""
           update_moving_mean = moving_averages.assign_moving_average(
@@ -326,7 +331,7 @@ def _fused_batch_norm(
           with ops.control_dependencies(
               [update_moving_mean, update_moving_variance]):
             return array_ops.identity(outputs)
-        outputs = utils.smart_cond(is_training, _force_updates, _no_updates)
+        outputs = utils.smart_cond(is_training, _force_updates, no_updates)
       else:
         moving_vars_fn = lambda: (moving_mean, moving_variance)
         def _delay_updates():
@@ -396,7 +401,10 @@ def batch_norm(
       `batch_size`. The normalization is over all but the last dimension if
       `data_format` is `NHWC` and the second dimension if `data_format` is
       `NCHW`.
-    decay: decay for the moving average.
+    decay: decay for the moving average. Reasonable values for `decay` are close 
+      to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc. Lower 
+      `decay` value (recommend trying `decay`=0.9) if model experiences reasonably 
+      good training performance but poor validation and/or test performance.
     center: If True, subtract `beta`. If False, `beta` is ignored.
     scale: If True, multiply by `gamma`. If False, `gamma` is
       not used. When the next layer is linear (also e.g. `nn.relu`), this can be
@@ -436,9 +444,8 @@ def batch_norm(
   Raises:
     ValueError: if `batch_weights` is not None and `fused` is True.
     ValueError: if `data_format` is neither `NHWC` nor `NCHW`.
-    ValueError: if `data_format` is `NCHW` while `fused` is False.
     ValueError: if the rank of `inputs` is undefined.
-    ValueError: if rank or last dimension of `inputs` is undefined.
+    ValueError: if rank or channels dimension of `inputs` is undefined.
   """
   if fused:
     if batch_weights is not None:
@@ -463,8 +470,6 @@ def batch_norm(
 
   if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
     raise ValueError('data_format has to be either NCHW or NHWC.')
-  if data_format == DATA_FORMAT_NCHW:
-    raise ValueError('data_format must be NHWC if fused is False.')
 
   with variable_scope.variable_scope(scope, 'BatchNorm', [inputs],
                                      reuse=reuse) as sc:
@@ -480,10 +485,21 @@ def batch_norm(
       # Reshape batch weight values so they broadcast across inputs.
       nshape = [-1] + [1 for _ in range(inputs_rank - 1)]
       batch_weights = array_ops.reshape(batch_weights, nshape)
-    axis = list(range(inputs_rank - 1))
-    params_shape = inputs_shape[-1:]
+
+    if data_format == DATA_FORMAT_NCHW:
+      moments_axes = [0] + list(range(2, inputs_rank))
+      params_shape = inputs_shape[1:2]
+      # For NCHW format, rather than relying on implicit broadcasting, we
+      # explicitly reshape the params to params_shape_broadcast when computing
+      # the moments and the batch normalization.
+      params_shape_broadcast = list(
+          [1, inputs_shape[1].value] + [1 for _ in range(2, inputs_rank)])
+    else:
+      moments_axes = list(range(inputs_rank - 1))
+      params_shape = inputs_shape[-1:]
+      params_shape_broadcast = None
     if not params_shape.is_fully_defined():
-      raise ValueError('Inputs %s has undefined last dimension %s.' % (
+      raise ValueError('Inputs %s has undefined channels dimension %s.' % (
           inputs.name, params_shape))
 
     # Allocate parameters for the beta and gamma of the normalization.
@@ -555,9 +571,23 @@ def batch_norm(
       if batch_weights is None:
         # Use a copy of moving_mean as a shift to compute more reliable moments.
         shift = math_ops.add(moving_mean, 0)
-        mean, variance = nn.moments(inputs, axis, shift=shift)
+        if data_format == DATA_FORMAT_NCHW:
+          shift = array_ops.reshape(shift, params_shape_broadcast)
+          mean, variance = nn.moments(inputs, moments_axes, shift=shift,
+                                      keep_dims=True)
+          mean = array_ops.reshape(mean, [-1])
+          variance = array_ops.reshape(variance, [-1])
+        else:
+          mean, variance = nn.moments(inputs, moments_axes, shift=shift)
       else:
-        mean, variance = nn.weighted_moments(inputs, axis, batch_weights)
+        if data_format == DATA_FORMAT_NCHW:
+          mean, variance = nn.weighted_moments(inputs, moments_axes,
+                                               batch_weights, keep_dims=True)
+          mean = array_ops.reshape(mean, [-1])
+          variance = array_ops.reshape(variance, [-1])
+        else:
+          mean, variance = nn.weighted_moments(inputs, moments_axes,
+                                               batch_weights)
 
       moving_vars_fn = lambda: (moving_mean, moving_variance)
       if updates_collections is None:
@@ -592,6 +622,13 @@ def batch_norm(
         mean, variance = utils.smart_cond(is_training, vars_fn, moving_vars_fn)
     else:
       mean, variance = moving_mean, moving_variance
+    if data_format == DATA_FORMAT_NCHW:
+      mean = array_ops.reshape(mean, params_shape_broadcast)
+      variance = array_ops.reshape(variance, params_shape_broadcast)
+      beta = array_ops.reshape(beta, params_shape_broadcast)
+      if gamma is not None:
+        gamma = array_ops.reshape(gamma, params_shape_broadcast)
+
     # Compute batch_normalization.
     outputs = nn.batch_normalization(inputs, mean, variance, beta, gamma,
                                      epsilon)
@@ -655,7 +692,7 @@ def bias_add(inputs,
       raise ValueError('Dims of shape must be known but is None')
     elif inputs_rank != 4 and data_format == DATA_FORMAT_NCHW:
       raise ValueError('Data format NCHW only supports 4D Tensor')
-    axis = 1 if data_format==DATA_FORMAT_NCHW else -1
+    axis = 1 if data_format == DATA_FORMAT_NCHW else -1
     num_features = inputs_shape[axis].value
     if num_features is None:
       raise ValueError('`C` dimension must be known but is None')
@@ -1052,7 +1089,6 @@ def convolution2d_transpose(
       output_shape = [batch_size, num_outputs, out_height, out_width]
       strides = [1, 1, stride_h, stride_w]
 
-
     output_shape = array_ops.pack(output_shape)
     outputs = nn.conv2d_transpose(inputs, weights, output_shape,
                                   strides,
@@ -1062,8 +1098,10 @@ def convolution2d_transpose(
     # Infer the static output shape:
     out_shape = inputs.get_shape().as_list()
     out_shape[c_axis] = num_outputs
-    out_shape[h_axis] = get_deconv_dim(out_shape[h_axis], stride_h, kernel_h, padding)
-    out_shape[w_axis] = get_deconv_dim(out_shape[w_axis], stride_w, kernel_w, padding)
+    out_shape[h_axis] = get_deconv_dim(
+        out_shape[h_axis], stride_h, kernel_h, padding)
+    out_shape[w_axis] = get_deconv_dim(
+        out_shape[w_axis], stride_w, kernel_w, padding)
     outputs.set_shape(out_shape)
 
     if normalizer_fn is not None:
@@ -1078,6 +1116,7 @@ def convolution2d_transpose(
                                           dtype=dtype,
                                           initializer=biases_initializer,
                                           regularizer=biases_regularizer,
+                                          trainable=trainable,
                                           collections=biases_collections)
         outputs = nn.bias_add(outputs, biases, data_format=data_format)
 
@@ -1115,12 +1154,16 @@ def dropout(inputs,
   Returns:
     a tensor representing the output of the operation.
   """
-  with ops.name_scope(scope, 'Dropout', [inputs]) as sc:
+  with variable_scope.variable_scope(
+      scope, 'Dropout', [inputs], custom_getter=_model_variable_getter) as sc:
     inputs = ops.convert_to_tensor(inputs)
-    dropout_fn = lambda: nn.dropout(inputs, keep_prob, noise_shape)
-    id_fn = lambda: array_ops.identity(inputs)
-    outputs = utils.smart_cond(is_training, dropout_fn, id_fn)
-    return utils.collect_named_outputs(outputs_collections, sc, outputs)
+    layer = core_layers.Dropout(rate=1 - keep_prob,
+                                noise_shape=noise_shape,
+                                name=sc.name,
+                                _scope=sc)
+    outputs = layer.apply(inputs, training=is_training)
+    return utils.collect_named_outputs(
+        outputs_collections, sc.original_name_scope, outputs)
 
 
 @add_arg_scope
@@ -1226,6 +1269,31 @@ def _inner_flatten(inputs, new_rank, output_collections=None, scope=None):
   return utils.collect_named_outputs(output_collections, sc, flattened)
 
 
+def _model_variable_getter(getter, name, shape=None, dtype=None,
+                           initializer=None, regularizer=None, trainable=True,
+                           collections=None, caching_device=None,
+                           partitioner=None, **_):
+  """Getter that uses model_variable for compatibility with core layers."""
+  return variables.model_variable(
+      name, shape=shape, dtype=dtype, initializer=initializer,
+      regularizer=regularizer, collections=collections, trainable=trainable,
+      caching_device=caching_device, partitioner=partitioner,
+      custom_getter=getter)
+
+
+def _add_variable_to_collections(variable, collections_set, collections_name):
+  """Adds variable (or all its parts) to all collections with that name."""
+  collections = utils.get_variable_collections(
+      collections_set, collections_name) or []
+  variables_list = [variable]
+  if isinstance(variable, tf_variables.PartitionedVariable):
+    variables_list = [v for v in variable]
+  for collection in collections:
+    for var in variables_list:
+      if var not in ops.get_collection(collection):
+        ops.add_to_collection(collection, var)
+
+
 @add_arg_scope
 def fully_connected(inputs,
                     num_outputs,
@@ -1279,63 +1347,50 @@ def fully_connected(inputs,
     scope: Optional scope for variable_scope.
 
   Returns:
-     the tensor variable representing the result of the series of operations.
+     The tensor variable representing the result of the series of operations.
 
   Raises:
     ValueError: if x has rank less than 2 or if its last dimension is not set.
   """
-  if not (isinstance(num_outputs, int) or isinstance(num_outputs, long)):
+  if not (isinstance(num_outputs, six.integer_types)):
     raise ValueError('num_outputs should be int or long, got %s.', num_outputs)
-  with variable_scope.variable_scope(scope, 'fully_connected', [inputs],
-                                     reuse=reuse) as sc:
+
+  with variable_scope.variable_scope(
+      scope, 'fully_connected', [inputs],
+      reuse=reuse, custom_getter=_model_variable_getter) as sc:
     inputs = ops.convert_to_tensor(inputs)
-    dtype = inputs.dtype.base_dtype
-    inputs_shape = inputs.get_shape()
-    num_input_units = utils.last_dimension(inputs_shape, min_rank=2)
+    layer = core_layers.FullyConnected(
+        units=num_outputs,
+        activation=None,
+        use_bias=not normalizer_fn and biases_initializer,
+        weights_initializer=weights_initializer,
+        bias_initializer=biases_initializer,
+        weights_regularizer=weights_regularizer,
+        bias_regularizer=biases_regularizer,
+        activity_regularizer=None,
+        trainable=trainable,
+        name=sc.name,
+        dtype=inputs.dtype.base_dtype,
+        _scope=sc,
+        _reuse_weights=reuse)
+    outputs = layer.apply(inputs)
 
-    static_shape = inputs_shape.as_list()
-    static_shape[-1] = num_outputs
+    # Add variables to collections.
+    _add_variable_to_collections(layer.w, variables_collections, 'weights')
+    if layer.bias:
+      _add_variable_to_collections(layer.bias, variables_collections, 'biases')
 
-    out_shape = array_ops.unpack(array_ops.shape(inputs))
-    out_shape[-1] = num_outputs
-
-    weights_shape = [num_input_units, num_outputs]
-    weights_collections = utils.get_variable_collections(
-        variables_collections, 'weights')
-    weights = variables.model_variable('weights',
-                                       shape=weights_shape,
-                                       dtype=dtype,
-                                       initializer=weights_initializer,
-                                       regularizer=weights_regularizer,
-                                       collections=weights_collections,
-                                       trainable=trainable)
-    if len(static_shape) > 2:
-      # Reshape inputs
-      inputs = array_ops.reshape(inputs, [-1, num_input_units])
-    outputs = standard_ops.matmul(inputs, weights)
+    # Apply normalizer function / layer.
     if normalizer_fn is not None:
-      normalizer_params = normalizer_params or {}
+      if not normalizer_params:
+        normalizer_params = {}
       outputs = normalizer_fn(outputs, **normalizer_params)
-    else:
-      if biases_initializer is not None:
-        biases_collections = utils.get_variable_collections(
-            variables_collections, 'biases')
-        biases = variables.model_variable('biases',
-                                          shape=[num_outputs,],
-                                          dtype=dtype,
-                                          initializer=biases_initializer,
-                                          regularizer=biases_regularizer,
-                                          collections=biases_collections,
-                                          trainable=trainable)
-        outputs = nn.bias_add(outputs, biases)
+
     if activation_fn is not None:
       outputs = activation_fn(outputs)
-    if len(static_shape) > 2:
-      # Reshape back outputs
-      outputs = array_ops.reshape(outputs, array_ops.pack(out_shape))
-      outputs.set_shape(static_shape)
-    return utils.collect_named_outputs(outputs_collections,
-                                       sc.original_name_scope, outputs)
+
+    return utils.collect_named_outputs(
+        outputs_collections, sc.original_name_scope, outputs)
 
 
 @add_arg_scope

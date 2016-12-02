@@ -35,7 +35,7 @@ class EventLoggingTest(tf.test.TestCase):
 
   def setUp(self):
     self._work_dir = tempfile.mkdtemp(dir=self.get_temp_dir())
-    self._sw = tf.train.SummaryWriter(self._work_dir)
+    self._sw = tf.summary.FileWriter(self._work_dir)
     tensorboard_logging.set_summary_writer(self._sw)
     self.addCleanup(shutil.rmtree, self._work_dir)
 

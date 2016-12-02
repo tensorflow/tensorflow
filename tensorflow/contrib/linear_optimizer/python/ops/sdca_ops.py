@@ -22,16 +22,14 @@ import collections
 
 from six.moves import range
 
-from tensorflow.contrib.lookup import lookup_ops
+from tensorflow.contrib.linear_optimizer.python.ops.sharded_mutable_dense_hashtable import ShardedMutableDenseHashTable
 from tensorflow.python import summary
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework.ops import convert_to_tensor
+from tensorflow.python.framework.ops import internal_convert_to_tensor
 from tensorflow.python.framework.ops import name_scope
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_sdca_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -40,233 +38,6 @@ from tensorflow.python.ops import variables as var_ops
 from tensorflow.python.ops.nn import sigmoid_cross_entropy_with_logits
 
 __all__ = ['SdcaModel']
-
-class _ShardedMutableDenseHashTable(lookup_ops.LookupInterface):
-  """A sharded version of MutableDenseHashTable.
-
-  It is designed to be interface compatible with LookupInterface and
-  MutableDenseHashTable, with the exception of the export method, which is
-  replaced by an export_sharded method.
-
-  The _ShardedMutableDenseHashTable keeps `num_shards` MutableDenseHashTable
-  internally. The shard is computed via the modulo operation on the key.
-  """
-
-  # TODO(andreasst): consider moving this to lookup_ops
-
-  def __init__(self,
-               key_dtype,
-               value_dtype,
-               default_value,
-               empty_key,
-               num_shards=1,
-               name='ShardedMutableHashTable'):
-    with ops.name_scope(name, 'sharded_mutable_hash_table') as scope:
-      super(_ShardedMutableDenseHashTable, self).__init__(key_dtype,
-                                                          value_dtype, scope)
-      table_shards = []
-      for i in range(num_shards):
-        table_shards.append(
-            lookup_ops.MutableDenseHashTable(
-                key_dtype=key_dtype,
-                value_dtype=value_dtype,
-                default_value=default_value,
-                empty_key=empty_key,
-                name='%s-%d-of-%d' % (name, i + 1, num_shards)))
-      self._table_shards = table_shards
-      # TODO(andreasst): add a value_shape() method to LookupInterface
-      # pylint: disable=protected-access
-      self._value_shape = self._table_shards[0]._value_shape
-      # pylint: enable=protected-access
-
-  @property
-  def _num_shards(self):
-    return len(self._table_shards)
-
-  @property
-  def table_shards(self):
-    return self._table_shards
-
-  def size(self, name=None):
-    with ops.name_scope(name, 'sharded_mutable_hash_table_size'):
-      sizes = [
-          self._table_shards[i].size() for i in range(self._num_shards)
-      ]
-      return math_ops.add_n(sizes)
-
-  def _shard_indices(self, keys):
-    key_shape = keys.get_shape()
-    if key_shape.ndims > 1:
-      # If keys are a matrix (i.e. a single key is a vector), we use the first
-      # element of each key vector to determine the shard.
-      keys = array_ops.slice(keys, [0, 0], [key_shape[0].value, 1])
-      keys = array_ops.reshape(keys, [-1])
-    indices = math_ops.mod(math_ops.abs(keys), self._num_shards)
-    return math_ops.cast(indices, dtypes.int32)
-
-  def _check_keys(self, keys):
-    if not keys.get_shape().is_fully_defined():
-      raise ValueError('Key shape must be fully defined, got %s.' %
-                       keys.get_shape())
-    if keys.get_shape().ndims != 1 and keys.get_shape().ndims != 2:
-      raise ValueError('Expected a vector or matrix for keys, got %s.' %
-                       keys.get_shape())
-
-  def lookup(self, keys, name=None):
-    if keys.dtype != self._key_dtype:
-      raise TypeError('Signature mismatch. Keys must be dtype %s, got %s.' %
-                      (self._key_dtype, keys.dtype))
-    self._check_keys(keys)
-    num_shards = self._num_shards
-    if num_shards == 1:
-      return self._table_shards[0].lookup(keys, name=name)
-
-    shard_indices = self._shard_indices(keys)
-    # TODO(andreasst): support 'keys' that are not vectors
-    key_shards = data_flow_ops.dynamic_partition(keys, shard_indices,
-                                                 num_shards)
-    value_shards = [
-        self._table_shards[i].lookup(key_shards[i], name=name)
-        for i in range(num_shards)
-    ]
-
-    num_keys = keys.get_shape().dims[0]
-    original_indices = math_ops.range(num_keys)
-    partitioned_indices = data_flow_ops.dynamic_partition(original_indices,
-                                                          shard_indices,
-                                                          num_shards)
-    result = data_flow_ops.dynamic_stitch(partitioned_indices, value_shards)
-    result.set_shape(
-        tensor_shape.TensorShape([num_keys]).concatenate(self._value_shape))
-    return result
-
-  def insert(self, keys, values, name=None):
-    self._check_keys(keys)
-    num_shards = self._num_shards
-    if num_shards == 1:
-      return self._table_shards[0].insert(keys, values, name=name)
-
-    shard_indices = self._shard_indices(keys)
-    # TODO(andreasst): support 'keys' that are not vectors
-    key_shards = data_flow_ops.dynamic_partition(keys, shard_indices,
-                                                 num_shards)
-    value_shards = data_flow_ops.dynamic_partition(values, shard_indices,
-                                                   num_shards)
-    return_values = [
-        self._table_shards[i].insert(key_shards[i], value_shards[i], name=name)
-        for i in range(num_shards)
-    ]
-
-    return control_flow_ops.group(*return_values)
-
-  def export_sharded(self, name=None):
-    """Returns lists of the keys and values tensors in the sharded table.
-
-    Returns:
-      A pair of lists with the first list containing the key tensors and the
-        second list containing the value tensors from each shard.
-    """
-    keys_list = []
-    values_list = []
-    for table_shard in self._table_shards:
-      exported_keys, exported_values = table_shard.export(name=name)
-      keys_list.append(exported_keys)
-      values_list.append(exported_values)
-    return keys_list, values_list
-
-
-class SparseFeatureColumn(object):
-  """Represents a sparse feature column.
-
-  Contains three tensors representing a sparse feature column, they are
-  example indices (int64), feature indices (int64), and feature values (float).
-  Feature weights are optional, and are treated as 1.0f if missing.
-
-  For example, consider a batch of 4 examples, which contains the following
-  features in a particular SparseFeatureColumn:
-   Example 0: feature 5, value 1
-   Example 1: feature 6, value 1 and feature 10, value 0.5
-   Example 2: no features
-   Example 3: two copies of feature 2, value 1
-
-  This SparseFeatureColumn will be represented as follows:
-   <0, 5,  1>
-   <1, 6,  1>
-   <1, 10, 0.5>
-   <3, 2,  1>
-   <3, 2,  1>
-
-  For a batch of 2 examples below:
-   Example 0: feature 5
-   Example 1: feature 6
-
-  is represented by SparseFeatureColumn as:
-   <0, 5,  1>
-   <1, 6,  1>
-
-  ```
-
-  @@__init__
-  @@example_indices
-  @@feature_indices
-  @@feature_values
-  """
-
-  def __init__(self, example_indices, feature_indices, feature_values):
-    """Creates a `SparseFeatureColumn` representation.
-
-    Args:
-      example_indices: A 1-D int64 tensor of shape `[N]`. Also, accepts
-      python lists, or numpy arrays.
-      feature_indices: A 1-D int64 tensor of shape `[N]`. Also, accepts
-      python lists, or numpy arrays.
-      feature_values: An optional 1-D tensor float tensor of shape `[N]`. Also,
-      accepts python lists, or numpy arrays.
-
-    Returns:
-      A `SparseFeatureColumn`
-    """
-    with name_scope(None, 'SparseFeatureColumn',
-                    [example_indices, feature_indices]):
-      self._example_indices = convert_to_tensor(example_indices,
-                                                name='example_indices',
-                                                dtype=dtypes.int64)
-      self._feature_indices = convert_to_tensor(feature_indices,
-                                                name='feature_indices',
-                                                dtype=dtypes.int64)
-    self._feature_values = None
-    if feature_values is not None:
-      with name_scope(None, 'SparseFeatureColumn', [feature_values]):
-        self._feature_values = convert_to_tensor(feature_values,
-                                                 name='feature_values',
-                                                 dtype=dtypes.float32)
-
-  @property
-  def example_indices(self):
-    """The example indices represented as a dense tensor.
-
-    Returns:
-      A 1-D Tensor of int64 with shape `[N]`.
-    """
-    return self._example_indices
-
-  @property
-  def feature_indices(self):
-    """The feature indices represented as a dense tensor.
-
-    Returns:
-      A 1-D Tensor of int64 with shape `[N]`.
-    """
-    return self._feature_indices
-
-  @property
-  def feature_values(self):
-    """The feature values represented as a dense tensor.
-
-    Returns:
-      May return None, or a 1-D Tensor of float32 with shape `[N]`.
-    """
-    return self._feature_values
 
 
 # TODO(sibyl-Aix6ihai): add name_scope to appropriate methods.
@@ -372,7 +143,7 @@ class SdcaModel(object):
     self._variables = variables
     self._options = options
     self._create_slots()
-    self._hashtable = _ShardedMutableDenseHashTable(
+    self._hashtable = ShardedMutableDenseHashTable(
         key_dtype=dtypes.int64,
         value_dtype=dtypes.float32,
         num_shards=self._num_table_shards(),
@@ -459,7 +230,7 @@ class SdcaModel(object):
 
   def _convert_n_to_tensor(self, input_list, as_ref=False):
     """Converts input list to a set of tensors."""
-    return [convert_to_tensor(x, as_ref=as_ref) for x in input_list]
+    return [internal_convert_to_tensor(x, as_ref=as_ref) for x in input_list]
 
   def _linear_predictions(self, examples):
     """Returns predictions of the form w*x."""
@@ -536,7 +307,7 @@ class SdcaModel(object):
 
       # pylint: disable=protected-access
       example_ids_hashed = gen_sdca_ops._sdca_fprint(
-          convert_to_tensor(self._examples['example_ids']))
+          internal_convert_to_tensor(self._examples['example_ids']))
       # pylint: enable=protected-access
       example_state_data = self._hashtable.lookup(example_ids_hashed)
       # Solver returns example_state_update, new delta sparse_feature_weights
@@ -561,8 +332,8 @@ class SdcaModel(object):
           sparse_feature_indices,
           sparse_features_values,
           self._convert_n_to_tensor(self._examples['dense_features']),
-          convert_to_tensor(self._examples['example_weights']),
-          convert_to_tensor(self._examples['example_labels']),
+          internal_convert_to_tensor(self._examples['example_weights']),
+          internal_convert_to_tensor(self._examples['example_labels']),
           sparse_indices,
           sparse_weights,
           self._convert_n_to_tensor(self._slots[
@@ -676,9 +447,11 @@ class SdcaModel(object):
       predictions = math_ops.cast(
           self._linear_predictions(examples), dtypes.float64)
       labels = math_ops.cast(
-          convert_to_tensor(examples['example_labels']), dtypes.float64)
+          internal_convert_to_tensor(
+              examples['example_labels']), dtypes.float64)
       weights = math_ops.cast(
-          convert_to_tensor(examples['example_weights']), dtypes.float64)
+          internal_convert_to_tensor(
+              examples['example_weights']), dtypes.float64)
 
       if self._options['loss_type'] == 'logistic_loss':
         return math_ops.reduce_sum(math_ops.mul(
@@ -722,7 +495,7 @@ class SdcaModel(object):
                            'sparse_features', 'dense_features'], examples)
     self._assertList(['sparse_features', 'dense_features'], examples)
     with name_scope('sdca/regularized_loss'):
-      weights = convert_to_tensor(examples['example_weights'])
+      weights = internal_convert_to_tensor(examples['example_weights'])
       return ((
           self._l1_loss() +
           # Note that here we are using the raw regularization

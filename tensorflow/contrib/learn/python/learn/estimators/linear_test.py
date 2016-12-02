@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import json
 import tempfile
 
 import numpy as np
@@ -364,13 +365,22 @@ class LinearClassifierTest(tf.test.TestCase):
                                                          hash_bucket_size=2e7)
     ]
 
+    tf_config = {
+        'cluster': {
+            tf.contrib.learn.TaskType.PS: ['fake_ps_0', 'fake_ps_1']
+        }
+    }
+    with tf.test.mock.patch.dict('os.environ',
+                                 {'TF_CONFIG': json.dumps(tf_config)}):
+      config = tf.contrib.learn.RunConfig()
+      # Because we did not start a distributed cluster, we need to pass an
+      # empty ClusterSpec, otherwise the device_setter will look for
+      # distributed jobs, such as "/job:ps" which are not present.
+      config._cluster_spec = tf.train.ClusterSpec({})
+
     classifier = tf.contrib.learn.LinearClassifier(
         feature_columns=sparse_features,
-        # Because we did not start a distributed cluster, we need to pass an
-        # empty ClusterSpec, otherwise the device_setter will look for
-        # distributed jobs, such as "/job:ps" which are not present.
-        config=tf.contrib.learn.RunConfig(
-            num_ps_replicas=2, cluster_spec=tf.train.ClusterSpec({})))
+        config=config)
     classifier.fit(input_fn=_input_fn, steps=200)
     loss = classifier.evaluate(input_fn=_input_fn, steps=1)['loss']
     self.assertLess(loss, 0.07)
@@ -523,7 +533,7 @@ class LinearClassifierTest(tf.test.TestCase):
     classifier = tf.contrib.learn.LinearClassifier(
         feature_columns=[age, language], enable_centered_bias=False)
     classifier.fit(input_fn=input_fn, steps=100)
-    self.assertFalse('centered_bias_weight' in classifier.get_variable_names())
+    self.assertNotIn('centered_bias_weight', classifier.get_variable_names())
 
   def testEnableCenteredBias(self):
     """Tests that we can disable centered bias."""
@@ -542,7 +552,7 @@ class LinearClassifierTest(tf.test.TestCase):
     classifier = tf.contrib.learn.LinearClassifier(
         feature_columns=[age, language], enable_centered_bias=True)
     classifier.fit(input_fn=input_fn, steps=100)
-    self.assertTrue('centered_bias_weight' in classifier.get_variable_names())
+    self.assertIn('centered_bias_weight', classifier.get_variable_names())
 
   def testTrainOptimizerWithL1Reg(self):
     """Tests l1 regularized model has higher loss."""
@@ -1137,14 +1147,22 @@ class LinearRegressorTest(tf.test.TestCase):
         tf.contrib.layers.real_valued_column('age')
     ]
 
+    tf_config = {
+        'cluster': {
+            tf.contrib.learn.TaskType.PS: ['fake_ps_0', 'fake_ps_1']
+        }
+    }
+    with tf.test.mock.patch.dict('os.environ',
+                                 {'TF_CONFIG': json.dumps(tf_config)}):
+      config = tf.contrib.learn.RunConfig(tf_random_seed=1)
+      # Because we did not start a distributed cluster, we need to pass an
+      # empty ClusterSpec, otherwise the device_setter will look for
+      # distributed jobs, such as "/job:ps" which are not present.
+      config._cluster_spec = tf.train.ClusterSpec({})
+
     regressor = tf.contrib.learn.LinearRegressor(
         feature_columns=feature_columns,
-        # Because we did not start a distributed cluster, we need to pass an
-        # empty ClusterSpec, otherwise the device_setter will look for
-        # distributed jobs, such as "/job:ps" which are not present.
-        config=tf.contrib.learn.RunConfig(
-            num_ps_replicas=2, cluster_spec=tf.train.ClusterSpec({}),
-            tf_random_seed=1))
+        config=config)
 
     regressor.fit(input_fn=_input_fn, steps=100)
 

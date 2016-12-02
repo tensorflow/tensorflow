@@ -24,6 +24,13 @@ import tensorflow as tf
 from tensorflow.python.ops import gen_array_ops
 
 
+def _call_concat(values, axis, use_concat_v2):
+  if use_concat_v2:
+    return gen_array_ops._concat_v2(values, axis)
+  else:
+    return tf.concat(axis, values)
+
+
 class ConcatOpTest(tf.test.TestCase):
 
   def testHStack(self):
@@ -158,7 +165,7 @@ class ConcatOpTest(tf.test.TestCase):
     with self.assertRaises(ValueError):
       tf.concat(tf.constant(0, shape=[1]), 1)
 
-  def _testGradientsSimple(self, use_gpu):
+  def _testGradientsSimple(self, use_gpu, use_concat_v2):
     with self.test_session(use_gpu=use_gpu):
       inp = []
       inp_tensors = []
@@ -168,22 +175,24 @@ class ConcatOpTest(tf.test.TestCase):
         inp.append(t)
         inp_tensors.append(
             tf.constant([float(y) for y in t.flatten()],
-                                 shape=shape, dtype=tf.float32))
-      c = tf.concat(1, inp_tensors)
+                        shape=shape, dtype=tf.float32))
+      c = _call_concat(inp_tensors, 1, use_concat_v2)
       output_shape = [10, 9, 2]
       grad_inp = np.random.rand(*output_shape).astype("f")
       grad_tensor = tf.constant([float(x) for x in grad_inp.flatten()],
-                                         shape=output_shape)
+                                shape=output_shape)
       grad = tf.gradients([c], inp_tensors, [grad_tensor])
-      concated_grad = tf.concat(1, grad)
+      concated_grad = _call_concat(grad, 1, use_concat_v2)
       result = concated_grad.eval()
     self.assertAllEqual(result, grad_inp)
 
   def testGradientsSimpleAll(self):
-    self._testGradientsSimple(use_gpu=True)
-    self._testGradientsSimple(use_gpu=False)
+    self._testGradientsSimple(use_gpu=True, use_concat_v2=False)
+    self._testGradientsSimple(use_gpu=False, use_concat_v2=False)
+    self._testGradientsSimple(use_gpu=True, use_concat_v2=True)
+    self._testGradientsSimple(use_gpu=False, use_concat_v2=True)
 
-  def _testGradientsFirstDim(self, use_gpu):
+  def _testGradientsFirstDim(self, use_gpu, use_concat_v2):
     with self.test_session(use_gpu=use_gpu):
       inp = []
       inp_tensors = []
@@ -194,22 +203,24 @@ class ConcatOpTest(tf.test.TestCase):
         inp_tensors.append(
             tf.constant([float(y) for y in t.flatten()],
                                  shape=shape, dtype=tf.float32))
-      c = tf.concat(0, inp_tensors)
+      c = _call_concat(inp_tensors, 0, use_concat_v2)
       output_shape = [9, 10, 2]
       grad_inp = np.random.rand(*output_shape).astype("f")
       grad_tensor = tf.constant([float(x) for x in grad_inp.flatten()],
                                          shape=output_shape)
       grad = tf.gradients([c], inp_tensors, [grad_tensor])
-      concated_grad = tf.concat(0, grad)
+      concated_grad = _call_concat(grad, 0, use_concat_v2)
       result = concated_grad.eval()
 
     self.assertAllEqual(result, grad_inp)
 
   def testGradientsFirstDimAll(self):
-    self._testGradientsFirstDim(use_gpu=False)
-    self._testGradientsFirstDim(use_gpu=True)
+    self._testGradientsFirstDim(use_gpu=False, use_concat_v2=False)
+    self._testGradientsFirstDim(use_gpu=True, use_concat_v2=False)
+    self._testGradientsFirstDim(use_gpu=False, use_concat_v2=True)
+    self._testGradientsFirstDim(use_gpu=True, use_concat_v2=True)
 
-  def _testGradientsLastDim(self, use_gpu):
+  def _testGradientsLastDim(self, use_gpu, use_concat_v2):
     with self.test_session(use_gpu=use_gpu):
       inp = []
       inp_tensors = []
@@ -220,22 +231,24 @@ class ConcatOpTest(tf.test.TestCase):
         inp_tensors.append(
             tf.constant([float(y) for y in t.flatten()],
                                  shape=shape, dtype=tf.float32))
-      c = tf.concat(2, inp_tensors)
+      c = _call_concat(inp_tensors, 2, use_concat_v2)
       output_shape = [10, 2, 9]
       grad_inp = np.random.rand(*output_shape).astype("f")
       grad_tensor = tf.constant([float(x) for x in grad_inp.flatten()],
                                          shape=output_shape)
       grad = tf.gradients([c], inp_tensors, [grad_tensor])
-      concated_grad = tf.concat(2, grad)
+      concated_grad = _call_concat(grad, 2, use_concat_v2)
       result = concated_grad.eval()
 
     self.assertAllEqual(result, grad_inp)
 
   def testGradientsLastDimAll(self):
-    self._testGradientsLastDim(use_gpu=False)
-    self._testGradientsLastDim(use_gpu=True)
+    self._testGradientsLastDim(use_gpu=False, use_concat_v2=False)
+    self._testGradientsLastDim(use_gpu=True, use_concat_v2=False)
+    self._testGradientsLastDim(use_gpu=False, use_concat_v2=True)
+    self._testGradientsLastDim(use_gpu=True, use_concat_v2=True)
 
-  def _RunAndVerifyGradientsRandom(self, use_gpu):
+  def _RunAndVerifyGradientsRandom(self, use_gpu, use_concat_v2):
     # Random dims of rank 5
     input_shape = np.random.randint(1, 5, size=5)
     # Random number of tensors
@@ -253,23 +266,25 @@ class ConcatOpTest(tf.test.TestCase):
         inp.append(t)
         inp_tensors.append(
             tf.constant([float(y) for y in t.flatten()],
-                                 shape=shape, dtype=tf.float32))
-      c = tf.concat(concat_dim, inp_tensors)
+                        shape=shape, dtype=tf.float32))
+      c = _call_concat(inp_tensors, concat_dim, use_concat_v2)
       output_shape = input_shape
       output_shape[concat_dim] = concat_dim_sizes.sum()
       grad_inp = np.random.rand(*output_shape).astype("f")
       grad_tensor = tf.constant([float(x) for x in grad_inp.flatten()],
-                                         shape=output_shape)
+                                shape=output_shape)
       grad = tf.gradients([c], inp_tensors, [grad_tensor])
-      concated_grad = tf.concat(concat_dim, grad)
+      concated_grad = _call_concat(grad, concat_dim, use_concat_v2)
       result = concated_grad.eval()
 
     self.assertAllEqual(result, grad_inp)
 
   def testGradientsRandom(self):
     for _ in range(5):
-      self._RunAndVerifyGradientsRandom(use_gpu=False)
-      self._RunAndVerifyGradientsRandom(use_gpu=True)
+      self._RunAndVerifyGradientsRandom(use_gpu=False, use_concat_v2=False)
+      self._RunAndVerifyGradientsRandom(use_gpu=True, use_concat_v2=False)
+      self._RunAndVerifyGradientsRandom(use_gpu=False, use_concat_v2=True)
+      self._RunAndVerifyGradientsRandom(use_gpu=True, use_concat_v2=True)
 
   def testShapeError(self):
     # Rank doesn't match.
@@ -446,11 +461,17 @@ class ConcatOpTest(tf.test.TestCase):
     with self.test_session(use_gpu=True):
       t1 = [[1, 2, 3], [4, 5, 6]]
       t2 = [[7, 8, 9], [10, 11, 12]]
-      output = tf.concat(-2, [t1, t2]).eval()
+
+      c = tf.concat(-2, [t1, t2])
+      output = c.eval()
+      self.assertEqual([4, 3], c.get_shape().as_list())
       self.assertAllEqual(
           [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]],
           output)
-      output = tf.concat(-1, [t1, t2]).eval()
+
+      c = tf.concat(-1, [t1, t2])
+      self.assertEqual([2, 6], c.get_shape().as_list())
+      output = c.eval()
       self.assertAllEqual(
           [[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]],
           output)
@@ -473,11 +494,17 @@ class ConcatOpTest(tf.test.TestCase):
     with self.test_session(use_gpu=True):
       t1 = [[1, 2, 3], [4, 5, 6]]
       t2 = [[7, 8, 9], [10, 11, 12]]
-      output = gen_array_ops._concat_v2([t1, t2], -2).eval()
+
+      c = gen_array_ops._concat_v2([t1, t2], -2)
+      self.assertEqual([4, 3], c.get_shape().as_list())
+      output = c.eval()
       self.assertAllEqual(
           [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]],
           output)
-      output = gen_array_ops._concat_v2([t1, t2], -1).eval()
+
+      c = gen_array_ops._concat_v2([t1, t2], -1)
+      self.assertEqual([2, 6], c.get_shape().as_list())
+      output = c.eval()
       self.assertAllEqual(
           [[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]],
           output)

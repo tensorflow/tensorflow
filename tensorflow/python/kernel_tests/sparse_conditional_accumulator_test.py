@@ -308,7 +308,7 @@ class IndexedSlicesConditionalAccumulatorTest(tf.test.TestCase):
       self._assertEqual_nparray([[0, elems_ave], [0, 0]], results[0], sess)
 
   def _blocking_takeg(self, sess, takeg_op):
-    with self.assertRaisesOpError("TakeGrad operation was cancelled"):
+    with self.assertRaisesOpError("was cancelled"):
       sess.run(takeg_op)
 
   def testAccumulatorCancel(self):

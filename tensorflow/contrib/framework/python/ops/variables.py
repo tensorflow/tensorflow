@@ -171,7 +171,8 @@ def local_variable(initial_value, validate_shape=True, name=None):
 @contrib_add_arg_scope
 def variable(name, shape=None, dtype=None, initializer=None,
              regularizer=None, trainable=True, collections=None,
-             caching_device=None, device=None):
+             caching_device=None, device=None,
+             partitioner=None, custom_getter=None):
   """Gets an existing variable with these parameters or creates a new one.
 
   Args:
@@ -191,6 +192,11 @@ def variable(name, shape=None, dtype=None, initializer=None,
         device.
     device: Optional device to place the variable. It can be an string or a
       function that is called to get the device for the variable.
+    partitioner: Optional callable that accepts a fully defined `TensorShape`
+      and dtype of the `Variable` to be created, and returns a list of
+      partitions for each axis (currently only one axis can be partitioned).
+    custom_getter: Callable that allows overwriting the internal
+      get_variable method and has to have the same signature.
 
   Returns:
     The created or existing variable.
@@ -199,19 +205,24 @@ def variable(name, shape=None, dtype=None, initializer=None,
 
   # Remove duplicates
   collections = set(collections)
+  getter = variable_scope.get_variable
+  if custom_getter is not None:
+    getter = custom_getter
   with ops.device(device or ''):
-    return variable_scope.get_variable(name, shape=shape, dtype=dtype,
-                                       initializer=initializer,
-                                       regularizer=regularizer,
-                                       trainable=trainable,
-                                       collections=collections,
-                                       caching_device=caching_device)
+    return getter(name, shape=shape, dtype=dtype,
+                  initializer=initializer,
+                  regularizer=regularizer,
+                  trainable=trainable,
+                  collections=collections,
+                  caching_device=caching_device,
+                  partitioner=partitioner)
 
 
 @contrib_add_arg_scope
 def model_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
                    regularizer=None, trainable=True, collections=None,
-                   caching_device=None, device=None):
+                   caching_device=None, device=None, partitioner=None,
+                   custom_getter=None):
   """Gets an existing model variable with these parameters or creates a new one.
 
   Args:
@@ -232,16 +243,23 @@ def model_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
         device.
     device: Optional device to place the variable. It can be an string or a
       function that is called to get the device for the variable.
+    partitioner: Optional callable that accepts a fully defined `TensorShape`
+      and dtype of the `Variable` to be created, and returns a list of
+      partitions for each axis (currently only one axis can be partitioned).
+    custom_getter: Callable that allows overwriting the internal
+      get_variable method and has to have the same signature.
 
   Returns:
     The created or existing variable.
   """
   collections = list(collections or [])
   collections += [ops.GraphKeys.GLOBAL_VARIABLES, ops.GraphKeys.MODEL_VARIABLES]
-  return variable(name, shape=shape, dtype=dtype,
-                  initializer=initializer, regularizer=regularizer,
-                  trainable=trainable, collections=collections,
-                  caching_device=caching_device, device=device)
+  var = variable(name, shape=shape, dtype=dtype,
+                 initializer=initializer, regularizer=regularizer,
+                 trainable=trainable, collections=collections,
+                 caching_device=caching_device, device=device,
+                 partitioner=partitioner, custom_getter=custom_getter)
+  return var
 
 
 def add_model_variable(var):
@@ -259,7 +277,8 @@ def get_variables(scope=None, suffix=None,
   """Gets the list of variables, filtered by scope and/or suffix.
 
   Args:
-    scope: an optional scope for filtering the variables to return.
+    scope: an optional scope for filtering the variables to return. Can be a
+      variable scope or a string.
     suffix: an optional suffix for filtering the variables to return.
     collection: in which collection search for. Defaults to
       `GraphKeys.GLOBAL_VARIABLES`.
@@ -267,6 +286,8 @@ def get_variables(scope=None, suffix=None,
   Returns:
     a list of variables in collection with scope and suffix.
   """
+  if isinstance(scope, variable_scope.VariableScope):
+    scope = scope.name
   if suffix is not None:
     if ':' not in suffix:
       suffix += ':'

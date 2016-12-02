@@ -269,6 +269,24 @@ struct functor_traits<google_floor_div<Scalar>> {
   };
 };
 
+// TODO(b/32239616): This kernel should be moved into Eigen and vectorized.
+template <typename T, typename Enable = void>
+struct google_floor_div_real {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& x,
+                                                           const T& y) const {
+    return Eigen::numext::floor(x / y);
+  }
+};
+
+template <typename Scalar>
+struct functor_traits<google_floor_div_real<Scalar>> {
+  enum {
+    Cost = 2 * Eigen::internal::scalar_div_cost<Scalar, false>::value +
+           2 * NumTraits<Scalar>::AddCost,
+    PacketAccess = false
+  };
+};
+
 // TODO(b//32239616): This kernel should be moved into Eigen and vectorized.
 template <typename T>
 struct google_floor_fmod {
@@ -524,17 +542,18 @@ struct ceil : base<T, Eigen::internal::scalar_ceil_op<T>> {};
 /** this should go in Eigen
   * \brief Template functor to compute the round to int value of a scalar
   */
-template<typename Scalar> struct scalar_rint_op {
+template <typename Scalar>
+struct scalar_rint_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_rint_op)
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE \
-    const Scalar operator() (const Scalar& a) const {
-    #if defined(__CUDACC__)
-        return ::rint(a);
-    #elif defined(PLATFORM_POSIX_ANDROID)
-        return rint(a);
-    #else
-        return std::rint(a);
-    #endif
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Scalar
+  operator()(const Scalar& a) const {
+#if defined(__CUDACC__)
+    return ::rint(a);
+#elif defined(__ANDROID__)
+    return rint(a);
+#else
+    return std::rint(a);
+#endif
   }
 };
 
@@ -609,6 +628,9 @@ struct safe_floor_div : base<T, Eigen::internal::safe_div_or_mod_op<
                                     T, Eigen::internal::google_floor_div<T>>> {
   static const bool has_errors = true;
 };
+
+template <typename T>
+struct floor_div_real : base<T, Eigen::internal::google_floor_div_real<T>> {};
 
 template <typename T>
 struct pow : base<T, Eigen::internal::scalar_binary_pow_op_google<T, T>> {};

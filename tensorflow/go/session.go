@@ -76,7 +76,7 @@ func (s *Session) Run(inputs map[Output]*Tensor, outputs []Output, targets []*Op
 	s.mu.Unlock()
 	defer s.wg.Done()
 
-	var inputPorts []C.TF_Port
+	var inputPorts []C.TF_Output
 	var inputValues []*C.TF_Tensor
 	if inputs != nil {
 		for port, tensor := range inputs {
@@ -85,7 +85,7 @@ func (s *Session) Run(inputs map[Output]*Tensor, outputs []Output, targets []*Op
 		}
 	}
 
-	var outputPorts []C.TF_Port
+	var outputPorts []C.TF_Output
 	for _, port := range outputs {
 		outputPorts = append(outputPorts, port.c())
 	}
@@ -96,14 +96,14 @@ func (s *Session) Run(inputs map[Output]*Tensor, outputs []Output, targets []*Op
 	}
 
 	status := newStatus()
-	var inputPortsPtr *C.TF_Port
+	var inputPortsPtr *C.TF_Output
 	var inputValuesPtr **C.TF_Tensor
 	if len(inputPorts) > 0 {
 		inputPortsPtr = &inputPorts[0]
 		inputValuesPtr = &inputValues[0]
 	}
 
-	var outputPortsPtr *C.TF_Port
+	var outputPortsPtr *C.TF_Output
 	var outputValuesPtr **C.TF_Tensor
 	if len(outputPorts) > 0 {
 		outputPortsPtr = &outputPorts[0]

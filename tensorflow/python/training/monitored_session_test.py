@@ -995,6 +995,23 @@ class MonitoredSessionTest(tf.test.TestCase):
       session = tf.train.MonitoredSession()
       self.assertEqual(g, session.graph)
 
+  def test_graph_finalized_during_run_unfinalized_after_exit(self):
+    with tf.Graph().as_default() as g:
+      a_var = tf.Variable(0)
+      with tf.train.MonitoredSession() as session:
+        self.assertEqual(0, session.run(a_var))
+        self.assertTrue(g.finalized)
+      self.assertFalse(g.finalized)
+
+  def test_keep_finalized_graph_as_finalized(self):
+    with tf.Graph().as_default() as g:
+      a_var = tf.Variable(0)
+      tf.train.Scaffold().finalize()
+      with tf.train.MonitoredSession() as session:
+        self.assertEqual(0, session.run(a_var))
+        self.assertTrue(g.finalized)
+      self.assertTrue(g.finalized)
+
   def test_merge_run_options_from_hooks(self):
     """Test for rewriting RunOptions and observing RunMetadata with hooks."""
 

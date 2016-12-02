@@ -208,8 +208,10 @@ class CursesUI(object):
 
         self._color_pairs[color_name] = curses.color_pair(color_index)
 
-    # A_BOLD is not really a "color". But place it here for convenience.
+    # A_BOLD or A_BLINK is not really a "color". But place it here for
+    # convenience.
     self._color_pairs["bold"] = curses.A_BOLD
+    self._color_pairs["blink"] = curses.A_BLINK
 
     # Default color pair to use when a specified color pair does not exist.
     self._default_color_pair = self._color_pairs["white"]
@@ -310,7 +312,7 @@ class CursesUI(object):
     """Set an introductory message to the help output of the command registry.
 
     Args:
-      help_intro: (list of str) Text lines appended to the beginning of the
+      help_intro: (RichTextLines) Rich text lines appended to the beginning of
         the output of the command "help", as introductory information.
     """
 

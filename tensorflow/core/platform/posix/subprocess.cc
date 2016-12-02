@@ -446,7 +446,7 @@ int SubProcess::Communicate(const string* stdin_input, string* stdout_output,
             fds[i].fd = -1;
             fd_remain--;
           }
-        } else if ((fds[i].revents & POLLERR) != 0) {
+        } else if ((fds[i].revents & (POLLERR | POLLNVAL)) != 0) {
           fds[i].fd = -1;
           fd_remain--;
         }

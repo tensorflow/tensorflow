@@ -19,9 +19,10 @@ limitations under the License.
  */
 export class LabelRenderParams {
   constructor(
-      public pointIndices: Float32Array, public scaleFactors: Float32Array,
-      public useSceneOpacityFlags: Int8Array, public defaultFontSize: number,
-      public fillColors: Uint8Array, public strokeColors: Uint8Array) {}
+      public pointIndices: Float32Array, public labelStrings: string[],
+      public scaleFactors: Float32Array, public useSceneOpacityFlags: Int8Array,
+      public defaultFontSize: number, public fillColors: Uint8Array,
+      public strokeColors: Uint8Array) {}
 }
 
 /** Details about the camera projection being used to render the scene. */
@@ -45,7 +46,6 @@ export class RenderContext {
       public screenHeight: number, public nearestCameraSpacePointZ: number,
       public farthestCameraSpacePointZ: number, public backgroundColor: number,
       public pointColors: Float32Array, public pointScaleFactors: Float32Array,
-      public labelAccessor: (index: number) => string,
       public labels: LabelRenderParams,
       public traceColors: {[trace: number]: Float32Array},
       public traceOpacities: Float32Array, public traceWidths: Float32Array) {}

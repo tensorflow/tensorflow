@@ -300,6 +300,36 @@ class EluTest(tf.test.TestCase):
     print("elu (float64) gradient of gradient err = ", err)
     self.assertLess(err, 1e-6)
 
-    
+
+class CreluTest(tf.test.TestCase):
+
+  def testCreluShape(self):
+    f = tf.random_normal([50, 5, 7, 10])
+    t = tf.nn.crelu(f)
+    self.assertEqual([50, 5, 7, 20], t.get_shape())
+
+  def _testCrelu(self, np_features, use_gpu=False):
+    np_relu = np.maximum(np_features, np.zeros_like(np_features))
+    np_neg_relu = np.maximum(-np_features, np.zeros_like(np_features))
+    np_crelu = np.concatenate(
+        (np_relu, np_neg_relu), len(np_features.shape) - 1)
+
+    with self.test_session(use_gpu=use_gpu):
+      crelu = tf.nn.crelu(np_features)
+      tf_relu = crelu.eval()
+
+    self.assertAllClose(np_crelu, tf_relu)
+    self.assertShapeEqual(np_crelu, crelu)
+
+  def testNumbers(self):
+    for t in [np.int32, np.int64, np.float16, np.float32, np.float64]:
+      self._testCrelu(
+          np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t),
+          use_gpu=False)
+      if t in [np.float16, np.float32, np.float64]:
+        self._testCrelu(
+            np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t),
+            use_gpu=True)
+
 if __name__ == "__main__":
   tf.test.main()

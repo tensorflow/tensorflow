@@ -46,8 +46,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import six
-
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -70,7 +68,8 @@ def string_split(source, delimiter=" "):  # pylint: disable=invalid-name
 
   If `delimiter` is an empty string, each element of the `source` is split
   into individual strings, each containing one byte. (This includes splitting
-  multibyte sequences of UTF-8.)
+  multibyte sequences of UTF-8.) If delimiter contains multiple bytes, it is
+  treated as a set of delimiters with each considered a potential split point.
 
   For example:
   N = 2, source[0] is 'hello world' and source[1] is 'a b c', then the output
@@ -89,17 +88,14 @@ def string_split(source, delimiter=" "):  # pylint: disable=invalid-name
     delimiter: `0-D` string `Tensor`, the delimiter character, the string should
       be length 0 or 1.
 
+  Raises:
+    ValueError: If delimiter is not a string.
+
   Returns:
     A `SparseTensor` of rank `2`, the strings split according to the delimiter.
     The first column of the indices corresponds to the row in `source` and the
     second column corresponds to the index of the split component in this row.
-
-  Raises:
-    ValueError: If delimiter is not a single-byte character.
   """
-  if isinstance(delimiter, six.string_types) and len(delimiter) > 1:
-    raise ValueError("delimiter must be a single byte-character, got %s" %
-                     delimiter)
   delimiter = ops.convert_to_tensor(delimiter, dtype=dtypes.string)
   source = ops.convert_to_tensor(source, dtype=dtypes.string)
 

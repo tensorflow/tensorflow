@@ -359,8 +359,8 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
     return;
   }
 
-  StartParallelExecutors(handle, item, rendezvous, collector, cost_graph,
-                         cancellation_manager,
+  StartParallelExecutors(handle, step_id, item, rendezvous, collector,
+                         cost_graph, cancellation_manager,
                          [this, item, rendezvous, done](const Status& s) {
                            done(s);
                            rendezvous->Unref();
@@ -368,22 +368,25 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
                          });
 }
 
-void GraphMgr::StartParallelExecutors(const string& handle, Item* item,
-                                      Rendezvous* rendezvous,
+void GraphMgr::StartParallelExecutors(const string& handle, int64 step_id,
+                                      Item* item, Rendezvous* rendezvous,
                                       StepStatsCollector* collector,
                                       CostGraphDef* cost_graph,
                                       CancellationManager* cancellation_manager,
                                       StatusCallback done) {
   const int num_units = item->units.size();
   CHECK_GE(num_units, 1);
-  ResourceMgr* step_resource_manager = new ResourceMgr;
+  ScopedStepContainer* step_container =
+      new ScopedStepContainer(step_id, [this](const string& name) {
+        worker_env_->device_mgr->ClearContainers({name});
+      });
   // NOTE: Transfer one ref of rendezvous and item.
   ExecutorBarrier* barrier = new ExecutorBarrier(
-      num_units, rendezvous, [this, item, collector, cost_graph,
-                              step_resource_manager, done](const Status& s) {
+      num_units, rendezvous, [this, item, collector, cost_graph, step_container,
+                              done](const Status& s) {
         BuildCostModel(item, collector, cost_graph);
         done(s);
-        delete step_resource_manager;
+        delete step_container;
       });
   Executor::Args args;
   {
@@ -393,7 +396,8 @@ void GraphMgr::StartParallelExecutors(const string& handle, Item* item,
   args.rendezvous = rendezvous;
   args.cancellation_manager = cancellation_manager;
   args.stats_collector = collector;
-  args.step_resource_manager = step_resource_manager;
+  args.step_container = step_container;
+  args.sync_on_finish = true;
   if (LogMemory::IsEnabled()) {
     LogMemory::RecordStep(args.step_id, handle);
   }

@@ -423,12 +423,21 @@ Status InstantiateNode(const NodeDef& fnode,
       return errors::InvalidArgument("Expected input[", i, "] == '", input,
                                      "' to be a control input.");
     }
-    const NameInfoItem* item = gtl::FindOrNull(name_info, input.substr(1));
-    if (item == nullptr) {
+    int nid = -1;
+    const string node_name = input.substr(1);
+    const string node_colon = node_name + ":";
+    for (const auto& p : name_info) {
+      if (p.first == node_name ||
+          tensorflow::StringPiece(p.first).starts_with(node_colon)) {
+        nid = p.second.nid;
+        break;
+      }
+    }
+    if (nid == -1) {
       return errors::InvalidArgument("input[", i, "] == '", input,
                                      "', is not found.");
     }
-    gnode->add_input(Dep(item->nid));
+    gnode->add_input(Dep(nid));
   }
 
   // Attrs.

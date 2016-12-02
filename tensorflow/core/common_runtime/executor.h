@@ -88,7 +88,10 @@ class Executor {
     CancellationManager* cancellation_manager = nullptr;
     SessionState* session_state = nullptr;
     TensorStore* tensor_store = nullptr;
-    ResourceMgr* step_resource_manager = nullptr;
+    ScopedStepContainer* step_container = nullptr;
+
+    // If true, calls Sync() on the device.
+    bool sync_on_finish = false;
 
     typedef std::function<void()> Closure;
     typedef std::function<void(Closure)> Runner;

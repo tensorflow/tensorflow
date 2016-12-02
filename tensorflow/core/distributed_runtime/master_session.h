@@ -119,8 +119,8 @@ class MasterSession {
   // scope and lose their state.
   class ReffedClientGraph;
   typedef std::unordered_map<uint64, ReffedClientGraph*> RCGMap;
-  RCGMap runs_ GUARDED_BY(mu_);
-  RCGMap obsolete_ GUARDED_BY(mu_);
+  RCGMap run_graphs_ GUARDED_BY(mu_);
+  RCGMap partial_run_graphs_ GUARDED_BY(mu_);
 
   struct PerStepState {
     bool collect_costs = false;

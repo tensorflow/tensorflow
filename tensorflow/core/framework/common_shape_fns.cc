@@ -557,17 +557,6 @@ Status Pool3DShape(shape_inference::InferenceContext* c) {
   DimensionHandle in_cols_dim = c->Dim(input_shape, 3);
   DimensionHandle output_depth_dim = c->Dim(input_shape, 4);
 
-  // At the moment we need to know the values of several fields.
-  if (!c->ValueKnown(in_planes_dim) || !c->ValueKnown(in_rows_dim) ||
-      !c->ValueKnown(in_cols_dim)) {
-    ShapeHandle output_shape =
-        c->MakeShape({batch_size_dim, InferenceContext::kUnknownDim,
-                      InferenceContext::kUnknownDim,
-                      InferenceContext::kUnknownDim, output_depth_dim});
-    c->set_output(0, output_shape);
-    return Status::OK();
-  }
-
   Padding padding;
   TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
 
@@ -750,6 +739,7 @@ Status ConcatShapeHelper(InferenceContext* c, int start_value_index,
   // Merge all the non-concat dims, and sum the concat dim to make an output
   // shape.
   const int32 concat_dim = concat_dim_t->scalar<int32>()();
+
   // Minimum required number of dimensions.
   const int min_rank = concat_dim < 0 ? -concat_dim : concat_dim + 1;
 
@@ -760,7 +750,11 @@ Status ConcatShapeHelper(InferenceContext* c, int start_value_index,
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, min_rank, &input));
   TF_RETURN_IF_ERROR(c->Subshape(input, 0, concat_dim, &output_before));
   DimensionHandle output_middle = c->Dim(input, concat_dim);
-  TF_RETURN_IF_ERROR(c->Subshape(input, concat_dim + 1, &output_after));
+  if (concat_dim == -1) {
+    output_after = c->Scalar();  // no dimensions.
+  } else {
+    TF_RETURN_IF_ERROR(c->Subshape(input, concat_dim + 1, &output_after));
+  }
 
   for (int i = end_value_index - 2; i >= start_value_index; --i) {
     ShapeHandle before;
@@ -769,7 +763,11 @@ Status ConcatShapeHelper(InferenceContext* c, int start_value_index,
     TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, min_rank, &input));
     TF_RETURN_IF_ERROR(c->Subshape(input, 0, concat_dim, &before));
     DimensionHandle middle = c->Dim(input, concat_dim);
-    TF_RETURN_IF_ERROR(c->Subshape(input, concat_dim + 1, &after));
+    if (concat_dim == -1) {
+      after = c->Scalar();
+    } else {
+      TF_RETURN_IF_ERROR(c->Subshape(input, concat_dim + 1, &after));
+    }
 
     TF_RETURN_IF_ERROR(c->Merge(before, output_before, &output_before));
     TF_RETURN_IF_ERROR(c->Add(output_middle, middle, &output_middle));

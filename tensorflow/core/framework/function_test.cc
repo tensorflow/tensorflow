@@ -137,6 +137,51 @@ SquarePlusOne[T:{float, double, int32, int64}](x:T) -> (y:T) {
   EXPECT_EQ(DebugString(result.gdef), e2);
 }
 
+TEST(TFunc, ControlDepNodeDef) {
+  auto fdef = FDH::Create(  // Create a FunctionDef using NodeDefs.
+      // Name
+      "ControlDep",
+      // Inputs
+      {"x: int32"},
+      // Outputs
+      {"y: int32"},
+      // Attrs
+      {},
+      // Nodes
+      {// a = Identity<int32>(x)
+       {{"a"}, "Identity", {"x"}, {{"T", DT_INT32}}},
+       // o = NoOp(^a)
+       {{"o"}, "NoOp", {"^a"}, {}},
+       // y = Identity<int32>(a, ^o)
+       {{"y"}, "Identity", {"a:output:0", "^o"}, {{"T", DT_INT32}}}},
+      // Returns
+      {{"y", "y:output:0"}});
+
+  const char* e = R"P(
+ControlDep(x:int32) -> (y:int32) {
+  a = Identity[T=int32](x)
+  o = NoOp() @ a
+  y = Identity[T=int32](a:output:0) @ o
+  return y = y:output:0
+}
+)P";
+  EXPECT_EQ(DebugString(fdef), e);
+
+  // Instantiate one with T=float
+  InstantiationResult result;
+  TF_ASSERT_OK(InstantiateFunction(fdef, {{"T", DT_FLOAT}}, GetOpSig, &result));
+  const char* e2 = R"P(
+(n0:int32) -> (n3:int32) {
+  n1 = Identity[T=int32](n0)
+  n2 = NoOp() @ n1
+  n3 = Identity[T=int32](n1) @ n2
+}
+)P";
+  EXPECT_EQ(result.arg_types, DataTypeVector({DT_INT32}));
+  EXPECT_EQ(result.ret_types, DataTypeVector({DT_INT32}));
+  EXPECT_EQ(DebugString(result.gdef), e2);
+}
+
 REGISTER_OP("HasDefaultType")
     .Output("out: T")
     .Attr("T: {float, double, int32, int64} = DT_FLOAT");

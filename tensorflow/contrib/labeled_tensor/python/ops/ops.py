@@ -36,7 +36,7 @@ from tensorflow.python.training import input  # pylint: disable=redefined-builti
 
 
 @tc.returns(core.LabeledTensor)
-@tc.accepts(core.LabeledTensor, ops.Output, core.Axis,
+@tc.accepts(core.LabeledTensor, ops.Tensor, core.Axis,
             tc.Optional(string_types))
 def _gather_1d_on_axis(labeled_tensor, indexer, axis, name=None):
   with ops.name_scope(name, 'lt_take', [labeled_tensor]) as scope:
@@ -727,10 +727,10 @@ def matmul(a, b, name=None):
     b = core.convert_to_labeled_tensor(b)
 
     if len(a.axes) > 2 or len(b.axes) > 2:
-      # We could use tf.batch_matmul to make this work, but we would also need
-      # to use tf.tile and/or tf.transpose. These are more expensive than doing
-      # reshapes, so it's not clear if it's a good idea to do this
-      # automatically.
+      # We could pass batched inputs to tf.matmul to make this work, but we
+      # would also need to use tf.tile and/or tf.transpose. These are more
+      # expensive than doing reshapes, so it's not clear if it's a good idea to
+      # do this automatically.
       raise NotImplementedError(
           'matmul currently requires inputs with rank 2 or less, but '
           'inputs have ranks %r and %r' % (len(a.axes), len(b.axes)))

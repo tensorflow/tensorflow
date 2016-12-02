@@ -436,6 +436,7 @@ class MonitoredSession(object):
         `ChiefSessionCreator` which is the default one.
       hooks: An iterable of `SessionRunHook' objects.
     """
+    self._graph_was_finalized = ops.get_default_graph().finalized
     self._hooks = hooks or []
     for h in self._hooks:
       h.begin()
@@ -520,6 +521,8 @@ class MonitoredSession(object):
         self._sess = None
         self._coordinated_creator.tf_sess = None
         self._coordinated_creator.coord = None
+        if not self._graph_was_finalized:
+          ops.get_default_graph()._unsafe_unfinalize()  # pylint: disable=protected-access
 
   def _is_closed(self):
     """Return True if the supervised session is closed.  For tests only.

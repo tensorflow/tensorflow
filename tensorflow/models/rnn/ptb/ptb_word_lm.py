@@ -130,8 +130,7 @@ class PTBModel(object):
     #
     # The alternative version of the code below is:
     #
-    # inputs = [tf.squeeze(input_step, [1])
-    #           for input_step in tf.split(1, num_steps, inputs)]
+    # inputs = tf.unstack(inputs, num=num_steps, axis=1)
     # outputs, state = tf.nn.rnn(cell, inputs, initial_state=self._initial_state)
     outputs = []
     state = self._initial_state
@@ -329,14 +328,14 @@ def main(_):
       train_input = PTBInput(config=config, data=train_data, name="TrainInput")
       with tf.variable_scope("Model", reuse=None, initializer=initializer):
         m = PTBModel(is_training=True, config=config, input_=train_input)
-      tf.scalar_summary("Training Loss", m.cost)
-      tf.scalar_summary("Learning Rate", m.lr)
+      tf.contrib.deprecated.scalar_summary("Training Loss", m.cost)
+      tf.contrib.deprecated.scalar_summary("Learning Rate", m.lr)
 
     with tf.name_scope("Valid"):
       valid_input = PTBInput(config=config, data=valid_data, name="ValidInput")
       with tf.variable_scope("Model", reuse=True, initializer=initializer):
         mvalid = PTBModel(is_training=False, config=config, input_=valid_input)
-      tf.scalar_summary("Validation Loss", mvalid.cost)
+      tf.contrib.deprecated.scalar_summary("Validation Loss", mvalid.cost)
 
     with tf.name_scope("Test"):
       test_input = PTBInput(config=eval_config, data=test_data, name="TestInput")

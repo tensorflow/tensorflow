@@ -28,11 +28,7 @@ if [[ ! -f "./downloads/protobuf/autogen.sh" ]]; then
     exit 1
 fi
 
-if [ "$#" -gt 1 ]; then
-    JOBS_COUNT=$1
-else
-    JOBS_COUNT=4
-fi
+JOB_COUNT="${JOB_COUNT:-$(get_job_count)}"
 
 GENDIR=`pwd`/gen/protobuf_ios/
 LIBDIR=${GENDIR}lib
@@ -71,7 +67,6 @@ fi
 
 make distclean
 ./configure \
---build=x86_64-apple-${OSX_VERSION} \
 --host=i386-apple-${OSX_VERSION} \
 --disable-shared \
 --enable-cross-compile \
@@ -94,12 +89,11 @@ ${LDFLAGS} \
 -L${IPHONESIMULATOR_SYSROOT}/usr/lib/ \
 -L${IPHONESIMULATOR_SYSROOT}/usr/lib/system" \
 "LIBS=${LIBS}"
-make -j ${JOBS_COUNT}
+make -j"${JOB_COUNT}"
 make install
 
 make distclean
 ./configure \
---build=x86_64-apple-${OSX_VERSION} \
 --host=x86_64-apple-${OSX_VERSION} \
 --disable-shared \
 --enable-cross-compile \
@@ -122,12 +116,11 @@ ${LDFLAGS} \
 -L${IPHONESIMULATOR_SYSROOT}/usr/lib/ \
 -L${IPHONESIMULATOR_SYSROOT}/usr/lib/system" \
 "LIBS=${LIBS}"
-make -j ${JOBS_COUNT}
+make -j"${JOB_COUNT}"
 make install
 
 make distclean
 ./configure \
---build=x86_64-apple-${OSX_VERSION} \
 --host=armv7-apple-${OSX_VERSION} \
 --with-protoc="${PROTOC_PATH}" \
 --disable-shared \
@@ -146,12 +139,11 @@ LDFLAGS="-arch armv7 \
 -miphoneos-version-min=${MIN_SDK_VERSION} \
 ${LDFLAGS}" \
 "LIBS=${LIBS}"
-make -j ${JOBS_COUNT}
+make -j"${JOB_COUNT}"
 make install
 
 make distclean
 ./configure \
---build=x86_64-apple-${OSX_VERSION} \
 --host=armv7s-apple-${OSX_VERSION} \
 --with-protoc="${PROTOC_PATH}" \
 --disable-shared \
@@ -170,12 +162,11 @@ LDFLAGS="-arch armv7s \
 -miphoneos-version-min=${MIN_SDK_VERSION} \
 ${LDFLAGS}" \
 "LIBS=${LIBS}"
-make -j ${JOBS_COUNT}
+make -j"${JOB_COUNT}"
 make install
 
 make distclean
 ./configure \
---build=x86_64-apple-${OSX_VERSION} \
 --host=arm \
 --with-protoc="${PROTOC_PATH}" \
 --disable-shared \
@@ -193,7 +184,7 @@ LDFLAGS="-arch arm64 \
 -miphoneos-version-min=${MIN_SDK_VERSION} \
 ${LDFLAGS}" \
 "LIBS=${LIBS}"
-make -j ${JOBS_COUNT}
+make -j"${JOB_COUNT}"
 make install
 
 lipo \

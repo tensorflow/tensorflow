@@ -254,21 +254,13 @@ cc_library(
 
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 
-filegroup(
-    name = "saved_model_half_plus_two",
-    srcs = glob([
-        "testdata/saved_model_half_plus_two/**",
-    ]),
-)
-
 cc_library(
     name = "bundle_shim",
     srcs = ["bundle_shim.cc"],
     hdrs = ["bundle_shim.h"],
     copts = if_ios(["-DGOOGLE_LOGGING"]),
-    visibility = ["//visibility:private"],
+    visibility = ["//visibility:public"],
     deps = [
-        ":bundle_shim_constants",
         ":session_bundle",
         ":signature",
         "//tensorflow/cc/saved_model:loader",
@@ -288,14 +280,13 @@ cc_test(
     size = "small",
     srcs = ["bundle_shim_test.cc"],
     data = [
-        ":saved_model_half_plus_two",
         "//tensorflow/contrib/session_bundle/example:half_plus_two",
+        "//tensorflow/python/saved_model/example:saved_model_half_plus_two_data",
     ],
     # Link in all registered kernels.
     linkstatic = 1,
     deps = [
         ":bundle_shim",
-        ":bundle_shim_constants",
         ":test_util",
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/cc/saved_model:signature_constants",
@@ -307,11 +298,6 @@ cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
     ],
-)
-
-cc_library(
-    name = "bundle_shim_constants",
-    hdrs = ["bundle_shim_constants.h"],
 )
 
 tf_proto_library(

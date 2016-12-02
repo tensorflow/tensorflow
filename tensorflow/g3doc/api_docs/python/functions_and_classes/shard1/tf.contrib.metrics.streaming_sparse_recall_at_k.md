@@ -44,7 +44,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 *  <b>`class_id`</b>: Integer class ID for which we want binary metrics. This should be
     in range [0, num_classes), where num_classes is the last dimension of
     `predictions`. If class_id is outside this range, the method returns NAN.
-*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to the the first
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to the first
     [D1, ... DN] dimensions of `predictions` and `labels`.
 *  <b>`metrics_collections`</b>: An optional list of collections that values should
     be added to.

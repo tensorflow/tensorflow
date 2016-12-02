@@ -437,7 +437,7 @@ class OperatorPDBase(object):
       name:  A name to give this `Op`.
 
     Returns:
-      A result equivalent to `tf.batch_matmul(self.to_dense(), x)`.
+      A result equivalent to `tf.matmul(self.to_dense(), x)`.
     """
     with ops.name_scope(self.name):
       with ops.name_scope(name, values=[x] + self.inputs):
@@ -471,7 +471,7 @@ class OperatorPDBase(object):
       name:  A name scope to use for ops added by this method.
 
     Returns:
-      A result equivalent to `tf.batch_matmul(self.sqrt_to_dense(), x)`.
+      A result equivalent to `tf.matmul(self.sqrt_to_dense(), x)`.
     """
     with ops.name_scope(self.name):
       with ops.name_scope(name, values=[x] + self.inputs):

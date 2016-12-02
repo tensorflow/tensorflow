@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import functools
 import inspect
 import re
@@ -114,7 +115,11 @@ def deprecated(date, instructions):
   return deprecated_wrapper
 
 
-def deprecated_args(date, instructions, *deprecated_arg_names):
+DeprecatedArgSpec = collections.namedtuple(
+    'DeprecatedArgSpec', ['position', 'has_ok_value', 'ok_value'])
+
+
+def deprecated_args(date, instructions, *deprecated_arg_names_or_tuples):
   """Decorator for marking specific function arguments as deprecated.
 
   This decorator logs a deprecation warning whenever the decorated function is
@@ -135,32 +140,77 @@ def deprecated_args(date, instructions, *deprecated_arg_names):
       ISO 8601 (YYYY-MM-DD).
     instructions: String. Instructions on how to update code using the
       deprecated function.
-    *deprecated_arg_names: String. The deprecated arguments.
+    *deprecated_arg_names_or_tuples: String. or 2-Tuple(String,
+      [ok_vals]).  The string is the deprecated argument name.
+      Optionally, an ok-value may be provided.  If the user provided
+      argument equals this value, the warning is suppressed.
 
   Returns:
     Decorated function or method.
 
   Raises:
-    ValueError: If date is not in ISO 8601 format, instructions are empty, or
-      the deprecated arguments are not present in the function signature.
+    ValueError: If date is not in ISO 8601 format, instructions are
+      empty, the deprecated arguments are not present in the function
+      signature, or the second element of a deprecated_tuple is not a
+      list.
   """
   _validate_deprecation_args(date, instructions)
-  if not deprecated_arg_names:
+  if not deprecated_arg_names_or_tuples:
     raise ValueError('Specify which argument is deprecated.')
+
+  def _get_arg_names_to_ok_vals():
+    """Returns a dict mapping arg_name to DeprecatedArgSpec w/o position."""
+    d = {}
+    for name_or_tuple in deprecated_arg_names_or_tuples:
+      if isinstance(name_or_tuple, tuple):
+        d[name_or_tuple[0]] = DeprecatedArgSpec(-1, True, name_or_tuple[1])
+      else:
+        d[name_or_tuple] = DeprecatedArgSpec(-1, False, None)
+    return d
+
+  def _get_deprecated_positional_arguments(names_to_ok_vals, arg_spec):
+    """Builds a dictionary from deprecated arguments to thier spec.
+
+    Returned dict is keyed by argument name.
+    Each value is a DeprecatedArgSpec with the following fields:
+       position: The zero-based argument position of the argument
+         within the signature.  None if the argument isn't found in
+         the signature.
+       ok_values:  Values of this argument for which warning will be
+         suppressed.
+
+    Args:
+      names_to_ok_vals: dict from string arg_name to a list of values,
+        possibly empty, which should not elicit a warning.
+      arg_spec: Output from inspect.getargspec on the called function.
+
+    Returns:
+      Dictionary from arg_name to DeprecatedArgSpec.
+    """
+    arg_name_to_pos = dict(
+        (name, pos) for (pos, name) in enumerate(arg_spec.args))
+    deprecated_positional_args = {}
+    for arg_name, spec in iter(names_to_ok_vals.items()):
+      if arg_name in arg_name_to_pos:
+        pos = arg_name_to_pos[arg_name]
+        deprecated_positional_args[arg_name] = DeprecatedArgSpec(
+            pos, spec.has_ok_value, spec.ok_value)
+    return deprecated_positional_args
 
   def deprecated_wrapper(func):
     """Deprecation decorator."""
     decorator_utils.validate_callable(func, 'deprecated_args')
+    deprecated_arg_names = _get_arg_names_to_ok_vals()
 
     arg_spec = inspect.getargspec(func)
-    deprecated_positions = [
-        (i, arg_name) for (i, arg_name) in enumerate(arg_spec.args)
-        if arg_name in deprecated_arg_names]
+    deprecated_positions = _get_deprecated_positional_arguments(
+        deprecated_arg_names, arg_spec)
+
     is_varargs_deprecated = arg_spec.varargs in deprecated_arg_names
     is_kwargs_deprecated = arg_spec.keywords in deprecated_arg_names
 
     if (len(deprecated_positions) + is_varargs_deprecated + is_kwargs_deprecated
-        != len(deprecated_arg_names)):
+        != len(deprecated_arg_names_or_tuples)):
       known_args = arg_spec.args + [arg_spec.varargs, arg_spec.keywords]
       missing_args = [arg_name for arg_name in deprecated_arg_names
                       if arg_name not in known_args]
@@ -172,15 +222,21 @@ def deprecated_args(date, instructions, *deprecated_arg_names):
     def new_func(*args, **kwargs):
       """Deprecation wrapper."""
       invalid_args = []
-      for (i, arg_name) in deprecated_positions:
-        if i < len(args):
+      named_args = inspect.getcallargs(func, *args, **kwargs)
+      for arg_name, spec in iter(deprecated_positions.items()):
+        if (spec.position < len(args) and
+            not (spec.has_ok_value and
+                 named_args[arg_name] == spec.ok_value)):
           invalid_args.append(arg_name)
       if is_varargs_deprecated and len(args) > len(arg_spec.args):
         invalid_args.append(arg_spec.varargs)
       if is_kwargs_deprecated and kwargs:
         invalid_args.append(arg_spec.keywords)
       for arg_name in deprecated_arg_names:
-        if arg_name in kwargs:
+        if (arg_name in kwargs and
+            not (deprecated_positions[arg_name].has_ok_value and
+                 (named_args[arg_name] ==
+                  deprecated_positions[arg_name].ok_value))):
           invalid_args.append(arg_name)
       for arg_name in invalid_args:
         logging.warning(

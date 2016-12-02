@@ -26,7 +26,6 @@ import tensorflow as tf
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import data_flow_ops as tf_data_flow_ops
-from tensorflow.python.ops import variables as tf_variables
 
 
 def main_op():
@@ -38,8 +37,8 @@ def main_op():
   Returns:
     The set of ops to be run as part of the main op upon the load operation.
   """
-  init = tf_variables.initialize_all_variables()
-  init_local = tf_variables.initialize_local_variables()
+  init = tf.global_variables_initializer()
+  init_local = tf.local_variables_initializer()
   init_tables = tf_data_flow_ops.initialize_all_tables()
   return tf.group(init, init_local, init_tables)
 

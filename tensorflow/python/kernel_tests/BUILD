@@ -117,6 +117,14 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "decode_image_op_test",
+    size = "small",
+    srcs = ["decode_image_op_test.py"],
+    additional_deps = ["//tensorflow:tensorflow_py"],
+    data = ["//tensorflow/core:image_testdata"],
+)
+
+tf_py_test(
     name = "decode_raw_op_test",
     size = "small",
     srcs = ["decode_raw_op_test.py"],
@@ -278,10 +286,7 @@ tf_py_test(
     size = "medium",
     srcs = ["scatter_nd_ops_test.py"],
     additional_deps = ["//tensorflow:tensorflow_py"],
-    tags = [
-        "manual",  # http://b/32655781
-        "noasan",  # http://b/32635055
-    ],
+    tags = ["noasan"],  # http://b/32635055
 )
 
 tf_py_test(
@@ -1218,6 +1223,7 @@ cuda_py_test(
     additional_deps = [
         "//tensorflow:tensorflow_py",
     ],
+    shard_count = 10,
 )
 
 cuda_py_test(
@@ -1355,6 +1361,15 @@ cuda_py_test(
     srcs = ["self_adjoint_eig_op_test.py"],
     additional_deps = ["//tensorflow:tensorflow_py"],
     shard_count = 20,
+)
+
+cuda_py_test(
+    name = "qr_op_test",
+    size = "medium",
+    srcs = ["qr_op_test.py"],
+    additional_deps = ["//tensorflow:tensorflow_py"],
+    shard_count = 20,
+    tags = ["nomsan"],  # fails in msan from numpy calls
 )
 
 cuda_py_test(

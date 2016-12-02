@@ -52,7 +52,6 @@ done
 if is_windows; then
   TF_NEED_GCP=0
   TF_NEED_HDFS=0
-  TF_NEED_CUDA=0
   TF_NEED_OPENCL=0
 fi
 
@@ -80,10 +79,10 @@ if [ "$TF_NEED_GCP" == "1" ]; then
   fi
 
   # Update Bazel build configuration.
-  perl -pi -e "s,WITH_GCP_SUPPORT = (False|True),WITH_GCP_SUPPORT = True,s" tensorflow/core/platform/default/build_config.bzl
+  sed -i -e "s/WITH_GCP_SUPPORT = False/WITH_GCP_SUPPORT = True/" tensorflow/core/platform/default/build_config.bzl
 else
   # Update Bazel build configuration.
-  perl -pi -e "s,WITH_GCP_SUPPORT = (False|True),WITH_GCP_SUPPORT = False,s" tensorflow/core/platform/default/build_config.bzl
+  sed -i -e "s/WITH_GCP_SUPPORT = True/WITH_GCP_SUPPORT = False/" tensorflow/core/platform/default/build_config.bzl
 fi
 
 while [ "$TF_NEED_HDFS" == "" ]; do
@@ -102,10 +101,10 @@ done
 
 if [ "$TF_NEED_HDFS" == "1" ]; then
   # Update Bazel build configuration.
-  perl -pi -e "s,WITH_HDFS_SUPPORT = (False|True),WITH_HDFS_SUPPORT = True,s" tensorflow/core/platform/default/build_config.bzl
+  sed -i -e "s/WITH_HDFS_SUPPORT = False/WITH_HDFS_SUPPORT = True/" tensorflow/core/platform/default/build_config.bzl
 else
   # Update Bazel build configuration.
-  perl -pi -e "s,WITH_HDFS_SUPPORT = (False|True),WITH_HDFS_SUPPORT = False,s" tensorflow/core/platform/default/build_config.bzl
+  sed -i -e "s/WITH_HDFS_SUPPORT = True/WITH_HDFS_SUPPORT = False/" tensorflow/core/platform/default/build_config.bzl
 fi
 
 # Invoke python_config and set up symlinks to python includes
@@ -131,11 +130,11 @@ done
 ## Set up Cuda-related environment settings
 
 while [ "$TF_NEED_CUDA" == "" ]; do
-  read -p "Do you wish to build TensorFlow with GPU support? [y/N] " INPUT
+  read -p "Do you wish to build TensorFlow with CUDA support? [y/N] " INPUT
   case $INPUT in
-    [Yy]* ) echo "GPU support will be enabled for TensorFlow"; TF_NEED_CUDA=1;;
-    [Nn]* ) echo "No GPU support will be enabled for TensorFlow"; TF_NEED_CUDA=0;;
-    "" ) echo "No GPU support will be enabled for TensorFlow"; TF_NEED_CUDA=0;;
+    [Yy]* ) echo "CUDA support will be enabled for TensorFlow"; TF_NEED_CUDA=1;;
+    [Nn]* ) echo "No CUDA support will be enabled for TensorFlow"; TF_NEED_CUDA=0;;
+    "" ) echo "No CUDA support will be enabled for TensorFlow"; TF_NEED_CUDA=0;;
     * ) echo "Invalid selection: " $INPUT;;
   esac
 done
@@ -150,14 +149,15 @@ fi
 
 if [ "$TF_NEED_CUDA" == "1" ]; then
 # Set up which gcc nvcc should use as the host compiler
-while true; do
+# No need to set this on Windows
+while ! is_windows && true; do
   fromuser=""
   if [ -z "$GCC_HOST_COMPILER_PATH" ]; then
     default_gcc_host_compiler_path=$(which gcc || true)
     read -p "Please specify which gcc should be used by nvcc as the host compiler. [Default is $default_gcc_host_compiler_path]: " GCC_HOST_COMPILER_PATH
     fromuser="1"
     if [ -z "$GCC_HOST_COMPILER_PATH" ]; then
-      GCC_HOST_COMPILER_PATH=$default_gcc_host_compiler_path
+      GCC_HOST_COMPILER_PATH="$default_gcc_host_compiler_path"
     fi
   fi
   if [ -e "$GCC_HOST_COMPILER_PATH" ]; then
@@ -178,16 +178,23 @@ OSNAME=`uname -s`
 while true; do
   # Configure the Cuda SDK version to use.
   if [ -z "$TF_CUDA_VERSION" ]; then
-    read -p "Please specify the Cuda SDK version you want to use, e.g. 7.0. [Leave empty to use system default]: " TF_CUDA_VERSION
+    read -p "Please specify the CUDA SDK version you want to use, e.g. 7.0. [Leave empty to use system default]: " TF_CUDA_VERSION
   fi
 
   fromuser=""
   if [ -z "$CUDA_TOOLKIT_PATH" ]; then
     default_cuda_path=/usr/local/cuda
+    if is_windows; then
+      if [ -z "$CUDA_PATH" ]; then
+        default_cuda_path="C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v8.0"
+      else
+        default_cuda_path="$(cygpath -m "$CUDA_PATH")"
+      fi
+    fi
     read -p "Please specify the location where CUDA $TF_CUDA_VERSION toolkit is installed. Refer to README.md for more details. [Default is $default_cuda_path]: " CUDA_TOOLKIT_PATH
     fromuser="1"
     if [ -z "$CUDA_TOOLKIT_PATH" ]; then
-      CUDA_TOOLKIT_PATH=$default_cuda_path
+      CUDA_TOOLKIT_PATH="$default_cuda_path"
     fi
   fi
 
@@ -197,7 +204,9 @@ while true; do
     TF_CUDA_EXT=".$TF_CUDA_VERSION"
   fi
 
-  if [ "$OSNAME" == "Linux" ]; then
+  if is_windows; then
+    CUDA_RT_LIB_PATH="lib/x64/cudart.lib"
+  elif [ "$OSNAME" == "Linux" ]; then
     CUDA_RT_LIB_PATH="lib64/libcudart.so${TF_CUDA_EXT}"
   elif [ "$OSNAME" == "Darwin" ]; then
     CUDA_RT_LIB_PATH="lib/libcudart${TF_CUDA_EXT}.dylib"
@@ -235,14 +244,17 @@ while true; do
     fi
     # Result returned from "read" will be used unexpanded. That make "~" unuseable.
     # Going through one more level of expansion to handle that.
-    CUDNN_INSTALL_PATH=`${PYTHON_BIN_PATH} -c "import os; print(os.path.realpath(os.path.expanduser('${CUDNN_INSTALL_PATH}')))"`
+    CUDNN_INSTALL_PATH=`"${PYTHON_BIN_PATH}" -c "import os; print(os.path.realpath(os.path.expanduser('${CUDNN_INSTALL_PATH}')))"`
   fi
 
   if [[ -z "$TF_CUDNN_VERSION" ]]; then
     TF_CUDNN_EXT=""
     cudnn_lib_path=""
     cudnn_alt_lib_path=""
-    if [ "$OSNAME" == "Linux" ]; then
+    if is_windows; then
+      cudnn_lib_path="${CUDNN_INSTALL_PATH}/lib/x64/cudnn.lib"
+      cudnn_alt_lib_path="${CUDNN_INSTALL_PATH}/lib/x64/cudnn.lib"
+    elif [ "$OSNAME" == "Linux" ]; then
       cudnn_lib_path="${CUDNN_INSTALL_PATH}/lib64/libcudnn.so"
       cudnn_alt_lib_path="${CUDNN_INSTALL_PATH}/libcudnn.so"
     elif [ "$OSNAME" == "Darwin" ]; then
@@ -255,9 +267,9 @@ while true; do
     # If the path is not a symlink, readlink will exit with an error code, so
     # in that case, we return the path itself.
     if [ -f "$cudnn_lib_path" ]; then
-      REALVAL=`readlink ${cudnn_lib_path} || echo "${cudnn_lib_path}"`
+      REALVAL=`readlink "${cudnn_lib_path}" || echo "${cudnn_lib_path}"`
     else
-      REALVAL=`readlink ${cudnn_alt_lib_path} || echo "${cudnn_alt_lib_path}"`
+      REALVAL=`readlink "${cudnn_alt_lib_path}" || echo "${cudnn_alt_lib_path}"`
     fi
 
     # Extract the version of the SONAME, if it was indeed symlinked to
@@ -267,7 +279,7 @@ while true; do
       TF_CUDNN_VERSION=${BASH_REMATCH[1]}
       echo "libcudnn.so resolves to libcudnn${TF_CUDNN_EXT}"
     elif [[ "$REALVAL" =~ ([0-9]*).dylib ]]; then
-      TF_CUDNN_EXT=${BASH_REMATCH[1]}".dylib"
+      TF_CUDNN_EXT="."${BASH_REMATCH[1]}".dylib"
       TF_CUDNN_VERSION=${BASH_REMATCH[1]}
       echo "libcudnn.dylib resolves to libcudnn${TF_CUDNN_EXT}"
     fi
@@ -275,7 +287,10 @@ while true; do
     TF_CUDNN_EXT=".$TF_CUDNN_VERSION"
   fi
 
-  if [ "$OSNAME" == "Linux" ]; then
+  if is_windows; then
+    CUDA_DNN_LIB_PATH="lib/x64/cudnn.lib"
+    CUDA_DNN_LIB_ALT_PATH="lib/x64/cudnn.lib"
+  elif [ "$OSNAME" == "Linux" ]; then
     CUDA_DNN_LIB_PATH="lib64/libcudnn.so${TF_CUDNN_EXT}"
     CUDA_DNN_LIB_ALT_PATH="libcudnn.so${TF_CUDNN_EXT}"
   elif [ "$OSNAME" == "Darwin" ]; then
@@ -349,6 +364,16 @@ EOF
   fi
   TF_CUDA_COMPUTE_CAPABILITIES=""
 done
+
+if is_windows; then
+  # The following three variables are needed for MSVC toolchain configuration in Bazel
+  export CUDA_PATH="$CUDA_TOOLKIT_PATH"
+  export CUDA_COMPUTE_CAPABILITIES="$TF_CUDA_COMPUTE_CAPABILITIES"
+  export NO_WHOLE_ARCHIVE_OPTION=1
+
+  # Set GCC_HOST_COMPILER_PATH to keep cuda_configure.bzl happy
+  export GCC_HOST_COMPILER_PATH="/usr/bin/dummy_compiler"
+fi
 
 # end of if "$TF_NEED_CUDA" == "1"
 fi

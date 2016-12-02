@@ -78,20 +78,6 @@ Returns the dtype correspond to this dtype's real part.
 
 - - -
 
-#### `tf.DType.is_ref_dtype` {#DType.is_ref_dtype}
-
-Returns `True` if this `DType` represents a reference type.
-
-
-- - -
-
-#### `tf.DType.as_ref` {#DType.as_ref}
-
-Returns a reference `DType` based on this `DType`.
-
-
-- - -
-
 #### `tf.DType.is_floating` {#DType.is_floating}
 
 Returns whether this is a (non-quantized, real) floating point type.

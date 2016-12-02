@@ -741,6 +741,21 @@ class TFRecordIteratorTest(tf.test.TestCase):
       actual.append(r)
     self.assertEqual(actual, original)
 
+  def testBadFile(self):
+    """Verify that tf_record_iterator throws an exception on bad TFRecords."""
+    fn = os.path.join(self.get_temp_dir(), "bad_file")
+    with tf.python_io.TFRecordWriter(fn) as writer:
+      writer.write(b"123")
+    fn_truncated = os.path.join(self.get_temp_dir(), "bad_file_truncated")
+    with open(fn, "rb") as f:
+      with open(fn_truncated, "wb") as f2:
+        # DataLossError requires that we've written the header, so this must
+        # be at least 12 bytes.
+        f2.write(f.read(14))
+    with self.assertRaises(tf.errors.DataLossError):
+      for _ in tf.python_io.tf_record_iterator(fn_truncated):
+        pass
+
 
 class AsyncReaderTest(tf.test.TestCase):
 

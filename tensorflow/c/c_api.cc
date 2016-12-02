@@ -220,6 +220,10 @@ void* TF_TensorData(const TF_Tensor* t) { return t->buffer->data(); }
 size_t TF_StringEncode(const char* src, size_t src_len, char* dst,
                        size_t dst_len, TF_Status* status) {
   const size_t sz = TF_StringEncodedSize(src_len);
+  if (sz < src_len) {
+    status->status = InvalidArgument("src string is too large to encode");
+    return 0;
+  }
   if (dst_len < sz) {
     status->status =
         InvalidArgument("dst_len (", dst_len, ") too small to encode a ",
@@ -428,10 +432,10 @@ TF_Tensor* TF_Tensor_EncodeStrings(const Tensor& src) {
     const tensorflow::string& s = srcarray(i);
     size_t consumed =
         TF_StringEncode(s.data(), s.size(), dst, dst_len, &status);
+    CHECK(status.status.ok());
     dst += consumed;
     dst_len -= consumed;
   }
-  CHECK(status.status.ok());
   CHECK_EQ(dst, base + size);
 
   auto dims = src.shape().dim_sizes();
@@ -765,8 +769,9 @@ TF_Operation* ToOperation(Node* node) {
   return static_cast<TF_Operation*>(static_cast<void*>(node));
 }
 
-tensorflow::string PortName(const TF_Port& port) {
-  return tensorflow::strings::StrCat(port.oper->node.name(), ":", port.index);
+tensorflow::string OutputName(const TF_Output& output) {
+  return tensorflow::strings::StrCat(output.oper->node.name(), ":",
+                                     output.index);
 }
 
 const tensorflow::AttrValue* GetAttrValue(TF_Operation* oper,
@@ -785,9 +790,10 @@ const tensorflow::AttrValue* GetAttrValue(TF_Operation* oper,
 
 // Shape functions -----------------------------------------------------------
 
-void TF_GraphSetTensorShape(TF_Graph* graph, TF_Port port, const int64_t* dims,
-                            const int num_dims, TF_Status* status) {
-  Node* node = &port.oper->node;
+void TF_GraphSetTensorShape(TF_Graph* graph, TF_Output output,
+                            const int64_t* dims, const int num_dims,
+                            TF_Status* status) {
+  Node* node = &output.oper->node;
 
   mutex_lock l(graph->mu);
   // Set the shape.
@@ -805,11 +811,12 @@ void TF_GraphSetTensorShape(TF_Graph* graph, TF_Port port, const int64_t* dims,
   }
 
   tensorflow::shape_inference::ShapeHandle new_shape = ic->MakeShape(dim_vec);
-  status->status = graph->refiner.SetShape(node, port.index, new_shape);
+  status->status = graph->refiner.SetShape(node, output.index, new_shape);
 }
 
-int TF_GraphGetTensorNumDims(TF_Graph* graph, TF_Port port, TF_Status* status) {
-  Node* node = &port.oper->node;
+int TF_GraphGetTensorNumDims(TF_Graph* graph, TF_Output output,
+                             TF_Status* status) {
+  Node* node = &output.oper->node;
 
   mutex_lock l(graph->mu);
   tensorflow::shape_inference::InferenceContext* ic =
@@ -820,7 +827,7 @@ int TF_GraphGetTensorNumDims(TF_Graph* graph, TF_Port port, TF_Status* status) {
     return -1;
   }
 
-  tensorflow::shape_inference::ShapeHandle shape = ic->output(port.index);
+  tensorflow::shape_inference::ShapeHandle shape = ic->output(output.index);
 
   // Unknown rank means the number of dimensions is -1.
   if (!ic->RankKnown(shape)) {
@@ -830,9 +837,9 @@ int TF_GraphGetTensorNumDims(TF_Graph* graph, TF_Port port, TF_Status* status) {
   return ic->Rank(shape);
 }
 
-void TF_GraphGetTensorShape(TF_Graph* graph, TF_Port port, int64_t* dims,
+void TF_GraphGetTensorShape(TF_Graph* graph, TF_Output output, int64_t* dims,
                             int num_dims, TF_Status* status) {
-  Node* node = &port.oper->node;
+  Node* node = &output.oper->node;
 
   mutex_lock l(graph->mu);
   tensorflow::shape_inference::InferenceContext* ic =
@@ -843,7 +850,7 @@ void TF_GraphGetTensorShape(TF_Graph* graph, TF_Port port, int64_t* dims,
     return;
   }
 
-  tensorflow::shape_inference::ShapeHandle shape = ic->output(port.index);
+  tensorflow::shape_inference::ShapeHandle shape = ic->output(output.index);
 
   int rank = -1;
   if (ic->RankKnown(shape)) {
@@ -887,11 +894,11 @@ void TF_SetDevice(TF_OperationDescription* desc, const char* device) {
   desc->node_builder.Device(device);
 }
 
-void TF_AddInput(TF_OperationDescription* desc, TF_Port input) {
+void TF_AddInput(TF_OperationDescription* desc, TF_Output input) {
   desc->node_builder.Input(&input.oper->node, input.index);
 }
 
-void TF_AddInputList(TF_OperationDescription* desc, const TF_Port* inputs,
+void TF_AddInputList(TF_OperationDescription* desc, const TF_Output* inputs,
                      int num_inputs) {
   std::vector<NodeBuilder::NodeOut> input_list;
   input_list.reserve(num_inputs);
@@ -1161,7 +1168,7 @@ int TF_OperationNumOutputs(TF_Operation* oper) {
   return oper->node.num_outputs();
 }
 
-TF_DataType TF_OperationOutputType(TF_Port oper_out) {
+TF_DataType TF_OperationOutputType(TF_Output oper_out) {
   return static_cast<TF_DataType>(
       oper_out.oper->node.output_type(oper_out.index));
 }
@@ -1184,7 +1191,7 @@ int TF_OperationNumInputs(TF_Operation* oper) {
   return oper->node.num_inputs();
 }
 
-TF_DataType TF_OperationInputType(TF_Port oper_in) {
+TF_DataType TF_OperationInputType(TF_Input oper_in) {
   return static_cast<TF_DataType>(oper_in.oper->node.input_type(oper_in.index));
 }
 
@@ -1202,7 +1209,7 @@ int TF_OperationInputListLength(TF_Operation* oper, const char* arg_name,
   return iter->second.second - iter->second.first;
 }
 
-TF_Port TF_OperationInput(TF_Port oper_in) {
+TF_Output TF_OperationInput(TF_Input oper_in) {
   const tensorflow::Edge* edge;
   Status s = oper_in.oper->node.input_edge(oper_in.index, &edge);
   if (!s.ok()) {
@@ -1212,7 +1219,7 @@ TF_Port TF_OperationInput(TF_Port oper_in) {
   return {ToOperation(edge->src()), edge->src_output()};
 }
 
-int TF_OperationOutputNumConsumers(TF_Port oper_out) {
+int TF_OperationOutputNumConsumers(TF_Output oper_out) {
   int count = 0;
   for (const auto* edge : oper_out.oper->node.out_edges()) {
     if (edge->src_output() == oper_out.index) {
@@ -1222,7 +1229,7 @@ int TF_OperationOutputNumConsumers(TF_Port oper_out) {
   return count;
 }
 
-int TF_OperationOutputConsumers(TF_Port oper_out, TF_Port* consumers,
+int TF_OperationOutputConsumers(TF_Output oper_out, TF_Input* consumers,
                                 int max_consumers) {
   int count = 0;
   for (const auto* edge : oper_out.oper->node.out_edges()) {
@@ -1738,8 +1745,8 @@ static bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status) {
 }
 
 void TF_SessionRun(TF_Session* session, const TF_Buffer* run_options,
-                   const TF_Port* inputs, TF_Tensor* const* input_values,
-                   int ninputs, const TF_Port* outputs,
+                   const TF_Output* inputs, TF_Tensor* const* input_values,
+                   int ninputs, const TF_Output* outputs,
                    TF_Tensor** output_values, int noutputs,
                    const TF_Operation* const* target_opers, int ntargets,
                    TF_Buffer* run_metadata, TF_Status* status) {
@@ -1752,17 +1759,17 @@ void TF_SessionRun(TF_Session* session, const TF_Buffer* run_options,
 
   TF_Run_Setup(noutputs, output_values, status);
 
-  // Convert from TF_Port and TF_Tensor to a string and Tensor.
+  // Convert from TF_Output and TF_Tensor to a string and Tensor.
   std::vector<std::pair<tensorflow::string, Tensor>> input_pairs(ninputs);
   if (!TF_Run_Inputs(input_values, &input_pairs, status)) return;
   for (int i = 0; i < ninputs; ++i) {
-    input_pairs[i].first = PortName(inputs[i]);
+    input_pairs[i].first = OutputName(inputs[i]);
   }
 
-  // Convert from TF_Port to string names.
+  // Convert from TF_Output to string names.
   std::vector<tensorflow::string> output_names(noutputs);
   for (int i = 0; i < noutputs; ++i) {
-    output_names[i] = PortName(outputs[i]);
+    output_names[i] = OutputName(outputs[i]);
   }
 
   // Convert from TF_Operation* to string names.
@@ -1777,8 +1784,8 @@ void TF_SessionRun(TF_Session* session, const TF_Buffer* run_options,
                 status);
 }
 
-void TF_SessionPRunSetup(TF_Session* session, const TF_Port* inputs,
-                         int ninputs, const TF_Port* outputs, int noutputs,
+void TF_SessionPRunSetup(TF_Session* session, const TF_Output* inputs,
+                         int ninputs, const TF_Output* outputs, int noutputs,
                          const TF_Operation* const* target_opers, int ntargets,
                          const char** handle, TF_Status* status) {
   if (!ExtendSessionGraphHelper(session, status)) {
@@ -1787,12 +1794,12 @@ void TF_SessionPRunSetup(TF_Session* session, const TF_Port* inputs,
 
   std::vector<tensorflow::string> input_names(ninputs);
   for (int i = 0; i < ninputs; ++i) {
-    input_names[i] = PortName(inputs[i]);
+    input_names[i] = OutputName(inputs[i]);
   }
 
   std::vector<tensorflow::string> output_names(noutputs);
   for (int i = 0; i < noutputs; ++i) {
-    output_names[i] = PortName(outputs[i]);
+    output_names[i] = OutputName(outputs[i]);
   }
 
   std::vector<tensorflow::string> target_names(ntargets);
@@ -1811,8 +1818,8 @@ void TF_SessionPRunSetup(TF_Session* session, const TF_Port* inputs,
 }
 
 void TF_SessionPRun(TF_Session* session, const char* handle,
-                    const TF_Port* inputs, TF_Tensor* const* input_values,
-                    int ninputs, const TF_Port* outputs,
+                    const TF_Output* inputs, TF_Tensor* const* input_values,
+                    int ninputs, const TF_Output* outputs,
                     TF_Tensor** output_values, int noutputs,
                     const TF_Operation* const* target_opers, int ntargets,
                     TF_Status* status) {
@@ -1825,17 +1832,17 @@ void TF_SessionPRun(TF_Session* session, const char* handle,
 
   TF_Run_Setup(noutputs, output_values, status);
 
-  // Convert from TF_Port and TF_Tensor to a string and Tensor.
+  // Convert from TF_Output and TF_Tensor to a string and Tensor.
   std::vector<std::pair<tensorflow::string, Tensor>> input_pairs(ninputs);
   if (!TF_Run_Inputs(input_values, &input_pairs, status)) return;
   for (int i = 0; i < ninputs; ++i) {
-    input_pairs[i].first = PortName(inputs[i]);
+    input_pairs[i].first = OutputName(inputs[i]);
   }
 
-  // Convert from TF_Port to string names.
+  // Convert from TF_Output to string names.
   std::vector<tensorflow::string> output_names(noutputs);
   for (int i = 0; i < noutputs; ++i) {
-    output_names[i] = PortName(outputs[i]);
+    output_names[i] = OutputName(outputs[i]);
   }
 
   // Convert from TF_Operation* to string names.

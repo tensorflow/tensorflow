@@ -5,6 +5,8 @@
 
 Variational inference.
 
+## Ops
+
 - - -
 
 ### `tf.contrib.bayesflow.variational_inference.elbo(log_likelihood, variational_with_prior=None, keep_batch_dim=True, form=None, name='ELBO')` {#elbo}

@@ -47,7 +47,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Returns:
 
 
-*  <b>`auc`</b>: A scalar tensor representing the current area-under-curve.
+*  <b>`auc`</b>: A scalar `Tensor` representing the current area-under-curve.
 *  <b>`update_op`</b>: An operation that increments the `true_positives`,
     `true_negatives`, `false_positives` and `false_negatives` variables
     appropriately and whose value matches `auc`.

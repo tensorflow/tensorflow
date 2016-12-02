@@ -122,7 +122,7 @@ class _DistributionMeta(abc.ABCMeta):
 
     Raises:
       TypeError: If `Distribution` is not a subclass of `BaseDistribution`, or
-        the the new class is derived via multiple inheritance and the first
+        the new class is derived via multiple inheritance and the first
         parent class is not a subclass of `BaseDistribution`.
       AttributeError:  If `Distribution` does not implement e.g. `log_prob`.
       ValueError:  If a `Distribution` public method lacks a docstring.
@@ -130,7 +130,10 @@ class _DistributionMeta(abc.ABCMeta):
     if not baseclasses:  # Nothing to be done for Distribution
       raise TypeError("Expected non-empty baseclass.  Does Distribution "
                       "not subclass _BaseDistribution?")
-    base = baseclasses[0]
+    which_base = [
+        base for base in baseclasses
+        if base == _BaseDistribution or issubclass(base, Distribution)]
+    base = which_base[0]
     if base == _BaseDistribution:  # Nothing to be done for Distribution
       return abc.ABCMeta.__new__(mcs, classname, baseclasses, attrs)
     if not issubclass(base, Distribution):

@@ -115,9 +115,10 @@ def Assert(condition, data, summarize=None, name=None):
   NOTE: To ensure that Assert executes, one usually attaches a dependency:
 
   ```python
-   # Ensure maximum element of x is smaller or equal to 1
+  # Ensure maximum element of x is smaller or equal to 1
   assert_op = tf.Assert(tf.less_equal(tf.reduce_max(x), 1.), [x])
-  x = tf.with_dependencies([assert_op], x)
+  with tf.control_dependencies([assert_op]):
+    ... code using x ...
   ```
 
   Args:
@@ -158,9 +159,9 @@ def _Identity(data, name=None):
   Returns:
     A Tensor with the same type and value as the input Tensor.
   """
-  data = ops.convert_to_tensor_or_indexed_slices(data, as_ref=True)
+  data = ops.internal_convert_to_tensor_or_indexed_slices(data, as_ref=True)
   if isinstance(data, ops.Tensor):
-    if data.dtype.is_ref_dtype:
+    if data.dtype._is_ref_dtype:  # pylint: disable=protected-access
       return gen_array_ops._ref_identity(data, name=name)
     else:
       return array_ops.identity(data, name=name)
@@ -180,9 +181,9 @@ def _Identity(data, name=None):
 
 
 def _NextIteration(data, name=None):
-  data = ops.convert_to_tensor_or_indexed_slices(data, as_ref=True)
+  data = ops.internal_convert_to_tensor_or_indexed_slices(data, as_ref=True)
   if isinstance(data, ops.Tensor):
-    if data.dtype.is_ref_dtype:
+    if data.dtype._is_ref_dtype:   # pylint: disable=protected-access
       return ref_next_iteration(data, name=name)
     else:
       return next_iteration(data, name=name)
@@ -221,9 +222,9 @@ def _Enter(data, frame_name, is_constant=False, parallel_iterations=10,
   Returns:
     The same tensor as `data`.
   """
-  data = ops.convert_to_tensor_or_indexed_slices(data, as_ref=True)
+  data = ops.internal_convert_to_tensor_or_indexed_slices(data, as_ref=True)
   if isinstance(data, ops.Tensor):
-    if data.dtype.is_ref_dtype and use_ref:
+    if data.dtype._is_ref_dtype and use_ref:  # pylint: disable=protected-access
       result = ref_enter(data, frame_name, is_constant, parallel_iterations,
                          name=name)
     else:
@@ -270,9 +271,9 @@ def exit(data, name=None):
   Returns:
     The same tensor as `data`.
   """
-  data = ops.convert_to_tensor_or_indexed_slices(data, as_ref=True)
+  data = ops.internal_convert_to_tensor_or_indexed_slices(data, as_ref=True)
   if isinstance(data, ops.Tensor):
-    if data.dtype.is_ref_dtype:
+    if data.dtype._is_ref_dtype:  # pylint: disable=protected-access
       return gen_control_flow_ops._ref_exit(data, name)
     else:
       return gen_control_flow_ops._exit(data, name)
@@ -311,8 +312,8 @@ def switch(data, pred, dtype=None, name=None):
     to `output_true`, otherwise it goes to `output_false`.
   """
   with ops.name_scope(name, "Switch", [data, pred]) as name:
-    data = ops.convert_to_tensor_or_indexed_slices(data, dtype=dtype,
-                                                   name="data", as_ref=True)
+    data = ops.internal_convert_to_tensor_or_indexed_slices(
+        data, dtype=dtype, name="data", as_ref=True)
     pred = ops.convert_to_tensor(pred, name="pred")
     if isinstance(data, ops.Tensor):
       return gen_control_flow_ops._switch(data, pred, name=name)
@@ -378,7 +379,7 @@ def _SwitchRefOrTensor(data, pred, name="Switch"):
   # created within ops.colocate_with(data) to ignore the existing stack.
   with ops.colocate_with(data, ignore_existing=True):
     if isinstance(data, ops.Tensor):
-      if data.dtype.is_ref_dtype:
+      if data.dtype._is_ref_dtype:  # pylint: disable=protected-access
         return ref_switch(data, pred, name=name)
     return switch(data, pred, name=name)
 
@@ -411,10 +412,10 @@ def merge(inputs, name=None):
   if any([inp is None for inp in inputs]):
     raise ValueError("At least one of the merge inputs is None: %s" % inputs)
   with ops.name_scope(name, "Merge", inputs) as name:
-    inputs = [ops.convert_to_tensor_or_indexed_slices(inp, as_ref=True)
+    inputs = [ops.internal_convert_to_tensor_or_indexed_slices(inp, as_ref=True)
               for inp in inputs]
     if all([isinstance(v, ops.Tensor) for v in inputs]):
-      if all([v.dtype.is_ref_dtype for v in inputs]):
+      if all([v.dtype._is_ref_dtype for v in inputs]):  # pylint: disable=protected-access
         return gen_control_flow_ops._ref_merge(inputs, name)
       else:
         return gen_control_flow_ops._merge(inputs, name)
@@ -1747,7 +1748,7 @@ def cond(pred, fn1, fn2, name=None):
     y = tf.constant(5)
     def f1(): return tf.mul(x, 17)
     def f2(): return tf.add(y, 23)
-    r = cond(tf.less(x, y), f1, f2)
+    r = tf.cond(tf.less(x, y), f1, f2)
     # r is set to f1().
     # Operations in f2 (e.g., tf.add) are not executed.
   ```
@@ -2235,7 +2236,9 @@ class WhileContext(ControlFlowContext):
       if self.outer_context: self.outer_context.Exit()
     else:
       value = op.inputs[0]
-      if self.outer_context:
+      if (isinstance(self.outer_context, WhileContext) and
+          self.outer_context.grad_state is not None):
+        # We are in a nested while loop.
         forward_ctxt = self.grad_state.forward_context
         forward_ctxt.outer_context.Enter()
         zeros_shape = array_ops.shape_internal(value, optimize=False)
@@ -2249,8 +2252,10 @@ class WhileContext(ControlFlowContext):
         acc = array_ops.zeros(real_shape, grad.dtype)
         self.outer_context.Exit()
       else:
+        if self.outer_context: self.outer_context.Enter()
         zeros_shape = array_ops.shape_internal(value, optimize=False)
         acc = array_ops.zeros(zeros_shape, grad.dtype)
+        if self.outer_context: self.outer_context.Exit()
       acc._shape = grad.get_shape()  # pylint: disable=protected-access
 
     self.Enter()

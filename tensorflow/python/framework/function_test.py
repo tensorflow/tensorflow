@@ -485,9 +485,9 @@ class FunctionTest(tf.test.TestCase):
       self.assertAllClose(vals[2], vals[3])
 
   def testDeclareTypeMistake(self):
-    foo = function.Declare("Foo", [tf.float32], [tf.float32])
+    foo = function.Declare("Foo", [("x", tf.float32)], [("y", tf.float32)])
 
-    @function.Defun(tf.float32, func_name="Foo")
+    @function.Defun(tf.float32, func_name="Foo", out_names=["y"])
     def Foo(x):
       return x * x + 1
 
@@ -566,7 +566,7 @@ class FunctionTest(tf.test.TestCase):
     def Foo(x, y, z):
       return tf.tanh(tf.matmul(x, y) + z)
 
-    self.assertEqual("Foo_19571794", Foo.instantiate([tf.float32] * 3).name)
+    self.assertEqual("Foo_e0cb6030", Foo.instantiate([tf.float32] * 3).name)
 
 
 class FunctionOverloadTest(tf.test.TestCase):
