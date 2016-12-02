@@ -20867,6 +20867,15 @@ op {
       s: ""
     }
   }
+  attr {
+    name: "element_shape"
+    type: "shape"
+    default_value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
   deprecation {
     version: 16
     explanation: "Use TensorArrayV2"
