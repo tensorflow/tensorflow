@@ -1,35 +1,35 @@
-The most basic RNN cell.
+Gated Recurrent Unit cell (cf. http://arxiv.org/abs/1406.1078).
 - - -
 
-#### `tf.nn.rnn_cell.BasicRNNCell.__call__(inputs, state, scope=None)` {#BasicRNNCell.__call__}
+#### `tf.contrib.rnn.GRUCell.__call__(inputs, state, scope=None)` {#GRUCell.__call__}
 
-Most basic RNN: output = new_state = act(W * input + U * state + B).
-
-
-- - -
-
-#### `tf.nn.rnn_cell.BasicRNNCell.__init__(num_units, input_size=None, activation=tanh)` {#BasicRNNCell.__init__}
-
-
+Gated recurrent unit (GRU) with nunits cells.
 
 
 - - -
 
-#### `tf.nn.rnn_cell.BasicRNNCell.output_size` {#BasicRNNCell.output_size}
+#### `tf.contrib.rnn.GRUCell.__init__(num_units, input_size=None, activation=tanh)` {#GRUCell.__init__}
 
 
 
 
 - - -
 
-#### `tf.nn.rnn_cell.BasicRNNCell.state_size` {#BasicRNNCell.state_size}
+#### `tf.contrib.rnn.GRUCell.output_size` {#GRUCell.output_size}
 
 
 
 
 - - -
 
-#### `tf.nn.rnn_cell.BasicRNNCell.zero_state(batch_size, dtype)` {#BasicRNNCell.zero_state}
+#### `tf.contrib.rnn.GRUCell.state_size` {#GRUCell.state_size}
+
+
+
+
+- - -
+
+#### `tf.contrib.rnn.GRUCell.zero_state(batch_size, dtype)` {#GRUCell.zero_state}
 
 Return zero-filled state tensor(s).
 

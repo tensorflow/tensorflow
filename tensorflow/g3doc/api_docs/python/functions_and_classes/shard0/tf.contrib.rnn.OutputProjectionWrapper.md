@@ -6,14 +6,14 @@ do the projection on this batch-concatenated sequence, then split it
 if needed or directly feed into a softmax.
 - - -
 
-#### `tf.nn.rnn_cell.OutputProjectionWrapper.__call__(inputs, state, scope=None)` {#OutputProjectionWrapper.__call__}
+#### `tf.contrib.rnn.OutputProjectionWrapper.__call__(inputs, state, scope=None)` {#OutputProjectionWrapper.__call__}
 
 Run the cell and output projection on inputs, starting from state.
 
 
 - - -
 
-#### `tf.nn.rnn_cell.OutputProjectionWrapper.__init__(cell, output_size)` {#OutputProjectionWrapper.__init__}
+#### `tf.contrib.rnn.OutputProjectionWrapper.__init__(cell, output_size)` {#OutputProjectionWrapper.__init__}
 
 Create a cell with output projection.
 
@@ -32,21 +32,21 @@ Create a cell with output projection.
 
 - - -
 
-#### `tf.nn.rnn_cell.OutputProjectionWrapper.output_size` {#OutputProjectionWrapper.output_size}
+#### `tf.contrib.rnn.OutputProjectionWrapper.output_size` {#OutputProjectionWrapper.output_size}
 
 
 
 
 - - -
 
-#### `tf.nn.rnn_cell.OutputProjectionWrapper.state_size` {#OutputProjectionWrapper.state_size}
+#### `tf.contrib.rnn.OutputProjectionWrapper.state_size` {#OutputProjectionWrapper.state_size}
 
 
 
 
 - - -
 
-#### `tf.nn.rnn_cell.OutputProjectionWrapper.zero_state(batch_size, dtype)` {#OutputProjectionWrapper.zero_state}
+#### `tf.contrib.rnn.OutputProjectionWrapper.zero_state(batch_size, dtype)` {#OutputProjectionWrapper.zero_state}
 
 Return zero-filled state tensor(s).
 

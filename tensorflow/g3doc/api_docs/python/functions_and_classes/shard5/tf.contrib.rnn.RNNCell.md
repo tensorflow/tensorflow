@@ -21,7 +21,7 @@ or by calling the `rnn` ops several times. Every `RNNCell` must have the
 properties below and and implement `__call__` with the following signature.
 - - -
 
-#### `tf.nn.rnn_cell.RNNCell.__call__(inputs, state, scope=None)` {#RNNCell.__call__}
+#### `tf.contrib.rnn.RNNCell.__call__(inputs, state, scope=None)` {#RNNCell.__call__}
 
 Run this RNN cell on inputs, starting from the given state.
 
@@ -46,14 +46,14 @@ Run this RNN cell on inputs, starting from the given state.
 
 - - -
 
-#### `tf.nn.rnn_cell.RNNCell.output_size` {#RNNCell.output_size}
+#### `tf.contrib.rnn.RNNCell.output_size` {#RNNCell.output_size}
 
 Integer or TensorShape: size of outputs produced by this cell.
 
 
 - - -
 
-#### `tf.nn.rnn_cell.RNNCell.state_size` {#RNNCell.state_size}
+#### `tf.contrib.rnn.RNNCell.state_size` {#RNNCell.state_size}
 
 size(s) of state(s) used by this cell.
 
@@ -63,7 +63,7 @@ or TensorShapes.
 
 - - -
 
-#### `tf.nn.rnn_cell.RNNCell.zero_state(batch_size, dtype)` {#RNNCell.zero_state}
+#### `tf.contrib.rnn.RNNCell.zero_state(batch_size, dtype)` {#RNNCell.zero_state}
 
 Return zero-filled state tensor(s).
 

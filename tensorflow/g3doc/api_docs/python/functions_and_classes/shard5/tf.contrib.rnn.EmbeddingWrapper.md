@@ -6,14 +6,14 @@ do the embedding on this batch-concatenated sequence, then split it and
 feed into your RNN.
 - - -
 
-#### `tf.nn.rnn_cell.EmbeddingWrapper.__call__(inputs, state, scope=None)` {#EmbeddingWrapper.__call__}
+#### `tf.contrib.rnn.EmbeddingWrapper.__call__(inputs, state, scope=None)` {#EmbeddingWrapper.__call__}
 
 Run the cell on embedded inputs.
 
 
 - - -
 
-#### `tf.nn.rnn_cell.EmbeddingWrapper.__init__(cell, embedding_classes, embedding_size, initializer=None)` {#EmbeddingWrapper.__init__}
+#### `tf.contrib.rnn.EmbeddingWrapper.__init__(cell, embedding_classes, embedding_size, initializer=None)` {#EmbeddingWrapper.__init__}
 
 Create a cell with an added input embedding.
 
@@ -35,21 +35,21 @@ Create a cell with an added input embedding.
 
 - - -
 
-#### `tf.nn.rnn_cell.EmbeddingWrapper.output_size` {#EmbeddingWrapper.output_size}
+#### `tf.contrib.rnn.EmbeddingWrapper.output_size` {#EmbeddingWrapper.output_size}
 
 
 
 
 - - -
 
-#### `tf.nn.rnn_cell.EmbeddingWrapper.state_size` {#EmbeddingWrapper.state_size}
+#### `tf.contrib.rnn.EmbeddingWrapper.state_size` {#EmbeddingWrapper.state_size}
 
 
 
 
 - - -
 
-#### `tf.nn.rnn_cell.EmbeddingWrapper.zero_state(batch_size, dtype)` {#EmbeddingWrapper.zero_state}
+#### `tf.contrib.rnn.EmbeddingWrapper.zero_state(batch_size, dtype)` {#EmbeddingWrapper.zero_state}
 
 Return zero-filled state tensor(s).
 

@@ -5,14 +5,14 @@ but instead concatenate the whole sequence of your inputs in time,
 do the projection on this batch-concatenated sequence, then split it.
 - - -
 
-#### `tf.nn.rnn_cell.InputProjectionWrapper.__call__(inputs, state, scope=None)` {#InputProjectionWrapper.__call__}
+#### `tf.contrib.rnn.InputProjectionWrapper.__call__(inputs, state, scope=None)` {#InputProjectionWrapper.__call__}
 
 Run the input projection and then the cell.
 
 
 - - -
 
-#### `tf.nn.rnn_cell.InputProjectionWrapper.__init__(cell, num_proj, input_size=None)` {#InputProjectionWrapper.__init__}
+#### `tf.contrib.rnn.InputProjectionWrapper.__init__(cell, num_proj, input_size=None)` {#InputProjectionWrapper.__init__}
 
 Create a cell with input projection.
 
@@ -31,21 +31,21 @@ Create a cell with input projection.
 
 - - -
 
-#### `tf.nn.rnn_cell.InputProjectionWrapper.output_size` {#InputProjectionWrapper.output_size}
+#### `tf.contrib.rnn.InputProjectionWrapper.output_size` {#InputProjectionWrapper.output_size}
 
 
 
 
 - - -
 
-#### `tf.nn.rnn_cell.InputProjectionWrapper.state_size` {#InputProjectionWrapper.state_size}
+#### `tf.contrib.rnn.InputProjectionWrapper.state_size` {#InputProjectionWrapper.state_size}
 
 
 
 
 - - -
 
-#### `tf.nn.rnn_cell.InputProjectionWrapper.zero_state(batch_size, dtype)` {#InputProjectionWrapper.zero_state}
+#### `tf.contrib.rnn.InputProjectionWrapper.zero_state(batch_size, dtype)` {#InputProjectionWrapper.zero_state}
 
 Return zero-filled state tensor(s).
 

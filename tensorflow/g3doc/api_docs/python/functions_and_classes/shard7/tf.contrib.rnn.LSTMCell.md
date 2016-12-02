@@ -19,7 +19,7 @@ The class uses optional peep-hole connections, optional cell clipping, and
 an optional projection layer.
 - - -
 
-#### `tf.nn.rnn_cell.LSTMCell.__call__(inputs, state, scope=None)` {#LSTMCell.__call__}
+#### `tf.contrib.rnn.LSTMCell.__call__(inputs, state, scope=None)` {#LSTMCell.__call__}
 
 Run one step of LSTM.
 
@@ -54,7 +54,7 @@ Run one step of LSTM.
 
 - - -
 
-#### `tf.nn.rnn_cell.LSTMCell.__init__(num_units, input_size=None, use_peepholes=False, cell_clip=None, initializer=None, num_proj=None, proj_clip=None, num_unit_shards=None, num_proj_shards=None, forget_bias=1.0, state_is_tuple=True, activation=tanh)` {#LSTMCell.__init__}
+#### `tf.contrib.rnn.LSTMCell.__init__(num_units, input_size=None, use_peepholes=False, cell_clip=None, initializer=None, num_proj=None, proj_clip=None, num_unit_shards=None, num_proj_shards=None, forget_bias=1.0, state_is_tuple=True, activation=tanh)` {#LSTMCell.__init__}
 
 Initialize the parameters for an LSTM cell.
 
@@ -88,21 +88,21 @@ Initialize the parameters for an LSTM cell.
 
 - - -
 
-#### `tf.nn.rnn_cell.LSTMCell.output_size` {#LSTMCell.output_size}
+#### `tf.contrib.rnn.LSTMCell.output_size` {#LSTMCell.output_size}
 
 
 
 
 - - -
 
-#### `tf.nn.rnn_cell.LSTMCell.state_size` {#LSTMCell.state_size}
+#### `tf.contrib.rnn.LSTMCell.state_size` {#LSTMCell.state_size}
 
 
 
 
 - - -
 
-#### `tf.nn.rnn_cell.LSTMCell.zero_state(batch_size, dtype)` {#LSTMCell.zero_state}
+#### `tf.contrib.rnn.LSTMCell.zero_state(batch_size, dtype)` {#LSTMCell.zero_state}
 
 Return zero-filled state tensor(s).
 

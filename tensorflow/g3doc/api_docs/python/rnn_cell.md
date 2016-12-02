@@ -9,7 +9,7 @@ Module for constructing RNN Cells.
 
 - - -
 
-### `class tf.nn.rnn_cell.RNNCell` {#RNNCell}
+### `class tf.contrib.rnn.RNNCell` {#RNNCell}
 
 Abstract object representing an RNN cell.
 
@@ -34,7 +34,7 @@ or by calling the `rnn` ops several times. Every `RNNCell` must have the
 properties below and and implement `__call__` with the following signature.
 - - -
 
-#### `tf.nn.rnn_cell.RNNCell.__call__(inputs, state, scope=None)` {#RNNCell.__call__}
+#### `tf.contrib.rnn.RNNCell.__call__(inputs, state, scope=None)` {#RNNCell.__call__}
 
 Run this RNN cell on inputs, starting from the given state.
 
@@ -59,14 +59,14 @@ Run this RNN cell on inputs, starting from the given state.
 
 - - -
 
-#### `tf.nn.rnn_cell.RNNCell.output_size` {#RNNCell.output_size}
+#### `tf.contrib.rnn.RNNCell.output_size` {#RNNCell.output_size}
 
 Integer or TensorShape: size of outputs produced by this cell.
 
 
 - - -
 
-#### `tf.nn.rnn_cell.RNNCell.state_size` {#RNNCell.state_size}
+#### `tf.contrib.rnn.RNNCell.state_size` {#RNNCell.state_size}
 
 size(s) of state(s) used by this cell.
 
@@ -76,7 +76,7 @@ or TensorShapes.
 
 - - -
 
-#### `tf.nn.rnn_cell.RNNCell.zero_state(batch_size, dtype)` {#RNNCell.zero_state}
+#### `tf.contrib.rnn.RNNCell.zero_state(batch_size, dtype)` {#RNNCell.zero_state}
 
 Return zero-filled state tensor(s).
 
@@ -102,40 +102,40 @@ the shapes `[batch_size x s]` for each s in `state_size`.
 
 - - -
 
-### `class tf.nn.rnn_cell.BasicRNNCell` {#BasicRNNCell}
+### `class tf.contrib.rnn.BasicRNNCell` {#BasicRNNCell}
 
 The most basic RNN cell.
 - - -
 
-#### `tf.nn.rnn_cell.BasicRNNCell.__call__(inputs, state, scope=None)` {#BasicRNNCell.__call__}
+#### `tf.contrib.rnn.BasicRNNCell.__call__(inputs, state, scope=None)` {#BasicRNNCell.__call__}
 
 Most basic RNN: output = new_state = act(W * input + U * state + B).
 
 
 - - -
 
-#### `tf.nn.rnn_cell.BasicRNNCell.__init__(num_units, input_size=None, activation=tanh)` {#BasicRNNCell.__init__}
+#### `tf.contrib.rnn.BasicRNNCell.__init__(num_units, input_size=None, activation=tanh)` {#BasicRNNCell.__init__}
 
 
 
 
 - - -
 
-#### `tf.nn.rnn_cell.BasicRNNCell.output_size` {#BasicRNNCell.output_size}
+#### `tf.contrib.rnn.BasicRNNCell.output_size` {#BasicRNNCell.output_size}
 
 
 
 
 - - -
 
-#### `tf.nn.rnn_cell.BasicRNNCell.state_size` {#BasicRNNCell.state_size}
+#### `tf.contrib.rnn.BasicRNNCell.state_size` {#BasicRNNCell.state_size}
 
 
 
 
 - - -
 
-#### `tf.nn.rnn_cell.BasicRNNCell.zero_state(batch_size, dtype)` {#BasicRNNCell.zero_state}
+#### `tf.contrib.rnn.BasicRNNCell.zero_state(batch_size, dtype)` {#BasicRNNCell.zero_state}
 
 Return zero-filled state tensor(s).
 
@@ -158,7 +158,7 @@ the shapes `[batch_size x s]` for each s in `state_size`.
 
 - - -
 
-### `class tf.nn.rnn_cell.BasicLSTMCell` {#BasicLSTMCell}
+### `class tf.contrib.rnn.BasicLSTMCell` {#BasicLSTMCell}
 
 Basic LSTM recurrent network cell.
 
@@ -173,14 +173,14 @@ use peep-hole connections: it is the basic baseline.
 For advanced models, please use the full LSTMCell that follows.
 - - -
 
-#### `tf.nn.rnn_cell.BasicLSTMCell.__call__(inputs, state, scope=None)` {#BasicLSTMCell.__call__}
+#### `tf.contrib.rnn.BasicLSTMCell.__call__(inputs, state, scope=None)` {#BasicLSTMCell.__call__}
 
 Long short-term memory cell (LSTM).
 
 
 - - -
 
-#### `tf.nn.rnn_cell.BasicLSTMCell.__init__(num_units, forget_bias=1.0, input_size=None, state_is_tuple=True, activation=tanh)` {#BasicLSTMCell.__init__}
+#### `tf.contrib.rnn.BasicLSTMCell.__init__(num_units, forget_bias=1.0, input_size=None, state_is_tuple=True, activation=tanh)` {#BasicLSTMCell.__init__}
 
 Initialize the basic LSTM cell.
 
@@ -198,21 +198,21 @@ Initialize the basic LSTM cell.
 
 - - -
 
-#### `tf.nn.rnn_cell.BasicLSTMCell.output_size` {#BasicLSTMCell.output_size}
+#### `tf.contrib.rnn.BasicLSTMCell.output_size` {#BasicLSTMCell.output_size}
 
 
 
 
 - - -
 
-#### `tf.nn.rnn_cell.BasicLSTMCell.state_size` {#BasicLSTMCell.state_size}
+#### `tf.contrib.rnn.BasicLSTMCell.state_size` {#BasicLSTMCell.state_size}
 
 
 
 
 - - -
 
-#### `tf.nn.rnn_cell.BasicLSTMCell.zero_state(batch_size, dtype)` {#BasicLSTMCell.zero_state}
+#### `tf.contrib.rnn.BasicLSTMCell.zero_state(batch_size, dtype)` {#BasicLSTMCell.zero_state}
 
 Return zero-filled state tensor(s).
 
@@ -235,40 +235,40 @@ the shapes `[batch_size x s]` for each s in `state_size`.
 
 - - -
 
-### `class tf.nn.rnn_cell.GRUCell` {#GRUCell}
+### `class tf.contrib.rnn.GRUCell` {#GRUCell}
 
 Gated Recurrent Unit cell (cf. http://arxiv.org/abs/1406.1078).
 - - -
 
-#### `tf.nn.rnn_cell.GRUCell.__call__(inputs, state, scope=None)` {#GRUCell.__call__}
+#### `tf.contrib.rnn.GRUCell.__call__(inputs, state, scope=None)` {#GRUCell.__call__}
 
 Gated recurrent unit (GRU) with nunits cells.
 
 
 - - -
 
-#### `tf.nn.rnn_cell.GRUCell.__init__(num_units, input_size=None, activation=tanh)` {#GRUCell.__init__}
+#### `tf.contrib.rnn.GRUCell.__init__(num_units, input_size=None, activation=tanh)` {#GRUCell.__init__}
 
 
 
 
 - - -
 
-#### `tf.nn.rnn_cell.GRUCell.output_size` {#GRUCell.output_size}
+#### `tf.contrib.rnn.GRUCell.output_size` {#GRUCell.output_size}
 
 
 
 
 - - -
 
-#### `tf.nn.rnn_cell.GRUCell.state_size` {#GRUCell.state_size}
+#### `tf.contrib.rnn.GRUCell.state_size` {#GRUCell.state_size}
 
 
 
 
 - - -
 
-#### `tf.nn.rnn_cell.GRUCell.zero_state(batch_size, dtype)` {#GRUCell.zero_state}
+#### `tf.contrib.rnn.GRUCell.zero_state(batch_size, dtype)` {#GRUCell.zero_state}
 
 Return zero-filled state tensor(s).
 
@@ -291,7 +291,7 @@ the shapes `[batch_size x s]` for each s in `state_size`.
 
 - - -
 
-### `class tf.nn.rnn_cell.LSTMCell` {#LSTMCell}
+### `class tf.contrib.rnn.LSTMCell` {#LSTMCell}
 
 Long short-term memory unit (LSTM) recurrent network cell.
 
@@ -314,7 +314,7 @@ The class uses optional peep-hole connections, optional cell clipping, and
 an optional projection layer.
 - - -
 
-#### `tf.nn.rnn_cell.LSTMCell.__call__(inputs, state, scope=None)` {#LSTMCell.__call__}
+#### `tf.contrib.rnn.LSTMCell.__call__(inputs, state, scope=None)` {#LSTMCell.__call__}
 
 Run one step of LSTM.
 
@@ -349,7 +349,7 @@ Run one step of LSTM.
 
 - - -
 
-#### `tf.nn.rnn_cell.LSTMCell.__init__(num_units, input_size=None, use_peepholes=False, cell_clip=None, initializer=None, num_proj=None, proj_clip=None, num_unit_shards=None, num_proj_shards=None, forget_bias=1.0, state_is_tuple=True, activation=tanh)` {#LSTMCell.__init__}
+#### `tf.contrib.rnn.LSTMCell.__init__(num_units, input_size=None, use_peepholes=False, cell_clip=None, initializer=None, num_proj=None, proj_clip=None, num_unit_shards=None, num_proj_shards=None, forget_bias=1.0, state_is_tuple=True, activation=tanh)` {#LSTMCell.__init__}
 
 Initialize the parameters for an LSTM cell.
 
@@ -383,21 +383,21 @@ Initialize the parameters for an LSTM cell.
 
 - - -
 
-#### `tf.nn.rnn_cell.LSTMCell.output_size` {#LSTMCell.output_size}
+#### `tf.contrib.rnn.LSTMCell.output_size` {#LSTMCell.output_size}
 
 
 
 
 - - -
 
-#### `tf.nn.rnn_cell.LSTMCell.state_size` {#LSTMCell.state_size}
+#### `tf.contrib.rnn.LSTMCell.state_size` {#LSTMCell.state_size}
 
 
 
 
 - - -
 
-#### `tf.nn.rnn_cell.LSTMCell.zero_state(batch_size, dtype)` {#LSTMCell.zero_state}
+#### `tf.contrib.rnn.LSTMCell.zero_state(batch_size, dtype)` {#LSTMCell.zero_state}
 
 Return zero-filled state tensor(s).
 
@@ -423,7 +423,7 @@ the shapes `[batch_size x s]` for each s in `state_size`.
 
 - - -
 
-### `class tf.nn.rnn_cell.LSTMStateTuple` {#LSTMStateTuple}
+### `class tf.contrib.rnn.LSTMStateTuple` {#LSTMStateTuple}
 
 Tuple used by LSTM Cells for `state_size`, `zero_state`, and output state.
 
@@ -432,49 +432,49 @@ Stores two elements: `(c, h)`, in that order.
 Only used when `state_is_tuple=True`.
 - - -
 
-#### `tf.nn.rnn_cell.LSTMStateTuple.__getnewargs__()` {#LSTMStateTuple.__getnewargs__}
+#### `tf.contrib.rnn.LSTMStateTuple.__getnewargs__()` {#LSTMStateTuple.__getnewargs__}
 
 Return self as a plain tuple.  Used by copy and pickle.
 
 
 - - -
 
-#### `tf.nn.rnn_cell.LSTMStateTuple.__getstate__()` {#LSTMStateTuple.__getstate__}
+#### `tf.contrib.rnn.LSTMStateTuple.__getstate__()` {#LSTMStateTuple.__getstate__}
 
 Exclude the OrderedDict from pickling
 
 
 - - -
 
-#### `tf.nn.rnn_cell.LSTMStateTuple.__new__(_cls, c, h)` {#LSTMStateTuple.__new__}
+#### `tf.contrib.rnn.LSTMStateTuple.__new__(_cls, c, h)` {#LSTMStateTuple.__new__}
 
 Create new instance of LSTMStateTuple(c, h)
 
 
 - - -
 
-#### `tf.nn.rnn_cell.LSTMStateTuple.__repr__()` {#LSTMStateTuple.__repr__}
+#### `tf.contrib.rnn.LSTMStateTuple.__repr__()` {#LSTMStateTuple.__repr__}
 
 Return a nicely formatted representation string
 
 
 - - -
 
-#### `tf.nn.rnn_cell.LSTMStateTuple.c` {#LSTMStateTuple.c}
+#### `tf.contrib.rnn.LSTMStateTuple.c` {#LSTMStateTuple.c}
 
 Alias for field number 0
 
 
 - - -
 
-#### `tf.nn.rnn_cell.LSTMStateTuple.dtype` {#LSTMStateTuple.dtype}
+#### `tf.contrib.rnn.LSTMStateTuple.dtype` {#LSTMStateTuple.dtype}
 
 
 
 
 - - -
 
-#### `tf.nn.rnn_cell.LSTMStateTuple.h` {#LSTMStateTuple.h}
+#### `tf.contrib.rnn.LSTMStateTuple.h` {#LSTMStateTuple.h}
 
 Alias for field number 1
 
@@ -485,19 +485,19 @@ Alias for field number 1
 
 - - -
 
-### `class tf.nn.rnn_cell.MultiRNNCell` {#MultiRNNCell}
+### `class tf.contrib.rnn.MultiRNNCell` {#MultiRNNCell}
 
 RNN cell composed sequentially of multiple simple cells.
 - - -
 
-#### `tf.nn.rnn_cell.MultiRNNCell.__call__(inputs, state, scope=None)` {#MultiRNNCell.__call__}
+#### `tf.contrib.rnn.MultiRNNCell.__call__(inputs, state, scope=None)` {#MultiRNNCell.__call__}
 
 Run this multi-layer cell on inputs, starting from state.
 
 
 - - -
 
-#### `tf.nn.rnn_cell.MultiRNNCell.__init__(cells, state_is_tuple=True)` {#MultiRNNCell.__init__}
+#### `tf.contrib.rnn.MultiRNNCell.__init__(cells, state_is_tuple=True)` {#MultiRNNCell.__init__}
 
 Create a RNN cell composed sequentially of a number of RNNCells.
 
@@ -519,21 +519,21 @@ Create a RNN cell composed sequentially of a number of RNNCells.
 
 - - -
 
-#### `tf.nn.rnn_cell.MultiRNNCell.output_size` {#MultiRNNCell.output_size}
+#### `tf.contrib.rnn.MultiRNNCell.output_size` {#MultiRNNCell.output_size}
 
 
 
 
 - - -
 
-#### `tf.nn.rnn_cell.MultiRNNCell.state_size` {#MultiRNNCell.state_size}
+#### `tf.contrib.rnn.MultiRNNCell.state_size` {#MultiRNNCell.state_size}
 
 
 
 
 - - -
 
-#### `tf.nn.rnn_cell.MultiRNNCell.zero_state(batch_size, dtype)` {#MultiRNNCell.zero_state}
+#### `tf.contrib.rnn.MultiRNNCell.zero_state(batch_size, dtype)` {#MultiRNNCell.zero_state}
 
 Return zero-filled state tensor(s).
 
@@ -556,19 +556,19 @@ the shapes `[batch_size x s]` for each s in `state_size`.
 
 - - -
 
-### `class tf.nn.rnn_cell.DropoutWrapper` {#DropoutWrapper}
+### `class tf.contrib.rnn.DropoutWrapper` {#DropoutWrapper}
 
 Operator adding dropout to inputs and outputs of the given cell.
 - - -
 
-#### `tf.nn.rnn_cell.DropoutWrapper.__call__(inputs, state, scope=None)` {#DropoutWrapper.__call__}
+#### `tf.contrib.rnn.DropoutWrapper.__call__(inputs, state, scope=None)` {#DropoutWrapper.__call__}
 
 Run the cell with the declared dropouts.
 
 
 - - -
 
-#### `tf.nn.rnn_cell.DropoutWrapper.__init__(cell, input_keep_prob=1.0, output_keep_prob=1.0, seed=None)` {#DropoutWrapper.__init__}
+#### `tf.contrib.rnn.DropoutWrapper.__init__(cell, input_keep_prob=1.0, output_keep_prob=1.0, seed=None)` {#DropoutWrapper.__init__}
 
 Create a cell with added input and/or output dropout.
 
@@ -593,21 +593,21 @@ Dropout is never used on the state.
 
 - - -
 
-#### `tf.nn.rnn_cell.DropoutWrapper.output_size` {#DropoutWrapper.output_size}
+#### `tf.contrib.rnn.DropoutWrapper.output_size` {#DropoutWrapper.output_size}
 
 
 
 
 - - -
 
-#### `tf.nn.rnn_cell.DropoutWrapper.state_size` {#DropoutWrapper.state_size}
+#### `tf.contrib.rnn.DropoutWrapper.state_size` {#DropoutWrapper.state_size}
 
 
 
 
 - - -
 
-#### `tf.nn.rnn_cell.DropoutWrapper.zero_state(batch_size, dtype)` {#DropoutWrapper.zero_state}
+#### `tf.contrib.rnn.DropoutWrapper.zero_state(batch_size, dtype)` {#DropoutWrapper.zero_state}
 
 Return zero-filled state tensor(s).
 
@@ -630,7 +630,7 @@ the shapes `[batch_size x s]` for each s in `state_size`.
 
 - - -
 
-### `class tf.nn.rnn_cell.EmbeddingWrapper` {#EmbeddingWrapper}
+### `class tf.contrib.rnn.EmbeddingWrapper` {#EmbeddingWrapper}
 
 Operator adding input embedding to the given cell.
 
@@ -640,14 +640,14 @@ do the embedding on this batch-concatenated sequence, then split it and
 feed into your RNN.
 - - -
 
-#### `tf.nn.rnn_cell.EmbeddingWrapper.__call__(inputs, state, scope=None)` {#EmbeddingWrapper.__call__}
+#### `tf.contrib.rnn.EmbeddingWrapper.__call__(inputs, state, scope=None)` {#EmbeddingWrapper.__call__}
 
 Run the cell on embedded inputs.
 
 
 - - -
 
-#### `tf.nn.rnn_cell.EmbeddingWrapper.__init__(cell, embedding_classes, embedding_size, initializer=None)` {#EmbeddingWrapper.__init__}
+#### `tf.contrib.rnn.EmbeddingWrapper.__init__(cell, embedding_classes, embedding_size, initializer=None)` {#EmbeddingWrapper.__init__}
 
 Create a cell with an added input embedding.
 
@@ -669,21 +669,21 @@ Create a cell with an added input embedding.
 
 - - -
 
-#### `tf.nn.rnn_cell.EmbeddingWrapper.output_size` {#EmbeddingWrapper.output_size}
+#### `tf.contrib.rnn.EmbeddingWrapper.output_size` {#EmbeddingWrapper.output_size}
 
 
 
 
 - - -
 
-#### `tf.nn.rnn_cell.EmbeddingWrapper.state_size` {#EmbeddingWrapper.state_size}
+#### `tf.contrib.rnn.EmbeddingWrapper.state_size` {#EmbeddingWrapper.state_size}
 
 
 
 
 - - -
 
-#### `tf.nn.rnn_cell.EmbeddingWrapper.zero_state(batch_size, dtype)` {#EmbeddingWrapper.zero_state}
+#### `tf.contrib.rnn.EmbeddingWrapper.zero_state(batch_size, dtype)` {#EmbeddingWrapper.zero_state}
 
 Return zero-filled state tensor(s).
 
@@ -706,7 +706,7 @@ the shapes `[batch_size x s]` for each s in `state_size`.
 
 - - -
 
-### `class tf.nn.rnn_cell.InputProjectionWrapper` {#InputProjectionWrapper}
+### `class tf.contrib.rnn.InputProjectionWrapper` {#InputProjectionWrapper}
 
 Operator adding an input projection to the given cell.
 
@@ -715,14 +715,14 @@ but instead concatenate the whole sequence of your inputs in time,
 do the projection on this batch-concatenated sequence, then split it.
 - - -
 
-#### `tf.nn.rnn_cell.InputProjectionWrapper.__call__(inputs, state, scope=None)` {#InputProjectionWrapper.__call__}
+#### `tf.contrib.rnn.InputProjectionWrapper.__call__(inputs, state, scope=None)` {#InputProjectionWrapper.__call__}
 
 Run the input projection and then the cell.
 
 
 - - -
 
-#### `tf.nn.rnn_cell.InputProjectionWrapper.__init__(cell, num_proj, input_size=None)` {#InputProjectionWrapper.__init__}
+#### `tf.contrib.rnn.InputProjectionWrapper.__init__(cell, num_proj, input_size=None)` {#InputProjectionWrapper.__init__}
 
 Create a cell with input projection.
 
@@ -741,21 +741,21 @@ Create a cell with input projection.
 
 - - -
 
-#### `tf.nn.rnn_cell.InputProjectionWrapper.output_size` {#InputProjectionWrapper.output_size}
+#### `tf.contrib.rnn.InputProjectionWrapper.output_size` {#InputProjectionWrapper.output_size}
 
 
 
 
 - - -
 
-#### `tf.nn.rnn_cell.InputProjectionWrapper.state_size` {#InputProjectionWrapper.state_size}
+#### `tf.contrib.rnn.InputProjectionWrapper.state_size` {#InputProjectionWrapper.state_size}
 
 
 
 
 - - -
 
-#### `tf.nn.rnn_cell.InputProjectionWrapper.zero_state(batch_size, dtype)` {#InputProjectionWrapper.zero_state}
+#### `tf.contrib.rnn.InputProjectionWrapper.zero_state(batch_size, dtype)` {#InputProjectionWrapper.zero_state}
 
 Return zero-filled state tensor(s).
 
@@ -778,7 +778,7 @@ the shapes `[batch_size x s]` for each s in `state_size`.
 
 - - -
 
-### `class tf.nn.rnn_cell.OutputProjectionWrapper` {#OutputProjectionWrapper}
+### `class tf.contrib.rnn.OutputProjectionWrapper` {#OutputProjectionWrapper}
 
 Operator adding an output projection to the given cell.
 
@@ -788,14 +788,14 @@ do the projection on this batch-concatenated sequence, then split it
 if needed or directly feed into a softmax.
 - - -
 
-#### `tf.nn.rnn_cell.OutputProjectionWrapper.__call__(inputs, state, scope=None)` {#OutputProjectionWrapper.__call__}
+#### `tf.contrib.rnn.OutputProjectionWrapper.__call__(inputs, state, scope=None)` {#OutputProjectionWrapper.__call__}
 
 Run the cell and output projection on inputs, starting from state.
 
 
 - - -
 
-#### `tf.nn.rnn_cell.OutputProjectionWrapper.__init__(cell, output_size)` {#OutputProjectionWrapper.__init__}
+#### `tf.contrib.rnn.OutputProjectionWrapper.__init__(cell, output_size)` {#OutputProjectionWrapper.__init__}
 
 Create a cell with output projection.
 
@@ -814,21 +814,21 @@ Create a cell with output projection.
 
 - - -
 
-#### `tf.nn.rnn_cell.OutputProjectionWrapper.output_size` {#OutputProjectionWrapper.output_size}
+#### `tf.contrib.rnn.OutputProjectionWrapper.output_size` {#OutputProjectionWrapper.output_size}
 
 
 
 
 - - -
 
-#### `tf.nn.rnn_cell.OutputProjectionWrapper.state_size` {#OutputProjectionWrapper.state_size}
+#### `tf.contrib.rnn.OutputProjectionWrapper.state_size` {#OutputProjectionWrapper.state_size}
 
 
 
 
 - - -
 
-#### `tf.nn.rnn_cell.OutputProjectionWrapper.zero_state(batch_size, dtype)` {#OutputProjectionWrapper.zero_state}
+#### `tf.contrib.rnn.OutputProjectionWrapper.zero_state(batch_size, dtype)` {#OutputProjectionWrapper.zero_state}
 
 Return zero-filled state tensor(s).
 

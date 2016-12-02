@@ -1,14 +1,14 @@
 RNN cell composed sequentially of multiple simple cells.
 - - -
 
-#### `tf.nn.rnn_cell.MultiRNNCell.__call__(inputs, state, scope=None)` {#MultiRNNCell.__call__}
+#### `tf.contrib.rnn.MultiRNNCell.__call__(inputs, state, scope=None)` {#MultiRNNCell.__call__}
 
 Run this multi-layer cell on inputs, starting from state.
 
 
 - - -
 
-#### `tf.nn.rnn_cell.MultiRNNCell.__init__(cells, state_is_tuple=True)` {#MultiRNNCell.__init__}
+#### `tf.contrib.rnn.MultiRNNCell.__init__(cells, state_is_tuple=True)` {#MultiRNNCell.__init__}
 
 Create a RNN cell composed sequentially of a number of RNNCells.
 
@@ -30,21 +30,21 @@ Create a RNN cell composed sequentially of a number of RNNCells.
 
 - - -
 
-#### `tf.nn.rnn_cell.MultiRNNCell.output_size` {#MultiRNNCell.output_size}
+#### `tf.contrib.rnn.MultiRNNCell.output_size` {#MultiRNNCell.output_size}
 
 
 
 
 - - -
 
-#### `tf.nn.rnn_cell.MultiRNNCell.state_size` {#MultiRNNCell.state_size}
+#### `tf.contrib.rnn.MultiRNNCell.state_size` {#MultiRNNCell.state_size}
 
 
 
 
 - - -
 
-#### `tf.nn.rnn_cell.MultiRNNCell.zero_state(batch_size, dtype)` {#MultiRNNCell.zero_state}
+#### `tf.contrib.rnn.MultiRNNCell.zero_state(batch_size, dtype)` {#MultiRNNCell.zero_state}
 
 Return zero-filled state tensor(s).
 
