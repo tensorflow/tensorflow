@@ -219,6 +219,11 @@ class TensorForestEstimator(evaluable.Evaluable, trainable.Trainable):
         config=config,
         feature_engineering_fn=feature_engineering_fn)
 
+  @property
+  def model_dir(self):
+    """See evaluable.Evaluable."""
+    return self._estimator.model_dir
+
   def evaluate(
       self, x=None, y=None, input_fn=None, feed_fn=None, batch_size=None,
       steps=None, metrics=None, name=None):

@@ -17,6 +17,9 @@ from __future__ import division
 from __future__ import print_function
 
 import json
+import os
+import tempfile
+import threading
 import time
 
 import tensorflow as tf
@@ -29,11 +32,17 @@ patch = tf.test.mock.patch
 
 class TestEstimator(tf.contrib.learn.Evaluable, tf.contrib.learn.Trainable):
 
-  def __init__(self, config=None):
+  def __init__(self, config=None, max_evals=5):
     self.eval_count = 0
     self.fit_count = 0
+    self._max_evals = max_evals
     self.monitors = []
     self._config = config or run_config.RunConfig()
+    self._model_dir = tempfile.mkdtemp()
+
+  @property
+  def model_dir(self):
+    return self._model_dir
 
   @property
   def config(self):
@@ -42,12 +51,21 @@ class TestEstimator(tf.contrib.learn.Evaluable, tf.contrib.learn.Trainable):
   def evaluate(self, **kwargs):
     tf.logging.info('evaluate called with args: %s' % kwargs)
     self.eval_count += 1
-    if self.eval_count > 5:
-      tf.logging.info('Ran 6 evals. Done.')
+    if self.eval_count > self._max_evals:
+      tf.logging.info('Ran %d evals. Done.' % self.eval_count)
       raise StopIteration()
     return [(key, kwargs[key]) for key in sorted(kwargs.keys())]
 
+  def fake_checkpoint(self):
+    save_path = os.path.join(self.model_dir, 'model.ckpt')
+    with tf.Session() as sess:
+      var = tf.Variable(1.0, name='var0')
+      save = tf.train.Saver({var.op.name: var})
+      var.initializer.run()
+      save.save(sess, save_path, global_step=0)
+
   def fit(self, **kwargs):
+    self.fake_checkpoint()
     tf.logging.info('fit called with args: %s' % kwargs)
     self.fit_count += 1
     if 'monitors' in kwargs:
@@ -195,6 +213,7 @@ class ExperimentTest(tf.test.TestCase):
 
   def test_evaluate(self):
     est = TestEstimator()
+    est.fake_checkpoint()
     ex = tf.contrib.learn.Experiment(
         est,
         train_input_fn='train_input',
@@ -208,6 +227,7 @@ class ExperimentTest(tf.test.TestCase):
 
   def test_evaluate_delay(self):
     est = TestEstimator()
+    est.fake_checkpoint()
     ex = tf.contrib.learn.Experiment(
         est, train_input_fn='train_input', eval_input_fn='eval_input')
 
@@ -220,6 +240,7 @@ class ExperimentTest(tf.test.TestCase):
 
   def test_continuous_eval(self):
     est = TestEstimator()
+    est.fake_checkpoint()
     ex = tf.contrib.learn.Experiment(
         est,
         train_input_fn='train_input',
@@ -227,13 +248,15 @@ class ExperimentTest(tf.test.TestCase):
         eval_metrics='eval_metrics',
         eval_delay_secs=0,
         continuous_eval_throttle_secs=0)
-    self.assertRaises(StopIteration, ex.continuous_eval)
+    self.assertRaises(StopIteration, ex.continuous_eval,
+                      evaluate_checkpoint_only_once=False)
     self.assertEquals(6, est.eval_count)
     self.assertEquals(0, est.fit_count)
 
   def test_continuous_eval_throttle_delay(self):
     for delay in [0, 1, 2]:
       est = TestEstimator()
+      est.fake_checkpoint()
       ex = tf.contrib.learn.Experiment(
           est,
           train_input_fn='train_input',
@@ -242,7 +265,8 @@ class ExperimentTest(tf.test.TestCase):
           continuous_eval_throttle_secs=delay,
           eval_delay_secs=0)
       start = time.time()
-      self.assertRaises(StopIteration, ex.continuous_eval)
+      self.assertRaises(StopIteration, ex.continuous_eval,
+                        evaluate_checkpoint_only_once=False)
       duration = time.time() - start
       expected = 5 * delay
       tf.logging.info('eval duration (expected %f): %f', expected, duration)
@@ -327,6 +351,33 @@ class ExperimentTest(tf.test.TestCase):
     self.assertEquals(1, est.fit_count)
     self.assertEquals(1, est.eval_count)
 
+  def test_continuous_eval_evaluates_checkpoint_once(self):
+    # The TestEstimator will raise StopIteration the second time evaluate is
+    # called.
+    ex = tf.contrib.learn.Experiment(
+        TestEstimator(max_evals=1),
+        train_input_fn='train_input',
+        eval_input_fn='eval_input')
+
+    # This should not happen if the logic restricting evaluation of the same
+    # checkpoint works. We do need some checkpoint though, otherwise Experiment
+    # will never evaluate.
+    ex.estimator.fake_checkpoint()
+
+    # Start a separate thread with continuous eval
+    thread = threading.Thread(
+        target=lambda: ex.continuous_eval(delay_secs=0, throttle_delay_secs=0))
+    thread.start()
+
+    # The thread will die if it evaluates twice, and we should never evaluate
+    # twice since we don't write another checkpoint. Since we did not enable
+    # throttling, if it hasn't died after two seconds, we're good.
+    thread.join(2)
+    self.assertTrue(thread.is_alive())
+
+    # But we should have evaluated once.
+    count = ex.estimator.eval_count
+    self.assertEquals(1, count)
 
 if __name__ == '__main__':
   tf.test.main()
