@@ -2363,6 +2363,20 @@ py_test(
     ],
 )
 
+py_test(
+    name = "layers_normalization_test",
+    size = "small",
+    srcs = [
+        "layers/normalization_test.py",
+    ],
+    main = "layers/normalization_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":layers",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 py_library(
     name = "docs",
     srcs = [

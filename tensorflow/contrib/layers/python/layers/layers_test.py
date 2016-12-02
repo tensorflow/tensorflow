@@ -1570,14 +1570,14 @@ class BatchNormTest(tf.test.TestCase):
     with tf.Graph().as_default() as g, self.test_session(g):
       inputs = tf.placeholder(dtype=tf.float32)
       inputs.set_shape(tf.TensorShape((5, 3, 3, None)))
-      with self.assertRaisesRegexp(ValueError, 'undefined channels dimension'):
+      with self.assertRaisesRegexp(ValueError, 'undefined'):
         tf.contrib.layers.batch_norm(inputs, data_format='NHWC')
 
   def testUnknownChannelsDimNCHW(self):
     with tf.Graph().as_default() as g, self.test_session(g):
       inputs = tf.placeholder(dtype=tf.float32)
       inputs.set_shape(tf.TensorShape((5, None, 3, 3)))
-      with self.assertRaisesRegexp(ValueError, 'undefined channels dimension'):
+      with self.assertRaisesRegexp(ValueError, 'undefined'):
         tf.contrib.layers.batch_norm(inputs, data_format='NCHW')
 
   def testWeightedMomentsFused(self):

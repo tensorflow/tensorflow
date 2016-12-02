@@ -32,6 +32,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.layers import convolutional as convolutional_layers
 from tensorflow.python.layers import core as core_layers
+from tensorflow.python.layers import  normalization as normalization_layers
 from tensorflow.python.layers import pooling as pooling_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -462,9 +463,64 @@ def batch_norm(
   if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
     raise ValueError('data_format has to be either NCHW or NHWC.')
 
-  with variable_scope.variable_scope(scope, 'BatchNorm', [inputs],
-                                     reuse=reuse) as sc:
+  layer_variable_getter = _build_variable_getter()
+  with variable_scope.variable_scope(
+      scope, 'BatchNorm', [inputs], reuse=reuse,
+      custom_getter=layer_variable_getter) as sc:
     inputs = ops.convert_to_tensor(inputs)
+
+    # Determine whether we can use the core layer class.
+    if (batch_weights is None and
+        updates_collections is ops.GraphKeys.UPDATE_OPS):
+      # Use the core layer class.
+      axis = 1 if data_format == DATA_FORMAT_NCHW else -1
+      if not param_initializers:
+        param_initializers = {}
+      beta_initializer = param_initializers.get('beta',
+                                                init_ops.zeros_initializer)
+      gamma_initializer = param_initializers.get('gamma',
+                                                 init_ops.ones_initializer())
+      moving_mean_initializer = param_initializers.get(
+          'moving_mean', init_ops.zeros_initializer)
+      moving_variance_initializer = param_initializers.get(
+          'moving_variance', init_ops.ones_initializer())
+      layer = normalization_layers.BatchNormalization(
+          axis=axis,
+          momentum=decay,
+          epsilon=epsilon,
+          center=center,
+          scale=scale,
+          beta_initializer=beta_initializer,
+          gamma_initializer=gamma_initializer,
+          moving_mean_initializer=moving_mean_initializer,
+          moving_variance_initializer=moving_variance_initializer,
+          trainable=trainable,
+          name=sc.name,
+          _scope=sc,
+          _reuse_weights=reuse)
+      outputs = layer.apply(inputs, training=is_training)
+
+      # Add variables to collections.
+      _add_variable_to_collections(
+          layer.moving_mean, variables_collections, 'moving_mean')
+      _add_variable_to_collections(
+          layer.moving_variance, variables_collections, 'moving_variance')
+      if layer.beta:
+        _add_variable_to_collections(layer.beta, variables_collections, 'beta')
+      if layer.gamma:
+        _add_variable_to_collections(layer.beta, variables_collections, 'gamma')
+
+      if activation_fn is not None:
+        outputs = activation_fn(outputs)
+      return utils.collect_named_outputs(outputs_collections,
+                                         sc.original_name_scope, outputs)
+
+    # Not supported by layer class: batch_weights argument,
+    # and custom updates_collections. In that case, use the legacy BN
+    # implementation.
+    # Custom updates collections are not supported because the update logic
+    # is different in this case, in particular w.r.t. "forced updates" and
+    # update op reuse.
     inputs_shape = inputs.get_shape()
     inputs_rank = inputs_shape.ndims
     if inputs_rank is None:
@@ -1230,7 +1286,7 @@ def _model_variable_getter(getter, name, shape=None, dtype=None,
       custom_getter=getter)
 
 
-def _build_variable_getter(rename):
+def _build_variable_getter(rename=None):
   """Build a model variable getter that respects scope getter and renames."""
   # Respect current getter, if one is set.
   current_custom_getter = variable_scope.get_variable_scope().custom_getter
