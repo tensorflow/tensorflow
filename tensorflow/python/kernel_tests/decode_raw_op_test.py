@@ -21,14 +21,17 @@ from __future__ import print_function
 
 import numpy as np
 import tensorflow as tf
-
+import sys
 
 class DecodeRawOpTest(tf.test.TestCase):
 
   def testToUint8(self):
     with self.test_session():
       in_bytes = tf.placeholder(tf.string, shape=[2])
-      decode = tf.decode_raw(in_bytes, out_type=tf.uint8)
+      if sys.byteorder == "big":
+         decode = tf.decode_raw(in_bytes, out_type=tf.uint8, little_endian=False)
+      else:
+         decode = tf.decode_raw(in_bytes, out_type=tf.uint8)
       self.assertEqual([2, None], decode.get_shape().as_list())
 
       result = decode.eval(feed_dict={in_bytes: ["A", "a"]})
@@ -46,11 +49,18 @@ class DecodeRawOpTest(tf.test.TestCase):
   def testToInt16(self):
     with self.test_session():
       in_bytes = tf.placeholder(tf.string, shape=[None])
-      decode = tf.decode_raw(in_bytes, out_type=tf.int16)
+      if sys.byteorder == "big":
+         decode = tf.decode_raw(in_bytes, out_type=tf.int16, little_endian=False)
+      else:
+         decode = tf.decode_raw(in_bytes, out_type=tf.int16)
       self.assertEqual([None, None], decode.get_shape().as_list())
 
       result = decode.eval(feed_dict={in_bytes: ["AaBC"]})
-      self.assertAllEqual([[ord("A") + ord("a") * 256,
+      if sys.byteorder == "big":
+         self.assertAllEqual([[ord("A") * 256 + ord("a"),
+                            ord("B") * 256 + ord("C")]], result)
+      else:
+         self.assertAllEqual([[ord("A") + ord("a") * 256,
                             ord("B") + ord("C") * 256]], result)
 
       with self.assertRaisesOpError(
@@ -61,7 +71,10 @@ class DecodeRawOpTest(tf.test.TestCase):
   def testToFloat16(self):
     with self.test_session():
       in_bytes = tf.placeholder(tf.string, shape=[None])
-      decode = tf.decode_raw(in_bytes, out_type=tf.float16)
+      if sys.byteorder == "big":
+         decode = tf.decode_raw(in_bytes, out_type=tf.float16, little_endian=False)
+      else:
+         decode = tf.decode_raw(in_bytes, out_type=tf.float16)
       self.assertEqual([None, None], decode.get_shape().as_list())
 
       expected_result = np.matrix([[1, -2, -3, 4]], dtype=np.float16)
