@@ -1010,6 +1010,26 @@ def atrous_conv2d_transpose(value,
                             rate,
                             padding="SAME",
                             name=None):
+  """The transpose of Atrous convolution
+
+  Computes a 2-D atrous convolution's transpose.
+
+  Args:
+    value: A 4-D `Tensor` of type `float`. It needs to be in the default "NHWC"
+      format. Its shape is `[batch, in_height, in_width, in_channels]`.
+    filter: A 4-D `Tensor` with the same type as `value` and shape
+      `[filter_height, filter_width, out_channels, in_channels]`. 
+    rate: A positive int32. The parameter of the `filter`. See `atrous_conv2d()`.
+    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+    name: Optional name for the returned tensor.
+
+  Returns:
+    A `Tensor` with the same type as `value`.
+
+  Raises:
+    ValueError: If value depth does not match `filters`' shape, or if
+      padding is other than `'VALID'` or `'SAME'`.
+  """
   with ops.name_scope(name, "atrous_conv2d_transpose",
                       [value, filter]) as name:
     if padding == "SAME":
