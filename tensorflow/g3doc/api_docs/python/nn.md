@@ -2113,7 +2113,7 @@ Computes half the L2 norm of a tensor without the `sqrt`:
 
 - - -
 
-### `tf.nn.log_poisson_loss(log_input, targets, compute_full_loss=False, name=None)` {#log_poisson_loss}
+### `tf.nn.log_poisson_loss(targets, log_input, compute_full_loss=False, name=None)` {#log_poisson_loss}
 
 Computes log Poisson loss given `log_input`.
 
@@ -2141,8 +2141,8 @@ loss is
 ##### Args:
 
 
-*  <b>`log_input`</b>: A `Tensor` of type `float32` or `float64`.
 *  <b>`targets`</b>: A `Tensor` of the same type and shape as `log_input`.
+*  <b>`log_input`</b>: A `Tensor` of type `float32` or `float64`.
 *  <b>`compute_full_loss`</b>: whether to compute the full loss. If false, a constant
     term is dropped in favor of more efficient optimization.
 *  <b>`name`</b>: A name for the operation (optional).
@@ -3384,8 +3384,10 @@ TensorFlow provides the following sampled loss functions for faster training.
 Computes and returns the noise-contrastive estimation training loss.
 
 See [Noise-contrastive estimation: A new estimation principle for
-unnormalized statistical models](http://www.jmlr.org/proceedings/papers/v9/gutmann10a/gutmann10a.pdf).
-Also see our [Candidate Sampling Algorithms Reference](../../extras/candidate_sampling.pdf)
+unnormalized statistical
+models](http://www.jmlr.org/proceedings/papers/v9/gutmann10a/gutmann10a.pdf).
+Also see our [Candidate Sampling Algorithms
+Reference](../../extras/candidate_sampling.pdf)
 
 Note: By default this uses a log-uniform (Zipfian) distribution for sampling,
 so your labels must be sorted in order of decreasing frequency to achieve
@@ -3944,7 +3946,8 @@ This is useful in summaries to measure and report sparsity.  For example,
 
 ```python
     z = tf.Relu(...)
-    summ = tf.contrib.deprecated.scalar_summary('sparsity', tf.nn.zero_fraction(z))
+    summ = tf.contrib.deprecated.scalar_summary('sparsity',
+    tf.nn.zero_fraction(z))
 ```
 
 ##### Args:
