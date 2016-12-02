@@ -872,18 +872,17 @@ def _centered_bias_step(centered_bias, logits_dimension, labels, loss_fn):
   """Creates and returns training op for centered bias."""
   if (logits_dimension is None) or (logits_dimension < 1):
     raise ValueError("Invalid logits_dimension %s." % logits_dimension)
-  with ops.name_scope(None, "centered_bias_step", (labels,)) as name:
-    batch_size = array_ops.shape(labels)[0]
-    logits = array_ops.reshape(
-        array_ops.tile(centered_bias, (batch_size,)),
-        (batch_size, logits_dimension))
-    with ops.name_scope(None, "centered_bias", (labels, logits)):
-      centered_bias_loss = math_ops.reduce_mean(
-          loss_fn(logits, labels), name="training_loss")
-    # Learn central bias by an optimizer. 0.1 is a convervative lr for a
-    # single variable.
-    return training.AdagradOptimizer(0.1).minimize(
-        centered_bias_loss, var_list=(centered_bias,), name=name)
+  batch_size = array_ops.shape(labels)[0]
+  logits = array_ops.reshape(
+      array_ops.tile(centered_bias, (batch_size,)),
+      (batch_size, logits_dimension))
+  with ops.name_scope(None, "centered_bias", (labels, logits)):
+    centered_bias_loss = math_ops.reduce_mean(
+        loss_fn(logits, labels), name="training_loss")
+  # Learn central bias by an optimizer. 0.1 is a convervative lr for a
+  # single variable.
+  return training.AdagradOptimizer(0.1).minimize(
+      centered_bias_loss, var_list=(centered_bias,), name="centered_bias_step")
 
 
 def _head_prefixed(head_name, val):
@@ -930,11 +929,14 @@ def _train_op(
     loss, labels, train_op_fn, centered_bias=None, logits_dimension=None,
     loss_fn=None):
   """Returns op for the training step."""
+  if centered_bias is not None:
+    centered_bias_step = _centered_bias_step(
+        centered_bias, logits_dimension, labels, loss_fn)
+  else:
+    centered_bias_step = None
   with ops.name_scope(None, "train_op", (loss, labels)):
     train_op = train_op_fn(loss)
-    if centered_bias is not None:
-      centered_bias_step = _centered_bias_step(
-          centered_bias, logits_dimension, labels, loss_fn)
+    if centered_bias_step is not None:
       train_op = control_flow_ops.group(train_op, centered_bias_step)
     return train_op
 
