@@ -1071,7 +1071,7 @@ def global_variables():
   return ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
 
 
-@deprecated("2016-03-02", "Please use tf.global_variables instead.")
+@deprecated("2017-03-02", "Please use tf.global_variables instead.")
 def all_variables():
   """See `tf.global_variables`."""
   return global_variables()
