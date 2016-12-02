@@ -56,7 +56,7 @@ then the output will look like:
 ```
 {"ft": SparseTensor(indices=[[0, 0], [0, 1], [2, 0]],
                     values=[1.0, 2.0, 3.0],
-                    shape=(3, 2)) }
+                    dense_shape=(3, 2)) }
 ```
 
 Given two `Example` input protos in `serialized`:

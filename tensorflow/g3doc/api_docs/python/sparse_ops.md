@@ -554,7 +554,7 @@ equal to:
 ```python
   SparseTensor(indices=[[0, 0], [1, 1], [1, 3], [1, 4], [2, 0], [2, 3]],
                values=[-3, 1, 4, 1, 5, 9],
-               shape=[3, 6])
+               dense_shape=[3, 6])
 ```
 
 ##### Args:
