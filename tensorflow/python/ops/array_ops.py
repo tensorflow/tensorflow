@@ -2347,7 +2347,7 @@ def squeeze(input, axis=None, name=None, squeeze_dims=None):
   ```prettyprint
   # 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
   shape(squeeze(t)) ==> [2, 3]
-            ```
+  ```
 
   Or, to remove specific size 1 dimensions:
 
