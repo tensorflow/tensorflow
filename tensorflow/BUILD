@@ -108,7 +108,6 @@ filegroup(
         "//tensorflow/contrib/lookup:all_files",
         "//tensorflow/contrib/losses:all_files",
         "//tensorflow/contrib/metrics:all_files",
-        "//tensorflow/contrib/metrics/kernels:all_files",
         "//tensorflow/contrib/ndlstm:all_files",
         "//tensorflow/contrib/opt:all_files",
         "//tensorflow/contrib/rnn:all_files",

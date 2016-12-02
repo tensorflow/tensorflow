@@ -432,6 +432,17 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "set_kernels",
+    prefix = "set_kernels",
+    deps = [
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:set_ops_op_lib",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_kernel_library(
     name = "debug_ops",
     prefix = "debug_ops",
     deps = ARRAY_DEPS + [

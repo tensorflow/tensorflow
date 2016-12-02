@@ -1380,6 +1380,13 @@ sycl_py_test(
     additional_deps = ["//tensorflow:tensorflow_py"],
 )
 
+tf_py_test(
+    name = "sets_test",
+    size = "small",
+    srcs = ["sets_test.py"],
+    additional_deps = ["//tensorflow:tensorflow_py"],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(

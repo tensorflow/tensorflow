@@ -747,6 +747,11 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "set_ops_gen",
+    require_shape_functions = True,
+)
+
+tf_gen_op_wrapper_private_py(
     name = "state_ops_gen",
     require_shape_functions = True,
 )
@@ -792,6 +797,16 @@ py_library(
         ":array_ops_gen",
         ":framework",
         ":math_ops_gen",
+    ],
+)
+
+py_library(
+    name = "sets",
+    srcs = ["ops/sets.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework",
+        ":set_ops_gen",
     ],
 )
 
@@ -1516,6 +1531,7 @@ py_library(
         ":script_ops",
         ":seq2seq",
         ":session_ops",
+        ":sets",
         ":sparse_grad",
         ":sparse_ops",
         ":special_math_ops",

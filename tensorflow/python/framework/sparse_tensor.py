@@ -302,3 +302,33 @@ class SparseTensorValue(object):
 
   def __getitem__(self, i):
     return [self.indices, self.values, self.dense_shape][i]
+
+
+def convert_to_tensor_or_sparse_tensor(value, dtype=None, name=None):
+  """Converts value to a `SparseTensor` or `Tensor`.
+
+  Args:
+    value: A `SparseTensor`, `SparseTensorValue`, or an object whose type has a
+      registered `Tensor` conversion function.
+    dtype: Optional element type for the returned tensor. If missing, the
+      type is inferred from the type of `value`.
+    name: Optional name to use if a new `Tensor` is created.
+
+  Returns:
+    A `SparseTensor` or `Tensor` based on `value`.
+
+  Raises:
+    RuntimeError: If result type is incompatible with `dtype`.
+  """
+  if dtype is not None:
+    dtype = dtypes.as_dtype(dtype)
+  if isinstance(value, SparseTensorValue):
+    value = SparseTensor.from_value(value)
+  if isinstance(value, SparseTensor):
+    if dtype and not dtype.is_compatible_with(value.dtype):
+      raise RuntimeError(
+          "Sparse dtype: requested = %s, actual = %s" % (
+              dtype.name, value.dtype.name))
+    return value
+  return ops.internal_convert_to_tensor(
+      value, dtype=dtype, name=name)
