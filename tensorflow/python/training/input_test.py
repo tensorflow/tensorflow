@@ -700,13 +700,13 @@ class BatchTest(tf.test.TestCase):
         tf.train.batch([x], batch_size=2)
 
   def testBatchedSparseTensorInferredShape(self):
-    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], shape=[1])
+    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], dense_shape=[1])
     self.assertAllEqual((1,), sparse.shape.get_shape().as_list())
     batched = tf.train.batch([sparse], batch_size=2)
     self.assertAllEqual((2,), batched.shape.get_shape().as_list())
 
   def testBatchedSparseTensorInferredShapeEnqueueMany(self):
-    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], shape=[1])
+    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], dense_shape=[1])
     self.assertAllEqual((1,), sparse.shape.get_shape().as_list())
     batched = tf.train.batch([sparse], batch_size=2, enqueue_many=True)
     self.assertAllEqual((1,), batched.shape.get_shape().as_list())
@@ -779,13 +779,13 @@ class BatchTest(tf.test.TestCase):
     self._testKeepInputHelper(5, True)
 
   def testMaybeBatchedSparseTensorInferredShape(self):
-    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], shape=[1])
+    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], dense_shape=[1])
     self.assertAllEqual((1,), sparse.shape.get_shape().as_list())
     batched = tf.train.maybe_batch([sparse], keep_input=True, batch_size=2)
     self.assertAllEqual((2,), batched.shape.get_shape().as_list())
 
   def testMaybeBatchedSparseTensorInferredShapeEnqueueMany(self):
-    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], shape=[1])
+    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], dense_shape=[1])
     self.assertAllEqual((1,), sparse.shape.get_shape().as_list())
     batched = tf.train.maybe_batch(
         [sparse], keep_input=True, batch_size=2, enqueue_many=True)
@@ -1248,14 +1248,14 @@ class BatchJoinTest(tf.test.TestCase):
     self._testKeepInputHelper(5, True)
 
   def testMaybeBatchedSparseTensorInferredShape(self):
-    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], shape=[1])
+    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], dense_shape=[1])
     self.assertAllEqual((1,), sparse.shape.get_shape().as_list())
     batched = tf.train.maybe_batch_join(
         [[sparse]], keep_input=True, batch_size=2)
     self.assertAllEqual((2,), batched.shape.get_shape().as_list())
 
   def testMaybeBatchedSparseTensorInferredShapeEnqueueMany(self):
-    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], shape=[1])
+    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], dense_shape=[1])
     self.assertAllEqual((1,), sparse.shape.get_shape().as_list())
     batched = tf.train.maybe_batch_join(
         [[sparse]], keep_input=True, batch_size=2, enqueue_many=True)
@@ -1553,13 +1553,13 @@ class ShuffleBatchTest(tf.test.TestCase):
     self._testKeepInputHelper(5, True)
 
   def testMaybeBatchedSparseTensorInferredShape(self):
-    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], shape=[1])
+    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], dense_shape=[1])
     self.assertAllEqual((1,), sparse.shape.get_shape().as_list())
     batched = tf.train.maybe_shuffle_batch([sparse], 2, 10, 1, True)
     self.assertAllEqual((2,), batched.shape.get_shape().as_list())
 
   def testMaybeBatchedSparseTensorInferredShapeEnqueueMany(self):
-    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], shape=[1])
+    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], dense_shape=[1])
     self.assertAllEqual((1,), sparse.shape.get_shape().as_list())
     batched = tf.train.maybe_shuffle_batch(
         [sparse], 2, 10, 1, True, enqueue_many=True)
@@ -1860,13 +1860,13 @@ class ShuffleBatchJoinTest(tf.test.TestCase):
     self._testKeepInputHelper(5, True)
 
   def testMaybeBatchedSparseTensorInferredShape(self):
-    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], shape=[1])
+    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], dense_shape=[1])
     self.assertAllEqual((1,), sparse.shape.get_shape().as_list())
     batched = tf.train.maybe_shuffle_batch_join([[sparse]], 2, 10, 1, True)
     self.assertAllEqual((2,), batched.shape.get_shape().as_list())
 
   def testMaybeBatchedSparseTensorInferredShapeEnqueueMany(self):
-    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], shape=[1])
+    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], dense_shape=[1])
     self.assertAllEqual((1,), sparse.shape.get_shape().as_list())
     batched = tf.train.maybe_shuffle_batch_join(
         [[sparse]], 2, 10, 1, True, enqueue_many=True)

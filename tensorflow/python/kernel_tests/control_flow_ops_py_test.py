@@ -304,7 +304,7 @@ class ControlFlowTest(tf.test.TestCase):
       x = tf.SparseTensor(indices, values, shape=shape)
       pred = tf.less(1, 2)
       fn1 = lambda: tf.SparseTensor(indices + 1, x.values + 1, shape=shape)
-      fn2 = lambda: tf.SparseTensor(indices, x.values - 1, shape=shape)
+      fn2 = lambda: tf.SparseTensor(indices, x.values - 1, dense_shape=shape)
       r = tf.cond(pred, fn1, fn2)
       self.assertAllEqual([3.0, 5.0], r.values.eval())
       self.assertAllEqual([[1], [4]], r.indices.eval())
