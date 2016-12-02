@@ -1010,7 +1010,7 @@ def atrous_conv2d_transpose(value,
                             rate,
                             padding="SAME",
                             name=None):
-  """The transpose of Atrous convolution
+  """The transpose of atrous convolution
 
   Computes a 2-D atrous convolution's transpose.
 
