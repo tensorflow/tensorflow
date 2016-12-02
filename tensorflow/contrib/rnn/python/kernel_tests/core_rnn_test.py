@@ -26,7 +26,7 @@ import tensorflow as tf
 from tensorflow.python.util import nest
 
 
-class Plus1RNNCell(tf.nn.rnn_cell.RNNCell):
+class Plus1RNNCell(tf.contrib.rnn.RNNCell):
   """RNN Cell generating (output, new_state) = (input + 1, state + 1)."""
 
   @property
@@ -41,7 +41,7 @@ class Plus1RNNCell(tf.nn.rnn_cell.RNNCell):
     return (input_ + 1, state + 1)
 
 
-class DummyMultiDimensionalLSTM(tf.nn.rnn_cell.RNNCell):
+class DummyMultiDimensionalLSTM(tf.contrib.rnn.RNNCell):
   """LSTM Cell generating (output, new_state) = (input + 1, state + 1).
 
   The input to this cell may have an arbitrary number of dimensions that follow
@@ -75,7 +75,7 @@ class DummyMultiDimensionalLSTM(tf.nn.rnn_cell.RNNCell):
     return (input_ + 1, (h + 1, c + 1))
 
 
-class NestedRNNCell(tf.nn.rnn_cell.RNNCell):
+class NestedRNNCell(tf.contrib.rnn.RNNCell):
   """RNN Cell generating (output, new_state) = (input + 1, state + 1).
 
   The input, output and state of this cell is a tuple of two tensors.
@@ -164,7 +164,7 @@ class RNNTest(tf.test.TestCase):
 
   def testDropout(self):
     cell = Plus1RNNCell()
-    full_dropout_cell = tf.nn.rnn_cell.DropoutWrapper(
+    full_dropout_cell = tf.contrib.rnn.DropoutWrapper(
         cell, input_keep_prob=1e-12, seed=0)
     batch_size = 2
     input_size = 5
@@ -292,7 +292,7 @@ class LSTMTest(tf.test.TestCase):
     max_length = 8
     with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
       initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=self._seed)
-      cell = tf.nn.rnn_cell.LSTMCell(num_units, initializer=initializer,
+      cell = tf.contrib.rnn.LSTMCell(num_units, initializer=initializer,
                                      state_is_tuple=False)
       inputs = max_length * [
           tf.placeholder(tf.float32, shape=(batch_size, input_size))]
@@ -312,7 +312,7 @@ class LSTMTest(tf.test.TestCase):
     max_length = 8
     with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
       initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=self._seed)
-      cell = tf.nn.rnn_cell.LSTMCell(
+      cell = tf.contrib.rnn.LSTMCell(
           num_units, use_peepholes=True, cell_clip=0.0, initializer=initializer,
           state_is_tuple=False)
       inputs = max_length * [
@@ -338,7 +338,7 @@ class LSTMTest(tf.test.TestCase):
     with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
       initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=self._seed)
       state_saver = TestStateSaver(batch_size, 2 * num_units)
-      cell = tf.nn.rnn_cell.LSTMCell(
+      cell = tf.contrib.rnn.LSTMCell(
           num_units, use_peepholes=False, initializer=initializer,
           state_is_tuple=False)
       inputs = max_length * [
@@ -365,7 +365,7 @@ class LSTMTest(tf.test.TestCase):
     with self.test_session(graph=tf.Graph()) as sess:
       initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=self._seed)
       state_saver = TestStateSaver(batch_size, num_units)
-      cell = tf.nn.rnn_cell.LSTMCell(
+      cell = tf.contrib.rnn.LSTMCell(
           num_units, use_peepholes=False, initializer=initializer,
           state_is_tuple=True)
       inputs = max_length * [
@@ -401,12 +401,12 @@ class LSTMTest(tf.test.TestCase):
                                                 "c3": num_units + 3,
                                                 "m3": num_units + 3})
       def _cell(i):
-        return tf.nn.rnn_cell.LSTMCell(
+        return tf.contrib.rnn.LSTMCell(
             num_units + i, use_peepholes=False, initializer=initializer,
             state_is_tuple=True)
 
       # This creates a state tuple which has 4 sub-tuples of length 2 each.
-      cell = tf.nn.rnn_cell.MultiRNNCell(
+      cell = tf.contrib.rnn.MultiRNNCell(
           [_cell(i) for i in range(4)], state_is_tuple=True)
 
       self.assertEqual(len(cell.state_size), 4)
@@ -455,7 +455,7 @@ class LSTMTest(tf.test.TestCase):
       initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=self._seed)
       inputs = max_length * [
           tf.placeholder(tf.float32, shape=(None, input_size))]
-      cell = tf.nn.rnn_cell.LSTMCell(
+      cell = tf.contrib.rnn.LSTMCell(
           num_units, use_peepholes=True,
           num_proj=num_proj, initializer=initializer,
           state_is_tuple=False)
@@ -477,10 +477,10 @@ class LSTMTest(tf.test.TestCase):
       initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=self._seed)
       inputs = max_length * [
           tf.placeholder(tf.float32, shape=(None, input_size))]
-      cell_notuple = tf.nn.rnn_cell.LSTMCell(
+      cell_notuple = tf.contrib.rnn.LSTMCell(
           num_units, use_peepholes=True,
           num_proj=num_proj, initializer=initializer, state_is_tuple=False)
-      cell_tuple = tf.nn.rnn_cell.LSTMCell(
+      cell_tuple = tf.contrib.rnn.LSTMCell(
           num_units, use_peepholes=True,
           num_proj=num_proj, initializer=initializer, state_is_tuple=True)
       with tf.variable_scope("root") as scope:
@@ -524,7 +524,7 @@ class LSTMTest(tf.test.TestCase):
       inputs = max_length * [
           tf.placeholder(tf.float32, shape=(None, input_size))]
 
-      cell = tf.nn.rnn_cell.LSTMCell(
+      cell = tf.contrib.rnn.LSTMCell(
           num_units,
           use_peepholes=True,
           num_proj=num_proj,
@@ -554,7 +554,7 @@ class LSTMTest(tf.test.TestCase):
       inputs = max_length * [
           tf.placeholder(tf.float64, shape=(None, input_size))]
 
-      cell = tf.nn.rnn_cell.LSTMCell(
+      cell = tf.contrib.rnn.LSTMCell(
           num_units,
           use_peepholes=True,
           num_proj=num_proj,
@@ -587,7 +587,7 @@ class LSTMTest(tf.test.TestCase):
           tf.placeholder(tf.float32, shape=(None, input_size))]
       initializer = tf.constant_initializer(0.001)
 
-      cell_noshard = tf.nn.rnn_cell.LSTMCell(
+      cell_noshard = tf.contrib.rnn.LSTMCell(
           num_units,
           num_proj=num_proj,
           use_peepholes=True,
@@ -596,7 +596,7 @@ class LSTMTest(tf.test.TestCase):
           num_proj_shards=num_proj_shards,
           state_is_tuple=False)
 
-      cell_shard = tf.nn.rnn_cell.LSTMCell(
+      cell_shard = tf.contrib.rnn.LSTMCell(
           num_units, use_peepholes=True,
           initializer=initializer, num_proj=num_proj,
           state_is_tuple=False)
@@ -642,7 +642,7 @@ class LSTMTest(tf.test.TestCase):
       inputs = max_length * [
           tf.placeholder(tf.float64, shape=(None, input_size))]
 
-      cell = tf.nn.rnn_cell.LSTMCell(
+      cell = tf.contrib.rnn.LSTMCell(
           num_units,
           use_peepholes=True,
           num_proj=num_proj,
@@ -650,7 +650,7 @@ class LSTMTest(tf.test.TestCase):
           num_proj_shards=num_proj_shards,
           initializer=initializer,
           state_is_tuple=False)
-      dropout_cell = tf.nn.rnn_cell.DropoutWrapper(cell, 0.5, seed=0)
+      dropout_cell = tf.contrib.rnn.DropoutWrapper(cell, 0.5, seed=0)
 
       outputs, state = tf.contrib.rnn.static_rnn(
           dropout_cell, inputs, sequence_length=sequence_length,
@@ -679,11 +679,11 @@ class LSTMTest(tf.test.TestCase):
       initializer_d = tf.random_uniform_initializer(-1, 1, seed=self._seed+1)
       inputs = max_length * [
           tf.placeholder(tf.float32, shape=(None, input_size))]
-      cell = tf.nn.rnn_cell.LSTMCell(
+      cell = tf.contrib.rnn.LSTMCell(
           num_units, use_peepholes=True,
           num_proj=num_proj, initializer=initializer,
           state_is_tuple=False)
-      cell_d = tf.nn.rnn_cell.LSTMCell(
+      cell_d = tf.contrib.rnn.LSTMCell(
           num_units, use_peepholes=True,
           num_proj=num_proj, initializer=initializer_d,
           state_is_tuple=False)
@@ -721,7 +721,7 @@ class LSTMTest(tf.test.TestCase):
       initializer = tf.random_uniform_initializer(-1, 1, seed=self._seed)
       inputs = max_length * [
           tf.placeholder(tf.float32, shape=(None, input_size))]
-      cell = tf.nn.rnn_cell.LSTMCell(
+      cell = tf.contrib.rnn.LSTMCell(
           num_units, use_peepholes=True,
           num_proj=num_proj, initializer=initializer,
           state_is_tuple=False)
@@ -796,11 +796,11 @@ class BidirectionalRNNTest(tf.test.TestCase):
 
     initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=self._seed)
     sequence_length = tf.placeholder(tf.int64) if use_sequence_length else None
-    cell_fw = tf.nn.rnn_cell.LSTMCell(num_units,
+    cell_fw = tf.contrib.rnn.LSTMCell(num_units,
                                       input_size,
                                       initializer=initializer,
                                       state_is_tuple=False)
-    cell_bw = tf.nn.rnn_cell.LSTMCell(num_units,
+    cell_bw = tf.contrib.rnn.LSTMCell(num_units,
                                       input_size,
                                       initializer=initializer,
                                       state_is_tuple=False)
@@ -1142,7 +1142,7 @@ class StateSaverRNNTest(tf.test.TestCase):
     def factory(scope):
       initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=self._seed)
       state_saver = TestStateSaver(batch_size, 2 * num_units)
-      cell = tf.nn.rnn_cell.LSTMCell(
+      cell = tf.contrib.rnn.LSTMCell(
           num_units, use_peepholes=False, initializer=initializer,
           state_is_tuple=False)
       inputs = max_length * [

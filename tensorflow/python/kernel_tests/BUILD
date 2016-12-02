@@ -858,15 +858,6 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "rnn_cell_test",
-    size = "small",
-    srcs = ["rnn_cell_test.py"],
-    additional_deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-cuda_py_test(
     name = "scalar_strict_test",
     size = "small",
     srcs = ["scalar_strict_test.py"],
