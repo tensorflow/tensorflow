@@ -2233,6 +2233,7 @@ filegroup(
         # GIF data with optimization
         "lib/gif/testdata/optimized.gif",
     ],
+    visibility = ["//visibility:public"],
 )
 
 filegroup(
