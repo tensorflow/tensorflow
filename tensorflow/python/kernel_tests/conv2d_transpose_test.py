@@ -270,6 +270,77 @@ class Conv2DTransposeTest(tf.test.TestCase):
             cache_values[n, k, -1, :] = cache_values[n, k, -2, :]
 
         self.assertAllClose(cache_values, value)
+        
+  def testAtrousConv2DTransposeSame(self):
+    with self.test_session():
+      # Input, output: [batch, height, width, depth]
+      x_shape = [2, 6, 4, 3]
+      y_shape = [2, 6, 4, 2]
+
+      # Filter: [kernel_height, kernel_width, output_depth, input_depth]
+      f_shape = [3, 3, 2, 3]
+
+      x = tf.constant(1.0, shape=x_shape, name="x", dtype=tf.float32)
+      f = tf.constant(1.0, shape=f_shape, name="filter", dtype=tf.float32)
+
+      output = tf.nn.atrous_conv2d_transpose(x, f, 2, padding="SAME")
+
+      value = output.eval()
+
+      output_shape = tf.shape(output).eval()
+      self.assertAllClose(output_shape, y_shape)
+      
+      # we draw the output
+      for n in xrange(x_shape[0]):
+        for k in xrange(f_shape[2]):
+          for w in xrange(output_shape[2]):
+            for h in xrange(output_shape[1]):
+              target =  12.0
+              if h>=2 and h<=3:
+                  target = 18.0
+              self.assertAllClose(target, value[n, h, w, k])
+
+  def testAtrousConv2DTransposeValid(self):
+    with self.test_session():
+      # Input, output: [batch, height, width, depth]
+      x_shape = [2, 6, 4, 3]
+      y_shape = [2, 10, 8, 2]
+
+      # Filter: [kernel_height, kernel_width, output_depth, input_depth]
+      f_shape = [3, 3, 2, 3]
+
+      x = tf.constant(1.0, shape=x_shape, name="x", dtype=tf.float32)
+      f = tf.constant(1.0, shape=f_shape, name="filter", dtype=tf.float32)
+      output = tf.nn.atrous_conv2d_transpose(x, f, 2 ,padding="VALID")
+
+      value = output.eval()
+
+      output_shape = tf.shape(output).eval()
+      self.assertAllClose(output_shape, y_shape)
+
+      # we draw the output
+      for n in xrange(x_shape[0]):
+        for k in xrange(f_shape[2]):
+          for w in xrange(output_shape[2]):
+            for h in xrange(output_shape[1]):
+              target = 3.0
+              if w >= 2 and w <= 5 and h >= 0 and h <= 1:
+                target = 6.0
+              if w >= 2 and w <= 5 and h >= 8 and h <= 9:
+                target = 6.0
+              if w >=0 and w <= 1 and (h==2 or h==3 or h==6 or h==7):
+                target = 6.0
+              if w >= 6 and w <= 7 and (h == 2 or h == 3 or h == 6 or h == 7):
+                target = 6.0
+              if w >=0 and w <= 1 and (h==4 or h==5):
+                target = 9.0
+              if w >= 6 and w <=7 and (h==4 or h==5):
+                target = 9.0
+              if w >= 2 and w <= 5 and (h == 2 or h == 3 or h == 6 or h == 7):
+                target = 12.0
+              if w >= 2 and w <= 5 and (h == 4 or h == 5):
+                target = 18.0
+              self.assertAllClose(target, value[n, h, w, k])
 
 
 if __name__ == "__main__":
