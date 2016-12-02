@@ -14,6 +14,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/contrib/bayesflow:bayesflow_py",
+        "//tensorflow/contrib/compiler:compiler_py",
         "//tensorflow/contrib/copy_graph:copy_graph_py",
         "//tensorflow/contrib/crf:crf_py",
         "//tensorflow/contrib/cudnn_rnn:cudnn_rnn_py",

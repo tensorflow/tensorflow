@@ -86,6 +86,7 @@ filegroup(
         "//tensorflow/contrib:all_files",
         "//tensorflow/contrib/android:all_files",
         "//tensorflow/contrib/bayesflow:all_files",
+        "//tensorflow/contrib/compiler:all_files",
         "//tensorflow/contrib/copy_graph:all_files",
         "//tensorflow/contrib/crf:all_files",
         "//tensorflow/contrib/cudnn_rnn:all_files",
