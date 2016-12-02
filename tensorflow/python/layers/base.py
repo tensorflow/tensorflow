@@ -24,6 +24,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import inspect
 import re
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import numpy as np
@@ -84,18 +85,33 @@ class _Layer(object):
     self._reuse_weights = kwargs.get('_reuse_weights')
     self._dtype = dtype
 
-    # Determine name.
+    # Determine base name (non-unique).
+    base_name = name
     if not name:
-      prefix = _to_snake_case(self.__class__.__name__)
-      name = ops.get_default_graph().unique_name(prefix, mark_as_used=False)
-    self.name = name
+      base_name = _to_snake_case(self.__class__.__name__)
 
     # Determine variable scope.
     scope = kwargs.get('_scope')
     if scope:
-      self._scope = scope
+      self._scope = next(vs.variable_scope(scope).gen)
     else:
-      self._scope = next(vs.variable_scope(None, default_name=self.name).gen)
+      self._scope = next(vs.variable_scope(None, default_name=base_name).gen)
+
+    # Unique name is borrowed from scope to match variable names.
+    self._name = self._scope.name
+
+  def __setattr__(self, name, value):
+    if hasattr(self, name):
+      # Only allow self to update its own attributes
+      stack_0_locals = inspect.stack()[1][0].f_locals
+      called_from_layer = stack_0_locals.get('self', None) is self
+      if not called_from_layer:
+        raise AttributeError('Read-only property cannot be set: %s' % name)
+    super(_Layer, self).__setattr__(name, value)
+
+  @property
+  def name(self):
+    return self._name
 
   @property
   def trainable_weights(self):
@@ -135,16 +151,17 @@ class _Layer(object):
     """
     self._built = True
 
-  def call(self, inputs):
+  def call(self, inputs, **kwargs):
     """The logic of the layer lives here.
 
     Arguments:
       inputs: input tensor(s).
+     **kwargs: additional keyword arguments.
 
     Returns:
       Output tensor(s).
     """
-    return inputs
+    raise NotImplementedError
 
   def _add_weight(self, name, shape, dtype=None,
                   initializer=None, regularizer=None, trainable=True,
@@ -186,18 +203,23 @@ class _Layer(object):
             regularization, ops.GraphKeys.REGULARIZATION_LOSSES)
     return variable
 
-  def __call__(self, inputs):
+  def __call__(self, inputs, **kwargs):
     """Wraps `call`, applying pre- and post-processing steps.
 
     Arguments:
       inputs: input tensor(s).
+      **kwargs: additional keyword arguments to be passed to `self.call`.
 
     Returns:
       Output tensor(s).
     """
-    # Define a custom to override tf.get_variable when creating layer weights.
+    # Define a custom getter to override tf.get_variable when creating layer
+    # weights. We respect current custom getter, if one is set.
+    current_custom_getter = vs.get_variable_scope().custom_getter
     def variable_getter(getter, name, shape, dtype=None, initializer=None,
                         regularizer=None, trainable=True, **kwargs):
+      if current_custom_getter is not None:
+        getter = functools.partial(current_custom_getter, getter)
       return self._add_weight(
           name, shape, initializer=initializer, regularizer=regularizer,
           dtype=dtype, trainable=trainable,
@@ -215,7 +237,7 @@ class _Layer(object):
           else:
             self.build(input_shapes)
           self._built = True
-        outputs = self.call(inputs)
+        outputs = self.call(inputs, **kwargs)
 
         # Apply activity regularization.
         # Note that it should be applied every time the layer creates a new
@@ -233,23 +255,29 @@ class _Layer(object):
     _add_elements_to_collection(self.updates, ops.GraphKeys.UPDATE_OPS)
     return outputs
 
-  def apply(self, inputs):
+  def apply(self, inputs, **kwargs):
     """Apply the layer on a input.
 
     This simply wraps `self.__call__`.
 
     Arguments:
-      inputs: input tensor(s).
+      inputs: Input tensor(s).
+      **kwargs: additional keyword arguments to be passed to `self.call`.
 
     Returns:
       Output tensor(s).
     """
-    return self.__call__(inputs)
+    return self.__call__(inputs, **kwargs)
 
 
 def _to_snake_case(name):
   intermediate = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
-  return re.sub('([a-z0-9])([A-Z])', r'\1_\2', intermediate).lower()
+  insecure = re.sub('([a-z0-9])([A-Z])', r'\1_\2', intermediate).lower()
+  # If the class is private the name starts with "_" which is not secure
+  # for creating scopes. We prefix the name with "private" in this case.
+  if insecure[0] != '_':
+    return insecure
+  return 'private' + insecure
 
 
 def _to_list(x):

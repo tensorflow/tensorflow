@@ -29,7 +29,7 @@ be set:
     set this environment variable by running:
 
 ```shell
-source $HADOOP_HOME/libexec/hadoop-config.sh
+source ${HADOOP_HOME}/libexec/hadoop-config.sh
 ```
 
 *   **LD_LIBRARY_PATH**: To include the path to libjvm.so, and optionally the path 
@@ -37,16 +37,16 @@ source $HADOOP_HOME/libexec/hadoop-config.sh
     `$HADOOP_HDFS_HOME/lib/native`. On Linux:
 
 ```shell
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$JAVA_HOME/jre/lib/amd64/server
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:${JAVA_HOME}/jre/lib/amd64/server
 ```
 
 *   **CLASSPATH**: The Hadoop jars must be added prior to running your
     TensorFlow program. The CLASSPATH set by
-    `$HADOOP_HOME/libexec/hadoop-config.sh` is insufficient. Globs must be
+    `${HADOOP_HOME}/libexec/hadoop-config.sh` is insufficient. Globs must be
     expanded as described in the libhdfs documentation:
 
 ```shell
-CLASSPATH=$($HADOOP_HDFS_HOME/bin/hadoop classpath --glob) python your_script.py
+CLASSPATH=$($HADOOP_HDFS_HOME}/bin/hadoop classpath --glob) python your_script.py
 ```
 
 If you are running [Distributed TensorFlow](../distributed/index.md), then all

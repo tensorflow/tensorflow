@@ -27,13 +27,14 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn_cell
+from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.util import nest
 
 
 # pylint: disable=protected-access
-_state_size_with_prefix = rnn_cell._state_size_with_prefix
+_state_size_with_prefix = rnn_cell_impl._state_size_with_prefix
 # pylint: enable=protected-access
 
 
@@ -365,7 +366,7 @@ def _rnn_step(
 
   def _copy_one_through(output, new_output):
     copy_cond = (time >= sequence_length)
-    return math_ops.select(copy_cond, output, new_output)
+    return array_ops.where(copy_cond, output, new_output)
 
   def _copy_some_through(flat_new_output, flat_new_state):
     # Use broadcasting select to determine which values should get
@@ -1298,7 +1299,7 @@ def raw_rnn(cell, loop_fn,
         current_flat = nest.flatten(current)
         candidate_flat = nest.flatten(candidate)
         result_flat = [
-            math_ops.select(elements_finished, current_i, candidate_i)
+            array_ops.where(elements_finished, current_i, candidate_i)
             for (current_i, candidate_i) in zip(current_flat, candidate_flat)]
         return nest.pack_sequence_as(
             structure=current, flat_sequence=result_flat)

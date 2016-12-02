@@ -2,7 +2,10 @@
 # TensorFlow SavedModel.
 
 package(
-    default_visibility = ["//tensorflow/python/saved_model:__subpackages__"],
+    default_visibility = [
+        "//tensorflow/contrib/learn:__subpackages__",
+        "//tensorflow/python/saved_model:__subpackages__",
+    ],
 )
 
 licenses(["notice"])  # Apache 2.0
@@ -33,7 +36,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":constants",
-        "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
@@ -48,7 +50,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":constants",
-        "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:platform",
         "//tensorflow/python:training",
@@ -94,7 +95,9 @@ py_library(
     name = "utils",
     srcs = ["utils.py"],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow/core:protos_all_py"],
+    deps = [
+        "//tensorflow/core:protos_all_py",
+    ],
 )
 
 py_test(
@@ -107,6 +110,31 @@ py_test(
     visibility = ["//visibility:private"],
     deps = [
         ":utils",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_library(
+    name = "signature_def_utils",
+    srcs = ["signature_def_utils.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":signature_constants",
+        ":utils",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_test(
+    name = "signature_def_utils_test",
+    size = "small",
+    srcs = [
+        "signature_def_utils_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:private"],
+    deps = [
+        ":signature_def_utils",
         "//tensorflow:tensorflow_py",
     ],
 )

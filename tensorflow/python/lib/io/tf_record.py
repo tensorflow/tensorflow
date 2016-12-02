@@ -71,7 +71,12 @@ def tf_record_iterator(path, options=None):
 
   if reader is None:
     raise IOError("Could not open %s." % path)
-  while reader.GetNext():
+  while True:
+    try:
+      with errors.raise_exception_on_not_ok_status() as status:
+        reader.GetNext(status)
+    except errors.OutOfRangeError:
+      break
     yield reader.record()
   reader.Close()
 

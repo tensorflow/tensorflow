@@ -152,7 +152,7 @@ def run_training():
     sess = tf.Session()
 
     # Instantiate a SummaryWriter to output summaries and the Graph.
-    summary_writer = tf.train.SummaryWriter(FLAGS.log_dir, sess.graph)
+    summary_writer = tf.summary.FileWriter(FLAGS.log_dir, sess.graph)
 
     # And then after everything is built:
 

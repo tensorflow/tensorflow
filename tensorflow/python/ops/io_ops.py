@@ -63,6 +63,7 @@ here](https://www.tensorflow.org/code/tensorflow/core/example/feature.proto).
 @@VarLenFeature
 @@FixedLenFeature
 @@FixedLenSequenceFeature
+@@SparseFeature
 @@parse_example
 @@parse_single_example
 @@parse_tensor

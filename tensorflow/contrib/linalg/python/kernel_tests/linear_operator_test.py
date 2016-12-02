@@ -16,9 +16,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 import tensorflow as tf
 
 linalg = tf.contrib.linalg
+rng = np.random.RandomState(123)
 
 
 class LinearOperatorShape(linalg.LinearOperator):
@@ -42,6 +44,31 @@ class LinearOperatorShape(linalg.LinearOperator):
 
   def _shape_dynamic(self):
     return tf.constant(self._stored_shape, dtype=tf.int32)
+
+
+class LinearOperatorApplyOnly(linalg.LinearOperator):
+  """LinearOperator that simply wraps a [batch] matrix and implements apply."""
+
+  def __init__(self,
+               matrix,
+               is_non_singular=None,
+               is_self_adjoint=None,
+               is_positive_definite=None):
+    self._matrix = tf.convert_to_tensor(matrix, name="matrix")
+    super(LinearOperatorApplyOnly, self).__init__(
+        dtype=matrix.dtype,
+        is_non_singular=is_non_singular,
+        is_self_adjoint=is_self_adjoint,
+        is_positive_definite=is_positive_definite,)
+
+  def _shape(self):
+    return self._matrix.get_shape()
+
+  def _shape_dynamic(self):
+    return tf.shape(self._matrix)
+
+  def _apply(self, x, adjoint=False):
+    return tf.matmul(self._matrix, x, adjoint_a=adjoint)
 
 
 class LinearOperatorTest(tf.test.TestCase):
@@ -78,6 +105,23 @@ class LinearOperatorTest(tf.test.TestCase):
     self.assertTrue(operator.is_self_adjoint)
     self.assertFalse(operator.is_positive_definite)
 
+  def test_generic_to_dense_method_non_square_matrix_static(self):
+    matrix = rng.randn(2, 3, 4)
+    operator = LinearOperatorApplyOnly(matrix)
+    with self.test_session():
+      operator_dense = operator.to_dense()
+      self.assertAllEqual((2, 3, 4), operator_dense.get_shape())
+      self.assertAllClose(matrix, operator_dense.eval())
 
-if __name__ == '__main__':
+  def test_generic_to_dense_method_non_square_matrix_dynamic(self):
+    matrix = rng.randn(2, 3, 4)
+    matrix_ph = tf.placeholder(tf.float64)
+    operator = LinearOperatorApplyOnly(matrix_ph)
+    with self.test_session():
+      operator_dense = operator.to_dense()
+      self.assertAllClose(
+          matrix, operator_dense.eval(feed_dict={matrix_ph: matrix}))
+
+
+if __name__ == "__main__":
   tf.test.main()

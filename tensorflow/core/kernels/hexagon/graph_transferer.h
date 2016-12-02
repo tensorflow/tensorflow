@@ -100,16 +100,9 @@ class GraphTransferer {
       const IGraphTransferOpsDefinitions& ops_definitions,
       const string& graph_def_path,
       const std::vector<InputNodeInfo>& input_node_info_list,
-      const std::vector<string>& output_node_names,
-      const OutputTensorMap& output_tensor_map, const bool is_text_proto);
-
-  // Load graph structure into GraphTransferer from protobuf file
-  Status LoadGraphFromProtoFile(
-      const IGraphTransferOpsDefinitions& ops_definitions,
-      const string& graph_def_path,
-      const std::vector<InputNodeInfo>& input_node_info_list,
-      const std::vector<string>& output_node_names,
-      const OutputTensorMap& output_tensor_map);
+      const std::vector<string>& output_node_names, const bool is_text_proto,
+      const bool dry_run_for_unknown_shape,
+      OutputTensorInfo* output_tensor_info);
 
   // Dry run inference and cache the result to get memory mapping
   static Status DryRunInference(
@@ -128,6 +121,8 @@ class GraphTransferer {
       const std::vector<InputNodeInfo>& input_node_info_list,
       const bool initialize_by_zero, OutputTensorInfo* output_tensor_info);
 
+  void EnableStrictCheckMode(bool enable);
+
   // Return const node parameters for transfer
   const std::vector<ConstNodeTransferParams>& GetConstNodeParams() const;
 
@@ -142,51 +137,84 @@ class GraphTransferer {
 
  private:
   int CacheNode(const Node& node);
+
   static bool IsInputNode(
       const std::vector<InputNodeInfo>& input_node_info_list,
       const string& node_name);
+
   bool AreAllInputsCached(const Node& node) const;
-  void RegisterNode(const IGraphTransferOpsDefinitions& ops_definitions,
-                    const ShapeRefiner& shape_refiner,
-                    const OutputTensorMap& output_tensor_map, const Node& node,
-                    const std::vector<InputNodeInfo>& input_node_info_list,
-                    const std::vector<string>& output_node_names);
+
+  Status RegisterNode(const IGraphTransferOpsDefinitions& ops_definitions,
+                      const ShapeRefiner& shape_refiner,
+                      const OutputTensorMap& output_tensor_map,
+                      const Node& node,
+                      const std::vector<InputNodeInfo>& input_node_info_list,
+                      const std::vector<string>& output_node_names);
+
   void RegisterConstantNode(const ShapeRefiner& shape_refiner, const Node& node,
                             const OutputTensorMap& output_tensor_map);
+
   int RegisterConstantShape(const std::vector<int>& shape);
+
   bool HasPaddingAndStrides(const Node& node);
+
+  // Return true if the node is a reshape op which just flattens input
+  // TODO(satok): Remove this method once generic reshape op is implemented in
+  // SOC
+  bool IsNodeFlattenReshape(const Node& node,
+                            const OutputTensorMap& output_tensor_map,
+                            const ShapeRefiner& shape_refiner);
+
   void RegisterNodeWithPaddingAndStrides(
       const IGraphTransferOpsDefinitions& ops_definitions,
       const ShapeRefiner& shape_refiner,
       const OutputTensorMap& output_tensor_map, const Node& node);
+
   void RegisterInputNode(const IGraphTransferOpsDefinitions& ops_definitions,
                          const ShapeRefiner& shape_refiner,
                          const OutputTensorMap& output_tensor_map,
                          const Node& node);
+
   void RegisterOutputNode(const IGraphTransferOpsDefinitions& ops_definitions,
                           const ShapeRefiner& shape_refiner,
                           const OutputTensorMap& output_tensor_map,
                           const Node& node);
-  bool RegisterNodeIfAllInputsAreCached(
+
+  void RegisterFlattenNode(const IGraphTransferOpsDefinitions& ops_definitions,
+                           const ShapeRefiner& shape_refiner,
+                           const OutputTensorMap& output_tensor_map,
+                           const Node& node);
+
+  void RegisterGenericNode(const IGraphTransferOpsDefinitions& ops_definitions,
+                           const ShapeRefiner& shape_refiner,
+                           const OutputTensorMap& output_tensor_map,
+                           const Node& node);
+
+  Status RegisterNodeIfAllInputsAreCached(
       const IGraphTransferOpsDefinitions& ops_definitions,
       const ShapeRefiner& shape_refiner, const Node& node,
       const bool only_register_const_node,
       const std::vector<InputNodeInfo>& input_node_info_list,
       const std::vector<string>& output_node_names,
       const OutputTensorMap& output_tensor_map);
+
   void AppendNodeParams(const string& name, const int id, const string& type,
                         const int type_id, const string& padding_str,
                         const int inputs_size,
                         const std::vector<int>& extra_inputs,
                         const int outputs_size);
+
   void AppendNodeInputParams(const int id, const Node& node,
                              const std::vector<int>& extra_inputs);
+
   void AppendNodeOutputParams(const ShapeRefiner& shape_refiner,
                               const OutputTensorMap& output_tensor_map,
                               const int id, const Node& node);
+
   static std::array<int64, SHAPE_ARRAY_SIZE> BuildShapeArray(
       const shape_inference::ShapeHandle& shape_handle,
       shape_inference::InferenceContext* context);
+
   void AppendNodeParamsWithIoParams(
       const ShapeRefiner& shape_refiner,
       const OutputTensorMap& output_tensor_map, const Node& node,
@@ -194,14 +222,19 @@ class GraphTransferer {
       const string& padding_str, const int inputs_size,
       const std::vector<int>& extra_inputs, const int outputs_size,
       const bool append_input_params, const bool append_output_params);
+
   static std::array<int64, SHAPE_ARRAY_SIZE> ToTensorShapeArray(
       const TensorShape& shape);
+
   static void CheckShape(const OutputTensorMap& output_tensor_map,
                          const string& node_name,
                          const std::array<int64, SHAPE_ARRAY_SIZE>& actual);
+
   void ClearCache();
+
   // Dump pretty print of parameters
   void DumpNodeTransferParams() const;
+
   // Dump verification string of parameters to verify with offline tools
   void DumpVerificationStringOfNodeTransferParams() const;
 
@@ -212,6 +245,10 @@ class GraphTransferer {
 
   std::vector<const Node*> node_name_cache_list_;
   std::unordered_map<string, int> node_name_to_id_cache_map_;
+
+  // strict check mode is true by default.  Disable this if the ops' shape
+  // inferences are not implemented correctly.
+  bool strict_check_mode_{true};
 
   TF_DISALLOW_COPY_AND_ASSIGN(GraphTransferer);
 };

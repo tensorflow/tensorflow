@@ -20029,7 +20029,7 @@ op {
   }
   input_arg {
     name: "delimiter"
-    description: "0-D. Delimiter character, or empty string."
+    description: "0-D. Delimiter characters (bytes), or empty string."
     type: DT_STRING
   }
   output_arg {
@@ -20048,7 +20048,7 @@ op {
     type: DT_INT64
   }
   summary: "Split elements of `input` based on `delimiter` into a `SparseTensor`."
-  description: "Let N be the size of source (typically N will be the batch size). Split each\nelement of `input` based on `delimiter` and return a `SparseTensor`\ncontaining the splitted tokens. Empty tokens are ignored.\n\n`delimiter` can be empty or a single-byte character. If `delimiter` is an empty\n string, each element of `input` is split into individual single-byte character\n strings, including splitting of UTF-8 multibyte sequences.\n\nFor example:\n  N = 2, input[0] is \'hello world\' and input[1] is \'a b c\', then the output\n  will be\n\n  indices = [0, 0;\n             0, 1;\n             1, 0;\n             1, 1;\n             1, 2]\n  shape = [2, 3]\n  values = [\'hello\', \'world\', \'a\', \'b\', \'c\']"
+  description: "Let N be the size of source (typically N will be the batch size). Split each\nelement of `input` based on `delimiter` and return a `SparseTensor`\ncontaining the splitted tokens. Empty tokens are ignored.\n\n`delimiter` can be empty, or a string of split characters. If `delimiter` is an\n empty string, each element of `input` is split into individual single-byte\n character strings, including splitting of UTF-8 multibyte sequences. Otherwise\n every character of `delimiter` is a potential split point.\n\nFor example:\n  N = 2, input[0] is \'hello world\' and input[1] is \'a b c\', then the output\n  will be\n\n  indices = [0, 0;\n             0, 1;\n             1, 0;\n             1, 1;\n             1, 2]\n  shape = [2, 3]\n  values = [\'hello\', \'world\', \'a\', \'b\', \'c\']"
 }
 op {
   name: "StringToHashBucket"

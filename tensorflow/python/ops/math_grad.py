@@ -211,7 +211,7 @@ def _SegmentMinOrMaxGrad(op, grad):
   weighted_grads = math_ops.div(grad, num_selected)
   gathered_grads = array_ops.gather(weighted_grads, op.inputs[1])
 
-  return math_ops.select(is_selected, gathered_grads, zeros), None
+  return array_ops.where(is_selected, gathered_grads, zeros), None
 
 
 @ops.RegisterGradient("SegmentMin")
@@ -674,11 +674,11 @@ def _PowGrad(op, grad):
   # Avoid false singularity at x = 0
   if x.dtype.is_complex:
     # real(x) < 0 is fine for the complex case
-    log_x = math_ops.select(
+    log_x = array_ops.where(
         math_ops.not_equal(x, 0), math_ops.log(x), array_ops.zeros_like(x))
   else:
     # There's no sensible real value to return if x < 0, so return 0
-    log_x = math_ops.select(x > 0, math_ops.log(x), array_ops.zeros_like(x))
+    log_x = array_ops.where(x > 0, math_ops.log(x), array_ops.zeros_like(x))
   gy = array_ops.reshape(
       math_ops.reduce_sum(grad * z * log_x, ry), sy)
   return gx, gy
@@ -695,8 +695,8 @@ def _MaximumMinimumGrad(op, grad, selector_op):
   zeros = array_ops.zeros(gradshape, gdtype)
   xmask = selector_op(x, y)
   rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)
-  xgrad = math_ops.select(xmask, grad, zeros)
-  ygrad = math_ops.select(math_ops.logical_not(xmask), grad, zeros)
+  xgrad = array_ops.where(xmask, grad, zeros)
+  ygrad = array_ops.where(math_ops.logical_not(xmask), grad, zeros)
   gx = array_ops.reshape(math_ops.reduce_sum(xgrad, rx), sx)
   gy = array_ops.reshape(math_ops.reduce_sum(ygrad, ry), sy)
   return (gx, gy)
@@ -750,8 +750,8 @@ def _SelectGrad(op, grad):
   c = op.inputs[0]
   x = op.inputs[1]
   zeros = array_ops.zeros_like(x)
-  return (None, math_ops.select(c, grad, zeros),
-          math_ops.select(c, zeros, grad))
+  return (None, array_ops.where(c, grad, zeros),
+          array_ops.where(c, zeros, grad))
 
 
 @ops.RegisterGradient("MatMul")

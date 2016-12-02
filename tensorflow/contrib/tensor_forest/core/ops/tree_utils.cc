@@ -555,6 +555,31 @@ bool IsAllInitialized(const Tensor& features) {
   return feature_vec(feature_vec.size() - 1) >= 0;
 }
 
+void GetParentWeightedMean(float leaf_sum, const float* leaf_data,
+                           float parent_sum, const float* parent_data,
+                           float valid_leaf_threshold, int num_outputs,
+                           std::vector<float>* mean) {
+  float parent_weight = 0.0;
+  if (leaf_sum < valid_leaf_threshold && parent_sum >= 0) {
+    VLOG(1) << "not enough samples at leaf, including parent counts."
+            << "child sum = " << leaf_sum;
+    // Weight the parent's counts just enough so that the new sum is
+    // valid_leaf_threshold_, but never give any counts a weight of
+    // more than 1.
+    parent_weight =
+        std::min(1.0f, (valid_leaf_threshold - leaf_sum) / parent_sum);
+    leaf_sum += parent_weight * parent_sum;
+    VLOG(1) << "Sum w/ parent included = " << leaf_sum;
+  }
+
+  for (int c = 0; c < num_outputs; c++) {
+    float w = leaf_data[c];
+    if (parent_weight > 0.0) {
+      w += parent_weight * parent_data[c];
+    }
+    (*mean)[c] = w / leaf_sum;
+  }
+}
 
 }  // namespace tensorforest
 }  // namespace tensorflow

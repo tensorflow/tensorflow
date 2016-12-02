@@ -367,9 +367,9 @@ class TensorArrayTest(tf.test.TestCase):
 
       # Test reading wrong datatype
       r0_bad = gen_data_flow_ops._tensor_array_read_v2(
-          handle=w0.handle, index=0, dtype=tf.int64, flow_in=w0.flow)
+          handle=w0.handle, index=0, dtype=tf.float64, flow_in=w0.flow)
       with self.assertRaisesOpError(
-          "TensorArray dtype is float but Op requested dtype int64."):
+          "TensorArray dtype is float but Op requested dtype double."):
         r0_bad.eval()
 
       # Test reading from a different index than the one we wrote to

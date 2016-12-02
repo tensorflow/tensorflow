@@ -1468,7 +1468,7 @@ class ScaleAndShift(Bijector):
       batch_ndims: `Tensor` (0D, `int32`).  The ndims of the `batch` portion.
     """
     ndims = array_ops.rank(scale)
-    left = math_ops.select(
+    left = array_ops.where(
         math_ops.reduce_any([
             math_ops.reduce_all([
                 math_ops.equal(ndims, 0),
@@ -1478,7 +1478,7 @@ class ScaleAndShift(Bijector):
                 math_ops.equal(ndims, 2),
                 math_ops.equal(event_ndims, 1)
             ])]), 1, 0)
-    right = math_ops.select(math_ops.equal(event_ndims, 0), 2, 0)
+    right = array_ops.where(math_ops.equal(event_ndims, 0), 2, 0)
     pad = array_ops.concat(0, (
         array_ops.ones([left], dtype=dtypes.int32),
         array_ops.shape(scale),

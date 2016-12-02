@@ -13,7 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {DataSet, PCA_SAMPLE_DIM, PCA_SAMPLE_SIZE, Projection, ProjectionType, SpriteAndMetadataInfo, State, TSNE_SAMPLE_SIZE} from './data';
+import * as data from './data';
+import {DataSet, Projection, ProjectionType, SpriteAndMetadataInfo, State} from './data';
 import * as vector from './vector';
 import {Vector} from './vector';
 import {Projector} from './vz-projector';
@@ -289,18 +290,17 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     this.dataSet = dataSet;
     this.originalDataSet = originalDataSet;
     this.dim = dim;
-    let perplexity =
-        Math.max(5, Math.ceil(Math.sqrt(dataSet.points.length) / 4));
+    const pointCount = (dataSet == null) ? 0 : dataSet.points.length;
+    const perplexity = Math.max(5, Math.ceil(Math.sqrt(pointCount) / 4));
     this.perplexitySlider.value = perplexity.toString();
     this.updateTSNEPerplexityFromSliderChange();
     this.clearCentroids();
 
     this.dom.select('#tsne-sampling')
-        .style(
-            'display',
-            dataSet.points.length > TSNE_SAMPLE_SIZE ? null : 'none');
-    let wasSampled =
-        dataSet.dim[0] > PCA_SAMPLE_SIZE || dataSet.dim[1] > PCA_SAMPLE_DIM;
+        .style('display', pointCount > data.TSNE_SAMPLE_SIZE ? null : 'none');
+    const wasSampled =
+        (dataSet == null) ? false : (dataSet.dim[0] > data.PCA_SAMPLE_DIM ||
+                                     dataSet.dim[1] > data.PCA_SAMPLE_DIM);
     this.dom.select('#pca-sampling')
         .style('display', wasSampled ? null : 'none');
     this.showTab('pca');
@@ -374,7 +374,7 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
       return;
     }
     const accessors =
-        dataSet.getPointAccessors('tsne', [0, 1, this.tSNEis3d ? 2 : null]);
+        data.getProjectionComponents('tsne', [0, 1, this.tSNEis3d ? 2 : null]);
     const dimensionality = this.tSNEis3d ? 3 : 2;
     const projection =
         new Projection('tsne', accessors, dimensionality, dataSet);
@@ -427,7 +427,7 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     }
     this.dataSet.projectPCA().then(() => {
       // Polymer properties are 1-based.
-      const accessors = this.dataSet.getPointAccessors(
+      const accessors = data.getProjectionComponents(
           'pca', [this.pcaX, this.pcaY, this.pcaZ]);
 
       const dimensionality = this.pcaIs3d ? 3 : 2;
@@ -459,7 +459,7 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     const yDir = vector.sub(this.centroids.yUp, this.centroids.yDown);
     this.dataSet.projectLinear(yDir, 'linear-y');
 
-    const accessors = this.dataSet.getPointAccessors('custom', ['x', 'y']);
+    const accessors = data.getProjectionComponents('custom', ['x', 'y']);
     const projection = new Projection('custom', accessors, 2, this.dataSet);
     this.projector.setProjection(projection);
   }
@@ -543,15 +543,15 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
   }
 
   getPcaSampledDimText() {
-    return PCA_SAMPLE_DIM.toLocaleString();
+    return data.PCA_SAMPLE_DIM.toLocaleString();
   }
 
   getPcaSampleSizeText() {
-    return PCA_SAMPLE_SIZE.toLocaleString();
+    return data.PCA_SAMPLE_SIZE.toLocaleString();
   }
 
   getTsneSampleSizeText() {
-    return TSNE_SAMPLE_SIZE.toLocaleString();
+    return data.TSNE_SAMPLE_SIZE.toLocaleString();
   }
 }
 

@@ -51,7 +51,7 @@ Input of `fit` and `evaluate` should have following features,
     whose `value` is a `Tensor`.
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.__init__(hidden_units, feature_columns, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=False, config=None, feature_engineering_fn=None)` {#DNNClassifier.__init__}
+#### `tf.contrib.learn.DNNClassifier.__init__(hidden_units, feature_columns, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=False, config=None, feature_engineering_fn=None, embedding_lr_multipliers=None)` {#DNNClassifier.__init__}
 
 Initializes a DNNClassifier instance.
 
@@ -91,6 +91,9 @@ Initializes a DNNClassifier instance.
                     labels which are the output of `input_fn` and
                     returns features and labels which will be fed
                     into the model.
+*  <b>`embedding_lr_multipliers`</b>: Optional. A dictionary from `EmbeddingColumn` to
+      a `float` multiplier. Multiplier will be used to multiply with
+      learning rate for the embedding variables.
 
 ##### Returns:
 
@@ -132,6 +135,15 @@ See evaluable.Evaluable. Note: Labels must be integer class indices.
 #### `tf.contrib.learn.DNNClassifier.export(export_dir, input_fn=None, input_feature_key=None, use_deprecated_input_fn=True, signature_fn=None, default_batch_size=1, exports_to_keep=None)` {#DNNClassifier.export}
 
 See BaseEstimator.export.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.export_savedmodel(*args, **kwargs)` {#DNNClassifier.export_savedmodel}
+
+EXPERIMENTAL FUNCTION
+
+THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and without warning.
 
 
 - - -

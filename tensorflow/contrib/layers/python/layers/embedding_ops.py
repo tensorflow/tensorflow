@@ -150,7 +150,7 @@ def safe_embedding_lookup_sparse(embedding_weights,
           array_ops.reshape(is_row_empty, [-1, 1]),
           array_ops.pack([1, array_ops.shape(result)[1]]))
 
-      result = math_ops.select(is_row_empty,
+      result = array_ops.where(is_row_empty,
                                array_ops.zeros_like(result),
                                result,
                                name=scope)

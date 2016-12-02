@@ -46,7 +46,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     name = "farmhash_archive",
     url = "http://github.com/google/farmhash/archive/92e897b282426729f4724d91a637596c7e2fe28f.zip",
     sha256 = "4c626d1f306bda2c6804ab955892f803f5245f4dcaecb4979dc08b091256da54",
-    strip_prefix = "farmhash-92e897b282426729f4724d91a637596c7e2fe28f/src",
+    strip_prefix = "farmhash-92e897b282426729f4724d91a637596c7e2fe28f",
     build_file = str(Label("//:farmhash.BUILD")),
   )
 
@@ -90,7 +90,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     name = "gif_archive",
     url = "http://cdimage.debian.org/mirror/xbmc.org/build-deps/sources/giflib-5.1.4.tar.gz",
     sha256 = "34a7377ba834397db019e8eb122e551a49c98f49df75ec3fcc92b9a794a4f6d1",
-    strip_prefix = "giflib-5.1.4/lib",
+    strip_prefix = "giflib-5.1.4",
     build_file = str(Label("//:gif.BUILD")),
   )
 
@@ -247,4 +247,16 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.bind(
     name = "zlib",
     actual = "@zlib_archive//:zlib",
+  )
+
+  # Make junit-4.12 available as //external:junit
+  native.http_jar(
+    name = "junit_jar",
+    url = "https://github.com/junit-team/junit4/releases/download/r4.12/junit-4.12.jar",
+    sha256 = "59721f0805e223d84b90677887d9ff567dc534d7c502ca903c0c2b17f05c116a",
+  )
+
+  native.bind(
+    name = "junit",
+    actual = "@junit_jar//jar",
   )

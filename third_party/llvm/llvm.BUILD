@@ -13,6 +13,8 @@ load(
     "cmake_var_string",
 )
 
+package(default_visibility = ["@//tensorflow/compiler/xla:internal"])
+
 llvm_host_triple = "x86_64-unknown-linux_gnu"
 
 llvm_targets = [
@@ -26,6 +28,7 @@ llvm_targets = [
 llvm_target_asm_parsers = [
     "AArch64",
     "ARM",
+    "NVPTX",
     "PowerPC",
     "X86",
 ]
@@ -1330,6 +1333,28 @@ cc_library(
         ":mc",
         ":mc_parser",
         ":support",
+    ],
+)
+
+cc_library(
+    name = "objc_arc",
+    srcs = glob([
+        "lib/Transforms/ObjCARC/*.c",
+        "lib/Transforms/ObjCARC/*.cpp",
+        "lib/Transforms/ObjCARC/*.inc",
+        "lib/Transforms/ObjCARC/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/Transforms/ObjCARC/*.h",
+        "include/llvm/Transforms/ObjCARC/*.def",
+        "include/llvm/Transforms/ObjCARC/*.inc",
+    ]),
+    deps = [
+        ":analysis",
+        ":config",
+        ":core",
+        ":support",
+        ":transform_utils",
     ],
 )
 

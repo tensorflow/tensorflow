@@ -39,6 +39,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.training import moving_averages
 
 # TODO(b/28426988): Replace legacy_* fns migrated from slim.
@@ -1153,12 +1154,16 @@ def dropout(inputs,
   Returns:
     a tensor representing the output of the operation.
   """
-  with ops.name_scope(scope, 'Dropout', [inputs]) as sc:
+  with variable_scope.variable_scope(
+      scope, 'Dropout', [inputs], custom_getter=_model_variable_getter) as sc:
     inputs = ops.convert_to_tensor(inputs)
-    dropout_fn = lambda: nn.dropout(inputs, keep_prob, noise_shape)
-    id_fn = lambda: array_ops.identity(inputs)
-    outputs = utils.smart_cond(is_training, dropout_fn, id_fn)
-    return utils.collect_named_outputs(outputs_collections, sc, outputs)
+    layer = core_layers.Dropout(rate=1 - keep_prob,
+                                noise_shape=noise_shape,
+                                name=sc.name,
+                                _scope=sc)
+    outputs = layer.apply(inputs, training=is_training)
+    return utils.collect_named_outputs(
+        outputs_collections, sc.original_name_scope, outputs)
 
 
 @add_arg_scope
@@ -1264,6 +1269,31 @@ def _inner_flatten(inputs, new_rank, output_collections=None, scope=None):
   return utils.collect_named_outputs(output_collections, sc, flattened)
 
 
+def _model_variable_getter(getter, name, shape=None, dtype=None,
+                           initializer=None, regularizer=None, trainable=True,
+                           collections=None, caching_device=None,
+                           partitioner=None, **_):
+  """Getter that uses model_variable for compatibility with core layers."""
+  return variables.model_variable(
+      name, shape=shape, dtype=dtype, initializer=initializer,
+      regularizer=regularizer, collections=collections, trainable=trainable,
+      caching_device=caching_device, partitioner=partitioner,
+      custom_getter=getter)
+
+
+def _add_variable_to_collections(variable, collections_set, collections_name):
+  """Adds variable (or all its parts) to all collections with that name."""
+  collections = utils.get_variable_collections(
+      collections_set, collections_name) or []
+  variables_list = [variable]
+  if isinstance(variable, tf_variables.PartitionedVariable):
+    variables_list = [v for v in variable]
+  for collection in collections:
+    for var in variables_list:
+      if var not in ops.get_collection(collection):
+        ops.add_to_collection(collection, var)
+
+
 @add_arg_scope
 def fully_connected(inputs,
                     num_outputs,
@@ -1325,41 +1355,17 @@ def fully_connected(inputs,
   if not (isinstance(num_outputs, six.integer_types)):
     raise ValueError('num_outputs should be int or long, got %s.', num_outputs)
 
-  # Currently, the layers in this module do not create variables via
-  # `tf.get_variable`, rather they use their own variable management system
-  # which wraps `tf.get_variable` (the `model_variable()` interface from Slim).
-  # This interface is globally-configured via an argscope. This global
-  # configuration mechanism is used for instance by Slim-deploy to globally
-  # configure the target device of the variables of a model.
-  #
-  # We have the following the constraints:
-  #   - Argscopes are not currently moving into core, thus core layers cannot
-  #     rely on the Slim variable wrapper, and should instead
-  #     use `tf.get_variable`.
-  #   - Contrib layers require to use the argscope-enabled Slim variable wrapper
-  #     rather than raw TF variables.
-  #   - We want to be able to reuse at least the logic across core layers
-  #     and contrib layers.
-  #
-  # We use the following strategy:
-  #   - We instantiate variables in the contrib layer via the Slim interface.
-  #   - We instantiate a core layer and set its variables to be the Slim ones.
-  #   - We call the core layer.
-  #
-  # This enables us to reuse the `call` method across both implementations.
-
-  with variable_scope.variable_scope(scope, 'fully_connected', [inputs],
-                                     reuse=reuse) as sc:
+  with variable_scope.variable_scope(
+      scope, 'fully_connected', [inputs],
+      reuse=reuse, custom_getter=_model_variable_getter) as sc:
     inputs = ops.convert_to_tensor(inputs)
-
-    # Instantiate the FullyConnected layer.
     layer = core_layers.FullyConnected(
-        num_outputs,
+        units=num_outputs,
         activation=None,
         use_bias=not normalizer_fn and biases_initializer,
-        w_initializer=weights_initializer,
+        weights_initializer=weights_initializer,
         bias_initializer=biases_initializer,
-        w_regularizer=weights_regularizer,
+        weights_regularizer=weights_regularizer,
         bias_regularizer=biases_regularizer,
         activity_regularizer=None,
         trainable=trainable,
@@ -1367,39 +1373,12 @@ def fully_connected(inputs,
         dtype=inputs.dtype.base_dtype,
         _scope=sc,
         _reuse_weights=reuse)
+    outputs = layer.apply(inputs)
 
-    dtype = inputs.dtype.base_dtype
-    inputs_shape = inputs.get_shape()
-    num_input_units = utils.last_dimension(inputs_shape, min_rank=2)
-
-    static_shape = inputs_shape.as_list()
-    static_shape[-1] = num_outputs
-
-    weights_shape = [num_input_units, num_outputs]
-    weights_collections = utils.get_variable_collections(
-        variables_collections, 'weights')
-    weights = variables.model_variable('weights',
-                                       shape=weights_shape,
-                                       dtype=dtype,
-                                       initializer=weights_initializer,
-                                       regularizer=weights_regularizer,
-                                       collections=weights_collections,
-                                       trainable=trainable)
-    layer.w = weights
-
-    if layer.use_bias:
-      biases_collections = utils.get_variable_collections(
-          variables_collections, 'biases')
-      biases = variables.model_variable('biases',
-                                        shape=[num_outputs,],
-                                        dtype=dtype,
-                                        initializer=biases_initializer,
-                                        regularizer=biases_regularizer,
-                                        collections=biases_collections,
-                                        trainable=trainable)
-      layer.bias = biases
-
-    outputs = layer.call(inputs)
+    # Add variables to collections.
+    _add_variable_to_collections(layer.w, variables_collections, 'weights')
+    if layer.bias:
+      _add_variable_to_collections(layer.bias, variables_collections, 'biases')
 
     # Apply normalizer function / layer.
     if normalizer_fn is not None:
@@ -2099,4 +2078,3 @@ conv2d = convolution2d
 conv2d_transpose = convolution2d_transpose
 conv2d_in_plane = convolution2d_in_plane
 separable_conv2d = separable_convolution2d
-

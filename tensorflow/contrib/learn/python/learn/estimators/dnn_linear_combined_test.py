@@ -27,7 +27,9 @@ import numpy as np
 import tensorflow as tf
 
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn
+from tensorflow.contrib.learn.python.learn.estimators import dnn_linear_combined
 from tensorflow.contrib.learn.python.learn.estimators import estimator_test_utils
+from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
 from tensorflow.contrib.learn.python.learn.estimators import test_data
 from tensorflow.contrib.learn.python.learn.metric_spec import MetricSpec
 
@@ -37,6 +39,82 @@ def _assert_metrics_in_range(keys, metrics):
   for key in keys:
     estimator_test_utils.assert_in_range(
         0.0 - epsilon, 1.0 + epsilon, key, metrics)
+
+
+class EmbeddingMultiplierTest(tf.test.TestCase):
+  """dnn_model_fn tests."""
+
+  def testRaisesNonEmbeddingColumn(self):
+    one_hot_language = tf.contrib.layers.one_hot_column(
+        tf.contrib.layers.sparse_column_with_hash_bucket('language', 10))
+
+    params = {
+        'dnn_feature_columns': [one_hot_language],
+        'head': head_lib._multi_class_head(2),
+        'dnn_hidden_units': [1],
+        # Set lr mult to 0. to keep embeddings constant.
+        'embedding_lr_multipliers': {
+            one_hot_language: 0.0
+        },
+        'dnn_optimizer': 'Adagrad',
+    }
+    features = {
+        'language':
+            tf.SparseTensor(
+                values=['en', 'fr', 'zh'],
+                indices=[[0, 0], [1, 0], [2, 0]],
+                shape=[3, 1]),
+    }
+    labels = tf.constant([[0], [0], [0]], dtype=tf.int32)
+    with self.assertRaisesRegexp(
+        ValueError, 'can only be defined for embedding columns'):
+      dnn_linear_combined._dnn_linear_combined_model_fn(
+          features, labels, tf.contrib.learn.ModeKeys.TRAIN, params)
+
+  def testMultipliesGradient(self):
+    embedding_language = tf.contrib.layers.embedding_column(
+        tf.contrib.layers.sparse_column_with_hash_bucket('language', 10),
+        dimension=1, initializer=tf.constant_initializer(0.1))
+    embedding_wire = tf.contrib.layers.embedding_column(
+        tf.contrib.layers.sparse_column_with_hash_bucket('wire', 10),
+        dimension=1, initializer=tf.constant_initializer(0.1))
+
+    params = {
+        'dnn_feature_columns': [embedding_language, embedding_wire],
+        'head': head_lib._multi_class_head(2),
+        'dnn_hidden_units': [1],
+        # Set lr mult to 0. to keep embeddings constant.
+        'embedding_lr_multipliers': {
+            embedding_language: 0.0
+        },
+        'dnn_optimizer': 'Adagrad',
+    }
+    features = {
+        'language':
+            tf.SparseTensor(
+                values=['en', 'fr', 'zh'],
+                indices=[[0, 0], [1, 0], [2, 0]],
+                shape=[3, 1]),
+        'wire':
+            tf.SparseTensor(
+                values=['omar', 'stringer', 'marlo'],
+                indices=[[0, 0], [1, 0], [2, 0]],
+                shape=[3, 1]),
+    }
+    labels = tf.constant([[0], [0], [0]], dtype=tf.int32)
+    model_ops = dnn_linear_combined._dnn_linear_combined_model_fn(
+        features, labels, tf.contrib.learn.ModeKeys.TRAIN, params)
+    with tf.train.MonitoredSession() as sess:
+      language_var = dnn_linear_combined._get_embedding_variable(
+          embedding_language, 'dnn', 'dnn/input_from_feature_columns')
+      wire_var = dnn_linear_combined._get_embedding_variable(
+          embedding_wire, 'dnn', 'dnn/input_from_feature_columns')
+      for _ in range(2):
+        _, language_value, wire_value = sess.run(
+            [model_ops.train_op, language_var, wire_var])
+      initial_value = np.full_like(language_value, 0.1)
+      self.assertTrue(np.all(np.isclose(language_value, initial_value)))
+      self.assertFalse(np.all(np.isclose(wire_value, initial_value)))
 
 
 class DNNLinearCombinedClassifierTest(tf.test.TestCase):
@@ -53,6 +131,18 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
           linear_feature_columns=None,
           dnn_feature_columns=None,
           dnn_hidden_units=[3, 3])
+
+  def testEmbeddingMultiplier(self):
+    embedding_language = tf.contrib.layers.embedding_column(
+        tf.contrib.layers.sparse_column_with_hash_bucket('language', 10),
+        dimension=1, initializer=tf.constant_initializer(0.1))
+    classifier = tf.contrib.learn.DNNLinearCombinedClassifier(
+        dnn_feature_columns=[embedding_language],
+        dnn_hidden_units=[3, 3],
+        embedding_lr_multipliers={embedding_language: 0.8})
+    self.assertEqual(
+        {embedding_language: 0.8},
+        classifier._estimator.params['embedding_lr_multipliers'])
 
   def testLogisticRegression_MatrixData(self):
     """Tests binary classification using matrix data as input."""

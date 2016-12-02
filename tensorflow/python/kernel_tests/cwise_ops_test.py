@@ -1297,7 +1297,7 @@ class SelectOpTest(tf.test.TestCase):
   def _compare(self, c, x, y, use_gpu):
     np_ans = np.where(c, x, y)
     with self.test_session(use_gpu=use_gpu):
-      out = tf.select(c, x, y)
+      out = tf.where(c, x, y)
       tf_ans = out.eval()
     self.assertAllEqual(np_ans, tf_ans)
     self.assertShapeEqual(np_ans, out)
@@ -1306,7 +1306,7 @@ class SelectOpTest(tf.test.TestCase):
     with self.test_session():
       inx = tf.convert_to_tensor(x)
       iny = tf.convert_to_tensor(y)
-      out = tf.select(c, inx, iny)
+      out = tf.where(c, inx, iny)
       s = list(np.shape(c))
       jacob_t, jacob_n = tf.test.compute_gradient(inx,
                                                   s,
@@ -1318,7 +1318,7 @@ class SelectOpTest(tf.test.TestCase):
         yf = y.astype(numeric_gradient_type)
         inxf = tf.convert_to_tensor(xf)
         inyf = tf.convert_to_tensor(yf)
-        outf = tf.select(c, inxf, inyf)
+        outf = tf.where(c, inxf, inyf)
         _, jacob_n = tf.test.compute_gradient(inxf,
                                               s,
                                               outf,
@@ -1336,7 +1336,7 @@ class SelectOpTest(tf.test.TestCase):
     with self.test_session():
       inx = tf.convert_to_tensor(x)
       iny = tf.convert_to_tensor(y)
-      out = tf.select(c, inx, iny)
+      out = tf.where(c, inx, iny)
       s = list(np.shape(c))
       jacob_t, jacob_n = tf.test.compute_gradient(iny,
                                                   s,
@@ -1349,7 +1349,7 @@ class SelectOpTest(tf.test.TestCase):
         yf = y.astype(numeric_gradient_type)
         inxf = tf.convert_to_tensor(xf)
         inyf = tf.convert_to_tensor(yf)
-        outf = tf.select(c, inxf, inyf)
+        outf = tf.where(c, inxf, inyf)
         _, jacob_n = tf.test.compute_gradient(inyf,
                                               s,
                                               outf,
@@ -1415,7 +1415,7 @@ class SelectOpTest(tf.test.TestCase):
       xt = x.astype(t)
       yt = y.astype(t)
       with self.assertRaises(ValueError):
-        tf.select(c, xt, yt)
+        tf.where(c, xt, yt)
 
   def testEmptyTensor(self):
     c = np.random.randint(0, 3, 0).astype(np.bool).reshape(1, 3, 0)
@@ -1425,7 +1425,7 @@ class SelectOpTest(tf.test.TestCase):
     with self.test_session():
       xt = x.astype(np.float32)
       yt = y.astype(np.float32)
-      z = tf.select(c, xt, yt).eval()
+      z = tf.where(c, xt, yt).eval()
       self.assertAllEqual(z_expected, z)
 
   def testNan(self):
@@ -1434,7 +1434,7 @@ class SelectOpTest(tf.test.TestCase):
       for c in False, True:
         for a in 7.0, np.nan:
           for b in 5.0, np.nan:
-            x = tf.select(c, a, b).eval()
+            x = tf.where(c, a, b).eval()
             y = a if c else b
             self.assertEqual(np.isnan(x), np.isnan(y))
 
@@ -1447,7 +1447,7 @@ class BatchSelectOpTest(tf.test.TestCase):
         [x_i if c_i else y_i for c_i, x_i, y_i in zip(c, x, y)]).transpose(
             [2, 0, 1])
     with self.test_session(use_gpu=use_gpu):
-      out = tf.select(c, x, y)
+      out = tf.where(c, x, y)
       tf_ans = out.eval()
     self.assertAllEqual(np_ans, tf_ans)
     self.assertShapeEqual(np_ans, out)
@@ -1456,7 +1456,7 @@ class BatchSelectOpTest(tf.test.TestCase):
     with self.test_session():
       inx = tf.convert_to_tensor(x)
       iny = tf.convert_to_tensor(y)
-      out = tf.select(c, inx, iny)
+      out = tf.where(c, inx, iny)
       s = list(np.shape(x))
       jacob_t, jacob_n = tf.test.compute_gradient(inx,
                                                   s,
@@ -1468,7 +1468,7 @@ class BatchSelectOpTest(tf.test.TestCase):
         yf = y.astype(numeric_gradient_type)
         inxf = tf.convert_to_tensor(xf)
         inyf = tf.convert_to_tensor(yf)
-        outf = tf.select(c, inxf, inyf)
+        outf = tf.where(c, inxf, inyf)
         _, jacob_n = tf.test.compute_gradient(inxf,
                                               s,
                                               outf,
@@ -1486,7 +1486,7 @@ class BatchSelectOpTest(tf.test.TestCase):
     with self.test_session():
       inx = tf.convert_to_tensor(x)
       iny = tf.convert_to_tensor(y)
-      out = tf.select(c, inx, iny)
+      out = tf.where(c, inx, iny)
       s = list(np.shape(x))
       jacob_t, jacob_n = tf.test.compute_gradient(iny,
                                                   s,
@@ -1498,7 +1498,7 @@ class BatchSelectOpTest(tf.test.TestCase):
         yf = y.astype(numeric_gradient_type)
         inxf = tf.convert_to_tensor(xf)
         inyf = tf.convert_to_tensor(yf)
-        outf = tf.select(c, inxf, inyf)
+        outf = tf.where(c, inxf, inyf)
         _, jacob_n = tf.test.compute_gradient(inyf,
                                               s,
                                               outf,
@@ -1552,7 +1552,7 @@ class BatchSelectOpTest(tf.test.TestCase):
       xt = x.astype(t)
       yt = y.astype(t)
       with self.assertRaises(ValueError):
-        tf.select(c, xt, yt)
+        tf.where(c, xt, yt)
 
 
 class MinMaxOpTest(tf.test.TestCase):

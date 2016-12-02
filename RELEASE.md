@@ -59,6 +59,13 @@
 * Removes RegisterShape from public API. Use C++ shape function registration instead.
   indexing now starts from 1 instead of 0, and `bus_id==0` is used where
   previously `BUS_ANY` was used.
+* Most RNN cells and RNN functions now use different variable scopes to be
+  consistent with layers (`tf.contrib.layers`).  This means old checkpoints
+  written using this code will not load after this change without providing
+  `Saver` a list of variable renames.  Examples of variable scope changes
+  include `RNN` -> `rnn` in `tf.nn.rnn`, `tf.nn.dynamic_rnn` and moving from
+  `Linear/Matrix` -> `weights` and `Linear/Bias` -> `biases` in most RNN cells.
+* Deprecated tf.select op. tf.where should be used instead.
 * `Env::FileExists` and `FileSystem::FileExists` now return a
   `tensorflow::Status` intead of a bool. Any callers to this function can be
   converted to a bool by adding `.ok()` to the call.
@@ -118,7 +125,6 @@ Yuming Wang, Zafar Takhirov, @zhongyuk, Ziming Dong, @guotong1988
 
 We are also grateful to all who filed issues or helped resolve them, asked and
 answered questions, and were part of inspiring discussions.
->>>>>>> r0.12
 
 # Release 0.11.0
 
