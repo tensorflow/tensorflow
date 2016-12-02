@@ -3930,3 +3930,31 @@ Produces the average pool of the input tensor for quantized types.
 *  <b>`max_output`</b>: A `Tensor` of type `float32`. The float value that the highest quantized output value represents.
 
 
+
+## Other Functions and Classes
+- - -
+
+### `tf.nn.zero_fraction(value, name=None)` {#zero_fraction}
+
+Returns the fraction of zeros in `value`.
+
+If `value` is empty, the result is `nan`.
+
+This is useful in summaries to measure and report sparsity.  For example,
+
+```python
+    z = tf.Relu(...)
+    summ = tf.contrib.deprecated.scalar_summary('sparsity', tf.nn.zero_fraction(z))
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: A tensor of numeric type.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  The fraction of zeros in `value`, with type `float32`.
+
+

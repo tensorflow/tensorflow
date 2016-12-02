@@ -1,4 +1,4 @@
-### `tf.contrib.framework.convert_to_tensor_or_sparse_tensor(value, dtype=None, name=None)` {#convert_to_tensor_or_sparse_tensor}
+### `tf.convert_to_tensor_or_sparse_tensor(value, dtype=None, name=None)` {#convert_to_tensor_or_sparse_tensor}
 
 Converts value to a `SparseTensor` or `Tensor`.
 

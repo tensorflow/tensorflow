@@ -9,6 +9,7 @@
   * [`control_dependencies`](../../api_docs/python/framework.md#control_dependencies)
   * [`convert_to_tensor`](../../api_docs/python/framework.md#convert_to_tensor)
   * [`convert_to_tensor_or_indexed_slices`](../../api_docs/python/framework.md#convert_to_tensor_or_indexed_slices)
+  * [`convert_to_tensor_or_sparse_tensor`](../../api_docs/python/framework.md#convert_to_tensor_or_sparse_tensor)
   * [`device`](../../api_docs/python/framework.md#device)
   * [`DeviceSpec`](../../api_docs/python/framework.md#DeviceSpec)
   * [`Dimension`](../../api_docs/python/framework.md#Dimension)
@@ -569,6 +570,7 @@
   * [`weighted_cross_entropy_with_logits`](../../api_docs/python/nn.md#weighted_cross_entropy_with_logits)
   * [`weighted_moments`](../../api_docs/python/nn.md#weighted_moments)
   * [`with_space_to_batch`](../../api_docs/python/nn.md#with_space_to_batch)
+  * [`zero_fraction`](../../api_docs/python/nn.md#zero_fraction)
 
 * **[Neural Network RNN Cells](../../api_docs/python/rnn_cell.md)**:
   * [`BasicLSTMCell`](../../api_docs/python/rnn_cell.md#BasicLSTMCell)
@@ -616,7 +618,6 @@
   * [`add_queue_runner`](../../api_docs/python/train.md#add_queue_runner)
   * [`AggregationMethod`](../../api_docs/python/train.md#AggregationMethod)
   * [`assert_global_step`](../../api_docs/python/train.md#assert_global_step)
-  * [`audio_summary`](../../api_docs/python/train.md#audio_summary)
   * [`basic_train_loop`](../../api_docs/python/train.md#basic_train_loop)
   * [`checkpoint_exists`](../../api_docs/python/train.md#checkpoint_exists)
   * [`CheckpointSaverHook`](../../api_docs/python/train.md#CheckpointSaverHook)
@@ -640,13 +641,9 @@
   * [`GradientDescentOptimizer`](../../api_docs/python/train.md#GradientDescentOptimizer)
   * [`gradients`](../../api_docs/python/train.md#gradients)
   * [`hessians`](../../api_docs/python/train.md#hessians)
-  * [`histogram_summary`](../../api_docs/python/train.md#histogram_summary)
-  * [`image_summary`](../../api_docs/python/train.md#image_summary)
   * [`inverse_time_decay`](../../api_docs/python/train.md#inverse_time_decay)
   * [`LoggingTensorHook`](../../api_docs/python/train.md#LoggingTensorHook)
   * [`LooperThread`](../../api_docs/python/train.md#LooperThread)
-  * [`merge_all_summaries`](../../api_docs/python/train.md#merge_all_summaries)
-  * [`merge_summary`](../../api_docs/python/train.md#merge_summary)
   * [`MomentumOptimizer`](../../api_docs/python/train.md#MomentumOptimizer)
   * [`MonitoredSession`](../../api_docs/python/train.md#MonitoredSession)
   * [`MonitoredTrainingSession`](../../api_docs/python/train.md#MonitoredTrainingSession)
@@ -663,7 +660,6 @@
   * [`replica_device_setter`](../../api_docs/python/train.md#replica_device_setter)
   * [`RMSPropOptimizer`](../../api_docs/python/train.md#RMSPropOptimizer)
   * [`Scaffold`](../../api_docs/python/train.md#Scaffold)
-  * [`scalar_summary`](../../api_docs/python/train.md#scalar_summary)
   * [`Server`](../../api_docs/python/train.md#Server)
   * [`SessionCreator`](../../api_docs/python/train.md#SessionCreator)
   * [`SessionManager`](../../api_docs/python/train.md#SessionManager)
@@ -682,7 +678,6 @@
   * [`SyncReplicasOptimizerV2`](../../api_docs/python/train.md#SyncReplicasOptimizerV2)
   * [`WorkerSessionCreator`](../../api_docs/python/train.md#WorkerSessionCreator)
   * [`write_graph`](../../api_docs/python/train.md#write_graph)
-  * [`zero_fraction`](../../api_docs/python/train.md#zero_fraction)
 
 * **[Wraps python functions](../../api_docs/python/script_ops.md)**:
   * [`py_func`](../../api_docs/python/script_ops.md#py_func)
