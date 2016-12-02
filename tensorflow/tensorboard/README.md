@@ -144,11 +144,11 @@ the run-selector on the left.
 Additionally, you can create new folders to organize tags by writing regular
 expressions in the box in the top-left of the dashboard.
 
-### Histogram Dashboard
+### Distribution Dashboard
 
-The Histogram Dashboard is for visualizing how the statistical distribution of a
-Tensor has varied over time. It visualizes data recorded via a
-tf.histogram_summary. Right now, its name is a bit of a misnomer, as it doesn't
+The Distribution Dashboard is for visualizing how the statistical distribution
+of a Tensor has varied over time. It visualizes data recorded via a
+tf.summary.histogram. Right now, its name is a bit of a misnomer, as it doesn't
 show histograms; instead, it shows some high-level statistics on a distribution.
 Each line on the chart represents a percentile in the distribution over the
 data: for example, the bottom line shows how the minimum value has changed over
@@ -167,7 +167,7 @@ replacement.
 
 ### Image Dashboard
 
-The Image Dashboard can display pngs that were saved via a tf.image_summary. The
+The Image Dashboard can display pngs that were saved via a tf.summary.image. The
 dashboard is set up so that each row corresponds to a different tag, and each
 column corresponds to a run. Since the image dashboard supports arbitrary pngs,
 you can use this to embed custom visualizations (e.g. matplotlib scatterplots)
@@ -176,7 +176,7 @@ into TensorBoard. This dashboard always shows you the latest image for each tag.
 ### Audio Dashboard
 
 The Audio Dashboard can embed playable audio widgets for audio saved via a
-tf.audio_summary. The dashboard is set up so that each row corresponds to a
+tf.summary.audio. The dashboard is set up so that each row corresponds to a
 different tag, and each column corresponds to a run. This dashboard always
 embeds the latest audio for each tag.
 

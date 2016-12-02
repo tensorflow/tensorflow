@@ -110,31 +110,6 @@ more information about how to configure a distributed TensorFlow program.
 @@WorkerSessionCreator
 @@MonitoredSession
 
-## Summary Operations
-
-The following ops output
-[`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
-protocol buffers as serialized string tensors.
-
-You can fetch the output of a summary op in a session, and pass it to
-a [SummaryWriter](../../api_docs/python/train.md#SummaryWriter) to append it
-to an event file.  Event files contain
-[`Event`](https://www.tensorflow.org/code/tensorflow/core/util/event.proto)
-protos that can contain `Summary` protos along with the timestamp and
-step.  You can then use TensorBoard to visualize the contents of the
-event files.  See [TensorBoard and
-Summaries](../../how_tos/summaries_and_tensorboard/index.md) for more
-details.
-
-@@scalar_summary
-@@image_summary
-@@audio_summary
-@@histogram_summary
-@@zero_fraction
-
-@@merge_summary
-@@merge_all_summaries
-
 ## Reading Summaries from Event Files
 
 See [Summaries and
