@@ -87,6 +87,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import resources
 from tensorflow.python.ops import sdca_ops as sdca
 from tensorflow.python.ops import image_ops as image
+from tensorflow.python.ops import losses
 from tensorflow.python.ops import sets
 from tensorflow.python.user_ops import user_ops
 from tensorflow.python.util import compat
@@ -218,6 +219,7 @@ _allowed_symbols.extend([
     'graph_util',
     'image',
     'logging',
+    'losses',
     'newaxis',
     'nn',
     'python_io',
@@ -245,10 +247,10 @@ _allowed_symbols.extend([
 remove_undocumented(__name__, _allowed_symbols,
                     [framework_lib, array_ops, client_lib, check_ops,
                      compat, constant_op, control_flow_ops, functional_ops,
-                     histogram_ops, io_ops, math_ops, nn, resource_loader,
-                     resources, sets, script_ops, session_ops, sparse_ops,
-                     state_ops, string_ops, summary, tensor_array_ops, train,
-                     layers])
+                     histogram_ops, io_ops, losses, math_ops, nn,
+                     resource_loader, resources, sets, script_ops, session_ops,
+                     sparse_ops, state_ops, string_ops, summary,
+                     tensor_array_ops, train, layers])
 
 # Special dunders that we choose to export:
 _exported_dunders = set([

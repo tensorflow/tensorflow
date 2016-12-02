@@ -194,6 +194,13 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "losses_test",
+    size = "small",
+    srcs = ["losses_test.py"],
+    additional_deps = ["//tensorflow:tensorflow_py"],
+)
+
+tf_py_test(
     name = "matrix_inverse_op_test",
     size = "small",
     srcs = ["matrix_inverse_op_test.py"],

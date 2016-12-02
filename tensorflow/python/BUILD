@@ -43,6 +43,7 @@ py_library(
         ":training",
         ":ops",
         ":test_ops",
+        "//tensorflow/python/ops/losses",
         "//tensorflow/python/debug:debug_py",
     ] + if_not_windows([
         "//tensorflow/contrib:contrib_py",
