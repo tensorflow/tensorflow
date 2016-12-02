@@ -1,6 +1,10 @@
 ### `tf.contrib.losses.compute_weighted_loss(*args, **kwargs)` {#compute_weighted_loss}
 
-Computes the weighted loss. (deprecated arguments)
+Computes the weighted loss. (deprecated arguments) (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
+Instructions for updating:
+Use tf.losses.compute_weighted_loss instead.
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-11-25.
 Instructions for updating:

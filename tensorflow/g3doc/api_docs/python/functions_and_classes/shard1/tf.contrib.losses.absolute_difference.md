@@ -1,6 +1,10 @@
 ### `tf.contrib.losses.absolute_difference(*args, **kwargs)` {#absolute_difference}
 
-Adds an Absolute Difference loss to the training procedure. (deprecated arguments)
+Adds an Absolute Difference loss to the training procedure. (deprecated arguments) (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
+Instructions for updating:
+Use tf.losses.absolute_difference instead.
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-11-25.
 Instructions for updating:
