@@ -43,7 +43,7 @@ def _get_unique_target_key(features):
 def numpy_input_fn(x,
                    y=None,
                    batch_size=128,
-                   num_epochs=None,
+                   num_epochs=1,
                    shuffle=True,
                    queue_capacity=1000,
                    num_threads=1):
