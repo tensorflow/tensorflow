@@ -25,6 +25,7 @@ import time
 import tensorflow as tf
 
 from tensorflow.contrib.learn.python.learn import run_config
+from tensorflow.contrib.learn.python.learn.utils import saved_model_export_utils
 from tensorflow.python.util.all_util import reveal_undocumented
 
 patch = tf.test.mock.patch
@@ -36,6 +37,7 @@ class TestEstimator(tf.contrib.learn.Evaluable, tf.contrib.learn.Trainable):
     self.eval_count = 0
     self.fit_count = 0
     self._max_evals = max_evals
+    self.export_count = 0
     self.monitors = []
     self._config = config or run_config.RunConfig()
     self._model_dir = tempfile.mkdtemp()
@@ -71,6 +73,12 @@ class TestEstimator(tf.contrib.learn.Evaluable, tf.contrib.learn.Trainable):
     if 'monitors' in kwargs:
       self.monitors = kwargs['monitors']
     return [(key, kwargs[key]) for key in sorted(kwargs.keys())]
+
+  def export_savedmodel(self, export_dir_base, export_input_fn, **kwargs):
+    tf.logging.info('export_savedmodel called with args: %s, %s, %s'
+                    % (export_dir_base, export_input_fn, kwargs))
+    self.export_count += 1
+    return export_dir_base + '/bogus_timestamp'
 
 
 class ExperimentTest(tf.test.TestCase):
@@ -292,16 +300,20 @@ class ExperimentTest(tf.test.TestCase):
 
   def test_train_and_evaluate(self):
     est = TestEstimator()
+    export_strategy = saved_model_export_utils.make_export_strategy(
+        est, 'export_input')
     ex = tf.contrib.learn.Experiment(
         est,
         train_input_fn='train_input',
         eval_input_fn='eval_input',
         eval_metrics='eval_metrics',
         train_steps=100,
-        eval_steps=100)
+        eval_steps=100,
+        export_strategies=export_strategy)
     ex.train_and_evaluate()
     self.assertEquals(1, est.fit_count)
     self.assertEquals(1, est.eval_count)
+    self.assertEquals(1, est.export_count)
     self.assertEquals(1, len(est.monitors))
     self.assertTrue(
         isinstance(est.monitors[0],

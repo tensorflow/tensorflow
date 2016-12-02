@@ -21,11 +21,13 @@ from __future__ import print_function
 
 import contextlib
 import math
+import os
 import time
 
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.learn.python.learn import evaluable
+from tensorflow.contrib.learn.python.learn import export_strategy
 from tensorflow.contrib.learn.python.learn import monitors
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import run_config
@@ -33,7 +35,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import saver
 from tensorflow.python.training import server_lib
-
+from tensorflow.python.util import compat
 
 __all__ = ["Experiment"]
 
@@ -70,7 +72,8 @@ class Experiment(object):
                eval_delay_secs=120,
                continuous_eval_throttle_secs=60,
                min_eval_frequency=1,
-               delay_workers_by_global_step=False):
+               delay_workers_by_global_step=False,
+               export_strategies=None):
     """Constructor for `Experiment`.
 
     Creates an Experiment instance. None of the functions passed to this
@@ -103,9 +106,11 @@ class Experiment(object):
         occur if no new snapshot is available, hence, this is the minimum.
       delay_workers_by_global_step: if `True` delays training workers
         based on global step instead of time.
+      export_strategies: A list of `ExportStrategy`s, or a single one, or None.
 
     Raises:
-      ValueError: if `estimator` does not implement `Evaluable` and `Trainable`.
+      ValueError: if `estimator` does not implement `Evaluable` and `Trainable`,
+        or if export_strategies has the wrong type.
     """
     if not isinstance(estimator, evaluable.Evaluable):
       raise ValueError("`estimator` must implement `Evaluable`.")
@@ -124,6 +129,16 @@ class Experiment(object):
     self._continuous_eval_throttle_secs = continuous_eval_throttle_secs
     self._min_eval_frequency = min_eval_frequency
     self._delay_workers_by_global_step = delay_workers_by_global_step
+
+    if export_strategies is None:
+      self._export_strategies = []
+    elif isinstance(export_strategies, list):
+      self._export_strategies = export_strategies
+    elif isinstance(export_strategies, export_strategy.ExportStrategy):
+      self._export_strategies = [export_strategies]
+    else:
+      raise ValueError("`export_strategies` must be an ExportStrategy, "
+                       "a list of ExportStrategies, or None.")
 
   @property
   def estimator(self):
@@ -267,11 +282,15 @@ class Experiment(object):
           logging.warning(error_msg)
           last_warning_time = time.time()
       else:
-        self._estimator.evaluate(input_fn=input_fn,
-                                 steps=self._eval_steps,
-                                 metrics=self._eval_metrics,
-                                 name=name,
-                                 use_checkpoint=latest_path)
+        eval_result = self._estimator.evaluate(input_fn=input_fn,
+                                               steps=self._eval_steps,
+                                               metrics=self._eval_metrics,
+                                               name=name,
+                                               use_checkpoint=latest_path)
+
+        # TODO(soergel): further throttle how often export happens?
+        self._maybe_export(eval_result)
+
         # Clear warning timer and update last evaluated checkpoint
         last_warning_time = 0
         previous_path = latest_path
@@ -341,10 +360,32 @@ class Experiment(object):
         )]
       self.train(delay_secs=0)
 
-    return self._estimator.evaluate(input_fn=self._eval_input_fn,
-                                    steps=self._eval_steps,
-                                    metrics=self._eval_metrics,
-                                    name=eval_dir_suffix)
+    eval_result = self._estimator.evaluate(input_fn=self._eval_input_fn,
+                                           steps=self._eval_steps,
+                                           metrics=self._eval_metrics,
+                                           name=eval_dir_suffix)
+    export_results = self._maybe_export(eval_result)
+    return eval_result, export_results
+
+  def _maybe_export(self, eval_result):  # pylint: disable=unused-argument
+    """Export the Estimator using export_fn, if defined."""
+    export_dir_base = os.path.join(
+        compat.as_bytes(self._estimator.model_dir),
+        compat.as_bytes("export"))
+
+    export_results = []
+    for strategy in self._export_strategies:
+      # TODO(soergel): possibly, allow users to decide whether to export here
+      # based on the eval_result (e.g., to keep the best export).
+
+      export_results.append(
+          strategy.export(
+              self._estimator,
+              os.path.join(
+                  compat.as_bytes(export_dir_base),
+                  compat.as_bytes(strategy.name))))
+
+    return export_results
 
   def run_std_server(self):
     """Starts a TensorFlow server and joins the serving thread.
