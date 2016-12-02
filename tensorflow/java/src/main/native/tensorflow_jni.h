@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_JAVA_JNI_H_
-#define TENSORFLOW_JAVA_JNI_H_
+#ifndef TENSORFLOW_JAVA_TENSORFLOW_JNI_H_
+#define TENSORFLOW_JAVA_TENSORFLOW_JNI_H_
 
 #include <jni.h>
 
@@ -23,14 +23,14 @@ extern "C" {
 #endif  // __cplusplus
 
 /*
- *  Class:     TensorFlow
- *  Method:    getVersion
+ *  Class:     org_tensorflow_TensorFlow
+ *  Method:    version
  *  Signature: ()Ljava/lang/String;
  */
-JNIEXPORT jstring JNICALL Java_org_tensorflow_TensorFlow_getVersion(JNIEnv*,
-                                                                    jclass);
+JNIEXPORT jstring JNICALL Java_org_tensorflow_TensorFlow_version(JNIEnv*,
+                                                                 jclass);
 
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
-#endif  // TENSORFLOW_JAVA_JNI_H_
+#endif  // TENSORFLOW_JAVA_TENSORFLOW_JNI_H_

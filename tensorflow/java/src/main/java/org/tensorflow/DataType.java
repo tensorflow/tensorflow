@@ -13,10 +13,34 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/java/src/main/native/tensorflow.h"
-#include "tensorflow/c/c_api.h"
+package org.tensorflow;
 
-JNIEXPORT jstring JNICALL
-Java_org_tensorflow_TensorFlow_getVersion(JNIEnv* env, jclass clazz) {
-  return env->NewStringUTF(TF_Version());
+/** Type of elements in a {@link Tensor}. */
+public enum DataType {
+  /** 32-bit single precision floating point. */
+  FLOAT(1),
+
+  /** 64-bit double precision floating point. */
+  DOUBLE(2),
+
+  /** 32-bit signed integer. */
+  INT32(3),
+
+  /** 64-bit signed integer. */
+  INT64(9),
+
+  /** Boolean. */
+  BOOL(10);
+
+  private final int value;
+
+  // The integer value must match the corresponding TF_* value in the TensorFlow C API.
+  DataType(int value) {
+    this.value = value;
+  }
+
+  /** Corresponding value of the TF_DataType enum in the TensorFlow C API. */
+  int c() {
+    return value;
+  }
 }

@@ -13,17 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-package org.tensorflow.examples;
+#include "tensorflow/java/src/main/native/tensorflow_jni.h"
+#include "tensorflow/c/c_api.h"
 
-import org.tensorflow.TensorFlow;
-
-/**
- * Sample usage of the TensorFlow Java library.
- *
- * <p>This sample should become more useful as functionality is added to the API.
- */
-public class Example {
-  public static void main(String[] args) {
-    System.out.println("TensorFlow version: " + TensorFlow.version());
-  }
+JNIEXPORT jstring JNICALL Java_org_tensorflow_TensorFlow_version(JNIEnv* env,
+                                                                 jclass clazz) {
+  return env->NewStringUTF(TF_Version());
 }
