@@ -1,6 +1,6 @@
 # `class tensorflow::Thread`
 
-
+Represents a thread used to run a Tensorflow function.
 
 
 

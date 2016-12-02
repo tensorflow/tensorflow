@@ -59,6 +59,10 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:quantized_ops",
+        "//tensorflow/core/kernels:reduction_ops",
+        "//tensorflow/core/kernels:reshape_op",
+        "//tensorflow/core/kernels:softmax_op",
     ],
 )
 

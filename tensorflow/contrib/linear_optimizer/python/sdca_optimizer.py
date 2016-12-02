@@ -18,6 +18,7 @@ from __future__ import print_function
 
 from tensorflow.contrib import layers
 from tensorflow.contrib.linear_optimizer.python.ops import sdca_ops
+from tensorflow.contrib.linear_optimizer.python.ops.sparse_feature_column import SparseFeatureColumn
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 
@@ -86,7 +87,7 @@ class SDCAOptimizer(object):
       sparse_values = array_ops.gather_nd(dense_tensor, sparse_indices)
       # TODO(sibyl-Aix6ihai, sibyl-vie3Poto): Makes this efficient, as now SDCA supports
       # very sparse features with weights and not weights.
-      return sdca_ops.SparseFeatureColumn(
+      return SparseFeatureColumn(
           array_ops.reshape(
               array_ops.split(1, 2, sparse_indices)[0], [-1]),
           array_ops.reshape(
@@ -134,7 +135,7 @@ class SDCAOptimizer(object):
               columns_to_variables[column][0])
         elif isinstance(column, (layers.feature_column._CrossedColumn,
                                  layers.feature_column._SparseColumn)):
-          sparse_features.append(sdca_ops.SparseFeatureColumn(
+          sparse_features.append(SparseFeatureColumn(
               array_ops.reshape(
                   array_ops.split(1, 2, transformed_tensor.indices)[0], [-1]),
               array_ops.reshape(transformed_tensor.values, [-1]), None))
@@ -142,7 +143,7 @@ class SDCAOptimizer(object):
         elif isinstance(column, layers.feature_column._WeightedSparseColumn):
           id_tensor = column.id_tensor(transformed_tensor)
           weight_tensor = column.weight_tensor(transformed_tensor)
-          sparse_feature_with_values.append(sdca_ops.SparseFeatureColumn(
+          sparse_feature_with_values.append(SparseFeatureColumn(
               array_ops.reshape(
                   array_ops.split(1, 2, id_tensor.indices)[0], [-1]),
               array_ops.reshape(id_tensor.values, [-1]), array_ops.reshape(

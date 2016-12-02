@@ -328,5 +328,21 @@ TEST(QueueRunnerTest, TestCoordinatorStop) {
   TF_EXPECT_OK(coord.Join());
 }
 
+TEST(QueueRunnerTest, CallbackCalledOnError) {
+  GraphDef graph_def = BuildSimpleGraph();
+  auto session = BuildSessionAndInitVariable(graph_def);
+
+  QueueRunnerDef queue_runner_def = BuildQueueRunnerDef(
+      kQueueName, {kIllegalOpName1, kIllegalOpName2}, kCountUpToOpName, "", {});
+
+  std::unique_ptr<QueueRunner> qr;
+  TF_EXPECT_OK(QueueRunner::New(queue_runner_def, &qr));
+  bool error_caught = false;
+  qr->AddErrorCallback([&error_caught](const Status&) { error_caught = true; });
+  TF_EXPECT_OK(qr->Start(session.get()));
+  qr->Join();
+  EXPECT_TRUE(error_caught);
+}
+
 }  // namespace
 }  // namespace tensorflow

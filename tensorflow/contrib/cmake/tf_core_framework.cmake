@@ -209,11 +209,7 @@ file(GLOB_RECURSE tf_core_framework_test_srcs
     "${tensorflow_source_dir}/tensorflow/core/util/*main.cc"
 )
 
-list(REMOVE_ITEM tf_core_framework_srcs ${tf_core_framework_test_srcs}
-    "${tensorflow_source_dir}/tensorflow/core/util/memmapped_file_system.cc"
-    "${tensorflow_source_dir}/tensorflow/core/util/memmapped_file_system.h"
-    "${tensorflow_source_dir}/tensorflow/core/util/memmapped_file_system_writer.cc"
-)
+list(REMOVE_ITEM tf_core_framework_srcs ${tf_core_framework_test_srcs})
 
 add_library(tf_core_framework OBJECT
     ${tf_core_framework_srcs}

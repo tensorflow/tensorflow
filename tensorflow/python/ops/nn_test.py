@@ -24,6 +24,8 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
+from tensorflow.python.ops.nn_impl import _compute_sampled_logits
+
 
 class ZeroFractionTest(tf.test.TestCase):
 
@@ -437,7 +439,7 @@ class ComputeSampledLogitsTest(tf.test.TestCase):
                             dtype=tf.int64,
                             shape=(self._batch_size, num_true))
 
-    pred_logits_tf, pred_labels_tf = tf.nn._compute_sampled_logits(
+    pred_logits_tf, pred_labels_tf = _compute_sampled_logits(
         weights_tf,
         biases_tf,
         hidden_acts_tf,

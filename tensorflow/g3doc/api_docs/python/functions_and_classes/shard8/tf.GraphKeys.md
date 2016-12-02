@@ -27,7 +27,7 @@ The following standard keys are defined:
   for more details.
 * `SUMMARIES`: the summary `Tensor` objects that have been created in the
   graph. See
-  [`tf.merge_all_summaries()`](../../api_docs/python/train.md#merge_all_summaries)
+  [`tf.contrib.deprecated.merge_all_summaries()`](../../api_docs/python/train.md#merge_all_summaries)
   for more details.
 * `QUEUE_RUNNERS`: the `QueueRunner` objects that are used to
   produce input for a computation. See
@@ -42,3 +42,14 @@ The following standard keys are defined:
 * `WEIGHTS`: weights inside neural network layers
 * `BIASES`: biases inside neural network layers
 * `ACTIVATIONS`: activations of neural network layers
+- - -
+
+#### `tf.GraphKeys.VARIABLES` {#GraphKeys.VARIABLES}
+
+DEPRECATED FUNCTION
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2017-03-02.
+Instructions for updating:
+VARIABLES collection name is deprecated, please use GLOBAL_VARIABLES instead
+
+

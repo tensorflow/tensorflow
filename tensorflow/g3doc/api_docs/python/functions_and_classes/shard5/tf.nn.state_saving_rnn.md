@@ -16,7 +16,7 @@ RNN that accepts a state saver for time-truncated RNN calculation.
     be a single string.
 *  <b>`sequence_length`</b>: (optional) An int32/int64 vector size [batch_size].
     See the documentation for rnn() for more details about sequence_length.
-*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "RNN".
+*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "rnn".
 
 ##### Returns:
 

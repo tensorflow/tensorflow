@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 import tensorflow as tf
+from tensorflow.contrib.learn.python.learn.metric_spec import MetricSpec
 
 tf.logging.set_verbosity(tf.logging.INFO)
 
@@ -33,9 +34,17 @@ training_set = tf.contrib.learn.datasets.base.load_csv_with_header(
 test_set = tf.contrib.learn.datasets.base.load_csv_with_header(
     filename=IRIS_TEST, target_dtype=np.int, features_dtype=np.float)
 
-validation_metrics = {"accuracy": tf.contrib.metrics.streaming_accuracy,
-                      "precision": tf.contrib.metrics.streaming_precision,
-                      "recall": tf.contrib.metrics.streaming_recall}
+validation_metrics = {
+    "accuracy": MetricSpec(
+                        metric_fn=tf.contrib.metrics.streaming_accuracy,
+                        prediction_key="classes"),
+    "recall": MetricSpec(
+                        metric_fn=tf.contrib.metrics.streaming_recall,
+                        prediction_key="classes"),
+    "precision": MetricSpec(
+                        metric_fn=tf.contrib.metrics.streaming_precision,
+                        prediction_key="classes")
+                      }
 validation_monitor = tf.contrib.learn.monitors.ValidationMonitor(
     test_set.data,
     test_set.target,

@@ -115,9 +115,10 @@ def Assert(condition, data, summarize=None, name=None):
   NOTE: To ensure that Assert executes, one usually attaches a dependency:
 
   ```python
-   # Ensure maximum element of x is smaller or equal to 1
+  # Ensure maximum element of x is smaller or equal to 1
   assert_op = tf.Assert(tf.less_equal(tf.reduce_max(x), 1.), [x])
-  x = tf.with_dependencies([assert_op], x)
+  with tf.control_dependencies([assert_op]):
+    ... code using x ...
   ```
 
   Args:
@@ -2235,7 +2236,9 @@ class WhileContext(ControlFlowContext):
       if self.outer_context: self.outer_context.Exit()
     else:
       value = op.inputs[0]
-      if self.outer_context:
+      if (isinstance(self.outer_context, WhileContext) and
+          self.outer_context.grad_state is not None):
+        # We are in a nested while loop.
         forward_ctxt = self.grad_state.forward_context
         forward_ctxt.outer_context.Enter()
         zeros_shape = array_ops.shape_internal(value, optimize=False)
@@ -2249,8 +2252,10 @@ class WhileContext(ControlFlowContext):
         acc = array_ops.zeros(real_shape, grad.dtype)
         self.outer_context.Exit()
       else:
+        if self.outer_context: self.outer_context.Enter()
         zeros_shape = array_ops.shape_internal(value, optimize=False)
         acc = array_ops.zeros(zeros_shape, grad.dtype)
+        if self.outer_context: self.outer_context.Exit()
       acc._shape = grad.get_shape()  # pylint: disable=protected-access
 
     self.Enter()

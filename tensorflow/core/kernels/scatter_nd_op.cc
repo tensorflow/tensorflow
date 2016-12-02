@@ -37,7 +37,7 @@ static bool ValidUpdateShape(const TensorShape& params_shape,
                              const Tensor& indices, const Tensor& updates) {
   int64 indices_nd = 1;
   if (indices.dims() > 1) {
-    indices_nd = indices.dim_size(1);
+    indices_nd = indices.dim_size(indices.dims() - 1);
   }
   for (int d = indices_nd; d < params_shape.dims(); d++) {
     if (updates.dim_size(d - indices_nd + 1) != params_shape.dim_size(d)) {
@@ -71,13 +71,13 @@ static void PrepareAndValidateInputs(OpKernelContext* c,
                   "The outermost dimension of updates and indices ",
                   "must match. Got indices.shape ", indices_shape.DebugString(),
                   ", updates.shape ", updates_shape.DebugString()));
-  OP_REQUIRES(
-      c, ValidUpdateShape(params_shape, indices, updates),
-      errors::InvalidArgument(
-          "Must have updates.shape = indices.shape[0] + params_shape[IXDIM:], ",
-          "got updates.shape ", updates_shape.DebugString(), ", indices.shape ",
-          indices_shape.DebugString(), ", params_shape ",
-          params_shape.DebugString()));
+  OP_REQUIRES(c, ValidUpdateShape(params_shape, indices, updates),
+              errors::InvalidArgument(
+                  "Must have updates.shape = indices.shape[:IXDIM] + ",
+                  "params_shape[IXDIM:], got updates.shape ",
+                  updates_shape.DebugString(), ", indices.shape ",
+                  indices_shape.DebugString(), ", params_shape ",
+                  params_shape.DebugString()));
   // Check that we have enough index space
   const int64 N_big = indices.NumElements();
   OP_REQUIRES(c, N_big <= std::numeric_limits<Index>::max(),

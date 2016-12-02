@@ -2423,6 +2423,6 @@ def where(condition, x=None, y=None, name=None):
   if x is None and y is None:
     return gen_array_ops.where(input=condition, name=name)
   elif x is not None and y is not None:
-    return gen_math_ops.select(condition=condition, t=x, e=y, name=name)
+    return gen_math_ops._select(condition=condition, t=x, e=y, name=name)
   else:
     raise ValueError("x and y must both be non-None or both be None.")

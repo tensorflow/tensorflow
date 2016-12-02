@@ -183,6 +183,7 @@ add_python_module("tensorflow/python/debug/examples")
 add_python_module("tensorflow/python/debug/wrappers")
 add_python_module("tensorflow/python/framework")
 add_python_module("tensorflow/python/kernel_tests")
+add_python_module("tensorflow/python/layers")
 add_python_module("tensorflow/python/lib")
 add_python_module("tensorflow/python/lib/core")
 add_python_module("tensorflow/python/lib/io")
@@ -232,6 +233,7 @@ add_python_module("tensorflow/contrib/cudnn_rnn/ops")
 add_python_module("tensorflow/contrib/cudnn_rnn/python")
 add_python_module("tensorflow/contrib/cudnn_rnn/python/kernel_tests")
 add_python_module("tensorflow/contrib/cudnn_rnn/python/ops")
+add_python_module("tensorflow/contrib/deprecated")
 add_python_module("tensorflow/contrib/distributions")
 add_python_module("tensorflow/contrib/distributions/python")
 add_python_module("tensorflow/contrib/distributions/python/kernel_tests")
@@ -299,6 +301,10 @@ add_python_module("tensorflow/contrib/learn/python/learn/preprocessing/tests")
 add_python_module("tensorflow/contrib/learn/python/learn/tests")
 add_python_module("tensorflow/contrib/learn/python/learn/tests/dataframe")
 add_python_module("tensorflow/contrib/learn/python/learn/utils")
+add_python_module("tensorflow/contrib/linalg")
+add_python_module("tensorflow/contrib/linalg/python")
+add_python_module("tensorflow/contrib/linalg/python/ops")
+add_python_module("tensorflow/contrib/linalg/python/kernel_tests")
 add_python_module("tensorflow/contrib/linear_optimizer")
 add_python_module("tensorflow/contrib/linear_optimizer/kernels")
 add_python_module("tensorflow/contrib/linear_optimizer/kernels/g3doc")
@@ -374,10 +380,6 @@ add_python_module("tensorflow/contrib/tensor_forest/hybrid/python/ops")
 add_python_module("tensorflow/contrib/tensor_forest/python")
 add_python_module("tensorflow/contrib/tensor_forest/python/kernel_tests")
 add_python_module("tensorflow/contrib/tensor_forest/python/ops")
-add_python_module("tensorflow/contrib/tensorboard")
-add_python_module("tensorflow/contrib/tensorboard")
-add_python_module("tensorflow/contrib/tensorboard/plugins")
-add_python_module("tensorflow/contrib/tensorboard/plugins/projector")
 add_python_module("tensorflow/contrib/testing")
 add_python_module("tensorflow/contrib/testing/python")
 add_python_module("tensorflow/contrib/testing/python/framework")
@@ -578,6 +580,7 @@ target_link_libraries(pywrap_tensorflow
 add_custom_target(tf_python_build_pip_package)
 add_dependencies(tf_python_build_pip_package
     pywrap_tensorflow
+    tensorboard_copy_dependencies
     tf_python_copy_scripts_to_destination
     tf_python_touchup_modules
     tf_python_ops)
@@ -616,7 +619,16 @@ add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
 add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/tensorflow/tensorboard/TAG
                                    ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/tensorboard/)
-
 add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
-  COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/tf_python/setup.py bdist_wheel
-  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/tf_python)
+  COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_BINARY_DIR}/tensorboard_external
+                                             ${CMAKE_CURRENT_BINARY_DIR}/tf_python/external)
+
+if(${tensorflow_ENABLE_GPU})
+  add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
+    COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/tf_python/setup.py bdist_wheel --project_name tensorflow_gpu
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/tf_python)
+else()
+  add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
+    COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/tf_python/setup.py bdist_wheel
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/tf_python)
+endif(${tensorflow_ENABLE_GPU})

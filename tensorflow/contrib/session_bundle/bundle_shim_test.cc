@@ -35,7 +35,7 @@ constexpr char kSessionBundlePath[] =
 constexpr char kSessionBundleMetaGraphFilename[] = "export.meta";
 constexpr char kSessionBundleVariablesFilename[] = "export-00000-of-00001";
 constexpr char kSavedModelBundlePath[] =
-    "contrib/session_bundle/testdata/saved_model_half_plus_two";
+    "python/saved_model/example/saved_model_half_plus_two/00000123";
 
 string MakeSerializedExample(float x) {
   tensorflow::Example example;
@@ -72,16 +72,20 @@ void LoadAndValidateSavedModelBundle(const string& export_dir,
       session_options, run_options, export_dir, tags, &saved_model_bundle));
   const MetaGraphDef meta_graph_def = saved_model_bundle.meta_graph_def;
   const auto& signature_def_map = meta_graph_def.signature_def();
-  EXPECT_EQ(1, signature_def_map.size());
 
   const auto& regression_entry = signature_def_map.find(signature_def_key);
+  ASSERT_FALSE(regression_entry == signature_def_map.end());
   SignatureDef regression_signature_def = regression_entry->second;
 
   EXPECT_EQ(1, regression_signature_def.inputs_size());
+  ASSERT_FALSE(regression_signature_def.inputs().find(kRegressInputs) ==
+               regression_signature_def.inputs().end());
   TensorInfo input_tensor_info =
       regression_signature_def.inputs().find(kRegressInputs)->second;
   EXPECT_EQ(1, regression_signature_def.outputs_size());
 
+  ASSERT_FALSE(regression_signature_def.outputs().find(kRegressOutputs) ==
+               regression_signature_def.outputs().end());
   TensorInfo output_tensor_info =
       regression_signature_def.outputs().find(kRegressOutputs)->second;
   ValidateHalfPlusTwo(saved_model_bundle, input_tensor_info.name(),
@@ -261,9 +265,14 @@ TEST(BundleShimTest, NamedSignatureGenericInputsAndOutputs) {
   EXPECT_EQ(1, meta_graph_def.signature_def_size());
   const auto actual_signature_def =
       meta_graph_def.signature_def().find(kDefaultServingSignatureDefKey);
+  ASSERT_FALSE(actual_signature_def == meta_graph_def.signature_def().end());
+  ASSERT_FALSE(actual_signature_def->second.inputs().find("foo-input") ==
+               actual_signature_def->second.inputs().end());
   EXPECT_EQ(
       "foo-input",
       actual_signature_def->second.inputs().find("foo-input")->second.name());
+  ASSERT_FALSE(actual_signature_def->second.outputs().find("foo-output") ==
+               actual_signature_def->second.outputs().end());
   EXPECT_EQ(
       "foo-output",
       actual_signature_def->second.outputs().find("foo-output")->second.name());
@@ -318,10 +327,40 @@ TEST(BundleShimTest, NamedSignatureGenericOnlyInput) {
 
 // Checks a basic up conversion for half plus two for SessionBundle.
 TEST(BundleShimTest, BasicExportSessionBundle) {
+  const std::unordered_set<string> tags = {"tag"};
   const string session_bundle_export_dir =
       test_util::TestSrcDirPath(kSessionBundlePath);
-  LoadAndValidateSavedModelBundle(session_bundle_export_dir, {"tag"},
+  LoadAndValidateSavedModelBundle(session_bundle_export_dir, tags,
                                   kDefaultServingSignatureDefKey);
+
+  // Verify that the named signature is also present.
+  SessionOptions session_options;
+  RunOptions run_options;
+  SavedModelBundle saved_model_bundle;
+  TF_ASSERT_OK(LoadSessionBundleOrSavedModelBundle(session_options, run_options,
+                                                   session_bundle_export_dir,
+                                                   tags, &saved_model_bundle));
+  const MetaGraphDef meta_graph_def = saved_model_bundle.meta_graph_def;
+  const auto& signature_def_map = meta_graph_def.signature_def();
+  bool found_named_signature = false;
+  for (const auto& entry : signature_def_map) {
+    const string& key = entry.first;
+    const SignatureDef& signature_def = entry.second;
+
+    // We're looking for the key that is *not* kDefaultServingSignatureDefKey.
+    if (key == kDefaultServingSignatureDefKey) {
+      continue;
+    }
+    found_named_signature = true;
+
+    EXPECT_EQ(1, signature_def.inputs_size());
+    EXPECT_FALSE(signature_def.inputs().find("x") ==
+                 signature_def.inputs().end());
+    EXPECT_EQ(1, signature_def.outputs_size());
+    EXPECT_FALSE(signature_def.outputs().find("y") ==
+                 signature_def.outputs().end());
+  }
+  EXPECT_TRUE(found_named_signature);
 }
 
 // Checks a basic load for half plus two for SavedModelBundle.

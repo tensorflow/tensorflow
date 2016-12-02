@@ -200,7 +200,7 @@ class SparseMatmulOpTest : public ::testing::Test {
 
     // zero out lower 16-bits of mantissa of data3 values
     // copy bfloat representation to data3_bfloat16
-    for (int i = 0; i < kMaxPacketSize; ++i) {
+    for (int i = 0; i < kMaxPacketSize * 2; ++i) {
       uint16_t* data3_p = reinterpret_cast<uint16_t*>(&data3[i]);
       uint16_t* data3_bfloat16_p =
           reinterpret_cast<uint16_t*>(data3_bfloat16) + i;
@@ -222,7 +222,13 @@ class SparseMatmulOpTest : public ::testing::Test {
     return true;
   }
 
+#ifdef EIGEN_VECTORIZE_AVX512
   static const int kMaxPacketSize = 16;
+#elif defined EIGEN_VECTORIZE_AVX || defined EIGEN_VECTORIZE_AVX2
+  static const int kMaxPacketSize = 8;
+#else
+  static const int kMaxPacketSize = 4;
+#endif
   typedef typename Eigen::internal::packet_traits<float>::type Packet;
   const int PacketSize;
   // float values
@@ -230,9 +236,9 @@ class SparseMatmulOpTest : public ::testing::Test {
   // output of intrinsics
   EIGEN_ALIGN_MAX float data2[kMaxPacketSize];
   // float values with only 7 mantissa bits (bfloat representable)
-  EIGEN_ALIGN_MAX float data3[kMaxPacketSize];
+  EIGEN_ALIGN_MAX float data3[kMaxPacketSize * 2];
   // bfloat16 representation of data3
-  EIGEN_ALIGN_MAX float data3_bfloat16[kMaxPacketSize / 2];
+  EIGEN_ALIGN_MAX float data3_bfloat16[kMaxPacketSize];
   EIGEN_ALIGN_MAX float ref[kMaxPacketSize];
 };
 

@@ -2959,24 +2959,31 @@ class Graph(object):
     `b` and `c` will always be colocated with `a`, no matter where `a`
     is eventually placed.
 
+    **NOTE** Using a colocation scope resets any existing device constraints.
+
+    If `op` is `None` then `ignore_existing` must be `True` and the new
+    scope resets all colocation and device constraints.
+
     Args:
-      op: The op to colocate all created ops with.
+      op: The op to colocate all created ops with, or `None`.
       ignore_existing: If true, only applies colocation of this op within
         the context, rather than applying all colocation properties
-        on the stack.
+        on the stack.  If `op` is `None`, this value must be `True`.
 
     Raises:
-      ValueError: if op is None.
+      ValueError: if op is None but ignore_existing is False.
 
     Yields:
       A context manager that specifies the op with which to colocate
       newly created ops.
 
     """
-    if op is None:
-      raise ValueError("Tried to colocate with None")
+    if op is None and not ignore_existing:
+      raise ValueError(
+          "Trying to reset colocation (op is None) but "
+          "ignore_existing is not True")
 
-    if not isinstance(op, Operation):
+    if op is not None and not isinstance(op, Operation):
       # We always want to colocate with the reference op.
       op = internal_convert_to_tensor_or_indexed_slices(op, as_ref=True).op
 
@@ -2994,14 +3001,16 @@ class Graph(object):
       current_stack = self._colocation_stack
       self._colocation_stack = []
 
-    self._colocation_stack.append(op)
+    if op is not None:
+      self._colocation_stack.append(op)
 
     try:
       yield
     finally:
       # Restore device function stack
       self._device_function_stack = device_fn_tmp
-      self._colocation_stack.pop()
+      if op is not None:
+        self._colocation_stack.pop()
 
       # Reset the colocation stack if requested.
       if ignore_existing:
@@ -3971,7 +3980,7 @@ class GraphKeys(object):
     for more details.
   * `SUMMARIES`: the summary `Tensor` objects that have been created in the
     graph. See
-    [`tf.merge_all_summaries()`](../../api_docs/python/train.md#merge_all_summaries)
+    [`tf.contrib.deprecated.merge_all_summaries()`](../../api_docs/python/train.md#merge_all_summaries)
     for more details.
   * `QUEUE_RUNNERS`: the `QueueRunner` objects that are used to
     produce input for a computation. See

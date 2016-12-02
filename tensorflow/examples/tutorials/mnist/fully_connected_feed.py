@@ -146,13 +146,13 @@ def run_training():
     init = tf.global_variables_initializer()
 
     # Create a saver for writing training checkpoints.
-    saver = tf.train.Saver(write_version=tf.train.SaverDef.V2)
+    saver = tf.train.Saver()
 
     # Create a session for running Ops on the Graph.
     sess = tf.Session()
 
     # Instantiate a SummaryWriter to output summaries and the Graph.
-    summary_writer = tf.train.SummaryWriter(FLAGS.log_dir, sess.graph)
+    summary_writer = tf.summary.FileWriter(FLAGS.log_dir, sess.graph)
 
     # And then after everything is built:
 

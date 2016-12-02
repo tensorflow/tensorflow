@@ -35,7 +35,7 @@ auto* load_attempt_count = monitoring::Counter<2>::New(
     "The number of times a SavedModel was successfully loaded.");
 auto* load_latency = monitoring::Counter<1>::New(
     "/tensorflow/cc/saved_model/load_latency", "model_path",
-    "Latency in microseconds for SavedModels that were succesfully loaded.");
+    "Latency in microseconds for SavedModels that were successfully loaded.");
 constexpr char kLoadAttemptFail[] = "fail";
 constexpr char kLoadAttemptSuccess[] = "success";
 

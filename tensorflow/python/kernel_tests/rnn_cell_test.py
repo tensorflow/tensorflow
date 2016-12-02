@@ -23,9 +23,10 @@ import functools
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.python.ops import rnn_cell_impl
 # TODO(ebrevdo): Remove once _linear is fully deprecated.
 # pylint: disable=protected-access
-from tensorflow.python.ops.rnn_cell import _linear as linear
+from tensorflow.python.ops.rnn_cell_impl import _linear as linear
 # pylint: enable=protected-access
 
 
@@ -95,6 +96,20 @@ class RNNCellTest(tf.test.TestCase):
         res = sess.run([g, out_m], {x.name: np.array([[1., 1.]]),
                                     m.name: 0.1 * np.ones([1, 8])})
         self.assertEqual(len(res), 2)
+        variables = tf.global_variables()
+        self.assertEqual(4, len(variables))
+        self.assertEquals(
+            variables[0].op.name,
+            "root/multi_rnn_cell/cell_0/basic_lstm_cell/weights")
+        self.assertEquals(
+            variables[1].op.name,
+            "root/multi_rnn_cell/cell_0/basic_lstm_cell/biases")
+        self.assertEquals(
+            variables[2].op.name,
+            "root/multi_rnn_cell/cell_1/basic_lstm_cell/weights")
+        self.assertEquals(
+            variables[3].op.name,
+            "root/multi_rnn_cell/cell_1/basic_lstm_cell/biases")
         # The numbers in results were not calculated, this is just a smoke test.
         self.assertAllClose(res[0], [[0.24024698, 0.24024698]])
         expected_mem = np.array([[0.68967271, 0.68967271,
@@ -203,6 +218,26 @@ class RNNCellTest(tf.test.TestCase):
               float(np.linalg.norm((res[0][0, :] - res[0][i, :]))) > 1e-6)
           self.assertTrue(
               float(np.linalg.norm((res[1][0, :] - res[1][i, :]))) > 1e-6)
+
+  def testLSTMCellVariables(self):
+    with self.test_session():
+      num_units = 8
+      num_proj = 6
+      state_size = num_units + num_proj
+      batch_size = 3
+      input_size = 2
+      with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
+        x = tf.zeros([batch_size, input_size])
+        m = tf.zeros([batch_size, state_size])
+        cell = tf.nn.rnn_cell.LSTMCell(
+            num_units=num_units, num_proj=num_proj, forget_bias=1.0,
+            state_is_tuple=False)
+        cell(x, m)  # Execute to create variables
+      variables = tf.global_variables()
+      self.assertEquals(variables[0].op.name, "root/lstm_cell/weights")
+      self.assertEquals(variables[1].op.name, "root/lstm_cell/biases")
+      self.assertEquals(
+          variables[2].op.name, "root/lstm_cell/projection/weights")
 
   def testOutputProjectionWrapper(self):
     with self.test_session() as sess:
@@ -333,7 +368,7 @@ class SlimRNNCellTest(tf.test.TestCase):
         m = tf.zeros([1, 2])
         my_cell = functools.partial(basic_rnn_cell, num_units=2)
         # pylint: disable=protected-access
-        g, _ = tf.nn.rnn_cell._SlimRNNCell(my_cell)(x, m)
+        g, _ = rnn_cell_impl._SlimRNNCell(my_cell)(x, m)
         # pylint: enable=protected-access
         sess.run([tf.global_variables_initializer()])
         res = sess.run([g], {x.name: np.array([[1., 1.]]),
@@ -350,10 +385,11 @@ class SlimRNNCellTest(tf.test.TestCase):
         _, initial_state = basic_rnn_cell(inputs, None, num_units)
         my_cell = functools.partial(basic_rnn_cell, num_units=num_units)
         # pylint: disable=protected-access
-        slim_cell = tf.nn.rnn_cell._SlimRNNCell(my_cell)
+        slim_cell = rnn_cell_impl._SlimRNNCell(my_cell)
         # pylint: enable=protected-access
         slim_outputs, slim_state = slim_cell(inputs, initial_state)
         rnn_cell = tf.nn.rnn_cell.BasicRNNCell(num_units)
+        tf.get_variable_scope().reuse_variables()
         outputs, state = rnn_cell(inputs, initial_state)
         self.assertEqual(slim_outputs.get_shape(), outputs.get_shape())
         self.assertEqual(slim_state.get_shape(), state.get_shape())
@@ -377,7 +413,7 @@ def basic_rnn_cell(inputs, state, num_units, scope=None):
     init_state.set_shape([batch_size, num_units])
     return init_output, init_state
   else:
-    with tf.variable_scope(scope, "BasicRNNCell", [inputs, state]):
+    with tf.variable_scope(scope, "basic_rnn_cell", [inputs, state]):
       output = tf.tanh(linear([inputs, state],
                               num_units, True))
     return output, output

@@ -151,10 +151,11 @@ class DirectSession : public Session {
     std::unordered_set<string> pending_inputs;
     std::unordered_set<string> pending_outputs;
     TensorStore tensor_store;
-    ResourceMgr step_resource_manager;
+    ScopedStepContainer step_container;
 
     RunState(const std::vector<string>& input_names,
-             const std::vector<string>& output_names);
+             const std::vector<string>& output_names, int64 step_id,
+             const std::vector<Device*>* devices);
 
     ~RunState();
   };

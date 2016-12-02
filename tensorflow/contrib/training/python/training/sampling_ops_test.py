@@ -133,7 +133,8 @@ class StratifiedSampleTest(tf.test.TestCase):
         val_input_batch, lbl_input_batch, probs, batch_size, init_probs=probs)
     batches += tf.contrib.training.stratified_sample(
         val_input_batch, lbl_input_batch, probs, batch_size, init_probs=probs)
-    summary_op = tf.merge_summary(tf.get_collection(tf.GraphKeys.SUMMARIES))
+    summary_op = tf.contrib.deprecated.merge_summary(
+        tf.get_collection(tf.GraphKeys.SUMMARIES))
 
     with self.test_session() as sess:
       coord = tf.train.Coordinator()

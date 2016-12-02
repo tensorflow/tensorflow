@@ -1372,7 +1372,7 @@ saver.restore(...checkpoint filename...)
 
 - - -
 
-#### `tf.train.ExponentialMovingAverage.__init__(decay, num_updates=None, name='ExponentialMovingAverage')` {#ExponentialMovingAverage.__init__}
+#### `tf.train.ExponentialMovingAverage.__init__(decay, num_updates=None, zero_debias=False, name='ExponentialMovingAverage')` {#ExponentialMovingAverage.__init__}
 
 Creates a new ExponentialMovingAverage object.
 
@@ -1392,6 +1392,8 @@ move faster.  If passed, the actual decay rate used is:
 
 *  <b>`decay`</b>: Float.  The decay to use.
 *  <b>`num_updates`</b>: Optional count of number of updates applied to variables.
+*  <b>`zero_debias`</b>: If `True`, zero debias moving-averages that are initialized
+    with tensors.
 *  <b>`name`</b>: String. Optional prefix name to use for the name of ops added in
     `apply()`.
 
@@ -3469,7 +3471,7 @@ For example,
 cluster_spec = {
     "ps": ["ps0:2222", "ps1:2222"],
     "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]}
-with tf.device(tf.replica_device_setter(cluster=cluster_spec)):
+with tf.device(tf.train.replica_device_setter(cluster=cluster_spec)):
   # Build your graph
   v1 = tf.Variable(...)  # assigned to /job:ps/task:0
   v2 = tf.Variable(...)  # assigned to /job:ps/task:1
@@ -4048,7 +4050,7 @@ This is useful in summaries to measure and report sparsity.  For example,
 
 ```python
     z = tf.Relu(...)
-    summ = tf.scalar_summary('sparsity', tf.nn.zero_fraction(z))
+    summ = tf.contrib.deprecated.scalar_summary('sparsity', tf.nn.zero_fraction(z))
 ```
 
 ##### Args:
@@ -4122,99 +4124,54 @@ overview of summaries, event files, and visualization in TensorBoard.
 
 ### `class tf.train.SummaryWriter` {#SummaryWriter}
 
-Writes `Summary` protocol buffers to event files.
-
-The `FileWriter` class provides a mechanism to create an event file in a
-given directory and add summaries and events to it. The class updates the
-file contents asynchronously. This allows a training program to call methods
-to add data to the file directly from the training loop, without slowing down
-training.
 
 - - -
 
-#### `tf.train.SummaryWriter.__init__(logdir, graph=None, max_queue=10, flush_secs=120, graph_def=None)` {#SummaryWriter.__init__}
+#### `tf.train.SummaryWriter.__init__(*args, **kwargs)` {#SummaryWriter.__init__}
 
-Creates a `FileWriter` and an event file.
+Creates a `SummaryWriter` and an event file. (deprecated)
 
-On construction the summary writer creates a new event file in `logdir`.
-This event file will contain `Event` protocol buffers constructed when you
-call one of the following functions: `add_summary()`, `add_session_log()`,
-`add_event()`, or `add_graph()`.
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-11-30.
+Instructions for updating:
+Please switch to tf.summary.FileWriter. The interface and behavior is the same; this is just a rename.
 
-If you pass a `Graph` to the constructor it is added to
-the event file. (This is equivalent to calling `add_graph()` later).
+    This class is deprecated, and should be replaced with tf.summary.FileWriter.
 
-TensorBoard will pick the graph from the file and display it graphically so
-you can interactively explore the graph you built. You will usually pass
-the graph from the session in which you launched it:
+    On construction the summary writer creates a new event file in `logdir`.
+    This event file will contain `Event` protocol buffers constructed when you
+    call one of the following functions: `add_summary()`, `add_session_log()`,
+    `add_event()`, or `add_graph()`.
 
-```python
-...create a graph...
-# Launch the graph in a session.
-sess = tf.Session()
-# Create a summary writer, add the 'graph' to the event file.
-writer = tf.train.SummaryWriter(<some-directory>, sess.graph)
-```
+    If you pass a `Graph` to the constructor it is added to
+    the event file. (This is equivalent to calling `add_graph()` later).
 
-The other arguments to the constructor control the asynchronous writes to
-the event file:
+    TensorBoard will pick the graph from the file and display it graphically so
+    you can interactively explore the graph you built. You will usually pass
+    the graph from the session in which you launched it:
 
-*  `flush_secs`: How often, in seconds, to flush the added summaries
-   and events to disk.
-*  `max_queue`: Maximum number of summaries or events pending to be
-   written to disk before one of the 'add' calls block.
+    ```python
+    ...create a graph...
+    # Launch the graph in a session.
+    sess = tf.Session()
+    # Create a summary writer, add the 'graph' to the event file.
+    writer = tf.train.SummaryWriter(<some-directory>, sess.graph)
+    ```
 
-##### Args:
+    The other arguments to the constructor control the asynchronous writes to
+    the event file:
 
+    *  `flush_secs`: How often, in seconds, to flush the added summaries
+       and events to disk.
+    *  `max_queue`: Maximum number of summaries or events pending to be
+       written to disk before one of the 'add' calls block.
 
-*  <b>`logdir`</b>: A string. Directory where event file will be written.
-*  <b>`graph`</b>: A `Graph` object, such as `sess.graph`.
-*  <b>`max_queue`</b>: Integer. Size of the queue for pending events and summaries.
-*  <b>`flush_secs`</b>: Number. How often, in seconds, to flush the
-    pending events and summaries to disk.
-*  <b>`graph_def`</b>: DEPRECATED: Use the `graph` argument instead.
-
-
-
-- - -
-
-#### `tf.train.SummaryWriter.add_summary(summary, global_step=None)` {#SummaryWriter.add_summary}
-
-Adds a `Summary` protocol buffer to the event file.
-
-This method wraps the provided summary in an `Event` protocol buffer
-and adds it to the event file.
-
-You can pass the result of evaluating any summary op, using
-[`Session.run()`](client.md#Session.run) or
-[`Tensor.eval()`](framework.md#Tensor.eval), to this
-function. Alternatively, you can pass a `tf.Summary` protocol
-buffer that you populate with your own data. The latter is
-commonly done to report evaluation results in event files.
-
-##### Args:
-
-
-*  <b>`summary`</b>: A `Summary` protocol buffer, optionally serialized as a string.
-*  <b>`global_step`</b>: Number. Optional global step value to record with the
-    summary.
-
-
-- - -
-
-#### `tf.train.SummaryWriter.add_session_log(session_log, global_step=None)` {#SummaryWriter.add_session_log}
-
-Adds a `SessionLog` protocol buffer to the event file.
-
-This method wraps the provided session in an `Event` protocol buffer
-and adds it to the event file.
-
-##### Args:
-
-
-*  <b>`session_log`</b>: A `SessionLog` protocol buffer.
-*  <b>`global_step`</b>: Number. Optional global step value to record with the
-    summary.
+    Args:
+      logdir: A string. Directory where event file will be written.
+      graph: A `Graph` object, such as `sess.graph`.
+      max_queue: Integer. Size of the queue for pending events and summaries.
+      flush_secs: Number. How often, in seconds, to flush the
+        pending events and summaries to disk.
+      graph_def: DEPRECATED: Use the `graph` argument instead.
 
 
 - - -
@@ -4254,6 +4211,29 @@ TensorBoard. Most users pass a graph in the constructor instead.
 
 - - -
 
+#### `tf.train.SummaryWriter.add_meta_graph(meta_graph_def, global_step=None)` {#SummaryWriter.add_meta_graph}
+
+Adds a `MetaGraphDef` to the event file.
+
+The `MetaGraphDef` allows running the given graph via
+`saver.import_meta_graph()`.
+
+##### Args:
+
+
+*  <b>`meta_graph_def`</b>: A `MetaGraphDef` object, often as retured by
+    `saver.export_meta_graph()`.
+*  <b>`global_step`</b>: Number. Optional global step counter to record with the
+    graph.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If both `meta_graph_def` is not an instance of `MetaGraphDef`.
+
+
+- - -
+
 #### `tf.train.SummaryWriter.add_run_metadata(run_metadata, tag, global_step=None)` {#SummaryWriter.add_run_metadata}
 
 Adds a metadata information for a single session.run() call.
@@ -4274,10 +4254,52 @@ Adds a metadata information for a single session.run() call.
 
 - - -
 
-#### `tf.train.SummaryWriter.get_logdir()` {#SummaryWriter.get_logdir}
+#### `tf.train.SummaryWriter.add_session_log(session_log, global_step=None)` {#SummaryWriter.add_session_log}
 
-Returns the directory where event file will be written.
+Adds a `SessionLog` protocol buffer to the event file.
 
+This method wraps the provided session in an `Event` protocol buffer
+and adds it to the event file.
+
+##### Args:
+
+
+*  <b>`session_log`</b>: A `SessionLog` protocol buffer.
+*  <b>`global_step`</b>: Number. Optional global step value to record with the
+    summary.
+
+
+- - -
+
+#### `tf.train.SummaryWriter.add_summary(summary, global_step=None)` {#SummaryWriter.add_summary}
+
+Adds a `Summary` protocol buffer to the event file.
+
+This method wraps the provided summary in an `Event` protocol buffer
+and adds it to the event file.
+
+You can pass the result of evaluating any summary op, using
+[`Session.run()`](client.md#Session.run) or
+[`Tensor.eval()`](framework.md#Tensor.eval), to this
+function. Alternatively, you can pass a `tf.Summary` protocol
+buffer that you populate with your own data. The latter is
+commonly done to report evaluation results in event files.
+
+##### Args:
+
+
+*  <b>`summary`</b>: A `Summary` protocol buffer, optionally serialized as a string.
+*  <b>`global_step`</b>: Number. Optional global step value to record with the
+    summary.
+
+
+- - -
+
+#### `tf.train.SummaryWriter.close()` {#SummaryWriter.close}
+
+Flushes the event file to disk and close the file.
+
+Call this method when you do not need the summary writer anymore.
 
 
 - - -
@@ -4292,15 +4314,11 @@ disk.
 
 - - -
 
-#### `tf.train.SummaryWriter.close()` {#SummaryWriter.close}
+#### `tf.train.SummaryWriter.get_logdir()` {#SummaryWriter.get_logdir}
 
-Flushes the event file to disk and close the file.
-
-Call this method when you do not need the summary writer anymore.
+Returns the directory where event file will be written.
 
 
-
-#### Other Methods
 - - -
 
 #### `tf.train.SummaryWriter.reopen()` {#SummaryWriter.reopen}
@@ -4318,9 +4336,9 @@ Does nothing if the EventFileWriter was not closed.
 
 ### `class tf.train.SummaryWriterCache` {#SummaryWriterCache}
 
-Cache for summary writers.
+Cache for file writers.
 
-This class caches summary writers, one per directory.
+This class caches file writers, one per directory.
 - - -
 
 #### `tf.train.SummaryWriterCache.clear()` {#SummaryWriterCache.clear}
@@ -4332,7 +4350,7 @@ Clear cached summary writers. Currently only used for unit tests.
 
 #### `tf.train.SummaryWriterCache.get(logdir)` {#SummaryWriterCache.get}
 
-Returns the SummaryWriter for the specified directory.
+Returns the FileWriter for the specified directory.
 
 ##### Args:
 
@@ -4341,7 +4359,7 @@ Returns the SummaryWriter for the specified directory.
 
 ##### Returns:
 
-  A `SummaryWriter`.
+  A `FileWriter`.
 
 
 
@@ -4367,7 +4385,7 @@ Example: Print selected summary values.
 # This example supposes that the events file contains summaries with a
 # summary value tag 'loss'.  These could have been added by calling
 # `add_summary()`, passing the output of a scalar summary op created with
-# with: `tf.scalar_summary(['loss'], loss_tensor)`.
+# with: `tf.summary.scalar('loss', loss_tensor)`.
 for e in tf.train.summary_iterator(path to events file):
     for v in e.summary.value:
         if v.tag == 'loss':
@@ -4947,9 +4965,11 @@ Initializes a `SummarySaver` monitor.
 *  <b>`summary_writer`</b>: `SummaryWriter`. If `None` and an `output_dir` was passed,
       one will be created accordingly.
 *  <b>`scaffold`</b>: `Scaffold` to get summary_op if it's not provided.
-*  <b>`summary_op`</b>: `Tensor` of type `string`. A serialized `Summary` protocol
-      buffer, as output by TF summary methods like `tf.summary.scalar` or
-      `tf.summary.merge_all`.
+*  <b>`summary_op`</b>: `Tensor` of type `string` containing the serialized `Summary`
+      protocol buffer or a list of `Tensor`. They are most likely an output
+      by TF summary methods like `tf.summary.scalar` or
+      `tf.summary.merge_all`. It can be passed in as one tensor; if more
+      than one, they must be passed in as a list.
 
 ##### Raises:
 

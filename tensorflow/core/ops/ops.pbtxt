@@ -11962,6 +11962,46 @@ op {
   summary: "A stateless version of PyFunc."
 }
 op {
+  name: "Qr"
+  input_arg {
+    name: "input"
+    description: "A tensor of shape `[..., M, N]` whose inner-most 2 dimensions\nform matrices of size `[M, N]`. Let `P` be the minimum of `M` and `N`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "q"
+    description: "Orthonormal basis for range of `a`. If `full_matrices` is `False` then\nshape is `[..., M, P]`; if `full_matrices` is `True` then shape is\n`[..., M, M]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "r"
+    description: "Triangular factor. If `full_matrices` is `False` then shape is\n`[..., P, N]`. If `full_matrices` is `True` then shape is `[..., M, N]`."
+    type_attr: "T"
+  }
+  attr {
+    name: "full_matrices"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If true, compute full-sized `q` and `r`. If false\n(the default), compute only the leading `P` columns of `q`."
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Computes the QR decompositions of one or more matrices."
+  description: "Computes the QR decomposition of each inner matrix in `tensor` such that\n`tensor[..., :, :] = q[..., :, :] * r[..., :,:])`\n\n```prettyprint\n# a is a tensor.\n# q is a tensor of orthonormal matrices.\n# r is a tensor of upper triangular matrices.\nq, r = qr(a)\nq_full, r_full = qr(a, full_matrices=True)\n```"
+}
+op {
   name: "QuantizeAndDequantize"
   input_arg {
     name: "input"
@@ -19989,7 +20029,7 @@ op {
   }
   input_arg {
     name: "delimiter"
-    description: "0-D. Delimiter character, or empty string."
+    description: "0-D. Delimiter characters (bytes), or empty string."
     type: DT_STRING
   }
   output_arg {
@@ -20008,7 +20048,7 @@ op {
     type: DT_INT64
   }
   summary: "Split elements of `input` based on `delimiter` into a `SparseTensor`."
-  description: "Let N be the size of source (typically N will be the batch size). Split each\nelement of `input` based on `delimiter` and return a `SparseTensor`\ncontaining the splitted tokens. Empty tokens are ignored.\n\n`delimiter` can be empty or a single-byte character. If `delimiter` is an empty\n string, each element of `input` is split into individual single-byte character\n strings, including splitting of UTF-8 multibyte sequences.\n\nFor example:\n  N = 2, input[0] is \'hello world\' and input[1] is \'a b c\', then the output\n  will be\n\n  indices = [0, 0;\n             0, 1;\n             1, 0;\n             1, 1;\n             1, 2]\n  shape = [2, 3]\n  values = [\'hello\', \'world\', \'a\', \'b\', \'c\']"
+  description: "Let N be the size of source (typically N will be the batch size). Split each\nelement of `input` based on `delimiter` and return a `SparseTensor`\ncontaining the splitted tokens. Empty tokens are ignored.\n\n`delimiter` can be empty, or a string of split characters. If `delimiter` is an\n empty string, each element of `input` is split into individual single-byte\n character strings, including splitting of UTF-8 multibyte sequences. Otherwise\n every character of `delimiter` is a potential split point.\n\nFor example:\n  N = 2, input[0] is \'hello world\' and input[1] is \'a b c\', then the output\n  will be\n\n  indices = [0, 0;\n             0, 1;\n             1, 0;\n             1, 1;\n             1, 2]\n  shape = [2, 3]\n  values = [\'hello\', \'world\', \'a\', \'b\', \'c\']"
 }
 op {
   name: "StringToHashBucket"
@@ -20252,12 +20292,12 @@ op {
   }
   output_arg {
     name: "u"
-    description: "Left singular vectors. If `full_matrices` is `False` then shape is\n`[..., M, M]`; if `full_matrices` is `True` then shape is\n`[..., M, P]`. Undefined if `compute_uv` is `False`."
+    description: "Left singular vectors. If `full_matrices` is `False` then shape is\n`[..., M, P]`; if `full_matrices` is `True` then shape is\n`[..., M, M]`. Undefined if `compute_uv` is `False`."
     type_attr: "T"
   }
   output_arg {
     name: "v"
-    description: "Left singular vectors. If `full_matrices` is `False` then shape is\n`[..., N, N]`. If `full_matrices` is `True` then shape is `[..., N, P]`.\nUndefined if `compute_uv` is false."
+    description: "Left singular vectors. If `full_matrices` is `False` then shape is\n`[..., N, P]`. If `full_matrices` is `True` then shape is `[..., N, N]`.\nUndefined if `compute_uv` is false."
     type_attr: "T"
   }
   attr {

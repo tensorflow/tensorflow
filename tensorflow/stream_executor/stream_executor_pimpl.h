@@ -392,7 +392,7 @@ class StreamExecutor {
   // implementation in StreamExecutorInterface::Launch().
   bool Launch(Stream *stream, const ThreadDim &thread_dims,
               const BlockDim &block_dims, const KernelBase &kernel,
-              const std::vector<KernelArg> &args);
+              const KernelArgsArrayBase &args);
 
   // Gets-or-creates (creates with memoization) a FftSupport datatype that can
   // be used to execute FFT routines on the current platform.
@@ -426,10 +426,6 @@ class StreamExecutor {
   // Returns false (and logs) in cases where the argument listener was not
   // previously registered.
   bool UnregisterTraceListener(TraceListener* listener);
-
-  // Converts a DeviceMemory object into a KernelArg object for passing to the
-  // device driver for kernel launch.
-  KernelArg DeviceMemoryToKernelArg(const DeviceMemoryBase &gpu_mem) const;
 
  private:
   template <typename BeginCallT, typename CompleteCallT,
@@ -758,9 +754,9 @@ inline Stream &Stream::ThenLaunch(ThreadDim thread_dims, BlockDim block_dims,
     // we pack the variadic parameters passed as ...args into the desired
     // tuple form and pass that packed form to the StreamExecutor::Launch()
     // implementation.
-    std::vector<KernelArg> kernel_args;
-    kernel_args.reserve(kernel.Arity());
+    KernelArgsArray<sizeof...(args)> kernel_args;
     kernel.PackParams(&kernel_args, args...);
+    DCHECK(parent_ != nullptr);
     bool ok =
         parent_->Launch(this, thread_dims, block_dims, kernel, kernel_args);
     if (!ok) {

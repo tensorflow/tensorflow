@@ -185,7 +185,7 @@ class InverseGamma(distribution.Distribution):
     mean = self.beta / (self.alpha - 1.)
     if self.allow_nan_stats:
       nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
-      return math_ops.select(
+      return array_ops.where(
           self.alpha > 1., mean,
           array_ops.fill(self.batch_shape(), nan, name="nan"))
     else:
@@ -204,7 +204,7 @@ class InverseGamma(distribution.Distribution):
            (math_ops.square(self.alpha - 1.) * (self.alpha - 2.)))
     if self.allow_nan_stats:
       nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
-      return math_ops.select(
+      return array_ops.where(
           self.alpha > 2., var,
           array_ops.fill(self.batch_shape(), nan, name="nan"))
     else:

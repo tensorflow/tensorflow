@@ -349,30 +349,11 @@ bool CUDAExecutor::GetKernelMetadata(CUDAKernel *cuda_kernel,
 
 bool CUDAExecutor::Launch(Stream *stream, const ThreadDim &thread_dims,
                           const BlockDim &block_dims, const KernelBase &kernel,
-                          const std::vector<KernelArg> &args) {
-  CHECK_EQ(kernel.Arity(), args.size());
+                          const KernelArgsArrayBase &args) {
+  CHECK_EQ(kernel.Arity(), args.number_of_arguments());
   CUstream custream = AsCUDAStreamValue(stream);
   const CUDAKernel *cuda_kernel = AsCUDAKernel(&kernel);
   CUfunction cufunc = cuda_kernel->AsCUDAFunctionValue();
-
-  std::vector<void *> addrs;
-  addrs.reserve(args.size());
-  int shmem_bytes = 0;
-  for (size_t i = 0; i < args.size(); i++) {
-    switch (args[i].type) {
-      case KernelArg::kNormal:
-        addrs.push_back(const_cast<void *>(
-            static_cast<const void *>(args[i].data.begin())));
-        break;
-      case KernelArg::kSharedMemory:
-        shmem_bytes += args[i].bytes;
-        break;
-      default:
-        LOG(ERROR) << "Invalid kernel arg type passed (" << args[i].type
-                   << ") for arg " << i;
-        return false;
-    }
-  }
 
   // Only perform/print the occupancy check 1x.
   launched_kernels_mu_.lock();
@@ -389,11 +370,15 @@ bool CUDAExecutor::Launch(Stream *stream, const ThreadDim &thread_dims,
     CUDADriver::FuncSetCacheConfig(cufunc, cuda_kernel->GetCUDACacheConfig());
   }
 
-  if (!CUDADriver::LaunchKernel(
-          GetCudaContext(stream), cufunc, block_dims.x, block_dims.y,
-          block_dims.z, thread_dims.x, thread_dims.y, thread_dims.z,
-          shmem_bytes, custream, addrs.data(), nullptr /* = extra */)) {
-    LOG(ERROR) << "failed to launch CUDA kernel with args: " << args.size()
+  void **kernel_params = const_cast<void **>(args.argument_addresses().data());
+
+  if (!CUDADriver::LaunchKernel(GetCudaContext(stream), cufunc, block_dims.x,
+                                block_dims.y, block_dims.z, thread_dims.x,
+                                thread_dims.y, thread_dims.z,
+                                args.number_of_shared_bytes(), custream,
+                                kernel_params, nullptr /* = extra */)) {
+    LOG(ERROR) << "failed to launch CUDA kernel with args: "
+               << args.number_of_arguments()
                << "; thread dim: " << thread_dims.ToString()
                << "; block dim: " << block_dims.ToString();
     return false;
@@ -847,18 +832,6 @@ bool CUDAExecutor::FillBlockDimLimit(BlockDim *block_dim_limit) const {
   block_dim_limit->y = y;
   block_dim_limit->z = z;
   return true;
-}
-
-KernelArg CUDAExecutor::DeviceMemoryToKernelArg(
-    const DeviceMemoryBase &gpu_mem) const {
-  const void* arg = gpu_mem.opaque();
-  const uint8 *arg_ptr = reinterpret_cast<const uint8 *>(&arg);
-
-  KernelArg kernel_arg;
-  kernel_arg.type = KernelArg::kNormal;
-  kernel_arg.data = port::InlinedVector<uint8, 4>(arg_ptr, arg_ptr + sizeof(arg));
-  kernel_arg.bytes = sizeof(arg);
-  return kernel_arg;
 }
 
 bool CUDAExecutor::SupportsBlas() const { return true; }

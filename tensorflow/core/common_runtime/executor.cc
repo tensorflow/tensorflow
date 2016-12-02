@@ -873,8 +873,8 @@ class ExecutorState {
   Rendezvous* rendezvous_;
   SessionState* session_state_;
   TensorStore* tensor_store_;
-  // Step-local resource manager.
-  ResourceMgr* step_resource_manager_;
+  // Step-local container.
+  ScopedStepContainer* step_container_;
   StepStatsCollector* stats_collector_;
   // QUESTION: Make it a checkpoint::TensorSliceReaderCacheWrapper
   // instead of a pointer?  (avoids having to delete).
@@ -883,6 +883,7 @@ class ExecutorState {
   const ExecutorImpl* impl_;
   CancellationManager* cancellation_manager_;
   Executor::Args::Runner runner_;
+  bool sync_on_finish_;
 
   // Owned.
 
@@ -991,13 +992,14 @@ ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
       rendezvous_(args.rendezvous),
       session_state_(args.session_state),
       tensor_store_(args.tensor_store),
-      step_resource_manager_(args.step_resource_manager),
+      step_container_(args.step_container),
       stats_collector_(args.stats_collector),
       slice_reader_cache_(new checkpoint::TensorSliceReaderCacheWrapper),
       call_frame_(args.call_frame),
       impl_(impl),
       cancellation_manager_(args.cancellation_manager),
       runner_(args.runner),
+      sync_on_finish_(args.sync_on_finish),
       num_outstanding_ops_(0) {
   // We start the entire execution in iteration 0 of the root frame
   // so let us create the root frame and the state for iteration 0.
@@ -1218,7 +1220,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
   params.call_frame = call_frame_;
   params.function_library = impl_->params_.function_library;
   params.resource_manager = device->resource_manager();
-  params.step_resource_manager = step_resource_manager_;
+  params.step_container = step_container_;
   params.slice_reader_cache = slice_reader_cache_;
   params.inputs = &inputs;
   params.input_device_contexts = &input_device_contexts;
@@ -1912,7 +1914,7 @@ void ExecutorState::Finish() {
   auto done_cb = std::move(done_cb_);
   auto runner = std::move(runner_);
   mu_.unlock();
-  if (status.ok()) {
+  if (sync_on_finish_ && status.ok()) {
     // Block until the device has finished all queued operations. For
     // devices like GPUs that continue to execute Ops after their Compute
     // methods have completed, this ensures that control is not returned to

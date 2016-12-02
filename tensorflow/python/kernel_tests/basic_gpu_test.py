@@ -79,9 +79,9 @@ class MathBuiltinUnaryTest(tf.test.TestCase):
   def _compare(self, x, np_func, tf_func, use_gpu):
     np_out = np_func(x)
     with self.test_session(use_gpu=use_gpu) as sess:
-     inx = tf.convert_to_tensor(x)
-     ofunc = tf_func(inx)
-     tf_out = sess.run(ofunc)
+      inx = tf.convert_to_tensor(x)
+      ofunc = tf_func(inx)
+      tf_out = sess.run(ofunc)
     self.assertAllClose(np_out, tf_out)
 
   def _inv(self, x):

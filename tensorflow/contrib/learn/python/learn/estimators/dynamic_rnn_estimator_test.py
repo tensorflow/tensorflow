@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import tempfile
+
 import numpy as np
 import tensorflow as tf
 
@@ -69,17 +71,6 @@ class MockTargetColumn(object):
     self._num_label_columns = n
 
 
-class MockOptimizer(object):
-
-  def compute_gradients(self, loss, var_list):
-    raise NotImplementedError(
-        'MockOptimizer.compute_gradients called unexpectedly.')
-
-  def apply_gradients(self, processed_gradients, global_step):
-    raise NotImplementedError(
-        'MockOptimizer.apply_gradients called unexpectedly.')
-
-
 def sequence_length_mask(values, lengths):
   masked = values
   for i, length in enumerate(lengths):
@@ -95,6 +86,7 @@ class DynamicRnnEstimatorTest(tf.test.TestCase):
       'inputs', dimension=NUM_LABEL_COLUMNS)
 
   def setUp(self):
+    super(DynamicRnnEstimatorTest, self).setUp()
     self.rnn_cell = rnn_cell.BasicRNNCell(self.NUM_RNN_CELL_UNITS)
     self.mock_target_column = MockTargetColumn(
         num_label_columns=self.NUM_LABEL_COLUMNS)
@@ -112,7 +104,9 @@ class DynamicRnnEstimatorTest(tf.test.TestCase):
         'measurements', dimension=2)
     self.sequence_feature_columns = [measurements, wire_cast_embedded]
 
-    self.columns_to_tensors = {
+  def GetColumnsToTensors(self):
+    """Get columns_to_tensors matching setUp(), in the current default graph."""
+    return {
         'location': tf.SparseTensor(
             indices=[[0, 0], [1, 0], [2, 0]],
             values=['west_side', 'west_side', 'nyc'],
@@ -125,11 +119,16 @@ class DynamicRnnEstimatorTest(tf.test.TestCase):
                     b'omar', b'stringer', b'marlo',
                     b'marlo'],
             shape=[3, 2, 2]),
-        'measurements': tf.random_uniform([3, 2, 2])}
+        'measurements': tf.random_uniform([3, 2, 2], seed=4711)}
+
+  def GetClassificationTargetsOrNone(self, mode):
+    """Get targets matching setUp() and mode, in the current default graph."""
+    return (tf.random_uniform([3, 2, 1], 0, 2, dtype=tf.int64, seed=1412)
+            if mode != tf.contrib.learn.ModeKeys.INFER else None)
 
   def testBuildSequenceInputInput(self):
     sequence_input = dynamic_rnn_estimator.build_sequence_input(
-        self.columns_to_tensors,
+        self.GetColumnsToTensors(),
         self.sequence_feature_columns,
         self.context_feature_columns)
     with self.test_session() as sess:
@@ -146,7 +145,7 @@ class DynamicRnnEstimatorTest(tf.test.TestCase):
   def testConstructRNN(self):
     initial_state = None
     sequence_input = dynamic_rnn_estimator.build_sequence_input(
-        self.columns_to_tensors,
+        self.GetColumnsToTensors(),
         self.sequence_feature_columns,
         self.context_feature_columns)
     activations_t, final_state_t = dynamic_rnn_estimator.construct_rnn(
@@ -165,30 +164,6 @@ class DynamicRnnEstimatorTest(tf.test.TestCase):
     self.assertAllEqual(expected_activations_shape, activations.shape)
     expected_state_shape = np.array([3, self.NUM_RNN_CELL_UNITS])
     self.assertAllEqual(expected_state_shape, final_state.shape)
-
-  def testPaddingMask(self):
-    """Test `padding_mask`."""
-    batch_size = 16
-    padded_length = 32
-    np.random.seed(1234)
-    sequence_lengths = np.random.randint(0, padded_length + 1, batch_size)
-
-    padding_mask_t = dynamic_rnn_estimator.padding_mask(
-        tf.constant(sequence_lengths, dtype=tf.int32),
-        tf.constant(padded_length, dtype=tf.int32))
-
-    with tf.Session() as sess:
-      padding_mask = sess.run(padding_mask_t)
-
-    for i in range(batch_size):
-      actual_mask = padding_mask[i]
-      expected_mask = np.concatenate(
-          [np.ones(sequence_lengths[i]),
-           np.zeros(padded_length - sequence_lengths[i])],
-          axis=0)
-      np.testing.assert_equal(actual_mask, expected_mask,
-                              'Mismatch on row {}. Got {}; expected {}.'.format(
-                                  i, actual_mask, expected_mask))
 
   def testMaskActivationsAndLabels(self):
     """Test `mask_activations_and_labels`."""
@@ -275,9 +250,90 @@ class DynamicRnnEstimatorTest(tf.test.TestCase):
           '  Expected {}; got {}.'.format(i, expected_activations,
                                           actual_activations))
 
+  # testGetDynamicRnnModelFn{Train,Eval,Infer}() test which fields
+  # of ModelFnOps are set depending on mode.
+  def testGetDynamicRnnModelFnTrain(self):
+    model_fn_ops = self._GetModelFnOpsForMode(tf.contrib.learn.ModeKeys.TRAIN)
+    self.assertIsNotNone(model_fn_ops.predictions)
+    self.assertIsNotNone(model_fn_ops.loss)
+    self.assertIsNotNone(model_fn_ops.train_op)
+    # None may get normalized to {}; we accept neither.
+    self.assertNotEqual(len(model_fn_ops.eval_metric_ops), 0)
+
+  def testGetDynamicRnnModelFnEval(self):
+    model_fn_ops = self._GetModelFnOpsForMode(tf.contrib.learn.ModeKeys.EVAL)
+    self.assertIsNotNone(model_fn_ops.predictions)
+    self.assertIsNotNone(model_fn_ops.loss)
+    self.assertIsNone(model_fn_ops.train_op)
+    # None may get normalized to {}; we accept neither.
+    self.assertNotEqual(len(model_fn_ops.eval_metric_ops), 0)
+
+  def testGetDynamicRnnModelFnInfer(self):
+    model_fn_ops = self._GetModelFnOpsForMode(tf.contrib.learn.ModeKeys.INFER)
+    self.assertIsNotNone(model_fn_ops.predictions)
+    self.assertIsNone(model_fn_ops.loss)
+    self.assertIsNone(model_fn_ops.train_op)
+    # None may get normalized to {}; we accept both.
+    self.assertFalse(model_fn_ops.eval_metric_ops)
+
+  def _GetModelFnOpsForMode(self, mode):
+    """Helper for testGetDynamicRnnModelFn{Train,Eval,Infer}()."""
+    model_fn = dynamic_rnn_estimator._get_dynamic_rnn_model_fn(
+        self.rnn_cell,
+        target_column=tf.contrib.layers.multi_class_target(n_classes=2),
+        # Only CLASSIFICATION yields eval metrics to test for.
+        problem_type=dynamic_rnn_estimator.ProblemType.CLASSIFICATION,
+        prediction_type=dynamic_rnn_estimator.PredictionType.MULTIPLE_VALUE,
+        optimizer='SGD',
+        sequence_feature_columns=self.sequence_feature_columns,
+        context_feature_columns=self.context_feature_columns,
+        learning_rate=0.1)
+    labels = self.GetClassificationTargetsOrNone(mode)
+    model_fn_ops = model_fn(features=self.GetColumnsToTensors(),
+                            labels=labels, mode=mode)
+    return model_fn_ops
+
+  def testExport(self):
+    input_feature_key = 'magic_input_feature_key'
+    def get_input_fn(mode):
+      def input_fn():
+        features = self.GetColumnsToTensors()
+        if mode == tf.contrib.learn.ModeKeys.INFER:
+          input_examples = tf.placeholder(tf.string)
+          features[input_feature_key] = input_examples
+          # Real code would now parse features out of input_examples,
+          # but this test can just stick to the constants above.
+        return features, self.GetClassificationTargetsOrNone(mode)
+      return input_fn
+
+    model_dir = tempfile.mkdtemp()
+    def estimator_fn():
+      return dynamic_rnn_estimator.multi_value_rnn_classifier(
+          num_classes=2,
+          num_units=self.NUM_RNN_CELL_UNITS,
+          sequence_feature_columns=self.sequence_feature_columns,
+          context_feature_columns=self.context_feature_columns,
+          predict_probabilities=True,
+          model_dir=model_dir)
+
+    # Train a bit to create an exportable checkpoint.
+    estimator_fn().fit(
+        input_fn=get_input_fn(tf.contrib.learn.ModeKeys.TRAIN), steps=100)
+    # Now export, but from a fresh estimator instance, like you would
+    # in an export binary. That means .export() has to work without
+    # .fit() being called on the same object.
+    export_dir = tempfile.mkdtemp()
+    print('Exporting to', export_dir)
+    estimator_fn().export(
+        export_dir,
+        input_fn=get_input_fn(tf.contrib.learn.ModeKeys.INFER),
+        use_deprecated_input_fn=False,
+        input_feature_key=input_feature_key)
+
+
 # TODO(jamieas): move all tests below to a benchmark test.
 class DynamicRNNEstimatorLearningTest(tf.test.TestCase):
-  """Learning tests for dymanic RNN Estimators."""
+  """Learning tests for dynamic RNN Estimators."""
 
   def testLearnSineFunction(self):
     """Tests learning a sine function."""
