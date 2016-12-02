@@ -146,7 +146,7 @@ class _Mapping(collections.namedtuple("_Mapping",
     if mapping is None:
       mapping = _Mapping(x=x, y=y, ildj=ildj,
                          condition_kwargs=condition_kwargs)
-    elif not all([arg is None for arg in [x, y, ildj, condition_kwargs]]):
+    elif not all(arg is None for arg in [x, y, ildj, condition_kwargs]):
       raise ValueError("Cannot specify mapping and individual args.")
     return _Mapping(
         x=self._merge(self.x, mapping.x),
@@ -629,12 +629,12 @@ class Bijector(object):
         try:
           x, ildj = self._inverse_and_inverse_log_det_jacobian(
               y, **condition_kwargs)
-          if self._constant_ildj is not None:
-            ildj = self._constant_ildj  # Use the "global" result.
-          elif self.is_constant_jacobian:
-            self._constant_ildj = ildj
         except NotImplementedError:
           raise original_error
+        if self._constant_ildj is not None:
+          ildj = self._constant_ildj  # Use the "global" result.
+        elif self.is_constant_jacobian:
+          self._constant_ildj = ildj
       x = x if mapping.x is None else mapping.x
       mapping = mapping.merge(x=x, ildj=ildj)
       self._cache(mapping)
@@ -683,10 +683,10 @@ class Bijector(object):
         try:
           x, ildj = self._inverse_and_inverse_log_det_jacobian(
               y, **condition_kwargs)
-          if mapping.x is not None:
-            x = mapping.x
         except NotImplementedError:
           raise original_error
+        if mapping.x is not None:
+          x = mapping.x
       if self.is_constant_jacobian:
         self._constant_ildj = ildj
       x = x if mapping.x is None else mapping.x
@@ -736,6 +736,7 @@ class Bijector(object):
         # to see if we can separately use _inverse and
         # _inverse_log_det_jacobian members.
         try:
+          # We want this same try/except to catch either NotImplementedError.
           x = self._inverse(y, **condition_kwargs)
           if self._constant_ildj is None:
             ildj = self._inverse_log_det_jacobian(y, **condition_kwargs)
@@ -790,6 +791,7 @@ class Bijector(object):
         ildj = -self._forward_log_det_jacobian(x, **condition_kwargs)
       except NotImplementedError as original_error:
         try:
+          # We want this same try/except to catch either NotImplementedError.
           y = self.inverse(x, **condition_kwargs) if y is None else y
           ildj = self.inverse_log_det_jacobian(y, **condition_kwargs)
         except NotImplementedError:
@@ -824,8 +826,9 @@ class Bijector(object):
     # which is not None.
     mapping = mapping.merge(mapping=self._lookup(
         mapping.x, mapping.y, mapping.condition_kwargs))
-    if mapping.x is None or mapping.y is None:
-      ValueError("Caching expects both (x,y) to be known, i.e., not None.")
+    if mapping.x is None and mapping.y is None:
+      raise ValueError("Caching expects at least one of (x,y) to be known, "
+                       "i.e., not None.")
     self._from_x[mapping.x_key] = mapping
     self._from_y[mapping.y_key] = mapping
 
@@ -1092,12 +1095,13 @@ class Chain(Bijector):
     else:
       dtype = None
 
+    parameters = {}
+    for b in bijectors:
+      parameters.update(("{}={}".format(b.name, k), v)
+                        for k, v in b.parameters.items())
     super(Chain, self).__init__(
-        parameters=dict(("=".join([b.name, k]), v)
-                        for b in bijectors
-                        for k, v in b.parameters.items()),
-        is_constant_jacobian=all([b.is_constant_jacobian
-                                  for b in bijectors]),
+        parameters=parameters,
+        is_constant_jacobian=all(b.is_constant_jacobian for b in bijectors),
         validate_args=validate_args,
         dtype=dtype,
         name=name or ("identity" if not bijectors else
