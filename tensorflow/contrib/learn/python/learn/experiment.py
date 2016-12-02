@@ -31,56 +31,11 @@ from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import run_config
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedError
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import server_lib
-from tensorflow.python.training import session_run_hook
-from tensorflow.python.training import training_util
 
 
 __all__ = ["Experiment"]
-
-
-class _GlobalStepWaiterHook(session_run_hook.SessionRunHook):
-  """Delay execution until global step reaches to wait_until_step."""
-
-  def __init__(self, wait_until_step):
-    """Create a _GlobalStepWaiterHook.
-
-    This hook delays execution until global step reaches to wait_until_step. It
-    is used to gradually start workers in distributed settings.
-
-    Args:
-      wait_until_step: an `int` shows until which global step should we wait.
-    """
-    self._wait_until_step = wait_until_step
-
-  def begin(self):
-    self._worker_is_started = False
-    self._global_step_tensor = training_util.get_global_step()
-    if self._global_step_tensor is None:
-      raise RuntimeError(
-          "Global step should be created to use _GlobalStepWaiterHook.")
-
-  def before_run(self, run_context):
-    if self._worker_is_started:
-      return None
-
-    if self._wait_until_step <= 0:
-      self._worker_is_started = True
-      return None
-
-    logging.info("Waiting for global step %d before starting training.",
-                 self._wait_until_step)
-    last_logged_step = 0
-    while True:
-      current_step = run_context.session.run(self._global_step_tensor)
-      if current_step >= self._wait_until_step:
-        self._worker_is_started = True
-        return None
-      if current_step - last_logged_step > 10000:
-        logging.info("Waiting for global step %d before starting training. "
-                     "Current step is %d.", self._wait_until_step, current_step)
-        last_logged_step = current_step
-      time.sleep(0.5)
 
 
 class Experiment(object):
@@ -205,7 +160,8 @@ class Experiment(object):
         # Wait 5500 global steps for the second worker. Each worker waits more
         # then previous one but with a diminishing number of steps.
         extra_hooks.append(
-            _GlobalStepWaiterHook(int(8000.0*math.log(task_id+1))))
+            basic_session_run_hooks.GlobalStepWaiterHook(
+                int(8000.0 * math.log(task_id + 1))))
         delay_secs = 0
       else:
         # Wait 5 secs more for each new worker up to 60 secs.

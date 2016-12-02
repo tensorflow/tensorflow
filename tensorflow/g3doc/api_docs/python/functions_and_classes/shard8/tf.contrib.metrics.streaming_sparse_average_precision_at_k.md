@@ -37,7 +37,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
     range are ignored.
 *  <b>`k`</b>: Integer, k for @k metric. This will calculate an average precision for
     range `[1,k]`, as documented above.
-*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to the the first
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to the first
     [D1, ... DN] dimensions of `predictions` and `labels`.
 *  <b>`metrics_collections`</b>: An optional list of collections that values should
     be added to.

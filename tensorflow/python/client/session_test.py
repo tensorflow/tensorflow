@@ -254,6 +254,18 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertEqual(None, res['b'])
       self.assertEqual(44.0, res['c'])
 
+  def testFetchOrderedDict(self):
+    with session.Session() as sess:
+      a = constant_op.constant(42.0)
+      b = control_flow_ops.no_op()  # An op, not a tensor.
+      c = constant_op.constant(44.0)
+      res = sess.run(collections.OrderedDict([(3, a), (2, b), (1, c)]))
+      self.assertTrue(isinstance(res, collections.OrderedDict))
+      self.assertEqual([3, 2, 1], list(res.keys()))
+      self.assertEqual(42.0, res[3])
+      self.assertEqual(None, res[2])
+      self.assertEqual(44.0, res[1])
+
   def testFetchNestingEmptyOneLevel(self):
     with session.Session() as sess:
       a_val = 11.0

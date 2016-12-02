@@ -200,16 +200,13 @@ def assert_bijective_and_finite(bijector, x, y, atol=0, rtol=1e-5, sess=None):
        g_y,
       ])
 
-  # Softplus(x) should be > 0 and finite
-  np.testing.assert_array_less(0, f_x_v)
-  assert_finite(f_x_v)
-
   assert_finite(x_from_x)
   assert_finite(y_from_y)
   assert_finite(ildj_f_x)
   assert_finite(fldj_x)
   assert_finite(ildj_y)
   assert_finite(fldj_g_y)
+  assert_finite(f_x_v)
   assert_finite(g_y_v)
 
   np.testing.assert_allclose(x_from_x, x, atol=atol, rtol=rtol)
@@ -436,6 +433,44 @@ class ExpBijectorTest(tf.test.TestCase):
       x = np.linspace(-10, 10, num=10).astype(np.float32)
       y = np.logspace(-10, 10, num=10).astype(np.float32)
       assert_bijective_and_finite(bijector, x, y)
+
+
+class PowerTransformBijectorTest(tf.test.TestCase):
+  """Tests correctness of the power transformation."""
+
+  def testBijector(self):
+    with self.test_session():
+      c = 0.2
+      bijector = bijectors.PowerTransform(power=c, event_ndims=1,
+                                          validate_args=True)
+      self.assertEqual("power_transform", bijector.name)
+      x = np.array([[[-1.],
+                     [2.],
+                     [-5.+1e-4]]])
+      y = (1. + x * c)**(1. / c)
+      self.assertAllClose(y, bijector.forward(x).eval())
+      self.assertAllClose(x, bijector.inverse(y).eval())
+      self.assertAllClose((c - 1.) * np.sum(np.log(y), axis=-1),
+                          bijector.inverse_log_det_jacobian(y).eval())
+      self.assertAllClose(-bijector.inverse_log_det_jacobian(y).eval(),
+                          bijector.forward_log_det_jacobian(x).eval(),
+                          rtol=1e-4, atol=0.)
+      rev, jac = bijector.inverse_and_inverse_log_det_jacobian(y)
+      self.assertAllClose(x, rev.eval())
+      self.assertAllClose((c - 1.) * np.sum(np.log(y), axis=-1), jac.eval())
+
+  def testScalarCongruency(self):
+    with self.test_session():
+      bijector = bijectors.PowerTransform(power=0.2, validate_args=True)
+      assert_scalar_congruency(bijector, lower_x=-2., upper_x=1.5, rtol=0.05)
+
+  def testBijectiveAndFinite(self):
+    with self.test_session():
+      bijector = bijectors.PowerTransform(power=0.2, event_ndims=0,
+                                          validate_args=True)
+      x = np.linspace(-4.999, 10, num=10).astype(np.float32)
+      y = np.logspace(0.001, 10, num=10).astype(np.float32)
+      assert_bijective_and_finite(bijector, x, y, rtol=1e-3)
 
 
 class InlineBijectorTest(tf.test.TestCase):

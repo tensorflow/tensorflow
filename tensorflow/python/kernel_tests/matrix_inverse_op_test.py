@@ -31,7 +31,7 @@ class InverseOpTest(tf.test.TestCase):
         with self.test_session():
           # Verify that x^{-1} * x == Identity matrix.
           inv = tf.matrix_inverse(y, adjoint=adjoint)
-          tf_ans = tf.batch_matmul(inv, y, adj_y=adjoint)
+          tf_ans = tf.matmul(inv, y, adjoint_b=adjoint)
           np_ans = np.identity(y.shape[-1])
           if x.ndim > 2:
             tiling = list(y.shape)

@@ -365,7 +365,9 @@ class GraphActionsTest(tf.test.TestCase):
           train_op=train_op,
           loss_op=tf.constant(2.0),
           steps=1)
-      meta_graph_def = meta_graph.create_meta_graph_def()
+      meta_graph_def = meta_graph.create_meta_graph_def(
+          graph_def=g.as_graph_def(add_shapes=True),
+          saver_def=tf.train.Scaffold().finalize().saver.saver_def)
       self.assertEqual(2.0, loss)
       self._assert_summaries(self._output_dir, writer, expected_graphs=[g],
                              expected_meta_graphs=[meta_graph_def])
@@ -468,10 +470,12 @@ class GraphActionsTest(tf.test.TestCase):
           train_op=train_op,
           loss_op=loss_var.value(),
           steps=6)
-      meta_graph_def = meta_graph.create_meta_graph_def()
       self.assertEqual(4.0, loss)
-      self._assert_summaries(self._output_dir, writer, expected_graphs=[g],
-                             expected_meta_graphs=[meta_graph_def])
+      self._assert_summaries(
+          self._output_dir,
+          writer,
+          expected_graphs=[g],
+          expected_meta_graphs=None)
       self._assert_ckpt(self._output_dir, True)
 
   def test_train_summaries(self):
@@ -489,7 +493,9 @@ class GraphActionsTest(tf.test.TestCase):
           train_op=train_op,
           loss_op=loss_op,
           steps=1)
-      meta_graph_def = meta_graph.create_meta_graph_def()
+      meta_graph_def = meta_graph.create_meta_graph_def(
+          graph_def=g.as_graph_def(add_shapes=True),
+          saver_def=tf.train.Scaffold().finalize().saver.saver_def)
       self.assertEqual(2.0, loss)
       self._assert_summaries(self._output_dir, writer,
                              expected_graphs=[g],
@@ -499,11 +505,13 @@ class GraphActionsTest(tf.test.TestCase):
 
   def test_train_override_saver(self):
     with tf.Graph().as_default() as g, self.test_session(g):
-      saver = tf.test.mock.Mock()
-      tf.add_to_collection(tf.GraphKeys.SAVERS, saver)
       with tf.control_dependencies(self._build_inference_graph()):
         train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
       self._assert_ckpt(self._output_dir, False)
+      real_saver = tf.train.Saver()
+      saver = tf.test.mock.Mock(
+          wraps=real_saver, saver_def=real_saver.saver_def)
+      tf.add_to_collection(tf.GraphKeys.SAVERS, saver)
       loss = learn.graph_actions._monitored_train(  # pylint: disable=protected-access
           g,
           output_dir=self._output_dir,
@@ -511,7 +519,7 @@ class GraphActionsTest(tf.test.TestCase):
           loss_op=tf.constant(2.0),
           steps=1)
       self.assertEqual(2.0, loss)
-      self._assert_ckpt(self._output_dir, False)
+      self._assert_ckpt(self._output_dir, True)
       self.assertTrue(saver.build.called)
       self.assertEqual(1, saver.save.call_count)
 

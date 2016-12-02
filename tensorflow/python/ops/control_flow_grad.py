@@ -84,7 +84,7 @@ def _MergeGrad(op, grad, _):
   input_op = op.inputs[0].op
   graph = ops.get_default_graph()
   # pylint: disable=protected-access
-  op_ctxt = input_op._get_control_flow_context()
+  op_ctxt = control_flow_ops._GetOutputContext(input_op)
   grad_ctxt = graph._get_control_flow_context()
   # pylint: enable=protected-access
   if isinstance(op_ctxt, WhileContext):

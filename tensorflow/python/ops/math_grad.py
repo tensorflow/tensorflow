@@ -211,7 +211,7 @@ def _SegmentMinOrMaxGrad(op, grad):
   weighted_grads = math_ops.div(grad, num_selected)
   gathered_grads = array_ops.gather(weighted_grads, op.inputs[1])
 
-  return math_ops.select(is_selected, gathered_grads, zeros), None
+  return array_ops.where(is_selected, gathered_grads, zeros), None
 
 
 @ops.RegisterGradient("SegmentMin")
@@ -613,16 +613,48 @@ def _MulGrad(op, grad):
 
 @ops.RegisterGradient("Div")
 def _DivGrad(op, grad):
+  """The gradient for the Div operator."""
   x = op.inputs[0]
   y = op.inputs[1]
   sx = array_ops.shape(x)
   sy = array_ops.shape(y)
-  rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)  # pylint: disable=protected-access
+  # pylint: disable=protected-access
+  rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)
+  # pylint: enable=protected-access
   x = math_ops.conj(x)
   y = math_ops.conj(y)
-  return (array_ops.reshape(math_ops.reduce_sum(grad / y, rx), sx),
-          array_ops.reshape(math_ops.reduce_sum(grad *
-                                         (-x / math_ops.square(y)), ry), sy))
+  return (array_ops.reshape(math_ops.reduce_sum(math_ops.div(grad, y), rx), sx),
+          array_ops.reshape(math_ops.reduce_sum(
+              grad * math_ops.div(-x, math_ops.square(y)), ry), sy))
+
+
+@ops.RegisterGradient("FloorDiv")
+def _FloorDivGrad(_, unused_grad):
+  """The gradient for the FloorDiv operator."""
+  return None, None
+
+
+@ops.RegisterGradient("TruncateDiv")
+def _TruncateDivGrad(_, unused_grad):
+  return None, None
+
+
+@ops.RegisterGradient("RealDiv")
+def _RealDivGrad(op, grad):
+  """RealDiv op gradient."""
+  x = op.inputs[0]
+  y = op.inputs[1]
+  sx = array_ops.shape(x)
+  sy = array_ops.shape(y)
+  # pylint: disable=protected-access
+  rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)
+  # pylint: enable=protected-access
+  x = math_ops.conj(x)
+  y = math_ops.conj(y)
+  return (array_ops.reshape(math_ops.reduce_sum(
+      math_ops.realdiv(grad, y), rx), sx),
+          array_ops.reshape(math_ops.reduce_sum(
+              grad * math_ops.realdiv(-x, math_ops.square(y)), ry), sy))
 
 
 @ops.RegisterGradient("Pow")
@@ -642,11 +674,11 @@ def _PowGrad(op, grad):
   # Avoid false singularity at x = 0
   if x.dtype.is_complex:
     # real(x) < 0 is fine for the complex case
-    log_x = math_ops.select(
+    log_x = array_ops.where(
         math_ops.not_equal(x, 0), math_ops.log(x), array_ops.zeros_like(x))
   else:
     # There's no sensible real value to return if x < 0, so return 0
-    log_x = math_ops.select(x > 0, math_ops.log(x), array_ops.zeros_like(x))
+    log_x = array_ops.where(x > 0, math_ops.log(x), array_ops.zeros_like(x))
   gy = array_ops.reshape(
       math_ops.reduce_sum(grad * z * log_x, ry), sy)
   return gx, gy
@@ -663,8 +695,8 @@ def _MaximumMinimumGrad(op, grad, selector_op):
   zeros = array_ops.zeros(gradshape, gdtype)
   xmask = selector_op(x, y)
   rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)
-  xgrad = math_ops.select(xmask, grad, zeros)
-  ygrad = math_ops.select(math_ops.logical_not(xmask), grad, zeros)
+  xgrad = array_ops.where(xmask, grad, zeros)
+  ygrad = array_ops.where(math_ops.logical_not(xmask), grad, zeros)
   gx = array_ops.reshape(math_ops.reduce_sum(xgrad, rx), sx)
   gy = array_ops.reshape(math_ops.reduce_sum(ygrad, ry), sy)
   return (gx, gy)
@@ -718,8 +750,8 @@ def _SelectGrad(op, grad):
   c = op.inputs[0]
   x = op.inputs[1]
   zeros = array_ops.zeros_like(x)
-  return (None, math_ops.select(c, grad, zeros),
-          math_ops.select(c, zeros, grad))
+  return (None, array_ops.where(c, grad, zeros),
+          array_ops.where(c, zeros, grad))
 
 
 @ops.RegisterGradient("MatMul")
@@ -812,18 +844,18 @@ def _BatchMatMul(op, grad):
 
   if not adj_x:
     if not adj_y:
-      grad_x = math_ops.batch_matmul(grad, y, False, True)
-      grad_y = math_ops.batch_matmul(x, grad, True, False)
+      grad_x = math_ops.matmul(grad, y, adjoint_a=False, adjoint_b=True)
+      grad_y = math_ops.matmul(x, grad, adjoint_a=True, adjoint_b=False)
     else:
-      grad_x = math_ops.batch_matmul(grad, y, False, False)
-      grad_y = math_ops.batch_matmul(grad, x, True, False)
+      grad_x = math_ops.matmul(grad, y, adjoint_a=False, adjoint_b=False)
+      grad_y = math_ops.matmul(grad, x, adjoint_a=True, adjoint_b=False)
   else:
     if not adj_y:
-      grad_x = math_ops.batch_matmul(y, grad, False, True)
-      grad_y = math_ops.batch_matmul(x, grad, False, False)
+      grad_x = math_ops.matmul(y, grad, adjoint_a=False, adjoint_b=True)
+      grad_y = math_ops.matmul(x, grad, adjoint_a=False, adjoint_b=False)
     else:
-      grad_x = math_ops.batch_matmul(y, grad, True, True)
-      grad_y = math_ops.batch_matmul(grad, x, True, True)
+      grad_x = math_ops.matmul(y, grad, adjoint_a=True, adjoint_b=True)
+      grad_y = math_ops.matmul(grad, x, adjoint_a=True, adjoint_b=True)
 
   return grad_x, grad_y
 

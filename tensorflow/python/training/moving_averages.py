@@ -288,7 +288,8 @@ class ExponentialMovingAverage(object):
   @@variables_to_restore
   """
 
-  def __init__(self, decay, num_updates=None, name="ExponentialMovingAverage"):
+  def __init__(self, decay, num_updates=None, zero_debias=False,
+               name="ExponentialMovingAverage"):
     """Creates a new ExponentialMovingAverage object.
 
     The `apply()` method has to be called to create shadow variables and add
@@ -305,11 +306,14 @@ class ExponentialMovingAverage(object):
     Args:
       decay: Float.  The decay to use.
       num_updates: Optional count of number of updates applied to variables.
+      zero_debias: If `True`, zero debias moving-averages that are initialized
+        with tensors.
       name: String. Optional prefix name to use for the name of ops added in
         `apply()`.
     """
     self._decay = decay
     self._num_updates = num_updates
+    self._zero_debias = zero_debias
     self._name = name
     self._averages = {}
 
@@ -373,7 +377,8 @@ class ExponentialMovingAverage(object):
               var,
               self._name,
               colocate_with_primary=(var.op.type == "Variable"))
-          zero_debias_true.add(avg)
+          if self._zero_debias:
+            zero_debias_true.add(avg)
       self._averages[var] = avg
 
     with ops.name_scope(self._name) as scope:

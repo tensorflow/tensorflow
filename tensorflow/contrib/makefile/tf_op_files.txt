@@ -75,6 +75,8 @@ tensorflow/core/kernels/padding_fifo_queue.cc
 tensorflow/core/kernels/pad_op.cc
 tensorflow/core/kernels/pack_op.cc
 tensorflow/core/kernels/ops_util.cc
+tensorflow/core/kernels/one_hot_op.cc
+tensorflow/core/kernels/non_max_suppression_op.cc
 tensorflow/core/kernels/no_op.cc
 tensorflow/core/kernels/mirror_pad_op.cc
 tensorflow/core/kernels/mirror_pad_op_cpu_impl_1.cc

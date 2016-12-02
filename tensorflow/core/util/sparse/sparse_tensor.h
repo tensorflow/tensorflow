@@ -17,8 +17,9 @@ limitations under the License.
 #define TENSORFLOW_UTIL_SPARSE_SPARSE_TENSOR_H_
 
 #include <limits>
-
+#include <numeric>
 #include <vector>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"

@@ -36,9 +36,17 @@ from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.saved_model import builder as saved_model_builder
 from tensorflow.python.saved_model import signature_constants
+from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
-from tensorflow.python.saved_model import utils
 from tensorflow.python.util import compat
+
+tf.app.flags.DEFINE_string("output_dir", "/tmp/saved_model_half_plus_two",
+                           "Directory where to ouput SavedModel.")
+tf.app.flags.DEFINE_string("output_dir_pbtxt",
+                           "/tmp/saved_model_half_plus_two_pbtxt",
+                           "Directory where to ouput the text format of "
+                           "SavedModel.")
+FLAGS = tf.flags.FLAGS
 
 
 def _write_assets(assets_directory, assets_filename):
@@ -113,16 +121,31 @@ def _generate_saved_model_for_half_plus_two(export_dir, as_text=False):
     output_tensor = meta_graph_pb2.TensorInfo()
     output_tensor.name = tf.identity(y).name
     signature_outputs = {signature_constants.REGRESS_OUTPUTS: output_tensor}
-    signature_def = utils.build_signature_def(
+    signature_def = signature_def_utils.build_signature_def(
         signature_inputs, signature_outputs,
         signature_constants.REGRESS_METHOD_NAME)
+
+    # Set up the signature for Predict with input and output tensor
+    # specification.
+    predict_input_tensor = meta_graph_pb2.TensorInfo()
+    predict_input_tensor.name = x.name
+    predict_signature_inputs = {
+       "x": predict_input_tensor
+    }
+    predict_signature_def = signature_def_utils.build_signature_def(
+        {"x": predict_input_tensor},
+        {"y": output_tensor},
+        signature_constants.PREDICT_METHOD_NAME)
 
     # Initialize all variables and then save the SavedModel.
     sess.run(tf.global_variables_initializer())
     builder.add_meta_graph_and_variables(
         sess, [tag_constants.SERVING],
         signature_def_map={
-            signature_constants.REGRESS_METHOD_NAME: signature_def
+            signature_constants.REGRESS_METHOD_NAME:
+                signature_def,
+            signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY:
+                predict_signature_def
         },
         assets_collection=tf.get_collection(tf.GraphKeys.ASSET_FILEPATHS),
         legacy_init_op=tf.group(assign_filename_op))
@@ -130,13 +153,11 @@ def _generate_saved_model_for_half_plus_two(export_dir, as_text=False):
 
 
 def main(_):
-  export_dir_pb = "/tmp/saved_model/half_plus_two"
-  _generate_saved_model_for_half_plus_two(export_dir_pb)
-  print("SavedModel generated at: %s" % export_dir_pb)
+  _generate_saved_model_for_half_plus_two(FLAGS.output_dir)
+  print("SavedModel generated at: %s" % FLAGS.output_dir)
 
-  export_dir_pbtxt = "/tmp/saved_model/half_plus_two_pbtxt"
-  _generate_saved_model_for_half_plus_two(export_dir_pbtxt, as_text=True)
-  print("SavedModel generated at: %s" % export_dir_pbtxt)
+  _generate_saved_model_for_half_plus_two(FLAGS.output_dir_pbtxt, as_text=True)
+  print("SavedModel generated at: %s" % FLAGS.output_dir_pbtxt)
 
 
 if __name__ == "__main__":

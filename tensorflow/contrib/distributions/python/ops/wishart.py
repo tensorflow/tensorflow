@@ -367,7 +367,7 @@ class _WishartOperatorPD(distribution.Distribution):
 
   def _mode(self):
     s = self.df - self.dimension - 1.
-    s = math_ops.select(
+    s = array_ops.where(
         math_ops.less(s, 0.),
         constant_op.constant(float("NaN"), dtype=self.dtype, name="nan"),
         s)

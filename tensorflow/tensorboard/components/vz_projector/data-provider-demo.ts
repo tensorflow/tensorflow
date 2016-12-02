@@ -18,6 +18,8 @@ import {ProjectorConfig, DataProvider, EmbeddingInfo, TENSORS_MSG_ID} from './da
 import * as dataProvider from './data-provider';
 import * as logging from './logging';
 
+const BYTES_EXTENSION = '.bytes';
+
 /** Data provider that loads data from a demo folder. */
 export class DemoDataProvider implements DataProvider {
   private projectorConfigPath: string;
@@ -56,26 +58,27 @@ export class DemoDataProvider implements DataProvider {
     });
   }
 
-  getDefaultTensor(run: string, callback: (tensorName: string) => void) {
-    // Return the first tensor as the default tensor.
-    callback(this.projectorConfig.embeddings[0].tensorName);
-  }
-
   retrieveTensor(run: string, tensorName: string,
       callback: (ds: DataSet) => void) {
     let embedding = this.getEmbeddingInfo(tensorName);
-    let separator = embedding.tensorPath.substr(-3) === 'tsv' ? '\t' : ' ';
     let url = `${embedding.tensorPath}`;
-    logging.setModalMessage('Fetching tensors...', TENSORS_MSG_ID);
-    d3.text(url, (error: any, dataString: string) => {
-      if (error) {
-        logging.setErrorMessage(error.responseText);
-        return;
-      }
-      dataProvider.parseTensors(dataString, separator).then(points => {
-        callback(new DataSet(points));
+    if (embedding.tensorPath.substr(-1 * BYTES_EXTENSION.length) ===
+        BYTES_EXTENSION) {
+      dataProvider.retrieveTensorAsBytes(
+          this, this.getEmbeddingInfo(tensorName), run, tensorName, url,
+          callback);
+    } else {
+      logging.setModalMessage('Fetching tensors...', TENSORS_MSG_ID);
+      d3.text(url, (error: any, dataString: string) => {
+        if (error) {
+          logging.setErrorMessage(error.responseText);
+          return;
+        }
+        dataProvider.parseTensors(dataString).then(points => {
+          callback(new DataSet(points));
+        });
       });
-    });
+    }
   }
 
   retrieveSpriteAndMetadata(run: string, tensorName: string,

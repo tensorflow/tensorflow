@@ -334,44 +334,31 @@ class LSTMBlockCell(rnn_cell.RNNCell):
 
   Unlike `rnn_cell.LSTMCell`, this is a monolithic op and should be much faster.
   The weight and bias matrixes should be compatible as long as the variable
-  scope matches, and you use `use_compatible_names=True`.
+  scope matches.
   """
 
   def __init__(self,
                num_units,
                forget_bias=1.0,
-               use_peephole=False,
-               use_compatible_names=False):
+               use_peephole=False):
     """Initialize the basic LSTM cell.
 
     Args:
       num_units: int, The number of units in the LSTM cell.
       forget_bias: float, The bias added to forget gates (see above).
       use_peephole: Whether to use peephole connections or not.
-      use_compatible_names: If True, use the same variable naming as
-        rnn_cell.LSTMCell
     """
     self._num_units = num_units
     self._forget_bias = forget_bias
     self._use_peephole = use_peephole
-    if use_compatible_names:
-      self._names = {
-          "W": "W_0",
-          "b": "B",
-          "wci": "W_I_diag",
-          "wco": "W_O_diag",
-          "wcf": "W_F_diag",
-          "scope": "LSTMCell"
-      }
-    else:
-      self._names = {
-          "W": "W",
-          "b": "b",
-          "wci": "wci",
-          "wco": "wco",
-          "wcf": "wcf",
-          "scope": "LSTMBlockCell"
-      }
+    self._names = {
+        "W": "weights",
+        "b": "biases",
+        "wci": "w_i_diag",
+        "wco": "w_o_diag",
+        "wcf": "w_f_diag",
+        "scope": "lstm_cell"
+    }
 
   @property
   def state_size(self):
@@ -385,15 +372,15 @@ class LSTMBlockCell(rnn_cell.RNNCell):
     """Long short-term memory cell (LSTM)."""
     with vs.variable_scope(scope or self._names["scope"]):
       x_shape = x.get_shape().with_rank(2)
-      if not x_shape[1]:
-        raise ValueError("Expecting x_shape[1] to be sets: %s" % str(x_shape))
+      if not x_shape[1].value:
+        raise ValueError("Expecting x_shape[1] to be set: %s" % str(x_shape))
       if len(states_prev) != 2:
         raise ValueError("Expecting states_prev to be a tuple with length 2.")
-      input_size = x_shape[1]
+      input_size = x_shape[1].value
       w = vs.get_variable(self._names["W"], [input_size + self._num_units,
                                              self._num_units * 4])
       b = vs.get_variable(
-          self._names["b"], [w.get_shape().with_rank(2)[1]],
+          self._names["b"], [w.get_shape().with_rank(2)[1].value],
           initializer=init_ops.constant_initializer(0.0))
       if self._use_peephole:
         wci = vs.get_variable(self._names["wci"], [self._num_units])
@@ -490,7 +477,7 @@ class LSTMBlockWrapper(fused_rnn_cell.FusedRNNCell):
     Raises:
       ValueError: in case of shape mismatches
     """
-    with vs.variable_scope(scope or type(self).__name__):
+    with vs.variable_scope(scope or "lstm_block_wrapper"):
       is_list = isinstance(inputs, list)
       if is_list:
         inputs = array_ops.pack(inputs)
@@ -634,15 +621,16 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
       time_len = array_ops.shape(inputs)[0]
     input_size = inputs_shape[2].value
     w = vs.get_variable(
-        "W_0", [input_size + self._num_units, self._num_units * 4], dtype=dtype)
+        "weights",
+        [input_size + self._num_units, self._num_units * 4], dtype=dtype)
     b = vs.get_variable(
-        "B", [w.get_shape().with_rank(2)[1]],
+        "biases", [w.get_shape().with_rank(2)[1]],
         initializer=init_ops.constant_initializer(0.0),
         dtype=dtype)
     if self._use_peephole:
-      wci = vs.get_variable("W_I_diag", [self._num_units], dtype=dtype)
-      wco = vs.get_variable("W_O_diag", [self._num_units], dtype=dtype)
-      wcf = vs.get_variable("W_F_diag", [self._num_units], dtype=dtype)
+      wci = vs.get_variable("w_i_diag", [self._num_units], dtype=dtype)
+      wco = vs.get_variable("w_o_diag", [self._num_units], dtype=dtype)
+      wcf = vs.get_variable("w_f_diag", [self._num_units], dtype=dtype)
     else:
       wci = wco = wcf = array_ops.zeros([self._num_units], dtype=dtype)
 

@@ -592,7 +592,6 @@ register_dense_tensor_like_type(Tensor)
 def convert_to_tensor(value,
                       dtype=None,
                       name=None,
-                      as_ref=False,
                       preferred_dtype=None):
   """Converts the given `value` to a `Tensor`.
 
@@ -624,8 +623,50 @@ def convert_to_tensor(value,
     dtype: Optional element type for the returned tensor. If missing, the
       type is inferred from the type of `value`.
     name: Optional name to use if a new `Tensor` is created.
-    as_ref: True if we want the result as a ref tensor. Only used if a new
-      `Tensor` is created.
+    preferred_dtype: Optional element type for the returned tensor,
+      used when dtype is None. In some cases, a caller may not have a
+      dtype in mind when converting to a tensor, so preferred_dtype
+      can be used as a soft preference.  If the conversion to
+      `preferred_dtype` is not possible, this argument has no effect.
+
+  Returns:
+    An `Output` based on `value`.
+
+  Raises:
+    TypeError: If no conversion function is registered for `value`.
+    RuntimeError: If a registered conversion function returns an invalid value.
+
+  """
+  return internal_convert_to_tensor(
+      value=value,
+      dtype=dtype,
+      name=name,
+      preferred_dtype=preferred_dtype,
+      as_ref=False)
+
+
+def internal_convert_to_tensor(value,
+                               dtype=None,
+                               name=None,
+                               as_ref=False,
+                               preferred_dtype=None):
+  """Converts the given `value` to an `Tensor`.
+
+  This function converts Python objects of various types to `Tensor`
+  objects. It accepts `Tensor` objects, numpy arrays, Python lists,
+  and Python scalars. For example:
+
+  This function can be useful when composing a new operation in Python
+  All standard Python op constructors apply this function to each of their
+  Tensor-valued inputs, which allows those ops to accept numpy arrays, Python
+  lists, and scalars in addition to `Tensor` objects.
+
+  Args:
+    value: An object whose type has a registered `Tensor` conversion function.
+    dtype: Optional element type for the returned tensor. If missing, the
+      type is inferred from the type of `value`.
+    name: Optional name to use if a new `Tensor` is created.
+    as_ref: True if we want the mutable view of Variables, if applicable.
     preferred_dtype: Optional element type for the returned tensor,
       used when dtype is None. In some cases, a caller may not have a
       dtype in mind when converting to a tensor, so preferred_dtype
@@ -687,11 +728,11 @@ def convert_to_tensor(value,
                   % (error_prefix, value, type(value)))
 
 
-def convert_n_to_tensor(values,
-                        dtype=None,
-                        name=None,
-                        as_ref=False,
-                        preferred_dtype=None):
+def internal_convert_n_to_tensor(values,
+                                 dtype=None,
+                                 name=None,
+                                 as_ref=False,
+                                 preferred_dtype=None):
   """Converts `values` to a list of `Tensor` objects.
 
   Args:
@@ -722,7 +763,7 @@ def convert_n_to_tensor(values,
   for i, value in enumerate(values):
     n = None if name is None else "%s_%d" % (name, i)
     ret.append(
-        convert_to_tensor(
+        internal_convert_to_tensor(
             value,
             dtype=dtype,
             name=n,
@@ -731,9 +772,67 @@ def convert_n_to_tensor(values,
   return ret
 
 
-def convert_to_tensor_or_indexed_slices(value, dtype=None, name=None,
-                                        as_ref=False):
+def convert_n_to_tensor(values,
+                        dtype=None,
+                        name=None,
+                        preferred_dtype=None):
+  """Converts `values` to a list of `Tensor` objects.
+
+  Args:
+    values: A list of objects that can be consumed by `tf.convert_to_tensor()`.
+    dtype: (Optional.) The required `DType` of the returned `Tensor` objects.
+    name: (Optional.) A name prefix to used when a new `Tensor` is
+      created, in which case element `i` will be given the name `name
+      + '_' + i`.
+    preferred_dtype: Optional element type for the returned tensors,
+      used when dtype is None. In some cases, a caller may not have a
+      dtype in mind when converting to a tensor, so preferred_dtype
+      can be used as a soft preference.  If the conversion to
+      `preferred_dtype` is not possible, this argument has no effect.
+
+  Returns:
+    A list of `Tensor` and/or `IndexedSlices` objects.
+
+  Raises:
+    TypeError: If no conversion function is registered for an element in
+      `values`.
+    RuntimeError: If a registered conversion function returns an invalid
+      value.
+  """
+  return internal_convert_n_to_tensor(values=values,
+                                      dtype=dtype,
+                                      name=name,
+                                      preferred_dtype=preferred_dtype,
+                                      as_ref=False)
+
+
+def convert_to_tensor_or_indexed_slices(value, dtype=None, name=None):
   """Converts the given object to a `Tensor` or an `IndexedSlices`.
+
+  If `value` is an `IndexedSlices` or `SparseTensor` it is returned
+  unmodified. Otherwise, it is converted to a `Tensor` using
+  `convert_to_tensor()`.
+
+  Args:
+    value: An `IndexedSlices`, `SparseTensor`, or an object that can be consumed
+      by `convert_to_tensor()`.
+    dtype: (Optional.) The required `DType` of the returned `Tensor` or
+      `IndexedSlices`.
+    name: (Optional.) A name to use if a new `Tensor` is created.
+
+  Returns:
+    An `Tensor`, `IndexedSlices`, or `SparseTensor` based on `value`.
+
+  Raises:
+    ValueError: If `dtype` does not match the element type of `value`.
+  """
+  return internal_convert_to_tensor_or_indexed_slices(
+      value=value, dtype=dtype, name=name, as_ref=False)
+
+
+def internal_convert_to_tensor_or_indexed_slices(value, dtype=None, name=None,
+                                                 as_ref=False):
+  """Converts the given object to an `Tensor` or an `IndexedSlices`.
 
   If `value` is an `IndexedSlices` or `SparseTensor` it is returned
   unmodified. Otherwise, it is converted to a `Tensor` using
@@ -760,11 +859,14 @@ def convert_to_tensor_or_indexed_slices(value, dtype=None, name=None,
           % (dtypes.as_dtype(dtype).name, value.dtype.name, str(value)))
     return value
   else:
-    return convert_to_tensor(value, dtype=dtype, name=name, as_ref=as_ref)
+    return internal_convert_to_tensor(value,
+                                      dtype=dtype,
+                                      name=name,
+                                      as_ref=as_ref)
 
 
-def convert_n_to_tensor_or_indexed_slices(values, dtype=None, name=None,
-                                          as_ref=False):
+def internal_convert_n_to_tensor_or_indexed_slices(values, dtype=None,
+                                                   name=None, as_ref=False):
   """Converts `values` to a list of `Tensor` or `IndexedSlices` objects.
 
   Any `IndexedSlices` or `SparseTensor` objects in `values` are returned
@@ -798,9 +900,37 @@ def convert_n_to_tensor_or_indexed_slices(values, dtype=None, name=None,
     else:
       n = None if name is None else "%s_%d" % (name, i)
       ret.append(
-          convert_to_tensor_or_indexed_slices(value, dtype=dtype, name=n,
-                                              as_ref=as_ref))
+          internal_convert_to_tensor_or_indexed_slices(
+              value, dtype=dtype, name=n, as_ref=as_ref))
   return ret
+
+
+def convert_n_to_tensor_or_indexed_slices(values, dtype=None, name=None):
+  """Converts `values` to a list of `Output` or `IndexedSlices` objects.
+
+  Any `IndexedSlices` or `SparseTensor` objects in `values` are returned
+  unmodified.
+
+  Args:
+    values: A list of `None`, `IndexedSlices`, `SparseTensor`, or objects that
+      can be consumed by `convert_to_tensor()`.
+    dtype: (Optional.) The required `DType` of the returned `Tensor`
+      `IndexedSlices`.
+    name: (Optional.) A name prefix to used when a new `Tensor` is
+      created, in which case element `i` will be given the name `name
+      + '_' + i`.
+
+  Returns:
+    A list of `Tensor`, `IndexedSlices`, and/or `SparseTensor` objects.
+
+  Raises:
+    TypeError: If no conversion function is registered for an element in
+      `values`.
+    RuntimeError: If a registered conversion function returns an invalid
+      value.
+  """
+  return internal_convert_n_to_tensor_or_indexed_slices(
+      values=values, dtype=dtype, name=name, as_ref=False)
 
 
 def register_tensor_conversion_function(base_type, conversion_func,
@@ -1571,10 +1701,11 @@ def _set_call_cpp_shape_fn(call_cpp_shape_fn):
 
 
 class RegisterShape(object):
-  """A decorator for registering the shape function for an op type.
+  """No longer used.  Was: A decorator for registering a shape function.
 
-  Soon to be removed.  Shape functions should be registered via
-  the SetShapeFn on the original Op specification in C++.
+  Shape functions must now be registered via the SetShapeFn on the
+  original Op specification in C++.
+
   """
 
   def __init__(self, op_type):
@@ -2828,26 +2959,33 @@ class Graph(object):
     `b` and `c` will always be colocated with `a`, no matter where `a`
     is eventually placed.
 
+    **NOTE** Using a colocation scope resets any existing device constraints.
+
+    If `op` is `None` then `ignore_existing` must be `True` and the new
+    scope resets all colocation and device constraints.
+
     Args:
-      op: The op to colocate all created ops with.
+      op: The op to colocate all created ops with, or `None`.
       ignore_existing: If true, only applies colocation of this op within
         the context, rather than applying all colocation properties
-        on the stack.
+        on the stack.  If `op` is `None`, this value must be `True`.
 
     Raises:
-      ValueError: if op is None.
+      ValueError: if op is None but ignore_existing is False.
 
     Yields:
       A context manager that specifies the op with which to colocate
       newly created ops.
 
     """
-    if op is None:
-      raise ValueError("Tried to colocate with None")
+    if op is None and not ignore_existing:
+      raise ValueError(
+          "Trying to reset colocation (op is None) but "
+          "ignore_existing is not True")
 
-    if not isinstance(op, Operation):
+    if op is not None and not isinstance(op, Operation):
       # We always want to colocate with the reference op.
-      op = convert_to_tensor_or_indexed_slices(op, as_ref=True).op
+      op = internal_convert_to_tensor_or_indexed_slices(op, as_ref=True).op
 
     # By default, colocate_with resets the device function stack,
     # since colocate_with is typically used in specific internal
@@ -2863,14 +3001,16 @@ class Graph(object):
       current_stack = self._colocation_stack
       self._colocation_stack = []
 
-    self._colocation_stack.append(op)
+    if op is not None:
+      self._colocation_stack.append(op)
 
     try:
       yield
     finally:
       # Restore device function stack
       self._device_function_stack = device_fn_tmp
-      self._colocation_stack.pop()
+      if op is not None:
+        self._colocation_stack.pop()
 
       # Reset the colocation stack if requested.
       if ignore_existing:
@@ -3840,7 +3980,7 @@ class GraphKeys(object):
     for more details.
   * `SUMMARIES`: the summary `Tensor` objects that have been created in the
     graph. See
-    [`tf.merge_all_summaries()`](../../api_docs/python/train.md#merge_all_summaries)
+    [`tf.contrib.deprecated.merge_all_summaries()`](../../api_docs/python/train.md#merge_all_summaries)
     for more details.
   * `QUEUE_RUNNERS`: the `QueueRunner` objects that are used to
     produce input for a computation. See

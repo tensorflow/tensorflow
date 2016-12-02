@@ -45,6 +45,8 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 #endif  // GOOGLE_CUDA
 
+// clang-format on
+
 namespace tensorflow {
 
 Status GetHandle(OpKernelContext* ctx, string* container, string* ta_handle) {
@@ -72,9 +74,10 @@ Status GetTensorArray(OpKernelContext* ctx, TensorArray** tensor_array) {
   string container;
   string ta_handle;
   TF_RETURN_IF_ERROR(GetHandle(ctx, &container, &ta_handle));
-  ResourceMgr* rm = ctx->step_resource_manager();
-  if (rm == nullptr) return errors::Internal("No per-step resource manager.");
-  TF_RETURN_IF_ERROR(rm->Lookup(container, ta_handle, tensor_array));
+  ResourceMgr* rm = ctx->resource_manager();
+  if (rm == nullptr) return errors::Internal("No resource manager.");
+  TF_RETURN_IF_ERROR(rm->Lookup(ctx->step_container()->name(),
+                                container + ta_handle, tensor_array));
   return Status::OK();
 }
 
@@ -104,10 +107,9 @@ class TensorArrayCreationOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->allocate_temp(
                             tensorflow::DT_STRING, tensorflow::TensorShape({2}),
                             &tensor_array_output_handle, alloc_attr));
-    // Store the handle in a container of the per-step RM.
-    ResourceMgr* rm = ctx->step_resource_manager();
-    OP_REQUIRES(ctx, rm != nullptr,
-                errors::Internal("No per-step resource manager."));
+    // Store the handle in a per-step container of the RM.
+    ResourceMgr* rm = ctx->resource_manager();
+    OP_REQUIRES(ctx, rm != nullptr, errors::Internal("No resource manager."));
 
     TensorArray* output_tensor_array;
     OP_REQUIRES_OK(ctx, CreateTensorArray(ctx, rm, &tensor_array_output_handle,
@@ -167,8 +169,9 @@ class TensorArrayOp : public TensorArrayCreationOp {
         false /* multiple_writes_aggregate */, false /* is_grad */,
         -1 /* marked_size */, clear_after_read_);
 
-    TF_RETURN_IF_ERROR(
-        rm->Create(handle(0), unique_tensor_array_name, tensor_array));
+    TF_RETURN_IF_ERROR(rm->Create(
+        ctx->step_container()->name(),
+        strings::StrCat(handle(0), unique_tensor_array_name), tensor_array));
 
     *output_tensor_array = tensor_array;
 
@@ -236,7 +239,9 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
     output_handle(1) = strings::StrCat(tensor_array_name, "@", source_);
 
     TensorArray* tensor_array;
-    TF_RETURN_IF_ERROR(rm->Lookup(container, tensor_array_name, &tensor_array));
+    TF_RETURN_IF_ERROR(rm->Lookup(ctx->step_container()->name(),
+                                  strings::StrCat(container, tensor_array_name),
+                                  &tensor_array));
     core::ScopedUnref unref(tensor_array);
 
     // Once gradients are being calculated, the forward TensorArray
@@ -268,7 +273,9 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
     };
 
     Status s = rm->LookupOrCreate<TensorArray>(
-        output_handle(0), output_handle(1), output_tensor_array, creator);
+        ctx->step_container()->name(),
+        strings::StrCat(output_handle(0), output_handle(1)),
+        output_tensor_array, creator);
     (*output_tensor_array)->Unref();
 
     return s;

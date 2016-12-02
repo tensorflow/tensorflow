@@ -66,7 +66,7 @@ class ForestHParams(object):
                split_after_samples=250,
                min_split_samples=5,
                valid_leaf_threshold=1,
-               dominate_method='hoeffding',
+               dominate_method='bootstrap',
                dominate_fraction=0.99,
                **kwargs):
     self.num_trees = num_trees

@@ -67,7 +67,9 @@ TEST(NotificationTest, TestMultipleThreadsWaitingOnNotification) {
       ++counter;
     });
   }
-  sleep(1);
+
+  // Sleep 1 second.
+  Env::Default()->SleepForMicroseconds(1 * 1000 * 1000);
 
   EXPECT_EQ(0, counter);
 

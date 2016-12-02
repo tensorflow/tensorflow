@@ -2,7 +2,11 @@
 
 
 
+Represents the shape of a Tensor .
 
+A tensor&apos;s shape is denoted by its number of dimensions and a size for each dimension. For example, a Tensor represented by a 3 x 4 matrix would have a shape of 2-D, [3,4].
+
+If you know the exact shape of your Tensor when you create the TensorShape object, you can specify it then, or you can create a TensorShape with zero dimensions and one element, and call AddDim() to add dimensions later.
 
 ###Member Details
 

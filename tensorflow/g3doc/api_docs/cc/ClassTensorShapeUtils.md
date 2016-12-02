@@ -72,8 +72,14 @@ Returns a ` TensorShape ` whose dimensions are `dims[0]`, `dims[1]`, ..., `dims[
 
 
 
-#### `bool tensorflow::TensorShapeUtils::StartsWith(const TensorShape &shape0, const TensorShape &shape1)` {#bool_tensorflow_TensorShapeUtils_StartsWith}
+#### `bool tensorflow::TensorShapeUtils::StartsWith(const TensorShape &shape, const TensorShape &prefix)` {#bool_tensorflow_TensorShapeUtils_StartsWith}
+
+Returns true iff `shape` starts with `prefix`.
 
 
+
+#### `bool tensorflow::TensorShapeUtils::EndsWith(const TensorShape &shape, const TensorShape &suffix)` {#bool_tensorflow_TensorShapeUtils_EndsWith}
+
+Returns true iff `shape` ends with `suffix`.
 
 

@@ -788,7 +788,7 @@ class DebugAnalyzer(object):
       include_control: Whether control dependencies are to be included as
         inputs (and marked as such).
       show_op_type: Whether op type of the input nodes are to be displayed
-        alongside the the nodes' names.
+        alongside the nodes' names.
     """
 
     # Make a shallow copy of the list because it may be extended later.

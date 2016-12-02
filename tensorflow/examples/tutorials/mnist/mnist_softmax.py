@@ -25,7 +25,6 @@ from __future__ import print_function
 import argparse
 import sys
 
-# Import data
 from tensorflow.examples.tutorials.mnist import input_data
 
 import tensorflow as tf
@@ -34,6 +33,7 @@ FLAGS = None
 
 
 def main(_):
+  # Import data
   mnist = input_data.read_data_sets(FLAGS.data_dir, one_hot=True)
 
   # Create the model
@@ -58,8 +58,8 @@ def main(_):
   train_step = tf.train.GradientDescentOptimizer(0.5).minimize(cross_entropy)
 
   sess = tf.InteractiveSession()
-  # Train
   tf.global_variables_initializer().run()
+  # Train
   for _ in range(1000):
     batch_xs, batch_ys = mnist.train.next_batch(100)
     sess.run(train_step, feed_dict={x: batch_xs, y_: batch_ys})

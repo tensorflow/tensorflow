@@ -19,12 +19,14 @@ from __future__ import division
 from __future__ import print_function
 
 import inspect
+import re
 import tempfile
 
 from tensorflow.contrib import layers
 from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework import list_variables
 from tensorflow.contrib.framework import load_variable
+from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import estimator
@@ -234,6 +236,22 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
                                   input_fn=input_fn or default_input_fn,
                                   default_batch_size=default_batch_size,
                                   exports_to_keep=exports_to_keep)
+
+  @experimental
+  def export_savedmodel(self,
+                        export_dir_base,
+                        input_fn,
+                        default_output_alternative_key=None,
+                        assets_extra=None,
+                        as_text=False,
+                        exports_to_keep=None):
+    return self._estimator.export_savedmodel(
+        export_dir_base,
+        input_fn,
+        default_output_alternative_key=default_output_alternative_key,
+        assets_extra=assets_extra,
+        as_text=as_text,
+        exports_to_keep=exports_to_keep)
 
   @property
   def weights_(self):

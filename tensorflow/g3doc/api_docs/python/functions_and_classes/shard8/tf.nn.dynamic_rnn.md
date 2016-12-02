@@ -67,7 +67,7 @@ for correctness than performance, unlike in rnn().
     transposes at the beginning and end of the RNN calculation.  However,
     most TensorFlow data is batch-major, so by default this function
     accepts input and emits output in batch-major form.
-*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "RNN".
+*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "rnn".
 
 ##### Returns:
 

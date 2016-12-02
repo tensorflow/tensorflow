@@ -387,7 +387,7 @@ func goType(tfType string) (string, error) {
 	var gotype string
 	switch tfType {
 	case "int":
-		gotype = "int"
+		gotype = "int64"
 	case "float":
 		gotype = "float32"
 	case "bool":

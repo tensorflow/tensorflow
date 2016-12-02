@@ -87,7 +87,7 @@ class Variable(object):
 
   ```python
   # Add an Op to initialize global variables.
-  init_op = tf.global_variable_initializers()
+  init_op = tf.global_variables_initializer()
 
   # Launch the graph in a session.
   with tf.Session() as sess:
@@ -433,8 +433,6 @@ class Variable(object):
 
     Returns a `Tensor` which holds the value of the variable.  You can not
     assign a new value to this tensor as it is not a reference to the variable.
-    See [`ref()`](#Variable.ref) if you want to get a reference to the
-    variable.
 
     To avoid copies, if the consumer of the returned value is on the same device
     as the variable, this actually returns the live value of the variable, not
@@ -519,6 +517,10 @@ class Variable(object):
 
     You should use this instead of the variable itself to initialize another
     variable with a value that depends on the value of this variable.
+
+    Beware of using initialized_value except during initialization:
+    initialized_value causes the Variable's initializer op to be run, so running
+    this op resets the variable to the initial value.
 
     ```python
     # Initialize 'v' with a random tensor.

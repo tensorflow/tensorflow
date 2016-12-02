@@ -22,10 +22,8 @@ import math
 import numpy as np
 import tensorflow as tf
 
-# TODO(sguada) Expose tf.with_dependencies
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.contrib.layers.python.layers import layers as _layers
-from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import control_flow_ops
 
 
 class AvgPool2DTest(tf.test.TestCase):
@@ -181,7 +179,8 @@ class PoolTest(tf.test.TestCase):
     height, width = 5, 8
     images = tf.random_uniform((5, 3, height, width), seed=1)
     output = tf.contrib.layers.pool(
-        images, [2, 3], dilation_rate=[1, 2], pooling_type='AVG', data_format='NCHW')
+        images, [2, 3], dilation_rate=[1, 2], pooling_type='AVG',
+        data_format='NCHW')
     self.assertEqual(output.get_shape().as_list(), [5, 3, 4, 4])
 
 
@@ -370,7 +369,7 @@ class ConvolutionTest(tf.test.TestCase):
           tf.contrib.framework.get_variables_by_name('weights')[0])
       wd = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)[0]
       self.assertEqual(wd.op.name,
-                        'Conv/weights/Regularizer/l2_regularizer')
+                       'Conv/weights/Regularizer/l2_regularizer')
       sess.run(tf.global_variables_initializer())
       self.assertAlmostEqual(sess.run(wd), weight_decay * l2_loss.eval())
 
@@ -588,6 +587,20 @@ class ConvolutionTest(tf.test.TestCase):
 
 class Convolution2dTransposeTests(tf.test.TestCase):
 
+  def testTrainableFlagIsPassedOn(self):
+    for trainable in [True, False]:
+      with tf.Graph().as_default():
+        num_filters = 32
+        input_size = [5, 10, 12, 3]
+
+        images = tf.random_uniform(input_size, seed=1)
+        tf.contrib.layers.conv2d_transpose(
+            images, num_filters, [3, 3], stride=1, trainable=trainable)
+        model_variables = tf.contrib.framework.get_model_variables()
+        trainable_variables = tf.trainable_variables()
+        for model_variable in model_variables:
+          self.assertEqual(trainable, model_variable in trainable_variables)
+
   def testInvalidDataFormat(self):
     height, width = 7, 9
     with self.test_session():
@@ -596,7 +609,6 @@ class Convolution2dTransposeTests(tf.test.TestCase):
           ValueError, 'data_format has to be either NCHW or NHWC.'):
         tf.contrib.layers.convolution2d_transpose(
             images, 32, 3, data_format='CHWN')
-
 
   def testOutputSizeWithStrideOneSamePaddingNCHW(self):
     # `NCHW` data fomat is only supported for `GPU` device.
@@ -615,9 +627,8 @@ class Convolution2dTransposeTests(tf.test.TestCase):
         sess.run(tf.global_variables_initializer())
         self.assertListEqual(list(output.eval().shape), expected_size)
 
-
   def testOutputSizeWithStrideOneValidPaddingNCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True) as sess:
         num_filters = 32
         input_size = [5, 3, 10, 12]
@@ -633,7 +644,7 @@ class Convolution2dTransposeTests(tf.test.TestCase):
         self.assertListEqual(list(output.eval().shape), expected_size)
 
   def testOutputSizeWithStrideTwoValidPaddingNCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True) as sess:
         num_filters = 32
         input_size = [5, 3, 9, 11]
@@ -650,7 +661,7 @@ class Convolution2dTransposeTests(tf.test.TestCase):
         self.assertListEqual(list(output.eval().shape), expected_size)
 
   def testOutputSizeWith1x1StrideTwoSamePaddingNCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True) as sess:
         num_filters = 1
         input_size = [1, 1, 1, 1]
@@ -667,7 +678,7 @@ class Convolution2dTransposeTests(tf.test.TestCase):
         self.assertListEqual(list(output.eval().shape), expected_size)
 
   def testOutputSizeWith1x1StrideTwoValidPaddingNCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True) as sess:
         num_filters = 1
         input_size = [1, 1, 1, 1]
@@ -682,7 +693,7 @@ class Convolution2dTransposeTests(tf.test.TestCase):
         self.assertListEqual(list(output.eval().shape), expected_size)
 
   def testOutputSizeWith2x2StrideTwoSamePaddingNCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True) as sess:
         num_filters = 1
         input_size = [1, 1, 2, 2]
@@ -697,7 +708,7 @@ class Convolution2dTransposeTests(tf.test.TestCase):
         self.assertListEqual(list(output.eval().shape), expected_size)
 
   def testOutputSizeWith2x2StrideTwoValidPaddingNCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True) as sess:
         num_filters = 1
         input_size = [1, 1, 2, 2]
@@ -712,7 +723,7 @@ class Convolution2dTransposeTests(tf.test.TestCase):
         self.assertListEqual(list(output.eval().shape), expected_size)
 
   def testOutputSizeWithStride2x1NCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True) as sess:
         num_filters = 1
         input_size = [1, 1, 3, 2]
@@ -727,7 +738,7 @@ class Convolution2dTransposeTests(tf.test.TestCase):
         self.assertListEqual(list(output.eval().shape), expected_size)
 
   def testOutputSizeWithStride2x4NCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True) as sess:
         num_filters = 1
         input_size = [1, 1, 3, 2]
@@ -742,7 +753,7 @@ class Convolution2dTransposeTests(tf.test.TestCase):
         self.assertListEqual(list(output.eval().shape), expected_size)
 
   def testOutputSizeWithStride2x5NCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True) as sess:
         num_filters = 1
         input_size = [1, 1, 3, 2]
@@ -755,7 +766,6 @@ class Convolution2dTransposeTests(tf.test.TestCase):
         sess.run(tf.global_variables_initializer())
         self.assertEqual(output.op.name, 'Conv2d_transpose/Relu')
         self.assertListEqual(list(output.eval().shape), expected_size)
-
 
   def testOutputSizeWithStrideOneSamePadding(self):
     num_filters = 32
@@ -1171,7 +1181,6 @@ class DropoutTest(tf.test.TestCase):
       is_training = tf.constant(True)
       images = tf.random_uniform((5, height, width, 3), seed=1)
       output = tf.contrib.layers.dropout(images, is_training=is_training)
-      self.assertEqual(output.op.name, 'Dropout/dropout/mul')
       output.get_shape().assert_is_compatible_with(images.get_shape())
 
   def testCreateDropoutWithConstantFalse(self):
@@ -1180,7 +1189,6 @@ class DropoutTest(tf.test.TestCase):
       is_training = tf.constant(False)
       images = tf.random_uniform((5, height, width, 3), seed=1)
       output = tf.contrib.layers.dropout(images, is_training=is_training)
-      self.assertEqual(output.op.name, 'Dropout/Identity')
       output.get_shape().assert_is_compatible_with(images.get_shape())
 
   def testCreateDropoutWithPlaceholder(self):
@@ -1210,8 +1218,8 @@ class DropoutTest(tf.test.TestCase):
       num_elem = tf.reduce_mean(tf.to_float(output > 0))
       sess.run(tf.global_variables_initializer())
       num_elem, num_elem_initial = sess.run([num_elem, num_elem_initial])
-      self.assertLess(num_elem, num_elem_initial/2 + 0.1)
-      self.assertGreater(num_elem, num_elem_initial/2 - 0.1)
+      self.assertLess(num_elem, num_elem_initial / 2 + 0.1)
+      self.assertGreater(num_elem, num_elem_initial / 2 - 0.1)
 
   def testCreateDropoutNoTraining(self):
     height, width = 3, 3
@@ -1236,8 +1244,8 @@ class DropoutTest(tf.test.TestCase):
       num_elem = tf.reduce_mean(tf.to_float(output > 0))
       sess.run(tf.global_variables_initializer())
       num_elem, num_elem_initial = sess.run([num_elem, num_elem_initial])
-      self.assertLess(num_elem, num_elem_initial/2 + 0.1)
-      self.assertGreater(num_elem, num_elem_initial/2 - 0.1)
+      self.assertLess(num_elem, num_elem_initial / 2 + 0.1)
+      self.assertGreater(num_elem, num_elem_initial / 2 - 0.1)
 
   def testCreateFCWithDropout(self):
     height, width = 3, 3
@@ -1284,7 +1292,7 @@ class FlattenTest(tf.test.TestCase):
       images = tf.random_uniform((5, height, width, 3), seed=1, name='images')
       output = tf.contrib.layers.flatten(images)
       self.assertEqual(output.get_shape().num_elements(),
-                        images.get_shape().num_elements())
+                       images.get_shape().num_elements())
       self.assertEqual(output.get_shape()[0], images.get_shape()[0])
 
   def testFlatten3D(self):
@@ -1293,7 +1301,7 @@ class FlattenTest(tf.test.TestCase):
       images = tf.random_uniform((5, height, width), seed=1, name='images')
       output = tf.contrib.layers.flatten(images)
       self.assertEqual(output.get_shape().num_elements(),
-                        images.get_shape().num_elements())
+                       images.get_shape().num_elements())
       self.assertEqual(output.get_shape()[0], images.get_shape()[0])
 
   def testFlattenBatchSize(self):
@@ -1303,10 +1311,10 @@ class FlattenTest(tf.test.TestCase):
       inputs = tf.placeholder(tf.int32, (None, height, width, 3))
       output = tf.contrib.layers.flatten(inputs)
       self.assertEqual(output.get_shape().as_list(),
-                        [None, height * width * 3])
+                       [None, height * width * 3])
       output = sess.run(output, {inputs: images.eval()})
       self.assertEqual(output.size,
-                        images.get_shape().num_elements())
+                       images.get_shape().num_elements())
       self.assertEqual(output.shape[0], images.get_shape()[0])
 
 
@@ -1463,7 +1471,7 @@ class FCTest(tf.test.TestCase):
                                         weights_regularizer=weight_decay)
       wd = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)[0]
       self.assertEqual(wd.op.name,
-                        'fully_connected/weights/Regularizer/l2_regularizer')
+                       'fully_connected/weights/Regularizer/l2_regularizer')
       sess.run(tf.global_variables_initializer())
       self.assertLess(sess.run(wd), 0.4)
 
@@ -1620,9 +1628,9 @@ class BatchNormTest(tf.test.TestCase):
       update_moving_mean = update_layers[0]
       update_moving_variance = update_layers[1]
       self.assertEqual(update_moving_mean.op.name,
-                        'BatchNorm/AssignMovingAvg')
+                       'BatchNorm/AssignMovingAvg')
       self.assertEqual(update_moving_variance.op.name,
-                        'BatchNorm/AssignMovingAvg_1')
+                       'BatchNorm/AssignMovingAvg_1')
 
   def testReuseVariables(self):
     height, width = 3, 3
@@ -1774,8 +1782,8 @@ class BatchNormTest(tf.test.TestCase):
       if fused:
         # Add Bessel's correction
         moving_variance_corrected = moving_variance / correction_factor
-        correct_moving_variance = state_ops.assign(moving_variance,
-                                                   moving_variance_corrected)
+        correct_moving_variance = tf.assign(moving_variance,
+                                            moving_variance_corrected)
         sess.run(correct_moving_variance)
       self.assertAllClose(variance, expected_var)
 
@@ -1888,8 +1896,8 @@ class BatchNormTest(tf.test.TestCase):
       if fused:
         # Add Bessel's correction
         moving_variance_corrected = moving_variance / correction_factor
-        correct_moving_variance = state_ops.assign(moving_variance,
-                                                   moving_variance_corrected)
+        correct_moving_variance = tf.assign(moving_variance,
+                                            moving_variance_corrected)
         sess.run(correct_moving_variance)
       self.assertAllClose(variance, expected_var)
       # After convergence output_train and output_eval should be the same.
@@ -1961,8 +1969,8 @@ class BatchNormTest(tf.test.TestCase):
       if fused:
         # Add Bessel's correction
         moving_variance_corrected = moving_variance / correction_factor
-        correct_moving_variance = state_ops.assign(moving_variance,
-                                                   moving_variance_corrected)
+        correct_moving_variance = tf.assign(moving_variance,
+                                            moving_variance_corrected)
         sess.run(correct_moving_variance)
       output_false = sess.run([output], {is_training: False})
       self.assertAllClose(output_true, output_false)
@@ -2100,8 +2108,8 @@ class BatchNormTest(tf.test.TestCase):
       if fused:
         # Add Bessel's correction
         moving_variance_corrected = moving_variance / correction_factor
-        correct_moving_variance = state_ops.assign(moving_variance,
-                                                   moving_variance_corrected)
+        correct_moving_variance = tf.assign(moving_variance,
+                                            moving_variance_corrected)
         sess.run(correct_moving_variance)
       output_false = sess.run([output], {is_training: False})
       self.assertTrue(np.allclose(output_true, output_false))
@@ -2212,10 +2220,10 @@ class BatchNormTest(tf.test.TestCase):
                                             scale=True,
                                             epsilon=0.0,
                                             param_initializers={
-                                              'beta': beta,
-                                              'gamma': gamma,
-                                              'moving_mean': mean,
-                                              'moving_variance': variance,
+                                                'beta': beta,
+                                                'gamma': gamma,
+                                                'moving_mean': mean,
+                                                'moving_variance': variance,
                                             })
       sess.run(tf.global_variables_initializer())
       outs = sess.run(output)
@@ -2357,6 +2365,7 @@ class LayerNormTest(tf.test.TestCase):
 
   def testOutput4DInput(self):
     self.doOutputTest((100, 10, 10, 3))
+
 
 class MaxPool2DTest(tf.test.TestCase):
 
@@ -2974,7 +2983,7 @@ class LegacyFullyConnectedTest(tf.test.TestCase):
     self.assertEqual(1, len(tf.get_collection('unbiased')))
     self.assertEqual(1, len(tf.get_collection('biased')))
     self.assertEqual(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES),
-                      tf.get_collection('all'))
+                     tf.get_collection('all'))
 
   def test_no_bias(self):
     tf.contrib.layers.legacy_relu(self.input, 2, bias_init=None)

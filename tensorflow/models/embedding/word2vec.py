@@ -365,7 +365,7 @@ class Word2Vec(object):
       self._word2id[w] = i
     true_logits, sampled_logits = self.forward(examples, labels)
     loss = self.nce_loss(true_logits, sampled_logits)
-    tf.scalar_summary("NCE loss", loss)
+    tf.contrib.deprecated.scalar_summary("NCE loss", loss)
     self._loss = loss
     self.optimize(loss)
 
@@ -396,8 +396,8 @@ class Word2Vec(object):
 
     initial_epoch, initial_words = self._session.run([self._epoch, self._words])
 
-    summary_op = tf.merge_all_summaries()
-    summary_writer = tf.train.SummaryWriter(opts.save_path, self._session.graph)
+    summary_op = tf.contrib.deprecated.merge_all_summaries()
+    summary_writer = tf.summary.FileWriter(opts.save_path, self._session.graph)
     workers = []
     for _ in xrange(opts.concurrent_steps):
       t = threading.Thread(target=self._train_thread_body)

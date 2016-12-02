@@ -148,10 +148,10 @@ class Uniform(distribution.Distribution):
 
   def _prob(self, x):
     broadcasted_x = x * array_ops.ones(self.batch_shape())
-    return math_ops.select(
+    return array_ops.where(
         math_ops.is_nan(broadcasted_x),
         broadcasted_x,
-        math_ops.select(
+        array_ops.where(
             math_ops.logical_or(broadcasted_x < self.a,
                                 broadcasted_x > self.b),
             array_ops.zeros_like(broadcasted_x),
@@ -164,9 +164,9 @@ class Uniform(distribution.Distribution):
     broadcasted_x = x * array_ops.ones(self.batch_shape())
     zeros = array_ops.zeros_like(x + self.a + self.b, dtype=self.dtype)
     ones = array_ops.ones_like(x + self.a + self.b, dtype=self.dtype)
-    result_if_not_big = math_ops.select(
+    result_if_not_big = array_ops.where(
         x < self.a, zeros, (broadcasted_x - self.a) / self.range())
-    return math_ops.select(x >= self.b, ones, result_if_not_big)
+    return array_ops.where(x >= self.b, ones, result_if_not_big)
 
   def _entropy(self):
     return math_ops.log(self.range())

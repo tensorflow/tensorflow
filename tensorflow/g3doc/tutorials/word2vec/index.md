@@ -102,7 +102,7 @@ $$
 \begin{align}
 P(w_t | h) &= \text{softmax}(\text{score}(w_t, h)) \\
            &= \frac{\exp \{ \text{score}(w_t, h) \} }
-             {\sum_\text{Word w' in Vocab} \exp \{ \text{score}(w', h) \} }.
+             {\sum_\text{Word w' in Vocab} \exp \{ \text{score}(w', h) \} }
 \end{align}
 $$
 
@@ -115,7 +115,7 @@ $$
 \begin{align}
  J_\text{ML} &= \log P(w_t | h) \\
   &= \text{score}(w_t, h) -
-     \log \left( \sum_\text{Word w' in Vocab} \exp \{ \text{score}(w', h) \} \right)
+     \log \left( \sum_\text{Word w' in Vocab} \exp \{ \text{score}(w', h) \} \right).
 \end{align}
 $$
 

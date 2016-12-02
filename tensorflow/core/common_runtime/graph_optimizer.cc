@@ -34,13 +34,8 @@ GraphOptimizer::~GraphOptimizer() {}
 void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
                               Device* device, Graph** graph) {
   Graph* g = *graph;
-  for (const Node* n : g->nodes()) {
-    if (n->IsControlFlow()) {
-      VLOG(2) << "Skip optimization if there is any control flow ops";
-    }
-  }
-
   DumpGraph("Initial", g);
+
   bool changed = true;
   const int kMaxRounds = 10;
   for (int rounds = 0; rounds < kMaxRounds; ++rounds) {

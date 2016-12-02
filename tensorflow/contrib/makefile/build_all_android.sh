@@ -46,6 +46,9 @@ shift $((OPTIND - 1))
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd ${SCRIPT_DIR}/../../../
 
+source "${SCRIPT_DIR}/build_helper.subr"
+JOB_COUNT="${JOB_COUNT:-$(get_job_count)}"
+
 if [[ "${ONLY_MAKE_TENSORFLOW}" != "true" ]]; then
   # Remove any old files first.
   make -f tensorflow/contrib/makefile/Makefile clean
@@ -66,14 +69,13 @@ if [[ "${USE_HEXAGON}" == "true" ]]; then
     HEXAGON_INCLUDE="${HEXAGON_PARENT_DIR}/include"
 fi
 
-# Recommend make -j<#jobs> e.g. -j8 to speed up build on multi-core machine
 if [[ -z "${BUILD_TARGET}" ]]; then
-    make -f tensorflow/contrib/makefile/Makefile \
+    make -j"${JOB_COUNT}" -f tensorflow/contrib/makefile/Makefile \
          TARGET=ANDROID NDK_ROOT="${NDK_ROOT}" CC_PREFIX="${CC_PREFIX}" \
 HEXAGON_LIBS="${HEXAGON_LIBS}" HEXAGON_INCLUDE="${HEXAGON_INCLUDE}" \
 SUB_MAKEFILES="${SUB_MAKEFILES}"
 else
-    make -f tensorflow/contrib/makefile/Makefile \
+    make -j"${JOB_COUNT}" -f tensorflow/contrib/makefile/Makefile \
          TARGET=ANDROID NDK_ROOT="${NDK_ROOT}" CC_PREFIX="${CC_PREFIX}" \
 HEXAGON_LIBS="${HEXAGON_LIBS}" HEXAGON_INCLUDE="${HEXAGON_INCLUDE}" \
 SUB_MAKEFILES="${SUB_MAKEFILES}" "${BUILD_TARGET}"

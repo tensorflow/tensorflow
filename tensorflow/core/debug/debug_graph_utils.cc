@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/debug/debug_graph_utils.h"
 
 #include "tensorflow/core/common_runtime/memory_types.h"
+#include "tensorflow/core/debug/debug_io_utils.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -35,8 +36,9 @@ DebuggerState::DebuggerState(
 }
 
 DebuggerState::~DebuggerState() {
-  // TODO(cais): This is currently no-op. For gRPC debug URLs in debug_urls_,
-  // add cleanup actions such as closing streams.
+  for (const string& debug_url : debug_urls_) {
+    DebugIO::CloseDebugURL(debug_url);
+  }
 }
 
 const string DebuggerState::SummarizeDebugTensorWatches() {

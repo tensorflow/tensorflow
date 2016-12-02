@@ -533,7 +533,7 @@ class LinearClassifierTest(tf.test.TestCase):
     classifier = tf.contrib.learn.LinearClassifier(
         feature_columns=[age, language], enable_centered_bias=False)
     classifier.fit(input_fn=input_fn, steps=100)
-    self.assertFalse('centered_bias_weight' in classifier.get_variable_names())
+    self.assertNotIn('centered_bias_weight', classifier.get_variable_names())
 
   def testEnableCenteredBias(self):
     """Tests that we can disable centered bias."""
@@ -552,7 +552,7 @@ class LinearClassifierTest(tf.test.TestCase):
     classifier = tf.contrib.learn.LinearClassifier(
         feature_columns=[age, language], enable_centered_bias=True)
     classifier.fit(input_fn=input_fn, steps=100)
-    self.assertTrue('centered_bias_weight' in classifier.get_variable_names())
+    self.assertIn('centered_bias_weight', classifier.get_variable_names())
 
   def testTrainOptimizerWithL1Reg(self):
     """Tests l1 regularized model has higher loss."""
