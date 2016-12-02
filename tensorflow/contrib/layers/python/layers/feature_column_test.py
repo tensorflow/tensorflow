@@ -98,10 +98,10 @@ class FeatureColumnTest(tf.test.TestCase):
 
     # Create a sparse id tensor for a1.
     input_tensor_c1 = tf.SparseTensor(indices=[[0, 0], [1, 1], [2, 2]],
-                                      values=[0, 1, 2], shape=[3, 3])
+                                      values=[0, 1, 2], dense_shape=[3, 3])
     # Create a sparse id tensor for a2.
     input_tensor_c2 = tf.SparseTensor(indices=[[0, 0], [1, 1], [2, 2]],
-                                      values=[0, 1, 2], shape=[3, 3])
+                                      values=[0, 1, 2], dense_shape=[3, 3])
     with tf.variable_scope("run_1"):
       b1 = tf.contrib.layers.input_from_feature_columns(
           {b[0]: input_tensor_c1}, [b[0]])
@@ -598,7 +598,7 @@ class FeatureColumnTest(tf.test.TestCase):
     # vocab.
     input_tensor = tf.SparseTensor(indices=[[0, 0], [1, 1], [2, 2], [3, 3]],
                                    values=[0, 1, 2, 3],
-                                   shape=[4, 4])
+                                   dense_shape=[4, 4])
 
     # Invoking 'layers.input_from_feature_columns' will create the embedding
     # variable. Creating under scope 'run_1' so as to prevent name conflicts
@@ -654,7 +654,7 @@ class FeatureColumnTest(tf.test.TestCase):
 
     input_tensor = tf.SparseTensor(indices=[[0, 0], [1, 1], [2, 2], [3, 3]],
                                    values=[0, 1, 2, 3],
-                                   shape=[4, 4])
+                                   dense_shape=[4, 4])
 
     # Invoking 'weighted_sum_from_feature_columns' will create the crossed
     # column weights variable.
