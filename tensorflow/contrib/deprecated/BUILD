@@ -11,7 +11,6 @@ py_library(
     name = "deprecated_py",
     srcs = [
         "__init__.py",
-        "summaries.py",
     ],
     srcs_version = "PY2AND3",
     deps = ["//tensorflow/python:logging_ops"],
