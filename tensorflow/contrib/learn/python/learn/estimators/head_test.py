@@ -113,7 +113,7 @@ class RegressionModelHeadTest(tf.test.TestCase):
       self._assert_metrics(model_fn_ops)
       _assert_variables(self, expected_global=(
           "centered_bias_weight:0",
-          "train_op/centered_bias_step/centered_bias_weight/Adagrad:0",
+          "centered_bias_weight/Adagrad:0",
       ), expected_trainable=(
           "centered_bias_weight:0",
       ))
@@ -202,7 +202,7 @@ class MultiLabelModelHeadTest(tf.test.TestCase):
       self._assert_metrics(model_fn_ops)
       _assert_variables(self, expected_global=(
           "centered_bias_weight:0",
-          "train_op/centered_bias_step/centered_bias_weight/Adagrad:0",
+          "centered_bias_weight/Adagrad:0",
       ), expected_trainable=(
           "centered_bias_weight:0",
       ))
@@ -307,7 +307,7 @@ class MultiClassModelHeadTest(tf.test.TestCase):
       self._assert_binary_metrics(model_fn_ops)
       _assert_variables(self, expected_global=(
           "centered_bias_weight:0",
-          "train_op/centered_bias_step/centered_bias_weight/Adagrad:0",
+          "centered_bias_weight/Adagrad:0",
       ), expected_trainable=(
           "centered_bias_weight:0",
       ))
@@ -444,7 +444,7 @@ class BinarySvmModelHeadTest(tf.test.TestCase):
       self._assert_metrics(model_fn_ops)
       _assert_variables(self, expected_global=(
           "centered_bias_weight:0",
-          "train_op/centered_bias_step/centered_bias_weight/Adagrad:0",
+          "centered_bias_weight/Adagrad:0",
       ), expected_trainable=(
           "centered_bias_weight:0",
       ))
