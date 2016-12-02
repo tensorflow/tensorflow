@@ -2194,7 +2194,7 @@ class InferRealValuedColumnTest(tf.test.TestCase):
   def testSparseTensor(self):
     with self.assertRaises(ValueError):
       tf.contrib.layers.infer_real_valued_columns(
-          tf.SparseTensor(indices=[[0, 0]], values=["a"], shape=[1, 1]))
+          tf.SparseTensor(indices=[[0, 0]], values=["a"], dense_shape=[1, 1]))
 
 
 if __name__ == "__main__":

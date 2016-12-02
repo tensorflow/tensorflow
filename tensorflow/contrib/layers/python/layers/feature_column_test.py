@@ -41,7 +41,7 @@ def _sparse_id_tensor(shape, vocab_size, seed=112123):
   indices = indices[keep]
   values = values[keep]
 
-  return tf.SparseTensor(indices=indices, values=values, shape=shape)
+  return tf.SparseTensor(indices=indices, values=values, dense_shape=shape)
 
 
 class FeatureColumnTest(tf.test.TestCase):
