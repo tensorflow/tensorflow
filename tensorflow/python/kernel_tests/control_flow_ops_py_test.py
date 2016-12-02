@@ -301,10 +301,12 @@ class ControlFlowTest(tf.test.TestCase):
       values = tf.constant([2.0, 4.0], name="values")
       indices = tf.constant([[0], [3]], dtype=tf.int64, name="indices")
       shape = tf.constant([10], dtype=tf.int64, name="dense_shape")
-      x = tf.SparseTensor(indices, values, shape=shape)
+      x = tf.SparseTensor(indices, values, dense_shape=shape)
       pred = tf.less(1, 2)
-      fn1 = lambda: tf.SparseTensor(indices + 1, x.values + 1, shape=shape)
-      fn2 = lambda: tf.SparseTensor(indices, x.values - 1, dense_shape=shape)
+      fn1 = lambda: tf.SparseTensor(
+          indices + 1, x.values + 1, dense_shape=shape)
+      fn2 = lambda: tf.SparseTensor(
+          indices, x.values - 1, dense_shape=shape)
       r = tf.cond(pred, fn1, fn2)
       self.assertAllEqual([3.0, 5.0], r.values.eval())
       self.assertAllEqual([[1], [4]], r.indices.eval())
@@ -740,7 +742,7 @@ class ControlFlowTest(tf.test.TestCase):
       indices = tf.constant([[0], [3]], dtype=tf.int64, name="indices")
       shape = tf.constant([10], dtype=tf.int64, name="dense_shape")
       i = tf.constant(0)
-      x = tf.SparseTensor(indices, values, shape=shape)
+      x = tf.SparseTensor(indices, values, dense_shape=shape)
       def c(i, _):
         return i < 10
       def b(i, x):
@@ -1689,7 +1691,7 @@ class ControlFlowTest(tf.test.TestCase):
       indices = tf.constant([[0], [3]], dtype=tf.int64, name="indices")
       shape = tf.constant([10], dtype=tf.int64, name="dense_shape")
       i = tf.constant(0)
-      x = tf.SparseTensor(indices, values, shape=shape)
+      x = tf.SparseTensor(indices, values, dense_shape=shape)
       def c(i, _):
         return i < 10
       def b(i, x):

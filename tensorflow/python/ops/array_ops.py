@@ -1659,7 +1659,7 @@ def sparse_placeholder(dtype, shape=None, name=None):
     print(sess.run(y, feed_dict={
       x: (indices, values, shape)}))  # Will succeed.
 
-    sp = tf.SparseTensor(indices=indices, values=values, shape=shape)
+    sp = tf.SparseTensor(indices=indices, values=values, dense_shape=shape)
     sp_value = sp.eval(session)
     print(sess.run(y, feed_dict={x: sp_value}))  # Will succeed.
   ```

@@ -169,7 +169,7 @@ def _sparse_tensor_dense_vs_dense_matmul_benchmark_dense(
 
 def _sparse_tensor_dense_vs_dense_matmul_benchmark_sparse(
     x_ind, x_val, x_shape, y, adjoint_a, adjoint_b):
-  sp_x = tf.SparseTensor(indices=x_ind, values=x_val, shape=x_shape)
+  sp_x = tf.SparseTensor(indices=x_ind, values=x_val, dense_shape=x_shape)
 
   def body(t, prev):
     with tf.control_dependencies([prev]):
