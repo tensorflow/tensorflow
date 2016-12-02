@@ -8,7 +8,14 @@ op {
     }
     description: "A string which is the message associated with the exception."
   }
-  summary: "Raise a exception to abort the process when called."
+  attr {
+    name: "exit_without_error"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  summary: "Raise a exception to abort the process when called. If exit_without_error is true, the process will exit normally, otherwise it will exit with a SIGABORT signal."
   description: "Returns nothing but an exception."
 }
 op {
