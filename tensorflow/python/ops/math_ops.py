@@ -95,7 +95,6 @@ functions on matrices to your graph.
 @@matrix_transpose
 
 @@matmul
-@@batch_matmul
 
 @@matrix_determinant
 @@matrix_inverse
@@ -1782,8 +1781,6 @@ def matmul(a,
 
 
 sparse_matmul = gen_math_ops._sparse_mat_mul
-# TODO(rmlarsen): Remove Python interface to batch_matmul.
-batch_matmul = gen_math_ops._batch_mat_mul
 
 
 @ops.RegisterStatistics("MatMul", "flops")
