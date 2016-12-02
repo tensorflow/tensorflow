@@ -1157,7 +1157,7 @@ def _dense_inner_flatten(inputs, new_rank):
   rank_assertion = check_ops.assert_rank_at_least(
       inputs, new_rank, message='inputs has rank less than new_rank')
   with ops.control_dependencies([rank_assertion]):
-    outer_dimensions = array_ops.slice(
+    outer_dimensions = array_ops.strided_slice(
         array_ops.shape(inputs), [0], [new_rank - 1])
     new_shape = array_ops.concat(0, (outer_dimensions, [-1]))
     reshaped = array_ops.reshape(inputs, new_shape)
@@ -1915,7 +1915,8 @@ def unit_norm(inputs, dim, epsilon=1e-7, scope=None):
     multiples = []
     if dim > 0:
       multiples.append(array_ops.ones([dim], dtypes.int32))
-    multiples.append(array_ops.slice(array_ops.shape(inputs), [dim], [1]))
+    multiples.append(
+        array_ops.strided_slice(array_ops.shape(inputs), [dim], [dim + 1]))
     if dim < (input_rank - 1):
       multiples.append(array_ops.ones([input_rank - 1 - dim], dtypes.int32))
     multiples = array_ops.concat(0, multiples)

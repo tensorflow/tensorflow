@@ -1757,12 +1757,12 @@ class SoftmaxCentered(Bijector):
                               on_value=shape[-1]-np.array(1, dtype=shape.dtype),
                               dtype=shape.dtype)
     size = array_ops.concat(0, (shape[:-1], np.asarray([1], dtype=shape.dtype)))
-    log_normalization = -array_ops.slice(x, begin, size)
+    log_normalization = -array_ops.strided_slice(x, begin, begin + size)
 
     # Here we slice out all but the last coordinate; see above for idea.
     begin = array_ops.zeros_like(shape)
     size = array_ops.concat(0, (shape[:-1], [shape[-1]-1]))
-    x = array_ops.slice(x, begin, size)
+    x = array_ops.strided_slice(x, begin, begin + size)
 
     x += log_normalization
 

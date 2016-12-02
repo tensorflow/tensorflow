@@ -369,7 +369,8 @@ class RandomForestGraphs(object):
         if self.params.bagging_fraction < 1.0:
           # TODO(thomaswc): This does sampling without replacment.  Consider
           # also allowing sampling with replacement as an option.
-          batch_size = array_ops.slice(array_ops.shape(input_data), [0], [1])
+          batch_size = array_ops.strided_slice(
+              array_ops.shape(input_data), [0], [1])
           r = random_ops.random_uniform(batch_size, seed=seed)
           mask = math_ops.less(
               r, array_ops.ones_like(r) * self.params.bagging_fraction)
@@ -535,9 +536,10 @@ class RandomTreeGraphs(object):
       return control_flow_ops.no_op()
 
     return control_flow_ops.cond(
-        math_ops.equal(array_ops.squeeze(array_ops.slice(
-            self.variables.tree, [0, 0], [1, 1])), -2),
-        _init_tree, _nothing)
+        math_ops.equal(
+            array_ops.squeeze(
+                array_ops.strided_slice(self.variables.tree, [0, 0], [1, 1])),
+            -2), _init_tree, _nothing)
 
   def _gini(self, class_counts):
     """Calculate the Gini impurity.

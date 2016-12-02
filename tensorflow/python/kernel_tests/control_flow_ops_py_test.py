@@ -8,7 +8,7 @@
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# WITHOUT WARRANTIES OiR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
@@ -642,7 +642,8 @@ class ControlFlowTest(tf.test.TestCase):
     with self.test_session():
 
       def compute(i, c, o):
-        c = tf.slice(x, tf.expand_dims(i, 0), [1])
+        c = tf.strided_slice(x, tf.expand_dims(i, 0),
+                             [1] + tf.expand_dims(i, 0))
         o = tf.concat(0, [o, c])
         i = tf.add(i, 1)
         return [i, c, o]
@@ -652,9 +653,10 @@ class ControlFlowTest(tf.test.TestCase):
       o = tf.convert_to_tensor([0])
       x = tf.convert_to_tensor([1, 2, 3, 4, 5, 6])
       s = tf.size(x)
-      r = tf.while_loop(
-          lambda i, c, o: tf.less(i, s), compute, [i, c, o],
-          [i.get_shape(), c.get_shape(), tensor_shape.unknown_shape()])
+      r = tf.while_loop(lambda i, c, o: tf.less(i, s), compute, [i, c, o], [
+          i.get_shape(), tensor_shape.unknown_shape(),
+          tensor_shape.unknown_shape()
+      ])
       result = r[2].eval()
     self.assertTrue(check_op_order(i.graph))
     self.assertAllEqual(np.array([0, 1, 2, 3, 4, 5, 6]), result)

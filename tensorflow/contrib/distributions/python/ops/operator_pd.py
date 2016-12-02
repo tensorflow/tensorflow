@@ -383,7 +383,7 @@ class OperatorPDBase(object):
     # Derived classes get this "for free" once .shape() is implemented.
     with ops.name_scope(self.name):
       with ops.name_scope(name, values=self.inputs):
-        return array_ops.slice(self.shape(), [0], [self.rank() - 2])
+        return array_ops.strided_slice(self.shape(), [0], [self.rank() - 2])
 
   def vector_shape(self, name="vector_shape"):
     """Shape of (batch) vectors that this (batch) matrix will multiply.
@@ -746,7 +746,7 @@ def _flip_vector_to_matrix_dynamic(vec, batch_shape):
 
   m = vec_batch_rank - batch_rank
   # vec_shape_left = [M1,...,Mm] or [].
-  vec_shape_left = array_ops.slice(vec_shape, [0], [m])
+  vec_shape_left = array_ops.strided_slice(vec_shape, [0], [m])
   # If vec_shape_left = [], then condensed_shape = [1] since reduce_prod([]) = 1
   # If vec_shape_left = [M1,...,Mm], condensed_shape = [M1*...*Mm]
   condensed_shape = [math_ops.reduce_prod(vec_shape_left)]
@@ -819,5 +819,5 @@ def extract_batch_shape(x, num_event_dims, name="extract_batch_shape"):
   """
   with ops.name_scope(name, values=[x]):
     x = ops.convert_to_tensor(x, name="x")
-    return array_ops.slice(
+    return array_ops.strided_slice(
         array_ops.shape(x), [0], [array_ops.rank(x) - num_event_dims])
