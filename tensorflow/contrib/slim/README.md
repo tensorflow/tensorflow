@@ -580,7 +580,7 @@ with tf.Graph().as_default():
   slim.losses.softmax_cross_entropy(predictions, labels)
 
   total_loss = slim.losses.get_total_loss()
-  tf.summary.scalar('losses/total loss', total_loss)
+  tf.summary.scalar('losses/total_loss', total_loss)
 
   # Specify the optimization scheme:
   optimizer = tf.train.GradientDescentOptimizer(learning_rate=.001)
