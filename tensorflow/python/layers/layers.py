@@ -18,7 +18,29 @@
 
 ## Core layers
 
-@@fully_connected
+@@dense
+@@dropout
+
+## Convolutional layers
+
+@@conv1d
+@@conv2d
+@@conv3d
+@@separable_conv2d
+@@conv2d_transpose
+
+## Pooling layers
+
+@@average_pooling1d
+@@max_pooling1d
+@@average_pooling2d
+@@max_pooling2d
+@@average_pooling3d
+@@max_pooling3d
+
+## Normalization layers
+
+@@batch_normalization
 
 """
 
@@ -33,6 +55,25 @@ from tensorflow.python.util.all_util import remove_undocumented
 # Core layers.
 from tensorflow.python.layers.core import dense
 from tensorflow.python.layers.core import dropout
+
+# Convolutional layers.
+from tensorflow.python.layers.convolutional import conv1d
+from tensorflow.python.layers.convolutional import conv2d
+from tensorflow.python.layers.convolutional import conv3d
+from tensorflow.python.layers.convolutional import separable_conv2d
+from tensorflow.python.layers.convolutional import conv2d_transpose
+
+# Pooling layers.
+from tensorflow.python.layers.pooling import average_pooling1d
+from tensorflow.python.layers.pooling import max_pooling1d
+from tensorflow.python.layers.pooling import average_pooling2d
+from tensorflow.python.layers.pooling import max_pooling2d
+from tensorflow.python.layers.pooling import average_pooling3d
+from tensorflow.python.layers.pooling import max_pooling3d
+
+# Normalization layers.
+from tensorflow.python.layers.normalization import batch_normalization
+
 # pylint: enable=g-bad-import-order,unused-import
 
 _allowed_symbols = []
