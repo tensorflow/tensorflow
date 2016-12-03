@@ -155,7 +155,7 @@ def tf_additional_libdevice_deps():
   return []
 
 def tf_additional_libdevice_srcs():
-  return ["platform/posix/cuda_libdevice_path.cc"]
+  return ["platform/default/cuda_libdevice_path.cc"]
 
 def tf_additional_test_deps():
   return []
