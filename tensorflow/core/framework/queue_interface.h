@@ -86,7 +86,9 @@ class QueueInterface : public ResourceBase {
 
   virtual const DataTypeVector& component_dtypes() const = 0;
 
-  string DebugString() override { return "A queue"; }
+  string DebugString() override {
+    return strings::StrCat("A Queue of size: ", size());
+  }
 
  protected:
   virtual ~QueueInterface() {}
