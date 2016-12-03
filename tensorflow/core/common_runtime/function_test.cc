@@ -389,7 +389,7 @@ TEST_F(FunctionLibraryRuntimeTest, ManySwapsOld) {
 }
 
 // Like the above test, but using NodeDefs in the FunctionDef.
-TEST_F(FunctionLibraryRuntimeTest, ManySwapsNodeDef) {
+TEST_F(FunctionLibraryRuntimeTest, DISABLED_ManySwapsNodeDef) {
   auto func = FDH::Create(  // Creates a FunctionDef using NodeDefs
       // Name
       "ManySwapsNodeDef",

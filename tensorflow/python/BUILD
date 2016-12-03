@@ -43,6 +43,7 @@ py_library(
         ":training",
         ":ops",
         ":test_ops",
+        "//tensorflow/python/ops/losses",
         "//tensorflow/python/debug:debug_py",
     ] + if_not_windows([
         "//tensorflow/contrib:contrib_py",
@@ -747,6 +748,11 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "set_ops_gen",
+    require_shape_functions = True,
+)
+
+tf_gen_op_wrapper_private_py(
     name = "state_ops_gen",
     require_shape_functions = True,
 )
@@ -792,6 +798,16 @@ py_library(
         ":array_ops_gen",
         ":framework",
         ":math_ops_gen",
+    ],
+)
+
+py_library(
+    name = "sets",
+    srcs = ["ops/sets.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework",
+        ":set_ops_gen",
     ],
 )
 
@@ -1516,6 +1532,7 @@ py_library(
         ":script_ops",
         ":seq2seq",
         ":session_ops",
+        ":sets",
         ":sparse_grad",
         ":sparse_ops",
         ":special_math_ops",
@@ -2297,6 +2314,62 @@ py_test(
         "layers/core_test.py",
     ],
     main = "layers/core_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":layers",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "layers_convolutional_test",
+    size = "small",
+    srcs = [
+        "layers/convolutional_test.py",
+    ],
+    main = "layers/convolutional_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":layers",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "layers_conv_utils_test",
+    size = "small",
+    srcs = [
+        "layers/conv_utils_test.py",
+    ],
+    main = "layers/conv_utils_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":layers",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "layers_pooling_test",
+    size = "small",
+    srcs = [
+        "layers/pooling_test.py",
+    ],
+    main = "layers/pooling_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":layers",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "layers_normalization_test",
+    size = "small",
+    srcs = [
+        "layers/normalization_test.py",
+    ],
+    main = "layers/normalization_test.py",
     srcs_version = "PY2AND3",
     deps = [
         ":layers",

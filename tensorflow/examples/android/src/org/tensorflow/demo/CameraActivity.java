@@ -32,6 +32,7 @@ import android.view.WindowManager;
 import android.widget.Toast;
 import java.nio.ByteBuffer;
 import org.tensorflow.demo.env.Logger;
+import org.tensorflow.demo.R;
 
 public abstract class CameraActivity extends Activity implements OnImageAvailableListener {
   private static final Logger LOGGER = new Logger();
@@ -199,7 +200,7 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
     }
   }
 
-  public void addCallback(OverlayView.DrawCallback callback) {
+  public void addCallback(final OverlayView.DrawCallback callback) {
     final OverlayView overlay = (OverlayView) findViewById(R.id.overlay);
     if (overlay != null) {
       overlay.addCallback(callback);

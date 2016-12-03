@@ -89,12 +89,12 @@ class SummaryOpsTest(tf.test.TestCase):
       self.assertEqual(2, len(merge.op.inputs))
       self.assertEqual(summ1, merge.op.inputs[0])
       self.assertEqual(summ3, merge.op.inputs[1])
-      merge = tf.contrib.deprecated.merge_all_summaries("foo_key")
+      merge = tf.summary.merge_all("foo_key")
       self.assertEqual("MergeSummary", merge.op.type)
       self.assertEqual(1, len(merge.op.inputs))
       self.assertEqual(summ2, merge.op.inputs[0])
       self.assertTrue(
-          tf.contrib.deprecated.merge_all_summaries("bar_key") is None)
+          tf.summary.merge_all("bar_key") is None)
 
   def testHistogramSummaryTypes(self):
     with tf.Graph().as_default():

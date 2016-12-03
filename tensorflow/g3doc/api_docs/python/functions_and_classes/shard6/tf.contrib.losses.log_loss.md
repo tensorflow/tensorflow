@@ -1,6 +1,10 @@
 ### `tf.contrib.losses.log_loss(*args, **kwargs)` {#log_loss}
 
-Adds a Log Loss term to the training procedure. (deprecated arguments)
+Adds a Log Loss term to the training procedure. (deprecated arguments) (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
+Instructions for updating:
+Use tf.losses.log_loss instead.
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-11-25.
 Instructions for updating:

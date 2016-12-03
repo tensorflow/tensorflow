@@ -31,6 +31,7 @@ import numpy as np
 import six
 
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.framework import dtypes
 
@@ -194,13 +195,23 @@ class _Layer(object):
     else:
       self._non_trainable_weights.append(variable)
     if regularizer and not self._reuse_weights:
-      with ops.colocate_with(variable.op):
-        with ops.name_scope(name + '/Regularizer'):
-          regularization = regularizer(variable)
-      if regularization is not None:
-        self._losses.append(regularization)
-        _add_elements_to_collection(
-            regularization, ops.GraphKeys.REGULARIZATION_LOSSES)
+      if isinstance(variable, tf_variables.PartitionedVariable):
+        for v in variable:
+          with ops.colocate_with(v.op):
+            with ops.name_scope(name + '/Regularizer'):
+              regularization = regularizer(v)
+          if regularization is not None:
+            self._losses.append(regularization)
+            _add_elements_to_collection(
+                regularization, ops.GraphKeys.REGULARIZATION_LOSSES)
+      else:
+        with ops.colocate_with(variable.op):
+          with ops.name_scope(name + '/Regularizer'):
+            regularization = regularizer(variable)
+        if regularization is not None:
+          self._losses.append(regularization)
+          _add_elements_to_collection(
+              regularization, ops.GraphKeys.REGULARIZATION_LOSSES)
     return variable
 
   def __call__(self, inputs, **kwargs):
@@ -271,8 +282,8 @@ class _Layer(object):
 
 
 def _to_snake_case(name):
-  intermediate = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
-  insecure = re.sub('([a-z0-9])([A-Z])', r'\1_\2', intermediate).lower()
+  intermediate = re.sub('(.)([A-Z][a-z0-9]+)', r'\1_\2', name)
+  insecure = re.sub('([a-z])([A-Z])', r'\1_\2', intermediate).lower()
   # If the class is private the name starts with "_" which is not secure
   # for creating scopes. We prefix the name with "private" in this case.
   if insecure[0] != '_':

@@ -88,7 +88,7 @@ class SavedModelBuilder(object):
     if file_io.file_exists(export_dir):
       raise AssertionError(
           "Export directory already exists. Please specify a different export "
-          "directory.")
+          "directory: %s" % export_dir)
 
     file_io.recursive_create_dir(self._export_dir)
 

@@ -31,7 +31,8 @@ from tensorflow.python.util.all_util import remove_undocumented
 # pylint: disable=g-bad-import-order,unused-import
 
 # Core layers.
-from tensorflow.python.layers.core import fully_connected
+from tensorflow.python.layers.core import dense
+from tensorflow.python.layers.core import dropout
 # pylint: enable=g-bad-import-order,unused-import
 
 _allowed_symbols = []

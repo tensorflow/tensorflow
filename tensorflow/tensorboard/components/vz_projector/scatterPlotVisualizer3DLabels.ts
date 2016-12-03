@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {DataSet} from './data';
 import {RenderContext} from './renderContext';
 import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
 import * as util from './util';
@@ -96,7 +95,6 @@ type GlyphTexture = {
  * Renders the text labels as 3d geometry in the world.
  */
 export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
-  private dataSet: DataSet;
   private scene: THREE.Scene;
   private labelStrings: string[];
   private geometry: THREE.BufferGeometry;
@@ -110,10 +108,6 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
   private totalVertexCount: number;
   private labelVertexMap: number[][];
   private glyphTexture: GlyphTexture;
-
-  setDataSet(ds: DataSet) {
-    this.dataSet = ds;
-  }
 
   private createGlyphTexture(): GlyphTexture {
     let canvas = document.createElement('canvas');
@@ -288,14 +282,14 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
 
   private colorLabels(pointColors: Float32Array) {
     if (this.labelStrings == null || this.geometry == null ||
-        this.dataSet == null || pointColors == null) {
+        pointColors == null) {
       return;
     }
 
     const colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
     colors.array = this.renderColors;
 
-    const n = this.dataSet.points.length;
+    const n = pointColors.length / XYZ_ELEMENTS_PER_ENTRY;
     let src = 0;
     for (let i = 0; i < n; ++i) {
       const c = new THREE.Color(

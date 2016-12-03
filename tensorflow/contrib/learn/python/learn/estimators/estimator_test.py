@@ -577,6 +577,17 @@ class EstimatorTest(tf.test.TestCase):
     output = list(est.predict(input_fn=input_fn))
     self.assertEqual(len(output), boston.target.shape[0])
 
+  def testPredictConstInputFn(self):
+    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
+    boston = tf.contrib.learn.datasets.load_boston()
+    est.fit(input_fn=boston_input_fn, steps=1)
+    def input_fn():
+      features = tf.reshape(tf.constant(boston.data), [-1, _BOSTON_INPUT_DIM])
+      labels = tf.reshape(tf.constant(boston.target), [-1, 1])
+      return features, labels
+    output = list(est.predict(input_fn=input_fn))
+    self.assertEqual(len(output), boston.target.shape[0])
+
   def testWithModelFnOps(self):
     """Test for model_fn that returns `ModelFnOps`."""
     est = tf.contrib.learn.Estimator(model_fn=linear_model_fn_with_model_fn_ops)

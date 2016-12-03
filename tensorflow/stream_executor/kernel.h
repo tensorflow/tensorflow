@@ -69,6 +69,7 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_KERNEL_H_
 #define TENSORFLOW_STREAM_EXECUTOR_KERNEL_H_
 
+#include <array>
 #include <memory>
 #include <tuple>
 #include <type_traits>

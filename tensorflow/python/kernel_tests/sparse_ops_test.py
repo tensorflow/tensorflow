@@ -41,7 +41,7 @@ def _sparsify(x, thresh=0.5, index_dtype=np.int64):
   x_shape = x.shape
 
   return tf.SparseTensor(
-      indices=x_indices, values=x_values, shape=x_shape), len(x_values)
+      indices=x_indices, values=x_values, dense_shape=x_shape), len(x_values)
 
 
 class SparseToIndicatorTest(test_util.TensorFlowTestCase):

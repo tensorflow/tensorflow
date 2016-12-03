@@ -1,6 +1,10 @@
 ### `tf.contrib.losses.mean_pairwise_squared_error(*args, **kwargs)` {#mean_pairwise_squared_error}
 
-Adds a pairwise-errors-squared loss to the training procedure. (deprecated arguments)
+Adds a pairwise-errors-squared loss to the training procedure. (deprecated arguments) (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
+Instructions for updating:
+Use tf.losses.mean_pairwise_squared_error instead.
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-11-25.
 Instructions for updating:

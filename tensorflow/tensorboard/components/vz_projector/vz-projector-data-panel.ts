@@ -87,8 +87,8 @@ export class DataPanel extends DataPanelPolymer {
     return isSeparator ? 'separator' : null;
   }
 
-  metadataChanged(spriteAndMetadata: SpriteAndMetadataInfo,
-      metadataFile: string) {
+  metadataChanged(
+      spriteAndMetadata: SpriteAndMetadataInfo, metadataFile: string) {
     this.updateMetadataUI(spriteAndMetadata.stats, metadataFile);
   }
 
@@ -171,18 +171,19 @@ export class DataPanel extends DataPanelPolymer {
   }
 
   _selectedTensorChanged() {
+    this.projector.updateDataSet(null, null, null);
     if (this.selectedTensor == null) {
       return;
     }
     this.dataProvider.retrieveTensor(
         this.selectedRun, this.selectedTensor, ds => {
-      let metadataFile =
-          this.getEmbeddingInfoByName(this.selectedTensor).metadataPath;
-      this.dataProvider.retrieveSpriteAndMetadata(this.selectedRun,
-          this.selectedTensor, metadata => {
-        this.projector.updateDataSet(ds, metadata, metadataFile);
-      });
-    });
+          let metadataFile =
+              this.getEmbeddingInfoByName(this.selectedTensor).metadataPath;
+          this.dataProvider.retrieveSpriteAndMetadata(
+              this.selectedRun, this.selectedTensor, metadata => {
+                this.projector.updateDataSet(ds, metadata, metadataFile);
+              });
+        });
     this.projector.setSelectedTensor(
         this.selectedRun, this.getEmbeddingInfoByName(this.selectedTensor));
   }
@@ -223,10 +224,7 @@ export class DataPanel extends DataPanelPolymer {
                 return a <= b ? -1 : 1;
               });
       this.tensorNames = names.map(name => {
-        return {
-          name,
-          shape: this.getEmbeddingInfoByName(name).tensorShape
-        };
+        return {name, shape: this.getEmbeddingInfoByName(name).tensorShape};
       });
       let wordBreakablePath =
           this.addWordBreaks(this.projectorConfig.modelCheckpointPath);
@@ -324,8 +322,9 @@ export class DataPanel extends DataPanelPolymer {
     });
 
     let uploadButton = this.dom.select('#upload-tensors');
-    uploadButton.on(
-        'click', () => { (fileInput.node() as HTMLInputElement).click(); });
+    uploadButton.on('click', () => {
+      (fileInput.node() as HTMLInputElement).click();
+    });
 
     // Show and setup the upload metadata button.
     let fileMetadataInput = this.dom.select('#file-metadata');

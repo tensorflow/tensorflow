@@ -33,7 +33,7 @@ class SparseTensorDenseMatMulGradientTest(tf.test.TestCase):
     x_shape = x.shape
 
     return tf.SparseTensor(
-        indices=x_indices, values=x_values, shape=x_shape), len(x_values)
+        indices=x_indices, values=x_values, dense_shape=x_shape), len(x_values)
 
   def _randomTensor(self, size, np_dtype, adjoint=False, sparse=False):
     n, m = size

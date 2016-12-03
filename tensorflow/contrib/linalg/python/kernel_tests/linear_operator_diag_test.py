@@ -38,6 +38,7 @@ class LinearOperatorDiagTest(
     if dtype.is_complex:
       diag = tf.complex(
           diag, tf.random_normal(diag_shape, dtype=dtype.real_dtype))
+
     diag_ph = tf.placeholder(dtype=dtype)
 
     if use_placeholder:
@@ -45,13 +46,13 @@ class LinearOperatorDiagTest(
       # diag is random and we want the same value used for both mat and
       # feed_dict.
       diag = diag.eval()
-      mat = tf.matrix_diag(diag)
       operator = linalg.LinearOperatorDiag(diag_ph)
       feed_dict = {diag_ph: diag}
     else:
-      mat = tf.matrix_diag(diag)
       operator = linalg.LinearOperatorDiag(diag)
       feed_dict = None
+
+    mat = tf.matrix_diag(diag)
 
     return operator, mat, feed_dict
 
@@ -60,6 +61,9 @@ class LinearOperatorDiagTest(
     with self.test_session():
       diag = [1.0, 0.0]
       operator = linalg.LinearOperatorDiag(diag)
+
+      # is_self_adjoint should be auto-set for real diag.
+      self.assertTrue(operator.is_self_adjoint)
       with self.assertRaisesOpError("non-positive.*not positive definite"):
         operator.assert_positive_definite().run()
 
@@ -69,6 +73,9 @@ class LinearOperatorDiagTest(
       diag_y = [0., 0.]  # Imaginary eigenvalues should not matter.
       diag = tf.complex(diag_x, diag_y)
       operator = linalg.LinearOperatorDiag(diag)
+
+      # is_self_adjoint should not be auto-set for complex diag.
+      self.assertTrue(operator.is_self_adjoint is None)
       with self.assertRaisesOpError("non-positive real.*not positive definite"):
         operator.assert_positive_definite().run()
 
@@ -84,7 +91,7 @@ class LinearOperatorDiagTest(
     # Singlular matrix with one positive eigenvalue and one zero eigenvalue.
     with self.test_session():
       diag = [1.0, 0.0]
-      operator = linalg.LinearOperatorDiag(diag)
+      operator = linalg.LinearOperatorDiag(diag, is_self_adjoint=True)
       with self.assertRaisesOpError("Singular operator"):
         operator.assert_non_singular().run()
 
@@ -124,7 +131,7 @@ class LinearOperatorDiagTest(
       # This LinearOperatorDiag will be brodacast to (2, 2, 3, 3) during solve
       # and apply with 'x' as the argument.
       diag = tf.random_uniform(shape=(2, 1, 3))
-      operator = linalg.LinearOperatorDiag(diag)
+      operator = linalg.LinearOperatorDiag(diag, is_self_adjoint=True)
       self.assertAllEqual((2, 1, 3, 3), operator.shape)
 
       # Create a batch matrix with the broadcast shape of operator.

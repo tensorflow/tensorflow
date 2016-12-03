@@ -76,7 +76,7 @@ These have the following meaning
   way.
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorDiag.__init__(diag, is_non_singular=None, is_self_adjoint=True, is_positive_definite=None, name='LinearOperatorDiag')` {#LinearOperatorDiag.__init__}
+#### `tf.contrib.linalg.LinearOperatorDiag.__init__(diag, is_non_singular=None, is_self_adjoint=None, is_positive_definite=None, name='LinearOperatorDiag')` {#LinearOperatorDiag.__init__}
 
 Initialize a `LinearOperatorDiag`.
 
@@ -85,11 +85,10 @@ Initialize a `LinearOperatorDiag`.
 
 *  <b>`diag`</b>: Shape `[B1,...,Bb, N]` `Tensor` with `b >= 0` `N >= 0`.
     The diagonal of the operator.  Allowed dtypes: `float32`, `float64`,
-    `complex64`, `complex128`.
+      `complex64`, `complex128`.
 *  <b>`is_non_singular`</b>: Expect that this operator is non-singular.
 *  <b>`is_self_adjoint`</b>: Expect that this operator is equal to its hermitian
-    transpose.  Since this is a real (not complex) diagonal operator, it is
-    always self adjoint.
+    transpose.  If `diag.dtype` is real, this is auto-set to `True`.
 *  <b>`is_positive_definite`</b>: Expect that this operator is positive definite,
     meaning the real part of all eigenvalues is positive.  We do not require
     the operator to be self-adjoint to be positive-definite.  See:
@@ -101,7 +100,7 @@ Initialize a `LinearOperatorDiag`.
 
 
 *  <b>`TypeError`</b>: If `diag.dtype` is not an allowed type.
-*  <b>`ValueError`</b>: If `is_self_adjoint` is not `True`.
+*  <b>`ValueError`</b>: If `diag.dtype` is real, and `is_self_adjoint` is not `True`.
 
 
 - - -

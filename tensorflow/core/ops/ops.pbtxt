@@ -8,7 +8,14 @@ op {
     }
     description: "A string which is the message associated with the exception."
   }
-  summary: "Raise a exception to abort the process when called."
+  attr {
+    name: "exit_without_error"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  summary: "Raise a exception to abort the process when called. If exit_without_error is true, the process will exit normally, otherwise it will exit with a SIGABORT signal."
   description: "Returns nothing but an exception."
 }
 op {
@@ -5358,6 +5365,128 @@ op {
     type: DT_STRING
   }
   summary: "Delete the tensor specified by its handle in the session."
+}
+op {
+  name: "DenseToDenseSetOperation"
+  input_arg {
+    name: "set1"
+    description: "`Tensor` with rank `n`. 1st `n-1` dimensions must be the same as `set2`.\nDimension `n` contains values in a set, duplicates are allowed but ignored."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "set2"
+    description: "`Tensor` with rank `n`. 1st `n-1` dimensions must be the same as `set1`.\nDimension `n` contains values in a set, duplicates are allowed but ignored."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "result_indices"
+    description: "2D indices of a `SparseTensor`."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "result_values"
+    description: "1D values of a `SparseTensor`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "result_shape"
+    description: "1D `Tensor` shape of a `SparseTensor`. `result_shape[0...n-1]` is\nthe same as the 1st `n-1` dimensions of `set1` and `set2`, `result_shape[n]`\nis the max result set size across all `0...n-1` dimensions."
+    type: DT_INT64
+  }
+  attr {
+    name: "set_operation"
+    type: "string"
+  }
+  attr {
+    name: "validate_indices"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_STRING
+      }
+    }
+  }
+  summary: "Applies set operation along last dimension of 2 `Tensor` inputs."
+  description: "See SetOperationOp::SetOperationFromContext for values of `set_operation`.\n\nOutput `result` is a `SparseTensor` represented by `result_indices`,\n`result_values`, and `result_shape`. For `set1` and `set2` ranked `n`, this\nhas rank `n` and the same 1st `n-1` dimensions as `set1` and `set2`. The `nth`\ndimension contains the result of `set_operation` applied to the corresponding\n`[0...n-1]` dimension of `set`."
+}
+op {
+  name: "DenseToSparseSetOperation"
+  input_arg {
+    name: "set1"
+    description: "`Tensor` with rank `n`. 1st `n-1` dimensions must be the same as `set2`.\nDimension `n` contains values in a set, duplicates are allowed but ignored."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "set2_indices"
+    description: "2D `Tensor`, indices of a `SparseTensor`. Must be in row-major\norder."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "set2_values"
+    description: "1D `Tensor`, values of a `SparseTensor`. Must be in row-major\norder."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "set2_shape"
+    description: "1D `Tensor`, shape of a `SparseTensor`. `set2_shape[0...n-1]` must\nbe the same as the 1st `n-1` dimensions of `set1`, `result_shape[n]` is the\nmax set size across `n-1` dimensions."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "result_indices"
+    description: "2D indices of a `SparseTensor`."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "result_values"
+    description: "1D values of a `SparseTensor`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "result_shape"
+    description: "1D `Tensor` shape of a `SparseTensor`. `result_shape[0...n-1]` is\nthe same as the 1st `n-1` dimensions of `set1` and `set2`, `result_shape[n]`\nis the max result set size across all `0...n-1` dimensions."
+    type: DT_INT64
+  }
+  attr {
+    name: "set_operation"
+    type: "string"
+  }
+  attr {
+    name: "validate_indices"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_STRING
+      }
+    }
+  }
+  summary: "Applies set operation along last dimension of `Tensor` and `SparseTensor`."
+  description: "See SetOperationOp::SetOperationFromContext for values of `set_operation`.\n\nInput `set2` is a `SparseTensor` represented by `set2_indices`, `set2_values`,\nand `set2_shape`. For `set2` ranked `n`, 1st `n-1` dimensions must be the same\nas `set1`. Dimension `n` contains values in a set, duplicates are allowed but\nignored.\n\nIf `validate_indices` is `True`, this op validates the order and range of `set2`\nindices.\n\nOutput `result` is a `SparseTensor` represented by `result_indices`,\n`result_values`, and `result_shape`. For `set1` and `set2` ranked `n`, this\nhas rank `n` and the same 1st `n-1` dimensions as `set1` and `set2`. The `nth`\ndimension contains the result of `set_operation` applied to the corresponding\n`[0...n-1]` dimension of `set`."
 }
 op {
   name: "DepthToSpace"
@@ -16459,6 +16588,53 @@ op {
   summary: "Serialize a `SparseTensor` into a string 3-vector (1-D `Tensor`) object."
 }
 op {
+  name: "SetSize"
+  input_arg {
+    name: "set_indices"
+    description: "2D `Tensor`, indices of a `SparseTensor`."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "set_values"
+    description: "1D `Tensor`, values of a `SparseTensor`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "set_shape"
+    description: "1D `Tensor`, shape of a `SparseTensor`."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "size"
+    description: "For `set` ranked `n`, this is a `Tensor` with rank `n-1`, and the same 1st\n`n-1` dimensions as `set`. Each value is the number of unique elements in\nthe corresponding `[0...n-1]` dimension of `set`."
+    type: DT_INT32
+  }
+  attr {
+    name: "validate_indices"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_STRING
+      }
+    }
+  }
+  summary: "Number of unique elements along last dimension of input `set`."
+  description: "Input `set` is a `SparseTensor` represented by `set_indices`, `set_values`,\nand `set_shape`. The last dimension contains values in a set, duplicates are\nallowed but ignored.\n\nIf `validate_indices` is `True`, this op validates the order and range of `set`\nindices."
+}
+op {
   name: "Shape"
   input_arg {
     name: "input"
@@ -19424,6 +19600,82 @@ op {
   description: "Builds an array `dense` with shape `output_shape` such that\n\n```prettyprint\n# If sparse_indices is scalar\ndense[i] = (i == sparse_indices ? sparse_values : default_value)\n\n# If sparse_indices is a vector, then for each i\ndense[sparse_indices[i]] = sparse_values[i]\n\n# If sparse_indices is an n by d matrix, then for each i in [0, n)\ndense[sparse_indices[i][0], ..., sparse_indices[i][d-1]] = sparse_values[i]\n```\n\nAll other values in `dense` are set to `default_value`.  If `sparse_values` is a\nscalar, all sparse indices are set to this single value.\n\nIndices should be sorted in lexicographic order, and indices must not\ncontain any repeats. If `validate_indices` is true, these properties\nare checked during execution."
 }
 op {
+  name: "SparseToSparseSetOperation"
+  input_arg {
+    name: "set1_indices"
+    description: "2D `Tensor`, indices of a `SparseTensor`. Must be in row-major\norder."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "set1_values"
+    description: "1D `Tensor`, values of a `SparseTensor`. Must be in row-major\norder."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "set1_shape"
+    description: "1D `Tensor`, shape of a `SparseTensor`. `set1_shape[0...n-1]` must\nbe the same as `set2_shape[0...n-1]`, `set1_shape[n]` is the\nmax set size across `0...n-1` dimensions."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "set2_indices"
+    description: "2D `Tensor`, indices of a `SparseTensor`. Must be in row-major\norder."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "set2_values"
+    description: "1D `Tensor`, values of a `SparseTensor`. Must be in row-major\norder."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "set2_shape"
+    description: "1D `Tensor`, shape of a `SparseTensor`. `set2_shape[0...n-1]` must\nbe the same as `set1_shape[0...n-1]`, `set2_shape[n]` is the\nmax set size across `0...n-1` dimensions."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "result_indices"
+    description: "2D indices of a `SparseTensor`."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "result_values"
+    description: "1D values of a `SparseTensor`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "result_shape"
+    description: "1D `Tensor` shape of a `SparseTensor`. `result_shape[0...n-1]` is\nthe same as the 1st `n-1` dimensions of `set1` and `set2`, `result_shape[n]`\nis the max result set size across all `0...n-1` dimensions."
+    type: DT_INT64
+  }
+  attr {
+    name: "set_operation"
+    type: "string"
+  }
+  attr {
+    name: "validate_indices"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_STRING
+      }
+    }
+  }
+  summary: "Applies set operation along last dimension of 2 `SparseTensor` inputs."
+  description: "See SetOperationOp::SetOperationFromContext for values of `set_operation`.\n\nIf `validate_indices` is `True`, `SparseToSparseSetOperation` validates the\norder and range of `set1` and `set2` indices.\n\nInput `set1` is a `SparseTensor` represented by `set1_indices`, `set1_values`,\nand `set1_shape`. For `set1` ranked `n`, 1st `n-1` dimensions must be the same\nas `set2`. Dimension `n` contains values in a set, duplicates are allowed but\nignored.\n\nInput `set2` is a `SparseTensor` represented by `set2_indices`, `set2_values`,\nand `set2_shape`. For `set2` ranked `n`, 1st `n-1` dimensions must be the same\nas `set1`. Dimension `n` contains values in a set, duplicates are allowed but\nignored.\n\nIf `validate_indices` is `True`, this op validates the order and range of `set1`\nand `set2` indices.\n\nOutput `result` is a `SparseTensor` represented by `result_indices`,\n`result_values`, and `result_shape`. For `set1` and `set2` ranked `n`, this\nhas rank `n` and the same 1st `n-1` dimensions as `set1` and `set2`. The `nth`\ndimension contains the result of `set_operation` applied to the corresponding\n`[0...n-1]` dimension of `set`."
+}
+op {
   name: "Split"
   input_arg {
     name: "split_dim"
@@ -20622,6 +20874,15 @@ op {
       s: ""
     }
   }
+  attr {
+    name: "element_shape"
+    type: "shape"
+    default_value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
   deprecation {
     version: 16
     explanation: "Use TensorArrayV2"
@@ -21158,6 +21419,16 @@ op {
     name: "dtype"
     type: "type"
     description: "The type of the elements on the tensor_array."
+  }
+  attr {
+    name: "element_shape"
+    type: "shape"
+    default_value {
+      shape {
+        unknown_rank: true
+      }
+    }
+    description: "The expected shape of an element, if known. Used to\nvalidate the shapes of TensorArray elements. If this shape is not\nfully specified, gathering zero-size TensorArrays is an error."
   }
   attr {
     name: "dynamic_size"
