@@ -23,11 +23,38 @@ limitations under the License.
 
 namespace tensorflow {
 
+static std::unordered_set<SYCLDevice*> live_devices;
+
+void ShutdownSycl() {
+  for (auto device : live_devices) {
+    device->EnterLameDuckMode();
+  }
+  live_devices.clear();
+}
+bool first_time = true;
+
+void SYCLDevice::RegisterDevice() {
+  if (first_time) {
+    first_time = false;
+    atexit(ShutdownSycl);
+  }
+  live_devices.insert(this);
+}
+
 SYCLDevice::~SYCLDevice() {
   device_context_->Unref();
   sycl_allocator_->EnterLameDuckMode();
   delete sycl_device_;
   delete sycl_queue_;
+  live_devices.erase(this);
+}
+
+void SYCLDevice::EnterLameDuckMode() {
+  sycl_allocator_->EnterLameDuckMode();
+  delete sycl_device_;
+  sycl_device_ = nullptr;
+  delete sycl_queue_;
+  sycl_queue_ = nullptr;
 }
 
 void SYCLDevice::Compute(OpKernel *op_kernel, OpKernelContext *context) {
