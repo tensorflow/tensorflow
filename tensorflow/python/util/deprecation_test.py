@@ -71,13 +71,12 @@ class DeprecationTest(tf.test.TestCase):
         "\nTHIS FUNCTION IS DEPRECATED. It will be removed after %s."
         "\nInstructions for updating:\n%s"
         "\n"
-        "\n      Args:"
-        "\n        arg0: Arg 0."
-        "\n        arg1: Arg 1."
+        "\nArgs:"
+        "\n  arg0: Arg 0."
+        "\n  arg1: Arg 1."
         "\n"
-        "\n      Returns:"
-        "\n        Sum of args."
-        "\n      " % (date, instructions),
+        "\nReturns:"
+        "\n  Sum of args." % (date, instructions),
         _fn.__doc__)
 
     # Assert calling new fn issues log warning.
@@ -169,13 +168,12 @@ class DeprecationTest(tf.test.TestCase):
         "\nTHIS FUNCTION IS DEPRECATED. It will be removed after %s."
         "\nInstructions for updating:\n%s"
         "\n"
-        "\n        Args:"
-        "\n          arg0: Arg 0."
-        "\n          arg1: Arg 1."
+        "\nArgs:"
+        "\n  arg0: Arg 0."
+        "\n  arg1: Arg 1."
         "\n"
-        "\n        Returns:"
-        "\n          Sum of args."
-        "\n        " % (date, instructions),
+        "\nReturns:"
+        "\n  Sum of args." % (date, instructions),
         getattr(_Object, "_fn").__doc__)
 
     # Assert calling new fn issues log warning.
@@ -289,9 +287,8 @@ class DeprecationTest(tf.test.TestCase):
         "\nInstructions for updating:"
         "\n%s"
         "\n"
-        "\n        Returns:"
-        "\n          String."
-        "\n        " % (date, instructions),
+        "\nReturns:"
+        "\n  String." % (date, instructions),
         getattr(_Object, "_prop").__doc__)
 
     # Assert calling new fn issues log warning.
@@ -394,14 +391,13 @@ class DeprecatedArgsTest(tf.test.TestCase):
         "\nSOME ARGUMENTS ARE DEPRECATED. They will be removed after %s."
         "\nInstructions for updating:\n%s"
         "\n"
-        "\n      Args:"
-        "\n        arg0: Arg 0."
-        "\n        arg1: Arg 1."
-        "\n        deprecated: Deprecated!"
+        "\nArgs:"
+        "\n  arg0: Arg 0."
+        "\n  arg1: Arg 1."
+        "\n  deprecated: Deprecated!"
         "\n"
-        "\n      Returns:"
-        "\n        Sum of args."
-        "\n      " % (date, instructions),
+        "\nReturns:"
+        "\n  Sum of args." % (date, instructions),
         _fn.__doc__)
 
     # Assert calls without the deprecated argument log nothing.
@@ -628,14 +624,13 @@ class DeprecatedArgValuesTest(tf.test.TestCase):
         "\nSOME ARGUMENTS ARE DEPRECATED. They will be removed after %s."
         "\nInstructions for updating:\n%s"
         "\n"
-        "\n      Args:"
-        "\n        arg0: Arg 0."
-        "\n        arg1: Arg 1."
-        "\n        deprecated: Deprecated!"
+        "\nArgs:"
+        "\n  arg0: Arg 0."
+        "\n  arg1: Arg 1."
+        "\n  deprecated: Deprecated!"
         "\n"
-        "\n      Returns:"
-        "\n        Sum of args."
-        "\n      " % (date, instructions),
+        "\nReturns:"
+        "\n  Sum of args." % (date, instructions),
         _fn.__doc__)
 
     # Assert calling new fn with non-deprecated value logs nothing.
