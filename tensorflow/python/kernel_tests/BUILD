@@ -1226,15 +1226,6 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "seq2seq_test",
-    size = "medium",
-    srcs = ["seq2seq_test.py"],
-    additional_deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-cuda_py_test(
     name = "slice_op_test",
     size = "medium",
     srcs = ["slice_op_test.py"],
