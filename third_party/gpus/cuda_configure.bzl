@@ -297,6 +297,11 @@ def _lib_name(lib, cpu_value, version="", static=False):
   elif cpu_value == "Windows":
     return "%s.lib" % lib
   elif cpu_value == "Darwin":
+    if static:
+      return "lib%s.a" % lib
+    else:
+      if version:
+        version = ".%s" % version
     return "lib%s%s.dylib" % (lib, version)
   else:
     auto_configure_fail("Invalid cpu_value: %s" % cpu_value)
