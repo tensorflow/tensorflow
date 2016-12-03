@@ -1487,6 +1487,19 @@ class FCTest(tf.test.TestCase):
       sess.run(tf.global_variables_initializer())
       self.assertLess(sess.run(wd), 0.4)
 
+  def testCreateFCWithBD(self):
+    height, width = 3, 3
+    with self.test_session() as sess:
+      inputs = tf.random_uniform((5, height * width * 3), seed=1)
+      bias_decay = tf.contrib.layers.l2_regularizer(0.01)
+      tf.contrib.layers.fully_connected(inputs, 32,
+                                        biases_regularizer=bias_decay)
+      wd = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)[0]
+      self.assertEqual(wd.op.name,
+                       'fully_connected/bias/Regularizer/l2_regularizer')
+      sess.run(tf.global_variables_initializer())
+      self.assertLess(sess.run(wd), 0.4)
+
   def testCreateNoRegularizers(self):
     height, width = 3, 3
     with self.test_session():

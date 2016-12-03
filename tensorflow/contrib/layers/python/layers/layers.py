@@ -497,7 +497,7 @@ def batch_norm(
           trainable=trainable,
           name=sc.name,
           _scope=sc,
-          _reuse_weights=reuse)
+          _reuse=reuse)
       outputs = layer.apply(inputs, training=is_training)
 
       # Add variables to collections.
@@ -890,7 +890,7 @@ def convolution(inputs,
                         name=sc.name,
                         dtype=inputs.dtype.base_dtype,
                         _scope=sc,
-                        _reuse_weights=reuse)
+                        _reuse=reuse)
     outputs = layer.apply(inputs)
 
     # Add variables to collections.
@@ -1108,7 +1108,7 @@ def convolution2d_transpose(
         name=sc.name,
         dtype=inputs.dtype.base_dtype,
         _scope=sc,
-        _reuse_weights=reuse)
+        _reuse=reuse)
     outputs = layer.apply(inputs)
 
     # Add variables to collections.
@@ -1391,7 +1391,7 @@ def fully_connected(inputs,
         name=sc.name,
         dtype=inputs.dtype.base_dtype,
         _scope=sc,
-        _reuse_weights=reuse)
+        _reuse=reuse)
     outputs = layer.apply(inputs)
 
     # Add variables to collections.
@@ -1801,7 +1801,7 @@ def separable_convolution2d(
           name=sc.name,
           dtype=inputs.dtype.base_dtype,
           _scope=sc,
-          _reuse_weights=reuse)
+          _reuse=reuse)
       outputs = layer.apply(inputs)
 
       # Add variables to collections.

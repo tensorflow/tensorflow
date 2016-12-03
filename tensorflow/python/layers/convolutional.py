@@ -331,7 +331,7 @@ def conv1d(inputs,
       activity_regularizer=activity_regularizer,
       trainable=trainable,
       name=name,
-      _reuse_weights=reuse,
+      _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)
 
@@ -504,7 +504,7 @@ def conv2d(inputs,
       activity_regularizer=activity_regularizer,
       trainable=trainable,
       name=name,
-      _reuse_weights=reuse,
+      _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)
 
@@ -677,7 +677,7 @@ def conv3d(inputs,
       activity_regularizer=activity_regularizer,
       trainable=trainable,
       name=name,
-      _reuse_weights=reuse,
+      _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)
 
@@ -927,7 +927,7 @@ def separable_conv2d(inputs,
       activity_regularizer=activity_regularizer,
       trainable=trainable,
       name=name,
-      _reuse_weights=reuse,
+      _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)
 
@@ -1170,7 +1170,7 @@ def conv2d_transpose(inputs,
       activity_regularizer=activity_regularizer,
       trainable=trainable,
       name=name,
-      _reuse_weights=reuse,
+      _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)
 

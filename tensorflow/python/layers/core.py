@@ -118,7 +118,7 @@ class Dense(base._Layer):  # pylint: disable=protected-access
                              shape=[input_shape[-1].value, self.units],
                              initializer=self.weights_initializer,
                              regularizer=self.weights_regularizer,
-                             dtype=self._dtype,
+                             dtype=self.dtype,
                              trainable=True)
     if self.use_bias:
       self.bias = vs.get_variable('bias',
@@ -209,7 +209,7 @@ def dense(
                 name=name,
                 dtype=inputs.dtype.base_dtype,
                 _scope=name,
-                _reuse_weights=reuse)
+                _reuse=reuse)
   return layer.apply(inputs)
 
 

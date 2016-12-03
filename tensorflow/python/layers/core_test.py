@@ -46,11 +46,11 @@ class DenseTest(tf.test.TestCase):
     dense = core_layers.Dense(2, activation=tf.nn.relu, name='my_dense')
     inputs = tf.random_uniform((5, 2), seed=1)
     _ = dense(inputs)
-    self.assertListEqual(dense.weights, [dense.w, dense.bias])
-    self.assertListEqual(dense.trainable_weights, [dense.w, dense.bias])
-    self.assertListEqual(dense.non_trainable_weights, [])
-    self.assertListEqual(dense._trainable_weights, [dense.w, dense.bias])
-    self.assertListEqual(dense._non_trainable_weights, [])
+    self.assertListEqual(dense.variables, [dense.w, dense.bias])
+    self.assertListEqual(dense.trainable_variables, [dense.w, dense.bias])
+    self.assertListEqual(dense.non_trainable_variables, [])
+    self.assertListEqual(dense._trainable_variables, [dense.w, dense.bias])
+    self.assertListEqual(dense._non_trainable_variables, [])
     self.assertEqual(
         len(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)), 2)
     self.assertEqual(dense.w.name, 'my_dense/weights:0')
@@ -60,9 +60,9 @@ class DenseTest(tf.test.TestCase):
     dense = core_layers.Dense(2, use_bias=False, name='my_dense')
     inputs = tf.random_uniform((5, 2), seed=1)
     _ = dense(inputs)
-    self.assertListEqual(dense.weights, [dense.w])
-    self.assertListEqual(dense.trainable_weights, [dense.w])
-    self.assertListEqual(dense.non_trainable_weights, [])
+    self.assertListEqual(dense.variables, [dense.w])
+    self.assertListEqual(dense.trainable_variables, [dense.w])
+    self.assertListEqual(dense.non_trainable_variables, [])
     self.assertEqual(
         len(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)), 1)
     self.assertEqual(dense.w.name, 'my_dense/weights:0')
@@ -72,11 +72,13 @@ class DenseTest(tf.test.TestCase):
     dense = core_layers.Dense(2, trainable=False, name='my_dense')
     inputs = tf.random_uniform((5, 2), seed=1)
     _ = dense(inputs)
-    self.assertListEqual(dense.weights, [dense.w, dense.bias])
-    self.assertListEqual(dense.non_trainable_weights, [dense.w, dense.bias])
-    self.assertListEqual(dense.trainable_weights, [])
-    self.assertListEqual(dense._trainable_weights, [dense.w, dense.bias])
-    self.assertListEqual(dense._non_trainable_weights, [])
+    self.assertListEqual(dense.variables, [dense.w, dense.bias])
+    self.assertListEqual(dense.non_trainable_variables,
+                         [dense.w, dense.bias])
+    self.assertListEqual(dense.trainable_variables, [])
+    self.assertListEqual(dense._trainable_variables,
+                         [dense.w, dense.bias])
+    self.assertListEqual(dense._non_trainable_variables, [])
     self.assertEqual(
         len(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)), 0)
 

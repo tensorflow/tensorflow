@@ -38,9 +38,9 @@ class BNTest(tf.test.TestCase):
 
     # Verify layer attributes.
     self.assertEqual(len(bn.updates), 2)
-    self.assertEqual(len(bn.weights), 4)
-    self.assertEqual(len(bn.trainable_weights), 2)
-    self.assertEqual(len(bn.non_trainable_weights), 2)
+    self.assertEqual(len(bn.variables), 4)
+    self.assertEqual(len(bn.trainable_variables), 2)
+    self.assertEqual(len(bn.non_trainable_variables), 2)
 
     # Test that updates were created and added to UPDATE_OPS.
     self.assertEqual(len(bn.updates), 2)
@@ -50,7 +50,7 @@ class BNTest(tf.test.TestCase):
     # Test that weights were created and added to TRAINABLE_VARIABLES.
     self.assertListEqual(
         tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES),
-        bn.trainable_weights)
+        bn.trainable_variables)
 
   def test3DInputAxis1(self):
     epsilon = 1e-3
@@ -441,9 +441,9 @@ class BNTest(tf.test.TestCase):
 
     # Verify layer attributes.
     self.assertEqual(len(bn.updates), 2)
-    self.assertEqual(len(bn.weights), 3)
-    self.assertEqual(len(bn.trainable_weights), 1)
-    self.assertEqual(len(bn.non_trainable_weights), 2)
+    self.assertEqual(len(bn.variables), 3)
+    self.assertEqual(len(bn.trainable_variables), 1)
+    self.assertEqual(len(bn.non_trainable_variables), 2)
 
   def testNoScale(self):
     bn = normalization_layers.BatchNormalization(axis=1, scale=False)
@@ -456,9 +456,9 @@ class BNTest(tf.test.TestCase):
 
     # Verify layer attributes.
     self.assertEqual(len(bn.updates), 2)
-    self.assertEqual(len(bn.weights), 3)
-    self.assertEqual(len(bn.trainable_weights), 1)
-    self.assertEqual(len(bn.non_trainable_weights), 2)
+    self.assertEqual(len(bn.variables), 3)
+    self.assertEqual(len(bn.trainable_variables), 1)
+    self.assertEqual(len(bn.non_trainable_variables), 2)
 
   def testRegularizers(self):
     reg = lambda x: 0.1 * tf.reduce_sum(x)

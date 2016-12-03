@@ -322,7 +322,7 @@ def batch_normalization(inputs,
       gamma_regularizer=gamma_regularizer,
       trainable=trainable,
       name=name,
-      _reuse_weights=reuse,
+      _reuse=reuse,
       _scope=name)
   return layer.apply(inputs, training=training)
 
