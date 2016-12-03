@@ -67,11 +67,12 @@ available in the SKCompat class, Estimator will only accept input_fn.
 
   est = Estimator(...) -> est = SKCompat(Estimator(...))
 
+##### Raises:
 
-*  <b>`Raises`</b>: 
+
 *  <b>`ValueError`</b>: If at least one of `x` or `y` is provided, and at least one of
-          `input_fn` or `feed_fn` is provided.
-          Or if `metrics` is not `None` or `dict`.
+      `input_fn` or `feed_fn` is provided.
+      Or if `metrics` is not `None` or `dict`.
 
 
 - - -
@@ -84,36 +85,39 @@ SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-23.
 Instructions for updating:
 The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn (and in most cases, input_feature_key) will become required args, and use_deprecated_input_fn will default to False and be removed altogether.
 
-    Args:
-      export_dir: A string containing a directory to write the exported graph
-        and checkpoints.
-      input_fn: If `use_deprecated_input_fn` is true, then a function that given
-        `Tensor` of `Example` strings, parses it into features that are then
-        passed to the model. Otherwise, a function that takes no argument and
-        returns a tuple of (features, labels), where features is a dict of
-        string key to `Tensor` and labels is a `Tensor` that's currently not
-        used (and so can be `None`).
-      input_feature_key: Only used if `use_deprecated_input_fn` is false. String
-        key into the features dict returned by `input_fn` that corresponds to a
-        the raw `Example` strings `Tensor` that the exported model will take as
-        input. Can only be `None` if you're using a custom `signature_fn` that
-        does not use the first arg (examples).
-      use_deprecated_input_fn: Determines the signature format of `input_fn`.
-      signature_fn: Function that returns a default signature and a named
-        signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
-        for features and `Tensor` or `dict` of `Tensor`s for predictions.
-      prediction_key: The key for a tensor in the `predictions` dict (output
-        from the `model_fn`) to use as the `predictions` input to the
-        `signature_fn`. Optional. If `None`, predictions will pass to
-        `signature_fn` without filtering.
-      default_batch_size: Default batch size of the `Example` placeholder.
-      exports_to_keep: Number of exports to keep.
+##### Args:
 
-    Returns:
-      The string path to the exported directory. NB: this functionality was
-      added ca. 2016/09/25; clients that depend on the return value may need
-      to handle the case where this function returns None because subclasses
-      are not returning a value.
+
+*  <b>`export_dir`</b>: A string containing a directory to write the exported graph
+    and checkpoints.
+*  <b>`input_fn`</b>: If `use_deprecated_input_fn` is true, then a function that given
+    `Tensor` of `Example` strings, parses it into features that are then
+    passed to the model. Otherwise, a function that takes no argument and
+    returns a tuple of (features, labels), where features is a dict of
+    string key to `Tensor` and labels is a `Tensor` that's currently not
+    used (and so can be `None`).
+*  <b>`input_feature_key`</b>: Only used if `use_deprecated_input_fn` is false. String
+    key into the features dict returned by `input_fn` that corresponds to a
+    the raw `Example` strings `Tensor` that the exported model will take as
+    input. Can only be `None` if you're using a custom `signature_fn` that
+    does not use the first arg (examples).
+*  <b>`use_deprecated_input_fn`</b>: Determines the signature format of `input_fn`.
+*  <b>`signature_fn`</b>: Function that returns a default signature and a named
+    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+    for features and `Tensor` or `dict` of `Tensor`s for predictions.
+*  <b>`prediction_key`</b>: The key for a tensor in the `predictions` dict (output
+    from the `model_fn`) to use as the `predictions` input to the
+    `signature_fn`. Optional. If `None`, predictions will pass to
+    `signature_fn` without filtering.
+*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
+*  <b>`exports_to_keep`</b>: Number of exports to keep.
+
+##### Returns:
+
+  The string path to the exported directory. NB: this functionality was
+  added ca. 2016/09/25; clients that depend on the return value may need
+  to handle the case where this function returns None because subclasses
+  are not returning a value.
 
 
 - - -
@@ -132,8 +136,9 @@ available in the SKCompat class, Estimator will only accept input_fn.
 
   est = Estimator(...) -> est = SKCompat(Estimator(...))
 
+##### Raises:
 
-*  <b>`Raises`</b>: 
+
 *  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
 *  <b>`ValueError`</b>: If both `steps` and `max_steps` are not `None`.
 
@@ -208,39 +213,41 @@ available in the SKCompat class, Estimator will only accept input_fn.
 
   est = Estimator(...) -> est = SKCompat(Estimator(...))
 
-    This method is expected to be called several times consecutively
-    on different or the same chunks of the dataset. This either can
-    implement iterative training or out-of-core/online training.
+This method is expected to be called several times consecutively
+on different or the same chunks of the dataset. This either can
+implement iterative training or out-of-core/online training.
 
-    This is especially useful when the whole dataset is too big to
-    fit in memory at the same time. Or when model is taking long time
-    to converge, and you want to split up training into subparts.
+This is especially useful when the whole dataset is too big to
+fit in memory at the same time. Or when model is taking long time
+to converge, and you want to split up training into subparts.
+
+##### Args:
 
 
-*  <b>`Args`</b>: 
 *  <b>`x`</b>: Matrix of shape [n_samples, n_features...]. Can be iterator that
-         returns arrays of features. The training input samples for fitting the
-         model. If set, `input_fn` must be `None`.
+     returns arrays of features. The training input samples for fitting the
+     model. If set, `input_fn` must be `None`.
 *  <b>`y`</b>: Vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-         iterator that returns array of labels. The training label values
-         (class labels in classification, real numbers in regression). If set,
-         `input_fn` must be `None`.
+     iterator that returns array of labels. The training label values
+     (class labels in classification, real numbers in regression). If set,
+     `input_fn` must be `None`.
 *  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
-        `None`.
+    `None`.
 *  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
 *  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first
-        dimension of `x`. Must be `None` if `input_fn` is provided.
+    dimension of `x`. Must be `None` if `input_fn` is provided.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-        inside the training loop.
+    inside the training loop.
+
+##### Returns:
+
+  `self`, for chaining.
+
+##### Raises:
 
 
-*  <b>`Returns`</b>: 
-      `self`, for chaining.
-
-
-*  <b>`Raises`</b>: 
 *  <b>`ValueError`</b>: If at least one of `x` and `y` is provided, and `input_fn` is
-          provided.
+      provided.
 
 
 - - -
@@ -259,30 +266,32 @@ available in the SKCompat class, Estimator will only accept input_fn.
 
   est = Estimator(...) -> est = SKCompat(Estimator(...))
 
+##### Args:
 
-*  <b>`Args`</b>: 
+
 *  <b>`x`</b>: Matrix of shape [n_samples, n_features...]. Can be iterator that
-         returns arrays of features. The training input samples for fitting the
-         model. If set, `input_fn` must be `None`.
+     returns arrays of features. The training input samples for fitting the
+     model. If set, `input_fn` must be `None`.
 *  <b>`input_fn`</b>: Input function. If set, `x` and 'batch_size' must be `None`.
 *  <b>`batch_size`</b>: Override default batch size. If set, 'input_fn' must be
-        'None'.
+    'None'.
 *  <b>`outputs`</b>: list of `str`, name of the output to predict.
-        If `None`, returns all.
+    If `None`, returns all.
 *  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
-        for each example until inputs are exhausted. Note: The inputs must
-        terminate if you want the iterable to terminate (e.g. be sure to pass
-        num_epochs=1 if you are using something like read_batch_features).
+    for each example until inputs are exhausted. Note: The inputs must
+    terminate if you want the iterable to terminate (e.g. be sure to pass
+    num_epochs=1 if you are using something like read_batch_features).
+
+##### Returns:
+
+  A numpy array of predicted classes or regression values if the
+  constructor's `model_fn` returns a `Tensor` for `predictions` or a `dict`
+  of numpy arrays if `model_fn` returns a `dict`. Returns an iterable of
+  predictions if as_iterable is True.
+
+##### Raises:
 
 
-*  <b>`Returns`</b>: 
-      A numpy array of predicted classes or regression values if the
-      constructor's `model_fn` returns a `Tensor` for `predictions` or a `dict`
-      of numpy arrays if `model_fn` returns a `dict`. Returns an iterable of
-      predictions if as_iterable is True.
-
-
-*  <b>`Raises`</b>: 
 *  <b>`ValueError`</b>: If x and input_fn are both provided or both `None`.
 
 
@@ -408,11 +417,12 @@ available in the SKCompat class, Estimator will only accept input_fn.
 
   est = Estimator(...) -> est = SKCompat(Estimator(...))
 
+##### Raises:
 
-*  <b>`Raises`</b>: 
+
 *  <b>`ValueError`</b>: If at least one of `x` or `y` is provided, and at least one of
-          `input_fn` or `feed_fn` is provided.
-          Or if `metrics` is not `None` or `dict`.
+      `input_fn` or `feed_fn` is provided.
+      Or if `metrics` is not `None` or `dict`.
 
 
 - - -
@@ -425,36 +435,39 @@ SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-23.
 Instructions for updating:
 The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn (and in most cases, input_feature_key) will become required args, and use_deprecated_input_fn will default to False and be removed altogether.
 
-    Args:
-      export_dir: A string containing a directory to write the exported graph
-        and checkpoints.
-      input_fn: If `use_deprecated_input_fn` is true, then a function that given
-        `Tensor` of `Example` strings, parses it into features that are then
-        passed to the model. Otherwise, a function that takes no argument and
-        returns a tuple of (features, labels), where features is a dict of
-        string key to `Tensor` and labels is a `Tensor` that's currently not
-        used (and so can be `None`).
-      input_feature_key: Only used if `use_deprecated_input_fn` is false. String
-        key into the features dict returned by `input_fn` that corresponds to a
-        the raw `Example` strings `Tensor` that the exported model will take as
-        input. Can only be `None` if you're using a custom `signature_fn` that
-        does not use the first arg (examples).
-      use_deprecated_input_fn: Determines the signature format of `input_fn`.
-      signature_fn: Function that returns a default signature and a named
-        signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
-        for features and `Tensor` or `dict` of `Tensor`s for predictions.
-      prediction_key: The key for a tensor in the `predictions` dict (output
-        from the `model_fn`) to use as the `predictions` input to the
-        `signature_fn`. Optional. If `None`, predictions will pass to
-        `signature_fn` without filtering.
-      default_batch_size: Default batch size of the `Example` placeholder.
-      exports_to_keep: Number of exports to keep.
+##### Args:
 
-    Returns:
-      The string path to the exported directory. NB: this functionality was
-      added ca. 2016/09/25; clients that depend on the return value may need
-      to handle the case where this function returns None because subclasses
-      are not returning a value.
+
+*  <b>`export_dir`</b>: A string containing a directory to write the exported graph
+    and checkpoints.
+*  <b>`input_fn`</b>: If `use_deprecated_input_fn` is true, then a function that given
+    `Tensor` of `Example` strings, parses it into features that are then
+    passed to the model. Otherwise, a function that takes no argument and
+    returns a tuple of (features, labels), where features is a dict of
+    string key to `Tensor` and labels is a `Tensor` that's currently not
+    used (and so can be `None`).
+*  <b>`input_feature_key`</b>: Only used if `use_deprecated_input_fn` is false. String
+    key into the features dict returned by `input_fn` that corresponds to a
+    the raw `Example` strings `Tensor` that the exported model will take as
+    input. Can only be `None` if you're using a custom `signature_fn` that
+    does not use the first arg (examples).
+*  <b>`use_deprecated_input_fn`</b>: Determines the signature format of `input_fn`.
+*  <b>`signature_fn`</b>: Function that returns a default signature and a named
+    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+    for features and `Tensor` or `dict` of `Tensor`s for predictions.
+*  <b>`prediction_key`</b>: The key for a tensor in the `predictions` dict (output
+    from the `model_fn`) to use as the `predictions` input to the
+    `signature_fn`. Optional. If `None`, predictions will pass to
+    `signature_fn` without filtering.
+*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
+*  <b>`exports_to_keep`</b>: Number of exports to keep.
+
+##### Returns:
+
+  The string path to the exported directory. NB: this functionality was
+  added ca. 2016/09/25; clients that depend on the return value may need
+  to handle the case where this function returns None because subclasses
+  are not returning a value.
 
 
 - - -
@@ -466,28 +479,33 @@ Exports inference graph as a SavedModel into given dir. (experimental)
 THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and without warning.
 
 
-    Args:
-      export_dir_base: A string containing a directory to write the exported
-        graph and checkpoints.
-      input_fn: A function that takes no argument and
-        returns an `InputFnOps`.
-      default_output_alternative_key: the name of the head to serve when none is
-        specified.
-      assets_extra: A dict specifying how to populate the assets.extra directory
-        within the exported SavedModel.  Each key should give the destination
-        path (including the filename) relative to the assets.extra directory.
-        The corresponding value gives the full path of the source file to be
-        copied.  For example, the simple case of copying a single file without
-        renaming it is specified as
-        `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
-      as_text: whether to write the SavedModel proto in text format.
-      exports_to_keep: Number of exports to keep.
+##### Args:
 
-    Returns:
-      The string path to the exported directory.
 
-    Raises:
-      ValueError: if an unrecognized export_type is requested.
+*  <b>`export_dir_base`</b>: A string containing a directory to write the exported
+    graph and checkpoints.
+*  <b>`input_fn`</b>: A function that takes no argument and
+    returns an `InputFnOps`.
+*  <b>`default_output_alternative_key`</b>: the name of the head to serve when none is
+    specified.
+*  <b>`assets_extra`</b>: A dict specifying how to populate the assets.extra directory
+    within the exported SavedModel.  Each key should give the destination
+    path (including the filename) relative to the assets.extra directory.
+    The corresponding value gives the full path of the source file to be
+    copied.  For example, the simple case of copying a single file without
+    renaming it is specified as
+    `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
+*  <b>`as_text`</b>: whether to write the SavedModel proto in text format.
+*  <b>`exports_to_keep`</b>: Number of exports to keep.
+
+##### Returns:
+
+  The string path to the exported directory.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if an unrecognized export_type is requested.
 
 
 - - -
@@ -506,8 +524,9 @@ available in the SKCompat class, Estimator will only accept input_fn.
 
   est = Estimator(...) -> est = SKCompat(Estimator(...))
 
+##### Raises:
 
-*  <b>`Raises`</b>: 
+
 *  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
 *  <b>`ValueError`</b>: If both `steps` and `max_steps` are not `None`.
 
@@ -582,39 +601,41 @@ available in the SKCompat class, Estimator will only accept input_fn.
 
   est = Estimator(...) -> est = SKCompat(Estimator(...))
 
-    This method is expected to be called several times consecutively
-    on different or the same chunks of the dataset. This either can
-    implement iterative training or out-of-core/online training.
+This method is expected to be called several times consecutively
+on different or the same chunks of the dataset. This either can
+implement iterative training or out-of-core/online training.
 
-    This is especially useful when the whole dataset is too big to
-    fit in memory at the same time. Or when model is taking long time
-    to converge, and you want to split up training into subparts.
+This is especially useful when the whole dataset is too big to
+fit in memory at the same time. Or when model is taking long time
+to converge, and you want to split up training into subparts.
+
+##### Args:
 
 
-*  <b>`Args`</b>: 
 *  <b>`x`</b>: Matrix of shape [n_samples, n_features...]. Can be iterator that
-         returns arrays of features. The training input samples for fitting the
-         model. If set, `input_fn` must be `None`.
+     returns arrays of features. The training input samples for fitting the
+     model. If set, `input_fn` must be `None`.
 *  <b>`y`</b>: Vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-         iterator that returns array of labels. The training label values
-         (class labels in classification, real numbers in regression). If set,
-         `input_fn` must be `None`.
+     iterator that returns array of labels. The training label values
+     (class labels in classification, real numbers in regression). If set,
+     `input_fn` must be `None`.
 *  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
-        `None`.
+    `None`.
 *  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
 *  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first
-        dimension of `x`. Must be `None` if `input_fn` is provided.
+    dimension of `x`. Must be `None` if `input_fn` is provided.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-        inside the training loop.
+    inside the training loop.
+
+##### Returns:
+
+  `self`, for chaining.
+
+##### Raises:
 
 
-*  <b>`Returns`</b>: 
-      `self`, for chaining.
-
-
-*  <b>`Raises`</b>: 
 *  <b>`ValueError`</b>: If at least one of `x` and `y` is provided, and `input_fn` is
-          provided.
+      provided.
 
 
 - - -
@@ -633,30 +654,32 @@ available in the SKCompat class, Estimator will only accept input_fn.
 
   est = Estimator(...) -> est = SKCompat(Estimator(...))
 
+##### Args:
 
-*  <b>`Args`</b>: 
+
 *  <b>`x`</b>: Matrix of shape [n_samples, n_features...]. Can be iterator that
-         returns arrays of features. The training input samples for fitting the
-         model. If set, `input_fn` must be `None`.
+     returns arrays of features. The training input samples for fitting the
+     model. If set, `input_fn` must be `None`.
 *  <b>`input_fn`</b>: Input function. If set, `x` and 'batch_size' must be `None`.
 *  <b>`batch_size`</b>: Override default batch size. If set, 'input_fn' must be
-        'None'.
+    'None'.
 *  <b>`outputs`</b>: list of `str`, name of the output to predict.
-        If `None`, returns all.
+    If `None`, returns all.
 *  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
-        for each example until inputs are exhausted. Note: The inputs must
-        terminate if you want the iterable to terminate (e.g. be sure to pass
-        num_epochs=1 if you are using something like read_batch_features).
+    for each example until inputs are exhausted. Note: The inputs must
+    terminate if you want the iterable to terminate (e.g. be sure to pass
+    num_epochs=1 if you are using something like read_batch_features).
+
+##### Returns:
+
+  A numpy array of predicted classes or regression values if the
+  constructor's `model_fn` returns a `Tensor` for `predictions` or a `dict`
+  of numpy arrays if `model_fn` returns a `dict`. Returns an iterable of
+  predictions if as_iterable is True.
+
+##### Raises:
 
 
-*  <b>`Returns`</b>: 
-      A numpy array of predicted classes or regression values if the
-      constructor's `model_fn` returns a `Tensor` for `predictions` or a `dict`
-      of numpy arrays if `model_fn` returns a `dict`. Returns an iterable of
-      predictions if as_iterable is True.
-
-
-*  <b>`Raises`</b>: 
 *  <b>`ValueError`</b>: If x and input_fn are both provided or both `None`.
 
 
@@ -1032,19 +1055,22 @@ The default behavior of predict() is changing. The default value for
 as_iterable will change to True, and then the flag will be removed
 altogether. The behavior of this flag is described below.
 
-    Args:
-      x: features.
-      input_fn: Input function. If set, x must be None.
-      batch_size: Override default batch size.
-      as_iterable: If True, return an iterable which keeps yielding predictions
-        for each example until inputs are exhausted. Note: The inputs must
-        terminate if you want the iterable to terminate (e.g. be sure to pass
-        num_epochs=1 if you are using something like read_batch_features).
+##### Args:
 
-    Returns:
-      Numpy array of predicted classes (or an iterable of predicted classes if
-      as_iterable is True). Each predicted class is represented by its class
-      index (i.e. integer from 0 to n_classes-1).
+
+*  <b>`x`</b>: features.
+*  <b>`input_fn`</b>: Input function. If set, x must be None.
+*  <b>`batch_size`</b>: Override default batch size.
+*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
+    for each example until inputs are exhausted. Note: The inputs must
+    terminate if you want the iterable to terminate (e.g. be sure to pass
+    num_epochs=1 if you are using something like read_batch_features).
+
+##### Returns:
+
+  Numpy array of predicted classes (or an iterable of predicted classes if
+  as_iterable is True). Each predicted class is represented by its class
+  index (i.e. integer from 0 to n_classes-1).
 
 
 - - -
@@ -1059,19 +1085,22 @@ The default behavior of predict() is changing. The default value for
 as_iterable will change to True, and then the flag will be removed
 altogether. The behavior of this flag is described below.
 
-    Args:
-      x: features.
-      input_fn: Input function. If set, x and y must be None.
-      batch_size: Override default batch size.
-      as_iterable: If True, return an iterable which keeps yielding predictions
-        for each example until inputs are exhausted. Note: The inputs must
-        terminate if you want the iterable to terminate (e.g. be sure to pass
-        num_epochs=1 if you are using something like read_batch_features).
+##### Args:
 
-    Returns:
-      Numpy array of predicted probabilities (or an iterable of predicted
-      probabilities if as_iterable is True). Each predicted class is represented
-      by its class index (i.e. integer from 0 to n_classes-1).
+
+*  <b>`x`</b>: features.
+*  <b>`input_fn`</b>: Input function. If set, x and y must be None.
+*  <b>`batch_size`</b>: Override default batch size.
+*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
+    for each example until inputs are exhausted. Note: The inputs must
+    terminate if you want the iterable to terminate (e.g. be sure to pass
+    num_epochs=1 if you are using something like read_batch_features).
+
+##### Returns:
+
+  Numpy array of predicted probabilities (or an iterable of predicted
+  probabilities if as_iterable is True). Each predicted class is represented
+  by its class index (i.e. integer from 0 to n_classes-1).
 
 
 - - -
@@ -1249,11 +1278,12 @@ available in the SKCompat class, Estimator will only accept input_fn.
 
   est = Estimator(...) -> est = SKCompat(Estimator(...))
 
+##### Raises:
 
-*  <b>`Raises`</b>: 
+
 *  <b>`ValueError`</b>: If at least one of `x` or `y` is provided, and at least one of
-          `input_fn` or `feed_fn` is provided.
-          Or if `metrics` is not `None` or `dict`.
+      `input_fn` or `feed_fn` is provided.
+      Or if `metrics` is not `None` or `dict`.
 
 
 - - -
@@ -1279,8 +1309,9 @@ available in the SKCompat class, Estimator will only accept input_fn.
 
   est = Estimator(...) -> est = SKCompat(Estimator(...))
 
+##### Raises:
 
-*  <b>`Raises`</b>: 
+
 *  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
 *  <b>`ValueError`</b>: If both `steps` and `max_steps` are not `None`.
 
@@ -1377,39 +1408,41 @@ available in the SKCompat class, Estimator will only accept input_fn.
 
   est = Estimator(...) -> est = SKCompat(Estimator(...))
 
-    This method is expected to be called several times consecutively
-    on different or the same chunks of the dataset. This either can
-    implement iterative training or out-of-core/online training.
+This method is expected to be called several times consecutively
+on different or the same chunks of the dataset. This either can
+implement iterative training or out-of-core/online training.
 
-    This is especially useful when the whole dataset is too big to
-    fit in memory at the same time. Or when model is taking long time
-    to converge, and you want to split up training into subparts.
+This is especially useful when the whole dataset is too big to
+fit in memory at the same time. Or when model is taking long time
+to converge, and you want to split up training into subparts.
+
+##### Args:
 
 
-*  <b>`Args`</b>: 
 *  <b>`x`</b>: Matrix of shape [n_samples, n_features...]. Can be iterator that
-         returns arrays of features. The training input samples for fitting the
-         model. If set, `input_fn` must be `None`.
+     returns arrays of features. The training input samples for fitting the
+     model. If set, `input_fn` must be `None`.
 *  <b>`y`</b>: Vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-         iterator that returns array of labels. The training label values
-         (class labels in classification, real numbers in regression). If set,
-         `input_fn` must be `None`.
+     iterator that returns array of labels. The training label values
+     (class labels in classification, real numbers in regression). If set,
+     `input_fn` must be `None`.
 *  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
-        `None`.
+    `None`.
 *  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
 *  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first
-        dimension of `x`. Must be `None` if `input_fn` is provided.
+    dimension of `x`. Must be `None` if `input_fn` is provided.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-        inside the training loop.
+    inside the training loop.
+
+##### Returns:
+
+  `self`, for chaining.
+
+##### Raises:
 
 
-*  <b>`Returns`</b>: 
-      `self`, for chaining.
-
-
-*  <b>`Raises`</b>: 
 *  <b>`ValueError`</b>: If at least one of `x` and `y` is provided, and `input_fn` is
-          provided.
+      provided.
 
 
 - - -
@@ -1966,36 +1999,39 @@ SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-23.
 Instructions for updating:
 The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn (and in most cases, input_feature_key) will become required args, and use_deprecated_input_fn will default to False and be removed altogether.
 
-    Args:
-      export_dir: A string containing a directory to write the exported graph
-        and checkpoints.
-      input_fn: If `use_deprecated_input_fn` is true, then a function that given
-        `Tensor` of `Example` strings, parses it into features that are then
-        passed to the model. Otherwise, a function that takes no argument and
-        returns a tuple of (features, labels), where features is a dict of
-        string key to `Tensor` and labels is a `Tensor` that's currently not
-        used (and so can be `None`).
-      input_feature_key: Only used if `use_deprecated_input_fn` is false. String
-        key into the features dict returned by `input_fn` that corresponds to a
-        the raw `Example` strings `Tensor` that the exported model will take as
-        input. Can only be `None` if you're using a custom `signature_fn` that
-        does not use the first arg (examples).
-      use_deprecated_input_fn: Determines the signature format of `input_fn`.
-      signature_fn: Function that returns a default signature and a named
-        signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
-        for features and `Tensor` or `dict` of `Tensor`s for predictions.
-      prediction_key: The key for a tensor in the `predictions` dict (output
-        from the `model_fn`) to use as the `predictions` input to the
-        `signature_fn`. Optional. If `None`, predictions will pass to
-        `signature_fn` without filtering.
-      default_batch_size: Default batch size of the `Example` placeholder.
-      exports_to_keep: Number of exports to keep.
+##### Args:
 
-    Returns:
-      The string path to the exported directory. NB: this functionality was
-      added ca. 2016/09/25; clients that depend on the return value may need
-      to handle the case where this function returns None because subclasses
-      are not returning a value.
+
+*  <b>`export_dir`</b>: A string containing a directory to write the exported graph
+    and checkpoints.
+*  <b>`input_fn`</b>: If `use_deprecated_input_fn` is true, then a function that given
+    `Tensor` of `Example` strings, parses it into features that are then
+    passed to the model. Otherwise, a function that takes no argument and
+    returns a tuple of (features, labels), where features is a dict of
+    string key to `Tensor` and labels is a `Tensor` that's currently not
+    used (and so can be `None`).
+*  <b>`input_feature_key`</b>: Only used if `use_deprecated_input_fn` is false. String
+    key into the features dict returned by `input_fn` that corresponds to a
+    the raw `Example` strings `Tensor` that the exported model will take as
+    input. Can only be `None` if you're using a custom `signature_fn` that
+    does not use the first arg (examples).
+*  <b>`use_deprecated_input_fn`</b>: Determines the signature format of `input_fn`.
+*  <b>`signature_fn`</b>: Function that returns a default signature and a named
+    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+    for features and `Tensor` or `dict` of `Tensor`s for predictions.
+*  <b>`prediction_key`</b>: The key for a tensor in the `predictions` dict (output
+    from the `model_fn`) to use as the `predictions` input to the
+    `signature_fn`. Optional. If `None`, predictions will pass to
+    `signature_fn` without filtering.
+*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
+*  <b>`exports_to_keep`</b>: Number of exports to keep.
+
+##### Returns:
+
+  The string path to the exported directory. NB: this functionality was
+  added ca. 2016/09/25; clients that depend on the return value may need
+  to handle the case where this function returns None because subclasses
+  are not returning a value.
 
 
 - - -
@@ -2007,28 +2043,33 @@ Exports inference graph as a SavedModel into given dir. (experimental)
 THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and without warning.
 
 
-    Args:
-      export_dir_base: A string containing a directory to write the exported
-        graph and checkpoints.
-      input_fn: A function that takes no argument and
-        returns an `InputFnOps`.
-      default_output_alternative_key: the name of the head to serve when none is
-        specified.
-      assets_extra: A dict specifying how to populate the assets.extra directory
-        within the exported SavedModel.  Each key should give the destination
-        path (including the filename) relative to the assets.extra directory.
-        The corresponding value gives the full path of the source file to be
-        copied.  For example, the simple case of copying a single file without
-        renaming it is specified as
-        `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
-      as_text: whether to write the SavedModel proto in text format.
-      exports_to_keep: Number of exports to keep.
+##### Args:
 
-    Returns:
-      The string path to the exported directory.
 
-    Raises:
-      ValueError: if an unrecognized export_type is requested.
+*  <b>`export_dir_base`</b>: A string containing a directory to write the exported
+    graph and checkpoints.
+*  <b>`input_fn`</b>: A function that takes no argument and
+    returns an `InputFnOps`.
+*  <b>`default_output_alternative_key`</b>: the name of the head to serve when none is
+    specified.
+*  <b>`assets_extra`</b>: A dict specifying how to populate the assets.extra directory
+    within the exported SavedModel.  Each key should give the destination
+    path (including the filename) relative to the assets.extra directory.
+    The corresponding value gives the full path of the source file to be
+    copied.  For example, the simple case of copying a single file without
+    renaming it is specified as
+    `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
+*  <b>`as_text`</b>: whether to write the SavedModel proto in text format.
+*  <b>`exports_to_keep`</b>: Number of exports to keep.
+
+##### Returns:
+
+  The string path to the exported directory.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if an unrecognized export_type is requested.
 
 
 - - -
@@ -2047,8 +2088,9 @@ available in the SKCompat class, Estimator will only accept input_fn.
 
   est = Estimator(...) -> est = SKCompat(Estimator(...))
 
+##### Raises:
 
-*  <b>`Raises`</b>: 
+
 *  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
 *  <b>`ValueError`</b>: If both `steps` and `max_steps` are not `None`.
 
@@ -2140,39 +2182,41 @@ available in the SKCompat class, Estimator will only accept input_fn.
 
   est = Estimator(...) -> est = SKCompat(Estimator(...))
 
-    This method is expected to be called several times consecutively
-    on different or the same chunks of the dataset. This either can
-    implement iterative training or out-of-core/online training.
+This method is expected to be called several times consecutively
+on different or the same chunks of the dataset. This either can
+implement iterative training or out-of-core/online training.
 
-    This is especially useful when the whole dataset is too big to
-    fit in memory at the same time. Or when model is taking long time
-    to converge, and you want to split up training into subparts.
+This is especially useful when the whole dataset is too big to
+fit in memory at the same time. Or when model is taking long time
+to converge, and you want to split up training into subparts.
+
+##### Args:
 
 
-*  <b>`Args`</b>: 
 *  <b>`x`</b>: Matrix of shape [n_samples, n_features...]. Can be iterator that
-         returns arrays of features. The training input samples for fitting the
-         model. If set, `input_fn` must be `None`.
+     returns arrays of features. The training input samples for fitting the
+     model. If set, `input_fn` must be `None`.
 *  <b>`y`</b>: Vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-         iterator that returns array of labels. The training label values
-         (class labels in classification, real numbers in regression). If set,
-         `input_fn` must be `None`.
+     iterator that returns array of labels. The training label values
+     (class labels in classification, real numbers in regression). If set,
+     `input_fn` must be `None`.
 *  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
-        `None`.
+    `None`.
 *  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
 *  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first
-        dimension of `x`. Must be `None` if `input_fn` is provided.
+    dimension of `x`. Must be `None` if `input_fn` is provided.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-        inside the training loop.
+    inside the training loop.
+
+##### Returns:
+
+  `self`, for chaining.
+
+##### Raises:
 
 
-*  <b>`Returns`</b>: 
-      `self`, for chaining.
-
-
-*  <b>`Raises`</b>: 
 *  <b>`ValueError`</b>: If at least one of `x` and `y` is provided, and `input_fn` is
-          provided.
+      provided.
 
 
 - - -
@@ -2191,30 +2235,32 @@ available in the SKCompat class, Estimator will only accept input_fn.
 
   est = Estimator(...) -> est = SKCompat(Estimator(...))
 
+##### Args:
 
-*  <b>`Args`</b>: 
+
 *  <b>`x`</b>: Matrix of shape [n_samples, n_features...]. Can be iterator that
-         returns arrays of features. The training input samples for fitting the
-         model. If set, `input_fn` must be `None`.
+     returns arrays of features. The training input samples for fitting the
+     model. If set, `input_fn` must be `None`.
 *  <b>`input_fn`</b>: Input function. If set, `x` and 'batch_size' must be `None`.
 *  <b>`batch_size`</b>: Override default batch size. If set, 'input_fn' must be
-        'None'.
+    'None'.
 *  <b>`outputs`</b>: list of `str`, name of the output to predict.
-        If `None`, returns all.
+    If `None`, returns all.
 *  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
-        for each example until inputs are exhausted. Note: The inputs must
-        terminate if you want the iterable to terminate (e.g. be sure to pass
-        num_epochs=1 if you are using something like read_batch_features).
+    for each example until inputs are exhausted. Note: The inputs must
+    terminate if you want the iterable to terminate (e.g. be sure to pass
+    num_epochs=1 if you are using something like read_batch_features).
+
+##### Returns:
+
+  A numpy array of predicted classes or regression values if the
+  constructor's `model_fn` returns a `Tensor` for `predictions` or a `dict`
+  of numpy arrays if `model_fn` returns a `dict`. Returns an iterable of
+  predictions if as_iterable is True.
+
+##### Raises:
 
 
-*  <b>`Returns`</b>: 
-      A numpy array of predicted classes or regression values if the
-      constructor's `model_fn` returns a `Tensor` for `predictions` or a `dict`
-      of numpy arrays if `model_fn` returns a `dict`. Returns an iterable of
-      predictions if as_iterable is True.
-
-
-*  <b>`Raises`</b>: 
 *  <b>`ValueError`</b>: If x and input_fn are both provided or both `None`.
 
 

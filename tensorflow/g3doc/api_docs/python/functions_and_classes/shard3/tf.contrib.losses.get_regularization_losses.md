@@ -6,9 +6,12 @@ THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
 Instructions for updating:
 Use tf.losses.get_regularization_losses instead.
 
-  Args:
-    scope: an optional scope for filtering the losses to return.
+##### Args:
 
-  Returns:
-    A list of loss variables.
+
+*  <b>`scope`</b>: an optional scope for filtering the losses to return.
+
+##### Returns:
+
+  A list of loss variables.
 

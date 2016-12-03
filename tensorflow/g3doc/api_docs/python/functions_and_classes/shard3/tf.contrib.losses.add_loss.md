@@ -6,7 +6,9 @@ THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
 Instructions for updating:
 Use tf.losses.add_loss instead.
 
-  Args:
-    loss: A loss `Tensor`.
-    loss_collection: Optional collection to add the loss to.
+##### Args:
+
+
+*  <b>`loss`</b>: A loss `Tensor`.
+*  <b>`loss_collection`</b>: Optional collection to add the loss to.
 
