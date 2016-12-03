@@ -117,6 +117,19 @@ Status LogGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Log", LogGrad);
 
+Status Log1pGrad(const Scope& scope, const Operation& op,
+                 const std::vector<Output>& grad_inputs,
+                 std::vector<Output>* grad_outputs) {
+  // f(x) = log1p(x) = y
+  // df/dx = 1 / (1 + x)
+  // dx = dy * (1 / (1 + x))
+  auto one = Cast(scope, Const(scope, 1.0), op.input(0).type());
+  grad_outputs->push_back(
+      Div(scope, grad_inputs[0], Add(scope, one, op.input(0))));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Log1p", Log1pGrad);
+
 Status TanhGrad(const Scope& scope, const Operation& op,
                 const std::vector<Output>& grad_inputs,
                 std::vector<Output>* grad_outputs) {
