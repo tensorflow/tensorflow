@@ -25,6 +25,7 @@ py_library(
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/graph_editor:graph_editor_py",
         "//tensorflow/contrib/grid_rnn:grid_rnn_py",
+        "//tensorflow/contrib/input_pipeline:input_pipeline_py",
         "//tensorflow/contrib/integrate:integrate_py",
         "//tensorflow/contrib/labeled_tensor",
         "//tensorflow/contrib/layers:layers_py",
@@ -59,6 +60,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/contrib/factorization/kernels:all_kernels",
+        "//tensorflow/contrib/input_pipeline:input_pipeline_ops_kernels",
         "//tensorflow/contrib/layers:bucketization_op_kernel",
         "//tensorflow/contrib/layers:sparse_feature_cross_op_kernel",
     ],
@@ -70,6 +72,7 @@ cc_library(
     deps = [
         "//tensorflow/contrib/factorization:all_ops",
         "//tensorflow/contrib/framework:all_ops",
+        "//tensorflow/contrib/input_pipeline:input_pipeline_ops_op_lib",
         "//tensorflow/contrib/layers:bucketization_op_op_lib",
         "//tensorflow/contrib/layers:sparse_feature_cross_op_op_lib",
     ],

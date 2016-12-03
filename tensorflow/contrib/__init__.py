@@ -30,6 +30,7 @@ from tensorflow.contrib import factorization
 from tensorflow.contrib import framework
 from tensorflow.contrib import graph_editor
 from tensorflow.contrib import grid_rnn
+from tensorflow.contrib import input_pipeline
 from tensorflow.contrib import integrate
 from tensorflow.contrib import labeled_tensor
 from tensorflow.contrib import layers
