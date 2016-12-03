@@ -39,6 +39,7 @@ py_library(
         ":platform",
         ":platform_test",
         ":summary",
+        ":metrics",
         ":layers",
         ":training",
         ":ops",
@@ -1313,6 +1314,39 @@ py_library(
 )
 
 py_library(
+    name = "confusion_matrix",
+    srcs = ["ops/confusion_matrix.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":control_flow_ops",
+        ":framework",
+        ":math_ops",
+        ":sparse_ops",
+    ],
+)
+
+py_library(
+    name = "metrics",
+    srcs = ["ops/metrics.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":check_ops",
+        ":confusion_matrix",
+        ":control_flow_ops",
+        ":framework",
+        ":math_ops",
+        ":nn",
+        ":sets",
+        ":sparse_ops",
+        ":state_ops",
+        ":variable_scope",
+        ":variables",
+    ],
+)
+
+py_library(
     name = "special_math_ops",
     srcs = ["ops/special_math_ops.py"],
     srcs_version = "PY2AND3",
@@ -1334,6 +1368,7 @@ py_library(
         ":array_ops",
         ":check_ops",
         ":clip_ops",
+        ":confusion_matrix",
         ":control_flow_ops",
         ":data_flow_grad",
         ":data_flow_ops",

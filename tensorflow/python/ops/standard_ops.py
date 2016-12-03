@@ -39,6 +39,7 @@ from tensorflow.python.ops.check_ops import *
 from tensorflow.python.ops.clip_ops import *
 from tensorflow.python.ops.special_math_ops import *
 # TODO(vrv): Switch to import * once we're okay with exposing the module.
+from tensorflow.python.ops.confusion_matrix import confusion_matrix
 from tensorflow.python.ops.control_flow_ops import Assert
 from tensorflow.python.ops.control_flow_ops import group
 from tensorflow.python.ops.control_flow_ops import no_op
@@ -91,6 +92,7 @@ from tensorflow.python.framework import constant_op as _constant_op
 from tensorflow.python.ops import array_ops as _array_ops
 from tensorflow.python.ops import check_ops as _check_ops
 from tensorflow.python.ops import clip_ops as _clip_ops
+from tensorflow.python.ops import confusion_matrix as _confusion_matrix
 from tensorflow.python.ops import control_flow_ops as _control_flow_ops
 from tensorflow.python.ops import data_flow_ops as _data_flow_ops
 from tensorflow.python.ops import functional_ops as _functional_ops
@@ -244,6 +246,7 @@ _allowed_symbols_misc = [
     "parse_single_sequence_example",
     "serialize_many_sparse",
     "serialize_sparse",
+    "confusion_matrix",
 ]
 
 _allowed_symbols = (_allowed_symbols_array_ops +
@@ -262,6 +265,7 @@ remove_undocumented(__name__, _allowed_symbols,
                      _array_ops,
                      _check_ops,
                      _clip_ops,
+                     _confusion_matrix,
                      _control_flow_ops,
                      _constant_op,
                      _data_flow_ops,

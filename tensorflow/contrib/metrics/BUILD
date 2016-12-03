@@ -34,19 +34,6 @@ py_test(
 )
 
 py_test(
-    name = "confusion_matrix_ops_test",
-    size = "medium",
-    srcs = ["python/kernel_tests/confusion_matrix_ops_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":metrics_py",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-    ],
-)
-
-py_test(
     name = "histogram_ops_test",
     size = "medium",
     srcs = ["python/kernel_tests/histogram_ops_test.py"],

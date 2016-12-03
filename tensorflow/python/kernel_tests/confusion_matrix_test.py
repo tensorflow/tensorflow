@@ -28,8 +28,8 @@ class ConfusionMatrixTest(tf.test.TestCase):
   def _testConfMatrix(self, predictions, labels, truth, weights=None):
     with self.test_session():
       dtype = predictions.dtype
-      ans = tf.contrib.metrics.confusion_matrix(
-          predictions, labels, dtype=dtype, weights=weights)
+      ans = tf.confusion_matrix(
+          labels, predictions, dtype=dtype, weights=weights)
       tf_ans = ans.eval()
       self.assertAllClose(tf_ans, truth, atol=1e-10)
       self.assertEqual(tf_ans.dtype, dtype)
@@ -69,8 +69,8 @@ class ConfusionMatrixTest(tf.test.TestCase):
       lab = tf.concat(0, [tf.zeros([20], dtype=tf_dtype),
                           tf.ones([20], dtype=tf_dtype)])
 
-      cm = tf.contrib.metrics.confusion_matrix(
-          data, lab, dtype=tf_dtype, num_classes=2)
+      cm = tf.confusion_matrix(
+          lab, data, dtype=tf_dtype, num_classes=2)
 
       d, l, cm_out = sess.run([data, lab, cm], {m_neg: 0.0,
                                                 m_pos: 1.0,
@@ -157,28 +157,28 @@ class ConfusionMatrixTest(tf.test.TestCase):
     predictions = np.asarray([[1, 2, 3]])
     labels = np.asarray([1, 2, 3])
     self.assertRaisesRegexp(ValueError, "an not squeeze dim",
-                            tf.contrib.metrics.confusion_matrix, predictions,
-                            labels)
+                            tf.confusion_matrix,
+                            predictions, labels)
 
     predictions = np.asarray([1, 2, 3])
     labels = np.asarray([[1, 2, 3]])
     self.assertRaisesRegexp(ValueError, "an not squeeze dim",
-                            tf.contrib.metrics.confusion_matrix, predictions,
-                            labels)
+                            tf.confusion_matrix,
+                            predictions, labels)
 
   def testInputDifferentSize(self):
     predictions = np.asarray([1, 2, 3])
     labels = np.asarray([1, 2])
     self.assertRaisesRegexp(ValueError, "must be equal",
-                            tf.contrib.metrics.confusion_matrix, predictions,
-                            labels)
+                            tf.confusion_matrix,
+                            predictions, labels)
 
   def testOutputIsInt32(self):
     predictions = np.arange(2)
     labels = np.arange(2)
     with self.test_session():
-      cm = tf.contrib.metrics.confusion_matrix(
-          predictions, labels, dtype=dtypes.int32)
+      cm = tf.confusion_matrix(
+          labels, predictions, dtype=dtypes.int32)
       tf_cm = cm.eval()
     self.assertEqual(tf_cm.dtype, np.int32)
 
@@ -186,8 +186,8 @@ class ConfusionMatrixTest(tf.test.TestCase):
     predictions = np.arange(2)
     labels = np.arange(2)
     with self.test_session():
-      cm = tf.contrib.metrics.confusion_matrix(
-          predictions, labels, dtype=dtypes.int64)
+      cm = tf.confusion_matrix(
+          labels, predictions, dtype=dtypes.int64)
       tf_cm = cm.eval()
     self.assertEqual(tf_cm.dtype, np.int64)
 

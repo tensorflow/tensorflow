@@ -1385,6 +1385,21 @@ tf_py_test(
     additional_deps = ["//tensorflow:tensorflow_py"],
 )
 
+tf_py_test(
+    name = "metrics_test",
+    size = "small",
+    srcs = ["metrics_test.py"],
+    additional_deps = ["//tensorflow:tensorflow_py"],
+    shard_count = 3,
+)
+
+tf_py_test(
+    name = "confusion_matrix_test",
+    size = "small",
+    srcs = ["confusion_matrix_test.py"],
+    additional_deps = ["//tensorflow:tensorflow_py"],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(
