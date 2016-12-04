@@ -45,6 +45,15 @@ struct SetZeroFunctor<Eigen::ThreadPoolDevice, T> {
                   typename TTypes<T>::Flat out);
 };
 
+#ifdef TENSORFLOW_USE_SYCL
+// Partial specialization of SetZeroFunctor<Device=Eigen::SyclDevice, T>.
+template <typename T>
+struct SetZeroFunctor<Eigen::SyclDevice, T> {
+  void operator()(const Eigen::SyclDevice& d,
+                  typename TTypes<T>::Flat out);
+};
+#endif // TENSORFLOW_USE_SYCL
+
 template <>
 struct SetZeroFunctor<Eigen::ThreadPoolDevice, string> {
   void operator()(const Eigen::ThreadPoolDevice& d,

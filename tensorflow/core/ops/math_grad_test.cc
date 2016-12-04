@@ -388,6 +388,9 @@ class TestOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override { ctx->set_output(0, Tensor()); }
 };
 REGISTER_KERNEL_BUILDER(Name("TestOpWithNoGrad").Device(DEVICE_CPU), TestOp);
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("TestOpWithNoGrad").Device(DEVICE_SYCL), TestOp);
+#endif // TENSORFLOW_USE_SYCL
 
 TEST_F(MathGradTest, Error_Reporting) {
   auto x = test::AsTensor<float>({-3.f});

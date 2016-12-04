@@ -93,7 +93,7 @@ REGISTER_KERNEL_BUILDER(Name("_Retval").Device(DEVICE_CPU), RetvalOp);
       Name("_Arg").Device(DEVICE_SYCL).TypeConstraint<type>("T"), ArgOp);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER)
 TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name("_Arg")
-                                                   .Device(DEVICE_GPU)
+                                                   .Device(DEVICE_SYCL)
                                                    .HostMemory("output")
                                                    .TypeConstraint<int32>("T"),
                                                ArgOp);
@@ -104,7 +104,7 @@ TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name("_Arg")
       RetvalOp);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER)
 TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name("_Retval")
-                                                   .Device(DEVICE_GPU)
+                                                   .Device(DEVICE_SYCL)
                                                    .HostMemory("input")
                                                    .TypeConstraint<int32>("T"),
                                                RetvalOp);
@@ -242,5 +242,5 @@ REGISTER_KERNEL_BUILDER(Name(kGradientOp).Device(DEVICE_GPU),
 REGISTER_KERNEL_BUILDER(Name(kGradientOp).Device(DEVICE_SYCL),
                         SymbolicGradientOp);
 
-#endif
+#endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

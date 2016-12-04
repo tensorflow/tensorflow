@@ -45,6 +45,8 @@ static std::vector<string> ListDevices(TF_Status* out_status) {
       output.clear();
       return output;
     }
+    if(device->device_type() == DEVICE_SYCL)
+      delete device;
     output.push_back(attr_serialized);
   }
 

@@ -20,8 +20,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_SYCL_SYCL_DEVICE_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_SYCL_SYCL_DEVICE_H_
 
-#define EIGEN_USE_SYCL
-
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/common_runtime/sycl/sycl_allocator.h"
 #include "tensorflow/core/common_runtime/sycl/sycl_device_context.h"

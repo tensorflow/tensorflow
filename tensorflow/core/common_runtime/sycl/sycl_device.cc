@@ -90,8 +90,8 @@ Status SYCLDevice::MakeTensorFromProto(const TensorProto &tensor_proto,
     Tensor copy(GetAllocator(alloc_attrs), parsed.dtype(), parsed.shape());
     device_context_->CopyCPUTensorToDevice(&parsed, this, &copy,
                                            [&status](const Status &s) {
-					       status = s;
-					   });
+                                             status = s;
+                                           });
     *tensor = copy;
   }
   return status;
