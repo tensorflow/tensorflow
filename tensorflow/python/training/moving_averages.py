@@ -170,17 +170,19 @@ def _zero_debias(unbiased_var, value, decay):
   with variable_scope.variable_scope(
       unbiased_var.op.name, values=[unbiased_var, value, decay]) as scope:
     with ops.colocate_with(unbiased_var):
+      with ops.control_dependencies(None):
+        biased_initializer = init_ops.zeros_initializer(
+            unbiased_var.get_shape(), dtype=unbiased_var.dtype)
+        local_step_initializer = init_ops.ones_initializer()
       biased_var = variable_scope.get_variable(
-          "biased",
-          initializer=init_ops.zeros_initializer(
-              unbiased_var.get_shape(), dtype=unbiased_var.dtype),
-          trainable=False)
+          "biased", initializer=biased_initializer, trainable=False)
       # Initializing the local_step to `0` would cause problems with the
       # debiasing equation, so we instead initialize to `1`.
       local_step = variable_scope.get_variable(
           "local_step",
-          shape=[], dtype=unbiased_var.dtype,
-          initializer=init_ops.ones_initializer(),
+          shape=[],
+          dtype=unbiased_var.dtype,
+          initializer=local_step_initializer,
           trainable=False)
 
       # Get an update ops for both shadow variables.
