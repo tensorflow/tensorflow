@@ -244,7 +244,7 @@ def train():
       if step % 10 == 0:
         num_examples_per_step = FLAGS.batch_size * FLAGS.num_gpus
         examples_per_sec = num_examples_per_step / duration
-        sec_per_batch = duration / FLAGS.num_gpus
+        sec_per_batch = float(duration)
 
         format_str = ('%s: step %d, loss = %.2f (%.1f examples/sec; %.3f '
                       'sec/batch)')
