@@ -183,7 +183,7 @@ def get_mean_baseline(ema_decay=0.99, name=None):
     with vs.variable_scope(name, default_name="MeanBaseline"):
       reduced_loss = math_ops.reduce_mean(loss)
 
-      ema = training.ExponentialMovingAverage(decay=ema_decay)
+      ema = training.ExponentialMovingAverage(decay=ema_decay, zero_debias=True)
       update_op = ema.apply([reduced_loss])
 
       with ops.control_dependencies([update_op]):
