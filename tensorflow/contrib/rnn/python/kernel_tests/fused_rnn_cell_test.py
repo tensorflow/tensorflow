@@ -30,7 +30,7 @@ class FusedRnnCellTest(tf.test.TestCase):
 
     with self.test_session() as sess:
       initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=19890212)
-      cell = tf.nn.rnn_cell.BasicRNNCell(10)
+      cell = tf.contrib.rnn.BasicRNNCell(10)
       batch_size = 5
       input_size = 20
       timelen = 15
@@ -83,7 +83,7 @@ class FusedRnnCellTest(tf.test.TestCase):
   def testTimeReversedFusedRNN(self):
     with self.test_session() as sess:
       initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=19890213)
-      cell = tf.nn.rnn_cell.BasicRNNCell(10)
+      cell = tf.contrib.rnn.BasicRNNCell(10)
       batch_size = 5
       input_size = 20
       timelen = 15
