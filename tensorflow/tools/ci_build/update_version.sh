@@ -90,16 +90,6 @@ check_existence file "${CMAKE_SETUP_PY}"
 
 sed -i -e "s/^\_VERSION = [\'\"].*-cmake-experimental[\'\"]/\_VERSION = \'${MAJOR}.${MINOR}.${PATCH}-cmake-experimental\'/g" "${CMAKE_SETUP_PY}"
 
-# Update Dockerfiles in tensorflow/tools/docker/
-TOOLS_DOCKER_DIR="${TF_SRC_DIR}/tools/docker"
-check_existence dir "${TOOLS_DOCKER_DIR}"
-
-# Determine the files that need to be modified
-DOCKERFILES=$(grep -lrE "^ENV TENSORFLOW_VERSION .+" ${TOOLS_DOCKER_DIR})
-for DOCKERF in ${DOCKERFILES}; do
-  sed -i -r -e "s/^ENV TENSORFLOW_VERSION .+/ENV TENSORFLOW_VERSION ${MAJOR}.${MINOR}.${PATCH}/g" "${DOCKERF}"
-done
-
 
 # Update os_setup.md
 OS_SETUP="${TF_SRC_DIR}/g3doc/get_started/os_setup.md"

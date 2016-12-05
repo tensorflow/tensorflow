@@ -208,12 +208,10 @@ class Env {
   // TODO(jeff,sanjay): if needed, tighten spec so relative to epoch, or
   // provide a routine to get the absolute time.
 
-  /// \brief Returns the number of micro-seconds since some fixed point in
-  /// time. Only useful for computing deltas of time.
+  /// \brief Returns the number of micro-seconds since the Unix epoch.
   virtual uint64 NowMicros() = 0;
 
-  /// \brief Returns the number of seconds since some fixed point in
-  /// time. Only useful for computing deltas of time.
+  /// \brief Returns the number of seconds since the Unix epoch.
   virtual uint64 NowSeconds() { return NowMicros() / 1000000L; }
 
   /// Sleeps/delays the thread for the prescribed number of micro-seconds.
