@@ -197,7 +197,10 @@ filegroup(
 )
 
 tf_gen_op_libs(
-    op_lib_names = ["lstm_ops"],
+    op_lib_names = [
+        "lstm_ops",
+        "gru_ops",
+    ],
 )
 
 tf_kernel_library(
