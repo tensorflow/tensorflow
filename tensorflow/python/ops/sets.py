@@ -102,14 +102,14 @@ def _set_operation(a, b, set_operation, validate_indices=True):
   if isinstance(a, sparse_tensor.SparseTensor):
     if isinstance(b, sparse_tensor.SparseTensor):
       indices, values, shape = gen_set_ops.sparse_to_sparse_set_operation(
-          a.indices, a.values, a.shape, b.indices, b.values, b.shape,
+          a.indices, a.values, a.shape, b.indices, b.values, b.dense_shape,
           set_operation, validate_indices)
     else:
       raise ValueError("Sparse,Dense is not supported, but Dense,Sparse is. "
                        "Please flip the order of your inputs.")
   elif isinstance(b, sparse_tensor.SparseTensor):
     indices, values, shape = gen_set_ops.dense_to_sparse_set_operation(
-        a, b.indices, b.values, b.shape, set_operation, validate_indices)
+        a, b.indices, b.values, b.dense_shape, set_operation, validate_indices)
   else:
     indices, values, shape = gen_set_ops.dense_to_dense_set_operation(
         a, b, set_operation, validate_indices)

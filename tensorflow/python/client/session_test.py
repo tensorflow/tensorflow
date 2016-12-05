@@ -579,7 +579,7 @@ class SessionTest(test_util.TensorFlowTestCase):
           sp2, {sp: sparse_tensor.SparseTensorValue(indices, values, shape)})
       self.assertAllEqual(sp2_out.indices, indices)
       self.assertAllEqual(sp2_out.values, values)
-      self.assertAllEqual(sp2_out.shape, shape)
+      self.assertAllEqual(sp2_out.dense_shape, shape)
       # Feed SparseTensorValue and fetch sp directly.
       sp_out = s.run(
           sp, {sp: sparse_tensor.SparseTensorValue(indices, values, shape)})
@@ -615,7 +615,7 @@ class SessionTest(test_util.TensorFlowTestCase):
           sp2, {sp: sparse_tensor.SparseTensorValue(indices, values, shape)})
       self.assertAllEqual(sp2_out.indices, indices)
       self.assertAllEqual(sp2_out.values, values)
-      self.assertAllEqual(sp2_out.shape, shape)
+      self.assertAllEqual(sp2_out.dense_shape, shape)
 
   def testFeedSparsePlaceholderPartialShape(self):
     with session.Session() as s:
@@ -646,7 +646,7 @@ class SessionTest(test_util.TensorFlowTestCase):
           sp2, {sp: sparse_tensor.SparseTensorValue(indices, values, shape)})
       self.assertAllEqual(sp2_out.indices, indices)
       self.assertAllEqual(sp2_out.values, values)
-      self.assertAllEqual(sp2_out.shape, shape)
+      self.assertAllEqual(sp2_out.dense_shape, shape)
 
   def testFeedSparsePlaceholderConstantShape(self):
     with session.Session() as s:

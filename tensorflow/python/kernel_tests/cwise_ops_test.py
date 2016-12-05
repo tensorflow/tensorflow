@@ -120,7 +120,8 @@ class UnaryOpTest(tf.test.TestCase):
     self.assertTrue(isinstance(result_tensor, tf.SparseTensor))
     self.assertTrue(isinstance(input_sp_t, tf.SparseTensor))
     self.assertAllEqual(input_sp_t.indices.eval(), result_tensor.indices.eval())
-    self.assertAllEqual(input_sp_t.shape.eval(), result_tensor.shape.eval())
+    self.assertAllEqual(
+        input_sp_t.dense_shape.eval(), result_tensor.dense_shape.eval())
     if tol is None:
       self.assertAllClose(result_np, result_tensor.values.eval())
     else:

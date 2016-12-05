@@ -38,7 +38,7 @@ class SparseTensorTest(test_util.TensorFlowTestCase):
             sparse_tensor.SparseTensor(indices, values, shape))]:
       self.assertEqual(sp.indices.dtype, dtypes.int64)
       self.assertEqual(sp.values.dtype, dtypes.string)
-      self.assertEqual(sp.shape.dtype, dtypes.int64)
+      self.assertEqual(sp.dense_shape.dtype, dtypes.int64)
       self.assertEqual(sp.get_shape(), (4, 5))
 
       with self.test_session() as sess:

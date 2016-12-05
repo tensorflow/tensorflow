@@ -749,7 +749,7 @@ class ControlFlowTest(tf.test.TestCase):
         return [i + 1, tf.SparseTensor(x.indices, x.values * 2.0,
                                        x.shape)]
       _, r = tf.while_loop(c, b, [i, x])
-      self.assertEqual(r.shape.get_shape()[0].value, 1)
+      self.assertEqual(r.dense_shape.get_shape()[0].value, 1)
 
       _, r = tf.while_loop(c, b, [i, x],
                            [i.get_shape(), tensor_shape.TensorShape([None])])
@@ -1696,7 +1696,7 @@ class ControlFlowTest(tf.test.TestCase):
         return i < 10
       def b(i, x):
         return [i + 1, tf.SparseTensor(x.indices, x.values * 2.0,
-                                       x.shape)]
+                                       x.dense_shape)]
       _, r = tf.while_loop(c, b, [i, x])
       r = tf.gradients(r.values, values)[0]
       self.assertAllClose(np.array([1024.0, 1024.0]), r.eval())

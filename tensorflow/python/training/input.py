@@ -442,7 +442,7 @@ def _store_sparse_tensors(tensor_list, enqueue_many, keep_input,
   def _sparse_meta_data(t, storing_op, map_op):
     if not isinstance(t, sparse_tensor.SparseTensor):
       return _SparseMetaData(False, None, None)
-    rank = t.shape.get_shape().with_rank(1)[0]
+    rank = t.dense_shape.get_shape().with_rank(1)[0]
     if enqueue_many:
       rank -= 1
     # If a shared map_op was provided, use that. Otherwise use the name of

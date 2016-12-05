@@ -249,7 +249,7 @@ def shape_internal(input, name=None, optimize=True, out_type=dtypes.int32):
   with ops.name_scope(name, "Shape", [input]) as name:
     if isinstance(
         input, (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
-      return gen_math_ops.cast(input.shape, out_type)
+      return gen_math_ops.cast(input.dense_shape, out_type)
     else:
       input_tensor = ops.convert_to_tensor(input)
       input_shape = input_tensor.get_shape()
@@ -302,7 +302,7 @@ def size_internal(input, name=None, optimize=True, out_type=dtypes.int32):
     if isinstance(
         input, (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
       return gen_math_ops._prod(
-          gen_math_ops.cast(input.shape, out_type), 0, name=name)
+          gen_math_ops.cast(input.dense_shape, out_type), 0, name=name)
     else:
       input_tensor = ops.convert_to_tensor(input)
       input_shape = input_tensor.get_shape()
@@ -358,7 +358,7 @@ def rank_internal(input, name=None, optimize=True):
   with ops.name_scope(name, "Rank", [input]) as name:
     if isinstance(
         input, (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
-      return gen_array_ops.size(input.shape, name=name)
+      return gen_array_ops.size(input.dense_shape, name=name)
     else:
       input_tensor = ops.convert_to_tensor(input)
       input_shape = input_tensor.get_shape()
