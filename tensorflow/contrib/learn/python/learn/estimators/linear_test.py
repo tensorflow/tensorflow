@@ -28,6 +28,7 @@ import tensorflow as tf
 
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn
 from tensorflow.contrib.learn.python.learn.estimators import estimator_test_utils
+from tensorflow.contrib.learn.python.learn.estimators import test_data
 from tensorflow.contrib.learn.python.learn.metric_spec import MetricSpec
 
 
@@ -38,13 +39,6 @@ def _prepare_iris_data_for_logistic_regression():
   iris = tf.contrib.learn.datasets.base.Dataset(data=iris.data[ids],
                                                 target=iris.target[ids])
   return iris
-
-
-def _iris_input_fn():
-  iris = tf.contrib.learn.datasets.load_iris()
-  return {
-      'feature': tf.constant(iris.data, dtype=tf.float32)
-  }, tf.constant(iris.target, shape=[150, 1], dtype=tf.int32)
 
 
 class LinearClassifierTest(tf.test.TestCase):
@@ -110,8 +104,9 @@ class LinearClassifierTest(tf.test.TestCase):
         n_classes=3,
         feature_columns=[feature_column])
 
-    classifier.fit(input_fn=_iris_input_fn, steps=100)
-    scores = classifier.evaluate(input_fn=_iris_input_fn, steps=100)
+    classifier.fit(input_fn=test_data.iris_input_multiclass_fn, steps=100)
+    scores = classifier.evaluate(
+        input_fn=test_data.iris_input_multiclass_fn, steps=100)
     self.assertGreater(scores['accuracy'], 0.9)
 
   def testMultiClass_MatrixData_Labels1D(self):
@@ -205,7 +200,7 @@ class LinearClassifierTest(tf.test.TestCase):
         n_classes=3,
         feature_columns=[feature_column])
 
-    classifier.fit(input_fn=_iris_input_fn, steps=100)
+    classifier.fit(input_fn=test_data.iris_input_multiclass_fn, steps=100)
     self.assertEqual(4, len(classifier.weights_))
     self.assertEqual(3, len(classifier.bias_))
 
@@ -219,8 +214,9 @@ class LinearClassifierTest(tf.test.TestCase):
         optimizer=tf.train.FtrlOptimizer(learning_rate=0.1),
         feature_columns=[feature_column])
 
-    classifier.fit(input_fn=_iris_input_fn, steps=100)
-    scores = classifier.evaluate(input_fn=_iris_input_fn, steps=100)
+    classifier.fit(input_fn=test_data.iris_input_multiclass_fn, steps=100)
+    scores = classifier.evaluate(
+        input_fn=test_data.iris_input_multiclass_fn, steps=100)
     self.assertGreater(scores['accuracy'], 0.9)
 
   def testCustomOptimizerByString(self):
@@ -236,8 +232,9 @@ class LinearClassifierTest(tf.test.TestCase):
         optimizer=_optimizer,
         feature_columns=[feature_column])
 
-    classifier.fit(input_fn=_iris_input_fn, steps=100)
-    scores = classifier.evaluate(input_fn=_iris_input_fn, steps=100)
+    classifier.fit(input_fn=test_data.iris_input_multiclass_fn, steps=100)
+    scores = classifier.evaluate(
+        input_fn=test_data.iris_input_multiclass_fn, steps=100)
     self.assertGreater(scores['accuracy'], 0.9)
 
   def testCustomOptimizerByFunction(self):
@@ -250,8 +247,9 @@ class LinearClassifierTest(tf.test.TestCase):
         optimizer='Ftrl',
         feature_columns=[feature_column])
 
-    classifier.fit(input_fn=_iris_input_fn, steps=100)
-    scores = classifier.evaluate(input_fn=_iris_input_fn, steps=100)
+    classifier.fit(input_fn=test_data.iris_input_multiclass_fn, steps=100)
+    scores = classifier.evaluate(
+        input_fn=test_data.iris_input_multiclass_fn, steps=100)
     self.assertGreater(scores['accuracy'], 0.9)
 
   def testCustomMetrics(self):
@@ -849,8 +847,9 @@ class LinearRegressorTest(tf.test.TestCase):
         feature_columns=cont_features,
         config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
-    regressor.fit(input_fn=_iris_input_fn, steps=100)
-    scores = regressor.evaluate(input_fn=_iris_input_fn, steps=1)
+    regressor.fit(input_fn=test_data.iris_input_multiclass_fn, steps=100)
+    scores = regressor.evaluate(
+        input_fn=test_data.iris_input_multiclass_fn, steps=1)
     self.assertLess(scores['loss'], 0.2)
 
   def testRegression_TensorData(self):
