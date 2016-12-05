@@ -286,7 +286,7 @@ class Experiment(object):
                                                steps=self._eval_steps,
                                                metrics=self._eval_metrics,
                                                name=name,
-                                               use_checkpoint=latest_path)
+                                               checkpoint_path=latest_path)
 
         # TODO(soergel): further throttle how often export happens?
         self._maybe_export(eval_result)
