@@ -207,7 +207,7 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
       features = {
           'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
                                       indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+                                      dense_shape=[3, 2])
       }
       labels = tf.constant([[1], [0], [0]])
       return features, labels
@@ -566,7 +566,7 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
           'age': tf.constant([1]),
           'language': tf.SparseTensor(values=['english'],
                                       indices=[[0, 0]],
-                                      shape=[1, 1])
+                                      dense_shape=[1, 1])
       }, tf.constant([[1]])
 
     language = tf.contrib.layers.sparse_column_with_hash_bucket('language', 100)
@@ -636,7 +636,7 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
           'age': tf.constant([1]),
           'language': tf.SparseTensor(values=['english'],
                                       indices=[[0, 0]],
-                                      shape=[1, 1])
+                                      dense_shape=[1, 1])
       }, tf.constant([[1]])
 
     language = tf.contrib.layers.sparse_column_with_hash_bucket('language', 100)
@@ -664,7 +664,7 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
       return {
           'language': tf.SparseTensor(values=['english'],
                                       indices=[[0, 0]],
-                                      shape=[1, 1])
+                                      dense_shape=[1, 1])
       }, tf.constant([[1]])
 
     language = tf.contrib.layers.sparse_column_with_hash_bucket('language', 99)
@@ -859,7 +859,7 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
                                        num_epochs=num_epochs),
           'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
                                       indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+                                      dense_shape=[3, 2])
       }
       return features, tf.constant(labels, dtype=tf.float32)
 
@@ -893,7 +893,7 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
                                        num_epochs=num_epochs),
           'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
                                       indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+                                      dense_shape=[3, 2])
       }
       return features, tf.constant(labels, dtype=tf.float32)
 
@@ -971,7 +971,7 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
                                        num_epochs=num_epochs),
           'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
                                       indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+                                      dense_shape=[3, 2])
       }
       return features, tf.constant(labels, dtype=tf.float32)
 
@@ -1036,7 +1036,7 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
                                        num_epochs=num_epochs),
           'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
                                       indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+                                      dense_shape=[3, 2])
       }
       return features, tf.constant([1., 0., 0.2], dtype=tf.float32)
 
@@ -1083,7 +1083,7 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
                                        num_epochs=num_epochs),
           'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
                                       indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+                                      dense_shape=[3, 2])
       }
       return features, tf.constant([1., 0., 0.2], dtype=tf.float32)
 
@@ -1116,7 +1116,7 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
                                        num_epochs=num_epochs),
           'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
                                       indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+                                      dense_shape=[3, 2])
       }
       return features, tf.constant([1., 0., 0.2], dtype=tf.float32)
 
@@ -1143,7 +1143,7 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
                                        num_epochs=num_epochs),
           'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
                                       indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+                                      dense_shape=[3, 2])
       }
       return features, tf.constant([1., 0., 0.2], dtype=tf.float32)
 

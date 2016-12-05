@@ -50,7 +50,7 @@ def ndlstm_base_unrolled(inputs, noutput, scope=None, reverse=False):
   """
   with tf.variable_scope(scope, "SeqLstmUnrolled", [inputs]):
     length, batch_size, _ = _shape(inputs)
-    lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(noutput, state_is_tuple=False)
+    lstm_cell = tf.contrib.rnn.BasicLSTMCell(noutput, state_is_tuple=False)
     state = tf.zeros([batch_size, lstm_cell.state_size])
     output_u = []
     inputs_u = tf.unstack(inputs)
@@ -86,7 +86,7 @@ def ndlstm_base_dynamic(inputs, noutput, scope=None, reverse=False):
     # TODO(tmb) make batch size, sequence_length dynamic
     # example: sequence_length = tf.shape(inputs)[0]
     _, batch_size, _ = _shape(inputs)
-    lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(noutput, state_is_tuple=False)
+    lstm_cell = tf.contrib.rnn.BasicLSTMCell(noutput, state_is_tuple=False)
     state = tf.zeros([batch_size, lstm_cell.state_size])
     sequence_length = int(inputs.get_shape()[0])
     sequence_lengths = tf.to_int64(tf.fill([batch_size], sequence_length))
@@ -145,7 +145,7 @@ def sequence_to_final(inputs, noutput, scope=None, name=None, reverse=False):
   """
   with tf.variable_scope(scope, "SequenceToFinal", [inputs]):
     length, batch_size, _ = _shape(inputs)
-    lstm = tf.nn.rnn_cell.BasicLSTMCell(noutput, state_is_tuple=False)
+    lstm = tf.contrib.rnn.BasicLSTMCell(noutput, state_is_tuple=False)
     state = tf.zeros([batch_size, lstm.state_size])
     inputs_u = tf.unstack(inputs)
     if reverse:

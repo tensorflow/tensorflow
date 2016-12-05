@@ -87,7 +87,7 @@ py_library(
 
 cuda_py_test(
     name = "layers_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/layers/layers_test.py"],
     additional_deps = [
         ":layers_py",

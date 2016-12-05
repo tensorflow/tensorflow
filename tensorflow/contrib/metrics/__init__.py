@@ -133,7 +133,6 @@ labels and predictions tensors and results in a weighted average of the metric.
 @@auc_using_histogram
 
 @@accuracy
-@@confusion_matrix
 
 @@aggregate_metrics
 @@aggregate_metric_map

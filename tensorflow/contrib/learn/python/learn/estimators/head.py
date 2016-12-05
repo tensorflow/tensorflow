@@ -314,16 +314,16 @@ class _RegressionHead(_Head):
     train_op = None
     eval_metric_ops = None
     if (mode != model_fn.ModeKeys.INFER) and (labels is not None):
-      labels = _check_labels(labels, self._label_name)
+      labels_tensor = _to_labels_tensor(labels, self._label_name)
       loss = _training_loss(
-          features, labels, logits,
+          features, labels_tensor, logits,
           loss_fn=self._loss_fn,
           weight_column_name=self._weight_column_name,
           head_name=self._head_name)
       if (mode == model_fn.ModeKeys.TRAIN) and (train_op_fn is not None):
         train_op = _train_op(
-            loss, labels, train_op_fn, centered_bias, self.logits_dimension,
-            self._loss_fn)
+            loss, labels_tensor, train_op_fn, centered_bias,
+            self.logits_dimension, self._loss_fn)
       eval_metric_ops = _eval_metric_ops(
           self._default_metrics(), features, labels, predictions)
 
@@ -440,16 +440,16 @@ class _BinaryLogisticHead(_Head):
     train_op = None
     eval_metric_ops = None
     if (mode != model_fn.ModeKeys.INFER) and (labels is not None):
-      labels = _check_labels(labels, self._label_name)
+      labels_tensor = _to_labels_tensor(labels, self._label_name)
       loss = _training_loss(
-          features, labels, logits,
+          features, labels_tensor, logits,
           loss_fn=self._loss_fn,
           weight_column_name=self._weight_column_name,
           head_name=self._head_name)
       if (mode == model_fn.ModeKeys.TRAIN) and (train_op_fn is not None):
         train_op = _train_op(
-            loss, labels, train_op_fn, centered_bias, self.logits_dimension,
-            self._loss_fn)
+            loss, labels_tensor, train_op_fn, centered_bias,
+            self.logits_dimension, self._loss_fn)
       eval_metric_ops = _eval_metric_ops(
           self._default_metrics(), features, labels, predictions)
 
@@ -625,16 +625,16 @@ class _MultiClassHead(_Head):
     train_op = None
     eval_metric_ops = None
     if (mode != model_fn.ModeKeys.INFER) and (labels is not None):
-      labels = _check_labels(labels, self._label_name)
+      labels_tensor = _to_labels_tensor(labels, self._label_name)
       loss = _training_loss(
-          features, labels, logits,
+          features, labels_tensor, logits,
           loss_fn=self._loss_fn,
           weight_column_name=self._weight_column_name,
           head_name=self._head_name)
       if (mode == model_fn.ModeKeys.TRAIN) and (train_op_fn is not None):
         train_op = _train_op(
-            loss, labels, train_op_fn, centered_bias, self._logits_dimension,
-            self._loss_fn)
+            loss, labels_tensor, train_op_fn, centered_bias,
+            self._logits_dimension, self._loss_fn)
       eval_metric_ops = _eval_metric_ops(
           self._default_metrics(), features, labels, predictions)
 
@@ -706,7 +706,7 @@ class _MultiClassHead(_Head):
     return metrics
 
 
-def _check_labels(labels, label_name):
+def _to_labels_tensor(labels, label_name):
   labels = labels[label_name] if isinstance(labels, dict) else labels
   if isinstance(labels, sparse_tensor.SparseTensor):
     raise ValueError("SparseTensor is not supported as labels.")
@@ -872,17 +872,18 @@ def _centered_bias_step(centered_bias, logits_dimension, labels, loss_fn):
   """Creates and returns training op for centered bias."""
   if (logits_dimension is None) or (logits_dimension < 1):
     raise ValueError("Invalid logits_dimension %s." % logits_dimension)
-  batch_size = array_ops.shape(labels)[0]
-  logits = array_ops.reshape(
-      array_ops.tile(centered_bias, (batch_size,)),
-      (batch_size, logits_dimension))
-  with ops.name_scope(None, "centered_bias", (labels, logits)):
-    centered_bias_loss = math_ops.reduce_mean(
-        loss_fn(logits, labels), name="training_loss")
+  with ops.name_scope(None, "centered_bias_step", (labels,)) as name:
+    batch_size = array_ops.shape(labels)[0]
+    logits = array_ops.reshape(
+        array_ops.tile(centered_bias, (batch_size,)),
+        (batch_size, logits_dimension))
+    with ops.name_scope(None, "centered_bias", (labels, logits)):
+      centered_bias_loss = math_ops.reduce_mean(
+          loss_fn(logits, labels), name="training_loss")
   # Learn central bias by an optimizer. 0.1 is a convervative lr for a
   # single variable.
   return training.AdagradOptimizer(0.1).minimize(
-      centered_bias_loss, var_list=(centered_bias,), name="centered_bias_step")
+      centered_bias_loss, var_list=(centered_bias,), name=name)
 
 
 def _head_prefixed(head_name, val):

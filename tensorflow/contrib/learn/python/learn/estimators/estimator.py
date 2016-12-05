@@ -187,7 +187,7 @@ def _get_replica_device_setter(config):
     A replica device setter, or None.
   """
   ps_ops = [
-      'Variable', 'AutoReloadVariable', 'MutableHashTable',
+      'Variable', 'VariableV2', 'AutoReloadVariable', 'MutableHashTable',
       'MutableHashTableOfTensors', 'MutableDenseHashTable'
   ]
 
@@ -414,7 +414,7 @@ class BaseEstimator(
   )
   def evaluate(
       self, x=None, y=None, input_fn=None, feed_fn=None, batch_size=None,
-      steps=None, metrics=None, name=None):
+      steps=None, metrics=None, name=None, checkpoint_path=None):
     # pylint: disable=g-doc-args,g-doc-return-or-yield
     """See `Evaluable`.
 
@@ -429,11 +429,13 @@ class BaseEstimator(
     if metrics is not None and not isinstance(metrics, dict):
       raise ValueError('Metrics argument should be None or dict. '
                        'Got %s.' % metrics)
-    eval_results, global_step = self._evaluate_model(input_fn=input_fn,
-                                                     feed_fn=feed_fn,
-                                                     steps=steps,
-                                                     metrics=metrics,
-                                                     name=name)
+    eval_results, global_step = self._evaluate_model(
+        input_fn=input_fn,
+        feed_fn=feed_fn,
+        steps=steps,
+        metrics=metrics,
+        name=name,
+        checkpoint_path=checkpoint_path)
     if eval_results is not None:
       eval_results.update({'global_step': global_step})
     return eval_results
@@ -769,18 +771,21 @@ class BaseEstimator(
                       steps,
                       feed_fn=None,
                       metrics=None,
-                      name=''):
+                      name='',
+                      checkpoint_path=None):
     # TODO(wicke): Remove this once Model and associated code are gone.
     if (hasattr(self._config, 'execution_mode') and
         self._config.execution_mode not in ('all', 'evaluate', 'eval_evalset')):
       return None, None
 
-    # Check that model has been trained.
-    checkpoint_path = self._model_dir
-    latest_path = saver.latest_checkpoint(checkpoint_path)
-    if not latest_path:
-      raise NotFittedError("Couldn't find trained model at %s."
-                           % checkpoint_path)
+    # Check that model has been trained (if nothing has been set explicitly).
+    if not checkpoint_path:
+      latest_path = saver.latest_checkpoint(self._model_dir)
+      if not latest_path:
+        raise NotFittedError("Couldn't find trained model at %s."
+                             % self._model_dir)
+      checkpoint_path = self._model_dir
+
     # Setup output directory.
     eval_dir = os.path.join(self._model_dir, 'eval' if not name else
                             'eval_' + name)
@@ -914,7 +919,14 @@ class BaseEstimator(
   def _infer_model_as_iterable(
       self, checkpoint_path, predictions, feed_fn, return_dict):
     if feed_fn is None:
-      feed_dicts = itertools.repeat(None)
+      # If there are no queue_runners, the input `predictions` is a
+      # constant, and we should stop after the first epoch.  If,
+      # instead, there are queue_runners, eventually they should throw
+      # an `OutOfRangeError`.
+      if ops.get_collection(ops.GraphKeys.QUEUE_RUNNERS):
+        feed_dicts = itertools.repeat(None)
+      else:
+        feed_dicts = [None]
     else:
       def _feed_fn():
         while True:

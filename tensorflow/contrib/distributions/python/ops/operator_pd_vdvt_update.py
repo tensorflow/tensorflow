@@ -145,7 +145,7 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
       else:
         v_shape = array_ops.shape(v)
         v_rank = array_ops.rank(v)
-        v_batch_shape = array_ops.slice(v_shape, [0], [v_rank - 2])
+        v_batch_shape = array_ops.strided_slice(v_shape, [0], [v_rank - 2])
         r = array_ops.gather(v_shape, v_rank - 1)  # Last dim of v
         id_shape = array_ops.concat(0, (v_batch_shape, [r, r]))
       return operator_pd_identity.OperatorPDIdentity(
@@ -228,11 +228,13 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
         checks.append(check_ops.assert_rank(diag, r_op - 1))
 
       # Check batch shape
-      checks.append(check_ops.assert_equal(
-          operator.batch_shape(), array_ops.slice(s_v, [0], [r_v - 2])))
+      checks.append(
+          check_ops.assert_equal(operator.batch_shape(),
+                                 array_ops.strided_slice(s_v, [0], [r_v - 2])))
       if diag is not None:
-        checks.append(check_ops.assert_equal(
-            operator.batch_shape(), array_ops.slice(s_d, [0], [r_d - 1])))
+        checks.append(
+            check_ops.assert_equal(operator.batch_shape(
+            ), array_ops.strided_slice(s_d, [0], [r_d - 1])))
 
       # Check event shape
       checks.append(check_ops.assert_equal(

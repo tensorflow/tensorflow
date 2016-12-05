@@ -399,16 +399,19 @@ TensorBuffer* FromProtoField(Allocator* a, const TensorProto& in, int64 n) {
   }
 
   const int64 in_n = ProtoHelper<T>::NumElements(in);
-  auto begin = ProtoHelper<T>::Begin(in);
-  if (n <= in_n) {
-    std::copy_n(begin, n, data);
-  } else if (in_n > 0) {
-    std::copy_n(begin, in_n, data);
-    const T& last = *(data + in_n - 1);
-    std::fill_n(data + in_n, n - in_n, last);
-  } else {
+  if (in_n <= 0) {
     std::fill_n(data, n, T());
+  } else {
+    auto begin = ProtoHelper<T>::Begin(in);
+    if (n <= in_n) {
+      std::copy_n(begin, n, data);
+    } else {
+      std::copy_n(begin, in_n, data);
+      const T& last = *(data + in_n - 1);
+      std::fill_n(data + in_n, n - in_n, last);
+    }
   }
+
   return buf;
 }
 
@@ -532,35 +535,39 @@ void Tensor::UnsafeCopyFromInternal(const Tensor& other, DataType dtype,
     STMTS;                            \
     break;                            \
   }
-#define CASES(TYPE_ENUM, STMTS)                       \
-  switch (TYPE_ENUM) {                                \
-    CASE(float, SINGLE_ARG(STMTS))                    \
-    CASE(double, SINGLE_ARG(STMTS))                   \
-    CASE(int32, SINGLE_ARG(STMTS))                    \
-    CASE(uint8, SINGLE_ARG(STMTS))                    \
-    CASE(uint16, SINGLE_ARG(STMTS))                   \
-    CASE(int16, SINGLE_ARG(STMTS))                    \
-    CASE(int8, SINGLE_ARG(STMTS))                     \
-    CASE(string, SINGLE_ARG(STMTS))                   \
-    CASE(complex64, SINGLE_ARG(STMTS))                \
-    CASE(complex128, SINGLE_ARG(STMTS))               \
-    CASE(int64, SINGLE_ARG(STMTS))                    \
-    CASE(bool, SINGLE_ARG(STMTS))                     \
-    CASE(qint32, SINGLE_ARG(STMTS))                   \
-    CASE(quint8, SINGLE_ARG(STMTS))                   \
-    CASE(qint8, SINGLE_ARG(STMTS))                    \
-    CASE(quint16, SINGLE_ARG(STMTS))                  \
-    CASE(qint16, SINGLE_ARG(STMTS))                   \
-    CASE(bfloat16, SINGLE_ARG(STMTS))                 \
-    CASE(Eigen::half, SINGLE_ARG(STMTS))              \
-    CASE(ResourceHandle, SINGLE_ARG(STMTS))           \
-    case DT_INVALID:                                  \
-      LOG(FATAL) << "Type not set";                   \
-      break;                                          \
-    default:                                          \
-      LOG(FATAL) << "Unexpected type: " << TYPE_ENUM; \
-      break;                                          \
+#define CASES_WITH_DEFAULT(TYPE_ENUM, STMTS, INVALID, DEFAULT) \
+  switch (TYPE_ENUM) {                                         \
+    CASE(float, SINGLE_ARG(STMTS))                             \
+    CASE(double, SINGLE_ARG(STMTS))                            \
+    CASE(int32, SINGLE_ARG(STMTS))                             \
+    CASE(uint8, SINGLE_ARG(STMTS))                             \
+    CASE(uint16, SINGLE_ARG(STMTS))                            \
+    CASE(int16, SINGLE_ARG(STMTS))                             \
+    CASE(int8, SINGLE_ARG(STMTS))                              \
+    CASE(string, SINGLE_ARG(STMTS))                            \
+    CASE(complex64, SINGLE_ARG(STMTS))                         \
+    CASE(complex128, SINGLE_ARG(STMTS))                        \
+    CASE(int64, SINGLE_ARG(STMTS))                             \
+    CASE(bool, SINGLE_ARG(STMTS))                              \
+    CASE(qint32, SINGLE_ARG(STMTS))                            \
+    CASE(quint8, SINGLE_ARG(STMTS))                            \
+    CASE(qint8, SINGLE_ARG(STMTS))                             \
+    CASE(quint16, SINGLE_ARG(STMTS))                           \
+    CASE(qint16, SINGLE_ARG(STMTS))                            \
+    CASE(bfloat16, SINGLE_ARG(STMTS))                          \
+    CASE(Eigen::half, SINGLE_ARG(STMTS))                       \
+    CASE(ResourceHandle, SINGLE_ARG(STMTS))                    \
+    case DT_INVALID:                                           \
+      INVALID;                                                 \
+      break;                                                   \
+    default:                                                   \
+      DEFAULT;                                                 \
+      break;                                                   \
   }
+
+#define CASES(TYPE_ENUM, STMTS)                                      \
+  CASES_WITH_DEFAULT(TYPE_ENUM, STMTS, LOG(FATAL) << "Type not set"; \
+                     , LOG(FATAL) << "Unexpected type: " << TYPE_ENUM;)
 
 Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape)
     : shape_(shape), buf_(nullptr) {
@@ -665,13 +672,16 @@ bool Tensor::FromProto(Allocator* a, const TensorProto& proto) {
   TensorShape shape(proto.tensor_shape());
   const int64 N = shape.num_elements();
   if (N > 0 && proto.dtype()) {
+    bool dtype_error = false;
     if (!proto.tensor_content().empty()) {
       const auto& content = proto.tensor_content();
-      CASES(proto.dtype(), p = Helper<T>::Decode(a, content, N));
+      CASES_WITH_DEFAULT(proto.dtype(), p = Helper<T>::Decode(a, content, N),
+                         dtype_error = true, dtype_error = true);
     } else {
-      CASES(proto.dtype(), p = FromProtoField<T>(a, proto, N));
+      CASES_WITH_DEFAULT(proto.dtype(), p = FromProtoField<T>(a, proto, N),
+                         dtype_error = true, dtype_error = true);
     }
-    if (p == nullptr) return false;
+    if (dtype_error || p == nullptr) return false;
   }
   shape_ = shape;
   set_dtype(proto.dtype());

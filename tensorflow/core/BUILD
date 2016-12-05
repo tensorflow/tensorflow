@@ -73,7 +73,6 @@ load(
     "tf_generate_proto_text_sources",
     "tf_genrule_cmd_append_to_srcs",
     "tf_opts_nortti_if_android",
-    "tf_proto_text_protos_relative",
     "cc_header_only_library",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
@@ -93,6 +92,9 @@ load(
     "tf_additional_lib_deps",
     "tf_additional_stream_executor_srcs",
     "tf_additional_cupti_wrapper_deps",
+    "tf_additional_libdevice_data",
+    "tf_additional_libdevice_deps",
+    "tf_additional_libdevice_srcs",
     "tf_additional_test_deps",
     "tf_additional_test_srcs",
     "tf_kernel_tests_linkstatic",
@@ -105,18 +107,61 @@ load(
 # -----------------------------------------------------------------------------
 # Public targets
 
+# Protos which are needed for core tensorflow, including on mobile builds.
+#
+# Note that some protos are in neither additional_core_proto_srcs nor this
+# filegroup; e.g.  ones with individual proto_library targets.
+CORE_PROTO_SRCS = [
+    "example/example.proto",
+    "example/feature.proto",
+    "framework/allocation_description.proto",
+    "framework/attr_value.proto",
+    "framework/cost_graph.proto",
+    "framework/device_attributes.proto",
+    "framework/function.proto",
+    "framework/graph.proto",
+    "framework/kernel_def.proto",
+    "framework/log_memory.proto",
+    "framework/node_def.proto",
+    "framework/op_def.proto",
+    "framework/resource_handle.proto",
+    "framework/step_stats.proto",
+    "framework/summary.proto",
+    "framework/tensor.proto",
+    "framework/tensor_description.proto",
+    "framework/tensor_shape.proto",
+    "framework/tensor_slice.proto",
+    "framework/types.proto",
+    "framework/versions.proto",
+    "lib/core/error_codes.proto",
+    "protobuf/config.proto",
+    "protobuf/tensor_bundle.proto",
+    "protobuf/saver.proto",
+    "util/memmapped_file_system.proto",
+    "util/saved_tensor_slice.proto",
+]
+
+# Protos which are not needed on mobile builds, but should be included in
+# protos_all.
+#
+# Note that some protos are in neither core_proto_srcs nor this filegroup; e.g.
+# ones with individual proto_library targets.
+ADDITIONAL_CORE_PROTO_SRCS = [
+    "example/example_parser_configuration.proto",
+    "framework/variable.proto",
+    "protobuf/control_flow.proto",
+    "protobuf/meta_graph.proto",
+    "protobuf/named_tensor.proto",
+    "protobuf/queue_runner.proto",
+    "protobuf/saved_model.proto",
+    "protobuf/tensorflow_server.proto",
+    "util/event.proto",
+    "util/test_log.proto",
+]
+
 tf_proto_library(
     name = "protos_all",
-    srcs = glob(
-        ["**/*.proto"],
-        exclude = [
-            "debug/debug_service.proto",
-            "protobuf/worker.proto",
-            "protobuf/worker_service.proto",
-            "protobuf/master.proto",
-            "protobuf/master_service.proto",
-        ],
-    ),
+    srcs = CORE_PROTO_SRCS + ADDITIONAL_CORE_PROTO_SRCS,
     cc_api_version = 2,
     go_api_version = 2,
     java_api_version = 2,
@@ -183,12 +228,7 @@ cc_library(
         "lib/io/table_builder.h",
         "lib/io/table_options.h",
         "lib/math/math_util.h",
-        "lib/monitoring/collected_metrics.h",
-        "lib/monitoring/collection_registry.h",
         "lib/monitoring/counter.h",
-        "lib/monitoring/metric_def.h",
-        "lib/monitoring/mobile_counter.h",
-        "lib/monitoring/mobile_sampler.h",
         "lib/monitoring/sampler.h",
         "lib/random/distribution_sampler.h",
         "lib/random/philox_random.h",
@@ -377,6 +417,7 @@ tf_gen_op_libs(
         "random_ops",
         "resource_variable_ops",
         "sdca_ops",
+        "set_ops",
         "script_ops",
         "sendrecv_ops",
         "sparse_ops",
@@ -420,6 +461,7 @@ cc_library(
         ":script_ops_op_lib",
         ":sdca_ops_op_lib",
         ":sendrecv_ops_op_lib",
+        ":set_ops_op_lib",
         ":sparse_ops_op_lib",
         ":state_ops_op_lib",
         ":string_ops_op_lib",
@@ -542,6 +584,7 @@ cc_library(
         "//tensorflow/core/kernels:required",
         "//tensorflow/core/kernels:resource_variable_ops",
         "//tensorflow/core/kernels:sdca_ops",
+        "//tensorflow/core/kernels:set_kernels",
         "//tensorflow/core/kernels:sparse",
         "//tensorflow/core/kernels:state",
         "//tensorflow/core/kernels:string",
@@ -646,7 +689,7 @@ load(
 # List of protos we want on android
 filegroup(
     name = "android_proto_srcs",
-    srcs = tf_android_core_proto_sources(),
+    srcs = tf_android_core_proto_sources(CORE_PROTO_SRCS),
     visibility = ["//visibility:public"],
 )
 
@@ -988,6 +1031,7 @@ cc_library(
                 "platform/gif.h",
                 "platform/jpeg.h",
                 "platform/**/cuda.h",
+                "platform/**/cuda_libdevice_path.cc",
                 "platform/**/stream_executor.h",
                 "platform/load_library.cc",
             ],
@@ -1008,6 +1052,7 @@ cc_library(
                 "platform/gif.h",
                 "platform/jpeg.h",
                 "platform/**/cuda.h",
+                "platform/**/cuda_libdevice_path.cc",
                 "platform/**/stream_executor.h",
             ],
         ),
@@ -1015,6 +1060,7 @@ cc_library(
         exclude = [
             "**/*test*",
             "platform/**/cuda.h",
+            "platform/**/cuda_libdevice_path.cc",
             "platform/**/stream_executor.h",
         ] +
         # Protobuf deps already included through the ":lib_proto_parsing"
@@ -1039,6 +1085,11 @@ cc_library(
         "lib/io/zlib_compression_options.h",
         "lib/io/zlib_inputstream.h",
         "lib/io/zlib_outputbuffer.h",
+        "lib/monitoring/collected_metrics.h",
+        "lib/monitoring/collection_registry.h",
+        "lib/monitoring/metric_def.h",
+        "lib/monitoring/mobile_counter.h",
+        "lib/monitoring/mobile_sampler.h",
         "lib/png/png_io.h",
         "lib/random/random.h",
         "lib/random/random_distributions.h",
@@ -1051,6 +1102,7 @@ cc_library(
         "platform/demangle.h",
         "platform/denormal.h",
         "platform/host_info.h",
+        "platform/monitoring.h",
         "platform/platform.h",
         "platform/protobuf_internal.h",
         "platform/tensor_coding.h",
@@ -1103,7 +1155,7 @@ cc_library(
 
 proto_text_hdrs_and_srcs = tf_generate_proto_text_sources(
     name = "proto_text_srcs_all",
-    srcs = tf_proto_text_protos_relative(),
+    srcs = CORE_PROTO_SRCS,
     srcs_relative_dir = "tensorflow/core/",
 )
 
@@ -2131,6 +2183,7 @@ tf_cc_tests(
         "ops/nn_ops_test.cc",
         "ops/parsing_ops_test.cc",
         "ops/random_ops_test.cc",
+        "ops/set_ops_test.cc",
         "ops/sparse_ops_test.cc",
         "ops/state_ops_test.cc",
         "ops/string_ops_test.cc",
@@ -2240,6 +2293,18 @@ filegroup(
     srcs = [
         "example/testdata/parse_example_graph_def.pbtxt",
     ],
+)
+
+cc_library(
+    name = "cuda_libdevice_path",
+    srcs = ["platform/cuda_libdevice_path.cc"] + tf_additional_libdevice_srcs(),
+    hdrs = ["platform/cuda_libdevice_path.h"],
+    copts = tf_copts(),
+    data = tf_additional_libdevice_data(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":lib",
+    ] + tf_additional_libdevice_deps(),
 )
 
 # -----------------------------------------------------------------------------

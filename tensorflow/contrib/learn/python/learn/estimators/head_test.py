@@ -68,6 +68,24 @@ class RegressionModelHeadTest(tf.test.TestCase):
                                    _noop_train_op, logits=prediction)
       self.assertIsNone(model_fn_ops.train_op)
 
+  def testRegressionWithLabelName(self):
+    label_name = "my_label"
+    head = head_lib._regression_head(label_name=label_name)
+    with tf.Graph().as_default(), tf.Session() as sess:
+      prediction = tf.constant([[1.], [1.], [3.]])
+      labels = {label_name: tf.constant([[0.], [1.], [1.]])}
+      model_fn_ops = head.head_ops({}, labels,
+                                   tf.contrib.learn.ModeKeys.TRAIN,
+                                   _noop_train_op, logits=prediction)
+      self._assert_metrics(model_fn_ops)
+      _assert_no_variables(self)
+      self.assertAlmostEqual(5. / 3, sess.run(model_fn_ops.loss))
+
+      model_fn_ops = head.head_ops({}, labels,
+                                   tf.contrib.learn.ModeKeys.EVAL,
+                                   _noop_train_op, logits=prediction)
+      self.assertIsNone(model_fn_ops.train_op)
+
   def testRegressionWithWeights(self):
     head = head_lib._regression_head(
         weight_column_name="label_weight")
@@ -129,6 +147,24 @@ class MultiLabelModelHeadTest(tf.test.TestCase):
     with tf.Graph().as_default(), tf.Session() as sess:
       logits = tf.constant([[1., 0., 0.]])
       labels = tf.constant([[0, 0, 1]])
+      model_fn_ops = head.head_ops({}, labels,
+                                   tf.contrib.learn.ModeKeys.TRAIN,
+                                   _noop_train_op, logits=logits)
+      self._assert_metrics(model_fn_ops)
+      _assert_no_variables(self)
+      self.assertAlmostEqual(0.89985204, sess.run(model_fn_ops.loss))
+
+      model_fn_ops = head.head_ops({}, labels,
+                                   tf.contrib.learn.ModeKeys.EVAL,
+                                   _noop_train_op, logits=logits)
+      self.assertIsNone(model_fn_ops.train_op)
+
+  def testMultiLabelWithLabelName(self):
+    label_name = "my_label"
+    head = head_lib._multi_label_head(n_classes=3, label_name=label_name)
+    with tf.Graph().as_default(), tf.Session() as sess:
+      logits = tf.constant([[1., 0., 0.]])
+      labels = {label_name: tf.constant([[0, 0, 1]])}
       model_fn_ops = head.head_ops({}, labels,
                                    tf.contrib.learn.ModeKeys.TRAIN,
                                    _noop_train_op, logits=logits)
@@ -220,6 +256,26 @@ class MultiClassModelHeadTest(tf.test.TestCase):
           ValueError, "SparseTensor is not supported as labels."):
         head.head_ops({}, labels, tf.contrib.learn.ModeKeys.TRAIN,
                       _noop_train_op, logits=prediction)
+
+  def testBinaryClassificationWithLabelName(self):
+    label_name = "my_label"
+    head = head_lib._multi_class_head(n_classes=2, label_name=label_name)
+    with tf.Graph().as_default(), tf.Session() as sess:
+      logits = tf.constant([[1.], [1.]])
+      labels = {label_name: tf.constant([[1.], [0.]])}
+      # logloss: z:label, x:logit
+      # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
+      model_fn_ops = head.head_ops({}, labels,
+                                   tf.contrib.learn.ModeKeys.TRAIN,
+                                   _noop_train_op, logits=logits)
+      self._assert_binary_metrics(model_fn_ops)
+      _assert_no_variables(self)
+      self.assertAlmostEqual(0.81326175, sess.run(model_fn_ops.loss),
+                             delta=1e-6)
+      model_fn_ops = head.head_ops({}, labels,
+                                   tf.contrib.learn.ModeKeys.EVAL,
+                                   _noop_train_op, logits=logits)
+      self.assertIsNone(model_fn_ops.train_op)
 
   def testBinaryClassificationWithWeights(self):
     head = head_lib._multi_class_head(
@@ -329,6 +385,25 @@ class BinarySvmModelHeadTest(tf.test.TestCase):
     with tf.Graph().as_default(), tf.Session():
       predictions = tf.constant(self._predictions)
       labels = tf.constant(self._labels)
+      model_fn_ops = head.head_ops({}, labels,
+                                   tf.contrib.learn.ModeKeys.TRAIN,
+                                   _noop_train_op, logits=predictions)
+      self._assert_metrics(model_fn_ops)
+      _assert_no_variables(self)
+      self.assertAlmostEqual(
+          np.average(self._expected_losses), model_fn_ops.loss.eval())
+
+    model_fn_ops = head.head_ops({}, labels,
+                                 tf.contrib.learn.ModeKeys.EVAL,
+                                 _noop_train_op, logits=predictions)
+    self.assertIsNone(model_fn_ops.train_op)
+
+  def testBinarySVMWithLabelName(self):
+    label_name = "my_label"
+    head = head_lib._binary_svm_head(label_name=label_name)
+    with tf.Graph().as_default(), tf.Session():
+      predictions = tf.constant(self._predictions)
+      labels = {label_name: tf.constant(self._labels)}
       model_fn_ops = head.head_ops({}, labels,
                                    tf.contrib.learn.ModeKeys.TRAIN,
                                    _noop_train_op, logits=predictions)

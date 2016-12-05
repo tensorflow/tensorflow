@@ -423,8 +423,5 @@ TEST(GraphTransferer, LoadGraphFromProtoFile) {
   Status status = gt.LoadGraphFromProtoFile(
       *ops_definitions, filename, input_node_info_list, output_node_names,
       is_text_proto, true, &output_tensor_info);
-  // TODO(satok): Uncomment following assert once we fix the loader problem
-  // ASSERT_TRUE(status.ok()) << status;
 }
-
 }  // namespace tensorflow

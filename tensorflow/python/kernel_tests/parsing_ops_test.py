@@ -47,7 +47,8 @@ def flatten(list_of_lists):
 def flatten_values_tensors_or_sparse(tensors_list):
   """Flatten each SparseTensor object into 3 Tensors for session.run()."""
   return list(
-      flatten([[v.indices, v.values, v.shape] if isinstance(v, tf.SparseTensor)
+      flatten([[v.indices, v.values, v.dense_shape]
+               if isinstance(v, tf.SparseTensor)
                else [v] for v in tensors_list]))
 
 
@@ -102,7 +103,8 @@ class ParseExampleTest(tf.test.TestCase):
           self.assertEqual(
               tuple(out[k].indices.get_shape().as_list()), (None, 2))
           self.assertEqual(tuple(out[k].values.get_shape().as_list()), (None,))
-          self.assertEqual(tuple(out[k].shape.get_shape().as_list()), (2,))
+          self.assertEqual(
+              tuple(out[k].dense_shape.get_shape().as_list()), (2,))
 
   def testEmptySerializedWithAllDefaults(self):
     sparse_name = "st_a"
@@ -169,7 +171,9 @@ class ParseExampleTest(tf.test.TestCase):
             "serialized": [original.SerializeToString()],
             "features": input_features,
         },
-        expected_err=(tf.OpError, "Name: in1, Feature: c is required"))
+        expected_err=(
+            tf.OpError,
+            "Name: in1, Feature: c \\(data type: float\\) is required"))
 
     # Standard case of missing key and value.
     self._test(
@@ -178,7 +182,9 @@ class ParseExampleTest(tf.test.TestCase):
             "serialized": ["", ""],
             "features": input_features,
         },
-        expected_err=(tf.OpError, "Name: in1, Feature: c is required"))
+        expected_err=(
+            tf.OpError,
+            "Name: in1, Feature: c \\(data type: float\\) is required"))
 
   def testDenseNotMatchingShapeShouldFail(self):
     original = [
@@ -597,7 +603,8 @@ class ParseSingleExampleTest(tf.test.TestCase):
           self.assertEqual(
               tuple(out[k].indices.get_shape().as_list()), (None, 1))
           self.assertEqual(tuple(out[k].values.get_shape().as_list()), (None,))
-          self.assertEqual(tuple(out[k].shape.get_shape().as_list()), (1,))
+          self.assertEqual(
+              tuple(out[k].dense_shape.get_shape().as_list()), (1,))
 
   def testSingleExampleWithSparseAndSparseFeatureAndDense(self):
     original = example(features=features({"c": float_feature([3, 4]),
@@ -712,7 +719,7 @@ class ParseSequenceExampleTest(tf.test.TestCase):
             self.assertEqual(
                 tuple(context_out[k].values.get_shape().as_list()), (None,))
             self.assertEqual(
-                tuple(context_out[k].shape.get_shape().as_list()), (1,))
+                tuple(context_out[k].dense_shape.get_shape().as_list()), (1,))
 
   def testSequenceExampleWithSparseAndDenseContext(self):
     original = sequence_example(context=features({"c": float_feature([3, 4]),

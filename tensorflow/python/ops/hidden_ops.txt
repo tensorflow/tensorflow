@@ -259,6 +259,7 @@ SdcaShrinkL1
 
 # state_ops
 Variable
+VariableV2
 TemporaryVariable
 DestroyTemporaryVariable
 

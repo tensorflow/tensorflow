@@ -56,6 +56,7 @@ from tensorflow.python.ops import gen_string_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_string_ops import *
+from tensorflow.python.util import deprecation
 # pylint: enable=wildcard-import
 
 
@@ -108,6 +109,27 @@ def string_split(source, delimiter=" "):  # pylint: disable=invalid-name
   shape.set_shape([2])
   return sparse_tensor.SparseTensor(indices, values, shape)
 
+
+def reduce_join(inputs, axis=None,
+                keep_dims=False,
+                separator="",
+                name=None,
+                reduction_indices=None):
+  axis = deprecation.deprecated_argument_lookup("axis", axis,
+                                                "reduction_indices",
+                                                reduction_indices)
+  if axis is None:
+    raise ValueError("axis must be specified.")
+  return gen_string_ops.reduce_join(
+      inputs=inputs,
+      reduction_indices=axis,
+      keep_dims=keep_dims,
+      separator=separator,
+      name=name)
+
+
+reduce_join.__doc__ = deprecation.rewrite_argument_docstring(
+    gen_string_ops.reduce_join.__doc__, "reduction_indices", "axis")
 
 ops.NotDifferentiable("StringToHashBucket")
 ops.NotDifferentiable("StringToHashBucketFast")

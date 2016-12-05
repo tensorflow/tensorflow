@@ -411,6 +411,7 @@ class _FuncGraph(ops.Graph):
     self.extra_vars = []
 
   def getvar(self,
+             getter,
              name,
              shape=None,
              dtype=None,
