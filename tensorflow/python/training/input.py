@@ -426,7 +426,8 @@ def _store_sparse_tensors(tensor_list, enqueue_many, keep_input,
   Args:
     tensor_list: List of `Tensor` and `SparseTensor` objects.
     enqueue_many: Python `Boolean`.
-    keep_input: Bool tensor. If False, don't store.
+    keep_input: Must be a scalar bool Tensor (not a Python bool). If False,
+      don't store.
     shared_map_ops: (optional) List of `Operation` objects from a previous
       call to `_store_sparse_tensors`.  If not `None`, the op types should be
       one of `AddSparseToTensorsMap` or `AddManySparseToTensorsMap` in the
