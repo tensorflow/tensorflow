@@ -120,8 +120,8 @@ export class ScatterPlot {
     this.getLayoutValues();
 
     this.scene = new THREE.Scene();
-    this.renderer =
-        new THREE.WebGLRenderer({alpha: true, premultipliedAlpha: false});
+    this.renderer = new THREE.WebGLRenderer(
+        {alpha: true, premultipliedAlpha: false, antialias: true});
     this.renderer.setClearColor(BACKGROUND_COLOR, 1);
     this.containerNode.appendChild(this.renderer.domElement);
     this.light = new THREE.PointLight(0xFFECBF, 1, 0);
