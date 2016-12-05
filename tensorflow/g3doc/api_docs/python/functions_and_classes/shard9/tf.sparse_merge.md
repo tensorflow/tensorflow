@@ -13,7 +13,7 @@ The `SparseTensor` returned by this function has the following properties:
   - `indices` is equivalent to `sp_ids.indices` with the last
     dimension discarded and replaced with `sp_ids.values`.
   - `values` is simply `sp_values.values`.
-  - If `sp_ids.shape = [D0, D1, ..., Dn, K]`, then
+  - If `sp_ids.dense_shape = [D0, D1, ..., Dn, K]`, then
     `output.shape = [D0, D1, ..., Dn, vocab_size]`.
 
 For example, consider the following feature vectors:

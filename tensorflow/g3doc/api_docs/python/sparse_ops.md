@@ -431,7 +431,7 @@ tested if validate_indices is True.
 
 ##### Returns:
 
-  A dense tensor with shape `sp_input.shape` and values specified by
+  A dense tensor with shape `sp_input.dense_shape` and values specified by
   the non-empty values in `sp_input`. Indices not in `sp_input` are assigned
   `default_value`.
 
@@ -448,14 +448,14 @@ tested if validate_indices is True.
 Converts a `SparseTensor` of ids into a dense bool indicator tensor.
 
 The last dimension of `sp_input.indices` is discarded and replaced with
-the values of `sp_input`.  If `sp_input.shape = [D0, D1, ..., Dn, K]`, then
-`output.shape = [D0, D1, ..., Dn, vocab_size]`, where
+the values of `sp_input`.  If `sp_input.dense_shape = [D0, D1, ..., Dn, K]`,
+then `output.shape = [D0, D1, ..., Dn, vocab_size]`, where
 
     output[d_0, d_1, ..., d_n, sp_input[d_0, d_1, ..., d_n, k]] = True
 
 and False elsewhere in `output`.
 
-For example, if `sp_input.shape = [2, 3, 4]` with non-empty values:
+For example, if `sp_input.dense_shape = [2, 3, 4]` with non-empty values:
 
     [0, 0, 0]: 0
     [0, 1, 0]: 10
@@ -513,7 +513,7 @@ The `SparseTensor` returned by this function has the following properties:
   - `indices` is equivalent to `sp_ids.indices` with the last
     dimension discarded and replaced with `sp_ids.values`.
   - `values` is simply `sp_values.values`.
-  - If `sp_ids.shape = [D0, D1, ..., Dn, K]`, then
+  - If `sp_ids.dense_shape = [D0, D1, ..., Dn, K]`, then
     `output.shape = [D0, D1, ..., Dn, vocab_size]`.
 
 For example, consider the following feature vectors:
@@ -793,7 +793,7 @@ shape `[9, 4]` and `indices` / `values`:
 
 Split a `SparseTensor` into `num_split` tensors along `axis`.
 
-If the `sp_input.shape[axis]` is not an integer multiple of `num_split`
+If the `sp_input.dense_shape[axis]` is not an integer multiple of `num_split`
 each slice starting from 0:`shape[axis] % num_split` gets extra one
 dimension. For example, if `axis = 1` and `num_split = 2` and the
 input is:
@@ -1256,8 +1256,8 @@ converting the `SparseTensor` to a dense one and using `tf.matmul` with
 `sp_a=True`.
 
 This operation tends to perform well when A is more sparse, if the column size
-of the product is small (e.g. matrix-vector multiplication), if sp_a.shape
-takes on large values.
+of the product is small (e.g. matrix-vector multiplication), if
+`sp_a.dense_shape` takes on large values.
 
 Below is a rough speed comparison between sparse_tensor_dense_matmul,
 labelled 'sparse', and matmul(sp_a=True), labelled 'dense'.  For purposes of

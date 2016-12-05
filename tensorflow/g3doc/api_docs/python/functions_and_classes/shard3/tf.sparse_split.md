@@ -2,7 +2,7 @@
 
 Split a `SparseTensor` into `num_split` tensors along `axis`.
 
-If the `sp_input.shape[axis]` is not an integer multiple of `num_split`
+If the `sp_input.dense_shape[axis]` is not an integer multiple of `num_split`
 each slice starting from 0:`shape[axis] % num_split` gets extra one
 dimension. For example, if `axis = 1` and `num_split = 2` and the
 input is:
