@@ -571,19 +571,6 @@
   * [`with_space_to_batch`](../../api_docs/python/nn.md#with_space_to_batch)
   * [`zero_fraction`](../../api_docs/python/nn.md#zero_fraction)
 
-* **[Neural Network RNN Cells](../../api_docs/python/rnn_cell.md)**:
-  * [`BasicLSTMCell`](../../api_docs/python/rnn_cell.md#BasicLSTMCell)
-  * [`BasicRNNCell`](../../api_docs/python/rnn_cell.md#BasicRNNCell)
-  * [`DropoutWrapper`](../../api_docs/python/rnn_cell.md#DropoutWrapper)
-  * [`EmbeddingWrapper`](../../api_docs/python/rnn_cell.md#EmbeddingWrapper)
-  * [`GRUCell`](../../api_docs/python/rnn_cell.md#GRUCell)
-  * [`InputProjectionWrapper`](../../api_docs/python/rnn_cell.md#InputProjectionWrapper)
-  * [`LSTMCell`](../../api_docs/python/rnn_cell.md#LSTMCell)
-  * [`LSTMStateTuple`](../../api_docs/python/rnn_cell.md#LSTMStateTuple)
-  * [`MultiRNNCell`](../../api_docs/python/rnn_cell.md#MultiRNNCell)
-  * [`OutputProjectionWrapper`](../../api_docs/python/rnn_cell.md#OutputProjectionWrapper)
-  * [`RNNCell`](../../api_docs/python/rnn_cell.md#RNNCell)
-
 * **[Running Graphs](../../api_docs/python/client.md)**:
   * [`AbortedError`](../../api_docs/python/client.md#AbortedError)
   * [`AlreadyExistsError`](../../api_docs/python/client.md#AlreadyExistsError)
@@ -1014,6 +1001,21 @@
   * [`SummaryWriterCache`](../../api_docs/python/contrib.learn.monitors.md#SummaryWriterCache)
   * [`ValidationMonitor`](../../api_docs/python/contrib.learn.monitors.md#ValidationMonitor)
 
+* **[Sequence to Sequence (contrib)](../../api_docs/python/contrib.legacy_seq2seq.md)**:
+  * [`attention_decoder`](../../api_docs/python/contrib.legacy_seq2seq.md#attention_decoder)
+  * [`basic_rnn_seq2seq`](../../api_docs/python/contrib.legacy_seq2seq.md#basic_rnn_seq2seq)
+  * [`embedding_attention_decoder`](../../api_docs/python/contrib.legacy_seq2seq.md#embedding_attention_decoder)
+  * [`embedding_attention_seq2seq`](../../api_docs/python/contrib.legacy_seq2seq.md#embedding_attention_seq2seq)
+  * [`embedding_rnn_decoder`](../../api_docs/python/contrib.legacy_seq2seq.md#embedding_rnn_decoder)
+  * [`embedding_rnn_seq2seq`](../../api_docs/python/contrib.legacy_seq2seq.md#embedding_rnn_seq2seq)
+  * [`embedding_tied_rnn_seq2seq`](../../api_docs/python/contrib.legacy_seq2seq.md#embedding_tied_rnn_seq2seq)
+  * [`model_with_buckets`](../../api_docs/python/contrib.legacy_seq2seq.md#model_with_buckets)
+  * [`one2many_rnn_seq2seq`](../../api_docs/python/contrib.legacy_seq2seq.md#one2many_rnn_seq2seq)
+  * [`rnn_decoder`](../../api_docs/python/contrib.legacy_seq2seq.md#rnn_decoder)
+  * [`sequence_loss`](../../api_docs/python/contrib.legacy_seq2seq.md#sequence_loss)
+  * [`sequence_loss_by_example`](../../api_docs/python/contrib.legacy_seq2seq.md#sequence_loss_by_example)
+  * [`tied_rnn_seq2seq`](../../api_docs/python/contrib.legacy_seq2seq.md#tied_rnn_seq2seq)
+
 * **[Linear Algebra (contrib)](../../api_docs/python/contrib.linalg.md)**:
   * [`LinearOperator`](../../api_docs/python/contrib.linalg.md#LinearOperator)
   * [`LinearOperatorDiag`](../../api_docs/python/contrib.linalg.md#LinearOperatorDiag)
@@ -1035,7 +1037,7 @@
   * [`softmax_cross_entropy`](../../api_docs/python/contrib.losses.md#softmax_cross_entropy)
   * [`sparse_softmax_cross_entropy`](../../api_docs/python/contrib.losses.md#sparse_softmax_cross_entropy)
 
-* **[RNN (contrib)](../../api_docs/python/contrib.rnn.md)**:
+* **[RNN and Cells (contrib)](../../api_docs/python/contrib.rnn.md)**:
   * [`AttentionCellWrapper`](../../api_docs/python/contrib.rnn.md#AttentionCellWrapper)
   * [`BasicLSTMCell`](../../api_docs/python/contrib.rnn.md#BasicLSTMCell)
   * [`BasicRNNCell`](../../api_docs/python/contrib.rnn.md#BasicRNNCell)

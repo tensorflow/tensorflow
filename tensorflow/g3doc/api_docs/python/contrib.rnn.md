@@ -1,6 +1,6 @@
 <!-- This file is machine generated: DO NOT EDIT! -->
 
-# RNN (contrib)
+# RNN and Cells (contrib)
 [TOC]
 
 Module for constructing RNN Cells and additional RNN operations.
