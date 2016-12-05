@@ -41,6 +41,7 @@ failing_cpu_cc_tests="\
 "
 
 broken_cpu_cc_tests="\
+    //tensorflow/core/kernels/hexagon:graph_transferer_test + \
     //tensorflow/cc:framework_cc_ops_test + \
     //tensorflow/core/platform/cloud:time_util_test + \
     //tensorflow/core/platform/cloud:oauth_client_test + \

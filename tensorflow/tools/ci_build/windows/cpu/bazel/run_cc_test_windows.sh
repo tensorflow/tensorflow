@@ -46,12 +46,15 @@ clean_output_base
 
 run_configure_for_cpu_build
 
-BUILD_OPTS='-c opt --cpu=x64_windows_msvc --host_cpu=x64_windows_msvc --copt=/w --verbose_failures --experimental_ui'
+BUILD_OPTS='--cpu=x64_windows_msvc --host_cpu=x64_windows_msvc --copt=/w --verbose_failures --experimental_ui'
+
+# Compliling the following test is extremely slow with -c opt
+slow_compiling_test="//tensorflow/core/kernels:eigen_backward_spatial_convolutions_test"
 
 # Find all the passing cc_tests on Windows and store them in a variable
-passing_tests=$(bazel query "kind(cc_test, //tensorflow/cc/... + //tensorflow/core/...) - (${exclude_cpu_cc_tests})" |
+passing_tests=$(bazel query "kind(cc_test, //tensorflow/cc/... + //tensorflow/core/...) - (${exclude_cpu_cc_tests}) - ($slow_compiling_test)" |
   # We need to strip \r so that the result could be store into a variable under MSYS
   tr '\r' ' ')
 
-bazel test $BUILD_OPTS -k $passing_tests --test_output=errors
-
+bazel test $BUILD_OPTS -k $slow_compiling_test --test_output=errors
+bazel test -c opt $BUILD_OPTS -k $passing_tests --test_output=errors
