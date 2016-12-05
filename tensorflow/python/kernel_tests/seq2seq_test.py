@@ -616,7 +616,7 @@ class Seq2SeqTest(tf.test.TestCase):
       with tf.variable_scope("root"):
         _, losses = SampleGRUSeq2Seq(inp, out, weights)
         updates = []
-        params = tf.all_variables()
+        params = tf.global_variables()
         optimizer = tf.train.AdamOptimizer(0.03, epsilon=1e-5)
         for i in range(len(buckets)):
           full_grads = tf.gradients(losses[i], params)

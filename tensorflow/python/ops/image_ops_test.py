@@ -371,7 +371,7 @@ class AdjustHueBenchmark(test.Benchmark):
         delta = tf.constant(0.1, dtype=tf.float32)
         outputs = image_ops.adjust_hue(inputs, delta)
         run_op = tf.group(outputs)
-        sess.run(tf.initialize_all_variables())
+        sess.run(tf.global_variable_initializer())
         for i in xrange(warmup_rounds + benchmark_rounds):
           if i == warmup_rounds:
             start = time.time()

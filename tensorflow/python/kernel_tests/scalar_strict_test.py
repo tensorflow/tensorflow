@@ -118,14 +118,14 @@ class ScalarStrictTest(tf.test.TestCase):
 
   def testImageSummary(self):
     image = np.zeros((2, 2, 2, 3), dtype=np.uint8)
-    self.check(tf.image_summary, (['img'], image), 'Tags must be a scalar')
+    self.check(tf.summary.image, (['img'], image), 'Tags must be a scalar')
 
   def testScalarSummary(self):
-    self.check(tf.scalar_summary, (['a'], 7), 'not the same shape')
-    self.check(tf.scalar_summary, ('a', [7]), 'not the same shape')
+    self.check(tf.summary.scalar, (['a'], 7), 'not the same shape')
+    self.check(tf.summary.scalar, ('a', [7]), 'not the same shape')
 
   def testHistogramSummary(self):
-    self.check(tf.histogram_summary, (['a'], 7), 'tags must be scalar')
+    self.check(tf.summary.histogram, (['a'], 7), 'tags must be scalar')
 
   def testTile(self):
     self.check(tf.tile, ([7], 2), 'Expected multiples to be 1-D', [7, 7])
