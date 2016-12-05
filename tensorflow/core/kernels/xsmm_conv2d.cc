@@ -31,7 +31,7 @@ void dummy_xsmm_conv2d_ensure_file_is_not_empty(void);
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 
-#include "third_party/libxsmm/src/libxsmm_cpuid_x86.h"
+#include "libxsmm/include/libxsmm_cpuid.h"
 
 namespace tensorflow {
 

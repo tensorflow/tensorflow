@@ -198,14 +198,14 @@ class LaunchXsmmConvOp<CPUDevice, float> {
     desc.pad_w_in = pad_cols;  // ignored by libxsmm for now.
     desc.pad_h_out = 0;
     desc.pad_w_out = 0;
-    desc.splits = 1;
     desc.threads = 0;  // Unknown at this point, will be set later.
     desc.algo = LIBXSMM_DNN_CONV_ALGO_DIRECT;
     desc.buffer_format = LIBXSMM_DNN_CONV_FORMAT_NHWC;
     desc.filter_format = LIBXSMM_DNN_CONV_FORMAT_RSCK;
     desc.fuse_ops = LIBXSMM_DNN_CONV_FUSE_NONE;
     desc.options = LIBXSMM_DNN_CONV_OPTION_NONE;
-    desc.datatype = LIBXSMM_DNN_DATATYPE_F32;
+    desc.datatype_in = LIBXSMM_DNN_DATATYPE_F32;
+    desc.datatype_out = LIBXSMM_DNN_DATATYPE_F32;
 
     if (!CanUseXsmmConv2D(desc, data_format)) {
       return false;
