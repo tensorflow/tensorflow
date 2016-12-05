@@ -12,7 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Library for creating sequence-to-sequence models in TensorFlow."""
+"""Deprecated library for creating sequence-to-sequence models in TensorFlow.
+
+@@attention_decoder
+@@basic_rnn_seq2seq
+@@embedding_attention_decoder
+@@embedding_attention_seq2seq
+@@embedding_rnn_decoder
+@@embedding_rnn_seq2seq
+@@embedding_tied_rnn_seq2seq
+@@model_with_buckets
+@@one2many_rnn_seq2seq
+@@rnn_decoder
+@@sequence_loss
+@@sequence_loss_by_example
+@@tied_rnn_seq2seq
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -31,3 +46,9 @@ from tensorflow.python.ops.seq2seq import rnn_decoder
 from tensorflow.python.ops.seq2seq import sequence_loss
 from tensorflow.python.ops.seq2seq import sequence_loss_by_example
 from tensorflow.python.ops.seq2seq import tied_rnn_seq2seq
+
+from tensorflow.python.util.all_util import remove_undocumented
+
+_allowed_symbols = []
+
+remove_undocumented(__name__, _allowed_symbols)
