@@ -269,6 +269,33 @@ JNIEXPORT void JNICALL Java_org_tensorflow_Tensor_delete(JNIEnv* env,
   TF_DeleteTensor(reinterpret_cast<TF_Tensor*>(handle));
 }
 
+JNIEXPORT jint JNICALL Java_org_tensorflow_Tensor_dtype(JNIEnv* env,
+                                                        jclass clazz,
+                                                        jlong handle) {
+  static_assert(sizeof(jint) >= sizeof(TF_DataType),
+                "TF_DataType in C cannot be represented as an int in Java");
+  TF_Tensor* t = requireHandle(env, handle);
+  if (t == nullptr) return 0;
+  return static_cast<jint>(TF_TensorType(t));
+}
+
+JNIEXPORT jlongArray JNICALL Java_org_tensorflow_Tensor_shape(JNIEnv* env,
+                                                              jclass clazz,
+                                                              jlong handle) {
+  TF_Tensor* t = requireHandle(env, handle);
+  if (t == nullptr) return nullptr;
+  static_assert(sizeof(jlong) == sizeof(int64_t),
+                "Java long is not compatible with the TensorFlow C API");
+  const jsize num_dims = TF_NumDims(t);
+  jlongArray ret = env->NewLongArray(num_dims);
+  jlong* dims = env->GetLongArrayElements(ret, nullptr);
+  for (int i = 0; i < num_dims; ++i) {
+    dims[i] = static_cast<jlong>(TF_Dim(t, i));
+  }
+  env->ReleaseLongArrayElements(ret, dims, 0);
+  return ret;
+}
+
 JNIEXPORT void JNICALL Java_org_tensorflow_Tensor_setValue(JNIEnv* env,
                                                            jclass clazz,
                                                            jlong handle,

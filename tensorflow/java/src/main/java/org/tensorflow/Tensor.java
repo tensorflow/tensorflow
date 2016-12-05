@@ -21,7 +21,7 @@ import java.util.Arrays;
 /**
  * A typed multi-dimensional array.
  *
- * Instances of a Tensor are <b>not</b> thread-safe.
+ * <p>Instances of a Tensor are <b>not</b> thread-safe.
  *
  * <p><b>WARNING:</b> Resources consumed by the Tensor object <b>must</b> be explicitly freed by
  * invoking the {@link #close()} method when the object is no longer needed. For example, using a
@@ -196,6 +196,23 @@ public final class Tensor implements AutoCloseable {
     return String.format("%s tensor with shape %s", dtype.toString(), Arrays.toString(shape()));
   }
 
+  /**
+   * Create a Tensor object from a handle to the C TF_Tensor object.
+   *
+   * <p>Takes ownership of the handle.
+   */
+  static Tensor fromHandle(long handle) {
+    Tensor t = new Tensor();
+    t.dtype = DataType.fromC(dtype(handle));
+    t.shapeCopy = shape(handle);
+    t.nativeHandle = handle;
+    return t;
+  }
+
+  long getNativeHandle() {
+    return nativeHandle;
+  }
+
   private long nativeHandle;
   private DataType dtype;
   private long[] shapeCopy = null;
@@ -275,6 +292,10 @@ public final class Tensor implements AutoCloseable {
   private static native long allocate(int dtype, long[] shape);
 
   private static native void delete(long handle);
+
+  private static native int dtype(long handle);
+
+  private static native long[] shape(long handle);
 
   private static native void setValue(long handle, Object value);
 

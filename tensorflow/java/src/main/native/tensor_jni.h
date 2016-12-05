@@ -40,6 +40,22 @@ JNIEXPORT void JNICALL Java_org_tensorflow_Tensor_delete(JNIEnv *, jclass,
 
 /*
  * Class:     org_tensorflow_Tensor
+ * Method:    dtype
+ * Signature: (J)I
+ */
+JNIEXPORT jint JNICALL Java_org_tensorflow_Tensor_dtype(JNIEnv *, jclass,
+                                                        jlong);
+
+/*
+ * Class:     org_tensorflow_Tensor
+ * Method:    shape
+ * Signature: (J)[J
+ */
+JNIEXPORT jlongArray JNICALL Java_org_tensorflow_Tensor_shape(JNIEnv *, jclass,
+                                                              jlong);
+
+/*
+ * Class:     org_tensorflow_Tensor
  * Method:    setValue
  * Signature: (JLjava/lang/Object;)V
  *
