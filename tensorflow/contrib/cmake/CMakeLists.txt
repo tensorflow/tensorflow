@@ -149,11 +149,11 @@ if (tensorflow_ENABLE_GPU)
 
     # by default we assume compute cabability 3.5 and 5.2. If you change this change it in
     # CUDA_NVCC_FLAGS and cuda_config.h below
-    set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};-gencode arch=compute_35,code=\"sm_35,compute_35\";-gencode arch=compute_52,code=\"sm_52,compute_52\")
+    set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};-gencode arch=compute_30,code=\"sm_30,compute_30\";-gencode arch=compute_35,code=\"sm_35,compute_35\";-gencode arch=compute_52,code=\"sm_52,compute_52\")
     set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};--include-path ${PROJECT_BINARY_DIR}/$\{build_configuration\};--expt-relaxed-constexpr)
     set(CUDA_INCLUDE ${CUDA_TOOLKIT_TARGET_DIR} ${CUDA_TOOLKIT_TARGET_DIR}/extras/CUPTI/include)
     include_directories(${CUDA_INCLUDE})
-    add_definitions(-DGOOGLE_CUDA=1 -DTF_EXTRA_CUDA_CAPABILITIES=3.5,5.2)
+    add_definitions(-DGOOGLE_CUDA=1 -DTF_EXTRA_CUDA_CAPABILITIES=3.0,3.5,5.2)
 
     # add cudnn
     include_directories(${CUDNN_HOME})
@@ -163,7 +163,7 @@ if (tensorflow_ENABLE_GPU)
     FILE(WRITE ${tensorflow_source_dir}/third_party/gpus/cuda/cuda_config.h
       "#ifndef CUDA_CUDA_CONFIG_H_\n"
       "#define CUDA_CUDA_CONFIG_H_\n"
-      "#define TF_CUDA_CAPABILITIES CudaVersion(\"3.5\"),CudaVersion(\"5.2\")\n"
+      "#define TF_CUDA_CAPABILITIES CudaVersion(\"3.0\"),CudaVersion(\"3.5\"),CudaVersion(\"5.2\")\n"
       "#define TF_CUDA_VERSION \"64_80\"\n"
       "#define TF_CUDNN_VERSION \"64_5\"\n"
       "#endif  // CUDA_CUDA_CONFIG_H_\n"
