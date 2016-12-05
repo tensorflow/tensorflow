@@ -32,7 +32,6 @@ def sequence_loss(logits, targets, weights,
                   softmax_loss_function=None, name=None):
   """Weighted cross-entropy loss for a sequence of logits (per example).
 
-
   Args:
     logits: A 3D Tensor of shape
       [batch_size x sequence_length x num_decoder_symbols] and dtype float.
@@ -40,25 +39,25 @@ def sequence_loss(logits, targets, weights,
       int.
     weights: A 2D Tensor of shape [batch_size x sequence_length] and dtype
       float.
-    average_across_timesteps: If set, divide the returned cost by the total
-      label weight.
-    average_across_batch: If set, divide the returned cost by the batch size.
+    average_across_timesteps: If set, sum the cost across the sequence
+      dimension and divide by the cost by the total label weight across
+      timesteps.
+    average_across_batch: If set, sum the cost across the batch dimension and
+      divide the returned cost by the batch size.
     softmax_loss_function: Function (inputs-batch, labels-batch) -> loss-batch
       to be used instead of the standard softmax (the default if this is None).
     name: Optional name for this operation, defaults to "sequence_loss".
 
-
   Returns:
     A scalar float Tensor: The average log-perplexity per symbol (weighted).
-
 
   Raises:
     ValueError: logits does not have 3 dimensions or targets does not have 2
                 dimensions or weights does not have 2 dimensions.
   """
   if len(logits.get_shape()) != 3:
-    raise ValueError("Logits must be a [batch_size x sequence_length x logits] "
-                     "tensor")
+    raise ValueError("Logits must be a "
+                     "[batch_size x sequence_length x logits] tensor")
   if len(targets.get_shape()) != 2:
     raise ValueError("Targets must be a [batch_size x sequence_length] "
                      "tensor")
