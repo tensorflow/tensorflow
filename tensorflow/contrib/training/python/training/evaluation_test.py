@@ -51,7 +51,7 @@ class CheckpointIteratorTest(tf.test.TestCase):
     saver = tf.train.Saver()  # Saves the global step.
 
     with self.test_session() as session:
-      session.run(tf.initialize_all_variables())
+      session.run(tf.global_variable_initializer())
       save_path = os.path.join(checkpoint_dir, 'model.ckpt')
       saver.save(session, save_path, global_step=global_step)
 
@@ -81,7 +81,7 @@ class CheckpointIteratorTest(tf.test.TestCase):
         target='',
         config=tf.ConfigProto(device_count={'CPU': 2})) as session:
 
-      session.run(tf.initialize_all_variables())
+      session.run(tf.global_variable_initializer())
       save_path = os.path.join(checkpoint_dir, 'model.ckpt')
       saver.save(session, save_path, global_step=global_step)
 

@@ -1207,7 +1207,7 @@ class WeightedSumTest(tf.test.TestCase):
     logits, _, _ = tf.contrib.layers.weighted_sum_from_feature_columns(
         features, [hashed_sparse], num_outputs=5)
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variable_initializer().run()
       self.assertAllEqual(logits.eval().shape, [2, 5])
 
   def testWeightedSparseColumn(self):
@@ -1242,7 +1242,7 @@ class WeightedSumTest(tf.test.TestCase):
         features, [weighted_ids], num_outputs=5)
 
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variable_initializer().run()
       tf.initialize_all_tables().run()
       self.assertAllEqual(logits.eval().shape, [2, 5])
 
@@ -1844,7 +1844,7 @@ class WeightedSumTest(tf.test.TestCase):
                                                               [product],
                                                               num_outputs=1))
       with self.test_session() as sess:
-        tf.initialize_all_variables().run()
+        tf.global_variable_initializer().run()
         tf.initialize_all_tables().run()
         product_weights = column_to_variable[product][0]
         sess.run(product_weights.assign([[0.1], [0.2], [0.3], [0.4], [0.5]]))
@@ -1860,7 +1860,7 @@ class WeightedSumTest(tf.test.TestCase):
                                                               [product],
                                                               num_outputs=1))
       with self.test_session() as sess:
-        tf.initialize_all_variables().run()
+        tf.global_variable_initializer().run()
         tf.initialize_all_tables().run()
         product_weights = column_to_variable[product][0]
         sess.run(product_weights.assign([[0.1], [0.2], [0.3], [0.4], [0.5]]))
