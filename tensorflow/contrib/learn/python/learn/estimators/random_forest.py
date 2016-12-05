@@ -226,12 +226,12 @@ class TensorForestEstimator(evaluable.Evaluable, trainable.Trainable):
 
   def evaluate(
       self, x=None, y=None, input_fn=None, feed_fn=None, batch_size=None,
-      steps=None, metrics=None, name=None):
+      steps=None, metrics=None, name=None, checkpoint_path=None):
     """See evaluable.Evaluable."""
     return self._estimator.evaluate(
         input_fn=input_fn, x=x, y=y, feed_fn=feed_fn,
         batch_size=batch_size, steps=steps,
-        metrics=metrics, name=name)
+        metrics=metrics, name=name, checkpoint_path=checkpoint_path)
 
   def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
           monitors=None, max_steps=None):
