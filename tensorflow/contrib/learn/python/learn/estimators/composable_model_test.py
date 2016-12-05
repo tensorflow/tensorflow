@@ -139,7 +139,8 @@ class ComposableModelTest(tf.test.TestCase):
 
     def input_fn():
       return {
-          'age': tf.SparseTensor(values=['1'], indices=[[0, 0]], shape=[1, 1]),
+          'age': tf.SparseTensor(
+              values=['1'], indices=[[0, 0]], dense_shape=[1, 1]),
           'language': tf.SparseTensor(values=['english'],
                                       indices=[[0, 0]],
                                       dense_shape=[1, 1])
