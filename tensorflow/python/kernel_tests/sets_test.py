@@ -356,7 +356,7 @@ class SetOpsTest(test_util.TensorFlowTestCase):
         a = tf.cast(
             tf.sparse_to_dense(
                 sp_a.indices,
-                sp_a.shape,
+                sp_a.dense_shape,
                 sp_a.values,
                 default_value="-1" if dtype == tf.string else -1),
             dtype=dtype)
@@ -370,7 +370,7 @@ class SetOpsTest(test_util.TensorFlowTestCase):
         b = tf.cast(
             tf.sparse_to_dense(
                 sp_b.indices,
-                sp_b.shape,
+                sp_b.dense_shape,
                 sp_b.values,
                 default_value="-2" if dtype == tf.string else -2),
             dtype=dtype)
@@ -985,7 +985,7 @@ class SetOpsTest(test_util.TensorFlowTestCase):
     self.assertEqual(
         expected_set, actual_set, "Expected %s, got %s, at %s." % (
             expected_set, actual_set, last_indices))
-    self.assertAllEqual(expected_shape, sparse_tensor.shape)
+    self.assertAllEqual(expected_shape, sparse_tensor.dense_shape)
 
 
 if __name__ == "__main__":

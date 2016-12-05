@@ -820,8 +820,8 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
       return sparse_tensor.SparseTensor(
           sp_x.indices,
           func(
-              sp_x.indices, sp_x.values, sp_x.shape, y, name=name),
-          sp_x.shape)
+              sp_x.indices, sp_x.values, sp_x.dense_shape, y, name=name),
+          sp_x.dense_shape)
 
   def r_binary_op_wrapper(y, x):
     with ops.name_scope(None, op_name, [x, y]) as name:
@@ -1169,8 +1169,8 @@ def _ReductionDims(x, axis, reduction_indices):
       return constant_op.constant(
           np.arange(x.get_shape().ndims), dtype=dtypes.int32)
     if (isinstance(x, sparse_tensor.SparseTensor) and
-        x.shape.get_shape().is_fully_defined()):
-      rank = x.shape.get_shape()[0].value  # sparse.shape is an 1-D tensor.
+        x.dense_shape.get_shape().is_fully_defined()):
+      rank = x.dense_shape.get_shape()[0].value  # sparse.dense_shape is 1-D.
       return constant_op.constant(np.arange(rank), dtype=dtypes.int32)
 
     # Otherwise, we rely on Range and Rank to do the right thing at run-time.
@@ -2172,4 +2172,3 @@ def reduced_shape(input_shape, axes):
 def select(condition, x, y, name=None):
   return gen_math_ops._select(condition, x, y, name)
 select.__doc__ = gen_math_ops._select.__doc__
-

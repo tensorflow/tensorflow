@@ -81,7 +81,7 @@ class SparseAddTest(tf.test.TestCase):
 
           sum_out = sess.run(sp_sum)
 
-          self.assertEqual(sp_sum.shape.get_shape(), [2])
+          self.assertEqual(sp_sum.dense_shape.get_shape(), [2])
           self.assertAllEqual(
               sum_out.indices, [[0, 1], [1, 0], [2, 0], [2, 1]])
           self.assertAllEqual(sum_out.values, [2, 4, 6, 8])
@@ -95,7 +95,7 @@ class SparseAddTest(tf.test.TestCase):
       sp_sum = tf.sparse_add(sp_a, sp_b, 0.1)
       sum_out = sess.run(sp_sum)
 
-      self.assertEqual(sp_sum.shape.get_shape(), [2])
+      self.assertEqual(sp_sum.dense_shape.get_shape(), [2])
       self.assertAllEqual(sum_out.indices, np.empty([0, 2]))
       self.assertAllEqual(sum_out.values, [])
       self.assertAllEqual(sum_out.shape, [3, 3])
@@ -114,7 +114,7 @@ class SparseAddTest(tf.test.TestCase):
       sp_sum = tf.sparse_add(sp_a, sp_b, thresh=0.21)
       sum_out = sess.run(sp_sum)
 
-      self.assertEqual(sp_sum.shape.get_shape(), [2])
+      self.assertEqual(sp_sum.dense_shape.get_shape(), [2])
       self.assertAllEqual(sum_out.indices, [[0, 1], [2, 0]])
       self.assertAllEqual(sum_out.values, [2, 6])
       self.assertAllEqual(sum_out.shape, [3, 3])
@@ -123,7 +123,7 @@ class SparseAddTest(tf.test.TestCase):
       sp_sum = tf.sparse_add(sp_a, sp_b, thresh=0.11)
       sum_out = sess.run(sp_sum)
 
-      self.assertEqual(sp_sum.shape.get_shape(), [2])
+      self.assertEqual(sp_sum.dense_shape.get_shape(), [2])
       self.assertAllEqual(sum_out.indices, [[0, 1], [2, 0], [2, 1]])
       self.assertAllClose(sum_out.values, [2, 6, -.2])
       self.assertAllEqual(sum_out.shape, [3, 3])

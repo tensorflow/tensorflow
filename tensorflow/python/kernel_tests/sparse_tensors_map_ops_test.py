@@ -138,7 +138,7 @@ class SparseTensorsMapTest(tf.test.TestCase):
           [handles, roundtrip],
           feed_dict={sparse_tensor.indices: indices_value,
                      sparse_tensor.values: values_value,
-                     sparse_tensor.shape: shape_value})
+                     sparse_tensor.dense_shape: shape_value})
       self.assertEqual(handles_value.shape, (4,))
       self.assertAllEqual(roundtrip_value.indices, indices_value)
       self.assertAllEqual(roundtrip_value.values, values_value)
@@ -220,7 +220,7 @@ class BenchmarkSparseTensorsMapVsSerialization(tf.test.Benchmark):
         np.testing.assert_equal(
             st_roundtrip_values.indices, st_deserialized_values.indices)
         np.testing.assert_equal(
-            st_roundtrip_values.shape, st_deserialized_values.shape)
+            st_roundtrip_values.dense_shape, st_deserialized_values.dense_shape)
 
         self.run_op_benchmark(
             sess, st_roundtrip_op, min_iters=2000,

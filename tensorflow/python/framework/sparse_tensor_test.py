@@ -75,7 +75,7 @@ class ConvertToTensorOrSparseTensorTest(test_util.TensorFlowTestCase):
       for convertee in [from_value, from_tensor]:
         self.assertAllEqual(sparse_tensor_value.indices, convertee.indices)
         self.assertAllEqual(sparse_tensor_value.values, convertee.values)
-        self.assertAllEqual(sparse_tensor_value.shape, convertee.shape)
+        self.assertAllEqual(sparse_tensor_value.dense_shape, convertee.shape)
 
 
 if __name__ == "__main__":
