@@ -2564,7 +2564,7 @@ is the sum of the size of params along dimension 0.
 
 TensorFlow provides a number of methods for constructing Recurrent
 Neural Networks.  Most accept an `RNNCell`-subclassed object
-(see the documentation for `tf.nn.rnn_cell`).
+(see the documentation for `tf.contrib.rnn`).
 
 - - -
 
@@ -2968,7 +2968,7 @@ sequence_length = tf.placeholder(shape=(batch_size,), dtype=tf.int32)
 inputs_ta = tf.TensorArray(dtype=tf.float32, size=max_time)
 inputs_ta = inputs_ta.unpack(inputs)
 
-cell = tf.nn.rnn_cell.LSTMCell(num_units)
+cell = tf.contrib.rnn.LSTMCell(num_units)
 
 def loop_fn(time, cell_output, cell_state, loop_state):
   emit_output = cell_output  # == None for time == 0
