@@ -233,7 +233,7 @@ tensors.
 
 TensorFlow provides a number of methods for constructing Recurrent
 Neural Networks.  Most accept an `RNNCell`-subclassed object
-(see the documentation for `tf.nn.rnn_cell`).
+(see the documentation for `tf.contrib.rnn`).
 
 @@dynamic_rnn
 @@rnn
