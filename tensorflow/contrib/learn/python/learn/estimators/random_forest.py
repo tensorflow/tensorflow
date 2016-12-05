@@ -317,6 +317,7 @@ class TensorForestEstimator(evaluable.Evaluable, trainable.Trainable):
              export_dir,
              input_fn,
              signature_fn=None,
+             input_feature_key=None,
              default_batch_size=1):
     """See BaseEstimator.export."""
     # Reset model function with basic device assigner.
@@ -330,7 +331,9 @@ class TensorForestEstimator(evaluable.Evaluable, trainable.Trainable):
         weights_name=self.weights_name)
     result = self._estimator.export(
         export_dir=export_dir,
-        use_deprecated_input_fn=True,
+        input_fn=input_fn,
+        input_feature_key=input_feature_key,
+        use_deprecated_input_fn=False,
         signature_fn=(signature_fn or
                       (export.regression_signature_fn
                        if self.params.regression else
