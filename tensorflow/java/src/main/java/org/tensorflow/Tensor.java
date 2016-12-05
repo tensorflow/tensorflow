@@ -21,6 +21,8 @@ import java.util.Arrays;
 /**
  * A typed multi-dimensional array.
  *
+ * Instances of a Tensor are <b>not</b> thread-safe.
+ *
  * <p><b>WARNING:</b> Resources consumed by the Tensor object <b>must</b> be explicitly freed by
  * invoking the {@link #close()} method when the object is no longer needed. For example, using a
  * try-with-resources block like:
@@ -78,7 +80,7 @@ public final class Tensor implements AutoCloseable {
    *
    * <p><b>WARNING:</b>If not invoked, memory will be leaked.
    *
-   * <p>The Tensor object is no longer usable after {@code close} is invoked.
+   * <p>The Tensor object is no longer usable after {@code close} returns.
    */
   @Override
   public void close() {

@@ -16,29 +16,22 @@ limitations under the License.
 #include "tensorflow/java/src/main/native/tensor_jni.h"
 
 #include <assert.h>
-#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include <algorithm>
 
 #include "tensorflow/c/c_api.h"
+#include "tensorflow/java/src/main/native/exception_jni.h"
 
 namespace {
 
-const char kIllegalArgumentException[] = "java/lang/IllegalArgumentException";
-const char kIllegalStateException[] = "java/lang/IllegalStateException";
-const char kNullPointerException[] = "java/lang/kNullPointerException";
-
-void throwException(JNIEnv* env, const char* clazz, const char* fmt, ...) {
-  va_list args;
-  va_start(args, fmt);
-  char* message = nullptr;
-  if (vasprintf(&message, fmt, args) >= 0) {
-    env->ThrowNew(env->FindClass(clazz), message);
-  } else {
-    env->ThrowNew(env->FindClass(clazz), "");
+TF_Tensor* requireHandle(JNIEnv* env, jlong handle) {
+  if (handle == 0) {
+    throwException(env, kNullPointerException,
+                   "close() was called on the Tensor");
+    return nullptr;
   }
-  va_end(args);
+  return reinterpret_cast<TF_Tensor*>(handle);
 }
 
 size_t elemByteSize(TF_DataType dtype) {
@@ -272,9 +265,7 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_allocate(JNIEnv* env,
 JNIEXPORT void JNICALL Java_org_tensorflow_Tensor_delete(JNIEnv* env,
                                                          jclass clazz,
                                                          jlong handle) {
-  if (handle == 0) {
-    return;
-  }
+  if (handle == 0) return;
   TF_DeleteTensor(reinterpret_cast<TF_Tensor*>(handle));
 }
 
@@ -282,8 +273,8 @@ JNIEXPORT void JNICALL Java_org_tensorflow_Tensor_setValue(JNIEnv* env,
                                                            jclass clazz,
                                                            jlong handle,
                                                            jobject value) {
-  assert(handle != 0);
-  TF_Tensor* t = reinterpret_cast<TF_Tensor*>(handle);
+  TF_Tensor* t = requireHandle(env, handle);
+  if (t == nullptr) return;
   int num_dims = TF_NumDims(t);
   TF_DataType dtype = TF_TensorType(t);
   void* data = TF_TensorData(t);
@@ -299,8 +290,9 @@ JNIEXPORT void JNICALL Java_org_tensorflow_Tensor_setValue(JNIEnv* env,
 #define DEFINE_GET_SCALAR_METHOD(jtype, dtype, method_suffix)                  \
   JNIEXPORT jtype JNICALL Java_org_tensorflow_Tensor_scalar##method_suffix(    \
       JNIEnv* env, jclass clazz, jlong handle) {                               \
-    TF_Tensor* t = reinterpret_cast<TF_Tensor*>(handle);                       \
     jtype ret = 0;                                                             \
+    TF_Tensor* t = requireHandle(env, handle);                                 \
+    if (t == nullptr) return ret;                                              \
     if (TF_NumDims(t) != 0) {                                                  \
       throwException(env, kIllegalStateException, "Tensor is not a scalar");   \
     } else if (TF_TensorType(t) != dtype) {                                    \
@@ -322,14 +314,8 @@ JNIEXPORT void JNICALL Java_org_tensorflow_Tensor_readNDArray(JNIEnv* env,
                                                               jclass clazz,
                                                               jlong handle,
                                                               jobject value) {
-  // The exceptions thrown use "copyTo()" since readNDArray is a private
-  // function meant to serve the public Java copyTo() method.
-  if (handle == 0) {
-    throwException(env, kNullPointerException,
-                   "copyTo() cannot be called after close()");
-    return;
-  }
-  TF_Tensor* t = reinterpret_cast<TF_Tensor*>(handle);
+  TF_Tensor* t = requireHandle(env, handle);
+  if (t == nullptr) return;
   int num_dims = TF_NumDims(t);
   TF_DataType dtype = TF_TensorType(t);
   const void* data = TF_TensorData(t);

@@ -184,4 +184,16 @@ public class TensorTest {
       // The expected exception.
     }
   }
+
+  @Test
+  public void useAfterClose() {
+    int n = 4;
+    Tensor t = Tensor.create(n);
+    t.close();
+    try {
+      t.intValue();
+    } catch (NullPointerException e) {
+      // The expected exception.
+    }
+  }
 }
