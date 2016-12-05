@@ -971,7 +971,7 @@ class GradLoopState(object):
     Returns:
       The same tensor obtained from the saved history.
     """
-    assert value.op.type != "Variable"
+    assert value.op.type not in ["Variable", "VariableV2"]
     real_value = self._history_map.get(value.name)
     if real_value is None:
       cur_value = value

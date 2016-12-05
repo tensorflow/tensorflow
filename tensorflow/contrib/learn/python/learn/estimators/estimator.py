@@ -187,7 +187,7 @@ def _get_replica_device_setter(config):
     A replica device setter, or None.
   """
   ps_ops = [
-      'Variable', 'AutoReloadVariable', 'MutableHashTable',
+      'Variable', 'VariableV2', 'AutoReloadVariable', 'MutableHashTable',
       'MutableHashTableOfTensors', 'MutableDenseHashTable'
   ]
 

@@ -641,7 +641,7 @@ class VariableScopeTest(tf.test.TestCase):
     varname_type = []
 
     def device_func(op):
-      if op.type == "Variable":
+      if op.type in ["Variable", "VariableV2"]:
         varname_type.append((op.name, op.get_attr("dtype")))
       return "/gpu:0"
 

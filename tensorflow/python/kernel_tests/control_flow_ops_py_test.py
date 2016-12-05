@@ -2135,6 +2135,7 @@ class ControlFlowTest(tf.test.TestCase):
     v1 = tf.Variable(p1, validate_shape=False)
     v2 = tf.Variable(p2, validate_shape=False)
     v3 = tf.Variable(p3, validate_shape=False)
+    self.assertIs(None, v1.get_shape().ndims)
     s = control_flow_ops.ref_select(index, [v1, v2, v3])
     self.assertIs(None, s.get_shape().ndims)
 

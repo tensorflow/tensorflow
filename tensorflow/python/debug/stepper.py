@@ -189,7 +189,7 @@ class NodeStepper(object):
           else:
             self._non_control_output_targets[inp.name].add(curr_elem.name)
 
-          if (inp.op.type == "Variable" and
+          if (inp.op.type in ["Variable", "VariableV2"] and
               inp.name not in self._variable_initializers):
             # Obtain the initializer op of the variable, in case the Variable's
             # value needs to be restored later.
@@ -427,7 +427,7 @@ class NodeStepper(object):
         # the recipient node is not Identity. In that case, the Variable
         # needs to be marked as dirty and its current value recorded, due to
         # the fact that the receiving op may mutate the value of the Variable.
-        if (is_inp_ref and inp.op.type == "Variable" and
+        if (is_inp_ref and inp.op.type in ["Variable", "VariableV2"] and
             curr_node.type != "Identity"):
           # Mark the variable as dirty.
           touched_variables.add(inp.name)

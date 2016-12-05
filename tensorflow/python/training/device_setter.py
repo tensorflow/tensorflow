@@ -198,7 +198,7 @@ def replica_device_setter(ps_tasks=0, ps_device="/job:ps",
   if ps_ops is None:
     # TODO(sherrym): Variables in the LOCAL_VARIABLES collection should not be
     # placed in the parameter server.
-    ps_ops = ["Variable"]
+    ps_ops = ["Variable", "VariableV2"]
 
   if not merge_devices:
     logging.warning(

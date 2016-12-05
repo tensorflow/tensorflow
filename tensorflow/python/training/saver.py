@@ -56,6 +56,7 @@ from tensorflow.python.util import compat
 
 # Op names which identify variable reads which should be saved.
 _VARIABLE_OPS = set(["Variable",
+                     "VariableV2",
                      "AutoReloadVariable",
                      "ReadVariableOp",
                      "ResourceGather"])
@@ -583,7 +584,7 @@ class BaseSaverBuilder(object):
           raise TypeError("names_to_saveables must be a dict mapping string "
                           "names to Tensors/Variables. Not a variable: %s" %
                           variable)
-        if variable.op.type in ["Variable", "AutoReloadVariable"]:
+        if variable.op.type in ["Variable", "VariableV2", "AutoReloadVariable"]:
           saveable = BaseSaverBuilder.VariableSaveable(variable, "", name)
         else:
           saveable = BaseSaverBuilder.ResourceVariableSaveable(
