@@ -171,16 +171,10 @@ final_state = state
 
 ## Run the Code
 
-We are assuming you have already installed via the pip package, have cloned the
-tensorflow git repository, and are in the root of the git tree. (If [building
-from source](
-https://github.com/tensorflow/tensorflow/blob/master/tensorflow/g3doc/get_started/os_setup.md#installing-from-sources), build the `tensorflow/models/rnn/ptb:ptb_word_lm` target using
-[bazel](https://github.com/bazelbuild/bazel)).
-
-Next:
+Start by cloning the [TensorFlow models repo](https://github.com/tensorflow/models) from GitHub. Run the following commands:
 
 ```bash
-cd tensorflow/models/rnn/ptb
+cd models/tutorials/rnn/ptb
 python ptb_word_lm.py --data_path=/tmp/simple-examples/data/ --model small
 ```
 
