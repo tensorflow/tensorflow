@@ -34,11 +34,7 @@ definitions. If you see a standalone TensorFlow file representing a model, it's
 likely to contain a serialized version of one of these `GraphDef` objects
 saved out by the protobuf code.
 
-This generated code is used to save and load the GraphDef files from disk. A
-good example to look at as we dig into this is
-[graph_metrics.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/tools/graph_metrics.py). This Python script takes a saved graph
-definition, and analyzes the model to estimate performance and resource
-statistics. The code that actually loads the model looks like this:
+This generated code is used to save and load the GraphDef files from disk. The code that actually loads the model looks like this:
 
 ```python
 graph_def = graph_pb2.GraphDef()
