@@ -303,7 +303,6 @@ export class ScatterPlotVisualizerSprites implements ScatterPlotVisualizer {
   dispose() {
     this.disposeGeometry();
     this.disposeTextureAtlas();
-    this.worldSpacePointPositions = null;
   }
 
   private disposeGeometry() {
@@ -311,6 +310,7 @@ export class ScatterPlotVisualizerSprites implements ScatterPlotVisualizer {
       this.scene.remove(this.points);
       this.points.geometry.dispose();
       this.points = null;
+      this.worldSpacePointPositions = null;
     }
   }
 
@@ -345,14 +345,11 @@ export class ScatterPlotVisualizerSprites implements ScatterPlotVisualizer {
 
   onPointPositionsChanged(newPositions: Float32Array) {
     if ((newPositions == null) || (newPositions.length === 0)) {
-      this.disposeGeometry();
+      this.dispose();
       return;
     }
-
     if (this.points != null) {
-      const notEnoughSpace =
-          (this.worldSpacePointPositions.length < newPositions.length);
-      if (notEnoughSpace) {
+      if (this.worldSpacePointPositions.length !== newPositions.length) {
         this.disposeGeometry();
       }
     }

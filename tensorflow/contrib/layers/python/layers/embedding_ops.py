@@ -122,7 +122,7 @@ def safe_embedding_lookup_sparse(embedding_weights,
     if sparse_weights is not None:
       sparse_weights = sparse_tensor.SparseTensor(
           sparse_ids.indices,
-          sparse_weights.values, sparse_ids.shape)
+          sparse_weights.values, sparse_ids.dense_shape)
 
     # Prune invalid ids and weights.
     sparse_ids, sparse_weights = _prune_invalid_ids(sparse_ids, sparse_weights)

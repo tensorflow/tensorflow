@@ -309,7 +309,7 @@ class _DistributionShape(object):
         start_sum = start_sum if start_sum else (
             array_ops.zeros((), dtype=dtypes.int32, name="zero"),)
         if self._is_all_constant_helper(size, *start_sum):
-          start = sum([tensor_util.constant_value(s) for s in start_sum])
+          start = sum(tensor_util.constant_value(s) for s in start_sum)
           stop = start + tensor_util.constant_value(size)
           return ops.convert_to_tensor(
               list(range(start, stop)), dtype=dtypes.int32, name=name)
@@ -342,7 +342,7 @@ class _DistributionShape(object):
             array_ops.zeros((), dtype=dtypes.int32, name="zero"),)
         if (x.get_shape().ndims is not None and
             self._is_all_constant_helper(size, *start_sum)):
-          start = sum([tensor_util.constant_value(s) for s in start_sum])
+          start = sum(tensor_util.constant_value(s) for s in start_sum)
           stop = start + tensor_util.constant_value(size)
           slice_ = x.get_shape()[start:stop].as_list()
           if all(s is not None for s in slice_):

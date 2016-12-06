@@ -27,7 +27,7 @@ from tensorflow.contrib.learn.python.learn.estimators import dynamic_rnn_estimat
 from tensorflow.python.ops import rnn_cell
 
 
-class IdentityRNNCell(tf.nn.rnn_cell.RNNCell):
+class IdentityRNNCell(tf.contrib.rnn.RNNCell):
 
   def __init__(self, state_size, output_size):
     self._state_size = state_size

@@ -46,13 +46,14 @@ one of the following methods is recommended. First, if the function is
 expressible as TensorFlow ops, use
 
 ```python
-  result = SparseTensor(input.indices, fn(input.values), input.shape)
+  result = SparseTensor(input.indices, fn(input.values), input.dense_shape)
 ```
 
 If, however, the function is not expressible as a TensorFlow op, then use
 
 ```python
-result = SparseTensor(input.indices, map_fn(fn, input.values), input.shape)
+result = SparseTensor(
+  input.indices, map_fn(fn, input.values), input.dense_shape)
 ```
 
 instead.

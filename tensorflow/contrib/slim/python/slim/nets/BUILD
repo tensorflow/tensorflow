@@ -135,7 +135,7 @@ py_library(
 
 py_test(
     name = "resnet_v1_test",
-    size = "medium",
+    size = "large",
     srcs = ["resnet_v1_test.py"],
     srcs_version = "PY2AND3",
     deps = [

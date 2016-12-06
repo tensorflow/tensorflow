@@ -441,7 +441,7 @@ For example:
 ```prettyprint
 # 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
 shape(squeeze(t)) ==> [2, 3]
-          ```
+```
 
 Or, to remove specific size 1 dimensions:
 
@@ -635,7 +635,7 @@ tf.slice(input, [1, 0, 0], [2, 1, 3]) ==> [[[3, 3, 3]],
 
 - - -
 
-### `tf.strided_slice(input_, begin, end, strides, begin_mask=0, end_mask=0, ellipsis_mask=0, new_axis_mask=0, shrink_axis_mask=0, var=None, name=None)` {#strided_slice}
+### `tf.strided_slice(input_, begin, end, strides=None, begin_mask=0, end_mask=0, ellipsis_mask=0, new_axis_mask=0, shrink_axis_mask=0, var=None, name=None)` {#strided_slice}
 
 Extracts a strided slice from a tensor.
 
@@ -724,12 +724,12 @@ tf.strided_slice(input, [1, 1, 0], [2, -1, 3], [1, -1, 1]) ==>[[[4, 4, 4],
 
 - - -
 
-### `tf.split(split_dim, num_split, value, name='split')` {#split}
+### `tf.split(axis, num_split, value, name='split', split_dim=None)` {#split}
 
 Splits a tensor into `num_split` tensors along one dimension.
 
-Splits `value` along dimension `split_dim` into `num_split` smaller tensors.
-Requires that `num_split` evenly divide `value.shape[split_dim]`.
+Splits `value` along dimension `axis` into `num_split` smaller tensors.
+Requires that `num_split` evenly divide `value.shape[axis]`.
 
 For example:
 
@@ -757,11 +757,12 @@ tf.unpack(t, axis=axis)
 ##### Args:
 
 
-*  <b>`split_dim`</b>: A 0-D `int32` `Tensor`. The dimension along which to split.
+*  <b>`axis`</b>: A 0-D `int32` `Tensor`. The dimension along which to split.
     Must be in the range `[0, rank(value))`.
 *  <b>`num_split`</b>: A Python integer. The number of ways to split.
 *  <b>`value`</b>: The `Tensor` to split.
 *  <b>`name`</b>: A name for the operation (optional).
+*  <b>`split_dim`</b>: The old (deprecated) name for axis.
 
 ##### Returns:
 
@@ -1216,20 +1217,20 @@ This is the opposite of pack.  The numpy equivalent is
 
 - - -
 
-### `tf.reverse_sequence(input, seq_lengths, seq_dim, batch_dim=None, name=None)` {#reverse_sequence}
+### `tf.reverse_sequence(input, seq_lengths, seq_axis=None, batch_axis=None, name=None, seq_dim=None, batch_dim=None)` {#reverse_sequence}
 
 Reverses variable length slices.
 
-This op first slices `input` along the dimension `batch_dim`, and for each
+This op first slices `input` along the dimension `batch_axis`, and for each
 slice `i`, reverses the first `seq_lengths[i]` elements along
-the dimension `seq_dim`.
+the dimension `seq_axis`.
 
 The elements of `seq_lengths` must obey `seq_lengths[i] < input.dims[seq_dim]`,
 and `seq_lengths` must be a vector of length `input.dims[batch_dim]`.
 
-The output slice `i` along dimension `batch_dim` is then given by input
+The output slice `i` along dimension `batch_axis` is then given by input
 slice `i`, with the first `seq_lengths[i]` slices along dimension
-`seq_dim` reversed.
+`seq_axis` reversed.
 
 For example:
 
@@ -1282,8 +1283,8 @@ output[2:, :, 3, :, ...] = input[2:, :, 3, :, ...]
 *  <b>`seq_lengths`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     1-D with length `input.dims(batch_dim)` and
     `max(seq_lengths) < input.dims(seq_dim)`
-*  <b>`seq_dim`</b>: An `int`. The dimension which is partially reversed.
-*  <b>`batch_dim`</b>: An optional `int`. Defaults to `0`.
+*  <b>`seq_axis`</b>: An `int`. The dimension which is partially reversed.
+*  <b>`batch_axis`</b>: An optional `int`. Defaults to `0`.
     The dimension along which reversal is performed.
 *  <b>`name`</b>: A name for the operation (optional).
 

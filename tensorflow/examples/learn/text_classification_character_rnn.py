@@ -50,7 +50,7 @@ def char_rnn_model(features, target):
   byte_list = tf.ont_hot(features, 256, 1, 0)
   byte_list = tf.unstack(byte_list, axis=1)
 
-  cell = tf.nn.rnn_cell.GRUCell(HIDDEN_SIZE)
+  cell = tf.contrib.rnn.GRUCell(HIDDEN_SIZE)
   _, encoding = tf.nn.rnn(cell, byte_list, dtype=tf.float32)
 
   logits = tf.contrib.layers.fully_connected(encoding, 15, activation_fn=None)

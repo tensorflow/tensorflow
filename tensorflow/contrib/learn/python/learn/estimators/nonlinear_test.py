@@ -54,13 +54,23 @@ class NonLinearTest(tf.test.TestCase):
         config=tf.contrib.learn.RunConfig(tf_random_seed=1))
     regressor.fit(
         boston.data, boston.target, steps=300, batch_size=boston.data.shape[0])
-    weights = regressor.weights_
+    weights = ([regressor.get_variable_value("dnn/hiddenlayer_0/weights")] +
+               [regressor.get_variable_value("dnn/hiddenlayer_1/weights")] +
+               [regressor.get_variable_value("dnn/hiddenlayer_2/weights")] +
+               [regressor.get_variable_value("dnn/logits/weights")])
     self.assertEqual(weights[0].shape, (13, 10))
     self.assertEqual(weights[1].shape, (10, 20))
     self.assertEqual(weights[2].shape, (20, 10))
     self.assertEqual(weights[3].shape, (10, 1))
-    biases = regressor.bias_
-    self.assertEqual(len(biases), 4)
+
+    biases = ([regressor.get_variable_value("dnn/hiddenlayer_0/biases")] +
+              [regressor.get_variable_value("dnn/hiddenlayer_1/biases")] +
+              [regressor.get_variable_value("dnn/hiddenlayer_2/biases")] +
+              [regressor.get_variable_value("dnn/logits/biases")])
+    self.assertEqual(biases[0].shape, (10,))
+    self.assertEqual(biases[1].shape, (20,))
+    self.assertEqual(biases[2].shape, (10,))
+    self.assertEqual(biases[3].shape, (1,))
 
   def testDNNDropout0(self):
     # Dropout prob == 0.

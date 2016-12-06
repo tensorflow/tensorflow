@@ -52,7 +52,7 @@ class SparseTensorDenseMatMulTest(tf.test.TestCase):
 
     with self.test_session(use_gpu=True):
       sp_x_value = tf.SparseTensorValue(
-          indices=x_indices, values=x_values, shape=x_shape)
+          indices=x_indices, values=x_values, dense_shape=x_shape)
       tf_value_ans = sparse_ops.sparse_tensor_dense_matmul(
           sp_x_value, y, adjoint_a=adjoint_a, adjoint_b=adjoint_b)
       tf_tensor_ans = sparse_ops.sparse_tensor_dense_matmul(
@@ -169,7 +169,7 @@ def _sparse_tensor_dense_vs_dense_matmul_benchmark_dense(
 
 def _sparse_tensor_dense_vs_dense_matmul_benchmark_sparse(
     x_ind, x_val, x_shape, y, adjoint_a, adjoint_b):
-  sp_x = tf.SparseTensor(indices=x_ind, values=x_val, shape=x_shape)
+  sp_x = tf.SparseTensor(indices=x_ind, values=x_val, dense_shape=x_shape)
 
   def body(t, prev):
     with tf.control_dependencies([prev]):

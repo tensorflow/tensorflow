@@ -493,7 +493,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       sp_out = s.run(sp)
       self.assertAllEqual(sp_out.indices, indices)
       self.assertAllEqual(sp_out.values, values)
-      self.assertAllEqual(sp_out.shape, shape)
+      self.assertAllEqual(sp_out.dense_shape, shape)
       # Tuple fetch, use as tuple
       indices_out, values_out, shape_out = s.run(sp)
       self.assertAllEqual(indices_out, indices)
@@ -508,7 +508,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       sp_out, = s.run([sp])
       self.assertAllEqual(sp_out.indices, indices)
       self.assertAllEqual(sp_out.values, values)
-      self.assertAllEqual(sp_out.shape, shape)
+      self.assertAllEqual(sp_out.dense_shape, shape)
       # Dict fetch (single value), use as tuple
       indices_out, values_out, shape_out = s.run({'sp': sp})['sp']
       self.assertAllEqual(indices_out, indices)
@@ -523,7 +523,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       sp_out = s.run({'sp': sp})['sp']
       self.assertAllEqual(sp_out.indices, indices)
       self.assertAllEqual(sp_out.values, values)
-      self.assertAllEqual(sp_out.shape, shape)
+      self.assertAllEqual(sp_out.dense_shape, shape)
       # Nested list fetch use as tuple
       sp_out = s.run([[[sp]], sp])
       indices_out, values_out, shape_out = sp_out[0][0][0]
@@ -538,10 +538,10 @@ class SessionTest(test_util.TensorFlowTestCase):
       sp_out = s.run([[[sp]], sp])
       self.assertAllEqual(sp_out[0][0][0].indices, indices)
       self.assertAllEqual(sp_out[0][0][0].values, values)
-      self.assertAllEqual(sp_out[0][0][0].shape, shape)
+      self.assertAllEqual(sp_out[0][0][0].dense_shape, shape)
       self.assertAllEqual(sp_out[1].indices, indices)
       self.assertAllEqual(sp_out[1].values, values)
-      self.assertAllEqual(sp_out[1].shape, shape)
+      self.assertAllEqual(sp_out[1].dense_shape, shape)
 
   def testFeedSparseTensor(self):
     with session.Session() as s:
@@ -566,7 +566,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       sp_out = s.run(sp, {sp: (indices, values, shape)})
       self.assertAllEqual(sp_out.indices, indices)
       self.assertAllEqual(sp_out.values, values)
-      self.assertAllEqual(sp_out.shape, shape)
+      self.assertAllEqual(sp_out.dense_shape, shape)
       # Feed with SparseTensorValue
       indices_out, values_out, shape_out = s.run(
           [sp_indices, sp_values, sp_shape],
@@ -579,13 +579,13 @@ class SessionTest(test_util.TensorFlowTestCase):
           sp2, {sp: sparse_tensor.SparseTensorValue(indices, values, shape)})
       self.assertAllEqual(sp2_out.indices, indices)
       self.assertAllEqual(sp2_out.values, values)
-      self.assertAllEqual(sp2_out.shape, shape)
+      self.assertAllEqual(sp2_out.dense_shape, shape)
       # Feed SparseTensorValue and fetch sp directly.
       sp_out = s.run(
           sp, {sp: sparse_tensor.SparseTensorValue(indices, values, shape)})
       self.assertAllEqual(sp_out.indices, indices)
       self.assertAllEqual(sp_out.values, values)
-      self.assertAllEqual(sp_out.shape, shape)
+      self.assertAllEqual(sp_out.dense_shape, shape)
 
   def testFeedSparsePlaceholder(self):
     with session.Session() as s:
@@ -615,7 +615,7 @@ class SessionTest(test_util.TensorFlowTestCase):
           sp2, {sp: sparse_tensor.SparseTensorValue(indices, values, shape)})
       self.assertAllEqual(sp2_out.indices, indices)
       self.assertAllEqual(sp2_out.values, values)
-      self.assertAllEqual(sp2_out.shape, shape)
+      self.assertAllEqual(sp2_out.dense_shape, shape)
 
   def testFeedSparsePlaceholderPartialShape(self):
     with session.Session() as s:
@@ -646,7 +646,7 @@ class SessionTest(test_util.TensorFlowTestCase):
           sp2, {sp: sparse_tensor.SparseTensorValue(indices, values, shape)})
       self.assertAllEqual(sp2_out.indices, indices)
       self.assertAllEqual(sp2_out.values, values)
-      self.assertAllEqual(sp2_out.shape, shape)
+      self.assertAllEqual(sp2_out.dense_shape, shape)
 
   def testFeedSparsePlaceholderConstantShape(self):
     with session.Session() as s:

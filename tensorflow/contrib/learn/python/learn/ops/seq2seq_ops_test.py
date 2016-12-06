@@ -73,7 +73,7 @@ class Seq2SeqOpsTest(tf.test.TestCase):
     with self.test_session():
       decoder_inputs = [tf.placeholder(tf.float32, [2, 2]) for _ in range(3)]
       encoding = tf.placeholder(tf.float32, [2, 2])
-      cell = tf.nn.rnn_cell.GRUCell(2)
+      cell = tf.contrib.rnn.GRUCell(2)
       outputs, states, sampling_outputs, sampling_states = (
           ops.rnn_decoder(decoder_inputs, encoding, cell))
       self.assertEqual(len(outputs), 3)

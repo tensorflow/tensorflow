@@ -280,6 +280,7 @@ cc_binary(
         "lib/Target/X86/Disassembler/X86DisassemblerDecoderCommon.h",
     ],
     linkopts = [
+        "-lm",
         "-ldl",
         "-lpthread",
     ],
