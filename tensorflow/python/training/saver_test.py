@@ -1872,7 +1872,7 @@ class ScopedGraphTest(tf.test.TestCase):
         tf.add_to_collection("logits", logits)
 
       # The rest of the variables.
-      rest_variables = list(set(tf.all_variables()) - set(var_list.keys()))
+      rest_variables = list(set(tf.global_variables()) - set(var_list.keys()))
       init_rest_op = tf.initialize_variables(rest_variables)
 
     with self.test_session(graph=graph) as sess:

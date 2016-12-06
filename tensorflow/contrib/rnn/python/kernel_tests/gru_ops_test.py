@@ -158,7 +158,7 @@ class GRUBlockCellTest(tf.test.TestCase):
         output = gru_ops.GRUBlockCell(cell_size)(x, h)
         sess.run([tf.global_variables_initializer()])
 
-        all_variables = tf.all_variables()[0:4]
+        all_variables = tf.global_variables()[0:4]
         [w_ru, b_ru, w_c, b_c] = all_variables
 
         d_new_h_wrt_x = tf.gradients([output], x)
@@ -178,7 +178,7 @@ class GRUBlockCellTest(tf.test.TestCase):
         output = tf.nn.rnn_cell.GRUCell(cell_size)(x, h)
         sess.run([tf.global_variables_initializer()])
 
-        all_variables = tf.all_variables()[4:8]
+        all_variables = tf.global_variables()[4:8]
         [w_ru, b_ru, w_c, b_c] = all_variables
 
         d_new_h_wrt_x = tf.gradients([output], x)
@@ -281,7 +281,7 @@ class GRUBlockCellTest(tf.test.TestCase):
 
       sess.run([tf.global_variables_initializer()])
 
-      all_variables = tf.all_variables()
+      all_variables = tf.global_variables()
 
       [w_ru, b_ru, w_c, b_c] = all_variables[:4]
 

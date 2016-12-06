@@ -248,7 +248,7 @@ class Supervisor(object):
         ready to run the local_init_op.
         The model is considered ready if it returns an empty array.  Defaults to
         the tensor returned from
-        `tf.report_uninitialized_variables(tf.all_variables())`. If `None`, the
+        `tf.report_uninitialized_variables(tf.global_variables())`. If `None`, the
         model is not checked for readiness before running local_init_op.
       is_chief: If True, create a chief supervisor in charge of initializing
         and restoring the model.  If False, create a supervisor that relies
