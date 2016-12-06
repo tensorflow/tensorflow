@@ -14,8 +14,20 @@ java_library(
 
 java_test(
     name = "TensorFlowTest",
+    size = "small",
     srcs = ["src/test/java/org/tensorflow/TensorFlowTest.java"],
     test_class = "org.tensorflow.TensorFlowTest",
+    deps = [
+        ":tensorflow",
+        "//external:junit",
+    ],
+)
+
+java_test(
+    name = "TensorTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/TensorTest.java"],
+    test_class = "org.tensorflow.TensorTest",
     deps = [
         ":tensorflow",
         "//external:junit",

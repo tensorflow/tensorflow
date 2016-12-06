@@ -26,6 +26,6 @@ import org.junit.runners.JUnit4;
 public class TensorFlowTest {
   @Test
   public void version() {
-    assertTrue(TensorFlow.getVersion().length() > 0);
+    assertTrue(TensorFlow.version().length() > 0);
   }
 }

@@ -46,7 +46,10 @@ tf_cc_test(
 tf_cc_test(
     name = "graph_transferer_test",
     size = "small",
-    srcs = ["graph_transferer_test.cc"],
+    srcs = [
+        "graph_transferer_test.cc",
+        "hexagon_graph_execution_test.cc",
+    ],
     deps = [
         ":graph_transferer",
         "//tensorflow/cc:cc_ops",
@@ -70,13 +73,16 @@ tf_kernel_library(
     name = "graph_transferer",
     srcs = [
         "graph_transferer.cc",
+        "hexagon_control_wrapper.cc",
         "hexagon_ops_definitions.cc",
         "i_graph_transfer_ops_definitions.cc",
     ],
     hdrs = [
         "graph_transferer.h",
+        "hexagon_control_wrapper.h",
         "hexagon_ops_definitions.h",
         "i_graph_transfer_ops_definitions.h",
+        "i_soc_control_wrapper.h",
     ],
     data = ["//tensorflow/core:example_parser_configuration_testdata"],
     deps = [

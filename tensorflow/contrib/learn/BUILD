@@ -639,6 +639,18 @@ py_test(
 )
 
 py_test(
+    name = "numpy_io_test",
+    size = "small",
+    srcs = ["python/learn/learn_io/numpy_io_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
     name = "pandas_io_test",
     size = "small",
     srcs = ["python/learn/learn_io/pandas_io_test.py"],

@@ -4651,11 +4651,6 @@ class ExpandAndTileTest(tf.test.TestCase):
         shape=[3, 3, 3])
     with self.assertRaisesRegexp(ValueError, 'nvalid multiple'):
       metric_ops.expand_and_tile(x, multiple=0)
-    with self.test_session():
-      with self.assertRaises(tf.OpError):
-        metric_ops.expand_and_tile(x, multiple=1, dim=-4).eval()
-      with self.assertRaises(ValueError):
-        metric_ops.expand_and_tile(x, multiple=1, dim=4).eval()
 
   def _test_expand_and_tile(
       self, expected_shape, expected_value, tensor, multiple, dim=None):

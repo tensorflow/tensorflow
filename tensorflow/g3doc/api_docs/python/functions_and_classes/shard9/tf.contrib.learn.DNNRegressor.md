@@ -157,11 +157,12 @@ available in the SKCompat class, Estimator will only accept input_fn.
 
   est = Estimator(...) -> est = SKCompat(Estimator(...))
 
+##### Raises:
 
-*  <b>`Raises`</b>: 
+
 *  <b>`ValueError`</b>: If at least one of `x` or `y` is provided, and at least one of
-          `input_fn` or `feed_fn` is provided.
-          Or if `metrics` is not `None` or `dict`.
+      `input_fn` or `feed_fn` is provided.
+      Or if `metrics` is not `None` or `dict`.
 
 
 - - -
@@ -187,8 +188,9 @@ available in the SKCompat class, Estimator will only accept input_fn.
 
   est = Estimator(...) -> est = SKCompat(Estimator(...))
 
+##### Raises:
 
-*  <b>`Raises`</b>: 
+
 *  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
 *  <b>`ValueError`</b>: If both `steps` and `max_steps` are not `None`.
 
@@ -285,39 +287,41 @@ available in the SKCompat class, Estimator will only accept input_fn.
 
   est = Estimator(...) -> est = SKCompat(Estimator(...))
 
-    This method is expected to be called several times consecutively
-    on different or the same chunks of the dataset. This either can
-    implement iterative training or out-of-core/online training.
+This method is expected to be called several times consecutively
+on different or the same chunks of the dataset. This either can
+implement iterative training or out-of-core/online training.
 
-    This is especially useful when the whole dataset is too big to
-    fit in memory at the same time. Or when model is taking long time
-    to converge, and you want to split up training into subparts.
+This is especially useful when the whole dataset is too big to
+fit in memory at the same time. Or when model is taking long time
+to converge, and you want to split up training into subparts.
+
+##### Args:
 
 
-*  <b>`Args`</b>: 
 *  <b>`x`</b>: Matrix of shape [n_samples, n_features...]. Can be iterator that
-         returns arrays of features. The training input samples for fitting the
-         model. If set, `input_fn` must be `None`.
+     returns arrays of features. The training input samples for fitting the
+     model. If set, `input_fn` must be `None`.
 *  <b>`y`</b>: Vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-         iterator that returns array of labels. The training label values
-         (class labels in classification, real numbers in regression). If set,
-         `input_fn` must be `None`.
+     iterator that returns array of labels. The training label values
+     (class labels in classification, real numbers in regression). If set,
+     `input_fn` must be `None`.
 *  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
-        `None`.
+    `None`.
 *  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
 *  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first
-        dimension of `x`. Must be `None` if `input_fn` is provided.
+    dimension of `x`. Must be `None` if `input_fn` is provided.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-        inside the training loop.
+    inside the training loop.
+
+##### Returns:
+
+  `self`, for chaining.
+
+##### Raises:
 
 
-*  <b>`Returns`</b>: 
-      `self`, for chaining.
-
-
-*  <b>`Raises`</b>: 
 *  <b>`ValueError`</b>: If at least one of `x` and `y` is provided, and `input_fn` is
-          provided.
+      provided.
 
 
 - - -

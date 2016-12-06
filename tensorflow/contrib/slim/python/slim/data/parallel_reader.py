@@ -277,5 +277,5 @@ def get_data_files(data_sources):
     else:
       data_files = [data_sources]
   if not data_files:
-    raise ValueError('No data files found in %s', data_sources)
+    raise ValueError('No data files found in %s' % (data_sources,))
   return data_files

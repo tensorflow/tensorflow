@@ -200,7 +200,7 @@ class SparseReshapeTest(tf.test.TestCase):
       sp_input = self._SparseTensorPlaceholder()
       sp_output = tf.sparse_reshape(sp_input, [2, 3, 5])
       self.assertListEqual(sp_output.indices.get_shape().as_list(), [None, 3])
-      self.assertListEqual(sp_output.shape.get_shape().as_list(), [3])
+      self.assertListEqual(sp_output.dense_shape.get_shape().as_list(), [3])
 
       # Incorporate known shape information about input indices in output
       # indices
@@ -208,7 +208,7 @@ class SparseReshapeTest(tf.test.TestCase):
       sp_input.indices.set_shape([5, None])
       sp_output = tf.sparse_reshape(sp_input, [2, 3, 5])
       self.assertListEqual(sp_output.indices.get_shape().as_list(), [5, 3])
-      self.assertListEqual(sp_output.shape.get_shape().as_list(), [3])
+      self.assertListEqual(sp_output.dense_shape.get_shape().as_list(), [3])
 
       # Even if new_shape has no shape information, we know the ranks of
       # output indices and shape
@@ -217,7 +217,7 @@ class SparseReshapeTest(tf.test.TestCase):
       new_shape = tf.placeholder(tf.int64)
       sp_output = tf.sparse_reshape(sp_input, new_shape)
       self.assertListEqual(sp_output.indices.get_shape().as_list(), [5, None])
-      self.assertListEqual(sp_output.shape.get_shape().as_list(), [None])
+      self.assertListEqual(sp_output.dense_shape.get_shape().as_list(), [None])
 
   def testFeedDenseReshapeSemantics(self):
     with self.test_session(use_gpu=False) as sess:

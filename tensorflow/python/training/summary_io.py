@@ -58,7 +58,7 @@ class SummaryWriter(_FileWriter):
     # Launch the graph in a session.
     sess = tf.Session()
     # Create a summary writer, add the 'graph' to the event file.
-    writer = tf.train.SummaryWriter(<some-directory>, sess.graph)
+    writer = tf.summary.FileWriter(<some-directory>, sess.graph)
     ```
 
     The other arguments to the constructor control the asynchronous writes to

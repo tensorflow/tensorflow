@@ -135,7 +135,7 @@ from tensorflow.python.ops.gen_state_ops import *
 # pylint: enable=wildcard-import
 
 
-# pylint: disable=protected-access
+# pylint: disable=protected-access,g-doc-return-or-yield,g-doc-args
 def variable_op(shape, dtype, name="Variable", set_shape=True, container="",
                 shared_name=""):
   """Create a variable Operation.
@@ -146,8 +146,6 @@ def variable_op(shape, dtype, name="Variable", set_shape=True, container="",
     shape: The shape of the tensor managed by this variable
     dtype: The underlying type of the tensor values.
     name: optional name to use for the variable op.
-    set_shape: If True, set the shape property of the returned Tensor to
-      the shape argument.
     container: An optional string. Defaults to "".
       If non-empty, this variable is placed in the given container.
       Otherwise, a default container is used.
@@ -167,6 +165,32 @@ def variable_op(shape, dtype, name="Variable", set_shape=True, container="",
   if set_shape:
     ret.set_shape(shape)
   return ret
+
+
+def variable_op_v2(shape, dtype, name="Variable", container="", shared_name=""):
+  """Create a variable Operation.
+
+  See also variables.Variable.
+
+  Args:
+    shape: The shape of the tensor managed by this variable
+    dtype: The underlying type of the tensor values.
+    name: optional name to use for the variable op.
+    container: An optional string. Defaults to "".
+      If non-empty, this variable is placed in the given container.
+      Otherwise, a default container is used.
+    shared_name: An optional string. Defaults to "".
+      If non-empty, this variable is named in the given bucket
+      with this shared_name. Otherwise, the node name is used instead.
+
+  Returns:
+    A variable tensor.1;5A
+  """
+  return gen_state_ops._variable_v2(shape=shape,
+                                    dtype=dtype,
+                                    name=name,
+                                    container=container,
+                                    shared_name=shared_name)
 
 
 def init_variable(v, init, name="init"):

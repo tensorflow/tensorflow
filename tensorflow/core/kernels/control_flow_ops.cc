@@ -474,14 +474,22 @@ class AbortOp : public OpKernel {
  public:
   explicit AbortOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("error_msg", &error_msg_));
+    OP_REQUIRES_OK(
+        context, context->GetAttr("exit_without_error", &exit_without_error_));
   }
 
   void Compute(OpKernelContext* context) override {
-    CHECK(false) << "Abort_op intentional failure; " << error_msg_;
+    if (!exit_without_error_) {
+      CHECK(false) << "Abort_op intentional failure; " << error_msg_;
+    } else {
+      LOG(WARNING) << "Exiting the process: " << error_msg_;
+      exit(0);
+    }
   }
 
  private:
   string error_msg_;
+  bool exit_without_error_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("Abort").Device(DEVICE_CPU), AbortOp);

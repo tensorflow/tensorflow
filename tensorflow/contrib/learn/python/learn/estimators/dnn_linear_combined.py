@@ -32,6 +32,7 @@ from tensorflow.contrib.layers.python.layers import feature_column as feature_co
 from tensorflow.contrib.layers.python.layers import feature_column_ops
 from tensorflow.contrib.layers.python.layers import optimizers
 from tensorflow.contrib.learn.python.learn import evaluable
+from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn import monitors as monitor_lib
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import composable_model
@@ -248,8 +249,18 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     custom_metrics = {}
     if metrics:
       for name, metric in six.iteritems(metrics):
-        if not isinstance(name, tuple):
-          # TODO(zakaria): remove once deprecation is finished (b/31229024)
+        # Apply default_prediction_key
+        if isinstance(metric, metric_spec.MetricSpec):
+          if not metric.prediction_key:
+            custom_metrics[name] = metric_spec.MetricSpec(
+                metric_fn=metric.metric_fn,
+                prediction_key=self._default_prediction_key,
+                label_key=metric.label_key,
+                weight_key=metric.weight_key)
+          else:
+            custom_metrics[name] = metric
+        # TODO(zakaria): remove once deprecation is finished (b/31229024)
+        elif not isinstance(name, tuple):
           custom_metrics[(name, self._default_prediction_key)] = metric
         else:
           custom_metrics[name] = metric
@@ -752,11 +763,13 @@ class DNNLinearCombinedClassifier(evaluable.Evaluable, trainable.Trainable):
     return self
 
   def evaluate(self, x=None, y=None, input_fn=None, feed_fn=None,
-               batch_size=None, steps=None, metrics=None, name=None):
+               batch_size=None, steps=None, metrics=None, name=None,
+               checkpoint_path=None):
     """See evaluable.Evaluable."""
     return self._estimator.evaluate(
         x=x, y=y, input_fn=input_fn, feed_fn=feed_fn, batch_size=batch_size,
-        steps=steps, metrics=metrics, name=name)
+        steps=steps, metrics=metrics, name=name,
+        checkpoint_path=checkpoint_path)
 
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,

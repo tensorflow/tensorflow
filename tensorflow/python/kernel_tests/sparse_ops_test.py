@@ -41,7 +41,7 @@ def _sparsify(x, thresh=0.5, index_dtype=np.int64):
   x_shape = x.shape
 
   return tf.SparseTensor(
-      indices=x_indices, values=x_values, shape=x_shape), len(x_values)
+      indices=x_indices, values=x_values, dense_shape=x_shape), len(x_values)
 
 
 class SparseToIndicatorTest(test_util.TensorFlowTestCase):
@@ -153,7 +153,7 @@ class SparseMergeTest(test_util.TensorFlowTestCase):
         output.values,
         [-3, 1, 4, 1, 5, 9])
     self.assertAllEqual(
-        output.shape,
+        output.dense_shape,
         [3, vocab_size])
 
   def _AssertResultsNotSorted(self, output, vocab_size):
@@ -164,7 +164,7 @@ class SparseMergeTest(test_util.TensorFlowTestCase):
         output.values,
         [-3, 4, 1, 9, 5, 1])
     self.assertAllEqual(
-        output.shape,
+        output.dense_shape,
         [3, vocab_size])
 
   def testInt32AndFloat32(self):
@@ -254,7 +254,7 @@ class SparseRetainTest(test_util.TensorFlowTestCase):
 
         self.assertAllEqual(output.indices, [[0, 0], [1, 4], [3, 2]])
         self.assertAllEqual(output.values, [0, 14, 32])
-        self.assertAllEqual(output.shape, [5, 6])
+        self.assertAllEqual(output.dense_shape, [5, 6])
 
   def testRetainNone(self):
     with self.test_session(use_gpu=False) as sess:
@@ -266,7 +266,7 @@ class SparseRetainTest(test_util.TensorFlowTestCase):
 
       self.assertAllEqual(output.indices, np.array([]).reshape((0, 2)))
       self.assertAllEqual(output.values, [])
-      self.assertAllEqual(output.shape, [5, 6])
+      self.assertAllEqual(output.dense_shape, [5, 6])
 
   def testMismatchedRetainShape(self):
     with self.test_session(use_gpu=False):
@@ -305,7 +305,7 @@ class SparseResetShapeTest(test_util.TensorFlowTestCase):
                                            [0, 1, 3], [1, 1, 4],
                                            [1, 3, 2], [1, 3, 3]])
       self.assertAllEqual(output.values, [0, 10, 13, 14, 32, 33])
-      self.assertAllEqual(output.shape, [3, 6, 7])
+      self.assertAllEqual(output.dense_shape, [3, 6, 7])
 
   def testInputUnavailableInGraphConstructionOk(self):
     with self.test_session(use_gpu=False) as sess:
@@ -319,7 +319,7 @@ class SparseResetShapeTest(test_util.TensorFlowTestCase):
                                            [0, 1, 3], [1, 1, 4],
                                            [1, 3, 2], [1, 3, 3]])
       self.assertAllEqual(output.values, [0, 10, 13, 14, 32, 33])
-      self.assertAllEqual(output.shape, [3, 6, 7])
+      self.assertAllEqual(output.dense_shape, [3, 6, 7])
 
   def testFeedInputUnavailableInGraphConstructionOk(self):
     with self.test_session(use_gpu=False) as sess:
@@ -334,7 +334,7 @@ class SparseResetShapeTest(test_util.TensorFlowTestCase):
                                            [0, 1, 3], [1, 1, 4],
                                            [1, 3, 2], [1, 3, 3]])
       self.assertAllEqual(output.values, [0, 10, 13, 14, 32, 33])
-      self.assertAllEqual(output.shape, [3, 6, 7])
+      self.assertAllEqual(output.dense_shape, [3, 6, 7])
 
   def testTightBoundingBox(self):
     with self.test_session(use_gpu=False) as sess:
@@ -347,7 +347,7 @@ class SparseResetShapeTest(test_util.TensorFlowTestCase):
                                            [0, 1, 3], [1, 1, 4],
                                            [1, 3, 2], [1, 3, 3]])
       self.assertAllEqual(output.values, [0, 10, 13, 14, 32, 33])
-      self.assertAllEqual(output.shape, [2, 4, 5])
+      self.assertAllEqual(output.dense_shape, [2, 4, 5])
 
   def testInvalidRank(self):
     with self.test_session(use_gpu=False):
@@ -436,7 +436,7 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
             output.indices,
             [[0, 0], [1, 0], [1, 3], [1, 4], [2, 0], [3, 2], [3, 3], [4, 0]])
         self.assertAllEqual(output.values, [0, 10, 13, 14, -1, 32, 33, -1])
-        self.assertAllEqual(output.shape, [5, 6])
+        self.assertAllEqual(output.dense_shape, [5, 6])
         self.assertAllEqual(empty_row_indicator_out,
                             np.array([0, 0, 1, 0, 1]).astype(np.bool))
 
@@ -454,7 +454,7 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
           [[0, 0], [1, 0], [1, 3], [1, 4], [2, 0], [3, 2], [3, 3], [4, 0]])
       self.assertAllEqual(output.values,
                           [b"a", b"b", b"c", b"d", b"", b"e", b"f", b""])
-      self.assertAllEqual(output.shape, [5, 6])
+      self.assertAllEqual(output.dense_shape, [5, 6])
       self.assertAllEqual(empty_row_indicator_out,
                           np.array([0, 0, 1, 0, 1]).astype(np.bool))
 
@@ -469,7 +469,7 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
 
       self.assertAllEqual(output.indices, [[0, 0], [1, 0], [1, 3], [1, 4]])
       self.assertAllEqual(output.values, [0, 10, 13, 14])
-      self.assertAllEqual(output.shape, [2, 6])
+      self.assertAllEqual(output.dense_shape, [2, 6])
       self.assertAllEqual(empty_row_indicator_out, np.zeros(2).astype(np.bool))
 
 
@@ -480,7 +480,7 @@ class SparseReduceSumTest(test_util.TensorFlowTestCase):
   # where ? is implictly-zero.
   ind = np.array([[0, 0], [0, 2], [1, 1]]).astype(np.int64)
   vals = np.array([1, 1, 1]).astype(np.int32)
-  shape = np.array([2, 3]).astype(np.int64)
+  dense_shape = np.array([2, 3]).astype(np.int64)
 
   def _compare(self, sp_t, reduction_axes, ndims, keep_dims):
     densified = sparse_ops.sparse_tensor_to_dense(sp_t).eval()
@@ -517,7 +517,7 @@ class SparseReduceSumTest(test_util.TensorFlowTestCase):
     self._compare(sp_t, reduction_axes, ndims, True)
 
   def testSimpleAndRandomInputs(self):
-    sp_t = tf.SparseTensor(self.ind, self.vals, self.shape)
+    sp_t = tf.SparseTensor(self.ind, self.vals, self.dense_shape)
 
     with self.test_session(use_gpu=False):
       self._compare_all(sp_t, None, ndims=2)
@@ -541,7 +541,7 @@ class SparseReduceSumTest(test_util.TensorFlowTestCase):
           self._compare_all(sp_t, axes, ndims=len(dims))
 
   def testInvalidAxes(self):
-    sp_t = tf.SparseTensor(self.ind, self.vals, self.shape)
+    sp_t = tf.SparseTensor(self.ind, self.vals, self.dense_shape)
     with self.test_session(use_gpu=False):
       with self.assertRaisesOpError("Invalid reduction dimension -3"):
         sparse_ops.sparse_reduce_sum(sp_t, -3).eval()
@@ -576,10 +576,11 @@ class SparseMathOpsTest(test_util.TensorFlowTestCase):
     self.assertTrue(isinstance(result_tensor, tf.SparseTensor))
     self.assertTrue(isinstance(input_sp_t, tf.SparseTensor))
     self.assertAllEqual(input_sp_t.indices.eval(), result_tensor.indices.eval())
-    self.assertAllEqual(input_sp_t.shape.eval(), result_tensor.shape.eval())
+    self.assertAllEqual(
+        input_sp_t.dense_shape.eval(), result_tensor.dense_shape.eval())
 
     res_densified = sparse_ops.sparse_to_dense(result_tensor.indices,
-                                               result_tensor.shape,
+                                               result_tensor.dense_shape,
                                                result_tensor.values).eval()
     self.assertAllEqual(result_np, res_densified)
 
@@ -700,7 +701,7 @@ class SparseSoftmaxTest(test_util.TensorFlowTestCase):
 
         self.assertAllEqual(expected_values, result.values)
         self.assertAllEqual(sp_t.indices.eval(), result.indices)
-        self.assertAllEqual(shape, result.shape)
+        self.assertAllEqual(shape, result.dense_shape)
 
   def testGradient(self):
     x_shape = [2, 5, 10]
@@ -719,7 +720,7 @@ class SparseMinimumMaximumTest(test_util.TensorFlowTestCase):
   def _assertSparseTensorValueEqual(self, a, b):
     self.assertAllEqual(a.indices, b.indices)
     self.assertAllEqual(a.values, b.values)
-    self.assertAllEqual(a.shape, b.shape)
+    self.assertAllEqual(a.dense_shape, b.dense_shape)
 
   def testBasic(self):
     with self.test_session(use_gpu=False):

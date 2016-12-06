@@ -40,6 +40,7 @@ _VARIABLE_OPS = {
     "ScatterUpdate",
     "TruncatedNormal",
     "Variable",
+    "VariableV2",
 }
 
 
