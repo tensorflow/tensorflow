@@ -120,7 +120,6 @@ def tf_copts():
            "-fno-exceptions"] +
           if_cuda(["-DGOOGLE_CUDA=1"]) +
           if_android_arm(["-mfpu=neon"]) +
-          if_not_mobile(["-msse4.1"]) +
           select({
               "//tensorflow:android": [
                   "-std=c++11",
