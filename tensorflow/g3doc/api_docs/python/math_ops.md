@@ -3313,7 +3313,7 @@ a tensor.
 
 ### `tf.argmin(input, axis=None, name=None, dimension=None)` {#argmin}
 
-Returns the index with the smallest value across axiss of a tensor.
+Returns the index with the smallest value across axes of a tensor.
 
 ##### Args:
 
@@ -3333,7 +3333,7 @@ Returns the index with the smallest value across axiss of a tensor.
 
 ### `tf.argmax(input, axis=None, name=None, dimension=None)` {#argmax}
 
-Returns the index with the largest value across axiss of a tensor.
+Returns the index with the largest value across axes of a tensor.
 
 ##### Args:
 

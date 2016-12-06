@@ -250,7 +250,8 @@ def argmax(input, axis=None, name=None, dimension=None):
   return gen_math_ops.arg_max(input, axis, name)
 
 
-argmax.__doc__ = gen_math_ops.arg_max.__doc__.replace("dimension", "axis")
+argmax.__doc__ = (gen_math_ops.arg_max.__doc__
+                  .replace("dimensions", "axes").replace("dimension", "axis"))
 
 
 # TODO(aselle:deprecate arg_min)
@@ -262,7 +263,8 @@ def argmin(input, axis=None, name=None, dimension=None):
   return gen_math_ops.arg_min(input, axis, name)
 
 
-argmin.__doc__ = gen_math_ops.arg_min.__doc__.replace("dimension", "axis")
+argmin.__doc__ = (gen_math_ops.arg_min.__doc__
+                  .replace("dimensions", "axes").replace("dimension", "axis"))
 
 # pylint: enable=redefined-builtin
 
