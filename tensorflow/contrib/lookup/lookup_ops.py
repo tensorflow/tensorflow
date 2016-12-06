@@ -141,11 +141,11 @@ class InitializableLookupTableBase(LookupInterface):
     Returns:
       A scalar tensor containing the number of elements in this table.
     """
-    if name is None:
-      name = "%s_Size" % self._name
-    # pylint: disable=protected-access
-    return gen_data_flow_ops._lookup_table_size(self._table_ref, name=name)
-    # pylint: enable=protected-access
+    with ops.name_scope(name, "%s_Size" % self._name,
+                        [self._table_ref]) as scope:
+      # pylint: disable=protected-access
+      return gen_data_flow_ops._lookup_table_size(self._table_ref, name=scope)
+      # pylint: enable=protected-access
 
   def lookup(self, keys, name=None):
     """Looks up `keys` in a table, outputs the corresponding values.
@@ -163,9 +163,6 @@ class InitializableLookupTableBase(LookupInterface):
       TypeError: when `keys` or `default_value` doesn't match the table data
         types.
     """
-    if name is None:
-      name = "%s_lookup_table_find" % self._name
-
     key_tensor = keys
     if isinstance(keys, sparse_tensor.SparseTensor):
       key_tensor = keys.values
@@ -174,12 +171,12 @@ class InitializableLookupTableBase(LookupInterface):
       raise TypeError("Signature mismatch. Keys must be dtype %s, got %s." %
                       (self._key_dtype, keys.dtype))
 
-    # pylint: disable=protected-access
-    values = gen_data_flow_ops._lookup_table_find(self._table_ref,
-                                                  key_tensor,
-                                                  self._default_value,
-                                                  name=name)
-    # pylint: enable=protected-access
+    with ops.name_scope(name, "%s_Lookup" % self._name,
+                        [self._table_ref]) as scope:
+      # pylint: disable=protected-access
+      values = gen_data_flow_ops._lookup_table_find(
+          self._table_ref, key_tensor, self._default_value, name=scope)
+      # pylint: enable=protected-access
 
     values.set_shape(key_tensor.get_shape())
     if isinstance(keys, sparse_tensor.SparseTensor):
@@ -220,13 +217,13 @@ class HashTable(InitializableLookupTableBase):
     Returns:
       A `HashTable` object.
     """
-    with ops.name_scope(name, "hash_table", [initializer]):
+    with ops.name_scope(name, "hash_table", [initializer]) as scope:
       # pylint: disable=protected-access
       table_ref = gen_data_flow_ops._hash_table(
           shared_name=shared_name,
           key_dtype=initializer.key_dtype,
           value_dtype=initializer.value_dtype,
-          name=name)
+          name=scope)
       # pylint: enable=protected-access
 
       super(HashTable, self).__init__(table_ref, default_value, initializer)
