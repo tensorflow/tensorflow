@@ -10,7 +10,7 @@ Weighted cross-entropy loss for a sequence of logits (per example).
 *  <b>`weights`</b>: List of 1D batch-sized float-Tensors of the same length as logits.
 *  <b>`average_across_timesteps`</b>: If set, divide the returned cost by the total
     label weight.
-*  <b>`softmax_loss_function`</b>: Function (inputs-batch, labels-batch) -> loss-batch
+*  <b>`softmax_loss_function`</b>: Function (labels-batch, inputs-batch) -> loss-batch
     to be used instead of the standard softmax (the default if this is None).
 *  <b>`name`</b>: Optional name for this operation, default: "sequence_loss_by_example".
 
