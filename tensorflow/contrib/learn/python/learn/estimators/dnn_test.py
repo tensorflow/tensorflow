@@ -962,7 +962,7 @@ class DNNRegressorTest(tf.test.TestCase):
         steps=1,
         metrics={
             'my_error': tf.contrib.metrics.streaming_mean_squared_error,
-            'my_metric': _my_metric_op
+            ('my_metric', 'scores'): _my_metric_op
         })
     self.assertIn('loss', set(scores.keys()))
     self.assertIn('my_error', set(scores.keys()))
@@ -973,13 +973,73 @@ class DNNRegressorTest(tf.test.TestCase):
         _sklearn.mean_squared_error(np.array([1, 0, 0, 0]), predictions),
         scores['my_error'])
 
-    # Tests that when the key is a tuple, an error is raised.
+    # Tests the case that the 2nd element of the key is not "scores".
     with self.assertRaises(KeyError):
       regressor.evaluate(
           input_fn=_input_fn,
           steps=1,
           metrics={('my_error', 'predictions'):
                    tf.contrib.metrics.streaming_mean_squared_error})
+
+    # Tests the case where the tuple of the key doesn't have 2 elements.
+    with self.assertRaises(ValueError):
+      regressor.evaluate(
+          input_fn=_input_fn,
+          steps=1,
+          metrics={
+              ('bad_length_name', 'scores', 'bad_length'):
+                  tf.contrib.metrics.streaming_mean_squared_error
+          })
+
+  def testCustomMetricsWithMetricSpec(self):
+    """Tests custom evaluation metrics that use MetricSpec."""
+    def _input_fn(num_epochs=None):
+      # Create 4 rows, one of them (y = x), three of them (y=Not(x))
+      labels = tf.constant([[1.], [0.], [0.], [0.]])
+      features = {
+          'x': tf.train.limit_epochs(
+              tf.ones(shape=[4, 1], dtype=tf.float32), num_epochs=num_epochs),
+      }
+      return features, labels
+
+    def _my_metric_op(predictions, labels):
+      return tf.reduce_sum(tf.mul(predictions, labels))
+
+    regressor = tf.contrib.learn.DNNRegressor(
+        feature_columns=[tf.contrib.layers.real_valued_column('x')],
+        hidden_units=[3, 3],
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
+
+    regressor.fit(input_fn=_input_fn, steps=5)
+    scores = regressor.evaluate(
+        input_fn=_input_fn,
+        steps=1,
+        metrics={
+            'my_error': MetricSpec(
+                metric_fn=tf.contrib.metrics.streaming_mean_squared_error,
+                prediction_key='scores'),
+            'my_metric': MetricSpec(
+                metric_fn=_my_metric_op,
+                prediction_key='scores')
+        })
+    self.assertIn('loss', set(scores.keys()))
+    self.assertIn('my_error', set(scores.keys()))
+    self.assertIn('my_metric', set(scores.keys()))
+    predict_input_fn = functools.partial(_input_fn, num_epochs=1)
+    predictions = np.array(list(regressor.predict(input_fn=predict_input_fn)))
+    self.assertAlmostEqual(
+        _sklearn.mean_squared_error(np.array([1, 0, 0, 0]), predictions),
+        scores['my_error'])
+
+    # Tests the case where the prediction_key is not "scores".
+    with self.assertRaisesRegexp(KeyError, 'bad_type'):
+      regressor.evaluate(
+          input_fn=_input_fn,
+          steps=1,
+          metrics={
+              'bad_name': MetricSpec(
+                  metric_fn=tf.contrib.metrics.streaming_auc,
+                  prediction_key='bad_type')})
 
   def testTrainSaveLoad(self):
     """Tests that insures you can save and reload a trained model."""
