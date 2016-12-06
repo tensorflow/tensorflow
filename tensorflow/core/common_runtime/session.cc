@@ -18,6 +18,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/session_factory.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/monitoring.h"
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
@@ -52,16 +54,22 @@ Status Session::PRun(const string& handle,
 }
 
 Session* NewSession(const SessionOptions& options) {
-  SessionFactory* factory;
-  Status s = SessionFactory::GetFactory(options, &factory);
+  Session* out_session;
+  const Status s = NewSession(options, &out_session);
   if (!s.ok()) {
     LOG(ERROR) << s;
     return nullptr;
   }
-  return factory->NewSession(options);
+  return out_session;
 }
 
 Status NewSession(const SessionOptions& options, Session** out_session) {
+  // Starts the monitoring exporter the first time this method is called.
+  static bool started TF_ATTRIBUTE_UNUSED = []() {
+    monitoring::StartExporter();
+    return true;
+  }();
+
   SessionFactory* factory;
   Status s = SessionFactory::GetFactory(options, &factory);
   if (!s.ok()) {
