@@ -38,10 +38,35 @@ public final class Graph implements AutoCloseable {
   @Override
   public void close() {
     synchronized (nativeHandleLock) {
-      if (nativeHandle != 0) {
-        delete(nativeHandle);
-        nativeHandle = 0;
+      if (nativeHandle == 0) {
+        return;
       }
+      while (refcount > 0) {
+        try {
+          nativeHandleLock.wait();
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          // Possible leak of the graph in this case?
+          return;
+        }
+      }
+      delete(nativeHandle);
+      nativeHandle = 0;
+    }
+  }
+
+  /**
+   * Returns the operation (node in the Graph) with the provided name.
+   *
+   * <p>Or {@code null} if no such operation exists in the Graph.
+   */
+  public Operation operation(String name) {
+    synchronized (nativeHandleLock) {
+      long oph = operation(nativeHandle, name);
+      if (oph == 0) {
+        return null;
+      }
+      return new Operation(this, oph);
     }
   }
 
@@ -89,10 +114,50 @@ public final class Graph implements AutoCloseable {
 
   private final Object nativeHandleLock = new Object();
   private long nativeHandle;
+  private int refcount = 0;
+
+  // Related native objects (such as the TF_Operation object backing an Operation instance)
+  // have a validity tied to that of the Graph. The handles to those native objects are not
+  // valid after Graph.close() has been invoked.
+  //
+  // Instances of the Reference class should be used to ensure the Graph has not been closed
+  // while dependent handles are in use.
+  class Reference implements AutoCloseable {
+    private Reference() {
+      synchronized (Graph.this.nativeHandleLock) {
+        active = Graph.this.nativeHandle != 0;
+        if (!active) {
+          throw new IllegalStateException("close() has been called on the Graph");
+        }
+        Graph.this.refcount++;
+      }
+    }
+
+    @Override
+    public void close() {
+      synchronized (Graph.this.nativeHandleLock) {
+        if (!active) {
+          return;
+        }
+        active = false;
+        if (--Graph.this.refcount == 0) {
+          Graph.this.nativeHandleLock.notifyAll();
+        }
+      }
+    }
+
+    private boolean active;
+  }
+
+  Reference ref() {
+    return new Reference();
+  }
 
   private static native long allocate();
 
   private static native void delete(long handle);
+
+  private static native long operation(long handle, String name);
 
   private static native void importGraphDef(long handle, byte[] graphDef, String prefix)
       throws IllegalArgumentException;

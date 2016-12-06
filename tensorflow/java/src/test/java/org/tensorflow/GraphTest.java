@@ -16,6 +16,7 @@ limitations under the License.
 package org.tensorflow;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.fail;
 
 import java.nio.file.Files;
@@ -29,19 +30,40 @@ import org.junit.runners.JUnit4;
 public class GraphTest {
 
   @Test
-  public void graphDefImportAndExport() {
-    try (Graph g = new Graph()) {
-      final byte[] inGraphDef = Files.readAllBytes(Paths.get("tensorflow/java/test_graph_def.data"));
-      g.importGraphDef(inGraphDef);
-      final byte[] outGraphDef = g.toGraphDef();
-      // The graphs may not be identical as the proto format allows the same message
-      // to be encoded in multiple ways. Once the Graph API is expressive enough
-      // to construct graphs and query for nodes/operations, use that.
-      // Till then a very crude test:
-      assertEquals(inGraphDef.length, outGraphDef.length);
+  public void graphDefRoundTrip() {
+    try (Graph imported = new Graph()) {
+      final byte[] inGraphDef =
+          Files.readAllBytes(Paths.get("tensorflow/java/test_graph_def.data"));
+      imported.importGraphDef(inGraphDef);
+      validateImportedGraph(imported, "");
+
+      final byte[] outGraphDef = imported.toGraphDef();
+      try (Graph exported = new Graph()) {
+        exported.importGraphDef(outGraphDef, "HeyHeyHey");
+        validateImportedGraph(exported, "HeyHeyHey/");
+      }
+      // Knowing how test_graph_def.data was generated, it should have these nodes:
     } catch (Exception e) {
       fail("Unexpected exception: " + e);
     }
+  }
+
+  // Helper function whose implementation is based on knowledge of how test_graph_def.data was
+  // produced.
+  private void validateImportedGraph(Graph g, String prefix) {
+    Operation op = g.operation(prefix + "MyConstant");
+    assertNotNull(op);
+    assertEquals(prefix + "MyConstant", op.name());
+    assertEquals("Const", op.type());
+    assertEquals(1, op.numOutputs());
+    assertEquals(op, op.output(0).op());
+
+    op = g.operation(prefix + "while/Less");
+    assertNotNull(op);
+    assertEquals(prefix + "while/Less", op.name());
+    assertEquals("Less", op.type());
+    assertEquals(1, op.numOutputs());
+    assertEquals(op, op.output(0).op());
   }
 
   @Test

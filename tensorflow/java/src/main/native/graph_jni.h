@@ -39,6 +39,14 @@ JNIEXPORT void JNICALL Java_org_tensorflow_Graph_delete(JNIEnv *, jclass,
 
 /*
  * Class:     org_tensorflow_Graph
+ * Method:    operation
+ * Signature: (JLjava/lang/String;)J
+ */
+JNIEXPORT jlong JNICALL Java_org_tensorflow_Graph_operation(JNIEnv *, jclass,
+                                                            jlong, jstring);
+
+/*
+ * Class:     org_tensorflow_Graph
  * Method:    importGraphDef
  * Signature: (J[BLjava/lang/String;)V
  */

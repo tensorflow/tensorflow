@@ -30,7 +30,7 @@ def main():
   if len(sys.argv) != 2:
     print('Usage: ' + sys.argv[0] + ' <output filename>')
     sys.exit(-1)
-  i = tf.constant(0)
+  i = tf.constant(0, name='MyConstant')
   c = lambda i: tf.less(i, 10)
   b = lambda i: tf.add(i, 1)
   tf.while_loop(c, b, [i])

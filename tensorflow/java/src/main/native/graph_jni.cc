@@ -21,6 +21,8 @@ limitations under the License.
 
 namespace {
 TF_Graph* requireHandle(JNIEnv* env, jlong handle) {
+  static_assert(sizeof(jlong) >= sizeof(TF_Graph*),
+                "Cannot package C object pointers as a Java long");
   if (handle == 0) {
     throwException(env, kNullPointerException,
                    "close() has been called on the Graph");
@@ -38,6 +40,18 @@ JNIEXPORT void JNICALL Java_org_tensorflow_Graph_delete(JNIEnv*, jclass,
                                                         jlong handle) {
   if (handle == 0) return;
   TF_DeleteGraph(reinterpret_cast<TF_Graph*>(handle));
+}
+
+JNIEXPORT jlong JNICALL Java_org_tensorflow_Graph_operation(JNIEnv* env,
+                                                            jclass clazz,
+                                                            jlong handle,
+                                                            jstring name) {
+  TF_Graph* g = requireHandle(env, handle);
+  if (g == nullptr) return 0;
+  const char* cname = env->GetStringUTFChars(name, nullptr);
+  TF_Operation* op = TF_GraphOperationByName(g, cname);
+  env->ReleaseStringUTFChars(name, cname);
+  return reinterpret_cast<jlong>(op);
 }
 
 JNIEXPORT void JNICALL Java_org_tensorflow_Graph_importGraphDef(
