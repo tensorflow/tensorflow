@@ -297,6 +297,10 @@ class SparseTensorValue(object):
   def shape(self):
     return self._dense_shape
 
+  def __repr__(self):
+    return "SparseTensorValue(indices=%s, values=%s, dense_shape=%s)" % (
+        self._indices, self._values, self._dense_shape)
+
   def __iter__(self):  # pylint: disable=non-iterator-returned
     return _STVIter(self)
 
