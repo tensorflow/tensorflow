@@ -40,6 +40,7 @@ _VARIABLE_OPS = {
     "ScatterUpdate",
     "TruncatedNormal",
     "Variable",
+    "VariableV2",
 }
 
 
@@ -193,12 +194,16 @@ def convert_variables_to_constants(sess, input_graph_def, output_node_names,
   Returns:
     GraphDef containing a simplified version of the original.
   """
+  # This graph only includes the nodes needed to evaluate the output nodes, and
+  # removes unneeded nodes like those involved in saving and assignment.
+  inference_graph = extract_sub_graph(input_graph_def, output_node_names)
+
   found_variables = {}
   variable_names = []
   variable_dict_names = []
-  for node in input_graph_def.node:
-    if node.op == "Assign":
-      variable_name = node.input[0]
+  for node in inference_graph.node:
+    if node.op == "Variable":
+      variable_name = node.name
       if (variable_names_whitelist is not None and
           variable_name not in variable_names_whitelist):
         continue
@@ -210,10 +215,6 @@ def convert_variables_to_constants(sess, input_graph_def, output_node_names,
     returned_variables = []
   found_variables = dict(zip(variable_dict_names, returned_variables))
   logging.info("Froze %d variables." % len(returned_variables))
-
-  # This graph only includes the nodes needed to evaluate the output nodes, and
-  # removes unneeded nodes like those involved in saving and assignment.
-  inference_graph = extract_sub_graph(input_graph_def, output_node_names)
 
   output_graph_def = graph_pb2.GraphDef()
   how_many_converted = 0

@@ -462,11 +462,13 @@ def _PadGrad(op, grad):
 @ops.RegisterGradient("ReverseSequence")
 def _ReverseSequenceGrad(op, grad):
   seq_lengths = op.inputs[1]
-  return [array_ops.reverse_sequence(grad,
-                                     batch_dim=op.get_attr("batch_dim"),
-                                     seq_dim=op.get_attr("seq_dim"),
-                                     seq_lengths=seq_lengths),
-          None]
+  return [
+      array_ops.reverse_sequence(
+          grad,
+          batch_axis=op.get_attr("batch_dim"),
+          seq_axis=op.get_attr("seq_dim"),
+          seq_lengths=seq_lengths), None
+  ]
 
 
 @ops.RegisterGradient("Reverse")

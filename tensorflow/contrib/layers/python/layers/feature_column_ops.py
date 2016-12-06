@@ -371,7 +371,7 @@ def _create_joint_embedding_lookup(columns_to_tensors,
     sparse_tensors.append(
         sparse_tensor_py.SparseTensor(t.indices,
                                       values,
-                                      t.shape))
+                                      t.dense_shape))
   sparse_tensor = sparse_ops.sparse_concat(1, sparse_tensors)
   with variable_scope.variable_scope(
       None, default_name='linear_weights', values=columns_to_tensors.values()):

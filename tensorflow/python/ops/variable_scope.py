@@ -283,8 +283,9 @@ class _VariableStore(object):
                      initializer=None, regularizer=None, reuse=None,
                      trainable=True, collections=None, caching_device=None,
                      partitioner=None, validate_shape=True):
+      is_scalar = shape is not None and not shape
       # Partitioned variable case
-      if partitioner is not None:
+      if partitioner is not None and not is_scalar:
         if not callable(partitioner):
           raise ValueError(
               "Partitioner must be callable, but received: %s" % partitioner)

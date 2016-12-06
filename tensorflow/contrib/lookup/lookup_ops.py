@@ -183,7 +183,7 @@ class InitializableLookupTableBase(LookupInterface):
 
     values.set_shape(key_tensor.get_shape())
     if isinstance(keys, sparse_tensor.SparseTensor):
-      return sparse_tensor.SparseTensor(keys.indices, values, keys.shape)
+      return sparse_tensor.SparseTensor(keys.indices, values, keys.dense_shape)
     else:
       return values
 

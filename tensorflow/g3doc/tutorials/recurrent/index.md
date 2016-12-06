@@ -16,12 +16,12 @@ purpose we will use the [Penn Tree Bank](http://www.cis.upenn.edu/~treebank/)
 models, whilst being small and relatively fast to train.
 
 Language modeling is key to many interesting problems such as speech
-recognition, machine translation, or image captioning. It is also fun, too --
+recognition, machine translation, or image captioning. It is also fun --
 take a look [here](http://karpathy.github.io/2015/05/21/rnn-effectiveness/).
 
 For the purpose of this tutorial, we will reproduce the results from
 [Zaremba et al., 2014](http://arxiv.org/abs/1409.2329)
-([pdf](http://arxiv.org/pdf/1409.2329.pdf)), which achieves very good results
+([pdf](http://arxiv.org/pdf/1409.2329.pdf)), which achieves very good quality
 on the PTB dataset.
 
 ## Tutorial Files
@@ -41,20 +41,20 @@ http://www.fit.vutbr.cz/~imikolov/rnnlm/simple-examples.tgz
 
 The dataset is already preprocessed and contains overall 10000 different words,
 including the end-of-sentence marker and a special symbol (\<unk\>) for rare
-words. We convert all of them in the `reader.py` to unique integer identifiers
-to make it easy for the neural network to process.
+words. In `reader.py`, we convert each word to a unique integer identifier,
+in order to make it easy for the neural network to process the data.
 
 ## The Model
 
 ### LSTM
 
 The core of the model consists of an LSTM cell that processes one word at a
-time and computes probabilities of the possible continuations of the sentence.
-The memory state of the network is initialized with a vector of zeros and gets
-updated after reading each word. Also, for computational reasons, we will
+time and computes probabilities of the possible values for the next word in the
+sentence. The memory state of the network is initialized with a vector of zeros
+and gets updated after reading each word. For computational reasons, we will
 process data in mini-batches of size `batch_size`.
 
-The basic pseudocode looks as follows:
+The basic pseudocode is as follows:
 
 ```python
 lstm = rnn_cell.BasicLSTMCell(lstm_size)
@@ -74,14 +74,17 @@ for current_batch_of_words in words_in_dataset:
 
 ### Truncated Backpropagation
 
-In order to make the learning process tractable, it is a common practice to
-truncate the gradients for backpropagation to a fixed number (`num_steps`)
-of unrolled steps.
-This is easy to implement by feeding inputs of length `num_steps` at a time and
-doing backward pass after each iteration.
+By design, the output of a recurrent neural network (RNN) depends on arbitrarily
+distant inputs. Unfortunately, this makes backpropagation computation difficult.
+In order to make the learning process tractable, it is common practice to create
+an "unrolled" version of the network, which contains a fixed number
+(`num_steps`) of LSTM inputs and outputs. The model is then trained on this
+finite approximation of the RNN. This can be implemented by feeding inputs of
+length `num_steps` at a time and performing a backward pass after each
+such input block.
 
-A simplified version of the code for the graph creation for truncated
-backpropagation:
+Here is a simplified block of code for creating a graph which performs
+truncated backpropagation:
 
 ```python
 # Placeholder for the inputs in a given iteration.
@@ -171,16 +174,10 @@ final_state = state
 
 ## Run the Code
 
-We are assuming you have already installed via the pip package, have cloned the
-tensorflow git repository, and are in the root of the git tree. (If [building
-from source](
-https://github.com/tensorflow/tensorflow/blob/master/tensorflow/g3doc/get_started/os_setup.md#installing-from-sources), build the `tensorflow/models/rnn/ptb:ptb_word_lm` target using
-[bazel](https://github.com/bazelbuild/bazel)).
-
-Next:
+Start by cloning the [TensorFlow models repo](https://github.com/tensorflow/models) from GitHub. Run the following commands:
 
 ```bash
-cd tensorflow/models/rnn/ptb
+cd models/tutorials/rnn/ptb
 python ptb_word_lm.py --data_path=/tmp/simple-examples/data/ --model small
 ```
 

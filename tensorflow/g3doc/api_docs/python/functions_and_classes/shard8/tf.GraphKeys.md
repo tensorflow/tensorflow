@@ -27,7 +27,7 @@ The following standard keys are defined:
   for more details.
 * `SUMMARIES`: the summary `Tensor` objects that have been created in the
   graph. See
-  [`tf.contrib.deprecated.merge_all_summaries()`](../../api_docs/python/train.md#merge_all_summaries)
+  [`tf.summary.merge_all()`](../../api_docs/python/summary.md#merge_all)
   for more details.
 * `QUEUE_RUNNERS`: the `QueueRunner` objects that are used to
   produce input for a computation. See

@@ -41,6 +41,16 @@ load(
     "tf_kernel_tests_linkstatic",
 )
 
+config_setting(
+    # Add "--define tensorflow_xsmm=1" to your build command to use libxsmm
+    # for convolutions (and possibly more in the future). You will also need
+    # appropriate -mavx*, as required by specific op you use.
+    name = "xsmm",
+    values = {
+        "define": "tensorflow_xsmm=1",
+    },
+)
+
 # Public support libraries ----------------------------------------------------
 
 cc_library(
@@ -422,6 +432,17 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "set_kernels",
+    prefix = "set_kernels",
+    deps = [
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:set_ops_op_lib",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_kernel_library(
     name = "debug_ops",
     prefix = "debug_ops",
     deps = ARRAY_DEPS + [
@@ -710,6 +731,17 @@ tf_cc_test(
     name = "deep_conv2d_test",
     size = "small",
     srcs = ["deep_conv2d_test.cc"],
+    deps = [
+        ":conv_ops",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "xsmm_conv2d_test",
+    size = "small",
+    srcs = ["xsmm_conv2d_test.cc"],
     deps = [
         ":conv_ops",
         "//tensorflow/core:test",
@@ -2238,13 +2270,23 @@ tf_kernel_library(
         "conv_grad_ops.cc",
         "conv_grad_ops_3d.cc",
         "deep_conv2d.cc",
-    ],
+    ] + select({
+        ":xsmm": ["xsmm_conv2d.cc"],
+        "//conditions:default": [],
+    }),
     hdrs = [
         "conv_grad_ops.h",
         "deep_conv2d.h",
         "gemm_functors.h",
         "winograd_transform.h",
-    ],
+    ] + select({
+        ":xsmm": ["xsmm_conv2d.h"],
+        "//conditions:default": [],
+    }),
+    defines = select({
+        ":xsmm": ["TENSORFLOW_USE_LIBXSMM"],
+        "//conditions:default": [],
+    }),
     prefix = "conv_ops",
     deps = [
         ":bounds_check",
@@ -2255,8 +2297,15 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:nn_ops_op_lib",
-    ],
+    ] + select({
+        ":xsmm": [
+            "@libxsmm_archive//:libxsmm_headers",
+            "@libxsmm_archive//:xsmm_avx",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 tf_kernel_library(
@@ -3438,7 +3487,13 @@ filegroup(
         "fused_batch_norm_op.cc",
         "winograd_transform.h",
         ":android_extended_ops_headers",
-    ],
+    ] + select({
+        ":xsmm": [
+            "xsmm_conv2d.h",
+            "xsmm_conv2d.cc",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 filegroup(

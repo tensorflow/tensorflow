@@ -32,6 +32,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 
@@ -102,6 +103,36 @@ def assert_symmetric(matrix):
   matrix_t = array_ops.matrix_transpose(matrix)
   return control_flow_ops.with_dependencies(
       [check_ops.assert_equal(matrix, matrix_t)], matrix)
+
+
+def same_dynamic_shape(a, b):
+  """Returns whether a and b have the same dynamic shape.
+
+  Args:
+    a: `Tensor`
+    b: `Tensor`
+
+  Returns:
+    `Boolean` `Tensor` representing if both tensors have the same shape.
+  """
+  a = ops.convert_to_tensor(a, name="a")
+  b = ops.convert_to_tensor(b, name="b")
+
+  # One of the shapes isn't fully defined, so we need to use the dynamic
+  # shape.
+  return control_flow_ops.cond(
+      math_ops.equal(array_ops.rank(a), array_ops.rank(b)),
+      # Here we can't just do math_ops.equal(a.shape, b.shape), since
+      # static shape inference may break the equality comparison between
+      # shape(a) and shape(b) in math_ops.equal.
+      lambda: math_ops.reduce_all(math_ops.equal(
+          array_ops.concat(0, (
+              array_ops.shape(a),
+              array_ops.shape(b))),
+          array_ops.concat(0, (
+              array_ops.shape(b),
+              array_ops.shape(a))))),
+      lambda: constant_op.constant(False))
 
 
 def get_logits_and_prob(
