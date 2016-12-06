@@ -357,12 +357,16 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
       return;
     }
     if (projection === 'pca') {
-      this.dataSet.stopTSNE();
+      if (this.dataSet != null) {
+        this.dataSet.stopTSNE();
+      }
       this.showPCA();
     } else if (projection === 'tsne') {
       this.showTSNE();
     } else if (projection === 'custom') {
-      this.dataSet.stopTSNE();
+      if (this.dataSet != null) {
+        this.dataSet.stopTSNE();
+      }
       this.computeAllCentroids();
       this.reprojectCustom();
     }

@@ -50,13 +50,12 @@ class ExperimentalTest(tf.test.TestCase):
         "be removed at any time, and without warning."
         "\n"
         "\n"
-        "\n      Args:"
-        "\n        arg0: Arg 0."
-        "\n        arg1: Arg 1."
+        "\nArgs:"
+        "\n  arg0: Arg 0."
+        "\n  arg1: Arg 1."
         "\n"
-        "\n      Returns:"
-        "\n        Sum of args."
-        "\n      ", _fn.__doc__)
+        "\nReturns:"
+        "\n  Sum of args.", _fn.__doc__)
 
     # Assert calling new fn issues log warning.
     self.assertEqual(3, _fn(1, 2))

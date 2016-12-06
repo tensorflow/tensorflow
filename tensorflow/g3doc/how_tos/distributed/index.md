@@ -171,7 +171,7 @@ simplify the work of specifying a replicated model. Possible approaches include:
   values for the current parameters, compute gradients in parallel, and then
   apply them together. It is compatible with in-graph replication (e.g. using
   gradient averaging as in the
-  [CIFAR-10 multi-GPU trainer](https://www.tensorflow.org/code/tensorflow/models/image/cifar10/cifar10_multi_gpu_train.py)),
+  [CIFAR-10 multi-GPU trainer](https://www.tensorflow.org/code/tensorflow_models/tutorials/image/cifar10/cifar10_multi_gpu_train.py)),
   and between-graph replication (e.g. using the
   `tf.train.SyncReplicasOptimizer`).
 

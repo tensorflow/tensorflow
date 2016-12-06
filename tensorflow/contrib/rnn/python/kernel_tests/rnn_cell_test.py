@@ -387,7 +387,7 @@ class RNNCellTest(tf.test.TestCase):
     num_units = 8
     for state_is_tuple in [False, True]:
       with tf.Graph().as_default():
-        lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(
+        lstm_cell = tf.contrib.rnn.BasicLSTMCell(
             num_units, state_is_tuple=state_is_tuple)
         with self.assertRaisesRegexp(
             ValueError, "attn_length should be greater than zero, got 0"):
@@ -398,7 +398,7 @@ class RNNCellTest(tf.test.TestCase):
           tf.contrib.rnn.AttentionCellWrapper(lstm_cell, -1,
                                               state_is_tuple=state_is_tuple)
       with tf.Graph().as_default():
-        lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(
+        lstm_cell = tf.contrib.rnn.BasicLSTMCell(
             num_units, state_is_tuple=True)
         with self.assertRaisesRegexp(
             ValueError, "Cell returns tuple of states, but the flag "
@@ -415,7 +415,7 @@ class RNNCellTest(tf.test.TestCase):
       with tf.Graph().as_default():
         with self.test_session() as sess:
           with tf.variable_scope("state_is_tuple_" + str(state_is_tuple)):
-            lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(
+            lstm_cell = tf.contrib.rnn.BasicLSTMCell(
                 num_units, state_is_tuple=state_is_tuple)
             cell = tf.contrib.rnn.AttentionCellWrapper(
                 lstm_cell, attn_length, state_is_tuple=state_is_tuple)
@@ -460,7 +460,7 @@ class RNNCellTest(tf.test.TestCase):
       with tf.Graph().as_default():
         with self.test_session() as sess:
           with tf.variable_scope("state_is_tuple_" + str(state_is_tuple)):
-            lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(
+            lstm_cell = tf.contrib.rnn.BasicLSTMCell(
                 num_units, state_is_tuple=state_is_tuple)
             cell = tf.contrib.rnn.AttentionCellWrapper(
                 lstm_cell, attn_length, state_is_tuple=state_is_tuple)
@@ -526,7 +526,7 @@ class RNNCellTest(tf.test.TestCase):
     for state_is_tuple in [False, True]:
       with tf.Session() as sess:
         with tf.variable_scope("state_is_tuple", reuse=state_is_tuple):
-          lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(
+          lstm_cell = tf.contrib.rnn.BasicLSTMCell(
               num_units, state_is_tuple=state_is_tuple)
           cell = tf.contrib.rnn.AttentionCellWrapper(
               lstm_cell, attn_length, state_is_tuple=state_is_tuple)
@@ -563,13 +563,13 @@ class LayerNormBasicLSTMCellTest(tf.test.TestCase):
         x = tf.zeros([1, 2])
         c0 = tf.zeros([1, 2])
         h0 = tf.zeros([1, 2])
-        state0 = tf.nn.rnn_cell.LSTMStateTuple(c0, h0)
+        state0 = tf.contrib.rnn.LSTMStateTuple(c0, h0)
         c1 = tf.zeros([1, 2])
         h1 = tf.zeros([1, 2])
-        state1 = tf.nn.rnn_cell.LSTMStateTuple(c1, h1)
+        state1 = tf.contrib.rnn.LSTMStateTuple(c1, h1)
         state = (state0, state1)
         cell = tf.contrib.rnn.LayerNormBasicLSTMCell(2)
-        cell = tf.nn.rnn_cell.MultiRNNCell([cell] * 2)
+        cell = tf.contrib.rnn.MultiRNNCell([cell] * 2)
         g, out_m = cell(x, state)
         sess.run([tf.global_variables_initializer()])
         res = sess.run([g, out_m],
@@ -603,7 +603,7 @@ class LayerNormBasicLSTMCellTest(tf.test.TestCase):
         x = tf.zeros([1, 3])  # Test BasicLSTMCell with input_size != num_units.
         c = tf.zeros([1, 2])
         h = tf.zeros([1, 2])
-        state = tf.nn.rnn_cell.LSTMStateTuple(c, h)
+        state = tf.contrib.rnn.LSTMStateTuple(c, h)
         cell = tf.contrib.rnn.LayerNormBasicLSTMCell(2)
         g, out_m = cell(x, state)
         sess.run([tf.global_variables_initializer()])
@@ -627,12 +627,12 @@ class LayerNormBasicLSTMCellTest(tf.test.TestCase):
         x = tf.zeros([1, 2])
         c0 = tf.zeros([1, 2])
         h0 = tf.zeros([1, 2])
-        state0 = tf.nn.rnn_cell.LSTMStateTuple(c0, h0)
+        state0 = tf.contrib.rnn.LSTMStateTuple(c0, h0)
         c1 = tf.zeros([1, 2])
         h1 = tf.zeros([1, 2])
-        state1 = tf.nn.rnn_cell.LSTMStateTuple(c1, h1)
+        state1 = tf.contrib.rnn.LSTMStateTuple(c1, h1)
         cell = tf.contrib.rnn.LayerNormBasicLSTMCell(2)
-        cell = tf.nn.rnn_cell.MultiRNNCell([cell] * 2)
+        cell = tf.contrib.rnn.MultiRNNCell([cell] * 2)
         h, (s0, s1) = cell(x, (state0, state1))
         sess.run([tf.global_variables_initializer()])
         res = sess.run([h, s0, s1],
@@ -682,7 +682,7 @@ class LayerNormBasicLSTMCellTest(tf.test.TestCase):
         x = tf.zeros([1, 5])
         c = tf.zeros([1, 5])
         h = tf.zeros([1, 5])
-        state = tf.nn.rnn_cell.LSTMStateTuple(c, h)
+        state = tf.contrib.rnn.LSTMStateTuple(c, h)
         cell = tf.contrib.rnn.LayerNormBasicLSTMCell(
             num_units, layer_norm=False, dropout_keep_prob=keep_prob)
 

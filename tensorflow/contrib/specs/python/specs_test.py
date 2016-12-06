@@ -118,8 +118,8 @@ class SpecsTest(tf.test.TestCase):
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (10, 30))
       self.assertEqual(summaries.tf_spec_structure(spec, inputs),
-                       "_ _ var dot var biasadd sig "
-                       "<> var dot var biasadd sig concat")
+                       "_ var dot var biasadd sig "
+                       "<> var dot var biasadd sig _ concatv2")
 
   def testImport(self):
     with self.test_session():

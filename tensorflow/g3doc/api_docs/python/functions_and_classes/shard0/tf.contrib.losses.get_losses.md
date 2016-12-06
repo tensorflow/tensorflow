@@ -1,6 +1,10 @@
-### `tf.contrib.losses.get_losses(scope=None, loss_collection='losses')` {#get_losses}
+### `tf.contrib.losses.get_losses(*args, **kwargs)` {#get_losses}
 
-Gets the list of losses from the loss_collection.
+Gets the list of losses from the loss_collection. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
+Instructions for updating:
+Use tf.losses.get_losses instead.
 
 ##### Args:
 

@@ -13,9 +13,50 @@ java_library(
 )
 
 java_test(
+    name = "GraphTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/GraphTest.java"],
+    data = [":test_graph_def"],
+    test_class = "org.tensorflow.GraphTest",
+    deps = [
+        ":tensorflow",
+        "//external:junit",
+    ],
+)
+
+# Temporary targets to assist with unittests till the Java API becomes
+# expressive enough. Delete this target and corresponding python source code
+# when the Java API can construct graphs.
+genrule(
+    name = "test_graph_def",
+    outs = [":test_graph_def.data"],
+    cmd = "$(location :graphdef) $@",
+    tools = [":graphdef"],
+)
+
+py_binary(
+    name = "graphdef",
+    srcs = ["src/test/python/graphdef.py"],
+    srcs_version = "PY2AND3",
+    deps = ["//tensorflow:tensorflow_py"],
+)
+
+java_test(
     name = "TensorFlowTest",
+    size = "small",
     srcs = ["src/test/java/org/tensorflow/TensorFlowTest.java"],
     test_class = "org.tensorflow.TensorFlowTest",
+    deps = [
+        ":tensorflow",
+        "//external:junit",
+    ],
+)
+
+java_test(
+    name = "TensorTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/TensorTest.java"],
+    test_class = "org.tensorflow.TensorTest",
     deps = [
         ":tensorflow",
         "//external:junit",
