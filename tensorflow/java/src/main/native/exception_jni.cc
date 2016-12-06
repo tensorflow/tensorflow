@@ -21,6 +21,7 @@ limitations under the License.
 const char kIllegalArgumentException[] = "java/lang/IllegalArgumentException";
 const char kIllegalStateException[] = "java/lang/IllegalStateException";
 const char kNullPointerException[] = "java/lang/NullPointerException";
+const char kIndexOutOfBoundsException[] = "java/lang/IndexOutOfBoundsException";
 
 void throwException(JNIEnv* env, const char* clazz, const char* fmt, ...) {
   va_list args;

@@ -18,6 +18,7 @@ tf_cuda_library(
     includes = ["."],
     deps = [
         "//tensorflow/c:c_api",
+        "//tensorflow/core:ops",
     ],
     alwayslink = 1,
 )

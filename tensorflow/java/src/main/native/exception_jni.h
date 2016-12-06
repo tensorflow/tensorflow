@@ -25,6 +25,7 @@ extern "C" {
 extern const char kIllegalArgumentException[];
 extern const char kIllegalStateException[];
 extern const char kNullPointerException[];
+extern const char kIndexOutOfBoundsException[];
 
 void throwException(JNIEnv* env, const char* clazz, const char* fmt, ...);
 
