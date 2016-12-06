@@ -118,7 +118,7 @@ public final class Session implements AutoCloseable {
     }
 
     /**
-     * Make {@link run()} return the output of {@code operation}.
+     * Make {@link #run()} return the output of {@code operation}.
      *
      * <p>This method is a shorthand for {@code fetch(operation, 0)}
      */
@@ -127,7 +127,7 @@ public final class Session implements AutoCloseable {
     }
 
     /**
-     * Make {@link run()} return the {@code index}-th output of {@code operation}.
+     * Make {@link #run()} return the {@code index}-th output of {@code operation}.
      *
      * <p>Operations in a {@link Graph} can have multiple outputs, {@code index} identifies which
      * one to return.
@@ -141,7 +141,7 @@ public final class Session implements AutoCloseable {
     }
 
     /**
-     * Make {@link run()} execute {@code operation}, but not return the evaluated {@link Tensor}.
+     * Make {@link #run()} execute {@code operation}, but not return the evaluated {@link Tensor}.
      */
     public Runner addTarget(String operation) {
       Operation op = operationByName(operation);
@@ -155,7 +155,7 @@ public final class Session implements AutoCloseable {
      * Execute the graph fragments necessary to compute all requested fetches.
      *
      * <p><b>WARNING:</b> The caller assumes ownership of all returned {@link Tensor}s, i.e., the
-     * caller must call {@link Tensor.close} on all elements of the returned list to free up
+     * caller must call {@link Tensor#close()} on all elements of the returned list to free up
      * resources.
      *
      * <p>TODO(ashankar): Reconsider the return type here. Two things in particular: (a) Make it

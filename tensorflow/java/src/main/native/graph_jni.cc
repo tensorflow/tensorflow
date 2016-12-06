@@ -24,7 +24,7 @@ TF_Graph* requireHandle(JNIEnv* env, jlong handle) {
   static_assert(sizeof(jlong) >= sizeof(TF_Graph*),
                 "Cannot package C object pointers as a Java long");
   if (handle == 0) {
-    throwException(env, kNullPointerException,
+    throwException(env, kIllegalStateException,
                    "close() has been called on the Graph");
     return nullptr;
   }

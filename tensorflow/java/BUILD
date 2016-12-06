@@ -12,43 +12,45 @@ java_library(
     visibility = ["//visibility:public"],
 )
 
+java_library(
+    name = "testutil",
+    testonly = 1,
+    srcs = ["src/test/java/org/tensorflow/TestUtil.java"],
+    deps = [":tensorflow"],
+)
+
 java_test(
     name = "GraphTest",
     size = "small",
     srcs = ["src/test/java/org/tensorflow/GraphTest.java"],
-    data = [":test_graph_def"],
     test_class = "org.tensorflow.GraphTest",
     deps = [
         ":tensorflow",
+        ":testutil",
         "//external:junit",
     ],
 )
 
-# Temporary targets to assist with unittests till the Java API becomes
-# expressive enough. Delete this target and corresponding python source code
-# when the Java API can construct graphs.
-genrule(
-    name = "test_graph_def",
-    outs = [":test_graph_def.data"],
-    cmd = "$(location :graphdef) $@",
-    tools = [":graphdef"],
-)
-
-py_binary(
-    name = "graphdef",
-    srcs = ["src/test/python/graphdef.py"],
-    srcs_version = "PY2AND3",
-    deps = ["//tensorflow:tensorflow_py"],
+java_test(
+    name = "OperationBuilderTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/OperationBuilderTest.java"],
+    test_class = "org.tensorflow.OperationBuilderTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "//external:junit",
+    ],
 )
 
 java_test(
     name = "SessionTest",
     size = "small",
     srcs = ["src/test/java/org/tensorflow/SessionTest.java"],
-    data = [":test_graph_def"],
     test_class = "org.tensorflow.SessionTest",
     deps = [
         ":tensorflow",
+        ":testutil",
         "//external:junit",
     ],
 )

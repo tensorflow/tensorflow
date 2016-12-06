@@ -72,6 +72,19 @@ public final class Graph implements AutoCloseable {
   }
 
   /**
+   * Returns a builder to add {@link Operation}s to the Graph.
+   *
+   * @param type of the Operation (i.e., identifies the computation to be performed)
+   * @param name to refer to the created Operation in the graph.
+   * @return an {@link OperationBuilder}, which will add the Operation to the graph when {@link
+   *     OperationBuilder#build()} is invoked. If {@link OperationBuilder#build()} is not invoked,
+   *     then some resources may leak.
+   */
+  public OperationBuilder opBuilder(String type, String name) {
+    return new OperationBuilder(this, type, name);
+  }
+
+  /**
    * Import a serialized representation of a TensorFlow graph.
    *
    * <p>The serialized representation of the graph, often referred to as a <i>GraphDef</i>, can be

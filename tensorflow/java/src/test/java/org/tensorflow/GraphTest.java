@@ -17,10 +17,7 @@ package org.tensorflow;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.fail;
 
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
@@ -31,37 +28,44 @@ public class GraphTest {
 
   @Test
   public void graphDefRoundTrip() {
-    try (Graph imported = new Graph()) {
-      final byte[] inGraphDef =
-          Files.readAllBytes(Paths.get("tensorflow/java/test_graph_def.data"));
-      imported.importGraphDef(inGraphDef);
-      validateImportedGraph(imported, "");
-
-      final byte[] outGraphDef = imported.toGraphDef();
-      try (Graph exported = new Graph()) {
-        exported.importGraphDef(outGraphDef, "HeyHeyHey");
-        validateImportedGraph(exported, "HeyHeyHey/");
-      }
-      // Knowing how test_graph_def.data was generated, it should have these nodes:
-    } catch (Exception e) {
-      fail("Unexpected exception: " + e);
+    byte[] graphDef;
+    // Create a graph for A * X + B
+    try (Graph g = new Graph()) {
+      TestUtil.transpose_A_times_X(g, new int[2][2]);
+      graphDef = g.toGraphDef();
+    }
+    // Import the GraphDef and find all the nodes.
+    try (Graph g = new Graph()) {
+      g.importGraphDef(graphDef);
+      validateImportedGraph(g, "");
+    }
+    try (Graph g = new Graph()) {
+      g.importGraphDef(graphDef, "BugsBunny");
+      validateImportedGraph(g, "BugsBunny/");
     }
   }
 
-  // Helper function whose implementation is based on knowledge of how test_graph_def.data was
-  // produced.
+  // Helper function whose implementation is based on knowledge of how
+  // TestUtil.transpose_A_times_X is implemented.
   private void validateImportedGraph(Graph g, String prefix) {
-    Operation op = g.operation(prefix + "MyConstant");
+    Operation op = g.operation(prefix + "A");
     assertNotNull(op);
-    assertEquals(prefix + "MyConstant", op.name());
+    assertEquals(prefix + "A", op.name());
     assertEquals("Const", op.type());
     assertEquals(1, op.numOutputs());
     assertEquals(op, op.output(0).op());
 
-    op = g.operation(prefix + "while/Less");
+    op = g.operation(prefix + "X");
     assertNotNull(op);
-    assertEquals(prefix + "while/Less", op.name());
-    assertEquals("Less", op.type());
+    assertEquals(prefix + "X", op.name());
+    assertEquals("Placeholder", op.type());
+    assertEquals(1, op.numOutputs());
+    assertEquals(op, op.output(0).op());
+
+    op = g.operation(prefix + "Y");
+    assertNotNull(op);
+    assertEquals(prefix + "Y", op.name());
+    assertEquals("MatMul", op.type());
     assertEquals(1, op.numOutputs());
     assertEquals(op, op.output(0).op());
   }
@@ -85,5 +89,12 @@ public class GraphTest {
 
   @Test
   public void failOnUseAfterClose() {
+    Graph g = new Graph();
+    g.close();
+    try {
+      g.toGraphDef();
+    } catch (IllegalStateException e) {
+      // expected exception.
+    }
   }
 }
