@@ -140,7 +140,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.new_http_archive(
     name = "pcre",
     sha256 = "ccdf7e788769838f8285b3ee672ed573358202305ee361cfec7a4a4fb005bbc7",
-    url = "http://ftp.exim.org/pub/pcre/pcre-8.39.tar.gz",
+    url = "http://ftp.exim.llorien.org/pcre/pcre-8.39.tar.gz",
     strip_prefix = "pcre-8.39",
     build_file = str(Label("//third_party:pcre.BUILD")),
   )
