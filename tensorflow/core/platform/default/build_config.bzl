@@ -148,6 +148,15 @@ def tf_additional_stream_executor_srcs():
 def tf_additional_cupti_wrapper_deps():
   return ["//tensorflow/core/platform/default/gpu:cupti_wrapper"]
 
+def tf_additional_libdevice_data():
+  return []
+
+def tf_additional_libdevice_deps():
+  return []
+
+def tf_additional_libdevice_srcs():
+  return ["platform/default/cuda_libdevice_path.cc"]
+
 def tf_additional_test_deps():
   return []
 

@@ -33,7 +33,7 @@ from tensorflow.python.ops import math_ops  # pylint: disable=unused-import
 def test_device_func_pin_variable_to_cpu(op):
   if op.device:
     return op.device
-  return "/cpu:0" if op.node_def.op == "Variable" else op.device
+  return "/cpu:0" if op.node_def.op in ["Variable", "VariableV2"] else op.device
 
 
 class DeviceFunctionsTest(tf.test.TestCase):
@@ -190,6 +190,7 @@ class DeviceFunctionsTest(tf.test.TestCase):
       self.assertEqual(4, len(constant_graph_def.node))
       for node in constant_graph_def.node:
         self.assertNotEqual("Variable", node.op)
+        self.assertNotEqual("VariableV2", node.op)
       with tf.Session() as sess:
         output_node = sess.graph.get_tensor_by_name("output_node:0")
         output = sess.run(output_node)

@@ -131,12 +131,16 @@ single subgraph producing examples but you want to run it in *N* threads
 (where you increase *N* until it can keep the queue full).  Use
 [`batch_join`](#batch_join) or [`shuffle_batch_join`](#shuffle_batch_join)
 if you have *N* different subgraphs producing examples to batch and you
-want them run by *N* threads.
+want them run by *N* threads. Use `maybe_*` to enqueue conditionally.
 
 @@batch
+@@maybe_batch
 @@batch_join
+@@maybe_batch_join
 @@shuffle_batch
+@@maybe_shuffle_batch
 @@shuffle_batch_join
+@@maybe_shuffle_batch_join
 """
 
 from __future__ import absolute_import

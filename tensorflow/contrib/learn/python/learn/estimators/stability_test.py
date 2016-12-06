@@ -124,9 +124,18 @@ class StabilityTest(tf.test.TestCase):
           optimizer=_NULL_OPTIMIZER, config=config)
       regressor2.fit(x=boston.data, y=boston.target, steps=1)
 
-    for w1, w2 in zip(regressor1.weights_, regressor2.weights_):
+    weights1 = ([regressor1.get_variable_value('dnn/hiddenlayer_0/weights')] +
+                [regressor1.get_variable_value('dnn/logits/weights')])
+    weights2 = ([regressor2.get_variable_value('dnn/hiddenlayer_0/weights')] +
+                [regressor2.get_variable_value('dnn/logits/weights')])
+    for w1, w2 in zip(weights1, weights2):
       self.assertAllClose(w1, w2)
-    for b1, b2 in zip(regressor2.bias_, regressor2.bias_):
+
+    biases1 = ([regressor1.get_variable_value('dnn/hiddenlayer_0/biases')] +
+               [regressor1.get_variable_value('dnn/logits/biases')])
+    biases2 = ([regressor2.get_variable_value('dnn/hiddenlayer_0/biases')] +
+               [regressor2.get_variable_value('dnn/logits/biases')])
+    for b1, b2 in zip(biases1, biases2):
       self.assertAllClose(b1, b2)
     self.assertAllClose(
         list(regressor1.predict(boston.data, as_iterable=True)),

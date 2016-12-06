@@ -35,7 +35,7 @@ a) If a loop variable is a SparseTensor, the shape invariant must be
 TensorShape([r]) where r is the rank of the dense tensor represented
 by the sparse tensor. It means the shapes of the three tensors of the
 SparseTensor are ([None], [None, r], [r]). NOTE: The shape invariant here
-is the shape of the SparseTensor.shape property. It must be the shape of
+is the shape of the SparseTensor.dense_shape property. It must be the shape of
 a vector.
 
 b) If a loop variable is an IndexedSlices, the shape invariant must be

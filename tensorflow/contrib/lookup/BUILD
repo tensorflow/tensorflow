@@ -5,7 +5,7 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-package(default_visibility = ["//tensorflow:__subpackages__"])
+package(default_visibility = ["//tensorflow:internal"])
 
 py_library(
     name = "lookup_py",

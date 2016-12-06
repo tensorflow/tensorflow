@@ -51,7 +51,7 @@ class SessionBundleLoadTest(tf.test.TestCase):
     self.assertEqual(y[0][2], 3)
     self.assertEqual(y[0][3], 3.5)
 
-  def _checkNamedSigantures(self, signatures, sess):
+  def _checkNamedSignatures(self, signatures, sess):
     named_signatures = signatures.named_signatures
     input_name = (named_signatures["inputs"].generic_signature.map["x"]
                   .tensor_name)
@@ -88,7 +88,7 @@ class SessionBundleLoadTest(tf.test.TestCase):
       signatures = manifest_pb2.Signatures()
       signatures_any[0].Unpack(signatures)
       self._checkRegressionSignature(signatures, sess)
-      self._checkNamedSigantures(signatures, sess)
+      self._checkNamedSignatures(signatures, sess)
 
   def testBadPath(self):
     base_path = tf.test.test_src_dir_path("/no/such/a/dir")
@@ -98,6 +98,32 @@ class SessionBundleLoadTest(tf.test.TestCase):
           base_path, target="local",
           config=tf.ConfigProto(device_count={"CPU": 2}))
     self.assertTrue("Expected meta graph file missing" in str(cm.exception))
+
+  def testVarCheckpointV2(self):
+    base_path = tf.test.test_src_dir_path(
+        "contrib/session_bundle/example/half_plus_two_ckpt_v2/00000123")
+    tf.reset_default_graph()
+    sess, meta_graph_def = session_bundle.load_session_bundle_from_path(
+        base_path, target="", config=tf.ConfigProto(device_count={"CPU": 2}))
+
+    self.assertTrue(sess)
+    asset_path = os.path.join(base_path, constants.ASSETS_DIRECTORY)
+    with sess.as_default():
+      path1, path2 = sess.run(["filename1:0", "filename2:0"])
+      self.assertEqual(
+          compat.as_bytes(os.path.join(asset_path, "hello1.txt")), path1)
+      self.assertEqual(
+          compat.as_bytes(os.path.join(asset_path, "hello2.txt")), path2)
+
+      collection_def = meta_graph_def.collection_def
+
+      signatures_any = collection_def[constants.SIGNATURES_KEY].any_list.value
+      self.assertEquals(len(signatures_any), 1)
+
+      signatures = manifest_pb2.Signatures()
+      signatures_any[0].Unpack(signatures)
+      self._checkRegressionSignature(signatures, sess)
+      self._checkNamedSignatures(signatures, sess)
 
 
 class SessionBundleLoadNoVarsTest(tf.test.TestCase):

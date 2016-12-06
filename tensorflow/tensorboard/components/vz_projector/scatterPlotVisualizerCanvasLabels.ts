@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {DataSet} from './data';
 import {BoundingBox, CollisionGrid} from './label';
 import {CameraType, RenderContext} from './renderContext';
 import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
@@ -29,7 +28,6 @@ const LABEL_FILL_WIDTH = 6;
  */
 export class ScatterPlotVisualizerCanvasLabels implements
     ScatterPlotVisualizer {
-  private dataSet: DataSet;
   private worldSpacePointPositions: Float32Array;
   private gc: CanvasRenderingContext2D;
   private canvas: HTMLCanvasElement;
@@ -42,10 +40,6 @@ export class ScatterPlotVisualizerCanvasLabels implements
     this.canvas.style.pointerEvents = 'none';
   }
 
-  setDataSet(ds: DataSet) {
-    this.dataSet = ds;
-  }
-
   private removeAllLabels() {
     const pixelWidth = this.canvas.width * window.devicePixelRatio;
     const pixelHeight = this.canvas.height * window.devicePixelRatio;
@@ -54,9 +48,6 @@ export class ScatterPlotVisualizerCanvasLabels implements
 
   /** Render all of the non-overlapping visible labels to the canvas. */
   private makeLabels(rc: RenderContext) {
-    if (this.dataSet == null) {
-      return;
-    }
     if ((rc.labels == null) || (rc.labels.pointIndices.length === 0)) {
       return;
     }

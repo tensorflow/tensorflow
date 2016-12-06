@@ -224,7 +224,7 @@ class SdcaOptimizer : public OpKernel {
   explicit SdcaOptimizer(OpKernelConstruction* const context)
       : OpKernel(context), options_(context) {}
 
-  void Compute(OpKernelContext* const context) override {
+  void Compute(OpKernelContext* context) override {
     DoCompute(options_, context);
   }
 
@@ -244,7 +244,7 @@ class SdcaShrinkL1 : public OpKernel {
     OP_REQUIRES_OK(context, regularizations_.Initialize(context));
   }
 
-  void Compute(OpKernelContext* const context) override {
+  void Compute(OpKernelContext* context) override {
     OpMutableInputList weights_inputs;
     OP_REQUIRES_OK(context,
                    context->mutable_input_list("weights", &weights_inputs));
@@ -287,7 +287,7 @@ class SdcaFprint : public OpKernel {
   explicit SdcaFprint(OpKernelConstruction* const context)
       : OpKernel(context) {}
 
-  void Compute(OpKernelContext* const context) override {
+  void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
     OP_REQUIRES(context, TensorShapeUtils::IsVector(input.shape()),
                 errors::InvalidArgument("Input must be a vector, got shape ",
