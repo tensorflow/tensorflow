@@ -22,6 +22,8 @@ const char kIllegalArgumentException[] = "java/lang/IllegalArgumentException";
 const char kIllegalStateException[] = "java/lang/IllegalStateException";
 const char kNullPointerException[] = "java/lang/NullPointerException";
 const char kIndexOutOfBoundsException[] = "java/lang/IndexOutOfBoundsException";
+const char kUnsupportedOperationException[] =
+    "java/lang/UnsupportedOperationException";
 
 void throwException(JNIEnv* env, const char* clazz, const char* fmt, ...) {
   va_list args;
@@ -33,4 +35,35 @@ void throwException(JNIEnv* env, const char* clazz, const char* fmt, ...) {
     env->ThrowNew(env->FindClass(clazz), "");
   }
   va_end(args);
+}
+
+namespace {
+// Map TF_Codes to unchecked exceptions.
+const char* exceptionClassName(TF_Code code) {
+  switch (code) {
+    case TF_OK:
+      return nullptr;
+    case TF_INVALID_ARGUMENT:
+      return kIllegalArgumentException;
+    case TF_UNAUTHENTICATED:
+    case TF_PERMISSION_DENIED:
+      return "java/lang/SecurityException";
+    case TF_RESOURCE_EXHAUSTED:
+    case TF_FAILED_PRECONDITION:
+      return kIllegalStateException;
+    case TF_OUT_OF_RANGE:
+      return kIndexOutOfBoundsException;
+    case TF_UNIMPLEMENTED:
+      return kUnsupportedOperationException;
+    default:
+      return "org/tensorflow/TensorFlowException";
+  }
+}
+}  // namespace
+
+bool throwExceptionIfNotOK(JNIEnv* env, const TF_Status* status) {
+  const char* clazz = exceptionClassName(TF_GetCode(status));
+  if (clazz == nullptr) return true;
+  env->ThrowNew(env->FindClass(clazz), TF_Message(status));
+  return false;
 }

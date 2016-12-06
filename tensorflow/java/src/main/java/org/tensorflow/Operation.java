@@ -54,7 +54,7 @@ public final class Operation {
     }
   }
 
-  /** Returns the number of tensors output by this operation. */
+  /** Returns the number of tensors produced by this operation. */
   public int numOutputs() {
     try (Graph.Reference r = graph.ref()) {
       return numOutputs(unsafeNativeHandle);
@@ -64,6 +64,10 @@ public final class Operation {
   /** Returns a symbolic handle to one of the tensors produced by this operation. */
   public Output output(int idx) {
     return new Output(this, idx);
+  }
+
+  long getUnsafeNativeHandle() {
+    return unsafeNativeHandle;
   }
 
   private final long unsafeNativeHandle;

@@ -42,6 +42,18 @@ py_binary(
 )
 
 java_test(
+    name = "SessionTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/SessionTest.java"],
+    data = [":test_graph_def"],
+    test_class = "org.tensorflow.SessionTest",
+    deps = [
+        ":tensorflow",
+        "//external:junit",
+    ],
+)
+
+java_test(
     name = "TensorFlowTest",
     size = "small",
     srcs = ["src/test/java/org/tensorflow/TensorFlowTest.java"],

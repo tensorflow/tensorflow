@@ -33,7 +33,8 @@ public final class Graph implements AutoCloseable {
   /**
    * Release resources associated with the Graph.
    *
-   * <p>A Graph is no longer usable after close returns.
+   * <p>Blocks until there are no active {@link Session} instances referring to this Graph. A Graph
+   * is not usable after close returns.
    */
   @Override
   public void close() {
@@ -129,6 +130,7 @@ public final class Graph implements AutoCloseable {
         if (!active) {
           throw new IllegalStateException("close() has been called on the Graph");
         }
+        active = true;
         Graph.this.refcount++;
       }
     }
@@ -143,6 +145,12 @@ public final class Graph implements AutoCloseable {
         if (--Graph.this.refcount == 0) {
           Graph.this.nativeHandleLock.notifyAll();
         }
+      }
+    }
+
+    public long nativeHandle() {
+      synchronized (Graph.this.nativeHandleLock) {
+        return active ? Graph.this.nativeHandle : 0;
       }
     }
 

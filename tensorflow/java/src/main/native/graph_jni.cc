@@ -74,12 +74,8 @@ JNIEXPORT void JNICALL Java_org_tensorflow_Graph_importGraphDef(
   TF_Status* status = TF_NewStatus();
 
   TF_GraphImportGraphDef(g, buf, opts, status);
-  if (TF_GetCode(status) != TF_OK) {
-    // TODO(ashankar): Throw exceptions that will distinguish between different
-    // status codes.
-    throwException(env, kIllegalArgumentException, TF_Message(status));
-    // Do not return here, many resources need to be cleaned up.
-  }
+  throwExceptionIfNotOK(env, status);
+  // Continue cleaning up resources even if an exception was thrown.
 
   TF_DeleteStatus(status);
   TF_DeleteBuffer(buf);
@@ -97,11 +93,7 @@ Java_org_tensorflow_Graph_toGraphDef(JNIEnv* env, jclass clazz, jlong handle) {
   TF_Buffer* buf = TF_NewBuffer();
   TF_Status* status = TF_NewStatus();
   TF_GraphToGraphDef(g, buf, status);
-  if (TF_GetCode(status) != TF_OK) {
-    // TODO(ashankar): Throw exceptions that will distinguish between different
-    // status codes.
-    throwException(env, kIllegalStateException, TF_Message(status));
-  } else {
+  if (throwExceptionIfNotOK(env, status)) {
     // sizeof(jsize) is less than sizeof(size_t) on some platforms.
     if (buf->length > std::numeric_limits<jint>::max()) {
       throwException(env, kIndexOutOfBoundsException,

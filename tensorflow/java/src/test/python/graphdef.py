@@ -30,10 +30,15 @@ def main():
   if len(sys.argv) != 2:
     print('Usage: ' + sys.argv[0] + ' <output filename>')
     sys.exit(-1)
+  # Graph with a while loop, just for fun while testing Graph.importGraphDef().
   i = tf.constant(0, name='MyConstant')
   c = lambda i: tf.less(i, 10)
   b = lambda i: tf.add(i, 1)
   tf.while_loop(c, b, [i])
+
+  # Graph thas has inputs and outputs, for testing graph execution.
+  tf.reduce_sum(tf.placeholder(tf.int64, name='input'), name='output')
+
   with open(sys.argv[1], 'w') as f:
     f.write(tf.get_default_graph().as_graph_def().SerializeToString())
 
