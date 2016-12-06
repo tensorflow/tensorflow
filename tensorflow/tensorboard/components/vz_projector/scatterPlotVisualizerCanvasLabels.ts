@@ -21,6 +21,8 @@ import * as util from './util';
 const MAX_LABELS_ON_SCREEN = 10000;
 const LABEL_STROKE_WIDTH = 3;
 const LABEL_FILL_WIDTH = 6;
+const LABEL_BACKGROUND_CARD_COLOR = 0xFFFFFF;
+const LABEL_BACKGROUND_CARD_OPACITY = 0.4;
 
 /**
  * Creates and maintains a 2d canvas on top of the GL canvas. All labels, when
@@ -86,6 +88,9 @@ export class ScatterPlotVisualizerCanvasLabels implements
     // Shift the label to the right of the point circle.
     const xShift = 4;
 
+    const labelBackgroundCardStyle = this.styleStringFromHexColorAndOpacity(
+        LABEL_BACKGROUND_CARD_COLOR, LABEL_BACKGROUND_CARD_OPACITY);
+
     const n = Math.min(MAX_LABELS_ON_SCREEN, lrc.pointIndices.length);
     for (let i = 0; i < n; ++i) {
       let point: THREE.Vector3;
@@ -117,7 +122,7 @@ export class ScatterPlotVisualizerCanvasLabels implements
       if (grid.insert(textBoundingBox, true)) {
         const text = lrc.labelStrings[i];
         const fontSize = lrc.defaultFontSize * lrc.scaleFactors[i] * dpr;
-        this.gc.font = fontSize + 'px roboto';
+        this.gc.font = fontSize + 'pt roboto';
 
         // Now, check with properly computed width.
         textBoundingBox.hiX += this.gc.measureText(text).width - 1;
@@ -126,6 +131,10 @@ export class ScatterPlotVisualizerCanvasLabels implements
           if (sceneIs3D && (lrc.useSceneOpacityFlags[i] === 1)) {
             opacity = opacityMap(camToPoint.length());
           }
+          this.gc.fillStyle = labelBackgroundCardStyle;
+          const rw = textBoundingBox.hiX - textBoundingBox.loX;
+          const rh = textBoundingBox.hiY - textBoundingBox.loY;
+          this.gc.fillRect(textBoundingBox.loX, textBoundingBox.loY, rw, rh);
           this.gc.fillStyle =
               this.styleStringFromPackedRgba(lrc.fillColors, i, opacity);
           this.gc.strokeStyle =
@@ -137,6 +146,15 @@ export class ScatterPlotVisualizerCanvasLabels implements
         }
       }
     }
+  }
+
+  private styleStringFromHexColorAndOpacity(hex: number, opacity: number):
+      string {
+    const c = new THREE.Color(hex);
+    const r = (c.r * 255) | 0;
+    const g = (c.g * 255) | 0;
+    const b = (c.b * 255) | 0;
+    return 'rgba(' + r + ',' + g + ',' + b + ',' + opacity + ')';
   }
 
   private styleStringFromPackedRgba(
