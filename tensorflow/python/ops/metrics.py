@@ -179,7 +179,7 @@ def _safe_div(numerator, denominator, name):
   Returns:
     0 if `denominator` <= 0, else `numerator` / `denominator`
   """
-  return math_ops.select(
+  return array_ops.where(
       math_ops.greater(denominator, 0),
       math_ops.truediv(numerator, denominator),
       0,
@@ -772,7 +772,7 @@ def mean_iou(labels,
 
       # If the value of the denominator is 0, set it to 1 to avoid
       # zero division.
-      denominator = math_ops.select(
+      denominator = array_ops.where(
           math_ops.greater(denominator, 0),
           denominator,
           array_ops.ones_like(denominator))
@@ -842,7 +842,7 @@ def mean_relative_error(labels, predictions, normalizer, weights=None,
   predictions, normalizer = confusion_matrix.remove_squeezable_dimensions(
       predictions, normalizer)
   predictions.get_shape().assert_is_compatible_with(normalizer.get_shape())
-  relative_errors = math_ops.select(
+  relative_errors = array_ops.where(
       math_ops.equal(normalizer, 0.0),
       array_ops.zeros_like(labels),
       math_ops.div(math_ops.abs(labels - predictions), normalizer))
@@ -1205,7 +1205,7 @@ def precision(labels, predictions, weights=None,
         updates_collections=None, name=None)
 
     def compute_precision(name):
-      return math_ops.select(
+      return array_ops.where(
           math_ops.greater(true_p + false_p, 0),
           math_ops.div(true_p, true_p + false_p),
           0,
@@ -1389,7 +1389,7 @@ def recall(labels, predictions, weights=None,
         updates_collections=None, name=None)
 
     def compute_recall(true_p, false_n, name):
-      return math_ops.select(
+      return array_ops.where(
           math_ops.greater(true_p + false_n, 0),
           math_ops.div(true_p, true_p + false_n),
           0,

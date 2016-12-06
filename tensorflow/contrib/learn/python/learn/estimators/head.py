@@ -745,7 +745,7 @@ class _MultiClassHead(_Head):
         predictions, labels, weights=None, class_id=None):
       del labels
       return metrics_lib.streaming_mean(
-          math_ops.select(
+          array_ops.where(
               math_ops.equal(
                   math_ops.to_int32(class_id),
                   math_ops.to_int32(predictions)),
@@ -758,7 +758,7 @@ class _MultiClassHead(_Head):
       del predictions
       assert class_id is not None
       return metrics_lib.streaming_mean(
-          math_ops.select(
+          array_ops.where(
               math_ops.equal(
                   math_ops.to_int32(class_id),
                   math_ops.to_int32(labels)),

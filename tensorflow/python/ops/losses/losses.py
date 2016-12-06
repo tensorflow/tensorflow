@@ -83,9 +83,9 @@ def _safe_div(numerator, denominator, name="value"):
   Returns:
     The element-wise value of the numerator divided by the denominator.
   """
-  return math_ops.select(
+  return array_ops.where(
       math_ops.greater(denominator, 0),
-      math_ops.div(numerator, math_ops.select(
+      math_ops.div(numerator, array_ops.where(
           math_ops.equal(denominator, 0),
           array_ops.ones_like(denominator), denominator)),
       array_ops.zeros_like(numerator),
@@ -134,7 +134,7 @@ def _num_present(losses, weights, per_batch=False):
                                                    [0], [1]), [])
     num_per_batch = math_ops.div(math_ops.to_float(array_ops.size(losses)),
                                  math_ops.to_float(batch_size))
-    num_per_batch = math_ops.select(math_ops.equal(weights, 0),
+    num_per_batch = array_ops.where(math_ops.equal(weights, 0),
                                     0.0, num_per_batch)
     num_per_batch = math_ops.mul(array_ops.ones(
         array_ops.reshape(batch_size, [1])), num_per_batch)
@@ -414,7 +414,7 @@ def mean_pairwise_squared_error(labels, predictions, weights=1.0, scope=None,
 
     loss = _scale_losses(term1 - term2, weights)
 
-    mean_loss = math_ops.select(math_ops.reduce_sum(num_present_per_batch) > 0,
+    mean_loss = array_ops.where(math_ops.reduce_sum(num_present_per_batch) > 0,
                                 loss,
                                 array_ops.zeros_like(loss),
                                 name="value")
