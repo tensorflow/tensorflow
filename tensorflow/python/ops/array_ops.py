@@ -1057,6 +1057,10 @@ def concat_v2(values, axis, name="concat_v2"):
                                   name=name)
 
 
+@deprecated(
+    "2016-12-13",
+    "This op will be removed after the deprecation date. "
+    "Please switch to tf.concat_v2().")
 def concat(concat_dim, values, name="concat"):
   """Concatenates tensors along one dimension.
 
