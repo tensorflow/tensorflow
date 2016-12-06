@@ -305,6 +305,15 @@ def state_saving_rnn(cell, inputs, state_saver, state_name,
   return (outputs, state)
 
 
+def _on_device(fn, device):
+  """Build the subgraph defined by lambda `fn` on `device` if it's not None."""
+  if device:
+    with ops.device(device):
+      return fn()
+  else:
+    return fn()
+
+
 # pylint: disable=unused-argument
 def _rnn_step(
     time, sequence_length, min_sequence_length, max_sequence_length,
@@ -366,7 +375,9 @@ def _rnn_step(
 
   def _copy_one_through(output, new_output):
     copy_cond = (time >= sequence_length)
-    return array_ops.where(copy_cond, output, new_output)
+    return _on_device(
+        lambda: array_ops.where(copy_cond, output, new_output),
+        device=new_output.op.device)
 
   def _copy_some_through(flat_new_output, flat_new_state):
     # Use broadcasting select to determine which values should get
@@ -1296,11 +1307,17 @@ def raw_rnn(cell, loop_fn,
       loop_state = loop_state if next_loop_state is None else next_loop_state
 
       def _copy_some_through(current, candidate):
+        """Copy some tensors through via array_ops.where."""
         current_flat = nest.flatten(current)
         candidate_flat = nest.flatten(candidate)
+        # pylint: disable=g-long-lambda,cell-var-from-loop
         result_flat = [
-            array_ops.where(elements_finished, current_i, candidate_i)
+            _on_device(
+                lambda: array_ops.where(
+                    elements_finished, current_i, candidate_i),
+                device=candidate_i.op.device)
             for (current_i, candidate_i) in zip(current_flat, candidate_flat)]
+        # pylint: enable=g-long-lambda,cell-var-from-loop
         return nest.pack_sequence_as(
             structure=current, flat_sequence=result_flat)
 

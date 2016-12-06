@@ -1035,6 +1035,122 @@ class RawRNNTest(tf.test.TestCase):
     self._testScope(factory, use_outer_scope=False)
     self._testScope(factory, prefix=None, use_outer_scope=False)
 
+
+class DeviceWrapperCell(tf.contrib.rnn.RNNCell):
+  """Class to ensure cell calculation happens on a specific device."""
+
+  def __init__(self, cell, device):
+    self._cell = cell
+    self._device = device
+
+  @property
+  def output_size(self):
+    return self._cell.output_size
+
+  @property
+  def state_size(self):
+    return self._cell.state_size
+
+  def __call__(self, input_, state, scope=None):
+    if self._device is not None:
+      with tf.device(self._device):
+        return self._cell(input_, state, scope)
+    else:
+      return self._cell(input_, state, scope)
+
+
+class TensorArrayOnCorrectDeviceTest(tf.test.TestCase):
+
+  def _execute_rnn_on(
+      self, rnn_device=None, cell_device=None, input_device=None):
+    batch_size = 3
+    time_steps = 7
+    input_size = 5
+    num_units = 10
+
+    cell = tf.contrib.rnn.LSTMCell(num_units, use_peepholes=True)
+    gpu_cell = DeviceWrapperCell(cell, cell_device)
+    inputs = np.random.randn(batch_size, time_steps, input_size).astype(
+        np.float32)
+    sequence_length = np.random.randint(0, time_steps, size=batch_size)
+
+    if input_device is not None:
+      with tf.device(input_device):
+        inputs = tf.constant(inputs)
+
+    if rnn_device is not None:
+      with tf.device(rnn_device):
+        outputs, _ = tf.nn.dynamic_rnn(
+            gpu_cell, inputs, sequence_length=sequence_length, dtype=tf.float32)
+    else:
+      outputs, _ = tf.nn.dynamic_rnn(
+          gpu_cell, inputs, sequence_length=sequence_length, dtype=tf.float32)
+
+    with self.test_session(use_gpu=True) as sess:
+      opts = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+      run_metadata = tf.RunMetadata()
+      tf.global_variables_initializer().run()
+      sess.run(outputs, options=opts, run_metadata=run_metadata)
+
+    return run_metadata
+
+  def testRNNOnCPUCellOnGPU(self):
+    if not tf.test.is_gpu_available():
+      return  # Test requires access to a GPU
+
+    run_metadata = self._execute_rnn_on(
+        rnn_device="/cpu:0", cell_device="/gpu:0")
+    step_stats = run_metadata.step_stats
+    ix = 0 if "gpu" in step_stats.dev_stats[0].device else 1
+    gpu_stats = step_stats.dev_stats[ix].node_stats
+    cpu_stats = step_stats.dev_stats[1 - ix].node_stats
+    def _assert_in(op_str, in_stats, out_stats):
+      self.assertTrue(any(op_str in s.node_name for s in in_stats))
+      self.assertFalse(any(op_str in s.node_name for s in out_stats))
+
+    # Writes happen at output of RNN cell
+    _assert_in("TensorArrayWrite", gpu_stats, cpu_stats)
+    # Gather happens on final TensorArray
+    _assert_in("TensorArrayGather", gpu_stats, cpu_stats)
+    # Reads happen at input to RNN cell
+    _assert_in("TensorArrayRead", cpu_stats, gpu_stats)
+    # Scatters happen to get initial input into TensorArray
+    _assert_in("TensorArrayScatter", cpu_stats, gpu_stats)
+
+  def testRNNOnCPUCellOnCPU(self):
+    if not tf.test.is_gpu_available():
+      return  # Test requires access to a GPU
+
+    run_metadata = self._execute_rnn_on(
+        rnn_device="/cpu:0", cell_device="/cpu:0", input_device="/gpu:0")
+    step_stats = run_metadata.step_stats
+    ix = 0 if "gpu" in step_stats.dev_stats[0].device else 1
+    gpu_stats = step_stats.dev_stats[ix].node_stats
+    cpu_stats = step_stats.dev_stats[1 - ix].node_stats
+    def _assert_in(op_str, in_stats, out_stats):
+      self.assertTrue(any(op_str in s.node_name for s in in_stats))
+      self.assertFalse(any(op_str in s.node_name for s in out_stats))
+
+    # All TensorArray operations happen on CPU
+    _assert_in("TensorArray", cpu_stats, gpu_stats)
+
+  def testInputOnGPUCellNotDeclared(self):
+    if not tf.test.is_gpu_available():
+      return  # Test requires access to a GPU
+
+    run_metadata = self._execute_rnn_on(input_device="/gpu:0")
+    step_stats = run_metadata.step_stats
+    ix = 0 if "gpu" in step_stats.dev_stats[0].device else 1
+    gpu_stats = step_stats.dev_stats[ix].node_stats
+    cpu_stats = step_stats.dev_stats[1 - ix].node_stats
+    def _assert_in(op_str, in_stats, out_stats):
+      self.assertTrue(any(op_str in s.node_name for s in in_stats))
+      self.assertFalse(any(op_str in s.node_name for s in out_stats))
+
+    # Everything happens on GPU
+    _assert_in("TensorArray", gpu_stats, cpu_stats)
+
+
 ######### Benchmarking RNN code
 
 
