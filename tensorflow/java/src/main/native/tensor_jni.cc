@@ -19,6 +19,7 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 #include <algorithm>
+#include <memory>
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/java/src/main/native/exception_jni.h"
@@ -262,6 +263,39 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_allocate(JNIEnv* env,
   return reinterpret_cast<jlong>(t);
 }
 
+JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_allocateScalarBytes(
+    JNIEnv* env, jclass clazz, jbyteArray value) {
+  // TF_STRING tensors are encoded with a table of 8-byte offsets followed by
+  // TF_StringEncode-encoded bytes.
+  size_t src_len = static_cast<int>(env->GetArrayLength(value));
+  size_t dst_len = TF_StringEncodedSize(src_len);
+  TF_Tensor* t = TF_AllocateTensor(TF_STRING, nullptr, 0, 8 + dst_len);
+  char* dst = static_cast<char*>(TF_TensorData(t));
+  memset(dst, 0, 8);  // The offset table
+
+  // jbyte is a signed char, while the C standard doesn't require char and
+  // signed char to be the same. As a result, static_cast<char*>(src) will
+  // complain. Copy the string instead. sigh!
+  jbyte* jsrc = env->GetByteArrayElements(value, nullptr);
+  std::unique_ptr<char[]> src(new char[src_len]);
+  static_assert(sizeof(jbyte) == sizeof(char),
+                "Cannot convert Java byte to a C char");
+  memcpy(src.get(), jsrc, src_len);
+  env->ReleaseByteArrayElements(value, jsrc, JNI_ABORT);
+
+  TF_Status* status = TF_NewStatus();
+  TF_StringEncode(src.get(), src_len, dst + 8, dst_len, status);
+  if (TF_GetCode(status) != TF_OK) {
+    // TODO(ashankar): Replace with throwExceptionIfNotOK() being added to
+    // exception_jni.h in another change.
+    throwException(env, kIllegalStateException, TF_Message(status));
+    TF_DeleteStatus(status);
+    return 0;
+  }
+  TF_DeleteStatus(status);
+  return reinterpret_cast<jlong>(t);
+}
+
 JNIEXPORT void JNICALL Java_org_tensorflow_Tensor_delete(JNIEnv* env,
                                                          jclass clazz,
                                                          jlong handle) {
@@ -336,6 +370,49 @@ DEFINE_GET_SCALAR_METHOD(jint, TF_INT32, Int);
 DEFINE_GET_SCALAR_METHOD(jlong, TF_INT64, Long);
 DEFINE_GET_SCALAR_METHOD(jboolean, TF_BOOL, Boolean);
 #undef DEFINE_GET_SCALAR_METHOD
+
+JNIEXPORT jbyteArray JNICALL Java_org_tensorflow_Tensor_scalarBytes(
+    JNIEnv* env, jclass clazz, jlong handle) {
+  TF_Tensor* t = requireHandle(env, handle);
+  if (t == nullptr) return nullptr;
+  if (TF_NumDims(t) != 0) {
+    throwException(env, kIllegalStateException, "Tensor is not a scalar");
+    return nullptr;
+  }
+  if (TF_TensorType(t) != TF_STRING) {
+    throwException(env, kIllegalArgumentException,
+                   "Tensor is not a string/bytes scalar");
+    return nullptr;
+  }
+  const char* data = static_cast<const char*>(TF_TensorData(t));
+  const char* src = data + 8;
+  size_t src_len = TF_TensorByteSize(t) - 8;
+  uint64_t offset = 0;
+  memcpy(&offset, data, sizeof(offset));
+  if (offset >= src_len) {
+    throwException(env, kIllegalArgumentException,
+                   "invalid tensor encoding: bad offsets");
+    return nullptr;
+  }
+  jbyteArray ret = nullptr;
+  const char* dst = nullptr;
+  size_t dst_len = 0;
+  TF_Status* status = TF_NewStatus();
+  TF_StringDecode(src, src_len, &dst, &dst_len, status);
+  if (TF_GetCode(status) != TF_OK) {
+    // TODO(ashankar): Replace with throwExceptionIfNotOK introduced into
+    // exception_jni.h by another change.
+    throwException(env, kIllegalArgumentException,
+                   "invalid tensor encoding: %s", TF_Message(status));
+  } else {
+    ret = env->NewByteArray(dst_len);
+    jbyte* cpy = env->GetByteArrayElements(ret, nullptr);
+    memcpy(cpy, dst, dst_len);
+    env->ReleaseByteArrayElements(ret, cpy, 0);
+  }
+  TF_DeleteStatus(status);
+  return ret;
+}
 
 JNIEXPORT void JNICALL Java_org_tensorflow_Tensor_readNDArray(JNIEnv* env,
                                                               jclass clazz,

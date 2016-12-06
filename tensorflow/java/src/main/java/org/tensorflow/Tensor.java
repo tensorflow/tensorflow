@@ -70,8 +70,17 @@ public final class Tensor implements AutoCloseable {
     t.dtype = dataTypeOf(obj);
     t.shapeCopy = new long[numDimensions(obj)];
     fillShape(obj, 0, t.shapeCopy);
-    t.nativeHandle = allocate(t.dtype.c(), t.shapeCopy);
-    setValue(t.nativeHandle, obj);
+    if (t.dtype != DataType.STRING) {
+      t.nativeHandle = allocate(t.dtype.c(), t.shapeCopy);
+      setValue(t.nativeHandle, obj);
+    } else if (t.shapeCopy.length != 0) {
+      throw new UnsupportedOperationException(
+          String.format(
+              "non-scalar DataType.STRING tensors are not supported yet (version %s). Please file a feature request at https://github.com/tensorflow/tensorflow/issues/new",
+              TensorFlow.version()));
+    } else {
+      t.nativeHandle = allocateScalarBytes((byte[]) obj);
+    }
     return t;
   }
 
@@ -161,6 +170,15 @@ public final class Tensor implements AutoCloseable {
   }
 
   /**
+   * Returns the value in a scalar {@link DataType#STRING} tensor.
+   *
+   * @throws IllegalArgumentException if the Tensor does not represent a boolean scalar.
+   */
+  public byte[] bytesValue() {
+    return scalarBytes(nativeHandle);
+  }
+
+  /**
    * Copies the contents of the tensor to {@code dst} and returns {@code dst}.
    *
    * <p>For non-scalar tensors, this method copies the contents of the underlying tensor to a Java
@@ -224,7 +242,12 @@ public final class Tensor implements AutoCloseable {
       if (Array.getLength(o) == 0) {
         throw new IllegalArgumentException("cannot create Tensors with a 0 dimension");
       }
-      return dataTypeOf(Array.get(o, 0));
+      // byte[] is a DataType.STRING scalar.
+      Object e = Array.get(o, 0);
+      if (Byte.class.isInstance(e) || byte.class.isInstance(e)) {
+        return DataType.STRING;
+      }
+      return dataTypeOf(e);
     }
     if (Float.class.isInstance(o) || float.class.isInstance(o)) {
       return DataType.FLOAT;
@@ -243,7 +266,12 @@ public final class Tensor implements AutoCloseable {
 
   private static int numDimensions(Object o) {
     if (o.getClass().isArray()) {
-      return 1 + numDimensions(Array.get(o, 0));
+      // byte[] is a DataType.STRING scalar.
+      Object e = Array.get(o, 0);
+      if (Byte.class.isInstance(e) || byte.class.isInstance(e)) {
+        return 0;
+      }
+      return 1 + numDimensions(e);
     }
     return 0;
   }
@@ -291,6 +319,8 @@ public final class Tensor implements AutoCloseable {
 
   private static native long allocate(int dtype, long[] shape);
 
+  private static native long allocateScalarBytes(byte[] value);
+
   private static native void delete(long handle);
 
   private static native int dtype(long handle);
@@ -308,6 +338,8 @@ public final class Tensor implements AutoCloseable {
   private static native long scalarLong(long handle);
 
   private static native boolean scalarBoolean(long handle);
+
+  private static native byte[] scalarBytes(long handle);
 
   private static native void readNDArray(long handle, Object value);
 

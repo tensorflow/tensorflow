@@ -32,6 +32,14 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_allocate(JNIEnv *, jclass,
 
 /*
  * Class:     org_tensorflow_Tensor
+ * Method:    allocateScalarBytes
+ * Signature: ([B)J
+ */
+JNIEXPORT jlong JNICALL
+Java_org_tensorflow_Tensor_allocateScalarBytes(JNIEnv *, jclass, jbyteArray);
+
+/*
+ * Class:     org_tensorflow_Tensor
  * Method:    delete
  * Signature: (J)V
  */
@@ -105,6 +113,15 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_scalarLong(JNIEnv *, jclass,
  * Signature: (J)Z
  */
 JNIEXPORT jboolean JNICALL Java_org_tensorflow_Tensor_scalarBoolean(JNIEnv *,
+                                                                    jclass,
+                                                                    jlong);
+
+/*
+ * Class:     org_tensorflow_Tensor
+ * Method:    scalarBytes
+ * Signature: (J)[B
+ */
+JNIEXPORT jbyteArray JNICALL Java_org_tensorflow_Tensor_scalarBytes(JNIEnv *,
                                                                     jclass,
                                                                     jlong);
 

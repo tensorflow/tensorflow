@@ -63,6 +63,14 @@ public class TensorTest {
       assertEquals(0, t.shape().length);
       assertTrue(t.booleanValue());
     }
+
+    final byte[] bytes = {1,2,3,4};
+    try (Tensor t = Tensor.create(bytes)) {
+      assertEquals(DataType.STRING, t.dataType());
+      assertEquals(0, t.numDimensions());
+      assertEquals(0, t.shape().length);
+      assertArrayEquals(bytes, t.bytesValue());
+    }
   }
 
   @Test

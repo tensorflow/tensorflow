@@ -26,6 +26,13 @@ public enum DataType {
   /** 32-bit signed integer. */
   INT32(3),
 
+  /**
+   * A sequence of bytes.
+   *
+   * <p>TensorFlow uses the STRING type for an arbitrary sequence of bytes.
+   */
+  STRING(7),
+
   /** 64-bit signed integer. */
   INT64(9),
 
