@@ -2121,7 +2121,7 @@ def _sparse_average_precision_at_k(labels, predictions, k):
     # `relevant_precision_per_k` (float64) - Relevant precisions; i.e.,
     #     precisions at all k for which relevance indicator is true.
     relevant_per_k = _sparse_true_positive_at_k(
-        predictions_idx_per_k, labels_per_k, name='relevant_per_k')
+        labels_per_k, predictions_idx_per_k, name='relevant_per_k')
     tp_per_k = math_ops.cumsum(relevant_per_k, axis=-1, name='tp_per_k')
     retrieved_per_k = math_ops.cumsum(
         array_ops.ones_like(relevant_per_k), axis=-1, name='retrieved_per_k')
