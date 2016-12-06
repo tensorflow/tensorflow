@@ -85,7 +85,7 @@
   removed.
 * `tf.all_variables`, `tf.VARIABLES` and `tf.initialize_all_variables` renamed
   to `tf.global_variables`, `tf.GLOBAL_VARIABLES` and
-  `tf.global_variables_initializers` respectively.
+  `tf.global_variables_initializer` respectively.
 
 ## Bug Fixes and Other Changes
 
