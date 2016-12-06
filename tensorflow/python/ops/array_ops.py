@@ -1223,11 +1223,17 @@ def sparse_mask(a, mask_indices, name=None):
     return ops.IndexedSlices(out_values, out_indices, a.dense_shape)
 
 
-def split(axis, num_split, value, name="split", split_dim=None):
-  """Splits a tensor into `num_split` tensors along one dimension.
+def split(axis=None,
+          num_or_size_splits=None,
+          value=None,
+          name="split",
+          split_dim=None):
+  """DEPRECATED: use split_v; split_v rename to split happening soon.
 
-  Splits `value` along dimension `axis` into `num_split` smaller tensors.
-  Requires that `num_split` evenly divide `value.shape[axis]`.
+  Splits a tensor into `num_split` tensors along one dimension.
+
+  Splits `value` along dimension `axis` into `num_or_size_splits` smaller
+  tensors. Requires that `num_or_size_splits` evenly divide `value.shape[axis]`.
 
   For example:
 
@@ -1255,7 +1261,8 @@ def split(axis, num_split, value, name="split", split_dim=None):
   Args:
     axis: A 0-D `int32` `Tensor`. The dimension along which to split.
       Must be in the range `[0, rank(value))`.
-    num_split: A Python integer. The number of ways to split.
+    num_or_size_splits: A Python integer. The number of ways to split. Has a
+      different meaning in split_v (see docs).
     value: The `Tensor` to split.
     name: A name for the operation (optional).
     split_dim: The old (deprecated) name for axis.
@@ -1266,17 +1273,21 @@ def split(axis, num_split, value, name="split", split_dim=None):
   axis = deprecation.deprecated_argument_lookup("axis", axis, "split_dim",
                                                 split_dim)
   return gen_array_ops._split(
-      split_dim=axis, num_split=num_split, value=value, name=name)
+      split_dim=axis, num_split=num_or_size_splits, value=value, name=name)
 
 
-def split_v(value, size_splits, split_dim=0, num=None, name="split_v"):
+def split_v(value=None,
+            num_or_size_splits=None,
+            axis=0,
+            num=None,
+            name="split_v"):
   """Splits a tensor into sub tensors.
 
-  If size_splits is a scalar, `num_split`, then
-  splits `value` along dimension `split_dim` into `num_split` smaller tensors.
+  If num_or_size_splits is a scalar, `num_split`, then
+  splits `value` along dimension `axis` into `num_split` smaller tensors.
   Requires that `num_split` evenly divide `value.shape[split_dim]`.
 
-  If size_splits is a tensor, then
+  If num_or_size_splits is a tensor, then
   splits `value` into len(size_splits) pieces each the same size as the input
   except along dimension split_dim where the size is size_splits[i].
 
@@ -1296,37 +1307,40 @@ def split_v(value, size_splits, split_dim=0, num=None, name="split_v"):
 
   Args:
     value: The `Tensor` to split.
-    size_splits: Either an integer indicating the number of splits along
+    num_or_size_splits: Either an integer indicating the number of splits along
       split_dim or a 1-D Tensor containing the sizes of each output tensor
       along split_dim. If an integer then it must evenly divide
       value.shape[split_dim]; otherwise the sum of sizes along the split
       dimension must match that of the input.
-    split_dim: A 0-D `int32` `Tensor`. The dimension along which to split.
+    axis: A 0-D `int32` `Tensor`. The dimension along which to split.
       Must be in the range `[0, rank(value))`. Defaults to 0.
     num: Optional, used to specify the number of outputs when it cannot be
          inferred from the shape of size_splits.
     name: A name for the operation (optional).
 
   Returns:
-    `len(size_splits)` `Tensor` objects resulting from splitting `value`.
+    if `num_or_size_splits` is a scalar returns `num_or_size_splits` `Tensor`
+    objects; if `num_or_size_splits` is a 1-D Tensor returns
+    `num_or_size_splits.get_shape[0]` `Tensor` objects resulting from splitting
+    `value`.
 
   Raises:
     ValueError: If `num` is unspecified and cannot be inferred.
   """
-  if isinstance(size_splits, six.integer_types):
+  if isinstance(num_or_size_splits, six.integer_types):
     return gen_array_ops._split(
-        split_dim=split_dim, num_split=size_splits, value=value, name=name)
+        split_dim=axis, num_split=num_or_size_splits, value=value, name=name)
   else:
     if num is None:
-      size_splits = ops.convert_to_tensor(size_splits)
+      size_splits = ops.convert_to_tensor(num_or_size_splits)
       size_splits_shape = size_splits.get_shape()
       num = size_splits_shape.dims
     if num is None:
       raise ValueError("Cannot infer num from shape %s" % value_shape)
     return gen_array_ops._split_v(
         value=value,
-        size_splits=size_splits,
-        split_dim=split_dim,
+        size_splits=num_or_size_splits,
+        split_dim=axis,
         num_split=num[0],
         name=name)
 

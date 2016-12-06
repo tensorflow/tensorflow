@@ -58,7 +58,7 @@ Initializes a LogisticRegressor.
 
 - - -
 
-#### `tf.contrib.learn.LogisticRegressor.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None)` {#LogisticRegressor.evaluate}
+#### `tf.contrib.learn.LogisticRegressor.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None)` {#LogisticRegressor.evaluate}
 
 Evaluates given model with provided evaluation data.
 
@@ -75,6 +75,8 @@ See superclass Estimator for more details.
 *  <b>`steps`</b>: Number of steps for which to evaluate model.
 *  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metrics are used.
 *  <b>`name`</b>: Name of the evaluation.
+*  <b>`checkpoint_path`</b>: A specific checkpoint to use. By default, use the latest
+    checkpoint in the `model_dir`.
 
 ##### Returns:
 

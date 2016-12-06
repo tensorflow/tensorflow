@@ -4763,7 +4763,7 @@ class ExpandAndTileTest(tf.test.TestCase):
     with self.test_session():
       expected_result_dim0 = tf.SparseTensorValue(
           indices=[[0, i[0], i[1]] for i in x.indices], values=x.values,
-          shape=[1, 3, 3])
+          dense_shape=[1, 3, 3])
       self._assert_sparse_tensors_equal(
           expected_result_dim0,
           metric_ops.expand_and_tile(x, multiple=1).eval())
@@ -4774,7 +4774,7 @@ class ExpandAndTileTest(tf.test.TestCase):
 
       expected_result_dim1 = tf.SparseTensorValue(
           indices=[[i[0], 0, i[1]] for i in x.indices], values=x.values,
-          shape=[3, 1, 3])
+          dense_shape=[3, 1, 3])
       for dim in (-1, 1):
         self._assert_sparse_tensors_equal(
             expected_result_dim1,
@@ -4782,7 +4782,7 @@ class ExpandAndTileTest(tf.test.TestCase):
 
       expected_result_dim2 = tf.SparseTensorValue(
           indices=[[i[0], i[1], 0] for i in x.indices], values=x.values,
-          shape=[3, 3, 1])
+          dense_shape=[3, 3, 1])
       self._assert_sparse_tensors_equal(
           expected_result_dim2,
           metric_ops.expand_and_tile(x, multiple=1, dim=2).eval())

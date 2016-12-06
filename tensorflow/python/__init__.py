@@ -85,7 +85,6 @@ from tensorflow.python.ops.standard_ops import *
 from tensorflow.python.layers import layers
 from tensorflow.python.ops import metrics
 from tensorflow.python.ops import nn
-from tensorflow.python.ops import resources
 from tensorflow.python.ops import sdca_ops as sdca
 from tensorflow.python.ops import image_ops as image
 from tensorflow.python.ops import losses
@@ -125,7 +124,6 @@ from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import histogram_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resources
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import session_ops
 from tensorflow.python.ops import sparse_ops
@@ -226,7 +224,6 @@ _allowed_symbols.extend([
     'newaxis',
     'nn',
     'python_io',
-    'resources',
     'resource_loader',
     'sdca',
     'sets',
@@ -251,7 +248,7 @@ remove_undocumented(__name__, _allowed_symbols,
                     [framework_lib, array_ops, client_lib, check_ops,
                      compat, constant_op, control_flow_ops, confusion_matrix_m,
                      functional_ops, histogram_ops, io_ops, losses, math_ops,
-                     metrics, nn, resource_loader, resources, sets, script_ops,
+                     metrics, nn, resource_loader, sets, script_ops,
                      session_ops, sparse_ops, state_ops, string_ops, summary,
                      tensor_array_ops, train, layers])
 

@@ -112,7 +112,7 @@ class CheckpointedOp(object):
 class SaverTest(tf.test.TestCase):
 
   def basicSaveRestore(self, variable_op):
-    save_path = os.path.join(self.get_temp_dir(), "basics")
+    save_path = os.path.join(self.get_temp_dir(), "basic_save_restore")
 
     # Build a graph with 2 parameter nodes, and Save and
     # Restore nodes for them.
@@ -455,7 +455,7 @@ class SaverTest(tf.test.TestCase):
       self.assertAllClose([2.0, 2.0, 2.0], twos.eval())
 
   def testReshape(self):
-    save_path = os.path.join(self.get_temp_dir(), "variables")
+    save_path = os.path.join(self.get_temp_dir(), "variables_reshape")
     with tf.Session("", graph=tf.Graph()) as sess:
       var = tf.Variable([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
       init = tf.global_variables_initializer()
@@ -535,7 +535,7 @@ class SaverTest(tf.test.TestCase):
 class SaveRestoreShardedTest(tf.test.TestCase):
 
   def testBasics(self):
-    save_path = os.path.join(self.get_temp_dir(), "sharded")
+    save_path = os.path.join(self.get_temp_dir(), "sharded_basics")
 
     # Build a graph with 2 parameter nodes on different devices.
     with tf.Session(
@@ -626,7 +626,7 @@ class SaveRestoreShardedTest(tf.test.TestCase):
       self.assertEqual(33.0, t0.values().eval())
       self.assertEqual(b"k22", t1.keys().eval())
       self.assertEqual(44.0, t1.values().eval())
-      save_path = os.path.join(self.get_temp_dir(), "sharded")
+      save_path = os.path.join(self.get_temp_dir(), "sharded_basics")
       if save._write_version is saver_pb2.SaverDef.V1:
         save.restore(sess, save_path + "-?????-of-?????")
       else:
@@ -641,11 +641,11 @@ class SaveRestoreShardedTest(tf.test.TestCase):
     if save._write_version is saver_pb2.SaverDef.V1:
       self.assertEqual(
           tf.train.latest_checkpoint(self.get_temp_dir()),
-          os.path.join(self.get_temp_dir(), "sharded-?????-of-00002"))
+          os.path.join(self.get_temp_dir(), "sharded_basics-?????-of-00002"))
     else:
       self.assertEqual(
           tf.train.latest_checkpoint(self.get_temp_dir()),
-          os.path.join(self.get_temp_dir(), "sharded"))
+          os.path.join(self.get_temp_dir(), "sharded_basics"))
 
   def testSaverDef(self):
     with self.test_session():
@@ -1001,7 +1001,7 @@ class KeepCheckpointEveryNHoursTest(tf.test.TestCase):
 class SaveRestoreWithVariableNameMap(tf.test.TestCase):
 
   def testNonReshape(self):
-    save_path = os.path.join(self.get_temp_dir(), "basics")
+    save_path = os.path.join(self.get_temp_dir(), "non_reshape")
 
     with self.test_session() as sess:
       # Build a graph with 2 parameter nodes, and Save and

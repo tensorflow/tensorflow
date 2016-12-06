@@ -633,7 +633,7 @@ class RandomTreeGraphs(object):
     if isinstance(input_data, sparse_tensor.SparseTensor):
       sparse_indices = input_data.indices
       sparse_values = input_data.values
-      sparse_shape = input_data.shape
+      sparse_shape = input_data.dense_shape
       input_data = []
 
     # Count extremely random stats.
@@ -890,7 +890,7 @@ class RandomTreeGraphs(object):
     if isinstance(input_data, sparse_tensor.SparseTensor):
       sparse_indices = input_data.indices
       sparse_values = input_data.values
-      sparse_shape = input_data.shape
+      sparse_shape = input_data.dense_shape
       input_data = []
     return self.inference_ops.tree_predictions(
         input_data, sparse_indices, sparse_values, sparse_shape, data_spec,

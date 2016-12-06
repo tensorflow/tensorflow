@@ -1,4 +1,4 @@
-### `tf.sparse_split(axis, num_split, sp_input, name=None, split_dim=None)` {#sparse_split}
+### `tf.sparse_split(keyword_required=KeywordRequired(), sp_input=None, num_split=None, axis=None, name=None, split_dim=None)` {#sparse_split}
 
 Split a `SparseTensor` into `num_split` tensors along `axis`.
 
@@ -24,9 +24,10 @@ Graphically the output tensors are:
 ##### Args:
 
 
-*  <b>`axis`</b>: A 0-D `int32` `Tensor`. The dimension along which to split.
-*  <b>`num_split`</b>: A Python integer. The number of ways to split.
+*  <b>`keyword_required`</b>: Python 2 standin for * (temporary for argument reorder)
 *  <b>`sp_input`</b>: The `SparseTensor` to split.
+*  <b>`num_split`</b>: A Python integer. The number of ways to split.
+*  <b>`axis`</b>: A 0-D `int32` `Tensor`. The dimension along which to split.
 *  <b>`name`</b>: A name for the operation (optional).
 *  <b>`split_dim`</b>: Deprecated old name for axis.
 

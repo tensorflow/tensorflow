@@ -1708,7 +1708,7 @@ Example:
       is a SparseTensor.
    Following are assumed to be true:
      * sparse_tensor.indices = weights_tensor.indices
-     * sparse_tensor.shape = weights_tensor.shape
+     * sparse_tensor.dense_shape = weights_tensor.dense_shape
 
 ##### Args:
 

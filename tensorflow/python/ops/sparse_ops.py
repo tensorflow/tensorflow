@@ -440,7 +440,10 @@ def sparse_reshape(sp_input, shape, name=None):
 
 # TODO(aselle): Remove keyword required once for 1.0 final
 class KeywordRequired(object):
-  pass
+
+  def __repr__(self):
+    # This is needed to make documentation without fully qualified module paths
+    return "KeywordRequired()"
 
 
 def sparse_split(keyword_required=KeywordRequired(),

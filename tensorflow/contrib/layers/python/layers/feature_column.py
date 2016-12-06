@@ -718,7 +718,7 @@ def weighted_sparse_column(sparse_id_column,
         is a SparseTensor.
      Following are assumed to be true:
        * sparse_tensor.indices = weights_tensor.indices
-       * sparse_tensor.shape = weights_tensor.dense_shape
+       * sparse_tensor.dense_shape = weights_tensor.dense_shape
 
   Args:
     sparse_id_column: A `_SparseColumn` which is created by
