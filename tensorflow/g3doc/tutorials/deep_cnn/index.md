@@ -83,7 +83,7 @@ for details.  It consists of 1,068,298 learnable parameters and requires about
 ## Code Organization
 
 The code for this tutorial resides in
-[`models/tutorials/image/cifar10/`](https://www.tensorflow.org/code/tensorflow_models/tutorials/image/cifar10/).
+[`tensorflow_models/tutorials/image/cifar10/`](https://www.tensorflow.org/code/tensorflow_models/tutorials/image/cifar10/).
 
 File | Purpose
 --- | ---
