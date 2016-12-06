@@ -39,6 +39,7 @@ from tensorflow.contrib.framework import deprecated_args
 from tensorflow.contrib.framework import list_variables
 from tensorflow.contrib.framework import load_variable
 from tensorflow.contrib.framework.python.framework import experimental
+from tensorflow.contrib.framework.python.ops import ops as contrib_ops
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import graph_actions
@@ -905,7 +906,8 @@ class BaseEstimator(
       # constant, and we should stop after the first epoch.  If,
       # instead, there are queue_runners, eventually they should throw
       # an `OutOfRangeError`.
-      if ops.get_collection(ops.GraphKeys.QUEUE_RUNNERS):
+      graph = contrib_ops.get_graph_from_inputs(predictions.values())
+      if graph.get_collection(ops.GraphKeys.QUEUE_RUNNERS):
         feed_dicts = itertools.repeat(None)
       else:
         feed_dicts = [None]

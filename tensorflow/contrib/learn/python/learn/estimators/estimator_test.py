@@ -54,6 +54,17 @@ def boston_input_fn(num_epochs=None):
   return features, labels
 
 
+def boston_input_fn_with_queue(num_epochs=None):
+  features, labels = boston_input_fn(num_epochs=num_epochs)
+
+  # Create a minimal queue runner.
+  fake_queue = tf.FIFOQueue(30, tf.int32)
+  queue_runner = tf.train.QueueRunner(fake_queue, [tf.constant(0)])
+  tf.train.add_queue_runner(queue_runner)
+
+  return features, labels
+
+
 def iris_input_fn():
   iris = tf.contrib.learn.datasets.load_iris()
   features = tf.reshape(tf.constant(iris.data), [-1, _IRIS_INPUT_DIM])
@@ -494,6 +505,14 @@ class EstimatorTest(tf.test.TestCase):
     input_fn = functools.partial(boston_input_fn, num_epochs=1)
     output = list(est.predict(input_fn=input_fn))
     self.assertEqual(len(output), boston.target.shape[0])
+
+  def testPredictInputFnWithQueue(self):
+    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
+    boston = tf.contrib.learn.datasets.load_boston()
+    est.fit(input_fn=boston_input_fn, steps=1)
+    input_fn = functools.partial(boston_input_fn_with_queue, num_epochs=2)
+    output = list(est.predict(input_fn=input_fn))
+    self.assertEqual(len(output), boston.target.shape[0]*2)
 
   def testPredictConstInputFn(self):
     est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
