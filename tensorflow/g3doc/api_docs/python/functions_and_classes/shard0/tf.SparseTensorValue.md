@@ -24,6 +24,13 @@ Returned as the output of a session.run on a `SparseTensor` object.
 
 - - -
 
+#### `tf.SparseTensorValue.__repr__()` {#SparseTensorValue.__repr__}
+
+
+
+
+- - -
+
 #### `tf.SparseTensorValue.dense_shape` {#SparseTensorValue.dense_shape}
 
 
