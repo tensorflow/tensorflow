@@ -73,7 +73,8 @@ class SparseSplitOpTest(tf.test.TestCase):
 
   def testSplitMatrixRows(self):
     with self.test_session(use_gpu=False):
-      sp_tensors = tf.sparse_split(0, 2, self._SparseTensor_4x6())
+      sp_tensors = tf.sparse_split(
+          sp_input=self._SparseTensor_4x6(), num_split=2, axis=0)
       self.assertAllEqual(len(sp_tensors), 2)
       self.assertAllEqual(sp_tensors[0].indices.eval(),
                           [[0, 0], [0, 2], [0, 4], [0, 5], [1, 1], [1, 3], [1,
@@ -89,7 +90,8 @@ class SparseSplitOpTest(tf.test.TestCase):
 
   def testSplitMatrixUnevenCols(self):
     with self.test_session(use_gpu=False):
-      sp_tensors_3 = tf.sparse_split(1, 3, self._SparseTensor_5x7())
+      sp_tensors_3 = tf.sparse_split(
+          sp_input=self._SparseTensor_5x7(), num_split=3, axis=1)
       self.assertAllEqual(len(sp_tensors_3), 3)
       self.assertAllEqual(sp_tensors_3[0].indices.eval(),
                           [[0, 0], [0, 2], [1, 1], [2, 0], [3, 0], [3, 2],
@@ -108,7 +110,8 @@ class SparseSplitOpTest(tf.test.TestCase):
                                                            [4, 1]])
       self.assertAllEqual(sp_tensors_3[2].values.eval(), [5, 16, 25, 35, 46])
       self.assertAllEqual(sp_tensors_3[2].dense_shape.eval(), [5, 2])
-      sp_tensors_4 = tf.sparse_split(1, 4, self._SparseTensor_5x7())
+      sp_tensors_4 = tf.sparse_split(
+          sp_input=self._SparseTensor_5x7(), num_split=4, axis=1)
       self.assertAllEqual(len(sp_tensors_4), 4)
       self.assertAllEqual(sp_tensors_4[0].indices.eval(),
                           [[0, 0], [1, 1], [2, 0], [3, 0], [4, 1]])
@@ -128,7 +131,8 @@ class SparseSplitOpTest(tf.test.TestCase):
 
   def testSplitMatrixUnevenRows(self):
     with self.test_session(use_gpu=False):
-      sp_tensors_2 = tf.sparse_split(0, 2, self._SparseTensor_5x7())
+      sp_tensors_2 = tf.sparse_split(
+          sp_input=self._SparseTensor_5x7(), num_split=2, axis=0)
       self.assertAllEqual(sp_tensors_2[0].indices.eval(),
                           [[0, 0], [0, 2], [0, 4], [0, 5], [1, 1], [1, 3],
                            [1, 4], [1, 6], [2, 0], [2, 3], [2, 5]])
@@ -142,7 +146,8 @@ class SparseSplitOpTest(tf.test.TestCase):
                                                           44, 46])
       self.assertAllEqual(sp_tensors_2[1].dense_shape.eval(), [2, 7])
       self.assertAllEqual(len(sp_tensors_2), 2)
-      sp_tensors_3 = tf.sparse_split(0, 3, self._SparseTensor_5x7())
+      sp_tensors_3 = tf.sparse_split(
+          sp_input=self._SparseTensor_5x7(), num_split=3, axis=0)
       self.assertAllEqual(len(sp_tensors_3), 3)
       self.assertAllEqual(sp_tensors_3[0].indices.eval(),
                           [[0, 0], [0, 2], [0, 4], [0, 5], [1, 1], [1, 3],
@@ -162,7 +167,8 @@ class SparseSplitOpTest(tf.test.TestCase):
 
   def testSplitAllRows(self):
     with self.test_session(use_gpu=False):
-      sp_tensors = tf.sparse_split(0, 4, self._SparseTensor_4x6())
+      sp_tensors = tf.sparse_split(
+          sp_input=self._SparseTensor_4x6(), num_split=4, axis=0)
       self.assertAllEqual(len(sp_tensors), 4)
       self.assertAllEqual(sp_tensors[0].indices.eval(), [[0, 0], [0, 2], [0, 4],
                                                          [0, 5]])
@@ -183,7 +189,8 @@ class SparseSplitOpTest(tf.test.TestCase):
 
   def testSplitColumns(self):
     with self.test_session(use_gpu=False):
-      sparse_tensors = tf.sparse_split(1, 3, self._SparseTensor_4x6())
+      sparse_tensors = tf.sparse_split(
+          sp_input=self._SparseTensor_4x6(), num_split=3, axis=1)
       self.assertAllEqual(len(sparse_tensors), 3)
       self.assertAllEqual(sparse_tensors[0].indices.eval(), [[0, 0], [1, 1],
                                                              [2, 0], [3, 0]])
@@ -200,7 +207,8 @@ class SparseSplitOpTest(tf.test.TestCase):
 
   def testSplitAllColumns(self):
     with self.test_session(use_gpu=False):
-      sparse_tensors = tf.sparse_split(1, 6, self._SparseTensor_4x6())
+      sparse_tensors = tf.sparse_split(
+          sp_input=self._SparseTensor_4x6(), num_split=6, axis=1)
       self.assertAllEqual(len(sparse_tensors), 6)
       self.assertAllEqual(sparse_tensors[0].indices.eval(), [[0, 0], [2, 0],
                                                              [3, 0]])
@@ -228,11 +236,22 @@ class SparseSplitOpTest(tf.test.TestCase):
     for sp_input in (
         self._SparseTensorValue_3x4x2(), self._SparseTensor_3x4x2()):
       with self.test_session(use_gpu=False):
-        sparse_tensors = tf.sparse_split(1, 2, sp_input)
+        sparse_tensors = tf.sparse_split(
+            sp_input=sp_input, num_split=2, axis=1)
         concat_tensor = tf.sparse_concat(1, sparse_tensors)
         expected_output = self._SparseTensor_3x4x2()
         self.assertAllEqual(concat_tensor.indices.eval(),
                             expected_output.indices.eval())
+
+  def testArgumentErrors(self):
+    with self.assertRaisesRegexp(ValueError, 'Keyword arguments are required'):
+      tf.sparse_split(3, 2, 1)
+    with self.assertRaisesRegexp(ValueError, 'sp_input is required'):
+      tf.sparse_split()
+    with self.assertRaisesRegexp(ValueError, 'num_split is required'):
+      tf.sparse_split(sp_input=1)
+    with self.assertRaisesRegexp(ValueError, 'axis is required'):
+      tf.sparse_split(num_split=2, sp_input=1)
 
 
 if __name__ == '__main__':

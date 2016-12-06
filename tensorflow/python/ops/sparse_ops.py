@@ -438,7 +438,14 @@ def sparse_reshape(sp_input, shape, name=None):
         reshaped_shape)
 
 
-def sparse_split(axis, num_split, sp_input, name=None, split_dim=None):
+# TODO(aselle): Remove keyword required once for 1.0 final
+class KeywordRequired(object):
+  pass
+
+
+def sparse_split(keyword_required=KeywordRequired(),
+                 sp_input=None, num_split=None, axis=None,
+                 name=None, split_dim=None):
   """Split a `SparseTensor` into `num_split` tensors along `axis`.
 
   If the `sp_input.dense_shape[axis]` is not an integer multiple of `num_split`
@@ -461,9 +468,10 @@ def sparse_split(axis, num_split, sp_input, name=None, split_dim=None):
       [      ]
 
   Args:
-    axis: A 0-D `int32` `Tensor`. The dimension along which to split.
-    num_split: A Python integer. The number of ways to split.
+    keyword_required: Python 2 standin for * (temporary for argument reorder)
     sp_input: The `SparseTensor` to split.
+    num_split: A Python integer. The number of ways to split.
+    axis: A 0-D `int32` `Tensor`. The dimension along which to split.
     name: A name for the operation (optional).
     split_dim: Deprecated old name for axis.
 
@@ -474,6 +482,14 @@ def sparse_split(axis, num_split, sp_input, name=None, split_dim=None):
     TypeError: If `sp_input` is not a `SparseTensor`.
     ValueError: If the deprecated `split_dim` and `axis` are both non None.
   """
+  if not isinstance(keyword_required, KeywordRequired):
+    raise ValueError("Keyword arguments are required for this function.")
+  if sp_input is None:
+    raise ValueError("sp_input is required")
+  if num_split is None:
+    raise ValueError("num_split is required")
+  if axis is None:
+    raise ValueError("axis is required")
   axis = deprecation.deprecated_argument_lookup("axis", axis, "split_dim",
                                                 split_dim)
   sp_input = _convert_to_sparse_tensor(sp_input)
