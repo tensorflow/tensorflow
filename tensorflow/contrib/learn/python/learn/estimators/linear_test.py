@@ -61,7 +61,7 @@ class LinearClassifierTest(tf.test.TestCase):
           'age': tf.constant([1]),
           'language': tf.SparseTensor(values=['english'],
                                       indices=[[0, 0]],
-                                      shape=[1, 1])
+                                      dense_shape=[1, 1])
       }, tf.constant([[1]])
 
     language = tf.contrib.layers.sparse_column_with_hash_bucket('language', 100)
@@ -84,7 +84,7 @@ class LinearClassifierTest(tf.test.TestCase):
           'age': tf.SparseTensor(values=['1'], indices=[[0, 0]], shape=[1, 1]),
           'language': tf.SparseTensor(values=['english'],
                                       indices=[[0, 0]],
-                                      shape=[1, 1])
+                                      dense_shape=[1, 1])
       }, tf.constant([[1]])
 
     language = tf.contrib.layers.sparse_column_with_hash_bucket('language', 100)
@@ -353,7 +353,7 @@ class LinearClassifierTest(tf.test.TestCase):
       features = {
           'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
                                       indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+                                      dense_shape=[3, 2])
       }
       labels = tf.constant([[1], [0], [0]])
       return features, labels
@@ -392,7 +392,7 @@ class LinearClassifierTest(tf.test.TestCase):
       return {
           'age': tf.train.limit_epochs(tf.constant([1]), num_epochs=num_epochs),
           'language': tf.SparseTensor(
-              values=['english'], indices=[[0, 0]], shape=[1, 1]),
+              values=['english'], indices=[[0, 0]], dense_shape=[1, 1]),
       }, tf.constant([[1]])
 
     language = tf.contrib.layers.sparse_column_with_hash_bucket('language', 100)
@@ -503,7 +503,7 @@ class LinearClassifierTest(tf.test.TestCase):
           'age': tf.constant([1]),
           'language': tf.SparseTensor(values=['english'],
                                       indices=[[0, 0]],
-                                      shape=[1, 1])
+                                      dense_shape=[1, 1])
       }, tf.constant([[1]])
 
     language = tf.contrib.layers.sparse_column_with_hash_bucket('language', 100)
@@ -524,7 +524,7 @@ class LinearClassifierTest(tf.test.TestCase):
           'age': tf.constant([1]),
           'language': tf.SparseTensor(values=['english'],
                                       indices=[[0, 0]],
-                                      shape=[1, 1])
+                                      dense_shape=[1, 1])
       }, tf.constant([[1]])
 
     language = tf.contrib.layers.sparse_column_with_hash_bucket('language', 100)
@@ -543,7 +543,7 @@ class LinearClassifierTest(tf.test.TestCase):
           'age': tf.constant([1]),
           'language': tf.SparseTensor(values=['english'],
                                       indices=[[0, 0]],
-                                      shape=[1, 1])
+                                      dense_shape=[1, 1])
       }, tf.constant([[1]])
 
     language = tf.contrib.layers.sparse_column_with_hash_bucket('language', 100)
@@ -561,7 +561,7 @@ class LinearClassifierTest(tf.test.TestCase):
       return {
           'language': tf.SparseTensor(values=['hindi'],
                                       indices=[[0, 0]],
-                                      shape=[1, 1])
+                                      dense_shape=[1, 1])
       }, tf.constant([[1]])
 
     language = tf.contrib.layers.sparse_column_with_hash_bucket('language', 100)
@@ -586,7 +586,7 @@ class LinearClassifierTest(tf.test.TestCase):
       return {
           'language': tf.SparseTensor(values=['Swahili', 'turkish'],
                                       indices=[[0, 0], [2, 0]],
-                                      shape=[3, 1])
+                                      dense_shape=[3, 1])
       }, tf.constant([[1], [1], [1]])
 
     language = tf.contrib.layers.sparse_column_with_hash_bucket('language', 100)
@@ -677,7 +677,7 @@ class LinearClassifierTest(tf.test.TestCase):
           'price': tf.constant([[0.4], [0.6], [0.3]]),
           'country': tf.SparseTensor(values=['IT', 'US', 'GB'],
                                      indices=[[0, 0], [1, 3], [2, 1]],
-                                     shape=[3, 5]),
+                                     dense_shape=[3, 5]),
           'weights': tf.constant([[1.0], [1.0], [1.0]])
       }, tf.constant([[1], [0], [1]])
 
@@ -702,10 +702,10 @@ class LinearClassifierTest(tf.test.TestCase):
           'example_id': tf.constant(['1', '2', '3']),
           'price': tf.SparseTensor(values=[2., 3., 1.],
                                    indices=[[0, 0], [1, 0], [2, 0]],
-                                   shape=[3, 5]),
+                                   dense_shape=[3, 5]),
           'country': tf.SparseTensor(values=['IT', 'US', 'GB'],
                                      indices=[[0, 0], [1, 0], [2, 0]],
-                                     shape=[3, 5])
+                                     dense_shape=[3, 5])
       }, tf.constant([[1], [0], [1]])
 
     country = tf.contrib.layers.sparse_column_with_hash_bucket(
@@ -729,10 +729,10 @@ class LinearClassifierTest(tf.test.TestCase):
           'example_id': tf.constant(['1', '2', '3']),
           'language': tf.SparseTensor(values=['english', 'italian', 'spanish'],
                                       indices=[[0, 0], [1, 0], [2, 0]],
-                                      shape=[3, 1]),
+                                      dense_shape=[3, 1]),
           'country': tf.SparseTensor(values=['US', 'IT', 'MX'],
                                      indices=[[0, 0], [1, 0], [2, 0]],
-                                     shape=[3, 1])
+                                     dense_shape=[3, 1])
       }, tf.constant([[0], [0], [1]])
 
     language = tf.contrib.layers.sparse_column_with_hash_bucket(
@@ -760,7 +760,7 @@ class LinearClassifierTest(tf.test.TestCase):
           'sq_footage': tf.constant([[900.0], [700.0], [600.0]]),
           'country': tf.SparseTensor(values=['IT', 'US', 'GB'],
                                      indices=[[0, 0], [1, 3], [2, 1]],
-                                     shape=[3, 5]),
+                                     dense_shape=[3, 5]),
           'weights': tf.constant([[3.0], [1.0], [1.0]])
       }, tf.constant([[1], [0], [1]])
 
@@ -792,7 +792,7 @@ class LinearClassifierTest(tf.test.TestCase):
           'age': tf.constant([[1], [2]]),
           'language': tf.SparseTensor(values=['greek', 'chinese'],
                                       indices=[[0, 0], [1, 0]],
-                                      shape=[2, 1]),
+                                      dense_shape=[2, 1]),
       }, tf.constant([[1], [0]])
 
     language = tf.contrib.layers.sparse_column_with_hash_bucket('language', 100)
@@ -823,7 +823,7 @@ class LinearRegressorTest(tf.test.TestCase):
           'age': tf.constant([1]),
           'language': tf.SparseTensor(values=['english'],
                                       indices=[[0, 0]],
-                                      shape=[1, 1])
+                                      dense_shape=[1, 1])
       }, tf.constant([[10.]])
 
     language = tf.contrib.layers.sparse_column_with_hash_bucket('language', 100)
@@ -860,7 +860,7 @@ class LinearRegressorTest(tf.test.TestCase):
                                        num_epochs=num_epochs),
           'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
                                       indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+                                      dense_shape=[3, 2])
       }
       return features, tf.constant([1.0, 0., 0.2], dtype=tf.float32)
 
@@ -975,7 +975,7 @@ class LinearRegressorTest(tf.test.TestCase):
                                        num_epochs=num_epochs),
           'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
                                       indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+                                      dense_shape=[3, 2])
       }
       return features, tf.constant(labels, dtype=tf.float32)
 
@@ -1005,7 +1005,7 @@ class LinearRegressorTest(tf.test.TestCase):
                                        num_epochs=num_epochs),
           'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
                                       indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+                                      dense_shape=[3, 2])
       }
       return features, tf.constant(labels, dtype=tf.float32)
 
@@ -1100,7 +1100,7 @@ class LinearRegressorTest(tf.test.TestCase):
                                        num_epochs=num_epochs),
           'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
                                       indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+                                      dense_shape=[3, 2])
       }
       return features, tf.constant([1.0, 0., 0.2], dtype=tf.float32)
 
@@ -1135,7 +1135,7 @@ class LinearRegressorTest(tf.test.TestCase):
                                        num_epochs=num_epochs),
           'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
                                       indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+                                      dense_shape=[3, 2])
       }
       return features, tf.constant([1.0, 0., 0.2], dtype=tf.float32)
 
@@ -1177,7 +1177,7 @@ class LinearRegressorTest(tf.test.TestCase):
                                        num_epochs=num_epochs),
           'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
                                       indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+                                      dense_shape=[3, 2])
       }
       return features, tf.constant([1.0, 0., 0.2], dtype=tf.float32)
 

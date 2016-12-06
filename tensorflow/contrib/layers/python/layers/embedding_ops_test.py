@@ -338,7 +338,7 @@ class ScatteredEmbeddingLookupTest(tf.test.TestCase):
       embedding_weights = self._random_weights(num_shards=3)
       sparse_tensor = tf.SparseTensor(values=["foo", "bar", "foo", "bar"],
                                       indices=[[0, 0], [1, 0], [1, 1], [3, 0]],
-                                      shape=[5, 2])
+                                      dense_shape=[5, 2])
 
       embedding_lookup_result = (
           tf.contrib.layers.scattered_embedding_lookup_sparse(

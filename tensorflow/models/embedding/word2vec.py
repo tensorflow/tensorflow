@@ -396,7 +396,7 @@ class Word2Vec(object):
 
     initial_epoch, initial_words = self._session.run([self._epoch, self._words])
 
-    summary_op = tf.contrib.deprecated.merge_all_summaries()
+    summary_op = tf.summary.merge_all()
     summary_writer = tf.summary.FileWriter(opts.save_path, self._session.graph)
     workers = []
     for _ in xrange(opts.concurrent_steps):

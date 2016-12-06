@@ -10,7 +10,11 @@ Ops for building neural network losses.
 
 ### `tf.contrib.losses.absolute_difference(*args, **kwargs)` {#absolute_difference}
 
-Adds an Absolute Difference loss to the training procedure. (deprecated arguments)
+Adds an Absolute Difference loss to the training procedure. (deprecated arguments) (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
+Instructions for updating:
+Use tf.losses.absolute_difference instead.
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-11-25.
 Instructions for updating:
@@ -45,20 +49,26 @@ Instructions for updating:
 
 ### `tf.contrib.losses.add_loss(*args, **kwargs)` {#add_loss}
 
-Adds a externally defined loss to the collection of losses.
+Adds a externally defined loss to the collection of losses. (deprecated)
 
-##### Args:
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
+Instructions for updating:
+Use tf.losses.add_loss instead.
 
-
-*  <b>`loss`</b>: A loss `Tensor`.
-*  <b>`loss_collection`</b>: Optional collection to add the loss to.
+  Args:
+    loss: A loss `Tensor`.
+    loss_collection: Optional collection to add the loss to.
 
 
 - - -
 
 ### `tf.contrib.losses.compute_weighted_loss(*args, **kwargs)` {#compute_weighted_loss}
 
-Computes the weighted loss. (deprecated arguments)
+Computes the weighted loss. (deprecated arguments) (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
+Instructions for updating:
+Use tf.losses.compute_weighted_loss instead.
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-11-25.
 Instructions for updating:
@@ -83,7 +93,11 @@ Instructions for updating:
 
 ### `tf.contrib.losses.cosine_distance(*args, **kwargs)` {#cosine_distance}
 
-Adds a cosine-distance loss to the training procedure. (deprecated arguments)
+Adds a cosine-distance loss to the training procedure. (deprecated arguments) (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
+Instructions for updating:
+Use tf.losses.cosine_distance instead.
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-11-25.
 Instructions for updating:
@@ -112,67 +126,72 @@ Instructions for updating:
 
 - - -
 
-### `tf.contrib.losses.get_losses(scope=None, loss_collection='losses')` {#get_losses}
+### `tf.contrib.losses.get_losses(*args, **kwargs)` {#get_losses}
 
-Gets the list of losses from the loss_collection.
+Gets the list of losses from the loss_collection. (deprecated)
 
-##### Args:
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
+Instructions for updating:
+Use tf.losses.get_losses instead.
 
+  Args:
+    scope: an optional scope for filtering the losses to return.
+    loss_collection: Optional losses collection.
 
-*  <b>`scope`</b>: an optional scope for filtering the losses to return.
-*  <b>`loss_collection`</b>: Optional losses collection.
-
-##### Returns:
-
-  a list of loss tensors.
-
-
-- - -
-
-### `tf.contrib.losses.get_regularization_losses(scope=None)` {#get_regularization_losses}
-
-Gets the regularization losses.
-
-##### Args:
-
-
-*  <b>`scope`</b>: an optional scope for filtering the losses to return.
-
-##### Returns:
-
-  A list of loss variables.
+  Returns:
+    a list of loss tensors.
 
 
 - - -
 
-### `tf.contrib.losses.get_total_loss(add_regularization_losses=True, name='total_loss')` {#get_total_loss}
+### `tf.contrib.losses.get_regularization_losses(*args, **kwargs)` {#get_regularization_losses}
 
-Returns a tensor whose value represents the total loss.
+Gets the regularization losses. (deprecated)
 
-Notice that the function adds the given losses to the regularization losses.
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
+Instructions for updating:
+Use tf.losses.get_regularization_losses instead.
 
-##### Args:
+  Args:
+    scope: an optional scope for filtering the losses to return.
 
-
-*  <b>`add_regularization_losses`</b>: A boolean indicating whether or not to use the
-    regularization losses in the sum.
-*  <b>`name`</b>: The name of the returned tensor.
-
-##### Returns:
-
-  A `Tensor` whose value represents the total loss.
-
-##### Raises:
+  Returns:
+    A list of loss variables.
 
 
-*  <b>`ValueError`</b>: if `losses` is not iterable.
+- - -
+
+### `tf.contrib.losses.get_total_loss(*args, **kwargs)` {#get_total_loss}
+
+Returns a tensor whose value represents the total loss. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
+Instructions for updating:
+Use tf.losses.get_total_loss instead.
+
+  Notice that the function adds the given losses to the regularization losses.
+
+  Args:
+    add_regularization_losses: A boolean indicating whether or not to use the
+      regularization losses in the sum.
+    name: The name of the returned tensor.
+
+  Returns:
+    A `Tensor` whose value represents the total loss.
+
+  Raises:
+    ValueError: if `losses` is not iterable.
 
 
 - - -
 
 ### `tf.contrib.losses.hinge_loss(*args, **kwargs)` {#hinge_loss}
 
-Method that returns the loss tensor for hinge loss. (deprecated arguments)
+Method that returns the loss tensor for hinge loss. (deprecated arguments) (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
+Instructions for updating:
+Use tf.losses.hinge_loss instead.
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-11-25.
 Instructions for updating:
@@ -197,7 +216,11 @@ Instructions for updating:
 
 ### `tf.contrib.losses.log_loss(*args, **kwargs)` {#log_loss}
 
-Adds a Log Loss term to the training procedure. (deprecated arguments)
+Adds a Log Loss term to the training procedure. (deprecated arguments) (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
+Instructions for updating:
+Use tf.losses.log_loss instead.
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-11-25.
 Instructions for updating:
@@ -233,7 +256,11 @@ Instructions for updating:
 
 ### `tf.contrib.losses.mean_pairwise_squared_error(*args, **kwargs)` {#mean_pairwise_squared_error}
 
-Adds a pairwise-errors-squared loss to the training procedure. (deprecated arguments)
+Adds a pairwise-errors-squared loss to the training procedure. (deprecated arguments) (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
+Instructions for updating:
+Use tf.losses.mean_pairwise_squared_error instead.
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-11-25.
 Instructions for updating:
@@ -282,7 +309,11 @@ Instructions for updating:
 
 ### `tf.contrib.losses.mean_squared_error(*args, **kwargs)` {#mean_squared_error}
 
-Adds a Sum-of-Squares loss to the training procedure. (deprecated arguments)
+Adds a Sum-of-Squares loss to the training procedure. (deprecated arguments) (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
+Instructions for updating:
+Use tf.losses.mean_squared_error instead.
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-11-25.
 Instructions for updating:
@@ -317,7 +348,11 @@ Instructions for updating:
 
 ### `tf.contrib.losses.sigmoid_cross_entropy(*args, **kwargs)` {#sigmoid_cross_entropy}
 
-Creates a cross-entropy loss using tf.nn.sigmoid_cross_entropy_with_logits. (deprecated arguments)
+Creates a cross-entropy loss using tf.nn.sigmoid_cross_entropy_with_logits. (deprecated arguments) (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
+Instructions for updating:
+Use tf.losses.sigmoid_cross_entropy instead.
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-11-25.
 Instructions for updating:
@@ -355,7 +390,11 @@ Instructions for updating:
 
 ### `tf.contrib.losses.softmax_cross_entropy(*args, **kwargs)` {#softmax_cross_entropy}
 
-Creates a cross-entropy loss using tf.nn.softmax_cross_entropy_with_logits. (deprecated arguments)
+Creates a cross-entropy loss using tf.nn.softmax_cross_entropy_with_logits. (deprecated arguments) (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
+Instructions for updating:
+Use tf.losses.softmax_cross_entropy instead.
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-11-25.
 Instructions for updating:
@@ -391,7 +430,11 @@ Instructions for updating:
 
 ### `tf.contrib.losses.sparse_softmax_cross_entropy(*args, **kwargs)` {#sparse_softmax_cross_entropy}
 
-Cross-entropy loss using `tf.nn.sparse_softmax_cross_entropy_with_logits`. (deprecated arguments)
+Cross-entropy loss using `tf.nn.sparse_softmax_cross_entropy_with_logits`. (deprecated arguments) (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
+Instructions for updating:
+Use tf.losses.sparse_softmax_cross_entropy instead.
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-11-25.
 Instructions for updating:

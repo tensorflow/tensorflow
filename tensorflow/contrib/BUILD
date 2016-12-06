@@ -14,6 +14,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/contrib/bayesflow:bayesflow_py",
+        "//tensorflow/contrib/compiler:compiler_py",
         "//tensorflow/contrib/copy_graph:copy_graph_py",
         "//tensorflow/contrib/crf:crf_py",
         "//tensorflow/contrib/cudnn_rnn:cudnn_rnn_py",
@@ -60,7 +61,6 @@ cc_library(
         "//tensorflow/contrib/factorization/kernels:all_kernels",
         "//tensorflow/contrib/layers:bucketization_op_kernel",
         "//tensorflow/contrib/layers:sparse_feature_cross_op_kernel",
-        "//tensorflow/contrib/metrics:set_ops_kernels",
     ],
 )
 
@@ -72,7 +72,6 @@ cc_library(
         "//tensorflow/contrib/framework:all_ops",
         "//tensorflow/contrib/layers:bucketization_op_op_lib",
         "//tensorflow/contrib/layers:sparse_feature_cross_op_op_lib",
-        "//tensorflow/contrib/metrics:set_ops_op_lib",
     ],
 )
 

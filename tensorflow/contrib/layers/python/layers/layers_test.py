@@ -279,6 +279,18 @@ class ConvolutionTest(tf.test.TestCase):
       biases = tf.contrib.framework.get_variables_by_name('biases')[0]
       self.assertListEqual(biases.get_shape().as_list(), [64])
 
+  def testFullyConvWithCustomGetter(self):
+    height, width = 7, 9
+    with self.test_session():
+      called = [0]
+      def custom_getter(getter, *args, **kwargs):
+        called[0] += 1
+        return getter(*args, **kwargs)
+      with tf.variable_scope('test', custom_getter=custom_getter):
+        images = tf.random_uniform((5, height, width, 32), seed=1)
+        tf.contrib.layers.convolution2d(images, 64, images.get_shape()[1:3])
+      self.assertEqual(called[0], 2)  # Custom getter called twice.
+
   def testCreateVerticalConv(self):
     height, width = 7, 9
     with self.test_session():
@@ -369,7 +381,7 @@ class ConvolutionTest(tf.test.TestCase):
           tf.contrib.framework.get_variables_by_name('weights')[0])
       wd = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)[0]
       self.assertEqual(wd.op.name,
-                       'Conv/weights/Regularizer/l2_regularizer')
+                       'Conv/kernel/Regularizer/l2_regularizer')
       sess.run(tf.global_variables_initializer())
       self.assertAlmostEqual(sess.run(wd), weight_decay * l2_loss.eval())
 
@@ -1558,14 +1570,14 @@ class BatchNormTest(tf.test.TestCase):
     with tf.Graph().as_default() as g, self.test_session(g):
       inputs = tf.placeholder(dtype=tf.float32)
       inputs.set_shape(tf.TensorShape((5, 3, 3, None)))
-      with self.assertRaisesRegexp(ValueError, 'undefined channels dimension'):
+      with self.assertRaisesRegexp(ValueError, 'undefined'):
         tf.contrib.layers.batch_norm(inputs, data_format='NHWC')
 
   def testUnknownChannelsDimNCHW(self):
     with tf.Graph().as_default() as g, self.test_session(g):
       inputs = tf.placeholder(dtype=tf.float32)
       inputs.set_shape(tf.TensorShape((5, None, 3, 3)))
-      with self.assertRaisesRegexp(ValueError, 'undefined channels dimension'):
+      with self.assertRaisesRegexp(ValueError, 'undefined'):
         tf.contrib.layers.batch_norm(inputs, data_format='NCHW')
 
   def testWeightedMomentsFused(self):
@@ -2612,13 +2624,13 @@ class SeparableConv2dTest(tf.test.TestCase):
       weight_decay = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)[0]
       self.assertEqual(
           weight_decay.op.name,
-          'SeparableConv2d/depthwise_weights/Regularizer/l2_regularizer')
+          'SeparableConv2d/depthwise_kernel/Regularizer/l2_regularizer')
       sess.run(tf.global_variables_initializer())
       self.assertLessEqual(sess.run(weight_decay), 0.05)
       weight_decay = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)[1]
       self.assertEqual(
           weight_decay.op.name,
-          'SeparableConv2d/pointwise_weights/Regularizer/l2_regularizer')
+          'SeparableConv2d/pointwise_kernel/Regularizer/l2_regularizer')
       self.assertLessEqual(sess.run(weight_decay), 0.05)
 
   def testReuseConvWithWeightDecay(self):

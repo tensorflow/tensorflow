@@ -169,7 +169,9 @@ class ParseExampleTest(tf.test.TestCase):
             "serialized": [original.SerializeToString()],
             "features": input_features,
         },
-        expected_err=(tf.OpError, "Name: in1, Feature: c is required"))
+        expected_err=(
+            tf.OpError,
+            "Name: in1, Feature: c \\(data type: float\\) is required"))
 
     # Standard case of missing key and value.
     self._test(
@@ -178,7 +180,9 @@ class ParseExampleTest(tf.test.TestCase):
             "serialized": ["", ""],
             "features": input_features,
         },
-        expected_err=(tf.OpError, "Name: in1, Feature: c is required"))
+        expected_err=(
+            tf.OpError,
+            "Name: in1, Feature: c \\(data type: float\\) is required"))
 
   def testDenseNotMatchingShapeShouldFail(self):
     original = [

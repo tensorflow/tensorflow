@@ -53,7 +53,8 @@ from tensorflow.python.ops.histogram_ops import *
 from tensorflow.python.ops.init_ops import *
 from tensorflow.python.ops.io_ops import *
 from tensorflow.python.ops.linalg_ops import *
-from tensorflow.python.ops.logging_ops import *
+from tensorflow.python.ops.logging_ops import Print
+from tensorflow.python.ops.logging_ops import get_summary_op
 from tensorflow.python.ops.math_ops import *
 from tensorflow.python.ops.numerics import *
 from tensorflow.python.ops.parsing_ops import *

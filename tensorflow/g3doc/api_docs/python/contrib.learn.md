@@ -744,7 +744,7 @@ Trains a model given training data `x` predictions and `y` labels.
 Interface for objects that are evaluatable by, e.g., `Experiment`.
 - - -
 
-#### `tf.contrib.learn.Evaluable.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None)` {#Evaluable.evaluate}
+#### `tf.contrib.learn.Evaluable.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None)` {#Evaluable.evaluate}
 
 Evaluates given model with provided evaluation data.
 
@@ -799,10 +799,19 @@ for which this evaluation was performed.
 
 *  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluations on
     different data sets, such as on training data vs test data.
+*  <b>`checkpoint_path`</b>: Path of a specific checkpoint to evaluate. If `None`, the
+    latest checkpoint in `model_dir` is used.
 
 ##### Returns:
 
   Returns `dict` with evaluation results.
+
+
+- - -
+
+#### `tf.contrib.learn.Evaluable.model_dir` {#Evaluable.model_dir}
+
+Returns a path in which the eval process will look for checkpoints.
 
 
 

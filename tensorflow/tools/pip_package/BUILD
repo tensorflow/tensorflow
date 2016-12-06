@@ -92,6 +92,7 @@ filegroup(
         "@grpc//:LICENSE",
         "@highwayhash//:LICENSE",
         "@jpeg//:LICENSE.md",
+        "@libxsmm_archive//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@nanopb_git//:LICENSE.txt",
         "@png_archive//:LICENSE",

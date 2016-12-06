@@ -1,6 +1,10 @@
 ### `tf.contrib.losses.sparse_softmax_cross_entropy(*args, **kwargs)` {#sparse_softmax_cross_entropy}
 
-Cross-entropy loss using `tf.nn.sparse_softmax_cross_entropy_with_logits`. (deprecated arguments)
+Cross-entropy loss using `tf.nn.sparse_softmax_cross_entropy_with_logits`. (deprecated arguments) (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
+Instructions for updating:
+Use tf.losses.sparse_softmax_cross_entropy instead.
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-11-25.
 Instructions for updating:

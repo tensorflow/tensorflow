@@ -1,6 +1,10 @@
 ### `tf.contrib.losses.hinge_loss(*args, **kwargs)` {#hinge_loss}
 
-Method that returns the loss tensor for hinge loss. (deprecated arguments)
+Method that returns the loss tensor for hinge loss. (deprecated arguments) (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
+Instructions for updating:
+Use tf.losses.hinge_loss instead.
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-11-25.
 Instructions for updating:

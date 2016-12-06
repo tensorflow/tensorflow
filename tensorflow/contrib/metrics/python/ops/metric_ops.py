@@ -1749,8 +1749,9 @@ def expand_and_tile(tensor, multiple, dim=0, name=None):
       else:
         expand_dims = [dim]
       expanded_shape = array_ops.concat(
-          0, (array_ops.slice(tensor.shape, [0], expand_dims), [1],
-              array_ops.slice(tensor.shape, expand_dims, [-1])),
+          0, (array_ops.strided_slice(tensor.shape, [0], expand_dims), [1],
+              array_ops.strided_slice(
+                  tensor.shape, expand_dims, [-1], end_mask=1 << 0)),
           name='expanded_shape')
       expanded = sparse_ops.sparse_reshape(
           tensor, shape=expanded_shape, name='expand')

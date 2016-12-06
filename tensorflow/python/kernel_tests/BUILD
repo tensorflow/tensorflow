@@ -202,6 +202,13 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "losses_test",
+    size = "small",
+    srcs = ["losses_test.py"],
+    additional_deps = ["//tensorflow:tensorflow_py"],
+)
+
+tf_py_test(
     name = "matrix_inverse_op_test",
     size = "small",
     srcs = ["matrix_inverse_op_test.py"],
@@ -866,15 +873,6 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "rnn_cell_test",
-    size = "small",
-    srcs = ["rnn_cell_test.py"],
-    additional_deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-cuda_py_test(
     name = "scalar_strict_test",
     size = "small",
     srcs = ["scalar_strict_test.py"],
@@ -1385,6 +1383,13 @@ sycl_py_test(
     name = "basic_gpu_test",
     size = "small",
     srcs = ["basic_gpu_test.py"],
+    additional_deps = ["//tensorflow:tensorflow_py"],
+)
+
+tf_py_test(
+    name = "sets_test",
+    size = "small",
+    srcs = ["sets_test.py"],
     additional_deps = ["//tensorflow:tensorflow_py"],
 )
 
