@@ -212,9 +212,9 @@ altogether. The behavior of this flag is described below.
 
 ##### Returns:
 
-  Numpy array of predicted classes (or an iterable of predicted classes if
-  as_iterable is True). Each predicted class is represented by its class
-  index (i.e. integer from 0 to n_classes-1).
+  Numpy array of predicted classes with shape [batch_size] (or an iterable
+  of predicted classes if as_iterable is True). Each predicted class is
+  represented by its class index (i.e. integer from 0 to n_classes-1).
 
 
 - - -
@@ -242,9 +242,8 @@ altogether. The behavior of this flag is described below.
 
 ##### Returns:
 
-  Numpy array of predicted probabilities (or an iterable of predicted
-  probabilities if as_iterable is True). Each predicted class is represented
-  by its class index (i.e. integer from 0 to n_classes-1).
+  Numpy array of predicted probabilities with shape [batch_size, n_classes]
+  (or an iterable of predicted probabilities if as_iterable is True).
 
 
 - - -
