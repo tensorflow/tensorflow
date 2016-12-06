@@ -1251,7 +1251,7 @@ def assert_variables_initialized(var_list=None):
   if not var_list:
     var_list = []
     for op in ops.get_default_graph().get_operations():
-      if op.type in ["Variable", "AutoReloadVariable"]:
+      if op.type in ["Variable", "VariableV2", "AutoReloadVariable"]:
         var_list.append(op.outputs[0])
   if not var_list:
     return None

@@ -42,6 +42,7 @@ import org.tensorflow.demo.env.BorderedText;
 import org.tensorflow.demo.env.ImageUtils;
 import org.tensorflow.demo.env.Logger;
 import org.tensorflow.demo.tracking.MultiBoxTracker;
+import org.tensorflow.demo.R;
 
 /**
  * An activity that uses a TensorFlowMultiboxDetector and ObjectTracker to detect and then track

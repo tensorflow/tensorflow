@@ -64,7 +64,7 @@ def _test_sparsify_densify(self, x, default_value):
     expected_x = x
     expected_x_values = x_values
 
-  np.testing.assert_array_equal(len(x), sparse_val.shape[0])
+  np.testing.assert_array_equal(len(x), sparse_val.dense_shape[0])
   np.testing.assert_array_equal(expected_x_values, sparse_val.values)
   np.testing.assert_array_equal(x_indexes, sparse_val.indices)
   np.testing.assert_array_equal(expected_x, dense_val)

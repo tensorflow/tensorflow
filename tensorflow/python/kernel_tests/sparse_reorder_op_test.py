@@ -95,7 +95,7 @@ class SparseReorderTest(tf.test.TestCase):
       for _ in range(5):  # To test various random permutations
         input_val = self._SparseTensorValue_5x6(np.random.permutation(6))
         sp_input = tf.SparseTensor(
-            input_val.indices, input_val.values, input_val.shape)
+            input_val.indices, input_val.values, input_val.dense_shape)
         sp_output = tf.sparse_reorder(sp_input)
 
         err = tf.test.compute_gradient_error(

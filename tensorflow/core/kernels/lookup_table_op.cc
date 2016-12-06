@@ -49,6 +49,10 @@ const float SubtleMustCopyUnlessStringOrFloat(const float value) {
   return value;
 }
 
+const double SubtleMustCopyUnlessStringOrFloat(const double value) {
+  return value;
+}
+
 }  // namespace
 
 // Lookup table that wraps an unordered_map, where the key and value data type
@@ -850,6 +854,9 @@ REGISTER_KERNEL_BUILDER(Name("LookupTableImport").Device(DEVICE_CPU),
       LookupTableOp<lookup::HashTable<key_dtype, value_dtype>, key_dtype, \
                     value_dtype>)
 
+REGISTER_KERNEL(string, double);
+REGISTER_KERNEL(string, float);
+REGISTER_KERNEL(string, int32);
 REGISTER_KERNEL(string, int64);
 REGISTER_KERNEL(int64, string);
 

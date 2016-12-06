@@ -83,10 +83,12 @@ from tensorflow.python.ops.standard_ops import *
 
 # Bring in subpackages.
 from tensorflow.python.layers import layers
+from tensorflow.python.ops import metrics
 from tensorflow.python.ops import nn
-from tensorflow.python.ops import resources
 from tensorflow.python.ops import sdca_ops as sdca
 from tensorflow.python.ops import image_ops as image
+from tensorflow.python.ops import losses
+from tensorflow.python.ops import sets
 from tensorflow.python.user_ops import user_ops
 from tensorflow.python.util import compat
 from tensorflow.python.summary import summary
@@ -116,12 +118,12 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import framework_lib
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import confusion_matrix as confusion_matrix_m
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import histogram_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resources
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import session_ops
 from tensorflow.python.ops import sparse_ops
@@ -217,12 +219,14 @@ _allowed_symbols.extend([
     'graph_util',
     'image',
     'logging',
+    'losses',
+    'metrics',
     'newaxis',
     'nn',
     'python_io',
-    'resources',
     'resource_loader',
     'sdca',
+    'sets',
     'summary',
     'sysconfig',
     'test',
@@ -242,10 +246,11 @@ _allowed_symbols.extend([
 # referenced in the whitelist.
 remove_undocumented(__name__, _allowed_symbols,
                     [framework_lib, array_ops, client_lib, check_ops,
-                     compat, constant_op, control_flow_ops, functional_ops,
-                     histogram_ops, io_ops, math_ops, nn, resource_loader,
-                     resources, script_ops, session_ops, sparse_ops, state_ops,
-                     string_ops, summary, tensor_array_ops, train, layers])
+                     compat, constant_op, control_flow_ops, confusion_matrix_m,
+                     functional_ops, histogram_ops, io_ops, losses, math_ops,
+                     metrics, nn, resource_loader, sets, script_ops,
+                     session_ops, sparse_ops, state_ops, string_ops, summary,
+                     tensor_array_ops, train, layers])
 
 # Special dunders that we choose to export:
 _exported_dunders = set([

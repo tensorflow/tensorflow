@@ -268,7 +268,7 @@ class WALSModel(object):
     if self._row_weights is not None:
       assert self._col_weights is not None
       all_vars.extend(self._row_weights + self._col_weights)
-    return tf.initialize_variables(all_vars)
+    return tf.variables_initializer(all_vars)
 
   @classmethod
   def _shard_sizes(cls, dims, num_shards):
@@ -769,7 +769,8 @@ class WALSModel(object):
     new_sp_shape = (tf.concat(0, [row_shape, col_shape]) if transpose_input
                     else tf.concat(0, [col_shape, row_shape]))
     new_sp_input = tf.SparseTensor(indices=new_sp_indices,
-                                   values=sp_input.values, shape=new_sp_shape)
+                                   values=sp_input.values,
+                                   dense_shape=new_sp_shape)
 
     # Compute lhs and rhs of the normal equations
     total_lhs = (self._unobserved_weight * gramian)
