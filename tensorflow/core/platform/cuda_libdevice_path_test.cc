@@ -15,24 +15,22 @@ limitations under the License.
 
 #include "tensorflow/core/platform/cuda_libdevice_path.h"
 
-#include <stdlib.h>
-
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/default/logging.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 
-string CudaRoot() {
-  // 'bazel test' sets TEST_SRCDIR.
-  const string kRelativeCudaRoot = "local_config_cuda/cuda";
-  const char* env = getenv("TEST_SRCDIR");
-  if (env && env[0] != '\0') {
-    return strings::StrCat(env, "/", kRelativeCudaRoot);
-  } else {
-    LOG(WARNING) << "TEST_SRCDIR environment variable not set: "
-                 << "using $PWD/" << kRelativeCudaRoot << "as the CUDA root.";
-    return kRelativeCudaRoot;
-  }
+#if GOOGLE_CUDA
+TEST(CudaLibdevicePathTest, LibdevicePath) {
+  VLOG(2) << "Libdevice root = " << LibdeviceRoot();
+  std::vector<string> libdevice_files;
+  TF_EXPECT_OK(Env::Default()->GetMatchingPaths(
+      io::JoinPath(LibdeviceRoot(), "libdevice.compute_*.bc"),
+      &libdevice_files));
+  EXPECT_LT(0, libdevice_files.size());
 }
+#endif
 
 }  // namespace tensorflow
