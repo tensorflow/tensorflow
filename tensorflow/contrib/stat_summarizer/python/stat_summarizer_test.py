@@ -34,7 +34,7 @@ class StatSummarizerTest(tf.test.TestCase):
           graph_def.SerializeToString())
 
       with self.test_session() as sess:
-        sess.run(tf.global_variable_initializer())
+        sess.run(tf.global_variables_initializer())
 
         for _ in range(20):
           run_metadata = tf.RunMetadata()
