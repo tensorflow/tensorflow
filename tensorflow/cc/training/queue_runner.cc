@@ -166,7 +166,9 @@ void QueueRunner::Run(Session* sess, const string& enqueue_op) {
     last_run = (runs_ == 0);
   }
 
-  if (IsQueueClosed(status)) {
+  // Close the queue unless the coordinator is shutting down since the cancel op
+  // will be run anway in this case.
+  if (IsQueueClosed(status) && (!coord_ || !coord_->ShouldStop())) {
     if (last_run && !close_op_name_.empty()) {
       UpdateStatus(sess->Run({}, {}, {close_op_name_}, nullptr));
     }
