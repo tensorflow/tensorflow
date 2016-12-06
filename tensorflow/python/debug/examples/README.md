@@ -1,12 +1,16 @@
 # TensorFlow Debugger (tfdbg) Command-Line-Interface Tutorial: MNIST
 
-**(Under development, subject to change)**
+**(Experimental)**
 
-This tutorial showcases the features of TensorFlow Debugger (**tfdbg**)
-command-line interface.
-It contains an example of how to debug a frequently encountered problem in
-TensorFlow model development: bad numerical values (`nan`s and `inf`s) causing
-training to fail.
+TensorFlow debugger (**tfdbg**) is a specialized debugger for TensorFlow. It
+provides visibility into the internal structure and states of running
+TensorFlow graphs. The insight gained from this visibility should facilitate
+debugging of various types of model bugs during training and inference.
+
+This tutorial showcases the features of tfdbg
+command-line interface (CLI), by focusing on how to debug a
+type of frequently-encountered bug in TensorFlow model development:
+bad numerical values (`nan`s and `inf`s) causing training to fail.
 
 To **observe** such an issue, run the following code without the debugger:
 
@@ -25,11 +29,7 @@ Accuracy at step 1: 0.3183
 Accuracy at step 2: 0.098
 Accuracy at step 3: 0.098
 Accuracy at step 4: 0.098
-Accuracy at step 5: 0.098
-Accuracy at step 6: 0.098
-Accuracy at step 7: 0.098
-Accuracy at step 8: 0.098
-Accuracy at step 9: 0.098
+...
 ```
 
 Scratching your head, you suspect that certain nodes in the training graph
@@ -122,7 +122,9 @@ output.
 
 As the screen output indicates, the first `run()` call calculates the accuracy
 using a test data set—i.e., a forward pass on the graph. You can enter the
-command `run` to launch the `run()` call. This will bring up another screen
+command `run` (or its shorthand `r`) to launch the `run()` call.
+
+This will bring up another screen
 right after the `run()` call has ended, which will display all dumped
 intermedate tensors from the run. (These tensors can also be obtained by
 running the command `lt` after you executed `run`.) This is called the
@@ -167,27 +169,21 @@ Try the following commands at the `tfdbg>` prompt (referencing the code at
 | `lo -r hidden/Relu:0` | List the recipients of the output of the node `hidden/Relu`, recursively—i.e., the output recipient tree. |
 | `lt -n softmax.*` | List all dumped tensors whose names match the regular-expression pattern `softmax.*`. |
 | `lt -t MatMul` | List all dumped tensors whose node type is `MatMul`. |
+| `run_info` or `ri` | Display information about the current run, including fetches and feeds. |
 | `help` | Print general help information listing all available **tfdbg** commands and their flags. |
 | `help lt` | Print the help information for the `lt` command. |
 
 In this first `run()` call, there happen to be no problematic numerical values.
-You can exit the run-end UI by entering the command `exit`. Then you will be at
-the second run-start UI:
+You can move on to the next run by using the command `run` or its shorthand `r`.
 
-```none
---- run-start: run #2: fetch: train/Adam; 2 feeds --------------
-======================================
-About to enter Session run() call #2:
-
-Fetch(es):
-  train/Adam
-
-Feed dict(s):
-  input/x-input:0
-  input/y-input:0
-======================================
-...
-```
+> TIP: If you enter `run` or `r` repeatedly, you will be able to move through the
+> `run()` calls in a sequential manner.
+>
+> You can also use the `-t` flag to move ahead a number of `run()` calls at a time, for example:
+>
+> ```
+> tfdbg> run -t 10
+> ```
 
 Instead of entering `run` repeatedly and manually searching for `nan`s and
 `inf`s in the run-end UI after every `run()` call, you can use the following
