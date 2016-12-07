@@ -451,11 +451,13 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
     return self
 
   def evaluate(self, x=None, y=None, input_fn=None, feed_fn=None,
-               batch_size=None, steps=None, metrics=None, name=None):
+               batch_size=None, steps=None, metrics=None, name=None,
+               checkpoint_path=None):
     """See evaluable.Evaluable. Note: Labels must be integer class indices."""
     return self._estimator.evaluate(x=x, y=y, input_fn=input_fn,
                                     feed_fn=feed_fn, batch_size=batch_size,
-                                    steps=steps, metrics=metrics, name=name)
+                                    steps=steps, metrics=metrics, name=name,
+                                    checkpoint_path=checkpoint_path)
 
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
@@ -727,11 +729,13 @@ class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
     return self
 
   def evaluate(self, x=None, y=None, input_fn=None, feed_fn=None,
-               batch_size=None, steps=None, metrics=None, name=None):
+               batch_size=None, steps=None, metrics=None, name=None,
+               checkpoint_path=None):
     """See evaluable.Evaluable."""
     return self._estimator.evaluate(x=x, y=y, input_fn=input_fn,
                                     feed_fn=feed_fn, batch_size=batch_size,
-                                    steps=steps, metrics=metrics, name=name)
+                                    steps=steps, metrics=metrics, name=name,
+                                    checkpoint_path=checkpoint_path)
 
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,

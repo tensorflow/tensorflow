@@ -1,4 +1,4 @@
-### `tf.sparse_concat(concat_dim, sp_inputs, name=None, expand_nonconcat_dim=False)` {#sparse_concat}
+### `tf.sparse_concat(axis, sp_inputs, name=None, expand_nonconcat_dim=False, concat_dim=None)` {#sparse_concat}
 
 Concatenates a list of `SparseTensor` along the specified dimension.
 
@@ -27,7 +27,7 @@ This op runs in `O(M log M)` time, where `M` is the total number of non-empty
 values across all inputs. This is due to the need for an internal sort in
 order to concatenate efficiently across an arbitrary dimension.
 
-For example, if `concat_dim = 1` and the inputs are
+For example, if `axis = 1` and the inputs are
 
     sp_inputs[0]: shape = [2, 3]
     [0, 2]: "a"
@@ -52,7 +52,7 @@ Graphically this is equivalent to doing
     [    a] concat [  d e  ] = [    a   d e  ]
     [b c  ]        [       ]   [b c          ]
 
-Another example, if 'concat_dim = 1' and the inputs are
+Another example, if 'axis = 1' and the inputs are
 
     sp_inputs[0]: shape = [3, 3]
     [0, 2]: "a"
@@ -83,12 +83,13 @@ Graphically this is equivalent to doing
 ##### Args:
 
 
-*  <b>`concat_dim`</b>: Dimension to concatenate along. Must be in range [-rank, rank),
+*  <b>`axis`</b>: Dimension to concatenate along. Must be in range [-rank, rank),
     where rank is the number of dimensions in each input `SparseTensor`.
 *  <b>`sp_inputs`</b>: List of `SparseTensor` to concatenate.
 *  <b>`name`</b>: A name prefix for the returned tensors (optional).
 *  <b>`expand_nonconcat_dim`</b>: Whether to allow the expansion in the non-concat
     dimensions. Defaulted to False.
+*  <b>`concat_dim`</b>: The old (deprecated) name for axis.
 
 ##### Returns:
 

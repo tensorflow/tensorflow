@@ -81,7 +81,7 @@ def sparse_feature_cross(inputs, hashed_output=False, num_buckets=0,
 
   indices = [sp_input.indices for sp_input in sparse_inputs]
   values = [sp_input.values for sp_input in sparse_inputs]
-  shapes = [sp_input.shape for sp_input in sparse_inputs]
+  shapes = [sp_input.dense_shape for sp_input in sparse_inputs]
   out_type = dtypes.int64 if hashed_output else dtypes.string
 
   internal_type = dtypes.string

@@ -132,3 +132,9 @@ cc_library(
     data = ["lib/%{cupti_lib}"],
     visibility = ["//visibility:public"],
 )
+
+cc_library(
+    name = "libdevice_root",
+    data = glob(["nvvm/libdevice/*.bc"]),
+    visibility = ["//visibility:public"],
+)

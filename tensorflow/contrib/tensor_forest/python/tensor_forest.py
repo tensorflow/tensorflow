@@ -112,12 +112,10 @@ class ForestHParams(object):
     # regression and avoids having to recompute sums for classification.
     self.num_output_columns = self.num_classes + 1
 
-    # The Random Forest literature recommends sqrt(# features) for
-    # classification problems, and p/3 for regression problems.
-    # TODO(thomaswc): Consider capping this for large number of features.
-    self.num_splits_to_consider = (
-        self.num_splits_to_consider or
-        max(10, int(math.ceil(math.sqrt(self.num_features)))))
+    # Our experiments have found that num_splits_to_consider = num_features
+    # gives good accuracy.
+    self.num_splits_to_consider = self.num_splits_to_consider or min(
+        self.num_features, 1000)
 
     self.max_fertile_nodes = (self.max_fertile_nodes or
                               int(math.ceil(self.max_nodes / 2.0)))
@@ -371,7 +369,8 @@ class RandomForestGraphs(object):
         if self.params.bagging_fraction < 1.0:
           # TODO(thomaswc): This does sampling without replacment.  Consider
           # also allowing sampling with replacement as an option.
-          batch_size = array_ops.slice(array_ops.shape(input_data), [0], [1])
+          batch_size = array_ops.strided_slice(
+              array_ops.shape(input_data), [0], [1])
           r = random_ops.random_uniform(batch_size, seed=seed)
           mask = math_ops.less(
               r, array_ops.ones_like(r) * self.params.bagging_fraction)
@@ -537,9 +536,10 @@ class RandomTreeGraphs(object):
       return control_flow_ops.no_op()
 
     return control_flow_ops.cond(
-        math_ops.equal(array_ops.squeeze(array_ops.slice(
-            self.variables.tree, [0, 0], [1, 1])), -2),
-        _init_tree, _nothing)
+        math_ops.equal(
+            array_ops.squeeze(
+                array_ops.strided_slice(self.variables.tree, [0, 0], [1, 1])),
+            -2), _init_tree, _nothing)
 
   def _gini(self, class_counts):
     """Calculate the Gini impurity.
@@ -633,7 +633,7 @@ class RandomTreeGraphs(object):
     if isinstance(input_data, sparse_tensor.SparseTensor):
       sparse_indices = input_data.indices
       sparse_values = input_data.values
-      sparse_shape = input_data.shape
+      sparse_shape = input_data.dense_shape
       input_data = []
 
     # Count extremely random stats.
@@ -890,7 +890,7 @@ class RandomTreeGraphs(object):
     if isinstance(input_data, sparse_tensor.SparseTensor):
       sparse_indices = input_data.indices
       sparse_values = input_data.values
-      sparse_shape = input_data.shape
+      sparse_shape = input_data.dense_shape
       input_data = []
     return self.inference_ops.tree_predictions(
         input_data, sparse_indices, sparse_values, sparse_shape, data_spec,

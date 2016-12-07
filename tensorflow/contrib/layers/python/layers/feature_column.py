@@ -456,7 +456,7 @@ class _SparseColumnIntegerized(_SparseColumn):
     sparse_id_values = math_ops.mod(input_tensor.values, self.bucket_size,
                                     name="mod")
     columns_to_tensors[self] = sparse_tensor_py.SparseTensor(
-        input_tensor.indices, sparse_id_values, input_tensor.shape)
+        input_tensor.indices, sparse_id_values, input_tensor.dense_shape)
 
 
 def sparse_column_with_integerized_feature(column_name,
@@ -530,7 +530,7 @@ class _SparseColumnHashed(_SparseColumn):
     sparse_id_values = string_ops.string_to_hash_bucket_fast(
         sparse_values, self.bucket_size, name="lookup")
     columns_to_tensors[self] = sparse_tensor_py.SparseTensor(
-        input_tensor.indices, sparse_id_values, input_tensor.shape)
+        input_tensor.indices, sparse_id_values, input_tensor.dense_shape)
 
 
 def sparse_column_with_hash_bucket(column_name,
@@ -718,7 +718,7 @@ def weighted_sparse_column(sparse_id_column,
         is a SparseTensor.
      Following are assumed to be true:
        * sparse_tensor.indices = weights_tensor.indices
-       * sparse_tensor.shape = weights_tensor.shape
+       * sparse_tensor.dense_shape = weights_tensor.dense_shape
 
   Args:
     sparse_id_column: A `_SparseColumn` which is created by

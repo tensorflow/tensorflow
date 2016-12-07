@@ -67,10 +67,9 @@ We're excited to see what the community will do with this model.
 when the program is run for the first time. You'll need about 200M of free space
 available on your hard disk.
 
-The following instructions assume you installed TensorFlow from a PIP package
-and that your terminal resides in the TensorFlow root directory.
+Start by cloning the [TensorFlow models repo](https://github.com/tensorflow/models) from GitHub. Run the following commands:
 
-    cd tensorflow/models/image/imagenet
+    cd models/tutorials/image/imagenet
     python classify_image.py
 
 The above command will classify a supplied image of a panda bear.

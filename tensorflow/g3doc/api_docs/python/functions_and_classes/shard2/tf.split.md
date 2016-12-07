@@ -1,9 +1,11 @@
-### `tf.split(split_dim, num_split, value, name='split')` {#split}
+### `tf.split(axis=None, num_or_size_splits=None, value=None, name='split', split_dim=None)` {#split}
+
+DEPRECATED: use split_v; split_v rename to split happening soon.
 
 Splits a tensor into `num_split` tensors along one dimension.
 
-Splits `value` along dimension `split_dim` into `num_split` smaller tensors.
-Requires that `num_split` evenly divide `value.shape[split_dim]`.
+Splits `value` along dimension `axis` into `num_or_size_splits` smaller
+tensors. Requires that `num_or_size_splits` evenly divide `value.shape[axis]`.
 
 For example:
 
@@ -31,11 +33,13 @@ tf.unpack(t, axis=axis)
 ##### Args:
 
 
-*  <b>`split_dim`</b>: A 0-D `int32` `Tensor`. The dimension along which to split.
+*  <b>`axis`</b>: A 0-D `int32` `Tensor`. The dimension along which to split.
     Must be in the range `[0, rank(value))`.
-*  <b>`num_split`</b>: A Python integer. The number of ways to split.
+*  <b>`num_or_size_splits`</b>: A Python integer. The number of ways to split. Has a
+    different meaning in split_v (see docs).
 *  <b>`value`</b>: The `Tensor` to split.
 *  <b>`name`</b>: A name for the operation (optional).
+*  <b>`split_dim`</b>: The old (deprecated) name for axis.
 
 ##### Returns:
 

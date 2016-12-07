@@ -71,7 +71,22 @@ def _recommend_command(command, description, indent=2):
   return debugger_cli_common.RichTextLines(lines, font_attr_segs=font_attr_segs)
 
 
-def get_run_start_intro(run_call_count, fetches, feed_dict, tensor_filters):
+def get_tfdbg_logo():
+  lines = [
+      "TTTTTT FFFF DDD  BBBB   GGG ",
+      "  TT   F    D  D B   B G    ",
+      "  TT   FFF  D  D BBBB  G  GG",
+      "  TT   F    D  D B   B G   G",
+      "  TT   F    DDD  BBBB   GGG ",
+      "",
+  ]
+  return debugger_cli_common.RichTextLines(lines)
+
+
+def get_run_start_intro(run_call_count,
+                        fetches,
+                        feed_dict,
+                        tensor_filters):
   """Generate formatted intro for run-start UI.
 
   Args:
@@ -101,8 +116,8 @@ def get_run_start_intro(run_call_count, fetches, feed_dict, tensor_filters):
 
   intro_lines = [
       "======================================",
-      "About to enter Session run() call #%d:" % run_call_count, "",
-      "Fetch(es):"
+      "Session.run() call #%d:" % run_call_count,
+      "", "Fetch(es):"
   ]
   intro_lines.extend(["  " + line for line in fetch_lines])
   intro_lines.extend(["", "Feed dict(s):"])
@@ -122,9 +137,14 @@ def get_run_start_intro(run_call_count, fetches, feed_dict, tensor_filters):
           "run -n", "Execute the run() call without debug tensor-watching"))
   out.extend(
       _recommend_command(
+          "run -t <T>",
+          "Execute run() calls (T - 1) times without debugging, then "
+          "execute run() one more time and drop back to the CLI"))
+  out.extend(
+      _recommend_command(
           "run -f <filter_name>",
           "Keep executing run() calls until a dumped tensor passes a given, "
-          "registered filter (conditional breakpoint mode)."))
+          "registered filter (conditional breakpoint mode)"))
 
   more_font_attr_segs = {}
   more_lines = ["    Registered filter(s):"]
