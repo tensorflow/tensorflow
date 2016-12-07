@@ -105,23 +105,33 @@ def crf_log_norm(inputs, sequence_lengths, transition_params):
   Returns:
     log_norm: A [batch_size] vector of normalizers for a CRF.
   """
-  # Split up the first and rest of the inputs in preparation for the forward
-  # algorithm.
-  first_input = array_ops.slice(inputs, [0, 0, 0], [-1, 1, -1])
-  first_input = array_ops.squeeze(first_input, [1])
-  rest_of_input = array_ops.slice(inputs, [0, 1, 0], [-1, -1, -1])
 
-  # Compute the alpha values in the forward algorithm in order to get the
-  # partition function.
-  forward_cell = CrfForwardRnnCell(transition_params)
-  _, alphas = rnn.dynamic_rnn(
-      cell=forward_cell,
-      inputs=rest_of_input,
-      sequence_length=sequence_lengths - 1,
-      initial_state=first_input,
-      dtype=dtypes.float32)
-  log_norm = math_ops.reduce_logsumexp(alphas, [1])
-  return log_norm
+  batch_size  = inputs.get_shape()[0].value
+  max_seq_len = inputs.get_shape()[1].value
+  tag_size    = transition_params.get_shape()[0].value
+
+  transitions = array_ops.reshape(array_ops.concat(0, [transition_params]*batch_size), [batch_size, tag_size, tag_size])
+
+  previous = inputs[:, 0, :]
+  alphas   = [previous]
+
+  for t in range(1, max_seq_len):
+    previous = array_ops.reshape(previous, [batch_size, tag_size, 1])
+    current  = array_ops.reshape(inputs[:, t, :], [batch_size, 1, tag_size])
+
+    alpha_t  = previous + current + transitions
+    alpha_t  = math_ops.reduce_logsumexp(alpha_t, [1])
+
+    alphas.append(alpha_t)
+    previous = alpha_t
+
+  alphas = array_ops.reshape(array_ops.concat(0, alphas), [max_seq_len, batch_size, tag_size])
+  alphas = array_ops.transpose(alphas, [1, 0, 2])
+  alphas = array_ops.reshape(alphas, [batch_size * max_seq_len, tag_size])
+  
+  last_alphas = array_ops.gather(alphas, math_ops.range(0, batch_size) * max_seq_len + sequence_lengths - 1 )
+
+  return math_ops.reduce_logsumexp(last_alphas, [1])
 
 
 def crf_log_likelihood(inputs,
