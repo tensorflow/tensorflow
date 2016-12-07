@@ -681,7 +681,7 @@ class SequenceQueueingStateSaver(object):
   inputs = batch.sequences["input"]
   context_label = batch.context["label"]
 
-  inputs_by_time = tf.split(1, num_unroll, inputs)
+  inputs_by_time = tf.split(value=inputs, num_or_size_splits=num_unroll, axis=1)
   assert len(inputs_by_time) == num_unroll
 
   lstm_output, _ = tf.nn.state_saving_rnn(
@@ -1299,7 +1299,7 @@ def batch_sequences_with_states(input_key, input_sequences, input_context,
   inputs = batch.sequences["input"]
   context_label = batch.context["label"]
 
-  inputs_by_time = tf.split(1, num_unroll, inputs)
+  inputs_by_time = tf.split(value=inputs, num_or_size_splits=num_unroll, axis=1)
   assert len(inputs_by_time) == num_unroll
 
   lstm_output, _ = tf.nn.state_saving_rnn(
