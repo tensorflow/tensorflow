@@ -728,8 +728,6 @@ tf.strided_slice(input, [1, 1, 0], [2, -1, 3], [1, -1, 1]) ==>[[[4, 4, 4],
 
 DEPRECATED: use split_v; split_v rename to split happening soon.
 
-Splits a tensor into `num_split` tensors along one dimension.
-
 Splits `value` along dimension `axis` into `num_or_size_splits` smaller
 tensors. Requires that `num_or_size_splits` evenly divide `value.shape[axis]`.
 
@@ -769,7 +767,7 @@ tf.unpack(t, axis=axis)
 
 ##### Returns:
 
-  `num_split` `Tensor` objects resulting from splitting `value`.
+  `num_or_size_splits` `Tensor` objects resulting from splitting `value`.
 
 
 - - -
@@ -778,13 +776,13 @@ tf.unpack(t, axis=axis)
 
 Splits a tensor into sub tensors.
 
-If num_or_size_splits is a scalar, `num_split`, then
-splits `value` along dimension `axis` into `num_split` smaller tensors.
-Requires that `num_split` evenly divide `value.shape[split_dim]`.
+If `num_or_size_splits` is a scalar, `num_split`, then splits `value` along
+dimension `axis` into `num_split` smaller tensors.
+Requires that `num_split` evenly divides `value.shape[axis]`.
 
-If num_or_size_splits is a tensor, then
-splits `value` into len(size_splits) pieces each the same size as the input
-except along dimension split_dim where the size is size_splits[i].
+If `num_or_size_splits` is a tensor, `size_splits`, then splits `value` into
+`len(size_splits)` pieces. The shape of the `i`-th piece has the same size as
+the `value` except along dimension `axis` where the size is `size_splits[i]`.
 
 For example:
 
@@ -807,12 +805,12 @@ tf.shape(split0) ==> [5, 10]
 *  <b>`num_or_size_splits`</b>: Either an integer indicating the number of splits along
     split_dim or a 1-D Tensor containing the sizes of each output tensor
     along split_dim. If an integer then it must evenly divide
-    value.shape[split_dim]; otherwise the sum of sizes along the split
-    dimension must match that of the input.
+    `value.shape[axis]`; otherwise the sum of sizes along the split
+    dimension must match that of the `value`.
 *  <b>`axis`</b>: A 0-D `int32` `Tensor`. The dimension along which to split.
     Must be in the range `[0, rank(value))`. Defaults to 0.
 *  <b>`num`</b>: Optional, used to specify the number of outputs when it cannot be
-       inferred from the shape of size_splits.
+    inferred from the shape of `size_splits`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:

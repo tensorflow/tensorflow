@@ -1017,7 +1017,9 @@
 
 * **[Linear Algebra (contrib)](../../api_docs/python/contrib.linalg.md)**:
   * [`LinearOperator`](../../api_docs/python/contrib.linalg.md#LinearOperator)
+  * [`LinearOperatorComposition`](../../api_docs/python/contrib.linalg.md#LinearOperatorComposition)
   * [`LinearOperatorDiag`](../../api_docs/python/contrib.linalg.md#LinearOperatorDiag)
+  * [`LinearOperatorMatrix`](../../api_docs/python/contrib.linalg.md#LinearOperatorMatrix)
   * [`LinearOperatorTriL`](../../api_docs/python/contrib.linalg.md#LinearOperatorTriL)
 
 * **[Losses (contrib)](../../api_docs/python/contrib.losses.md)**:
