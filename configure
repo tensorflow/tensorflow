@@ -435,7 +435,7 @@ while true; do
   # Point to ComputeCpp root
   if [ -z "$COMPUTECPP_TOOLKIT_PATH" ]; then
     default_computecpp_toolkit_path=/usr/local/computecpp
-    read -p "Please specify the location where ComputeCpp $TF_OPENCL_VERSION is installed. Refer to README.md for more details. [Default is $default_computecpp_toolkit_path]: " COMPUTECPP_TOOLKIT_PATH
+    read -p "Please specify the location where ComputeCpp for SYCL $TF_OPENCL_VERSION is installed. [Default is $default_computecpp_toolkit_path]: " COMPUTECPP_TOOLKIT_PATH
     fromuser="1"
     if [ -z "$COMPUTECPP_TOOLKIT_PATH" ]; then
       COMPUTECPP_TOOLKIT_PATH=$default_computecpp_toolkit_path

@@ -139,66 +139,66 @@ class BatchNormalizationTest(tf.test.TestCase):
 
   def testInference(self):
     x_shape = [1, 1, 6, 1]
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       self._test_inference(x_shape, [1], use_gpu=True, data_format='NHWC')
       self._test_inference(x_shape, [1], use_gpu=True, data_format='NCHW')
     self._test_inference(x_shape, [1], use_gpu=False, data_format='NHWC')
 
     x_shape = [1, 1, 6, 2]
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       self._test_inference(x_shape, [2], use_gpu=True, data_format='NHWC')
     self._test_inference(x_shape, [2], use_gpu=False, data_format='NHWC')
 
     x_shape = [1, 2, 1, 6]
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       self._test_inference(x_shape, [2], use_gpu=True, data_format='NCHW')
 
     x_shape = [27, 131, 127, 6]
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       self._test_inference(x_shape, [131], use_gpu=True, data_format='NCHW')
       self._test_inference(x_shape, [6], use_gpu=True, data_format='NHWC')
     self._test_inference(x_shape, [6], use_gpu=False, data_format='NHWC')
 
   def testTraining(self):
     x_shape = [1, 1, 6, 1]
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       self._test_training(x_shape, [1], use_gpu=True, data_format='NHWC')
       self._test_training(x_shape, [1], use_gpu=True, data_format='NCHW')
     self._test_training(x_shape, [1], use_gpu=False, data_format='NHWC')
 
     x_shape = [1, 1, 6, 2]
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       self._test_training(x_shape, [2], use_gpu=True, data_format='NHWC')
     self._test_training(x_shape, [2], use_gpu=False, data_format='NHWC')
 
     x_shape = [1, 2, 1, 6]
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       self._test_training(x_shape, [2], use_gpu=True, data_format='NCHW')
 
     x_shape = [27, 131, 127, 6]
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       self._test_training(x_shape, [131], use_gpu=True, data_format='NCHW')
       self._test_training(x_shape, [6], use_gpu=True, data_format='NHWC')
     self._test_training(x_shape, [6], use_gpu=False, data_format='NHWC')
 
   def testBatchNormGrad(self):
     x_shape = [1, 1, 6, 1]
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       self._test_gradient(x_shape, [1], use_gpu=True, data_format='NHWC')
       self._test_gradient(x_shape, [1], use_gpu=True, data_format='NCHW')
     self._test_gradient(x_shape, [1], use_gpu=False, data_format='NHWC')
 
     x_shape = [1, 1, 6, 2]
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       self._test_gradient(x_shape, [2], use_gpu=True, data_format='NHWC')
     self._test_gradient(x_shape, [2], use_gpu=False, data_format='NHWC')
 
     x_shape = [1, 2, 1, 6]
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       self._test_gradient(x_shape, [2], use_gpu=True, data_format='NCHW')
 
     x_shape = [7, 9, 13, 6]
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       self._test_gradient(x_shape, [9], use_gpu=True, data_format='NCHW')
       self._test_gradient(x_shape, [6], use_gpu=True, data_format='NHWC')
     self._test_gradient(x_shape, [6], use_gpu=False, data_format='NHWC')

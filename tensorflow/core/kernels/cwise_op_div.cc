@@ -37,6 +37,7 @@ REGISTER5(BinaryOp, CPU, "RealDiv", functor::div, float, Eigen::half, double,
                           .TypeConstraint<TYPE>("T"),                 \
                           BinaryOp<SYCLDevice, functor::div<TYPE>>);
 REGISTER_SYCL_KERNEL(float)
+REGISTER_SYCL_KERNEL(int32)
 #undef REGISTER_SYCL_KERNEL
 #endif // TENSORFLOW_USE_SYCL
 #if GOOGLE_CUDA

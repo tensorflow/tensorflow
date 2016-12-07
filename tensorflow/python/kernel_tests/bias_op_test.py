@@ -29,8 +29,8 @@ def GetTestConfigs():
     all the valid test configs as tuples of data_format and use_gpu.
   """
   test_configs = [("NHWC", False), ("NHWC", True)]
-  if tf.test.is_gpu_available():
-    # "NCHW" format is not currently supported on CPU.
+  if tf.test.is_gpu_available(cuda_only=True):
+    # "NCHW" format is currently only supported on CUDA.
     test_configs += [("NCHW", True)]
   return test_configs
 
@@ -89,7 +89,7 @@ class BiasAddTest(tf.test.TestCase):
     self._testBias(np_inputs, np_bias, use_gpu=False)
     if np_inputs.dtype in [np.float16, np.float32, np.float64]:
       self._testBias(np_inputs, np_bias, use_gpu=True)
-      if tf.test.is_gpu_available():
+      if tf.test.is_gpu_available(cuda_only=True):
         self._testBiasNCHW(np_inputs, np_bias, use_gpu=True)
 
   def testInputDims(self):

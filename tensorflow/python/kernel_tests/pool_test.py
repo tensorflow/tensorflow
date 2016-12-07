@@ -232,8 +232,8 @@ class PoolingTest(tf.test.TestCase):
                     strides=strides)
 
   def testPoolNC(self):
-    if tf.test.is_gpu_available():
-      # "NC*" format is not currently supported on CPU.
+    if tf.test.is_gpu_available(cuda_only=True):
+      # "NC*" format is currently only supported on CUDA.
       with self.test_session(use_gpu=True):
         for padding in ["SAME", "VALID"]:
           self._test(input_shape=[2, 2, 9],

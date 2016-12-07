@@ -37,7 +37,6 @@ static std::vector<string> ListDevices(TF_Status* out_status) {
 
   std::vector<std::unique_ptr<Device>> device_holder(devices.begin(), devices.end());
 
-
   for (const Device* device : devices) {
     const DeviceAttributes& attr = device->attributes();
     string attr_serialized;

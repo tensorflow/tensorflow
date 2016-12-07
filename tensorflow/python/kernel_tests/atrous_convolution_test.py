@@ -100,8 +100,8 @@ class AtrousConvolutionTest(tf.test.TestCase):
                   dilation_rate=[rate])
 
   def testAtrousConvolutionNC(self):
-    if tf.test.is_gpu_available():
-      # "NCW" and "NCHW" formats are not currently supported on CPU.
+    if tf.test.is_gpu_available(cuda_only=True):
+      # "NCW" and "NCHW" formats are currently supported only on CUDA.
       with self.test_session(use_gpu=True):
         for padding in ["SAME", "VALID"]:
           self._test_atrous_convolution(
