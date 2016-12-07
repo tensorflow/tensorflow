@@ -1929,10 +1929,10 @@ class StreamingPrecisionRecallThresholdsTest(tf.test.TestCase):
       rec, rec_op = metrics.streaming_recall_at_thresholds(
           predictions, labels, thresholds, weights=weights)
 
-      [prec_low, prec_high] = tf.split(0, 2, prec)
+      [prec_low, prec_high] = tf.split(value=prec, num_or_size_splits=2, axis=0)
       prec_low = tf.reshape(prec_low, shape=())
       prec_high = tf.reshape(prec_high, shape=())
-      [rec_low, rec_high] = tf.split(0, 2, rec)
+      [rec_low, rec_high] = tf.split(value=rec, num_or_size_splits=2, axis=0)
       rec_low = tf.reshape(rec_low, shape=())
       rec_high = tf.reshape(rec_high, shape=())
 
@@ -1956,10 +1956,10 @@ class StreamingPrecisionRecallThresholdsTest(tf.test.TestCase):
       rec, rec_op = metrics.streaming_recall_at_thresholds(
           predictions, labels, thresholds, weights=weights)
 
-      [prec_low, prec_high] = tf.split(0, 2, prec)
+      [prec_low, prec_high] = tf.split(value=prec, num_or_size_splits=2, axis=0)
       prec_low = tf.reshape(prec_low, shape=())
       prec_high = tf.reshape(prec_high, shape=())
-      [rec_low, rec_high] = tf.split(0, 2, rec)
+      [rec_low, rec_high] = tf.split(value=rec, num_or_size_splits=2, axis=0)
       rec_low = tf.reshape(rec_low, shape=())
       rec_high = tf.reshape(rec_high, shape=())
 
@@ -1981,8 +1981,8 @@ class StreamingPrecisionRecallThresholdsTest(tf.test.TestCase):
       rec, rec_op = metrics.streaming_recall_at_thresholds(
           predictions, labels, thresholds)
 
-      [prec_low, prec_high] = tf.split(0, 2, prec)
-      [rec_low, rec_high] = tf.split(0, 2, rec)
+      [prec_low, prec_high] = tf.split(value=prec, num_or_size_splits=2, axis=0)
+      [rec_low, rec_high] = tf.split(value=rec, num_or_size_splits=2, axis=0)
 
       sess.run(tf.local_variables_initializer())
       sess.run([prec_op, rec_op])
