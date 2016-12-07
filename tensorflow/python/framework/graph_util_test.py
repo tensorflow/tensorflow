@@ -183,6 +183,20 @@ class DeviceFunctionsTest(tf.test.TestCase):
         self.assertEqual(str(constant_graph_def),
                          str(constant_graph_def_without_variable_whitelist))
 
+        # Test variable name black list. This should result in the variable not
+        # being a const.
+        sess.run(tf.global_variables_initializer())
+        constant_graph_def_with_blacklist = (
+            graph_util.convert_variables_to_constants(
+                sess, variable_graph_def, ["output_node"],
+                variable_names_blacklist=set(["variable_node"])))
+        variable_node = None
+        for node in constant_graph_def_with_blacklist.node:
+          if node.name == "variable_node":
+            variable_node = node
+        self.assertIsNotNone(variable_node)
+        self.assertEqual(variable_node.op, "Variable")
+
     # Now we make sure the variable is now a constant, and that the graph still
     # produces the expected result.
     with tf.Graph().as_default():
