@@ -24,6 +24,20 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import variables
 
 
+def _get_fetch_name(fetch):
+  """Obtain the name or string representation of a fetch.
+
+  Args:
+    fetch: The fetch in question.
+
+  Returns:
+    If the attribute 'name' is available, return the name. Otherwise, return
+    str(fetch).
+  """
+
+  return fetch.name if hasattr(fetch, "name") else str(fetch)
+
+
 def _get_fetch_names(fetches):
   """Get a flattened list of the names in run() call fetches.
 
@@ -46,7 +60,7 @@ def _get_fetch_names(fetches):
   else:
     # This ought to be a Tensor, an Operation or a Variable, for which the name
     # attribute should be available. (Bottom-out condition of the recursion.)
-    lines.append(fetches.name)
+    lines.append(_get_fetch_name(fetches))
 
   return lines
 
@@ -190,7 +204,7 @@ def get_run_short_description(run_call_count, fetches, feed_dict):
   description = "run #%d: " % run_call_count
 
   if isinstance(fetches, (ops.Tensor, ops.Operation, variables.Variable)):
-    description += "1 fetch (%s); " % fetches.name
+    description += "1 fetch (%s); " % _get_fetch_name(fetches)
   else:
     # Could be (nested) list, tuple, dict or namedtuple.
     num_fetches = len(_get_fetch_names(fetches))

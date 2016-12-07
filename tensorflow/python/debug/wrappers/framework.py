@@ -501,5 +501,14 @@ class BaseDebugWrapperSession(session.SessionInterface):
     """
     pass
 
+  def __enter__(self):
+    return self._sess.__enter__()
+
+  def __exit__(self, exec_type, exec_value, exec_tb):
+    self._sess.__exit__(exec_type, exec_value, exec_tb)
+
+  def close(self):
+    self._sess.close()
+
   # TODO(cais): Add _node_name_regex_whitelist and
   #   _node_op_type_regex_whitelist.

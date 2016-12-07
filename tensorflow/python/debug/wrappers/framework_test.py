@@ -299,6 +299,18 @@ class DebugWrapperSessionTest(test_util.TensorFlowTestCase):
     self.assertTrue(
         isinstance(self._observer["tf_error"], errors.InvalidArgumentError))
 
+  def testUsingWrappedSessionShouldWorkAsContextManager(self):
+    wrapper = TestDebugWrapperSession(self._sess, self._dump_root,
+                                      self._observer)
+
+    with wrapper as sess:
+      sess.run(self._s)
+
+  def testWrapperShouldSupportSessionClose(self):
+    wrapper = TestDebugWrapperSession(self._sess, self._dump_root,
+                                      self._observer)
+    wrapper.close()
+
 
 if __name__ == "__main__":
   googletest.main()
