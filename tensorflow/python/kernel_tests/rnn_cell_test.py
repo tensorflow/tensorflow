@@ -45,12 +45,21 @@ class RNNCellTest(tf.test.TestCase):
         with self.assertRaises(ValueError):
           l1 = linear([x], 2, False)
 
-        # But you can create a new one in a new scope and share the variables.
+        # But you can create a new one if you pass in a custom scope.
+        l2 = linear([x], 2, False, scope="l2")
+
+        # You can also create a new one in a new scope and share the variables.
         with tf.variable_scope("l1") as new_scope:
           l1 = linear([x], 2, False)
+          # If you pass in a custom scope, the parent scope is still used.
+          l2 = linear([x], 2, False, scope="l2")
+          # Sanity check that we can't accidentally create a shared function.
+          with self.assertRaises(ValueError):
+            linear([x], 2, False, scope="l2")
         with tf.variable_scope(new_scope, reuse=True):
           linear([l1], 2, False)
-        self.assertEqual(len(tf.trainable_variables()), 2)
+          linear([l2], 2, False, scope="l2")
+        self.assertEqual(len(tf.trainable_variables()), 4)
 
   def testBasicRNNCell(self):
     with self.test_session() as sess:
