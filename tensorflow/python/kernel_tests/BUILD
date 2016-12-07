@@ -1378,7 +1378,7 @@ tf_py_test(
 
 tf_py_test(
     name = "metrics_test",
-    size = "small",
+    size = "medium",
     srcs = ["metrics_test.py"],
     additional_deps = ["//tensorflow:tensorflow_py"],
     shard_count = 3,
