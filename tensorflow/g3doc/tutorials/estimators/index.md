@@ -152,6 +152,8 @@ def maybe_download():
     print("Training data is downloaded to %s" % train_file_name)
 
   if FLAGS.test_data:
+    test_file_name = FLAGS.test_data
+  else:
     test_file = tempfile.NamedTemporaryFile(delete=False)
     urllib.urlretrieve("http://download.tensorflow.org/data/abalone_test.csv", test_file.name)
     test_file_name = test_file.name
