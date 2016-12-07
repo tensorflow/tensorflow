@@ -12756,6 +12756,93 @@ op {
   description: "The inputs are quantized tensors where the lowest value represents the real\nnumber of the associated minimum, and the highest represents the maximum.\nThis means that you can only interpret the quantized output in the same way, by\ntaking the returned minimum and maximum values into account."
 }
 op {
+  name: "QuantizedInstanceNorm"
+  input_arg {
+    name: "x"
+    description: "A 4D input Tensor."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "x_min"
+    description: "The value represented by the lowest quantized input."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "x_max"
+    description: "The value represented by the highest quantized input."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "y"
+    description: "A 4D Tensor."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y_min"
+    description: "The value represented by the lowest quantized output."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "y_max"
+    description: "The value represented by the highest quantized output."
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "output_range_given"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If True, `given_y_min` and `given_y_min`\nand `given_y_max` are used as the output range. Otherwise,\nthe implementation computes the output range."
+  }
+  attr {
+    name: "given_y_min"
+    type: "float"
+    default_value {
+      f: 0
+    }
+    description: "Output in `y_min` if `output_range_given` is True."
+  }
+  attr {
+    name: "given_y_max"
+    type: "float"
+    default_value {
+      f: 0
+    }
+    description: "Output in `y_max` if `output_range_given` is True."
+  }
+  attr {
+    name: "variance_epsilon"
+    type: "float"
+    default_value {
+      f: 1e-05
+    }
+    description: "A small float number to avoid dividing by 0."
+  }
+  attr {
+    name: "min_separation"
+    type: "float"
+    default_value {
+      f: 0.001
+    }
+    description: "Minimum value of `y_max - y_min`"
+  }
+  summary: "Quantized Instance normalization."
+}
+op {
   name: "QuantizedMatMul"
   input_arg {
     name: "a"
