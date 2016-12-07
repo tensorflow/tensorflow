@@ -468,7 +468,8 @@ export CUDA_HOME=/usr/local/cuda
 
 ### Run TensorFlow from the Command Line
 
-See [common problems](#common-problems) if an error happens.
+See [
+blems](#common-problems) if an error happens.
 
 Open a terminal and type the following:
 
@@ -981,6 +982,28 @@ Exception:
 ```
 
 Solution: Add an `--ignore-installed` flag to the pip command.
+
+
+#### Cannot remove entries from nonexistent file: easy-install.pth
+
+If during a `pip` installation using an Anaconda Python distribution you encounter the error:
+
+```
+Cannot remove entries from nonexistent file <path-to-anaconda-instalation>/anaconda[version]/lib/site-packages/easy-install.pth
+```
+
+1. Upgrade setuptools:  
+`pip install --upgrade -I setuptools`
+
+2. Install TensorFlow again adding `--ignore-installed` flag:  
+`pip install --ignore-installed --upgrade <tensorflow_url>`
+
+
+
+Step #1 might already solve the problem, however if it still persists, execute step #2.
+
+This is an issue that occurs with new Ananconda installations when `pip` tries to remove `easy-install.pth` 
+which does not exist as conda packages cannot include it.
 
 
 ### Linux issues
