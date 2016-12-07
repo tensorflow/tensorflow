@@ -4,6 +4,7 @@
 package(
     default_visibility = [
         "//tensorflow/contrib/learn:__subpackages__",
+        "//tensorflow/contrib/session_bundle:__subpackages__",
         "//tensorflow/python/saved_model:__subpackages__",
     ],
 )
@@ -72,6 +73,9 @@ py_test(
     size = "small",
     srcs = [
         "saved_model_test.py",
+    ],
+    data = [
+        "//tensorflow/python/saved_model/example:saved_model_half_plus_two_data",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:private"],

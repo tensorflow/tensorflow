@@ -32,6 +32,40 @@ filegroup(
 )
 
 py_library(
+    name = "bundle_shim_py",
+    srcs = ["bundle_shim.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":constants",
+        ":manifest_proto_py",
+        ":session_bundle_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/saved_model:constants",
+        "//tensorflow/python/saved_model:loader",
+        "//tensorflow/python/saved_model:signature_constants",
+    ],
+)
+
+py_test(
+    name = "bundle_shim_py_test",
+    size = "small",
+    srcs = [
+        "bundle_shim_test.py",
+    ],
+    data = [
+        "//tensorflow/contrib/session_bundle/example:half_plus_two",
+        "//tensorflow/python/saved_model/example:saved_model_half_plus_two_data",
+    ],
+    main = "bundle_shim_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":bundle_shim_py",
+    ],
+)
+
+py_library(
     name = "constants",
     srcs = ["constants.py"],
     srcs_version = "PY2AND3",
