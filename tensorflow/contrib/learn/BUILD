@@ -445,6 +445,18 @@ py_test(
 )
 
 py_test(
+    name = "kmeans_test",
+    size = "medium",
+    srcs = ["python/learn/estimators/kmeans_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
     name = "random_forest_test",
     size = "medium",
     srcs = ["python/learn/estimators/random_forest_test.py"],

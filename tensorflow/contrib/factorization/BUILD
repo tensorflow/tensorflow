@@ -79,21 +79,6 @@ tf_gen_op_wrapper_py(
 
 # Ops tests
 tf_py_test(
-    name = "kmeans_test",
-    srcs = [
-        "python/ops/kmeans_test.py",
-    ],
-    additional_deps = [
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-    ],
-    tags = [
-        "notsan",
-    ],
-)
-
-tf_py_test(
     name = "gmm_test",
     srcs = [
         "python/ops/gmm_test.py",
