@@ -3402,6 +3402,7 @@ filegroup(
         "control_flow_ops.h",
         "conv_2d.h",
         "conv_ops.h",
+        "depthtospace_op.h",
         "depthwise_conv_op.h",
         "fake_quant_ops_functor.h",
         "gemm_functors.h",
@@ -3471,6 +3472,7 @@ filegroup(
         "cwise_op_rsqrt.cc",
         "cwise_op_select.cc",
         "cwise_op_sigmoid.cc",
+        "cwise_op_sign.cc",
         "cwise_op_sqrt.cc",
         "cwise_op_square.cc",
         "cwise_op_squared_difference.cc",
@@ -3498,6 +3500,7 @@ filegroup(
     name = "android_extended_ops_group2",
     srcs = [
         "ctc_decoder_ops.cc",
+        "depthtospace_op.cc",
         "dynamic_stitch_op.cc",
         "in_topk_op.cc",
         "logging_ops.cc",
