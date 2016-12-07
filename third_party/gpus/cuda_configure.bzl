@@ -194,13 +194,16 @@ def _cuda_version(repository_ctx, cuda_toolkit_path, cpu_value):
     auto_configure_fail(
         "CUDA version detected from nvcc (%s) does not match " +
         "TF_CUDA_VERSION (%s)" % (version, environ_version))
+
+  if cpu_value == "Windows":
+    version = "64_" + version.replace(".", "")
   return version
 
 
 _DEFINE_CUDNN_MAJOR = "#define CUDNN_MAJOR"
 
 
-def _cudnn_version(repository_ctx, cudnn_install_basedir):
+def _cudnn_version(repository_ctx, cudnn_install_basedir, cpu_value):
   """Detects the version of cuDNN installed on the system.
 
   Args:
@@ -236,8 +239,11 @@ def _cudnn_version(repository_ctx, cudnn_install_basedir):
     environ_version = repository_ctx.os.environ[_TF_CUDNN_VERSION].strip()
   if environ_version and version != environ_version:
     auto_configure_fail(
-        "cuDNN version detected from %s (%s) does not match " +
-        "TF_CUDNN_VERSION (%s)" % (str(cudnn_h_path), version, environ_version))
+        ("cuDNN version detected from %s (%s) does not match " +
+        "TF_CUDNN_VERSION (%s)") % (str(cudnn_h_path), version, environ_version))
+
+  if cpu_value == "Windows":
+    version = "64_" + version
   return version
 
 
@@ -297,6 +303,11 @@ def _lib_name(lib, cpu_value, version="", static=False):
   elif cpu_value == "Windows":
     return "%s.lib" % lib
   elif cpu_value == "Darwin":
+    if static:
+      return "lib%s.a" % lib
+    else:
+      if version:
+        version = ".%s" % version
     return "lib%s%s.dylib" % (lib, version)
   else:
     auto_configure_fail("Invalid cpu_value: %s" % cpu_value)
@@ -496,7 +507,7 @@ def _get_cuda_config(repository_ctx):
   cuda_toolkit_path = _cuda_toolkit_path(repository_ctx)
   cuda_version = _cuda_version(repository_ctx, cuda_toolkit_path, cpu_value)
   cudnn_install_basedir = _cudnn_install_basedir(repository_ctx)
-  cudnn_version = _cudnn_version(repository_ctx, cudnn_install_basedir)
+  cudnn_version = _cudnn_version(repository_ctx, cudnn_install_basedir, cpu_value)
   return struct(
       cuda_toolkit_path = cuda_toolkit_path,
       cudnn_install_basedir = cudnn_install_basedir,

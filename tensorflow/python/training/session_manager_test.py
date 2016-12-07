@@ -154,7 +154,7 @@ class SessionManagerTest(tf.test.TestCase):
                                  "you must also pass a local_init_op "):
       tf.train.SessionManager(
           ready_for_local_init_op=tf.report_uninitialized_variables(
-              tf.all_variables()),
+              tf.global_variables()),
           local_init_op=None)
 
   def testRecoverSessionWithReadyForLocalInitOp(self):
@@ -192,7 +192,7 @@ class SessionManagerTest(tf.test.TestCase):
       sm2 = tf.train.SessionManager(
           ready_op=tf.report_uninitialized_variables(),
           ready_for_local_init_op=tf.report_uninitialized_variables(
-              tf.all_variables()),
+              tf.global_variables()),
           local_init_op=w.initializer)
       saver = tf.train.Saver({"v": v})
       sess, initialized = sm2.recover_session(
@@ -348,7 +348,7 @@ class SessionManagerTest(tf.test.TestCase):
           graph=graph,
           ready_op=tf.report_uninitialized_variables(),
           ready_for_local_init_op=tf.report_uninitialized_variables(
-              tf.all_variables()),
+              tf.global_variables()),
           local_init_op=w.initializer)
 
       # Initialize v but not w
@@ -417,7 +417,7 @@ class SessionManagerTest(tf.test.TestCase):
       sm2 = tf.train.SessionManager(
           ready_op=tf.report_uninitialized_variables(),
           ready_for_local_init_op=tf.report_uninitialized_variables(
-              tf.all_variables()),
+              tf.global_variables()),
           local_init_op=w.initializer)
       sess = sm2.prepare_session("", init_op=v.initializer)
       self.assertEqual(
@@ -462,7 +462,7 @@ class SessionManagerTest(tf.test.TestCase):
       sm2 = tf.train.SessionManager(
           ready_op=tf.report_uninitialized_variables(),
           ready_for_local_init_op=tf.report_uninitialized_variables(
-              tf.all_variables()),
+              tf.global_variables()),
           local_init_op=w.initializer)
       with self.assertRaisesRegexp(
           RuntimeError,

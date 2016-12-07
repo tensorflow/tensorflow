@@ -349,6 +349,7 @@ py_test(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":debugger_cli_common",
         ":local_cli_wrapper",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",

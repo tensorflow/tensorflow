@@ -186,7 +186,7 @@ class SparseTensorCastTest(tf.test.TestCase):
       self.assertAllEqual(st_cast.indices.eval(), [[0], [1], [2]])
       self.assertAllEqual(st_cast.values.eval(),
                           np.array([1, 2, 3], np.float32))
-      self.assertAllEqual(st_cast.shape.eval(), [3])
+      self.assertAllEqual(st_cast.dense_shape.eval(), [3])
 
 
 class SaturateCastTest(tf.test.TestCase):

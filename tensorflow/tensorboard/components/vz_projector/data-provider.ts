@@ -297,6 +297,7 @@ export function fetchImage(url: string): Promise<HTMLImageElement> {
     let image = new Image();
     image.onload = () => resolve(image);
     image.onerror = (err) => reject(err);
+    image.crossOrigin = '';
     image.src = url;
   });
 }

@@ -168,6 +168,11 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
     if not self._estimator.config.is_chief:
       self._chief_hook = None
 
+  @property
+  def model_dir(self):
+    """See trainable.Evaluable."""
+    return self._estimator.model_dir
+
   def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
           monitors=None, max_steps=None):
     """See trainable.Trainable."""
@@ -181,11 +186,13 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
 
   # pylint: disable=protected-access
   def evaluate(self, x=None, y=None, input_fn=None, feed_fn=None,
-               batch_size=None, steps=None, metrics=None, name=None):
+               batch_size=None, steps=None, metrics=None, name=None,
+               checkpoint_path=None):
     """See evaluable.Evaluable."""
     return self._estimator.evaluate(x=x, y=y, input_fn=input_fn,
                                     feed_fn=feed_fn, batch_size=batch_size,
-                                    steps=steps, metrics=metrics, name=name)
+                                    steps=steps, metrics=metrics, name=name,
+                                    checkpoint_path=checkpoint_path)
 
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,

@@ -110,42 +110,15 @@ more information about how to configure a distributed TensorFlow program.
 @@WorkerSessionCreator
 @@MonitoredSession
 
-## Summary Operations
-
-The following ops output
-[`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
-protocol buffers as serialized string tensors.
-
-You can fetch the output of a summary op in a session, and pass it to
-a [SummaryWriter](../../api_docs/python/train.md#SummaryWriter) to append it
-to an event file.  Event files contain
-[`Event`](https://www.tensorflow.org/code/tensorflow/core/util/event.proto)
-protos that can contain `Summary` protos along with the timestamp and
-step.  You can then use TensorBoard to visualize the contents of the
-event files.  See [TensorBoard and
-Summaries](../../how_tos/summaries_and_tensorboard/index.md) for more
-details.
-
-@@scalar_summary
-@@image_summary
-@@audio_summary
-@@histogram_summary
-@@zero_fraction
-
-@@merge_summary
-@@merge_all_summaries
-
-## Adding Summaries to Event Files
+## Reading Summaries from Event Files
 
 See [Summaries and
 TensorBoard](../../how_tos/summaries_and_tensorboard/index.md) for an
 overview of summaries, event files, and visualization in TensorBoard.
 
-@@SummaryWriter
-@@SummaryWriterCache
 @@summary_iterator
 
-## Training utilities
+## Training Utilities
 
 @@global_step
 @@basic_train_loop
@@ -239,8 +212,6 @@ from tensorflow.python.training.session_run_hook import SessionRunContext
 from tensorflow.python.training.session_run_hook import SessionRunValues
 from tensorflow.python.training.session_manager import SessionManager
 from tensorflow.python.training.summary_io import summary_iterator
-from tensorflow.python.training.summary_io import SummaryWriter
-from tensorflow.python.training.summary_io import SummaryWriterCache
 from tensorflow.python.training.supervisor import Supervisor
 from tensorflow.python.training.training_util import write_graph
 from tensorflow.python.training.training_util import global_step

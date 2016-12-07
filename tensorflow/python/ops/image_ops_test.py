@@ -371,7 +371,7 @@ class AdjustHueBenchmark(test.Benchmark):
         delta = tf.constant(0.1, dtype=tf.float32)
         outputs = image_ops.adjust_hue(inputs, delta)
         run_op = tf.group(outputs)
-        sess.run(tf.initialize_all_variables())
+        sess.run(tf.global_variables_initializer())
         for i in xrange(warmup_rounds + benchmark_rounds):
           if i == warmup_rounds:
             start = time.time()
@@ -1132,13 +1132,13 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
       bounding_box_tf = constant_op.constant(bounding_box_np,
                                              dtype=dtypes.float32,
                                              shape=bounding_box_np.shape)
-      begin, end, _ = image_ops.sample_distorted_bounding_box(
+      begin, size, _ = image_ops.sample_distorted_bounding_box(
           image_size=image_size_tf,
           bounding_boxes=bounding_box_tf,
           min_object_covered=min_object_covered,
           aspect_ratio_range=aspect_ratio_range,
           area_range=area_range)
-      y = array_ops.slice(image_tf, begin, end)
+      y = array_ops.strided_slice(image_tf, begin, begin + size)
 
       for _ in xrange(num_iter):
         y_tf = y.eval()

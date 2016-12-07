@@ -57,18 +57,44 @@ def load_session_bundle_from_path(export_dir, target="", config=None):
   if not file_io.file_exists(meta_graph_filename):
     raise RuntimeError("Expected meta graph file missing %s" %
                        meta_graph_filename)
-  variables_filename = os.path.join(export_dir,
-                                    constants.VARIABLES_FILENAME)
-  if not file_io.file_exists(variables_filename):
-    variables_filename = os.path.join(
-        export_dir, constants.VARIABLES_FILENAME_PATTERN)
-    if not file_io.get_matching_files(variables_filename):
-      # If graph_util.convert_variables_to_constants() is called on a model
-      # it won't have any variables, and that's OK.
-      #
-      # TODO(yxshi): verify that the graph_def in fact does not have any
-      # reachable variables.
-      variables_filename = None
+
+  variables_filename = ""
+  variables_filename_list = []
+  checkpoint_sharded = False
+
+  variables_index_filename = os.path.join(
+      export_dir, constants.VARIABLES_INDEX_FILENAME_V2)
+  checkpoint_v2 = file_io.file_exists(variables_index_filename)
+
+  # Find matching checkpoint files.
+  if checkpoint_v2:
+    # The checkpoint is in v2 format.
+    variables_filename_pattern = os.path.join(
+        export_dir, constants.VARIABLES_FILENAME_PATTERN_V2)
+    variables_filename_list = file_io.get_matching_files(
+        variables_filename_pattern)
+    checkpoint_sharded = True
+  else:
+    variables_filename = os.path.join(export_dir,
+                                      constants.VARIABLES_FILENAME)
+    if file_io.file_exists(variables_filename):
+      variables_filename_list = [variables_filename]
+    else:
+      variables_filename = os.path.join(export_dir,
+                                        constants.VARIABLES_FILENAME_PATTERN)
+      variables_filename_list = file_io.get_matching_files(variables_filename)
+      checkpoint_sharded = True
+
+  # Prepare the files to restore a session.
+  if not variables_filename_list:
+    restore_files = ""
+  elif checkpoint_v2 or not checkpoint_sharded:
+    # For checkpoint v2 or v1 with non-sharded files, use "export" to restore
+    # the session.
+    restore_files = constants.VARIABLES_FILENAME
+  else:
+    restore_files = constants.VARIABLES_FILENAME_PATTERN
+
   assets_dir = os.path.join(export_dir, constants.ASSETS_DIRECTORY)
 
   # Reads meta graph file.
@@ -94,8 +120,8 @@ def load_session_bundle_from_path(export_dir, target="", config=None):
   # Import the graph.
   saver = tf.train.import_meta_graph(meta_graph_def)
   # Restore the session.
-  if variables_filename:
-    saver.restore(sess, variables_filename)
+  if restore_files:
+    saver.restore(sess, os.path.join(export_dir, restore_files))
 
   init_op_tensor = None
   if constants.INIT_OP_KEY in collection_def:

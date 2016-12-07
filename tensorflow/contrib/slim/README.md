@@ -901,7 +901,7 @@ slim.evaluation.evaluation_loop(
     log_dir,
     num_evals=num_batches,
     eval_op=names_to_updates.values(),
-    summary_op=tf.merge_summary(summary_ops),
+    summary_op=tf.summary.merge(summary_ops),
     eval_interval_secs=eval_interval_secs)
 ```
 

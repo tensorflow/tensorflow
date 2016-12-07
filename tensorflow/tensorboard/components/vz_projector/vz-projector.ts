@@ -127,10 +127,9 @@ export class Projector extends ProjectorPolymer implements
 
   setSelectedLabelOption(labelOption: string) {
     this.selectedLabelOption = labelOption;
-    const labelAccessor = (ds: DataSet, i: number): string =>
-        ds.points[i].metadata[this.selectedLabelOption] as string;
     this.metadataCard.setLabelOption(this.selectedLabelOption);
-    this.projectorScatterPlotAdapter.setLabelPointAccessor(labelAccessor);
+    this.projectorScatterPlotAdapter.setLabelPointAccessor(labelOption);
+    this.projectorScatterPlotAdapter.updateScatterPlotAttributes();
     this.projectorScatterPlotAdapter.render();
   }
 
@@ -165,16 +164,20 @@ export class Projector extends ProjectorPolymer implements
     }
     if (this.projectorScatterPlotAdapter != null) {
       if (ds == null) {
+        this.projectorScatterPlotAdapter.setLabelPointAccessor(null);
         this.setProjection(null);
+      } else {
+        this.projectorScatterPlotAdapter.updateScatterPlotPositions();
+        this.projectorScatterPlotAdapter.updateScatterPlotAttributes();
+        this.projectorScatterPlotAdapter.resize();
+        this.projectorScatterPlotAdapter.render();
       }
-      this.projectorScatterPlotAdapter.updateScatterPlotPositions();
-      this.projectorScatterPlotAdapter.updateScatterPlotAttributes();
-      this.projectorScatterPlotAdapter.resize();
-      this.projectorScatterPlotAdapter.render();
     }
     if (ds != null) {
       this.dataPanel.setNormalizeData(this.normalizeData);
       this.setCurrentDataSet(ds.getSubset());
+      this.projectorScatterPlotAdapter.setLabelPointAccessor(
+          this.selectedLabelOption);
       this.inspectorPanel.datasetChanged();
 
       this.inspectorPanel.metadataChanged(spriteAndMetadata);
@@ -416,11 +419,10 @@ export class Projector extends ProjectorPolymer implements
     });
 
     {
-      const labelAccessor = i =>
-          '' + this.dataSet.points[i].metadata[this.selectedLabelOption];
       this.projectorScatterPlotAdapter = new ProjectorScatterPlotAdapter(
           this.getScatterContainer(), this as ProjectorEventContext);
-      this.projectorScatterPlotAdapter.setLabelPointAccessor(labelAccessor);
+      this.projectorScatterPlotAdapter.setLabelPointAccessor(
+          this.selectedLabelOption);
     }
 
     this.projectorScatterPlotAdapter.scatterPlot.onCameraMove(

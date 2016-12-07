@@ -78,7 +78,7 @@ class TransformerTest(tf.test.TestCase):
     hashed_sparse = tf.contrib.layers.sparse_column_with_hash_bucket("wire", 10)
     wire_tensor = tf.SparseTensor(values=["omar", "stringer", "marlo"],
                                   indices=[[0, 0], [1, 0], [1, 1]],
-                                  shape=[2, 2])
+                                  dense_shape=[2, 2])
     features = {"wire": wire_tensor}
     # Test transform features.
     output = tf.contrib.layers.transform_features(
@@ -100,7 +100,7 @@ class TransformerTest(tf.test.TestCase):
         "wire", 10, dtype=tf.int64)
     wire_tensor = tf.SparseTensor(values=[101, 201, 301],
                                   indices=[[0, 0], [1, 0], [1, 1]],
-                                  shape=[2, 2])
+                                  dense_shape=[2, 2])
     features = {"wire": wire_tensor}
     # Test transform features.
     output = tf.contrib.layers.transform_features(
@@ -135,7 +135,7 @@ class TransformerTest(tf.test.TestCase):
     hashed_sparse = tf.contrib.layers.sparse_column_with_hash_bucket("wire", 10)
     wire_tensor = tf.SparseTensor(values=["omar", "stringer", "marlo"],
                                   indices=[[0, 0], [1, 0], [1, 1]],
-                                  shape=[2, 2])
+                                  dense_shape=[2, 2])
     features = {"wire": wire_tensor}
     output = feature_column_ops._Transformer(features).transform(
         tf.contrib.layers.embedding_column(hashed_sparse, 10))
@@ -157,7 +157,7 @@ class TransformerTest(tf.test.TestCase):
         "wire", ["marlo", "omar", "stringer"])
     wire_tensor = tf.SparseTensor(values=["omar", "stringer", "marlo"],
                                   indices=[[0, 0], [1, 0], [1, 1]],
-                                  shape=[2, 2])
+                                  dense_shape=[2, 2])
     features = {"wire": wire_tensor}
     # Test transform features.
     output = tf.contrib.layers.transform_features(
@@ -196,7 +196,7 @@ class TransformerTest(tf.test.TestCase):
         "wire", 10)
     wire_tensor = tf.SparseTensor(values=[100, 1, 25],
                                   indices=[[0, 0], [1, 0], [1, 1]],
-                                  shape=[2, 2])
+                                  dense_shape=[2, 2])
     features = {"wire": wire_tensor}
     # Test transform features.
     output = tf.contrib.layers.transform_features(
@@ -235,11 +235,11 @@ class TransformerTest(tf.test.TestCase):
         "ids", ["marlo", "omar", "stringer"])
     ids_tensor = tf.SparseTensor(values=["stringer", "stringer", "marlo"],
                                  indices=[[0, 0], [1, 0], [1, 1]],
-                                 shape=[2, 2])
+                                 dense_shape=[2, 2])
     weighted_ids = tf.contrib.layers.weighted_sparse_column(ids, "weights")
     weights_tensor = tf.SparseTensor(values=[10.0, 20.0, 30.0],
                                      indices=[[0, 0], [1, 0], [1, 1]],
-                                     shape=[2, 2])
+                                     dense_shape=[2, 2])
     features = {"ids": ids_tensor,
                 "weights": weights_tensor}
     # Test transform features.
@@ -273,10 +273,10 @@ class TransformerTest(tf.test.TestCase):
     features = {
         "language": tf.SparseTensor(values=["english", "spanish"],
                                     indices=[[0, 0], [1, 0]],
-                                    shape=[2, 1]),
+                                    dense_shape=[2, 1]),
         "country": tf.SparseTensor(values=["US", "SV"],
                                    indices=[[0, 0], [1, 0]],
-                                   shape=[2, 1])
+                                   dense_shape=[2, 1])
     }
     # Test transform features.
     output = tf.contrib.layers.transform_features(
@@ -301,7 +301,7 @@ class TransformerTest(tf.test.TestCase):
         "price": tf.constant([[20.]]),
         "country": tf.SparseTensor(values=["US", "SV"],
                                    indices=[[0, 0], [0, 1]],
-                                   shape=[1, 2])
+                                   dense_shape=[1, 2])
     }
     # Test transform features.
     output = tf.contrib.layers.transform_features(
@@ -326,7 +326,7 @@ class TransformerTest(tf.test.TestCase):
       features = {"price": tf.constant([[20., 210.], [110., 50.], [-3., -30.]]),
                   "country": tf.SparseTensor(values=["US", "SV", "US"],
                                              indices=[[0, 0], [1, 0], [2, 0]],
-                                             shape=[3, 2])}
+                                             dense_shape=[3, 2])}
       output, column_to_variable, _ = (
           tf.contrib.layers.weighted_sum_from_feature_columns(features,
                                                               [country_price],
@@ -359,10 +359,10 @@ class TransformerTest(tf.test.TestCase):
         "price": tf.constant([[20.]]),
         "country": tf.SparseTensor(values=["US", "SV"],
                                    indices=[[0, 0], [0, 1]],
-                                   shape=[1, 2]),
+                                   dense_shape=[1, 2]),
         "wire": tf.SparseTensor(values=["omar", "stringer", "marlo"],
                                 indices=[[0, 0], [0, 1], [0, 2]],
-                                shape=[1, 3])
+                                dense_shape=[1, 3])
     }
     # Test transform features.
     output = tf.contrib.layers.transform_features(
@@ -509,7 +509,8 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
     ids_column = tf.contrib.layers.sparse_column_with_keys(
         "ids", ["a", "b", "c", "unseen"])
     ids_tensor = tf.SparseTensor(
-        values=["c", "b", "a"], indices=[[0, 0], [1, 0], [2, 0]], shape=[3, 1])
+        values=["c", "b", "a"], indices=[[0, 0], [1, 0], [2, 0]],
+        dense_shape=[3, 1])
     one_hot_sparse = tf.contrib.layers.one_hot_column(ids_column)
     features = {"ids": ids_tensor}
     output = tf.contrib.layers.input_from_feature_columns(features,
@@ -586,7 +587,7 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
   def testScatteredEmbeddingColumnSucceedsForDNN(self):
     wire_tensor = tf.SparseTensor(values=["omar", "stringer", "marlo", "omar"],
                                   indices=[[0, 0], [1, 0], [1, 1], [2, 0]],
-                                  shape=[3, 2])
+                                  dense_shape=[3, 2])
 
     features = {"wire": wire_tensor}
     # Big enough hash space so that hopefully there is no collision
@@ -610,7 +611,7 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
     hashed_sparse = tf.contrib.layers.sparse_column_with_hash_bucket("wire", 10)
     wire_tensor = tf.SparseTensor(values=["omar", "stringer", "marlo"],
                                   indices=[[0, 0], [1, 0], [1, 1]],
-                                  shape=[2, 2])
+                                  dense_shape=[2, 2])
     features = {"wire": wire_tensor}
     init_value = 133.7
     embeded_sparse = tf.contrib.layers.embedding_column(
@@ -629,7 +630,7 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
     hashed_sparse = tf.contrib.layers.sparse_column_with_hash_bucket("wire", 10)
     wire_tensor = tf.SparseTensor(values=["omar", "stringer", "marlo"],
                                   indices=[[0, 0], [1, 0], [1, 1]],
-                                  shape=[2, 2])
+                                  dense_shape=[2, 2])
     features = {"wire": wire_tensor}
     embedded_sparse = tf.contrib.layers.embedding_column(
         hashed_sparse,
@@ -656,11 +657,11 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
         "ids", ["marlo", "omar", "stringer"])
     ids_tensor = tf.SparseTensor(values=["stringer", "stringer", "marlo"],
                                  indices=[[0, 0], [1, 0], [1, 1]],
-                                 shape=[2, 2])
+                                 dense_shape=[2, 2])
     weighted_ids = tf.contrib.layers.weighted_sparse_column(ids, "weights")
     weights_tensor = tf.SparseTensor(values=[10.0, 20.0, 30.0],
                                      indices=[[0, 0], [1, 0], [1, 1]],
-                                     shape=[2, 2])
+                                     dense_shape=[2, 2])
     features = {"ids": ids_tensor,
                 "weights": weights_tensor}
     embeded_sparse = tf.contrib.layers.embedding_column(weighted_ids, 10)
@@ -680,7 +681,7 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
         set([a, b]), hash_bucket_size=10000)
     wire_tensor = tf.SparseTensor(values=["omar", "stringer", "marlo"],
                                   indices=[[0, 0], [1, 0], [1, 1]],
-                                  shape=[2, 2])
+                                  dense_shape=[2, 2])
     features = {"aaa": wire_tensor, "bbb": wire_tensor}
     embeded_sparse = tf.contrib.layers.embedding_column(crossed, 10)
     output = tf.contrib.layers.input_from_feature_columns(features,
@@ -693,7 +694,7 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
     hashed_sparse = tf.contrib.layers.sparse_column_with_hash_bucket("wire", 10)
     wire_tensor = tf.SparseTensor(values=["omar", "stringer", "marlo"],
                                   indices=[[0, 0], [1, 0], [1, 1]],
-                                  shape=[2, 2])
+                                  dense_shape=[2, 2])
     features = {"wire": wire_tensor}
     with self.test_session():
       with self.assertRaisesRegexp(
@@ -706,11 +707,11 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
         "ids", ["marlo", "omar", "stringer"])
     ids_tensor = tf.SparseTensor(values=["stringer", "stringer", "marlo"],
                                  indices=[[0, 0], [1, 0], [1, 1]],
-                                 shape=[2, 2])
+                                 dense_shape=[2, 2])
     weighted_ids = tf.contrib.layers.weighted_sparse_column(ids, "weights")
     weights_tensor = tf.SparseTensor(values=[10.0, 20.0, 30.0],
                                      indices=[[0, 0], [1, 0], [1, 1]],
-                                     shape=[2, 2])
+                                     dense_shape=[2, 2])
     features = {"ids": ids_tensor,
                 "weights": weights_tensor}
     with self.test_session():
@@ -729,7 +730,7 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
         set([a, b]), hash_bucket_size=10000)
     wire_tensor = tf.SparseTensor(values=["omar", "stringer", "marlo"],
                                   indices=[[0, 0], [1, 0], [1, 1]],
-                                  shape=[2, 2])
+                                  dense_shape=[2, 2])
     features = {"aaa": wire_tensor, "bbb": wire_tensor}
     with self.test_session():
       with self.assertRaisesRegexp(
@@ -748,7 +749,7 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
         "price": tf.constant([[20., 200], [110, 2], [-20, -30]]),
         "wire": tf.SparseTensor(values=["omar", "stringer", "marlo"],
                                 indices=[[0, 0], [1, 0], [2, 0]],
-                                shape=[3, 1])
+                                dense_shape=[3, 1])
     }
     embeded_sparse = tf.contrib.layers.embedding_column(
         hashed_sparse,
@@ -764,7 +765,7 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
     hashed_sparse = tf.contrib.layers.sparse_column_with_hash_bucket("wire", 10)
     wire_tensor = tf.SparseTensor(values=["omar", "stringer", "marlo"],
                                   indices=[[0, 0], [1, 0], [1, 1]],
-                                  shape=[3, 2])
+                                  dense_shape=[3, 2])
     features = {"wire": wire_tensor}
     embeded_sparse = tf.contrib.layers.embedding_column(
         hashed_sparse,
@@ -782,7 +783,7 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
     hashed_sparse = tf.contrib.layers.sparse_column_with_hash_bucket("wire", 10)
     wire_tensor = tf.SparseTensor(values=["omar", "stringer", "marlo"],
                                   indices=[[0, 0], [1, 0], [1, 1]],
-                                  shape=[3, 2])
+                                  dense_shape=[3, 2])
     features = {"wire": wire_tensor}
     embedded_sparse = tf.contrib.layers.embedding_column(
         hashed_sparse,
@@ -802,11 +803,11 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
         "ids", ["marlo", "omar", "stringer"])
     ids_tensor = tf.SparseTensor(values=["stringer", "stringer", "marlo"],
                                  indices=[[0, 0], [1, 0], [1, 1]],
-                                 shape=[3, 2])
+                                 dense_shape=[3, 2])
     weighted_ids = tf.contrib.layers.weighted_sparse_column(ids, "weights")
     weights_tensor = tf.SparseTensor(values=[10.0, 20.0, 30.0],
                                      indices=[[0, 0], [1, 0], [1, 1]],
-                                     shape=[3, 2])
+                                     dense_shape=[3, 2])
     features = {"ids": ids_tensor,
                 "weights": weights_tensor}
     embeded_sparse = tf.contrib.layers.embedding_column(
@@ -831,7 +832,7 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
         "price": tf.constant([[20.], [110], [-3]]),
         "wire": tf.SparseTensor(values=["omar", "stringer", "marlo"],
                                 indices=[[0, 0], [1, 0], [2, 0]],
-                                shape=[3, 1])
+                                dense_shape=[3, 1])
     }
     embeded_sparse = tf.contrib.layers.embedding_column(hashed_sparse, 10)
     tf.contrib.layers.input_from_feature_columns(
@@ -850,7 +851,7 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
         "price": tf.constant([[20.], [110], [-3]]),
         "wire": tf.SparseTensor(values=["omar", "stringer", "marlo"],
                                 indices=[[0, 0], [1, 0], [2, 0]],
-                                shape=[3, 1])
+                                dense_shape=[3, 1])
     }
     embeded_sparse = tf.contrib.layers.embedding_column(hashed_sparse, 10)
     tf.contrib.layers.input_from_feature_columns(
@@ -1178,7 +1179,7 @@ class WeightedSumTest(tf.test.TestCase):
     hashed_sparse = tf.contrib.layers.sparse_column_with_hash_bucket("wire", 10)
     wire_tensor = tf.SparseTensor(values=["omar", "stringer", "marlo"],
                                   indices=[[0, 0], [1, 0], [1, 1]],
-                                  shape=[2, 2])
+                                  dense_shape=[2, 2])
     features = {"wire": wire_tensor}
     logits, _, _ = tf.contrib.layers.weighted_sum_from_feature_columns(
         features, [hashed_sparse], num_outputs=5)
@@ -1192,7 +1193,7 @@ class WeightedSumTest(tf.test.TestCase):
         "wire", 10, dtype=tf.int64)
     wire_tensor = tf.SparseTensor(values=[101, 201, 301],
                                   indices=[[0, 0], [1, 0], [1, 1]],
-                                  shape=[2, 2])
+                                  dense_shape=[2, 2])
     features = {"wire": wire_tensor}
     logits, _, _ = tf.contrib.layers.weighted_sum_from_feature_columns(
         features, [hashed_sparse], num_outputs=5)
@@ -1207,7 +1208,7 @@ class WeightedSumTest(tf.test.TestCase):
     logits, _, _ = tf.contrib.layers.weighted_sum_from_feature_columns(
         features, [hashed_sparse], num_outputs=5)
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.assertAllEqual(logits.eval().shape, [2, 5])
 
   def testWeightedSparseColumn(self):
@@ -1215,11 +1216,11 @@ class WeightedSumTest(tf.test.TestCase):
         "ids", ["marlo", "omar", "stringer"])
     ids_tensor = tf.SparseTensor(values=["stringer", "stringer", "marlo"],
                                  indices=[[0, 0], [1, 0], [1, 1]],
-                                 shape=[2, 2])
+                                 dense_shape=[2, 2])
     weighted_ids = tf.contrib.layers.weighted_sparse_column(ids, "weights")
     weights_tensor = tf.SparseTensor(values=[10.0, 20.0, 30.0],
                                      indices=[[0, 0], [1, 0], [1, 1]],
-                                     shape=[2, 2])
+                                     dense_shape=[2, 2])
     features = {"ids": ids_tensor,
                 "weights": weights_tensor}
     logits, _, _ = tf.contrib.layers.weighted_sum_from_feature_columns(
@@ -1242,7 +1243,7 @@ class WeightedSumTest(tf.test.TestCase):
         features, [weighted_ids], num_outputs=5)
 
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       tf.initialize_all_tables().run()
       self.assertAllEqual(logits.eval().shape, [2, 5])
 
@@ -1255,7 +1256,7 @@ class WeightedSumTest(tf.test.TestCase):
         set([a, b]), hash_bucket_size=10000)
     wire_tensor = tf.SparseTensor(values=["omar", "stringer", "marlo"],
                                   indices=[[0, 0], [1, 0], [1, 1]],
-                                  shape=[2, 2])
+                                  dense_shape=[2, 2])
     features = {"aaa": wire_tensor, "bbb": wire_tensor}
     logits, _, _ = tf.contrib.layers.weighted_sum_from_feature_columns(
         features, [crossed], num_outputs=5)
@@ -1267,7 +1268,7 @@ class WeightedSumTest(tf.test.TestCase):
     hashed_sparse = tf.contrib.layers.sparse_column_with_hash_bucket("wire", 10)
     wire_tensor = tf.SparseTensor(values=["omar", "stringer", "marlo"],
                                   indices=[[0, 0], [1, 0], [1, 1]],
-                                  shape=[2, 2])
+                                  dense_shape=[2, 2])
     features = {"wire": wire_tensor}
     embeded_sparse = tf.contrib.layers.embedding_column(hashed_sparse, 10)
     with self.test_session():
@@ -1310,7 +1311,7 @@ class WeightedSumTest(tf.test.TestCase):
         "price": tf.constant([[20.], [110], [-3]]),
         "wire": tf.SparseTensor(values=["omar", "stringer", "marlo"],
                                 indices=[[0, 0], [1, 0], [2, 0]],
-                                shape=[3, 1])
+                                dense_shape=[3, 1])
     }
     output, _, _ = tf.contrib.layers.weighted_sum_from_feature_columns(
         features, [real_valued, bucket, hashed_sparse, crossed],
@@ -1329,7 +1330,7 @@ class WeightedSumTest(tf.test.TestCase):
           "age": tf.constant([[1], [2]]),
           "language": tf.SparseTensor(values=["hindi", "english"],
                                       indices=[[0, 0], [1, 0]],
-                                      shape=[2, 1]),
+                                      dense_shape=[2, 1]),
       }
       output, column_to_variable, bias = (
           tf.contrib.layers.weighted_sum_from_feature_columns(features,
@@ -1363,10 +1364,10 @@ class WeightedSumTest(tf.test.TestCase):
       features = {
           "country": tf.SparseTensor(values=["finland", "us"],
                                      indices=[[0, 0], [1, 0]],
-                                     shape=[2, 1]),
+                                     dense_shape=[2, 1]),
           "language": tf.SparseTensor(values=["hindi", "english"],
                                       indices=[[0, 0], [1, 0]],
-                                      shape=[2, 1]),
+                                      dense_shape=[2, 1]),
       }
       output, variables, bias = (
           tf.contrib.layers.joint_weighted_sum_from_feature_columns(
@@ -1400,7 +1401,7 @@ class WeightedSumTest(tf.test.TestCase):
           "weight": tf.constant([[1], [2]]),
           "language": tf.SparseTensor(values=["hindi", "english"],
                                       indices=[[0, 0], [1, 0]],
-                                      shape=[2, 1]),
+                                      dense_shape=[2, 1]),
       }
       with self.assertRaises(AssertionError):
         tf.contrib.layers.joint_weighted_sum_from_feature_columns(
@@ -1427,10 +1428,10 @@ class WeightedSumTest(tf.test.TestCase):
       features = {
           "language": tf.SparseTensor(values=["hindi", "english"],
                                       indices=[[0, 0], [1, 0]],
-                                      shape=[2, 1]),
+                                      dense_shape=[2, 1]),
           "age": tf.SparseTensor(values=[10.0, 20.0],
                                  indices=[[0, 0], [1, 0]],
-                                 shape=[2, 1])
+                                 dense_shape=[2, 1])
       }
       output, column_to_variable, bias = (
           tf.contrib.layers.weighted_sum_from_feature_columns(
@@ -1457,7 +1458,7 @@ class WeightedSumTest(tf.test.TestCase):
       features = {
           "language": tf.SparseTensor(values=["hindi", "english"],
                                       indices=[[0, 0], [0, 1]],
-                                      shape=[1, 2])
+                                      dense_shape=[1, 2])
       }
       output, column_to_variable, bias = (
           tf.contrib.layers.weighted_sum_from_feature_columns(features,
@@ -1508,10 +1509,10 @@ class WeightedSumTest(tf.test.TestCase):
       features = {
           "language": tf.SparseTensor(values=["english", "spanish"],
                                       indices=[[0, 0], [1, 0]],
-                                      shape=[2, 1]),
+                                      dense_shape=[2, 1]),
           "country": tf.SparseTensor(values=["US", "SV"],
                                      indices=[[0, 0], [1, 0]],
-                                     shape=[2, 1])
+                                     dense_shape=[2, 1])
       }
       output, column_to_variable, _ = (
           tf.contrib.layers.weighted_sum_from_feature_columns(
@@ -1534,7 +1535,7 @@ class WeightedSumTest(tf.test.TestCase):
       features = {
           "language": tf.SparseTensor(values=["english", "spanish"],
                                       indices=[[0, 0], [0, 1]],
-                                      shape=[1, 2]),
+                                      dense_shape=[1, 2]),
       }
       output, column_to_variable, _ = (
           tf.contrib.layers.weighted_sum_from_feature_columns(
@@ -1561,10 +1562,10 @@ class WeightedSumTest(tf.test.TestCase):
       features = {
           "language": tf.SparseTensor(values=["english", "spanish"],
                                       indices=[[0, 0], [0, 1]],
-                                      shape=[1, 2]),
+                                      dense_shape=[1, 2]),
           "country": tf.SparseTensor(values=["US", "SV"],
                                      indices=[[0, 0], [0, 1]],
-                                     shape=[1, 2])
+                                     dense_shape=[1, 2])
       }
       output, column_to_variable, _ = (
           tf.contrib.layers.weighted_sum_from_feature_columns(
@@ -1592,10 +1593,10 @@ class WeightedSumTest(tf.test.TestCase):
       features = {
           "language": tf.SparseTensor(values=["english", "spanish"],
                                       indices=[[0, 0], [0, 1]],
-                                      shape=[1, 2]),
+                                      dense_shape=[1, 2]),
           "country": tf.SparseTensor(values=["US", "SV"],
                                      indices=[[0, 0], [0, 1]],
-                                     shape=[1, 2])
+                                     dense_shape=[1, 2])
       }
       with tf.variable_scope(
           "weighted_sum_from_feature_columns",
@@ -1634,7 +1635,7 @@ class WeightedSumTest(tf.test.TestCase):
                   "incomes": tf.constant([[100., 200., 300.], [10., 20., 30.]]),
                   "country": tf.SparseTensor(values=["US", "SV"],
                                              indices=[[0, 0], [1, 0]],
-                                             shape=[2, 2])}
+                                             dense_shape=[2, 2])}
       output, column_to_variable, _ = (
           tf.contrib.layers.weighted_sum_from_feature_columns(
               features, [country, age, incomes],
@@ -1658,7 +1659,7 @@ class WeightedSumTest(tf.test.TestCase):
                   "incomes": tf.constant([[100., 200., 300.], [10., 20., 30.]]),
                   "country": tf.SparseTensor(values=["US", "SV"],
                                              indices=[[0, 0], [1, 0]],
-                                             shape=[2, 2])}
+                                             dense_shape=[2, 2])}
       output, column_to_variable, _ = (
           tf.contrib.layers.weighted_sum_from_feature_columns(
               features, [country, age, incomes],
@@ -1704,7 +1705,7 @@ class WeightedSumTest(tf.test.TestCase):
       features = {"price": tf.constant([[20., 210], [110, 50], [-3, -30]]),
                   "country": tf.SparseTensor(values=["US", "SV"],
                                              indices=[[0, 0], [1, 0]],
-                                             shape=[3, 2])}
+                                             dense_shape=[3, 2])}
       output, column_to_variable, _ = (
           tf.contrib.layers.weighted_sum_from_feature_columns(features,
                                                               [bucket, country],
@@ -1729,7 +1730,7 @@ class WeightedSumTest(tf.test.TestCase):
       features = {"price": tf.constant([[20., 210], [110, 50], [-3, -30]]),
                   "country": tf.SparseTensor(values=["US", "SV"],
                                              indices=[[0, 0], [1, 0]],
-                                             shape=[3, 2])}
+                                             dense_shape=[3, 2])}
       output, column_to_variable, _ = (
           tf.contrib.layers.weighted_sum_from_feature_columns(features,
                                                               [bucket, country],
@@ -1763,7 +1764,7 @@ class WeightedSumTest(tf.test.TestCase):
           "price": tf.constant([[20.]]),
           "country": tf.SparseTensor(values=["US", "SV"],
                                      indices=[[0, 0], [0, 1]],
-                                     shape=[1, 2])
+                                     dense_shape=[1, 2])
       }
       output, column_to_variable, _ = (
           tf.contrib.layers.weighted_sum_from_feature_columns(features,
@@ -1797,10 +1798,10 @@ class WeightedSumTest(tf.test.TestCase):
           "price": tf.constant([[20.]]),
           "country": tf.SparseTensor(values=["US", "SV"],
                                      indices=[[0, 0], [0, 1]],
-                                     shape=[1, 2]),
+                                     dense_shape=[1, 2]),
           "language": tf.SparseTensor(values=["english", "spanish"],
                                       indices=[[0, 0], [0, 1]],
-                                      shape=[1, 2])
+                                      dense_shape=[1, 2])
       }
       output, column_to_variable, _ = (
           tf.contrib.layers.weighted_sum_from_feature_columns(
@@ -1822,7 +1823,7 @@ class WeightedSumTest(tf.test.TestCase):
     with tf.Graph().as_default():
       features = {"product": tf.SparseTensor(values=[0, 4, 2],
                                              indices=[[0, 0], [1, 0], [2, 0]],
-                                             shape=[3, 1])}
+                                             dense_shape=[3, 1])}
       output, column_to_variable, _ = (
           tf.contrib.layers.weighted_sum_from_feature_columns(features,
                                                               [product],
@@ -1844,7 +1845,7 @@ class WeightedSumTest(tf.test.TestCase):
                                                               [product],
                                                               num_outputs=1))
       with self.test_session() as sess:
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         tf.initialize_all_tables().run()
         product_weights = column_to_variable[product][0]
         sess.run(product_weights.assign([[0.1], [0.2], [0.3], [0.4], [0.5]]))
@@ -1860,7 +1861,7 @@ class WeightedSumTest(tf.test.TestCase):
                                                               [product],
                                                               num_outputs=1))
       with self.test_session() as sess:
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         tf.initialize_all_tables().run()
         product_weights = column_to_variable[product][0]
         sess.run(product_weights.assign([[0.1], [0.2], [0.3], [0.4], [0.5]]))
@@ -1872,7 +1873,7 @@ class WeightedSumTest(tf.test.TestCase):
     with tf.Graph().as_default():
       features = {"product": tf.SparseTensor(values=[5, 4, 7],
                                              indices=[[0, 0], [1, 0], [2, 0]],
-                                             shape=[3, 1])}
+                                             dense_shape=[3, 1])}
       output, column_to_variable, _ = (
           tf.contrib.layers.weighted_sum_from_feature_columns(features,
                                                               [product],
@@ -1978,7 +1979,7 @@ class WeightedSumTest(tf.test.TestCase):
               shape=[4, 1]),
           "country": tf.SparseTensor(values=["US", "SV", "RU", "KE"],
                                      indices=[[0, 0], [1, 0], [2, 0], [3, 0]],
-                                     shape=[4, 1])
+                                     dense_shape=[4, 1])
       }
       output, column_to_variable, _ = (
           tf.contrib.layers.weighted_sum_from_feature_columns(features,
@@ -2035,7 +2036,7 @@ class WeightedSumTest(tf.test.TestCase):
           "price": tf.constant([[20.]]),
           "country": tf.SparseTensor(values=["US", "SV"],
                                      indices=[[0, 0], [0, 1]],
-                                     shape=[1, 2])
+                                     dense_shape=[1, 2])
       }
       tf.contrib.layers.weighted_sum_from_feature_columns(
           features, [country_price, price_bucket],
@@ -2193,7 +2194,7 @@ class InferRealValuedColumnTest(tf.test.TestCase):
   def testSparseTensor(self):
     with self.assertRaises(ValueError):
       tf.contrib.layers.infer_real_valued_columns(
-          tf.SparseTensor(indices=[[0, 0]], values=["a"], shape=[1, 1]))
+          tf.SparseTensor(indices=[[0, 0]], values=["a"], dense_shape=[1, 1]))
 
 
 if __name__ == "__main__":

@@ -114,9 +114,9 @@ class CudnnRNNBenchmark(tf.test.Benchmark):
         inputs = seq_length * [tf.zeros([batch_size, num_units], tf.float32)]
         initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=127)
 
-        cell = tf.nn.rnn_cell.LSTMCell(
+        cell = tf.contrib.rnn.LSTMCell(
             num_units=num_units, initializer=initializer, state_is_tuple=True)
-        multi_cell = tf.nn.rnn_cell.MultiRNNCell([cell] * num_layers)
+        multi_cell = tf.contrib.rnn.MultiRNNCell([cell] * num_layers)
         outputs, final_state = tf.nn.rnn(multi_cell, inputs, dtype=tf.float32)
         trainable_variables = tf.get_collection(
             tf.GraphKeys.TRAINABLE_VARIABLES)
@@ -137,7 +137,7 @@ class CudnnRNNBenchmark(tf.test.Benchmark):
         inputs = seq_length * [tf.zeros([batch_size, num_units], tf.float32)]
         cell = tf.contrib.rnn.python.ops.lstm_ops.LSTMBlockCell(
             num_units=num_units)
-        multi_cell = tf.nn.rnn_cell.MultiRNNCell([cell] * num_layers)
+        multi_cell = tf.contrib.rnn.MultiRNNCell([cell] * num_layers)
         outputs, final_state = tf.nn.rnn(multi_cell, inputs, dtype=tf.float32)
         trainable_variables = tf.get_collection(
             tf.GraphKeys.TRAINABLE_VARIABLES)

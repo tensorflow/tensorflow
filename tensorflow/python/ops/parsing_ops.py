@@ -291,7 +291,7 @@ def parse_example(serialized, features, name=None, example_names=None):
   ```
   {"ft": SparseTensor(indices=[[0, 0], [0, 1], [2, 0]],
                       values=[1.0, 2.0, 3.0],
-                      shape=(3, 2)) }
+                      dense_shape=(3, 2)) }
   ```
 
   Given two `Example` input protos in `serialized`:
@@ -705,7 +705,7 @@ def parse_single_sequence_example(
   `sequence_features` contains `VarLenFeature` and `FixedLenSequenceFeature`
   objects. Each `VarLenFeature` is mapped to a `SparseTensor`, and each
   `FixedLenSequenceFeature` is mapped to a `Tensor`, each of the specified type.
-  The shape will be `(T,) + df.shape` for `FixedLenSequenceFeature` `df`, where
+  The shape will be `(T,) + df.dense_shape` for `FixedLenSequenceFeature` `df`, where
   `T` is the length of the associated `FeatureList` in the `SequenceExample`.
   For instance, `FixedLenSequenceFeature([])` yields a scalar 1-D `Tensor` of
   static shape `[None]` and dynamic shape `[T]`, while

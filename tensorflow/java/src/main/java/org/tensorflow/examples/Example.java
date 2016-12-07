@@ -24,6 +24,6 @@ import org.tensorflow.TensorFlow;
  */
 public class Example {
   public static void main(String[] args) {
-    System.out.println("TensorFlow version: " + TensorFlow.getVersion());
+    System.out.println("TensorFlow version: " + TensorFlow.version());
   }
 }
