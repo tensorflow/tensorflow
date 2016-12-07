@@ -62,17 +62,22 @@ class Scaffold(object):
   object:
 
   * `saver`: A `tf.Saver` object taking care of saving the variables.  Picked
-    from and stored into the `SAVERS` collection in the graph.
+    from and stored into the `SAVERS` collection in the graph by default.
   * `init_op`: An op to run to initialize the variables.  Picked from and
-    stored into the `INIT_OP` collection in the graph.
+    stored into the `INIT_OP` collection in the graph by default.
   * `ready_op`: An op to verify that the variables are initialized.  Picked
-    from and stored into the `READY_OP` collection in the graph.
+    from and stored into the `READY_OP` collection in the graph by default.
+  * `ready_for_local_init_op`: An op to verify that global state has been
+    initialized and it is alright to run `local_init_op`.  Picked from and
+    stored into the `READY_FOR_LOCAL_INIT_OP` collection in the graph by
+    default. This is needed when the initialization of local variables depends
+    on the values of global variables.
   * `local_init_op`: An op to initialize the local variables.  Picked
-    from and stored into the `LOCAL_INIT_OP` collection in the graph.
+    from and stored into the `LOCAL_INIT_OP` collection in the graph by default.
   * `summary_op`: An op to run and merge the summaries in the graph.  Picked
-    from and stored into the `SUMMARY_OP` collection in the graph.
+    from and stored into the `SUMMARY_OP` collection in the graph by default.
   * `global_step`: A tensor containing the global step counter.  Picked
-    from and stored into the `GLOBAL_STEP` collection in the graph.
+    from and stored into the `GLOBAL_STEP` collection in the graph by default.
 
   You can also pass the following additional pieces to the constructor:
 
@@ -89,6 +94,7 @@ class Scaffold(object):
                init_feed_dict=None,
                init_fn=None,
                ready_op=None,
+               ready_for_local_init_op=None,
                local_init_op=None,
                summary_op=None,
                saver=None):
@@ -101,9 +107,14 @@ class Scaffold(object):
       init_fn: Optional function to use to initialize the model after running
         the init_op.  Will be called as `init_fn(scaffold, session)`.
       ready_op: Optional op to verify that the variables are initialized.  Must
-        return an empty scalar string tensor when the variables are
-        initialized, or a non-empty one listing the names of the
-        non-initialized variables.
+        return an empty 1D string tensor when the variables are initialized, or
+        a non-empty 1D string tensor listing the names of the non-initialized
+        variables.
+      ready_for_local_init_op: Optional op to verify that the global variables
+        are initialized and `local_init_op` can be run. Must return an empty
+        1D string tensor when the global variables are initialized, or a
+        non-empty 1D string tensor listing the names of the non-initialized
+        global variables.
       local_init_op: Optional op to initialize local variables.
       summary_op: Optional op to gather all summaries.  Must return a scalar
         string tensor containing a serialized `Summary` proto.
@@ -119,6 +130,7 @@ class Scaffold(object):
 
     self._init_op = init_op
     self._ready_op = ready_op
+    self._ready_for_local_init_op = ready_for_local_init_op
     self._local_init_op = local_init_op
     self._summary_op = summary_op
     self._saver = saver
@@ -144,6 +156,13 @@ class Scaffold(object):
       self._ready_op = Scaffold.get_or_default(
           'ready_op', ops.GraphKeys.READY_OP,
           default_ready_op)
+    if self._ready_for_local_init_op is None:
+      def default_ready_for_local_init_op():
+        return variables.report_uninitialized_variables(
+            variables.global_variables())
+      self._ready_for_local_init_op = Scaffold.get_or_default(
+          'ready_for_local_init_op', ops.GraphKeys.READY_FOR_LOCAL_INIT_OP,
+          default_ready_for_local_init_op)
     if self._local_init_op is None:
       self._local_init_op = Scaffold.get_or_default(
           'local_init_op', ops.GraphKeys.LOCAL_INIT_OP,
@@ -176,6 +195,10 @@ class Scaffold(object):
   @property
   def ready_op(self):
     return self._ready_op
+
+  @property
+  def ready_for_local_init_op(self):
+    return self._ready_for_local_init_op
 
   @property
   def local_init_op(self):
@@ -326,6 +349,7 @@ class ChiefSessionCreator(SessionCreator):
     self._session_manager = sm.SessionManager(
         local_init_op=self._scaffold.local_init_op,
         ready_op=self._scaffold.ready_op,
+        ready_for_local_init_op=self._scaffold.ready_for_local_init_op,
         graph=ops.get_default_graph())
     return self._session_manager
 
@@ -365,6 +389,7 @@ class WorkerSessionCreator(SessionCreator):
     self._session_manager = sm.SessionManager(
         local_init_op=self._scaffold.local_init_op,
         ready_op=self._scaffold.ready_op,
+        ready_for_local_init_op=self._scaffold.ready_for_local_init_op,
         graph=ops.get_default_graph())
     return self._session_manager
 

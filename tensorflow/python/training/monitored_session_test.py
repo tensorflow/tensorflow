@@ -30,6 +30,7 @@ import tensorflow as tf
 from tensorflow.contrib import testing
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import debug_pb2
+from tensorflow.python.framework import ops
 from tensorflow.python.training import monitored_session
 
 
@@ -43,6 +44,7 @@ class ScaffoldTest(tf.test.TestCase):
       self.assertEqual(None, scaffold.init_feed_dict)
       self.assertEqual(None, scaffold.init_fn)
       self.assertEqual(None, scaffold.ready_op)
+      self.assertEqual(None, scaffold.ready_for_local_init_op)
       self.assertEqual(None, scaffold.local_init_op)
       self.assertEqual(None, scaffold.saver)
 
@@ -50,17 +52,25 @@ class ScaffoldTest(tf.test.TestCase):
     with tf.Graph().as_default():
       scaffold = tf.train.Scaffold()
       tf.Variable(1, name='my_var')
+      tf.Variable(2, name='my_local_var',
+                  collections=[ops.GraphKeys.LOCAL_VARIABLES])
       scaffold.finalize()
       self.assertTrue(isinstance(scaffold.init_op, tf.Operation))
       self.assertEqual(None, scaffold.init_feed_dict)
       self.assertEqual(None, scaffold.init_fn)
       self.assertTrue(isinstance(scaffold.ready_op, tf.Tensor))
+      self.assertTrue(isinstance(scaffold.ready_for_local_init_op, tf.Tensor))
       self.assertTrue(isinstance(scaffold.local_init_op, tf.Operation))
       self.assertTrue(isinstance(scaffold.saver, tf.train.Saver))
       with self.test_session() as sess:
-        self.assertTrue(b'my_var' in sess.run(scaffold.ready_op))
-        sess.run([scaffold.init_op, scaffold.local_init_op])
-        self.assertEquals(0, len(sess.run(scaffold.ready_op)))
+        self.assertItemsEqual([b'my_var', b'my_local_var'],
+                              sess.run(scaffold.ready_op))
+        self.assertItemsEqual([b'my_var'],
+                              sess.run(scaffold.ready_for_local_init_op))
+        sess.run(scaffold.init_op)
+        self.assertEqual(0, len(sess.run(scaffold.ready_for_local_init_op)))
+        sess.run(scaffold.local_init_op)
+        self.assertEqual(0, len(sess.run(scaffold.ready_op)))
 
   def test_defaults_no_variables(self):
     with tf.Graph().as_default():
@@ -71,6 +81,7 @@ class ScaffoldTest(tf.test.TestCase):
       self.assertEqual(None, scaffold.init_feed_dict)
       self.assertEqual(None, scaffold.init_fn)
       self.assertTrue(isinstance(scaffold.ready_op, tf.Tensor))
+      self.assertTrue(isinstance(scaffold.ready_for_local_init_op, tf.Tensor))
       self.assertTrue(isinstance(scaffold.local_init_op, tf.Operation))
       self.assertTrue(isinstance(scaffold.saver, tf.train.Saver))
 
@@ -83,6 +94,8 @@ class ScaffoldTest(tf.test.TestCase):
       scaffold2.finalize()
       self.assertEqual(scaffold1.init_op, scaffold2.init_op)
       self.assertEqual(scaffold1.ready_op, scaffold2.ready_op)
+      self.assertEqual(scaffold1.ready_for_local_init_op,
+                       scaffold2.ready_for_local_init_op)
       self.assertEqual(scaffold1.local_init_op, scaffold2.local_init_op)
       self.assertEqual(scaffold1.saver, scaffold2.saver)
 
@@ -103,14 +116,16 @@ class ScaffoldTest(tf.test.TestCase):
           init_feed_dict=3,
           init_fn=lambda scaffold, sess: 4,
           ready_op=5,
-          local_init_op=6,
+          ready_for_local_init_op=6,
+          local_init_op=7,
           saver=saver)
       scaffold.finalize()
       self.assertEqual(2, scaffold.init_op)
       self.assertEqual(3, scaffold.init_feed_dict)
       self.assertTrue(callable(scaffold.init_fn))
       self.assertEqual(5, scaffold.ready_op)
-      self.assertEqual(6, scaffold.local_init_op)
+      self.assertEqual(6, scaffold.ready_for_local_init_op)
+      self.assertEqual(7, scaffold.local_init_op)
       self.assertEqual(saver, scaffold.saver)
 
   def test_graph_is_finalized(self):
