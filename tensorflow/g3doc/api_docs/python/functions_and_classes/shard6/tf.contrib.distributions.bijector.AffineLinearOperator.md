@@ -1,30 +1,70 @@
-Bijector which computes Y = g(X) = X X^T where X is a lower-triangular, positive-diagonal matrix.
+Bijector which computes `Y = g(X; shift, scale) = scale @ X.T + shift`.
 
-`event_ndims` must be 0 or 2, i.e., scalar or matrix.
+`shift` is a numeric `Tensor` and `scale` is a `LinearOperator`.
 
-Note: the upper-triangular part of X is ignored (whether or not its zero).
+If `X` is a scalar then the forward transformation is: `scale * X + shift`
+where `*` denotes the scalar product.
 
-Examples:
+Note: we don't always simply transpose `X` (but write it this way for
+brevity).  Actually the input `X` undergoes the following transformation
+before being premultiplied by `scale`:
+
+1. If there are no sample dims, we call `X = tf.expand_dims(X, 0)`, i.e.,
+   `new_sample_shape = [1]`. Otherwise do nothing.
+2. The sample shape is flattened to have one dimension, i.e.,
+   `new_sample_shape = [n]` where `n = tf.reduce_prod(old_sample_shape)`.
+3. The sample dim is cyclically rotated left by 1, i.e.,
+   `new_shape = [B1,...,Bb, k, n]` where `n` is as above, `k` is the
+   event_shape, and `B1,...,Bb` are the batch shapes for each of `b` batch
+   dimensions.
+
+(For more details see `shape.make_batch_of_event_sample_matrices`.)
+
+The result of the above transformation is that `X` can be regarded as a batch
+of matrices where each column is a draw from the distribution.  After
+premultiplying by `scale`, we take the inverse of this procedure.  The input
+`Y` also undergoes the same transformation before/after premultiplying by
+`inv(scale)`.
+
+Example Use:
 
 ```python
-bijector.CholeskyOuterProduct(event_ndims=2).forward(x=[[1., 0], [2, 1]])
-# Result: [[1, 1], [1, 5]], i.e., x x^T
+linalg = tf.contrib.linalg
 
-bijector.SoftmaxCentered(event_ndims=2).inverse(y=[[1., 1], [1, 5]])
-# Result: [[1, 0], [2, 1]], i.e., chol(y).
+x = [1., 2, 3]
+
+shift = [-1., 0., 1]
+diag = [1., 2, 3]
+scale = linalg.LinearOperatorDiag(diag)
+affine = AffineLinearOperator(shift, scale)
+# In this case, `forward` is equivalent to:
+# diag * scale + shift
+y = affine.forward(x)  # [0., 4, 10]
+
+shift = [2., 3, 1]
+tril = [[1., 0, 0],
+        [2, 1, 0],
+        [3, 2, 1]]
+scale = linalg.LinearOperatorTriL(tril)
+affine = AffineLinearOperator(shift, scale)
+# In this case, `forward` is equivalent to:
+# np.squeeze(np.matmul(tril, np.expand_dims(x, -1)), -1) + shift
+y = affine.forward(x)  # [3., 7, 11]
 ```
 - - -
 
-#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.__init__(event_ndims=2, validate_args=False, name='cholesky_outer_product')` {#CholeskyOuterProduct.__init__}
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.__init__(shift=None, scale=None, event_ndims=1, validate_args=False, name='affine_linear_operator')` {#AffineLinearOperator.__init__}
 
-Instantiates the `CholeskyOuterProduct` bijector.
+Instantiates the `AffineLinearOperator` bijector.
 
 ##### Args:
 
 
-*  <b>`event_ndims`</b>: `constant` `int32` scalar `Tensor` indicating the number of
-    dimensions associated with a particular draw from the distribution. Must
-    be 0 or 2.
+*  <b>`shift`</b>: Numeric `Tensor`.
+*  <b>`scale`</b>: Subclass of `LinearOperator`.  Represents the (batch) positive
+    definite matrix `M` in `R^{k x k}`.
+*  <b>`event_ndims`</b>: Scalar `integer` `Tensor` indicating the number of dimensions
+    associated with a particular draw from the distribution. Must be 0 or 1.
 *  <b>`validate_args`</b>: `Boolean` indicating whether arguments should be checked
     for correctness.
 *  <b>`name`</b>: `String` name given to ops managed by this object.
@@ -32,19 +72,22 @@ Instantiates the `CholeskyOuterProduct` bijector.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if event_ndims is neither 0 or 2.
+*  <b>`ValueError`</b>: if `event_ndims` is not 0 or 1.
+*  <b>`TypeError`</b>: if `scale` is not a `LinearOperator`.
+*  <b>`TypeError`</b>: if `shift.dtype` does not match `scale.dtype`.
+*  <b>`ValueError`</b>: if not `scale.is_non_singular`.
 
 
 - - -
 
-#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.dtype` {#CholeskyOuterProduct.dtype}
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.dtype` {#AffineLinearOperator.dtype}
 
 dtype of `Tensor`s transformable by this distribution.
 
 
 - - -
 
-#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.forward(x, name='forward', **condition_kwargs)` {#CholeskyOuterProduct.forward}
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.forward(x, name='forward', **condition_kwargs)` {#AffineLinearOperator.forward}
 
 Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
@@ -69,7 +112,7 @@ Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
 - - -
 
-#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.forward_event_shape(input_shape, name='forward_event_shape')` {#CholeskyOuterProduct.forward_event_shape}
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.forward_event_shape(input_shape, name='forward_event_shape')` {#AffineLinearOperator.forward_event_shape}
 
 Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
 
@@ -89,7 +132,7 @@ Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.forward_log_det_jacobian(x, name='forward_log_det_jacobian', **condition_kwargs)` {#CholeskyOuterProduct.forward_log_det_jacobian}
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.forward_log_det_jacobian(x, name='forward_log_det_jacobian', **condition_kwargs)` {#AffineLinearOperator.forward_log_det_jacobian}
 
 Returns both the forward_log_det_jacobian.
 
@@ -115,7 +158,7 @@ Returns both the forward_log_det_jacobian.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.get_forward_event_shape(input_shape)` {#CholeskyOuterProduct.get_forward_event_shape}
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.get_forward_event_shape(input_shape)` {#AffineLinearOperator.get_forward_event_shape}
 
 Shape of a single sample from a single batch as a `TensorShape`.
 
@@ -136,7 +179,7 @@ Same meaning as `forward_event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.get_inverse_event_shape(output_shape)` {#CholeskyOuterProduct.get_inverse_event_shape}
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.get_inverse_event_shape(output_shape)` {#AffineLinearOperator.get_inverse_event_shape}
 
 Shape of a single sample from a single batch as a `TensorShape`.
 
@@ -157,14 +200,14 @@ Same meaning as `inverse_event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.graph_parents` {#CholeskyOuterProduct.graph_parents}
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.graph_parents` {#AffineLinearOperator.graph_parents}
 
 Returns this `Bijector`'s graph_parents as a Python list.
 
 
 - - -
 
-#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.inverse(y, name='inverse', **condition_kwargs)` {#CholeskyOuterProduct.inverse}
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.inverse(y, name='inverse', **condition_kwargs)` {#AffineLinearOperator.inverse}
 
 Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
 
@@ -190,7 +233,7 @@ Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
 
 - - -
 
-#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.inverse_and_inverse_log_det_jacobian(y, name='inverse_and_inverse_log_det_jacobian', **condition_kwargs)` {#CholeskyOuterProduct.inverse_and_inverse_log_det_jacobian}
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.inverse_and_inverse_log_det_jacobian(y, name='inverse_and_inverse_log_det_jacobian', **condition_kwargs)` {#AffineLinearOperator.inverse_and_inverse_log_det_jacobian}
 
 Returns both the inverse evaluation and inverse_log_det_jacobian.
 
@@ -221,7 +264,7 @@ See `inverse()`, `inverse_log_det_jacobian()` for more details.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.inverse_event_shape(output_shape, name='inverse_event_shape')` {#CholeskyOuterProduct.inverse_event_shape}
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.inverse_event_shape(output_shape, name='inverse_event_shape')` {#AffineLinearOperator.inverse_event_shape}
 
 Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
 
@@ -241,7 +284,7 @@ Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.inverse_log_det_jacobian(y, name='inverse_log_det_jacobian', **condition_kwargs)` {#CholeskyOuterProduct.inverse_log_det_jacobian}
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.inverse_log_det_jacobian(y, name='inverse_log_det_jacobian', **condition_kwargs)` {#AffineLinearOperator.inverse_log_det_jacobian}
 
 Returns the (log o det o Jacobian o inverse)(y).
 
@@ -271,7 +314,7 @@ Note that `forward_log_det_jacobian` is the negative of this function.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.is_constant_jacobian` {#CholeskyOuterProduct.is_constant_jacobian}
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.is_constant_jacobian` {#AffineLinearOperator.is_constant_jacobian}
 
 Returns true iff the Jacobian is not a function of x.
 
@@ -284,21 +327,35 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.name` {#CholeskyOuterProduct.name}
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.name` {#AffineLinearOperator.name}
 
 Returns the string name of this `Bijector`.
 
 
 - - -
 
-#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.shaper` {#CholeskyOuterProduct.shaper}
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.scale` {#AffineLinearOperator.scale}
+
+The `scale` `LinearOperator` in `Y = scale @ X.T + shift`.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.shaper` {#AffineLinearOperator.shaper}
 
 Returns shape object used to manage shape constraints.
 
 
 - - -
 
-#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.validate_args` {#CholeskyOuterProduct.validate_args}
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.shift` {#AffineLinearOperator.shift}
+
+The `shift` `Tensor` in `Y = scale @ X.T + shift`.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.validate_args` {#AffineLinearOperator.validate_args}
 
 Returns True if Tensor arguments will be validated.
 

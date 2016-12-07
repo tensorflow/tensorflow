@@ -232,6 +232,13 @@ Same meaning as `inverse_event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.bijector.Affine.graph_parents` {#Affine.graph_parents}
+
+Returns this `Bijector`'s graph_parents as a Python list.
+
+
+- - -
+
 #### `tf.contrib.distributions.bijector.Affine.inverse(y, name='inverse', **condition_kwargs)` {#Affine.inverse}
 
 Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
@@ -355,13 +362,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.Affine.name` {#Affine.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Affine.parameters` {#Affine.parameters}
-
-Returns this `Bijector`'s parameters as a name/value dictionary.
 
 
 - - -

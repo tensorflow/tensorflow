@@ -132,7 +132,7 @@ Subclass Requirements:
 
 - If the `Bijector`'s use is limited to `TransformedDistribution` (or friends
   like `QuantizedDistribution`) then depending on your use, you may not need
-  to implement all of `_forward` and `_inverese` functions.  Examples:
+  to implement all of `_forward` and `_inverse` functions.  Examples:
     1. Sampling (e.g., `sample`) only requires `_forward`.
     2. Probability functions (e.g., `prob`, `cdf`, `survival`) only require
        `_inverse` (and related).
@@ -209,7 +209,7 @@ https://en.wikipedia.org/wiki/Determinant#Multiplicativity_and_matrix_groups).
   the `_inverse` implementation.
 - - -
 
-#### `tf.contrib.distributions.bijector.Bijector.__init__(batch_ndims=None, event_ndims=None, parameters=None, is_constant_jacobian=False, validate_args=False, dtype=None, name=None)` {#Bijector.__init__}
+#### `tf.contrib.distributions.bijector.Bijector.__init__(batch_ndims=None, event_ndims=None, graph_parents=None, is_constant_jacobian=False, validate_args=False, dtype=None, name=None)` {#Bijector.__init__}
 
 Constructs Bijector.
 
@@ -232,7 +232,7 @@ See `Bijector` subclass docstring for more details and specific examples.
 
 *  <b>`batch_ndims`</b>: number of dimensions associated with batch coordinates.
 *  <b>`event_ndims`</b>: number of dimensions associated with event coordinates.
-*  <b>`parameters`</b>: Dictionary of parameters used by this `Bijector`
+*  <b>`graph_parents`</b>: Python list of graph prerequisites of this `Bijector`.
 *  <b>`is_constant_jacobian`</b>: `Boolean` indicating that the Jacobian is not a
     function of the input.
 *  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate input with
@@ -365,6 +365,13 @@ Same meaning as `inverse_event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.bijector.Bijector.graph_parents` {#Bijector.graph_parents}
+
+Returns this `Bijector`'s graph_parents as a Python list.
+
+
+- - -
+
 #### `tf.contrib.distributions.bijector.Bijector.inverse(y, name='inverse', **condition_kwargs)` {#Bijector.inverse}
 
 Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
@@ -488,13 +495,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.Bijector.name` {#Bijector.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Bijector.parameters` {#Bijector.parameters}
-
-Returns this `Bijector`'s parameters as a name/value dictionary.
 
 
 - - -

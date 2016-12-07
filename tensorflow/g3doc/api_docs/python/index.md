@@ -775,6 +775,7 @@
 
 * **[Random variable transformations (contrib)](../../api_docs/python/contrib.distributions.bijector.md)**:
   * [`Affine`](../../api_docs/python/contrib.distributions.bijector.md#Affine)
+  * [`AffineLinearOperator`](../../api_docs/python/contrib.distributions.bijector.md#AffineLinearOperator)
   * [`Bijector`](../../api_docs/python/contrib.distributions.bijector.md#Bijector)
   * [`Chain`](../../api_docs/python/contrib.distributions.bijector.md#Chain)
   * [`CholeskyOuterProduct`](../../api_docs/python/contrib.distributions.bijector.md#CholeskyOuterProduct)
