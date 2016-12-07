@@ -19,28 +19,21 @@ limitations under the License.
 #include <deque>
 
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/resource_op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/queue_base.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
 // Defines a QueueOp, an abstract class for Queue construction ops.
-class QueueOp : public OpKernel {
+class QueueOp : public ResourceOpKernel<QueueInterface> {
  public:
-  QueueOp(OpKernelConstruction* context)
-      : OpKernel(context), queue_handle_set_(false) {
+  QueueOp(OpKernelConstruction* context) : ResourceOpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("capacity", &capacity_));
-    OP_REQUIRES_OK(context,
-                   context->allocate_persistent(DT_STRING, TensorShape({2}),
-                                                &queue_handle_, nullptr));
     if (capacity_ < 0) {
       capacity_ = QueueBase::kUnbounded;
     }
@@ -48,55 +41,30 @@ class QueueOp : public OpKernel {
                    context->GetAttr("component_types", &component_types_));
   }
 
-  void Compute(OpKernelContext* ctx) override {
-    mutex_lock l(mu_);
-    if (!queue_handle_set_) {
-      OP_REQUIRES_OK(ctx, SetQueueHandle(ctx));
-    }
-    ctx->set_output_ref(0, &mu_, queue_handle_.AccessTensor(ctx));
-  }
-
  protected:
-  ~QueueOp() override {
-    // If the queue object was not shared, delete it.
-    if (queue_handle_set_ && cinfo_.resource_is_private_to_kernel()) {
-      TF_CHECK_OK(cinfo_.resource_manager()->Delete<QueueInterface>(
-          cinfo_.container(), cinfo_.name()));
-    }
-  }
-
- protected:
-  typedef std::function<Status(QueueInterface**)> CreatorCallback;
-
-  // Subclasses must override this
-  virtual CreatorCallback GetCreator() const = 0;
-
   // Variables accessible by subclasses
   int32 capacity_;
   DataTypeVector component_types_;
-  ContainerInfo cinfo_;
 
  private:
-  Status SetQueueHandle(OpKernelContext* ctx) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    TF_RETURN_IF_ERROR(cinfo_.Init(ctx->resource_manager(), def()));
-    CreatorCallback creator = GetCreator();
-    QueueInterface* queue;
-    TF_RETURN_IF_ERROR(
-        cinfo_.resource_manager()->LookupOrCreate<QueueInterface>(
-            cinfo_.container(), cinfo_.name(), &queue, creator));
-    core::ScopedUnref unref_me(queue);
-    // Verify that the shared queue is compatible with the requested arguments.
-    TF_RETURN_IF_ERROR(queue->MatchesNodeDef(def()));
-    auto h = queue_handle_.AccessTensor(ctx)->flat<string>();
-    h(0) = cinfo_.container();
-    h(1) = cinfo_.name();
-    queue_handle_set_ = true;
-    return Status::OK();
+  Status VerifyResource(QueueInterface* queue) override {
+    return queue->MatchesNodeDef(def());
   }
+};
 
-  mutex mu_;
-  PersistentTensor queue_handle_ GUARDED_BY(mu_);
-  bool queue_handle_set_ GUARDED_BY(mu_);
+class TypedQueueOp : public QueueOp {
+ public:
+  using QueueOp::QueueOp;
+
+ protected:
+  template <typename TypedQueue>
+  Status CreateTypedQueue(TypedQueue* queue, QueueInterface** ret) {
+    if (queue == nullptr) {
+      return errors::ResourceExhausted("Failed to allocate queue.");
+    }
+    *ret = queue;
+    return queue->Initialize();
+  }
 };
 
 }  // namespace tensorflow
