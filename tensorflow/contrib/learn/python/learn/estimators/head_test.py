@@ -23,7 +23,9 @@ import numpy as np
 import six
 import tensorflow as tf
 
+from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
+from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 
 
 def _assert_variables(
@@ -598,6 +600,142 @@ class BinarySvmModelHeadTest(tf.test.TestCase):
           "accuracy": 1.,
           "loss": expected_loss,
       }, model_fn_ops)
+
+
+class MultiHeadTest(tf.test.TestCase):
+
+  def testTrain_withNoHeadWeights(self):
+    head1 = head_lib._multi_class_head(n_classes=3, label_name="label1",
+                                       head_name="head1")
+    head2 = head_lib._multi_class_head(n_classes=4, label_name="label2",
+                                       head_name="head2")
+    head = head_lib._multi_head([head1, head2])
+    logits = tf.constant([[-0.7, 0.2, .1, .1, .1, .1, .1]])
+    labels = {
+        "label1": tf.constant([1]),
+        "label2": tf.constant([1])
+
+    }
+    features = {"weights": tf.constant([2.0, 10.0])}
+    model_fn_ops = head.head_ops(features, labels,
+                                 tf.contrib.learn.ModeKeys.TRAIN,
+                                 _noop_train_op, logits=logits)
+
+    self.assertEquals(None, model_fn_ops.predictions)
+    self.assertTrue(model_fn_ops.loss is not None)
+    self.assertTrue(model_fn_ops.train_op is not None)
+    self.assertFalse(model_fn_ops.eval_metric_ops)
+    self.assertEquals(None, model_fn_ops.signature_fn)
+    self.assertEquals(None, model_fn_ops.output_alternatives)
+
+    with tf.Session() as sess:
+      self.assertAlmostEqual(2.224, sess.run(model_fn_ops.loss), places=3)
+
+  def testTrain_withHeadWeights(self):
+    head1 = head_lib._multi_class_head(n_classes=3, label_name="label1",
+                                       head_name="head1")
+    head2 = head_lib._multi_class_head(n_classes=4, label_name="label2",
+                                       head_name="head2")
+    head = head_lib._multi_head([head1, head2], [1, .5])
+    logits = tf.constant([[-0.7, 0.2, .1, .1, .1, .1, .1]])
+    labels = {
+        "label1": tf.constant([1]),
+        "label2": tf.constant([1])
+    }
+    features = {"weights": tf.constant([2.0, 10.0])}
+    model_fn_ops = head.head_ops(features, labels,
+                                 tf.contrib.learn.ModeKeys.TRAIN,
+                                 _noop_train_op, logits=logits)
+    self.assertEquals(None, model_fn_ops.predictions)
+    self.assertTrue(model_fn_ops.loss is not None)
+    self.assertTrue(model_fn_ops.train_op is not None)
+    self.assertFalse(model_fn_ops.eval_metric_ops)
+    self.assertEquals(None, model_fn_ops.signature_fn)
+    self.assertEquals(None, model_fn_ops.output_alternatives)
+
+    with tf.Session() as sess:
+      self.assertAlmostEqual(1.531, sess.run(model_fn_ops.loss), places=3)
+
+  def testInfer(self):
+    head1 = head_lib._multi_class_head(n_classes=3, label_name="label1",
+                                       head_name="head1")
+    head2 = head_lib._multi_class_head(n_classes=4, label_name="label2",
+                                       head_name="head2")
+    head = head_lib._multi_head([head1, head2], [1, .5])
+    logits = tf.constant([[-0.7, 0.2, .1, .1, .1, .1, .1]])
+    labels = {
+        "label1": tf.constant([1]),
+        "label2": tf.constant([1])
+
+    }
+    features = {"weights": tf.constant([2.0, 10.0])}
+    model_fn_ops = head.head_ops(features, labels,
+                                 tf.contrib.learn.ModeKeys.INFER,
+                                 _noop_train_op, logits=logits)
+
+    self.assertTrue(model_fn_ops.predictions)
+    self.assertEquals(None, model_fn_ops.loss)
+    self.assertEquals(None, model_fn_ops.train_op)
+    self.assertFalse(model_fn_ops.eval_metric_ops)
+    self.assertEquals(None, model_fn_ops.signature_fn)
+    self.assertTrue(len(model_fn_ops.output_alternatives) == 2)
+
+    # Tests predictions keys
+    pred_keys = model_fn_ops.predictions.keys()
+    self.assertTrue(("head1", prediction_key.PredictionKey.PROBABILITIES) in
+                    pred_keys)
+    self.assertTrue(("head1", prediction_key.PredictionKey.CLASSES) in
+                    pred_keys)
+    self.assertTrue(("head2", prediction_key.PredictionKey.PROBABILITIES) in
+                    pred_keys)
+    self.assertTrue(("head2", prediction_key.PredictionKey.CLASSES) in
+                    pred_keys)
+
+    # Tests output alternative
+    out_alts = model_fn_ops.output_alternatives
+    self.assertEquals(constants.ProblemType.CLASSIFICATION,
+                      out_alts["head1"][0])
+    self.assertTrue(prediction_key.PredictionKey.PROBABILITIES in
+                    out_alts["head1"][1].keys())
+    self.assertTrue(prediction_key.PredictionKey.CLASSES in
+                    out_alts["head1"][1].keys())
+
+    self.assertEquals(constants.ProblemType.CLASSIFICATION,
+                      out_alts["head2"][0])
+    self.assertTrue(prediction_key.PredictionKey.PROBABILITIES in
+                    out_alts["head2"][1].keys())
+    self.assertTrue(prediction_key.PredictionKey.CLASSES in
+                    out_alts["head2"][1].keys())
+
+  def testEval(self):
+    head1 = head_lib._multi_class_head(n_classes=3, label_name="label1",
+                                       head_name="head1")
+    head2 = head_lib._multi_class_head(n_classes=4, label_name="label2",
+                                       head_name="head2")
+    head = head_lib._multi_head([head1, head2], [1, .5])
+    logits = tf.constant([[-0.7, 0.2, .1, .1, .1, .1, .1]])
+    labels = {
+        "label1": tf.constant([1]),
+        "label2": tf.constant([1])
+
+    }
+    features = {"weights": tf.constant([2.0, 10.0])}
+    model_fn_ops = head.head_ops(features, labels,
+                                 tf.contrib.learn.ModeKeys.EVAL,
+                                 _noop_train_op, logits=logits)
+
+    self.assertTrue(model_fn_ops.predictions)
+    self.assertTrue(model_fn_ops.loss is not None)
+    self.assertEquals(None, model_fn_ops.train_op)
+    self.assertTrue(model_fn_ops.eval_metric_ops)
+    self.assertEquals(None, model_fn_ops.signature_fn)
+    self.assertEquals(None, model_fn_ops.output_alternatives)
+
+    metric_ops = model_fn_ops.eval_metric_ops
+
+    # Tests eval keys
+    self.assertTrue("accuracy/head1" in metric_ops.keys())
+    self.assertTrue("accuracy/head2" in metric_ops.keys())
 
 
 def _noop_train_op(unused_loss):
