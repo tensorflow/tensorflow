@@ -711,14 +711,19 @@ class BaseEstimator(
       if isinstance(train_ops, model_fn_lib.ModelFnOps):  # Default signature
         train_op = train_ops.train_op
         loss_op = train_ops.loss
+        if self.config.is_chief:
+          hooks = train_ops.training_chief_hooks + train_ops.training_hooks
+        else:
+          hooks = train_ops.training_hooks
       else:  # Legacy signature
         if len(train_ops) != 2:
           raise ValueError('Expected a tuple of train_op and loss, got {}'.
                            format(train_ops))
         train_op = train_ops[0]
         loss_op = train_ops[1]
+        hooks = []
 
-      hooks = monitor_lib.replace_monitors_with_hooks(monitors, self)
+      hooks += monitor_lib.replace_monitors_with_hooks(monitors, self)
 
       ops.add_to_collection(ops.GraphKeys.LOSSES, loss_op)
       return graph_actions._monitored_train(  # pylint: disable=protected-access
