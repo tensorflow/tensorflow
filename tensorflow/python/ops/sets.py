@@ -67,6 +67,31 @@ ops.NotDifferentiable("DenseToSparseSetOperation")
 ops.NotDifferentiable("SparseToSparseSetOperation")
 
 
+def _convert_to_tensors_or_sparse_tensors(a, b):
+  """Convert to tensor types, and flip order if necessary.
+
+  Args:
+    a: `Tensor` or `SparseTensor` of the same type as `b`.
+    b: `Tensor` or `SparseTensor` of the same type as `a`.
+
+  Returns:
+    Tuple of `(a, b, flipped)`, where `a` and `b` have been converted to
+    `Tensor` or `SparseTensor`, and `flipped` indicates whether the order has
+    been flipped to make it dense,sparse instead of sparse,dense (since the set
+    ops do not support the latter).
+  """
+  a = sparse_tensor.convert_to_tensor_or_sparse_tensor(a, name="a")
+  if a.dtype.base_dtype not in _VALID_DTYPES:
+    raise TypeError("'a' invalid dtype %s." % a.dtype)
+  b = sparse_tensor.convert_to_tensor_or_sparse_tensor(b, name="b")
+  if b.dtype.base_dtype != a.dtype.base_dtype:
+    raise TypeError("Types don't match, %s vs %s." % (a.dtype, b.dtype))
+  if (isinstance(a, sparse_tensor.SparseTensor) and
+      not isinstance(b, sparse_tensor.SparseTensor)):
+    return b, a, True
+  return a, b, False
+
+
 def _set_operation(a, b, set_operation, validate_indices=True):
   """Compute set operation of elements in last dimension of `a` and `b`.
 
@@ -92,13 +117,6 @@ def _set_operation(a, b, set_operation, validate_indices=True):
     TypeError: If inputs are invalid types.
     ValueError: If `a` is sparse and `b` is dense.
   """
-  a = sparse_tensor.convert_to_tensor_or_sparse_tensor(a, name="a")
-  if a.dtype.base_dtype not in _VALID_DTYPES:
-    raise TypeError("'a' invalid dtype %s." % a.dtype)
-  b = sparse_tensor.convert_to_tensor_or_sparse_tensor(b, name="b")
-  if b.dtype.base_dtype != a.dtype.base_dtype:
-    raise TypeError("Types don't match, %s vs %s." % (a.dtype, b.dtype))
-  # pylint: disable=protected-access
   if isinstance(a, sparse_tensor.SparseTensor):
     if isinstance(b, sparse_tensor.SparseTensor):
       indices, values, shape = gen_set_ops.sparse_to_sparse_set_operation(
@@ -113,7 +131,6 @@ def _set_operation(a, b, set_operation, validate_indices=True):
   else:
     indices, values, shape = gen_set_ops.dense_to_dense_set_operation(
         a, b, set_operation, validate_indices)
-  # pylint: enable=protected-access
   return sparse_tensor.SparseTensor(indices, values, shape)
 
 
@@ -122,20 +139,57 @@ def set_intersection(a, b, validate_indices=True):
 
   All but the last dimension of `a` and `b` must match.
 
+  Example:
+    a = [
+      [
+        [
+          [1, 2],
+          [3],
+        ],
+        [
+          [4],
+          [5, 6],
+        ],
+      ],
+    ]
+    b = [
+      [
+        [
+          [1, 3],
+          [2],
+        ],
+        [
+          [4, 5],
+          [5, 6, 7, 8],
+        ],
+      ],
+    ]
+    set_intersection(a, b) = [
+      [
+        [
+          [1],
+          [],
+        ],
+        [
+          [4],
+          [5, 6],
+        ],
+      ],
+    ]
   Args:
     a: `Tensor` or `SparseTensor` of the same type as `b`. If sparse, indices
         must be sorted in row-major order.
-    b: `Tensor` or `SparseTensor` of the same type as `a`. Must be
-        `SparseTensor` if `a` is `SparseTensor`. If sparse, indices must be
-        sorted in row-major order.
+    b: `Tensor` or `SparseTensor` of the same type as `a`. If sparse, indices
+        must be sorted in row-major order.
     validate_indices: Whether to validate the order and range of sparse indices
        in `a` and `b`.
 
   Returns:
-    A `SparseTensor` with the same rank as `a` and `b`, and all but the last
-    dimension the same. Elements along the last dimension contain the
+    A `SparseTensor` whose shape is the same rank as `a` and `b`, and all but
+    the last dimension the same. Elements along the last dimension contain the
     intersections.
   """
+  a, b, _ = _convert_to_tensors_or_sparse_tensors(a, b)
   return _set_operation(a, b, "intersection", validate_indices)
 
 
@@ -144,21 +198,61 @@ def set_difference(a, b, aminusb=True, validate_indices=True):
 
   All but the last dimension of `a` and `b` must match.
 
+  Example:
+    a = [
+      [
+        [
+          [1, 2],
+          [3],
+        ],
+        [
+          [4],
+          [5, 6],
+        ],
+      ],
+    ]
+    b = [
+      [
+        [
+          [1, 3],
+          [2],
+        ],
+        [
+          [4, 5],
+          [5, 6, 7, 8],
+        ],
+      ],
+    ]
+    set_difference(a, b, aminusb=True) = [
+      [
+        [
+          [2],
+          [3],
+        ],
+        [
+          [],
+          [],
+        ],
+      ],
+    ]
+
   Args:
     a: `Tensor` or `SparseTensor` of the same type as `b`. If sparse, indices
         must be sorted in row-major order.
-    b: `Tensor` or `SparseTensor` of the same type as `a`. Must be
-        `SparseTensor` if `a` is `SparseTensor`. If sparse, indices must be
-        sorted in row-major order.
+    b: `Tensor` or `SparseTensor` of the same type as `a`. If sparse, indices
+        must be sorted in row-major order.
     aminusb: Whether to subtract `b` from `a`, vs vice versa.
     validate_indices: Whether to validate the order and range of sparse indices
        in `a` and `b`.
 
   Returns:
-    A `SparseTensor` with the same rank as `a` and `b`, and all but the last
-    dimension the same. Elements along the last dimension contain the
+    A `SparseTensor` whose shape is the same rank as `a` and `b`, and all but
+    the last dimension the same. Elements along the last dimension contain the
     differences.
   """
+  a, b, flipped = _convert_to_tensors_or_sparse_tensors(a, b)
+  if flipped:
+    aminusb = not aminusb
   return _set_operation(a, b, "a-b" if aminusb else "b-a", validate_indices)
 
 
@@ -167,18 +261,56 @@ def set_union(a, b, validate_indices=True):
 
   All but the last dimension of `a` and `b` must match.
 
+  Example:
+    a = [
+      [
+        [
+          [1, 2],
+          [3],
+        ],
+        [
+          [4],
+          [5, 6],
+        ],
+      ],
+    ]
+    b = [
+      [
+        [
+          [1, 3],
+          [2],
+        ],
+        [
+          [4, 5],
+          [5, 6, 7, 8],
+        ],
+      ],
+    ]
+    set_union(a, b) = [
+      [
+        [
+          [1, 2, 3],
+          [2, 3],
+        ],
+        [
+          [4, 5],
+          [5, 6, 7, 8],
+        ],
+      ],
+    ]
+
   Args:
     a: `Tensor` or `SparseTensor` of the same type as `b`. If sparse, indices
         must be sorted in row-major order.
-    b: `Tensor` or `SparseTensor` of the same type as `a`. Must be
-        `SparseTensor` if `a` is `SparseTensor`. If sparse, indices must be
-        sorted in row-major order.
+    b: `Tensor` or `SparseTensor` of the same type as `a`. If sparse, indices
+        must be sorted in row-major order.
     validate_indices: Whether to validate the order and range of sparse indices
        in `a` and `b`.
 
   Returns:
-    A `SparseTensor` with the same rank as `a` and `b`, and all but the last
-    dimension the same. Elements along the last dimension contain the
+    A `SparseTensor` whose shape is the same rank as `a` and `b`, and all but
+    the last dimension the same. Elements along the last dimension contain the
     unions.
   """
+  a, b, _ = _convert_to_tensors_or_sparse_tensors(a, b)
   return _set_operation(a, b, "union", validate_indices)

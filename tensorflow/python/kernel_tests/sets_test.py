@@ -392,18 +392,22 @@ class SetOpsTest(test_util.TensorFlowTestCase):
                         result_sparse_tensor.shape.get_shape().as_list())
 
   def _set_intersection(self, a, b):
-    # Validate that we get the same results with or without `validate_indices`.
-    ops = [
+    # Validate that we get the same results with or without `validate_indices`,
+    # and with a & b swapped.
+    ops = (
         tf.contrib.metrics.set_intersection(a, b, validate_indices=True),
-        tf.contrib.metrics.set_intersection(a, b, validate_indices=False)
-    ]
+        tf.contrib.metrics.set_intersection(a, b, validate_indices=False),
+        tf.contrib.metrics.set_intersection(b, a, validate_indices=True),
+        tf.contrib.metrics.set_intersection(b, a, validate_indices=False),
+    )
     for op in ops:
       self._assert_shapes(a, op)
     with self.test_session() as sess:
       results = sess.run(ops)
-    self.assertAllEqual(results[0].indices, results[1].indices)
-    self.assertAllEqual(results[0].values, results[1].values)
-    self.assertAllEqual(results[0].shape, results[1].shape)
+    for i in range(1, 4):
+      self.assertAllEqual(results[0].indices, results[i].indices)
+      self.assertAllEqual(results[0].values, results[i].values)
+      self.assertAllEqual(results[0].shape, results[i].shape)
     return results[0]
 
   def _set_intersection_count(self, a, b):
@@ -738,20 +742,26 @@ class SetOpsTest(test_util.TensorFlowTestCase):
                           self._set_difference_count(sp_a, sp_b, False))
 
   def _set_difference(self, a, b, aminusb=True):
-    # Validate that we get the same results with or without `validate_indices`.
-    ops = [
+    # Validate that we get the same results with or without `validate_indices`,
+    # and with a & b swapped.
+    ops = (
         tf.contrib.metrics.set_difference(
             a, b, aminusb=aminusb, validate_indices=True),
         tf.contrib.metrics.set_difference(
-            a, b, aminusb=aminusb, validate_indices=False)
-    ]
+            a, b, aminusb=aminusb, validate_indices=False),
+        tf.contrib.metrics.set_difference(
+            b, a, aminusb=not aminusb, validate_indices=True),
+        tf.contrib.metrics.set_difference(
+            b, a, aminusb=not aminusb, validate_indices=False),
+    )
     for op in ops:
       self._assert_shapes(a, op)
     with self.test_session() as sess:
       results = sess.run(ops)
-    self.assertAllEqual(results[0].indices, results[1].indices)
-    self.assertAllEqual(results[0].values, results[1].values)
-    self.assertAllEqual(results[0].shape, results[1].shape)
+    for i in range(1, 4):
+      self.assertAllEqual(results[0].indices, results[i].indices)
+      self.assertAllEqual(results[0].values, results[i].values)
+      self.assertAllEqual(results[0].shape, results[i].shape)
     return results[0]
 
   def _set_difference_count(self, a, b, aminusb=True):
@@ -942,18 +952,22 @@ class SetOpsTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(expected_counts, self._set_union_count(sp_a, sp_b))
 
   def _set_union(self, a, b):
-    # Validate that we get the same results with or without `validate_indices`.
-    ops = [
+    # Validate that we get the same results with or without `validate_indices`,
+    # and with a & b swapped.
+    ops = (
         tf.contrib.metrics.set_union(a, b, validate_indices=True),
-        tf.contrib.metrics.set_union(a, b, validate_indices=False)
-    ]
+        tf.contrib.metrics.set_union(a, b, validate_indices=False),
+        tf.contrib.metrics.set_union(b, a, validate_indices=True),
+        tf.contrib.metrics.set_union(b, a, validate_indices=False),
+    )
     for op in ops:
       self._assert_shapes(a, op)
     with self.test_session() as sess:
       results = sess.run(ops)
-    self.assertAllEqual(results[0].indices, results[1].indices)
-    self.assertAllEqual(results[0].values, results[1].values)
-    self.assertAllEqual(results[0].shape, results[1].shape)
+    for i in range(1, 4):
+      self.assertAllEqual(results[0].indices, results[i].indices)
+      self.assertAllEqual(results[0].values, results[i].values)
+      self.assertAllEqual(results[0].shape, results[i].shape)
     return results[0]
 
   def _set_union_count(self, a, b):
