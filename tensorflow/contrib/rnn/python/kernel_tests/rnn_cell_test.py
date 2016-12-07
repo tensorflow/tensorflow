@@ -483,8 +483,8 @@ class RNNCellTest(tf.test.TestCase):
                                           dtype=np.float32), dtype=tf.float32)
             output, state = cell(inputs, zero_state)
             if state_is_tuple:
-              concat_state = tf.concat(
-                  1, [state[0][0], state[0][1], state[1], state[2]])
+              concat_state = tf.concat_v2(
+                  [state[0][0], state[0][1], state[1], state[2]], 1)
             else:
               concat_state = state
             sess.run(tf.global_variables_initializer())
@@ -540,14 +540,15 @@ class RNNCellTest(tf.test.TestCase):
               (batch_size, attn_length * num_units), 0.0, 1.0, seed=seed+4)
           zero_state = ((zeros1, zeros2), zeros3, attn_state_zeros)
           if not state_is_tuple:
-            zero_state = tf.concat(1,
-                                   [zero_state[0][0], zero_state[0][1],
-                                    zero_state[1], zero_state[2]])
+            zero_state = tf.concat_v2([
+                zero_state[0][0], zero_state[0][1], zero_state[1], zero_state[2]
+            ], 1)
           inputs = tf.random_uniform(
               (batch_size, num_units), 0.0, 1.0, seed=seed+5)
           output, state = cell(inputs, zero_state)
           if state_is_tuple:
-            state = tf.concat(1, [state[0][0], state[0][1], state[1], state[2]])
+            state = tf.concat_v2([state[0][0], state[0][1], state[1], state[2]],
+                                 1)
           sess.run(tf.global_variables_initializer())
           self.assertAllClose(sess.run(output), expected_output)
           self.assertAllClose(sess.run(state), expected_state)

@@ -506,7 +506,7 @@ class InlineBijectorTest(tf.test.TestCase):
   def testShapeGetters(self):
     with self.test_session():
       bijector = bijectors.Inline(
-          forward_event_shape_fn=lambda x: tf.concat(0, (x, [1])),
+          forward_event_shape_fn=lambda x: tf.concat_v2((x, [1]), 0),
           get_forward_event_shape_fn=lambda x: x.as_list() + [1],
           inverse_event_shape_fn=lambda x: x[:-1],
           get_inverse_event_shape_fn=lambda x: x[:-1],

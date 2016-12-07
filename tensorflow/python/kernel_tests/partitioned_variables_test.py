@@ -250,7 +250,7 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
       rnd_par = tf.constant([1, 2, 3, 4])
       vs = tf.create_partitioned_variables([4], [4], rnd_par)
       tf.global_variables_initializer().run()
-      val = tf.concat(0, vs).eval()
+      val = tf.concat_v2(vs, 0).eval()
       rnd = rnd_par.eval()
       self.assertAllClose(rnd, val)
       self.assertEqual([tf.int32] * 4, [v.dtype.base_dtype for v in vs])
@@ -261,7 +261,7 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
       rnd_par = tf.constant([[1, 2, 3, 4], [5, 6, 7, 8]])
       vs = tf.create_partitioned_variables([2, 4], [1, 2], rnd_par)
       tf.global_variables_initializer().run()
-      val = tf.concat(1, vs).eval()
+      val = tf.concat_v2(vs, 1).eval()
       rnd = rnd_par.eval()
       self.assertAllClose(rnd, val)
       self.assertEqual([tf.int32] * 2, [v.dtype.base_dtype for v in vs])
@@ -323,7 +323,7 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
       vs = tf.create_partitioned_variables(
           rnd.get_shape(), [1, 10], rnd.initialized_value())
       tf.global_variables_initializer().run()
-      val = tf.concat(1, vs).eval()
+      val = tf.concat_v2(vs, 1).eval()
       rnd = rnd.eval()
       self.assertAllClose(rnd, val)
       self.assertEqual([tf.float32] * 10, [v.dtype.base_dtype for v in vs])
@@ -372,7 +372,7 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
            "20 43 0,20:27,8",
            "20 43 0,20:35,8"]]
       for i, vs in enumerate(var_lists):
-        var_val = tf.concat(1, vs).eval()
+        var_val = tf.concat_v2(vs, 1).eval()
         self.assertAllClose(rnd_val, var_val)
         self.assertEqual(
             [tf.float64] * len(vs), [v.dtype.base_dtype for v in vs])
@@ -385,7 +385,7 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
       vs = tf.create_partitioned_variables(
           rnd.get_shape(), [1, 1], rnd.initialized_value())
       tf.global_variables_initializer().run()
-      val = tf.concat(0, vs).eval()
+      val = tf.concat_v2(vs, 0).eval()
       rnd = rnd.eval()
       self.assertAllClose(rnd, val)
       self._TestSaveSpec(vs, ["10 43 0,10:0,43"])
@@ -396,7 +396,7 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
       vs = tf.create_partitioned_variables(
           rnd.get_shape(), [10, 1], rnd.initialized_value())
       tf.global_variables_initializer().run()
-      val = tf.concat(0, vs).eval()
+      val = tf.concat_v2(vs, 0).eval()
       rnd = rnd.eval()
       self.assertAllClose(rnd, val)
       self._TestSaveSpec(vs, ["10 43 0,1:0,43",
@@ -420,7 +420,7 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
       slice0 = _IotaInitializer([5, 5])
       slice1 = _IotaInitializer([4, 5])
       slice2 = _IotaInitializer([4, 5])
-      val = tf.concat(0, vs).eval()
+      val = tf.concat_v2(vs, 0).eval()
       self.assertAllClose(slice0 + slice1 + slice2, val)
       self._TestSaveSpec(vs, ["13 5 0,5:0,5",
                               "13 5 5,4:0,5",

@@ -3300,12 +3300,14 @@ class MeanIOUTest(tf.test.TestCase):
       self.assertAlmostEqual(desired_output, miou.eval())
 
   def testUpdateOpEvalIsAccumulatedConfusionMatrix(self):
-    predictions = tf.concat(0,
-                            [tf.constant(0, shape=[5]),
-                             tf.constant(1, shape=[5])])
-    labels = tf.concat(0,
-                       [tf.constant(0, shape=[3]),
-                        tf.constant(1, shape=[7])])
+    predictions = tf.concat_v2(
+        [tf.constant(
+            0, shape=[5]), tf.constant(
+                1, shape=[5])], 0)
+    labels = tf.concat_v2(
+        [tf.constant(
+            0, shape=[3]), tf.constant(
+                1, shape=[7])], 0)
     num_classes = 2
     with self.test_session() as sess:
       miou, update_op = metrics.mean_iou(
@@ -3339,14 +3341,23 @@ class MeanIOUTest(tf.test.TestCase):
       self.assertEqual(0., miou.eval())
 
   def testResultsWithSomeMissing(self):
-    predictions = tf.concat(0, [tf.constant(0, shape=[5]),
-                                tf.constant(1, shape=[5])])
-    labels = tf.concat(0, [tf.constant(0, shape=[3]),
-                           tf.constant(1, shape=[7])])
+    predictions = tf.concat_v2(
+        [tf.constant(
+            0, shape=[5]), tf.constant(
+                1, shape=[5])], 0)
+    labels = tf.concat_v2(
+        [tf.constant(
+            0, shape=[3]), tf.constant(
+                1, shape=[7])], 0)
     num_classes = 2
-    weights = tf.concat(0, [tf.constant(0, shape=[1]),
-                            tf.constant(1, shape=[8]),
-                            tf.constant(0, shape=[1])])
+    weights = tf.concat_v2(
+        [
+            tf.constant(
+                0, shape=[1]), tf.constant(
+                    1, shape=[8]), tf.constant(
+                        0, shape=[1])
+        ],
+        0)
     with self.test_session() as sess:
       miou, update_op = metrics.mean_iou(
           labels, predictions, num_classes, weights=weights)

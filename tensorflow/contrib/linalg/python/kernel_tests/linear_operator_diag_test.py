@@ -135,7 +135,7 @@ class LinearOperatorDiagTest(
       self.assertAllEqual((2, 1, 3, 3), operator.shape)
 
       # Create a batch matrix with the broadcast shape of operator.
-      diag_broadcast = tf.concat(1, (diag, diag))
+      diag_broadcast = tf.concat_v2((diag, diag), 1)
       mat = tf.matrix_diag(diag_broadcast)
       self.assertAllEqual((2, 2, 3, 3), mat.get_shape())  # being pedantic.
 

@@ -87,7 +87,8 @@ def boston_eval_fn():
   features = tf.reshape(
       tf.constant(boston.data), [n_examples, _BOSTON_INPUT_DIM])
   labels = tf.reshape(tf.constant(boston.target), [n_examples, 1])
-  return tf.concat(0, [features, features]), tf.concat(0, [labels, labels])
+  return tf.concat_v2([features, features], 0), tf.concat_v2([labels, labels],
+                                                             0)
 
 
 def linear_model_params_fn(features, labels, mode, params):

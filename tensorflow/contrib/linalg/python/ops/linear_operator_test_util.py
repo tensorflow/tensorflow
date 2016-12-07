@@ -31,7 +31,7 @@ class LinearOperatorDerivedClassTest(tf.test.TestCase):
   test methods to work.
   """
 
-    # Absolute/relative tolerance for tests.
+  # Absolute/relative tolerance for tests.
   _atol = {
       tf.float16: 1e-3, tf.float32: 1e-6, tf.float64: 1e-12, tf.complex64: 1e-6,
       tf.complex128: 1e-12}
@@ -218,7 +218,7 @@ class SquareLinearOperatorDerivedClassTest(LinearOperatorDerivedClassTest):
     else:
       batch_shape = operator.batch_shape_dynamic()
       n = operator.domain_dimension_dynamic()
-      rhs_shape = tf.concat(0, (batch_shape, [n, r]))
+      rhs_shape = tf.concat_v2((batch_shape, [n, r]), 0)
 
     x = tf.random_normal(shape=rhs_shape, dtype=operator.dtype.real_dtype)
     if operator.dtype.is_complex:

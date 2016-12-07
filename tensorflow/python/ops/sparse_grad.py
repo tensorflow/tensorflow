@@ -191,15 +191,13 @@ def _SparseDenseCwiseMulOrDivGrad(op, grad, is_mul):
   y_shape = math_ops.to_int64(array_ops.shape(y))
   num_added_dims = array_ops.expand_dims(
       array_ops.size(x_shape) - array_ops.size(y_shape), 0)
-  augmented_y_shape = array_ops.concat(0, [array_ops.ones(num_added_dims,
-                                                          ops.dtypes.int64),
-                                           y_shape])
+  augmented_y_shape = array_ops.concat_v2(
+      [array_ops.ones(num_added_dims, ops.dtypes.int64), y_shape], 0)
 
   scaling = x_shape // augmented_y_shape
   scaled_indices = x_indices // scaling
-  scaled_indices = array_ops.slice(scaled_indices,
-                                   array_ops.concat(0, [[0], num_added_dims]),
-                                   [-1, -1])
+  scaled_indices = array_ops.slice(
+      scaled_indices, array_ops.concat_v2([[0], num_added_dims], 0), [-1, -1])
   dense_vals = array_ops.gather_nd(y, scaled_indices)
 
   if is_mul:

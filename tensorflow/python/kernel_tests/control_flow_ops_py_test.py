@@ -646,7 +646,7 @@ class ControlFlowTest(tf.test.TestCase):
       def compute(i, c, o):
         c = tf.strided_slice(x, tf.expand_dims(i, 0),
                              [1] + tf.expand_dims(i, 0))
-        o = tf.concat(0, [o, c])
+        o = tf.concat_v2([o, c], 0)
         i = tf.add(i, 1)
         return [i, c, o]
 
@@ -726,7 +726,7 @@ class ControlFlowTest(tf.test.TestCase):
       c = lambda i, j: tf.less(i, 2)
       def b(i, j):
         new_i = tf.add(i, 1)
-        new_j = tf.concat(0, [j, j])
+        new_j = tf.concat_v2([j, j], 0)
         return [new_i, new_j]
       r = tf.while_loop(c, b, [i, m],
                         [i.get_shape(), tensor_shape.TensorShape([None, 2])])
@@ -1626,7 +1626,7 @@ class ControlFlowTest(tf.test.TestCase):
         return i < 2
 
       def body(i, h):
-        return i+1, tf.concat(0, [h, x])
+        return i + 1, tf.concat_v2([h, x], 0)
 
       _, h = tf.while_loop(
           condition, body, [i0, h0],

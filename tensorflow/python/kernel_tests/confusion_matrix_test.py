@@ -63,11 +63,13 @@ class ConfusionMatrixTest(tf.test.TestCase):
       neg = tf.random_normal([20], mean=m_neg, stddev=s, dtype=tf.float32)
       pos = tf.random_normal([20], mean=m_pos, stddev=s, dtype=tf.float32)
 
-      data = tf.concat(0, [neg, pos])
+      data = tf.concat_v2([neg, pos], 0)
       data = tf.cast(tf.round(data), tf_dtype)
       data = tf.minimum(tf.maximum(data, 0), 1)
-      lab = tf.concat(0, [tf.zeros([20], dtype=tf_dtype),
-                          tf.ones([20], dtype=tf_dtype)])
+      lab = tf.concat_v2(
+          [tf.zeros(
+              [20], dtype=tf_dtype), tf.ones(
+                  [20], dtype=tf_dtype)], 0)
 
       cm = tf.confusion_matrix(
           lab, data, dtype=tf_dtype, num_classes=2)

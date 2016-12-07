@@ -1483,10 +1483,11 @@ class ScaleAndShift(Bijector):
                 math_ops.equal(event_ndims, 1)
             ])]), 1, 0)
     right = array_ops.where(math_ops.equal(event_ndims, 0), 2, 0)
-    pad = array_ops.concat(0, (
-        array_ops.ones([left], dtype=dtypes.int32),
-        array_ops.shape(scale),
-        array_ops.ones([right], dtype=dtypes.int32)))
+    pad = array_ops.concat_v2(
+        (array_ops.ones(
+            [left], dtype=dtypes.int32), array_ops.shape(scale), array_ops.ones(
+                [right], dtype=dtypes.int32)),
+        0)
     scale = array_ops.reshape(scale, pad)
     batch_ndims = ndims - 2 + right
     # For safety, explicitly zero-out the upper triangular part.
@@ -1713,9 +1714,11 @@ class SoftmaxCentered(Bijector):
     y = array_ops.expand_dims(x, dim=-1) if self._static_event_ndims == 0 else x
     ndims = (y.get_shape().ndims if y.get_shape().ndims is not None
              else array_ops.rank(y))
-    y = array_ops.pad(y, paddings=array_ops.concat(0, (
-        array_ops.zeros((ndims - 1, 2), dtype=dtypes.int32),
-        [[0, 1]])))
+    y = array_ops.pad(y,
+                      paddings=array_ops.concat_v2(
+                          (array_ops.zeros(
+                              (ndims - 1, 2), dtype=dtypes.int32), [[0, 1]]),
+                          0))
 
     # Set shape hints.
     if x.get_shape().ndims is not None:
@@ -1756,12 +1759,14 @@ class SoftmaxCentered(Bijector):
                               depth=ndims,
                               on_value=shape[-1]-np.array(1, dtype=shape.dtype),
                               dtype=shape.dtype)
-    size = array_ops.concat(0, (shape[:-1], np.asarray([1], dtype=shape.dtype)))
+    size = array_ops.concat_v2(
+        (shape[:-1], np.asarray(
+            [1], dtype=shape.dtype)), 0)
     log_normalization = -array_ops.strided_slice(x, begin, begin + size)
 
     # Here we slice out all but the last coordinate; see above for idea.
     begin = array_ops.zeros_like(shape)
-    size = array_ops.concat(0, (shape[:-1], [shape[-1]-1]))
+    size = array_ops.concat_v2((shape[:-1], [shape[-1] - 1]), 0)
     x = array_ops.strided_slice(x, begin, begin + size)
 
     x += log_normalization

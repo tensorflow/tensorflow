@@ -189,7 +189,7 @@ class Categorical(distribution.Distribution):
     samples = math_ops.cast(samples, self.dtype)
     ret = array_ops.reshape(
         array_ops.transpose(samples),
-        array_ops.concat(0, ([n], self.batch_shape())))
+        array_ops.concat_v2(([n], self.batch_shape()), 0))
     return ret
 
   def _log_prob(self, k):

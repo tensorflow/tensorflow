@@ -111,9 +111,9 @@ class GradientsTest(test_util.TensorFlowTestCase):
       t2 = constant(2.0)
       t3 = array_ops.pack([t1, t2])
       t4 = constant([1.0])
-      t5 = array_ops.concat(0, [t4, t3])
+      t5 = array_ops.concat_v2([t4, t3], 0)
       t6 = constant([2.0])
-      t7 = array_ops.concat(0, [t5, t6])
+      t7 = array_ops.concat_v2([t5, t6], 0)
     self._assertOpListEqual([t7.op, t5.op, t4.op],
                             _OpsBetween(g, [t7.op], [t4.op]))
 
@@ -122,10 +122,10 @@ class GradientsTest(test_util.TensorFlowTestCase):
       t1 = constant(1.0)
       t2 = constant(2.0)
       t3 = array_ops.pack([t1, t2])
-      t4 = array_ops.concat(0, [t3, t3, t3])
+      t4 = array_ops.concat_v2([t3, t3, t3], 0)
       t5 = constant([1.0])
-      t6 = array_ops.concat(0, [t4, t5])
-      t7 = array_ops.concat(0, [t6, t3])
+      t6 = array_ops.concat_v2([t4, t5], 0)
+      t7 = array_ops.concat_v2([t6, t3], 0)
     self._assertOpListEqual([t6.op, t4.op, t3.op],
                             _OpsBetween(g, [t6.op], [t3.op]))
     self._assertOpListEqual([t7.op, t6.op, t5.op, t4.op, t3.op, t1.op],

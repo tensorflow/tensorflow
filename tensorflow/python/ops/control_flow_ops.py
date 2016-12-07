@@ -2286,7 +2286,7 @@ class WhileContext(ControlFlowContext):
       if self.outer_context: self.outer_context.Exit()
     else:
       values_shape = array_ops.shape_internal(op.inputs[0], optimize=False)[1:]
-      values_shape = array_ops.concat(0, [[1], values_shape])
+      values_shape = array_ops.concat_v2([[1], values_shape], 0)
       values_acc = array_ops.zeros(values_shape, dtype=values.dtype)
     indices_acc = constant_op.constant([0], indices.dtype)
     shape_acc = None
@@ -2317,8 +2317,10 @@ class WhileContext(ControlFlowContext):
     switch_acc = [switch(x, self._pivot) for x in merge_acc]
 
     # The actual accumulation.
-    acc_indexed_slices = [array_ops.concat(0, [xa[1], xv])
-                          for xa, xv in zip(switch_acc[:2], [indices, values])]
+    acc_indexed_slices = [
+        array_ops.concat_v2([xa[1], xv], 0)
+        for xa, xv in zip(switch_acc[:2], [indices, values])
+    ]
     if shape_acc is not None:
       # For the shape we just keep the maximum
       acc_indexed_slices.append(
@@ -2600,7 +2602,7 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
     i0 = tf.constant(0)
     m0 = tf.ones([2, 2])
     c = lambda i, m: i < 10
-    b = lambda i, m: [i+1, tf.concat(0, [m, m])]
+    b = lambda i, m: [i+1, tf.concat_v2(0, [m, m])]
     tf.while_loop(
         c, b, loop_vars=[i0, m0],
         shape_invariants=[i0.get_shape(), tensor_shape.TensorShape([None, 2])])

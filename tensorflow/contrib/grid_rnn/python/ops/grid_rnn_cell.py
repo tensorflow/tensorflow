@@ -191,13 +191,13 @@ class GridRNNCell(rnn_cell.RNNCell):
 
       output_tensors = [new_output[i] for i in self._config.outputs]
       output = array_ops.zeros(
-          [0, 0], dtype) if len(output_tensors) == 0 else array_ops.concat(
-              1, output_tensors)
+          [0, 0], dtype) if len(output_tensors) == 0 else array_ops.concat_v2(
+              output_tensors, 1)
 
       state_tensors = [new_state[i] for i in self._config.recurrents]
       states = array_ops.zeros(
-          [0, 0], dtype) if len(state_tensors) == 0 else array_ops.concat(
-              1, state_tensors)
+          [0, 0], dtype) if len(state_tensors) == 0 else array_ops.concat_v2(
+              state_tensors, 1)
 
     return output, states
 
@@ -428,7 +428,7 @@ def _propagate(dim_indices, conf, cell, c_prev, m_prev, new_output, new_state,
     for d in conf.dims[:-1]:
       ls_cell_inputs[d.idx] = new_output[d.idx] if new_output[
           d.idx] is not None else m_prev[d.idx]
-    cell_inputs = array_ops.concat(1, ls_cell_inputs)
+    cell_inputs = array_ops.concat_v2(ls_cell_inputs, 1)
   else:
     cell_inputs = array_ops.zeros([m_prev[0].get_shape().as_list()[0], 0],
                                   m_prev[0].dtype)
@@ -438,9 +438,9 @@ def _propagate(dim_indices, conf, cell, c_prev, m_prev, new_output, new_state,
   for i in dim_indices:
     d = conf.dims[i]
     if d.non_recurrent_fn:
-      linear_args = array_ops.concat(
-          1, [cell_inputs, last_dim_output
-             ]) if conf.num_dims > 1 else last_dim_output
+      linear_args = array_ops.concat_v2(
+          [cell_inputs, last_dim_output],
+          1) if conf.num_dims > 1 else last_dim_output
       with vs.variable_scope('non_recurrent' if conf.tied else
                              'non_recurrent/cell_{}'.format(i)):
         if conf.tied and not (first_call and i == dim_indices[0]):
@@ -453,7 +453,7 @@ def _propagate(dim_indices, conf, cell, c_prev, m_prev, new_output, new_state,
             layers.initializers.xavier_initializer)
     else:
       if c_prev[i] is not None:
-        cell_state = array_ops.concat(1, [c_prev[i], last_dim_output])
+        cell_state = array_ops.concat_v2([c_prev[i], last_dim_output], 1)
       else:
         # for GRU/RNN, the state is just the previous output
         cell_state = last_dim_output

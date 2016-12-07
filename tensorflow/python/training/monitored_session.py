@@ -137,10 +137,10 @@ class Scaffold(object):
           default_init_op)
     if self._ready_op is None:
       def default_ready_op():
-        return array_ops.concat(
-            0,
-            [variables.report_uninitialized_variables(),
-             resources.report_uninitialized_resources()])
+        return array_ops.concat_v2([
+            variables.report_uninitialized_variables(),
+            resources.report_uninitialized_resources()
+        ], 0)
       self._ready_op = Scaffold.get_or_default(
           'ready_op', ops.GraphKeys.READY_OP,
           default_ready_op)

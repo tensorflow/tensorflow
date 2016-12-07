@@ -530,7 +530,7 @@ class BidirectionalRNNTest(tf.test.TestCase):
         dtype=tf.float32,
         time_major=use_time_major,
         scope=scope)
-    outputs = tf.concat(2, outputs)
+    outputs = tf.concat_v2(outputs, 2)
     state_fw, state_bw = states
     outputs_shape = [None, max_length, 2 * num_units]
     if use_shape:

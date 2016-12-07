@@ -765,9 +765,9 @@ class WALSModel(object):
     col_shape = [num_rows]
     right = embedding_ops.embedding_lookup(right_factors, gather_indices,
                                            partition_strategy='div')
-    new_sp_indices = tf.concat(1, [row_ids, col_ids])
-    new_sp_shape = (tf.concat(0, [row_shape, col_shape]) if transpose_input
-                    else tf.concat(0, [col_shape, row_shape]))
+    new_sp_indices = tf.concat_v2([row_ids, col_ids], 1)
+    new_sp_shape = (tf.concat_v2([row_shape, col_shape], 0) if transpose_input
+                    else tf.concat_v2([col_shape, row_shape], 0))
     new_sp_input = tf.SparseTensor(indices=new_sp_indices,
                                    values=sp_input.values,
                                    dense_shape=new_sp_shape)

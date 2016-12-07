@@ -231,8 +231,8 @@ class Seq2SeqTest(tf.test.TestCase):
         cell = tf.contrib.rnn.GRUCell(2)
         inp = [tf.constant(0.5, shape=[2, 2])] * 2
         enc_outputs, enc_state = tf.nn.rnn(cell, inp, dtype=tf.float32)
-        attn_states = tf.concat(1, [tf.reshape(e, [-1, 1, cell.output_size])
-                                    for e in enc_outputs])
+        attn_states = tf.concat_v2(
+            [tf.reshape(e, [-1, 1, cell.output_size]) for e in enc_outputs], 1)
         dec_inp = [tf.constant(0.4, shape=[2, 2])] * 3
         dec, mem = tf.contrib.legacy_seq2seq.attention_decoder(
             dec_inp, enc_state,
@@ -251,8 +251,8 @@ class Seq2SeqTest(tf.test.TestCase):
         cell = tf.contrib.rnn.GRUCell(2)
         inp = [tf.constant(0.5, shape=[2, 2])] * 2
         enc_outputs, enc_state = tf.nn.rnn(cell, inp, dtype=tf.float32)
-        attn_states = tf.concat(1, [tf.reshape(e, [-1, 1, cell.output_size])
-                                    for e in enc_outputs])
+        attn_states = tf.concat_v2(
+            [tf.reshape(e, [-1, 1, cell.output_size]) for e in enc_outputs], 1)
         dec_inp = [tf.constant(0.4, shape=[2, 2])] * 3
         dec, mem = tf.contrib.legacy_seq2seq.attention_decoder(
             dec_inp, enc_state,
@@ -313,8 +313,8 @@ class Seq2SeqTest(tf.test.TestCase):
                                            state_is_tuple=True)
         inp = [tf.constant(0.5, shape=[2, 2])] * 2
         enc_outputs, enc_state = tf.nn.rnn(cell, inp, dtype=tf.float32)
-        attn_states = tf.concat(1, [tf.reshape(e, [-1, 1, cell.output_size])
-                                    for e in enc_outputs])
+        attn_states = tf.concat_v2(
+            [tf.reshape(e, [-1, 1, cell.output_size]) for e in enc_outputs], 1)
         dec_inp = [tf.constant(0.4, shape=[2, 2])] * 3
         dec, mem = tf.contrib.legacy_seq2seq.attention_decoder(
             dec_inp, enc_state,
@@ -340,8 +340,9 @@ class Seq2SeqTest(tf.test.TestCase):
                                              state_is_tuple=True)
           inp = tf.constant(0.5, shape=[2, 2, 2])
           enc_outputs, enc_state = tf.nn.rnn(cell, inp, dtype=tf.float32)
-          attn_states = tf.concat(1, [tf.reshape(e, [-1, 1, cell.output_size])
-                                      for e in enc_outputs])
+          attn_states = tf.concat_v2(
+              [tf.reshape(e, [-1, 1, cell.output_size]) for e in enc_outputs],
+              1)
           dec_inp = [tf.constant(0.4, shape=[2, 2])] * 3
           dec, mem = tf.contrib.legacy_seq2seq.attention_decoder(
               dec_inp, enc_state,
@@ -364,8 +365,8 @@ class Seq2SeqTest(tf.test.TestCase):
         inp = [tf.constant(0.5, shape=[2, 2])] * 2
         cell = tf.contrib.rnn.GRUCell(2)
         enc_outputs, enc_state = tf.nn.rnn(cell, inp, dtype=tf.float32)
-        attn_states = tf.concat(1, [tf.reshape(e, [-1, 1, cell.output_size])
-                                    for e in enc_outputs])
+        attn_states = tf.concat_v2(
+            [tf.reshape(e, [-1, 1, cell.output_size]) for e in enc_outputs], 1)
         dec_inp = [tf.constant(i, tf.int32, shape=[2]) for i in range(3)]
         dec, mem = tf.contrib.legacy_seq2seq.embedding_attention_decoder(
             dec_inp, enc_state, attn_states, cell, num_symbols=4,

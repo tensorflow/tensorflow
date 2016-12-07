@@ -127,9 +127,11 @@ class ReshapeTest(tf.test.TestCase):
     y = tf.reshape(x, [tf.placeholder(tf.int32), 37])
     self.assertEqual([None, 37], y.get_shape().as_list())
 
-    # Unknown input shape, partial new shape using `tf.concat()`.
-    y = tf.reshape(x, tf.concat(0, [tf.placeholder(tf.int32, shape=(2,)),
-                                    [37, 42]]))
+    # Unknown input shape, partial new shape using `tf.concat_v2()`.
+    y = tf.reshape(
+        x, tf.concat_v2(
+            [tf.placeholder(
+                tf.int32, shape=(2,)), [37, 42]], 0))
     self.assertEqual([None, None, 37, 42], y.get_shape().as_list())
 
     # Unknown input shape, partial new shape using `tf.shape()`.

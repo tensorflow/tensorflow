@@ -381,7 +381,7 @@ class _DistributionShape(object):
           self._event_ndims_is_0, (1,), event_shape)
       batch_shape = distribution_util.pick_vector(
           self._batch_ndims_is_0, (1,), batch_shape)
-      new_shape = array_ops.concat(0, ((-1,), batch_shape, event_shape))
+      new_shape = array_ops.concat_v2(((-1,), batch_shape, event_shape), 0)
       x = array_ops.reshape(x, shape=new_shape)
       x = distribution_util.rotate_transpose(x, shift=-1)
       return x, sample_shape
@@ -425,7 +425,8 @@ class _DistributionShape(object):
         event_start = array_ops.where(
             self._batch_ndims_is_0, 2, 1 + self.batch_ndims)
         event_shape = array_ops.slice(s, (event_start,), (self.event_ndims,))
-      new_shape = array_ops.concat(0, (sample_shape, batch_shape, event_shape))
+      new_shape = array_ops.concat_v2(
+          (sample_shape, batch_shape, event_shape), 0)
       x = array_ops.reshape(x, shape=new_shape)
       return x
 

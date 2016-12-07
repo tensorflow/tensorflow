@@ -400,7 +400,7 @@ def _log_loss_with_two_classes(logits, labels):
 
 
 def _one_class_to_two_class_logits(logits):
-  return array_ops.concat(1, (array_ops.zeros_like(logits), logits))
+  return array_ops.concat_v2((array_ops.zeros_like(logits), logits), 1)
 
 
 class _BinaryLogisticHead(_Head):

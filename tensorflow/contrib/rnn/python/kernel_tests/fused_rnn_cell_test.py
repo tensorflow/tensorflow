@@ -109,7 +109,7 @@ class FusedRnnCellTest(tf.test.TestCase):
         fw_outputs, fw_state = fused_cell(inputs, dtype=tf.float64, scope="fw")
         bw_outputs, bw_state = fused_bw_cell(
             inputs, dtype=tf.float64, scope="bw")
-        outputs = tf.concat(2, [fw_outputs, bw_outputs])
+        outputs = tf.concat_v2([fw_outputs, bw_outputs], 2)
         fused_vars = [v for v in tf.trainable_variables()
                       if v.name.startswith("fused/")]
         sess.run([tf.global_variables_initializer()])

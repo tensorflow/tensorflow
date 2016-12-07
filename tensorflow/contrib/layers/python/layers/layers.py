@@ -1202,8 +1202,8 @@ def _sparse_inner_flatten(inputs, new_rank):
   """Helper function for `inner_flatten`."""
   outer_dimensions = inputs.shape[:new_rank - 1]
   inner_dimensions = inputs.shape[new_rank - 1:]
-  new_shape = array_ops.concat(0, (outer_dimensions,
-                                   [math_ops.reduce_prod(inner_dimensions)]))
+  new_shape = array_ops.concat_v2((outer_dimensions,
+                                   [math_ops.reduce_prod(inner_dimensions)]), 0)
   flattened = sparse_ops.sparse_reshape(inputs, new_shape)
   return flattened
 
@@ -1215,7 +1215,7 @@ def _dense_inner_flatten(inputs, new_rank):
   with ops.control_dependencies([rank_assertion]):
     outer_dimensions = array_ops.strided_slice(
         array_ops.shape(inputs), [0], [new_rank - 1])
-    new_shape = array_ops.concat(0, (outer_dimensions, [-1]))
+    new_shape = array_ops.concat_v2((outer_dimensions, [-1]), 0)
     reshaped = array_ops.reshape(inputs, new_shape)
 
   # if `new_rank` is an integer, try to calculate new shape.
@@ -1975,7 +1975,7 @@ def unit_norm(inputs, dim, epsilon=1e-7, scope=None):
         array_ops.strided_slice(array_ops.shape(inputs), [dim], [dim + 1]))
     if dim < (input_rank - 1):
       multiples.append(array_ops.ones([input_rank - 1 - dim], dtypes.int32))
-    multiples = array_ops.concat(0, multiples)
+    multiples = array_ops.concat_v2(multiples, 0)
     return math_ops.div(inputs, array_ops.tile(lengths, multiples))
 
 

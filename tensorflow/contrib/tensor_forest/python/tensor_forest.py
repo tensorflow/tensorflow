@@ -335,8 +335,8 @@ class RandomForestGraphs(object):
 
   def _bag_features(self, tree_num, input_data):
     split_data = array_ops.split(1, self.params.num_features, input_data)
-    return array_ops.concat(
-        1, [split_data[ind] for ind in self.params.bagged_features[tree_num]])
+    return array_ops.concat_v2(
+        [split_data[ind] for ind in self.params.bagged_features[tree_num]], 1)
 
   def training_graph(self,
                      input_data,
@@ -808,8 +808,8 @@ class RandomTreeGraphs(object):
         state_ops.scatter_update(self.variables.accumulator_to_node_map,
                                  a2n_map_updates[0], a2n_map_updates[1]))
 
-    cleared_and_allocated_accumulators = array_ops.concat(
-        0, [accumulators_cleared, accumulators_allocated])
+    cleared_and_allocated_accumulators = array_ops.concat_v2(
+        [accumulators_cleared, accumulators_allocated], 0)
 
     # Calculate values to put into scatter update for candidate counts.
     # Candidate split counts are always reset back to 0 for both cleared
@@ -839,7 +839,7 @@ class RandomTreeGraphs(object):
             array_ops.zeros_like(accumulators_allocated,
                                  dtype=dtypes.float32), 1),
         [1, self.params.num_output_columns])
-    accumulator_updates = array_ops.concat(0, [total_cleared, total_reset])
+    accumulator_updates = array_ops.concat_v2([total_cleared, total_reset], 0)
     updates.append(state_ops.scatter_update(
         self.variables.accumulator_sums,
         cleared_and_allocated_accumulators, accumulator_updates))

@@ -81,10 +81,10 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_):
     if full_matrices:
       if m > n:
         zeros = tf.zeros(batch_shape + (m - n, n), dtype=dtype_)
-        diag_s = tf.concat(a.ndim - 2, [diag_s, zeros])
+        diag_s = tf.concat_v2([diag_s, zeros], a.ndim - 2)
       elif n > m:
         zeros = tf.zeros(batch_shape + (m, n - m), dtype=dtype_)
-        diag_s = tf.concat(a.ndim - 1, [diag_s, zeros])
+        diag_s = tf.concat_v2([diag_s, zeros], a.ndim - 1)
     a_recon = tf.matmul(u, diag_s)
     a_recon = tf.matmul(a_recon, v, adjoint_b=True)
     self.assertAllClose(a_recon.eval(), a, rtol=tol, atol=tol)
