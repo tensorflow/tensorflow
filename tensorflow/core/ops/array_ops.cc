@@ -4430,6 +4430,51 @@ output_min: This value is copied from input_min.
 output_max: This value is copied from input_max.
 )Doc");
 
+REGISTER_OP("QuantizedInstanceNorm")
+    .Input("x: T")
+    .Input("x_min: float")
+    .Input("x_max: float")
+    .Output("y: T")
+    .Output("y_min: float")
+    .Output("y_max: float")
+    .Attr("T: quantizedtype")
+    .Attr("output_range_given: bool = false")
+    .Attr("given_y_min: float = 0")
+    .Attr("given_y_max: float = 0")
+    .Attr("variance_epsilon: float = 1e-5")
+    .Attr("min_separation: float = 1e-3")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // x should be a rank 4 tensor.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &unused));
+      // Assert x_min and x_max are scalars (rank 0).
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      // y has the same shape as x.
+      TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
+      // y_min and y_max are scalars.
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Quantized Instance normalization.
+
+x: A 4D input Tensor.
+x_min: The value represented by the lowest quantized input.
+x_max: The value represented by the highest quantized input.
+y: A 4D Tensor.
+y_min: The value represented by the lowest quantized output.
+y_max: The value represented by the highest quantized output.
+output_range_given: If True, `given_y_min` and `given_y_min`
+  and `given_y_max` are used as the output range. Otherwise,
+  the implementation computes the output range.
+given_y_min: Output in `y_min` if `output_range_given` is True.
+given_y_max: Output in `y_max` if `output_range_given` is True.
+variance_epsilon: A small float number to avoid dividing by 0.
+min_separation: Minimum value of `y_max - y_min`
+)doc");
+
 namespace {
 
 Status ScatterNdShape(InferenceContext* c) {

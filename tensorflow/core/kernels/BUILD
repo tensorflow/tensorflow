@@ -3569,6 +3569,7 @@ filegroup(
         "quantized_bias_add_op.cc",
         "quantized_concat_op.cc",
         "quantized_conv_ops.cc",
+        "quantized_instance_norm.cc",
         "quantized_matmul_op.cc",
         "quantized_pooling_ops.cc",
         "quantized_reshape_op.cc",
@@ -3672,6 +3673,7 @@ tf_kernel_library(
         "quantized_bias_add_op.cc",
         "quantized_concat_op.cc",
         "quantized_conv_ops.cc",
+        "quantized_instance_norm.cc",
         "quantized_matmul_op.cc",
         "quantized_pooling_ops.cc",
         "quantized_reshape_op.cc",
@@ -3941,6 +3943,51 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//third_party/eigen3",
+    ],
+)
+
+# Android-only test for quantized instance norm.
+cc_binary(
+    name = "quantized_instance_norm_test_android_only",
+    testonly = 1,
+    srcs = ["quantized_instance_norm_test.cc"],
+    linkopts = select({
+        "//tensorflow:android": [
+            "-pie",
+        ],
+        "//conditions:default": [],
+    }),
+    linkstatic = 1,
+    tags = [
+        "manual",
+        "notap",
+    ],
+    deps = [
+        ":android_tensorflow_kernels",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/core:android_tensorflow_test_lib",
+    ],
+)
+
+tf_cc_test(
+    name = "quantized_instance_norm_test",
+    size = "small",
+    srcs = ["quantized_instance_norm_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":quantized_ops",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:direct_session",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 

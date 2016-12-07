@@ -172,6 +172,7 @@ tensorflow/core/kernels/quantized_batch_norm_op.cc
 tensorflow/core/kernels/quantized_bias_add_op.cc
 tensorflow/core/kernels/quantized_concat_op.cc
 tensorflow/core/kernels/quantized_conv_ops.cc
+tensorflow/core/kernels/quantized_instance_norm.cc
 tensorflow/core/kernels/quantized_matmul_op.cc
 tensorflow/core/kernels/quantized_pooling_ops.cc
 tensorflow/core/kernels/quantized_reshape_op.cc
