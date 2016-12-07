@@ -25,10 +25,11 @@ import {ScatterPlotVisualizerTraces} from './scatterPlotVisualizerTraces';
 import * as vector from './vector';
 
 const LABEL_FONT_SIZE = 10;
-const LABEL_SCALE_LARGE = 2;
 const LABEL_SCALE_DEFAULT = 1.0;
+const LABEL_SCALE_LARGE = 2;
 const LABEL_FILL_COLOR_SELECTED = 0x000000;
 const LABEL_FILL_COLOR_HOVER = 0x000000;
+const LABEL_FILL_COLOR_NEIGHBOR = 0x000000;
 const LABEL_STROKE_COLOR_SELECTED = 0xFFFFFF;
 const LABEL_STROKE_COLOR_HOVER = 0xFFFFFF;
 const LABEL_STROKE_COLOR_NEIGHBOR = 0xFFFFFF;
@@ -220,7 +221,7 @@ export class ProjectorScatterPlotAdapter {
     const pointScaleFactors = this.generatePointScaleFactorArray(
         dataSet, selectedSet, neighbors, hoverIndex);
     const labels = this.generateVisibleLabelRenderParams(
-        dataSet, selectedSet, neighbors, hoverIndex, this.distanceMetric);
+        dataSet, selectedSet, neighbors, hoverIndex);
     const traceColors = this.generateLineSegmentColorMap(dataSet, pointColorer);
     const traceOpacities =
         this.generateLineSegmentOpacityArray(dataSet, selectedSet);
@@ -297,8 +298,8 @@ export class ProjectorScatterPlotAdapter {
 
   generateVisibleLabelRenderParams(
       ds: DataSet, selectedPointIndices: number[],
-      neighborsOfFirstPoint: NearestEntry[], hoverPointIndex: number,
-      distFunc: DistanceFunction): LabelRenderParams {
+      neighborsOfFirstPoint: NearestEntry[],
+      hoverPointIndex: number): LabelRenderParams {
     if (ds == null) {
       return null;
     }
@@ -360,15 +361,13 @@ export class ProjectorScatterPlotAdapter {
     // Neighbors
     {
       const n = neighborCount;
-      const minDist = n > 0 ? neighborsOfFirstPoint[0].dist : 0;
+      const fillRgb = styleRgbFromHexColor(LABEL_FILL_COLOR_NEIGHBOR);
       const strokeRgb = styleRgbFromHexColor(LABEL_STROKE_COLOR_NEIGHBOR);
       for (let i = 0; i < n; ++i) {
         const labelIndex = neighborsOfFirstPoint[i].index;
         labelStrings.push(
             this.getLabelText(ds, labelIndex, this.labelPointAccessor));
         visibleLabels[dst] = labelIndex;
-        const fillRgb = styleRgbFromDistance(
-            distFunc, neighborsOfFirstPoint[i].dist, minDist);
         packRgbIntoUint8Array(
             fillColors, dst, fillRgb[0], fillRgb[1], fillRgb[2]);
         packRgbIntoUint8Array(
@@ -686,13 +685,6 @@ function packRgbIntoUint8Array(
 
 function styleRgbFromHexColor(hex: number): [number, number, number] {
   const c = new THREE.Color(hex);
-  return [(c.r * 255) | 0, (c.g * 255) | 0, (c.b * 255) | 0];
-}
-
-function styleRgbFromDistance(
-    distFunc: DistanceFunction, d: number,
-    minDist: number): [number, number, number] {
-  const c = new THREE.Color(dist2color(distFunc, d, minDist));
   return [(c.r * 255) | 0, (c.g * 255) | 0, (c.b * 255) | 0];
 }
 
