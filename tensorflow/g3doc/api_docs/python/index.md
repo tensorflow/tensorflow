@@ -775,6 +775,7 @@
   * [`WishartFull`](../../api_docs/python/contrib.distributions.md#WishartFull)
 
 * **[Random variable transformations (contrib)](../../api_docs/python/contrib.distributions.bijector.md)**:
+  * [`Affine`](../../api_docs/python/contrib.distributions.bijector.md#Affine)
   * [`Bijector`](../../api_docs/python/contrib.distributions.bijector.md#Bijector)
   * [`Chain`](../../api_docs/python/contrib.distributions.bijector.md#Chain)
   * [`CholeskyOuterProduct`](../../api_docs/python/contrib.distributions.bijector.md#CholeskyOuterProduct)
@@ -783,7 +784,6 @@
   * [`Inline`](../../api_docs/python/contrib.distributions.bijector.md#Inline)
   * [`Invert`](../../api_docs/python/contrib.distributions.bijector.md#Invert)
   * [`PowerTransform`](../../api_docs/python/contrib.distributions.bijector.md#PowerTransform)
-  * [`ScaleAndShift`](../../api_docs/python/contrib.distributions.bijector.md#ScaleAndShift)
   * [`SigmoidCentered`](../../api_docs/python/contrib.distributions.bijector.md#SigmoidCentered)
   * [`SoftmaxCentered`](../../api_docs/python/contrib.distributions.bijector.md#SoftmaxCentered)
   * [`Softplus`](../../api_docs/python/contrib.distributions.bijector.md#Softplus)

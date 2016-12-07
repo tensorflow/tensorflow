@@ -1,14 +1,19 @@
 Bijector which computes Y = g(X; shift, scale) = matmul(scale, X) + shift.
 
-`scale` is either a non-zero scalar, or a lower triangular matrix with
-non-zero diagonal.  This means the `Bijector` will be invertible and
-computation of determinant and inverse will be efficient.
+`shift` is a numeric `Tensor`, while `scale` is constructed from several
+arguments specified in the constructor.
 
-As a result, the mean and covariance are transformed:
+The most general `scale` construction is described as follows:
 
-```
-E[Y] = matmul(scale, E[X])
-Cov[Y] = matmul(scale, matmul(Cov[X], scale, transpose_b=True))
+```python
+scale = (
+  scale_identity_multiplier * tf.diag(tf.ones(d)) +
+  tf.diag(scale_diag) +
+  scale_tril +
+  scale_perturb_factor @ diag(scale_perturb_diag) @
+    tf.transpose([scale_perturb_factor])
+
+scale = c * I + diag(D1) + V @ diag(D2) @ V^T + tril(L)
 ```
 
 Example Use:
@@ -16,61 +21,90 @@ Example Use:
 ```python
 # No batch, scalar
 mu = 0     # shape=[]
-sigma = 1  # shape=[], treated like a 1x1 matrix.
-b = ScaleAndShift(shift=mu, scale=sigma)
-# b.shaper.batch_ndims == 0
-# b.shaper.event_ndims == 0
+sigma = 1. # shape=[], treated like a 1x1 matrix.
+# Corresponds to forward: x + mu.
+b = Affine(shift=mu)
+
+# No batch, scalar
+mu = 0     # shape=[]
+sigma = 3.  # shape=[], treated like a 1x1 matrix.
+# Corresponds to forward: 3 * x + mu.
+b = Affine(
+  shift=mu,
+  scale_identity_multiplier=3.0)
 
 # One batch, scalar.
 mu = ...    # shape=[b], b>0
-sigma = ... # shape=[b], b>0, treated like a batch of 1x1 matrices
-b = ScaleAndShift(shift=mu, scale=sigma)
-# b.shaper.batch_ndims == 1
-# b.shaper.event_ndims == 0
+sigma = 2. # shape=[], b>0, treated like a batch of 1x1 matrices
+# Corresponds to forward: 2 * x + mu.
+b = Affine(
+  shift=mu,
+  scale_identity_multiplier=2.0)
 
 # No batch, multivariate.
-mu = ...    # shape=[d],    d>0
-sigma = ... # shape=[d, d], d>0, treated like a single dxd matrix.
-b = ScaleAndShift(shift=mu, scale=sigma, event_ndims=1)
-# b.shaper.batch_ndims == 0
-# b.shaper.event_ndims == 1
+mu = [1., 2, 3]  # shape=[3],
+diag = [1, 3, 3] # shape=[3, 3], treated like 3x3 matrix.
+b = Affine(
+  shift=mu,
+  scale_identity_multiplier=None,
+  scale_diag=diag,
+  event_ndims=1)
 
-# (B1*B2*...*Bb)-batch, multivariate.
-mu = ...    # shape=[B1,...,Bb, d],    b>0, d>0
-sigma = ... # shape=[B1,...,Bb, d, d], b>0, d>0
-b = ScaleAndShift(shift=mu, scale=sigma, event_ndims=1)
-# b.shaper.batch_ndims == b
-# b.shaper.event_ndims == 1
+# Low rank update.
+mu = [1, 2, 3]    # shape=[3],
+d2 = [2, 1] # shape=[2], treated like a 2x2 matrix.
+v = [[1, 0] [0, 1], [0, 0]] # shape=[2, 3]
+d1 = [1, 3, 3] # shape=[3, 3], treated like 3x3 matrix.
+# Corresponds to scale of the form d1 + v * d2 * v^T
+b = Affine(
+  shift=mu,
+  scale_identity_multiplier=None,
+  scale_diag=d1,
+  scale_perturb_diag=d2,
+  scale_perturb_factor=v,
+  event_ndims=1)
 
-# Mu is broadcast:
-mu = 1
-sigma = [I, I]  # I is a 3x3 identity matrix.
-b = ScaleAndShift(shift=mu, scale=sigma, event_ndims=1)
-x = numpy.ones(S + sigma.shape)
-b.forward(x) # == x + 1
 ```
 - - -
 
-#### `tf.contrib.distributions.bijector.ScaleAndShift.__init__(shift, scale, event_ndims=0, validate_args=False, name='scale_and_shift')` {#ScaleAndShift.__init__}
+#### `tf.contrib.distributions.bijector.Affine.__init__(shift, scale_identity_multiplier=1.0, scale_diag=None, scale_tril=None, scale_perturb_diag=None, scale_perturb_factor=None, event_ndims=0, validate_args=False, name='affine')` {#Affine.__init__}
 
-Instantiates the `ScaleAndShift` bijector.
+Instantiates the `Affine` bijector.
 
-This `Bijector` is initialized with `scale` and `shift` `Tensors`, giving
-the forward operation:
+This `Bijector` is initialized with `shift` `Tensor` and `scale` arguments,
+giving the forward operation:
 
-```Y = g(X) = matmul(scale, X) + shift```
+```Y = g(X) = scale @ X + shift```
 
 ##### Args:
 
 
 *  <b>`shift`</b>: Numeric `Tensor`.
-*  <b>`scale`</b>: Numeric `Tensor` of same `dtype` as `shift`.  If `event_ndims = 0`,
-    `scale` is treated like a `1x1` matrix or a batch thereof.
-    Otherwise, the last two dimensions of `scale` define a matrix.
-    `scale` must have non-negative diagonal entries.  The upper triangular
-    part of `scale` is ignored, effectively making it lower triangular.
+*  <b>`scale_identity_multiplier`</b>: floating point rank 0 `Tensor` representing a
+    scaling done to the identity matrix.
+    The default is 1.0.  If this is set to `None`, do not scale by an
+    identity matrix.
+*  <b>`scale_diag`</b>: Numeric `Tensor` representing the diagonal matrix.
+    `scale_diag` has shape [N1, N2, ... k], which represents a k x k
+    diagonal matrix.
+    The default is `None`. If this is set to `None`, scale_diag is not used
+    for scale construction.
+*  <b>`scale_tril`</b>: Numeric `Tensor` representing the diagonal matrix.
+    `scale_diag` has shape [N1, N2, ... k, k], which represents a k x k
+    lower triangular matrix.
+    The default is `None`. If this is set to `None`, scale_tril is not used
+    for scale construction.
+*  <b>`scale_perturb_diag`</b>: Numeric `Tensor` representing the diagonal matrix.
+    `scale_perturb_diag` has shape [N1, N2, ... r], which represents an
+    r x r Diagonal matrix.
+    The default is`None`. If this is set to `None`, low rank updates will
+    take the form `scale_perturb_factor * scale_perturb_factor^T`.
+*  <b>`scale_perturb_factor`</b>: Numeric `Tensor` representing factor matrix with
+    last two dimensions of shape `(k, r)`.
+    The default is `None`. If this is set to `None`, no rank update is
+    performed.
 *  <b>`event_ndims`</b>: Scalar `int32` `Tensor` indicating the number of dimensions
-    associated with a particular draw from the distribution.  Must be 0 or 1
+    associated with a particular draw from the distribution. Must be 0 or 1.
 *  <b>`validate_args`</b>: `Boolean` indicating whether arguments should be checked
     for correctness.
 *  <b>`name`</b>: `String` name given to ops managed by this object.
@@ -78,14 +112,14 @@ the forward operation:
 
 - - -
 
-#### `tf.contrib.distributions.bijector.ScaleAndShift.dtype` {#ScaleAndShift.dtype}
+#### `tf.contrib.distributions.bijector.Affine.dtype` {#Affine.dtype}
 
 dtype of `Tensor`s transformable by this distribution.
 
 
 - - -
 
-#### `tf.contrib.distributions.bijector.ScaleAndShift.forward(x, name='forward', **condition_kwargs)` {#ScaleAndShift.forward}
+#### `tf.contrib.distributions.bijector.Affine.forward(x, name='forward', **condition_kwargs)` {#Affine.forward}
 
 Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
@@ -110,7 +144,7 @@ Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
 - - -
 
-#### `tf.contrib.distributions.bijector.ScaleAndShift.forward_event_shape(input_shape, name='forward_event_shape')` {#ScaleAndShift.forward_event_shape}
+#### `tf.contrib.distributions.bijector.Affine.forward_event_shape(input_shape, name='forward_event_shape')` {#Affine.forward_event_shape}
 
 Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
 
@@ -130,7 +164,7 @@ Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.ScaleAndShift.forward_log_det_jacobian(x, name='forward_log_det_jacobian', **condition_kwargs)` {#ScaleAndShift.forward_log_det_jacobian}
+#### `tf.contrib.distributions.bijector.Affine.forward_log_det_jacobian(x, name='forward_log_det_jacobian', **condition_kwargs)` {#Affine.forward_log_det_jacobian}
 
 Returns both the forward_log_det_jacobian.
 
@@ -156,7 +190,7 @@ Returns both the forward_log_det_jacobian.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.ScaleAndShift.get_forward_event_shape(input_shape)` {#ScaleAndShift.get_forward_event_shape}
+#### `tf.contrib.distributions.bijector.Affine.get_forward_event_shape(input_shape)` {#Affine.get_forward_event_shape}
 
 Shape of a single sample from a single batch as a `TensorShape`.
 
@@ -177,7 +211,7 @@ Same meaning as `forward_event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.ScaleAndShift.get_inverse_event_shape(output_shape)` {#ScaleAndShift.get_inverse_event_shape}
+#### `tf.contrib.distributions.bijector.Affine.get_inverse_event_shape(output_shape)` {#Affine.get_inverse_event_shape}
 
 Shape of a single sample from a single batch as a `TensorShape`.
 
@@ -198,7 +232,7 @@ Same meaning as `inverse_event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.ScaleAndShift.inverse(y, name='inverse', **condition_kwargs)` {#ScaleAndShift.inverse}
+#### `tf.contrib.distributions.bijector.Affine.inverse(y, name='inverse', **condition_kwargs)` {#Affine.inverse}
 
 Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
 
@@ -224,7 +258,7 @@ Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
 
 - - -
 
-#### `tf.contrib.distributions.bijector.ScaleAndShift.inverse_and_inverse_log_det_jacobian(y, name='inverse_and_inverse_log_det_jacobian', **condition_kwargs)` {#ScaleAndShift.inverse_and_inverse_log_det_jacobian}
+#### `tf.contrib.distributions.bijector.Affine.inverse_and_inverse_log_det_jacobian(y, name='inverse_and_inverse_log_det_jacobian', **condition_kwargs)` {#Affine.inverse_and_inverse_log_det_jacobian}
 
 Returns both the inverse evaluation and inverse_log_det_jacobian.
 
@@ -255,7 +289,7 @@ See `inverse()`, `inverse_log_det_jacobian()` for more details.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.ScaleAndShift.inverse_event_shape(output_shape, name='inverse_event_shape')` {#ScaleAndShift.inverse_event_shape}
+#### `tf.contrib.distributions.bijector.Affine.inverse_event_shape(output_shape, name='inverse_event_shape')` {#Affine.inverse_event_shape}
 
 Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
 
@@ -275,7 +309,7 @@ Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.ScaleAndShift.inverse_log_det_jacobian(y, name='inverse_log_det_jacobian', **condition_kwargs)` {#ScaleAndShift.inverse_log_det_jacobian}
+#### `tf.contrib.distributions.bijector.Affine.inverse_log_det_jacobian(y, name='inverse_log_det_jacobian', **condition_kwargs)` {#Affine.inverse_log_det_jacobian}
 
 Returns the (log o det o Jacobian o inverse)(y).
 
@@ -305,7 +339,7 @@ Note that `forward_log_det_jacobian` is the negative of this function.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.ScaleAndShift.is_constant_jacobian` {#ScaleAndShift.is_constant_jacobian}
+#### `tf.contrib.distributions.bijector.Affine.is_constant_jacobian` {#Affine.is_constant_jacobian}
 
 Returns true iff the Jacobian is not a function of x.
 
@@ -318,42 +352,42 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.ScaleAndShift.name` {#ScaleAndShift.name}
+#### `tf.contrib.distributions.bijector.Affine.name` {#Affine.name}
 
 Returns the string name of this `Bijector`.
 
 
 - - -
 
-#### `tf.contrib.distributions.bijector.ScaleAndShift.parameters` {#ScaleAndShift.parameters}
+#### `tf.contrib.distributions.bijector.Affine.parameters` {#Affine.parameters}
 
 Returns this `Bijector`'s parameters as a name/value dictionary.
 
 
 - - -
 
-#### `tf.contrib.distributions.bijector.ScaleAndShift.scale` {#ScaleAndShift.scale}
+#### `tf.contrib.distributions.bijector.Affine.scale` {#Affine.scale}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.bijector.ScaleAndShift.shaper` {#ScaleAndShift.shaper}
+#### `tf.contrib.distributions.bijector.Affine.shaper` {#Affine.shaper}
 
 Returns shape object used to manage shape constraints.
 
 
 - - -
 
-#### `tf.contrib.distributions.bijector.ScaleAndShift.shift` {#ScaleAndShift.shift}
+#### `tf.contrib.distributions.bijector.Affine.shift` {#Affine.shift}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.bijector.ScaleAndShift.validate_args` {#ScaleAndShift.validate_args}
+#### `tf.contrib.distributions.bijector.Affine.validate_args` {#Affine.validate_args}
 
 Returns True if Tensor arguments will be validated.
 

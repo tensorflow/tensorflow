@@ -94,7 +94,7 @@ Example transformations:
           return math_ops.reduce_sum(x, reduction_indices=event_dims)
       ```
 
-  - "ScaleAndShift"
+  - "Affine"
 
     ```
     Y = g(X) = sqrtSigma * X + mu
