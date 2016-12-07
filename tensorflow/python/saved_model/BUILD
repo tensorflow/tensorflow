@@ -2,11 +2,7 @@
 # TensorFlow SavedModel.
 
 package(
-    default_visibility = [
-        "//tensorflow/contrib/learn:__subpackages__",
-        "//tensorflow/contrib/session_bundle:__subpackages__",
-        "//tensorflow/python/saved_model:__subpackages__",
-    ],
+    default_visibility = ["//visibility:public"],
 )
 
 licenses(["notice"])  # Apache 2.0
