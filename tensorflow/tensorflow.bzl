@@ -112,6 +112,13 @@ def if_not_windows(a):
       "//conditions:default": a,
   })
 
+def if_x86(a):
+  return select({
+      "//tensorflow:linux_x86_64": a,
+      "//tensorflow:windows": a,
+      "//conditions:default": [],
+  })
+
 # LINT.IfChange
 def tf_copts():
   return (["-DEIGEN_AVOID_STL_ARRAY",
@@ -120,6 +127,7 @@ def tf_copts():
            "-fno-exceptions"] +
           if_cuda(["-DGOOGLE_CUDA=1"]) +
           if_android_arm(["-mfpu=neon"]) +
+          if_x86(["-msse4.1"]) +
           select({
               "//tensorflow:android": [
                   "-std=c++11",

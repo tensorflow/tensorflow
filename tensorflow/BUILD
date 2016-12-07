@@ -58,6 +58,12 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "linux_x86_64",
+    values = {"cpu": "k8"},
+    visibility = ["//visibility:public"],
+)
+
 package_group(
     name = "internal",
     packages = ["//tensorflow/..."],
