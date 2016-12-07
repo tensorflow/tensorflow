@@ -28,9 +28,9 @@ class BaseLayerTest(tf.test.TestCase):
   def testLayerProperties(self):
     layer = base_layers._Layer(name='my_layer')
     self.assertEqual(layer.name, 'my_layer')
-    self.assertListEqual(layer.weights, [])
-    self.assertListEqual(layer.trainable_weights, [])
-    self.assertListEqual(layer.non_trainable_weights, [])
+    self.assertListEqual(layer.variables, [])
+    self.assertListEqual(layer.trainable_variables, [])
+    self.assertListEqual(layer.non_trainable_variables, [])
     self.assertListEqual(layer.updates, [])
     self.assertListEqual(layer.losses, [])
     self.assertEqual(layer.built, False)
@@ -42,31 +42,31 @@ class BaseLayerTest(tf.test.TestCase):
       layer = base_layers._Layer(name='my_layer')
 
       # Test basic variable creation.
-      variable = layer._add_weight('my_var', [2, 2],
-                                   initializer=tf.zeros_initializer)
+      variable = layer._add_variable('my_var', [2, 2],
+                                     initializer=tf.zeros_initializer)
       self.assertEqual(variable.name, 'my_var:0')
-      self.assertListEqual(layer.weights, [variable])
-      self.assertListEqual(layer.trainable_weights, [variable])
-      self.assertListEqual(layer.non_trainable_weights, [])
-      self.assertListEqual(layer.weights,
+      self.assertListEqual(layer.variables, [variable])
+      self.assertListEqual(layer.trainable_variables, [variable])
+      self.assertListEqual(layer.non_trainable_variables, [])
+      self.assertListEqual(layer.variables,
                            tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES))
 
       # Test non-trainable variable creation.
-      # layer._add_weight should work even outside `build` and `call`.
-      variable_2 = layer._add_weight('non_trainable_var', [2, 2],
-                                     initializer=tf.zeros_initializer,
-                                     trainable=False)
-      self.assertListEqual(layer.weights, [variable, variable_2])
-      self.assertListEqual(layer.trainable_weights, [variable])
-      self.assertListEqual(layer.non_trainable_weights, [variable_2])
+      # layer._add_variable should work even outside `build` and `call`.
+      variable_2 = layer._add_variable('non_trainable_var', [2, 2],
+                                       initializer=tf.zeros_initializer,
+                                       trainable=False)
+      self.assertListEqual(layer.variables, [variable, variable_2])
+      self.assertListEqual(layer.trainable_variables, [variable])
+      self.assertListEqual(layer.non_trainable_variables, [variable_2])
       self.assertEqual(
           len(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)), 1)
 
       # Test with regularizer.
       regularizer = lambda x: tf.reduce_sum(x) * 1e-3
-      variable = layer._add_weight('reg_var', [2, 2],
-                                   initializer=tf.zeros_initializer,
-                                   regularizer=regularizer)
+      variable = layer._add_variable('reg_var', [2, 2],
+                                     initializer=tf.zeros_initializer,
+                                     regularizer=regularizer)
       self.assertEqual(len(layer.losses), 1)
 
   def testGetVariable(self):
@@ -77,8 +77,8 @@ class BaseLayerTest(tf.test.TestCase):
       class MyLayer(base_layers._Layer):
 
         def build(self, input_shape):
-          self.w = tf.get_variable('my_var', [2, 2],
-                                   initializer=tf.zeros_initializer)
+          self.my_var = tf.get_variable('my_var', [2, 2],
+                                        initializer=tf.zeros_initializer)
 
         def call(self, inputs):
           return inputs
@@ -86,7 +86,7 @@ class BaseLayerTest(tf.test.TestCase):
       layer = MyLayer(name='my_layer')
       inputs = tf.random_uniform((5,), seed=1)
       _ = layer.apply(inputs)
-      self.assertListEqual(layer.weights, [layer.w])
+      self.assertListEqual(layer.variables, [layer.my_var])
 
   def testCall(self):
 

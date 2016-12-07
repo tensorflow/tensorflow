@@ -190,7 +190,7 @@ TEST_F(LoaderTest, MaybeSavedModelDirectory) {
 
   // Directory that exists but is an invalid SavedModel location.
   const string invalid_export_dir =
-      io::JoinPath(testing::TensorFlowSrcRoot(), "cc/saved_model/testdata");
+      io::JoinPath(testing::TensorFlowSrcRoot(), "cc/saved_model");
   EXPECT_FALSE(MaybeSavedModelDirectory(invalid_export_dir));
 }
 

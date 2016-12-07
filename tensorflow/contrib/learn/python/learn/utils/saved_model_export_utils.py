@@ -23,6 +23,7 @@ import os
 import re
 import time
 
+from tensorflow.contrib.learn.python.learn import export_strategy
 from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.contrib.learn.python.learn.utils import gc
@@ -246,3 +247,26 @@ def garbage_collect_exports(export_dir_base, exports_to_keep):
 
   for p in delete_filter(gc.get_paths(export_dir_base, parser=parser)):
     gfile.DeleteRecursively(p.path)
+
+
+def make_export_strategy(export_input_fn,
+                         default_output_alternative_key='default',
+                         assets_extra=None,
+                         export_as_text=False,
+                         exports_to_keep=None):
+  """Create an ExportStrategy for use with Experiment."""
+
+  def export_fn(estimator, export_dir_base):
+    """Exports the given Estimator as a SavedModel."""
+    export_result = estimator.export_savedmodel(
+        export_dir_base,
+        export_input_fn,
+        default_output_alternative_key=default_output_alternative_key,
+        assets_extra=assets_extra,
+        export_as_text=export_as_text,
+        exports_to_keep=exports_to_keep)
+
+    garbage_collect_exports(export_dir_base, exports_to_keep)
+    return export_result
+
+  return export_strategy.ExportStrategy('Servo', export_fn)

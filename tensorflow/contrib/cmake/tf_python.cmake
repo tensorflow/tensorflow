@@ -473,12 +473,14 @@ GENERATE_PYTHON_OP_LIB("image_ops")
 GENERATE_PYTHON_OP_LIB("io_ops")
 GENERATE_PYTHON_OP_LIB("linalg_ops")
 GENERATE_PYTHON_OP_LIB("logging_ops")
+GENERATE_PYTHON_OP_LIB("losses")
 GENERATE_PYTHON_OP_LIB("nn_ops")
 GENERATE_PYTHON_OP_LIB("parsing_ops")
 GENERATE_PYTHON_OP_LIB("random_ops")
 GENERATE_PYTHON_OP_LIB("resource_variable_ops")
 GENERATE_PYTHON_OP_LIB("script_ops")
 GENERATE_PYTHON_OP_LIB("sdca_ops")
+GENERATE_PYTHON_OP_LIB("set_ops")
 GENERATE_PYTHON_OP_LIB("state_ops")
 GENERATE_PYTHON_OP_LIB("sparse_ops")
 GENERATE_PYTHON_OP_LIB("string_ops")
@@ -494,8 +496,6 @@ GENERATE_PYTHON_OP_LIB("contrib_factorization_factorization_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/factorization/python/ops/gen_factorization_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_framework_variable_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/framework/python/ops/gen_variable_ops.py)
-GENERATE_PYTHON_OP_LIB("contrib_metrics_set_ops"
-  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/metrics/python/ops/gen_set_ops.py)
 
 add_custom_target(tf_python_ops SOURCES ${tf_python_ops_generated_files} ${PYTHON_PROTO_GENFILES})
 add_dependencies(tf_python_ops tf_python_op_gen_main)

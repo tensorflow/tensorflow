@@ -194,6 +194,9 @@ class MetricSpec(object):
           raise ValueError('MetricSpec with ' + name + '_key specified'
                            ' requires ' +
                            name + 's dict, got %s' % dict_or_tensor)
+        if key not in dict_or_tensor:
+          raise KeyError(
+              'Key \'%s\' missing from %s.' % (key, dict_or_tensor.keys()))
         return dict_or_tensor[key]
       else:
         if isinstance(dict_or_tensor, dict):

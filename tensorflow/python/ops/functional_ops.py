@@ -239,13 +239,14 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
   expressible as TensorFlow ops, use
 
   ```python
-    result = SparseTensor(input.indices, fn(input.values), input.shape)
+    result = SparseTensor(input.indices, fn(input.values), input.dense_shape)
   ```
 
   If, however, the function is not expressible as a TensorFlow op, then use
 
   ```python
-  result = SparseTensor(input.indices, map_fn(fn, input.values), input.shape)
+  result = SparseTensor(
+    input.indices, map_fn(fn, input.values), input.dense_shape)
   ```
 
   instead.
@@ -304,8 +305,9 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
   if isinstance(elems, sparse_tensor.SparseTensor):
     raise TypeError(
         "To perform a map on the values of a sparse tensor use either "
-        " SparseTensor(input.indices, fn(input.values), input.shape) or "
-        " SparseTensor(input.indices, map_fn(fn, input.values), input.shape)")
+        " SparseTensor(input.indices, fn(input.values), input.dense_shape) or "
+        " SparseTensor(input.indices, map_fn(fn, input.values), "
+        "input.dense_shape)")
 
   input_is_sequence = nest.is_sequence(elems)
   input_flatten = lambda x: nest.flatten(x) if input_is_sequence else [x]

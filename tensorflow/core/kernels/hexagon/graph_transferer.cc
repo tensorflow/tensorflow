@@ -256,8 +256,8 @@ Status GraphTransferer::LoadGraphFromProtoFile(
   for (int i = 0; i < input_node_info_list.size(); ++i) {
     const string& name = input_node_info_list.at(i).name;
     CHECK(output_tensor_map.count(name) == 0);
-    output_tensor_map.emplace(
-        name, &output_tensors.at(output_node_names.size() - 1 + i));
+    output_tensor_map.emplace(name,
+                              &output_tensors.at(output_node_names.size() + i));
   }
   CHECK(graph_def.node_size() == output_tensors.size());
   return status;
@@ -482,7 +482,7 @@ void GraphTransferer::RegisterNodeWithPaddingAndStrides(
     std::vector<int32> kernel_sizes;
     context->GetAttr(KSIZE_ATTR_NAME, &kernel_sizes);
     const int ksize_id = RegisterConstantShape(kernel_sizes);
-    extra_inputs.push_back(ksize_id);
+    extra_inputs.insert(extra_inputs.begin(), ksize_id);
   }
   const std::string padding_str =
       padding == VALID ? PADDING_VALID_STR : PADDING_SAME_STR;
@@ -605,13 +605,16 @@ void GraphTransferer::AppendNodeInputParams(
   NodeInputParams input_params;
   input_params.node_id = id;
   for (int i = 0; i < node.num_inputs(); ++i) {
-    const Node* input_node = nullptr;
-    TF_CHECK_OK(node.input_node(i, &input_node));
+    const Edge* edge = nullptr;
+    TF_CHECK_OK(node.input_edge(i, &edge));
+    const Node* input_node = edge->src();
+    const int port = edge->src_output();
+
     const std::string& op_name = input_node->name();
     CHECK(node_name_to_id_cache_map_.count(op_name) > 0) << op_name;
     const int src_id = node_name_to_id_cache_map_[op_name];
     input_params.input_node_id_and_output_port_list.emplace_back(
-        std::make_tuple(src_id, i));
+        std::make_tuple(src_id, port));
   }
   for (const int extra_input : extra_inputs) {
     input_params.input_node_id_and_output_port_list.emplace_back(
@@ -637,8 +640,7 @@ void GraphTransferer::AppendNodeOutputParams(
     CHECK(output_node != nullptr) << node.name() << ", " << node.type_string();
     const int output_index = i;
     const DataType dt = node.output_type(output_index);
-    const size_t max_bytes_per_data =
-        checkpoint::TensorSliceWriter::MaxBytesPerElement(dt);
+    const size_t max_bytes_per_data = DataTypeSize(dt);
     shape_inference::InferenceContext* context =
         shape_refiner.GetContext(output_node);
     shape_inference::ShapeHandle shape_handle = context->output(output_index);
@@ -836,7 +838,8 @@ void GraphTransferer::DumpVerificationStringOfNodeTransferParams() const {
     sstream << "---(INPUT) [" << std::hex << params.node_id << std::dec;
     for (const std::tuple<int, int>& pair :
          params.input_node_id_and_output_port_list) {
-      sstream << "," << std::get<0>(pair) << "," << std::get<1>(pair);
+      sstream << "," << std::hex << std::get<0>(pair) << std::dec << ","
+              << std::get<1>(pair);
     }
     sstream << "]";
     LOG(INFO) << sstream.str();

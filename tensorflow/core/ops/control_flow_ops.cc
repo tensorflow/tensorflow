@@ -314,9 +314,10 @@ Only useful as a placeholder for control edges.
 // --------------------------------------------------------------------------
 REGISTER_OP("Abort")
     .Attr("error_msg: string = ''")
+    .Attr("exit_without_error: bool = false")
     .SetShapeFn(shape_inference::NoOutputs)
     .Doc(R"doc(
-Raise a exception to abort the process when called.
+Raise a exception to abort the process when called. If exit_without_error is true, the process will exit normally, otherwise it will exit with a SIGABORT signal.
 
 Returns nothing but an exception.
 

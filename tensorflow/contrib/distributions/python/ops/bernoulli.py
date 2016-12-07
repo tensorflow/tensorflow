@@ -25,6 +25,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
@@ -131,13 +132,21 @@ class Bernoulli(distribution.Distribution):
     logits = self.logits
     # sigmoid_cross_entropy_with_logits doesn't broadcast shape,
     # so we do this here.
-    # TODO(b/30637701): Check dynamic shape, and don't broadcast if the
-    # dynamic shapes are the same.
-    if (not event.get_shape().is_fully_defined() or
-        not logits.get_shape().is_fully_defined() or
-        event.get_shape() != logits.get_shape()):
-      logits = array_ops.ones_like(event) * logits
-      event = array_ops.ones_like(logits) * event
+
+    broadcast = lambda logits, event: (
+        array_ops.ones_like(event) * logits,
+        array_ops.ones_like(logits) * event)
+
+    # First check static shape.
+    if (event.get_shape().is_fully_defined() and
+        logits.get_shape().is_fully_defined()):
+      if event.get_shape() != logits.get_shape():
+        logits, event = broadcast(logits, event)
+    else:
+      logits, event = control_flow_ops.cond(
+          distribution_util.same_dynamic_shape(logits, event),
+          lambda: (logits, event),
+          lambda: broadcast(logits, event))
     return -nn.sigmoid_cross_entropy_with_logits(logits, event)
 
   def _prob(self, event):

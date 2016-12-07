@@ -59,7 +59,7 @@ batch_size = 32
 num_unroll = 20
 num_enqueue_threads = 3
 lstm_size = 8
-cell = tf.nn.rnn_cell.BasicLSTMCell(num_units=lstm_size)
+cell = tf.contrib.rnn.BasicLSTMCell(num_units=lstm_size)
 
 key, sequences, context = my_parser(raw_data)
 initial_state_values = tf.zeros((state_size,), dtype=tf.float32)
@@ -506,7 +506,7 @@ Example usage:
 batch_size = 32
 num_unroll = 20
 lstm_size = 8
-cell = tf.nn.rnn_cell.BasicLSTMCell(num_units=lstm_size)
+cell = tf.contrib.rnn.BasicLSTMCell(num_units=lstm_size)
 initial_state_values = tf.zeros(cell.state_size, dtype=tf.float32)
 
 raw_data = get_single_input_from_input_reader()

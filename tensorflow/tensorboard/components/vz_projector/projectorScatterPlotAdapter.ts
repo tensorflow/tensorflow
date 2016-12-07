@@ -25,11 +25,10 @@ import {ScatterPlotVisualizerTraces} from './scatterPlotVisualizerTraces';
 import * as vector from './vector';
 
 const LABEL_FONT_SIZE = 10;
-const LABEL_SCALE_DEFAULT = 1.0;
 const LABEL_SCALE_LARGE = 2;
+const LABEL_SCALE_DEFAULT = 1.0;
 const LABEL_FILL_COLOR_SELECTED = 0x000000;
 const LABEL_FILL_COLOR_HOVER = 0x000000;
-const LABEL_FILL_COLOR_NEIGHBOR = 0x000000;
 const LABEL_STROKE_COLOR_SELECTED = 0xFFFFFF;
 const LABEL_STROKE_COLOR_HOVER = 0xFFFFFF;
 const LABEL_STROKE_COLOR_NEIGHBOR = 0xFFFFFF;
@@ -82,7 +81,7 @@ export class ProjectorScatterPlotAdapter {
   private selectedPointIndices: number[];
   private neighborsOfFirstSelectedPoint: NearestEntry[];
   private renderLabelsIn3D: boolean = false;
-  private labelPointAccessor: (ds: DataSet, index: number) => string;
+  private labelPointAccessor: string;
   private legendPointColorer: (ds: DataSet, index: number) => string;
   private distanceMetric: DistanceFunction;
 
@@ -137,11 +136,9 @@ export class ProjectorScatterPlotAdapter {
     if (this.traceVisualizer != null) {
       this.traceVisualizer.setDataSet(dataSet);
     }
-    if (this.canvasLabelsVisualizer != null) {
-      this.canvasLabelsVisualizer.setDataSet(dataSet);
-    }
     if (this.labels3DVisualizer != null) {
-      this.labels3DVisualizer.setDataSet(dataSet);
+      this.labels3DVisualizer.setLabelStrings(
+          this.generate3DLabelsArray(dataSet, this.labelPointAccessor));
     }
     if (this.spriteVisualizer == null) {
       return;
@@ -176,12 +173,12 @@ export class ProjectorScatterPlotAdapter {
     this.legendPointColorer = legendPointColorer;
   }
 
-  setLabelPointAccessor(
-      labelPointAccessor: (ds: DataSet, index: number) => string) {
+  setLabelPointAccessor(labelPointAccessor: string) {
     this.labelPointAccessor = labelPointAccessor;
     if (this.labels3DVisualizer != null) {
-      this.labels3DVisualizer.setLabelStrings(this.generate3DLabelsArray(
-          this.projection.dataSet, labelPointAccessor));
+      const ds = (this.projection == null) ? null : this.projection.dataSet;
+      this.labels3DVisualizer.setLabelStrings(
+          this.generate3DLabelsArray(ds, labelPointAccessor));
     }
   }
 
@@ -223,7 +220,7 @@ export class ProjectorScatterPlotAdapter {
     const pointScaleFactors = this.generatePointScaleFactorArray(
         dataSet, selectedSet, neighbors, hoverIndex);
     const labels = this.generateVisibleLabelRenderParams(
-        dataSet, selectedSet, neighbors, hoverIndex);
+        dataSet, selectedSet, neighbors, hoverIndex, this.distanceMetric);
     const traceColors = this.generateLineSegmentColorMap(dataSet, pointColorer);
     const traceOpacities =
         this.generateLineSegmentOpacityArray(dataSet, selectedSet);
@@ -300,8 +297,8 @@ export class ProjectorScatterPlotAdapter {
 
   generateVisibleLabelRenderParams(
       ds: DataSet, selectedPointIndices: number[],
-      neighborsOfFirstPoint: NearestEntry[],
-      hoverPointIndex: number): LabelRenderParams {
+      neighborsOfFirstPoint: NearestEntry[], hoverPointIndex: number,
+      distFunc: DistanceFunction): LabelRenderParams {
     if (ds == null) {
       return null;
     }
@@ -326,7 +323,8 @@ export class ProjectorScatterPlotAdapter {
     let dst = 0;
 
     if (hoverPointIndex != null) {
-      labelStrings.push(this.labelPointAccessor(ds, hoverPointIndex));
+      labelStrings.push(
+          this.getLabelText(ds, hoverPointIndex, this.labelPointAccessor));
       visibleLabels[dst] = hoverPointIndex;
       scale[dst] = LABEL_SCALE_LARGE;
       opacityFlags[dst] = 0;
@@ -346,7 +344,8 @@ export class ProjectorScatterPlotAdapter {
       const strokeRgb = styleRgbFromHexColor(LABEL_STROKE_COLOR_SELECTED);
       for (let i = 0; i < n; ++i) {
         const labelIndex = selectedPointIndices[i];
-        labelStrings.push(this.labelPointAccessor(ds, labelIndex));
+        labelStrings.push(
+            this.getLabelText(ds, labelIndex, this.labelPointAccessor));
         visibleLabels[dst] = labelIndex;
         scale[dst] = LABEL_SCALE_LARGE;
         opacityFlags[dst] = (n === 1) ? 0 : 1;
@@ -361,12 +360,15 @@ export class ProjectorScatterPlotAdapter {
     // Neighbors
     {
       const n = neighborCount;
-      const fillRgb = styleRgbFromHexColor(LABEL_FILL_COLOR_NEIGHBOR);
+      const minDist = n > 0 ? neighborsOfFirstPoint[0].dist : 0;
       const strokeRgb = styleRgbFromHexColor(LABEL_STROKE_COLOR_NEIGHBOR);
       for (let i = 0; i < n; ++i) {
         const labelIndex = neighborsOfFirstPoint[i].index;
-        labelStrings.push(this.labelPointAccessor(ds, labelIndex));
+        labelStrings.push(
+            this.getLabelText(ds, labelIndex, this.labelPointAccessor));
         visibleLabels[dst] = labelIndex;
+        const fillRgb = styleRgbFromDistance(
+            distFunc, neighborsOfFirstPoint[i].dist, minDist);
         packRgbIntoUint8Array(
             fillColors, dst, fillRgb[0], fillRgb[1], fillRgb[2]);
         packRgbIntoUint8Array(
@@ -600,35 +602,39 @@ export class ProjectorScatterPlotAdapter {
     return colors;
   }
 
-  generate3DLabelsArray(
-      ds: DataSet, accessor: (ds: DataSet, i: number) => string) {
+  generate3DLabelsArray(ds: DataSet, accessor: string) {
     if ((ds == null) || (accessor == null)) {
       return null;
     }
     let labels: string[] = [];
     const n = ds.points.length;
     for (let i = 0; i < n; ++i) {
-      labels.push(accessor(ds, i).toString());
+      labels.push(this.getLabelText(ds, i, accessor));
     }
     return labels;
   }
 
+  private getLabelText(ds: DataSet, i: number, accessor: string) {
+    return ds.points[i].metadata[accessor].toString();
+  }
+
   private updateScatterPlotWithNewProjection(projection: Projection) {
-    if (projection != null) {
-      this.scatterPlot.setDimensions(projection.dimensionality);
-      if (projection.dataSet.projectionCanBeRendered(
-              projection.projectionType)) {
-        this.updateScatterPlotAttributes();
-        this.notifyProjectionPositionsUpdated();
-      }
-      this.scatterPlot.setCameraParametersForNextCameraCreation(null, false);
-    } else {
+    if (projection == null) {
+      this.createVisualizers(this.renderLabelsIn3D);
+      this.scatterPlot.render();
+      return;
+    }
+    this.setDataSet(projection.dataSet);
+    this.scatterPlot.setDimensions(projection.dimensionality);
+    if (projection.dataSet.projectionCanBeRendered(projection.projectionType)) {
       this.updateScatterPlotAttributes();
       this.notifyProjectionPositionsUpdated();
     }
+    this.scatterPlot.setCameraParametersForNextCameraCreation(null, false);
   }
 
   private createVisualizers(inLabels3DMode: boolean) {
+    const ds = (this.projection == null) ? null : this.projection.dataSet;
     const scatterPlot = this.scatterPlot;
     scatterPlot.removeAllVisualizers();
     this.labels3DVisualizer = null;
@@ -637,8 +643,8 @@ export class ProjectorScatterPlotAdapter {
     this.traceVisualizer = null;
     if (inLabels3DMode) {
       this.labels3DVisualizer = new ScatterPlotVisualizer3DLabels();
-      this.labels3DVisualizer.setLabelStrings(this.generate3DLabelsArray(
-          this.projection.dataSet, this.labelPointAccessor));
+      this.labels3DVisualizer.setLabelStrings(
+          this.generate3DLabelsArray(ds, this.labelPointAccessor));
     } else {
       this.spriteVisualizer = new ScatterPlotVisualizerSprites();
       scatterPlot.addVisualizer(this.spriteVisualizer);
@@ -646,8 +652,7 @@ export class ProjectorScatterPlotAdapter {
           new ScatterPlotVisualizerCanvasLabels(this.scatterPlotContainer);
     }
     this.traceVisualizer = new ScatterPlotVisualizerTraces();
-    const dataSet = (this.projection == null) ? null : this.projection.dataSet;
-    this.setDataSet(dataSet);
+    this.setDataSet(ds);
     if (this.spriteVisualizer) {
       scatterPlot.addVisualizer(this.spriteVisualizer);
     }
@@ -681,6 +686,13 @@ function packRgbIntoUint8Array(
 
 function styleRgbFromHexColor(hex: number): [number, number, number] {
   const c = new THREE.Color(hex);
+  return [(c.r * 255) | 0, (c.g * 255) | 0, (c.b * 255) | 0];
+}
+
+function styleRgbFromDistance(
+    distFunc: DistanceFunction, d: number,
+    minDist: number): [number, number, number] {
+  const c = new THREE.Color(dist2color(distFunc, d, minDist));
   return [(c.r * 255) | 0, (c.g * 255) | 0, (c.b * 255) | 0];
 }
 

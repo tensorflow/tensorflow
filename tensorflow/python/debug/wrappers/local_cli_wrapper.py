@@ -70,20 +70,44 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
 
       self._dump_root = dump_root
 
-    # State flag for running till a tensor filter is passed.
-    self._run_till_filter_pass = None
+    self._initialize_argparsers()
 
-    # State related to tensor filters.
+    # Registered tensor filters.
     self._tensor_filters = {}
 
-    # Options for the on-run-start hook:
-    #   1) run (DEBUG_RUN)
-    #   2) run --nodebug (NON_DEBUG_RUN)
-    #   3) invoke_stepper (INVOKE_STEPPER, not implemented)
-    self._on_run_start_parsers = {}
+    # Below are the state variables of this wrapper object.
+    # _active_tensor_filter: what (if any) tensor filter is in effect. If such
+    #   a filter is in effect, this object will call run() method of the
+    #   underlying TensorFlow Session object until the filter passes. This is
+    #   activated by the "-f" flag of the "run" command.
+    # _run_through_times: keeps track of how many times the wrapper needs to
+    #   run through without stopping at the run-end CLI. It is activated by the
+    #   "-t" option of the "run" command.
+    # _skip_debug: keeps track of whether the current run should be executed
+    #   without debugging. It is activated by the "-n" option of the "run"
+    #   command.
+    #
+    # _run_start_response: keeps track what OnRunStartResponse the wrapper
+    #   should return at the next run-start callback. If this information is
+    #   unavailable (i.e., is None), the run-start CLI will be launched to ask
+    #   the user. This is the case, e.g., right before the first run starts.
+    self._active_tensor_filter = None
+    self._run_through_times = 1
+    self._skip_debug = False
+    self._run_start_response = None
+
+  def _initialize_argparsers(self):
+    self._argparsers = {}
     ap = argparse.ArgumentParser(
         description="Run through, with or without debug tensor watching.",
         usage=argparse.SUPPRESS)
+    ap.add_argument(
+        "-t",
+        "--times",
+        dest="times",
+        type=int,
+        default=1,
+        help="How many Session.run() calls to proceed with.")
     ap.add_argument(
         "-n",
         "--no_debug",
@@ -97,12 +121,17 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
         type=str,
         default="",
         help="Run until a tensor in the graph passes the specified filter.")
-    self._on_run_start_parsers["run"] = ap
+    self._argparsers["run"] = ap
 
     ap = argparse.ArgumentParser(
         description="Invoke stepper (cont, step, breakpoint, etc.)",
         usage=argparse.SUPPRESS)
-    self._on_run_start_parsers["invoke_stepper"] = ap
+    self._argparsers["invoke_stepper"] = ap
+
+    ap = argparse.ArgumentParser(
+        description="Display information about this Session.run() call.",
+        usage=argparse.SUPPRESS)
+    self._argparsers["run_info"] = ap
 
   def add_tensor_filter(self, filter_name, tensor_filter):
     """Add a tensor filter.
@@ -151,46 +180,58 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     self._update_run_calls_state(request.run_call_count, request.fetches,
                                  request.feed_dict)
 
-    if self._run_till_filter_pass:
+    if self._active_tensor_filter:
       # If we are running till a filter passes, we just need to keep running
       # with the DEBUG_RUN option.
       return framework.OnRunStartResponse(framework.OnRunStartAction.DEBUG_RUN,
                                           self._get_run_debug_urls())
 
-    run_start_cli = curses_ui.CursesUI()
+    if self._run_call_count > 1 and not self._skip_debug:
+      if self._run_through_times > 0:
+        # Just run through without debugging.
+        return framework.OnRunStartResponse(
+            framework.OnRunStartAction.NON_DEBUG_RUN, [])
+      elif self._run_through_times == 0:
+        # It is the run at which the run-end CLI will be launched: activate
+        # debugging.
+        return framework.OnRunStartResponse(
+            framework.OnRunStartAction.DEBUG_RUN,
+            self._get_run_debug_urls())
 
-    run_start_cli.register_command_handler(
-        "run",
-        self._on_run_start_run_handler,
-        self._on_run_start_parsers["run"].format_help(),
-        prefix_aliases=["r"])
-    run_start_cli.register_command_handler(
-        "invoke_stepper",
-        self._on_run_start_step_handler,
-        self._on_run_start_parsers["invoke_stepper"].format_help(),
-        prefix_aliases=["s"])
+    if self._run_start_response is None:
+      self._prep_cli_for_run_start()
 
-    if self._tensor_filters:
-      # Register tab completion for the filter names.
-      run_start_cli.register_tab_comp_context(["run", "r"],
-                                              list(self._tensor_filters.keys()))
+      self._run_start_response = self._launch_cli(is_run_start=True)
+      if self._run_through_times > 1:
+        self._run_through_times -= 1
 
-    run_start_cli.set_help_intro(
-        cli_shared.get_run_start_intro(request.run_call_count, request.fetches,
-                                       request.feed_dict, self._tensor_filters))
-
-    # Create initial screen output detailing the run.
-    title = "run-start: " + self._run_description
-    response = run_start_cli.run_ui(
-        init_command="help", title=title, title_color="blue_on_white")
-    if response == debugger_cli_common.EXPLICIT_USER_EXIT:
+    if self._run_start_response == debugger_cli_common.EXPLICIT_USER_EXIT:
       # Explicit user "exit" command leads to sys.exit(1).
       print(
           "Note: user exited from debugger CLI: Calling sys.exit(1).",
           file=sys.stderr)
       sys.exit(1)
 
-    return response
+    return self._run_start_response
+
+  def _prep_cli_for_run_start(self):
+    """Prepare (but not launch) the CLI for run-start."""
+
+    self._run_cli = curses_ui.CursesUI()
+
+    help_intro = debugger_cli_common.RichTextLines([])
+    if self._run_call_count == 1:
+      # Show logo at the onset of the first run.
+      help_intro.extend(cli_shared.get_tfdbg_logo())
+    help_intro.extend(debugger_cli_common.RichTextLines("Upcoming run:"))
+    help_intro.extend(self._run_info)
+
+    self._run_cli.set_help_intro(help_intro)
+
+    # Create initial screen output detailing the run.
+    self._title = "run-start: " + self._run_description
+    self._init_command = "help"
+    self._title_color = "blue_on_white"
 
   def on_run_end(self, request):
     """Overrides on-run-end callback.
@@ -216,111 +257,150 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
       debug_dump = debug_data.DebugDumpDir(
           self._dump_root, partition_graphs=partition_graphs)
 
-      if request.tf_error:
-        help_intro = cli_shared.get_error_intro(request.tf_error)
+      passed_filter = None
+      if self._active_tensor_filter:
+        if not debug_dump.find(
+            self._tensor_filters[self._active_tensor_filter], first_n=1):
+          # No dumped tensor passes the filter in this run. Clean up the dump
+          # directory and move on.
+          self._remove_dump_root()
+          return framework.OnRunEndResponse()
+        else:
+          # Some dumped tensor(s) from this run passed the filter.
+          passed_filter = self._active_tensor_filter
+          self._active_tensor_filter = None
 
-        init_command = "help"
-        title_color = "red_on_white"
-      else:
-        help_intro = None
-        init_command = "lt"
+      self._prep_cli_for_run_end(debug_dump, request.tf_error, passed_filter)
 
-        title_color = "black_on_white"
-        if self._run_till_filter_pass:
-          if not debug_dump.find(
-              self._tensor_filters[self._run_till_filter_pass], first_n=1):
-            # No dumped tensor passes the filter in this run. Clean up the dump
-            # directory and move on.
-            shutil.rmtree(self._dump_root)
-            return framework.OnRunEndResponse()
-          else:
-            # Some dumped tensor(s) from this run passed the filter.
-            init_command = "lt -f %s" % self._run_till_filter_pass
-            title_color = "red_on_white"
-            self._run_till_filter_pass = None
+      self._run_start_response = self._launch_cli()
 
-      analyzer = analyzer_cli.DebugAnalyzer(debug_dump)
-
-      # Supply all the available tensor filters.
-      for filter_name in self._tensor_filters:
-        analyzer.add_tensor_filter(filter_name,
-                                   self._tensor_filters[filter_name])
-
-      run_end_cli = curses_ui.CursesUI()
-      run_end_cli.register_command_handler(
-          "list_tensors",
-          analyzer.list_tensors,
-          analyzer.get_help("list_tensors"),
-          prefix_aliases=["lt"])
-      run_end_cli.register_command_handler(
-          "node_info",
-          analyzer.node_info,
-          analyzer.get_help("node_info"),
-          prefix_aliases=["ni"])
-      run_end_cli.register_command_handler(
-          "list_inputs",
-          analyzer.list_inputs,
-          analyzer.get_help("list_inputs"),
-          prefix_aliases=["li"])
-      run_end_cli.register_command_handler(
-          "list_outputs",
-          analyzer.list_outputs,
-          analyzer.get_help("list_outputs"),
-          prefix_aliases=["lo"])
-      run_end_cli.register_command_handler(
-          "print_tensor",
-          analyzer.print_tensor,
-          analyzer.get_help("print_tensor"),
-          prefix_aliases=["pt"])
-
-      run_end_cli.register_command_handler(
-          "run",
-          self._run_end_run_command_handler,
-          "Helper command for incorrectly entered run command at the run-end "
-          "prompt.",
-          prefix_aliases=["r"]
-      )
-
-      # Get names of all dumped tensors.
-      dumped_tensor_names = []
-      for datum in debug_dump.dumped_tensor_data:
-        dumped_tensor_names.append("%s:%d" %
-                                   (datum.node_name, datum.output_slot))
-
-      # Tab completions for command "print_tensors".
-      run_end_cli.register_tab_comp_context(["print_tensor", "pt"],
-                                            dumped_tensor_names)
-
-      # Tab completion for commands "node_info", "list_inputs" and
-      # "list_outputs". The list comprehension is used below because nodes()
-      # output can be unicodes and they need to be converted to strs.
-      run_end_cli.register_tab_comp_context(
-          ["node_info", "ni", "list_inputs", "li", "list_outputs", "lo"],
-          [str(node_name) for node_name in debug_dump.nodes()])
-      # TODO(cais): Reduce API surface area for aliases vis-a-vis tab
-      #    completion contexts and registered command handlers.
-
-      title = "run-end: " + self._run_description
-      if help_intro:
-        run_end_cli.set_help_intro(help_intro)
-      run_end_cli.run_ui(
-          init_command=init_command, title=title, title_color=title_color)
-
-      # Clean up the dump directory.
-      shutil.rmtree(self._dump_root)
+      # Clean up the dump generated by this run.
+      self._remove_dump_root()
     else:
-      print("No debug information to show following a non-debug run() call.")
+      # No debug information to show following a non-debug run() call.
+      self._run_start_response = None
 
     # Return placeholder response that currently holds no additional
     # information.
     return framework.OnRunEndResponse()
 
-  def _on_run_start_run_handler(self, args, screen_info=None):
+  def _remove_dump_root(self):
+    if os.path.isdir(self._dump_root):
+      shutil.rmtree(self._dump_root)
+
+  def _prep_cli_for_run_end(self, debug_dump, tf_error, passed_filter):
+    """Prepare (but not launch) CLI for run-end, with debug dump from the run.
+
+    Args:
+      debug_dump: (debug_data.DebugDumpDir) The debug dump directory from this
+        run.
+      tf_error: (None or OpError) OpError that happened during the run() call
+        (if any).
+      passed_filter: (None or str) Name of the tensor filter that just passed
+        and caused the preparation of this run-end CLI (if any).
+    """
+
+    if tf_error:
+      help_intro = cli_shared.get_error_intro(tf_error)
+
+      self._init_command = "help"
+      self._title_color = "red_on_white"
+    else:
+      help_intro = None
+      self._init_command = "lt"
+
+      self._title_color = "black_on_white"
+      if passed_filter is not None:
+        # Some dumped tensor(s) from this run passed the filter.
+        self._init_command = "lt -f %s" % passed_filter
+        self._title_color = "red_on_white"
+
+    analyzer = analyzer_cli.DebugAnalyzer(debug_dump)
+
+    # Supply all the available tensor filters.
+    for filter_name in self._tensor_filters:
+      analyzer.add_tensor_filter(filter_name,
+                                 self._tensor_filters[filter_name])
+
+    self._run_cli = curses_ui.CursesUI()
+    self._run_cli.register_command_handler(
+        "list_tensors",
+        analyzer.list_tensors,
+        analyzer.get_help("list_tensors"),
+        prefix_aliases=["lt"])
+    self._run_cli.register_command_handler(
+        "node_info",
+        analyzer.node_info,
+        analyzer.get_help("node_info"),
+        prefix_aliases=["ni"])
+    self._run_cli.register_command_handler(
+        "list_inputs",
+        analyzer.list_inputs,
+        analyzer.get_help("list_inputs"),
+        prefix_aliases=["li"])
+    self._run_cli.register_command_handler(
+        "list_outputs",
+        analyzer.list_outputs,
+        analyzer.get_help("list_outputs"),
+        prefix_aliases=["lo"])
+    self._run_cli.register_command_handler(
+        "print_tensor",
+        analyzer.print_tensor,
+        analyzer.get_help("print_tensor"),
+        prefix_aliases=["pt"])
+
+    # Get names of all dumped tensors.
+    dumped_tensor_names = []
+    for datum in debug_dump.dumped_tensor_data:
+      dumped_tensor_names.append("%s:%d" %
+                                 (datum.node_name, datum.output_slot))
+
+    # Tab completions for command "print_tensors".
+    self._run_cli.register_tab_comp_context(["print_tensor", "pt"],
+                                            dumped_tensor_names)
+
+    # Tab completion for commands "node_info", "list_inputs" and
+    # "list_outputs". The list comprehension is used below because nodes()
+    # output can be unicodes and they need to be converted to strs.
+    self._run_cli.register_tab_comp_context(
+        ["node_info", "ni", "list_inputs", "li", "list_outputs", "lo"],
+        [str(node_name) for node_name in debug_dump.nodes()])
+    # TODO(cais): Reduce API surface area for aliases vis-a-vis tab
+    #    completion contexts and registered command handlers.
+
+    self._title = "run-end: " + self._run_description
+
+    if help_intro:
+      self._run_cli.set_help_intro(help_intro)
+
+  def _launch_cli(self, is_run_start=False):
+    """Launch the interactive command-line interface.
+
+    Args:
+      is_run_start: (bool) whether this CLI launch occurs at a run-start
+        callback.
+
+    Returns:
+      The OnRunStartResponse specified by the user using the "run" command.
+    """
+
+    self._register_this_run_info(self._run_cli)
+    response = self._run_cli.run_ui(
+        init_command=self._init_command,
+        title=self._title,
+        title_color=self._title_color)
+
+    return response
+
+  def _run_info_handler(self, args, screen_info=None):
+    return self._run_info
+
+  def _run_handler(self, args, screen_info=None):
     """Command handler for "run" command during on-run-start."""
 
     _ = screen_info  # Currently unused.
 
-    parsed = self._on_run_start_parsers["run"].parse_args(args)
+    parsed = self._argparsers["run"].parse_args(args)
 
     if parsed.till_filter_pass:
       # For the run-till-bad-numerical-value-appears mode, use the DEBUG_RUN
@@ -328,14 +408,18 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
       # state flag of the class itself to True.
       if parsed.till_filter_pass in self._tensor_filters:
         action = framework.OnRunStartAction.DEBUG_RUN
-        self._run_till_filter_pass = parsed.till_filter_pass
+        self._active_tensor_filter = parsed.till_filter_pass
       else:
         # Handle invalid filter name.
         return debugger_cli_common.RichTextLines(
             ["ERROR: tensor filter \"%s\" does not exist." %
              parsed.till_filter_pass])
 
-    if parsed.no_debug:
+    self._skip_debug = parsed.no_debug
+    self._run_through_times = parsed.times
+
+    if parsed.times > 1 or parsed.no_debug:
+      # If requested -t times > 1, the very next run will be a non-debug run.
       action = framework.OnRunStartAction.NON_DEBUG_RUN
       debug_urls = []
     else:
@@ -345,6 +429,28 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     # Raise CommandLineExit exception to cause the CLI to exit.
     raise debugger_cli_common.CommandLineExit(
         exit_token=framework.OnRunStartResponse(action, debug_urls))
+
+  def _register_this_run_info(self, curses_cli):
+    curses_cli.register_command_handler(
+        "run",
+        self._run_handler,
+        self._argparsers["run"].format_help(),
+        prefix_aliases=["r"])
+    curses_cli.register_command_handler(
+        "invoke_stepper",
+        self._on_run_start_step_handler,
+        self._argparsers["invoke_stepper"].format_help(),
+        prefix_aliases=["s"])
+    curses_cli.register_command_handler(
+        "run_info",
+        self._run_info_handler,
+        self._argparsers["run_info"].format_help(),
+        prefix_aliases=["ri"])
+
+    if self._tensor_filters:
+      # Register tab completion for the filter names.
+      curses_cli.register_tab_comp_context(["run", "r"],
+                                           list(self._tensor_filters.keys()))
 
   def _on_run_start_step_handler(self, args, screen_info=None):
     """Command handler for "invoke_stepper" command during on-run-start."""
@@ -358,18 +464,6 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     raise debugger_cli_common.CommandLineExit(
         exit_token=framework.OnRunStartResponse(
             framework.OnRunStartAction.INVOKE_STEPPER, []))
-
-  def _run_end_run_command_handler(self, args, screen_info=None):
-    """Handler for incorrectly entered run command at run-end prompt."""
-
-    _ = screen_info  # Currently unused.
-
-    return debugger_cli_common.RichTextLines([
-        "ERROR: the \"run\" command is invalid for the run-end prompt.", "",
-        "To proceed to the next run, ",
-        "  1) exit this run-end prompt using the command \"exit\"",
-        "  2) enter the command \"run\" at the next run-start prompt.",
-    ])
 
   def _get_run_debug_urls(self):
     """Get the debug_urls value for the current run() call.
@@ -397,3 +491,9 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     self._run_description = cli_shared.get_run_short_description(run_call_count,
                                                                  fetches,
                                                                  feed_dict)
+    self._run_through_times -= 1
+
+    self._run_info = cli_shared.get_run_start_intro(run_call_count,
+                                                    fetches,
+                                                    feed_dict,
+                                                    self._tensor_filters)

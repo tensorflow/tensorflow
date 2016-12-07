@@ -42,8 +42,7 @@ class GetRunStartIntroAndDescriptionTest(test_util.TensorFlowTestCase):
     run_start_intro = cli_shared.get_run_start_intro(12, self.const_a, None, {})
 
     # Verify line about run() call number.
-    self.assertEqual("About to enter Session run() call #12:",
-                     run_start_intro.lines[1])
+    self.assertTrue(run_start_intro.lines[1].endswith("run() call #12:"))
 
     # Verify line about fetch.
     const_a_name_line = run_start_intro.lines[4]
@@ -58,8 +57,10 @@ class GetRunStartIntroAndDescriptionTest(test_util.TensorFlowTestCase):
     self.assertEqual([(2, 5, "bold")], run_start_intro.font_attr_segs[11])
     self.assertEqual("run -n:", run_start_intro.lines[13][2:])
     self.assertEqual([(2, 8, "bold")], run_start_intro.font_attr_segs[13])
-    self.assertEqual("run -f <filter_name>:", run_start_intro.lines[15][2:])
-    self.assertEqual([(2, 22, "bold")], run_start_intro.font_attr_segs[15])
+    self.assertEqual("run -t <T>:", run_start_intro.lines[15][2:])
+    self.assertEqual([(2, 12, "bold")], run_start_intro.font_attr_segs[15])
+    self.assertEqual("run -f <filter_name>:", run_start_intro.lines[17][2:])
+    self.assertEqual([(2, 22, "bold")], run_start_intro.font_attr_segs[17])
 
     # Verify short description.
     description = cli_shared.get_run_short_description(12, self.const_a, None)
@@ -179,8 +180,8 @@ class GetRunStartIntroAndDescriptionTest(test_util.TensorFlowTestCase):
 
     # Verify the listed names of the tensor filters.
     filter_names = set()
-    filter_names.add(run_start_intro.lines[18].split(" ")[-1])
-    filter_names.add(run_start_intro.lines[19].split(" ")[-1])
+    filter_names.add(run_start_intro.lines[20].split(" ")[-1])
+    filter_names.add(run_start_intro.lines[21].split(" ")[-1])
 
     self.assertEqual({"filter_a", "filter_b"}, filter_names)
 
@@ -218,14 +219,14 @@ class GetErrorIntroTest(test_util.TensorFlowTestCase):
     self.assertEqual(2, error_intro.lines[8].index("lt"))
     self.assertEqual([(2, 4, "bold")], error_intro.font_attr_segs[8])
 
-    self.assertTrue(error_intro.lines[11].startswith("Op name:"))
+    self.assertStartsWith(error_intro.lines[11], "Op name:")
     self.assertTrue(error_intro.lines[11].endswith("a/Assign"))
 
-    self.assertTrue(error_intro.lines[12].startswith("Error type:"))
+    self.assertStartsWith(error_intro.lines[12], "Error type:")
     self.assertTrue(error_intro.lines[12].endswith(str(type(tf_error))))
 
     self.assertEqual("Details:", error_intro.lines[14])
-    self.assertTrue(error_intro.lines[15].startswith("foo description"))
+    self.assertStartsWith(error_intro.lines[15], "foo description")
 
 
 if __name__ == "__main__":

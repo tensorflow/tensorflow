@@ -125,7 +125,7 @@ This method will be removed after the deprecation date. To inspect variables, us
 
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None)` {#DNNClassifier.evaluate}
+#### `tf.contrib.learn.DNNClassifier.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None)` {#DNNClassifier.evaluate}
 
 See evaluable.Evaluable. Note: Labels must be integer class indices.
 
@@ -199,19 +199,22 @@ The default behavior of predict() is changing. The default value for
 as_iterable will change to True, and then the flag will be removed
 altogether. The behavior of this flag is described below.
 
-    Args:
-      x: features.
-      input_fn: Input function. If set, x must be None.
-      batch_size: Override default batch size.
-      as_iterable: If True, return an iterable which keeps yielding predictions
-        for each example until inputs are exhausted. Note: The inputs must
-        terminate if you want the iterable to terminate (e.g. be sure to pass
-        num_epochs=1 if you are using something like read_batch_features).
+##### Args:
 
-    Returns:
-      Numpy array of predicted classes (or an iterable of predicted classes if
-      as_iterable is True). Each predicted class is represented by its class
-      index (i.e. integer from 0 to n_classes-1).
+
+*  <b>`x`</b>: features.
+*  <b>`input_fn`</b>: Input function. If set, x must be None.
+*  <b>`batch_size`</b>: Override default batch size.
+*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
+    for each example until inputs are exhausted. Note: The inputs must
+    terminate if you want the iterable to terminate (e.g. be sure to pass
+    num_epochs=1 if you are using something like read_batch_features).
+
+##### Returns:
+
+  Numpy array of predicted classes with shape [batch_size] (or an iterable
+  of predicted classes if as_iterable is True). Each predicted class is
+  represented by its class index (i.e. integer from 0 to n_classes-1).
 
 
 - - -
@@ -226,19 +229,21 @@ The default behavior of predict() is changing. The default value for
 as_iterable will change to True, and then the flag will be removed
 altogether. The behavior of this flag is described below.
 
-    Args:
-      x: features.
-      input_fn: Input function. If set, x and y must be None.
-      batch_size: Override default batch size.
-      as_iterable: If True, return an iterable which keeps yielding predictions
-        for each example until inputs are exhausted. Note: The inputs must
-        terminate if you want the iterable to terminate (e.g. be sure to pass
-        num_epochs=1 if you are using something like read_batch_features).
+##### Args:
 
-    Returns:
-      Numpy array of predicted probabilities (or an iterable of predicted
-      probabilities if as_iterable is True). Each predicted class is represented
-      by its class index (i.e. integer from 0 to n_classes-1).
+
+*  <b>`x`</b>: features.
+*  <b>`input_fn`</b>: Input function. If set, x and y must be None.
+*  <b>`batch_size`</b>: Override default batch size.
+*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
+    for each example until inputs are exhausted. Note: The inputs must
+    terminate if you want the iterable to terminate (e.g. be sure to pass
+    num_epochs=1 if you are using something like read_batch_features).
+
+##### Returns:
+
+  Numpy array of predicted probabilities with shape [batch_size, n_classes]
+  (or an iterable of predicted probabilities if as_iterable is True).
 
 
 - - -

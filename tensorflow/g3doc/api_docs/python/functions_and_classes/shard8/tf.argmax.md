@@ -1,6 +1,6 @@
 ### `tf.argmax(input, axis=None, name=None, dimension=None)` {#argmax}
 
-Returns the index with the largest value across axiss of a tensor.
+Returns the index with the largest value across axes of a tensor.
 
 ##### Args:
 
