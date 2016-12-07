@@ -12,43 +12,37 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""`LinearOperator` acting like a lower triangular matrix."""
+"""`LinearOperator` that wraps a [batch] matrix."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.linalg.python.ops import linear_operator
-from tensorflow.contrib.linalg.python.ops import linear_operator_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 
-__all__ = ["LinearOperatorTriL",]
+__all__ = ["LinearOperatorMatrix"]
 
 
-class LinearOperatorTriL(linear_operator.LinearOperator):
-  """`LinearOperator` acting like a [batch] square lower triangular matrix.
+class LinearOperatorMatrix(linear_operator.LinearOperator):
+  """`LinearOperator` that wraps a [batch] matrix.
 
-  This operator acts like a [batch] lower triangular matrix `A` with shape
-  `[B1,...,Bb, N, N]` for some `b >= 0`.  The first `b` indices index a
+  This operator wraps a [batch] matrix `A` (which is a `Tensor`) with shape
+  `[B1,...,Bb, M, N]` for some `b >= 0`.  The first `b` indices index a
   batch member.  For every batch index `(i1,...,ib)`, `A[i1,...,ib, : :]` is
-  an `N x N` matrix.
-
-  `LinearOperatorTriL` is initialized with a `Tensor` having dimensions
-  `[B1,...,Bb, N, N]`. The upper triangle of the last two dimensions is ignored.
+  an `M x N` matrix.
 
   ```python
-  # Create a 2 x 2 lower-triangular linear operator.
-  tril = [[1., 2.], [3., 4.]]
-  operator = LinearOperatorTriL(tril)
+  # Create a 2 x 2 linear operator.
+  matrix = [[1., 2.], [3., 4.]]
+  operator = LinearOperatorMatrix(matrix)
 
-  # The upper triangle is ignored.
   operator.to_dense()
-  ==> [[1., 0.]
+  ==> [[1., 2.]
        [3., 4.]]
 
   operator.shape
@@ -62,8 +56,8 @@ class LinearOperatorTriL(linear_operator.LinearOperator):
   ==> Shape [2, 4] Tensor
 
   # Create a [2, 3] batch of 4 x 4 linear operators.
-  tril = tf.random_normal(shape=[2, 3, 4, 4])
-  operator = LinearOperatorTriL(tril)
+  matrix = tf.random_normal(shape=[2, 3, 4, 4])
+  operator = LinearOperatorMatrix(matrix)
   ```
 
   #### Shape compatibility
@@ -72,20 +66,27 @@ class LinearOperatorTriL(linear_operator.LinearOperator):
   `x` is a batch matrix with compatible shape for `apply` and `solve` if
 
   ```
-  operator.shape = [B1,...,Bb] + [N, N],  with b >= 0
+  operator.shape = [B1,...,Bb] + [M, N],  with b >= 0
   x.shape =        [B1,...,Bb] + [N, R],  with R >= 0.
   ```
 
   #### Performance
 
-  Suppose `operator` is a `LinearOperatorTriL` of shape `[N, N]`,
-  and `x.shape = [N, R]`.  Then
+  `LinearOperatorMatrix` has exactly the same performance as would be achieved
+  by using standard `TensorFlow` matrix ops.  Intelligent choices are made
+  based on the following initialization hints.
 
-  * `operator.apply(x)` involves `N^2 * R` multiplications.
-  * `operator.solve(x)` involves `N * R` size `N` back-substitutions.
-  * `operator.determinant()` involves a size `N` `reduce_prod`.
+  * If `dtype` is real, and `is_self_adjoint` and `is_positive_definite`, a
+    Cholesky factorization is used for the determinant and solve.
 
-  If instead `operator` and `x` have shape `[B1,...,Bb, N, N]` and
+  In all cases, suppose `operator` is a `LinearOperatorMatrix` of shape
+  `[M, N]`, and `x.shape = [N, R]`.  Then
+
+  * `operator.apply(x)` is `O(M * N * R)`.
+  * If `M=N`, `operator.solve(x)` is `O(N^3 * R)`.
+  * If `M=N`, `operator.determinant()` is `O(N^3)`.
+
+  If instead `operator` and `x` have shape `[B1,...,Bb, M, N]` and
   `[B1,...,Bb, N, R]`, every operation increases in complexity by `B1*...*Bb`.
 
   #### Matrix property hints
@@ -103,24 +104,19 @@ class LinearOperatorTriL(linear_operator.LinearOperator):
   """
 
   def __init__(self,
-               tril,
+               matrix,
                is_non_singular=None,
                is_self_adjoint=None,
                is_positive_definite=None,
-               name="LinearOperatorTriL"):
-    """Initialize a `LinearOperatorTriL`.
+               name="LinearOperatorMatrix"):
+    """Initialize a `LinearOperatorMatrix`.
 
     Args:
-      tril:  Shape `[B1,...,Bb, N, N]` with `b >= 0`, `N >= 0`.
-        The lower triangular part of `tril` defines this operator.  The strictly
-        upper triangle is ignored.  Allowed dtypes: `float32`, `float64`.
+      matrix:  Shape `[B1,...,Bb, M, N]` with `b >= 0`, `M, N >= 0`.
+        Allowed dtypes: `float32`, `float64`, `complex64`, `complex128`.
       is_non_singular:  Expect that this operator is non-singular.
-        This operator is non-singular if and only if its diagonal elements are
-        all non-zero.
       is_self_adjoint:  Expect that this operator is equal to its hermitian
-        transpose.  This operator is self-adjoint only if it is diagonal with
-        real-valued diagonal entries.  In this case it is advised to use
-        `LinearOperatorDiag`.
+        transpose.
       is_positive_definite:  Expect that this operator is positive definite,
         meaning the real part of all eigenvalues is positive.  We do not require
         the operator to be self-adjoint to be positive-definite.  See:
@@ -132,69 +128,61 @@ class LinearOperatorTriL(linear_operator.LinearOperator):
       TypeError:  If `diag.dtype` is not an allowed type.
     """
 
-    # TODO(langmore) Add complex types once matrix_triangular_solve works for
-    # them.
-    allowed_dtypes = [dtypes.float32, dtypes.float64]
+    allowed_dtypes = [
+        dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
 
-    with ops.name_scope(name, values=[tril]):
-      self._tril = array_ops.matrix_band_part(tril, -1, 0)
-      self._diag = array_ops.matrix_diag_part(self._tril)
+    with ops.name_scope(name, values=[matrix]):
+      self._matrix = ops.convert_to_tensor(matrix, name="matrix")
 
-      dtype = self._tril.dtype
+      dtype = self._matrix.dtype
       if dtype not in allowed_dtypes:
         raise TypeError(
-            "Argument tril must have dtype in %s.  Found: %s"
+            "Argument matrix must have dtype in %s.  Found: %s"
             % (allowed_dtypes, dtype))
 
-      super(LinearOperatorTriL, self).__init__(
-          dtype=self._tril.dtype,
-          graph_parents=[self._tril],
+      # Special treatment for (real) Symmetric Positive Definite.
+      self._is_spd = (
+          (not dtype.is_complex) and is_self_adjoint and is_positive_definite)
+      if self._is_spd:
+        self._chol = linalg_ops.cholesky(self._matrix)
+
+      super(LinearOperatorMatrix, self).__init__(
+          dtype=self._matrix.dtype,
+          graph_parents=[self._matrix],
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           name=name)
 
   def _shape(self):
-    return self._tril.get_shape()
+    return self._matrix.get_shape()
 
   def _shape_dynamic(self):
-    return array_ops.shape(self._tril)
-
-  def _assert_non_singular(self):
-    return linear_operator_util.assert_no_entries_with_modulus_zero(
-        self._diag,
-        message="Singular operator:  Diagonal contained zero values.")
-
-  def _assert_positive_definite(self):
-    if self.dtype.is_complex:
-      message = (
-          "Diagonal operator had diagonal entries with non-positive real part, "
-          "thus was not positive definite.")
-    else:
-      message = (
-          "Real diagonal operator had non-positive diagonal entries, "
-          "thus was not positive definite.")
-
-    return check_ops.assert_positive(
-        math_ops.real(self._diag),
-        message=message)
+    return array_ops.shape(self._matrix)
 
   def _apply(self, x, adjoint=False):
-    return math_ops.matmul(self._tril, x, adjoint_a=adjoint)
+    return math_ops.matmul(self._matrix, x, adjoint_a=adjoint)
 
   def _determinant(self):
-    return math_ops.reduce_prod(self._diag, reduction_indices=[-1])
+    if self._is_spd:
+      return math_ops.exp(self.log_abs_determinant())
+    return linalg_ops.matrix_determinant(self._matrix)
 
   def _log_abs_determinant(self):
-    return math_ops.reduce_sum(
-        math_ops.log(math_ops.abs(self._diag)), reduction_indices=[-1])
+    if self._is_spd:
+      diag = array_ops.matrix_diag_part(self._chol)
+      return 2 * math_ops.reduce_sum(math_ops.log(diag), reduction_indices=[-1])
+
+    if self.dtype.is_complex:
+      abs_det = math_ops.complex_abs(self.determinant())
+    else:
+      abs_det = math_ops.abs(self.determinant())
+    return math_ops.log(abs_det)
 
   def _solve(self, rhs, adjoint=False):
-    return linalg_ops.matrix_triangular_solve(
-        self._tril, rhs, lower=True, adjoint=adjoint)
+    if self._is_spd:
+      return linalg_ops.cholesky_solve(self._chol, rhs)
+    return linalg_ops.matrix_solve(self._matrix, rhs, adjoint=adjoint)
 
   def _to_dense(self):
-    return self._tril
-
-  def _add_to_tensor(self, x):
-    return self._tril + x
+    return self._matrix
