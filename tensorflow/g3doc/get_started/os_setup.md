@@ -35,8 +35,7 @@ If you are familiar with Pip, Virtualenv, Anaconda, or Docker, please feel free
 to adapt the instructions to your particular needs.  The names of the pip and
 Docker images are listed in the corresponding installation sections.
 
-If you encounter installation errors, see
-[common problems](#common-problems) for some solutions.
+If you encounter installation errors, see [common problems](#common-problems) for some solutions.
 
 ## Pip Installation
 
