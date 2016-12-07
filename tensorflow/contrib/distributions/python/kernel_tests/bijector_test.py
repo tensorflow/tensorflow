@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import itertools
 import math
 
 import numpy as np
@@ -521,18 +522,17 @@ class InlineBijectorTest(tf.test.TestCase):
                           bijector.inverse_event_shape(y.as_list()).eval())
 
 
-class ScaleAndShiftBijectorTest(tf.test.TestCase):
-  """Tests correctness of the Y = scale * x + shift transformation."""
+class AffineBijectorTest(tf.test.TestCase):
+  """Tests correctness of the Y = scale @ x + shift transformation."""
 
   def testProperties(self):
     with self.test_session():
       mu = -1.
-      sigma = 2.
-      bijector = bijectors.ScaleAndShift(
-          shift=mu, scale=sigma)
-      self.assertEqual("scale_and_shift", bijector.name)
+      # scale corresponds to 1.
+      bijector = bijectors.Affine(shift=mu)
+      self.assertEqual("affine", bijector.name)
 
-  def testNoBatchScalar(self):
+  def testNoBatchScalarViaIdentity(self):
     with self.test_session() as sess:
       def static_run(fun, x):
         return fun(x).eval()
@@ -544,18 +544,17 @@ class ScaleAndShiftBijectorTest(tf.test.TestCase):
 
       for run in (static_run, dynamic_run):
         mu = -1.
-        sigma = 2.  # Scalar.
-        bijector = bijectors.ScaleAndShift(
-            shift=mu, scale=sigma)
-        self.assertEqual(0, bijector.shaper.batch_ndims.eval())  # "no batches"
+        # Corresponds to scale = 2
+        bijector = bijectors.Affine(
+            shift=mu, scale_identity_multiplier=2.0)
         self.assertEqual(0, bijector.shaper.event_ndims.eval())  # "is scalar"
         x = [1., 2, 3]  # Three scalar samples (no batches).
         self.assertAllClose([1., 3, 5], run(bijector.forward, x))
         self.assertAllClose([1., 1.5, 2.], run(bijector.inverse, x))
-        self.assertAllClose([-math.log(2.)],
+        self.assertAllClose(-math.log(2.),
                             run(bijector.inverse_log_det_jacobian, x))
 
-  def testWeirdSampleNoBatchScalar(self):
+  def testNoBatchScalarViaDiag(self):
     with self.test_session() as sess:
       def static_run(fun, x):
         return fun(x).eval()
@@ -567,10 +566,30 @@ class ScaleAndShiftBijectorTest(tf.test.TestCase):
 
       for run in (static_run, dynamic_run):
         mu = -1.
-        sigma = 2.  # Scalar.
-        bijector = bijectors.ScaleAndShift(
-            shift=mu, scale=sigma)
-        self.assertEqual(0, bijector.shaper.batch_ndims.eval())  # "no batches"
+        # Corresponds to scale = 2
+        bijector = bijectors.Affine(
+            shift=mu, scale_identity_multiplier=None, scale_diag=[2.])
+        self.assertEqual(0, bijector.shaper.event_ndims.eval())  # "is scalar"
+        x = [1., 2, 3]  # Three scalar samples (no batches).
+        self.assertAllClose([1., 3, 5], run(bijector.forward, x))
+        self.assertAllClose([1., 1.5, 2.], run(bijector.inverse, x))
+        self.assertAllClose(-math.log(2.),
+                            run(bijector.inverse_log_det_jacobian, x))
+
+  def testWeirdSampleNoBatchScalarViaIdentity(self):
+    with self.test_session() as sess:
+      def static_run(fun, x):
+        return fun(x).eval()
+
+      def dynamic_run(fun, x_value):
+        x_value = np.array(x_value)
+        x = tf.placeholder(tf.float32, name="x")
+        return sess.run(fun(x), feed_dict={x: x_value})
+
+      for run in (static_run, dynamic_run):
+        mu = -1.
+        # Corresponds to scale = 2.
+        bijector = bijectors.Affine(shift=mu, scale_identity_multiplier=2.0)
         self.assertEqual(0, bijector.shaper.event_ndims.eval())  # "is scalar"
         x = [[1., 2, 3],
              [4, 5, 6]]  # Weird sample shape.
@@ -580,10 +599,10 @@ class ScaleAndShiftBijectorTest(tf.test.TestCase):
         self.assertAllClose([[1., 1.5, 2.],
                              [2.5, 3, 3.5]],
                             run(bijector.inverse, x))
-        self.assertAllClose([-math.log(2.)],
+        self.assertAllClose(-math.log(2.),
                             run(bijector.inverse_log_det_jacobian, x))
 
-  def testOneBatchScalar(self):
+  def testOneBatchScalarViaIdentity(self):
     with self.test_session() as sess:
       def static_run(fun, x):
         return fun(x).eval()
@@ -595,20 +614,42 @@ class ScaleAndShiftBijectorTest(tf.test.TestCase):
 
       for run in (static_run, dynamic_run):
         mu = [1.]
-        sigma = [1.]  # One batch, scalar.
-        bijector = bijectors.ScaleAndShift(
-            shift=mu, scale=sigma)
-        self.assertEqual(
-            1, bijector.shaper.batch_ndims.eval())  # "one batch dim"
+        # One batch, scalar.
+        # Corresponds to scale = 1.
+        bijector = bijectors.Affine(shift=mu)
         self.assertEqual(
             0, bijector.shaper.event_ndims.eval())  # "is scalar"
         x = [1.]  # One sample from one batches.
         self.assertAllClose([2.], run(bijector.forward, x))
         self.assertAllClose([0.], run(bijector.inverse, x))
-        self.assertAllClose([0.],
+        self.assertAllClose(0.,
                             run(bijector.inverse_log_det_jacobian, x))
 
-  def testTwoBatchScalar(self):
+  def testOneBatchScalarViaDiag(self):
+    with self.test_session() as sess:
+      def static_run(fun, x):
+        return fun(x).eval()
+
+      def dynamic_run(fun, x_value):
+        x_value = np.array(x_value)
+        x = tf.placeholder(tf.float32, name="x")
+        return sess.run(fun(x), feed_dict={x: x_value})
+
+      for run in (static_run, dynamic_run):
+        mu = [1.]
+        # One batch, scalar.
+        # Corresponds to scale = 1.
+        bijector = bijectors.Affine(
+            shift=mu, scale_identity_multiplier=None, scale_diag=[1.])
+        self.assertEqual(
+            0, bijector.shaper.event_ndims.eval())  # "is scalar"
+        x = [1.]  # One sample from one batches.
+        self.assertAllClose([2.], run(bijector.forward, x))
+        self.assertAllClose([0.], run(bijector.inverse, x))
+        self.assertAllClose(0.,
+                            run(bijector.inverse_log_det_jacobian, x))
+
+  def testTwoBatchScalarIdentityViaIdentity(self):
     with self.test_session() as sess:
       def static_run(fun, x):
         return fun(x).eval()
@@ -620,20 +661,18 @@ class ScaleAndShiftBijectorTest(tf.test.TestCase):
 
       for run in (static_run, dynamic_run):
         mu = [1., -1]
-        sigma = [1., 1]  # Univariate, two batches.
-        bijector = bijectors.ScaleAndShift(
-            shift=mu, scale=sigma)
-        self.assertEqual(
-            1, bijector.shaper.batch_ndims.eval())  # "one batch dim"
+        # Univariate, two batches.
+        # Corresponds to scale = 1.
+        bijector = bijectors.Affine(shift=mu)
         self.assertEqual(
             0, bijector.shaper.event_ndims.eval())  # "is scalar"
         x = [1., 1]  # One sample from each of two batches.
         self.assertAllClose([2., 0], run(bijector.forward, x))
         self.assertAllClose([0., 2], run(bijector.inverse, x))
-        self.assertAllClose([0., 0],
+        self.assertAllClose(0.,
                             run(bijector.inverse_log_det_jacobian, x))
 
-  def testNoBatchMultivariate(self):
+  def testTwoBatchScalarIdentityViaDiag(self):
     with self.test_session() as sess:
       def static_run(fun, x):
         return fun(x).eval()
@@ -645,74 +684,118 @@ class ScaleAndShiftBijectorTest(tf.test.TestCase):
 
       for run in (static_run, dynamic_run):
         mu = [1., -1]
-        # Note:  sigma is -1 * identity matrix.
-        sigma = -np.eye(2, dtype=np.float32)
-        bijector = bijectors.ScaleAndShift(
-            shift=mu, scale=sigma, event_ndims=1)
-        self.assertEqual(0, bijector.shaper.batch_ndims.eval())  # "no batches"
+        # Univariate, two batches.
+        # Corresponds to scale = 1.
+        bijector = bijectors.Affine(
+            shift=mu, scale_identity_multiplier=None, scale_diag=[1.])
+        self.assertEqual(
+            0, bijector.shaper.event_ndims.eval())  # "is scalar"
+        x = [1., 1]  # One sample from each of two batches.
+        self.assertAllClose([2., 0], run(bijector.forward, x))
+        self.assertAllClose([0., 2], run(bijector.inverse, x))
+        self.assertAllClose(0.,
+                            run(bijector.inverse_log_det_jacobian, x))
+
+  def testNoBatchMultivariateIdentity(self):
+    with self.test_session() as sess:
+      def static_run(fun, x):
+        return fun(x).eval()
+
+      def dynamic_run(fun, x_value):
+        x_value = np.array(x_value)
+        x = tf.placeholder(tf.float32, name="x")
+        return sess.run(fun(x), feed_dict={x: x_value})
+
+      for run in (static_run, dynamic_run):
+        mu = [1., -1]
+        # Multivariate
+        # Corresponds to scale = [[1., 0], [0, 1.]]
+        bijector = bijectors.Affine(shift=mu, event_ndims=1)
         self.assertEqual(1, bijector.shaper.event_ndims.eval())  # "is vector"
         x = [1., 1]
         # matmul(sigma, x) + shift
         # = [-1, -1] + [1, -1]
-        self.assertAllClose([0., -2], run(bijector.forward, x))
-        self.assertAllClose([0., -2], run(bijector.inverse, x))
-        self.assertAllClose([0.], run(bijector.inverse_log_det_jacobian, x))
+        self.assertAllClose([2., 0], run(bijector.forward, x))
+        self.assertAllClose([0., 2], run(bijector.inverse, x))
 
         # x is a 2-batch of 2-vectors.
         # The first vector is [1, 1], the second is [-1, -1].
         # Each undergoes matmul(sigma, x) + shift.
         x = [[1., 1],
              [-1., -1]]
-        self.assertAllClose([[0., -2],
-                             [2., 0]],
+        self.assertAllClose([[2., 0],
+                             [0., -2]],
                             run(bijector.forward, x))
-        self.assertAllClose([[0., -2],
-                             [2., 0]],
+        self.assertAllClose([[0., 2],
+                             [-2., 0]],
                             run(bijector.inverse, x))
-        self.assertAllClose([0.], run(bijector.inverse_log_det_jacobian, x))
+        self.assertAllClose(0., run(bijector.inverse_log_det_jacobian, x))
 
-      # When mu is a scalar and x is multivariate then the location is
-      # broadcast.
+  def testNoBatchMultivariateDiag(self):
+    with self.test_session() as sess:
+      def static_run(fun, x):
+        return fun(x).eval()
+
+      def dynamic_run(fun, x_value):
+        x_value = np.array(x_value)
+        x = tf.placeholder(tf.float32, name="x")
+        return sess.run(fun(x), feed_dict={x: x_value})
+
       for run in (static_run, dynamic_run):
-        mu = 1.
-        sigma = np.eye(2, dtype=np.float32)
-        bijector = bijectors.ScaleAndShift(
-            shift=mu, scale=sigma, event_ndims=1)
-        self.assertEqual(0, bijector.shaper.batch_ndims.eval())  # "no batches"
+        mu = [1., -1]
+        # Multivariate
+        # Corresponds to scale = [[2., 0], [0, 1.]]
+        bijector = bijectors.Affine(
+            shift=mu, scale_identity_multiplier=None,
+            scale_diag=[2., 1], event_ndims=1)
         self.assertEqual(1, bijector.shaper.event_ndims.eval())  # "is vector"
         x = [1., 1]
-        self.assertAllClose([2., 2], run(bijector.forward, x))
-        self.assertAllClose([0., 0], run(bijector.inverse, x))
-        self.assertAllClose([0.], run(bijector.inverse_log_det_jacobian, x))
-        x = [[1., 1]]
-        self.assertAllClose([[2., 2]], run(bijector.forward, x))
-        self.assertAllClose([[0., 0]], run(bijector.inverse, x))
-        self.assertAllClose([0.], run(bijector.inverse_log_det_jacobian, x))
+        # matmul(sigma, x) + shift
+        # = [-1, -1] + [1, -1]
+        self.assertAllClose([3., 0], run(bijector.forward, x))
+        self.assertAllClose([0., 2], run(bijector.inverse, x))
+        self.assertAllClose(
+            [-math.log(2.)], run(bijector.inverse_log_det_jacobian, x))
+
+        # x is a 2-batch of 2-vectors.
+        # The first vector is [1, 1], the second is [-1, -1].
+        # Each undergoes matmul(sigma, x) + shift.
+        x = [[1., 1],
+             [-1., -1]]
+        self.assertAllClose([[3., 0],
+                             [-1., -2]],
+                            run(bijector.forward, x))
+        self.assertAllClose([[0., 2],
+                             [-1., 0]],
+                            run(bijector.inverse, x))
+        self.assertAllClose(
+            [-math.log(2.)], run(bijector.inverse_log_det_jacobian, x))
 
   def testNoBatchMultivariateFullDynamic(self):
     with self.test_session() as sess:
       x = tf.placeholder(tf.float32, name="x")
       mu = tf.placeholder(tf.float32, name="mu")
-      sigma = tf.placeholder(tf.float32, name="sigma")
+      scale_diag = tf.placeholder(tf.float32, name="scale_diag")
       event_ndims = tf.placeholder(tf.int32, name="event_ndims")
 
       x_value = np.array([[1., 1]], dtype=np.float32)
       mu_value = np.array([1., -1], dtype=np.float32)
-      sigma_value = np.eye(2, dtype=np.float32)
+      scale_diag_value = np.array([2., 2], dtype=np.float32)
       event_ndims_value = np.array(1, dtype=np.int32)
-      feed_dict = {x: x_value, mu: mu_value, sigma: sigma_value, event_ndims:
-                   event_ndims_value}
+      feed_dict = {x: x_value, mu: mu_value, scale_diag: scale_diag_value,
+                   event_ndims: event_ndims_value}
 
-      bijector = bijectors.ScaleAndShift(
-          shift=mu, scale=sigma, event_ndims=event_ndims)
-      self.assertEqual(0, sess.run(bijector.shaper.batch_ndims, feed_dict))
+      bijector = bijectors.Affine(
+          shift=mu, scale_identity_multiplier=None,
+          scale_diag=scale_diag, event_ndims=event_ndims)
       self.assertEqual(1, sess.run(bijector.shaper.event_ndims, feed_dict))
-      self.assertAllClose([[2., 0]], sess.run(bijector.forward(x), feed_dict))
-      self.assertAllClose([[0., 2]], sess.run(bijector.inverse(x), feed_dict))
+      self.assertAllClose([[3., 1]], sess.run(bijector.forward(x), feed_dict))
+      self.assertAllClose([[0., 1]], sess.run(bijector.inverse(x), feed_dict))
       self.assertAllClose(
-          [0.], sess.run(bijector.inverse_log_det_jacobian(x), feed_dict))
+          [-math.log(4)],
+          sess.run(bijector.inverse_log_det_jacobian(x), feed_dict))
 
-  def testBatchMultivariate(self):
+  def testBatchMultivariateIdentity(self):
     with self.test_session() as sess:
       def static_run(fun, x):
         return fun(x).eval()
@@ -724,87 +807,491 @@ class ScaleAndShiftBijectorTest(tf.test.TestCase):
 
       for run in (static_run, dynamic_run):
         mu = [[1., -1]]
-        sigma = np.array([np.eye(2, dtype=np.float32)])
-        bijector = bijectors.ScaleAndShift(
-            shift=mu, scale=sigma, event_ndims=1)
-        self.assertEqual(
-            1, bijector.shaper.batch_ndims.eval())  # "one batch dim"
+        # Corresponds to 1 2x2 matrix, with twos on the diagonal.
+        scale = 2.
+        bijector = bijectors.Affine(
+            shift=mu, scale_identity_multiplier=scale, event_ndims=1)
         self.assertEqual(
             1, bijector.shaper.event_ndims.eval())  # "is vector"
         x = [[[1., 1]]]
-        self.assertAllClose([[[2., 0]]], run(bijector.forward, x))
-        self.assertAllClose([[[0., 2]]], run(bijector.inverse, x))
-        self.assertAllClose([0.], run(bijector.inverse_log_det_jacobian, x))
+        self.assertAllClose([[[3., 1]]], run(bijector.forward, x))
+        self.assertAllClose([[[0., 1]]], run(bijector.inverse, x))
+        self.assertAllClose(
+            -math.log(4), run(bijector.inverse_log_det_jacobian, x))
+
+  def testBatchMultivariateDiag(self):
+    with self.test_session() as sess:
+      def static_run(fun, x):
+        return fun(x).eval()
+
+      def dynamic_run(fun, x_value):
+        x_value = np.array(x_value, dtype=np.float32)
+        x = tf.placeholder(tf.float32, name="x")
+        return sess.run(fun(x), feed_dict={x: x_value})
+
+      for run in (static_run, dynamic_run):
+        mu = [[1., -1]]
+        # Corresponds to 1 2x2 matrix, with twos on the diagonal.
+        scale_diag = [[2., 2]]
+        bijector = bijectors.Affine(
+            shift=mu, scale_identity_multiplier=None,
+            scale_diag=scale_diag, event_ndims=1)
+        self.assertEqual(
+            1, bijector.shaper.event_ndims.eval())  # "is vector"
+        x = [[[1., 1]]]
+        self.assertAllClose([[[3., 1]]], run(bijector.forward, x))
+        self.assertAllClose([[[0., 1]]], run(bijector.inverse, x))
+        self.assertAllClose(
+            [-math.log(4)], run(bijector.inverse_log_det_jacobian, x))
 
   def testBatchMultivariateFullDynamic(self):
     with self.test_session() as sess:
       x = tf.placeholder(tf.float32, name="x")
       mu = tf.placeholder(tf.float32, name="mu")
-      sigma = tf.placeholder(tf.float32, name="sigma")
+      scale_diag = tf.placeholder(tf.float32, name="scale_diag")
       event_ndims = tf.placeholder(tf.int32, name="event_ndims")
 
       x_value = np.array([[[1., 1]]], dtype=np.float32)
       mu_value = np.array([[1., -1]], dtype=np.float32)
-      sigma_value = np.array([np.eye(2, dtype=np.float32)])
-      event_ndims_value = np.array(1, dtype=np.int32)
-      feed_dict = {x: x_value, mu: mu_value, sigma: sigma_value,
-                   event_ndims: event_ndims_value}
+      scale_diag_value = np.array([[2., 2]], dtype=np.float32)
+      event_ndims_value = 1
 
-      bijector = bijectors.ScaleAndShift(
-          shift=mu, scale=sigma, event_ndims=event_ndims)
-      self.assertEqual(1, sess.run(bijector.shaper.batch_ndims, feed_dict))
+      feed_dict = {x: x_value, mu: mu_value, scale_diag:
+                   scale_diag_value, event_ndims: event_ndims_value}
+
+      bijector = bijectors.Affine(
+          shift=mu, scale_identity_multiplier=None,
+          scale_diag=scale_diag, event_ndims=event_ndims)
       self.assertEqual(1, sess.run(bijector.shaper.event_ndims, feed_dict))
-      self.assertAllClose([[[2., 0]]], sess.run(bijector.forward(x), feed_dict))
-      self.assertAllClose([[[0., 2]]], sess.run(bijector.inverse(x), feed_dict))
-      self.assertAllClose(
-          [0.], sess.run(bijector.inverse_log_det_jacobian(x), feed_dict))
+      self.assertAllClose([[[3., 1]]], sess.run(bijector.forward(x), feed_dict))
+      self.assertAllClose([[[0., 1]]], sess.run(bijector.inverse(x), feed_dict))
+      self.assertAllClose([-math.log(4)],
+                          sess.run(
+                              bijector.inverse_log_det_jacobian(x), feed_dict))
+
+  def testIdentityWithDiagUpdate(self):
+    with self.test_session() as sess:
+      def static_run(fun, x):
+        return fun(x).eval()
+
+      def dynamic_run(fun, x_value):
+        x_value = np.array(x_value)
+        x = tf.placeholder(tf.float32, name="x")
+        return sess.run(fun(x), feed_dict={x: x_value})
+
+      for run in (static_run, dynamic_run):
+        mu = -1.
+        # Corresponds to scale = 2
+        bijector = bijectors.Affine(
+            shift=mu, scale_identity_multiplier=1.0,
+            scale_diag=[1.])
+        self.assertEqual(0, bijector.shaper.event_ndims.eval())  # "is vector"
+        x = [1., 2, 3]  # Three scalar samples (no batches).
+        self.assertAllClose([1., 3, 5], run(bijector.forward, x))
+        self.assertAllClose([1., 1.5, 2.], run(bijector.inverse, x))
+        self.assertAllClose(-math.log(2.),
+                            run(bijector.inverse_log_det_jacobian, x))
+
+  def testIdentityWithTriL(self):
+    with self.test_session() as sess:
+      def static_run(fun, x):
+        return fun(x).eval()
+
+      def dynamic_run(fun, x_value):
+        x_value = np.array(x_value)
+        x = tf.placeholder(tf.float32, name="x")
+        return sess.run(fun(x), feed_dict={x: x_value})
+
+      for run in (static_run, dynamic_run):
+        mu = -1.
+        # scale = [[2., 0], [2, 2]]
+        bijector = bijectors.Affine(
+            shift=mu, scale_identity_multiplier=1.0,
+            scale_tril=[[1., 0], [2., 1]],
+            event_ndims=1)
+        self.assertEqual(1, bijector.shaper.event_ndims.eval())  # "is vector"
+        x = [[1., 2]]  # One multivariate sample.
+        self.assertAllClose([[1., 5]], run(bijector.forward, x))
+        self.assertAllClose([[1., 0.5]], run(bijector.inverse, x))
+        self.assertAllClose([-math.log(4.)],
+                            run(bijector.inverse_log_det_jacobian, x))
+
+  def testDiagWithTriL(self):
+    with self.test_session() as sess:
+      def static_run(fun, x):
+        return fun(x).eval()
+
+      def dynamic_run(fun, x_value):
+        x_value = np.array(x_value)
+        x = tf.placeholder(tf.float32, name="x")
+        return sess.run(fun(x), feed_dict={x: x_value})
+
+      for run in (static_run, dynamic_run):
+        mu = -1.
+        # scale = [[2., 0], [2, 3]]
+        bijector = bijectors.Affine(
+            shift=mu,
+            scale_identity_multiplier=None,
+            scale_diag=[1., 2.],
+            scale_tril=[[1., 0], [2., 1]],
+            event_ndims=1)
+        self.assertEqual(1, bijector.shaper.event_ndims.eval())  # "is vector"
+        x = [[1., 2]]  # One multivariate sample.
+        self.assertAllClose([[1., 7]], run(bijector.forward, x))
+        self.assertAllClose([[1., 1 / 3.]], run(bijector.inverse, x))
+        self.assertAllClose([-math.log(6.)],
+                            run(bijector.inverse_log_det_jacobian, x))
+
+  def testIdentityAndDiagWithTriL(self):
+    with self.test_session() as sess:
+      def static_run(fun, x):
+        return fun(x).eval()
+
+      def dynamic_run(fun, x_value):
+        x_value = np.array(x_value)
+        x = tf.placeholder(tf.float32, name="x")
+        return sess.run(fun(x), feed_dict={x: x_value})
+
+      for run in (static_run, dynamic_run):
+        mu = -1.
+        # scale = [[3., 0], [2, 4]]
+        bijector = bijectors.Affine(
+            shift=mu,
+            scale_identity_multiplier=1.0,
+            scale_diag=[1., 2.],
+            scale_tril=[[1., 0], [2., 1]],
+            event_ndims=1)
+        self.assertEqual(1, bijector.shaper.event_ndims.eval())  # "is vector"
+        x = [[1., 2]]  # One multivariate sample.
+        self.assertAllClose([[2., 9]], run(bijector.forward, x))
+        self.assertAllClose([[2 / 3., 5 / 12.]], run(bijector.inverse, x))
+        self.assertAllClose([-math.log(12.)],
+                            run(bijector.inverse_log_det_jacobian, x))
+
+  def testIdentityWithVDVTUpdate(self):
+    with self.test_session() as sess:
+      def static_run(fun, x):
+        return fun(x).eval()
+
+      def dynamic_run(fun, x_value):
+        x_value = np.array(x_value)
+        x = tf.placeholder(tf.float32, name="x")
+        return sess.run(fun(x), feed_dict={x: x_value})
+
+      for run in (static_run, dynamic_run):
+        mu = -1.
+        # Corresponds to scale = [[10, 0, 0], [0, 2, 0], [0, 0, 3]]
+        bijector = bijectors.Affine(
+            shift=mu,
+            scale_identity_multiplier=2.0,
+            scale_perturb_diag=[2., 1],
+            scale_perturb_factor=[[2., 0], [0., 0], [0, 1]],
+            event_ndims=1)
+        bijector_ref = bijectors.Affine(
+            shift=mu,
+            scale_identity_multiplier=None,
+            scale_diag=[10., 2, 3],
+            event_ndims=1)
+
+        self.assertEqual(1, bijector.shaper.event_ndims.eval())  # "is vector"
+        x = [1., 2, 3]  # Vector.
+        self.assertAllClose([9., 3, 8], run(bijector.forward, x))
+        self.assertAllClose(
+            run(bijector_ref.forward, x), run(bijector.forward, x))
+
+        self.assertAllClose([0.2, 1.5, 4/3.], run(bijector.inverse, x))
+        self.assertAllClose(
+            run(bijector_ref.inverse, x), run(bijector.inverse, x))
+        self.assertAllClose([-math.log(60.)],
+                            run(bijector.inverse_log_det_jacobian, x))
+        self.assertAllClose(
+            run(bijector.inverse_log_det_jacobian, x),
+            run(bijector_ref.inverse_log_det_jacobian, x))
+
+  def testDiagWithVDVTUpdate(self):
+    with self.test_session() as sess:
+      def static_run(fun, x):
+        return fun(x).eval()
+
+      def dynamic_run(fun, x_value):
+        x_value = np.array(x_value)
+        x = tf.placeholder(tf.float32, name="x")
+        return sess.run(fun(x), feed_dict={x: x_value})
+
+      for run in (static_run, dynamic_run):
+        mu = -1.
+        # Corresponds to scale = [[10, 0, 0], [0, 3, 0], [0, 0, 5]]
+        bijector = bijectors.Affine(
+            shift=mu,
+            scale_identity_multiplier=None,
+            scale_diag=[2., 3, 4],
+            scale_perturb_diag=[2., 1],
+            scale_perturb_factor=[[2., 0], [0., 0], [0, 1]],
+            event_ndims=1)
+        bijector_ref = bijectors.Affine(
+            shift=mu,
+            scale_identity_multiplier=None,
+            scale_diag=[10., 3, 5],
+            event_ndims=1)
+
+        self.assertEqual(1, bijector.shaper.event_ndims.eval())  # "is vector"
+        x = [1., 2, 3]  # Vector.
+        self.assertAllClose([9., 5, 14], run(bijector.forward, x))
+        self.assertAllClose(
+            run(bijector_ref.forward, x), run(bijector.forward, x))
+        self.assertAllClose([0.2, 1., 0.8], run(bijector.inverse, x))
+        self.assertAllClose(
+            run(bijector_ref.inverse, x), run(bijector.inverse, x))
+        self.assertAllClose([-math.log(150.)],
+                            run(bijector.inverse_log_det_jacobian, x))
+        self.assertAllClose(
+            run(bijector.inverse_log_det_jacobian, x),
+            run(bijector_ref.inverse_log_det_jacobian, x))
+
+  def testTriLWithVDVTUpdate(self):
+    with self.test_session() as sess:
+      def static_run(fun, x):
+        return fun(x).eval()
+
+      def dynamic_run(fun, x_value):
+        x_value = np.array(x_value)
+        x = tf.placeholder(tf.float32, name="x")
+        return sess.run(fun(x), feed_dict={x: x_value})
+
+      for run in (static_run, dynamic_run):
+        mu = -1.
+        # Corresponds to scale = [[10, 0, 0], [1, 3, 0], [2, 3, 5]]
+        bijector = bijectors.Affine(
+            shift=mu,
+            scale_identity_multiplier=None,
+            scale_tril=[[2., 0, 0], [1, 3, 0], [2, 3, 4]],
+            scale_perturb_diag=[2., 1],
+            scale_perturb_factor=[[2., 0], [0., 0], [0, 1]],
+            event_ndims=1)
+        bijector_ref = bijectors.Affine(
+            shift=mu,
+            scale_identity_multiplier=None,
+            scale_tril=[[10., 0, 0], [1, 3, 0], [2, 3, 5]],
+            event_ndims=1)
+
+        self.assertEqual(1, bijector.shaper.event_ndims.eval())  # "is vector"
+        x = [1., 2, 3]  # Vector.
+        self.assertAllClose([9., 6, 22], run(bijector.forward, x))
+        self.assertAllClose(
+            run(bijector_ref.forward, x), run(bijector.forward, x))
+        self.assertAllClose([0.2, 14 / 15., 4 / 25.], run(bijector.inverse, x))
+        self.assertAllClose(
+            run(bijector_ref.inverse, x), run(bijector.inverse, x))
+        self.assertAllClose([-math.log(150.)],
+                            run(bijector.inverse_log_det_jacobian, x))
+        self.assertAllClose(
+            run(bijector.inverse_log_det_jacobian, x),
+            run(bijector_ref.inverse_log_det_jacobian, x))
+
+  def testTriLWithVDVTUpdateNoDiagonal(self):
+    with self.test_session() as sess:
+      def static_run(fun, x):
+        return fun(x).eval()
+
+      def dynamic_run(fun, x_value):
+        x_value = np.array(x_value)
+        x = tf.placeholder(tf.float32, name="x")
+        return sess.run(fun(x), feed_dict={x: x_value})
+
+      for run in (static_run, dynamic_run):
+        mu = -1.
+        # Corresponds to scale = [[6, 0, 0], [1, 3, 0], [2, 3, 5]]
+        bijector = bijectors.Affine(
+            shift=mu,
+            scale_identity_multiplier=None,
+            scale_tril=[[2., 0, 0], [1, 3, 0], [2, 3, 4]],
+            scale_perturb_diag=None,
+            scale_perturb_factor=[[2., 0], [0., 0], [0, 1]],
+            event_ndims=1)
+        bijector_ref = bijectors.Affine(
+            shift=mu,
+            scale_identity_multiplier=None,
+            scale_tril=[[6., 0, 0], [1, 3, 0], [2, 3, 5]],
+            event_ndims=1)
+
+        self.assertEqual(1, bijector.shaper.event_ndims.eval())  # "is vector"
+        x = [1., 2, 3]  # Vector.
+        self.assertAllClose([5., 6, 22], run(bijector.forward, x))
+        self.assertAllClose(
+            run(bijector_ref.forward, x), run(bijector.forward, x))
+        self.assertAllClose([1 / 3., 8 / 9., 4 / 30.], run(bijector.inverse, x))
+        self.assertAllClose(
+            run(bijector_ref.inverse, x), run(bijector.inverse, x))
+        self.assertAllClose([-math.log(90.)],
+                            run(bijector.inverse_log_det_jacobian, x))
+        self.assertAllClose(
+            run(bijector.inverse_log_det_jacobian, x),
+            run(bijector_ref.inverse_log_det_jacobian, x))
 
   def testNoBatchMultivariateRaisesWhenSingular(self):
     with self.test_session():
       mu = [1., -1]
-      sigma = [[0., 1.], [1., 1.]]  # Has zero on the diag!
-      bijector = bijectors.ScaleAndShift(
-          shift=mu, scale=sigma, event_ndims=1, validate_args=True)
-      with self.assertRaisesOpError("Singular"):
+      bijector = bijectors.Affine(
+          shift=mu,
+          scale_identity_multiplier=None,
+          # Has zero on the diagonal.
+          scale_diag=[0., 1],
+          event_ndims=1,
+          validate_args=True)
+      with self.assertRaisesOpError("Condition x > 0"):
         bijector.forward([1., 1.]).eval()
 
   def testEventNdimsLargerThanOneRaises(self):
     with self.test_session():
       mu = [1., -1]
-      sigma = [[1., 1.], [1., 1.]]
-      bijector = bijectors.ScaleAndShift(
-          shift=mu, scale=sigma, event_ndims=2, validate_args=True)
-      with self.assertRaisesOpError("event_ndims"):
-        bijector.forward([1., 1.]).eval()
-
-  def testNonSquareMatrixScaleRaises(self):
-    # event_ndims = 1, so we expected a matrix, but will only feed a vector.
-    with self.test_session():
-      mu = [1., -1]
-      sigma = [[1., 1., 1.], [1., 1., 1.]]
-      bijector = bijectors.ScaleAndShift(
-          shift=mu, scale=sigma, event_ndims=1, validate_args=True)
-      with self.assertRaisesOpError("square"):
-        bijector.forward([1., 1.]).eval()
+      # Scale corresponds to 2x2 identity matrix.
+      bijector = bijectors.Affine(
+          shift=mu, event_ndims=2, validate_args=True)
+      bijector.forward([1., 1.]).eval()
 
   def testScaleZeroScalarRaises(self):
     with self.test_session():
       mu = -1.
-      sigma = 0.  # Scalar, leads to non-invertible bijector
-      bijector = bijectors.ScaleAndShift(
-          shift=mu, scale=sigma, validate_args=True)
-      with self.assertRaisesOpError("Singular"):
+      # Check Identity matrix with zero scaling.
+      bijector = bijectors.Affine(
+          shift=mu,
+          scale_identity_multiplier=0.0,
+          validate_args=True)
+      with self.assertRaisesOpError("Condition x > 0"):
+        bijector.forward(1.).eval()
+
+      # Check Diag matrix with zero scaling.
+      bijector = bijectors.Affine(
+          shift=mu,
+          scale_identity_multiplier=None,
+          scale_diag=[0.0],
+          validate_args=True)
+      with self.assertRaisesOpError("Condition x > 0"):
         bijector.forward(1.).eval()
 
   def testScalarCongruency(self):
     with self.test_session():
-      bijector = bijectors.ScaleAndShift(shift=3.6, scale=0.42, event_ndims=0)
+      bijector = bijectors.Affine(
+          shift=3.6,
+          scale_identity_multiplier=0.42,
+          event_ndims=0)
       assert_scalar_congruency(bijector, lower_x=-2., upper_x=2.)
 
-  def testScalarCongruencyWithNegativeScale(self):
+  def _makeScale(
+      self,
+      x,
+      scale_identity_multiplier=None,
+      scale_diag=None,
+      scale_tril=None,
+      scale_perturb_factor=None,
+      scale_perturb_diag=None):
+    """Create a scale matrix. Return None if it can not be created."""
+    c = scale_identity_multiplier
+    d1 = scale_diag
+    tril = scale_tril
+    v = scale_perturb_factor
+    d2 = scale_perturb_diag
+
+    # No scale.
+    if c is None and d1 is None and tril is None:
+      return None
+
+    matrix = np.float32(0.)
+    if c is not None:
+      # Infer the dimension from x.
+      matrix += c * self._matrix_diag(np.ones_like(x))
+    if d1 is not None:
+      matrix += self._matrix_diag(np.array(d1, dtype=np.float32))
+    if tril is not None:
+      matrix += np.array(tril, dtype=np.float32)
+    if v is not None:
+      v = np.array(v, dtype=np.float32)
+      if v.ndim < 2:
+        vt = v.T
+      else:
+        vt = np.swapaxes(v, axis1=v.ndim - 2, axis2=v.ndim - 1)
+      if d2 is not None:
+        d2 = self._matrix_diag(np.array(d2, dtype=np.float32))
+        right = np.matmul(d2, vt)
+      else:
+        right = vt
+      matrix += np.matmul(v, right)
+    return matrix
+
+  def _matrix_diag(self, d):
+    """Batch version of np.diag."""
+    orig_shape = d.shape
+    d = np.reshape(d, (np.prod(d.shape[:-1]), d.shape[-1]))
+    diag_list = []
+    for i in range(d.shape[0]):
+      diag_list.append(np.diag(d[i, ...]))
+    return np.reshape(diag_list, orig_shape + (d.shape[-1],))
+
+  def _testLegalInputs(self, shift=None, scale_params=None, x=None):
+    def _powerset(x):
+      s = list(x)
+      return itertools.chain.from_iterable(
+          itertools.combinations(s, r) for r in range(len(s) + 1))
+
     with self.test_session():
-      bijector = bijectors.ScaleAndShift(shift=3.6, scale=-0.42, event_ndims=0)
-      assert_scalar_congruency(bijector, lower_x=-2., upper_x=2.)
+      for args in _powerset(scale_params.items()):
+        args = dict(args)
+
+        scale_args = dict({"x": x}, **args)
+        scale = self._makeScale(**scale_args)
+
+        bijector_args = dict({"event_ndims": 1}, **args)
+
+        # Special case this, since the default value for this in the bijector
+        # is 1.0.
+        if "scale_identity_multiplier" not in bijector_args:
+          bijector_args["scale_identity_multiplier"] = None
+
+        # We haven't specified enough information for the scale.
+        if scale is None:
+          with self.assertRaisesRegexp(ValueError, ("must be specified.")):
+            bijector = bijectors.Affine(shift=shift, **bijector_args)
+        else:
+          bijector = bijectors.Affine(shift=shift, **bijector_args)
+          np_x = x
+          # For the case a vector is passed in, we need to make the shape
+          # match the matrix for matmul to work.
+          if x.ndim == scale.ndim - 1:
+            np_x = np.expand_dims(x, axis=-1)
+
+          forward = np.matmul(scale, np_x) + shift
+          if x.ndim == scale.ndim - 1:
+            forward = np.squeeze(forward, axis=-1)
+          self.assertAllClose(forward, bijector.forward(x).eval())
+
+          backward = np.linalg.solve(scale, np_x - shift)
+          if x.ndim == scale.ndim - 1:
+            backward = np.squeeze(backward, axis=-1)
+          self.assertAllClose(backward, bijector.inverse(x).eval())
+
+  def testLegalInputs(self):
+    self._testLegalInputs(
+        shift=np.float32(-1),
+        scale_params={
+            "scale_identity_multiplier": 2.,
+            "scale_diag": [2., 3.],
+            "scale_tril": [[1., 0.], [-3., 3.]],
+            "scale_perturb_factor": [[1., 0], [1.5, 3.]],
+            "scale_perturb_diag": [3., 1.]},
+        x=np.array([1., 2], dtype=np.float32))
+
+  def testLegalInputsWithBatch(self):
+    # Shape of scale is [2, 1, 2, 2]
+    self._testLegalInputs(
+        shift=np.float32(-1),
+        scale_params={
+            "scale_identity_multiplier": 2.,
+            "scale_diag": [[[2., 3.]], [[1., 2]]],
+            "scale_tril": [[[[1., 0.], [-3., 3.]]], [[[0.5, 0.], [1., 1.]]]],
+            "scale_perturb_factor": [
+                [[[1., 0], [1.5, 3.]]], [[[1., 0], [1., 1.]]]],
+            "scale_perturb_diag": [[[3., 1.]], [[0.5, 1.]]]},
+        x=np.array([[[1., 2]], [[3., 4]]], dtype=np.float32))
 
 
 class SoftplusBijectorTest(tf.test.TestCase):
@@ -1104,8 +1591,9 @@ class InvertBijectorTest(tf.test.TestCase):
       for fwd in [
           bijectors.Identity(),
           bijectors.Exp(event_ndims=1),
-          bijectors.ScaleAndShift(
-              shift=[0., 1.], scale=[[2., 0], [0, 3.]], event_ndims=1),
+          bijectors.Affine(
+              shift=[0., 1.], scale_identity_multiplier=None,
+              scale_diag=[2., 3.], event_ndims=1),
           bijectors.Softplus(event_ndims=1),
           bijectors.SoftmaxCentered(event_ndims=1),
           bijectors.SigmoidCentered(),

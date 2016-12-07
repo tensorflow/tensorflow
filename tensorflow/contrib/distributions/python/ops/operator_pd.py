@@ -267,6 +267,25 @@ class OperatorPDBase(object):
     # efficient non-batch version is available, override in the derived class.
     return self._batch_log_det()
 
+  def sqrt_log_abs_det(self, name="sqrt_log_det"):
+    """Log absolute value determinant of the sqrt `S` for every batch member.
+
+    In most cases, this will be the same as `sqrt_log_det`, but for certain
+    operators defined by a square root, this might be implemented slightly
+    differently.
+
+    Args:
+      name:  A name scope to use for ops added by this method.
+
+    Returns:
+      Logarithm of absolute value determinant of the square root `S` for
+      every batch member.
+    """
+    with ops.name_scope(self.name):
+      with ops.name_scope(name, values=self.inputs):
+        return self._dispatch_based_on_batch(
+            self._batch_sqrt_log_abs_det, self._sqrt_log_abs_det)
+
   def sqrt_log_det(self, name="sqrt_log_det"):
     """Log of the determinant of the sqrt `S` for every batch member.
 
@@ -289,6 +308,15 @@ class OperatorPDBase(object):
     # As implemented here, this just calls the batch version.  If a more
     # efficient non-batch version is available, override in the derived class.
     return self._batch_sqrt_log_det()
+
+  def _batch_sqrt_log_abs_det(self):
+    # Over-ride in derived class if it can be done more efficiently.
+    return self._sqrt_log_det()
+
+  def _sqrt_log_abs_det(self):
+    # As implemented here, this just calls the batch version.  If a more
+    # efficient non-batch version is available, override in the derived class.
+    return self._batch_sqrt_log_abs_det()
 
   @abc.abstractproperty
   def inputs(self):
