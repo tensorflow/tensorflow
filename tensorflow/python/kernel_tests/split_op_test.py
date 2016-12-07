@@ -24,6 +24,18 @@ import tensorflow as tf
 
 class SplitVOpTest(tf.test.TestCase):
 
+  def testListOfScalarTensors(self):
+    a = tf.to_int32(5)
+    b = tf.to_int32(6)
+
+    value = np.random.rand(11, 11)
+
+    with self.test_session(use_gpu=False) as sess:
+      result = sess.run(tf.split_v(value, [a, b]))
+
+    self.assertAllEqual(result[0], value[0:5, :])
+    self.assertAllEqual(result[1], value[5:, :])
+
   def _RunAndVerify(self, use_gpu, large_num_splits=False):
     # Random dims of rank 5
     shape = np.random.randint(1, 5, size=5)

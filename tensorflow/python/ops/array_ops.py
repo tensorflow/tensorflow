@@ -1343,7 +1343,7 @@ def split_v(value=None,
       raise ValueError("Cannot infer num from shape %s" % value_shape)
     return gen_array_ops._split_v(
         value=value,
-        size_splits=num_or_size_splits,
+        size_splits=size_splits,
         split_dim=axis,
         num_split=num[0],
         name=name)
