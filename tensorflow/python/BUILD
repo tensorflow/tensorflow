@@ -2172,6 +2172,7 @@ cuda_py_tests(
         "training/proximal_gradient_descent_test.py",
         "training/queue_runner_test.py",
         "training/rmsprop_test.py",
+        "training/saver_test.py",
         "training/slot_creator_test.py",
         "training/tensorboard_logging_test.py",
         "training/training_ops_test.py",
@@ -2180,17 +2181,6 @@ cuda_py_tests(
         ":training",
         "//tensorflow:tensorflow_py",
     ],
-)
-
-cuda_py_test(
-    name = "saver_test",
-    size = "small",
-    srcs = ["training/saver_test.py"],
-    additional_deps = [
-        ":training",
-        "//tensorflow:tensorflow_py",
-    ],
-    tags = ["manual"],
 )
 
 py_test(
