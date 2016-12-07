@@ -311,9 +311,15 @@ def _graph_to_function_def(graph, inputs, outputs, out_names=None):
 def _parse_kwargs_as_attrs(**kwargs):
   """Parses **kwargs into a node's attributes."""
   attrs = {}
+
   noinline = kwargs.pop("noinline", None)
   if noinline is not None:
     attrs["_noinline"] = attr_value_pb2.AttrValue(b=bool(noinline))
+
+  compiled = kwargs.pop("compiled", None)
+  if compiled is not None:
+    attrs["_XlaCompile"] = attr_value_pb2.AttrValue(b=bool(compiled))
+
   if kwargs:
     raise ValueError("Unknown keyword arguments: %s" % kwargs.keys())
   return attrs
