@@ -30,12 +30,12 @@ class _ChooseLocation(bijectors.Bijector):
   """A Bijector which chooses between one of two location parameters."""
 
   def __init__(self, loc, name="ChooseLocation"):
-    self._parameters = {}
+    self._graph_parents = []
     self._name = name
     with self._name_scope("init", values=[loc]):
       self._loc = tf.convert_to_tensor(loc, name="loc")
       super(_ChooseLocation, self).__init__(
-          parameters={"loc": self._loc},
+          graph_parents=[self._loc],
           is_constant_jacobian=True,
           validate_args=False,
           name=name)

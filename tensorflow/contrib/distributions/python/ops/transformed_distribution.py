@@ -169,7 +169,7 @@ class TransformedDistribution(distributions.Distribution):
         # We let TransformedDistribution access _graph_parents since this class
         # is more like a baseclass than derived.
         graph_parents=(distribution._graph_parents +  # pylint: disable=protected-access
-                       list(bijector.parameters.values())),
+                       bijector.graph_parents),
         name=name)
 
   @property

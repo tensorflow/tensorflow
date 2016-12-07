@@ -26,8 +26,9 @@ import numpy as np
 import six
 import tensorflow as tf
 
-distributions = tf.contrib.distributions
 bijectors = tf.contrib.distributions.bijector
+distributions = tf.contrib.distributions
+linalg = tf.contrib.linalg
 rng = np.random.RandomState(42)
 
 
@@ -520,6 +521,84 @@ class InlineBijectorTest(tf.test.TestCase):
       self.assertAllEqual(x, bijector.get_inverse_event_shape(y))
       self.assertAllEqual(x.as_list(),
                           bijector.inverse_event_shape(y.as_list()).eval())
+
+
+class AffineLinearOperatorTest(tf.test.TestCase):
+
+  def testIdentity(self):
+    with self.test_session():
+      affine = bijectors.AffineLinearOperator(validate_args=True)
+      x = np.array([[1, 0, -1],
+                    [2, 3, 4]], dtype=np.float32)
+      y = x
+      ildj = 0.
+
+      self.assertEqual(affine.name, "affine_linear_operator")
+      self.assertAllClose(y, affine.forward(x).eval())
+      self.assertAllClose(x, affine.inverse(y).eval())
+      self.assertAllClose(ildj, affine.inverse_log_det_jacobian(y).eval())
+      self.assertAllClose(-affine.inverse_log_det_jacobian(y).eval(),
+                          affine.forward_log_det_jacobian(x).eval())
+      rev, actual_ildj = affine.inverse_and_inverse_log_det_jacobian(y)
+      self.assertAllClose(x, rev.eval())
+      self.assertAllClose(ildj, actual_ildj.eval())
+
+  def testDiag(self):
+    with self.test_session():
+      shift = np.array([-1, 0, 1], dtype=np.float32)
+      diag = np.array([[1, 2, 3],
+                       [2, 5, 6]], dtype=np.float32)
+      scale = linalg.LinearOperatorDiag(diag, is_non_singular=True)
+      affine = bijectors.AffineLinearOperator(shift=shift, scale=scale,
+                                              validate_args=True)
+
+      x = np.array([[1, 0, -1],
+                    [2, 3, 4]], dtype=np.float32)
+      y = diag * x + shift
+      ildj = -np.sum(np.log(np.abs(diag)), axis=-1)
+
+      self.assertEqual(affine.name, "affine_linear_operator")
+      self.assertAllClose(y, affine.forward(x).eval())
+      self.assertAllClose(x, affine.inverse(y).eval())
+      self.assertAllClose(ildj, affine.inverse_log_det_jacobian(y).eval())
+      self.assertAllClose(-affine.inverse_log_det_jacobian(y).eval(),
+                          affine.forward_log_det_jacobian(x).eval())
+      rev, actual_ildj = affine.inverse_and_inverse_log_det_jacobian(y)
+      self.assertAllClose(x, rev.eval())
+      self.assertAllClose(ildj, actual_ildj.eval())
+
+  def testTriL(self):
+    with self.test_session():
+      shift = np.array([-1, 0, 1], dtype=np.float32)
+      tril = np.array([[[1, 0, 0],
+                        [2, -1, 0],
+                        [3, 2, 1]],
+                       [[2, 0, 0],
+                        [3, -2, 0],
+                        [4, 3, 2]]], dtype=np.float32)
+      scale = linalg.LinearOperatorTriL(tril, is_non_singular=True)
+      affine = bijectors.AffineLinearOperator(shift=shift, scale=scale,
+                                              validate_args=True)
+
+      x = np.array([[[1, 0, -1],
+                     [2, 3, 4]],
+                    [[4, 1, -7],
+                     [6, 9, 8]]], dtype=np.float32)
+      # If we made the bijector do x*A+b then this would be simplified to:
+      # y = np.matmul(x, tril) + shift.
+      y = np.squeeze(np.matmul(tril, np.expand_dims(x, -1)), -1) + shift
+      ildj = -np.sum(np.log(np.abs(np.diagonal(tril, axis1=-2, axis2=-1))),
+                     axis=-1)
+
+      self.assertEqual(affine.name, "affine_linear_operator")
+      self.assertAllClose(y, affine.forward(x).eval())
+      self.assertAllClose(x, affine.inverse(y).eval())
+      self.assertAllClose(ildj, affine.inverse_log_det_jacobian(y).eval())
+      self.assertAllClose(-affine.inverse_log_det_jacobian(y).eval(),
+                          affine.forward_log_det_jacobian(x).eval())
+      rev, actual_ildj = affine.inverse_and_inverse_log_det_jacobian(y)
+      self.assertAllClose(x, rev.eval())
+      self.assertAllClose(ildj, actual_ildj.eval())
 
 
 class AffineBijectorTest(tf.test.TestCase):

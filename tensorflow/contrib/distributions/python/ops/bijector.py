@@ -30,6 +30,7 @@ To apply a `Bijector`, use `distributions.TransformedDistribution`.
 ## Bijectors
 
 @@Affine
+@@AffineLinearOperator
 @@Bijector
 @@Chain
 @@CholeskyOuterProduct
@@ -49,6 +50,7 @@ from __future__ import print_function
 import abc
 import collections
 import contextlib
+import itertools
 import math
 import re
 import numpy as np
@@ -59,6 +61,7 @@ from tensorflow.contrib.distributions.python.ops import operator_pd_diag
 from tensorflow.contrib.distributions.python.ops import operator_pd_identity
 from tensorflow.contrib.distributions.python.ops import operator_pd_vdvt_update
 from tensorflow.contrib.distributions.python.ops.shape import _DistributionShape
+from tensorflow.contrib.linalg.python.ops import linear_operator
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -73,6 +76,7 @@ from tensorflow.python.ops import nn_ops
 
 __all__ = [
     "Affine",
+    "AffineLinearOperator",
     "Bijector",
     "Chain",
     "CholeskyOuterProduct",
@@ -309,7 +313,7 @@ class Bijector(object):
 
   - If the `Bijector`'s use is limited to `TransformedDistribution` (or friends
     like `QuantizedDistribution`) then depending on your use, you may not need
-    to implement all of `_forward` and `_inverese` functions.  Examples:
+    to implement all of `_forward` and `_inverse` functions.  Examples:
       1. Sampling (e.g., `sample`) only requires `_forward`.
       2. Probability functions (e.g., `prob`, `cdf`, `survival`) only require
          `_inverse` (and related).
@@ -391,7 +395,7 @@ class Bijector(object):
   def __init__(self,
                batch_ndims=None,
                event_ndims=None,
-               parameters=None,
+               graph_parents=None,
                is_constant_jacobian=False,
                validate_args=False,
                dtype=None,
@@ -415,7 +419,7 @@ class Bijector(object):
     Args:
       batch_ndims: number of dimensions associated with batch coordinates.
       event_ndims: number of dimensions associated with event coordinates.
-      parameters: Dictionary of parameters used by this `Bijector`
+      graph_parents: Python list of graph prerequisites of this `Bijector`.
       is_constant_jacobian: `Boolean` indicating that the Jacobian is not a
         function of the input.
       validate_args: `Boolean`, default `False`.  Whether to validate input with
@@ -432,7 +436,7 @@ class Bijector(object):
           batch_ndims=batch_ndims,
           event_ndims=event_ndims,
           validate_args=validate_args)
-    self._parameters = parameters or {}
+    self._graph_parents = graph_parents or []
     self._is_constant_jacobian = is_constant_jacobian
     self._validate_args = validate_args
     self._dtype = dtype
@@ -457,9 +461,9 @@ class Bijector(object):
     return self._shaper
 
   @property
-  def parameters(self):
-    """Returns this `Bijector`'s parameters as a name/value dictionary."""
-    return self._parameters
+  def graph_parents(self):
+    """Returns this `Bijector`'s graph_parents as a Python list."""
+    return self._graph_parents
 
   @property
   def is_constant_jacobian(self):
@@ -811,8 +815,8 @@ class Bijector(object):
   def _name_scope(self, name=None, values=None):
     """Helper function to standardize op scope."""
     with ops.name_scope(self.name):
-      with ops.name_scope(name, values=(
-          (values or []) + list(self.parameters.values()))) as scope:
+      with ops.name_scope(
+          name, values=(values or []) + self.graph_parents) as scope:
         yield scope
 
   def _maybe_assert_dtype(self, x):
@@ -1003,7 +1007,7 @@ class Invert(Bijector):
 
     self._bijector = bijector
     super(Invert, self).__init__(
-        parameters=bijector.parameters,
+        graph_parents=bijector.graph_parents,
         is_constant_jacobian=bijector.is_constant_jacobian,
         validate_args=validate_args,
         dtype=bijector.dtype,
@@ -1086,9 +1090,7 @@ class Chain(Bijector):
     Raises:
       ValueError: if bijectors have different dtypes.
     """
-
     self._bijectors = bijectors
-
     dtype = list(set([b.dtype for b in bijectors]))
     if len(dtype) > 2:
       raise ValueError("incompatible dtypes: %s" % dtype)
@@ -1098,13 +1100,9 @@ class Chain(Bijector):
       dtype = dtype[0]
     else:
       dtype = None
-
-    parameters = {}
-    for b in bijectors:
-      parameters.update(("{}={}".format(b.name, k), v)
-                        for k, v in b.parameters.items())
     super(Chain, self).__init__(
-        parameters=parameters,
+        graph_parents=list(itertools.chain.from_iterable(
+            b.graph_parents for b in bijectors)),
         is_constant_jacobian=all(b.is_constant_jacobian for b in bijectors),
         validate_args=validate_args,
         dtype=dtype,
@@ -1228,7 +1226,7 @@ class PowerTransform(Bijector):
     Raises:
       ValueError: if `power < 0` or is not known statically.
     """
-    self._parameters = {}
+    self._graph_parents = []
     self._name = name
     self._validate_args = validate_args
     with self._name_scope("init", values=[power]):
@@ -1461,7 +1459,7 @@ class Affine(Bijector):
       name: `String` name given to ops managed by this object.
     """
 
-    self._parameters = {}
+    self._graph_parents = []
     self._name = name
     self._validate_args = validate_args
     with self._name_scope("init", values=[shift, event_ndims]):
@@ -1493,7 +1491,7 @@ class Affine(Bijector):
       super(Affine, self).__init__(
           batch_ndims=self._infer_batch_ndims(),
           event_ndims=event_ndims,
-          parameters={"shift": self.shift, "scale": self.scale},
+          graph_parents=[self._shift, self._scale],
           is_constant_jacobian=True,
           validate_args=validate_args,
           name=name)
@@ -1816,6 +1814,187 @@ class Affine(Bijector):
     return capacitance
 
 
+class AffineLinearOperator(Bijector):
+  """Bijector which computes `Y = g(X; shift, scale) = scale @ X.T + shift`.
+
+  `shift` is a numeric `Tensor` and `scale` is a `LinearOperator`.
+
+  If `X` is a scalar then the forward transformation is: `scale * X + shift`
+  where `*` denotes the scalar product.
+
+  Note: we don't always simply transpose `X` (but write it this way for
+  brevity).  Actually the input `X` undergoes the following transformation
+  before being premultiplied by `scale`:
+
+  1. If there are no sample dims, we call `X = tf.expand_dims(X, 0)`, i.e.,
+     `new_sample_shape = [1]`. Otherwise do nothing.
+  2. The sample shape is flattened to have one dimension, i.e.,
+     `new_sample_shape = [n]` where `n = tf.reduce_prod(old_sample_shape)`.
+  3. The sample dim is cyclically rotated left by 1, i.e.,
+     `new_shape = [B1,...,Bb, k, n]` where `n` is as above, `k` is the
+     event_shape, and `B1,...,Bb` are the batch shapes for each of `b` batch
+     dimensions.
+
+  (For more details see `shape.make_batch_of_event_sample_matrices`.)
+
+  The result of the above transformation is that `X` can be regarded as a batch
+  of matrices where each column is a draw from the distribution.  After
+  premultiplying by `scale`, we take the inverse of this procedure.  The input
+  `Y` also undergoes the same transformation before/after premultiplying by
+  `inv(scale)`.
+
+  Example Use:
+
+  ```python
+  linalg = tf.contrib.linalg
+
+  x = [1., 2, 3]
+
+  shift = [-1., 0., 1]
+  diag = [1., 2, 3]
+  scale = linalg.LinearOperatorDiag(diag)
+  affine = AffineLinearOperator(shift, scale)
+  # In this case, `forward` is equivalent to:
+  # diag * scale + shift
+  y = affine.forward(x)  # [0., 4, 10]
+
+  shift = [2., 3, 1]
+  tril = [[1., 0, 0],
+          [2, 1, 0],
+          [3, 2, 1]]
+  scale = linalg.LinearOperatorTriL(tril)
+  affine = AffineLinearOperator(shift, scale)
+  # In this case, `forward` is equivalent to:
+  # np.squeeze(np.matmul(tril, np.expand_dims(x, -1)), -1) + shift
+  y = affine.forward(x)  # [3., 7, 11]
+  ```
+
+  """
+
+  def __init__(self,
+               shift=None,
+               scale=None,
+               event_ndims=1,
+               validate_args=False,
+               name="affine_linear_operator"):
+    """Instantiates the `AffineLinearOperator` bijector.
+
+    Args:
+      shift: Numeric `Tensor`.
+      scale:  Subclass of `LinearOperator`.  Represents the (batch) positive
+        definite matrix `M` in `R^{k x k}`.
+      event_ndims: Scalar `integer` `Tensor` indicating the number of dimensions
+        associated with a particular draw from the distribution. Must be 0 or 1.
+      validate_args: `Boolean` indicating whether arguments should be checked
+        for correctness.
+      name: `String` name given to ops managed by this object.
+
+    Raises:
+      ValueError: if `event_ndims` is not 0 or 1.
+      TypeError: if `scale` is not a `LinearOperator`.
+      TypeError: if `shift.dtype` does not match `scale.dtype`.
+      ValueError: if not `scale.is_non_singular`.
+    """
+    self._graph_parents = []
+    self._name = name
+    self._validate_args = validate_args
+    graph_parents = []
+    with self._name_scope("init", values=[shift]):
+      event_ndims = ops.convert_to_tensor(event_ndims, name="event_ndims")
+      if tensor_util.constant_value(event_ndims) is not None:
+        event_ndims = tensor_util.constant_value(event_ndims)
+        if event_ndims not in (0, 1):
+          raise ValueError("event_ndims({}) was not 0 or 1".format(event_ndims))
+      else:
+        if validate_args:
+          # Shape tool will catch if event_ndims is negative.
+          event_ndims = control_flow_ops.with_dependencies(
+              [check_ops.assert_less(
+                  event_ndims, 2, message="event_ndims must be 0 or 1")],
+              event_ndims)
+        graph_parents += [event_ndims]
+
+      if shift is not None:
+        shift = ops.convert_to_tensor(shift, name="shift")
+        graph_parents += [shift]
+      self._shift = shift
+
+      if scale is not None:
+        if (shift is not None and
+            shift.dtype.base_dtype != scale.dtype.base_dtype):
+          raise TypeError(
+              "shift.dtype({}) is incompatible with scale.dtype({}).".format(
+                  shift.dtype, scale.dtype))
+        if not isinstance(scale, linear_operator.LinearOperator):
+          raise TypeError("scale is not an instance of tf.LinearOperator")
+        if validate_args and not scale.is_non_singular:
+          raise ValueError("Scale matrix must be non-singular.")
+        graph_parents += scale.graph_parents
+        if scale.tensor_rank is not None:
+          batch_ndims = scale.tensor_rank - 2
+        else:
+          batch_ndims = scale.tensor_rank_dynamic() - 2
+          graph_parents += [batch_ndims]
+      else:
+        batch_ndims = 0  # We won't need shape inference when scale is None.
+      self._scale = scale
+
+      super(AffineLinearOperator, self).__init__(
+          batch_ndims=batch_ndims,
+          event_ndims=event_ndims,
+          graph_parents=graph_parents,
+          is_constant_jacobian=True,
+          validate_args=validate_args,
+          name=name)
+
+  @property
+  def shift(self):
+    """The `shift` `Tensor` in `Y = scale @ X.T + shift`."""
+    return self._shift
+
+  @property
+  def scale(self):
+    """The `scale` `LinearOperator` in `Y = scale @ X.T + shift`."""
+    return self._scale
+
+  def _forward(self, x):
+    y = x
+    if self.scale is not None:
+      y, sample_shape = self.shaper.make_batch_of_event_sample_matrices(
+          y, expand_batch_dim=False)
+      with ops.control_dependencies([self.scale.assert_non_singular()] if
+                                    self.validate_args else []):
+        y = self.scale.apply(y)
+      y = self.shaper.undo_make_batch_of_event_sample_matrices(
+          y, sample_shape, expand_batch_dim=False)
+    if self.shift is not None:
+      y += self.shift
+    return y
+
+  def _inverse(self, y):
+    x = y
+    if self.shift is not None:
+      x -= self.shift
+    if self.scale is not None:
+      x, sample_shape = self.shaper.make_batch_of_event_sample_matrices(
+          x, expand_batch_dim=False)
+      # Solve fails if the op is singular so we may safely skip this assertion.
+      x = self.scale.solve(x)
+      x = self.shaper.undo_make_batch_of_event_sample_matrices(
+          x, sample_shape, expand_batch_dim=False)
+    return x
+
+  def _inverse_log_det_jacobian(self, y):
+    return -self._forward_log_det_jacobian(y)
+
+  def _forward_log_det_jacobian(self, x):  # pylint: disable=unused-argument
+    if self.scale is None:
+      return constant_op.constant(0, dtype=x.dtype.base_dtype)
+    with ops.control_dependencies([self.scale.assert_non_singular()] if
+                                  self.validate_args else []):
+      return self.scale.log_abs_determinant()
+
+
 class Softplus(Bijector):
   """Bijector which computes `Y = g(X) = Log[1 + exp(X)]`.
 
@@ -1925,7 +2104,7 @@ class SoftmaxCentered(Bijector):
                event_ndims=0,
                validate_args=False,
                name="softmax_centered"):
-    self._parameters = {}
+    self._graph_parents = []
     self._name = name
     with self._name_scope("init", values=[event_ndims]):
       event_ndims = ops.convert_to_tensor(event_ndims, name="event_ndims")
@@ -2151,7 +2330,7 @@ class CholeskyOuterProduct(Bijector):
     Raises:
       ValueError: if event_ndims is neither 0 or 2.
     """
-    self._parameters = {}
+    self._graph_parents = []
     self._name = name
     with self._name_scope("init", values=[event_ndims]):
       event_ndims = ops.convert_to_tensor(event_ndims, name="event_ndims")
