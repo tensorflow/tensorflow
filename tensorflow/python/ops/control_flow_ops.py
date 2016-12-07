@@ -1448,20 +1448,6 @@ class ControlFlowContext(object):
       outer_ctxt = outer_ctxt.outer_context
     return True
 
-  def _MaybeAddToWhileContext(self, op):
-    """Add a control dependency to the containing WhileContext.
-
-    The added control dependency ensures that the outputs of this op
-    belong to the WhileContext. Do nothing if the op is not contained
-    in a WhileContext.
-
-    Args:
-      op: An operation.
-    """
-    while_ctxt = self.GetWhileContext()
-    if while_ctxt is not None:
-      op._add_control_input(while_ctxt.GetControlPivot().op)
-
   def _MaybeRemoveExternalControlEdges(self, op):
     """Remove any external control dependency on this op."""
     while_ctxt = self.GetWhileContext()
@@ -1628,8 +1614,6 @@ class CondContext(ControlFlowContext):
     if not op.inputs:
       # Remove any external control dependency on this op
       self._MaybeRemoveExternalControlEdges(op)
-      # Add this op to the enclosing while context
-      self._MaybeAddToWhileContext(op)
       # pylint: disable=protected-access
       op._add_control_input(self._pivot.op)
       # pylint: enable=protected-access
