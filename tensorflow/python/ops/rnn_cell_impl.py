@@ -846,7 +846,7 @@ def _linear(args, output_size, bias, bias_start=0.0, scope=None):
       raise ValueError("linear is expecting 2D arguments: %s" % shapes)
     if shape[1].value is None:
       raise ValueError("linear expects shape[1] to be provided for shape %s, "
-                       "but saw %d" % (shape, shape[1]))
+                       "but saw %s" % (shape, shape[1]))
     else:
       total_arg_size += shape[1].value
 
