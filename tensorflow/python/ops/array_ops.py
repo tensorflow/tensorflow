@@ -1229,8 +1229,6 @@ def split(axis=None,
           split_dim=None):
   """DEPRECATED: use split_v; split_v rename to split happening soon.
 
-  Splits a tensor into `num_split` tensors along one dimension.
-
   Splits `value` along dimension `axis` into `num_or_size_splits` smaller
   tensors. Requires that `num_or_size_splits` evenly divide `value.shape[axis]`.
 
@@ -1267,7 +1265,7 @@ def split(axis=None,
     split_dim: The old (deprecated) name for axis.
 
   Returns:
-    `num_split` `Tensor` objects resulting from splitting `value`.
+    `num_or_size_splits` `Tensor` objects resulting from splitting `value`.
   """
   axis = deprecation.deprecated_argument_lookup("axis", axis, "split_dim",
                                                 split_dim)
@@ -1282,13 +1280,13 @@ def split_v(value=None,
             name="split_v"):
   """Splits a tensor into sub tensors.
 
-  If num_or_size_splits is a scalar, `num_split`, then
-  splits `value` along dimension `axis` into `num_split` smaller tensors.
-  Requires that `num_split` evenly divide `value.shape[split_dim]`.
+  If `num_or_size_splits` is a scalar, `num_split`, then splits `value` along
+  dimension `axis` into `num_split` smaller tensors.
+  Requires that `num_split` evenly divides `value.shape[axis]`.
 
-  If num_or_size_splits is a tensor, then
-  splits `value` into len(size_splits) pieces each the same size as the input
-  except along dimension split_dim where the size is size_splits[i].
+  If `num_or_size_splits` is a tensor, `size_splits`, then splits `value` into
+  `len(size_splits)` pieces. The shape of the `i`-th piece has the same size as
+  the `value` except along dimension `axis` where the size is `size_splits[i]`.
 
   For example:
 
@@ -1309,12 +1307,12 @@ def split_v(value=None,
     num_or_size_splits: Either an integer indicating the number of splits along
       split_dim or a 1-D Tensor containing the sizes of each output tensor
       along split_dim. If an integer then it must evenly divide
-      value.shape[split_dim]; otherwise the sum of sizes along the split
-      dimension must match that of the input.
+      `value.shape[axis]`; otherwise the sum of sizes along the split
+      dimension must match that of the `value`.
     axis: A 0-D `int32` `Tensor`. The dimension along which to split.
       Must be in the range `[0, rank(value))`. Defaults to 0.
     num: Optional, used to specify the number of outputs when it cannot be
-         inferred from the shape of size_splits.
+      inferred from the shape of `size_splits`.
     name: A name for the operation (optional).
 
   Returns:
