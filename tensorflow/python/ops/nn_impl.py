@@ -311,7 +311,7 @@ def zero_fraction(value, name=None):
 
 
 # pylint: disable=redefined-builtin
-def depthwise_conv2d(input, filter, strides, padding, name=None):
+def depthwise_conv2d(input, filter, strides, padding, rate=None, name=None):
   """Depthwise 2-D convolution.
 
   Given an input tensor of shape `[batch, in_height, in_width, in_channels]`
@@ -324,12 +324,15 @@ def depthwise_conv2d(input, filter, strides, padding, name=None):
 
   In detail,
 
-      output[b, i, j, k * channel_multiplier + q] =
-          sum_{di, dj} input[b, strides[1] * i + di, strides[2] * j + dj, k] *
-                       filter[di, dj, k, q]
+      output[b, i, j, k * channel_multiplier + q] = sum_{di, dj}
+           filter[di, dj, k, q] * input[b, strides[1] * i + rate[0] * di,
+                                           strides[2] * j + rate[1] * dj, k]
 
   Must have `strides[0] = strides[3] = 1`.  For the most common case of the
   same horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
+  If any value in `rate` is greater than 1, we perform atrous depthwise
+  convolution, in which case all values in the `strides` tensor must be equal
+  to 1.
 
   Args:
     input: 4-D with shape `[batch, in_height, in_width, in_channels]`.
@@ -340,6 +343,9 @@ def depthwise_conv2d(input, filter, strides, padding, name=None):
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
       See the [comment
         here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
+    rate: 1-D of size 2. The dilation rate in which we sample input values
+      across the `height` and `width` dimensions in atrous convolution. If it is
+      greater than 1, then all values of strides must be 1.
     name: A name for this operation (optional).
 
   Returns:
@@ -349,9 +355,23 @@ def depthwise_conv2d(input, filter, strides, padding, name=None):
   with ops.name_scope(name, "depthwise", [input, filter]) as name:
     input = ops.convert_to_tensor(input, name="tensor_in")
     filter = ops.convert_to_tensor(filter, name="filter_in")
+    if rate is None:
+      rate = [1, 1]
 
-    return nn_ops.depthwise_conv2d_native(
-        input, filter, strides, padding, name=name)
+    def op(input_converted, _, padding):
+      return nn_ops.depthwise_conv2d_native(
+          input=input_converted,
+          filter=filter,
+          strides=strides,
+          padding=padding,
+          name=name)
+
+    return nn_ops.with_space_to_batch(
+        input=input,
+        filter_shape=array_ops.shape(filter),
+        dilation_rate=rate,
+        padding=padding,
+        op=op)
 
 
 # pylint: enable=redefined-builtin
@@ -363,6 +383,7 @@ def separable_conv2d(input,
                      pointwise_filter,
                      strides,
                      padding,
+                     rate=None,
                      name=None):
   """2-D convolution with separable filters.
 
@@ -382,6 +403,9 @@ def separable_conv2d(input,
   the pointwise convolution has implicit strides of `[1, 1, 1, 1]`.  Must have
   `strides[0] = strides[3] = 1`.  For the most common case of the same
   horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
+  If any value in `rate` is greater than 1, we perform atrous depthwise
+  convolution, in which case all values in the `strides` tensor must be equal
+  to 1.
 
   Args:
     input: 4-D `Tensor` with shape `[batch, in_height, in_width, in_channels]`.
@@ -396,6 +420,9 @@ def separable_conv2d(input,
     padding: A string, either `'VALID'` or `'SAME'`.  The padding algorithm.
       See the [comment
         here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
+    rate: 1-D of size 2. The dilation rate in which we sample input values
+      across the `height` and `width` dimensions in atrous convolution. If it is
+      greater than 1, then all values of strides must be 1.
     name: A name for this operation (optional).
 
   Returns:
@@ -421,6 +448,9 @@ def separable_conv2d(input,
     in_channels = input.get_shape().with_rank(4)[3]
     out_channels = pointwise_filter_shape[3]
 
+    if rate is None:
+      rate = [1, 1]
+
     # If any of channel numbers is unknown, then the comparison below returns
     # None. See TensorShape.__gt__().
     if channel_multiplier * in_channels > out_channels:
@@ -433,8 +463,22 @@ def separable_conv2d(input,
     # The layout of the ops in the graph are expected to be as follows:
     # depthwise_conv2d  // Conv2D op corresponding to native deptwise conv.
     # separable_conv2d  // Conv2D op corresponding to the pointwise conv.
-    depthwise = nn_ops.depthwise_conv2d_native(
-        input, depthwise_filter, strides, padding, name="depthwise")
+
+    def op(input_converted, _, padding):
+      return nn_ops.depthwise_conv2d_native(
+          input=input_converted,
+          filter=depthwise_filter,
+          strides=strides,
+          padding=padding,
+          name="depthwise")
+
+    depthwise = nn_ops.with_space_to_batch(
+        input=input,
+        filter_shape=array_ops.shape(depthwise_filter),
+        dilation_rate=rate,
+        padding=padding,
+        op=op)
+
     return nn_ops.conv2d(
         depthwise, pointwise_filter, [1, 1, 1, 1], padding="VALID", name=name)
 

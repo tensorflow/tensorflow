@@ -186,5 +186,32 @@ class AtrousConv2DTransposeTest(tf.test.TestCase):
                 self.assertAllClose(y1.eval(), y2.eval(), rtol=1e-3, atol=1e-3)
 
 
+class AtrousDepthwiseConv2DTest(tf.test.TestCase):
+
+  def testAtrousDepthwiseConv2DForward(self):
+    strides = [1, 1, 1, 1]
+    with self.test_session(use_gpu=True):
+      # Input: [batch, height, width, input_depth]
+      height = 9
+      for width in [9, 10]:  # Test both odd and even width.
+        x_shape = [2, height, width, 2]
+        x = np.arange(np.prod(x_shape), dtype=np.float32).reshape(x_shape)
+
+        # Filter: [kernel_height, kernel_width, input_depth, output_depth]
+        for kernel_height in range(1, 4):
+          for kernel_width in range(1, 4):
+            f_shape = [kernel_height, kernel_width, 2, 2]
+            f = np.arange(np.prod(f_shape), dtype=np.float32).reshape(f_shape)
+
+            for rate in range(1, 4):
+              f_up = _upsample_filters(f, rate)
+
+              for padding in ["SAME", "VALID"]:
+                y1 = tf.nn.depthwise_conv2d(x, f, strides, padding,
+                                            rate=[rate, rate])
+                y2 = tf.nn.depthwise_conv2d(x, f_up, strides, padding)
+                self.assertAllClose(y1.eval(), y2.eval(), rtol=1e-3, atol=1e-3)
+
+
 if __name__ == "__main__":
   tf.test.main()
