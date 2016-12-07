@@ -6,9 +6,9 @@ package(default_visibility = ["//visibility:private"])
 licenses(["notice"])  # Apache 2.0
 
 java_binary(
-    name = "example",
-    srcs = ["Example.java"],
-    main_class = "org.tensorflow.examples.Example",
+    name = "label_image",
+    srcs = ["LabelImage.java"],
+    main_class = "org.tensorflow.examples.LabelImage",
     deps = ["//tensorflow/java:tensorflow"],
 )
 

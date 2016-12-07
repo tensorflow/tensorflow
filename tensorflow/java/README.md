@@ -40,7 +40,7 @@ bazel build -c opt \
   //tensorflow/java:libtensorflow-jni
 ```
 
-## Example Usage
+## Example
 
 ### With bazel
 
@@ -48,7 +48,7 @@ Add a dependency on `//tensorflow/java:tensorflow` to the `java_binary` or
 `java_library` rule. For example:
 
 ```sh
-bazel run -c opt //tensorflow/java/src/main/java/org/tensorflow/examples:example
+bazel run -c opt //tensorflow/java/src/main/java/org/tensorflow/examples:label_image
 ```
 
 ### With `javac`
@@ -58,7 +58,7 @@ bazel run -c opt //tensorflow/java/src/main/java/org/tensorflow/examples:example
     ```sh
     javac \
       -cp ../../bazel-bin/tensorflow/java/libtensorflow.jar \
-      ./src/main/java/org/tensorflow/examples/Example.java
+      ./src/main/java/org/tensorflow/examples/LabelImage.java
     ```
 
 -   Make `libtensorflow.jar` and `libtensorflow-jni.so`
@@ -68,5 +68,5 @@ bazel run -c opt //tensorflow/java/src/main/java/org/tensorflow/examples:example
     java \
       -Djava.library.path=../../bazel-bin/tensorflow/java \
       -cp ../../bazel-bin/tensorflow/java/libtensorflow.jar:./src/main/java \
-      org.tensorflow.examples.Example
+      org.tensorflow.examples.LabelImage
     ```
