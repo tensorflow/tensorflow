@@ -48,6 +48,15 @@ const string PADDING_SAME_STR = "SAME";
 const string PADDING_NA = "NA";
 const string NULL_OUTPUT_NAME = "NULL";
 
+// This is a temporary workaround to support android build
+// where std::string is not supported even with c++11 option.
+template <typename T>
+static string ToString(T val) {
+  std::stringstream stream;
+  stream << val;
+  return stream.str();
+}
+
 /**
  * graph loading functions
  * - LoadGraphFromProto
@@ -363,7 +372,7 @@ void GraphTransferer::RegisterConstantNode(
   VLOG(1) << "Register constant node: " << node.name();
   CHECK(node_name_to_id_cache_map_.count(node.name()) == 1);
   const int id = node_name_to_id_cache_map_[node.name()];
-  const string data_name = DATA_NODE_PREFIX + std::to_string(id);
+  const string data_name = DATA_NODE_PREFIX + ToString(id);
   const int output_node_size = node.num_outputs();
   CHECK(output_node_size == 1);
   // TODO(satok): support multiple outputs?
@@ -404,10 +413,9 @@ int GraphTransferer::RegisterConstantShape(const std::vector<int>& shape) {
   VLOG(1) << "Cache constant shape.";
   // TODO(satok): Handle non-4dim strides
   CHECK(shape.size() == 4);
-  const string shape_name = CONST_SHAPE_PREFIX + std::to_string(shape.at(0)) +
-                            'x' + std::to_string(shape.at(1)) + 'x' +
-                            std::to_string(shape.at(2)) + 'x' +
-                            std::to_string(shape.at(3));
+  const string shape_name = CONST_SHAPE_PREFIX + ToString(shape.at(0)) + 'x' +
+                            ToString(shape.at(1)) + 'x' +
+                            ToString(shape.at(2)) + 'x' + ToString(shape.at(3));
   if (node_name_to_id_cache_map_.count(shape_name) <= 0) {
     node_name_cache_list_.emplace_back(nullptr);
     const int id = node_name_cache_list_.size() - 1;
@@ -589,10 +597,10 @@ void GraphTransferer::AppendNodeParams(const string& name, const int id,
                                        const int outputs_size) {
   VLOG(1) << "Append node params: " << name;
   // TODO(satok): store padding as Padding?
-  const string output_name = OUTPUTS_NODE_PREFIX + std::to_string(id);
+  const string output_name = OUTPUTS_NODE_PREFIX + ToString(id);
   node_transfer_params_list_.emplace_back(
       NodeTransferParams{name, id, type, type_id, PADDING_PREFIX + padding_str,
-                         INPUTS_NODE_PREFIX + std::to_string(id),
+                         INPUTS_NODE_PREFIX + ToString(id),
                          inputs_size + static_cast<int>(extra_inputs.size()),
                          outputs_size <= 0 ? NULL_OUTPUT_NAME : output_name,
                          static_cast<int>(outputs_size)});

@@ -18,8 +18,8 @@
 # You can build targets in this file by including this sub makefile like:
 # $ make -f tensorflow/contrib/makefile/Makefile TARGET=<target> \
 # SUB_MAKEFILES=\
-# $(pwd)/tensorflow/contrib/makefile/sub_makefiles/quantization/Makefile.in \
-# (optional: NDK_ROOT=<ndk_root>) contrib_quantization_tests
+# $(pwd)/tensorflow/contrib/makefile/sub_makefiles/hexagon_graph_execution/Makefile.in \
+# (optional: NDK_ROOT=<ndk_root>) hexagon_graph_execution
 # TODO(satok): Support more targets
 
 GTEST_DIR := \
@@ -40,33 +40,35 @@ $(GTEST_HEADERS)
 # TODO(satok): Remove once it's fixed
 CXXFLAGS += -DTENSORFLOW_DISABLE_META
 
-QUANTIZATION_TEST_SRCS := \
-tensorflow/core/kernels/hexagon/quantized_matmul_op_for_hexagon_test.cc \
+GRAPH_EXECUTION_SRCS := \
+tensorflow/core/kernels/hexagon/graph_transferer.cc \
+tensorflow/core/kernels/hexagon/hexagon_control_wrapper.cc \
+tensorflow/core/kernels/hexagon/hexagon_ops_definitions.cc \
+tensorflow/core/kernels/hexagon/hexagon_graph_execution_test.cc \
 tensorflow/contrib/makefile/test/test_main.cc
 
-QUANTIZATION_TEST_OBJS := $(addprefix $(OBJDIR), $(QUANTIZATION_TEST_SRCS:.cc=.o))
+GRAPH_EXECUTION_OBJS := $(addprefix $(OBJDIR), $(GRAPH_EXECUTION_SRCS:.cc=.o))
 
-QUANTIZATION_TEST_NAME := quantization_tests
-QUANTIZATION_TEST_BIN_PATH := $(BINDIR)$(QUANTIZATION_TEST_NAME)
+GRAPH_EXECUTION_NAME := hexagon_graph_execution
+GRAPH_EXECUTION_BIN_PATH := $(BINDIR)$(GRAPH_EXECUTION_NAME)
 
 INCLUDES += \
--I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(MAKEFILE_DIR)/downloads/googletest/googletest/include
 
-QUANTIZATION_TEST_INCLUDES := $(INCLUDES)
+GRAPH_EXECUTION_INCLUDES := $(INCLUDES)
 
-$(OBJDIR)gtest-all.o: $(GTEST_SRCS) $(QUANTIZATION_TEST_OBJS)
-	$(CXX) $(CXXFLAGS) $(QUANTIZATION_TEST_INCLUDES) -I $(GTEST_DIR) -c \
+$(OBJDIR)gtest-all.o: $(GTEST_SRCS) $(GRAPH_EXECUTION_OBJS)
+	$(CXX) $(CXXFLAGS) $(GRAPH_EXECUTION_INCLUDES) -I $(GTEST_DIR) -c \
 	$(GTEST_DIR)/src/gtest-all.cc -o $@
 
 $(LIBDIR)gtest.a: $(OBJDIR)gtest-all.o
 	@mkdir -p $(dir $@)
 	$(AR) $(ARFLAGS) $@ $^
 
-$(QUANTIZATION_TEST_BIN_PATH): $(LIB_PATH) $(LIBDIR)gtest.a $(QUANTIZATION_TEST_OBJS)
+$(GRAPH_EXECUTION_BIN_PATH): $(LIB_PATH) $(LIBDIR)gtest.a $(GRAPH_EXECUTION_OBJS)
 	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) $(QUANTIZATION_TEST_INCLUDES) \
-		-o $(QUANTIZATION_TEST_BIN_PATH) $(QUANTIZATION_TEST_OBJS) \
+	$(CXX) $(CXXFLAGS) $(GRAPH_EXECUTION_INCLUDES) \
+		-o $(GRAPH_EXECUTION_BIN_PATH) $(GRAPH_EXECUTION_OBJS) \
 		$(LIBFLAGS) $(LIB_PATH) $(LIBDIR)gtest.a $(LDFLAGS) $(LIBS)
 
-$(QUANTIZATION_TEST_NAME): $(QUANTIZATION_TEST_BIN_PATH)
+$(GRAPH_EXECUTION_NAME): $(GRAPH_EXECUTION_BIN_PATH)

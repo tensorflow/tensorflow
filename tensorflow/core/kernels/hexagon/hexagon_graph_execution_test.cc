@@ -12,6 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+// Before calling this test program, download a model as follows.
+// $ curl https://storage.googleapis.com/download.tensorflow.org/models/tensorflow_inception_v3_stripped_optimized_quantized.pb \
+// -o /tmp/tensorflow_inception_v3_stripped_optimized_quantized.pb
 
 #include <memory>
 
@@ -26,9 +29,12 @@ limitations under the License.
 
 namespace tensorflow {
 
+// CAVEAT: This test only runs when you specify hexagon library using
+// makefile.
+// TODO(satok): Make this generic so that this can run without any
+// additionanl steps.
 #ifdef USE_HEXAGON_LIBS
 TEST(GraphTransferer, RunInceptionV3OnHexagonExample) {
-  // Change file path to absolute path of model file on your local machine
   const string filename =
       "/tmp/tensorflow_inception_v3_stripped_optimized_quantized.pb";
   const IGraphTransferOpsDefinitions* ops_definitions =
