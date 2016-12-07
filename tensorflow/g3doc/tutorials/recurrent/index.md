@@ -154,8 +154,9 @@ the second and so on.
 We have a class called `MultiRNNCell` that makes the implementation seamless:
 
 ```python
-lstm = rnn_cell.BasicLSTMCell(lstm_size, state_is_tuple=False)
-stacked_lstm = rnn_cell.MultiRNNCell([lstm] * number_of_layers,
+stacked_lstm = rnn_cell.MultiRNNCell([rnn_cell.BasicLSTMCell(lstm_size,
+                                                             state_is_tuple=False)
+                                      for _ in range(number_of_layers)],
     state_is_tuple=False)
 
 initial_state = state = stacked_lstm.zero_state(batch_size, tf.float32)
