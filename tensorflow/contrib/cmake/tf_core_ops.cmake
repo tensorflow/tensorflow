@@ -17,6 +17,7 @@ set(tf_op_lib_names
     "resource_variable_ops"
     "script_ops"
     "sdca_ops"
+    "set_ops"  
     "sendrecv_ops"
     "sparse_ops"
     "state_ops"
