@@ -166,7 +166,6 @@ from tensorflow.python.training.optimizer import Optimizer
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
 from tensorflow.python.training.gradient_descent import GradientDescentOptimizer
 from tensorflow.python.training.proximal_gradient_descent import ProximalGradientDescentOptimizer
-from tensorflow.python.training.sync_replicas_optimizer import SyncReplicasOptimizer
 from tensorflow.python.training.sync_replicas_optimizer import SyncReplicasOptimizerV2
 
 # Utility classes for training.
@@ -253,7 +252,6 @@ _allowed_symbols = [
 
     # TODO(drpng): document these. The reference in howtos/distributed does
     # not link.
-    "SyncReplicasOptimizer",
     "SyncReplicasOptimizerV2",
 
     # Protobufs:
