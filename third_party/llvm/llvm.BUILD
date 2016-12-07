@@ -301,6 +301,7 @@ cc_binary(
     ]),
     linkopts = [
         "-ldl",
+        "-lm",
         "-lpthread",
     ],
     stamp = 0,
