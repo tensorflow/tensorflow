@@ -160,7 +160,6 @@
   * [`rank`](../../api_docs/python/array_ops.md#rank)
   * [`required_space_to_batch_paddings`](../../api_docs/python/array_ops.md#required_space_to_batch_paddings)
   * [`reshape`](../../api_docs/python/array_ops.md#reshape)
-  * [`reverse`](../../api_docs/python/array_ops.md#reverse)
   * [`reverse_sequence`](../../api_docs/python/array_ops.md#reverse_sequence)
   * [`reverse_v2`](../../api_docs/python/array_ops.md#reverse_v2)
   * [`saturate_cast`](../../api_docs/python/array_ops.md#saturate_cast)
