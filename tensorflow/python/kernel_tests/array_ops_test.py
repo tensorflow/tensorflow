@@ -201,48 +201,6 @@ class OperatorShapeTest(test_util.TensorFlowTestCase):
     self.assertEqual(matrix_squeezed.get_shape(), (3))
 
 
-class ReverseTest(test_util.TensorFlowTestCase):
-
-  def testReverse0DimAuto(self):
-    x_np = 4
-    for use_gpu in [False, True]:
-      with self.test_session(use_gpu=use_gpu):
-        x_tf = array_ops.reverse(x_np, []).eval()
-        self.assertAllEqual(x_tf, x_np)
-
-  def _reverse1DimAuto(self, np_dtype):
-    x_np = np.array([1, 2, 3, 4, 5], dtype=np_dtype)
-
-    for use_gpu in [False, True]:
-      with self.test_session(use_gpu=use_gpu):
-        x_tf = array_ops.reverse(x_np, [True]).eval()
-        self.assertAllEqual(x_tf, np.asarray(x_np)[::-1])
-
-  def testReverse1DimAuto(self):
-    for dtype in [np.uint8, np.int8, np.int32, np.int64, np.bool, np.float16,
-                  np.float32, np.float64, np.complex64, np.complex128]:
-      self._reverse1DimAuto(dtype)
-
-  def testUnknownDims(self):
-    data_t = tf.placeholder(tf.float32)
-    dims_known_t = tf.placeholder(tf.bool, shape=[3])
-    reverse_known_t = tf.reverse(data_t, dims_known_t)
-    self.assertEqual(3, reverse_known_t.get_shape().ndims)
-
-    dims_unknown_t = tf.placeholder(tf.bool)
-    reverse_unknown_t = tf.reverse(data_t, dims_unknown_t)
-    self.assertIs(None, reverse_unknown_t.get_shape().ndims)
-
-    data_2d_t = tf.placeholder(tf.float32, shape=[None, None])
-    dims_2d_t = tf.placeholder(tf.bool, shape=[2])
-    reverse_2d_t = tf.reverse(data_2d_t, dims_2d_t)
-    self.assertEqual(2, reverse_2d_t.get_shape().ndims)
-
-    dims_3d_t = tf.placeholder(tf.bool, shape=[3])
-    with self.assertRaisesRegexp(ValueError, "must be rank 3"):
-      tf.reverse(data_2d_t, dims_3d_t)
-
-
 class ReverseV2Test(test_util.TensorFlowTestCase):
 
   def testReverse0DimAuto(self):

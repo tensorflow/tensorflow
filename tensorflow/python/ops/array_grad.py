@@ -474,7 +474,9 @@ def _ReverseSequenceGrad(op, grad):
 @ops.RegisterGradient("Reverse")
 def _ReverseGrad(op, grad):
   reverse_dims = op.inputs[1]
-  return array_ops.reverse(grad, reverse_dims), None
+  # pylint: disable=protected-access
+  return array_ops._reverse(grad, reverse_dims), None
+  # pylint: enable=protected-access
 
 
 @ops.RegisterGradient("ReverseV2")

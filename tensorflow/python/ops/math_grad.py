@@ -921,7 +921,7 @@ def _CastGrad(op, grad):
 def _FFTSizeForGrad(grad, rank):
   return math_ops.reduce_prod(
       array_ops.slice(
-          array_ops.reverse(array_ops.shape(grad), (True,)), (0,), (rank,)))
+          array_ops.reverse_v2(array_ops.shape(grad), [0]), (0,), (rank,)))
 
 
 @ops.RegisterGradient("FFT")

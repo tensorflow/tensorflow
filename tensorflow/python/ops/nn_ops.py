@@ -2077,8 +2077,8 @@ def erosion2d(value, kernel, strides, rates, padding, name=None):
   with ops.name_scope(name, "erosion2d", [value, kernel]) as name:
     # Reduce erosion to dilation by duality.
     return math_ops.neg(gen_nn_ops.dilation2d(input=math_ops.neg(value),
-                                              filter=array_ops.reverse(
-                                                  kernel, [True, True, False]),
+                                              filter=array_ops.reverse_v2(
+                                                  kernel, [0, 1]),
                                               strides=strides,
                                               rates=rates,
                                               padding=padding,

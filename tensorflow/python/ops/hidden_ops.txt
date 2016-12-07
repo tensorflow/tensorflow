@@ -15,6 +15,7 @@ Pack
 Pad
 Placeholder
 RefIdentity
+Reverse
 SpaceToBatch
 Split
 SplitV

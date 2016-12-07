@@ -60,7 +60,6 @@ or join multiple tensors together.
 @@unstack
 @@unpack
 @@reverse_sequence
-@@reverse
 @@reverse_v2
 @@transpose
 @@extract_image_patches
