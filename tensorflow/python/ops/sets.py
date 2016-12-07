@@ -57,7 +57,8 @@ def set_size(a, validate_indices=True):
   if a.values.dtype.base_dtype not in _VALID_DTYPES:
     raise TypeError("Invalid dtype %s." % a.values.dtype)
   # pylint: disable=protected-access
-  return gen_set_ops.set_size(a.indices, a.values, a.shape, validate_indices)
+  return gen_set_ops.set_size(
+      a.indices, a.values, a.dense_shape, validate_indices)
 
 ops.NotDifferentiable("SetSize")
 
@@ -120,7 +121,8 @@ def _set_operation(a, b, set_operation, validate_indices=True):
   if isinstance(a, sparse_tensor.SparseTensor):
     if isinstance(b, sparse_tensor.SparseTensor):
       indices, values, shape = gen_set_ops.sparse_to_sparse_set_operation(
-          a.indices, a.values, a.shape, b.indices, b.values, b.dense_shape,
+          a.indices, a.values, a.dense_shape,
+          b.indices, b.values, b.dense_shape,
           set_operation, validate_indices)
     else:
       raise ValueError("Sparse,Dense is not supported, but Dense,Sparse is. "

@@ -1981,10 +1981,10 @@ def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
 
   return gen_array_ops._edit_distance(hypothesis.indices,
                                       hypothesis.values,
-                                      hypothesis.shape,
+                                      hypothesis.dense_shape,
                                       truth.indices,
                                       truth.values,
-                                      truth.shape,
+                                      truth.dense_shape,
                                       normalize=normalize,
                                       name=name)
 

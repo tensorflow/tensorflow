@@ -1039,7 +1039,7 @@ def _mul_dispatch(x, y, name=None):
   else:
     assert isinstance(y, sparse_tensor.SparseTensor)  # Case: Dense * Sparse.
     new_vals = gen_sparse_ops.sparse_dense_cwise_mul(y.indices, y.values,
-                                                     y.shape, x, name)
+                                                     y.dense_shape, x, name)
     return sparse_tensor.SparseTensor(y.indices, new_vals, y.shape)
 
 # NOTE(aselle): When integer division is added for sparse_dense_cwise,

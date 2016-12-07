@@ -52,7 +52,7 @@ class CTCGreedyDecoderTest(tf.test.TestCase):
           inputs_t,
           sequence_length=seq_lens, **decoder_args)
       decoded_unwrapped = list(flatten([
-          (st.indices, st.values, st.shape) for st in decoded_list]))
+          (st.indices, st.values, st.dense_shape) for st in decoded_list]))
 
       if expected_err_re is None:
         outputs = sess.run(
