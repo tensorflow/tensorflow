@@ -3379,7 +3379,7 @@ TensorFlow provides the following sampled loss functions for faster training.
 
 - - -
 
-### `tf.nn.nce_loss(weights, biases, inputs, labels, num_sampled, num_classes, num_true=1, sampled_values=None, remove_accidental_hits=False, partition_strategy='mod', name='nce_loss')` {#nce_loss}
+### `tf.nn.nce_loss(weights, biases, labels, inputs, num_sampled, num_classes, num_true=1, sampled_values=None, remove_accidental_hits=False, partition_strategy='mod', name='nce_loss')` {#nce_loss}
 
 Computes and returns the noise-contrastive estimation training loss.
 
@@ -3411,10 +3411,10 @@ with an otherwise unused class.
       objects whose concatenation along dimension 0 has shape
       [num_classes, dim].  The (possibly-partitioned) class embeddings.
 *  <b>`biases`</b>: A `Tensor` of shape `[num_classes]`.  The class biases.
-*  <b>`inputs`</b>: A `Tensor` of shape `[batch_size, dim]`.  The forward
-      activations of the input network.
 *  <b>`labels`</b>: A `Tensor` of type `int64` and shape `[batch_size,
       num_true]`. The target classes.
+*  <b>`inputs`</b>: A `Tensor` of shape `[batch_size, dim]`.  The forward
+      activations of the input network.
 *  <b>`num_sampled`</b>: An `int`.  The number of classes to randomly sample per batch.
 *  <b>`num_classes`</b>: An `int`. The number of possible classes.
 *  <b>`num_true`</b>: An `int`.  The number of target classes per training example.
