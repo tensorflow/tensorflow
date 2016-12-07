@@ -1068,7 +1068,7 @@ Cannot remove entries from nonexistent file <path-to-anaconda-instalation>/anaco
 
 Step #1 might already solve the problem, however if it still persists, execute step #2.
 
-This is an issue that occurs with new Ananconda installations when `pip` tries to remove `easy-install.pth` 
+This is an issue that occurs with new Anaconda installations when `pip` tries to remove `easy-install.pth` 
 which does not exist as conda packages cannot include it.
 
 
