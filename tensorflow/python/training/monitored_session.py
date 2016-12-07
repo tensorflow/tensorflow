@@ -795,5 +795,5 @@ class _HookedSession(_WrappedSession):
         options.output_partition_graphs,
         incoming_options.output_partition_graphs)
 
-    options.debug_tensor_watch_opts.extend(
-        incoming_options.debug_tensor_watch_opts)
+    options.debug_options.debug_tensor_watch_opts.extend(
+        incoming_options.debug_options.debug_tensor_watch_opts)

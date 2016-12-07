@@ -135,6 +135,7 @@ CORE_PROTO_SRCS = [
     "framework/versions.proto",
     "lib/core/error_codes.proto",
     "protobuf/config.proto",
+    "protobuf/debug.proto",
     "protobuf/tensor_bundle.proto",
     "protobuf/saver.proto",
     "util/memmapped_file_system.proto",
@@ -768,7 +769,6 @@ cc_library(
     srcs = if_android(["//tensorflow/core:android_srcs"]),
     copts = tf_copts() + [
         "-Os",
-        "-DNOTFDBG",
     ],
     linkopts = ["-lz"],
     tags = [
@@ -795,7 +795,7 @@ cc_library(
         "//tensorflow/core/kernels:android_core_ops",
         "//tensorflow/core/kernels:android_extended_ops",
     ]),
-    copts = tf_copts() + ["-Os"] + ["-std=c++11"] + ["-DNOTFDBG"],
+    copts = tf_copts() + ["-Os"] + ["-std=c++11"],
     visibility = ["//visibility:public"],
     deps = [
         ":protos_cc",
@@ -828,7 +828,7 @@ cc_library(
 cc_library(
     name = "android_tensorflow_lib",
     srcs = if_android([":android_op_registrations_and_gradients"]),
-    copts = tf_copts() + ["-DNOTFDBG"],
+    copts = tf_copts(),
     tags = [
         "manual",
         "notap",
@@ -853,7 +853,6 @@ cc_library(
     copts = tf_copts() + [
         "-Os",
         "-DSUPPORT_SELECTIVE_REGISTRATION",
-        "-DNOTFDBG",
     ],
     tags = [
         "manual",
@@ -1366,7 +1365,6 @@ tf_cuda_library(
         ":lib_internal",
         ":proto_text",
         ":protos_all_cc",
-        "//tensorflow/core/debug:debug_graph_utils",
     ],
     alwayslink = 1,
 )
@@ -1934,6 +1932,46 @@ tf_cc_test(
         "//tensorflow/core/kernels:session_ops",
         "//tensorflow/core/kernels:variable_ops",
         "//third_party/eigen3",
+    ],
+)
+
+# This is identical to :common_runtime_direct_session_test with the addition of
+# a dependency on alwayslink target //third_party/tensorflow/core/debug, which
+# enables support for TensorFlow Debugger (tfdbg).
+tf_cc_test(
+    name = "common_runtime_direct_session_with_debug_test",
+    size = "small",
+    srcs = ["common_runtime/direct_session_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//third_party/eigen3",
+        "//tensorflow/cc:cc_ops",
+        # Link with support for TensorFlow Debugger (tfdbg).
+        "//tensorflow/core/debug",
+        "//tensorflow/core/kernels:control_flow_ops",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:dense_update_ops",
+        "//tensorflow/core/kernels:fifo_queue_op",
+        "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/kernels:identity_op",
+        "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels:ops_util",
+        "//tensorflow/core/kernels:queue_ops",
+        "//tensorflow/core/kernels:session_ops",
+        "//tensorflow/core/kernels:variable_ops",
     ],
 )
 

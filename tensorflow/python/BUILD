@@ -2018,6 +2018,7 @@ tf_py_wrap_cc(
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:lib",
+        "//tensorflow/core/debug",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/tools/tfprof/internal:print_model_analysis",
         "//util/python:python_headers",
