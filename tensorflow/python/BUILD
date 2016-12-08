@@ -2313,16 +2313,25 @@ py_tests(
 
 py_library(
     name = "layers",
-    srcs = glob(
-        ["layers/*.py"],
-    ),
+    srcs = [
+        "layers/__init__.py",
+        "layers/base.py",
+        "layers/conv_utils.py",
+        "layers/convolutional.py",
+        "layers/core.py",
+        "layers/layers.py",
+        "layers/normalization.py",
+        "layers/pooling.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
         ":framework",
         ":framework_for_generated_wrappers",
         ":init_ops",
+        ":nn",
         ":standard_ops",
+        ":training",
         ":util",
         ":variable_scope",
     ],
@@ -2337,8 +2346,13 @@ py_test(
     main = "layers/base_test.py",
     srcs_version = "PY2AND3",
     deps = [
+        ":client_testlib",
+        ":framework_for_generated_wrappers",
+        ":init_ops",
         ":layers",
-        "//tensorflow:tensorflow_py",
+        ":math_ops",
+        ":random_ops",
+        ":variable_scope",
     ],
 )
 
@@ -2351,8 +2365,15 @@ py_test(
     main = "layers/core_test.py",
     srcs_version = "PY2AND3",
     deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":framework_for_generated_wrappers",
         ":layers",
-        "//tensorflow:tensorflow_py",
+        ":math_ops",
+        ":nn_ops",
+        ":random_ops",
+        ":variable_scope",
+        ":variables",
     ],
 )
 
@@ -2365,8 +2386,12 @@ py_test(
     main = "layers/convolutional_test.py",
     srcs_version = "PY2AND3",
     deps = [
+        ":client_testlib",
+        ":framework_for_generated_wrappers",
         ":layers",
-        "//tensorflow:tensorflow_py",
+        ":math_ops",
+        ":nn_ops",
+        ":random_ops",
     ],
 )
 
@@ -2379,8 +2404,8 @@ py_test(
     main = "layers/conv_utils_test.py",
     srcs_version = "PY2AND3",
     deps = [
+        ":client_testlib",
         ":layers",
-        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -2393,8 +2418,9 @@ py_test(
     main = "layers/pooling_test.py",
     srcs_version = "PY2AND3",
     deps = [
+        ":client_testlib",
         ":layers",
-        "//tensorflow:tensorflow_py",
+        ":random_ops",
     ],
 )
 
@@ -2407,8 +2433,13 @@ py_test(
     main = "layers/normalization_test.py",
     srcs_version = "PY2AND3",
     deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":framework_for_generated_wrappers",
         ":layers",
-        "//tensorflow:tensorflow_py",
+        ":math_ops",
+        ":random_ops",
+        ":variables",
     ],
 )
 
