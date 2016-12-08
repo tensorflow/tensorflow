@@ -708,6 +708,12 @@ class SeparableConv2D(Conv2D):
       `channels_last` corresponds to inputs with shapedata_format = 'NWHC'
       `(batch, width, height, channels)` while `channels_first` corresponds to
       inputs with shape `(batch, channels, width, height)`.
+    dilation_rate: an integer or tuple/list of 2 integers, specifying
+      the dilation rate to use for dilated convolution.
+      Can be a single integer to specify the same value for
+      all spatial dimensions.
+      Currently, specifying any `dilation_rate` value != 1 is
+      incompatible with specifying any stride value != 1.
     depth_multiplier: The number of depthwise convolution output channels for
       each input channel. The total number of depthwise convolution output
       channels will be equal to `num_filters_in * depth_multiplier`.
@@ -734,6 +740,7 @@ class SeparableConv2D(Conv2D):
                strides=(1, 1),
                padding='valid',
                data_format='channels_last',
+               dilation_rate=(1, 1),
                depth_multiplier=1,
                activation=None,
                use_bias=True,
@@ -753,6 +760,7 @@ class SeparableConv2D(Conv2D):
         strides=strides,
         padding=padding,
         data_format=data_format,
+        dilation_rate=dilation_rate,
         activation=activation,
         use_bias=use_bias,
         bias_regularizer=bias_regularizer,
@@ -822,7 +830,8 @@ class SeparableConv2D(Conv2D):
         self.depthwise_kernel,
         self.pointwise_kernel,
         strides=(1,) + self.strides + (1,),
-        padding=self.padding.upper())
+        padding=self.padding.upper(),
+        rate=self.dilation_rate)
 
     if self.data_format == 'channels_first':
       # Reshape to channels first
@@ -845,6 +854,7 @@ def separable_conv2d(inputs,
                      strides=(1, 1),
                      padding='valid',
                      data_format='channels_last',
+                     dilation_rate=(1, 1),
                      depth_multiplier=1,
                      activation=None,
                      use_bias=True,
@@ -884,6 +894,12 @@ def separable_conv2d(inputs,
       `channels_last` corresponds to inputs with shapedata_format = 'NWHC'
       `(batch, width, height, channels)` while `channels_first` corresponds to
       inputs with shape `(batch, channels, width, height)`.
+    dilation_rate: an integer or tuple/list of 2 integers, specifying
+      the dilation rate to use for dilated convolution.
+      Can be a single integer to specify the same value for
+      all spatial dimensions.
+      Currently, specifying any `dilation_rate` value != 1 is
+      incompatible with specifying any stride value != 1.
     depth_multiplier: The number of depthwise convolution output channels for
       each input channel. The total number of depthwise convolution output
       channels will be equal to `num_filters_in * depth_multiplier`.
@@ -915,6 +931,7 @@ def separable_conv2d(inputs,
       strides=strides,
       padding=padding,
       data_format=data_format,
+      dilation_rate=dilation_rate,
       depth_multiplier=depth_multiplier,
       activation=activation,
       use_bias=use_bias,

@@ -1713,6 +1713,7 @@ def separable_convolution2d(
     depth_multiplier,
     stride=1,
     padding='SAME',
+    rate=1,
     activation_fn=nn.relu,
     normalizer_fn=None,
     normalizer_params=None,
@@ -1747,6 +1748,9 @@ def separable_convolution2d(
     stride: a list of length 2: [stride_height, stride_width], specifying the
       depthwise convolution stride. Can be an int if both strides are the same.
     padding: one of 'VALID' or 'SAME'.
+    rate: a list of length 2: [rate_height, rate_width], specifying the dilation
+      rates for a'trous convolution. Can be an int if both rates are the same.
+      If any value is larger than one, then both stride values need to be one.
     activation_fn: activation function, set to None to skip it and maintain
       a linear activation.
     normalizer_fn: normalization function to use instead of `biases`. If
@@ -1787,6 +1791,7 @@ def separable_convolution2d(
           strides=stride,
           padding=padding,
           data_format='channels_last',
+          dilation_rate=utils.two_element_tuple(rate),
           activation=None,
           depth_multiplier=depth_multiplier,
           use_bias=not normalizer_fn and biases_initializer,
@@ -1837,7 +1842,8 @@ def separable_convolution2d(
           collections=weights_collections)
       strides = [1, stride_h, stride_w, 1]
 
-      outputs = nn.depthwise_conv2d(inputs, depthwise_weights, strides, padding)
+      outputs = nn.depthwise_conv2d(inputs, depthwise_weights, strides, padding,
+                                    rate=utils.two_element_tuple(rate))
       num_outputs = depth_multiplier * num_filters_in
 
       if normalizer_fn is not None:

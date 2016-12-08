@@ -2606,6 +2606,23 @@ class SeparableConv2dTest(tf.test.TestCase):
           tf.contrib.framework.get_variables('conv1/pointwise_weights'))
       self.assertTrue(tf.contrib.framework.get_variables('conv1/biases'))
 
+  def testCreateAtrousConvCreatesWeightsAndBiasesVars(self):
+    height, width = 3, 3
+    images = tf.random_uniform((5, height, width, 3), seed=1)
+    with self.test_session():
+      self.assertFalse(
+          tf.contrib.framework.get_variables('conv1/depthwise_weights'))
+      self.assertFalse(
+          tf.contrib.framework.get_variables('conv1/pointwise_weights'))
+      self.assertFalse(tf.contrib.framework.get_variables('conv1/biases'))
+      tf.contrib.layers.separable_conv2d(images, 32, [3, 3], 4, rate=2,
+                                         scope='conv1')
+      self.assertTrue(
+          tf.contrib.framework.get_variables('conv1/depthwise_weights'))
+      self.assertTrue(
+          tf.contrib.framework.get_variables('conv1/pointwise_weights'))
+      self.assertTrue(tf.contrib.framework.get_variables('conv1/biases'))
+
   def testCreateDepthwiseConvCreatesWeightsAndBiasesVars(self):
     height, width = 3, 3
     images = tf.random_uniform((5, height, width, 3), seed=1)
@@ -2646,12 +2663,28 @@ class SeparableConv2dTest(tf.test.TestCase):
           images, 32, [3, 3], 2, padding='VALID')
       self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 32])
 
+  def testCreateAtrousConvValid(self):
+    height, width = 5, 5
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 3), seed=1)
+      output = tf.contrib.layers.separable_conv2d(
+          images, 32, [3, 3], 2, padding='VALID', rate=2)
+      self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 32])
+
   def testCreateDepthwiseConvValid(self):
     height, width = 3, 3
     with self.test_session():
       images = tf.random_uniform((5, height, width, 3), seed=1)
       output = tf.contrib.layers.separable_conv2d(
           images, None, [3, 3], 2, padding='VALID')
+      self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 6])
+
+  def testCreateAtrousDepthwiseConvValid(self):
+    height, width = 5, 5
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 3), seed=1)
+      output = tf.contrib.layers.separable_conv2d(
+          images, None, [3, 3], 2, padding='VALID', rate=2)
       self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 6])
 
   def testCreateConvWithWeightDecay(self):
