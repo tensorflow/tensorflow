@@ -398,8 +398,10 @@ Status DirectSession::Run(const RunOptions& run_options,
 
   // EXPERIMENTAL: Options that allow the client to insert nodes into partition
   // graphs for debugging.
-  run_state_args.debugger_state =
-      DebuggerStateRegistry::CreateState(run_options.debug_options());
+  if (!run_options.debug_options().debug_tensor_watch_opts().empty()) {
+    run_state_args.debugger_state =
+        DebuggerStateRegistry::CreateState(run_options.debug_options());
+  }
 
   TF_RETURN_IF_ERROR(
       GetOrCreateExecutors(pool, input_tensor_names, output_names, target_nodes,

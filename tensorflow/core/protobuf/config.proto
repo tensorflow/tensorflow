@@ -245,7 +245,7 @@ message RunOptions {
   // outputted via RunMetadata.
   bool output_partition_graphs = 5;
 
-  // EXPERIMENTAL.  Options used to intialize DebuggerState, if enabled.
+  // EXPERIMENTAL.  Options used to initialize DebuggerState, if enabled.
   DebugOptions debug_options = 6;
 
   reserved 4;
