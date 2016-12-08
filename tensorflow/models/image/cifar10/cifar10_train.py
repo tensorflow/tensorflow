@@ -107,7 +107,9 @@ def train():
       while not mon_sess.should_stop():
         mon_sess.run(train_op)
 
-
+    # Close session
+    sess.close()
+    
 def main(argv=None):  # pylint: disable=unused-argument
   cifar10.maybe_download_and_extract()
   if tf.gfile.Exists(FLAGS.train_dir):
