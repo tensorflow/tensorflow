@@ -611,7 +611,13 @@ class Seq2SeqTest(tf.test.TestCase):
         targets = [dec_inp[i+1] for i in range(len(dec_inp) - 1)] + [0]
         def SampledLoss(labels, inputs):
           labels = tf.reshape(labels, [-1, 1])
-          return tf.nn.sampled_softmax_loss(w_t, b, inputs, labels, 8, classes)
+          return tf.nn.sampled_softmax_loss(
+              weights=w_t,
+              biases=b,
+              labels=labels,
+              inputs=inputs,
+              num_sampled=8,
+              num_classes=classes)
         return tf.contrib.legacy_seq2seq.model_with_buckets(
             enc_inp, dec_inp, targets, weights, buckets, GRUSeq2Seq,
             softmax_loss_function=SampledLoss)
