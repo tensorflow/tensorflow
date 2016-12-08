@@ -784,6 +784,28 @@ $ bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/tensorflow_pkg
 $ sudo pip install /tmp/tensorflow_pkg/tensorflow-0.11.0-py2-none-any.whl
 ```
 
+## Optimizing CPU performance
+
+To be compatible with as wide a range of machines as possible, TensorFlow
+defaults to only using SSE4.1 SIMD instructions on x86 machines. Most modern PCs
+and Macs support more advanced instructions, so if you're building a binary
+that you'll only be running on your own machine, you can enable these by using
+`--copt=-march=native` in your bazel build command. For example:
+
+``` bash
+$ bazel build --copt=-march=native -c opt //tensorflow/tools/pip_package:build_pip_package
+```
+
+If you are distributing a binary but know the capabilities of the machines
+you'll be running on, you can manually choose the right instructions with
+something like `--copt=-march=avx`. You may also want to enable multiple
+features using several arguments, for example
+`--copt=-mavx2 --copt=-mfma`.
+
+If you run a binary built using SIMD instructions on a machine that doesn't
+support them, you'll see an illegal instruction error when that code is
+executed.
+
 ## Setting up TensorFlow for Development
 
 If you're working on TensorFlow itself, it is useful to be able to test your
