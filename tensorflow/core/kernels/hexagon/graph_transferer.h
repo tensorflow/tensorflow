@@ -61,10 +61,10 @@ class GraphTransferer {
 
   // Const node parameters for transfer
   struct ConstNodeTransferParams {
-    string name;
+    string name;  // for debug info
     int node_id;
     std::array<int64, MAX_SUPPORTED_RANK> shape;
-    string data_name;  // for debug info
+    string data_name;  // for debug info TODO(satok): remove
     int data_size;
   };
 

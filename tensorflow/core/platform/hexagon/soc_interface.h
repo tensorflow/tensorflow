@@ -50,6 +50,36 @@ bool soc_interface_ReadOutputNodeFloat(const char* const node_name,
 // TODO(satok): Remove and use runtime version
 bool soc_interface_SetupGraphDummy(int version);
 
+// Allocate memory for params of node inputs and node outputs
+bool soc_interface_AllocateNodeInputAndNodeOutputArray(int total_input_count,
+                                                       int total_output_count);
+
+// Release memory for params of node inputs and node outputs
+bool soc_interface_ReleaseNodeInputAndNodeOutputArray();
+
+// Set one node's inputs and return pointer to that struct
+void* soc_interface_SetOneNodeInputs(int input_count, const int* const node_id,
+                                     const int* const port);
+
+// Set one node's outputs and return pointer to that struct
+void* soc_interface_SetOneNodeOutputs(int output_count, int* max_size);
+
+// Append const node to the graph
+bool soc_interface_AppendConstNode(int node_id, int batch, int height,
+                                   int width, int depth,
+                                   const uint8_t* const data, int data_length);
+
+// Append node to the graph
+bool soc_interface_AppendNode(int node_id, int op_id, int padding_id,
+                              const void* const inputs, int inputs_count,
+                              const void* const outputs, int outputs_count);
+
+// Instantiate graph
+bool soc_interface_InstantiateGraph();
+
+// Construct graph
+bool soc_interface_ConstructGraph();
+
 #ifdef __cplusplus
 }
 #endif  // __cplusplus

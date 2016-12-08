@@ -43,9 +43,12 @@ class HexagonControlWrapper final : public ISocControlWrapper {
   bool ReadOutputNode(string node_name, std::vector<ByteArray> *outputs) final;
 
  private:
-  // Dummy byte array for input node data.
+  // Dummy float array for input node.
   // TODO(satok): Use actual data passed by FillInputNode and remove
   std::vector<float> dummy_input_float_;
+  // Dummy byte array for cosnt node.
+  // TODO(satok): Remove
+  std::unordered_map<int, std::vector<uint8>> dummy_const_data_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(HexagonControlWrapper);
 };

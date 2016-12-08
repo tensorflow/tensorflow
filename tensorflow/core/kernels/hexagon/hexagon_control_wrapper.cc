@@ -33,7 +33,113 @@ bool HexagonControlWrapper::Init() { return soc_interface_Init(); }
 bool HexagonControlWrapper::Finalize() { return soc_interface_Finalize(); }
 bool HexagonControlWrapper::SetupGraph(
     const GraphTransferer &graph_transferer) {
-  return soc_interface_SetupGraphDummy(3 /* inception version */);
+  int inputs_count = 0;
+  int outputs_count = 0;
+  for (const GraphTransferer::NodeInputParams& input_params :
+       graph_transferer.GetNodeInputParams()) {
+    inputs_count += input_params.input_node_id_and_output_port_list.size();
+  }
+  for (const GraphTransferer::NodeOutputParams& output_params :
+       graph_transferer.GetNodeOutputParams()) {
+    outputs_count += output_params.max_sizes.size();
+  }
+  // Allocate memory for node inputs and node outputs
+  soc_interface_AllocateNodeInputAndNodeOutputArray(inputs_count,
+                                                    outputs_count);
+
+  // Construct node input parameters
+  std::unordered_map<int, std::tuple<void*, int>> inputs_map;
+  for (const GraphTransferer::NodeInputParams& input_params :
+       graph_transferer.GetNodeInputParams()) {
+    const int count = input_params.input_node_id_and_output_port_list.size();
+    int node_ids[count];
+    int ports[count];
+    for (int i = 0; i < count; ++i) {
+      const std::tuple<int, int> id_and_port =
+          input_params.input_node_id_and_output_port_list.at(i);
+      node_ids[i] = std::get<0>(id_and_port);
+      ports[i] = std::get<1>(id_and_port);
+    }
+    void* inputs_ptr = soc_interface_SetOneNodeInputs(count, node_ids, ports);
+    const int node_id = input_params.node_id;
+    CHECK(inputs_map.count(node_id) == 0);
+    inputs_map.emplace(node_id, std::make_tuple(inputs_ptr, count));
+  }
+
+  // Construct node output parameters
+  std::unordered_map<int, std::tuple<void*, int>> outputs_map;
+  for (const GraphTransferer::NodeOutputParams& output_params :
+       graph_transferer.GetNodeOutputParams()) {
+    const int count = output_params.max_sizes.size();
+    int sizes[count];
+    for (int i = 0; i < count; ++i) {
+      const int size = output_params.max_sizes.at(i);
+      sizes[i] = size;
+    }
+    void* outputs_ptr = soc_interface_SetOneNodeOutputs(count, sizes);
+    const int node_id = output_params.node_id;
+    CHECK(outputs_map.count(node_id) == 0);
+    outputs_map.emplace(node_id, std::make_tuple(outputs_ptr, count));
+  }
+
+  // Instantiate graph
+  soc_interface_InstantiateGraph();
+
+  // Initialize graph
+  // 1. Setup const nodes
+  for (const GraphTransferer::ConstNodeTransferParams& params :
+       graph_transferer.GetConstNodeParams()) {
+    const int node_id = params.node_id;
+    const int64 shape_0 = params.shape[0];
+    const int64 shape_1 = params.shape[1];
+    const int64 shape_2 = params.shape[2];
+    const int64 shape_3 = params.shape[3];
+    const int data_size = params.data_size;
+    CHECK(dummy_const_data_.count(node_id) == 0);
+    auto data = dummy_const_data_.emplace(
+        std::piecewise_construct, std::make_tuple(node_id), std::make_tuple());
+    CHECK(data.second);
+    data.first->second.resize(data_size);
+    soc_interface_AppendConstNode(node_id, shape_0, shape_1, shape_2, shape_3,
+                                  data.first->second.data(), data_size);
+  }
+
+  // 2. Setup op nodes
+  for (const GraphTransferer::NodeTransferParams& params :
+       graph_transferer.GetOpNodeParams()) {
+    const int node_id = params.node_id;
+    const int op_id = params.soc_op_id;
+    CHECK(inputs_map.count(node_id) == 1);
+    CHECK(outputs_map.count(node_id) == 1);
+    const auto& input_ptr_and_count = inputs_map.at(node_id);
+    const void* input_ptr = std::get<0>(input_ptr_and_count);
+    const int input_count = std::get<1>(input_ptr_and_count);
+    const auto& output_ptr_and_count = outputs_map.at(node_id);
+    const void* output_ptr = std::get<0>(output_ptr_and_count);
+    const int output_count = std::get<1>(output_ptr_and_count);
+    // TODO(satok): Do not use string. Use enum instead.
+    const string padding = params.padding;
+    int padding_id = -1;
+    if (padding == "NN_PAD_NA") {
+      padding_id = 0;
+    } else if (padding == "NN_PAD_SAME") {
+      padding_id = 1;
+    } else if (padding == "NN_PAD_VALID") {
+      padding_id = 2;
+    } else {
+      CHECK(false) << "Unsupported padding " << padding;
+    }
+    soc_interface_AppendNode(node_id, op_id, padding_id, input_ptr, input_count,
+                             output_ptr, output_count);
+  }
+
+  LOG(INFO) << "Setup graph completed";
+
+  // 3. construct graph
+  return soc_interface_ConstructGraph();
+
+  // Keep following comment to use dummy graph construction
+  // return soc_interface_SetupGraphDummy(3 /* inception version */);
 }
 
 bool HexagonControlWrapper::ExecuteGraph() {
@@ -41,6 +147,7 @@ bool HexagonControlWrapper::ExecuteGraph() {
 }
 
 bool HexagonControlWrapper::TeardownGraph() {
+  soc_interface_ReleaseNodeInputAndNodeOutputArray();
   return soc_interface_TeardownGraph();
 }
 
