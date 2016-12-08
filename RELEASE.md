@@ -25,6 +25,8 @@ BUS_ANY was used.
   include `RNN` -> `rnn` in `tf.nn.rnn`, `tf.nn.dynamic_rnn` and moving from
   `Linear/Matrix` -> `weights` and `Linear/Bias` -> `biases` in most RNN cells.
 * Deprecated tf.select op. tf.where should be used instead.
+* `SparseTensor.shape` has been renamed to `SparseTensor.dense_shape`.  Same for
+  `SparseTensorValue.shape`.
 
 # Release 0.11.0
 
