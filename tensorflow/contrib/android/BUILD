@@ -72,13 +72,15 @@ cc_binary(
     name = "libtensorflow_inference.so",
     srcs = [],
     copts = tf_copts(),
-    linkopts = [
+    linkopts = if_android([
         "-landroid",
+        "-llog",
+        "-lm",
         "-z defs",
         "-s",
         "-Wl,--version-script",  # This line must be directly followed by LINKER_SCRIPT.
         LINKER_SCRIPT,
-    ],
+    ]),
     linkshared = 1,
     linkstatic = 1,
     tags = [
