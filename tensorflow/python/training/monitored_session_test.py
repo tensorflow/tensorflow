@@ -507,6 +507,7 @@ class FakeSession(monitored_session._WrappedSession):
 
 
 class HookedSessionTest(tf.test.TestCase):
+  """Tests of _HookedSession."""
 
   def testRunPassesAllArguments(self):
     with tf.Graph().as_default(), tf.Session() as sess:
@@ -1007,10 +1008,9 @@ class MonitoredSessionTest(tf.test.TestCase):
       self.assertTrue(session._is_closed())
 
   def test_graph(self):
-    g = tf.Graph()
-    with g.as_default():
-      session = tf.train.MonitoredSession()
-      self.assertEqual(g, session.graph)
+    with tf.Graph().as_default() as g:
+      with tf.train.MonitoredSession() as session:
+        self.assertEqual(g, session.graph)
 
   def test_graph_finalized_during_run_unfinalized_after_exit(self):
     with tf.Graph().as_default() as g:
@@ -1115,6 +1115,99 @@ class MonitoredSessionTest(tf.test.TestCase):
         self.assertTrue(
             isinstance(hook.run_metadata_list[0], config_pb2.RunMetadata))
         self.assertGreater(len(hook.run_metadata_list[0].partition_graphs), 0)
+
+
+class SingularMonitoredSessionTest(tf.test.TestCase):
+  """Tests SingularMonitoredSession."""
+
+  def test_handles_initialization(self):
+    with tf.Graph().as_default():
+      a_var = tf.Variable(0)
+      with tf.train.SingularMonitoredSession() as session:
+        # If it's not initialized, following statement raises an error.
+        self.assertEqual(0, session.run(a_var))
+
+  def test_do_not_handle_aborted_error(self):
+    with tf.Graph().as_default():
+      gstep = tf.contrib.framework.get_or_create_global_step()
+
+      class _RaiseAbortedHook(tf.train.SessionRunHook):
+
+        def before_run(self, run_context):
+          raise tf.errors.AbortedError(None, None, 'Abort')
+
+      with tf.train.SingularMonitoredSession(
+          hooks=[_RaiseAbortedHook()]) as session:
+        with self.assertRaises(tf.errors.AbortedError):
+          self.assertEqual(0, session.run(gstep))
+
+      with self.assertRaises(tf.errors.AbortedError):
+        with tf.train.SingularMonitoredSession(
+            hooks=[_RaiseAbortedHook()]) as session:
+          self.assertEqual(0, session.run(gstep))
+
+  def test_exit_cleanly_on_out_of_range_exception(self):
+    # Tests that we stop cleanly when OutOfRange is raised.
+    with tf.Graph().as_default():
+      gstep = tf.contrib.framework.get_or_create_global_step()
+      do_step = tf.assign_add(gstep, 1)
+      hook = RaiseOnceAtCountN(2, tf.errors.OutOfRangeError(None, None, 'EOI'))
+      session = tf.train.SingularMonitoredSession(hooks=[hook])
+      # session should cleanly exit from the context.
+      with session:
+        self.assertEqual(0, session.run(gstep))
+        self.assertFalse(session.should_stop())
+        # Here at step 1, the hook triggers and raises OutOfRange. The
+        # session should go into should_stop() mode. It should raise the
+        # exception. So next step should not be executed.
+        session.run(do_step)
+        self.assertTrue(False)
+      self.assertTrue(session.should_stop())
+
+  def test_regular_exception_reported_to_coord_pass_through_run(self):
+    # Tests that regular exceptions reported to the coordinator from a thread
+    # passes through a "run()" call within a "with MonitoredSession" block and
+    # set the session in stop mode.
+    with tf.Graph().as_default():
+      gstep = tf.contrib.framework.get_or_create_global_step()
+      session = tf.train.SingularMonitoredSession()
+      run_performed_without_error = False
+      with self.assertRaisesRegexp(RuntimeError, 'a thread wants to stop'):
+        with session:
+          self.assertEqual(0, session.run(gstep))
+          # Report an exception through the coordinator.
+          try:
+            raise RuntimeError('a thread wants to stop')
+          except RuntimeError as e:
+            session._coordinated_creator.coord.request_stop(e)
+          # Call run() which should perform normally.
+          self.assertEqual(0, session.run(gstep))
+          run_performed_without_error = True
+      self.assertTrue(run_performed_without_error)
+
+  def test_stop_cleanly_when_no_exception_in_with_body(self):
+    # Tests that regular exceptions pass through
+    with tf.Graph().as_default():
+      gstep = tf.contrib.framework.get_or_create_global_step()
+      do_step = tf.assign_add(gstep, 1)
+      session = tf.train.SingularMonitoredSession()
+      with session:
+        self.assertEqual(1, session.run(do_step))
+        self.assertEqual(2, session.run(do_step))
+        self.assertFalse(session.should_stop())
+      # Should have closed.
+      self.assertTrue(session.should_stop())
+      self.assertEqual(None, session.raw_session())
+
+  def test_graph(self):
+    with tf.Graph().as_default() as g:
+      with tf.train.SingularMonitoredSession() as session:
+        self.assertEqual(g, session.graph)
+
+  def test_raw_session(self):
+    with tf.Graph().as_default():
+      with tf.train.SingularMonitoredSession() as session:
+        self.assertTrue(isinstance(session.raw_session(), tf.Session))
 
 
 if __name__ == '__main__':

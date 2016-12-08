@@ -399,67 +399,18 @@ class WorkerSessionCreator(SessionCreator):
         self._master, config=self._config)
 
 
-class MonitoredSession(object):
-  """Session-like object that handles initialization, recovery and hooks.
+class _MonitoredSession(object):
+  """See `MonitoredSession` or `SingularMonitoredSession`."""
 
-  Example usage:
-  ```python
-  saver_hook = CheckpointSaverHook(...)
-  summary_hook = SummaryHook(...)
-  with MonitoredSession(session_creator=ChiefSessionCreator(...),
-                        hooks=[saver_hook, summary_hook]) as sess:
-    while not sess.should_stop():
-      sess.run(train_op)
-  ```
-
-  Initialization: At creation time the monitored session does following things
-  in given order:
-
-  * calls `hook.begin()`
-  * finalizes the graph via `scaffold.finalize()`
-  * create session
-  * initializes the model via initialization ops provided by `Scaffold`
-  * restores variables if a checkpoint exists
-  * launches queue runners
-
-  Run: When `run()` is called, the monitored session does following things:
-
-  * calls `hook.before_run()`
-  * calls TensorFlow `session.run()` with merged fetches and feed_dict
-  * calls `hook.after_run()`
-  * returns result of `session.run()` asked by user
-  * if `AbortedError` occurs, it recovers or reinitializes the session before
-    executing the run() call again
-
-
-  Exit: At the `close()`, the monitored session does following things in order:
-
-  * calls `hook.end()`
-  * closes the queue runners and the session
-  * surpresses `OutOfRange` error which indicates that all inputs have been
-    processed if the monitored_session is used as a context.
-
-  How to set `tf.Session` arguments:
-  * In most cases you can set session arguments as follows:
-    ```python
-    MonitoredSession(
-      session_creator=ChiefSessionCreator(master=..., config=...))
-    ```
-  * In distributed setting for a non-chief worker, you can use following:
-    ```python
-    MonitoredSession(
-      session_creator=WorkerSessionCreator(master=..., config=...))
-    ```
-  See `MonitoredTrainingSession` for an example usage based on chief or worker.
-  """
-
-  def __init__(self, session_creator=None, hooks=None):
-    """Creates a MonitoredSession.
+  def __init__(self, session_creator, hooks, should_recover):
+    """Sets up a Monitored or Hooked Session.
 
     Args:
       session_creator: A factory object to create session. Typically a
-        `ChiefSessionCreator` which is the default one.
+        `ChiefSessionCreator` or a `WorkerSessionCreator`.
       hooks: An iterable of `SessionRunHook' objects.
+      should_recover: A bool. Indicates whether to recover from `AbortedError`
+        or not.
     """
     self._graph_was_finalized = ops.get_default_graph().finalized
     self._hooks = hooks or []
@@ -469,14 +420,17 @@ class MonitoredSession(object):
     self._coordinated_creator = self._CoordinatedSessionCreator(
         session_creator=session_creator or ChiefSessionCreator(),
         hooks=self._hooks)
-    self._sess = _RecoverableSession(self._coordinated_creator)
+    if should_recover:
+      self._sess = _RecoverableSession(self._coordinated_creator)
+    else:
+      self._sess = self._coordinated_creator.create_session()
 
   @property
   def graph(self):
     """The graph that was launched in this session."""
-    if self._coordinated_creator.tf_sess is None:
+    if self._tf_sess() is None:
       return None
-    return self._coordinated_creator.tf_sess.graph
+    return self._tf_sess().graph
 
   def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
     """Run ops in the monitored session.
@@ -556,6 +510,157 @@ class MonitoredSession(object):
       A boolean.
     """
     return self._coordinated_creator.tf_sess is None
+
+  def _tf_sess(self):
+    return self._coordinated_creator.tf_sess
+
+
+class MonitoredSession(_MonitoredSession):
+  """Session-like object that handles initialization, recovery and hooks.
+
+  Example usage:
+  ```python
+  saver_hook = CheckpointSaverHook(...)
+  summary_hook = SummaryHook(...)
+  with MonitoredSession(session_creator=ChiefSessionCreator(...),
+                        hooks=[saver_hook, summary_hook]) as sess:
+    while not sess.should_stop():
+      sess.run(train_op)
+  ```
+
+  Initialization: At creation time the monitored session does following things
+  in given order:
+
+  * calls `hook.begin()` for each given hook
+  * finalizes the graph via `scaffold.finalize()`
+  * create session
+  * initializes the model via initialization ops provided by `Scaffold`
+  * restores variables if a checkpoint exists
+  * launches queue runners
+
+  Run: When `run()` is called, the monitored session does following things:
+
+  * calls `hook.before_run()`
+  * calls TensorFlow `session.run()` with merged fetches and feed_dict
+  * calls `hook.after_run()`
+  * returns result of `session.run()` asked by user
+  * if `AbortedError` occurs, it recovers or reinitializes the session before
+    executing the run() call again
+
+
+  Exit: At the `close()`, the monitored session does following things in order:
+
+  * calls `hook.end()`
+  * closes the queue runners and the session
+  * surpresses `OutOfRange` error which indicates that all inputs have been
+    processed if the monitored_session is used as a context.
+
+  How to set `tf.Session` arguments:
+  * In most cases you can set session arguments as follows:
+    ```python
+    MonitoredSession(
+      session_creator=ChiefSessionCreator(master=..., config=...))
+    ```
+  * In distributed setting for a non-chief worker, you can use following:
+    ```python
+    MonitoredSession(
+      session_creator=WorkerSessionCreator(master=..., config=...))
+    ```
+  See `MonitoredTrainingSession` for an example usage based on chief or worker.
+
+  Args:
+    session_creator: A factory object to create session. Typically a
+      `ChiefSessionCreator` which is the default one.
+    hooks: An iterable of `SessionRunHook' objects.
+
+  Returns:
+    A MonitoredSession object.
+  """
+
+  def __init__(self, session_creator=None, hooks=None):
+    super(MonitoredSession, self).__init__(
+        session_creator, hooks, should_recover=True)
+
+
+class SingularMonitoredSession(_MonitoredSession):
+  """Session-like object that handles initialization, restoring, and hooks.
+
+  Please note that this utility is not recommended for distributed settings.
+  For distributed settings, please use `tf.train.MonitoredSession`. The
+  differences between `MonitoredSession` and `SingularMonitoredSession` are:
+  * `MonitoredSession` handles `AbortedError` for distributed settings,
+    but `SingularMonitoredSession` does not.
+  * `MonitoredSession` can be created in `chief` or `worker` modes.
+    `SingularMonitoredSession` is always created as `chief`.
+  * You can access the raw `tf.Session` object used by
+    `SingularMonitoredSession`, whereas in MonitoredSession the raw session is
+    private. This can be used:
+    - To `run` without hooks.
+    - To save and restore.
+  * All other functionality is identical.
+
+  Example usage:
+  ```python
+  saver_hook = CheckpointSaverHook(...)
+  summary_hook = SummaryHook(...)
+  with SingularMonitoredSession(hooks=[saver_hook, summary_hook]) as sess:
+    while not sess.should_stop():
+      sess.run(train_op)
+  ```
+
+  Initialization: At creation time the hooked session does following things
+  in given order:
+
+  * calls `hook.begin()` for each given hook
+  * finalizes the graph via `scaffold.finalize()`
+  * create session
+  * initializes the model via initialization ops provided by `Scaffold`
+  * restores variables if a checkpoint exists
+  * launches queue runners
+
+  Run: When `run()` is called, the hooked session does following things:
+
+  * calls `hook.before_run()`
+  * calls TensorFlow `session.run()` with merged fetches and feed_dict
+  * calls `hook.after_run()`
+  * returns result of `session.run()` asked by user
+
+  Exit: At the `close()`, the hooked session does following things in order:
+
+  * calls `hook.end()`
+  * closes the queue runners and the session
+  * surpresses `OutOfRange` error which indicates that all inputs have been
+    processed if the `SingularMonitoredSession` is used as a context.
+  """
+
+  def __init__(self,
+               hooks=None,
+               scaffold=None,
+               master='',
+               config=None,
+               checkpoint_dir=None):
+    """Creates a SingularMonitoredSession.
+
+    Args:
+      hooks: An iterable of `SessionRunHook' objects.
+      scaffold: A `Scaffold` used for gathering or building supportive ops. If
+        not specified a default one is created. It's used to finalize the graph.
+      master: `String` representation of the TensorFlow master to use.
+      config: `ConfigProto` proto used to configure the session.
+      checkpoint_dir: A string.  Optional path to a directory where to restore
+        variables.
+    """
+    session_creator = ChiefSessionCreator(
+        scaffold=scaffold,
+        master=master,
+        config=config,
+        checkpoint_dir=checkpoint_dir)
+    super(SingularMonitoredSession, self).__init__(
+        session_creator, hooks, should_recover=False)
+
+  def raw_session(self):
+    """Returns underlying `TensorFlow.Session` object."""
+    return self._tf_sess()
 
 
 class _WrappedSession(object):
