@@ -26,6 +26,7 @@ import tensorflow as tf
 from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
+from tensorflow.core.framework import summary_pb2
 
 
 def _assert_variables(
@@ -65,6 +66,16 @@ def _assert_metrics(
         msg="%s: value, expected %s, got %s." % (key, expected_value, value))
 
 
+# This must be called from within a tf.Session.
+def _assert_summary_tags(test_case, expected_tags=None):
+  actual_tags = []
+  for summary_op in tf.get_collection(tf.GraphKeys.SUMMARIES):
+    summ = summary_pb2.Summary()
+    summ.ParseFromString(summary_op.eval())
+    actual_tags.append(summ.value[0].tag)
+  test_case.assertItemsEqual(expected_tags or [], actual_tags)
+
+
 def _sigmoid(x):
   return 1. / (1. + math.exp(-1 * x))
 
@@ -80,6 +91,7 @@ class RegressionModelHeadTest(tf.test.TestCase):
       model_fn_ops = head.head_ops({}, labels,
                                    tf.contrib.learn.ModeKeys.TRAIN,
                                    _noop_train_op, logits=prediction)
+      _assert_summary_tags(self, ["loss"])
       _assert_no_variables(self)
       _assert_metrics(self, 5. / 3, {"loss": 5. / 3}, model_fn_ops)
 
@@ -93,6 +105,7 @@ class RegressionModelHeadTest(tf.test.TestCase):
                                    _noop_train_op, logits=prediction)
       self.assertIsNone(model_fn_ops.train_op)
       _assert_no_variables(self)
+      _assert_summary_tags(self, ["loss"])
       _assert_metrics(self, 5. / 3, {"loss": 5. / 3}, model_fn_ops)
 
   def testRegressionWithLabelName(self):
@@ -105,6 +118,7 @@ class RegressionModelHeadTest(tf.test.TestCase):
                                    tf.contrib.learn.ModeKeys.TRAIN,
                                    _noop_train_op, logits=prediction)
       _assert_no_variables(self)
+      _assert_summary_tags(self, ["loss"])
       _assert_metrics(self, 5. / 3, {"loss": 5. / 3}, model_fn_ops)
 
   def testRegressionWithWeights(self):
@@ -119,6 +133,7 @@ class RegressionModelHeadTest(tf.test.TestCase):
                                    tf.contrib.learn.ModeKeys.TRAIN,
                                    _noop_train_op, logits=prediction)
       _assert_no_variables(self)
+      _assert_summary_tags(self, ["loss"])
       _assert_metrics(self, 2. / len(weights), {
           "loss": 2. / np.sum(weights)
       }, model_fn_ops)
@@ -138,6 +153,7 @@ class RegressionModelHeadTest(tf.test.TestCase):
           "centered_bias_weight:0",
       ))
       tf.global_variables_initializer().run()
+      _assert_summary_tags(self, ["loss", "centered_bias/bias_0"])
       _assert_metrics(self, 5. / 3, {"loss": 5. / 3}, model_fn_ops)
 
   def testErrorInSparseTensorLabels(self):
@@ -193,6 +209,7 @@ class MultiLabelModelHeadTest(tf.test.TestCase):
                                    tf.contrib.learn.ModeKeys.TRAIN,
                                    _noop_train_op, logits=logits)
       _assert_no_variables(self)
+      _assert_summary_tags(self, ["loss"])
       expected_loss = .89985204
       _assert_metrics(
           self, expected_loss, self._expected_eval_metrics(expected_loss),
@@ -210,6 +227,7 @@ class MultiLabelModelHeadTest(tf.test.TestCase):
                                    _noop_train_op, logits=logits)
       self.assertIsNone(model_fn_ops.train_op)
       _assert_no_variables(self)
+      _assert_summary_tags(self, ["loss"])
       expected_loss = .89985204
       _assert_metrics(
           self, expected_loss, self._expected_eval_metrics(expected_loss),
@@ -228,6 +246,7 @@ class MultiLabelModelHeadTest(tf.test.TestCase):
                                    tf.contrib.learn.ModeKeys.TRAIN,
                                    _noop_train_op, logits=logits)
       _assert_no_variables(self)
+      _assert_summary_tags(self, ["loss"])
       expected_loss = .89985204
       _assert_metrics(
           self, expected_loss, self._expected_eval_metrics(expected_loss),
@@ -246,6 +265,7 @@ class MultiLabelModelHeadTest(tf.test.TestCase):
                                    tf.contrib.learn.ModeKeys.TRAIN,
                                    _noop_train_op, logits=logits)
       _assert_no_variables(self)
+      _assert_summary_tags(self, ["loss"])
       _assert_metrics(
           self, .089985214, self._expected_eval_metrics(2.69956),
           model_fn_ops)
@@ -268,6 +288,10 @@ class MultiLabelModelHeadTest(tf.test.TestCase):
           "centered_bias_weight:0",
       ))
       tf.global_variables_initializer().run()
+      _assert_summary_tags(self, ["loss",
+                                  "centered_bias/bias_0",
+                                  "centered_bias/bias_1",
+                                  "centered_bias/bias_2"])
       expected_loss = .89985204
       _assert_metrics(
           self, expected_loss, self._expected_eval_metrics(expected_loss),
@@ -305,6 +329,7 @@ class BinaryClassificationModelHeadTest(tf.test.TestCase):
                                    tf.contrib.learn.ModeKeys.TRAIN,
                                    _noop_train_op, logits=logits)
       _assert_no_variables(self)
+      _assert_summary_tags(self, ["loss"])
       expected_loss = .81326175
       _assert_metrics(
           self, expected_loss, self._expected_eval_metrics(expected_loss),
@@ -323,6 +348,7 @@ class BinaryClassificationModelHeadTest(tf.test.TestCase):
                                    _noop_train_op, logits=logits)
       self.assertIsNone(model_fn_ops.train_op)
       _assert_no_variables(self)
+      _assert_summary_tags(self, ["loss"])
       expected_loss = .81326175
       _assert_metrics(
           self, expected_loss, self._expected_eval_metrics(expected_loss),
@@ -354,6 +380,7 @@ class BinaryClassificationModelHeadTest(tf.test.TestCase):
                                    tf.contrib.learn.ModeKeys.TRAIN,
                                    _noop_train_op, logits=logits)
       _assert_no_variables(self)
+      _assert_summary_tags(self, ["loss"])
       expected_loss = .81326175
       _assert_metrics(
           self, expected_loss, self._expected_eval_metrics(expected_loss),
@@ -374,6 +401,7 @@ class BinaryClassificationModelHeadTest(tf.test.TestCase):
                                    tf.contrib.learn.ModeKeys.TRAIN,
                                    _noop_train_op, logits=logits)
       _assert_no_variables(self)
+      _assert_summary_tags(self, ["loss"])
       expected_total_loss = .31326166
       _assert_metrics(
           self, expected_total_loss / len(weights), {
@@ -406,6 +434,7 @@ class BinaryClassificationModelHeadTest(tf.test.TestCase):
           "centered_bias_weight:0",
       ))
       tf.global_variables_initializer().run()
+      _assert_summary_tags(self, ["loss", "centered_bias/bias_0"])
       expected_loss = .81326175
       _assert_metrics(
           self, expected_loss, self._expected_eval_metrics(expected_loss),
@@ -453,6 +482,7 @@ class MultiClassModelHeadTest(tf.test.TestCase):
                                    tf.contrib.learn.ModeKeys.TRAIN,
                                    _noop_train_op, logits=logits)
       _assert_no_variables(self)
+      _assert_summary_tags(self, ["loss"])
       expected_loss = 1.5514446
       _assert_metrics(
           self, expected_loss, self._expected_eval_metrics(expected_loss),
@@ -472,6 +502,7 @@ class MultiClassModelHeadTest(tf.test.TestCase):
                                    _noop_train_op, logits=logits)
       self.assertIsNone(model_fn_ops.train_op)
       _assert_no_variables(self)
+      _assert_summary_tags(self, ["loss"])
       expected_loss = 1.5514446
       _assert_metrics(
           self, expected_loss, self._expected_eval_metrics(expected_loss),
@@ -493,6 +524,7 @@ class MultiClassModelHeadTest(tf.test.TestCase):
                                    tf.contrib.learn.ModeKeys.TRAIN,
                                    _noop_train_op, logits=logits)
       _assert_no_variables(self)
+      _assert_summary_tags(self, ["loss"])
       expected_loss = 1.5514446
       _assert_metrics(
           self, expected_loss * weight,
@@ -524,6 +556,7 @@ class BinarySvmModelHeadTest(tf.test.TestCase):
                                    tf.contrib.learn.ModeKeys.TRAIN,
                                    _noop_train_op, logits=predictions)
       _assert_no_variables(self)
+      _assert_summary_tags(self, ["loss"])
       expected_loss = np.average(self._expected_losses)
       _assert_metrics(self, expected_loss, {
           "accuracy": 1.,
@@ -540,6 +573,7 @@ class BinarySvmModelHeadTest(tf.test.TestCase):
                                    _noop_train_op, logits=predictions)
       self.assertIsNone(model_fn_ops.train_op)
       _assert_no_variables(self)
+      _assert_summary_tags(self, ["loss"])
       expected_loss = np.average(self._expected_losses)
       _assert_metrics(self, expected_loss, {
           "accuracy": 1.,
@@ -556,6 +590,7 @@ class BinarySvmModelHeadTest(tf.test.TestCase):
                                    tf.contrib.learn.ModeKeys.TRAIN,
                                    _noop_train_op, logits=predictions)
       _assert_no_variables(self)
+      _assert_summary_tags(self, ["loss"])
       expected_loss = np.average(self._expected_losses)
       _assert_metrics(self, expected_loss, {
           "accuracy": 1.,
@@ -573,6 +608,7 @@ class BinarySvmModelHeadTest(tf.test.TestCase):
                                    tf.contrib.learn.ModeKeys.TRAIN,
                                    _noop_train_op, logits=predictions)
       _assert_no_variables(self)
+      _assert_summary_tags(self, ["loss"])
       expected_weighted_sum = np.sum(np.multiply(
           weights, self._expected_losses))
       _assert_metrics(self, expected_weighted_sum / len(weights), {
@@ -595,6 +631,7 @@ class BinarySvmModelHeadTest(tf.test.TestCase):
           "centered_bias_weight:0",
       ))
       tf.global_variables_initializer().run()
+      _assert_summary_tags(self, ["loss", "centered_bias/bias_0"])
       expected_loss = np.average(self._expected_losses)
       _assert_metrics(self, expected_loss, {
           "accuracy": 1.,
