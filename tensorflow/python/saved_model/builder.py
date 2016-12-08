@@ -148,7 +148,7 @@ class SavedModelBuilder(object):
         assets_collection_to_add)
 
     # Return if there are no assets to write.
-    if len(asset_source_filepath_list) is 0:
+    if len(asset_source_filepath_list) == 0:
       tf_logging.info("No assets to write.")
       return
 
