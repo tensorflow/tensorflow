@@ -151,11 +151,12 @@ def input_fn(df):
   continuous_cols = {k: tf.constant(df[k].values) for k in CONTINUOUS_COLUMNS}
   # Creates a dictionary mapping from each categorical feature column name (k)
   # to the values of that column stored in a tf.SparseTensor.
-  categorical_cols = {k: tf.SparseTensor(
-      indices=[[i, 0] for i in range(df[k].size)],
-      values=df[k].values,
-      shape=[df[k].size, 1])
-                      for k in CATEGORICAL_COLUMNS}
+  categorical_cols = {
+      k: tf.SparseTensor(
+          indices=[[i, 0] for i in range(df[k].size)],
+          values=df[k].values,
+          dense_shape=[df[k].size, 1])
+      for k in CATEGORICAL_COLUMNS}
   # Merges the two dictionaries into one.
   feature_cols = dict(continuous_cols)
   feature_cols.update(categorical_cols)
