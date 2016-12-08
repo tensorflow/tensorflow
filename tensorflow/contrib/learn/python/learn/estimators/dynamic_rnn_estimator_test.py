@@ -24,7 +24,6 @@ import numpy as np
 import tensorflow as tf
 
 from tensorflow.contrib.learn.python.learn.estimators import dynamic_rnn_estimator
-from tensorflow.python.ops import rnn_cell
 
 
 class IdentityRNNCell(tf.contrib.rnn.RNNCell):
@@ -87,7 +86,7 @@ class DynamicRnnEstimatorTest(tf.test.TestCase):
 
   def setUp(self):
     super(DynamicRnnEstimatorTest, self).setUp()
-    self.rnn_cell = rnn_cell.BasicRNNCell(self.NUM_RNN_CELL_UNITS)
+    self.rnn_cell = tf.contrib.rnn.BasicRNNCell(self.NUM_RNN_CELL_UNITS)
     self.mock_target_column = MockTargetColumn(
         num_label_columns=self.NUM_LABEL_COLUMNS)
 

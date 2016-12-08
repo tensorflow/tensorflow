@@ -22,6 +22,7 @@ import functools
 
 from tensorflow.contrib import layers
 from tensorflow.contrib import metrics
+from tensorflow.contrib import rnn as contrib_rnn
 from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.layers.python.layers import optimizers
 from tensorflow.contrib.learn.python.learn import metric_spec
@@ -33,7 +34,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn
-from tensorflow.python.ops import rnn_cell
 from tensorflow.python.training import momentum as momentum_opt
 
 
@@ -54,9 +54,9 @@ class RNNKeys(object):
   PROBABILITIES_KEY = 'probabilities'
   FINAL_STATE_KEY = 'final_state'
 
-_CELL_TYPES = {'basic_rnn': rnn_cell.BasicRNNCell,
-               'lstm': rnn_cell.LSTMCell,
-               'gru': rnn_cell.GRUCell,}
+_CELL_TYPES = {'basic_rnn': contrib_rnn.BasicRNNCell,
+               'lstm': contrib_rnn.LSTMCell,
+               'gru': contrib_rnn.GRUCell,}
 
 
 def mask_activations_and_labels(activations, labels, sequence_lengths):
@@ -475,7 +475,7 @@ def apply_dropout(
     input_keep_probability = 1.0
   if output_prob_none:
     output_keep_probability = 1.0
-  return rnn_cell.DropoutWrapper(
+  return contrib_rnn.DropoutWrapper(
       cell, input_keep_probability, output_keep_probability, random_seed)
 
 
@@ -643,20 +643,20 @@ def _to_rnn_cell(cell_or_type, num_units, num_layers):
     ValueError: `cell_or_type` is an invalid `RNNCell` name.
     TypeError: `cell_or_type` is not a string or a subclass of `RNNCell`.
   """
-  if isinstance(cell_or_type, rnn_cell.RNNCell):
+  if isinstance(cell_or_type, contrib_rnn.RNNCell):
     return cell_or_type
   if isinstance(cell_or_type, str):
     cell_or_type = _CELL_TYPES.get(cell_or_type)
     if cell_or_type is None:
       raise ValueError('The supported cell types are {}; got {}'.format(
           list(_CELL_TYPES.keys()), cell_or_type))
-  if not issubclass(cell_or_type, rnn_cell.RNNCell):
+  if not issubclass(cell_or_type, contrib_rnn.RNNCell):
     raise TypeError(
         'cell_or_type must be a subclass of RNNCell or one of {}.'.format(
             list(_CELL_TYPES.keys())))
   cell = cell_or_type(num_units=num_units)
   if num_layers > 1:
-    cell = rnn_cell.MultiRNNCell(
+    cell = contrib_rnn.MultiRNNCell(
         [cell] * num_layers, state_is_tuple=True)
   return cell
 
