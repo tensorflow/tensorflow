@@ -48,6 +48,7 @@ tf_cc_test(
         "//tensorflow/python/saved_model/example:saved_model_half_plus_two_data",
     ],
     linkstatic = 1,
+    tags = ["manual"],
     deps = [
         ":constants",
         ":loader",

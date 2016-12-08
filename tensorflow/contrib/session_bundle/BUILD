@@ -145,6 +145,7 @@ cc_test(
     ],
     # Link in all registered kernels.
     linkstatic = 1,
+    tags = ["manual"],
     visibility = ["//visibility:private"],
     deps = [
         ":session_bundle",
@@ -182,6 +183,7 @@ py_test(
     ],
     main = "session_bundle_test.py",
     srcs_version = "PY2AND3",
+    tags = ["manual"],
     deps = [
         ":constants",
         ":manifest_proto_py",
@@ -285,6 +287,7 @@ cc_test(
     ],
     # Link in all registered kernels.
     linkstatic = 1,
+    tags = ["manual"],
     deps = [
         ":bundle_shim",
         ":test_util",
