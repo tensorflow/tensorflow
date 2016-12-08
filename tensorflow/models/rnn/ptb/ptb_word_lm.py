@@ -108,11 +108,13 @@ class PTBModel(object):
     # Slightly better results can be obtained with forget gate biases
     # initialized to 1 but the hyperparameters of the model would need to be
     # different than reported in the paper.
-    lstm_cell = tf.contrib.rnn.BasicLSTMCell(size, forget_bias=0.0, state_is_tuple=True)
+    lstm_cell = tf.contrib.rnn.BasicLSTMCell(
+        size, forget_bias=0.0, state_is_tuple=True)
     if is_training and config.keep_prob < 1:
       lstm_cell = tf.contrib.rnn.DropoutWrapper(
           lstm_cell, output_keep_prob=config.keep_prob)
-    cell = tf.contrib.rnn.MultiRNNCell([lstm_cell] * config.num_layers, state_is_tuple=True)
+    cell = tf.contrib.rnn.MultiRNNCell(
+        [lstm_cell] * config.num_layers, state_is_tuple=True)
 
     self._initial_state = cell.zero_state(batch_size, data_type())
 
@@ -131,8 +133,11 @@ class PTBModel(object):
     # The alternative version of the code below is:
     #
     # inputs = [tf.squeeze(input_step, [1])
-    #           for input_step in tf.split(1, num_steps, inputs)]
-    # outputs, state = tf.nn.rnn(cell, inputs, initial_state=self._initial_state)
+    #           for input_step in tf.split(value=inputs,
+    #                                      num_or_size_splits=num_steps,
+    #                                      axis=1)]
+    # outputs, state = tf.nn.rnn(cell, inputs,
+    #                            initial_state=self._initial_state)
     outputs = []
     state = self._initial_state
     with tf.variable_scope("RNN"):

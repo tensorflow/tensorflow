@@ -638,7 +638,8 @@ class UnrollLSTMTest(tf.test.TestCase):
   @classmethod
   def LSTMCell(cls, x, mprev, cprev, weights):
     xm = tf.concat_v2([x, mprev], 1)
-    i_i, i_g, f_g, o_g = tf.split(1, 4, tf.matmul(xm, weights))
+    i_i, i_g, f_g, o_g = tf.split(
+        value=tf.matmul(xm, weights), num_or_size_splits=4, axis=1)
     new_c = tf.sigmoid(f_g) * cprev + tf.sigmoid(i_g) * tf.tanh(i_i)
     new_c = tf.clip_by_value(new_c, -50.0, 50.0)
     new_m = tf.sigmoid(o_g) * tf.tanh(new_c)

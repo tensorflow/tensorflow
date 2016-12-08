@@ -1913,7 +1913,7 @@ class ComplexMakeRealImagTest(tf.test.TestCase):
     # gradient function is checked.
     with self.test_session():
       inx = tf.convert_to_tensor(x)
-      real, imag = tf.split(1, 2, inx)
+      real, imag = tf.split(value=inx, num_or_size_splits=2, axis=1)
       real, imag = tf.reshape(real, [-1]), tf.reshape(imag, [-1])
       cplx = tf.complex(real, imag)
       cplx = tf.conj(cplx)
@@ -1958,7 +1958,7 @@ class ComplexMakeRealImagTest(tf.test.TestCase):
     # x, real parts of y and imaginary parts of y.
     with self.test_session():
       inp = tf.convert_to_tensor(data)
-      xr, xi, yr, yi = tf.split(1, 4, inp)
+      xr, xi, yr, yi = tf.split(value=inp, num_or_size_splits=4, axis=1)
 
       def vec(x):  # Reshape to a vector
         return tf.reshape(x, [-1])
