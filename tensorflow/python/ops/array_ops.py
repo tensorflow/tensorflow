@@ -1294,7 +1294,7 @@ def split_v(value=None,
   ```python
   # 'value' is a tensor with shape [5, 30]
   # Split 'value' into 3 tensors with sizes [4, 15, 11] along dimension 1
-  split0, split1, split2 = tf.split_v(1, [4, 15, 11], value)
+  split0, split1, split2 = tf.split_v(value, [4, 15, 11], 1)
   tf.shape(split0) ==> [5, 4]
   tf.shape(split1) ==> [5, 15]
   tf.shape(split2) ==> [5, 11]
@@ -1329,17 +1329,17 @@ def split_v(value=None,
     return gen_array_ops._split(
         split_dim=axis, num_split=num_or_size_splits, value=value, name=name)
   else:
+    size_splits = ops.convert_to_tensor(num_or_size_splits)
     if num is None:
-      size_splits = ops.convert_to_tensor(num_or_size_splits)
       size_splits_shape = size_splits.get_shape()
-      num = size_splits_shape.dims
-    if num is None:
-      raise ValueError("Cannot infer num from shape %s" % value_shape)
+      num = size_splits_shape.dims[0]
+      if num._value is None:
+        raise ValueError("Cannot infer num from shape %s" % num_or_size_splits)
     return gen_array_ops._split_v(
         value=value,
         size_splits=size_splits,
         split_dim=axis,
-        num_split=num[0],
+        num_split=num,
         name=name)
 
 

@@ -24,6 +24,24 @@ import tensorflow as tf
 
 class SplitVOpTest(tf.test.TestCase):
 
+  def testExplicitNum(self):
+    size_splits = tf.placeholder(dtype=tf.int32, shape=[None])
+
+    value = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+    with self.test_session(use_gpu=False) as sess:
+      with self.assertRaises(ValueError) as context:
+        sess.run(tf.split_v(value, size_splits), {size_splits: [2, 2, 6]})
+
+      self.assertTrue("Cannot infer num from shape" in str(context.exception))
+
+      result = sess.run(tf.split_v(value, size_splits, num=3),
+                        {size_splits: [2, 2, 6]})
+
+    self.assertAllEqual(result[0], value[0:2])
+    self.assertAllEqual(result[1], value[2:4])
+    self.assertAllEqual(result[2], value[4:])
+
   def testListOfScalarTensors(self):
     a = tf.to_int32(5)
     b = tf.to_int32(6)
