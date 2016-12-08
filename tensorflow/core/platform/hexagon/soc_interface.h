@@ -30,8 +30,26 @@ int soc_interface_GetWrapperVersion();
 // Returns the version of hexagon binary.
 // You should assert that the version matches the expected version before
 // calling APIs defined in this header.
-int soc_interface_GetHexagonBinaryVersion();
-// TODO(satok): Support gemm APIs via RPC
+int soc_interface_GetSocControllerVersion();
+// Initialize SOC
+bool soc_interface_Init();
+// Finalize SOC
+bool soc_interface_Finalize();
+// Execute graph on SOC
+bool soc_interface_ExecuteGraph();
+// Teardown graph setup
+bool soc_interface_TeardownGraph();
+// Send input data to SOC
+bool soc_interface_FillInputNodeFloat(int x, int y, int z, int d,
+                                      const uint8_t* const buf,
+                                      uint64_t buf_size);
+// Load output data from SOC
+bool soc_interface_ReadOutputNodeFloat(const char* const node_name,
+                                       uint8_t** buf, uint64_t* buf_size);
+// Setup graph
+// TODO(satok): Remove and use runtime version
+bool soc_interface_SetupGraphDummy(int version);
+
 #ifdef __cplusplus
 }
 #endif  // __cplusplus

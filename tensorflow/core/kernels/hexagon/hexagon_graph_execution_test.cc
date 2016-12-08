@@ -51,7 +51,7 @@ TEST(GraphTransferer, RunInceptionV3OnHexagonExample) {
   Status status = gt.LoadGraphFromProtoFile(
       *ops_definitions, filename, input_node_info_list, output_node_names,
       is_text_proto, true /* dry_run_for_unknown_shape */, &output_tensor_info);
-  EXPECT_TRUE(status.ok());
+  EXPECT_TRUE(status.ok()) << status;
 
   HexagonControlWrapper hexagon_control_wrapper;
   const int version = hexagon_control_wrapper.GetVersion();
