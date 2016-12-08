@@ -383,6 +383,9 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
     self._optimizer = _get_default_optimizer(feature_columns)
     if optimizer:
       self._optimizer = _get_optimizer(optimizer)
+    if config is None:
+      config = estimator.BaseEstimator._Config()  # pylint: disable=protected-access
+      logging.info("Using default config.")
 
     chief_hook = None
     if (isinstance(optimizer, sdca_optimizer.SDCAOptimizer) and
@@ -663,6 +666,9 @@ class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
     self._optimizer = _get_default_optimizer(feature_columns)
     if optimizer:
       self._optimizer = _get_optimizer(optimizer)
+    if config is None:
+      config = estimator.BaseEstimator._Config()  # pylint: disable=protected-access
+      logging.info("Using default config.")
 
     chief_hook = None
     if (isinstance(optimizer, sdca_optimizer.SDCAOptimizer) and

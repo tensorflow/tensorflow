@@ -49,6 +49,7 @@ from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.platform import tf_logging as logging
 
 
 class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
@@ -128,6 +129,9 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
       ValueError: If both linear_feature_columns and dnn_features_columns are
         empty at the same time.
     """
+    if config is None:
+      config = estimator.BaseEstimator._Config()  # pylint: disable=protected-access
+      logging.info("Using default config.")
     super(_DNNLinearCombinedBaseEstimator, self).__init__(
         model_dir=model_dir, config=config)
 
@@ -724,6 +728,9 @@ class DNNLinearCombinedClassifier(evaluable.Evaluable, trainable.Trainable):
                        "must be defined.")
     self._dnn_hidden_units = dnn_hidden_units
     self._enable_centered_bias = enable_centered_bias
+    if config is None:
+      config = estimator.BaseEstimator._Config()  # pylint: disable=protected-access
+      logging.info("Using default config.")
 
     head = head_lib._multi_class_head(  # pylint: disable=protected-access
         n_classes=n_classes,
@@ -1096,6 +1103,9 @@ class DNNLinearCombinedRegressor(evaluable.Evaluable, trainable.Trainable):
     if not self._feature_columns:
       raise ValueError("Either linear_feature_columns or dnn_feature_columns "
                        "must be defined.")
+    if config is None:
+      config = estimator.BaseEstimator._Config()  # pylint: disable=protected-access
+      logging.info("Using default config.")
 
     head = head_lib._regression_head(  # pylint: disable=protected-access
         weight_column_name=weight_column_name,

@@ -41,6 +41,7 @@ from tensorflow.python import summary
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.platform import tf_logging as logging
 
 
 _CENTERED_BIAS_WEIGHT = "centered_bias_weight"
@@ -297,6 +298,9 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
     self._hidden_units = hidden_units
     self._feature_columns = feature_columns
     self._enable_centered_bias = enable_centered_bias
+    if config is None:
+      config = estimator.BaseEstimator._Config()  # pylint: disable=protected-access
+      logging.info("Using default config.")
 
     self._estimator = estimator.Estimator(
         model_fn=_dnn_model_fn,
@@ -308,22 +312,14 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
                     n_classes,
                     weight_column_name=weight_column_name,
                     enable_centered_bias=enable_centered_bias),
-            "hidden_units":
-                hidden_units,
-            "feature_columns":
-                feature_columns,
-            "optimizer":
-                optimizer,
-            "activation_fn":
-                activation_fn,
-            "dropout":
-                dropout,
-            "gradient_clip_norm":
-                gradient_clip_norm,
-            "num_ps_replicas":
-                config.num_ps_replicas if config else 0,
-            "embedding_lr_multipliers":
-                embedding_lr_multipliers,
+            "hidden_units": hidden_units,
+            "feature_columns": feature_columns,
+            "optimizer": optimizer,
+            "activation_fn": activation_fn,
+            "dropout": dropout,
+            "gradient_clip_norm": gradient_clip_norm,
+            "num_ps_replicas": config.num_ps_replicas if config else 0,
+            "embedding_lr_multipliers": embedding_lr_multipliers,
         },
         feature_engineering_fn=feature_engineering_fn)
 
@@ -619,6 +615,9 @@ class DNNRegressor(evaluable.Evaluable, trainable.Trainable):
       A `DNNRegressor` estimator.
     """
     self._feature_columns = feature_columns
+    if config is None:
+      config = estimator.BaseEstimator._Config()  # pylint: disable=protected-access
+      logging.info("Using default config.")
 
     self._estimator = estimator.Estimator(
         model_fn=_dnn_model_fn,
