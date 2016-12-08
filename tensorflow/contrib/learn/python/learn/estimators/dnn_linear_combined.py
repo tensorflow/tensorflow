@@ -407,7 +407,7 @@ def _extract_embedding_lr_multipliers(embedding_lr_multipliers, collection_key,
   return gradient_multipliers
 
 
-def _dnn_linear_combined_model_fn(features, labels, mode, params):
+def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
   """Deep Neural Net and Linear combined model_fn.
 
   Args:
@@ -441,6 +441,7 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params):
       * embedding_lr_multipliers: Optional. A dictionary from
         `EmbeddingColumn` to a `float` multiplier. Multiplier will be used to
         multiply with learning rate for the embedding variables.
+    config: `RunConfig` object to configure the runtime settings.
 
   Returns:
     `ModelFnOps`
@@ -459,7 +460,7 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params):
   dnn_activation_fn = params.get("dnn_activation_fn")
   dnn_dropout = params.get("dnn_dropout")
   gradient_clip_norm = params.get("gradient_clip_norm")
-  num_ps_replicas = params.get("num_ps_replicas", 0)
+  num_ps_replicas = config.num_ps_replicas if config else 0
   embedding_lr_multipliers = params.get("embedding_lr_multipliers", {})
 
   if not linear_feature_columns and not dnn_feature_columns:
@@ -728,10 +729,6 @@ class DNNLinearCombinedClassifier(evaluable.Evaluable, trainable.Trainable):
                        "must be defined.")
     self._dnn_hidden_units = dnn_hidden_units
     self._enable_centered_bias = enable_centered_bias
-    if config is None:
-      config = estimator.BaseEstimator._Config()  # pylint: disable=protected-access
-      logging.info("Using default config.")
-
     head = head_lib._multi_class_head(  # pylint: disable=protected-access
         n_classes=n_classes,
         weight_column_name=weight_column_name,
@@ -751,7 +748,6 @@ class DNNLinearCombinedClassifier(evaluable.Evaluable, trainable.Trainable):
             "dnn_activation_fn": dnn_activation_fn,
             "dnn_dropout": dnn_dropout,
             "gradient_clip_norm": gradient_clip_norm,
-            "num_ps_replicas": config.num_ps_replicas if config else 0,
             "embedding_lr_multipliers": embedding_lr_multipliers,
         },
         feature_engineering_fn=feature_engineering_fn)
@@ -1103,10 +1099,6 @@ class DNNLinearCombinedRegressor(evaluable.Evaluable, trainable.Trainable):
     if not self._feature_columns:
       raise ValueError("Either linear_feature_columns or dnn_feature_columns "
                        "must be defined.")
-    if config is None:
-      config = estimator.BaseEstimator._Config()  # pylint: disable=protected-access
-      logging.info("Using default config.")
-
     head = head_lib._regression_head(  # pylint: disable=protected-access
         weight_column_name=weight_column_name,
         label_dimension=label_dimension,
@@ -1126,7 +1118,6 @@ class DNNLinearCombinedRegressor(evaluable.Evaluable, trainable.Trainable):
             "dnn_activation_fn": dnn_activation_fn,
             "dnn_dropout": dnn_dropout,
             "gradient_clip_norm": gradient_clip_norm,
-            "num_ps_replicas": config.num_ps_replicas if config else 0,
             "embedding_lr_multipliers": embedding_lr_multipliers,
         },
         feature_engineering_fn=feature_engineering_fn)
