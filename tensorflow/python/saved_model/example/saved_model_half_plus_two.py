@@ -19,7 +19,9 @@ SavedModel format.
 
 This graph calculates,
   y = a*x + b
-where a and b are variables with a=0.5 and b=2.
+and/or, independently,
+  y2 = a*x2 + c
+where a, b and c are variables with a=0.5 and b=2 and c=3.
 
 Output from this program is typically used to exercise SavedModel load and
 execution code.
@@ -83,17 +85,21 @@ def _generate_saved_model_for_half_plus_two(export_dir, as_text=False):
     # functionality upon restore.
     a = tf.Variable(0.5, name="a")
     b = tf.Variable(2.0, name="b")
+    c = tf.Variable(3.0, name="c")
 
     # Create a placeholder for serialized tensorflow.Example messages to be fed.
     serialized_tf_example = tf.placeholder(tf.string, name="tf_example")
 
     # Parse the tensorflow.Example looking for a feature named "x" with a single
     # floating point value.
-    feature_configs = {"x": tf.FixedLenFeature([1], dtype=tf.float32),}
+    feature_configs = {"x": tf.FixedLenFeature([1], dtype=tf.float32)}
     tf_example = tf.parse_example(serialized_tf_example, feature_configs)
     # Use tf.identity() to assign name
     x = tf.identity(tf_example["x"], name="x")
     y = tf.add(tf.mul(a, x), b, name="y")
+
+    x2 = tf.placeholder(tf.float32, name="x2")
+    tf.add(tf.mul(a, x2), c, name="y2")
 
     # Create an assets file that can be saved and restored as part of the
     # SavedModel.
@@ -130,11 +136,16 @@ def _generate_saved_model_for_half_plus_two(export_dir, as_text=False):
     predict_input_tensor = meta_graph_pb2.TensorInfo()
     predict_input_tensor.name = x.name
     predict_signature_inputs = {
-       "x": predict_input_tensor
+        "x": predict_input_tensor
+    }
+
+    predict_output_tensor = meta_graph_pb2.TensorInfo()
+    predict_output_tensor.name = y.name
+    predict_signature_outputs = {
+        "y": predict_output_tensor
     }
     predict_signature_def = signature_def_utils.build_signature_def(
-        {"x": predict_input_tensor},
-        {"y": output_tensor},
+        predict_signature_inputs, predict_signature_outputs,
         signature_constants.PREDICT_METHOD_NAME)
 
     # Initialize all variables and then save the SavedModel.
