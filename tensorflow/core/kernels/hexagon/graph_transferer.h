@@ -17,6 +17,8 @@ limitations under the License.
 #define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_HEXAGON_GRAPH_TRANSFERER_H_
 
 #include <array>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/shape_refiner.h"
@@ -122,6 +124,10 @@ class GraphTransferer {
       const std::vector<InputNodeInfo>& input_node_info_list,
       const bool initialize_by_zero, OutputTensorInfo* output_tensor_info);
 
+  // Sort params so that all input nodes appear before consumer nodes.
+  // CAVEAT: This may be slow if the number of nodes are too large
+  void SortParams(const std::vector<string>& output_node_names);
+
   void EnableStrictCheckMode(bool enable);
 
   // Return const node parameters for transfer
@@ -137,6 +143,15 @@ class GraphTransferer {
   const std::vector<NodeOutputParams>& GetNodeOutputParams() const;
 
  private:
+  class TransferParamsComparator {
+   public:
+    TransferParamsComparator(
+        const std::unordered_map<int, std::unordered_set<int>>& dep_map);
+    bool operator()(const GraphTransferer::NodeTransferParams& obj0,
+                    const GraphTransferer::NodeTransferParams& obj1);
+    const std::unordered_map<int, std::unordered_set<int>>& dependency_map_;
+  };
+
   int CacheNode(const Node& node);
 
   static bool IsInputNode(
@@ -230,6 +245,11 @@ class GraphTransferer {
   static void CheckShape(const OutputTensorMap& output_tensor_map,
                          const string& node_name,
                          const std::array<int64, SHAPE_ARRAY_SIZE>& actual);
+
+  // Create dependency map
+  static void FillDependencyRec(
+      int node_id, std::unordered_map<int, std::unordered_set<int>>& dep_map,
+      std::unordered_set<int>& completed);
 
   void ClearCache();
 

@@ -43,6 +43,9 @@ class HexagonControlWrapper final : public ISocControlWrapper {
   bool ReadOutputNode(string node_name, std::vector<ByteArray> *outputs) final;
 
  private:
+  // CAVEAT: Need offset as HVX library reserves some ids
+  static constexpr int NODE_ID_OFFSET = 0x10000;
+
   // Dummy float array for input node.
   // TODO(satok): Use actual data passed by FillInputNode and remove
   std::vector<float> dummy_input_float_;

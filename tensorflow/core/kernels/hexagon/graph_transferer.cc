@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <cinttypes>
-#include <unordered_map>
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -104,6 +103,7 @@ Status GraphTransferer::LoadGraphFromProto(
       return status;
     }
   }
+  SortParams(output_node_names);
   ClearCache();
   if (DBG_DUMP_PARAMS) {
     DumpNodeTransferParams();
@@ -270,6 +270,47 @@ Status GraphTransferer::LoadGraphFromProtoFile(
   }
   CHECK(graph_def.node_size() == output_tensors.size());
   return status;
+}
+
+void GraphTransferer::SortParams(const std::vector<string>& output_node_names) {
+  // TODO(satok): optimize complexity
+  std::unordered_map<int, NodeInputParams*> input_map;
+  for (NodeInputParams& input : node_input_params_list_) {
+    input_map.emplace(input.node_id, &input);
+  }
+
+  // Setup dependency map placeholder
+  std::vector<int> output_node_ids;
+  std::unordered_map<int, std::unordered_set<int>> dependency_map;
+  for (const NodeTransferParams& params : node_transfer_params_list_) {
+    const int node_id = params.node_id;
+    for (const string& output_node_name : output_node_names) {
+      if (params.name == output_node_name) {
+        output_node_ids.emplace_back(node_id);
+      }
+    }
+
+    dependency_map.emplace(std::piecewise_construct, std::make_tuple(node_id),
+                           std::make_tuple());
+    if (params.inputs_size == 0) {
+      continue;
+    }
+    CHECK(input_map.count(node_id) == 1);
+    for (std::tuple<int, int>& id_and_port :
+         input_map.at(node_id)->input_node_id_and_output_port_list) {
+      dependency_map.at(node_id).emplace(std::get<0>(id_and_port));
+    }
+  }
+
+  // Create dependency map traversed from output nodes
+  std::unordered_set<int> completed;
+  for (int output_node_id : output_node_ids) {
+    FillDependencyRec(output_node_id, dependency_map, completed);
+  }
+
+  std::sort(node_transfer_params_list_.begin(),
+            node_transfer_params_list_.end(),
+            TransferParamsComparator(dependency_map));
 }
 
 void GraphTransferer::EnableStrictCheckMode(const bool enable) {
@@ -781,6 +822,73 @@ GraphTransferer::ToTensorShapeArray(const TensorShape& shape) {
   for (int i = 0; i < SHAPE_ARRAY_SIZE; ++i) {
     CHECK(expected[i] == actual[i]);
   }
+}
+
+GraphTransferer::TransferParamsComparator::TransferParamsComparator(
+    const std::unordered_map<int, std::unordered_set<int>>& dep_map)
+    : dependency_map_(dep_map) {}
+
+bool GraphTransferer::TransferParamsComparator::operator()(
+    const GraphTransferer::NodeTransferParams& obj0,
+    const GraphTransferer::NodeTransferParams& obj1) {
+  const int node_id0 = obj0.node_id;
+  const int node_id1 = obj1.node_id;
+  bool obj0_uses_obj1 = false;
+  if (dependency_map_.count(node_id0)) {
+    obj0_uses_obj1 = dependency_map_.at(node_id0).count(node_id1) > 0;
+  }
+  bool obj1_uses_obj0 = false;
+  if (dependency_map_.count(node_id1)) {
+    obj1_uses_obj0 = dependency_map_.at(node_id1).count(node_id0) > 0;
+  }
+  CHECK(!obj0_uses_obj1 || !obj1_uses_obj0);
+  if (obj0_uses_obj1) {
+    return false;
+  } else if (obj1_uses_obj0) {
+    return true;
+  }
+  return node_id0 > node_id1;
+}
+
+/* static */ void GraphTransferer::FillDependencyRec(
+    const int node_id,
+    std::unordered_map<int, std::unordered_set<int>>& dep_map,
+    std::unordered_set<int>& completed) {
+  if (dep_map.count(node_id) == 0 || dep_map.at(node_id).empty() ||
+      completed.count(node_id) == 1) {
+    return;
+  }
+  CHECK(dep_map.count(node_id) == 1);
+
+  // Complete children's dependency map
+  for (int child_node_id : dep_map.at(node_id)) {
+    CHECK(child_node_id != node_id);
+    if (completed.count(child_node_id) != 0) {
+      continue;
+    }
+    FillDependencyRec(child_node_id, dep_map, completed);
+  }
+
+  // Find additional depending ids
+  std::vector<int> depending_ids;
+  for (int child_node_id : dep_map.at(node_id)) {
+    if (dep_map.count(child_node_id) == 0) {
+      continue;
+    }
+    for (int depending_id : dep_map.at(child_node_id)) {
+      depending_ids.emplace_back(depending_id);
+    }
+  }
+
+  // Insert additional depending ids
+  for (int depending_id : depending_ids) {
+    if (dep_map.at(node_id).count(depending_id) == 0) {
+      dep_map.at(node_id).emplace(depending_id);
+    }
+  }
+
+  // DP: Record completed node id
+  completed.emplace(node_id);
 }
 
 void GraphTransferer::ClearCache() {

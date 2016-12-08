@@ -57,7 +57,7 @@ bool HexagonControlWrapper::SetupGraph(
     for (int i = 0; i < count; ++i) {
       const std::tuple<int, int> id_and_port =
           input_params.input_node_id_and_output_port_list.at(i);
-      node_ids[i] = std::get<0>(id_and_port);
+      node_ids[i] = std::get<0>(id_and_port) + NODE_ID_OFFSET;
       ports[i] = std::get<1>(id_and_port);
     }
     void* inputs_ptr = soc_interface_SetOneNodeInputs(count, node_ids, ports);
@@ -106,8 +106,8 @@ bool HexagonControlWrapper::SetupGraph(
     const int shift_count = (16 - data_ptr_int % 16) % 16;
     uint8* data_ptr = data.first->second.data() + shift_count;
     std::memcpy(data_ptr, params.data.data(), data_size);
-    soc_interface_AppendConstNode(params.name.c_str(), node_id, shape_0,
-                                  shape_1, shape_2, shape_3, data_ptr,
+    soc_interface_AppendConstNode(params.name.c_str(), node_id + NODE_ID_OFFSET,
+                                  shape_0, shape_1, shape_2, shape_3, data_ptr,
                                   data_size);
   }
 
@@ -144,8 +144,9 @@ bool HexagonControlWrapper::SetupGraph(
     } else {
       CHECK(false) << "Unsupported padding " << padding;
     }
-    soc_interface_AppendNode(params.name.c_str(), node_id, op_id, padding_id,
-                             input_ptr, input_count, output_ptr, output_count);
+    soc_interface_AppendNode(params.name.c_str(), node_id + NODE_ID_OFFSET,
+                             op_id, padding_id, input_ptr, input_count,
+                             output_ptr, output_count);
   }
 
   LOG(INFO) << "Setup graph completed";
