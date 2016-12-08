@@ -48,7 +48,6 @@ operators to your graph.
 @@less_equal
 @@greater
 @@greater_equal
-@@select
 @@where
 
 ## Debugging Operations

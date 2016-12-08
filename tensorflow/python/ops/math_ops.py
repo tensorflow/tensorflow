@@ -234,7 +234,6 @@ from tensorflow.python.ops import state_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_math_ops import *
 # pylint: enable=wildcard-import
-from tensorflow.python.util.deprecation import deprecated
 
 # Aliases for some automatically-generated names.
 linspace = gen_math_ops.lin_space
@@ -2165,12 +2164,3 @@ def reduced_shape(input_shape, axes):
           input_shape,  # [2, 3, 5, 7]
           array_ops.fill(axes_shape, 1)
       ])  # [1, 1]
-
-
-@deprecated(
-    "2016-12-07",
-    "This op will be removed after the deprecation date. "
-    "Please switch to tf.where().")
-def select(condition, x, y, name=None):
-  return gen_math_ops._select(condition, x, y, name)
-select.__doc__ = gen_math_ops._select.__doc__
