@@ -18,14 +18,20 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+import functools
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.training.saver import BaseSaverBuilder
+from tensorflow.python.util import compat
 
 
 class LookupInterface(object):
@@ -71,7 +77,7 @@ class LookupInterface(object):
     """Looks up `keys` in a table, outputs the corresponding values."""
     raise NotImplementedError
 
-  def _check_table_dtypes(self, key_dtype, value_dtype):
+  def check_table_dtypes(self, key_dtype, value_dtype):
     """Check that the given key_dtype and value_dtype matches the table dtypes.
 
     Args:
@@ -293,14 +299,14 @@ class KeyValueTensorInitializer(TableInitializerBase):
       TypeError: when the keys and values data types do not match the table
       key and value data types.
     """
-    # pylint: disable=protected-access
-    table._check_table_dtypes(self._keys.dtype, self._values.dtype)
+    table.check_table_dtypes(self._keys.dtype, self._values.dtype)
     with ops.name_scope(self._name, values=[table]) as scope:
+      # pylint: disable=protected-access
       init_op = gen_data_flow_ops._initialize_table(table.table_ref,
                                                     self._keys,
                                                     self._values,
                                                     name=scope)
-    # pylint: enable=protected-access
+      # pylint: enable=protected-access
     ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
     return init_op
 
@@ -453,12 +459,12 @@ class TextFileInitializer(TableInitializerBase):
       TypeError: when the keys and values data types do not match the table
       key and value data types.
     """
-    # pylint: disable=protected-access
-    table._check_table_dtypes(self.key_dtype, self.value_dtype)
+    table.check_table_dtypes(self.key_dtype, self.value_dtype)
     with ops.name_scope(self._name, "text_file_init", [table]) as scope:
       filename = ops.convert_to_tensor(self._filename,
                                        dtypes.string,
                                        name="asset_filepath")
+      # pylint: disable=protected-access
       init_op = gen_data_flow_ops._initialize_table_from_text_file(
           table.table_ref,
           filename,
@@ -467,7 +473,7 @@ class TextFileInitializer(TableInitializerBase):
           -1 if self._vocab_size is None else self._vocab_size,
           self._delimiter,
           name=scope)
-    # pylint: enable=protected-access
+      # pylint: enable=protected-access
     ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
     ops.add_to_collection(ops.GraphKeys.ASSET_FILEPATHS, filename)
     return init_op
@@ -571,6 +577,202 @@ class TextFileIdTableInitializer(TextFileInitializer):
                                                      vocab_size=vocab_size,
                                                      delimiter=delimiter,
                                                      name=name)
+
+
+class HasherSpec(collections.namedtuple("HasherSpec", ["hasher", "key"])):
+  """A structure for the spec of the hashing function to use for hash buckets.
+
+  `hasher` is the name of the hashing function to use (eg. "fasthash",
+  "stronghash").
+  `key` is optional and specify the key to use for the hash function if
+  supported, currently only used by a strong hash.
+
+  Fields:
+    hasher: The hasher name to use.
+    key: The key to be used by the hashing function, if required.
+  """
+  __slots__ = ()
+
+
+FastHashSpec = HasherSpec("fasthash", None)
+
+
+class StrongHashSpec(HasherSpec):
+  """A structure to specify a key of the strong keyed hash spec.
+
+  The strong hash requires a `key`, which is a list of 2 unsigned integer
+  numbers. These should be non-zero; random numbers generated from random.org
+  would be a fine choice.
+
+  Fields:
+    key: The key to be used by the keyed hashing function.
+  """
+  __slots__ = ()
+
+  def __new__(cls, key):
+    if len(key) != 2:
+      raise ValueError("key must have size 2, got %s." % len(key))
+
+    if not isinstance(key[0], compat.integral_types) or not isinstance(
+        key[1], compat.integral_types):
+      raise TypeError("Invalid key %s. Must be unsigned integer values." % key)
+
+    return super(cls, StrongHashSpec).__new__(cls, "stronghash", key)
+
+
+class IdTableWithHashBuckets(LookupInterface):
+  """String to Id table wrapper that assigns out-of-vocabulary keys to buckets.
+
+  For example, if an instance of `IdTableWithHashBuckets` is initialized with a
+  string-to-id table that maps:
+  - emerson -> 0
+  - lake -> 1
+  - palmer -> 2
+
+  The `IdTableWithHashBuckets` object will performs the following mapping:
+  - emerson -> 0
+  - lake -> 1
+  - palmer -> 2
+  - <other term> -> bucket id between 3 and 3 + num_oov_buckets, calculated by:
+    hash(<term>) % num_oov_buckets + vocab_size
+
+  If input_tensor is ["emerson", "lake", "palmer", "king", "crimson"],
+  the lookup result is [0, 1, 2, 4, 7]
+
+  If `table` is None, only out-of-vocabulary buckets are used.
+
+  Example usage:
+
+  ```python
+  num_oov_buckets = 3
+  input_tensor = tf.constant(["emerson", "lake", "palmer", "king", "crimnson"])
+  table = tf.IdTableWithHashBuckets(
+      tf.HashTable(tf.TextFileIdTableInitializer(filename), default_value),
+      num_oov_buckets)
+  out = table.lookup(input_tensor).
+  table.init.run()
+  print out.eval()
+  ```
+
+  The hash function used for generating out-of-vocabulary buckets ID is handled
+  by `hasher_spec`.
+  """
+
+  def __init__(self,
+               table,
+               num_oov_buckets,
+               hasher_spec=FastHashSpec,
+               name=None):
+    """Construct a `IdTableWithHashBuckets` object.
+
+    Args:
+      table: Table that maps string to ids.
+      num_oov_buckets: Number of buckets to use for out-of-vocabulary keys.
+      hasher_spec: A `HasherSpec` to specify the hash function to use for
+        assignation of out-of-vocabulary buckets  (optional).
+      name: A name for the operation (optional).
+
+    Raises:
+      ValueError: when `table` in None and `num_oov_buckets` is not positive.
+      TypeError: when `hasher_spec` is invalid.
+    """
+    # If a name ends with a '/' it is a "name scope", remove all trailing '/'
+    # characters to use as table name.
+    if name:
+      name = name.rstrip("/")
+    if table:
+      table.check_table_dtypes(dtypes.string, dtypes.int64)
+      self._table = table
+      name = name or self._table.name
+    else:
+      if num_oov_buckets <= 0:
+        raise ValueError("oov_buckets must be > 0 if no table is supplied.")
+      self._table = None
+      name = name or "hash_bucket"
+    self._num_oov_buckets = num_oov_buckets
+
+    if not isinstance(hasher_spec, HasherSpec):
+      raise TypeError("hasher_spec must be of type HasherSpec, got %s" %
+                      hasher_spec)
+    self._hasher_spec = hasher_spec
+
+    super(IdTableWithHashBuckets, self).__init__(dtypes.string, dtypes.int64,
+                                                 name.split("/")[-1])
+
+  @property
+  def init(self):
+    """The table initialization op."""
+    if self._table:
+      return self._table.init
+    with ops.name_scope(None, "init"):
+      return control_flow_ops.no_op()
+
+  def size(self, name=None):
+    """Compute the number of elements in this table."""
+    with ops.name_scope(name, "%s_Size" % self.name) as scope:
+      if self._table:
+        tsize = self._table.size(scope)
+      else:
+        tsize = ops.convert_to_tensor(0, dtype=dtypes.int64)
+      return tsize + self._num_oov_buckets
+
+  def _get_string_to_hash_bucket_fn(self, hasher_spec):
+    """Returns the string_to_hash_bucket op to use based on `hasher_spec`."""
+    if not isinstance(hasher_spec, HasherSpec):
+      raise TypeError("hasher_spec must be of type HasherSpec %s" % hasher_spec)
+    if hasher_spec.hasher == "fasthash":
+      return string_ops.string_to_hash_bucket_fast
+    if hasher_spec.hasher == "legacy":
+      return string_ops.string_to_hash_bucket
+    if hasher_spec.hasher == "stronghash":
+      return functools.partial(
+          string_ops.string_to_hash_bucket_strong, key=hasher_spec.key)
+    raise ValueError("Unknown hasher %s" % hasher_spec.hasher)
+
+  def lookup(self, keys, name=None):
+    """Looks up `keys` in the table, outputs the corresponding values.
+
+    It assigns out-of-vocabulary keys to buckets based in their hashes.
+
+    Args:
+      keys: Keys to look up. May be either a `SparseTensor` or dense `Tensor`.
+      name: Optional name for the op.
+
+    Returns:
+      A `SparseTensor` if keys are sparse, otherwise a dense `Tensor`.
+
+    Raises:
+      TypeError: when `keys` doesn't match the table key data type.
+    """
+    if keys.dtype != self._key_dtype:
+      raise TypeError("Signature mismatch. Keys must be dtype %s, got %s." %
+                      (self._key_dtype, keys.dtype))
+
+    string_values = keys
+    if isinstance(keys, sparse_tensor.SparseTensor):
+      string_values = keys.values
+
+    if self._num_oov_buckets == 0:
+      ids = self._table.lookup(string_values, name=name)
+    else:
+      # TODO(yleon): Consider moving this functionality to its own kernel.
+      with ops.name_scope(name, "%s_Lookup" % self.name) as scope:
+        str_to_hash_bucket = self._get_string_to_hash_bucket_fn(
+            self._hasher_spec)
+        buckets = str_to_hash_bucket(
+            string_values,
+            num_buckets=self._num_oov_buckets,
+            name="hash_bucket")
+        if self._table:
+          ids = self._table.lookup(string_values)
+          buckets = math_ops.add(buckets, self._table.size())
+          is_id_non_default = math_ops.not_equal(ids, self._table.default_value)
+          ids = array_ops.where(is_id_non_default, ids, buckets, name=scope)
+        else:
+          ids = buckets
+    if isinstance(keys, sparse_tensor.SparseTensor):
+      return sparse_tensor.SparseTensor(keys.indices, ids, keys.dense_shape)
+    return ids
 
 
 def string_to_index(tensor, mapping, default_value=-1, name=None):
@@ -829,7 +1031,7 @@ class MutableHashTable(LookupInterface):
       TypeError: when `keys` or `values` doesn't match the table data
         types.
     """
-    self._check_table_dtypes(keys.dtype, values.dtype)
+    self.check_table_dtypes(keys.dtype, values.dtype)
     with ops.name_scope(name, "%s_lookup_table_insert" % self._name,
                         [self._table_ref, keys, values]) as name:
       # pylint: disable=protected-access
@@ -1029,7 +1231,7 @@ class MutableDenseHashTable(LookupInterface):
       TypeError: when `keys` or `values` doesn't match the table data
         types.
     """
-    self._check_table_dtypes(keys.dtype, values.dtype)
+    self.check_table_dtypes(keys.dtype, values.dtype)
     with ops.name_scope(name, "%s_lookup_table_insert" % self._name,
                         [self._table_ref, keys, values]) as name:
       # pylint: disable=protected-access
