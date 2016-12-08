@@ -13,26 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_CPU_INFO_H_
-#define TENSORFLOW_PLATFORM_CPU_INFO_H_
+#ifndef TENSORFLOW_PLATFORM_WINDOWS_CPU_INFO_H_
+#define TENSORFLOW_PLATFORM_WINDOWS_CPU_INFO_H_
 
-#if defined(PLATFORM_WINDOWS)
-#include "tensorflow/core/platform/windows/cpu_info.h"
-#endif
+// Byte order defines provided by gcc. MSVC doesn't define those so 
+// we define them here.
+// We assume that all windows platform out there are little endian.
+#define __ORDER_LITTLE_ENDIAN__ 0x4d2
+#define __ORDER_BIG_ENDIAN__ 0x10e1
+#define __BYTE_ORDER__ __ORDER_LITTLE_ENDIAN__
 
-namespace tensorflow {
-namespace port {
-
-// TODO(jeff,sanjay): Make portable
-static const bool kLittleEndian = true;
-
-// Returns an estimate of the number of schedulable CPUs for this
-// process.  Usually, it's constant throughout the lifetime of a
-// process, but it might change if the underlying cluster management
-// software can change it dynamically.
-int NumSchedulableCPUs();
-
-}  // namespace port
-}  // namespace tensorflow
-
-#endif  // TENSORFLOW_PLATFORM_CPU_INFO_H_
+#endif  // TENSORFLOW_PLATFORM_WINDOWS_CPU_INFO_H_
