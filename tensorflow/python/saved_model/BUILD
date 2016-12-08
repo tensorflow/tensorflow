@@ -74,6 +74,7 @@ py_test(
         "//tensorflow/python/saved_model/example:saved_model_half_plus_two_data",
     ],
     srcs_version = "PY2AND3",
+    tags = ["manual"],
     visibility = ["//visibility:private"],
     deps = [
         ":builder",
