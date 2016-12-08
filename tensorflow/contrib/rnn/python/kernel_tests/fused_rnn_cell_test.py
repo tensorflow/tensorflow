@@ -92,7 +92,7 @@ class FusedRnnCellTest(tf.test.TestCase):
       # test bi-directional rnn
       with tf.variable_scope("basic", initializer=initializer):
         unpacked_inputs = tf.unstack(inputs)
-        outputs, fw_state, bw_state = tf.nn.bidirectional_rnn(
+        outputs, fw_state, bw_state = tf.contrib.rnn.static_bidirectional_rnn(
             cell, cell, unpacked_inputs, dtype=tf.float64)
         packed_outputs = tf.stack(outputs)
         basic_vars = [v for v in tf.trainable_variables()
