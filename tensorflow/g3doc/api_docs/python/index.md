@@ -346,7 +346,6 @@
   * [`no_op`](../../api_docs/python/control_flow_ops.md#no_op)
   * [`not_equal`](../../api_docs/python/control_flow_ops.md#not_equal)
   * [`Print`](../../api_docs/python/control_flow_ops.md#Print)
-  * [`select`](../../api_docs/python/control_flow_ops.md#select)
   * [`tuple`](../../api_docs/python/control_flow_ops.md#tuple)
   * [`verify_tensor_all_finite`](../../api_docs/python/control_flow_ops.md#verify_tensor_all_finite)
   * [`where`](../../api_docs/python/control_flow_ops.md#where)
