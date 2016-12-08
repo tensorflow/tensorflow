@@ -1311,6 +1311,7 @@ tf_cuda_library(
     hdrs = glob(
         [
             "common_runtime/*.h",
+            "framework/versions.h",
             "graph/**/*.h",
         ],
         exclude = [
