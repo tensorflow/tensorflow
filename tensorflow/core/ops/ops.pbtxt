@@ -5280,6 +5280,14 @@ op {
     }
     description: "The minimum required fraction of lines before a truncated\ninput is accepted."
   }
+  attr {
+    name: "dct_method"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "string specifying a hint about the algorithm used for\ndecompression.  Defaults to \"\" which maps to a system-specific\ndefault.  Currently valid values are [\"INTEGER_FAST\",\n\"INTEGER_ACCURATE\"].  The hint may be ignored (e.g., the internal\njpeg library changes to a version that does not have that specific\noption.)"
+  }
   summary: "Decode a JPEG-encoded image to a uint8 tensor."
   description: "The attr `channels` indicates the desired number of color channels for the\ndecoded image.\n\nAccepted values are:\n\n*   0: Use the number of channels in the JPEG-encoded image.\n*   1: output a grayscale image.\n*   3: output an RGB image.\n\nIf needed, the JPEG-encoded image is transformed to match the requested number\nof color channels.\n\nThe attr `ratio` allows downscaling the image by an integer factor during\ndecoding.  Allowed values are: 1, 2, 4, and 8.  This is much faster than\ndownscaling the image later."
 }
