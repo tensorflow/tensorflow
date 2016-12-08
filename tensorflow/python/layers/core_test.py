@@ -151,6 +151,18 @@ class DenseTest(tf.test.TestCase):
     self.assertEqual(len(loss_keys), 1)
     self.assertListEqual(dense.losses, loss_keys)
 
+  def testWeightsRegularizerWithReuse(self):
+    regularizer = lambda x: tf.reduce_sum(x) * 1e-3
+    inputs = tf.random_uniform((5, 3), seed=1)
+    _ = core_layers.dense(inputs, 2, name='my_dense',
+                          weights_regularizer=regularizer)
+    self.assertEqual(
+        len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)), 1)
+    _ = core_layers.dense(inputs, 2, name='my_dense',
+                          weights_regularizer=regularizer, reuse=True)
+    self.assertEqual(
+        len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)), 1)
+
   def testBiasRegularizer(self):
     regularizer = lambda x: tf.reduce_sum(x) * 1e-3
     dense = core_layers.Dense(2, name='my_dense',

@@ -1467,6 +1467,36 @@ class FCTest(tf.test.TestCase):
       self.assertEqual(
           len(tf.contrib.framework.get_variables('fully_connected')), 4)
 
+  def testReuseWithRegularizer(self):
+    height, width = 3, 3
+    regularizer = lambda x: tf.reduce_sum(x) * 1e-3
+    inputs = tf.random_uniform((5, height * width * 3), seed=1)
+
+    tf.contrib.layers.fully_connected(inputs, 32, scope='fc1',
+                                      weights_regularizer=regularizer)
+    self.assertEqual(
+        len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)), 1)
+    self.assertEqual(len(tf.contrib.losses.get_regularization_losses()), 1)
+    tf.contrib.layers.fully_connected(inputs, 32, scope='fc1',
+                                      weights_regularizer=regularizer,
+                                      reuse=True)
+    self.assertEqual(
+        len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)), 1)
+    self.assertEqual(len(tf.contrib.losses.get_regularization_losses()), 1)
+
+    with tf.variable_scope('outer', reuse=False):
+      tf.contrib.layers.fully_connected(inputs, 32,
+                                        weights_regularizer=regularizer)
+      self.assertEqual(
+          len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)), 2)
+      self.assertEqual(len(tf.contrib.losses.get_regularization_losses()), 2)
+    with tf.variable_scope('outer', reuse=True):
+      tf.contrib.layers.fully_connected(inputs, 32,
+                                        weights_regularizer=regularizer)
+      self.assertEqual(
+          len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)), 2)
+      self.assertEqual(len(tf.contrib.losses.get_regularization_losses()), 2)
+
   def testCreateFCWithoutActivation(self):
     height, width = 3, 3
     with self.test_session():
