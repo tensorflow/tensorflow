@@ -132,7 +132,7 @@ def _generate_image_and_label_batch(image, label, min_queue_examples,
         capacity=min_queue_examples + 3 * batch_size)
 
   # Display the training images in the visualizer.
-  tf.contrib.deprecated.image_summary('images', images)
+  tf.image_summary('images', images)
 
   return images, tf.reshape(label_batch, [batch_size])
 
