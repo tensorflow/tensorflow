@@ -852,6 +852,21 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
                                        [1.0, 0.0, 0.0, 0.0],
                                        [1.0, 1.0, 1.0, 1.0]])
 
+  def testDtypes(self):
+    def check_dtypes(lengths_dtype, maxlen_dtype):
+      res = tf.sequence_mask(tf.constant([1, 3, 2], dtype=lengths_dtype),
+                             tf.constant(5, dtype=maxlen_dtype))
+      self.assertAllEqual(res.get_shape(), [3, 5])
+      self.assertAllEqual(res.eval(), [[True, False, False, False, False],
+                                       [True, True, True, False, False],
+                                       [True, True, False, False, False]])
+
+    with self.test_session():
+      check_dtypes(tf.int32, tf.int32)
+      check_dtypes(tf.int32, tf.int64)
+      check_dtypes(tf.int64, tf.int32)
+      check_dtypes(tf.int64, tf.int64)
+
 
 if __name__ == "__main__":
   tf.test.main()
