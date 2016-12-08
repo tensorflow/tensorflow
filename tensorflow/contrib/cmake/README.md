@@ -13,15 +13,51 @@ Linux.
 Current Status
 --------------
 
+TensorFlow release 0.12 officially supports Windows, with a native TensorFlow package 
+provided for Windows 7, 10 and Server 2016.
+The supported languages include Python 3.5 64-bit (from Python.org or Anaconda) and C++. 
+This release enables acceleration with CUDA 8.0 and cuDNN 5.1 compatible GPUs.
+A [pip package](https://pypi.python.org/pypi/tensorflow) was published and the
+installation can be done with a single command:
+
+`C:\> pip install tensorflow`
+
+And for GPU support:
+
+`C:\> pip install tensorflow-gpu`
+
+### Current known limitations
+* It is not possible to load a custom Op library.
+* GCS and HDFS file systems are not supported.
+* The following Ops are not currently implemented:
+ - Dequantize
+ - QuantizeAndDequantize
+ - QuantizedAvgPool
+ - QuantizedBatchNomWithGlobalNormalization
+ - QuantizedBiasAdd 
+ - QuantizedConcat
+ - QuantizedConv2D
+ - QuantizedMatmul
+ - QuantizedMaxPoo
+ - QuantizeDownAndShrinkRange
+ - QuantizedRelu
+ - QuantizedRelu6
+ - QuantizedReshape
+ - QuantizeV2
+ - RequantizationRange
+ - Requantize
+
+For further details on 0.12r, see the [release notes](https://github.com/tensorflow/tensorflow/blob/master/RELEASE.md) and [Google Blog post](https://developers.googleblog.com/2016/11/tensorflow-0-12-adds-support-for-windows.html).
+
+## Building with CMake
+
 The CMake files in this directory can build the core TensorFlow runtime, an
 example C++ binary, and a PIP package containing the runtime and Python
 bindings.
 
-Note: Windows support is in an **alpha** state, and we welcome your feedback.
-
 ### Pre-requisites
 
-* CMake version 3.5 up to 3.6
+* CMake versions 3.5 and [3.6](https://cmake.org/files/v3.6/cmake-3.6.3-win64-x64.msi)
 
 * [Git](http://git-scm.com)
 
@@ -29,7 +65,7 @@ Note: Windows support is in an **alpha** state, and we welcome your feedback.
 
 * Additional pre-requisites for Microsoft Windows:
   - Visual Studio 2015
-  - Python 3.5
+  - Python 3.5 64-bit
   - NumPy 1.11.0 or later
 
 * Additional pre-requisites for Linux:
@@ -43,7 +79,7 @@ Note: Windows support is in an **alpha** state, and we welcome your feedback.
   - Microsoft Visual Studio Enterprise 2015 with Visual C++ 2015
   - [Anaconda 4.1.1 (Python 3.5 64-bit)](https://www.continuum.io/downloads)
   - [Git for Windows version 2.9.2.windows.1](https://git-scm.com/download/win)
-  - [swigwin-3.0.10](http://www.swig.org/download.html)
+  - [Swigwin-3.0.10](http://www.swig.org/download.html)
   - [NVidia CUDA Toolkit 8.0] (https://developer.nvidia.com/cuda-downloads)
   - [NVidia CUDNN 5.1] (https://developer.nvidia.com/cudnn)
 * Ubuntu 14.04

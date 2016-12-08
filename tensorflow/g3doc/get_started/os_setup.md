@@ -35,7 +35,7 @@ If you are familiar with Pip, Virtualenv, Anaconda, or Docker, please feel free
 to adapt the instructions to your particular needs.  The names of the pip and
 Docker images are listed in the corresponding installation sections.
 
-If you encounter installation errors, see
+If you encounter installation errors, see 
 [common problems](#common-problems) for some solutions.
 
 ## Pip installation
@@ -530,7 +530,8 @@ export CUDA_HOME=/usr/local/cuda
 
 ### Run TensorFlow from the Command Line
 
-See [common problems](#common-problems) if an error happens.
+See [
+blems](#common-problems) if an error happens.
 
 Open a terminal and type the following:
 
@@ -1071,6 +1072,26 @@ Step #1 might already solve the problem, however if it still persists, execute s
 This is an issue that occurs with new Anaconda installations when `pip` tries to remove `easy-install.pth` 
 which does not exist as conda packages cannot include it.
 
+
+#### Cannot remove entries from nonexistent file: easy-install.pth
+
+If during a `pip` installation using an Anaconda Python distribution you encounter the error:
+
+```
+Cannot remove entries from nonexistent file <path-to-anaconda-instalation>/anaconda[version]/lib/site-packages/easy-install.pth
+```
+
+1. Upgrade setuptools:  
+`pip install --upgrade -I setuptools`
+
+2. Install TensorFlow again adding `--ignore-installed` flag:  
+`pip install --ignore-installed --upgrade <tensorflow_url>`
+
+
+
+Step #1 might already solve the problem, however if it still persists, execute step #2.
+
+This issue occurs with new Anaconda installations when `pip` tries to remove `easy-install.pth`. This file is not included in Anaconda packages, which causes the pip installation to fail.
 
 ### Linux issues
 
