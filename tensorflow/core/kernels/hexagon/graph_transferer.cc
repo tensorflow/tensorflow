@@ -379,7 +379,9 @@ void GraphTransferer::RegisterConstantNode(
   const int output_index = 0;
   const DataType dt = node.output_type(output_index);
   const size_t max_bytes_per_data = DataTypeSize(dt);
-  CHECK(max_bytes_per_data > 0);
+  CHECK(max_bytes_per_data > 0) << "dt = " << dt << ", " + DataTypeString(dt)
+                                << ", " << max_bytes_per_data << ", "
+                                << (int)(DataTypeSize(dt)) << ",,,,,,,";
   shape_inference::InferenceContext* context = shape_refiner.GetContext(&node);
   shape_inference::ShapeHandle shape_handle = context->output(output_index);
   const shape_inference::DimensionHandle num_elements_dim =
@@ -407,6 +409,16 @@ void GraphTransferer::RegisterConstantNode(
                               {{shape[0], shape[1], shape[2], shape[3]}},
                               data_name,
                               data_size});
+  // TODO(satok): Remove. Determine constant value without dryrun
+  if (!output_tensor_map.empty() && data_size != 0) {
+    const Tensor* tensor = output_tensor_map.at(node.name());
+    CHECK(tensor != nullptr);
+    StringPiece sp = tensor->tensor_data();
+    CHECK(data_size == sp.size());
+    std::vector<uint8>& data = const_node_transfer_params_list_.back().data;
+    data.resize(sp.size());
+    std::memcpy(&data[0], &sp.data()[0], data_size);
+  }
 }
 
 int GraphTransferer::RegisterConstantShape(const std::vector<int>& shape) {

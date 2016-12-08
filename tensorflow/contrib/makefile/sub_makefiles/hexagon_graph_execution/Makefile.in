@@ -40,6 +40,9 @@ $(GTEST_HEADERS)
 # TODO(satok): Remove once it's fixed
 CXXFLAGS += -DTENSORFLOW_DISABLE_META
 
+# Declare __ANDROID_TYPES_FULL__ to enable required types for hvx
+CXXFLAGS += -D__ANDROID_TYPES_FULL__
+
 GRAPH_EXECUTION_SRCS := \
 tensorflow/core/kernels/hexagon/graph_transferer.cc \
 tensorflow/core/kernels/hexagon/hexagon_control_wrapper.cc \

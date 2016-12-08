@@ -99,9 +99,16 @@ bool HexagonControlWrapper::SetupGraph(
     auto data = dummy_const_data_.emplace(
         std::piecewise_construct, std::make_tuple(node_id), std::make_tuple());
     CHECK(data.second);
-    data.first->second.resize(data_size);
-    soc_interface_AppendConstNode(node_id, shape_0, shape_1, shape_2, shape_3,
-                                  data.first->second.data(), data_size);
+    const int additional_bytes_for_alignment = 16;
+    data.first->second.resize(data_size + additional_bytes_for_alignment - 1);
+    const uintptr_t data_ptr_int =
+        reinterpret_cast<uintptr_t>(data.first->second.data());
+    const int shift_count = (16 - data_ptr_int % 16) % 16;
+    uint8* data_ptr = data.first->second.data() + shift_count;
+    std::memcpy(data_ptr, params.data.data(), data_size);
+    soc_interface_AppendConstNode(params.name.c_str(), node_id, shape_0,
+                                  shape_1, shape_2, shape_3, data_ptr,
+                                  data_size);
   }
 
   // 2. Setup op nodes
@@ -110,13 +117,21 @@ bool HexagonControlWrapper::SetupGraph(
     const int node_id = params.node_id;
     const int op_id = params.soc_op_id;
     CHECK(inputs_map.count(node_id) == 1);
-    CHECK(outputs_map.count(node_id) == 1);
+    CHECK(outputs_map.count(node_id) <= 1);
+    // Only output node doesn't have output
+    const bool has_output = outputs_map.count(node_id) == 1;
     const auto& input_ptr_and_count = inputs_map.at(node_id);
     const void* input_ptr = std::get<0>(input_ptr_and_count);
     const int input_count = std::get<1>(input_ptr_and_count);
-    const auto& output_ptr_and_count = outputs_map.at(node_id);
-    const void* output_ptr = std::get<0>(output_ptr_and_count);
-    const int output_count = std::get<1>(output_ptr_and_count);
+    void* output_ptr = nullptr;
+    int output_count = 0;
+    if (has_output) {
+      const auto& output_ptr_and_count = outputs_map.at(node_id);
+      output_ptr = std::get<0>(output_ptr_and_count);
+      output_count = std::get<1>(output_ptr_and_count);
+      CHECK(output_count > 0);
+    }
+
     // TODO(satok): Do not use string. Use enum instead.
     const string padding = params.padding;
     int padding_id = -1;
@@ -129,8 +144,8 @@ bool HexagonControlWrapper::SetupGraph(
     } else {
       CHECK(false) << "Unsupported padding " << padding;
     }
-    soc_interface_AppendNode(node_id, op_id, padding_id, input_ptr, input_count,
-                             output_ptr, output_count);
+    soc_interface_AppendNode(params.name.c_str(), node_id, op_id, padding_id,
+                             input_ptr, input_count, output_ptr, output_count);
   }
 
   LOG(INFO) << "Setup graph completed";

@@ -65,14 +65,15 @@ void* soc_interface_SetOneNodeInputs(int input_count, const int* const node_id,
 void* soc_interface_SetOneNodeOutputs(int output_count, int* max_size);
 
 // Append const node to the graph
-bool soc_interface_AppendConstNode(int node_id, int batch, int height,
-                                   int width, int depth,
+bool soc_interface_AppendConstNode(const char* const name, int node_id,
+                                   int batch, int height, int width, int depth,
                                    const uint8_t* const data, int data_length);
 
 // Append node to the graph
-bool soc_interface_AppendNode(int node_id, int op_id, int padding_id,
-                              const void* const inputs, int inputs_count,
-                              const void* const outputs, int outputs_count);
+bool soc_interface_AppendNode(const char* const name, int node_id, int op_id,
+                              int padding_id, const void* const inputs,
+                              int inputs_count, const void* const outputs,
+                              int outputs_count);
 
 // Instantiate graph
 bool soc_interface_InstantiateGraph();

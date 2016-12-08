@@ -66,6 +66,7 @@ class GraphTransferer {
     std::array<int64, MAX_SUPPORTED_RANK> shape;
     string data_name;  // for debug info TODO(satok): remove
     int data_size;
+    std::vector<uint8> data;
   };
 
   // Input parameters of a node for transfer
