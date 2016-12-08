@@ -273,7 +273,7 @@ def merge(inputs, collections=None, name=None):
     inputs: A list of `string` `Tensor` objects containing serialized `Summary`
       protocol buffers.
     collections: Optional list of graph collections keys. The new summary op is
-      added to these collections. Defaults to `[GraphKeys.SUMMARIES]`.
+      added to these collections. Defaults to `[]`.
     name: A name for the operation (optional).
 
   Returns:
