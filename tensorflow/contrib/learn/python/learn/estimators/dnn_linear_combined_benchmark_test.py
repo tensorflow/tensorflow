@@ -98,7 +98,7 @@ class DNNLinearCombinedClassifierBenchmark(tf.test.Benchmark):
       features['dummy_sparse_column'] = tf.SparseTensor(
           values=('en', 'fr', 'zh'),
           indices=((0, 0), (0, 1), (60, 0)),
-          shape=(len(iris.target), 2))
+          dense_shape=(len(iris.target), 2))
       labels = tf.reshape(tf.constant(iris.target, dtype=tf.int32), (-1, 1))
       return features, labels
 

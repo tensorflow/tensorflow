@@ -109,7 +109,7 @@ class DynamicRnnEstimatorTest(tf.test.TestCase):
         'location': tf.SparseTensor(
             indices=[[0, 0], [1, 0], [2, 0]],
             values=['west_side', 'west_side', 'nyc'],
-            shape=[3, 1]),
+            dense_shape=[3, 1]),
         'wire_cast': tf.SparseTensor(
             indices=[[0, 0, 0], [0, 1, 0],
                      [1, 0, 0], [1, 1, 0], [1, 1, 1],
@@ -117,7 +117,7 @@ class DynamicRnnEstimatorTest(tf.test.TestCase):
             values=[b'marlo', b'stringer',
                     b'omar', b'stringer', b'marlo',
                     b'marlo'],
-            shape=[3, 2, 2]),
+            dense_shape=[3, 2, 2]),
         'measurements': tf.random_uniform([3, 2, 2], seed=4711)}
 
   def GetClassificationTargetsOrNone(self, mode):
