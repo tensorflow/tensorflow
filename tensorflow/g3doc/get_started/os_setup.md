@@ -615,6 +615,50 @@ sudo cp -P cuda/lib64/libcudnn* /usr/local/cuda/lib64
 sudo chmod a+r /usr/local/cuda/include/cudnn.h /usr/local/cuda/lib64/libcudnn*
 ```
 
+#### Optional: Install OpenCL (Experimental, Linux only)
+
+In order to build or run TensorFlow with OpenCL support, both OpenCL (>= 1.2)
+and ComputeCpp (>= 0.1.1) need to be installed.
+
+TensorFlow can only take advantage of accelerators that support OpenCL 1.2.
+Supported accelerators include but are not limited to:
+
+*   AMD Fiji
+*   AMD Hawaii
+
+Note that this support is currently experimental and should not be relied upon
+for production (though it will mature over time).
+
+##### Download and install OpenCL drivers
+
+The exact steps required for a functional OpenCL installation will depend on
+your environment. For Unbuntu 14.04, the following steps are known to work:
+
+```bash
+sudo apt-get install ocl-icd-opencl-dev opencl-headers
+```
+
+You will also need to install the drivers for the accelerator itself. We've
+tested that the following drivers for AMD Fiji and Hawaii GPUs on Ubuntu 14.04:
+
+```bash
+sudo apt-get install fglrx-core fglrx-dev
+```
+
+##### Download and install the ComputeCpp compiler
+
+Download the compiler from [Codeplay's
+website](https://www.codeplay.com/products/computesuite/computecpp), uncompress
+and copy the files into e.g. `/usr/local/computecpp`:
+
+```bash
+tar -xvzf ComputeCpp-CE-0.1.1-Ubuntu.14.04-64bit.tar.gz
+sudo mkdir /usr/local/computecpp
+sudo cp -R ComputeCpp-CE-0.1.1-Linux /usr/local/computecpp
+sudo chmod -R a+r /usr/local/computecpp/
+sudo chmod -R a+x /usr/local/computecpp/bin
+```
+
 ### Prepare environment for Mac OS X
 
 We recommend using [homebrew](http://brew.sh) to install the bazel dependency,
@@ -729,6 +773,7 @@ Please specify the location of python. [Default is /usr/bin/python]:
 Do you wish to build TensorFlow with Google Cloud Platform support? [y/N] N
 No Google Cloud Platform support will be enabled for TensorFlow
 Do you wish to build TensorFlow with GPU support? [y/N] y
+Do you wish to build TensorFlow with OpenCL support? [y/N] N
 GPU support will be enabled for TensorFlow
 Please specify which gcc nvcc should use as the host compiler. [Default is /usr/bin/gcc]:
 Please specify the Cuda SDK version you want to use, e.g. 7.0. [Leave empty to use system default]: 8.0
@@ -738,7 +783,7 @@ Please specify the location where cuDNN 5 library is installed. Refer to README.
 Please specify a list of comma-separated Cuda compute capabilities you want to build with.
 You can find the compute capability of your device at: https://developer.nvidia.com/cuda-gpus.
 Please note that each additional compute capability significantly increases your build time and binary size.
-[Default is: "3.5,5.2"]: 3.0
+
 Setting up Cuda include
 Setting up Cuda lib
 Setting up Cuda bin
@@ -748,10 +793,16 @@ Setting up CUPTI lib64
 Configuration finished
 ```
 
+[Default is: "3.5,5.2"]: 3.0
+
 This creates a canonical set of symbolic links to the Cuda libraries on your
 system.  Every time you change the Cuda library paths you need to run this step
 again before you invoke the bazel build command. For the cuDNN libraries, use
 '7.0' for R3, and '4.0.7' for R4.
+
+If you want to built support for OpenCL, select the option `Y` when asked to
+build TensorFlow with OpenCL support, and provide the location of the ComputeCpp
+compiler (e.g. /usr/local/computecpp).
 
 #### Known issues
 
