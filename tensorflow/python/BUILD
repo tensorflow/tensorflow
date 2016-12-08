@@ -244,6 +244,15 @@ py_test(
     ],
 )
 
+py_test(
+    name = "keyword_args_test",
+    srcs = ["util/keyword_args_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 cc_library(
     name = "python_op_gen",
     srcs = ["framework/python_op_gen.cc"],
