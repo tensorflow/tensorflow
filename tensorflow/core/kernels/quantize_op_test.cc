@@ -79,17 +79,17 @@ TEST_F(QuantizedOpTest, QuantizeV2EqualRange) {
                    .Attr("mode", "MIN_FIRST")
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
-  AddInputFromArray<float>(TensorShape({6}), {1.0, 1.0, 1.0, 1.0, 1.0, 1.0});
-  AddInputFromArray<float>(TensorShape({1}), {1.0f});
-  AddInputFromArray<float>(TensorShape({1}), {1.0f});
+  AddInputFromArray<float>(TensorShape({6}), {0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
+  AddInputFromArray<float>(TensorShape({1}), {0.0f});
+  AddInputFromArray<float>(TensorShape({1}), {0.0f});
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_QUINT8, TensorShape({6}));
   test::FillValues<quint8>(&expected, {0, 0, 0, 0, 0, 0});
   test::ExpectTensorEqual<quint8>(expected, *GetOutput(0));
   const float output_min = GetOutput(1)->flat<float>()(0);
   const float output_max = GetOutput(2)->flat<float>()(0);
-  EXPECT_NEAR(1.0f, output_min, 1e-5f);
-  EXPECT_LT(1.0f, output_max);
+  EXPECT_NEAR(0.0f, output_min, 1e-5f);
+  EXPECT_LT(0.0f, output_max);
 }
 
 TEST_F(QuantizedOpTest, Dequantize) {
