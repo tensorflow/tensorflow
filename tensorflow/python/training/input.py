@@ -164,7 +164,7 @@ def input_producer(input_tensor,
         queue_runner.QueueRunner(
             q, [enq], cancel_op=cancel_op))
     if summary_name is not None:
-      summary.scalar("queue/%s/%s" % (q.name, summary_name),
+      summary.scalar(summary_name,
                      math_ops.cast(q.size(), dtypes.float32) * (1. / capacity))
     return q
 
@@ -657,7 +657,7 @@ def _batch(tensors, batch_size, keep_input, num_threads=1, capacity=32,
     queue = _which_queue(dynamic_pad)(
         capacity=capacity, dtypes=types, shapes=shapes, shared_name=shared_name)
     _enqueue(queue, tensor_list, num_threads, enqueue_many, keep_input)
-    summary.scalar("queue/%s/fraction_of_%d_full" % (queue.name, capacity),
+    summary.scalar("fraction_of_%d_full" % capacity,
                    math_ops.cast(queue.size(), dtypes.float32) *
                    (1. / capacity))
 
@@ -692,7 +692,7 @@ def _batch_join(tensors_list, batch_size, keep_input, capacity=32,
     queue = _which_queue(dynamic_pad)(
         capacity=capacity, dtypes=types, shapes=shapes, shared_name=shared_name)
     _enqueue_join(queue, tensor_list_list, enqueue_many, keep_input)
-    summary.scalar("queue/%s/fraction_of_%d_full" % (queue.name, capacity),
+    summary.scalar("fraction_of_%d_full" % capacity,
                    math_ops.cast(queue.size(), dtypes.float32) *
                    (1. / capacity))
 
@@ -729,8 +729,8 @@ def _shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
     # Note that name contains a '/' at the end so we intentionally do not place
     # a '/' after %s below.
     summary_name = (
-        "queue/%sfraction_over_%d_of_%d_full" %
-        (name, min_after_dequeue, capacity - min_after_dequeue))
+        "fraction_over_%d_of_%d_full" %
+        (min_after_dequeue, capacity - min_after_dequeue))
     summary.scalar(summary_name, full)
 
     if allow_smaller_final_batch:
@@ -766,8 +766,8 @@ def _shuffle_batch_join(tensors_list, batch_size, capacity,
     # Note that name contains a '/' at the end so we intentionally do not place
     # a '/' after %s below.
     summary_name = (
-        "queue/%sfraction_over_%d_of_%d_full" %
-        (name, min_after_dequeue, capacity - min_after_dequeue))
+        "fraction_over_%d_of_%d_full" %
+        (min_after_dequeue, capacity - min_after_dequeue))
     summary.scalar(summary_name, full)
 
     if allow_smaller_final_batch:
