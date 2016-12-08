@@ -35,7 +35,8 @@ If you are familiar with Pip, Virtualenv, Anaconda, or Docker, please feel free
 to adapt the instructions to your particular needs.  The names of the pip and
 Docker images are listed in the corresponding installation sections.
 
-If you encounter installation errors, see [common problems](#common-problems) for some solutions.
+If you encounter installation errors, see 
+[common problems](#common-problems) for some solutions.
 
 ## Pip Installation
 
@@ -1001,9 +1002,7 @@ Cannot remove entries from nonexistent file <path-to-anaconda-instalation>/anaco
 
 Step #1 might already solve the problem, however if it still persists, execute step #2.
 
-This is an issue that occurs with new Ananconda installations when `pip` tries to remove `easy-install.pth` 
-which does not exist as conda packages cannot include it.
-
+This issue occurs with new Anaconda installations when `pip` tries to remove `easy-install.pth`. This file is not included in Anaconda packages, which causes the pip installation to fail.
 
 ### Linux issues
 
