@@ -651,6 +651,7 @@
   * [`SessionRunContext`](../../api_docs/python/train.md#SessionRunContext)
   * [`SessionRunHook`](../../api_docs/python/train.md#SessionRunHook)
   * [`SessionRunValues`](../../api_docs/python/train.md#SessionRunValues)
+  * [`SingularMonitoredSession`](../../api_docs/python/train.md#SingularMonitoredSession)
   * [`start_queue_runners`](../../api_docs/python/train.md#start_queue_runners)
   * [`StepCounterHook`](../../api_docs/python/train.md#StepCounterHook)
   * [`stop_gradient`](../../api_docs/python/train.md#stop_gradient)
