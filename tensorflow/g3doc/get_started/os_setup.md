@@ -568,9 +568,9 @@ binary path.
 
 ```bash
 # For Python 2.7:
-$ sudo apt-get install python-numpy python-dev python-wheel
+$ sudo apt-get install python-numpy python-dev python-wheel python-mock
 # For Python 3.x:
-$ sudo apt-get install python3-numpy python3-dev python3-wheel
+$ sudo apt-get install python3-numpy python3-dev python3-wheel python3-mock
 ```
 
 #### Optional: Install CUDA (GPUs on Linux)
