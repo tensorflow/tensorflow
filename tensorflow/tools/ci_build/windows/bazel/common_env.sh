@@ -25,10 +25,6 @@
 #   - Anaconda3
 # * Bazel windows executable copied as "bazel.exe" and included in PATH.
 
-# All commands shall pass, and all should be visible.
-set -x
-set -e
-
 # Use a temporary directory with a short name.
 export TMPDIR="C:/tmp"
 mkdir -p "$TMPDIR"

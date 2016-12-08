@@ -32,7 +32,7 @@ set -e
 # This script is under <repo_root>/tensorflow/tools/ci_build/windows/cpu/bazel
 # Change into repository root.
 script_dir=$(dirname $0)
-cd ${script_dir%%tensorflow/tools/ci_build/windows/cpu/bazel}.
+cd ${script_dir%%tensorflow/tools/ci_build/windows/gpu/bazel}.
 
 # Setting up the environment variables Bazel and ./configure needs
 source "tensorflow/tools/ci_build/windows/bazel/common_env.sh" \
@@ -44,16 +44,19 @@ source "tensorflow/tools/ci_build/windows/bazel/bazel_test_lib.sh" \
 
 clean_output_base
 
-run_configure_for_cpu_build
+run_configure_for_gpu_build
+
 
 # Compliling the following test is extremely slow with -c opt
 slow_compiling_test="//tensorflow/core/kernels:eigen_backward_spatial_convolutions_test"
 
 # Find all the passing cc_tests on Windows and store them in a variable
-passing_tests=$(bazel query "kind(cc_test, //tensorflow/cc/... + //tensorflow/core/...) - (${exclude_cpu_cc_tests}) - ($slow_compiling_test)" |
+passing_tests=$(bazel query "kind(cc_test, //tensorflow/cc/... + //tensorflow/core/...) - (${exclude_gpu_cc_tests}) - ($slow_compiling_test)" |
   # We need to strip \r so that the result could be store into a variable under MSYS
   tr '\r' ' ')
 
-BUILD_OPTS='--cpu=x64_windows_msvc --host_cpu=x64_windows_msvc --copt=/w --verbose_failures --experimental_ui'
-bazel test $BUILD_OPTS -k $slow_compiling_test --test_output=errors
+BUILD_OPTS='--config=win-cuda --cpu=x64_windows_msvc --host_cpu=x64_windows_msvc --copt=/w --verbose_failures --experimental_ui'
+# TODO(pcloudy): There is a bug in Bazel preventing build with GPU support without -c opt
+# Re-enable this test after it is fixed.
+# bazel test $BUILD_OPTS -k $slow_compiling_test --test_output=errors
 bazel test -c opt $BUILD_OPTS -k $passing_tests --test_output=errors

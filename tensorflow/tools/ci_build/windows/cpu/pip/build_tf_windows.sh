@@ -46,10 +46,9 @@ clean_output_base
 
 run_configure_for_cpu_build
 
-BUILD_OPTS='-c opt --cpu=x64_windows_msvc --host_cpu=x64_windows_msvc --copt=/w --verbose_failures --experimental_ui'
-
 bazel build $BUILD_OPTS tensorflow/tools/pip_package:build_pip_package || exit $?
 
+rm -f ./tensorflow-*.whl
 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package $PWD
 
 # Running python tests on Windows needs pip package installed
@@ -69,6 +68,7 @@ passing_tests=$(bazel query "kind(py_test,  //${PY_TEST_DIR}/tensorflow/python/.
   # We need to strip \r so that the result could be store into a variable under MSYS
   tr '\r' ' ')
 
+BUILD_OPTS='-c opt --cpu=x64_windows_msvc --host_cpu=x64_windows_msvc --copt=/w --verbose_failures --experimental_ui'
 # Define no_tensorflow_py_deps=true so that every py_test has no deps anymore,
 # which will result testing system installed tensorflow
 bazel test $BUILD_OPTS -k $passing_tests --define=no_tensorflow_py_deps=true --test_output=errors
