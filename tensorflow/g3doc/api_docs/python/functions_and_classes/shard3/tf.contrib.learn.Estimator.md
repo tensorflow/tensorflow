@@ -19,9 +19,12 @@ Constructs an `Estimator` instance.
              `labels=None`.
       * `mode` specifies if this training, evaluation or
              prediction. See `ModeKeys`.
-      * `params` is a `dict` of hyperparameters. Will receive what
+      * `params` is a `dict` of hyperparameters.  Will receive what
              is passed to Estimator in `params` parameter. This allows
              to configure Estimators from hyper parameter tuning.
+      * `config` is a Configuration object. Will receive what is passed to
+             Estimator in `config` parameter. This allows updating things in
+             your model_fn based on configuration such as num_ps_replicas.
 
     * Returns:
       `ModelFnOps`
@@ -39,6 +42,8 @@ Constructs an `Estimator` instance.
       * `(features, labels) -> (predictions, loss, train_op)`
       * `(features, labels, mode) -> (predictions, loss, train_op)`
       * `(features, labels, mode, params) -> (predictions, loss, train_op)`
+      * `(features, labels, mode, params, config) ->
+         (predictions, loss, train_op)`
 
 
 *  <b>`model_dir`</b>: Directory to save model parameters, graph and etc. This can
