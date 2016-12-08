@@ -802,6 +802,14 @@ def tf_py_wrap_cc(name, srcs, swig_includes=[], deps=[], copts=[], **kwargs):
                       "//conditions:default": [":" + cc_library_name],
                     }))
 
+def py_test(deps=[], **kwargs):
+  native.py_test(
+      deps=select({
+          "//conditions:default" : deps,
+          "//tensorflow:no_tensorflow_py_deps" : []
+      }),
+      **kwargs)
+
 def tf_py_test(name, srcs, size="medium", data=[], main=None, args=[],
                tags=[], shard_count=1, additional_deps=[], flaky=0):
   native.py_test(
@@ -814,10 +822,13 @@ def tf_py_test(name, srcs, size="medium", data=[], main=None, args=[],
       visibility=["//tensorflow:internal"],
       shard_count=shard_count,
       data=data,
-      deps=[
-          "//tensorflow/python:extra_py_tests_deps",
-          "//tensorflow/python:gradient_checker",
-      ] + additional_deps,
+      deps=select({
+          "//conditions:default" : [
+            "//tensorflow/python:extra_py_tests_deps",
+            "//tensorflow/python:gradient_checker",
+          ] + additional_deps,
+          "//tensorflow:no_tensorflow_py_deps" : []
+      }),
       flaky=flaky,
       srcs_version="PY2AND3")
 

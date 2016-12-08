@@ -48,3 +48,6 @@ export BAZEL_VS="C:/Program Files (x86)/Microsoft Visual Studio 14.0"
 # Add python into PATH, it's needed because gen_git_source.py uses
 # '/usr/bin/env python' as a shebang
 export PATH="/c/Program Files/Anaconda3:$PATH"
+
+# Make sure we have pip in PATH
+export PATH="/c/Program Files/Anaconda3/Scripts:$PATH"
