@@ -14,3 +14,13 @@ def if_cuda(if_true, if_false = []):
         "@local_config_cuda//cuda:using_nvcc": if_true,
         "//conditions:default": if_false
     })
+
+def if_cuda_is_configured(x):
+    """Tests if the CUDA was enabled during the configure process.
+
+    Unlike if_cuda(), this does not require that we are building with
+    --config=cuda. Used to allow non-CUDA code to depend on CUDA libraries.
+    """
+    if %{cuda_is_configured}:
+      return x
+    return []

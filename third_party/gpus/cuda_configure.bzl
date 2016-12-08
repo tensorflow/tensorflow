@@ -369,7 +369,10 @@ def _create_dummy_repository(repository_ctx):
                                       _DEFAULT_CUDNN_VERSION)
 
   # Set up BUILD file for cuda/.
-  _file(repository_ctx, "cuda:build_defs.bzl")
+  _tpl(repository_ctx, "cuda:build_defs.bzl",
+       {
+           "%{cuda_is_configured}": "False"
+       })
   _tpl(repository_ctx, "cuda:BUILD",
        {
            "%{cudart_static_linkopt}": _cudart_static_linkopt(cpu_value),
@@ -468,7 +471,10 @@ def _create_cuda_repository(repository_ctx):
     repository_ctx.symlink(cudnn_lib_path, "cuda/" + symlink_files.cuda_dnn_lib)
 
   # Set up BUILD file for cuda/
-  _file(repository_ctx, "cuda:build_defs.bzl")
+  _tpl(repository_ctx, "cuda:build_defs.bzl",
+       {
+           "%{cuda_is_configured}": "True"
+       })
   _tpl(repository_ctx, "cuda:BUILD",
        {
            "%{cudart_static_linkopt}": _cudart_static_linkopt(cpu_value),
