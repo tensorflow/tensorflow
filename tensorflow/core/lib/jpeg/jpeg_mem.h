@@ -25,6 +25,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/platform/jpeg.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -54,6 +55,12 @@ struct UncompressFlags {
   // equal to width*components*sizeof(JSAMPLE).  If 0 is passed, the stride
   // used will be this minimal value.
   int stride = 0;
+
+  // Setting of J_DCT_METHOD enum in jpeglib.h, for choosing which
+  // algorithm to use for DCT/IDCT.
+  //
+  // Setting this has a quality/speed trade-off implication.
+  J_DCT_METHOD dct_method = JDCT_DEFAULT;
 };
 
 // Uncompress some raw JPEG data given by the pointer srcdata and the length

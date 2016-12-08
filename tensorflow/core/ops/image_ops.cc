@@ -318,6 +318,7 @@ REGISTER_OP("DecodeJpeg")
     .Attr("fancy_upscaling: bool = true")
     .Attr("try_recover_truncated: bool = false")
     .Attr("acceptable_fraction: float = 1.0")
+    .Attr("dct_method: string = ''")
     .Output("image: uint8")
     .SetShapeFn(DecodeImageShapeFn)
     .Doc(R"doc(
@@ -347,6 +348,12 @@ fancy_upscaling: If true use a slower but nicer upscaling of the
 try_recover_truncated:  If true try to recover an image from truncated input.
 acceptable_fraction: The minimum required fraction of lines before a truncated
   input is accepted.
+dct_method: string specifying a hint about the algorithm used for
+  decompression.  Defaults to "" which maps to a system-specific
+  default.  Currently valid values are ["INTEGER_FAST",
+  "INTEGER_ACCURATE"].  The hint may be ignored (e.g., the internal
+  jpeg library changes to a version that does not have that specific
+  option.)
 image: 3-D with shape `[height, width, channels]`..
 )doc");
 
