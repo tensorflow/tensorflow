@@ -218,6 +218,21 @@ class CheckCallsMonitor(tf.contrib.learn.monitors.BaseMonitor):
 
 class EstimatorTest(tf.test.TestCase):
 
+  def testModelFnArgs(self):
+    expected_param = {'some_param': 'some_value'}
+    expected_config = tf.contrib.learn.RunConfig()
+    expected_config.i_am_test = True
+    def _argument_checker(features, labels, mode, params, config):
+      _, _ = features, labels
+      self.assertEqual(tf.contrib.learn.ModeKeys.TRAIN, mode)
+      self.assertEqual(expected_param, params)
+      self.assertTrue(config.i_am_test)
+      return tf.constant(0.), tf.constant(0.), tf.constant(0.)
+    est = tf.contrib.learn.Estimator(model_fn=_argument_checker,
+                                     params=expected_param,
+                                     config=expected_config)
+    est.fit(input_fn=boston_input_fn, steps=1)
+
   def testInvalidModelFn_no_train_op(self):
     def _invalid_model_fn(features, labels):
       # pylint: disable=unused-argument

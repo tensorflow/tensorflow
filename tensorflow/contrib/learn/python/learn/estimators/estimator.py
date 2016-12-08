@@ -970,9 +970,12 @@ class Estimator(BaseEstimator):
                  `labels=None`.
           * `mode` specifies if this training, evaluation or
                  prediction. See `ModeKeys`.
-          * `params` is a `dict` of hyperparameters. Will receive what
+          * `params` is a `dict` of hyperparameters.  Will receive what
                  is passed to Estimator in `params` parameter. This allows
                  to configure Estimators from hyper parameter tuning.
+          * `config` is a Configuration object. Will receive what is passed to
+                 Estimator in `config` parameter. This allows updating things in
+                 your model_fn based on configuration such as num_ps_replicas.
 
         * Returns:
           `ModelFnOps`
@@ -990,6 +993,8 @@ class Estimator(BaseEstimator):
           * `(features, labels) -> (predictions, loss, train_op)`
           * `(features, labels, mode) -> (predictions, loss, train_op)`
           * `(features, labels, mode, params) -> (predictions, loss, train_op)`
+          * `(features, labels, mode, params, config) ->
+             (predictions, loss, train_op)`
 
       model_dir: Directory to save model parameters, graph and etc. This can
         also be used to load checkpoints from the directory into a estimator to
@@ -1040,14 +1045,14 @@ class Estimator(BaseEstimator):
     """
     features, labels = self._feature_engineering_fn(features, labels)
     model_fn_args = _get_arguments(self._model_fn)
+    kwargs = {}
     if 'mode' in model_fn_args:
-      if 'params' in model_fn_args:
-        model_fn_results = self._model_fn(features, labels, mode=mode,
-                                          params=self.params)
-      else:
-        model_fn_results = self._model_fn(features, labels, mode=mode)
-    else:
-      model_fn_results = self._model_fn(features, labels)
+      kwargs['mode'] = mode
+    if 'params' in model_fn_args:
+      kwargs['params'] = self.params
+    if 'config' in model_fn_args:
+      kwargs['config'] = self.config
+    model_fn_results = self._model_fn(features, labels, **kwargs)
 
     if isinstance(model_fn_results, model_fn_lib.ModelFnOps):
       return model_fn_results
