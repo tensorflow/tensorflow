@@ -251,10 +251,10 @@ def _Enter(data, frame_name, is_constant=False, parallel_iterations=10,
           dense_shape.set_shape(data.dense_shape.get_shape())
       return ops.IndexedSlices(values, indices, dense_shape)
     else:
-      dense_shape = enter(data.shape, frame_name, is_constant,
+      dense_shape = enter(data.dense_shape, frame_name, is_constant,
                           parallel_iterations, name="dense_shape")
       if use_input_shape:
-        dense_shape.set_shape(data.shape.get_shape())
+        dense_shape.set_shape(data.dense_shape.get_shape())
       return sparse_tensor.SparseTensor(indices, values, dense_shape)
 
 
@@ -334,7 +334,7 @@ def switch(data, pred, dtype=None, name=None):
       else:
         dense_shape = data.dense_shape
         dense_shape_f, dense_shape_t = gen_control_flow_ops._switch(
-            data.shape, pred, name="dense_shape")
+            data.dense_shape, pred, name="dense_shape")
         return (sparse_tensor.SparseTensor(ind_f, val_f, dense_shape_f),
                 sparse_tensor.SparseTensor(ind_t, val_t, dense_shape_t))
 

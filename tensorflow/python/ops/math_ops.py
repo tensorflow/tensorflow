@@ -296,10 +296,10 @@ def abs(x, name=None):
         x_abs = gen_math_ops.complex_abs(
             x.values, Tout=x.values.dtype.real_dtype, name=name)
         return sparse_tensor.SparseTensor(
-            indices=x.indices, values=x_abs, dense_shape=x.shape)
+            indices=x.indices, values=x_abs, dense_shape=x.dense_shape)
       x_abs = gen_math_ops._abs(x.values, name=name)
       return sparse_tensor.SparseTensor(
-          indices=x.indices, values=x_abs, dense_shape=x.shape)
+          indices=x.indices, values=x_abs, dense_shape=x.dense_shape)
     else:
       x = ops.convert_to_tensor(x, name="x")
       if x.dtype in (dtypes.complex64, dtypes.complex128):
@@ -336,7 +336,7 @@ def neg(x, name=None):
     if isinstance(x, sparse_tensor.SparseTensor):
       x_neg = gen_math_ops.neg(x.values, name=name)
       return sparse_tensor.SparseTensor(
-          indices=x.indices, values=x_neg, dense_shape=x.shape)
+          indices=x.indices, values=x_neg, dense_shape=x.dense_shape)
     else:
       return gen_math_ops.neg(x, name=name)
 
@@ -360,7 +360,7 @@ def sign(x, name=None):
     if isinstance(x, sparse_tensor.SparseTensor):
       x_sign = gen_math_ops.sign(x.values, name=name)
       return sparse_tensor.SparseTensor(
-          indices=x.indices, values=x_sign, dense_shape=x.shape)
+          indices=x.indices, values=x_sign, dense_shape=x.dense_shape)
     else:
       return gen_math_ops.sign(x, name=name)
 
@@ -382,7 +382,7 @@ def square(x, name=None):
     if isinstance(x, sparse_tensor.SparseTensor):
       x_square = gen_math_ops.square(x.values, name=name)
       return sparse_tensor.SparseTensor(
-          indices=x.indices, values=x_square, dense_shape=x.shape)
+          indices=x.indices, values=x_square, dense_shape=x.dense_shape)
     else:
       return gen_math_ops.square(x, name=name)
 
@@ -404,7 +404,7 @@ def sqrt(x, name=None):
     if isinstance(x, sparse_tensor.SparseTensor):
       x_sqrt = gen_math_ops.sqrt(x.values, name=name)
       return sparse_tensor.SparseTensor(
-          indices=x.indices, values=x_sqrt, dense_shape=x.shape)
+          indices=x.indices, values=x_sqrt, dense_shape=x.dense_shape)
     else:
       return gen_math_ops.sqrt(x, name=name)
 
@@ -424,7 +424,7 @@ def erf(x, name=None):
     if isinstance(x, sparse_tensor.SparseTensor):
       x_erf = gen_math_ops.erf(x.values, name=name)
       return sparse_tensor.SparseTensor(
-          indices=x.indices, values=x_erf, dense_shape=x.shape)
+          indices=x.indices, values=x_erf, dense_shape=x.dense_shape)
     else:
       return gen_math_ops.erf(x, name=name)
 
@@ -663,7 +663,7 @@ def cast(x, dtype, name=None):
   with ops.name_scope(name, "Cast", [x]) as name:
     if isinstance(x, sparse_tensor.SparseTensor):
       values_cast = cast(x.values, base_type, name=name)
-      return sparse_tensor.SparseTensor(x.indices, values_cast, x.shape)
+      return sparse_tensor.SparseTensor(x.indices, values_cast, x.dense_shape)
     else:
       # TODO(touts): Handle what Josh said.
       #
@@ -1039,7 +1039,7 @@ def _mul_dispatch(x, y, name=None):
     assert isinstance(y, sparse_tensor.SparseTensor)  # Case: Dense * Sparse.
     new_vals = gen_sparse_ops.sparse_dense_cwise_mul(y.indices, y.values,
                                                      y.dense_shape, x, name)
-    return sparse_tensor.SparseTensor(y.indices, new_vals, y.shape)
+    return sparse_tensor.SparseTensor(y.indices, new_vals, y.dense_shape)
 
 # NOTE(aselle): When integer division is added for sparse_dense_cwise,
 # div, truediv, and floordiv should be delegated appropriately for
@@ -1998,7 +1998,7 @@ def tanh(x, name=None):
     if isinstance(x, sparse_tensor.SparseTensor):
       x_tanh = gen_math_ops._tanh(x.values, name=name)
       return sparse_tensor.SparseTensor(
-          indices=x.indices, values=x_tanh, dense_shape=x.shape)
+          indices=x.indices, values=x_tanh, dense_shape=x.dense_shape)
     else:
       return gen_math_ops._tanh(x, name=name)
 

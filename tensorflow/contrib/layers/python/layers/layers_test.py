@@ -1380,7 +1380,7 @@ class PartialFlattenTest(tf.test.TestCase):
 
       np.testing.assert_array_equal(expected_indices, flattened.indices)
       np.testing.assert_array_equal(expected_values, flattened.values)
-      np.testing.assert_array_equal(expected_shape, flattened.shape)
+      np.testing.assert_array_equal(expected_shape, flattened.dense_shape)
 
   def testIncompleteShape(self):
     """Test `_inner_flatten` shape inference for incomplete shapes."""

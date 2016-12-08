@@ -817,7 +817,7 @@ class ShapeSizeRankTest(test_util.TensorFlowTestCase):
       sp_value = tf.SparseTensorValue(
           indices=((0, 1), (1, 0)),
           values=(42, 24),
-          shape=(2, 2))
+          dense_shape=(2, 2))
       self.assertAllEqual((2, 2), tf.shape(sp_value).eval())
       self.assertEqual(4, tf.size(sp_value).eval())
       self.assertEqual(2, tf.rank(sp_value).eval())

@@ -1182,7 +1182,7 @@ def flatten(inputs,
   Returns:
     a flattened tensor with shape [batch_size, k].
   Raises:
-    ValueError: if inputs.shape is wrong.
+    ValueError: if inputs.dense_shape is wrong.
   """
   with ops.name_scope(scope, 'Flatten', [inputs]) as sc:
     inputs = ops.convert_to_tensor(inputs)
@@ -1200,8 +1200,8 @@ def flatten(inputs,
 
 def _sparse_inner_flatten(inputs, new_rank):
   """Helper function for `inner_flatten`."""
-  outer_dimensions = inputs.shape[:new_rank - 1]
-  inner_dimensions = inputs.shape[new_rank - 1:]
+  outer_dimensions = inputs.dense_shape[:new_rank - 1]
+  inner_dimensions = inputs.dense_shape[new_rank - 1:]
   new_shape = array_ops.concat_v2((outer_dimensions,
                                    [math_ops.reduce_prod(inner_dimensions)]), 0)
   flattened = sparse_ops.sparse_reshape(inputs, new_shape)

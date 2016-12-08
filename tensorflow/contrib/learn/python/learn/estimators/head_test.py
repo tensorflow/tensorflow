@@ -163,7 +163,7 @@ class RegressionModelHeadTest(tf.test.TestCase):
       labels = tf.SparseTensor(
           indices=tf.constant([[0, 0], [1, 0], [2, 0]], dtype=tf.int64),
           values=tf.constant([0., 1., 1.]),
-          shape=[3, 1])
+          dense_shape=[3, 1])
       with self.assertRaisesRegexp(
           ValueError, "SparseTensor is not supported as labels."):
         head.head_ops({}, labels, tf.contrib.learn.ModeKeys.TRAIN,
@@ -362,7 +362,7 @@ class BinaryClassificationModelHeadTest(tf.test.TestCase):
       labels = tf.SparseTensor(
           indices=tf.constant([[0, 0], [1, 0], [2, 0]], dtype=tf.int64),
           values=tf.constant([0, 1, 1]),
-          shape=[3, 1])
+          dense_shape=[3, 1])
       with self.assertRaisesRegexp(
           ValueError, "SparseTensor is not supported as labels."):
         head.head_ops({}, labels, tf.contrib.learn.ModeKeys.TRAIN,

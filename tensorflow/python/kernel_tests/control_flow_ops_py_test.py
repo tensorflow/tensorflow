@@ -747,13 +747,13 @@ class ControlFlowTest(tf.test.TestCase):
         return i < 10
       def b(i, x):
         return [i + 1, tf.SparseTensor(x.indices, x.values * 2.0,
-                                       x.shape)]
+                                       x.dense_shape)]
       _, r = tf.while_loop(c, b, [i, x])
       self.assertEqual(r.dense_shape.get_shape()[0].value, 1)
 
       _, r = tf.while_loop(c, b, [i, x],
                            [i.get_shape(), tensor_shape.TensorShape([None])])
-      self.assertTrue(r.shape.get_shape()[0].value is None)
+      self.assertTrue(r.dense_shape.get_shape()[0].value is None)
 
       with self.assertRaisesRegexp(ValueError, "is not compatible with"):
         _, r = tf.while_loop(c, b, [i, x],

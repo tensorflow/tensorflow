@@ -2294,7 +2294,7 @@ class StreamingSparsePrecisionTest(tf.test.TestCase):
       sp_labels = tf.SparseTensorValue(
           indices=np.array([[0,], [1,], [2,]], np.int64),
           values=np.array([2, 7, 8], np.int64),
-          shape=np.array([10,], np.int64))
+          dense_shape=np.array([10,], np.int64))
 
       with self.assertRaises(ValueError):
         precision, _ = metrics.streaming_sparse_precision_at_top_k(
@@ -2568,7 +2568,7 @@ class StreamingSparsePrecisionTest(tf.test.TestCase):
         # values -1 and 10 are outside the [0, n_classes) range and are ignored.
         values=np.array([2, 7, -1, 8,
                          1, 2, 5, 10], np.int64),
-        shape=[2, 4])
+        dense_shape=[2, 4])
 
     # Class 2: 2 labels, 2 correct predictions.
     self._test_streaming_sparse_precision_at_k(
@@ -3032,7 +3032,7 @@ class StreamingSparseRecallTest(tf.test.TestCase):
         # values -1 and 10 are outside the [0, n_classes) range.
         values=np.array([2, 7, -1, 8,
                          1, 2, 5, 10], np.int64),
-        shape=[2, 4])
+        dense_shape=[2, 4])
 
     # Class 2: 2 labels, both correct.
     self._test_streaming_sparse_recall_at_k(
@@ -4628,7 +4628,7 @@ class NumRelevantTest(tf.test.TestCase):
               (2, 1, 0), (2, 1, 1),
               (2, 2, 0)),
           values=(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13),
-          shape=(3, 3, 3))
+          dense_shape=(3, 3, 3))
       self.assertAllEqual(
           ((1, 1, 0), (1, 1, 1), (0, 1, 1)),
           metric_ops.num_relevant(labels, k=1).eval())
@@ -4659,7 +4659,7 @@ class ExpandAndTileTest(tf.test.TestCase):
         indices=[
             (i, j, k) for i in range(3) for j in range(3) for k in range(3)],
         values=[1] * 27,
-        shape=[3, 3, 3])
+        dense_shape=[3, 3, 3])
     with self.assertRaisesRegexp(ValueError, 'nvalid multiple'):
       metric_ops.expand_and_tile(x, multiple=0)
 
@@ -4756,7 +4756,7 @@ class ExpandAndTileTest(tf.test.TestCase):
   def _assert_sparse_tensors_equal(self, expected, actual):
     self.assertAllEqual(expected.indices, actual.indices)
     self.assertAllEqual(expected.values, actual.values)
-    self.assertAllEqual(expected.shape, actual.shape)
+    self.assertAllEqual(expected.dense_shape, actual.dense_shape)
 
   # TODO(ptucker): Use @parameterized when it's available in tf.
   def testSparseExpandAndTile1x(self):
@@ -4770,7 +4770,7 @@ class ExpandAndTileTest(tf.test.TestCase):
             1, 2,
             3, 4, 5,
             6],
-        shape=[3, 3])
+        dense_shape=[3, 3])
     with self.test_session():
       expected_result_dim0 = tf.SparseTensorValue(
           indices=[[0, i[0], i[1]] for i in x.indices], values=x.values,
@@ -4810,12 +4810,12 @@ class ExpandAndTileTest(tf.test.TestCase):
             1, 2,
             3, 4, 5,
             6),
-        shape=(3, 3))
+        dense_shape=(3, 3))
     with self.test_session():
       expected_result_dim0 = tf.SparseTensorValue(
           indices=[(d0, i[0], i[1]) for d0 in range(5) for i in x.indices],
           values=[v for _ in range(5) for v in x.values],
-          shape=(5, 3, 3))
+          dense_shape=(5, 3, 3))
       self._assert_sparse_tensors_equal(
           expected_result_dim0,
           metric_ops.expand_and_tile(x, multiple=5).eval())
@@ -4831,7 +4831,7 @@ class ExpandAndTileTest(tf.test.TestCase):
               for d1 in range(5)
               for i in x.indices if i[0] == d0],
           values=x.values[0:2] * 5 + x.values[2:5] * 5 + x.values[5:] * 5,
-          shape=(3, 5, 3))
+          dense_shape=(3, 5, 3))
       for dim in (-1, 1):
         self._assert_sparse_tensors_equal(
             expected_result_dim1,
@@ -4840,7 +4840,7 @@ class ExpandAndTileTest(tf.test.TestCase):
       expected_result_dim2 = tf.SparseTensorValue(
           indices=[(i[0], i[1], d2) for i in x.indices for d2 in range(5)],
           values=[v for v in x.values for _ in range(5)],
-          shape=(3, 3, 5))
+          dense_shape=(3, 3, 5))
       self._assert_sparse_tensors_equal(
           expected_result_dim2,
           metric_ops.expand_and_tile(x, multiple=5, dim=2).eval())

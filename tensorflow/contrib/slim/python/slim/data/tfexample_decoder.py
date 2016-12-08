@@ -246,7 +246,7 @@ class SparseTensor(ItemHandler):
     elif self._shape:
       shape = self._shape
     else:
-      shape = indices.shape
+      shape = indices.dense_shape
     indices_shape = array_ops.shape(indices.indices)
     rank = indices_shape[1]
     ids = math_ops.to_int64(indices.values)

@@ -1449,7 +1449,7 @@ def _select_class_id(ids, selected_id):
       filled_selected_id_shape, math_ops.to_int64(selected_id))
   result = sets.set_intersection(filled_selected_id, ids)
   return sparse_tensor.SparseTensor(
-      indices=result.indices, values=result.values, shape=ids_shape)
+      indices=result.indices, values=result.values, dense_shape=ids_shape)
 
 
 def _maybe_select_class_id(labels, predictions_idx, selected_id=None):
@@ -1989,12 +1989,12 @@ def _expand_and_tile(tensor, multiple, dim=0, name=None):
     if isinstance(tensor, sparse_tensor.SparseTensor):
       if dim < 0:
         expand_dims = array_ops.reshape(
-            array_ops.size(tensor.shape) + dim, [1])
+            array_ops.size(tensor.dense_shape) + dim, [1])
       else:
         expand_dims = [dim]
       expanded_shape = array_ops.concat_v2(
-          (array_ops.slice(tensor.shape, [0], expand_dims), [1],
-           array_ops.slice(tensor.shape, expand_dims, [-1])),
+          (array_ops.slice(tensor.dense_shape, [0], expand_dims), [1],
+           array_ops.slice(tensor.dense_shape, expand_dims, [-1])),
           0,
           name='expanded_shape')
       expanded = sparse_ops.sparse_reshape(

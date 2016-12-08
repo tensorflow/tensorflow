@@ -389,7 +389,7 @@ class SetOpsTest(test_util.TensorFlowTestCase):
     self.assertAllEqual((expected_rows,),
                         result_sparse_tensor.values.get_shape().as_list())
     self.assertAllEqual((expected_rank,),
-                        result_sparse_tensor.shape.get_shape().as_list())
+                        result_sparse_tensor.dense_shape.get_shape().as_list())
 
   def _set_intersection(self, a, b):
     # Validate that we get the same results with or without `validate_indices`,
@@ -407,7 +407,7 @@ class SetOpsTest(test_util.TensorFlowTestCase):
     for i in range(1, 4):
       self.assertAllEqual(results[0].indices, results[i].indices)
       self.assertAllEqual(results[0].values, results[i].values)
-      self.assertAllEqual(results[0].shape, results[i].shape)
+      self.assertAllEqual(results[0].dense_shape, results[i].dense_shape)
     return results[0]
 
   def _set_intersection_count(self, a, b):
@@ -761,7 +761,7 @@ class SetOpsTest(test_util.TensorFlowTestCase):
     for i in range(1, 4):
       self.assertAllEqual(results[0].indices, results[i].indices)
       self.assertAllEqual(results[0].values, results[i].values)
-      self.assertAllEqual(results[0].shape, results[i].shape)
+      self.assertAllEqual(results[0].dense_shape, results[i].dense_shape)
     return results[0]
 
   def _set_difference_count(self, a, b, aminusb=True):
@@ -967,7 +967,7 @@ class SetOpsTest(test_util.TensorFlowTestCase):
     for i in range(1, 4):
       self.assertAllEqual(results[0].indices, results[i].indices)
       self.assertAllEqual(results[0].values, results[i].values)
-      self.assertAllEqual(results[0].shape, results[i].shape)
+      self.assertAllEqual(results[0].dense_shape, results[i].dense_shape)
     return results[0]
 
   def _set_union_count(self, a, b):

@@ -1697,8 +1697,7 @@ def sparse_placeholder(dtype, shape=None, name=None):
       indices=placeholder(
           dtypes.int64, shape=[None, None],
           name=(name + "/indices") if name is not None else None),
-      shape=shape
-  )
+      dense_shape=shape)
 # pylint: enable=redefined-outer-name
 
 

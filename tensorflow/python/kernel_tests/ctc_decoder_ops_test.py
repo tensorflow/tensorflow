@@ -77,7 +77,7 @@ class CTCGreedyDecoderTest(tf.test.TestCase):
           self.assertEqual([None, truth_st[0].shape[1]],
                            tf_st.indices.get_shape().as_list())
           self.assertEqual([None], tf_st.values.get_shape().as_list())
-          self.assertShapeEqual(truth_st[2], tf_st.shape)
+          self.assertShapeEqual(truth_st[2], tf_st.dense_shape)
 
         # Make sure decoded probabilities match
         self.assertAllClose(output_log_probability, log_prob_truth, atol=1e-6)
