@@ -163,6 +163,16 @@ class Server(object):
     with errors.raise_exception_on_not_ok_status() as status:
       pywrap_tensorflow.PyServer_Start(self._server, status)
 
+  def stop(self):
+    """Stops this server.
+
+    Raises:
+      tf.errors.OpError: Or one of its subclasses if an error occurs while
+        stopping the TensorFlow server.
+    """
+    with errors.raise_exception_on_not_ok_status() as status:
+      pywrap_tensorflow.PyServer_Stop(self._server, status)
+
   def join(self):
     """Blocks until the server has shut down.
 
