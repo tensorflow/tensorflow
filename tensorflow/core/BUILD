@@ -441,6 +441,15 @@ cc_library(
 )
 
 cc_library(
+    name = "word2vec_ops",
+    srcs = ["ops/word2vec_ops.cc"],
+    linkstatic = 1,
+    visibility = ["//tensorflow:internal"],
+    deps = ["//tensorflow/core:framework"],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "ops",
     visibility = ["//visibility:public"],
     deps = [
@@ -469,7 +478,7 @@ cc_library(
         ":string_ops_op_lib",
         ":training_ops_op_lib",
         ":user_ops_op_lib",
-        "//tensorflow/models/embedding:word2vec_ops",
+        ":word2vec_ops",
     ],
     alwayslink = 1,
 )
@@ -591,7 +600,7 @@ cc_library(
         "//tensorflow/core/kernels:state",
         "//tensorflow/core/kernels:string",
         "//tensorflow/core/kernels:training_ops",
-        "//tensorflow/models/embedding:word2vec_kernels",
+        "//tensorflow/core/kernels:word2vec_kernels",
     ] + if_not_windows([
         "//tensorflow/core/kernels:fact_op",
         "//tensorflow/core/kernels:array_not_windows",

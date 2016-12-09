@@ -3240,6 +3240,17 @@ tf_cuda_cc_test(
     ],
 )
 
+tf_kernel_library(
+    name = "word2vec_kernels",
+    prefix = "word2vec_kernels",
+    deps = [
+        "//tensorflow/core",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
 # Android libraries -----------------------------------------------------------
 
 # Changes to the Android srcs here should be replicated in

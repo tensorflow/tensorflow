@@ -18,6 +18,9 @@ limitations under the License.
 namespace tensorflow {
 
 REGISTER_OP("Skipgram")
+    .Deprecated(19,
+                "Moving word2vec into tensorflow_models/tutorials and "
+                "deprecating its ops here as a result")
     .Output("vocab_word: string")
     .Output("vocab_freq: int32")
     .Output("words_per_epoch: int64")
@@ -51,6 +54,9 @@ subsample: Threshold for word occurrence. Words that appear with higher
 )doc");
 
 REGISTER_OP("NegTrain")
+    .Deprecated(19,
+                "Moving word2vec into tensorflow_models/tutorials and "
+                "deprecating its ops here as a result")
     .Input("w_in: Ref(float)")
     .Input("w_out: Ref(float)")
     .Input("examples: int32")

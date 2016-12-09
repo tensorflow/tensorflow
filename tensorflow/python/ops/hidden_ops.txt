@@ -290,3 +290,7 @@ Fact
 
 # training_ops
 # (None)
+
+# word2vec deprecated ops
+NegTrain
+Skipgram
