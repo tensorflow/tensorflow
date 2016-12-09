@@ -183,6 +183,10 @@ def distorted_inputs(data_dir, batch_size):
   # Subtract off the mean and divide by the variance of the pixels.
   float_image = tf.image.per_image_standardization(distorted_image)
 
+  # Set the shapes of tensors.
+  float_image.set_shape([height, width, 3])
+  read_input.label.set_shape([batch_size])
+
   # Ensure that the random shuffling has good mixing properties.
   min_fraction_of_examples_in_queue = 0.4
   min_queue_examples = int(NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN *
