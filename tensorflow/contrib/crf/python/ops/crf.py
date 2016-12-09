@@ -128,10 +128,14 @@ def crf_log_norm(inputs, sequence_lengths, transition_params):
   alphas = array_ops.reshape(array_ops.concat(0, alphas), [max_seq_len, batch_size, tag_size])
   alphas = array_ops.transpose(alphas, [1, 0, 2])
   alphas = array_ops.reshape(alphas, [batch_size * max_seq_len, tag_size])
-  
-  last_alphas = array_ops.gather(alphas, math_ops.range(0, batch_size) * max_seq_len + sequence_lengths - 1 )
 
-  return math_ops.reduce_logsumexp(last_alphas, [1])
+  #to support length = 0
+  length_mask = math_ops.sign(sequence_lengths)
+  indecies    = math_ops.range(0, batch_size) * max_seq_len + length_mask*(sequence_lengths - 1)
+  
+  last_alphas = array_ops.gather(alphas, indecies)
+
+  return math_ops.cast(length_mask, dtypes.float32) * math_ops.reduce_logsumexp(last_alphas, [1])
 
 
 def crf_log_likelihood(inputs,
