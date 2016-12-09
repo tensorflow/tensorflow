@@ -1,4 +1,4 @@
-### `tf.nn.weighted_cross_entropy_with_logits(logits, targets, pos_weight, name=None)` {#weighted_cross_entropy_with_logits}
+### `tf.nn.weighted_cross_entropy_with_logits(targets, logits, pos_weight, name=None)` {#weighted_cross_entropy_with_logits}
 
 Computes a weighted cross entropy.
 
@@ -35,8 +35,8 @@ the implementation uses
 ##### Args:
 
 
-*  <b>`logits`</b>: A `Tensor` of type `float32` or `float64`.
 *  <b>`targets`</b>: A `Tensor` of the same type and shape as `logits`.
+*  <b>`logits`</b>: A `Tensor` of type `float32` or `float64`.
 *  <b>`pos_weight`</b>: A coefficient to use on the positive examples.
 *  <b>`name`</b>: A name for the operation (optional).
 
