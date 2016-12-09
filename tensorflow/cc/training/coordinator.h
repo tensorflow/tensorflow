@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CC_TRAINING_COORDINATOR_H_
 #define THIRD_PARTY_TENSORFLOW_CC_TRAINING_COORDINATOR_H_
 
+#include <atomic>
 #include <memory>
 #include <unordered_set>
 #include <vector>
