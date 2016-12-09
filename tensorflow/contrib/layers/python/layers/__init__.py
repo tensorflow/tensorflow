@@ -30,5 +30,6 @@ from tensorflow.contrib.layers.python.layers.regularizers import *
 from tensorflow.contrib.layers.python.layers.summaries import *
 from tensorflow.contrib.layers.python.layers.target_column import *
 from tensorflow.contrib.layers.python.ops.bucketization_op import *
+from tensorflow.contrib.layers.python.ops.layer_norm_fused_op import *
 from tensorflow.contrib.layers.python.ops.sparse_feature_cross_op import *
 # pylint: enable=wildcard-import
