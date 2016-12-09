@@ -72,9 +72,10 @@ py_test(
     srcs = [
         "saved_model_test.py",
     ],
-    data = [
-        "//tensorflow/python/saved_model/example:saved_model_half_plus_two_data",
-    ],
+# Reenable once half_plus_two_data does not run TF during build.
+#    data = [
+#        "//tensorflow/python/saved_model/example:saved_model_half_plus_two_data",
+#    ],
     srcs_version = "PY2AND3",
     tags = ["manual"],
     visibility = ["//visibility:private"],
