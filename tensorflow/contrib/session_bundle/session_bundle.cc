@@ -48,7 +48,7 @@ auto* load_attempt_count = monitoring::Counter<2>::New(
     "model_path", "status");
 auto* load_latency = monitoring::Counter<1>::New(
     "/tensorflow/contrib/session_bundle/load_latency",
-    "Latency in microseconds for SessionBundles that were succesfully loaded.",
+    "Latency in microseconds for SessionBundles that were successfully loaded.",
     "model_path");
 constexpr char kLoadAttemptFail[] = "fail";
 constexpr char kLoadAttemptSuccess[] = "success";

@@ -118,6 +118,12 @@ else
   die "Unrecognized container type: \"${CONTAINER_TYPE}\""
 fi
 
+MAC_FLAG=""
+if [[ $(uname) == "Darwin" ]]; then
+  MAC_FLAG="--mac"
+fi
+
+
 # If still in a virtualenv, deactivate it first
 if [[ ! -z "$(which deactivate)" ]]; then
   echo "It appears that we are already in a virtualenv. Deactivating..."
@@ -268,7 +274,7 @@ fi
 
 # Call test_installation.sh to perform test-on-install
 
-"${SCRIPT_DIR}/test_installation.sh" --virtualenv ${GPU_FLAG} ||
+"${SCRIPT_DIR}/test_installation.sh" --virtualenv ${GPU_FLAG} ${MAC_FLAG} ||
     die "PIP tests-on-install FAILED"
 
 # Test user ops

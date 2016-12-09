@@ -273,7 +273,8 @@ TEST_F(DebugIOUtilsTest, PublishTensorConcurrentlyToPartiallyOverlappingPaths) {
 
   auto fn = [this, &dump_count, &done_count, &mu, &dump_root_base, &dump_roots,
              &dump_file_paths, &wall_time, &tensor_name, &debug_node_name,
-             &kNodeName, &kDebugOpName, &kConcurrentPubs, &all_done]() {
+             &kNodeName, &kDebugOpName, &kConcurrentPubs, &kOutputSlot,
+             &all_done]() {
     // "gumpy" is the shared directory part of the path.
     string dump_root;
     string debug_url;

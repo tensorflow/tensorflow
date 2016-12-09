@@ -22,6 +22,11 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
+#ifdef _MSC_VER
+// ssize_t is not a standard C++ type.
+typedef ptrdiff_t ssize_t;
+#endif
+
 namespace tensorflow {
 namespace strings {
 

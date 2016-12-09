@@ -25,8 +25,9 @@ namespace tensorflow {
 
 SYCLDevice::~SYCLDevice() {
   device_context_->Unref();
-  delete sycl_allocator_;
+  sycl_allocator_->EnterLameDuckMode();
   delete sycl_device_;
+  delete sycl_queue_;
 }
 
 void SYCLDevice::Compute(OpKernel *op_kernel, OpKernelContext *context) {
@@ -50,12 +51,8 @@ Allocator *SYCLDevice::GetAllocator(AllocatorAttributes attr) {
 Status SYCLDevice::MakeTensorFromProto(const TensorProto &tensor_proto,
                                        const AllocatorAttributes alloc_attrs,
                                        Tensor *tensor) {
-  AllocatorAttributes attr;
-  attr.set_on_host(true);
-  attr.set_gpu_compatible(true);
-  Allocator *host_alloc = GetAllocator(attr);
   Tensor parsed(tensor_proto.dtype());
-  if (!parsed.FromProto(host_alloc, tensor_proto)) {
+  if (!parsed.FromProto(cpu_allocator_, tensor_proto)) {
     return errors::InvalidArgument("Cannot parse tensor from proto: ",
                                    tensor_proto.DebugString());
   }
@@ -85,6 +82,12 @@ Status SYCLDevice::FillContextMap(const Graph *graph,
 
   return Status::OK();
 }
+
+Status SYCLDevice::Sync() {
+  sycl_device_->synchronize();
+  return Status::OK();
+}
+
 
 } // namespace tensorflow
 

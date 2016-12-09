@@ -19,7 +19,6 @@ from __future__ import print_function
 
 from tensorflow.python.ops import sets
 
-
 set_size = sets.set_size
 
 set_intersection = sets.set_intersection

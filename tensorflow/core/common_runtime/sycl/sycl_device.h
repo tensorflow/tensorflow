@@ -22,14 +22,12 @@ limitations under the License.
 
 #define EIGEN_USE_SYCL
 
-#include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/common_runtime/sycl/sycl_allocator.h"
 #include "tensorflow/core/common_runtime/sycl/sycl_device_context.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
-
 
 class SYCLDevice : public LocalDevice {
 public:
@@ -42,8 +40,9 @@ public:
                     name, DEVICE_SYCL, memory_limit, locality,
                     physical_device_desc), nullptr),
         cpu_allocator_(cpu_allocator),
-        sycl_device_(new Eigen::SyclDevice(sycl_selector)),
-        sycl_allocator_(new SYCLAllocator(sycl_device_)),
+        sycl_queue_(new Eigen::QueueInterface(sycl_selector)),
+        sycl_device_(new Eigen::SyclDevice(sycl_queue_)),
+        sycl_allocator_(new SYCLAllocator(sycl_queue_)),
         device_context_(new SYCLDeviceContext()) {
     set_eigen_sycl_device(sycl_device_);
   }
@@ -59,16 +58,17 @@ public:
   Status FillContextMap(const Graph *graph,
                         DeviceContextMap *device_context_map) override;
 
-  Status Sync() override { return Status::OK(); }
+  Status Sync() override;
   static string GetShortDeviceDescription(/*int device_id,
                                           const DeviceDescription& desc*/) {
     return strings::StrCat("device: 0, name SYCL, pci bus id: 0");
   }
 
 private:
-  Allocator *cpu_allocator_;         // owned
-  Eigen::SyclDevice* sycl_device_;   // owned
-  SYCLAllocator *sycl_allocator_;    // owned
+  Allocator *cpu_allocator_;          // owned
+  Eigen::QueueInterface* sycl_queue_; // owned
+  Eigen::SyclDevice* sycl_device_;    // owned
+  SYCLAllocator *sycl_allocator_;     // owned
   SYCLDeviceContext *device_context_;
 };
 

@@ -949,12 +949,12 @@ cc_library(
 # Libraries with GPU facilities that are useful for writing kernels.
 cc_library(
     name = "gpu_lib",
-    srcs = if_not_windows([
+    srcs = [
         "common_runtime/gpu/gpu_event_mgr.cc",
-    ]),
-    hdrs = if_not_windows([
+    ],
+    hdrs = [
         "common_runtime/gpu/gpu_event_mgr.h",
-    ]),
+    ],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
@@ -964,7 +964,8 @@ cc_library(
         ":lib_internal",
         ":proto_text",
         ":protos_all_cc",
-    ] + if_not_windows([":stream_executor"]),
+        ":stream_executor",
+    ],
 )
 
 cc_library(
@@ -982,7 +983,7 @@ tf_proto_library_cc(
     name = "worker_proto",
     srcs = ["protobuf/worker.proto"],
     cc_api_version = 2,
-    cc_libs = [":protos_all_cc"],
+    protodeps = [":protos_all"],
     visibility = [
         "//tensorflow:internal",
     ],
@@ -993,8 +994,8 @@ tf_proto_library_cc(
     srcs = ["protobuf/worker_service.proto"],
     has_services = 1,
     cc_api_version = 2,
-    cc_libs = [":worker_proto_cc"],
     cc_stubby_versions = ["2"],
+    protodeps = [":worker_proto"],
     visibility = [
         "//tensorflow:internal",
     ],
@@ -1004,7 +1005,7 @@ tf_proto_library_cc(
     name = "master_proto",
     srcs = ["protobuf/master.proto"],
     cc_api_version = 2,
-    cc_libs = [":protos_all_cc"],
+    protodeps = [":protos_all"],
     visibility = [
         "//tensorflow:internal",
     ],
@@ -1015,8 +1016,8 @@ tf_proto_library_cc(
     srcs = ["protobuf/master_service.proto"],
     has_services = 1,
     cc_api_version = 2,
-    cc_libs = [":master_proto_cc"],
     cc_stubby_versions = ["2"],
+    protodeps = [":master_proto"],
     visibility = [
         "//tensorflow:internal",
     ],
@@ -1417,7 +1418,7 @@ tf_cuda_library(
 
 tf_cuda_library(
     name = "gpu_runtime",
-    srcs = if_not_windows([
+    srcs = [
         "common_runtime/gpu/gpu_bfc_allocator.cc",
         "common_runtime/gpu/gpu_debug_allocator.cc",
         "common_runtime/gpu/gpu_device.cc",
@@ -1429,8 +1430,8 @@ tf_cuda_library(
         "common_runtime/gpu/pool_allocator.cc",
         "common_runtime/gpu/process_state.cc",
         "common_runtime/gpu_device_context.h",
-    ]),
-    hdrs = if_not_windows([
+    ],
+    hdrs = [
         "common_runtime/gpu/gpu_bfc_allocator.h",
         "common_runtime/gpu/gpu_debug_allocator.h",
         "common_runtime/gpu/gpu_device.h",
@@ -1439,7 +1440,7 @@ tf_cuda_library(
         "common_runtime/gpu/gpu_util.h",
         "common_runtime/gpu/pool_allocator.h",
         "common_runtime/gpu/process_state.h",
-    ]),
+    ],
     copts = tf_copts(),
     linkstatic = 1,
     deps = [
@@ -1451,10 +1452,9 @@ tf_cuda_library(
         ":lib",
         ":lib_internal",
         ":protos_all_cc",
-        "//third_party/eigen3",
-    ] + if_not_windows([
         ":stream_executor",
-    ]),
+        "//third_party/eigen3",
+    ],
     alwayslink = 1,
 )
 

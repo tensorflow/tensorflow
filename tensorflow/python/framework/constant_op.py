@@ -114,7 +114,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 
 
-def constant(value, dtype=None, shape=None, name="Const"):
+def constant(value, dtype=None, shape=None, name="Const", verify_shape=False):
   """Creates a constant tensor.
 
    The resulting tensor is populated with values of type `dtype`, as
@@ -146,13 +146,15 @@ def constant(value, dtype=None, shape=None, name="Const"):
    ```
 
   Args:
-    value:     A constant value (or list) of output type `dtype`.
+    value:          A constant value (or list) of output type `dtype`.
 
-    dtype:     The type of the elements of the resulting tensor.
+    dtype:          The type of the elements of the resulting tensor.
 
-    shape:     Optional dimensions of resulting tensor.
+    shape:          Optional dimensions of resulting tensor.
 
-    name:      Optional name for the tensor.
+    name:           Optional name for the tensor.
+
+    verify_shape:   Boolean that enables verification of a shape of values.
 
   Returns:
     A Constant Tensor.
@@ -160,7 +162,7 @@ def constant(value, dtype=None, shape=None, name="Const"):
   g = ops.get_default_graph()
   tensor_value = attr_value_pb2.AttrValue()
   tensor_value.tensor.CopyFrom(
-      tensor_util.make_tensor_proto(value, dtype=dtype, shape=shape))
+      tensor_util.make_tensor_proto(value, dtype=dtype, shape=shape, verify_shape=verify_shape))
   dtype_value = attr_value_pb2.AttrValue(type=tensor_value.tensor.dtype)
   const_tensor = g.create_op(
       "Const", [], [dtype_value.type],

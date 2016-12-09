@@ -36,7 +36,7 @@ tf_proto_library_cc(
     has_services = 1,
     cc_api_version = 2,
     cc_grpc_version = 1,
-    cc_libs = ["//tensorflow/core:protos_all_cc"],
+    protodeps = ["//tensorflow/core:protos_all"],
 )
 
 # Depending on this target causes a concrete DebuggerState implementation

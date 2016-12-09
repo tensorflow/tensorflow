@@ -1871,7 +1871,7 @@ tf_proto_library(
     name = "cpp_shape_inference_proto",
     srcs = ["framework/cpp_shape_inference.proto"],
     cc_api_version = 2,
-    cc_libs = ["//tensorflow/core:protos_all_cc"],
+    protodeps = ["//tensorflow/core:protos_all"],
 )
 
 py_test(

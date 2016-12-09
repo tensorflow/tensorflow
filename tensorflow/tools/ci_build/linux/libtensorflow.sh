@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,24 +13,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+#
+# Script to produce a tarball release of the C-library and associated C API
+# header file. Intended to be run inside a docker container. See
+# libtensorflow_docker.sh
 
-"""Seq2seq layer operations for use in neural networks.
-"""
+set -ex
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+# See comments at the top of this file for details.
+source "${SCRIPT_DIR}/../builds/libtensorflow.sh"
 
-from tensorflow.python.ops import array_ops
+SUFFIX="-linux-cpu-"
+if [ "${TF_NEED_CUDA}" == "1" ]; then
+  SUFFIX="-linux-gpu-"
+fi
 
-
-__all__ = ["rnn_decoder",
-           "rnn_decoder_attention"]
-
-
-def rnn_decoder(*args, **kwargs):
-  pass
-
-
-def rnn_decoder_attention(*args, **kwargs):
-  pass
+build_libtensorflow_tarball "${SUFFIX}$(uname -m)"

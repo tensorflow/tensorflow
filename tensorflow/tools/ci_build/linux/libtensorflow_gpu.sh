@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,25 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-"""Tests for contrib.seq2seq.python.seq2seq.layers_ops."""
-# pylint: disable=unused-import,g-bad-import-order
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-# pylint: enable=unused-import
-
-import tensorflow as tf
-
-
-class LayersTest(tf.test.TestCase):
-
-  def testRNNDecoder(self):
-    pass
-
-  def testRNNDecoderAttention(self):
-    pass
-
-
-if __name__ == '__main__':
-  tf.test.main()
+#
+# Script to build a binary release tarball for the TensorFlow C-library for
+# machines with GPUs.
+set -ex
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export TF_NEED_CUDA=1
+"${SCRIPT_DIR}/libtensorflow_docker.sh"

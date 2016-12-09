@@ -1207,7 +1207,7 @@ class CheckpointStateTest(tf.test.TestCase):
     train_dir = "train"
     os.mkdir(train_dir)
     abs_path = os.path.join(save_dir, "model-0")
-    rel_path = "train/model-2"
+    rel_path = os.path.join("train", "model-2")
     tf.train.update_checkpoint_state(
         train_dir,
         rel_path,
@@ -1914,7 +1914,7 @@ class ScopedGraphTest(tf.test.TestCase):
         tf.add_to_collection("logits", logits)
 
       # The rest of the variables.
-      rest_variables = list(set(tf.all_variables()) - set(var_list.keys()))
+      rest_variables = list(set(tf.global_variables()) - set(var_list.keys()))
       init_rest_op = tf.initialize_variables(rest_variables)
 
     with self.test_session(graph=graph) as sess:

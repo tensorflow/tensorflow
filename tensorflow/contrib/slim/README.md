@@ -109,7 +109,7 @@ weights = variables.variable('weights',
 Note that in native TensorFlow, there are two types of variables: regular
 variables and local (transient) variables. The vast majority of variables are
 regular variables: once created, they can be saved to disk using a
-[saver](https://www.tensorflow.org/versions/r0.9/api_docs/python/state_ops.html#Saver).
+[saver](https://www.tensorflow.org/versions/r0.11/api_docs/python/state_ops.html#Saver).
 Local variables are those variables that only exist for the duration of a
 session and are not saved to disk.
 
@@ -215,7 +215,7 @@ Dropout| [slim.dropout](https://www.tensorflow.org/code/tensorflow/contrib/layer
 Flatten | [slim.flatten](https://www.tensorflow.org/code/tensorflow/contrib/layers/python/layers/layers.py)
 MaxPool2D | [slim.max_pool2d](https://www.tensorflow.org/code/tensorflow/contrib/layers/python/layers/layers.py)
 OneHotEncoding | [slim.one_hot_encoding](https://www.tensorflow.org/code/tensorflow/contrib/layers/python/layers/layers.py)
-SeperableConv2 | [slim.seperable_conv2d](https://www.tensorflow.org/code/tensorflow/contrib/layers/python/layers/layers.py)
+SeparableConv2 | [slim.separable_conv2d](https://www.tensorflow.org/code/tensorflow/contrib/layers/python/layers/layers.py)
 UnitNorm | [slim.unit_norm](https://www.tensorflow.org/code/tensorflow/contrib/layers/python/layers/layers.py)
 
 TF-Slim also provides two meta-operations called `repeat` and `stack` that
@@ -901,7 +901,7 @@ slim.evaluation.evaluation_loop(
     log_dir,
     num_evals=num_batches,
     eval_op=names_to_updates.values(),
-    summary_op=tf.merge_summary(summary_ops),
+    summary_op=tf.summary.merge(summary_ops),
     eval_interval_secs=eval_interval_secs)
 ```
 

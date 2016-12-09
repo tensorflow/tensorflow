@@ -446,10 +446,7 @@ class Transformer(object):
     # without any outputs. So the walk is now finalized from those roots.
     remaining_ops = [op for op in self._info.sgv.ops
                      if op not in self._info.transformed_ops]
-    remaining_roots = [
-        op for op in remaining_ops
-        if not op.outputs and not self._info.control_outputs.get(op)
-    ]
+    remaining_roots = [op for op in remaining_ops if not op.outputs]
     for op in remaining_roots:
       self._transform_op(op)
 

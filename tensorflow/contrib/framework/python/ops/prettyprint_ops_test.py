@@ -52,7 +52,7 @@ class PrettyPrintOpsTest(tf.test.TestCase):
     a = tf.Variable(1.0)
     a = tf.contrib.framework.print_op(a)
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       a.eval()
 
 if __name__ == "__main__":

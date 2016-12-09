@@ -45,8 +45,8 @@ tf_proto_library(
         ["**/*.proto"],
     ),
     cc_api_version = 2,
-    cc_libs = ["//tensorflow/core:protos_all_cc"],
     go_api_version = 2,
     java_api_version = 2,
+    protodeps = ["//tensorflow/core:protos_all"],
     visibility = ["//visibility:public"],
 )

@@ -18,7 +18,7 @@
 # and run the Python unit tests from the source code on the installation
 #
 # Usage:
-#   test_installation.sh [--virtualenv] [--gpu]
+#   test_installation.sh [--virtualenv] [--gpu] [--mac]
 #
 # If the flag --virtualenv is set, the script will use "python" as the Python
 # binary path. Otherwise, it will use tools/python_bin_path.sh to determine
@@ -26,6 +26,9 @@
 #
 # The --gpu flag informs the script that this is a GPU build, so that the
 # appropriate test blacklists can be applied accordingly.
+#
+# The --mac flag informs the script that this is running on mac. Mac does not
+# have flock, so we should skip using parallel_gpu_execute on mac.
 #
 # When executing the Python unit tests, the script obeys the shell
 # variables: PY_TEST_WHITELIST, PY_TEST_BLACKLIST, PY_TEST_GPU_BLACKLIST,
@@ -107,6 +110,7 @@ PY_TEST_BLACKLIST="${PY_TEST_BLACKLIST}:"\
 PY_TEST_GPU_BLACKLIST="${PY_TEST_GPU_BLACKLIST}:"\
 "tensorflow/python/client/session_test.py:"\
 "tensorflow/python/framework/function_test.py:"\
+"tensorflow/contrib/integrate/python/ops/odes_test.py:"\
 "tensorflow/contrib/tensor_forest/python/kernel_tests/scatter_add_ndim_op_test.py"
 
 # Tests that should be run in the exclusive mode (i.e., not parallel with
@@ -135,11 +139,14 @@ TF_GPU_COUNT=${TF_GPU_COUNT:-8}
 # Process input arguments
 IS_VIRTUALENV=0
 IS_GPU=0
+IS_MAC=0
 while true; do
   if [[ "$1" == "--virtualenv" ]]; then
     IS_VIRTUALENV=1
   elif [[ "$1" == "--gpu" ]]; then
     IS_GPU=1
+  elif [[ "$1" == "--mac" ]]; then
+    IS_MAC=1
   fi
   shift
 
@@ -410,7 +417,11 @@ FAILED_TESTS=""
 FAILED_TEST_LOGS=""
 
 if [[ "${IS_GPU}" == "1" ]]; then
-  N_JOBS=$TF_GPU_COUNT
+  if [[ "${IS_MAC}" == "1" ]]; then
+    N_JOBS=1
+  else
+    N_JOBS=$TF_GPU_COUNT
+  fi
 else
   N_JOBS=$(grep -c ^processor /proc/cpuinfo)
   if [[ -z ${N_JOBS} ]]; then
@@ -483,7 +494,9 @@ while true; do
     TEST_LOGS="${TEST_LOGS} ${TEST_LOG}"
 
     # Launch test asynchronously
-    if [[ "${IS_GPU}" == "1" ]]; then
+    if [[ "${IS_GPU}" == "1" ]] && [[ "${IS_MAC}" == "0" ]]; then
+      # Only use this script without mac. This uses flock, which is not
+      # available in MacOSX.
       "${SCRIPT_DIR}/../gpu_build/parallel_gpu_execute.sh" \
         "${SCRIPT_DIR}/py_test_delegate.sh" \
         "${PYTHON_BIN_PATH}" "${PY_TEST_DIR}/${TEST_BASENAME}" "${TEST_LOG}" &

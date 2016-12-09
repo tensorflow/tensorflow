@@ -660,9 +660,10 @@ class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
     """
     self._feature_columns = feature_columns
     assert self._feature_columns
-    self._optimizer = _get_default_optimizer(feature_columns)
     if optimizer:
       self._optimizer = _get_optimizer(optimizer)
+    else:
+      self._optimizer = _get_default_optimizer(feature_columns)
 
     chief_hook = None
     if (isinstance(optimizer, sdca_optimizer.SDCAOptimizer) and

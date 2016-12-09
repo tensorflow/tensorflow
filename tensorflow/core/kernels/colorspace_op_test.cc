@@ -71,7 +71,7 @@ class RGBToHSVOpTest : public OpsTestBase {
 
   void CheckRedMax(DataType data_type) {
     // Test case where red channel dominates
-    AddInputFromArray<T>(TensorShape({3}), {.8, .4, .2});
+    AddInputFromArray<T>(TensorShape({3}), {.8f, .4f, .2f});
     TF_ASSERT_OK(RunOpKernel());
 
     T expected_h = 1. / 6. * .2 / .6;
@@ -85,7 +85,7 @@ class RGBToHSVOpTest : public OpsTestBase {
 
   void CheckGreenMax(DataType data_type) {
     // Test case where green channel dominates
-    AddInputFromArray<T>(TensorShape({3}), {.2, .8, .4});
+    AddInputFromArray<T>(TensorShape({3}), {.2f, .8f, .4f});
     TF_ASSERT_OK(RunOpKernel());
 
     T expected_h = 1. / 6. * (2.0 + (.2 / .6));
@@ -99,7 +99,7 @@ class RGBToHSVOpTest : public OpsTestBase {
 
   void CheckBlueMax(DataType data_type) {
     // Test case where blue channel dominates
-    AddInputFromArray<T>(TensorShape({3}), {.4, .2, .8});
+    AddInputFromArray<T>(TensorShape({3}), {.4f, .2f, .8f});
     TF_ASSERT_OK(RunOpKernel());
 
     T expected_h = 1. / 6. * (4.0 + (.2 / .6));
@@ -112,7 +112,7 @@ class RGBToHSVOpTest : public OpsTestBase {
   }
 
   void CheckNegativeDifference(DataType data_type) {
-    AddInputFromArray<T>(TensorShape({3}), {0, .1, .2});
+    AddInputFromArray<T>(TensorShape({3}), {0, .1f, .2f});
     TF_ASSERT_OK(RunOpKernel());
 
     T expected_h = 1. / 6. * (4.0 + (-.1 / .2));
@@ -220,7 +220,7 @@ class HSVToRGBOpTest : public OpsTestBase {
     TF_ASSERT_OK(RunOpKernel());
 
     Tensor expected(allocator(), data_type, TensorShape({3}));
-    test::FillValues<T>(&expected, {0, .1, .2});
+    test::FillValues<T>(&expected, {0, .1f, .2f});
     test::ExpectTensorNear<T>(expected, *GetOutput(0), 1e-6);
   }
 };

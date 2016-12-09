@@ -229,3 +229,8 @@ class ObservedStochasticTensorTest(tf.test.TestCase):
         distributions.Normal(mu=mu, sigma=sigma),
         value=tf.zeros(
             (1, 2), dtype=tf.int32))
+
+
+if __name__ == "__main__":
+  tf.test.main()
+

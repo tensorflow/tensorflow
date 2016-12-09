@@ -283,5 +283,3 @@ def evaluation_loop(master,
       config=session_config,
       max_number_of_evaluations=max_number_of_evaluations,
       timeout=timeout)
-
-

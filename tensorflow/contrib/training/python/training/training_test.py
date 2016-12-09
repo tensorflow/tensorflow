@@ -310,7 +310,7 @@ class TrainTest(tf.test.TestCase):
       tf.set_random_seed(2)
       train_op = self.create_train_op()
 
-      model_variables = tf.all_variables()
+      model_variables = tf.global_variables()
       model_path = os.path.join(logdir1, 'model.ckpt-300')
 
       assign_fn = tf.contrib.framework.assign_from_checkpoint_fn(

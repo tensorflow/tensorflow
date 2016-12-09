@@ -67,7 +67,6 @@ fi
 
 make distclean
 ./configure \
---build=x86_64-apple-${OSX_VERSION} \
 --host=i386-apple-${OSX_VERSION} \
 --disable-shared \
 --enable-cross-compile \
@@ -95,7 +94,6 @@ make install
 
 make distclean
 ./configure \
---build=x86_64-apple-${OSX_VERSION} \
 --host=x86_64-apple-${OSX_VERSION} \
 --disable-shared \
 --enable-cross-compile \
@@ -123,7 +121,6 @@ make install
 
 make distclean
 ./configure \
---build=x86_64-apple-${OSX_VERSION} \
 --host=armv7-apple-${OSX_VERSION} \
 --with-protoc="${PROTOC_PATH}" \
 --disable-shared \
@@ -147,7 +144,6 @@ make install
 
 make distclean
 ./configure \
---build=x86_64-apple-${OSX_VERSION} \
 --host=armv7s-apple-${OSX_VERSION} \
 --with-protoc="${PROTOC_PATH}" \
 --disable-shared \
@@ -171,7 +167,6 @@ make install
 
 make distclean
 ./configure \
---build=x86_64-apple-${OSX_VERSION} \
 --host=arm \
 --with-protoc="${PROTOC_PATH}" \
 --disable-shared \

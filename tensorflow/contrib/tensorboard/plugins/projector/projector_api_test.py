@@ -31,7 +31,7 @@ class ProjectorApiTest(tf.test.TestCase):
     # Create a dummy configuration.
     config = tf.contrib.tensorboard.plugins.projector.ProjectorConfig()
     config.model_checkpoint_path = 'test'
-    emb1 = config.embedding.add()
+    emb1 = config.embeddings.add()
     emb1.tensor_name = 'tensor1'
     emb1.metadata_path = 'metadata1'
 
@@ -47,3 +47,7 @@ class ProjectorApiTest(tf.test.TestCase):
       config2 = tf.contrib.tensorboard.plugins.projector.ProjectorConfig()
       text_format.Parse(f.read(), config2)
       self.assertEqual(config, config2)
+
+
+if __name__ == "__main__":
+  tf.test.main()

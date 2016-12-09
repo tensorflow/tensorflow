@@ -137,8 +137,15 @@ TEST(MemmappedFileSystemTest, ProxyToDefault) {
   const string dir = testing::TmpDir();
   const string filename = io::JoinPath(dir, "test_file");
   // Check that we can create write and read ordinary file.
-  std::unique_ptr<WritableFile> writable_file;
-  TF_ASSERT_OK(memmapped_env.NewAppendableFile(filename, &writable_file));
+  std::unique_ptr<WritableFile> writable_file_temp;
+  TF_ASSERT_OK(memmapped_env.NewAppendableFile(filename, &writable_file_temp));
+  // Making sure to clean up after the test finishes.
+  const auto adh = [&memmapped_env, &filename](WritableFile* f) {
+      delete f;
+      memmapped_env.DeleteFile(filename);
+  };
+  std::unique_ptr<WritableFile, decltype(adh)> writable_file(
+      writable_file_temp.release(), adh);
   const string test_string = "bla-bla-bla";
   TF_ASSERT_OK(writable_file->Append(test_string));
   TF_ASSERT_OK(writable_file->Close());

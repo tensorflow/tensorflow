@@ -197,7 +197,7 @@ class SpecsTest(tf.test.TestCase):
                 initializer=tf.constant_initializer(42.0))
       inputs = tf.constant(_rand(10, 100))
       outputs = v.funcall(inputs)
-      self.assertEqual(len(tf.all_variables()), 1)
+      self.assertEqual(len(tf.global_variables()), 1)
       sess.run([outputs.initializer])
       outputs_value = outputs.eval()
       self.assertEqual(outputs_value.shape, (2, 2))
@@ -211,7 +211,7 @@ class SpecsTest(tf.test.TestCase):
         g = f | f | f | f
       inputs = tf.constant(_rand(10, 100))
       _ = g.funcall(inputs)
-      self.assertEqual(len(tf.all_variables()), 2)
+      self.assertEqual(len(tf.global_variables()), 2)
 
   def testAutoFunction(self):
     with self.test_session():

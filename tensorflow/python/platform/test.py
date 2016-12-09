@@ -144,6 +144,7 @@ def gpu_device_name():
       return x.name()
   return ''
 
+
 _allowed_symbols = [
     # We piggy-back googletest documentation.
     'Benchmark',

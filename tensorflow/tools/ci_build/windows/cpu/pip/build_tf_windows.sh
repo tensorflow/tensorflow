@@ -32,26 +32,11 @@ set -e
 # This script is under <repo_root>/tensorflow/tools/ci_build/windows/cpu/pip/
 # Change into repository root.
 script_dir=$(dirname $0)
-cd ${script_dir%%tensorflow/tools/ci_build/windows/cpu/pip}
+cd ${script_dir%%tensorflow/tools/ci_build/windows/cpu/pip}.
 
-# Use a temporary directory with a short name.
-export TMPDIR="C:/tmp"
-
-# Set bash path
-export BAZEL_SH="C:/tools/msys64/usr/bin/bash"
-
-# Set Python path for ./configure
-export PYTHON_BIN_PATH="C:/Program Files/Anaconda3/python"
-
-# Set Python path for cc_configure.bzl
-export BAZEL_PYTHON="C:/Program Files/Anaconda3/python"
-
-# Set Visual Studio path
-export BAZEL_VS="C:/Program Files (x86)/Microsoft Visual Studio 14.0"
-
-# Add python into PATH, it's needed because gen_git_source.py uses
-# '/usr/bin/env python' as a shebang
-export PATH="/c/Program Files/Anaconda3:$PATH"
+# Setting up the environment variables Bazel and ./configure needs
+source "tensorflow/tools/ci_build/windows/cpu/bazel/common_env.sh" \
+  || { echo "Failed to source common_env.sh" >&2; exit 1; }
 
 # bazel clean --expunge doesn't work on Windows yet.
 # Clean the output base manually to ensure build correctness
@@ -63,11 +48,12 @@ bazel shutdown
 sleep 5
 rm -rf ${output_base}
 
+export TF_NEED_CUDA=0
 echo "" | ./configure
 
-bazel build -c opt --cpu=x64_windows_msvc --host_cpu=x64_windows_msvc\
-    --copt="/w" --verbose_failures --experimental_ui\
-      tensorflow/tools/pip_package:build_pip_package || exit $?
+BUILD_OPTS='-c opt --cpu=x64_windows_msvc --host_cpu=x64_windows_msvc --copt=/w --verbose_failures --experimental_ui'
 
+bazel build $BUILD_OPTS tensorflow/tools/pip_package:build_pip_package || exit $?
 
 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package $PWD
+
