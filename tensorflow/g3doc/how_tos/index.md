@@ -135,6 +135,15 @@ retraining a new model.
 
 [View Tutorial](../how_tos/image_retraining/index.md)
 
+## How to use the TensorFlow Debugger
+
+The TensorFlow Debugger (tfdbg) is a specialized debugger for TensorFlow
+models. It provides visibility into the internal structure and state of running
+TensorFlow graphs. Using the command-line interface of tfdbg, you can debug
+model bugs and issues with fewer code changes and more insight.
+
+[View Tutorial](../how_tos/debugger/index.md)
+
 ## How to Export and Import a Model
 
 This tutorial describes how to export everything pertaining to a running

@@ -292,10 +292,8 @@ Status DebugGrpcChannel::Close() {
 
   reader_writer_->WritesDone();
   if (reader_writer_->Finish().ok()) {
-    std::cout << "Finish() returned ok status" << std::endl;  // DEBUG
     return Status::OK();
   } else {
-    std::cout << "Finish() returned non-ok status" << std::endl;  // DEBUG
     return Status(error::FAILED_PRECONDITION,
                   "Failed to close debug GRPC stream.");
   }

@@ -29,6 +29,7 @@ from tensorflow.python.debug.cli import analyzer_cli
 from tensorflow.python.debug.cli import cli_shared
 from tensorflow.python.debug.cli import curses_ui
 from tensorflow.python.debug.cli import debugger_cli_common
+from tensorflow.python.debug.cli import stepper_cli
 from tensorflow.python.debug.wrappers import framework
 
 
@@ -497,3 +498,70 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
                                                     fetches,
                                                     feed_dict,
                                                     self._tensor_filters)
+
+  def invoke_node_stepper(self,
+                          node_stepper,
+                          restore_variable_values_on_exit=True):
+    """Overrides method in base class to implement interactive node stepper.
+
+    Args:
+      node_stepper: (stepper.NodeStepper) The underlying NodeStepper API object.
+      restore_variable_values_on_exit: (bool) Whether any variables whose values
+        have been altered during this node-stepper invocation should be restored
+        to their old values when this invocation ends.
+
+    Returns:
+      The same return values as the `Session.run()` call on the same fetches as
+        the NodeStepper.
+    """
+
+    stepper = stepper_cli.NodeStepperCLI(node_stepper)
+
+    # On exiting the node-stepper CLI, the finalize method of the node_stepper
+    # object will be called, ensuring that the state of the graph will be the
+    # same as if the stepping did not happen.
+    # TODO(cais): Perhaps some users will want the effect of the interactive
+    # stepping and value injection to persist. When that happens, make the call
+    # to finalize optional.
+    stepper_ui = curses_ui.CursesUI(
+        on_ui_exit=(node_stepper.restore_variable_values
+                    if restore_variable_values_on_exit else None))
+
+    stepper_ui.register_command_handler(
+        "list_sorted_nodes",
+        stepper.list_sorted_nodes,
+        stepper.arg_parsers["list_sorted_nodes"].format_help(),
+        prefix_aliases=["lt", "lsn"])
+    stepper_ui.register_command_handler(
+        "cont",
+        stepper.cont,
+        stepper.arg_parsers["cont"].format_help(),
+        prefix_aliases=["ct", "c"])
+    stepper_ui.register_command_handler(
+        "step",
+        stepper.step,
+        stepper.arg_parsers["step"].format_help(),
+        prefix_aliases=["st", "s"])
+    stepper_ui.register_command_handler(
+        "print_tensor",
+        stepper.print_tensor,
+        stepper.arg_parsers["print_tensor"].format_help(),
+        prefix_aliases=["pt"])
+    stepper_ui.register_command_handler(
+        "inject_value",
+        stepper.inject_value,
+        stepper.arg_parsers["inject_value"].format_help(),
+        prefix_aliases=["inject", "override_value", "override"])
+
+    # Register tab completion candidates.
+    stepper_ui.register_tab_comp_context([
+        "cont", "ct", "c", "pt", "inject_value", "inject", "override_value",
+        "override"
+    ], [str(elem) for elem in node_stepper.sorted_nodes()])
+    # TODO(cais): Tie up register_tab_comp_context to a single alias to shorten
+    # calls like this.
+
+    return stepper_ui.run_ui(
+        init_command="lt",
+        title="Node Stepper: " + self._run_description,
+        title_color="blue_on_white")

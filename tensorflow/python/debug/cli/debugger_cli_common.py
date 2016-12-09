@@ -188,6 +188,10 @@ class RichTextLines(object):
       else:
         self._annotations[key] = other.annotations[key]
 
+  # TODO(cais): Add method append of the signature:
+  #   def append_line(line, line_font_attr_segs)
+  # and refactor usage in stepper_cli.py.
+
 
 def regex_find(orig_screen_output, regex, font_attr):
   """Perform regex match in rich text lines.

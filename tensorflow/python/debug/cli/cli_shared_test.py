@@ -23,6 +23,7 @@ from tensorflow.python.debug.cli import cli_shared
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
@@ -34,6 +35,9 @@ class GetRunStartIntroAndDescriptionTest(test_util.TensorFlowTestCase):
     self.const_a = constant_op.constant(11.0, name="a")
     self.const_b = constant_op.constant(22.0, name="b")
     self.const_c = constant_op.constant(33.0, name="c")
+
+    self.sparse_d = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [1, 1]], values=[1.0, 2.0], dense_shape=[3, 3])
 
   def tearDown(self):
     ops.reset_default_graph()
@@ -65,6 +69,10 @@ class GetRunStartIntroAndDescriptionTest(test_util.TensorFlowTestCase):
     # Verify short description.
     description = cli_shared.get_run_short_description(12, self.const_a, None)
     self.assertEqual("run #12: 1 fetch (a:0); 0 feeds", description)
+
+  def testSparseTensorAsFetchShouldHandleNoNameAttribute(self):
+    run_start_intro = cli_shared.get_run_start_intro(1, self.sparse_d, None, {})
+    self.assertEqual(str(self.sparse_d), run_start_intro.lines[4].strip())
 
   def testTwoFetchesListNoFeeds(self):
     fetches = [self.const_a, self.const_b]
@@ -180,8 +188,8 @@ class GetRunStartIntroAndDescriptionTest(test_util.TensorFlowTestCase):
 
     # Verify the listed names of the tensor filters.
     filter_names = set()
-    filter_names.add(run_start_intro.lines[20].split(" ")[-1])
-    filter_names.add(run_start_intro.lines[21].split(" ")[-1])
+    filter_names.add(run_start_intro.lines[22].split(" ")[-1])
+    filter_names.add(run_start_intro.lines[23].split(" ")[-1])
 
     self.assertEqual({"filter_a", "filter_b"}, filter_names)
 
