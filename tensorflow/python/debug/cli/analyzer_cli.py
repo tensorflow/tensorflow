@@ -27,13 +27,12 @@ import argparse
 import copy
 import re
 
-import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.debug import debug_data
+from tensorflow.python.debug.cli import cli_shared
 from tensorflow.python.debug.cli import command_parser
 from tensorflow.python.debug.cli import debugger_cli_common
-from tensorflow.python.debug.cli import tensor_format
 
 
 # String constants for the depth-dependent hanging indent at the beginning
@@ -68,10 +67,6 @@ class DebugAnalyzer(object):
 
     # Argument parsers for command handlers.
     self._arg_parsers = {}
-
-    # Default threshold number of elements above which ellipses will be used
-    # when printing the value of the tensor.
-    self.default_ndarray_display_threshold = 2000
 
     # Parser for list_tensors.
     ap = argparse.ArgumentParser(
@@ -222,11 +217,6 @@ class DebugAnalyzer(object):
 
     # TODO(cais): Implement list_nodes.
 
-  def _error(self, msg):
-    full_msg = "ERROR: " + msg
-    return debugger_cli_common.RichTextLines(
-        [full_msg], font_attr_segs={0: [(0, len(full_msg), "red")]})
-
   def add_tensor_filter(self, filter_name, filter_callable):
     """Add a tensor filter.
 
@@ -329,7 +319,7 @@ class DebugAnalyzer(object):
       try:
         filter_callable = self.get_tensor_filter(parsed.tensor_filter)
       except ValueError:
-        return self._error(
+        return cli_shared.error(
             "There is no tensor filter named \"%s\"." % parsed.tensor_filter)
 
       data_to_show = self._debug_dump.find(filter_callable)
@@ -392,7 +382,7 @@ class DebugAnalyzer(object):
         parsed.node_name)
 
     if not self._debug_dump.node_exists(node_name):
-      return self._error(
+      return cli_shared.error(
           "There is no node named \"%s\" in the partition graphs" % node_name)
 
     # TODO(cais): Provide UI glossary feature to explain to users what the
@@ -487,24 +477,19 @@ class DebugAnalyzer(object):
       np_printoptions = {}
 
     # Determine if any range-highlighting is required.
-    highlight_options = self._parse_ranges_highlight(parsed.ranges)
+    highlight_options = cli_shared.parse_ranges_highlight(parsed.ranges)
 
-    # Determine if there parsed.tensor_name contains any indexing (slicing).
-    if parsed.tensor_name.count("[") == 1 and parsed.tensor_name.endswith("]"):
-      tensor_name = parsed.tensor_name[:parsed.tensor_name.index("[")]
-      tensor_slicing = parsed.tensor_name[parsed.tensor_name.index("["):]
-    else:
-      tensor_name = parsed.tensor_name
-      tensor_slicing = ""
+    tensor_name, tensor_slicing = (
+        command_parser.parse_tensor_name_with_slicing(parsed.tensor_name))
 
     node_name, output_slot = debug_data.parse_node_or_tensor_name(tensor_name)
     if output_slot is None:
-      return self._error("\"%s\" is not a valid tensor name" %
-                         parsed.tensor_name)
+      return cli_shared.error("\"%s\" is not a valid tensor name" %
+                              parsed.tensor_name)
 
     if (self._debug_dump.loaded_partition_graphs and
         not self._debug_dump.node_exists(node_name)):
-      return self._error(
+      return cli_shared.error(
           "Node \"%s\" does not exist in partition graphs" % node_name)
 
     watch_keys = self._debug_dump.debug_watch_keys(node_name)
@@ -520,12 +505,12 @@ class DebugAnalyzer(object):
 
     if not matching_data:
       # No dump for this tensor.
-      return self._error(
+      return cli_shared.error(
           "Tensor \"%s\" did not generate any dumps." % parsed.tensor_name)
     elif len(matching_data) == 1:
       # There is only one dump for this tensor.
       if parsed.number <= 0:
-        return self._format_tensor(
+        return cli_shared.format_tensor(
             matching_data[0].get_tensor(),
             matching_data[0].watch_key,
             np_printoptions,
@@ -533,7 +518,7 @@ class DebugAnalyzer(object):
             tensor_slicing=tensor_slicing,
             highlight_options=highlight_options)
       else:
-        return self._error(
+        return cli_shared.error(
             "Invalid number (%d) for tensor %s, which generated one dump." %
             (parsed.number, parsed.tensor_name))
     else:
@@ -556,12 +541,12 @@ class DebugAnalyzer(object):
 
         return debugger_cli_common.RichTextLines(lines)
       elif parsed.number >= len(matching_data):
-        return self._error(
+        return cli_shared.error(
             "Specified number (%d) exceeds the number of available dumps "
             "(%d) for tensor %s" %
             (parsed.number, len(matching_data), parsed.tensor_name))
       else:
-        return self._format_tensor(
+        return cli_shared.format_tensor(
             matching_data[parsed.number].get_tensor(),
             matching_data[parsed.number].watch_key + " (dump #%d)" %
             parsed.number,
@@ -569,90 +554,6 @@ class DebugAnalyzer(object):
             print_all=parsed.print_all,
             tensor_slicing=tensor_slicing,
             highlight_options=highlight_options)
-
-  def _parse_ranges_highlight(self, ranges_string):
-    """Process ranges highlight string.
-
-    Args:
-      ranges_string: (str) A string representing a numerical range of a list of
-        numerical ranges. See the help info of the -r flag of the print_tensor
-        command for more details.
-
-    Returns:
-      An instance of tensor_format.HighlightOptions, if range_string is a valid
-        representation of a range or a list of ranges.
-    """
-
-    ranges = None
-
-    def ranges_filter(x):
-      r = np.zeros(x.shape, dtype=bool)
-      for rng_start, rng_end in ranges:
-        r = np.logical_or(r, np.logical_and(x >= rng_start, x <= rng_end))
-
-      return r
-
-    if ranges_string:
-      ranges = command_parser.parse_ranges(ranges_string)
-      return tensor_format.HighlightOptions(
-          ranges_filter, description=ranges_string)
-    else:
-      return None
-
-  def _format_tensor(self,
-                     tensor,
-                     watch_key,
-                     np_printoptions,
-                     print_all=False,
-                     tensor_slicing=None,
-                     highlight_options=None):
-    """Generate formatted str to represent a tensor or its slices.
-
-    Args:
-      tensor: (numpy ndarray) The tensor value.
-      watch_key: (str) Tensor debug watch key.
-      np_printoptions: (dict) Numpy tensor formatting options.
-      print_all: (bool) Whether the tensor is to be displayed in its entirety,
-        instead of printing ellipses, even if its number of elements exceeds
-        the default numpy display threshold.
-        (Note: Even if this is set to true, the screen output can still be cut
-         off by the UI frontend if it consist of more lines than the frontend
-         can handle.)
-      tensor_slicing: (str or None) Slicing of the tensor, e.g., "[:, 1]". If
-        None, no slicing will be performed on the tensor.
-      highlight_options: (tensor_format.HighlightOptions) options to highlight
-        elements of the tensor. See the doc of tensor_format.format_tensor()
-        for more details.
-
-    Returns:
-      (str) Formatted str representing the (potentially sliced) tensor.
-
-    Raises:
-      ValueError: If tehsor_slicing is not a valid numpy ndarray slicing str.
-    """
-
-    if tensor_slicing:
-      # Validate the indexing.
-      if not command_parser.validate_slicing_string(tensor_slicing):
-        raise ValueError("Invalid tensor-slicing string.")
-
-      value = eval("tensor" + tensor_slicing)  # pylint: disable=eval-used
-      sliced_name = watch_key + tensor_slicing
-    else:
-      value = tensor
-      sliced_name = watch_key
-
-    if print_all:
-      np_printoptions["threshold"] = value.size
-    else:
-      np_printoptions["threshold"] = self.default_ndarray_display_threshold
-
-    return tensor_format.format_tensor(
-        value,
-        sliced_name,
-        include_metadata=True,
-        np_printoptions=np_printoptions,
-        highlight_options=highlight_options)
 
   def list_outputs(self, args, screen_info=None):
     """Command handler for inputs.
@@ -729,7 +630,7 @@ class DebugAnalyzer(object):
 
     # Check if node exists.
     if not self._debug_dump.node_exists(node_name):
-      return self._error(
+      return cli_shared.error(
           "There is no node named \"%s\" in the partition graphs" % node_name)
 
     if recursive:

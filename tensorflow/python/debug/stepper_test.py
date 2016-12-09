@@ -412,6 +412,23 @@ class StepperTestWithPlaceHolders(test_util.TensorFlowTestCase):
   def tearDown(self):
     tf.reset_default_graph()
 
+  def testGetTensorValueWorksOnPlaceholder(self):
+    stepper = NodeStepper(
+        self.sess,
+        self.y,
+        feed_dict={
+            self.ph0: [[1.0, 2.0], [-3.0, 5.0]],
+            self.ph1: [[-1.0], [0.5]]
+        })
+
+    self.assertAllClose(
+        [[1.0, 2.0], [-3.0, 5.0]], stepper.get_tensor_value("ph0"))
+    self.assertAllClose(
+        [[1.0, 2.0], [-3.0, 5.0]], stepper.get_tensor_value("ph0:0"))
+    with self.assertRaisesRegexp(
+        KeyError, r"The name 'ph0:1' refers to a Tensor which does not exist"):
+      stepper.get_tensor_value("ph0:1")
+
   def testIsPlaceholdersShouldGiveCorrectAnswers(self):
     stepper = NodeStepper(self.sess, self.y)
 
@@ -693,6 +710,18 @@ class StepperBackwardRunTest(test_util.TensorFlowTestCase):
     self.assertAllClose(1.0, self.sess.run(self.a))
     self.assertAllClose(1.84, self.sess.run(self.b))
     self.assertAllClose(4.0, self.sess.run(self.c))
+
+  def testRestoreVariableValues(self):
+    """Test restore_variable_values() restores the old values of variables."""
+
+    stepper = NodeStepper(self.sess, "optim")
+
+    stepper.cont("optim/update_b/ApplyGradientDescent",
+                 restore_variable_values=True)
+    self.assertAllClose(1.84, self.sess.run(self.b))
+
+    stepper.restore_variable_values()
+    self.assertAllClose(2.0, self.sess.run(self.b))
 
   def testFinalize(self):
     """Test finalize() to restore variables and run the original fetch."""

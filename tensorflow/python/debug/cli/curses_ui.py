@@ -62,6 +62,7 @@ class CursesUI(object):
       "green": curses.COLOR_GREEN,
       "yellow": curses.COLOR_YELLOW,
       "blue": curses.COLOR_BLUE,
+      "cyan": curses.COLOR_CYAN,
       "magenta": curses.COLOR_MAGENTA,
       "black": curses.COLOR_BLACK,
   }
@@ -76,7 +77,13 @@ class CursesUI(object):
   _ERROR_TOAST_COLOR_PAIR = "red_on_white"
   _STATUS_BAR_COLOR_PAIR = "black_on_white"
 
-  def __init__(self):
+  def __init__(self, on_ui_exit=None):
+    """Constructor of CursesUI.
+
+    Args:
+      on_ui_exit: (Callable) Callback invoked when the UI exits.
+    """
+
     self._screen_init()
     self._screen_refresh_size()
     # TODO(cais): Error out if the size of the screen is too small.
@@ -125,6 +132,9 @@ class CursesUI(object):
 
     # Register signal handler for SIGINT.
     signal.signal(signal.SIGINT, self._interrupt_handler)
+
+    # Configurable callbacks.
+    self._on_ui_exit = on_ui_exit
 
   def _init_layout(self):
     """Initialize the layout of UI components.
@@ -271,6 +281,9 @@ class CursesUI(object):
 
     # CLI main loop.
     exit_token = self._ui_loop()
+
+    if self._on_ui_exit:
+      self._on_ui_exit()
 
     self._screen_terminate()
 
@@ -1031,7 +1044,8 @@ class CursesUI(object):
     # Examine whether the index information is available for the specified line
     # number.
     pointer = self._output_pad_row + line_index
-    if pointer in self._curr_wrapped_output.annotations:
+    if (pointer in self._curr_wrapped_output.annotations and
+        "i0" in self._curr_wrapped_output.annotations[pointer]):
       indices = self._curr_wrapped_output.annotations[pointer]["i0"]
 
       array_indices_str = self._format_indices(indices)
