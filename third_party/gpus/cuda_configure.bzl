@@ -695,6 +695,7 @@ def _create_cuda_repository(repository_ctx):
        "crosstool:clang/bin/crosstool_wrapper_driver_is_not_gcc",
        {
            "%{cpu_compiler}": str(cc),
+           "%{cuda_version}": cuda_config.cuda_version,
            "%{gcc_host_compiler_path}": str(cc),
            "%{cuda_compute_capabilities}": ", ".join(
                ["\"%s\"" % c for c in cuda_config.compute_capabilities]),
