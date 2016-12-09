@@ -3,8 +3,8 @@
 Performs beam search decoding on the logits given in input.
 
 **Note** The `ctc_greedy_decoder` is a special case of the
-`ctc_beam_search_decoder` with `top_paths=1` (but that decoder is faster
-for this special case).
+`ctc_beam_search_decoder` with `top_paths=1` and `beam_width=1` (but
+that decoder is faster for this special case).
 
 If `merge_repeated` is `True`, merge repeated classes in the output beams.
 This means that if consecutive entries in a beam are the same,

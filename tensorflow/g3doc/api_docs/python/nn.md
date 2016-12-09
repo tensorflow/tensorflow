@@ -2469,10 +2469,11 @@ tensor. The returned tensor has shape `shape(ids) + shape(params)[1:]`.
 ##### Args:
 
 
-*  <b>`params`</b>: A list of tensors with the same type and which can be concatenated
-    along dimension 0. Alternatively, a `PartitionedVariable`, created by
-    partitioning along dimension 0.  Each element must be appropriately sized
-    for the given `partition_strategy`.
+*  <b>`params`</b>: A single tensor representing the complete embedding tensor,
+    or a list of P tensors all of same shape except for the first dimension,
+    representing sharded embedding tensors.  Alternatively, a
+    `PartitionedVariable`, created by partitioning along dimension 0. Each
+    element must be appropriately sized for the given `partition_strategy`.
 *  <b>`ids`</b>: A `Tensor` with type `int32` or `int64` containing the ids to be looked
     up in `params`.
 *  <b>`partition_strategy`</b>: A string specifying the partitioning strategy, relevant
@@ -2512,7 +2513,8 @@ is the sum of the size of params along dimension 0.
 *  <b>`params`</b>: A single tensor representing the complete embedding tensor,
     or a list of P tensors all of same shape except for the first dimension,
     representing sharded embedding tensors.  Alternatively, a
-    `PartitionedVariable`, created by partitioning along dimension 0.
+    `PartitionedVariable`, created by partitioning along dimension 0. Each
+    element must be appropriately sized for the given `partition_strategy`.
 *  <b>`sp_ids`</b>: N x M SparseTensor of int64 ids (typically from FeatureValueToId),
     where N is typically batch size and M is arbitrary.
 *  <b>`sp_weights`</b>: either a SparseTensor of float / double weights, or None to
@@ -3257,8 +3259,8 @@ is the blank label) becomes
 Performs beam search decoding on the logits given in input.
 
 **Note** The `ctc_greedy_decoder` is a special case of the
-`ctc_beam_search_decoder` with `top_paths=1` (but that decoder is faster
-for this special case).
+`ctc_beam_search_decoder` with `top_paths=1` and `beam_width=1` (but
+that decoder is faster for this special case).
 
 If `merge_repeated` is `True`, merge repeated classes in the output beams.
 This means that if consecutive entries in a beam are the same,

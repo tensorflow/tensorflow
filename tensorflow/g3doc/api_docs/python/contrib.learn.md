@@ -729,17 +729,17 @@ Trains a model given training data `x` predictions and `y` labels.
 ##### Args:
 
 
-*  <b>`x`</b>: Matrix of shape [n_samples, n_features...]. Can be iterator that
-     returns arrays of features. The training input samples for fitting the
-     model. If set, `input_fn` must be `None`.
-*  <b>`y`</b>: Vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-     iterator that returns array of labels. The training label values
-     (class labels in classification, real numbers in regression). If set,
-     `input_fn` must be `None`. Note: For classification, label values must
+*  <b>`x`</b>: Matrix of shape [n_samples, n_features...] or the dictionary of Matrices.
+     Can be iterator that returns arrays of features or dictionary of arrays of features.
+     The training input samples for fitting the model. If set, `input_fn` must be `None`.
+*  <b>`y`</b>: Vector or matrix [n_samples] or [n_samples, n_outputs] or the dictionary of same.
+     Can be iterator that returns array of labels or dictionary of array of labels.
+     The training label values (class labels in classification, real numbers in regression).
+     If set, `input_fn` must be `None`. Note: For classification, label values must
      be integers representing the class index (i.e. values from 0 to
      n_classes-1).
 *  <b>`input_fn`</b>: Input function returning a tuple of:
-      features - Dictionary of string feature name to `Tensor` or `Tensor`.
+      features - `Tensor` or dictionary of string feature name to `Tensor`.
       labels - `Tensor` or dictionary of `Tensor` with labels.
     If input_fn is set, `x`, `y`, and `batch_size` must be `None`.
 *  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
@@ -791,12 +791,14 @@ for which this evaluation was performed.
 ##### Args:
 
 
-*  <b>`x`</b>: Matrix of shape [n_samples, n_features...] containing the input samples
-     for fitting the model. Can be iterator that returns arrays of features.
-     If set, `input_fn` must be `None`.
+*  <b>`x`</b>: Matrix of shape [n_samples, n_features...] or dictionary of many matrices
+     containing the input samples for fitting the model. Can be iterator that returns
+     arrays of features or dictionary of array of features. If set, `input_fn` must
+     be `None`.
 *  <b>`y`</b>: Vector or matrix [n_samples] or [n_samples, n_outputs] containing the
      label values (class labels in classification, real numbers in
-     regression). Can be iterator that returns array of labels. If set,
+     regression) or dictionary of multiple vectors/matrices. Can be iterator
+     that returns array of targets or dictionary of array of targets. If set,
      `input_fn` must be `None`. Note: For classification, label values must
      be integers representing the class index (i.e. values from 0 to
      n_classes-1).
