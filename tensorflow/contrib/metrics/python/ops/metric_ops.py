@@ -1353,20 +1353,15 @@ def streaming_sparse_precision_at_top_k(top_k_predictions,
   default_name = _at_k_name('precision', class_id=class_id)
   with ops.name_scope(
       name, default_name,
-      (top_k_predictions, labels, weights)) as scope:
-    rank = array_ops.rank(top_k_predictions)
-    check_rank_op = control_flow_ops.Assert(
-        math_ops.greater_equal(rank, 2),
-        ['top_k_predictions must have rank 2 or higher, e.g. [batch_size, k].'])
-    with ops.control_dependencies([check_rank_op]):
-      return _streaming_sparse_precision_at_k(
-          top_k_idx=top_k_predictions,
-          labels=labels,
-          class_id=class_id,
-          weights=weights,
-          metrics_collections=metrics_collections,
-          updates_collections=updates_collections,
-          name=scope)
+      (top_k_predictions, labels, weights)) as name_scope:
+    return _streaming_sparse_precision_at_k(
+        top_k_idx=top_k_predictions,
+        labels=labels,
+        class_id=class_id,
+        weights=weights,
+        metrics_collections=metrics_collections,
+        updates_collections=updates_collections,
+        name=name_scope)
 
 
 def num_relevant(labels, k):
