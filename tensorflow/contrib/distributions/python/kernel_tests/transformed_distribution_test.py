@@ -24,6 +24,7 @@ import tensorflow as tf
 
 bijectors = tf.contrib.distributions.bijector
 distributions = tf.contrib.distributions
+linalg = tf.contrib.linalg
 
 
 class _ChooseLocation(bijectors.Bijector):
@@ -136,6 +137,27 @@ class TransformedDistributionTest(tf.test.TestCase):
                           tf.shape(multi_logit_normal.sample([1, 2, 3])).eval())
       self.assertAllEqual([2], multi_logit_normal.get_event_shape())
       self.assertAllEqual([2], multi_logit_normal.event_shape().eval())
+
+  def testEntropy(self):
+    with self.test_session():
+      shift = np.array([[-1, 0, 1],
+                        [-1, -2, -3]], dtype=np.float32)
+      diag = np.array([[1, 2, 3],
+                       [2, 3, 2]], dtype=np.float32)
+      actual_mvn = distributions.MultivariateNormalDiag(
+          shift, diag, validate_args=True)
+      fake_mvn = distributions.TransformedDistribution(
+          distributions.MultivariateNormalDiag(
+              tf.zeros_like(shift),
+              tf.ones_like(diag),
+              validate_args=True),
+          bijectors.AffineLinearOperator(
+              shift,
+              scale=linalg.LinearOperatorDiag(diag, is_non_singular=True),
+              validate_args=True),
+          validate_args=True)
+      self.assertAllClose(actual_mvn.entropy().eval(),
+                          fake_mvn.entropy().eval())
 
 
 if __name__ == "__main__":

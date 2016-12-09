@@ -271,3 +271,17 @@ class TransformedDistribution(distributions.Distribution):
     distribution_kwargs = distribution_kwargs or {}
     x = self.bijector.inverse(y, **bijector_kwargs)
     return self.distribution.survival_function(x, **distribution_kwargs)
+
+  def _entropy(self):
+    if (not self.distribution.is_continuous or
+        not self.bijector.is_constant_jacobian):
+      raise NotImplementedError("entropy is not implemented")
+    # Suppose Y = g(X) where g is a diffeomorphism and X is a continuous rv. It
+    # can be shown that:
+    #   H[Y] = H[X] + E_X[(log o det o Jacobian o g)(X)].
+    # If is_constant_jacobian then:
+    #   E_X[(log o det o Jacobian o g)(X)] = (log o det o Jacobian o g)(c)
+    # where c can by anything.
+    dummy = 0.
+    return (self.distribution.entropy() -
+            self.bijector.inverse_log_det_jacobian(dummy))
