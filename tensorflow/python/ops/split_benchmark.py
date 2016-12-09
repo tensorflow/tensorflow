@@ -25,7 +25,7 @@ from tensorflow.python.platform import tf_logging as logging
 
 
 def build_graph(device, input_shape, output_sizes, axis):
-  """Build a graph containing a sequence of batch normalizations.
+  """Build a graph containing a sequence of split_v and group operations.
 
   Args:
     device: string, the device to run on.
