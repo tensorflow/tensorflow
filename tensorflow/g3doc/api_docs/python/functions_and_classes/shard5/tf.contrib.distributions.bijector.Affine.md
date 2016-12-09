@@ -67,7 +67,7 @@ b = Affine(
 ```
 - - -
 
-#### `tf.contrib.distributions.bijector.Affine.__init__(shift, scale_identity_multiplier=1.0, scale_diag=None, scale_tril=None, scale_perturb_diag=None, scale_perturb_factor=None, event_ndims=0, validate_args=False, name='affine')` {#Affine.__init__}
+#### `tf.contrib.distributions.bijector.Affine.__init__(shift, scale_identity_multiplier=None, scale_diag=None, scale_tril=None, scale_perturb_diag=None, scale_perturb_factor=None, event_ndims=0, validate_args=False, name='affine')` {#Affine.__init__}
 
 Instantiates the `Affine` bijector.
 
