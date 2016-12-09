@@ -118,7 +118,6 @@ import sys
 # pylint: disable=unused-import,wildcard-import
 from tensorflow.contrib.layers.python.layers import *
 from tensorflow.contrib.layers.python.ops import sparse_ops
-from tensorflow.contrib.layers.python.ops.layer_norm_fused import layer_norm_fused_op
 
 from tensorflow.python.util.all_util import make_all
 # pylint: enable=unused-import,wildcard-import

@@ -26,7 +26,6 @@ import tensorflow as tf
 _layer_norm_fused_op = loader.load_op_library(
     resource_loader.get_path_to_datafile("_layer_norm_fused_op.so"))
 
-
 @ops.RegisterGradient("LayerNormCustom")
 def _LayerNormCustomGrad(op, grad):
     return [_layer_norm_fused_op.layer_norm_backprop_custom(

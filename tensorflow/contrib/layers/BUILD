@@ -77,13 +77,12 @@ tf_custom_op_library(
         "ln_kernels/layer_norm_fused_op.cc",
         "ln_kernels/layer_norm_fused_op.h",
         "ln_kernels/layer_norm_fused_grad_op.cc",
-        "ops/layer_norm_fused_ops.cc",
+        "ops/layer_norm_fused_op.cc",
         ],
     gpu_srcs = [
         "ln_kernels/layer_norm_fused_op_gpu.cu.cc",
         "ln_kernels/layer_norm_fused_op.h",
         ],
-
 )
 
 tf_gen_op_libs(
@@ -130,6 +129,18 @@ cuda_py_test(
     name = "layers_test",
     size = "medium",
     srcs = ["python/layers/layers_test.py"],
+    additional_deps = [
+        ":layers_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
+    name = "layer_norm_fused_test",
+    size = "medium",
+    srcs = ["python/layers/layer_norm_fused_test.py"],
     additional_deps = [
         ":layers_py",
         "//tensorflow:tensorflow_py",

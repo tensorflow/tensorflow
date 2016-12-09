@@ -27,7 +27,7 @@ from tensorflow.contrib.framework.python.ops import add_arg_scope
 from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.layers.python.layers import initializers
 from tensorflow.contrib.layers.python.layers import utils
-from tensorflow.contrib.layers.python.ops import layer_norm_fused_op
+from tensorflow.contrib.layers.python.ops.layer_norm_fused_op import layer_norm_fused_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -1603,7 +1603,7 @@ def layer_norm_fused(inputs,
                 'gamma',
                 shape=params_shape,
                 dtype=dtype,
-                initializer=init_ops.ones_initializer,
+                initializer=init_ops.ones_initializer(),
                 collections=gamma_collections,
                 trainable=trainable)
 
