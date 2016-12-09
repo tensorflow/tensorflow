@@ -416,24 +416,38 @@ REGISTER_OP("SplitV")
     .Attr("T: type")
     .Attr("Tlen: {int32, int64} = DT_INT64")
     .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle unused;
+      DimensionHandle split_dimension;
+      TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(2, &split_dimension));
       int32 num_outputs = c->num_outputs();
-      // Return unknown shapes with the same rank as the input
-      // or unknown rank if input's rank isn't known
-      // can't determine exact shapes until runtime because
-      // we don't know where the tensor containing the split sizes
-      // is located
-      int32 rank = c->Rank(c->input(0));
+      // Return unknown shapes if input's rank, split dimension or tensor
+      // containing the split sizes aren't known. If we know the tensor
+      // containing size splits, then determine the output shape.
+      ShapeHandle input = c->input(0);
+      int32 rank = c->Rank(input);
       ShapeHandle output_shape;
+      const Tensor* size_splits = c->input_tensor(1);
       if (rank == InferenceContext::kUnknownRank) {
         output_shape = c->UnknownShape();
+        for (int i = 0; i < num_outputs; ++i) {
+          c->set_output(i, output_shape);
+        }
       } else if (rank == 0) {
         return errors::InvalidArgument("Can't split scalars");
-      } else {
+      } else if (size_splits == nullptr || !c->ValueKnown(split_dimension)) {
         output_shape = c->UnknownShapeOfRank(rank);
-      }
-      for (int i = 0; i < num_outputs; ++i) {
-        c->set_output(i, output_shape);
+        for (int i =0; i < num_outputs; ++i) {
+          c->set_output(i, output_shape);
+        }
+      } else {
+        int64 split_dim = c->Value(split_dimension);
+        TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, split_dim + 1, &input));
+        auto vec = size_splits->vec<int32>();
+        for (int i = 0; i < num_outputs; ++i) {
+          output_shape = c->UnknownShapeOfRank(rank);
+          TF_RETURN_IF_ERROR(
+              c->ReplaceDim(input, split_dim, c->MakeDim(vec(i)), &output_shape));
+          c->set_output(i, output_shape);
+        }
       }
 
       return Status::OK();
