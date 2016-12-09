@@ -185,7 +185,7 @@ def distorted_inputs(data_dir, batch_size):
 
   # Set the shapes of tensors.
   float_image.set_shape([height, width, 3])
-  read_input.label.set_shape([batch_size])
+  read_input.label.set_shape([1])
 
   # Ensure that the random shuffling has good mixing properties.
   min_fraction_of_examples_in_queue = 0.4
