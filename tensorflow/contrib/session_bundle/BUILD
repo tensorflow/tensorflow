@@ -48,23 +48,24 @@ py_library(
     ],
 )
 
-py_test(
-    name = "bundle_shim_py_test",
-    size = "small",
-    srcs = [
-        "bundle_shim_test.py",
-    ],
-    data = [
-        "//tensorflow/contrib/session_bundle/example:half_plus_two",
-        "//tensorflow/python/saved_model/example:saved_model_half_plus_two_data",
-    ],
-    main = "bundle_shim_test.py",
-    srcs_version = "PY2AND3",
-    tags = ["manual"],
-    deps = [
-        ":bundle_shim_py",
-    ],
-)
+# Reenable target once half_plus_two_data does not run TF during build.
+#py_test(
+#    name = "bundle_shim_py_test",
+#    size = "small",
+#    srcs = [
+#        "bundle_shim_test.py",
+#    ],
+#    data = [
+#        "//tensorflow/contrib/session_bundle/example:half_plus_two",
+#        "//tensorflow/python/saved_model/example:saved_model_half_plus_two_data",
+#    ],
+#    main = "bundle_shim_test.py",
+#    srcs_version = "PY2AND3",
+#    tags = ["manual"],
+#    deps = [
+#        ":bundle_shim_py",
+#    ],
+#)
 
 py_library(
     name = "constants",
