@@ -164,7 +164,7 @@ def sigmoid_cross_entropy_with_logits(logits, targets, name=None):
                         name=name)
 
 
-def weighted_cross_entropy_with_logits(logits, targets, pos_weight, name=None):
+def weighted_cross_entropy_with_logits(targets, logits, pos_weight, name=None):
   """Computes a weighted cross entropy.
 
   This is like `sigmoid_cross_entropy_with_logits()` except that `pos_weight`,
@@ -198,8 +198,8 @@ def weighted_cross_entropy_with_logits(logits, targets, pos_weight, name=None):
   `logits` and `targets` must have the same type and shape.
 
   Args:
-    logits: A `Tensor` of type `float32` or `float64`.
     targets: A `Tensor` of the same type and shape as `logits`.
+    logits: A `Tensor` of type `float32` or `float64`.
     pos_weight: A coefficient to use on the positive examples.
     name: A name for the operation (optional).
 
