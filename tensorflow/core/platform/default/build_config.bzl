@@ -182,3 +182,6 @@ def tf_additional_lib_deps():
   if WITH_HDFS_SUPPORT:
     deps.append("//tensorflow/core/platform/hadoop:hadoop_file_system")
   return deps
+
+def tf_additional_plugin_deps():
+  return []
