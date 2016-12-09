@@ -29,10 +29,10 @@
 set -x
 set -e
 
-# This script is under <repo_root>/tensorflow/tools/ci_build/windows/cpu/pip/
+# This script is under <repo_root>/tensorflow/tools/ci_build/windows/cpu/bazel
 # Change into repository root.
 script_dir=$(dirname $0)
-cd ${script_dir%%tensorflow/tools/ci_build/windows/cpu/pip}.
+cd ${script_dir%%tensorflow/tools/ci_build/windows/gpu/bazel}.
 
 # Setting up the environment variables Bazel and ./configure needs
 source "tensorflow/tools/ci_build/windows/bazel/common_env.sh" \
@@ -44,26 +44,17 @@ source "tensorflow/tools/ci_build/windows/bazel/bazel_test_lib.sh" \
 
 clean_output_base
 
-run_configure_for_cpu_build
+run_configure_for_gpu_build
 
-bazel build -c opt $BUILD_OPTS tensorflow/tools/pip_package:build_pip_package || exit $?
+# Compliling the following test is extremely slow with -c opt
+slow_compiling_test="//tensorflow/core/kernels:eigen_backward_spatial_convolutions_test"
 
-# Create a python test directory to avoid package name conflict
-PY_TEST_DIR="py_test_dir"
-create_python_test_dir "${PY_TEST_DIR}"
-
-./bazel-bin/tensorflow/tools/pip_package/build_pip_package "$PWD/${PY_TEST_DIR}"
-
-# Running python tests on Windows needs pip package installed
-PIP_NAME=$(ls ${PY_TEST_DIR}/tensorflow-*.whl)
-reinstall_tensorflow_pip ${PIP_NAME}
-
-failing_cpu_py_tests=$(get_failing_cpu_py_tests ${PY_TEST_DIR})
-
-passing_tests=$(bazel query "kind(py_test,  //${PY_TEST_DIR}/tensorflow/python/...) - (${failing_cpu_py_tests})" |
+# Find all the passing cc_tests on Windows and store them in a variable
+passing_tests=$(bazel query "kind(cc_test, //tensorflow/cc/... + //tensorflow/core/...) - (${exclude_gpu_cc_tests}) - ($slow_compiling_test)" |
   # We need to strip \r so that the result could be store into a variable under MSYS
   tr '\r' ' ')
 
-# Define no_tensorflow_py_deps=true so that every py_test has no deps anymore,
-# which will result testing system installed tensorflow
-bazel test -c opt $BUILD_OPTS -k $passing_tests --define=no_tensorflow_py_deps=true --test_output=errors
+# TODO(pcloudy): There is a bug in Bazel preventing build with GPU support without -c opt
+# Re-enable this test after it is fixed.
+# bazel test --config=win-cuda $BUILD_OPTS -k $slow_compiling_test --test_output=errors
+bazel test -c opt --config=win-cuda $BUILD_OPTS -k $passing_tests --test_output=errors

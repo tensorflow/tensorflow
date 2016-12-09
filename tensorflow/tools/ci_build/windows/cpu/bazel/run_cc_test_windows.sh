@@ -46,8 +46,6 @@ clean_output_base
 
 run_configure_for_cpu_build
 
-BUILD_OPTS='--cpu=x64_windows_msvc --host_cpu=x64_windows_msvc --copt=/w --verbose_failures --experimental_ui'
-
 # Compliling the following test is extremely slow with -c opt
 slow_compiling_test="//tensorflow/core/kernels:eigen_backward_spatial_convolutions_test"
 
