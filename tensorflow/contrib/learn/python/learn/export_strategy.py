@@ -13,7 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Experiment class collecting information needed for a single training run."""
+"""ExportStrategy class that provides strategies to export model so later it
+can be used for TensorFlow serving."""
 
 from __future__ import absolute_import
 from __future__ import division
