@@ -11874,6 +11874,23 @@ op {
   description: "Given a tensor `x` and a tensor `y`, this operation computes \\\\(x^y\\\\) for\ncorresponding elements in `x` and `y`. For example:\n\n```\n# tensor \'x\' is [[2, 2]], [3, 3]]\n# tensor \'y\' is [[8, 16], [2, 3]]\ntf.pow(x, y) ==> [[256, 65536], [9, 27]]\n```"
 }
 op {
+  name: "PreventGradient"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "An identity op that triggers an error if a gradient is requested."
+  description: "When executed in a graph, this op outputs its input tensor as-is.\n\nWhen building ops to compute gradients, the TensorFlow gradient system\nwill return an error when trying to lookup the gradient of this op,\nbecause no gradient must ever be registered for this function.  This\nop exists to prevent subtle bugs from silently returning unimplemented\ngradients in some corner cases."
+}
+op {
   name: "Print"
   input_arg {
     name: "input"
