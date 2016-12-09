@@ -54,6 +54,10 @@ toolchain {
   # Use "-std=c++11" for nvcc. For consistency, force both the host compiler
   # and the device compiler to use "-std=c++11".
   cxx_flag: "-std=c++11"
+  # Some distributions set -as-needed by default; to allow static initializer
+  # based registry patterns with shared object, ensure -no-as-needed is
+  # explicitly passed.
+  linker_flag: "-Wl,-no-as-needed"
   linker_flag: "-lstdc++"
   linker_flag: "-B/usr/bin/"
 
