@@ -116,6 +116,7 @@ import abc
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug import debug_utils
+from tensorflow.python.debug import stepper
 from tensorflow.python.framework import errors
 
 
@@ -155,9 +156,9 @@ class OnSessionInitRequest(object):
 class OnSessionInitAction(object):
   """Enum-like values for possible action to take on session init."""
 
-  # Proceed, without special actions, in the wrapper session initializaton. What
-  # action the wrapper session performs next is determined by the caller of the
-  # wrapper session. E.g., it can call run().
+  # Proceed, without special actions, in the wrapper session initialization.
+  # What action the wrapper session performs next is determined by the caller
+  # of the wrapper session. E.g., it can call run().
   PROCEED = "proceed"
 
   # Instead of letting the caller of the wrapper session determine what actions
@@ -397,7 +398,13 @@ class BaseDebugWrapperSession(session.SessionInterface):
           client_graph_def=self._sess.graph.as_graph_def(),
           tf_error=tf_error)
 
-    elif run_start_resp.action == OnRunStartAction.NON_DEBUG_RUN:
+    elif (run_start_resp.action == OnRunStartAction.NON_DEBUG_RUN or
+          run_start_resp.action == OnRunStartAction.INVOKE_STEPPER):
+      if run_start_resp.action == OnRunStartAction.INVOKE_STEPPER:
+        retvals = self.invoke_node_stepper(
+            stepper.NodeStepper(self._sess, fetches, feed_dict),
+            restore_variable_values_on_exit=True)
+
       # Invoke run() method of the wrapped session.
       retvals = self._sess.run(
           fetches,
@@ -407,10 +414,6 @@ class BaseDebugWrapperSession(session.SessionInterface):
 
       # Prepare arg for the on-run-end callback.
       run_end_req = OnRunEndRequest(run_start_resp.action)
-    elif run_start_resp.action == OnRunStartAction.INVOKE_STEPPER:
-      # TODO(cais): Implement stepper loop.
-      raise NotImplementedError(
-          "OnRunStartAction INVOKE_STEPPER has not been implemented.")
     else:
       raise ValueError(
           "Invalid OnRunStartAction value: %s" % run_start_resp.action)
@@ -461,7 +464,6 @@ class BaseDebugWrapperSession(session.SessionInterface):
     Returns:
       An instance of OnSessionInitResponse.
     """
-    pass
 
   @abc.abstractmethod
   def on_run_start(self, request):
@@ -482,7 +484,6 @@ class BaseDebugWrapperSession(session.SessionInterface):
           with or without debug tensor watching, invoking the stepper.)
         2) debug URLs used to watch the tensors.
     """
-    pass
 
   @abc.abstractmethod
   def on_run_end(self, request):
@@ -499,7 +500,6 @@ class BaseDebugWrapperSession(session.SessionInterface):
     Returns:
       An instance of OnRunStartResponse.
     """
-    pass
 
   def __enter__(self):
     return self._sess.__enter__()
@@ -512,3 +512,21 @@ class BaseDebugWrapperSession(session.SessionInterface):
 
   # TODO(cais): Add _node_name_regex_whitelist and
   #   _node_op_type_regex_whitelist.
+
+  @abc.abstractmethod
+  def invoke_node_stepper(self,
+                          node_stepper,
+                          restore_variable_values_on_exit=True):
+    """Callback invoked when the client intends to step through graph nodes.
+
+    Args:
+      node_stepper: (stepper.NodeStepper) An instance of NodeStepper to be used
+        in this stepping session.
+      restore_variable_values_on_exit: (bool) Whether any variables whose values
+        have been altered during this node-stepper invocation should be restored
+        to their old values when this invocation ends.
+
+    Returns:
+      The same return values as the `Session.run()` call on the same fetches as
+        the NodeStepper.
+    """

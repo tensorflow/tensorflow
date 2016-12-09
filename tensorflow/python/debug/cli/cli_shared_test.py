@@ -188,8 +188,8 @@ class GetRunStartIntroAndDescriptionTest(test_util.TensorFlowTestCase):
 
     # Verify the listed names of the tensor filters.
     filter_names = set()
-    filter_names.add(run_start_intro.lines[20].split(" ")[-1])
-    filter_names.add(run_start_intro.lines[21].split(" ")[-1])
+    filter_names.add(run_start_intro.lines[22].split(" ")[-1])
+    filter_names.add(run_start_intro.lines[23].split(" ")[-1])
 
     self.assertEqual({"filter_a", "filter_b"}, filter_names)
 
