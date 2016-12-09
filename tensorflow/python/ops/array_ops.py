@@ -1119,7 +1119,7 @@ def boolean_mask(tensor, mask, name="boolean_mask"):
   ```python
   # 1-D example
   tensor = [0, 1, 2, 3]
-  mask = [True, False, True, False]
+  mask = np.array([True, False, True, False])
   boolean_mask(tensor, mask) ==> [0, 2]
   ```
 
@@ -1145,7 +1145,7 @@ def boolean_mask(tensor, mask, name="boolean_mask"):
   ```python
   # 2-D example
   tensor = [[1, 2], [3, 4], [5, 6]]
-  mask = [True, False, True]
+  mask = np.array([True, False, True])
   boolean_mask(tensor, mask) ==> [[1, 2], [5, 6]]
   ```
   """
@@ -1165,11 +1165,14 @@ def boolean_mask(tensor, mask, name="boolean_mask"):
       raise ValueError("mask cannot be scalar.")
     if ndims_mask is None:
       raise ValueError(
-          "mask dimensions must be specified, even if some dimensions are None"
-          ".  E.g. shape=[None] is ok, but shape=None is not.")
+          "Number of mask dimensions must be specified, even if some dimensions"
+          " are None.  E.g. shape=[None] is ok, but shape=None is not.")
     shape_tensor[:ndims_mask].assert_is_compatible_with(shape_mask)
 
-    tensor = reshape(tensor, concat(0, [[-1], shape(tensor)[ndims_mask:]]))
+    leading_size = gen_math_ops._prod(shape(tensor)[:ndims_mask], [0])
+    tensor = reshape(
+        tensor,
+        concat(0, [[leading_size], shape(tensor)[ndims_mask:]]))
     first_dim = shape_tensor[:ndims_mask].num_elements()
     tensor.set_shape(
         tensor_shape.as_shape([first_dim])
