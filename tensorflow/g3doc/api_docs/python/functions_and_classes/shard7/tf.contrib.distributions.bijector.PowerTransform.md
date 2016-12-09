@@ -150,6 +150,13 @@ Same meaning as `inverse_event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.bijector.PowerTransform.graph_parents` {#PowerTransform.graph_parents}
+
+Returns this `Bijector`'s graph_parents as a Python list.
+
+
+- - -
+
 #### `tf.contrib.distributions.bijector.PowerTransform.inverse(y, name='inverse', **condition_kwargs)` {#PowerTransform.inverse}
 
 Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
@@ -273,13 +280,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.PowerTransform.name` {#PowerTransform.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.PowerTransform.parameters` {#PowerTransform.parameters}
-
-Returns this `Bijector`'s parameters as a name/value dictionary.
 
 
 - - -

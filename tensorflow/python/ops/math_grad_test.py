@@ -98,14 +98,14 @@ class MinOrMaxGradientTest(tf.test.TestCase):
 
   def testMinGradient(self):
     inputs = tf.constant([1.0], dtype=tf.float32)
-    outputs = tf.reduce_min(tf.concat(0, [inputs, inputs]))
+    outputs = tf.reduce_min(tf.concat_v2([inputs, inputs], 0))
     with self.test_session():
       error = tf.test.compute_gradient_error(inputs, [1], outputs, [])
       self.assertLess(error, 1e-4)
 
   def testMaxGradient(self):
     inputs = tf.constant([1.0], dtype=tf.float32)
-    outputs = tf.reduce_max(tf.concat(0, [inputs, inputs]))
+    outputs = tf.reduce_max(tf.concat_v2([inputs, inputs], 0))
     with self.test_session():
       error = tf.test.compute_gradient_error(inputs, [1], outputs, [])
       self.assertLess(error, 1e-4)
@@ -131,7 +131,7 @@ class SegmentMinOrMaxGradientTest(tf.test.TestCase):
 
   def testSegmentMinGradientWithTies(self):
     inputs = tf.constant([1.0], dtype=tf.float32)
-    data = tf.concat(0, [inputs, inputs])
+    data = tf.concat_v2([inputs, inputs], 0)
     segment_ids = tf.constant([0, 0], dtype=tf.int64)
     segment_min = tf.segment_min(data, segment_ids)
     with self.test_session():
@@ -140,7 +140,7 @@ class SegmentMinOrMaxGradientTest(tf.test.TestCase):
 
   def testSegmentMaxGradientWithTies(self):
     inputs = tf.constant([1.0], dtype=tf.float32)
-    data = tf.concat(0, [inputs, inputs])
+    data = tf.concat_v2([inputs, inputs], 0)
     segment_ids = tf.constant([0, 0], dtype=tf.int64)
     segment_max = tf.segment_max(data, segment_ids)
     with self.test_session():

@@ -164,7 +164,7 @@ def sigmoid_cross_entropy_with_logits(logits, targets, name=None):
                         name=name)
 
 
-def weighted_cross_entropy_with_logits(logits, targets, pos_weight, name=None):
+def weighted_cross_entropy_with_logits(targets, logits, pos_weight, name=None):
   """Computes a weighted cross entropy.
 
   This is like `sigmoid_cross_entropy_with_logits()` except that `pos_weight`,
@@ -198,8 +198,8 @@ def weighted_cross_entropy_with_logits(logits, targets, pos_weight, name=None):
   `logits` and `targets` must have the same type and shape.
 
   Args:
-    logits: A `Tensor` of type `float32` or `float64`.
     targets: A `Tensor` of the same type and shape as `logits`.
+    logits: A `Tensor` of type `float32` or `float64`.
     pos_weight: A coefficient to use on the positive examples.
     name: A name for the operation (optional).
 
@@ -311,7 +311,7 @@ def zero_fraction(value, name=None):
 
 
 # pylint: disable=redefined-builtin
-def depthwise_conv2d(input, filter, strides, padding, name=None):
+def depthwise_conv2d(input, filter, strides, padding, rate=None, name=None):
   """Depthwise 2-D convolution.
 
   Given an input tensor of shape `[batch, in_height, in_width, in_channels]`
@@ -324,12 +324,15 @@ def depthwise_conv2d(input, filter, strides, padding, name=None):
 
   In detail,
 
-      output[b, i, j, k * channel_multiplier + q] =
-          sum_{di, dj} input[b, strides[1] * i + di, strides[2] * j + dj, k] *
-                       filter[di, dj, k, q]
+      output[b, i, j, k * channel_multiplier + q] = sum_{di, dj}
+           filter[di, dj, k, q] * input[b, strides[1] * i + rate[0] * di,
+                                           strides[2] * j + rate[1] * dj, k]
 
   Must have `strides[0] = strides[3] = 1`.  For the most common case of the
   same horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
+  If any value in `rate` is greater than 1, we perform atrous depthwise
+  convolution, in which case all values in the `strides` tensor must be equal
+  to 1.
 
   Args:
     input: 4-D with shape `[batch, in_height, in_width, in_channels]`.
@@ -340,6 +343,9 @@ def depthwise_conv2d(input, filter, strides, padding, name=None):
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
       See the [comment
         here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
+    rate: 1-D of size 2. The dilation rate in which we sample input values
+      across the `height` and `width` dimensions in atrous convolution. If it is
+      greater than 1, then all values of strides must be 1.
     name: A name for this operation (optional).
 
   Returns:
@@ -349,9 +355,23 @@ def depthwise_conv2d(input, filter, strides, padding, name=None):
   with ops.name_scope(name, "depthwise", [input, filter]) as name:
     input = ops.convert_to_tensor(input, name="tensor_in")
     filter = ops.convert_to_tensor(filter, name="filter_in")
+    if rate is None:
+      rate = [1, 1]
 
-    return nn_ops.depthwise_conv2d_native(
-        input, filter, strides, padding, name=name)
+    def op(input_converted, _, padding):
+      return nn_ops.depthwise_conv2d_native(
+          input=input_converted,
+          filter=filter,
+          strides=strides,
+          padding=padding,
+          name=name)
+
+    return nn_ops.with_space_to_batch(
+        input=input,
+        filter_shape=array_ops.shape(filter),
+        dilation_rate=rate,
+        padding=padding,
+        op=op)
 
 
 # pylint: enable=redefined-builtin
@@ -363,6 +383,7 @@ def separable_conv2d(input,
                      pointwise_filter,
                      strides,
                      padding,
+                     rate=None,
                      name=None):
   """2-D convolution with separable filters.
 
@@ -382,6 +403,9 @@ def separable_conv2d(input,
   the pointwise convolution has implicit strides of `[1, 1, 1, 1]`.  Must have
   `strides[0] = strides[3] = 1`.  For the most common case of the same
   horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
+  If any value in `rate` is greater than 1, we perform atrous depthwise
+  convolution, in which case all values in the `strides` tensor must be equal
+  to 1.
 
   Args:
     input: 4-D `Tensor` with shape `[batch, in_height, in_width, in_channels]`.
@@ -396,6 +420,9 @@ def separable_conv2d(input,
     padding: A string, either `'VALID'` or `'SAME'`.  The padding algorithm.
       See the [comment
         here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
+    rate: 1-D of size 2. The dilation rate in which we sample input values
+      across the `height` and `width` dimensions in atrous convolution. If it is
+      greater than 1, then all values of strides must be 1.
     name: A name for this operation (optional).
 
   Returns:
@@ -421,6 +448,9 @@ def separable_conv2d(input,
     in_channels = input.get_shape().with_rank(4)[3]
     out_channels = pointwise_filter_shape[3]
 
+    if rate is None:
+      rate = [1, 1]
+
     # If any of channel numbers is unknown, then the comparison below returns
     # None. See TensorShape.__gt__().
     if channel_multiplier * in_channels > out_channels:
@@ -433,8 +463,22 @@ def separable_conv2d(input,
     # The layout of the ops in the graph are expected to be as follows:
     # depthwise_conv2d  // Conv2D op corresponding to native deptwise conv.
     # separable_conv2d  // Conv2D op corresponding to the pointwise conv.
-    depthwise = nn_ops.depthwise_conv2d_native(
-        input, depthwise_filter, strides, padding, name="depthwise")
+
+    def op(input_converted, _, padding):
+      return nn_ops.depthwise_conv2d_native(
+          input=input_converted,
+          filter=depthwise_filter,
+          strides=strides,
+          padding=padding,
+          name="depthwise")
+
+    depthwise = nn_ops.with_space_to_batch(
+        input=input,
+        filter_shape=array_ops.shape(depthwise_filter),
+        dilation_rate=rate,
+        padding=padding,
+        op=op)
+
     return nn_ops.conv2d(
         depthwise, pointwise_filter, [1, 1, 1, 1], padding="VALID", name=name)
 
@@ -809,8 +853,8 @@ def _sum_rows(x):
 
 def _compute_sampled_logits(weights,
                             biases,
-                            inputs,
                             labels,
+                            inputs,
                             num_sampled,
                             num_classes,
                             num_true=1,
@@ -834,11 +878,11 @@ def _compute_sampled_logits(weights,
         objects whose concatenation along dimension 0 has shape
         `[num_classes, dim]`.  The (possibly-partitioned) class embeddings.
     biases: A `Tensor` of shape `[num_classes]`.  The class biases.
-    inputs: A `Tensor` of shape `[batch_size, dim]`.  The forward
-        activations of the input network.
     labels: A `Tensor` of type `int64` and shape `[batch_size,
         num_true]`. The target classes.  Note that this format differs from
         the `labels` argument of `nn.softmax_cross_entropy_with_logits`.
+    inputs: A `Tensor` of shape `[batch_size, dim]`.  The forward
+        activations of the input network.
     num_sampled: An `int`.  The number of classes to randomly sample per batch.
     num_classes: An `int`. The number of possible classes.
     num_true: An `int`.  The number of target classes per training example.
@@ -889,7 +933,7 @@ def _compute_sampled_logits(weights,
 
     # labels_flat is a [batch_size * num_true] tensor
     # sampled is a [num_sampled] int tensor
-    all_ids = array_ops.concat(0, [labels_flat, sampled])
+    all_ids = array_ops.concat_v2([labels_flat, sampled], 0)
 
     # weights shape is [num_classes, dim]
     all_w = embedding_ops.embedding_lookup(
@@ -905,14 +949,14 @@ def _compute_sampled_logits(weights,
     # true_w shape is [batch_size * num_true, dim]
     # row_wise_dots is [batch_size, num_true, dim]
     dim = array_ops.shape(true_w)[1:2]
-    new_true_w_shape = array_ops.concat(0, [[-1, num_true], dim])
+    new_true_w_shape = array_ops.concat_v2([[-1, num_true], dim], 0)
     row_wise_dots = math_ops.mul(
         array_ops.expand_dims(inputs, 1),
         array_ops.reshape(true_w, new_true_w_shape))
     # We want the row-wise dot plus biases which yields a
     # [batch_size, num_true] tensor of true_logits.
     dots_as_matrix = array_ops.reshape(row_wise_dots,
-                                       array_ops.concat(0, [[-1], dim]))
+                                       array_ops.concat_v2([[-1], dim], 0))
     true_logits = array_ops.reshape(_sum_rows(dots_as_matrix), [-1, num_true])
     true_b = array_ops.reshape(true_b, [-1, num_true])
     true_logits += true_b
@@ -940,12 +984,12 @@ def _compute_sampled_logits(weights,
       acc_indices_2d = array_ops.reshape(acc_indices, [-1, 1])
       acc_ids_2d_int32 = array_ops.reshape(
           math_ops.cast(acc_ids, dtypes.int32), [-1, 1])
-      sparse_indices = array_ops.concat(1, [acc_indices_2d, acc_ids_2d_int32],
-                                        "sparse_indices")
+      sparse_indices = array_ops.concat_v2([acc_indices_2d, acc_ids_2d_int32],
+                                           1, "sparse_indices")
       # Create sampled_logits_shape = [batch_size, num_sampled]
-      sampled_logits_shape = array_ops.concat(
-          0,
-          [array_ops.shape(labels)[:1], array_ops.expand_dims(num_sampled, 0)])
+      sampled_logits_shape = array_ops.concat_v2(
+          [array_ops.shape(labels)[:1], array_ops.expand_dims(num_sampled, 0)],
+          0)
       if sampled_logits.dtype != acc_weights.dtype:
         acc_weights = math_ops.cast(acc_weights, sampled_logits.dtype)
       sampled_logits += sparse_ops.sparse_to_dense(
@@ -961,22 +1005,22 @@ def _compute_sampled_logits(weights,
       sampled_logits -= math_ops.log(sampled_expected_count)
 
     # Construct output logits and labels. The true labels/logits start at col 0.
-    out_logits = array_ops.concat(1, [true_logits, sampled_logits])
+    out_logits = array_ops.concat_v2([true_logits, sampled_logits], 1)
     # true_logits is a float tensor, ones_like(true_logits) is a float tensor
     # of ones. We then divide by num_true to ensure the per-example labels sum
     # to 1.0, i.e. form a proper probability distribution.
-    out_labels = array_ops.concat(1, [
+    out_labels = array_ops.concat_v2([
         array_ops.ones_like(true_logits) / num_true,
         array_ops.zeros_like(sampled_logits)
-    ])
+    ], 1)
 
   return out_logits, out_labels
 
 
 def nce_loss(weights,
              biases,
-             inputs,
              labels,
+             inputs,
              num_sampled,
              num_classes,
              num_true=1,
@@ -1012,10 +1056,10 @@ def nce_loss(weights,
         objects whose concatenation along dimension 0 has shape
         [num_classes, dim].  The (possibly-partitioned) class embeddings.
     biases: A `Tensor` of shape `[num_classes]`.  The class biases.
-    inputs: A `Tensor` of shape `[batch_size, dim]`.  The forward
-        activations of the input network.
     labels: A `Tensor` of type `int64` and shape `[batch_size,
         num_true]`. The target classes.
+    inputs: A `Tensor` of shape `[batch_size, dim]`.  The forward
+        activations of the input network.
     num_sampled: An `int`.  The number of classes to randomly sample per batch.
     num_classes: An `int`. The number of possible classes.
     num_true: An `int`.  The number of target classes per training example.
@@ -1038,12 +1082,12 @@ def nce_loss(weights,
     A `batch_size` 1-D tensor of per-example NCE losses.
   """
   logits, labels = _compute_sampled_logits(
-      weights,
-      biases,
-      inputs,
-      labels,
-      num_sampled,
-      num_classes,
+      weights=weights,
+      biases=biases,
+      labels=labels,
+      inputs=inputs,
+      num_sampled=num_sampled,
+      num_classes=num_classes,
       num_true=num_true,
       sampled_values=sampled_values,
       subtract_log_q=True,
@@ -1114,12 +1158,12 @@ def sampled_softmax_loss(weights,
 
   """
   logits, labels = _compute_sampled_logits(
-      weights,
-      biases,
-      inputs,
-      labels,
-      num_sampled,
-      num_classes,
+      weights=weights,
+      biases=biases,
+      labels=labels,
+      inputs=inputs,
+      num_sampled=num_sampled,
+      num_classes=num_classes,
       num_true=num_true,
       sampled_values=sampled_values,
       subtract_log_q=True,

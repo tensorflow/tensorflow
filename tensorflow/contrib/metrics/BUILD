@@ -12,7 +12,15 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 py_library(
     name = "metrics_py",
-    srcs = ["__init__.py"] + glob(["python/ops/*.py"]) + glob(["python/metrics/*.py"]),
+    srcs = [
+        "__init__.py",
+        "python/metrics/__init__.py",
+        "python/metrics/classification.py",
+        "python/ops/confusion_matrix_ops.py",
+        "python/ops/histogram_ops.py",
+        "python/ops/metric_ops.py",
+        "python/ops/set_ops.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:framework",

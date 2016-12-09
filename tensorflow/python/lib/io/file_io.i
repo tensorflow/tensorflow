@@ -231,7 +231,7 @@ string ReadFromStream(tensorflow::io::BufferedInputStream* stream,
                       TF_Status* out_status) {
   string result;
   tensorflow::Status status = stream->ReadNBytes(bytes, &result);
-  if (!status.ok()) {
+  if (!status.ok() && status.code() != tensorflow::error::OUT_OF_RANGE) {
     Set_TF_Status_from_Status(out_status, status);
     result.clear();
   }

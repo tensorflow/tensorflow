@@ -13,7 +13,7 @@ with MonitoredSession(session_creator=ChiefSessionCreator(...),
 Initialization: At creation time the monitored session does following things
 in given order:
 
-* calls `hook.begin()`
+* calls `hook.begin()` for each given hook
 * finalizes the graph via `scaffold.finalize()`
 * create session
 * initializes the model via initialization ops provided by `Scaffold`
@@ -49,6 +49,14 @@ How to set `tf.Session` arguments:
     session_creator=WorkerSessionCreator(master=..., config=...))
   ```
 See `MonitoredTrainingSession` for an example usage based on chief or worker.
+
+Args:
+  session_creator: A factory object to create session. Typically a
+    `ChiefSessionCreator` which is the default one.
+  hooks: An iterable of `SessionRunHook' objects.
+
+Returns:
+  A MonitoredSession object.
 - - -
 
 #### `tf.train.MonitoredSession.__enter__()` {#MonitoredSession.__enter__}
@@ -67,14 +75,7 @@ See `MonitoredTrainingSession` for an example usage based on chief or worker.
 
 #### `tf.train.MonitoredSession.__init__(session_creator=None, hooks=None)` {#MonitoredSession.__init__}
 
-Creates a MonitoredSession.
 
-##### Args:
-
-
-*  <b>`session_creator`</b>: A factory object to create session. Typically a
-    `ChiefSessionCreator` which is the default one.
-*  <b>`hooks`</b>: An iterable of `SessionRunHook' objects.
 
 
 - - -

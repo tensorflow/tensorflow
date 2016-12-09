@@ -2,10 +2,7 @@
 # TensorFlow SavedModel.
 
 package(
-    default_visibility = [
-        "//tensorflow/contrib/learn:__subpackages__",
-        "//tensorflow/python/saved_model:__subpackages__",
-    ],
+    default_visibility = ["//visibility:public"],
 )
 
 licenses(["notice"])  # Apache 2.0
@@ -75,7 +72,11 @@ py_test(
     srcs = [
         "saved_model_test.py",
     ],
+    data = [
+        "//tensorflow/python/saved_model/example:saved_model_half_plus_two_data",
+    ],
     srcs_version = "PY2AND3",
+    tags = ["manual"],
     visibility = ["//visibility:private"],
     deps = [
         ":builder",

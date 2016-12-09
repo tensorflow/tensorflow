@@ -60,7 +60,7 @@ class Conc(specs_lib.Composable):
 
   def funcall(self, x):
     outputs = [f.funcall(x) for f in self.funs]
-    return tf.concat(self.dim, outputs)
+    return tf.concat_v2(outputs, self.dim)
 
 
 External = specs_lib.External

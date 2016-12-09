@@ -12,6 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+// Before calling this test program, download a model as follows.
+// $ curl https://storage.googleapis.com/download.tensorflow.org/models/tensorflow_inception_v3_stripped_optimized_quantized.pb \
+// -o /tmp/tensorflow_inception_v3_stripped_optimized_quantized.pb
+// adb push /tmp/tensorflow_inception_v3_stripped_optimized_quantized.pb \
+// /data/local/tmp
 
 #include <memory>
 
@@ -26,11 +31,14 @@ limitations under the License.
 
 namespace tensorflow {
 
+// CAVEAT: This test only runs when you specify hexagon library using
+// makefile.
+// TODO(satok): Make this generic so that this can run without any
+// additionanl steps.
 #ifdef USE_HEXAGON_LIBS
 TEST(GraphTransferer, RunInceptionV3OnHexagonExample) {
-  // Change file path to absolute path of model file on your local machine
   const string filename =
-      "/tmp/tensorflow_inception_v3_stripped_optimized_quantized.pb";
+      "/data/local/tmp/tensorflow_inception_v3_stripped_optimized_quantized.pb";
   const IGraphTransferOpsDefinitions* ops_definitions =
       &HexagonOpsDefinitions::getInstance();
   std::vector<GraphTransferer::InputNodeInfo> input_node_info_list = {
@@ -45,7 +53,7 @@ TEST(GraphTransferer, RunInceptionV3OnHexagonExample) {
   Status status = gt.LoadGraphFromProtoFile(
       *ops_definitions, filename, input_node_info_list, output_node_names,
       is_text_proto, true /* dry_run_for_unknown_shape */, &output_tensor_info);
-  EXPECT_TRUE(status.ok());
+  ASSERT_TRUE(status.ok()) << status;
 
   HexagonControlWrapper hexagon_control_wrapper;
   const int version = hexagon_control_wrapper.GetVersion();

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CC_TRAINING_COORDINATOR_H_
 #define THIRD_PARTY_TENSORFLOW_CC_TRAINING_COORDINATOR_H_
 
+#include <atomic>
 #include <memory>
 #include <unordered_set>
 #include <vector>
@@ -32,6 +33,10 @@ class RunnerInterface {
  public:
   virtual ~RunnerInterface() {}
   virtual Status Join() = 0;
+
+  // Returns true iff the runner is running, i.e. if it is trying to populate
+  // its queue.
+  virtual bool IsRunning() const = 0;
 };
 
 // Coordinator class manages the termination of a collection of QueueRunners.
@@ -74,6 +79,9 @@ class Coordinator {
   // supposed to be in running state when they are registered here.
   Status RegisterRunner(std::unique_ptr<RunnerInterface> runner);
 
+  // Returns true iff all the registered runners have been stopped.
+  bool AllRunnersStopped();
+
   // Requests all running threads to stop.
   Status RequestStop();
 
@@ -106,6 +114,8 @@ class Coordinator {
   mutex runners_lock_;
   std::vector<std::unique_ptr<RunnerInterface>> runners_
       GUARDED_BY(runners_lock_);
+
+  std::atomic<int> num_runners_to_cancel_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Coordinator);
 };

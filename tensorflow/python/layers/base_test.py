@@ -18,12 +18,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-
+from tensorflow.python.framework import ops
 from tensorflow.python.layers import base as base_layers
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variable_scope
+from tensorflow.python.platform import test
 
 
-class BaseLayerTest(tf.test.TestCase):
+class BaseLayerTest(test.TestCase):
 
   def testLayerProperties(self):
     layer = base_layers._Layer(name='my_layer')
@@ -42,31 +46,34 @@ class BaseLayerTest(tf.test.TestCase):
       layer = base_layers._Layer(name='my_layer')
 
       # Test basic variable creation.
-      variable = layer._add_variable('my_var', [2, 2],
-                                     initializer=tf.zeros_initializer)
+      variable = layer._add_variable(
+          'my_var', [2, 2], initializer=init_ops.zeros_initializer)
       self.assertEqual(variable.name, 'my_var:0')
       self.assertListEqual(layer.variables, [variable])
       self.assertListEqual(layer.trainable_variables, [variable])
       self.assertListEqual(layer.non_trainable_variables, [])
-      self.assertListEqual(layer.variables,
-                           tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES))
+      self.assertListEqual(
+          layer.variables,
+          ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES))
 
       # Test non-trainable variable creation.
       # layer._add_variable should work even outside `build` and `call`.
-      variable_2 = layer._add_variable('non_trainable_var', [2, 2],
-                                       initializer=tf.zeros_initializer,
-                                       trainable=False)
+      variable_2 = layer._add_variable(
+          'non_trainable_var', [2, 2],
+          initializer=init_ops.zeros_initializer,
+          trainable=False)
       self.assertListEqual(layer.variables, [variable, variable_2])
       self.assertListEqual(layer.trainable_variables, [variable])
       self.assertListEqual(layer.non_trainable_variables, [variable_2])
       self.assertEqual(
-          len(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)), 1)
+          len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 1)
 
       # Test with regularizer.
-      regularizer = lambda x: tf.reduce_sum(x) * 1e-3
-      variable = layer._add_variable('reg_var', [2, 2],
-                                     initializer=tf.zeros_initializer,
-                                     regularizer=regularizer)
+      regularizer = lambda x: math_ops.reduce_sum(x) * 1e-3
+      variable = layer._add_variable(
+          'reg_var', [2, 2],
+          initializer=init_ops.zeros_initializer,
+          regularizer=regularizer)
       self.assertEqual(len(layer.losses), 1)
 
   def testGetVariable(self):
@@ -77,14 +84,14 @@ class BaseLayerTest(tf.test.TestCase):
       class MyLayer(base_layers._Layer):
 
         def build(self, input_shape):
-          self.my_var = tf.get_variable('my_var', [2, 2],
-                                        initializer=tf.zeros_initializer)
+          self.my_var = variable_scope.get_variable(
+              'my_var', [2, 2], initializer=init_ops.zeros_initializer)
 
         def call(self, inputs):
           return inputs
 
       layer = MyLayer(name='my_layer')
-      inputs = tf.random_uniform((5,), seed=1)
+      inputs = random_ops.random_uniform((5,), seed=1)
       _ = layer.apply(inputs)
       self.assertListEqual(layer.variables, [layer.my_var])
 
@@ -93,10 +100,10 @@ class BaseLayerTest(tf.test.TestCase):
     class MyLayer(base_layers._Layer):
 
       def call(self, inputs):
-        return tf.square(inputs)
+        return math_ops.square(inputs)
 
     layer = MyLayer(name='my_layer')
-    inputs = tf.random_uniform((5,), seed=1)
+    inputs = random_ops.random_uniform((5,), seed=1)
     outputs = layer.apply(inputs)
     self.assertEqual(layer.built, True)
     self.assertEqual(outputs.op.name, 'my_layer/Square')
@@ -111,13 +118,13 @@ class BaseLayerTest(tf.test.TestCase):
     my_layer1 = base_layers._Layer(name='my_layer')
     self.assertEqual(my_layer1.name, 'my_layer_1')
     # New graph has fully orthogonal names.
-    with tf.Graph().as_default():
+    with ops.Graph().as_default():
       my_layer_other_graph = base_layers._Layer(name='my_layer')
       self.assertEqual(my_layer_other_graph.name, 'my_layer')
     my_layer2 = base_layers._Layer(name='my_layer')
     self.assertEqual(my_layer2.name, 'my_layer_2')
     # Name scope shouldn't affect names.
-    with tf.name_scope('some_name_scope'):
+    with ops.name_scope('some_name_scope'):
       default_layer2 = base_layers._Layer()
       self.assertEqual(default_layer2.name, 'private__layer_2')
       my_layer3 = base_layers._Layer(name='my_layer')
@@ -125,7 +132,7 @@ class BaseLayerTest(tf.test.TestCase):
       other_layer = base_layers._Layer(name='other_layer')
       self.assertEqual(other_layer.name, 'other_layer')
     # Variable scope gets added to names.
-    with tf.variable_scope('var_scope'):
+    with variable_scope.variable_scope('var_scope'):
       default_layer_scoped = base_layers._Layer()
       self.assertEqual(default_layer_scoped.name, 'var_scope/private__layer')
       my_layer_scoped = base_layers._Layer(name='my_layer')
@@ -135,4 +142,4 @@ class BaseLayerTest(tf.test.TestCase):
 
 
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

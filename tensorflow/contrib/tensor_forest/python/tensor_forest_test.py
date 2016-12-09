@@ -110,7 +110,7 @@ class TensorForestTest(test_util.TensorFlowTestCase):
                 -1., 2.,
                 1.,
                 -2.0],
-        shape=[4, 10])
+        dense_shape=[4, 10])
     input_labels = [0, 1, 2, 3]
 
     params = tensor_forest.ForestHParams(
@@ -131,7 +131,7 @@ class TensorForestTest(test_util.TensorFlowTestCase):
                 -1., 2.,
                 1.,
                 -2.0],
-        shape=[4, 10])
+        dense_shape=[4, 10])
 
     params = tensor_forest.ForestHParams(
         num_classes=4, num_features=10, num_trees=10, max_nodes=1000,

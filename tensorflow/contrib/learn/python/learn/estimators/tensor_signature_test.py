@@ -107,7 +107,7 @@ class TensorSignatureTest(tf.test.TestCase):
 
   def testSparseTensorSignaturePlaceholders(self):
     tensor = tf.SparseTensor(values=[1.0, 2.0], indices=[[0, 2], [0, 3]],
-                             shape=[5, 5])
+                             dense_shape=[5, 5])
     signature = tensor_signature.create_signatures(tensor)
     placeholder = tensor_signature.create_placeholders_from_signatures(
         signature)

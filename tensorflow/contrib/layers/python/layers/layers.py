@@ -1188,7 +1188,7 @@ def flatten(inputs,
   Returns:
     a flattened tensor with shape [batch_size, k].
   Raises:
-    ValueError: if inputs.shape is wrong.
+    ValueError: if inputs.dense_shape is wrong.
   """
   with ops.name_scope(scope, 'Flatten', [inputs]) as sc:
     inputs = ops.convert_to_tensor(inputs)
@@ -1206,10 +1206,10 @@ def flatten(inputs,
 
 def _sparse_inner_flatten(inputs, new_rank):
   """Helper function for `inner_flatten`."""
-  outer_dimensions = inputs.shape[:new_rank - 1]
-  inner_dimensions = inputs.shape[new_rank - 1:]
-  new_shape = array_ops.concat(0, (outer_dimensions,
-                                   [math_ops.reduce_prod(inner_dimensions)]))
+  outer_dimensions = inputs.dense_shape[:new_rank - 1]
+  inner_dimensions = inputs.dense_shape[new_rank - 1:]
+  new_shape = array_ops.concat_v2((outer_dimensions,
+                                   [math_ops.reduce_prod(inner_dimensions)]), 0)
   flattened = sparse_ops.sparse_reshape(inputs, new_shape)
   return flattened
 
@@ -1221,7 +1221,7 @@ def _dense_inner_flatten(inputs, new_rank):
   with ops.control_dependencies([rank_assertion]):
     outer_dimensions = array_ops.strided_slice(
         array_ops.shape(inputs), [0], [new_rank - 1])
-    new_shape = array_ops.concat(0, (outer_dimensions, [-1]))
+    new_shape = array_ops.concat_v2((outer_dimensions, [-1]), 0)
     reshaped = array_ops.reshape(inputs, new_shape)
 
   # if `new_rank` is an integer, try to calculate new shape.
@@ -1719,6 +1719,7 @@ def separable_convolution2d(
     depth_multiplier,
     stride=1,
     padding='SAME',
+    rate=1,
     activation_fn=nn.relu,
     normalizer_fn=None,
     normalizer_params=None,
@@ -1753,6 +1754,9 @@ def separable_convolution2d(
     stride: a list of length 2: [stride_height, stride_width], specifying the
       depthwise convolution stride. Can be an int if both strides are the same.
     padding: one of 'VALID' or 'SAME'.
+    rate: a list of length 2: [rate_height, rate_width], specifying the dilation
+      rates for a'trous convolution. Can be an int if both rates are the same.
+      If any value is larger than one, then both stride values need to be one.
     activation_fn: activation function, set to None to skip it and maintain
       a linear activation.
     normalizer_fn: normalization function to use instead of `biases`. If
@@ -1793,6 +1797,7 @@ def separable_convolution2d(
           strides=stride,
           padding=padding,
           data_format='channels_last',
+          dilation_rate=utils.two_element_tuple(rate),
           activation=None,
           depth_multiplier=depth_multiplier,
           use_bias=not normalizer_fn and biases_initializer,
@@ -1843,7 +1848,8 @@ def separable_convolution2d(
           collections=weights_collections)
       strides = [1, stride_h, stride_w, 1]
 
-      outputs = nn.depthwise_conv2d(inputs, depthwise_weights, strides, padding)
+      outputs = nn.depthwise_conv2d(inputs, depthwise_weights, strides, padding,
+                                    rate=utils.two_element_tuple(rate))
       num_outputs = depth_multiplier * num_filters_in
 
       if normalizer_fn is not None:
@@ -1981,7 +1987,7 @@ def unit_norm(inputs, dim, epsilon=1e-7, scope=None):
         array_ops.strided_slice(array_ops.shape(inputs), [dim], [dim + 1]))
     if dim < (input_rank - 1):
       multiples.append(array_ops.ones([input_rank - 1 - dim], dtypes.int32))
-    multiples = array_ops.concat(0, multiples)
+    multiples = array_ops.concat_v2(multiples, 0)
     return math_ops.div(inputs, array_ops.tile(lengths, multiples))
 
 

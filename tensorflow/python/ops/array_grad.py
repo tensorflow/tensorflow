@@ -205,7 +205,7 @@ def _SliceGrad(op, grad):
   before_pad = array_ops.reshape(begin_vec, shape)
   after_pad = array_ops.reshape(
       array_ops.shape(input_vec) - slice_size - begin_vec, shape)
-  paddings = array_ops.concat(1, [before_pad, after_pad])
+  paddings = array_ops.concat_v2([before_pad, after_pad], 1)
   return array_ops.pad(grad, paddings), None, None
 
 
@@ -251,11 +251,11 @@ def _StridedSliceGradGrad(op, grad):
 
 @ops.RegisterGradient("Split")
 def _SplitGrad(op, *grads):
-  return None, array_ops.concat(op.inputs[0], list(grads))
+  return None, array_ops.concat_v2(list(grads), op.inputs[0])
 
 @ops.RegisterGradient("SplitV")
 def _SplitVGrad(op, *grads):
-  returnval = array_ops.concat(op.inputs[2], list(grads))
+  returnval = array_ops.concat_v2(list(grads), op.inputs[2])
   returnval = [returnval] + [None,] * (len(op.inputs) - 1)
   print(returnval)
   return returnval
@@ -474,7 +474,9 @@ def _ReverseSequenceGrad(op, grad):
 @ops.RegisterGradient("Reverse")
 def _ReverseGrad(op, grad):
   reverse_dims = op.inputs[1]
-  return array_ops.reverse(grad, reverse_dims), None
+  # pylint: disable=protected-access
+  return gen_array_ops._reverse(grad, reverse_dims), None
+  # pylint: enable=protected-access
 
 
 @ops.RegisterGradient("ReverseV2")

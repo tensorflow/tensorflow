@@ -57,7 +57,7 @@ class EmbeddingMultiplierTest(tf.test.TestCase):
             tf.SparseTensor(
                 values=['en', 'fr', 'zh'],
                 indices=[[0, 0], [1, 0], [2, 0]],
-                shape=[3, 1]),
+                dense_shape=[3, 1]),
     }
     labels = tf.constant([[0], [0], [0]], dtype=tf.int32)
     with self.assertRaisesRegexp(
@@ -87,12 +87,12 @@ class EmbeddingMultiplierTest(tf.test.TestCase):
             tf.SparseTensor(
                 values=['en', 'fr', 'zh'],
                 indices=[[0, 0], [1, 0], [2, 0]],
-                shape=[3, 1]),
+                dense_shape=[3, 1]),
         'wire':
             tf.SparseTensor(
                 values=['omar', 'stringer', 'marlo'],
                 indices=[[0, 0], [1, 0], [2, 0]],
-                shape=[3, 1]),
+                dense_shape=[3, 1]),
     }
     labels = tf.constant([[0], [0], [0]], dtype=tf.int32)
     model_ops = dnn._dnn_model_fn(features, labels,
@@ -193,7 +193,7 @@ class DNNClassifierTest(tf.test.TestCase):
               values=tf.train.limit_epochs(
                   ['en', 'fr', 'zh'], num_epochs=num_epochs),
               indices=[[0, 0], [0, 1], [2, 0]],
-              shape=[3, 2])
+              dense_shape=[3, 2])
       }
       return features, tf.constant([[1], [0], [0]], dtype=tf.int32)
 
@@ -230,7 +230,7 @@ class DNNClassifierTest(tf.test.TestCase):
               values=tf.train.limit_epochs(
                   ['en', 'fr', 'zh'], num_epochs=num_epochs),
               indices=[[0, 0], [0, 1], [2, 0]],
-              shape=[3, 2])
+              dense_shape=[3, 2])
       }
       labels = tf.constant([[0.8], [0.], [0.2]], dtype=tf.float32)
       return features, labels
@@ -415,7 +415,7 @@ class DNNClassifierTest(tf.test.TestCase):
               values=tf.train.limit_epochs(
                   ['en', 'fr', 'zh'], num_epochs=num_epochs),
               indices=[[0, 0], [0, 1], [2, 0]],
-              shape=[3, 2])
+              dense_shape=[3, 2])
       }
       return features, tf.constant([[1], [0], [0]], dtype=tf.int32)
 
@@ -453,7 +453,7 @@ class DNNClassifierTest(tf.test.TestCase):
               values=tf.train.limit_epochs(
                   ['en', 'fr', 'zh'], num_epochs=num_epochs),
               indices=[[0, 0], [0, 1], [2, 0]],
-              shape=[3, 2])
+              dense_shape=[3, 2])
       }
       return features, tf.constant([[1], [0], [0]], dtype=tf.int32)
 
@@ -552,7 +552,7 @@ class DNNClassifierTest(tf.test.TestCase):
               values=tf.train.limit_epochs(
                   ['en', 'fr', 'zh'], num_epochs=num_epochs),
               indices=[[0, 0], [0, 1], [2, 0]],
-              shape=[3, 2])
+              dense_shape=[3, 2])
       }
       return features, tf.constant([[1], [0], [0]], dtype=tf.int32)
 
@@ -594,7 +594,7 @@ class DNNClassifierTest(tf.test.TestCase):
               values=tf.train.limit_epochs(
                   ['en', 'fr', 'zh'], num_epochs=num_epochs),
               indices=[[0, 0], [0, 1], [2, 0]],
-              shape=[3, 2])
+              dense_shape=[3, 2])
       }
       return features, tf.constant([[1], [0], [0]], dtype=tf.int32)
 
@@ -760,7 +760,7 @@ class DNNRegressorTest(tf.test.TestCase):
               values=tf.train.limit_epochs(
                   ['en', 'fr', 'zh'], num_epochs=num_epochs),
               indices=[[0, 0], [0, 1], [2, 0]],
-              shape=[3, 2])
+              dense_shape=[3, 2])
       }
       return features, tf.constant([1., 0., 0.2], dtype=tf.float32)
 
@@ -878,7 +878,7 @@ class DNNRegressorTest(tf.test.TestCase):
               values=tf.train.limit_epochs(
                   ['en', 'fr', 'zh'], num_epochs=num_epochs),
               indices=[[0, 0], [0, 1], [2, 0]],
-              shape=[3, 2])
+              dense_shape=[3, 2])
       }
       return features, tf.constant(labels, dtype=tf.float32)
 
@@ -912,7 +912,7 @@ class DNNRegressorTest(tf.test.TestCase):
               values=tf.train.limit_epochs(
                   ['en', 'fr', 'zh'], num_epochs=num_epochs),
               indices=[[0, 0], [0, 1], [2, 0]],
-              shape=[3, 2])
+              dense_shape=[3, 2])
       }
       return features, tf.constant(labels, dtype=tf.float32)
 
@@ -1051,7 +1051,7 @@ class DNNRegressorTest(tf.test.TestCase):
               values=tf.train.limit_epochs(
                   ['en', 'fr', 'zh'], num_epochs=num_epochs),
               indices=[[0, 0], [0, 1], [2, 0]],
-              shape=[3, 2])
+              dense_shape=[3, 2])
       }
       return features, tf.constant([1., 0., 0.2], dtype=tf.float32)
 
@@ -1092,7 +1092,7 @@ class DNNRegressorTest(tf.test.TestCase):
               values=tf.train.limit_epochs(
                   ['en', 'fr', 'zh'], num_epochs=num_epochs),
               indices=[[0, 0], [0, 1], [2, 0]],
-              shape=[3, 2])
+              dense_shape=[3, 2])
       }
       return features, tf.constant([1., 0., 0.2], dtype=tf.float32)
 
@@ -1138,7 +1138,7 @@ class DNNRegressorTest(tf.test.TestCase):
               values=tf.train.limit_epochs(
                   ['en', 'fr', 'zh'], num_epochs=num_epochs),
               indices=[[0, 0], [0, 1], [2, 0]],
-              shape=[3, 2])
+              dense_shape=[3, 2])
       }
       return features, tf.constant([1., 0., 0.2], dtype=tf.float32)
 
@@ -1171,7 +1171,7 @@ class DNNRegressorTest(tf.test.TestCase):
               values=tf.train.limit_epochs(
                   ['en', 'fr', 'zh'], num_epochs=num_epochs),
               indices=[[0, 0], [0, 1], [2, 0]],
-              shape=[3, 2])
+              dense_shape=[3, 2])
       }
       return features, tf.constant([1., 0., 0.2], dtype=tf.float32)
 

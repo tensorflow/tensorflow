@@ -54,6 +54,23 @@ class FunctionTest(tf.test.TestCase):
       with tf.Session() as sess:
         self.assertAllEqual([5.0], sess.run(call))
 
+  def testDefineFunctionDuplicateOutputs(self):
+
+    @function.Defun(tf.float32, func_name="Duplicate")
+    def Duplicate(a):
+      b = a + 1.0
+      return b, b
+
+    g = tf.Graph()
+    with g.as_default():
+      Duplicate([3.0])
+      func_sig = g.as_graph_def().library.function[0].signature
+      # The names given to both outputs should be different
+      # even though the same tensor is emitted to both.
+      out_names = [a.name for a in func_sig.output_arg]
+      self.assertEqual(2, len(out_names))
+      self.assertNotEqual(out_names[0], out_names[1])
+
   def testGradientFunc(self):
 
     @function.Defun(tf.float32, func_name="XSquarePlusOneFn")
@@ -637,8 +654,9 @@ class UnrollLSTMTest(tf.test.TestCase):
   # Helper to construct a LSTM cell graph.
   @classmethod
   def LSTMCell(cls, x, mprev, cprev, weights):
-    xm = tf.concat(1, [x, mprev])
-    i_i, i_g, f_g, o_g = tf.split(1, 4, tf.matmul(xm, weights))
+    xm = tf.concat_v2([x, mprev], 1)
+    i_i, i_g, f_g, o_g = tf.split(
+        value=tf.matmul(xm, weights), num_or_size_splits=4, axis=1)
     new_c = tf.sigmoid(f_g) * cprev + tf.sigmoid(i_g) * tf.tanh(i_i)
     new_c = tf.clip_by_value(new_c, -50.0, 50.0)
     new_m = tf.sigmoid(o_g) * tf.tanh(new_c)

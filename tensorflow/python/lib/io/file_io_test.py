@@ -396,6 +396,16 @@ class FileIoTest(tf.test.TestCase):
     lines = f.readlines()
     self.assertSequenceEqual(lines, data)
 
+  def testEof(self):
+    """Test that reading past EOF does not raise an exception."""
+
+    file_path = os.path.join(self._base_dir, "temp_file")
+    f = file_io.FileIO(file_path, mode="r+")
+    content = b"testing"
+    f.write(content)
+    f.flush()
+    self.assertEqual(content, f.read(len(content)+1))
+
 
 if __name__ == "__main__":
   tf.test.main()

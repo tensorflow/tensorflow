@@ -110,13 +110,13 @@ Status QueueRunner::Start(Session* sess, int wait_for) {
 }
 
 void QueueRunner::Stop(Session* sess) {
-  if (cancel_op_name_.empty()) {
-    return;
-  }
   if (coord_ != nullptr) {
     coord_->WaitForStop();
   }
-  UpdateStatus(sess->Run({}, {}, {cancel_op_name_}, nullptr));
+  if (!cancel_op_name_.empty()) {
+    UpdateStatus(sess->Run({}, {}, {cancel_op_name_}, nullptr));
+  }
+  stopped_ = true;
 }
 
 Status QueueRunner::Join() {

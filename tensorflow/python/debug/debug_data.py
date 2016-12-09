@@ -114,7 +114,7 @@ def _is_copy_node(node_name):
   """Determine whether a node name is that of a debug Copy node.
 
   Such nodes are inserted by TensorFlow core upon request in
-  RunOptions.debug_tensor_watch_opts.
+  RunOptions.debug_options.debug_tensor_watch_opts.
 
   Args:
     node_name: Name of the node.
@@ -130,7 +130,7 @@ def _is_debug_node(node_name):
   """Determine whether a node name is that of a debug node.
 
   Such nodes are inserted by TensorFlow core upon request in
-  RunOptions.debug_tensor_watch_opts.
+  RunOptions.debug_options.debug_tensor_watch_opts.
 
   Args:
     node_name: Name of the node.

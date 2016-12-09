@@ -681,10 +681,10 @@ class SequenceQueueingStateSaver(object):
   inputs = batch.sequences["input"]
   context_label = batch.context["label"]
 
-  inputs_by_time = tf.split(1, num_unroll, inputs)
+  inputs_by_time = tf.split(value=inputs, num_or_size_splits=num_unroll, axis=1)
   assert len(inputs_by_time) == num_unroll
 
-  lstm_output, _ = tf.nn.state_saving_rnn(
+  lstm_output, _ = tf.contrib.rnn.static_state_saving_rnn(
     cell,
     inputs_by_time,
     state_saver=batch,
@@ -1065,38 +1065,52 @@ class SequenceQueueingStateSaver(object):
          ":",
          self._key],
         name="StringJoinCurrentKeys")
-    next_keys = array_ops.concat(
-        0, [array_ops.slice(current_keys, [1], [-1]),
-            array_ops.expand_dims(string_ops.string_join(
-                ["STOP:", self._key], name="StringJoinStop"), 0)],
+    next_keys = array_ops.concat_v2(
+        [
+            array_ops.slice(current_keys, [1], [-1]), array_ops.expand_dims(
+                string_ops.string_join(
+                    ["STOP:", self._key], name="StringJoinStop"),
+                0)
+        ],
+        0,
         name="concat_next_keys")
-    reshaped_sequences = collections.OrderedDict(
-        (k, _check_dimensions(
+    reshaped_sequences = collections.OrderedDict((
+        k,
+        _check_dimensions(
             # Reshape sequences to sequence_count rows
             array_ops.reshape(
-                v, array_ops.concat(
-                    0, [array_ops.expand_dims(sequence_count, 0),
+                v,
+                array_ops.concat_v2(
+                    [
+                        array_ops.expand_dims(sequence_count, 0),
                         array_ops.expand_dims(self._num_unroll, 0),
-                        v.get_shape().as_list()[1:]],
+                        v.get_shape().as_list()[1:]
+                    ],
+                    0,
                     name="concat_sequences_%s" % k),
                 name="reshape_sequences_%s" % k),
             [0, 1] + list(range(2, v.get_shape().ndims + 1)),
             [sequence_count, self._num_unroll] + v.get_shape().as_list()[1:],
-            debug_prefix="reshaped_sequences_%s" % k))
-        for k, v in self._sorted_sequences.items())
+            debug_prefix="reshaped_sequences_%s" %
+            k)) for k, v in self._sorted_sequences.items())
     expanded_context = collections.OrderedDict(
-        (k, _check_dimensions(
-            # Copy context to be sequence_count rows
-            array_ops.tile(
-                array_ops.expand_dims(v, 0),
-                array_ops.concat(
-                    0, [array_ops.expand_dims(sequence_count, 0),
-                        [1] * v.get_shape().ndims],
-                    name="concat_context_%s" % k),
-                name="tile_context_%s" % k),
-            [0] + list(range(1, v.get_shape().ndims + 1)),
-            [sequence_count] + v.get_shape().as_list(),
-            debug_prefix="expanded_context_%s" % k))
+        (
+            k,
+            _check_dimensions(
+                # Copy context to be sequence_count rows
+                array_ops.tile(
+                    array_ops.expand_dims(v, 0),
+                    array_ops.concat_v2(
+                        [
+                            array_ops.expand_dims(sequence_count, 0),
+                            [1] * v.get_shape().ndims
+                        ],
+                        0,
+                        name="concat_context_%s" % k),
+                    name="tile_context_%s" % k),
+                [0] + list(range(1, v.get_shape().ndims + 1)),
+                [sequence_count] + v.get_shape().as_list(),
+                debug_prefix="expanded_context_%s" % k))
         for k, v in self._sorted_context.items())
 
     # Storing into the barrier, for each current_key:
@@ -1285,10 +1299,10 @@ def batch_sequences_with_states(input_key, input_sequences, input_context,
   inputs = batch.sequences["input"]
   context_label = batch.context["label"]
 
-  inputs_by_time = tf.split(1, num_unroll, inputs)
+  inputs_by_time = tf.split(value=inputs, num_or_size_splits=num_unroll, axis=1)
   assert len(inputs_by_time) == num_unroll
 
-  lstm_output, _ = tf.nn.state_saving_rnn(
+  lstm_output, _ = tf.contrib.rnn.static_state_saving_rnn(
     cell,
     inputs_by_time,
     state_saver=batch,
@@ -1474,12 +1488,12 @@ def _padding(sequences, num_unroll):
     # the shape of the paddings that we concat with the original value will be
     # [num_paddings, tf.shape(value)[1], tf.shape(value)[2], ...,
     #  tf.shape(value)[tf.rank(value) - 1])]
-    padding_shape = array_ops.concat(0, (
-        num_paddings, array_ops.shape(value)[1:]))
+    padding_shape = array_ops.concat_v2((num_paddings,
+                                         array_ops.shape(value)[1:]), 0)
     # 2. fill padding shape with dummies
     dummy = array_ops.constant("" if value.dtype == dtypes.string else 0,
                                dtype=value.dtype)
     paddings = array_ops.fill(dims=padding_shape, value=dummy)
     # 3. concat values with paddings
-    padded_sequences[key] = array_ops.concat(0, [value, paddings])
+    padded_sequences[key] = array_ops.concat_v2([value, paddings], 0)
   return length, padded_sequences

@@ -41,27 +41,26 @@ cc_library(
     ],
 )
 
-# Reenable target once half_plus_two_data does not run TF during build.
-# tf_cc_test(
-#     name = "loader_test",
-#     srcs = ["loader_test.cc"],
-#     data = [
-#         "//tensorflow/python/saved_model/example:saved_model_half_plus_two_data",
-#     ],
-#     linkstatic = 1,
-#     tags = ["manual"],
-#     deps = [
-#         ":constants",
-#         ":loader",
-#         ":signature_constants",
-#         ":tag_constants",
-#         "//tensorflow/core:lib",
-#         "//tensorflow/core:protos_all_cc",
-#         "//tensorflow/core:test",
-#         "//tensorflow/core:test_main",
-#         "//tensorflow/core:testlib",
-#     ],
-# )
+tf_cc_test(
+    name = "loader_test",
+    srcs = ["loader_test.cc"],
+    data = [
+        "//tensorflow/python/saved_model/example:saved_model_half_plus_two_data",
+    ],
+    linkstatic = 1,
+    tags = ["manual"],
+    deps = [
+        ":constants",
+        ":loader",
+        ":signature_constants",
+        ":tag_constants",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
 
 # -----------------------------------------------------------------------------
 # Google-internal targets.

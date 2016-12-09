@@ -18,13 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import functools
-
 from tensorflow.contrib import layers
 from tensorflow.contrib import metrics
+from tensorflow.contrib import rnn as contrib_rnn
 from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.layers.python.layers import optimizers
-from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import model_fn
 from tensorflow.python.framework import dtypes
@@ -33,7 +31,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn
-from tensorflow.python.ops import rnn_cell
 from tensorflow.python.training import momentum as momentum_opt
 
 
@@ -54,9 +51,9 @@ class RNNKeys(object):
   PROBABILITIES_KEY = 'probabilities'
   FINAL_STATE_KEY = 'final_state'
 
-_CELL_TYPES = {'basic_rnn': rnn_cell.BasicRNNCell,
-               'lstm': rnn_cell.LSTMCell,
-               'gru': rnn_cell.GRUCell,}
+_CELL_TYPES = {'basic_rnn': contrib_rnn.BasicRNNCell,
+               'lstm': contrib_rnn.LSTMCell,
+               'gru': contrib_rnn.GRUCell,}
 
 
 def mask_activations_and_labels(activations, labels, sequence_lengths):
@@ -169,8 +166,8 @@ def _concatenate_context_input(sequence_input, context_input):
     padded_length = array_ops.shape(sequence_input)[1]
     tiled_context_input = array_ops.tile(
         array_ops.expand_dims(context_input, 1),
-        array_ops.concat(0, [[1], [padded_length], [1]]))
-  return array_ops.concat(2, [sequence_input, tiled_context_input])
+        array_ops.concat_v2([[1], [padded_length], [1]], 0))
+  return array_ops.concat_v2([sequence_input, tiled_context_input], 2)
 
 
 def build_sequence_input(features,
@@ -260,30 +257,9 @@ def construct_rnn(initial_state,
     return activations, final_state
 
 
-def _mask_multivalue(sequence_length, metric):
-  """Wrapper function that masks values by `sequence_length`.
-
-  Args:
-    sequence_length: A `Tensor` with shape `[batch_size]` and dtype `int32`
-      containing the length of each sequence in the batch. If `None`, sequences
-      are assumed to be unpadded.
-    metric: A metric function. Its signature must contain `predictions` and
-      `labels`.
-
-  Returns:
-    A metric function that masks `predictions` and `labels` using
-    `sequence_length` and then applies `metric` to the results.
-  """
-  @functools.wraps(metric)
-  def _metric(predictions, labels, *args, **kwargs):
-    predictions, labels = mask_activations_and_labels(
-        predictions, labels, sequence_length)
-    return metric(predictions, labels, *args, **kwargs)
-  return _metric
-
-
-def _get_default_metrics(problem_type, prediction_type, sequence_length):
-  """Returns default `MetricSpec`s for `problem_type` and `prediction_type`.
+def _get_eval_metric_ops(problem_type, prediction_type, sequence_length,
+                         prediction_dict, labels):
+  """Returns eval metric ops for given `problem_type` and `prediction_type`.
 
   Args:
     problem_type: `ProblemType.CLASSIFICATION` or`ProblemType.REGRESSION`.
@@ -292,22 +268,26 @@ def _get_default_metrics(problem_type, prediction_type, sequence_length):
     sequence_length: A `Tensor` with shape `[batch_size]` and dtype `int32`
       containing the length of each sequence in the batch. If `None`, sequences
       are assumed to be unpadded.
+    prediction_dict: A dict of prediction tensors.
+    labels: The label `Tensor`.
+
   Returns:
-    A `dict` mapping strings to `MetricSpec`s.
+    A `dict` mapping strings to the result of calling the metric_fn.
   """
-  default_metrics = {}
+  eval_metric_ops = {}
   if problem_type == ProblemType.CLASSIFICATION:
     # Multi value classification
     if prediction_type == PredictionType.MULTIPLE_VALUE:
-      default_metrics['accuracy'] = metric_spec.MetricSpec(
-          metric_fn=_mask_multivalue(
-              sequence_length, metrics.streaming_accuracy),
-          prediction_key=RNNKeys.PREDICTIONS_KEY)
+      masked_predictions, masked_labels = mask_activations_and_labels(
+          prediction_dict[RNNKeys.PREDICTIONS_KEY], labels, sequence_length)
+      eval_metric_ops['accuracy'] = metrics.streaming_accuracy(
+          predictions=masked_predictions,
+          labels=masked_labels)
     # Single value classification
     elif prediction_type == PredictionType.SINGLE_VALUE:
-      default_metrics['accuracy'] = metric_spec.MetricSpec(
-          metric_fn=metrics.streaming_accuracy,
-          prediction_key=RNNKeys.PREDICTIONS_KEY)
+      eval_metric_ops['accuracy'] = metrics.streaming_accuracy(
+          predictions=prediction_dict[RNNKeys.PREDICTIONS_KEY],
+          labels=labels)
   elif problem_type == ProblemType.REGRESSION:
     # Multi value regression
     if prediction_type == PredictionType.MULTIPLE_VALUE:
@@ -315,7 +295,7 @@ def _get_default_metrics(problem_type, prediction_type, sequence_length):
     # Single value regression
     elif prediction_type == PredictionType.SINGLE_VALUE:
       pass
-  return default_metrics
+  return eval_metric_ops
 
 
 def _multi_value_predictions(
@@ -352,7 +332,7 @@ def _multi_value_predictions(
           flattened_activations, proba=True)
       flat_predictions = math_ops.argmax(flat_probabilities, 1)
       if target_column.num_label_columns == 1:
-        probability_shape = array_ops.concat(0, [activations_shape[:2], [2]])
+        probability_shape = array_ops.concat_v2([activations_shape[:2], [2]], 0)
       else:
         probability_shape = activations_shape
       probabilities = array_ops.reshape(
@@ -475,7 +455,7 @@ def apply_dropout(
     input_keep_probability = 1.0
   if output_prob_none:
     output_keep_probability = 1.0
-  return rnn_cell.DropoutWrapper(
+  return contrib_rnn.DropoutWrapper(
       cell, input_keep_probability, output_keep_probability, random_seed)
 
 
@@ -605,11 +585,9 @@ def _get_dynamic_rnn_model_fn(cell,
 
       eval_metric_ops = None
       if mode != model_fn.ModeKeys.INFER:
-        # TODO(roumposg): Return eval_metric_ops instead of default_metrics.
-        default_metrics = _get_default_metrics(
-            problem_type, prediction_type, sequence_length)
-        eval_metric_ops = estimator._make_metrics_ops(  # pylint: disable=protected-access
-            default_metrics, features, labels, prediction_dict)
+        eval_metric_ops = _get_eval_metric_ops(
+            problem_type, prediction_type, sequence_length, prediction_dict,
+            labels)
 
       train_op = None
       if mode == model_fn.ModeKeys.TRAIN:
@@ -643,20 +621,20 @@ def _to_rnn_cell(cell_or_type, num_units, num_layers):
     ValueError: `cell_or_type` is an invalid `RNNCell` name.
     TypeError: `cell_or_type` is not a string or a subclass of `RNNCell`.
   """
-  if isinstance(cell_or_type, rnn_cell.RNNCell):
+  if isinstance(cell_or_type, contrib_rnn.RNNCell):
     return cell_or_type
   if isinstance(cell_or_type, str):
     cell_or_type = _CELL_TYPES.get(cell_or_type)
     if cell_or_type is None:
       raise ValueError('The supported cell types are {}; got {}'.format(
           list(_CELL_TYPES.keys()), cell_or_type))
-  if not issubclass(cell_or_type, rnn_cell.RNNCell):
+  if not issubclass(cell_or_type, contrib_rnn.RNNCell):
     raise TypeError(
         'cell_or_type must be a subclass of RNNCell or one of {}.'.format(
             list(_CELL_TYPES.keys())))
   cell = cell_or_type(num_units=num_units)
   if num_layers > 1:
-    cell = rnn_cell.MultiRNNCell(
+    cell = contrib_rnn.MultiRNNCell(
         [cell] * num_layers, state_is_tuple=True)
   return cell
 

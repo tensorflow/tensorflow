@@ -238,4 +238,15 @@ TEST(CCOpTest, EmptyConst) {
   EXPECT_FALSE(root.status().ok());
 }
 
+TEST(CCOpTest, InvalidFinalize) {
+  Scope root = Scope::NewRootScope();
+  auto read_up_to =
+      ops::ReaderReadUpTo(root, Variable(root, {}, DT_STRING),
+                          Variable(root, {}, DT_STRING), static_cast<int32>(2));
+  EXPECT_FALSE(root.status().ok());
+  auto err_msg = root.status().error_message();
+  EXPECT_NE(err_msg.find("'num_records' passed int32 expected int64"),
+            string::npos);
+}
+
 }  // namespace tensorflow

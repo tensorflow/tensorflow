@@ -160,7 +160,6 @@
   * [`rank`](../../api_docs/python/array_ops.md#rank)
   * [`required_space_to_batch_paddings`](../../api_docs/python/array_ops.md#required_space_to_batch_paddings)
   * [`reshape`](../../api_docs/python/array_ops.md#reshape)
-  * [`reverse`](../../api_docs/python/array_ops.md#reverse)
   * [`reverse_sequence`](../../api_docs/python/array_ops.md#reverse_sequence)
   * [`reverse_v2`](../../api_docs/python/array_ops.md#reverse_v2)
   * [`saturate_cast`](../../api_docs/python/array_ops.md#saturate_cast)
@@ -347,7 +346,6 @@
   * [`no_op`](../../api_docs/python/control_flow_ops.md#no_op)
   * [`not_equal`](../../api_docs/python/control_flow_ops.md#not_equal)
   * [`Print`](../../api_docs/python/control_flow_ops.md#Print)
-  * [`select`](../../api_docs/python/control_flow_ops.md#select)
   * [`tuple`](../../api_docs/python/control_flow_ops.md#tuple)
   * [`verify_tensor_all_finite`](../../api_docs/python/control_flow_ops.md#verify_tensor_all_finite)
   * [`where`](../../api_docs/python/control_flow_ops.md#where)
@@ -383,6 +381,7 @@
   * [`crop_and_resize`](../../api_docs/python/image.md#crop_and_resize)
   * [`crop_to_bounding_box`](../../api_docs/python/image.md#crop_to_bounding_box)
   * [`decode_gif`](../../api_docs/python/image.md#decode_gif)
+  * [`decode_image`](../../api_docs/python/image.md#decode_image)
   * [`decode_jpeg`](../../api_docs/python/image.md#decode_jpeg)
   * [`decode_png`](../../api_docs/python/image.md#decode_png)
   * [`draw_bounding_boxes`](../../api_docs/python/image.md#draw_bounding_boxes)
@@ -653,6 +652,7 @@
   * [`SessionRunContext`](../../api_docs/python/train.md#SessionRunContext)
   * [`SessionRunHook`](../../api_docs/python/train.md#SessionRunHook)
   * [`SessionRunValues`](../../api_docs/python/train.md#SessionRunValues)
+  * [`SingularMonitoredSession`](../../api_docs/python/train.md#SingularMonitoredSession)
   * [`start_queue_runners`](../../api_docs/python/train.md#start_queue_runners)
   * [`StepCounterHook`](../../api_docs/python/train.md#StepCounterHook)
   * [`stop_gradient`](../../api_docs/python/train.md#stop_gradient)
@@ -660,7 +660,6 @@
   * [`summary_iterator`](../../api_docs/python/train.md#summary_iterator)
   * [`SummarySaverHook`](../../api_docs/python/train.md#SummarySaverHook)
   * [`Supervisor`](../../api_docs/python/train.md#Supervisor)
-  * [`SyncReplicasOptimizer`](../../api_docs/python/train.md#SyncReplicasOptimizer)
   * [`SyncReplicasOptimizerV2`](../../api_docs/python/train.md#SyncReplicasOptimizerV2)
   * [`WorkerSessionCreator`](../../api_docs/python/train.md#WorkerSessionCreator)
   * [`write_graph`](../../api_docs/python/train.md#write_graph)
@@ -776,6 +775,8 @@
   * [`WishartFull`](../../api_docs/python/contrib.distributions.md#WishartFull)
 
 * **[Random variable transformations (contrib)](../../api_docs/python/contrib.distributions.bijector.md)**:
+  * [`Affine`](../../api_docs/python/contrib.distributions.bijector.md#Affine)
+  * [`AffineLinearOperator`](../../api_docs/python/contrib.distributions.bijector.md#AffineLinearOperator)
   * [`Bijector`](../../api_docs/python/contrib.distributions.bijector.md#Bijector)
   * [`Chain`](../../api_docs/python/contrib.distributions.bijector.md#Chain)
   * [`CholeskyOuterProduct`](../../api_docs/python/contrib.distributions.bijector.md#CholeskyOuterProduct)
@@ -784,7 +785,6 @@
   * [`Inline`](../../api_docs/python/contrib.distributions.bijector.md#Inline)
   * [`Invert`](../../api_docs/python/contrib.distributions.bijector.md#Invert)
   * [`PowerTransform`](../../api_docs/python/contrib.distributions.bijector.md#PowerTransform)
-  * [`ScaleAndShift`](../../api_docs/python/contrib.distributions.bijector.md#ScaleAndShift)
   * [`SigmoidCentered`](../../api_docs/python/contrib.distributions.bijector.md#SigmoidCentered)
   * [`SoftmaxCentered`](../../api_docs/python/contrib.distributions.bijector.md#SoftmaxCentered)
   * [`Softplus`](../../api_docs/python/contrib.distributions.bijector.md#Softplus)
@@ -1018,7 +1018,9 @@
 
 * **[Linear Algebra (contrib)](../../api_docs/python/contrib.linalg.md)**:
   * [`LinearOperator`](../../api_docs/python/contrib.linalg.md#LinearOperator)
+  * [`LinearOperatorComposition`](../../api_docs/python/contrib.linalg.md#LinearOperatorComposition)
   * [`LinearOperatorDiag`](../../api_docs/python/contrib.linalg.md#LinearOperatorDiag)
+  * [`LinearOperatorMatrix`](../../api_docs/python/contrib.linalg.md#LinearOperatorMatrix)
   * [`LinearOperatorTriL`](../../api_docs/python/contrib.linalg.md#LinearOperatorTriL)
 
 * **[Losses (contrib)](../../api_docs/python/contrib.losses.md)**:

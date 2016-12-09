@@ -361,7 +361,6 @@ class VariablesTestCase(tf.test.TestCase):
       self.assertEqual(expected_device, v1.op.device)
       self.assertEqual(expected_group_v1, v1.op.colocation_groups())
       for i in v1.initializer.inputs:
-        self.assertEqual(expected_device, i.op.device)
         self.assertEqual(expected_group_v1, i.op.colocation_groups())
 
       v2 = tf.Variable(initializer, dtype=tf.float32, name="v2")

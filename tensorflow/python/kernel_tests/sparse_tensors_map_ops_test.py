@@ -142,7 +142,7 @@ class SparseTensorsMapTest(tf.test.TestCase):
       self.assertEqual(handles_value.shape, (4,))
       self.assertAllEqual(roundtrip_value.indices, indices_value)
       self.assertAllEqual(roundtrip_value.values, values_value)
-      self.assertAllEqual(roundtrip_value.shape, shape_value)
+      self.assertAllEqual(roundtrip_value.dense_shape, shape_value)
 
   def testDeserializeFailsInconsistentRank(self):
     with self.test_session(use_gpu=False) as sess:

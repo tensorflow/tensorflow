@@ -60,7 +60,6 @@ or join multiple tensors together.
 @@unstack
 @@unpack
 @@reverse_sequence
-@@reverse
 @@reverse_v2
 @@transpose
 @@extract_image_patches
@@ -1057,10 +1056,6 @@ def concat_v2(values, axis, name="concat_v2"):
                                   name=name)
 
 
-@deprecated(
-    "2016-12-13",
-    "This op will be removed after the deprecation date. "
-    "Please switch to tf.concat_v2().")
 def concat(concat_dim, values, name="concat"):
   """Concatenates tensors along one dimension.
 
@@ -1234,8 +1229,6 @@ def split(axis=None,
           split_dim=None):
   """DEPRECATED: use split_v; split_v rename to split happening soon.
 
-  Splits a tensor into `num_split` tensors along one dimension.
-
   Splits `value` along dimension `axis` into `num_or_size_splits` smaller
   tensors. Requires that `num_or_size_splits` evenly divide `value.shape[axis]`.
 
@@ -1244,7 +1237,7 @@ def split(axis=None,
   ```python
   # 'value' is a tensor with shape [5, 30]
   # Split 'value' into 3 tensors along dimension 1
-  split0, split1, split2 = tf.split(1, 3, value)
+  split0, split1, split2 = tf.split(value=value, num_or_size_splits=3, axis=1)
   tf.shape(split0) ==> [5, 10]
   ```
 
@@ -1253,7 +1246,8 @@ def split(axis=None,
 
   ```python
   num_items = t.get_shape()[axis].value
-  [tf.squeeze(s, [axis]) for s in tf.split(axis, num_items, t)]
+  [tf.squeeze(s, [axis]) for s in
+   tf.split(value=t, num_or_size_splits=num_items, axis=axis)]
   ```
 
   can be rewritten as
@@ -1272,7 +1266,7 @@ def split(axis=None,
     split_dim: The old (deprecated) name for axis.
 
   Returns:
-    `num_split` `Tensor` objects resulting from splitting `value`.
+    `num_or_size_splits` `Tensor` objects resulting from splitting `value`.
   """
   axis = deprecation.deprecated_argument_lookup("axis", axis, "split_dim",
                                                 split_dim)
@@ -1287,25 +1281,25 @@ def split_v(value=None,
             name="split_v"):
   """Splits a tensor into sub tensors.
 
-  If num_or_size_splits is a scalar, `num_split`, then
-  splits `value` along dimension `axis` into `num_split` smaller tensors.
-  Requires that `num_split` evenly divide `value.shape[split_dim]`.
+  If `num_or_size_splits` is a scalar, `num_split`, then splits `value` along
+  dimension `axis` into `num_split` smaller tensors.
+  Requires that `num_split` evenly divides `value.shape[axis]`.
 
-  If num_or_size_splits is a tensor, then
-  splits `value` into len(size_splits) pieces each the same size as the input
-  except along dimension split_dim where the size is size_splits[i].
+  If `num_or_size_splits` is a tensor, `size_splits`, then splits `value` into
+  `len(size_splits)` pieces. The shape of the `i`-th piece has the same size as
+  the `value` except along dimension `axis` where the size is `size_splits[i]`.
 
   For example:
 
   ```python
   # 'value' is a tensor with shape [5, 30]
   # Split 'value' into 3 tensors with sizes [4, 15, 11] along dimension 1
-  split0, split1, split2 = tf.split_v(1, [4, 15, 11], value)
+  split0, split1, split2 = tf.split_v(value, [4, 15, 11], 1)
   tf.shape(split0) ==> [5, 4]
   tf.shape(split1) ==> [5, 15]
   tf.shape(split2) ==> [5, 11]
   # Split 'value' into 3 tensors along dimension 1
-  split0, split1, split2 = tf.split(value, 3, 1)
+  split0, split1, split2 = tf.split(value=1, num_or_size_splits=3, axis=value)
   tf.shape(split0) ==> [5, 10]
   ```
 
@@ -1314,12 +1308,12 @@ def split_v(value=None,
     num_or_size_splits: Either an integer indicating the number of splits along
       split_dim or a 1-D Tensor containing the sizes of each output tensor
       along split_dim. If an integer then it must evenly divide
-      value.shape[split_dim]; otherwise the sum of sizes along the split
-      dimension must match that of the input.
+      `value.shape[axis]`; otherwise the sum of sizes along the split
+      dimension must match that of the `value`.
     axis: A 0-D `int32` `Tensor`. The dimension along which to split.
       Must be in the range `[0, rank(value))`. Defaults to 0.
     num: Optional, used to specify the number of outputs when it cannot be
-         inferred from the shape of size_splits.
+      inferred from the shape of `size_splits`.
     name: A name for the operation (optional).
 
   Returns:
@@ -1335,17 +1329,17 @@ def split_v(value=None,
     return gen_array_ops._split(
         split_dim=axis, num_split=num_or_size_splits, value=value, name=name)
   else:
+    size_splits = ops.convert_to_tensor(num_or_size_splits)
     if num is None:
-      size_splits = ops.convert_to_tensor(num_or_size_splits)
       size_splits_shape = size_splits.get_shape()
-      num = size_splits_shape.dims
-    if num is None:
-      raise ValueError("Cannot infer num from shape %s" % value_shape)
+      num = size_splits_shape.dims[0]
+      if num._value is None:
+        raise ValueError("Cannot infer num from shape %s" % num_or_size_splits)
     return gen_array_ops._split_v(
         value=value,
         size_splits=size_splits,
         split_dim=axis,
-        num_split=num[0],
+        num_split=num,
         name=name)
 
 
@@ -1703,8 +1697,7 @@ def sparse_placeholder(dtype, shape=None, name=None):
       indices=placeholder(
           dtypes.int64, shape=[None, None],
           name=(name + "/indices") if name is not None else None),
-      shape=shape
-  )
+      dense_shape=shape)
 # pylint: enable=redefined-outer-name
 
 
@@ -1986,10 +1979,10 @@ def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
 
   return gen_array_ops._edit_distance(hypothesis.indices,
                                       hypothesis.values,
-                                      hypothesis.shape,
+                                      hypothesis.dense_shape,
                                       truth.indices,
                                       truth.values,
-                                      truth.shape,
+                                      truth.dense_shape,
                                       normalize=normalize,
                                       name=name)
 
@@ -2331,7 +2324,14 @@ def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
     # to length as a matrix with 1 column: [[1], [3], [2]].
     # Because of broadcasting on both arguments this comparison results
     # in a matrix of size (len(lengths), maxlen)
-    result = gen_math_ops._range(0, maxlen, 1) < expand_dims(lengths, 1)
+    row_vector = gen_math_ops._range(constant(0, maxlen.dtype),
+                                     maxlen,
+                                     constant(1, maxlen.dtype))
+    # Since maxlen >= max(lengths), it is safe to use maxlen as a cast
+    # authoritative type. Whenever maxlen fits into tf.int32, so do the lengths.
+    matrix = gen_math_ops.cast(expand_dims(lengths, 1), maxlen.dtype)
+    result = row_vector < matrix
+
     if dtype is None or result.dtype.base_dtype == dtype.base_dtype:
       return result
     else:

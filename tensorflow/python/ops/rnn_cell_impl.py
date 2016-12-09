@@ -301,7 +301,7 @@ class BasicLSTMCell(RNNCell):
       if self._state_is_tuple:
         new_state = LSTMStateTuple(new_c, new_h)
       else:
-        new_state = array_ops.concat(1, [new_c, new_h])
+        new_state = array_ops.concat_v2([new_c, new_h], 1)
       return new_h, new_state
 
 
@@ -493,8 +493,8 @@ class LSTMCell(RNNCell):
           m = clip_ops.clip_by_value(m, -self._proj_clip, self._proj_clip)
           # pylint: enable=invalid-unary-operand-type
 
-    new_state = (LSTMStateTuple(c, m) if self._state_is_tuple
-                 else array_ops.concat(1, [c, m]))
+    new_state = (LSTMStateTuple(c, m) if self._state_is_tuple else
+                 array_ops.concat_v2([c, m], 1))
     return m, new_state
 
 
@@ -766,8 +766,8 @@ class MultiRNNCell(RNNCell):
             cur_state_pos += cell.state_size
           cur_inp, new_state = cell(cur_inp, cur_state)
           new_states.append(new_state)
-    new_states = (tuple(new_states) if self._state_is_tuple
-                  else array_ops.concat(1, new_states))
+    new_states = (tuple(new_states) if self._state_is_tuple else
+                  array_ops.concat_v2(new_states, 1))
     return cur_inp, new_states
 
 
@@ -846,7 +846,7 @@ def _linear(args, output_size, bias, bias_start=0.0, scope=None):
       raise ValueError("linear is expecting 2D arguments: %s" % shapes)
     if shape[1].value is None:
       raise ValueError("linear expects shape[1] to be provided for shape %s, "
-                       "but saw %d" % (shape, shape[1]))
+                       "but saw %s" % (shape, shape[1]))
     else:
       total_arg_size += shape[1].value
 
@@ -860,7 +860,7 @@ def _linear(args, output_size, bias, bias_start=0.0, scope=None):
     if len(args) == 1:
       res = math_ops.matmul(args[0], weights)
     else:
-      res = math_ops.matmul(array_ops.concat(1, args), weights)
+      res = math_ops.matmul(array_ops.concat_v2(args, 1), weights)
     if not bias:
       return res
     with vs.variable_scope(outer_scope) as inner_scope:

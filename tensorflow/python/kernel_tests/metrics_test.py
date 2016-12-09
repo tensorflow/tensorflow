@@ -1543,10 +1543,10 @@ class StreamingPrecisionRecallThresholdsTest(tf.test.TestCase):
       rec, rec_op = metrics.recall_at_thresholds(
           labels, predictions, thresholds, weights=weights)
 
-      [prec_low, prec_high] = tf.split(0, 2, prec)
+      [prec_low, prec_high] = tf.split(value=prec, num_or_size_splits=2, axis=0)
       prec_low = tf.reshape(prec_low, shape=())
       prec_high = tf.reshape(prec_high, shape=())
-      [rec_low, rec_high] = tf.split(0, 2, rec)
+      [rec_low, rec_high] = tf.split(value=rec, num_or_size_splits=2, axis=0)
       rec_low = tf.reshape(rec_low, shape=())
       rec_high = tf.reshape(rec_high, shape=())
 
@@ -1570,10 +1570,10 @@ class StreamingPrecisionRecallThresholdsTest(tf.test.TestCase):
       rec, rec_op = metrics.recall_at_thresholds(
           labels, predictions, thresholds, weights=weights)
 
-      [prec_low, prec_high] = tf.split(0, 2, prec)
+      [prec_low, prec_high] = tf.split(value=prec, num_or_size_splits=2, axis=0)
       prec_low = tf.reshape(prec_low, shape=())
       prec_high = tf.reshape(prec_high, shape=())
-      [rec_low, rec_high] = tf.split(0, 2, rec)
+      [rec_low, rec_high] = tf.split(value=rec, num_or_size_splits=2, axis=0)
       rec_low = tf.reshape(rec_low, shape=())
       rec_high = tf.reshape(rec_high, shape=())
 
@@ -1595,8 +1595,8 @@ class StreamingPrecisionRecallThresholdsTest(tf.test.TestCase):
       rec, rec_op = metrics.recall_at_thresholds(
           labels, predictions, thresholds)
 
-      [prec_low, prec_high] = tf.split(0, 2, prec)
-      [rec_low, rec_high] = tf.split(0, 2, rec)
+      [prec_low, prec_high] = tf.split(value=prec, num_or_size_splits=2, axis=0)
+      [rec_low, rec_high] = tf.split(value=rec, num_or_size_splits=2, axis=0)
 
       sess.run(tf.local_variables_initializer())
       sess.run([prec_op, rec_op])
@@ -3300,12 +3300,14 @@ class MeanIOUTest(tf.test.TestCase):
       self.assertAlmostEqual(desired_output, miou.eval())
 
   def testUpdateOpEvalIsAccumulatedConfusionMatrix(self):
-    predictions = tf.concat(0,
-                            [tf.constant(0, shape=[5]),
-                             tf.constant(1, shape=[5])])
-    labels = tf.concat(0,
-                       [tf.constant(0, shape=[3]),
-                        tf.constant(1, shape=[7])])
+    predictions = tf.concat_v2(
+        [tf.constant(
+            0, shape=[5]), tf.constant(
+                1, shape=[5])], 0)
+    labels = tf.concat_v2(
+        [tf.constant(
+            0, shape=[3]), tf.constant(
+                1, shape=[7])], 0)
     num_classes = 2
     with self.test_session() as sess:
       miou, update_op = metrics.mean_iou(
@@ -3339,14 +3341,23 @@ class MeanIOUTest(tf.test.TestCase):
       self.assertEqual(0., miou.eval())
 
   def testResultsWithSomeMissing(self):
-    predictions = tf.concat(0, [tf.constant(0, shape=[5]),
-                                tf.constant(1, shape=[5])])
-    labels = tf.concat(0, [tf.constant(0, shape=[3]),
-                           tf.constant(1, shape=[7])])
+    predictions = tf.concat_v2(
+        [tf.constant(
+            0, shape=[5]), tf.constant(
+                1, shape=[5])], 0)
+    labels = tf.concat_v2(
+        [tf.constant(
+            0, shape=[3]), tf.constant(
+                1, shape=[7])], 0)
     num_classes = 2
-    weights = tf.concat(0, [tf.constant(0, shape=[1]),
-                            tf.constant(1, shape=[8]),
-                            tf.constant(0, shape=[1])])
+    weights = tf.concat_v2(
+        [
+            tf.constant(
+                0, shape=[1]), tf.constant(
+                    1, shape=[8]), tf.constant(
+                        0, shape=[1])
+        ],
+        0)
     with self.test_session() as sess:
       miou, update_op = metrics.mean_iou(
           labels, predictions, num_classes, weights=weights)
