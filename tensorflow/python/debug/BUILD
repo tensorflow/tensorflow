@@ -14,6 +14,7 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_library(
     name = "debug_py",
@@ -48,6 +49,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":debug_data",
+        "//tensorflow/python:data_flow_ops",
     ],
 )
 
@@ -57,6 +59,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":debug_utils",
+        ":stepper",
         "//tensorflow/python:session",
     ],
 )
@@ -85,7 +88,9 @@ py_library(
     srcs = ["cli/cli_shared.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":command_parser",
         ":debugger_cli_common",
+        ":tensor_format",
         "//tensorflow/python:framework",
         "//tensorflow/python:variables",
     ],
@@ -96,9 +101,23 @@ py_library(
     srcs = ["cli/analyzer_cli.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":cli_shared",
         ":command_parser",
         ":debug_data",
         ":debugger_cli_common",
+        ":tensor_format",
+    ],
+)
+
+py_library(
+    name = "stepper_cli",
+    srcs = ["cli/stepper_cli.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":cli_shared",
+        ":command_parser",
+        ":debugger_cli_common",
+        ":stepper",
         ":tensor_format",
     ],
 )
@@ -125,6 +144,7 @@ py_library(
         ":debug_data",
         ":debugger_cli_common",
         ":framework",
+        ":stepper_cli",
         "//tensorflow/python:session",
     ],
 )
@@ -135,6 +155,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":local_cli_wrapper",
+        ":stepper",
         "//tensorflow/python:session",
     ],
 )
@@ -223,6 +244,7 @@ py_test(
     deps = [
         ":debug_data",
         ":framework",
+        ":stepper",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
@@ -341,6 +363,22 @@ cuda_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "stepper_cli_test",
+    size = "small",
+    srcs = [
+        "cli/stepper_cli_test.py",
+    ],
+    additional_deps = [
+        ":stepper",
+        ":stepper_cli",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:session",
+    ],
+)
+
 py_test(
     name = "local_cli_wrapper_test",
     size = "small",
@@ -349,6 +387,7 @@ py_test(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":debugger_cli_common",
         ":local_cli_wrapper",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",

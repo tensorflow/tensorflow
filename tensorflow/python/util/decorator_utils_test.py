@@ -56,22 +56,44 @@ class AddNoticeToDocstringTest(tf.test.TestCase):
         expected)
 
   def test_regular(self):
-    self._check("Brief\n\nDocstring",
-                "Brief (suffix)\n\nGo away\nInstructions\n\nDocstring")
+    expected = ("Brief (suffix)\n\nGo away\nInstructions\n\nDocstring\n\n"
+                "Args:\n  arg1: desc")
+    # No indent for main docstring
+    self._check("Brief\n\nDocstring\n\nArgs:\n  arg1: desc", expected)
+    # 2 space indent for main docstring, blank lines not indented
+    self._check("Brief\n\n  Docstring\n\n  Args:\n    arg1: desc", expected)
+    # 2 space indent for main docstring, blank lines indented as well.
+    self._check("Brief\n  \n  Docstring\n  \n  Args:\n    arg1: desc", expected)
+    # No indent for main docstring, first line blank.
+    self._check("\n  Brief\n  \n  Docstring\n  \n  Args:\n    arg1: desc",
+                expected)
+    # 2 space indent, first line blank.
+    self._check("\n  Brief\n  \n  Docstring\n  \n  Args:\n    arg1: desc",
+                expected)
 
   def test_brief_only(self):
-    self._check("Brief",
-                "Brief (suffix)\n\nGo away\nInstructions")
+    expected = "Brief (suffix)\n\nGo away\nInstructions"
+    self._check("Brief", expected)
+    self._check("Brief\n", expected)
+    self._check("Brief\n  ", expected)
+    self._check("\nBrief\n  ", expected)
+    self._check("\n  Brief\n  ", expected)
 
   def test_no_docstring(self):
-    self._check(None,
-                "Nothing here\n\nGo away\nInstructions")
-    self._check("",
-                "Nothing here\n\nGo away\nInstructions")
+    expected = "Nothing here\n\nGo away\nInstructions"
+    self._check(None, expected)
+    self._check("", expected)
 
   def test_no_empty_line(self):
-    self._check("Brief\nDocstring",
-                "Brief (suffix)\n\nGo away\nInstructions\n\nDocstring")
+    expected = "Brief (suffix)\n\nGo away\nInstructions\n\nDocstring"
+    # No second line indent
+    self._check("Brief\nDocstring", expected)
+    # 2 space second line indent
+    self._check("Brief\n  Docstring", expected)
+    # No second line indent, first line blank
+    self._check("\nBrief\nDocstring", expected)
+    # 2 space second line indent, first line blank
+    self._check("\n  Brief\n  Docstring", expected)
 
 
 class ValidateCallableTest(tf.test.TestCase):

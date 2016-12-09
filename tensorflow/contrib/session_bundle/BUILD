@@ -136,27 +136,29 @@ cc_library(
     ]),
 )
 
-cc_test(
-    name = "session_bundle_test",
-    size = "small",
-    srcs = ["session_bundle_test.cc"],
-    data = [
-        "//tensorflow/contrib/session_bundle/example:half_plus_two",
-    ],
-    # Link in all registered kernels.
-    linkstatic = 1,
-    visibility = ["//visibility:private"],
-    deps = [
-        ":session_bundle",
-        ":test_util",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
+# Reenable target once half_plus_two_data does not run TF during build.
+# cc_test(
+#     name = "session_bundle_test",
+#     size = "small",
+#     srcs = ["session_bundle_test.cc"],
+#     data = [
+#         "//tensorflow/contrib/session_bundle/example:half_plus_two",
+#     ],
+#     # Link in all registered kernels.
+#     linkstatic = 1,
+#     tags = ["manual"],
+#     visibility = ["//visibility:private"],
+#     deps = [
+#         ":session_bundle",
+#         ":test_util",
+#         "//tensorflow/core:core_cpu",
+#         "//tensorflow/core:framework",
+#         "//tensorflow/core:lib",
+#         "//tensorflow/core:test",
+#         "//tensorflow/core:test_main",
+#         "//tensorflow/core:testlib",
+#     ],
+# )
 
 py_library(
     name = "session_bundle_py",
@@ -171,25 +173,27 @@ py_library(
     ],
 )
 
-py_test(
-    name = "session_bundle_py_test",
-    size = "small",
-    srcs = [
-        "session_bundle_test.py",
-    ],
-    data = [
-        "//tensorflow/contrib/session_bundle/example:half_plus_two",
-    ],
-    main = "session_bundle_test.py",
-    srcs_version = "PY2AND3",
-    deps = [
-        ":constants",
-        ":manifest_proto_py",
-        ":session_bundle_py",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/core:protos_all_py",
-    ],
-)
+# Reenable target once half_plus_two_data does not run TF during build.
+# py_test(
+#     name = "session_bundle_py_test",
+#     size = "small",
+#     srcs = [
+#         "session_bundle_test.py",
+#     ],
+#     data = [
+#         "//tensorflow/contrib/session_bundle/example:half_plus_two",
+#     ],
+#     main = "session_bundle_test.py",
+#     srcs_version = "PY2AND3",
+#     tags = ["manual"],
+#     deps = [
+#         ":constants",
+#         ":manifest_proto_py",
+#         ":session_bundle_py",
+#         "//tensorflow:tensorflow_py",
+#         "//tensorflow/core:protos_all_py",
+#     ],
+# )
 
 # This is a lite version of the signature target that does not link in any
 # Tensorflow ops in order to minimize its size. Clients using this should
@@ -254,13 +258,6 @@ cc_library(
 
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 
-filegroup(
-    name = "saved_model_half_plus_two",
-    srcs = glob([
-        "testdata/saved_model_half_plus_two/**",
-    ]),
-)
-
 cc_library(
     name = "bundle_shim",
     srcs = ["bundle_shim.cc"],
@@ -282,30 +279,32 @@ cc_library(
     ]),
 )
 
-cc_test(
-    name = "bundle_shim_test",
-    size = "small",
-    srcs = ["bundle_shim_test.cc"],
-    data = [
-        ":saved_model_half_plus_two",
-        "//tensorflow/contrib/session_bundle/example:half_plus_two",
-    ],
-    # Link in all registered kernels.
-    linkstatic = 1,
-    deps = [
-        ":bundle_shim",
-        ":test_util",
-        "//tensorflow/cc/saved_model:loader",
-        "//tensorflow/cc/saved_model:signature_constants",
-        "//tensorflow/cc/saved_model:tag_constants",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
+# Reenable target once half_plus_two_data does not run TF during build.
+# cc_test(
+#     name = "bundle_shim_test",
+#     size = "small",
+#     srcs = ["bundle_shim_test.cc"],
+#     data = [
+#         "//tensorflow/contrib/session_bundle/example:half_plus_two",
+#         "//tensorflow/python/saved_model/example:saved_model_half_plus_two_data",
+#     ],
+#     # Link in all registered kernels.
+#     linkstatic = 1,
+#     tags = ["manual"],
+#     deps = [
+#         ":bundle_shim",
+#         ":test_util",
+#         "//tensorflow/cc/saved_model:loader",
+#         "//tensorflow/cc/saved_model:signature_constants",
+#         "//tensorflow/cc/saved_model:tag_constants",
+#         "//tensorflow/core:core_cpu",
+#         "//tensorflow/core:framework",
+#         "//tensorflow/core:lib",
+#         "//tensorflow/core:test",
+#         "//tensorflow/core:test_main",
+#         "//tensorflow/core:testlib",
+#     ],
+# )
 
 tf_proto_library(
     name = "manifest_proto",

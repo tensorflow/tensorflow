@@ -38,6 +38,9 @@ from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework import deprecated_args
 from tensorflow.contrib.framework import list_variables
 from tensorflow.contrib.framework import load_variable
+from tensorflow.contrib.framework.python.framework import experimental
+from tensorflow.contrib.framework.python.ops import ops as contrib_ops
+from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import graph_actions
 from tensorflow.contrib.learn.python.learn import metric_spec
@@ -51,14 +54,21 @@ from tensorflow.contrib.learn.python.learn.estimators import tensor_signature
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedError
 from tensorflow.contrib.learn.python.learn.learn_io import data_feeder
 from tensorflow.contrib.learn.python.learn.utils import export
-
+from tensorflow.contrib.learn.python.learn.utils import saved_model_export_utils
+from tensorflow.python.client import session as tf_session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import builder as saved_model_builder
+from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import device_setter
 from tensorflow.python.training import saver
+from tensorflow.python.util import compat
 
 
 AS_ITERABLE_DATE = '2016-09-15'
@@ -178,7 +188,7 @@ def _get_replica_device_setter(config):
     A replica device setter, or None.
   """
   ps_ops = [
-      'Variable', 'AutoReloadVariable', 'MutableHashTable',
+      'Variable', 'VariableV2', 'AutoReloadVariable', 'MutableHashTable',
       'MutableHashTableOfTensors', 'MutableDenseHashTable'
   ]
 
@@ -405,7 +415,7 @@ class BaseEstimator(
   )
   def evaluate(
       self, x=None, y=None, input_fn=None, feed_fn=None, batch_size=None,
-      steps=None, metrics=None, name=None):
+      steps=None, metrics=None, name=None, checkpoint_path=None):
     # pylint: disable=g-doc-args,g-doc-return-or-yield
     """See `Evaluable`.
 
@@ -420,11 +430,13 @@ class BaseEstimator(
     if metrics is not None and not isinstance(metrics, dict):
       raise ValueError('Metrics argument should be None or dict. '
                        'Got %s.' % metrics)
-    eval_results, global_step = self._evaluate_model(input_fn=input_fn,
-                                                     feed_fn=feed_fn,
-                                                     steps=steps,
-                                                     metrics=metrics,
-                                                     name=name)
+    eval_results, global_step = self._evaluate_model(
+        input_fn=input_fn,
+        feed_fn=feed_fn,
+        steps=steps,
+        metrics=metrics,
+        name=name,
+        checkpoint_path=checkpoint_path)
     if eval_results is not None:
       eval_results.update({'global_step': global_step})
     return eval_results
@@ -553,13 +565,12 @@ class BaseEstimator(
         use_deprecated_input_fn=use_deprecated_input_fn,
         default_batch_size=default_batch_size,
         exports_to_keep=exports_to_keep)
-    # pylint: enable=protected-access
 
   @abc.abstractproperty
   def _get_train_ops(self, features, labels):
     """Method that builds model graph and returns trainer ops.
 
-    Expected to be overriden by sub-classes that require custom support.
+    Expected to be overridden by sub-classes that require custom support.
 
     Args:
       features: `Tensor` or `dict` of `Tensor` objects.
@@ -761,18 +772,21 @@ class BaseEstimator(
                       steps,
                       feed_fn=None,
                       metrics=None,
-                      name=''):
+                      name='',
+                      checkpoint_path=None):
     # TODO(wicke): Remove this once Model and associated code are gone.
     if (hasattr(self._config, 'execution_mode') and
         self._config.execution_mode not in ('all', 'evaluate', 'eval_evalset')):
       return None, None
 
-    # Check that model has been trained.
-    checkpoint_path = self._model_dir
-    latest_path = saver.latest_checkpoint(checkpoint_path)
-    if not latest_path:
-      raise NotFittedError("Couldn't find trained model at %s."
-                           % checkpoint_path)
+    # Check that model has been trained (if nothing has been set explicitly).
+    if not checkpoint_path:
+      latest_path = saver.latest_checkpoint(self._model_dir)
+      if not latest_path:
+        raise NotFittedError("Couldn't find trained model at %s."
+                             % self._model_dir)
+      checkpoint_path = self._model_dir
+
     # Setup output directory.
     eval_dir = os.path.join(self._model_dir, 'eval' if not name else
                             'eval_' + name)
@@ -906,7 +920,15 @@ class BaseEstimator(
   def _infer_model_as_iterable(
       self, checkpoint_path, predictions, feed_fn, return_dict):
     if feed_fn is None:
-      feed_dicts = itertools.repeat(None)
+      # If there are no queue_runners, the input `predictions` is a
+      # constant, and we should stop after the first epoch.  If,
+      # instead, there are queue_runners, eventually they should throw
+      # an `OutOfRangeError`.
+      graph = contrib_ops.get_graph_from_inputs(predictions.values())
+      if graph.get_collection(ops.GraphKeys.QUEUE_RUNNERS):
+        feed_dicts = itertools.repeat(None)
+      else:
+        feed_dicts = [None]
     else:
       def _feed_fn():
         while True:
@@ -1125,6 +1147,106 @@ class Estimator(BaseEstimator):
     labels = tensor_signature.create_placeholders_from_signatures(
         self._labels_info[model_fn_lib.ModeKeys.INFER])
     return self._call_model_fn(features, labels, model_fn_lib.ModeKeys.INFER)
+
+  @experimental
+  def export_savedmodel(
+      self, export_dir_base, input_fn,
+      default_output_alternative_key=None,
+      assets_extra=None,
+      as_text=False,
+      exports_to_keep=None):
+    """Exports inference graph as a SavedModel into given dir.
+
+    Args:
+      export_dir_base: A string containing a directory to write the exported
+        graph and checkpoints.
+      input_fn: A function that takes no argument and
+        returns an `InputFnOps`.
+      default_output_alternative_key: the name of the head to serve when none is
+        specified.
+      assets_extra: A dict specifying how to populate the assets.extra directory
+        within the exported SavedModel.  Each key should give the destination
+        path (including the filename) relative to the assets.extra directory.
+        The corresponding value gives the full path of the source file to be
+        copied.  For example, the simple case of copying a single file without
+        renaming it is specified as
+        `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
+      as_text: whether to write the SavedModel proto in text format.
+      exports_to_keep: Number of exports to keep.
+
+    Returns:
+      The string path to the exported directory.
+
+    Raises:
+      ValueError: if an unrecognized export_type is requested.
+    """
+    if input_fn is None:
+      raise ValueError('input_fn must be defined.')
+
+    with ops.Graph().as_default() as g:
+      contrib_variables.create_global_step(g)
+
+      # Call the input_fn and collect the input alternatives.
+      input_ops = input_fn()
+      input_alternatives, features = (
+          saved_model_export_utils.get_input_alternatives(input_ops))
+
+      # Call the model_fn and collect the output alternatives.
+      model_fn_ops = self._call_model_fn(features, None,
+                                         model_fn_lib.ModeKeys.INFER)
+      output_alternatives, actual_default_output_alternative_key = (
+          saved_model_export_utils.get_output_alternatives(
+              model_fn_ops, default_output_alternative_key))
+
+      # Build the SignatureDefs from all pairs of input and output signatures
+      signature_def_map = saved_model_export_utils.build_all_signature_defs(
+          input_alternatives, output_alternatives,
+          actual_default_output_alternative_key)
+
+      # Locate the latest checkpoint
+      # TODO(soergel): does it help that we know we have one from this step?
+      checkpoint_path = saver.latest_checkpoint(self._model_dir)
+      if not checkpoint_path:
+        raise NotFittedError("Couldn't find trained model at %s."
+                             % self._model_dir)
+
+      export_dir = saved_model_export_utils.get_timestamped_export_dir(
+          export_dir_base)
+
+      with tf_session.Session('') as session:
+        variables.initialize_local_variables()
+        data_flow_ops.initialize_all_tables()
+        saver_for_restore = saver.Saver(
+            variables.global_variables(),
+            sharded=True)
+        saver_for_restore.restore(session, checkpoint_path)
+
+        init_op = control_flow_ops.group(
+            variables.local_variables_initializer(),
+            data_flow_ops.initialize_all_tables())
+
+        # Perform the export
+        builder = saved_model_builder.SavedModelBuilder(export_dir)
+        builder.add_meta_graph_and_variables(
+            session, [tag_constants.SERVING],
+            signature_def_map=signature_def_map,
+            assets_collection=ops.get_collection(
+                ops.GraphKeys.ASSET_FILEPATHS),
+            legacy_init_op=init_op)
+        builder.save(as_text)
+
+      # Add the extra assets
+      if assets_extra:
+        assets_extra_path = os.path.join(compat.as_bytes(export_dir),
+                                         compat.as_bytes('assets.extra'))
+        for dest_relative, source in assets_extra.items():
+          dest_absolute = os.path.join(compat.as_bytes(assets_extra_path),
+                                       compat.as_bytes(dest_relative))
+          dest_path = os.path.dirname(dest_absolute)
+          gfile.MakeDirs(dest_path)
+          gfile.Copy(source, dest_absolute)
+
+      return export_dir
 
 
 # For time of deprecation x,y from Estimator allow direct access

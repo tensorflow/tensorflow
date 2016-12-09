@@ -14,7 +14,7 @@
 # =============================================================================
 
 # pylint: disable=unused-import,g-bad-import-order
-"""Contains the core layers: FullyConnected, [Flatten, Dropout].
+"""Contains the core layers: Dense, Dropout.
 
 Also contains their functional aliases.
 """
@@ -27,20 +27,20 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import numpy as np
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.ops import control_flow_ops
 
 from tensorflow.python.layers import base
 
 
-class FullyConnected(base._Layer):  # pylint: disable=protected-access
-  """Fully-connected layer class.
-
-  WARNING: Do not use this class unless you know what you are doing:
-  the API is subject to future changes.
+class Dense(base._Layer):  # pylint: disable=protected-access
+  """Densely-connected layer class.
 
   This layer implements the operation `outputs = activation(inputs.w + b)`
   Where `activation` is the activation function passed as the `activation`
@@ -51,75 +51,78 @@ class FullyConnected(base._Layer):  # pylint: disable=protected-access
   flattened prior to the initial matrix multiply by `w`.
 
   Arguments:
-    output_dim: Integer or Long, dimensionality of the output space.
+    units: Integer or Long, dimensionality of the output space.
     activation: Activation function (callable). Set it to None to maintain a
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
-    w_initializer: Initializer function for the weight matrix.
+    weights_initializer: Initializer function for the weight matrix.
     bias_initializer: Initializer function for the bias.
-    w_regularizer: Regularizer function for the weight matrix.
+    weights_regularizer: Regularizer function for the weight matrix.
     bias_regularizer: Regularizer function for the bias.
     activity_regularizer: Regularizer function for the output.
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-    name: String, the name of the layer.
+    name: String, the name of the layer. Layers with the same name will
+      share weights, but to avoid mistakes we require reuse=True in such cases.
     reuse: Boolean, whether to reuse the weights of a previous layer
       by the same name.
 
   Properties:
-    output_dim: Integer or Long, dimensionality of the output space.
+    units: Python integer, dimensionality of the output space.
     activation: Activation function (callable).
     use_bias: Boolean, whether the layer uses a bias.
-    w_initializer: Initializer instance (or name) for the weight matrix.
+    weights_initializer: Initializer instance (or name) for the weight matrix.
     bias_initializer: Initializer instance (or name) for the bias.
-    w_regularizer: Regularizer instance for the weight matrix (callable)
+    weights_regularizer: Regularizer instance for the weight matrix (callable)
     bias_regularizer: Regularizer instance for the bias (callable).
     activity_regularizer: Regularizer instance for the output (callable)
-    w: Weight matrix (TensorFlow variable or tensor).
+    weights: Weight matrix (TensorFlow variable or tensor).
     bias: Bias vector, if applicable (TensorFlow variable or tensor).
   """
 
-  def __init__(self, output_dim,
+  def __init__(self, units,
                activation=None,
                use_bias=True,
-               w_initializer=None,
+               weights_initializer=None,
                bias_initializer=init_ops.zeros_initializer,
-               w_regularizer=None,
+               weights_regularizer=None,
                bias_regularizer=None,
                activity_regularizer=None,
                trainable=True,
                name=None,
                **kwargs):
-    super(FullyConnected, self).__init__(trainable=trainable, name=name,
-                                         **kwargs)
-    self.output_dim = output_dim
+    super(Dense, self).__init__(trainable=trainable, name=name, **kwargs)
+    self.units = units
     self.activation = activation
     self.use_bias = use_bias
-    self.w_initializer = w_initializer
+    self.weights_initializer = weights_initializer
     self.bias_initializer = bias_initializer
-    self.w_regularizer = w_regularizer
+    self.weights_regularizer = weights_regularizer
     self.bias_regularizer = bias_regularizer
     self.activity_regularizer = activity_regularizer
 
   def build(self, input_shape):
+    input_shape = tensor_shape.TensorShape(input_shape)
+    if input_shape.ndims is None:
+      raise ValueError('Inputs to `Dense` should have known rank.')
     if len(input_shape) < 2:
-      raise ValueError('Inputs to `FullyConnected` should have rank >= 2.')
-    if input_shape[-1] is None:
-      raise ValueError('The last dimension of the inputs to `FullyConnected` '
+      raise ValueError('Inputs to `Dense` should have rank >= 2.')
+    if input_shape[-1].value is None:
+      raise ValueError('The last dimension of the inputs to `Dense` '
                        'should be defined. Found `None`.')
     # Note that we set `trainable=True` because this is a trainable
     # weight of the layer. If the layer is not trainable
     # (self.trainable = False), the variable will not be added to
     # tf.trainable_variables(), and self.trainable_weights will be empty.
     self.w = vs.get_variable('weights',
-                             shape=[input_shape[-1], self.output_dim],
-                             initializer=self.w_initializer,
-                             regularizer=self.w_regularizer,
-                             dtype=self._dtype,
+                             shape=[input_shape[-1].value, self.units],
+                             initializer=self.weights_initializer,
+                             regularizer=self.weights_regularizer,
+                             dtype=self.dtype,
                              trainable=True)
     if self.use_bias:
-      self.bias = vs.get_variable('biases',
-                                  shape=[self.output_dim,],
+      self.bias = vs.get_variable('bias',
+                                  shape=[self.units,],
                                   initializer=self.bias_initializer,
                                   regularizer=self.bias_regularizer,
                                   dtype=self._dtype,
@@ -130,11 +133,11 @@ class FullyConnected(base._Layer):  # pylint: disable=protected-access
   def call(self, inputs):
     shape = inputs.get_shape().as_list()
     input_dim = shape[-1]
-    output_shape = shape[:-1] + [self.output_dim]
+    output_shape = shape[:-1] + [self.units]
     if len(output_shape) > 2:
       # Reshape the input to 2D.
       output_shape_tensors = array_ops.unpack(array_ops.shape(inputs))
-      output_shape_tensors[-1] = self.output_dim
+      output_shape_tensors[-1] = self.units
       output_shape_tensor = array_ops.pack(output_shape_tensors)
       inputs = array_ops.reshape(inputs, [-1, input_dim])
 
@@ -148,23 +151,23 @@ class FullyConnected(base._Layer):  # pylint: disable=protected-access
       outputs.set_shape(output_shape)
 
     if self.activation is not None:
-      return self.activation(outputs)
+      return self.activation(outputs)  # pylint: disable=not-callable
     return outputs
 
 
-def fully_connected(
-    inputs, output_dim,
+def dense(
+    inputs, units,
     activation=None,
     use_bias=True,
-    w_initializer=None,
+    weights_initializer=None,
     bias_initializer=init_ops.zeros_initializer,
-    w_regularizer=None,
+    weights_regularizer=None,
     bias_regularizer=None,
     activity_regularizer=None,
     trainable=True,
     name=None,
     reuse=False):
-  """Functional interface for the fully connected layer.
+  """Functional interface for the densely-connected layer.
 
   This layer implements the operation `outputs = activation(inputs.w + b)`
   Where `activation` is the activation function passed as the `activation`
@@ -176,13 +179,13 @@ def fully_connected(
 
   Arguments:
     inputs: Tensor input.
-    output_dim: Integer or Long, dimensionality of the output space.
+    units: Integer or Long, dimensionality of the output space.
     activation: Activation function (callable). Set it to None to maintain a
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
-    w_initializer: Initializer function for the weight matrix.
+    weights_initializer: Initializer function for the weight matrix.
     bias_initializer: Initializer function for the bias.
-    w_regularizer: Regularizer function for the weight matrix.
+    weights_regularizer: Regularizer function for the weight matrix.
     bias_regularizer: Regularizer function for the bias.
     activity_regularizer: Regularizer function for the output.
     trainable: Boolean, if `True` also add variables to the graph collection
@@ -194,15 +197,111 @@ def fully_connected(
   Returns:
     Output tensor.
   """
-  layer = FullyConnected(output_dim,
-                         activation=activation,
-                         use_bias=use_bias,
-                         w_initializer=w_initializer,
-                         bias_initializer=bias_initializer,
-                         w_regularizer=w_regularizer,
-                         bias_regularizer=bias_regularizer,
-                         activity_regularizer=activity_regularizer,
-                         trainable=trainable,
-                         name=name,
-                         _reuse_weights=reuse)
+  layer = Dense(units,
+                activation=activation,
+                use_bias=use_bias,
+                weights_initializer=weights_initializer,
+                bias_initializer=bias_initializer,
+                weights_regularizer=weights_regularizer,
+                bias_regularizer=bias_regularizer,
+                activity_regularizer=activity_regularizer,
+                trainable=trainable,
+                name=name,
+                dtype=inputs.dtype.base_dtype,
+                _scope=name,
+                _reuse=reuse)
   return layer.apply(inputs)
+
+
+class Dropout(base._Layer):  # pylint: disable=protected-access
+  """Applies Dropout to the input.
+
+  Dropout consists in randomly setting a fraction `rate` of input units to 0
+  at each update during training time, which helps prevent overfitting.
+  The units that are kept are scaled by `1 / (1 - rate)`, so that their
+  sum is unchanged at training time and inference time.
+
+  Arguments:
+    rate: The dropout rate, between 0 and 1. E.g. "rate=0.1" would drop out
+      10% of input units.
+    noise_shape: 1D tensor of type `int32` representing the shape of the
+      binary dropout mask that will be multiplied with the input.
+      For instance, if your inputs have shape
+      `(batch_size, timesteps, features)`, and you want the dropout mask
+      to be the same for all timesteps, you can use
+      `noise_shape=[batch_size, 1, features]`.
+    seed: A Python integer. Used to create random seeds. See
+      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      for behavior.
+    name: The name of the layer (string).
+  """
+
+  def __init__(self, rate=0.5,
+               noise_shape=None,
+               seed=None,
+               name=None,
+               **kwargs):
+    super(Dropout, self).__init__(name=name, **kwargs)
+    self.rate = rate
+    self.noise_shape = noise_shape
+    self.seed = seed
+
+  def call(self, inputs, training=False):
+    if isinstance(training, bool):
+      training_bool = training
+    else:
+      training_bool = tensor_util.constant_value(training)
+    if training_bool is False:
+      return array_ops.identity(inputs)
+    dropped_inputs = nn.dropout(inputs, 1  - self.rate,
+                                noise_shape=self.noise_shape,
+                                seed=self.seed)
+    if training_bool is True:
+      return dropped_inputs
+    return control_flow_ops.cond(training,
+                                 lambda: dropped_inputs,
+                                 lambda: inputs)
+
+
+def dropout(inputs,
+            rate=0.5,
+            noise_shape=None,
+            seed=None,
+            training=False,
+            name=None):
+  """Applies Dropout to the input.
+
+  Dropout consists in randomly setting a fraction `rate` of input units to 0
+  at each update during training time, which helps prevent overfitting.
+  The units that are kept are scaled by `1 / (1 - rate)`, so that their
+  sum is unchanged at training time and inference time.
+
+  Arguments:
+    inputs: Tensor input.
+    rate: The dropout rate, between 0 and 1. E.g. "rate=0.1" would drop out
+      10% of input units.
+    noise_shape: 1D tensor of type `int32` representing the shape of the
+      binary dropout mask that will be multiplied with the input.
+      For instance, if your inputs have shape
+      `(batch_size, timesteps, features)`, and you want the dropout mask
+      to be the same for all timesteps, you can use
+      `noise_shape=[batch_size, 1, features]`.
+    seed: A Python integer. Used to create random seeds. See
+      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      for behavior.
+    training: Either a Python boolean, or a TensorFlow boolean scalar tensor
+      (e.g. a placeholder). Whether to return the output in training mode
+      (apply dropout) or in inference mode (return the input untouched).
+    name: The name of the layer (string).
+
+  Returns:
+    Output tensor.
+  """
+  layer = Dropout(rate, noise_shape=noise_shape, seed=seed, name=name)
+  return layer.apply(inputs, training=training)
+
+
+# Aliases
+
+FullyConnected = Dense
+fully_connected = dense

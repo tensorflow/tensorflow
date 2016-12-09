@@ -78,12 +78,37 @@ py_binary(
     deps = ["//tensorflow:tensorflow_py"],
 )
 
+filegroup(
+    name = "licenses",
+    data = [
+        "//third_party/eigen3:LICENSE",
+        "//third_party/hadoop:LICENSE.txt",
+        "@boringssl//:LICENSE",
+        "@com_googlesource_code_re2//:LICENSE",
+        "@eigen_archive//:COPYING.MPL2",
+        "@farmhash_archive//:COPYING",
+        "@gemmlowp//:LICENSE",
+        "@gif_archive//:COPYING",
+        "@grpc//:LICENSE",
+        "@highwayhash//:LICENSE",
+        "@jpeg//:LICENSE.md",
+        "@libxsmm_archive//:LICENSE",
+        "@local_config_sycl//sycl:LICENSE.text",
+        "@nanopb_git//:LICENSE.txt",
+        "@png_archive//:LICENSE",
+        "@protobuf//:LICENSE",
+        "@six_archive//:LICENSE",
+        "@zlib_archive//:zlib.h",
+    ],
+)
+
 sh_binary(
     name = "build_pip_package",
     srcs = ["build_pip_package.sh"],
     data = select({
         "//tensorflow:windows": [":simple_console_for_windows"],
         "//conditions:default": [
+            ":licenses",
             "MANIFEST.in",
             "README",
             "setup.py",

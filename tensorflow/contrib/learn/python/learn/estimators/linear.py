@@ -27,6 +27,7 @@ import six
 from tensorflow.contrib import layers
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
+from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import monitors as monitor_lib
@@ -450,11 +451,13 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
     return self
 
   def evaluate(self, x=None, y=None, input_fn=None, feed_fn=None,
-               batch_size=None, steps=None, metrics=None, name=None):
+               batch_size=None, steps=None, metrics=None, name=None,
+               checkpoint_path=None):
     """See evaluable.Evaluable. Note: Labels must be integer class indices."""
     return self._estimator.evaluate(x=x, y=y, input_fn=input_fn,
                                     feed_fn=feed_fn, batch_size=batch_size,
-                                    steps=steps, metrics=metrics, name=name)
+                                    steps=steps, metrics=metrics, name=name,
+                                    checkpoint_path=checkpoint_path)
 
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
@@ -517,6 +520,22 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
                       export.classification_signature_fn_with_prob),
         prediction_key=prediction_key.PredictionKey.PROBABILITIES,
         default_batch_size=default_batch_size,
+        exports_to_keep=exports_to_keep)
+
+  @experimental
+  def export_savedmodel(self,
+                        export_dir_base,
+                        input_fn,
+                        default_output_alternative_key=None,
+                        assets_extra=None,
+                        as_text=False,
+                        exports_to_keep=None):
+    return self._estimator.export_savedmodel(
+        export_dir_base,
+        input_fn,
+        default_output_alternative_key=default_output_alternative_key,
+        assets_extra=assets_extra,
+        as_text=as_text,
         exports_to_keep=exports_to_keep)
 
   @property
@@ -710,11 +729,13 @@ class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
     return self
 
   def evaluate(self, x=None, y=None, input_fn=None, feed_fn=None,
-               batch_size=None, steps=None, metrics=None, name=None):
+               batch_size=None, steps=None, metrics=None, name=None,
+               checkpoint_path=None):
     """See evaluable.Evaluable."""
     return self._estimator.evaluate(x=x, y=y, input_fn=input_fn,
                                     feed_fn=feed_fn, batch_size=batch_size,
-                                    steps=steps, metrics=metrics, name=name)
+                                    steps=steps, metrics=metrics, name=name,
+                                    checkpoint_path=checkpoint_path)
 
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
@@ -759,6 +780,22 @@ class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
         signature_fn=(signature_fn or export.regression_signature_fn),
         prediction_key=prediction_key.PredictionKey.SCORES,
         default_batch_size=default_batch_size,
+        exports_to_keep=exports_to_keep)
+
+  @experimental
+  def export_savedmodel(self,
+                        export_dir_base,
+                        input_fn,
+                        default_output_alternative_key=None,
+                        assets_extra=None,
+                        as_text=False,
+                        exports_to_keep=None):
+    return self._estimator.export_savedmodel(
+        export_dir_base,
+        input_fn,
+        default_output_alternative_key=default_output_alternative_key,
+        assets_extra=assets_extra,
+        as_text=as_text,
         exports_to_keep=exports_to_keep)
 
   @property

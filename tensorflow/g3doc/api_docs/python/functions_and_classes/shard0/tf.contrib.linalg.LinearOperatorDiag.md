@@ -3,7 +3,7 @@
 This operator acts like a [batch] matrix `A` with shape
 `[B1,...,Bb, N, N]` for some `b >= 0`.  The first `b` indices index a
 batch member.  For every batch index `(i1,...,ib)`, `A[i1,...,ib, : :]` is
-an `m x n` matrix.  Again, this matrix `A` may not be materialized, but for
+an `N x N` matrix.  This matrix `A` is not materialized, but for
 purposes of broadcasting this shape will be relevant.
 
 `LinearOperatorDiag` is initialized with a (batch) vector.
@@ -17,7 +17,7 @@ operator.to_dense()
 ==> [[1.,  0.]
      [0., -1.]]
 
-operator.shape()
+operator.shape
 ==> [2, 2]
 
 operator.log_determinant()
@@ -52,7 +52,7 @@ and [C1,...,Cc] broadcasts with [B1,...,Bb] to [D1,...,Dd]
 
 ### Performance
 
-Suppose `operator` is a `LinearOperatorDiag` is of shape `[N, N]`,
+Suppose `operator` is a `LinearOperatorDiag` of shape `[N, N]`,
 and `x.shape = [N, R]`.  Then
 
 * `operator.apply(x)` involves `N*R` multiplications.
@@ -61,39 +61,63 @@ and `x.shape = [N, R]`.  Then
 
 If instead `operator` and `x` have shape `[B1,...,Bb, N, N]` and
 `[B1,...,Bb, N, R]`, every operation increases in complexity by `B1*...*Bb`.
-- - -
 
-#### `tf.contrib.linalg.LinearOperatorDiag.__init__(diag, is_non_singular=None, is_self_adjoint=True, is_positive_definite=None, name='LinearOperatorDiag')` {#LinearOperatorDiag.__init__}
+### Matrix property hints
 
-Initialize a `LinearOperatorDiag`.
-
-For `X = non_singular, self_adjoint` etc...
-`is_X` is a Python `bool` initialization argument with the following meaning
+This `LinearOperator` is initialized with boolean flags of the form `is_X`,
+for `X = non_singular, self_adjoint` etc...
+These have the following meaning
 * If `is_X == True`, callers should expect the operator to have the
-  attribute `X`.  This is a promise that should be fulfilled, but is *not* a
-  runtime assert.  Issues, such as floating point error, could mean the
-  operator violates this promise.
+  property `X`.  This is a promise that should be fulfilled, but is *not* a
+  runtime assert.  For example, finite floating point precision may result
+  in these promises being violated.
 * If `is_X == False`, callers should expect the operator to not have `X`.
 * If `is_X == None` (the default), callers should have no expectation either
   way.
+- - -
+
+#### `tf.contrib.linalg.LinearOperatorDiag.__init__(diag, is_non_singular=None, is_self_adjoint=None, is_positive_definite=None, name='LinearOperatorDiag')` {#LinearOperatorDiag.__init__}
+
+Initialize a `LinearOperatorDiag`.
 
 ##### Args:
 
 
-*  <b>`diag`</b>: Shape `[B1,...,Bb, N]` real float type `Tensor` with `b >= 0`,
-    `N >= 0`.  The diagonal of the operator.
+*  <b>`diag`</b>: Shape `[B1,...,Bb, N]` `Tensor` with `b >= 0` `N >= 0`.
+    The diagonal of the operator.  Allowed dtypes: `float32`, `float64`,
+      `complex64`, `complex128`.
 *  <b>`is_non_singular`</b>: Expect that this operator is non-singular.
 *  <b>`is_self_adjoint`</b>: Expect that this operator is equal to its hermitian
-    transpose.  Since this is a real (not complex) diagonal operator, it is
-    always self adjoint.
-*  <b>`is_positive_definite`</b>: Expect that this operator is positive definite.
-*  <b>`name`</b>: A name for this `LinearOperator`. Default: subclass name.
+    transpose.  If `diag.dtype` is real, this is auto-set to `True`.
+*  <b>`is_positive_definite`</b>: Expect that this operator is positive definite,
+    meaning the real part of all eigenvalues is positive.  We do not require
+    the operator to be self-adjoint to be positive-definite.  See:
+*  <b>`https`</b>: //en.wikipedia.org/wiki/Positive-definite_matrix
+        #Extension_for_non_symmetric_matrices
+*  <b>`name`</b>: A name for this `LinearOperator`.
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If `diag.dtype` is not floating point.
-*  <b>`ValueError`</b>: If `is_self_adjoint` is not `True`.
+*  <b>`TypeError`</b>: If `diag.dtype` is not an allowed type.
+*  <b>`ValueError`</b>: If `diag.dtype` is real, and `is_self_adjoint` is not `True`.
+
+
+- - -
+
+#### `tf.contrib.linalg.LinearOperatorDiag.add_to_tensor(x, name='add_to_tensor')` {#LinearOperatorDiag.add_to_tensor}
+
+Add matrix represented by this operator to `x`.  Equivalent to `A + x`.
+
+##### Args:
+
+
+*  <b>`x`</b>: `Tensor` with same `dtype` and shape broadcastable to `self.shape`.
+*  <b>`name`</b>: A name to give this `Op`.
+
+##### Returns:
+
+  A `Tensor` with broadcast shape and same `dtype` as `self`.
 
 
 - - -
@@ -127,6 +151,25 @@ Returns an `Op` that asserts this operator is non singular.
 #### `tf.contrib.linalg.LinearOperatorDiag.assert_positive_definite(name='assert_positive_definite')` {#LinearOperatorDiag.assert_positive_definite}
 
 Returns an `Op` that asserts this operator is positive definite.
+
+Here, positive definite means the real part of all eigenvalues is positive.
+We do not require the operator to be self-adjoint.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name to give this `Op`.
+
+##### Returns:
+
+  An `Op` that asserts this operator is positive definite.
+
+
+- - -
+
+#### `tf.contrib.linalg.LinearOperatorDiag.assert_self_adjoint(name='assert_self_adjoint')` {#LinearOperatorDiag.assert_self_adjoint}
+
+Returns an `Op` that asserts this operator is self-adjoint.
 
 
 - - -

@@ -152,6 +152,8 @@ def maybe_download():
     print("Training data is downloaded to %s" % train_file_name)
 
   if FLAGS.test_data:
+    test_file_name = FLAGS.test_data
+  else:
     test_file = tempfile.NamedTemporaryFile(delete=False)
     urllib.urlretrieve("http://download.tensorflow.org/data/abalone_test.csv", test_file.name)
     test_file_name = test_file.name
@@ -379,7 +381,7 @@ tf.contrib.layers provides the following convenience functions for constructing
 fully connected layers:
 
 *   `relu(inputs, num_outputs)`. Create a layer of `num_outputs` nodes fully
-    connected to the previous layer `inputs` with a [ReLu activation
+    connected to the previous layer `inputs` with a [ReLU activation
     function](https://en.wikipedia.org/wiki/Rectifier_\(neural_networks\))
     ([tf.nn.relu](../../api_docs/python/nn.md#relu)):
 
@@ -388,7 +390,7 @@ fully connected layers:
     ```
 
 *   `relu6(inputs, num_outputs)`. Create a layer of `num_outputs` nodes fully
-    connected to the previous layer `hidden_layer` with a ReLu 6 activation
+    connected to the previous layer `hidden_layer` with a ReLU 6 activation
     function ([tf.nn.relu6](../../api_docs/python/nn.md#relu6)):
 
     ```python
@@ -448,7 +450,7 @@ def model_fn(features, targets, mode, params):
 Here, because you'll be passing the abalone `Datasets` directly to `fit()`,
 `evaluate()`, and `predict()` via `x` and `y` arguments, the input layer is the
 `features` `Tensor` passed to the `model_fn`. The network contains two hidden
-layers, each with 10 nodes and a ReLu activation function. The output layer
+layers, each with 10 nodes and a ReLU activation function. The output layer
 contains no activation function, and is
 [reshaped](../../api_docs/python/array_ops.md#reshape) to a one-dimensional
 tensor to capture the model's predictions, which are stored in

@@ -91,7 +91,7 @@ def run_training():
     sess.run(init_op)
 
     # Instantiate a SummaryWriter to output summaries and the Graph.
-    summary_writer = tf.train.SummaryWriter(FLAGS.train_dir, sess.graph)
+    summary_writer = tf.summary.FileWriter(FLAGS.train_dir, sess.graph)
 
     # Start input enqueue threads.
     coord = tf.train.Coordinator()

@@ -204,6 +204,7 @@ ifeq ($(TARGET),PI)
 endif
 
 # Set up Android building
+# LINT.IfChange
 ifeq ($(TARGET),ANDROID)
 # Override NDK_ROOT on the command line with your own NDK location, e.g.
 # make -f tensorflow/contrib/makefile/Makefile TARGET=ANDROID \
@@ -276,6 +277,7 @@ ifeq ($(TARGET),ANDROID)
 	endif
 
 endif  # ANDROID
+# LINT.ThenChange(//tensorflow/contrib/android/cmake/CMakeLists.txt)
 
 # Settings for iOS.
 ifeq ($(TARGET),IOS)

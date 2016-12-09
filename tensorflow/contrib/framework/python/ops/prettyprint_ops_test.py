@@ -31,8 +31,10 @@ class PrettyPrintOpsTest(tf.test.TestCase):
       self.assertEqual(a.eval(), tf.constant([1]).eval())
 
   def testPrintSparseTensorPassthrough(self):
-    a = tf.SparseTensor(indices=[[0, 0], [1, 2]], values=[1, 2], shape=[3, 4])
-    b = tf.SparseTensor(indices=[[0, 0], [1, 2]], values=[1, 2], shape=[3, 4])
+    a = tf.SparseTensor(
+        indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])
+    b = tf.SparseTensor(
+        indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])
     a = tf.contrib.framework.print_op(a)
     with self.test_session():
       self.assertAllEqual(tf.sparse_tensor_to_dense(a).eval(),
@@ -50,7 +52,7 @@ class PrettyPrintOpsTest(tf.test.TestCase):
     a = tf.Variable(1.0)
     a = tf.contrib.framework.print_op(a)
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       a.eval()
 
 if __name__ == "__main__":

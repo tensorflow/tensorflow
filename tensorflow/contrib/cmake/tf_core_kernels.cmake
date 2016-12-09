@@ -36,8 +36,6 @@ if(tensorflow_BUILD_CONTRIB_KERNELS)
       "${tensorflow_source_dir}/tensorflow/contrib/layers/kernels/sparse_feature_cross_kernel.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/layers/ops/bucketization_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/layers/ops/sparse_feature_cross_op.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/metrics/kernels/set_kernels.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/metrics/ops/set_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/blas_gemm.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/gru_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/lstm_ops.cc"
@@ -92,7 +90,6 @@ list(REMOVE_ITEM tf_core_kernels_srcs ${tf_core_kernels_exclude_srcs})
 if(WIN32)
   file(GLOB_RECURSE tf_core_kernels_windows_exclude_srcs
       # not working on windows yet
-      "${tensorflow_source_dir}/tensorflow/core/kernels/depthwise_conv_op.cc"  # Cannot find symbol: tensorflow::LaunchConv2DOp<struct Eigen::ThreadPoolDevice, double>::launch(...).
       "${tensorflow_source_dir}/tensorflow/core/kernels/meta_support.*"
       "${tensorflow_source_dir}/tensorflow/core/kernels/*quantiz*.h"
       "${tensorflow_source_dir}/tensorflow/core/kernels/*quantiz*.cc"

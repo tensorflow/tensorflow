@@ -18,6 +18,9 @@ limitations under the License.
 #include <vector>
 
 #include "grpc++/create_channel.h"
+// winsock2.h is used in grpc, so Ws2_32.lib is needed
+#pragma comment(lib,"Ws2_32.lib")
+
 #include "tensorflow/core/debug/debug_service.grpc.pb.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -289,10 +292,8 @@ Status DebugGrpcChannel::Close() {
 
   reader_writer_->WritesDone();
   if (reader_writer_->Finish().ok()) {
-    std::cout << "Finish() returned ok status" << std::endl;  // DEBUG
     return Status::OK();
   } else {
-    std::cout << "Finish() returned non-ok status" << std::endl;  // DEBUG
     return Status(error::FAILED_PRECONDITION,
                   "Failed to close debug GRPC stream.");
   }

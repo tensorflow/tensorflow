@@ -100,11 +100,11 @@ _REGISTERED_EXPANSIONS = [
     # SparseTensorValues or normal tuples.
     (sparse_tensor.SparseTensor,
      lambda fetch: (
-         [fetch.indices, fetch.values, fetch.shape],
+         [fetch.indices, fetch.values, fetch.dense_shape],
          lambda fetched_vals: sparse_tensor.SparseTensorValue(*fetched_vals)),
      lambda feed, feed_val: list(zip(
          [feed.indices, feed.values, feed.shape], feed_val)),
-     lambda feed: [feed.indices, feed.values, feed.shape]),
+     lambda feed: [feed.indices, feed.values, feed.dense_shape]),
     # IndexedSlices are fetched as IndexedSlicesValues. They can be fed
     # IndexedSlicesValues or normal tuples.
     (ops.IndexedSlices,
@@ -364,6 +364,7 @@ class _DictFetchMapper(_FetchMapper):
     Args:
       fetches: Dict of fetches.
     """
+    self._fetch_type = type(fetches)
     self._keys = fetches.keys()
     self._mappers = [_FetchMapper.for_fetch(fetch)
                      for fetch in fetches.values()]
@@ -373,7 +374,7 @@ class _DictFetchMapper(_FetchMapper):
     return self._unique_fetches
 
   def build_results(self, values):
-    results = {}
+    results = self._fetch_type()
     for k, m, vi in zip(self._keys, self._mappers, self._value_indices):
       results[k] = m.build_results([values[j] for j in vi])
     return results
@@ -661,8 +662,8 @@ class BaseSession(SessionInterface):
     `feed_dict` for the corresponding input values.
 
     The `fetches` argument may be a single graph element, or an arbitrarily
-    nested list, tuple, namedtuple, or dict containing graph elements at its
-    leaves.  A graph element can be one of the following types:
+    nested list, tuple, namedtuple, dict, or OrderedDict containing graph
+    elements at its leaves.  A graph element can be one of the following types:
 
     * An [`Operation`](../../api_docs/python/framework.md#Operation).
       The corresponding fetched value will be `None`.

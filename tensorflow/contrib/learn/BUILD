@@ -21,6 +21,10 @@ py_library(
         "//tensorflow/contrib/session_bundle:exporter",
         "//tensorflow/contrib/tensor_forest:client_lib",
         "//tensorflow/python:framework",
+        "//tensorflow/python/saved_model:builder",
+        "//tensorflow/python/saved_model:loader",
+        "//tensorflow/python/saved_model:signature_def_utils",
+        "//tensorflow/python/saved_model:tag_constants",
     ],
 )
 
@@ -397,7 +401,7 @@ py_test(
 
 py_test(
     name = "head_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/learn/estimators/head_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -635,6 +639,18 @@ py_test(
 )
 
 py_test(
+    name = "numpy_io_test",
+    size = "small",
+    srcs = ["python/learn/learn_io/numpy_io_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
     name = "pandas_io_test",
     size = "small",
     srcs = ["python/learn/learn_io/pandas_io_test.py"],
@@ -654,6 +670,32 @@ py_test(
     tags = [
         "manual",  # http://b/31032996
     ],
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "gc_test",
+    size = "small",
+    srcs = ["python/learn/utils/gc_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "saved_model_export_utils_test",
+    size = "small",
+    srcs = ["python/learn/utils/saved_model_export_utils_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",

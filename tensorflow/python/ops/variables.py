@@ -82,12 +82,12 @@ class Variable(object):
   ```
 
   The most common initialization pattern is to use the convenience function
-  `global_variable_initializers()` to add an Op to the graph that initializes
+  `global_variables_initializer()` to add an Op to the graph that initializes
   all the variables. You then run that Op after launching the graph.
 
   ```python
   # Add an Op to initialize global variables.
-  init_op = tf.global_variable_initializers()
+  init_op = tf.global_variables_initializer()
 
   # Launch the graph in a session.
   with tf.Session() as sess:
@@ -492,7 +492,7 @@ class Variable(object):
 
     ```python
     v = tf.Variable([1, 2])
-    init = tf.global_variable_initializers()
+    init = tf.global_variables_initializer()
 
     with tf.Session() as sess:
         sess.run(init)
@@ -517,6 +517,10 @@ class Variable(object):
 
     You should use this instead of the variable itself to initialize another
     variable with a value that depends on the value of this variable.
+
+    Beware of using initialized_value except during initialization:
+    initialized_value causes the Variable's initializer op to be run, so running
+    this op resets the variable to the initial value.
 
     ```python
     # Initialize 'v' with a random tensor.
@@ -1247,7 +1251,7 @@ def assert_variables_initialized(var_list=None):
   if not var_list:
     var_list = []
     for op in ops.get_default_graph().get_operations():
-      if op.type in ["Variable", "AutoReloadVariable"]:
+      if op.type in ["Variable", "VariableV2", "AutoReloadVariable"]:
         var_list.append(op.outputs[0])
   if not var_list:
     return None

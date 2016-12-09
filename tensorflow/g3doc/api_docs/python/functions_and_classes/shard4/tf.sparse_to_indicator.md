@@ -3,14 +3,14 @@
 Converts a `SparseTensor` of ids into a dense bool indicator tensor.
 
 The last dimension of `sp_input.indices` is discarded and replaced with
-the values of `sp_input`.  If `sp_input.shape = [D0, D1, ..., Dn, K]`, then
-`output.shape = [D0, D1, ..., Dn, vocab_size]`, where
+the values of `sp_input`.  If `sp_input.dense_shape = [D0, D1, ..., Dn, K]`,
+then `output.shape = [D0, D1, ..., Dn, vocab_size]`, where
 
     output[d_0, d_1, ..., d_n, sp_input[d_0, d_1, ..., d_n, k]] = True
 
 and False elsewhere in `output`.
 
-For example, if `sp_input.shape = [2, 3, 4]` with non-empty values:
+For example, if `sp_input.dense_shape = [2, 3, 4]` with non-empty values:
 
     [0, 0, 0]: 0
     [0, 1, 0]: 10

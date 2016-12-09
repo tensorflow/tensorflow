@@ -95,7 +95,6 @@ functions on matrices to your graph.
 @@matrix_transpose
 
 @@matmul
-@@batch_matmul
 
 @@matrix_determinant
 @@matrix_inverse
@@ -235,6 +234,7 @@ from tensorflow.python.ops import state_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_math_ops import *
 # pylint: enable=wildcard-import
+from tensorflow.python.util.deprecation import deprecated
 
 # Aliases for some automatically-generated names.
 linspace = gen_math_ops.lin_space
@@ -250,7 +250,8 @@ def argmax(input, axis=None, name=None, dimension=None):
   return gen_math_ops.arg_max(input, axis, name)
 
 
-argmax.__doc__ = gen_math_ops.arg_max.__doc__.replace("dimension", "axis")
+argmax.__doc__ = (gen_math_ops.arg_max.__doc__
+                  .replace("dimensions", "axes").replace("dimension", "axis"))
 
 
 # TODO(aselle:deprecate arg_min)
@@ -262,7 +263,8 @@ def argmin(input, axis=None, name=None, dimension=None):
   return gen_math_ops.arg_min(input, axis, name)
 
 
-argmin.__doc__ = gen_math_ops.arg_min.__doc__.replace("dimension", "axis")
+argmin.__doc__ = (gen_math_ops.arg_min.__doc__
+                  .replace("dimensions", "axes").replace("dimension", "axis"))
 
 # pylint: enable=redefined-builtin
 
@@ -295,10 +297,10 @@ def abs(x, name=None):
         x_abs = gen_math_ops.complex_abs(
             x.values, Tout=x.values.dtype.real_dtype, name=name)
         return sparse_tensor.SparseTensor(
-            indices=x.indices, values=x_abs, shape=x.shape)
+            indices=x.indices, values=x_abs, dense_shape=x.shape)
       x_abs = gen_math_ops._abs(x.values, name=name)
       return sparse_tensor.SparseTensor(
-          indices=x.indices, values=x_abs, shape=x.shape)
+          indices=x.indices, values=x_abs, dense_shape=x.shape)
     else:
       x = ops.convert_to_tensor(x, name="x")
       if x.dtype in (dtypes.complex64, dtypes.complex128):
@@ -335,7 +337,7 @@ def neg(x, name=None):
     if isinstance(x, sparse_tensor.SparseTensor):
       x_neg = gen_math_ops.neg(x.values, name=name)
       return sparse_tensor.SparseTensor(
-          indices=x.indices, values=x_neg, shape=x.shape)
+          indices=x.indices, values=x_neg, dense_shape=x.shape)
     else:
       return gen_math_ops.neg(x, name=name)
 
@@ -359,7 +361,7 @@ def sign(x, name=None):
     if isinstance(x, sparse_tensor.SparseTensor):
       x_sign = gen_math_ops.sign(x.values, name=name)
       return sparse_tensor.SparseTensor(
-          indices=x.indices, values=x_sign, shape=x.shape)
+          indices=x.indices, values=x_sign, dense_shape=x.shape)
     else:
       return gen_math_ops.sign(x, name=name)
 
@@ -381,7 +383,7 @@ def square(x, name=None):
     if isinstance(x, sparse_tensor.SparseTensor):
       x_square = gen_math_ops.square(x.values, name=name)
       return sparse_tensor.SparseTensor(
-          indices=x.indices, values=x_square, shape=x.shape)
+          indices=x.indices, values=x_square, dense_shape=x.shape)
     else:
       return gen_math_ops.square(x, name=name)
 
@@ -403,7 +405,7 @@ def sqrt(x, name=None):
     if isinstance(x, sparse_tensor.SparseTensor):
       x_sqrt = gen_math_ops.sqrt(x.values, name=name)
       return sparse_tensor.SparseTensor(
-          indices=x.indices, values=x_sqrt, shape=x.shape)
+          indices=x.indices, values=x_sqrt, dense_shape=x.shape)
     else:
       return gen_math_ops.sqrt(x, name=name)
 
@@ -423,7 +425,7 @@ def erf(x, name=None):
     if isinstance(x, sparse_tensor.SparseTensor):
       x_erf = gen_math_ops.erf(x.values, name=name)
       return sparse_tensor.SparseTensor(
-          indices=x.indices, values=x_erf, shape=x.shape)
+          indices=x.indices, values=x_erf, dense_shape=x.shape)
     else:
       return gen_math_ops.erf(x, name=name)
 
@@ -820,8 +822,8 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
       return sparse_tensor.SparseTensor(
           sp_x.indices,
           func(
-              sp_x.indices, sp_x.values, sp_x.shape, y, name=name),
-          sp_x.shape)
+              sp_x.indices, sp_x.values, sp_x.dense_shape, y, name=name),
+          sp_x.dense_shape)
 
   def r_binary_op_wrapper(y, x):
     with ops.name_scope(None, op_name, [x, y]) as name:
@@ -889,14 +891,61 @@ def _sparse_dense_truediv(sp_indices, sp_values, sp_shape, y, name=None):
         sp_indices, sp_values, sp_shape, y, name=name)
 
 
-def truediv(x, y, name=None):
-  """Divides x / y elementwise, always producing floating point results.
+def _truediv_python3(x, y, name=None):
+  with ops.name_scope(name, "truediv", [x, y]) as name:
+    x = ops.convert_to_tensor(x, name="x")
+    y = ops.convert_to_tensor(y, name="y")
+    x_dtype = x.dtype.base_dtype
+    y_dtype = y.dtype.base_dtype
+    if x_dtype != y_dtype:
+      raise TypeError("x and y must have the same dtype, got %r != %r" %
+                      (x_dtype, y_dtype))
+    try:
+      dtype = _TRUEDIV_TABLE[x_dtype]
+    except KeyError:
+      raise TypeError("Invalid dtype %r in __truediv__" % x_dtype)
+    if dtype is not None:
+      x = cast(x, dtype)
+      y = cast(y, dtype)
+    return gen_math_ops._real_div(x, y, name=name)
 
-  The same as `tf.div` for floating point arguments, but casts integer arguments
-  to floating point before dividing so that the result is always floating point.
-  This op is generated by normal `x / y` division in Python 3 and in Python 2.7
-  with `from __future__ import division`.  If you want integer division that
-  rounds down, use `x // y` or `tf.floordiv`.
+
+def _div_python2(x, y, name=None):
+  """Divide two values using Python 2 semantics. Used for Tensor.__div__.
+
+  Args:
+    x: `Tensor` numerator of real numeric type.
+    y: `Tensor` denominator of real numeric type.
+    name: A name for the operation (optional).
+  Returns:
+    `x / y` returns the quotient of x and y.
+  """
+
+  with ops.name_scope(name, "div", [x, y]) as name:
+    x = ops.convert_to_tensor(x, name="x")
+    y = ops.convert_to_tensor(y, name="y", dtype=x.dtype.base_dtype)
+    x_dtype = x.dtype.base_dtype
+    y_dtype = y.dtype.base_dtype
+    if x_dtype != y_dtype:
+      raise TypeError("x and y must have the same dtype, got %r != %r" %
+                      (x_dtype, y_dtype))
+    if x_dtype.is_floating or x_dtype.is_complex:
+      return gen_math_ops._real_div(x, y, name=name)
+    else:
+      return gen_math_ops._floor_div(x, y, name=name)
+
+
+def truediv(x, y, name=None):
+  """Divides x / y elementwise (using Python 3 division operator semantics).
+
+  NOTE: Prefer using the Tensor operator or tf.divide which obey Python
+  division operator semantics.
+
+  This function forces Python 3 division operator semantics where all integer
+  arguments are cast to floating types first.   This op is generated by normal
+  `x / y` division in Python 3 and in Python 2.7 with
+  `from __future__ import division`.  If you want integer division that rounds
+  down, use `x // y` or `tf.floordiv`.
 
   `x` and `y` must have the same numeric type.  If the inputs are floating
   point, the output will have the same type.  If the inputs are integral, the
@@ -914,48 +963,32 @@ def truediv(x, y, name=None):
   Raises:
     TypeError: If `x` and `y` have different dtypes.
   """
-  with ops.name_scope(name, "truediv", [x, y]) as name:
-    x = ops.convert_to_tensor(x, name="x")
-    y = ops.convert_to_tensor(y, name="y")
-    x_dtype = x.dtype.base_dtype
-    y_dtype = y.dtype.base_dtype
-    if x_dtype != y_dtype:
-      raise TypeError("x and y must have the same dtype, got %r != %r" %
-                      (x_dtype, y_dtype))
-    try:
-      dtype = _TRUEDIV_TABLE[x_dtype]
-    except KeyError:
-      raise TypeError("Invalid dtype %r in __truediv__" % x_dtype)
-    if dtype is not None:
-      x = cast(x, dtype)
-      y = cast(y, dtype)
-    return gen_math_ops.real_div(x, y, name=name)
+  return _truediv_python3(x, y, name)
 
 
 def div(x, y, name=None):
-  with ops.name_scope(name, "truediv", [x, y]) as name:
-    x = ops.convert_to_tensor(x, name="x")
-    y = ops.convert_to_tensor(y, name="y", dtype=x.dtype.base_dtype)
-    x_dtype = x.dtype.base_dtype
-    y_dtype = y.dtype.base_dtype
-    if x_dtype != y_dtype:
-      raise TypeError("x and y must have the same dtype, got %r != %r" %
-                      (x_dtype, y_dtype))
-    if x_dtype.is_floating or x_dtype.is_complex:
-      return gen_math_ops.real_div(x, y, name=name)
-    else:
-      return gen_math_ops.floor_div(x, y, name=name)
+  """Divides x / y elementwise (using Python 2 division operator semantics).
+
+  NOTE: Prefer using the Tensor division operator or tf.divide which obey Python
+  division operator semantics.
+
+  This function divides `x` and `y`, forcing Python 2.7 semantics. That is,
+  if one of `x` or `y` is a float, then the result will be a float.
+  Otherwise, the output will be an integer type. Flooring semantics are used
+  for integer division.
+
+  Args:
+    x: `Tensor` numerator of real numeric type.
+    y: `Tensor` denominator of real numeric type.
+    name: A name for the operation (optional).
+  Returns:
+    `x / y` returns the quotient of x and y.
+  """
+  return _div_python2(x, y, name)
 
 
-def div_deprecated(x, y, name=None):
-  return gen_math_ops.div(x, y, name)
-
-
-mod = gen_math_ops.floor_mod
-
-
-def mod_deprecated(x, y, name=None):
-  return gen_math_ops.mod(x, y, name)
+# TODO(aselle): This should be removed
+mod = gen_math_ops._floor_mod
 
 
 # TODO(aselle): Deprecate this once all internal functionality uses
@@ -987,29 +1020,15 @@ def floordiv(x, y, name=None):
     TypeError: If the inputs are complex.
   """
   with ops.name_scope(name, "floordiv", [x, y]) as name:
-    return gen_math_ops.floor_div(x, y, name=name)
+    return gen_math_ops._floor_div(x, y, name=name)
 
 
-def floordiv_deprecated(x, y, name=None):
-  with ops.name_scope(name, "floordiv", [x, y]) as name:
-    x = ops.convert_to_tensor(x, name="x")
-    dtype = x.dtype
-    if dtype.is_floating:
-      return gen_math_ops.floor(gen_math_ops.div(x, y), name=name)
-    else:
-      if not dtype.is_integer:
-        raise TypeError("Expected floating point or integer, got %r" % dtype)
-      # TODO(aselle): Switch to math_ops.floor_div() when ready
-      # return gen_math_ops.floor_div(x, y, name=name)
-      return gen_math_ops.div(x, y, name=name)
-
-
-realdiv = gen_math_ops.real_div
-truncatediv = gen_math_ops.truncate_div
+realdiv = gen_math_ops._real_div
+truncatediv = gen_math_ops._truncate_div
 # TODO(aselle): Rename this to floordiv when we can.
-floor_div = gen_math_ops.floor_div
-truncatemod = gen_math_ops.truncate_mod
-floormod = gen_math_ops.floor_mod
+floor_div = gen_math_ops._floor_div
+truncatemod = gen_math_ops._truncate_mod
+floormod = gen_math_ops._floor_mod
 
 
 def _mul_dispatch(x, y, name=None):
@@ -1023,7 +1042,9 @@ def _mul_dispatch(x, y, name=None):
                                                      y.shape, x, name)
     return sparse_tensor.SparseTensor(y.indices, new_vals, y.shape)
 
-
+# NOTE(aselle): When integer division is added for sparse_dense_cwise,
+# div, truediv, and floordiv should be delegated appropriately for
+# Python sematnics, analogous to dense cwise tensor operations.
 _OverrideBinaryOperatorHelper(gen_sparse_ops.sparse_dense_cwise_div, "div",
                               sparse_tensor.SparseTensor)
 _OverrideBinaryOperatorHelper(_sparse_dense_truediv, "truediv",
@@ -1034,12 +1055,12 @@ _OverrideBinaryOperatorHelper(gen_sparse_ops.sparse_dense_cwise_mul, "mul",
 _OverrideBinaryOperatorHelper(gen_math_ops.add, "add")
 _OverrideBinaryOperatorHelper(gen_math_ops.sub, "sub")
 _OverrideBinaryOperatorHelper(_mul_dispatch, "mul")
-_OverrideBinaryOperatorHelper(div, "div")
-_OverrideBinaryOperatorHelper(truediv, "truediv")
+_OverrideBinaryOperatorHelper(_div_python2, "div")
+_OverrideBinaryOperatorHelper(_truediv_python3, "truediv")
 _OverrideBinaryOperatorHelper(floordiv, "floordiv")
 # TODO(aselle): Switch mod to floor_mod when ready
 # _OverrideBinaryOperatorHelper(gen_math_ops.floor_mod, "mod")
-_OverrideBinaryOperatorHelper(gen_math_ops.floor_mod, "mod")
+_OverrideBinaryOperatorHelper(gen_math_ops._floor_mod, "mod")
 _OverrideBinaryOperatorHelper(pow, "pow")
 
 
@@ -1150,8 +1171,8 @@ def _ReductionDims(x, axis, reduction_indices):
       return constant_op.constant(
           np.arange(x.get_shape().ndims), dtype=dtypes.int32)
     if (isinstance(x, sparse_tensor.SparseTensor) and
-        x.shape.get_shape().is_fully_defined()):
-      rank = x.shape.get_shape()[0].value  # sparse.shape is an 1-D tensor.
+        x.dense_shape.get_shape().is_fully_defined()):
+      rank = x.dense_shape.get_shape()[0].value  # sparse.dense_shape is 1-D.
       return constant_op.constant(np.arange(rank), dtype=dtypes.int32)
 
     # Otherwise, we rely on Range and Rank to do the right thing at run-time.
@@ -1762,8 +1783,6 @@ def matmul(a,
 
 
 sparse_matmul = gen_math_ops._sparse_mat_mul
-# TODO(rmlarsen): Remove Python interface to batch_matmul.
-batch_matmul = gen_math_ops._batch_mat_mul
 
 
 @ops.RegisterStatistics("MatMul", "flops")
@@ -1980,7 +1999,7 @@ def tanh(x, name=None):
     if isinstance(x, sparse_tensor.SparseTensor):
       x_tanh = gen_math_ops._tanh(x.values, name=name)
       return sparse_tensor.SparseTensor(
-          indices=x.indices, values=x_tanh, shape=x.shape)
+          indices=x.indices, values=x_tanh, dense_shape=x.shape)
     else:
       return gen_math_ops._tanh(x, name=name)
 
@@ -2146,3 +2165,12 @@ def reduced_shape(input_shape, axes):
           input_shape,  # [2, 3, 5, 7]
           array_ops.fill(axes_shape, 1)
       ])  # [1, 1]
+
+
+@deprecated(
+    "2016-12-07",
+    "This op will be removed after the deprecation date. "
+    "Please switch to tf.where().")
+def select(condition, x, y, name=None):
+  return gen_math_ops._select(condition, x, y, name)
+select.__doc__ = gen_math_ops._select.__doc__

@@ -47,7 +47,8 @@ def flatten(list_of_lists):
 def flatten_values_tensors_or_sparse(tensors_list):
   """Flatten each SparseTensor object into 3 Tensors for session.run()."""
   return list(
-      flatten([[v.indices, v.values, v.shape] if isinstance(v, tf.SparseTensor)
+      flatten([[v.indices, v.values, v.dense_shape]
+               if isinstance(v, tf.SparseTensor)
                else [v] for v in tensors_list]))
 
 
@@ -102,7 +103,8 @@ class ParseExampleTest(tf.test.TestCase):
           self.assertEqual(
               tuple(out[k].indices.get_shape().as_list()), (None, 2))
           self.assertEqual(tuple(out[k].values.get_shape().as_list()), (None,))
-          self.assertEqual(tuple(out[k].shape.get_shape().as_list()), (2,))
+          self.assertEqual(
+              tuple(out[k].dense_shape.get_shape().as_list()), (2,))
 
   def testEmptySerializedWithAllDefaults(self):
     sparse_name = "st_a"
@@ -169,7 +171,9 @@ class ParseExampleTest(tf.test.TestCase):
             "serialized": [original.SerializeToString()],
             "features": input_features,
         },
-        expected_err=(tf.OpError, "Name: in1, Feature: c is required"))
+        expected_err=(
+            tf.OpError,
+            "Name: in1, Feature: c \\(data type: float\\) is required"))
 
     # Standard case of missing key and value.
     self._test(
@@ -178,7 +182,9 @@ class ParseExampleTest(tf.test.TestCase):
             "serialized": ["", ""],
             "features": input_features,
         },
-        expected_err=(tf.OpError, "Name: in1, Feature: c is required"))
+        expected_err=(
+            tf.OpError,
+            "Name: in1, Feature: c \\(data type: float\\) is required"))
 
   def testDenseNotMatchingShapeShouldFail(self):
     original = [
@@ -255,6 +261,82 @@ class ParseExampleTest(tf.test.TestCase):
         "features": {
             "st_c": tf.VarLenFeature(tf.float32),
             "st_d": tf.VarLenFeature(tf.string)
+        }
+    }, expected_output)
+
+  def testSerializedContainingSparseFeature(self):
+    original = [
+        example(features=features({
+            "val": float_feature([3, 4]),
+            "idx": int64_feature([5, 10])
+        })),
+        example(features=features({
+            "val": float_feature([]),  # empty float list
+            "idx": int64_feature([])
+        })),
+        example(features=features({
+            "val": feature(),  # feature with nothing in it
+                               # missing idx feature
+        })),
+        example(features=features({
+            "val": float_feature([1, 2, -1]),
+            "idx": int64_feature([0, 9, 3])  # unsorted
+        }))
+    ]
+
+    serialized = [m.SerializeToString() for m in original]
+
+    expected_sp = (  # indices, values, shape
+        np.array([[0, 5], [0, 10], [3, 0], [3, 3], [3, 9]], dtype=np.int64),
+        np.array([3.0, 4.0, 1.0, -1.0, 2.0], dtype=np.float32),
+        np.array([4, 13], dtype=np.int64))  # batch == 4, max_elems = 13
+
+    expected_output = {
+        "sp": expected_sp,
+    }
+
+    self._test({
+        "serialized": tf.convert_to_tensor(serialized),
+        "features": {
+            "sp": tf.SparseFeature("idx", "val", tf.float32, 13)
+        }
+    }, expected_output)
+
+  def testSerializedContainingSparseFeatureReuse(self):
+    original = [
+        example(features=features({
+            "val1": float_feature([3, 4]),
+            "val2": float_feature([5, 6]),
+            "idx": int64_feature([5, 10])
+        })),
+        example(features=features({
+            "val1": float_feature([]),  # empty float list
+            "idx": int64_feature([])
+        })),
+    ]
+
+    serialized = [m.SerializeToString() for m in original]
+
+    expected_sp1 = (  # indices, values, shape
+        np.array([[0, 5], [0, 10]], dtype=np.int64),
+        np.array([3.0, 4.0], dtype=np.float32),
+        np.array([2, 13], dtype=np.int64))  # batch == 2, max_elems = 13
+
+    expected_sp2 = (  # indices, values, shape
+        np.array([[0, 5], [0, 10]], dtype=np.int64),
+        np.array([5.0, 6.0], dtype=np.float32),
+        np.array([2, 7], dtype=np.int64))  # batch == 2, max_elems = 13
+
+    expected_output = {
+        "sp1": expected_sp1,
+        "sp2": expected_sp2,
+    }
+
+    self._test({
+        "serialized": tf.convert_to_tensor(serialized),
+        "features": {
+            "sp1": tf.SparseFeature("idx", "val1", tf.float32, 13),
+            "sp2": tf.SparseFeature("idx", "val2", tf.float32, 7)
         }
     }, expected_output)
 
@@ -400,7 +482,7 @@ class ParseExampleTest(tf.test.TestCase):
         },
         expected_output)
 
-  def testSerializedContainingSparseAndDenseWithNoDefault(self):
+  def testSerializedContainingSparseAndSparseFeatureAndDenseWithNoDefault(self):
     expected_st_a = (  # indices, values, shape
         np.empty(
             (0, 2), dtype=np.int64),  # indices
@@ -408,12 +490,20 @@ class ParseExampleTest(tf.test.TestCase):
             (0,), dtype=np.int64),  # sp_a is DT_INT64
         np.array(
             [2, 0], dtype=np.int64))  # batch == 2, max_elems = 0
+    expected_sp = (  # indices, values, shape
+        np.array([[0, 0], [0, 3], [1, 7]], dtype=np.int64),
+        np.array(["a", "b", "c"], dtype="|S"),
+        np.array([2, 13], dtype=np.int64))  # batch == 4, max_elems = 13
 
     original = [
         example(features=features({
-            "c": float_feature([3, 4])
+            "c": float_feature([3, 4]),
+            "val": bytes_feature([b"a", b"b"]),
+            "idx": int64_feature([0, 3])
         })), example(features=features({
-            "c": float_feature([1, 2])
+            "c": float_feature([1, 2]),
+            "val": bytes_feature([b"c"]),
+            "idx": int64_feature([7])
         }))
     ]
 
@@ -424,6 +514,7 @@ class ParseExampleTest(tf.test.TestCase):
     b_default = np.random.rand(3, 3).astype(bytes)
     expected_output = {
         "st_a": expected_st_a,
+        "sp": expected_sp,
         "a": np.array(2 * [[a_default]]),
         "b": np.array(2 * [b_default]),
         "c": np.array(
@@ -436,12 +527,53 @@ class ParseExampleTest(tf.test.TestCase):
             "serialized": tf.convert_to_tensor(serialized),
             "features": {
                 "st_a": tf.VarLenFeature(tf.int64),
+                "sp": tf.SparseFeature("idx", "val", tf.string, 13),
                 "a": tf.FixedLenFeature(
                     (1, 3), tf.int64, default_value=a_default),
                 "b": tf.FixedLenFeature(
                     (3, 3), tf.string, default_value=b_default),
                 # Feature "c" must be provided, since it has no default_value.
                 "c": tf.FixedLenFeature((2,), tf.float32),
+            }
+        },
+        expected_output)
+
+  def testSerializedContainingSparseAndSparseFeatureWithReuse(self):
+    expected_idx = (  # indices, values, shape
+        np.array([[0, 0], [0, 1], [1, 0], [1, 1]], dtype=np.int64),
+        np.array([0, 3, 7, 1]),
+        np.array([2, 2], dtype=np.int64))  # batch == 4, max_elems = 2
+
+    expected_sp = (  # indices, values, shape
+        np.array([[0, 0], [0, 3], [1, 1], [1, 7]], dtype=np.int64),
+        np.array(["a", "b", "d", "c"], dtype="|S"),
+        np.array([2, 13], dtype=np.int64))  # batch == 4, max_elems = 13
+
+    original = [
+        example(features=features({
+            "val": bytes_feature([b"a", b"b"]),
+            "idx": int64_feature([0, 3])
+        })), example(features=features({
+            "val": bytes_feature([b"c", b"d"]),
+            "idx": int64_feature([7, 1])
+        }))
+    ]
+
+    names = ["in1", "in2"]
+    serialized = [m.SerializeToString() for m in original]
+
+    expected_output = {
+        "idx": expected_idx,
+        "sp": expected_sp,
+    }
+
+    self._test(
+        {
+            "example_names": names,
+            "serialized": tf.convert_to_tensor(serialized),
+            "features": {
+                "idx": tf.VarLenFeature(tf.int64),
+                "sp": tf.SparseFeature("idx", "val", tf.string, 13),
             }
         },
         expected_output)
@@ -471,10 +603,13 @@ class ParseSingleExampleTest(tf.test.TestCase):
           self.assertEqual(
               tuple(out[k].indices.get_shape().as_list()), (None, 1))
           self.assertEqual(tuple(out[k].values.get_shape().as_list()), (None,))
-          self.assertEqual(tuple(out[k].shape.get_shape().as_list()), (1,))
+          self.assertEqual(
+              tuple(out[k].dense_shape.get_shape().as_list()), (1,))
 
-  def testSingleExampleWithSparseAndDense(self):
+  def testSingleExampleWithSparseAndSparseFeatureAndDense(self):
     original = example(features=features({"c": float_feature([3, 4]),
+                                          "val": bytes_feature([b"a", b"b"]),
+                                          "idx": int64_feature([0, 3]),
                                           "st_a": float_feature([3.0, 4.0])}))
 
     serialized = original.SerializeToString()
@@ -486,10 +621,16 @@ class ParseSingleExampleTest(tf.test.TestCase):
                      np.array(
                          [2], dtype=np.int64))  # shape: max_values = 2
 
+    expected_sp = (  # indices, values, shape
+        np.array([[0], [3]], dtype=np.int64),
+        np.array(["a", "b"], dtype="|S"),
+        np.array([13], dtype=np.int64))  # max_values = 13
+
     a_default = [1, 2, 3]
     b_default = np.random.rand(3, 3).astype(bytes)
     expected_output = {
         "st_a": expected_st_a,
+        "sp": expected_sp,
         "a": [a_default],
         "b": b_default,
         "c": np.array(
@@ -502,6 +643,7 @@ class ParseSingleExampleTest(tf.test.TestCase):
             "serialized": tf.convert_to_tensor(serialized),
             "features": {
                 "st_a": tf.VarLenFeature(tf.float32),
+                "sp": tf.SparseFeature("idx", "val", tf.string, 13),
                 "a": tf.FixedLenFeature(
                     (1, 3), tf.int64, default_value=a_default),
                 "b": tf.FixedLenFeature(
@@ -577,7 +719,7 @@ class ParseSequenceExampleTest(tf.test.TestCase):
             self.assertEqual(
                 tuple(context_out[k].values.get_shape().as_list()), (None,))
             self.assertEqual(
-                tuple(context_out[k].shape.get_shape().as_list()), (1,))
+                tuple(context_out[k].dense_shape.get_shape().as_list()), (1,))
 
   def testSequenceExampleWithSparseAndDenseContext(self):
     original = sequence_example(context=features({"c": float_feature([3, 4]),

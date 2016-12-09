@@ -30,6 +30,7 @@ Subclasses of `LinearOperator` provide a access to common methods on a
 ### Individual operators
 
 @@LinearOperatorDiag
+@@LinearOperatorTriL
 
 """
 from __future__ import absolute_import
@@ -40,5 +41,6 @@ from __future__ import print_function
 
 from tensorflow.contrib.linalg.python.ops.linear_operator import *
 from tensorflow.contrib.linalg.python.ops.linear_operator_diag import *
+from tensorflow.contrib.linalg.python.ops.linear_operator_tril import *
 
 # pylint: enable=unused-import,wildcard-import,line-too-long,g-importing-member

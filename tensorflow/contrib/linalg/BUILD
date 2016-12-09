@@ -24,8 +24,34 @@ cuda_py_tests(
 
 cuda_py_tests(
     name = "linear_operator_diag_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/linear_operator_diag_test.py"],
+    additional_deps = [
+        ":linalg_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+    shard_count = 5,
+)
+
+cuda_py_tests(
+    name = "linear_operator_tril_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/linear_operator_tril_test.py"],
+    additional_deps = [
+        ":linalg_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+    shard_count = 5,
+)
+
+cuda_py_tests(
+    name = "linear_operator_util_test",
+    size = "small",
+    srcs = ["python/kernel_tests/linear_operator_util_test.py"],
     additional_deps = [
         ":linalg_py",
         "//tensorflow:tensorflow_py",

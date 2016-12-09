@@ -108,13 +108,12 @@ import tensorflow.contrib.learn.python.learn as learn
 iris = datasets.load_iris()
 
 def my_model(features, labels):
-  """DNN with three hidden layers, and dropout of 0.1 probability."""
+  """DNN with three hidden layers."""
   # Convert the labels to a one-hot tensor of shape (length of features, 3) and
   # with a on-value of 1 for each one-hot vector of length 3.
   labels = tf.one_hot(labels, 3, 1, 0)
 
-  # Create three fully connected layers respectively of size 10, 20, and 10 with
-  # each layer having a dropout probability of 0.1.
+  # Create three fully connected layers respectively of size 10, 20, and 10.
   features = layers.stack(features, layers.fully_connected, [10, 20, 10])
 
   # Create two tensors respectively for prediction and loss.

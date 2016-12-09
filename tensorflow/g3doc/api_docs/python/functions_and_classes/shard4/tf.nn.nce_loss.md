@@ -3,8 +3,10 @@
 Computes and returns the noise-contrastive estimation training loss.
 
 See [Noise-contrastive estimation: A new estimation principle for
-unnormalized statistical models](http://www.jmlr.org/proceedings/papers/v9/gutmann10a/gutmann10a.pdf).
-Also see our [Candidate Sampling Algorithms Reference](../../extras/candidate_sampling.pdf)
+unnormalized statistical
+models](http://www.jmlr.org/proceedings/papers/v9/gutmann10a/gutmann10a.pdf).
+Also see our [Candidate Sampling Algorithms
+Reference](../../extras/candidate_sampling.pdf)
 
 Note: By default this uses a log-uniform (Zipfian) distribution for sampling,
 so your labels must be sorted in order of decreasing frequency to achieve
@@ -42,7 +44,8 @@ with an otherwise unused class.
       where a sampled class equals one of the target classes.  If set to
       `True`, this is a "Sampled Logistic" loss instead of NCE, and we are
       learning to generate log-odds instead of log probabilities.  See
-      our [Candidate Sampling Algorithms Reference](../../extras/candidate_sampling.pdf).
+      our [Candidate Sampling Algorithms Reference]
+      (../../extras/candidate_sampling.pdf).
       Default is False.
 *  <b>`partition_strategy`</b>: A string specifying the partitioning strategy, relevant
       if `len(weights) > 1`. Currently `"div"` and `"mod"` are supported.

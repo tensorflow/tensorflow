@@ -122,7 +122,7 @@ def extract_pandas_labels(labels):
     return labels
 
 
-def pandas_input_fn(x, y=None, batch_size=128, num_epochs=None, shuffle=True,
+def pandas_input_fn(x, y=None, batch_size=128, num_epochs=1, shuffle=True,
                     queue_capacity=1000, num_threads=1, target_column='target',
                     index_column='index'):
   """Returns input function that would feed pandas DataFrame into the model.
@@ -134,8 +134,8 @@ def pandas_input_fn(x, y=None, batch_size=128, num_epochs=None, shuffle=True,
     y: pandas `Series` object.
     batch_size: int, size of batches to return.
     num_epochs: int, number of epochs to iterate over data. If `None` will
-      run indefinetly.
-    shuffle: int, if shuffle the queue. Please make sure you don't shuffle at
+      run forever.
+    shuffle: bool, if shuffle the queue. Please make sure you don't shuffle at
       prediction time.
     queue_capacity: int, size of queue to accumulate.
     num_threads: int, number of threads used for reading and enqueueing.

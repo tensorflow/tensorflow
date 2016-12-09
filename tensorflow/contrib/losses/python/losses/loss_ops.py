@@ -28,7 +28,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
-
+from tensorflow.python.util.deprecation import deprecated
 
 __all__ = ["absolute_difference",
            "add_loss",
@@ -117,9 +117,9 @@ def _safe_div(numerator, denominator, name="value"):
   Returns:
     The element-wise value of the numerator divided by the denominator.
   """
-  return math_ops.select(
+  return array_ops.where(
       math_ops.greater(denominator, 0),
-      math_ops.div(numerator, math_ops.select(
+      math_ops.div(numerator, array_ops.where(
           math_ops.equal(denominator, 0),
           array_ops.ones_like(denominator), denominator)),
       array_ops.zeros_like(numerator),
@@ -141,15 +141,17 @@ def _safe_mean(losses, num_present):
   return _safe_div(total_loss, num_present)
 
 
+@deprecated("2016-12-30", "Use tf.losses.compute_weighted_loss instead.")
 @deprecated_args(
     "2016-11-25", "`weight` is being deprecated, use `weights`.", "weight")
 def compute_weighted_loss(
-    losses, weights=_WEIGHT_SENTINEL, weight=_WEIGHT_SENTINEL):
+    losses, weights=_WEIGHT_SENTINEL, scope=None, weight=_WEIGHT_SENTINEL):
   """Computes the weighted loss.
 
   Args:
     losses: A tensor of size [batch_size, d1, ... dN].
     weights: A tensor of size [1] or [batch_size, d1, ... dK] where K < N.
+    scope: the scope for the operations performed in computing the loss.
     weight: Deprecated alias for `weights`.
 
   Returns:
@@ -161,27 +163,28 @@ def compute_weighted_loss(
       `weights` is missing.
   """
   weights = _weights(weights, weight)
-  losses = ops.convert_to_tensor(losses)
-  input_dtype = losses.dtype
-  losses = math_ops.to_float(losses)
-  weights = math_ops.to_float(ops.convert_to_tensor(weights))
+  with ops.name_scope(scope, "weighted_loss", [losses, weights]):
+    losses = ops.convert_to_tensor(losses)
+    input_dtype = losses.dtype
+    losses = math_ops.to_float(losses)
+    weights = math_ops.to_float(ops.convert_to_tensor(weights))
 
-  if losses.get_shape().ndims is None:
-    raise ValueError("losses.get_shape().ndims cannot be None")
-  weights_shape = weights.get_shape()
-  if weights_shape.ndims is None:
-    raise ValueError("weight.get_shape().ndims cannot be None")
+    if losses.get_shape().ndims is None:
+      raise ValueError("losses.get_shape().ndims cannot be None")
+    weights_shape = weights.get_shape()
+    if weights_shape.ndims is None:
+      raise ValueError("weight.get_shape().ndims cannot be None")
 
-  if weights_shape.ndims > 1 and weights_shape.dims[-1].is_compatible_with(1):
-    weights = array_ops.squeeze(weights, [-1])
+    if weights_shape.ndims > 1 and weights_shape.dims[-1].is_compatible_with(1):
+      weights = array_ops.squeeze(weights, [-1])
 
-  total_loss = _scale_losses(losses, weights)
-  num_present = _num_present(losses, weights)
-  mean_loss = _safe_mean(total_loss, num_present)
-  # convert the result back to the input type
-  mean_loss = math_ops.cast(mean_loss, input_dtype)
-  add_loss(mean_loss)
-  return mean_loss
+    total_loss = _scale_losses(losses, weights)
+    num_present = _num_present(losses, weights)
+    mean_loss = _safe_mean(total_loss, num_present)
+    # convert the result back to the input type
+    mean_loss = math_ops.cast(mean_loss, input_dtype)
+    add_loss(mean_loss)
+    return mean_loss
 
 
 def _num_present(losses, weights, per_batch=False):
@@ -211,7 +214,7 @@ def _num_present(losses, weights, per_batch=False):
                                                    [0], [1]), [])
     num_per_batch = math_ops.div(math_ops.to_float(array_ops.size(losses)),
                                  math_ops.to_float(batch_size))
-    num_per_batch = math_ops.select(math_ops.equal(weights, 0),
+    num_per_batch = array_ops.where(math_ops.equal(weights, 0),
                                     0.0, num_per_batch)
     num_per_batch = math_ops.mul(array_ops.ones(
         array_ops.reshape(batch_size, [1])), num_per_batch)
@@ -233,6 +236,7 @@ def _num_present(losses, weights, per_batch=False):
   return num_per_batch if per_batch else math_ops.reduce_sum(num_per_batch)
 
 
+@deprecated("2016-12-30", "Use tf.losses.add_loss instead.")
 @add_arg_scope
 def add_loss(loss, loss_collection=ops.GraphKeys.LOSSES):
   """Adds a externally defined loss to the collection of losses.
@@ -245,6 +249,7 @@ def add_loss(loss, loss_collection=ops.GraphKeys.LOSSES):
     ops.add_to_collection(loss_collection, loss)
 
 
+@deprecated("2016-12-30", "Use tf.losses.get_losses instead.")
 def get_losses(scope=None, loss_collection=ops.GraphKeys.LOSSES):
   """Gets the list of losses from the loss_collection.
 
@@ -258,6 +263,7 @@ def get_losses(scope=None, loss_collection=ops.GraphKeys.LOSSES):
   return ops.get_collection(loss_collection, scope)
 
 
+@deprecated("2016-12-30", "Use tf.losses.get_regularization_losses instead.")
 def get_regularization_losses(scope=None):
   """Gets the regularization losses.
 
@@ -270,6 +276,7 @@ def get_regularization_losses(scope=None):
   return ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES, scope)
 
 
+@deprecated("2016-12-30", "Use tf.losses.get_total_loss instead.")
 def get_total_loss(add_regularization_losses=True, name="total_loss"):
   """Returns a tensor whose value represents the total loss.
 
@@ -292,6 +299,7 @@ def get_total_loss(add_regularization_losses=True, name="total_loss"):
   return math_ops.add_n(losses, name=name)
 
 
+@deprecated("2016-12-30", "Use tf.losses.absolute_difference instead.")
 @deprecated_args(
     "2016-11-25",
     "`targets` is being deprecated, use `labels`."
@@ -334,9 +342,10 @@ def absolute_difference(
     predictions = math_ops.to_float(predictions)
     labels = math_ops.to_float(labels)
     losses = math_ops.abs(math_ops.sub(predictions, labels))
-    return compute_weighted_loss(losses, weights)
+    return compute_weighted_loss(losses, weights, scope=scope)
 
 
+@deprecated("2016-12-30", "Use tf.losses.sigmoid_cross_entropy instead.")
 @deprecated_args(
     "2016-11-25", "`weight` is being deprecated, use `weights`", "weight")
 def sigmoid_cross_entropy(
@@ -373,7 +382,7 @@ def sigmoid_cross_entropy(
   """
   weights = _weights(weights, weight)
   with ops.name_scope(scope, "sigmoid_cross_entropy_loss",
-                      [logits, multi_class_labels, weights]):
+                      [logits, multi_class_labels, weights]) as scope:
     logits.get_shape().assert_is_compatible_with(multi_class_labels.get_shape())
 
     multi_class_labels = math_ops.cast(multi_class_labels, logits.dtype)
@@ -384,9 +393,10 @@ def sigmoid_cross_entropy(
 
     losses = nn.sigmoid_cross_entropy_with_logits(logits, multi_class_labels,
                                                   name="xentropy")
-    return compute_weighted_loss(losses, weights)
+    return compute_weighted_loss(losses, weights, scope=scope)
 
 
+@deprecated("2016-12-30", "Use tf.losses.softmax_cross_entropy instead.")
 @deprecated_args(
     "2016-11-25", "`weight` is being deprecated, use `weights`", "weight")
 def softmax_cross_entropy(
@@ -421,7 +431,7 @@ def softmax_cross_entropy(
   """
   weights = _weights(weights, weight)
   with ops.name_scope(scope, "softmax_cross_entropy_loss",
-                      [logits, onehot_labels, weights]):
+                      [logits, onehot_labels, weights]) as scope:
     logits.get_shape().assert_is_compatible_with(onehot_labels.get_shape())
 
     onehot_labels = math_ops.cast(onehot_labels, logits.dtype)
@@ -435,9 +445,10 @@ def softmax_cross_entropy(
 
     losses = nn.softmax_cross_entropy_with_logits(logits, onehot_labels,
                                                   name="xentropy")
-    return compute_weighted_loss(losses, weights)
+    return compute_weighted_loss(losses, weights, scope=scope)
 
 
+@deprecated("2016-12-30", "Use tf.losses.sparse_softmax_cross_entropy instead.")
 @deprecated_args(
     "2016-11-25", "`weight` is being deprecated, use `weights`", "weight")
 def sparse_softmax_cross_entropy(
@@ -468,15 +479,16 @@ def sparse_softmax_cross_entropy(
   """
   weights = _weights(weights, weight)
   with ops.name_scope(scope, "sparse_softmax_cross_entropy_loss",
-                      [logits, labels, weights]):
+                      [logits, labels, weights]) as scope:
     labels = array_ops.reshape(labels, shape=[array_ops.shape(labels)[0]])
     weights = array_ops.squeeze(weights)
 
     losses = nn.sparse_softmax_cross_entropy_with_logits(logits, labels,
                                                          name="xentropy")
-    return compute_weighted_loss(losses, weights)
+    return compute_weighted_loss(losses, weights, scope=scope)
 
 
+@deprecated("2016-12-30", "Use tf.losses.log_loss instead.")
 @deprecated_args(
     "2016-11-25",
     "`targets` is being deprecated, use `labels`."
@@ -523,9 +535,10 @@ def log_loss(
         labels,
         math_ops.log(predictions + epsilon)) - math_ops.mul(
             (1 - labels), math_ops.log(1 - predictions + epsilon))
-    return compute_weighted_loss(losses, weights)
+    return compute_weighted_loss(losses, weights, scope=scope)
 
 
+@deprecated("2016-12-30", "Use tf.losses.hinge_loss instead.")
 @deprecated_args(
     "2016-11-25", "`target` is being deprecated, use `labels`.", "target")
 def hinge_loss(logits, labels=None, scope=None, target=None):
@@ -555,6 +568,7 @@ def hinge_loss(logits, labels=None, scope=None, target=None):
     return nn_ops.relu(math_ops.sub(all_ones, math_ops.mul(labels, logits)))
 
 
+@deprecated("2016-12-30", "Use tf.losses.mean_squared_error instead.")
 @deprecated_args(
     "2016-11-25",
     "`targets` is being deprecated, use `labels`."
@@ -597,9 +611,10 @@ def mean_squared_error(
     predictions = math_ops.to_float(predictions)
     labels = math_ops.to_float(labels)
     losses = math_ops.square(math_ops.sub(predictions, labels))
-    return compute_weighted_loss(losses, weights)
+    return compute_weighted_loss(losses, weights, scope=scope)
 
 
+@deprecated("2016-12-30", "Use tf.losses.mean_pairwise_squared_error instead.")
 @deprecated_args(
     "2016-11-25",
     "`targets` is being deprecated, use `labels`."
@@ -681,7 +696,7 @@ def mean_pairwise_squared_error(
 
     loss = _scale_losses(term1 - term2, weights)
 
-    mean_loss = math_ops.select(math_ops.reduce_sum(num_present_per_batch) > 0,
+    mean_loss = array_ops.where(math_ops.reduce_sum(num_present_per_batch) > 0,
                                 loss,
                                 array_ops.zeros_like(loss),
                                 name="value")
@@ -689,6 +704,7 @@ def mean_pairwise_squared_error(
     return mean_loss
 
 
+@deprecated("2016-12-30", "Use tf.losses.cosine_distance instead.")
 @deprecated_args(
     "2016-11-25",
     "`targets` is being deprecated, use `labels`."
@@ -732,4 +748,4 @@ def cosine_distance(
 
     radial_diffs = math_ops.mul(predictions, labels)
     losses = 1 - math_ops.reduce_sum(radial_diffs, reduction_indices=[dim,])
-    return compute_weighted_loss(losses, weights)
+    return compute_weighted_loss(losses, weights, scope=scope)

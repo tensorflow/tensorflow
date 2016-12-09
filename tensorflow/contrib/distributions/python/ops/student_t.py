@@ -230,7 +230,7 @@ class StudentT(distribution.Distribution):
     mean = self.mu * self._ones()
     if self.allow_nan_stats:
       nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
-      return math_ops.select(
+      return array_ops.where(
           math_ops.greater(self.df, self._ones()), mean,
           array_ops.fill(self.batch_shape(), nan, name="nan"))
     else:
@@ -255,14 +255,14 @@ class StudentT(distribution.Distribution):
            math_ops.square(self.sigma) * self.df / (self.df - 2))
     # When 1 < df <= 2, variance is infinite.
     inf = np.array(np.inf, dtype=self.dtype.as_numpy_dtype())
-    result_where_defined = math_ops.select(
+    result_where_defined = array_ops.where(
         math_ops.greater(self.df, array_ops.fill(self.batch_shape(), 2.)),
         var,
         array_ops.fill(self.batch_shape(), inf, name="inf"))
 
     if self.allow_nan_stats:
       nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
-      return math_ops.select(
+      return array_ops.where(
           math_ops.greater(self.df, self._ones()),
           result_where_defined,
           array_ops.fill(self.batch_shape(), nan, name="nan"))

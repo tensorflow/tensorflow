@@ -17,8 +17,8 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   # These lines need to be changed when updating Eigen. They are parsed from
   # this file by the cmake and make builds to determine the eigen version and
   # hash.
-  eigen_version = "346ecdb306e6"
-  eigen_sha256 = "161a0b5b616fd53bd724f631a6eb4f7bf27656dde12c480176dc2264cf88ef4f"
+  eigen_version = "9569d1f35bae"
+  eigen_sha256 = "34e8347f771932964cd367b8d512234cc96917323855e622c668a339c28a3572"
 
   native.new_http_archive(
     name = "eigen_archive",
@@ -26,6 +26,19 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     sha256 = eigen_sha256,
     strip_prefix = "eigen-eigen-" + eigen_version,
     build_file = str(Label("//:eigen.BUILD")),
+  )
+
+  native.new_http_archive(
+    name = "libxsmm_archive",
+    url = "https://github.com/hfp/libxsmm/archive/1.5.tar.gz",
+    sha256 = "c52568c5e0e8dc9d8fcf869a716d73598e52f71c3d83af5a4c0b3be81403b423",
+    strip_prefix = "libxsmm-1.5",
+    build_file = str(Label("//:libxsmm.BUILD")),
+  )
+
+  native.bind(
+    name = "xsmm_avx",
+    actual = "@libxsmm_archive//:xsmm_avx",
   )
 
   native.http_archive(
@@ -46,7 +59,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     name = "farmhash_archive",
     url = "http://github.com/google/farmhash/archive/92e897b282426729f4724d91a637596c7e2fe28f.zip",
     sha256 = "4c626d1f306bda2c6804ab955892f803f5245f4dcaecb4979dc08b091256da54",
-    strip_prefix = "farmhash-92e897b282426729f4724d91a637596c7e2fe28f/src",
+    strip_prefix = "farmhash-92e897b282426729f4724d91a637596c7e2fe28f",
     build_file = str(Label("//:farmhash.BUILD")),
   )
 
@@ -88,9 +101,9 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
   native.new_http_archive(
     name = "gif_archive",
-    url = "http://cdimage.debian.org/mirror/xbmc.org/build-deps/sources/giflib-5.1.4.tar.gz",
+    url = "http://ufpr.dl.sourceforge.net/project/giflib/giflib-5.1.4.tar.gz",
     sha256 = "34a7377ba834397db019e8eb122e551a49c98f49df75ec3fcc92b9a794a4f6d1",
-    strip_prefix = "giflib-5.1.4/lib",
+    strip_prefix = "giflib-5.1.4",
     build_file = str(Label("//:gif.BUILD")),
   )
 
@@ -148,7 +161,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.new_http_archive(
     name = "swig",
     sha256 = "58a475dbbd4a4d7075e5fe86d4e54c9edde39847cdb96a3053d87cb64a23a453",
-    url = "http://cdimage.debian.org/mirror/xbmc.org/build-deps/sources/swig-3.0.8.tar.gz",
+    url = "http://ufpr.dl.sourceforge.net/project/swig/swig/swig-3.0.8/swig-3.0.8.tar.gz",
     strip_prefix = "swig-3.0.8",
     build_file = str(Label("//third_party:swig.BUILD")),
   )
@@ -247,4 +260,16 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.bind(
     name = "zlib",
     actual = "@zlib_archive//:zlib",
+  )
+
+  # Make junit-4.12 available as //external:junit
+  native.http_jar(
+    name = "junit_jar",
+    url = "https://github.com/junit-team/junit4/releases/download/r4.12/junit-4.12.jar",
+    sha256 = "59721f0805e223d84b90677887d9ff567dc534d7c502ca903c0c2b17f05c116a",
+  )
+
+  native.bind(
+    name = "junit",
+    actual = "@junit_jar//jar",
   )

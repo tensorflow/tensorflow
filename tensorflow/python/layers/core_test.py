@@ -18,154 +18,258 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 import tensorflow as tf
 
 from tensorflow.python.layers import core as core_layers
 
 
-class FullyConnectedTest(tf.test.TestCase):
+class DenseTest(tf.test.TestCase):
 
-  def testFCProperties(self):
-    fc = core_layers.FullyConnected(2, activation=tf.nn.relu, name='fc')
-    self.assertEqual(fc.output_dim, 2)
-    self.assertEqual(fc.activation, tf.nn.relu)
-    self.assertEqual(fc.w_regularizer, None)
-    self.assertEqual(fc.bias_regularizer, None)
-    self.assertEqual(fc.activity_regularizer, None)
-    self.assertEqual(fc.use_bias, True)
-    self.assertEqual(fc.name, 'fc')
+  def testDenseProperties(self):
+    dense = core_layers.Dense(2, activation=tf.nn.relu, name='my_dense')
+    self.assertEqual(dense.units, 2)
+    self.assertEqual(dense.activation, tf.nn.relu)
+    self.assertEqual(dense.weights_regularizer, None)
+    self.assertEqual(dense.bias_regularizer, None)
+    self.assertEqual(dense.activity_regularizer, None)
+    self.assertEqual(dense.use_bias, True)
+    self.assertEqual(dense.name, 'my_dense')
 
     # Test auto-naming
-    fc = core_layers.FullyConnected(2, activation=tf.nn.relu)
-    self.assertEqual(fc.name, 'fully_connected')
-    fc = core_layers.FullyConnected(2, activation=tf.nn.relu)
-    self.assertEqual(fc.name, 'fully_connected_1')
+    dense = core_layers.Dense(2, activation=tf.nn.relu)
+    self.assertEqual(dense.name, 'dense')
+    dense = core_layers.Dense(2, activation=tf.nn.relu)
+    self.assertEqual(dense.name, 'dense_1')
 
   def testCall(self):
-    fc = core_layers.FullyConnected(2, activation=tf.nn.relu, name='fc')
+    dense = core_layers.Dense(2, activation=tf.nn.relu, name='my_dense')
     inputs = tf.random_uniform((5, 2), seed=1)
-    _ = fc(inputs)
-    self.assertListEqual(fc.weights, [fc.w, fc.bias])
-    self.assertListEqual(fc.trainable_weights, [fc.w, fc.bias])
-    self.assertListEqual(fc.non_trainable_weights, [])
-    self.assertListEqual(fc._trainable_weights, [fc.w, fc.bias])
-    self.assertListEqual(fc._non_trainable_weights, [])
+    _ = dense(inputs)
+    self.assertListEqual(dense.variables, [dense.w, dense.bias])
+    self.assertListEqual(dense.trainable_variables, [dense.w, dense.bias])
+    self.assertListEqual(dense.non_trainable_variables, [])
+    self.assertListEqual(dense._trainable_variables, [dense.w, dense.bias])
+    self.assertListEqual(dense._non_trainable_variables, [])
     self.assertEqual(
         len(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)), 2)
-    self.assertEqual(fc.w.name, 'fc/weights:0')
-    self.assertEqual(fc.bias.name, 'fc/biases:0')
+    self.assertEqual(dense.w.name, 'my_dense/weights:0')
+    self.assertEqual(dense.bias.name, 'my_dense/bias:0')
 
   def testNoBias(self):
-    fc = core_layers.FullyConnected(2, use_bias=False, name='fc')
+    dense = core_layers.Dense(2, use_bias=False, name='my_dense')
     inputs = tf.random_uniform((5, 2), seed=1)
-    _ = fc(inputs)
-    self.assertListEqual(fc.weights, [fc.w])
-    self.assertListEqual(fc.trainable_weights, [fc.w])
-    self.assertListEqual(fc.non_trainable_weights, [])
+    _ = dense(inputs)
+    self.assertListEqual(dense.variables, [dense.w])
+    self.assertListEqual(dense.trainable_variables, [dense.w])
+    self.assertListEqual(dense.non_trainable_variables, [])
     self.assertEqual(
         len(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)), 1)
-    self.assertEqual(fc.w.name, 'fc/weights:0')
-    self.assertEqual(fc.bias, None)
+    self.assertEqual(dense.w.name, 'my_dense/weights:0')
+    self.assertEqual(dense.bias, None)
 
   def testNonTrainable(self):
-    fc = core_layers.FullyConnected(2, trainable=False, name='fc')
+    dense = core_layers.Dense(2, trainable=False, name='my_dense')
     inputs = tf.random_uniform((5, 2), seed=1)
-    _ = fc(inputs)
-    self.assertListEqual(fc.weights, [fc.w, fc.bias])
-    self.assertListEqual(fc.non_trainable_weights, [fc.w, fc.bias])
-    self.assertListEqual(fc.trainable_weights, [])
-    self.assertListEqual(fc._trainable_weights, [fc.w, fc.bias])
-    self.assertListEqual(fc._non_trainable_weights, [])
+    _ = dense(inputs)
+    self.assertListEqual(dense.variables, [dense.w, dense.bias])
+    self.assertListEqual(dense.non_trainable_variables,
+                         [dense.w, dense.bias])
+    self.assertListEqual(dense.trainable_variables, [])
+    self.assertListEqual(dense._trainable_variables,
+                         [dense.w, dense.bias])
+    self.assertListEqual(dense._non_trainable_variables, [])
     self.assertEqual(
         len(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)), 0)
 
   def testOutputShape(self):
-    fc = core_layers.FullyConnected(7, activation=tf.nn.relu, name='fc')
+    dense = core_layers.Dense(7, activation=tf.nn.relu, name='my_dense')
     inputs = tf.random_uniform((5, 3), seed=1)
-    outputs = fc.apply(inputs)
+    outputs = dense.apply(inputs)
     self.assertEqual(outputs.get_shape().as_list(), [5, 7])
 
     inputs = tf.random_uniform((5, 2, 3), seed=1)
-    outputs = fc(inputs)
+    outputs = dense(inputs)
     self.assertEqual(outputs.get_shape().as_list(), [5, 2, 7])
 
     inputs = tf.random_uniform((1, 2, 4, 3), seed=1)
-    outputs = fc.apply(inputs)
+    outputs = dense.apply(inputs)
     self.assertEqual(outputs.get_shape().as_list(), [1, 2, 4, 7])
 
   def testCallOnPlaceHolder(self):
     inputs = tf.placeholder(dtype=tf.float32)
-    fc = core_layers.FullyConnected(4, name='fc')
+    dense = core_layers.Dense(4, name='my_dense')
     with self.assertRaises(ValueError):
-      fc(inputs)
+      dense(inputs)
 
     inputs = tf.placeholder(dtype=tf.float32, shape=[None, None])
-    fc = core_layers.FullyConnected(4, name='fc')
+    dense = core_layers.Dense(4, name='my_dense')
     with self.assertRaises(ValueError):
-      fc(inputs)
+      dense(inputs)
 
     inputs = tf.placeholder(dtype=tf.float32, shape=[None, None, None])
-    fc = core_layers.FullyConnected(4, name='fc')
+    dense = core_layers.Dense(4, name='my_dense')
     with self.assertRaises(ValueError):
-      fc(inputs)
+      dense(inputs)
 
     inputs = tf.placeholder(dtype=tf.float32, shape=[None, 3])
-    fc = core_layers.FullyConnected(4, name='fc')
-    fc(inputs)
+    dense = core_layers.Dense(4, name='my_dense')
+    dense(inputs)
 
     inputs = tf.placeholder(dtype=tf.float32, shape=[None, None, 3])
-    fc = core_layers.FullyConnected(4, name='fc')
-    fc(inputs)
+    dense = core_layers.Dense(4, name='my_dense')
+    dense(inputs)
 
   def testActivation(self):
-    fc = core_layers.FullyConnected(2, activation=tf.nn.relu, name='fc1')
+    dense = core_layers.Dense(2, activation=tf.nn.relu, name='dense1')
     inputs = tf.random_uniform((5, 3), seed=1)
-    outputs = fc(inputs)
-    self.assertEqual(outputs.op.name, 'fc1/Relu')
+    outputs = dense(inputs)
+    self.assertEqual(outputs.op.name, 'dense1/Relu')
 
-    fc = core_layers.FullyConnected(2, name='fc2')
+    dense = core_layers.Dense(2, name='dense2')
     inputs = tf.random_uniform((5, 3), seed=1)
-    outputs = fc(inputs)
-    self.assertEqual(outputs.op.name, 'fc2/BiasAdd')
+    outputs = dense(inputs)
+    self.assertEqual(outputs.op.name, 'dense2/BiasAdd')
 
   def testActivityRegularizer(self):
     regularizer = lambda x: tf.reduce_sum(x) * 1e-3
-    fc = core_layers.FullyConnected(2, name='fc',
-                                    activity_regularizer=regularizer)
+    dense = core_layers.Dense(2, name='my_dense',
+                              activity_regularizer=regularizer)
     inputs = tf.random_uniform((5, 3), seed=1)
-    _ = fc(inputs)
+    _ = dense(inputs)
     loss_keys = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
     self.assertEqual(len(loss_keys), 1)
-    self.assertListEqual(fc.losses, loss_keys)
+    self.assertListEqual(dense.losses, loss_keys)
 
   def testWeightsRegularizer(self):
     regularizer = lambda x: tf.reduce_sum(x) * 1e-3
-    fc = core_layers.FullyConnected(2, name='fc',
-                                    w_regularizer=regularizer)
+    dense = core_layers.Dense(2, name='my_dense',
+                              weights_regularizer=regularizer)
     inputs = tf.random_uniform((5, 3), seed=1)
-    _ = fc(inputs)
+    _ = dense(inputs)
     loss_keys = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
     self.assertEqual(len(loss_keys), 1)
-    self.assertListEqual(fc.losses, loss_keys)
+    self.assertListEqual(dense.losses, loss_keys)
 
   def testBiasRegularizer(self):
     regularizer = lambda x: tf.reduce_sum(x) * 1e-3
-    fc = core_layers.FullyConnected(2, name='fc',
-                                    bias_regularizer=regularizer)
+    dense = core_layers.Dense(2, name='my_dense',
+                              bias_regularizer=regularizer)
     inputs = tf.random_uniform((5, 3), seed=1)
-    _ = fc(inputs)
+    _ = dense(inputs)
     loss_keys = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
     self.assertEqual(len(loss_keys), 1)
-    self.assertListEqual(fc.losses, loss_keys)
+    self.assertListEqual(dense.losses, loss_keys)
 
-  def testFunctionalFC(self):
+  def testFunctionalDense(self):
     inputs = tf.random_uniform((5, 3), seed=1)
-    outputs = core_layers.fully_connected(
-        inputs, 2, activation=tf.nn.relu, name='fc')
+    outputs = core_layers.dense(
+        inputs, 2, activation=tf.nn.relu, name='my_dense')
     self.assertEqual(
         len(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)), 2)
-    self.assertEqual(outputs.op.name, 'fc/Relu')
+    self.assertEqual(outputs.op.name, 'my_dense/Relu')
     self.assertEqual(outputs.get_shape().as_list(), [5, 2])
+
+  def testFunctionalDenseTwice(self):
+    inputs = tf.random_uniform((5, 3), seed=1)
+    core_layers.dense(inputs, 2)
+    vars1 = tf.trainable_variables()
+    core_layers.dense(inputs, 2)
+    vars2 = tf.trainable_variables()
+    self.assertEqual(len(vars1), 2)
+    self.assertEqual(len(vars2), 4)
+
+  def testFunctionalDenseTwiceReuse(self):
+    inputs = tf.random_uniform((5, 3), seed=1)
+    core_layers.dense(inputs, 2, name='my_dense')
+    vars1 = tf.trainable_variables()
+    core_layers.dense(inputs, 2, name='my_dense', reuse=True)
+    vars2 = tf.trainable_variables()
+    self.assertEqual(vars1, vars2)
+
+  def testFunctionalDenseWithCustomGetter(self):
+    called = [0]
+    def custom_getter(getter, *args, **kwargs):
+      called[0] += 1
+      return getter(*args, **kwargs)
+    with tf.variable_scope('test', custom_getter=custom_getter):
+      inputs = tf.random_uniform((5, 3), seed=1)
+      core_layers.dense(inputs, 2)
+    self.assertEqual(called[0], 2)
+
+  def testFunctionalDenseInScope(self):
+    with tf.variable_scope('test'):
+      inputs = tf.random_uniform((5, 3), seed=1)
+      core_layers.dense(inputs, 2, name='my_dense')
+      var = tf.trainable_variables()[0]
+      self.assertEqual(var.name, 'test/my_dense/weights:0')
+    with tf.variable_scope('test1') as scope:
+      inputs = tf.random_uniform((5, 3), seed=1)
+      core_layers.dense(inputs, 2, name=scope)
+      var = tf.trainable_variables()[2]
+      self.assertEqual(var.name, 'test1/weights:0')
+    with tf.variable_scope('test2'):
+      inputs = tf.random_uniform((5, 3), seed=1)
+      core_layers.dense(inputs, 2)
+      var = tf.trainable_variables()[4]
+      self.assertEqual(var.name, 'test2/dense/weights:0')
+
+
+class DropoutTest(tf.test.TestCase):
+
+  def testDropoutProperties(self):
+    dp = core_layers.Dropout(0.5)
+    self.assertEqual(dp.rate, 0.5)
+    self.assertEqual(dp.name, 'dropout')
+    self.assertEqual(dp.noise_shape, None)
+
+  def testBooleanLearningPhase(self):
+    with self.test_session() as sess:
+      dp = core_layers.Dropout(0.5)
+      inputs = tf.ones((5, 3))
+      dropped = dp.apply(inputs, training=True)
+      sess.run(tf.global_variables_initializer())
+      np_output = sess.run(dropped)
+      self.assertAlmostEqual(0., np_output.min())
+      dropped = dp.apply(inputs, training=False)
+      np_output = sess.run(dropped)
+      self.assertAllClose(np.ones((5, 3)), np_output)
+
+  def testDynamicLearningPhase(self):
+    with self.test_session() as sess:
+      dp = core_layers.Dropout(0.5, seed=1)
+      inputs = tf.ones((5, 5))
+      training = tf.placeholder(dtype='bool')
+      dropped = dp.apply(inputs, training=training)
+      sess.run(tf.global_variables_initializer())
+      np_output = sess.run(dropped, feed_dict={training: True})
+      self.assertAlmostEqual(0., np_output.min())
+      np_output = sess.run(dropped, feed_dict={training: False})
+      self.assertAllClose(np.ones((5, 5)), np_output)
+
+  def testCustomNoiseShape(self):
+    with self.test_session() as sess:
+      inputs = tf.ones((5, 3, 2))
+      noise_shape = [5, 1, 2]
+      dp = core_layers.Dropout(0.5, noise_shape=noise_shape, seed=1)
+      dropped = dp.apply(inputs, training=True)
+      sess.run(tf.global_variables_initializer())
+      np_output = sess.run(dropped)
+      self.assertAlmostEqual(0., np_output.min())
+      self.assertAllClose(np_output[:, 0, :], np_output[:, 1, :])
+
+  def testFunctionalDropout(self):
+    with self.test_session() as sess:
+      inputs = tf.ones((5, 5))
+      training = tf.placeholder(dtype='bool')
+      dropped = core_layers.dropout(inputs, 0.5, training=training, seed=1)
+      self.assertEqual(dropped.op.name, 'dropout/cond/Merge')
+
+      sess.run(tf.global_variables_initializer())
+      np_output = sess.run(dropped, feed_dict={training: True})
+      self.assertAlmostEqual(0., np_output.min())
+      np_output = sess.run(dropped, feed_dict={training: False})
+      self.assertAllClose(np.ones((5, 5)), np_output)
 
 
 if __name__ == '__main__':

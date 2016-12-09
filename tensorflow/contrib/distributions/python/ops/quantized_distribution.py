@@ -284,11 +284,11 @@ class QuantizedDistribution(distributions.Distribution):
       result_so_far = math_ops.ceil(x_samps)
 
       if lower_cutoff is not None:
-        result_so_far = math_ops.select(result_so_far < lower_cutoff,
+        result_so_far = array_ops.where(result_so_far < lower_cutoff,
                                         lower_cutoff * ones, result_so_far)
 
       if upper_cutoff is not None:
-        result_so_far = math_ops.select(result_so_far > upper_cutoff,
+        result_so_far = array_ops.where(result_so_far > upper_cutoff,
                                         upper_cutoff * ones, result_so_far)
 
       return result_so_far
@@ -327,8 +327,8 @@ class QuantizedDistribution(distributions.Distribution):
     # In either case, we are doing Log[ exp{big} - exp{small} ]
     # We want to use the sf items precisely when we are on the right side of the
     # median, which occurs when logsf_y < logcdf_y.
-    big = math_ops.select(logsf_y < logcdf_y, logsf_y_minus_1, logcdf_y)
-    small = math_ops.select(logsf_y < logcdf_y, logsf_y, logcdf_y_minus_1)
+    big = array_ops.where(logsf_y < logcdf_y, logsf_y_minus_1, logcdf_y)
+    small = array_ops.where(logsf_y < logcdf_y, logsf_y, logcdf_y_minus_1)
 
     return _logsum_expbig_minus_expsmall(big, small)
 
@@ -357,7 +357,7 @@ class QuantizedDistribution(distributions.Distribution):
     cdf_y_minus_1 = self.cdf(y - 1)
 
     # sf_prob has greater precision iff we're on the right side of the median.
-    return math_ops.select(
+    return array_ops.where(
         sf_y < cdf_y,  # True iff we're on the right side of the median.
         sf_y_minus_1 - sf_y,
         cdf_y - cdf_y_minus_1)
@@ -386,9 +386,9 @@ class QuantizedDistribution(distributions.Distribution):
     # Re-define values at the cutoffs.
     if lower_cutoff is not None:
       neg_inf = -np.inf * array_ops.ones_like(result_so_far)
-      result_so_far = math_ops.select(j < lower_cutoff, neg_inf, result_so_far)
+      result_so_far = array_ops.where(j < lower_cutoff, neg_inf, result_so_far)
     if upper_cutoff is not None:
-      result_so_far = math_ops.select(j >= upper_cutoff,
+      result_so_far = array_ops.where(j >= upper_cutoff,
                                       array_ops.zeros_like(result_so_far),
                                       result_so_far)
 
@@ -418,11 +418,11 @@ class QuantizedDistribution(distributions.Distribution):
 
     # Re-define values at the cutoffs.
     if lower_cutoff is not None:
-      result_so_far = math_ops.select(j < lower_cutoff,
+      result_so_far = array_ops.where(j < lower_cutoff,
                                       array_ops.zeros_like(result_so_far),
                                       result_so_far)
     if upper_cutoff is not None:
-      result_so_far = math_ops.select(j >= upper_cutoff,
+      result_so_far = array_ops.where(j >= upper_cutoff,
                                       array_ops.ones_like(result_so_far),
                                       result_so_far)
 
@@ -452,12 +452,12 @@ class QuantizedDistribution(distributions.Distribution):
 
     # Re-define values at the cutoffs.
     if lower_cutoff is not None:
-      result_so_far = math_ops.select(j < lower_cutoff,
+      result_so_far = array_ops.where(j < lower_cutoff,
                                       array_ops.zeros_like(result_so_far),
                                       result_so_far)
     if upper_cutoff is not None:
       neg_inf = -np.inf * array_ops.ones_like(result_so_far)
-      result_so_far = math_ops.select(j >= upper_cutoff, neg_inf, result_so_far)
+      result_so_far = array_ops.where(j >= upper_cutoff, neg_inf, result_so_far)
 
     return result_so_far
 
@@ -485,11 +485,11 @@ class QuantizedDistribution(distributions.Distribution):
 
     # Re-define values at the cutoffs.
     if lower_cutoff is not None:
-      result_so_far = math_ops.select(j < lower_cutoff,
+      result_so_far = array_ops.where(j < lower_cutoff,
                                       array_ops.ones_like(result_so_far),
                                       result_so_far)
     if upper_cutoff is not None:
-      result_so_far = math_ops.select(j >= upper_cutoff,
+      result_so_far = array_ops.where(j >= upper_cutoff,
                                       array_ops.zeros_like(result_so_far),
                                       result_so_far)
 

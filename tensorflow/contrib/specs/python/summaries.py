@@ -156,7 +156,7 @@ def tf_num_params(x):
   if isinstance(x, tf.Tensor):
     shape = x.get_shape()
     x = x.op
-  if x.type == "Variable":
+  if x.type in ["Variable", "VariableV2"]:
     return shape.num_elements()
   totals = [tf_num_params(y) for y in x.inputs]
   return sum(totals)

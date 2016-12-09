@@ -1,4 +1,4 @@
-### `tf.make_template(name_, func_, create_scope_now_=False, unique_name_=None, **kwargs)` {#make_template}
+### `tf.make_template(name_, func_, create_scope_now_=False, unique_name_=None, custom_getter_=None, **kwargs)` {#make_template}
 
 Given an arbitrary function, wrap it so that it does variable sharing.
 
@@ -89,6 +89,9 @@ reduce the likelihood of collisions with kwargs.
 *  <b>`unique_name_`</b>: When used, it overrides name_ and is not made unique. If a
     template of the same scope/unique_name already exists and reuse is false,
     an error is raised. Defaults to None.
+*  <b>`custom_getter_`</b>: Optional custom getter for variables used in `func_`. See
+    the [`get_variable`](#get_variable) `custom_getter` documentation for
+    more information.
 *  <b>`**kwargs`</b>: Keyword arguments to apply to `func_`.
 
 ##### Returns:

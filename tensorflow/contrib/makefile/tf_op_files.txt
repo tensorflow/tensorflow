@@ -75,6 +75,8 @@ tensorflow/core/kernels/padding_fifo_queue.cc
 tensorflow/core/kernels/pad_op.cc
 tensorflow/core/kernels/pack_op.cc
 tensorflow/core/kernels/ops_util.cc
+tensorflow/core/kernels/one_hot_op.cc
+tensorflow/core/kernels/non_max_suppression_op.cc
 tensorflow/core/kernels/no_op.cc
 tensorflow/core/kernels/mirror_pad_op.cc
 tensorflow/core/kernels/mirror_pad_op_cpu_impl_1.cc
@@ -100,6 +102,7 @@ tensorflow/core/kernels/dynamic_stitch_op.cc
 tensorflow/core/kernels/dynamic_partition_op.cc
 tensorflow/core/kernels/dense_update_ops.cc
 tensorflow/core/kernels/deep_conv2d.cc
+tensorflow/core/kernels/xsmm_conv2d.cc
 tensorflow/core/kernels/cwise_ops_common.cc
 tensorflow/core/kernels/cwise_op_tanh.cc
 tensorflow/core/kernels/cwise_op_sub.cc

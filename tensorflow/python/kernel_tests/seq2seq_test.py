@@ -328,9 +328,11 @@ class Seq2SeqTest(tf.test.TestCase):
         self.assertEqual((2, 2), res[0][1].c.shape)
         self.assertEqual((2, 2), res[0][1].h.shape)
 
+    # pylint: disable=unused-variable,invalid-name
     def testDynamicAttentionDecoderStateIsTuple(self):
       with self.test_session() as sess:
-        with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
+        with tf.variable_scope(
+            "root", initializer=tf.constant_initializer(0.5)):
           cell = tf.nn.rnn_cell.BasicLSTMCell(2, state_is_tuple=True)
           cell = tf.nn.rnn_cell.MultiRNNCell(cells=[cell] * 2,
                                              state_is_tuple=True)
@@ -601,7 +603,7 @@ class Seq2SeqTest(tf.test.TestCase):
               num_decoder_symbols=classes, embedding_size=24,
               output_projection=(w, b))
         targets = [dec_inp[i+1] for i in range(len(dec_inp) - 1)] + [0]
-        def SampledLoss(inputs, labels):
+        def SampledLoss(labels, inputs):
           labels = tf.reshape(labels, [-1, 1])
           return tf.nn.sampled_softmax_loss(w_t, b, inputs, labels, 8, classes)
         return tf.nn.seq2seq.model_with_buckets(
@@ -616,7 +618,7 @@ class Seq2SeqTest(tf.test.TestCase):
       with tf.variable_scope("root"):
         _, losses = SampleGRUSeq2Seq(inp, out, weights)
         updates = []
-        params = tf.all_variables()
+        params = tf.global_variables()
         optimizer = tf.train.AdamOptimizer(0.03, epsilon=1e-5)
         for i in range(len(buckets)):
           full_grads = tf.gradients(losses[i], params)
@@ -669,7 +671,7 @@ class Seq2SeqTest(tf.test.TestCase):
         np.random.seed(111)
 
         enc_inp = [tf.constant(i + 1, tf.int32, shape=[batch_size])
-                     for i in range(num_enc_timesteps)]
+                   for i in range(num_enc_timesteps)]
         dec_inp_fp_true = [tf.constant(i, tf.int32, shape=[batch_size])
                            for i in range(num_dec_timesteps)]
         dec_inp_holder_fp_false = [tf.placeholder(tf.int32, shape=[batch_size])
@@ -693,7 +695,7 @@ class Seq2SeqTest(tf.test.TestCase):
 
         dec_op_fp_true, update_fp_true, variables_fp_true = ForwardBackward(
             enc_inp, dec_inp_fp_true, feed_previous=True)
-        dec_op_fp_false, update_fp_false, variables_fp_false = ForwardBackward(
+        _, update_fp_false, variables_fp_false = ForwardBackward(
             enc_inp, dec_inp_holder_fp_false, feed_previous=False)
 
         sess.run(tf.global_variables_initializer())
@@ -701,9 +703,9 @@ class Seq2SeqTest(tf.test.TestCase):
         # We only check consistencies between the variables existing in both
         # the models with True and False feed_previous. Variables created by
         # the loop_function in the model with True feed_previous are ignored.
-        v_false_name_dict = {v.name.split('/', 1)[-1]: v
+        v_false_name_dict = {v.name.split("/", 1)[-1]: v
                              for v in variables_fp_false}
-        matched_variables = [(v, v_false_name_dict[v.name.split('/', 1)[-1]])
+        matched_variables = [(v, v_false_name_dict[v.name.split("/", 1)[-1]])
                              for v in variables_fp_true]
         for v_true, v_false in matched_variables:
           sess.run(tf.assign(v_false, v_true))

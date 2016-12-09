@@ -456,7 +456,7 @@ class _SparseColumnIntegerized(_SparseColumn):
     sparse_id_values = math_ops.mod(input_tensor.values, self.bucket_size,
                                     name="mod")
     columns_to_tensors[self] = sparse_tensor_py.SparseTensor(
-        input_tensor.indices, sparse_id_values, input_tensor.shape)
+        input_tensor.indices, sparse_id_values, input_tensor.dense_shape)
 
 
 def sparse_column_with_integerized_feature(column_name,
@@ -530,7 +530,7 @@ class _SparseColumnHashed(_SparseColumn):
     sparse_id_values = string_ops.string_to_hash_bucket_fast(
         sparse_values, self.bucket_size, name="lookup")
     columns_to_tensors[self] = sparse_tensor_py.SparseTensor(
-        input_tensor.indices, sparse_id_values, input_tensor.shape)
+        input_tensor.indices, sparse_id_values, input_tensor.dense_shape)
 
 
 def sparse_column_with_hash_bucket(column_name,
@@ -718,7 +718,7 @@ def weighted_sparse_column(sparse_id_column,
         is a SparseTensor.
      Following are assumed to be true:
        * sparse_tensor.indices = weights_tensor.indices
-       * sparse_tensor.shape = weights_tensor.shape
+       * sparse_tensor.dense_shape = weights_tensor.dense_shape
 
   Args:
     sparse_id_column: A `_SparseColumn` which is created by
@@ -850,6 +850,8 @@ class _EmbeddingColumn(_FeatureColumn, collections.namedtuple(
     shared_embedding_name: (Optional). The common name for shared embedding.
     shared_vocab_size: (Optional). The common vocab_size used for shared
       embedding space.
+    max_norm: (Optional). If not None, embedding values are l2-normalized to
+      the value of max_norm.
 
   Raises:
     ValueError: if `initializer` is specified and is not callable. Also,
@@ -959,7 +961,8 @@ def embedding_column(sparse_id_column,
                      combiner=None,
                      initializer=None,
                      ckpt_to_load_from=None,
-                     tensor_name_in_ckpt=None):
+                     tensor_name_in_ckpt=None,
+                     max_norm=None):
   """Creates an `_EmbeddingColumn` for feeding sparse data into a DNN.
 
   Args:
@@ -984,6 +987,8 @@ def embedding_column(sparse_id_column,
     tensor_name_in_ckpt: (Optional). Name of the `Tensor` in the provided
       checkpoint from which to restore the column weights. Required if
       `ckpt_to_load_from` is not None.
+    max_norm: (Optional). If not None, embedding values are l2-normalized to
+      the value of max_norm.
 
   Returns:
     An `_EmbeddingColumn`.
@@ -993,7 +998,8 @@ def embedding_column(sparse_id_column,
                  "to \"sqrtn\" after 2016/11/01.")
     combiner = "mean"
   return _EmbeddingColumn(sparse_id_column, dimension, combiner, initializer,
-                          ckpt_to_load_from, tensor_name_in_ckpt)
+                          ckpt_to_load_from, tensor_name_in_ckpt,
+                          max_norm=max_norm)
 
 
 def shared_embedding_columns(sparse_id_columns,
@@ -1002,7 +1008,8 @@ def shared_embedding_columns(sparse_id_columns,
                              shared_embedding_name=None,
                              initializer=None,
                              ckpt_to_load_from=None,
-                             tensor_name_in_ckpt=None):
+                             tensor_name_in_ckpt=None,
+                             max_norm=None):
   """Creates a list of `_EmbeddingColumn` sharing the same embedding.
 
   Args:
@@ -1030,6 +1037,8 @@ def shared_embedding_columns(sparse_id_columns,
     tensor_name_in_ckpt: (Optional). Name of the `Tensor` in the provided
       checkpoint from which to restore the column weights. Required if
       `ckpt_to_load_from` is not None.
+    max_norm: (Optional). If not None, embedding values are l2-normalized to
+      the value of max_norm.
 
   Returns:
     A tuple of `_EmbeddingColumn` with shared embedding space.
@@ -1061,7 +1070,7 @@ def shared_embedding_columns(sparse_id_columns,
     return [
         _EmbeddingColumn(sparse_id_columns[0], dimension, combiner, initializer,
                          ckpt_to_load_from, tensor_name_in_ckpt,
-                         shared_embedding_name)]
+                         shared_embedding_name, max_norm=max_norm)]
   else:
     # check compatibility of sparse_id_columns
     compatible = True
@@ -1090,7 +1099,8 @@ def shared_embedding_columns(sparse_id_columns,
       embedded_columns.append(
           _EmbeddingColumn(column, dimension, combiner, initializer,
                            ckpt_to_load_from, tensor_name_in_ckpt,
-                           shared_embedding_name, shared_vocab_size))
+                           shared_embedding_name, shared_vocab_size,
+                           max_norm=max_norm))
     return tuple(embedded_columns)
 
 

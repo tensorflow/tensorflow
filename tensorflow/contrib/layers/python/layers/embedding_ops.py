@@ -109,8 +109,8 @@ def safe_embedding_lookup_sparse(embedding_weights,
                       embedding_weights + [sparse_ids,
                                            sparse_weights]) as scope:
     # Reshape higher-rank sparse ids and weights to linear segment ids.
-    original_shape = sparse_ids.shape
-    original_rank_dim = sparse_ids.shape.get_shape()[0]
+    original_shape = sparse_ids.dense_shape
+    original_rank_dim = sparse_ids.dense_shape.get_shape()[0]
     original_rank = (
         array_ops.size(original_shape)
         if original_rank_dim.value is None
@@ -122,7 +122,7 @@ def safe_embedding_lookup_sparse(embedding_weights,
     if sparse_weights is not None:
       sparse_weights = sparse_tensor.SparseTensor(
           sparse_ids.indices,
-          sparse_weights.values, sparse_ids.shape)
+          sparse_weights.values, sparse_ids.dense_shape)
 
     # Prune invalid ids and weights.
     sparse_ids, sparse_weights = _prune_invalid_ids(sparse_ids, sparse_weights)
@@ -150,7 +150,7 @@ def safe_embedding_lookup_sparse(embedding_weights,
           array_ops.reshape(is_row_empty, [-1, 1]),
           array_ops.pack([1, array_ops.shape(result)[1]]))
 
-      result = math_ops.select(is_row_empty,
+      result = array_ops.where(is_row_empty,
                                array_ops.zeros_like(result),
                                result,
                                name=scope)

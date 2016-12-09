@@ -418,7 +418,7 @@ class SupervisorTest(tf.test.TestCase):
       tf.summary.scalar("c2", tf.constant(2))
       tf.summary.scalar("c3", tf.constant(3))
       summ = tf.summary.merge_all()
-      sw = tf.train.SummaryWriter(logdir)
+      sw = tf.summary.FileWriter(logdir)
       sv = tf.train.Supervisor(logdir="", summary_op=None, summary_writer=sw)
       meta_graph_def = meta_graph.create_meta_graph_def()
       sess = sv.prepare_or_wait_for_session("")
@@ -531,7 +531,7 @@ class SupervisorTest(tf.test.TestCase):
               collections=[tf.GraphKeys.LOCAL_VARIABLES],
               name="default_ready_for_local_init_op_w_" + str(uid))
           ready_for_local_init_op = tf.report_uninitialized_variables(
-              tf.all_variables())
+              tf.global_variables())
       sv = tf.train.Supervisor(
           logdir=logdir,
           is_chief=is_chief,
@@ -588,7 +588,7 @@ class SupervisorTest(tf.test.TestCase):
               collections=[tf.GraphKeys.LOCAL_VARIABLES],
               name="ready_for_local_init_op_restore_w_" + str(uid))
           ready_for_local_init_op = tf.report_uninitialized_variables(
-              tf.all_variables())
+              tf.global_variables())
       sv = tf.train.Supervisor(
           logdir=logdir,
           is_chief=is_chief,
@@ -624,7 +624,7 @@ class SupervisorTest(tf.test.TestCase):
 
       # This shouldn't add a variable to the VARIABLES collection responsible
       # for variables that are saved/restored from checkpoints.
-      self.assertEquals(len(tf.all_variables()), 0)
+      self.assertEquals(len(tf.global_variables()), 0)
 
       # Suppress normal variable inits to make sure the local one is
       # initialized via local_init_op.
@@ -644,7 +644,7 @@ class SupervisorTest(tf.test.TestCase):
                         collections=[tf.GraphKeys.LOCAL_VARIABLES])
         # This shouldn't add a variable to the VARIABLES collection responsible
         # for variables that are saved/restored from checkpoints.
-        self.assertEquals(len(tf.all_variables()), 0)
+        self.assertEquals(len(tf.global_variables()), 0)
 
       # Suppress normal variable inits to make sure the local one is
       # initialized via local_init_op.

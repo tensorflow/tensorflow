@@ -461,11 +461,17 @@ class ConcatOpTest(tf.test.TestCase):
     with self.test_session(use_gpu=True):
       t1 = [[1, 2, 3], [4, 5, 6]]
       t2 = [[7, 8, 9], [10, 11, 12]]
-      output = tf.concat(-2, [t1, t2]).eval()
+
+      c = tf.concat(-2, [t1, t2])
+      output = c.eval()
+      self.assertEqual([4, 3], c.get_shape().as_list())
       self.assertAllEqual(
           [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]],
           output)
-      output = tf.concat(-1, [t1, t2]).eval()
+
+      c = tf.concat(-1, [t1, t2])
+      self.assertEqual([2, 6], c.get_shape().as_list())
+      output = c.eval()
       self.assertAllEqual(
           [[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]],
           output)
@@ -488,11 +494,17 @@ class ConcatOpTest(tf.test.TestCase):
     with self.test_session(use_gpu=True):
       t1 = [[1, 2, 3], [4, 5, 6]]
       t2 = [[7, 8, 9], [10, 11, 12]]
-      output = gen_array_ops._concat_v2([t1, t2], -2).eval()
+
+      c = gen_array_ops._concat_v2([t1, t2], -2)
+      self.assertEqual([4, 3], c.get_shape().as_list())
+      output = c.eval()
       self.assertAllEqual(
           [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]],
           output)
-      output = gen_array_ops._concat_v2([t1, t2], -1).eval()
+
+      c = gen_array_ops._concat_v2([t1, t2], -1)
+      self.assertEqual([2, 6], c.get_shape().as_list())
+      output = c.eval()
       self.assertAllEqual(
           [[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]],
           output)

@@ -31,10 +31,25 @@ class LinearOperatorDerivedClassTest(tf.test.TestCase):
   test methods to work.
   """
 
-  @abc.abstractproperty
+    # Absolute/relative tolerance for tests.
+  _atol = {
+      tf.float16: 1e-3, tf.float32: 1e-6, tf.float64: 1e-12, tf.complex64: 1e-6,
+      tf.complex128: 1e-12}
+  _rtol = {
+      tf.float16: 1e-3, tf.float32: 1e-6, tf.float64: 1e-12, tf.complex64: 1e-6,
+      tf.complex128: 1e-12}
+
+  def assertAC(self, x, y):
+    """Derived classes can set _atol, _rtol to get different tolerance."""
+    dtype = tf.as_dtype(x.dtype)
+    atol = self._atol[dtype]
+    rtol = self._rtol[dtype]
+    self.assertAllClose(x, y, atol=atol, rtol=rtol)
+
+  @property
   def _dtypes_to_test(self):
-    """Returns list of numpy or tensorflow dtypes.  Each will be tested."""
-    raise NotImplementedError("dtypes_to_test has not been implemented.")
+    # TODO(langmore) Test tf.float16 once tf.matrix_solve works in 16bit.
+    return [tf.float32, tf.float64, tf.complex64, tf.complex128]
 
   @abc.abstractproperty
   def _shapes_to_test(self):
@@ -57,8 +72,9 @@ class LinearOperatorDerivedClassTest(tf.test.TestCase):
     Returns:
       operator:  `LinearOperator` subclass instance.
       mat:  `Tensor` representing operator.
-      feed_dict:  Dictionary.  If placholder is True, this must be fed to
-        sess.run calls at runtime to make the operator work.
+      feed_dict:  Dictionary.
+        If placholder is True, this must contains everything needed to be fed
+          to sess.run calls at runtime to make the operator work.
     """
     # Create a matrix as a numpy array with desired shape/dtype.
     # Create a LinearOperator that should have the same behavior as the matrix.
@@ -74,107 +90,145 @@ class LinearOperatorDerivedClassTest(tf.test.TestCase):
     """Make a rhs appropriate for calling operator.apply(rhs)."""
     raise NotImplementedError("_make_x is not defined.")
 
-  def _maybe_adjoint(self, x, adjoint):
-    if adjoint:
-      return tf.matrix_transpose(x)
-    else:
-      return x
+  @property
+  def _tests_to_skip(self):
+    """List of test names to skip."""
+    # Subclasses should over-ride if they want to skip some tests.
+    # To skip "test_foo", add "foo" to this list.
+    return []
+
+  def _maybe_skip(self, test_name):
+    if test_name in self._tests_to_skip:
+      self.skipTest("%s skipped because it was added to self._tests_to_skip.")
 
   def test_to_dense(self):
+    self._maybe_skip("to_dense")
     with self.test_session() as sess:
       for shape in self._shapes_to_test:
         for dtype in self._dtypes_to_test:
-          operator, mat, _ = self._operator_and_mat_and_feed_dict(
-              shape, dtype, use_placeholder=False)
-          op_dense = operator.to_dense()
-          self.assertAllEqual(shape, op_dense.get_shape())
-          op_dense_v, mat_v = sess.run([op_dense, mat])
-          self.assertAllClose(op_dense_v, mat_v)
-
-  def test_to_dense_dynamic(self):
-    with self.test_session() as sess:
-      for shape in self._shapes_to_test:
-        for dtype in self._dtypes_to_test:
-          operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
-              shape, dtype, use_placeholder=True)
-          op_dense_v, mat_v = sess.run(
-              [operator.to_dense(), mat], feed_dict=feed_dict)
-          self.assertAllClose(op_dense_v, mat_v)
+          for use_placeholder in False, True:
+            operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
+                shape, dtype, use_placeholder=use_placeholder)
+            op_dense = operator.to_dense()
+            if not use_placeholder:
+              self.assertAllEqual(shape, op_dense.get_shape())
+            op_dense_v, mat_v = sess.run([op_dense, mat], feed_dict=feed_dict)
+            self.assertAC(op_dense_v, mat_v)
 
   def test_det(self):
+    self._maybe_skip("det")
     with self.test_session() as sess:
       for shape in self._shapes_to_test:
         for dtype in self._dtypes_to_test:
-          operator, mat, _ = self._operator_and_mat_and_feed_dict(
-              shape, dtype, use_placeholder=False)
-          op_det = operator.determinant()
-          self.assertAllEqual(shape[:-2], op_det.get_shape())
-          op_det_v, mat_det_v = sess.run([op_det, tf.matrix_determinant(mat)])
-          self.assertAllClose(op_det_v, mat_det_v)
-
-  def test_det_dynamic(self):
-    with self.test_session() as sess:
-      for shape in self._shapes_to_test:
-        for dtype in self._dtypes_to_test:
-          operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
-              shape, dtype, use_placeholder=True)
-          op_det_v, mat_det_v = sess.run(
-              [operator.determinant(), tf.matrix_determinant(mat)],
-              feed_dict=feed_dict)
-          self.assertAllClose(op_det_v, mat_det_v)
+          if dtype.is_complex:
+            self.skipTest(
+                "tf.matrix_determinant does not work with complex, so this test"
+                " is being skipped.")
+          for use_placeholder in False, True:
+            operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
+                shape, dtype, use_placeholder=use_placeholder)
+            op_det = operator.determinant()
+            if not use_placeholder:
+              self.assertAllEqual(shape[:-2], op_det.get_shape())
+            op_det_v, mat_det_v = sess.run(
+                [op_det, tf.matrix_determinant(mat)], feed_dict=feed_dict)
+            self.assertAC(op_det_v, mat_det_v)
 
   def test_apply(self):
+    self._maybe_skip("apply")
     with self.test_session() as sess:
       for shape in self._shapes_to_test:
         for dtype in self._dtypes_to_test:
-          operator, mat, _ = self._operator_and_mat_and_feed_dict(
-              shape, dtype, use_placeholder=False)
-          for adjoint in [False, True]:
-            if adjoint and operator.is_self_adjoint:
-              continue
-            x = self._make_x(operator)
-            op_apply = operator.apply(x, adjoint=adjoint)
-            mat_apply = tf.batch_matmul(self._maybe_adjoint(mat, adjoint), x)
-            self.assertAllEqual(op_apply.get_shape(), mat_apply.get_shape())
-            op_apply_v, mat_apply_v = sess.run([op_apply, mat_apply])
-            self.assertAllClose(op_apply_v, mat_apply_v)
-
-  def test_apply_dynamic(self):
-    with self.test_session() as sess:
-      for shape in self._shapes_to_test:
-        for dtype in self._dtypes_to_test:
-          operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
-              shape, dtype, use_placeholder=True)
-          x = self._make_x(operator)
-          op_apply_v, mat_apply_v = sess.run(
-              [operator.apply(x), tf.batch_matmul(mat, x)],
-              feed_dict=feed_dict)
-          self.assertAllClose(op_apply_v, mat_apply_v)
+          for use_placeholder in False, True:
+            for adjoint in [False, True]:
+              operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
+                  shape, dtype, use_placeholder=use_placeholder)
+              x = self._make_x(operator)
+              op_apply = operator.apply(x, adjoint=adjoint)
+              mat_apply = tf.matmul(mat, x, adjoint_a=adjoint)
+              if not use_placeholder:
+                self.assertAllEqual(op_apply.get_shape(), mat_apply.get_shape())
+              op_apply_v, mat_apply_v = sess.run(
+                  [op_apply, mat_apply], feed_dict=feed_dict)
+              self.assertAC(op_apply_v, mat_apply_v)
 
   def test_solve(self):
+    self._maybe_skip("solve")
     with self.test_session() as sess:
       for shape in self._shapes_to_test:
         for dtype in self._dtypes_to_test:
-          operator, mat, _ = self._operator_and_mat_and_feed_dict(
-              shape, dtype, use_placeholder=False)
-          for adjoint in [False, True]:
-            if adjoint and operator.is_self_adjoint:
-              continue
-            rhs = self._make_rhs(operator)
-            op_solve = operator.solve(rhs, adjoint=adjoint)
-            mat_solve = tf.matrix_solve(self._maybe_adjoint(mat, adjoint), rhs)
-            self.assertAllEqual(op_solve.get_shape(), mat_solve.get_shape())
-            op_solve_v, mat_solve_v = sess.run([op_solve, mat_solve])
-            self.assertAllClose(op_solve_v, mat_solve_v)
+          for use_placeholder in False, True:
+            for adjoint in [False, True]:
+              operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
+                  shape, dtype, use_placeholder=use_placeholder)
+              rhs = self._make_rhs(operator)
+              op_solve = operator.solve(rhs, adjoint=adjoint)
+              mat_solve = tf.matrix_solve(mat, rhs, adjoint=adjoint)
+              if not use_placeholder:
+                self.assertAllEqual(op_solve.get_shape(), mat_solve.get_shape())
+              op_solve_v, mat_solve_v = sess.run(
+                  [op_solve, mat_solve], feed_dict=feed_dict)
+              self.assertAC(op_solve_v, mat_solve_v)
 
-  def test_solve_dynamic(self):
+  def test_add_to_tensor(self):
+    self._maybe_skip("add_to_tensor")
     with self.test_session() as sess:
       for shape in self._shapes_to_test:
         for dtype in self._dtypes_to_test:
-          operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
-              shape, dtype, use_placeholder=True)
-          rhs = self._make_rhs(operator)
-          op_solve_v, mat_solve_v = sess.run(
-              [operator.solve(rhs), tf.matrix_solve(mat, rhs)],
-              feed_dict=feed_dict)
-          self.assertAllClose(op_solve_v, mat_solve_v)
+          for use_placeholder in False, True:
+            operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
+                shape, dtype, use_placeholder=use_placeholder)
+            op_plus_2mat = operator.add_to_tensor(2 * mat)
+
+            if not use_placeholder:
+              self.assertAllEqual(shape, op_plus_2mat.get_shape())
+
+            op_plus_2mat_v, mat_v = sess.run(
+                [op_plus_2mat, mat], feed_dict=feed_dict)
+
+            self.assertAC(op_plus_2mat_v, 3 * mat_v)
+
+
+@six.add_metaclass(abc.ABCMeta)
+class SquareLinearOperatorDerivedClassTest(LinearOperatorDerivedClassTest):
+  """Base test class appropriate for square operators.
+
+  Sub-classes must still define all abstractmethods from
+  LinearOperatorDerivedClassTest that are not defined here.
+  """
+
+  @property
+  def _shapes_to_test(self):
+    # non-batch operators (n, n) and batch operators.
+    return [(0, 0), (1, 1), (1, 3, 3), (3, 4, 4), (2, 1, 4, 4)]
+
+  def _make_rhs(self, operator):
+    # This operator is square, so rhs and x will have same shape.
+    return self._make_x(operator)
+
+  def _make_x(self, operator):
+    # Return the number of systems to solve, R, equal to 1 or 2.
+    r = self._get_num_systems(operator)
+    # If operator.shape = [B1,...,Bb, N, N] this returns a random matrix of
+    # shape [B1,...,Bb, N, R], R = 1 or 2.
+    if operator.shape.is_fully_defined():
+      batch_shape = operator.batch_shape.as_list()
+      n = operator.domain_dimension.value
+      rhs_shape = batch_shape + [n, r]
+    else:
+      batch_shape = operator.batch_shape_dynamic()
+      n = operator.domain_dimension_dynamic()
+      rhs_shape = tf.concat(0, (batch_shape, [n, r]))
+
+    x = tf.random_normal(shape=rhs_shape, dtype=operator.dtype.real_dtype)
+    if operator.dtype.is_complex:
+      x = tf.complex(
+          x, tf.random_normal(shape=rhs_shape, dtype=operator.dtype.real_dtype))
+    return x
+
+  def _get_num_systems(self, operator):
+    """Get some number, either 1 or 2, depending on operator."""
+    if operator.tensor_rank is None or operator.tensor_rank % 2:
+      return 1
+    else:
+      return 2

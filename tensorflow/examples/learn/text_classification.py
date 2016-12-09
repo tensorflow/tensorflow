@@ -63,7 +63,7 @@ def rnn_model(features, target):
   word_list = tf.unstack(word_vectors, axis=1)
 
   # Create a Gated Recurrent Unit cell with hidden size of EMBEDDING_SIZE.
-  cell = tf.nn.rnn_cell.GRUCell(EMBEDDING_SIZE)
+  cell = tf.contrib.rnn.GRUCell(EMBEDDING_SIZE)
 
   # Create an unrolled Recurrent Neural Networks to length of
   # MAX_DOCUMENT_LENGTH and passes word_list as inputs for each unit.

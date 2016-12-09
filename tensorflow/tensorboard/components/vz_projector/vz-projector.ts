@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 import {AnalyticsLogger} from './analyticsLogger';
+import * as data from './data';
 import {ColorOption, ColumnStats, DataPoint, DataProto, DataSet, DistanceFunction, PointMetadata, Projection, SpriteAndMetadataInfo, State, stateGetAccessorDimensions} from './data';
 import {DataProvider, EmbeddingInfo, ServingMode} from './data-provider';
 import {DemoDataProvider} from './data-provider-demo';
@@ -68,6 +69,7 @@ export class Projector extends ProjectorPolymer implements
   private distanceMetricChangedListeners: DistanceMetricChangedListener[];
 
   private originalDataSet: DataSet;
+  private dataSetBeforeFilter: DataSet;
   private dom: d3.Selection<any>;
   private projectorScatterPlotAdapter: ProjectorScatterPlotAdapter;
   private dim: number;
@@ -125,12 +127,9 @@ export class Projector extends ProjectorPolymer implements
 
   setSelectedLabelOption(labelOption: string) {
     this.selectedLabelOption = labelOption;
-    let labelAccessor = (i: number): string => {
-      return this.dataSet.points[i]
-          .metadata[this.selectedLabelOption] as string;
-    };
     this.metadataCard.setLabelOption(this.selectedLabelOption);
-    this.projectorScatterPlotAdapter.setLabelPointAccessor(labelAccessor);
+    this.projectorScatterPlotAdapter.setLabelPointAccessor(labelOption);
+    this.projectorScatterPlotAdapter.updateScatterPlotAttributes();
     this.projectorScatterPlotAdapter.render();
   }
 
@@ -152,30 +151,45 @@ export class Projector extends ProjectorPolymer implements
       metadataFile?: string) {
     this.dataSetFilterIndices = null;
     this.originalDataSet = ds;
-    if (this.projectorScatterPlotAdapter == null || ds == null) {
-      return;
+    if (ds != null) {
+      this.normalizeData =
+          this.originalDataSet.dim[1] >= THRESHOLD_DIM_NORMALIZE;
+      spriteAndMetadata = spriteAndMetadata || {};
+      if (spriteAndMetadata.pointsInfo == null) {
+        let [pointsInfo, stats] = this.makeDefaultPointsInfoAndStats(ds.points);
+        spriteAndMetadata.pointsInfo = pointsInfo;
+        spriteAndMetadata.stats = stats;
+      }
+      ds.mergeMetadata(spriteAndMetadata);
     }
-    this.normalizeData = this.originalDataSet.dim[1] >= THRESHOLD_DIM_NORMALIZE;
-    spriteAndMetadata = spriteAndMetadata || {};
-    if (spriteAndMetadata.pointsInfo == null) {
-      let [pointsInfo, stats] = this.makeDefaultPointsInfoAndStats(ds.points);
-      spriteAndMetadata.pointsInfo = pointsInfo;
-      spriteAndMetadata.stats = stats;
+    if (this.projectorScatterPlotAdapter != null) {
+      if (ds == null) {
+        this.projectorScatterPlotAdapter.setLabelPointAccessor(null);
+        this.setProjection(null);
+      } else {
+        this.projectorScatterPlotAdapter.updateScatterPlotPositions();
+        this.projectorScatterPlotAdapter.updateScatterPlotAttributes();
+        this.projectorScatterPlotAdapter.resize();
+        this.projectorScatterPlotAdapter.render();
+      }
     }
-    ds.mergeMetadata(spriteAndMetadata);
-    this.dataPanel.setNormalizeData(this.normalizeData);
-    this.setCurrentDataSet(this.originalDataSet.getSubset());
-    this.inspectorPanel.datasetChanged();
+    if (ds != null) {
+      this.dataPanel.setNormalizeData(this.normalizeData);
+      this.setCurrentDataSet(ds.getSubset());
+      this.projectorScatterPlotAdapter.setLabelPointAccessor(
+          this.selectedLabelOption);
+      this.inspectorPanel.datasetChanged();
 
-    this.inspectorPanel.metadataChanged(spriteAndMetadata);
-    this.projectionsPanel.metadataChanged(spriteAndMetadata);
-    this.dataPanel.metadataChanged(spriteAndMetadata, metadataFile);
-    // Set the container to a fixed height, otherwise in Colab the
-    // height can grow indefinitely.
-    let container = this.dom.select('#container');
-    container.style('height', container.property('clientHeight') + 'px');
-    this.projectorScatterPlotAdapter.resize();
-    this.projectorScatterPlotAdapter.render();
+      this.inspectorPanel.metadataChanged(spriteAndMetadata);
+      this.projectionsPanel.metadataChanged(spriteAndMetadata);
+      this.dataPanel.metadataChanged(spriteAndMetadata, metadataFile);
+      // Set the container to a fixed height, otherwise in Colab the
+      // height can grow indefinitely.
+      let container = this.dom.select('#container');
+      container.style('height', container.property('clientHeight') + 'px');
+    } else {
+      this.setCurrentDataSet(null);
+    }
   }
 
   setSelectedTensor(run: string, tensorInfo: EmbeddingInfo) {
@@ -191,17 +205,26 @@ export class Projector extends ProjectorPolymer implements
 
   filterDataset(pointIndices: number[]) {
     const selectionSize = this.selectedPointIndices.length;
+    if (this.dataSetBeforeFilter == null) {
+      this.dataSetBeforeFilter = this.dataSet;
+    }
     this.setCurrentDataSet(this.dataSet.getSubset(pointIndices));
     this.dataSetFilterIndices = pointIndices;
+    this.projectorScatterPlotAdapter.updateScatterPlotPositions();
+    this.projectorScatterPlotAdapter.updateScatterPlotAttributes();
     this.adjustSelectionAndHover(d3.range(selectionSize));
   }
 
   resetFilterDataset() {
-    let originalPointIndices = this.selectedPointIndices.map(localIndex => {
-      return this.dataSet.points[localIndex].index;
-    });
-    this.setCurrentDataSet(this.originalDataSet.getSubset());
+    const originalPointIndices = this.selectedPointIndices.map(
+        filteredIndex => this.dataSet.points[filteredIndex].index);
+    this.setCurrentDataSet(this.dataSetBeforeFilter);
+    if (this.projection != null) {
+      this.projection.dataSet = this.dataSetBeforeFilter;
+    }
+    this.dataSetBeforeFilter = null;
     this.projectorScatterPlotAdapter.updateScatterPlotPositions();
+    this.projectorScatterPlotAdapter.updateScatterPlotAttributes();
     this.dataSetFilterIndices = [];
     this.adjustSelectionAndHover(originalPointIndices);
   }
@@ -306,13 +329,12 @@ export class Projector extends ProjectorPolymer implements
   }
 
   private getLegendPointColorer(colorOption: ColorOption):
-      (index: number) => string {
+      (ds: DataSet, index: number) => string {
     if ((colorOption == null) || (colorOption.map == null)) {
       return null;
     }
-    const colorer = (i: number) => {
-      let value =
-          this.dataSet.points[i].metadata[this.selectedColorOption.name];
+    const colorer = (ds: DataSet, i: number) => {
+      let value = ds.points[i].metadata[this.selectedColorOption.name];
       if (value == null) {
         return POINT_COLOR_MISSING;
       }
@@ -347,19 +369,19 @@ export class Projector extends ProjectorPolymer implements
     if (this.dataSet != null) {
       this.dataSet.stopTSNE();
     }
-    this.dataSet = ds;
-    if (this.normalizeData) {
-      this.dataSet.normalize();
+    if ((ds != null) && this.normalizeData) {
+      ds.normalize();
     }
-    this.dim = this.dataSet.dim[1];
-    this.dom.select('span.numDataPoints').text(this.dataSet.dim[0]);
-    this.dom.select('span.dim').text(this.dataSet.dim[1]);
+    this.dim = (ds == null) ? 0 : ds.dim[1];
+    this.dom.select('span.numDataPoints').text((ds == null) ? '0' : ds.dim[0]);
+    this.dom.select('span.dim').text((ds == null) ? '0' : ds.dim[1]);
 
-    this.projection = null;
+    this.dataSet = ds;
 
     this.projectionsPanel.dataSetUpdated(
         this.dataSet, this.originalDataSet, this.dim);
 
+    this.projectorScatterPlotAdapter.setDataSet(this.dataSet);
     this.projectorScatterPlotAdapter.scatterPlot
         .setCameraParametersForNextCameraCreation(null, true);
   }
@@ -397,11 +419,10 @@ export class Projector extends ProjectorPolymer implements
     });
 
     {
-      const labelAccessor = i =>
-          '' + this.dataSet.points[i].metadata[this.selectedLabelOption];
       this.projectorScatterPlotAdapter = new ProjectorScatterPlotAdapter(
           this.getScatterContainer(), this as ProjectorEventContext);
-      this.projectorScatterPlotAdapter.setLabelPointAccessor(labelAccessor);
+      this.projectorScatterPlotAdapter.setLabelPointAccessor(
+          this.selectedLabelOption);
     }
 
     this.projectorScatterPlotAdapter.scatterPlot.onCameraMove(
@@ -494,7 +515,9 @@ export class Projector extends ProjectorPolymer implements
     this.setProjection(null);
     {
       this.projectionsPanel.disablePolymerChangesTriggerReprojection();
-      this.resetFilterDataset();
+      if (this.dataSetBeforeFilter != null) {
+        this.resetFilterDataset();
+      }
       if (state.filteredPoints != null) {
         this.filterDataset(state.filteredPoints);
       }
@@ -517,10 +540,11 @@ export class Projector extends ProjectorPolymer implements
     this.projectorScatterPlotAdapter.restoreUIFromBookmark(state);
     {
       const dimensions = stateGetAccessorDimensions(state);
-      const accessors =
-          this.dataSet.getPointAccessors(state.selectedProjection, dimensions);
+      const components =
+          data.getProjectionComponents(state.selectedProjection, dimensions);
       const projection = new Projection(
-          state.selectedProjection, accessors, dimensions.length, this.dataSet);
+          state.selectedProjection, components, dimensions.length,
+          this.dataSet);
       this.setProjection(projection);
     }
     this.notifySelectionChanged(state.selectedPoints);

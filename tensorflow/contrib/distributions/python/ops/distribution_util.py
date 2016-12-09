@@ -32,6 +32,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 
@@ -102,6 +103,36 @@ def assert_symmetric(matrix):
   matrix_t = array_ops.matrix_transpose(matrix)
   return control_flow_ops.with_dependencies(
       [check_ops.assert_equal(matrix, matrix_t)], matrix)
+
+
+def same_dynamic_shape(a, b):
+  """Returns whether a and b have the same dynamic shape.
+
+  Args:
+    a: `Tensor`
+    b: `Tensor`
+
+  Returns:
+    `Boolean` `Tensor` representing if both tensors have the same shape.
+  """
+  a = ops.convert_to_tensor(a, name="a")
+  b = ops.convert_to_tensor(b, name="b")
+
+  # One of the shapes isn't fully defined, so we need to use the dynamic
+  # shape.
+  return control_flow_ops.cond(
+      math_ops.equal(array_ops.rank(a), array_ops.rank(b)),
+      # Here we can't just do math_ops.equal(a.shape, b.shape), since
+      # static shape inference may break the equality comparison between
+      # shape(a) and shape(b) in math_ops.equal.
+      lambda: math_ops.reduce_all(math_ops.equal(
+          array_ops.concat(0, (
+              array_ops.shape(a),
+              array_ops.shape(b))),
+          array_ops.concat(0, (
+              array_ops.shape(b),
+              array_ops.shape(a))))),
+      lambda: constant_op.constant(False))
 
 
 def get_logits_and_prob(
@@ -335,7 +366,7 @@ def rotate_transpose(x, shift, name="rotate_transpose"):
       # Finally, we transform shift by modulo length so it can be specified
       # independently from the array upon which it operates (like python).
       ndims = array_ops.rank(x)
-      shift = math_ops.select(math_ops.less(shift, 0),
+      shift = array_ops.where(math_ops.less(shift, 0),
                               math_ops.mod(-shift, ndims),
                               ndims - math_ops.mod(shift, ndims))
       first = math_ops.range(0, shift)
@@ -396,8 +427,8 @@ def pick_vector(cond,
              false_vector.name, false_vector.dtype))
     n = array_ops.shape(true_vector)[0]
     return array_ops.slice(array_ops.concat(0, (true_vector, false_vector)),
-                           [math_ops.select(cond, 0, n)],
-                           [math_ops.select(cond, n, -1)])
+                           [array_ops.where(cond, 0, n)],
+                           [array_ops.where(cond, n, -1)])
 
 
 def gen_new_seed(seed, salt):
@@ -578,8 +609,8 @@ class AppendDocstring(object):
         if "\n" in value:
           raise ValueError(
               "Parameter description for \"%s\" contains newlines." % key)
-        bullets.append("*  <b>`%s`</b>: %s" % (key, value))
-      self._additional_note += ("\n\n##### <b>`condition_kwargs`</b>:\n\n" +
+        bullets.append("*  `%s`: %s" % (key, value))
+      self._additional_note += ("\n\n##### `condition_kwargs`:\n\n" +
                                 "\n".join(bullets))
 
   def __call__(self, fn):

@@ -556,24 +556,32 @@ TEST(ArrayOpsTest, Concat_ShapeFn) {
   set_n(2);
 
   // Sum dim 0, merge the other two dims.
-  concat_dim_t = test::AsScalar(0);
-  INFER_OK(op, "[];[100,2,?];[10,?,3]", "[110,d1_1,d2_2]");
-  INFER_ERROR("Dimension 1 in both shapes must be equal, but are 5 and 3", op,
-              "[];[100,2,5];[10,?,3]");
-  // concat_dim can't be summed, as one value is unknown.
-  INFER_OK(op, "[];[100,2,?];[?,?,3]", "[?,d1_1,d2_2]");
-  INFER_OK(op, "[];[?,2,?];[10,?,3]", "[?,d1_1,d2_2]");
+  for (int concat_dim : {0, -3}) {
+    concat_dim_t = test::AsScalar(concat_dim);
+    INFER_OK(op, "[];[100,2,?];[10,?,3]", "[110,d1_1,d2_2]");
+    INFER_ERROR("Dimension 1 in both shapes must be equal, but are 5 and 3", op,
+                "[];[100,2,5];[10,?,3]");
+    // concat_dim can't be summed, as one value is unknown.
+    INFER_OK(op, "[];[100,2,?];[?,?,3]", "[?,d1_1,d2_2]");
+    INFER_OK(op, "[];[?,2,?];[10,?,3]", "[?,d1_1,d2_2]");
+  }
 
   // Test with a higher concat_dim.
-  concat_dim_t = test::AsScalar(1);
-  INFER_OK(op, "[];[1,100,?];[?,10,3]", "[d1_0,110,d2_2]");
-  INFER_OK(op, "[];[1,100];[?,10]", "[d1_0,110]");
-  INFER_OK(op, "[];[?,100];[1,10]", "[d2_0,110]");
-  // concat_dim is too high.
-  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op,
-              "[];[100];[10,?]");
-  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op,
-              "[];[100,5];[10]");
+  for (bool use_negative : {false, true}) {
+    concat_dim_t = test::AsScalar(use_negative ? -2 : 1);
+    INFER_OK(op, "[];[1,100,?];[?,10,3]", "[d1_0,110,d2_2]");
+    concat_dim_t = test::AsScalar(use_negative ? -1 : 1);
+    INFER_OK(op, "[];[1,100];[?,10]", "[d1_0,110]");
+    INFER_OK(op, "[];[?,100];[1,10]", "[d2_0,110]");
+
+    // concat_dim is out of bounds.
+    concat_dim_t = test::AsScalar(use_negative ? -2 : 1);
+    INFER_ERROR("Shape must be at least rank 2 but is rank 1", op,
+                "[];[100];[10,?]");
+    INFER_ERROR("Shape must be at least rank 2 but is rank 1", op,
+                "[];[100,5];[10]");
+  }
+
   // concat_dim is too low.
   concat_dim_t = test::AsScalar(-2);
   INFER_ERROR("Shape must be at least rank 2 but is rank 1", op,

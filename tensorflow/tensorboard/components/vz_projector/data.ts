@@ -22,8 +22,7 @@ import {getSearchPredicate, runAsyncTask, shuffle} from './util';
 import * as vector from './vector';
 
 export type DistanceFunction = (a: number[], b: number[]) => number;
-export type PointAccessor = (index: number) => number;
-export type PointAccessors3D = [PointAccessor, PointAccessor, PointAccessor];
+export type ProjectionComponents3D = [string, string, string];
 
 export interface PointMetadata { [key: string]: number|string; }
 
@@ -187,25 +186,6 @@ export class DataSet {
     return traces;
   }
 
-  getPointAccessors(projection: ProjectionType, components: (number|string)[]):
-      [PointAccessor, PointAccessor, PointAccessor] {
-    if (components.length > 3) {
-      throw new RangeError('components length must be <= 3');
-    }
-    const accessors: [PointAccessor, PointAccessor, PointAccessor] =
-        [null, null, null];
-    const prefix = (projection === 'custom') ? 'linear' : projection;
-    for (let i = 0; i < components.length; ++i) {
-      if (components[i] == null) {
-        continue;
-      }
-      accessors[i] =
-          (index =>
-               this.points[index].projections[prefix + '-' + components[i]]);
-    }
-    return accessors;
-  }
-
   projectionCanBeRendered(projection: ProjectionType): boolean {
     if (projection !== 'tsne') {
       return true;
@@ -222,8 +202,9 @@ export class DataSet {
    * @return A subset of the original dataset.
    */
   getSubset(subset?: number[]): DataSet {
-    let pointsSubset =
-        subset && subset.length ? subset.map(i => this.points[i]) : this.points;
+    const pointsSubset = ((subset != null) && (subset.length > 0)) ?
+        subset.map(i => this.points[i]) :
+        this.points;
     let points = pointsSubset.map(dp => {
       return {
         metadata: dp.metadata,
@@ -302,12 +283,13 @@ export class DataSet {
         }
         return newV;
       });
-      for (let j = 0; j < NUM_PCA_COMPONENTS; j++) {
-        let label = 'pca-' + j;
+      for (let d = 0; d < NUM_PCA_COMPONENTS; d++) {
+        let label = 'pca-' + d;
         this.projections.add(label);
-        this.points.forEach((d, i) => {
-          d.projections[label] = pcaVectors[i][j];
-        });
+        for (let i = 0; i < pcaVectors.length; i++) {
+          let pointIndex = this.shuffledDataIndices[i];
+          this.points[pointIndex].projections[label] = pcaVectors[i][d];
+        }
       }
     });
   }
@@ -418,8 +400,8 @@ export type ProjectionType = 'tsne' | 'pca' | 'custom';
 export class Projection {
   constructor(
       public projectionType: ProjectionType,
-      public pointAccessors: PointAccessors3D, public dimensionality: number,
-      public dataSet: DataSet) {}
+      public projectionComponents: ProjectionComponents3D,
+      public dimensionality: number, public dataSet: DataSet) {}
 }
 
 export interface ColorOption {
@@ -487,6 +469,23 @@ export class State {
 
   /** Label by option. */
   selectedLabelOption: string;
+}
+
+export function getProjectionComponents(
+    projection: ProjectionType,
+    components: (number|string)[]): ProjectionComponents3D {
+  if (components.length > 3) {
+    throw new RangeError('components length must be <= 3');
+  }
+  const projectionComponents: [string, string, string] = [null, null, null];
+  const prefix = (projection === 'custom') ? 'linear' : projection;
+  for (let i = 0; i < components.length; ++i) {
+    if (components[i] == null) {
+      continue;
+    }
+    projectionComponents[i] = prefix + '-' + components[i];
+  }
+  return projectionComponents;
 }
 
 export function stateGetAccessorDimensions(state: State): Array<number|string> {

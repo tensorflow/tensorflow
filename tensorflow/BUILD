@@ -51,6 +51,12 @@ config_setting(
 )
 
 config_setting(
+    name = "no_tensorflow_py_deps",
+    values = {"define": "no_tensorflow_py_deps=true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "ios",
     values = {
         "crosstool_top": "//tools/osx/crosstool:crosstool",
@@ -94,6 +100,7 @@ filegroup(
         "//tensorflow/contrib:all_files",
         "//tensorflow/contrib/android:all_files",
         "//tensorflow/contrib/bayesflow:all_files",
+        "//tensorflow/contrib/compiler:all_files",
         "//tensorflow/contrib/copy_graph:all_files",
         "//tensorflow/contrib/crf:all_files",
         "//tensorflow/contrib/cudnn_rnn:all_files",
@@ -105,6 +112,8 @@ filegroup(
         "//tensorflow/contrib/framework:all_files",
         "//tensorflow/contrib/graph_editor:all_files",
         "//tensorflow/contrib/grid_rnn:all_files",
+        "//tensorflow/contrib/input_pipeline:all_files",
+        "//tensorflow/contrib/input_pipeline/kernels:all_files",
         "//tensorflow/contrib/integrate:all_files",
         "//tensorflow/contrib/labeled_tensor:all_files",
         "//tensorflow/contrib/layers:all_files",
@@ -116,7 +125,6 @@ filegroup(
         "//tensorflow/contrib/lookup:all_files",
         "//tensorflow/contrib/losses:all_files",
         "//tensorflow/contrib/metrics:all_files",
-        "//tensorflow/contrib/metrics/kernels:all_files",
         "//tensorflow/contrib/ndlstm:all_files",
         "//tensorflow/contrib/opt:all_files",
         "//tensorflow/contrib/rnn:all_files",
@@ -160,6 +168,9 @@ filegroup(
         "//tensorflow/g3doc/how_tos/adding_an_op:all_files",
         "//tensorflow/g3doc/tutorials:all_files",
         "//tensorflow/go:all_files",
+        "//tensorflow/java:all_files",
+        "//tensorflow/java/src/main/java/org/tensorflow/examples:all_files",
+        "//tensorflow/java/src/main/native:all_files",
         "//tensorflow/models/embedding:all_files",
         "//tensorflow/models/image/alexnet:all_files",
         "//tensorflow/models/image/cifar10:all_files",

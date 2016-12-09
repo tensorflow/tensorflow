@@ -43,7 +43,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
-from tensorflow.python.util import deprecation
+from tensorflow.python.util import decorator_utils
 
 
 def _override_helper(clazz_object, operator, func):
@@ -3980,7 +3980,7 @@ class GraphKeys(object):
     for more details.
   * `SUMMARIES`: the summary `Tensor` objects that have been created in the
     graph. See
-    [`tf.merge_all_summaries()`](../../api_docs/python/train.md#merge_all_summaries)
+    [`tf.summary.merge_all()`](../../api_docs/python/summary.md#merge_all)
     for more details.
   * `QUEUE_RUNNERS`: the `QueueRunner` objects that are used to
     produce input for a computation. See
@@ -4063,12 +4063,12 @@ class GraphKeys(object):
   COND_CONTEXT = "cond_context"
   WHILE_CONTEXT = "while_context"
 
-  @property
-  @deprecation.deprecated("2017-03-02",
-              "VARIABLES collection name is deprecated, "
-              "please use GLOBAL_VARIABLES instead")
-  def VARIABLES(self):
-    return self.GLOBAL_VARIABLES
+  @decorator_utils.classproperty
+  def VARIABLES(cls):  # pylint: disable=no-self-argument
+    logging.warning("VARIABLES collection name is deprecated, "
+                    "please use GLOBAL_VARIABLES instead; "
+                    "VARIABLES will be removed after 2017-03-02.")
+    return cls.GLOBAL_VARIABLES
 
 
 def add_to_collection(name, value):

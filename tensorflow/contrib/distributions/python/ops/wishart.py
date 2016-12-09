@@ -180,7 +180,8 @@ class _WishartOperatorPD(distribution.Distribution):
 
   def _event_shape(self):
     s = self.scale_operator_pd.shape()
-    return array_ops.slice(s, array_ops.shape(s) - 2, [2])
+    return array_ops.strided_slice(s, array_ops.shape(s) - 2,
+                                   array_ops.shape(s))
 
   def _get_event_shape(self):
     return self.scale_operator_pd.get_shape()[-2:]
@@ -261,7 +262,7 @@ class _WishartOperatorPD(distribution.Distribution):
     ndims = array_ops.rank(x_sqrt)
     # sample_ndims = ndims - batch_ndims - event_ndims
     sample_ndims = ndims - array_ops.shape(batch_shape)[0] - 2
-    sample_shape = array_ops.slice(
+    sample_shape = array_ops.strided_slice(
         array_ops.shape(x_sqrt), [0], [sample_ndims])
 
     # We need to be able to pre-multiply each matrix by its corresponding
@@ -367,7 +368,7 @@ class _WishartOperatorPD(distribution.Distribution):
 
   def _mode(self):
     s = self.df - self.dimension - 1.
-    s = math_ops.select(
+    s = array_ops.where(
         math_ops.less(s, 0.),
         constant_op.constant(float("NaN"), dtype=self.dtype, name="nan"),
         s)

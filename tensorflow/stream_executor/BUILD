@@ -7,6 +7,8 @@ cc_library(
     srcs = glob(
         [
             "*.cc",
+            "host/*.cc",
+            "cuda/cuda_platform_id.cc",
             "lib/*.cc",
             "platform/default/*.cc",
         ],
@@ -14,13 +16,17 @@ cc_library(
             "**/*_test.cc",
         ],
     ) + if_cuda(
-        glob([
-            "cuda/*.cc",
-        ]),
+        glob(
+            [
+                "cuda/*.cc",
+            ],
+            exclude = ["cuda/cuda_platform_id.cc"],
+        ),
     ),
     hdrs = glob([
         "*.h",
         "cuda/*.h",
+        "host/*.h",
         "lib/*.h",
         "lib/gtl/*.h",
         "platform/**/*.h",

@@ -117,5 +117,14 @@ TEST_F(AbortOpTest, default_msg) {
               "Abort_op intentional failure; ");
 }
 
+// Exit normally.
+TEST_F(AbortOpTest, exit_normally) {
+  TF_ASSERT_OK(NodeDefBuilder("abort_op", "Abort")
+                   .Attr("exit_without_error", true)
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  EXPECT_EXIT(RunOpKernel(), ::testing::ExitedWithCode(0), "");
+}
+
 }  // namespace
 }  // namespace tensorflow

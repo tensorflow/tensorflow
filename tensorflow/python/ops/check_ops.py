@@ -665,6 +665,7 @@ def assert_type(tensor, tf_type, message=None, name=None):
     return control_flow_ops.no_op('statically_determined_correct_type')
 
 
+# pylint: disable=line-too-long
 def _get_diff_for_monotonic_comparison(x):
   """Gets the difference x[1:] - x[:-1]."""
   x = array_ops.reshape(x, [-1])
@@ -677,7 +678,7 @@ def _get_diff_for_monotonic_comparison(x):
 
   # With 2 or more elements, return x[1:] - x[:-1]
   s_len = array_ops.shape(x) - 1
-  diff = lambda: array_ops.slice(x, [1], s_len) - array_ops.slice(x, [0], s_len)
+  diff = lambda: array_ops.strided_slice(x, [1], [1] + s_len)- array_ops.strided_slice(x, [0], s_len)
   return control_flow_ops.cond(is_shorter_than_two, short_result, diff)
 
 

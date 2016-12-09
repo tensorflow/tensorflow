@@ -22,7 +22,6 @@ limitations under the License.
 
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/platform/types.h"
-#define EIGEN_USE_SYCL
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {

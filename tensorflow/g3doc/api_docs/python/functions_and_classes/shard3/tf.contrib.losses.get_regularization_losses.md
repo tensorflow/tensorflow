@@ -1,6 +1,10 @@
-### `tf.contrib.losses.get_regularization_losses(scope=None)` {#get_regularization_losses}
+### `tf.contrib.losses.get_regularization_losses(*args, **kwargs)` {#get_regularization_losses}
 
-Gets the regularization losses.
+Gets the regularization losses. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
+Instructions for updating:
+Use tf.losses.get_regularization_losses instead.
 
 ##### Args:
 

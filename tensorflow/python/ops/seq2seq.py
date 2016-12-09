@@ -71,11 +71,12 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell
+from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import nest
 
 # TODO(ebrevdo): Remove once _linear is fully deprecated.
-linear = rnn_cell._linear  # pylint: disable=protected-access
+linear = rnn_cell_impl._linear  # pylint: disable=protected-access
 
 
 def _extract_argmax_and_embed(embedding, output_projection=None,
@@ -994,7 +995,7 @@ def sequence_loss_by_example(logits, targets, weights,
     weights: List of 1D batch-sized float-Tensors of the same length as logits.
     average_across_timesteps: If set, divide the returned cost by the total
       label weight.
-    softmax_loss_function: Function (inputs-batch, labels-batch) -> loss-batch
+    softmax_loss_function: Function (labels-batch, inputs-batch) -> loss-batch
       to be used instead of the standard softmax (the default if this is None).
     name: Optional name for this operation, default: "sequence_loss_by_example".
 
@@ -1017,9 +1018,9 @@ def sequence_loss_by_example(logits, targets, weights,
         # violates our general scalar strictness policy.
         target = array_ops.reshape(target, [-1])
         crossent = nn_ops.sparse_softmax_cross_entropy_with_logits(
-            logit, target)
+            logits=logit, labels=target)
       else:
-        crossent = softmax_loss_function(logit, target)
+        crossent = softmax_loss_function(target, logit)
       log_perp_list.append(crossent * weight)
     log_perps = math_ops.add_n(log_perp_list)
     if average_across_timesteps:

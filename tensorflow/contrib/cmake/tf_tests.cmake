@@ -99,7 +99,7 @@ function(AddPythonTests)
   endif(_AT_DEPENDS)
 
   foreach(sourcefile ${_AT_SOURCES})
-    add_test(NAME ${sourcefile} COMMAND ${PYTHON_EXECUTABLE} ${sourcefile})
+    add_test(NAME ${sourcefile} COMMAND ${PYTHON_EXECUTABLE} ${sourcefile} WORKING_DIRECTORY ${tensorflow_source_dir})
     if (_AT_DEPENDS)
       add_dependencies(${_AT_TARGET} ${_AT_DEPENDS})
     endif()
@@ -151,15 +151,6 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       # int32/int64 mixup
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/functional_ops_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/py_func_test.py"
-      # issues related to windows fs
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/io_ops_test.py"
-      # missing kernel
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/conv_ops_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/depthwise_conv_op_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/fractional_avg_pool_op_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/pool_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/qr_op_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/svd_op_test.py"
       # cuda launch failed
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/diag_op_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/trace_op_test.py"
@@ -169,7 +160,6 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/python/training/localhost_cluster_performance_test.py"  # Needs portpicker.
       "${tensorflow_source_dir}/tensorflow/python/training/monitored_session_test.py"  # Needs tf.contrib fix.
       "${tensorflow_source_dir}/tensorflow/python/training/saver_large_variable_test.py"  # Overflow error.
-      "${tensorflow_source_dir}/tensorflow/python/training/saver_test.py"  # Needs tf.contrib fix.
       "${tensorflow_source_dir}/tensorflow/python/training/supervisor_test.py"  # Flaky I/O error on rename.
       "${tensorflow_source_dir}/tensorflow/python/training/sync_replicas_optimizer_test.py"  # Needs portpicker.
     )
