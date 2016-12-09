@@ -15,7 +15,13 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 py_library(
     name = "factorization_py",
-    srcs = ["__init__.py"] + glob(["python/ops/*.py"]),
+    srcs = [
+        "__init__.py",
+        "python/ops/clustering_ops.py",
+        "python/ops/factorization_ops.py",
+        "python/ops/gmm.py",
+        "python/ops/gmm_ops.py",
+    ],
     data = [
         ":python/ops/_clustering_ops.so",
         ":python/ops/_factorization_ops.so",

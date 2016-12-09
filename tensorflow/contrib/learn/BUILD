@@ -9,12 +9,13 @@ package(default_visibility = ["//tensorflow:__subpackages__"])
 
 py_library(
     name = "learn",
-    srcs = glob([
-        "python/learn/**/*.py",
-    ]) + [
+    srcs = [
         "__init__.py",
         "python/__init__.py",
-    ],
+    ] + glob(
+        ["python/learn/**/*.py"],
+        exclude = ["python/learn/**/*_test.py"],
+    ),
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/contrib/learn/python/learn/datasets",

@@ -2036,7 +2036,11 @@ tf_py_wrap_cc(
 
 py_library(
     name = "lib",
-    srcs = glob(["lib/**/*.py"]),
+    srcs = [
+        "lib/io/file_io.py",
+        "lib/io/python_io.py",
+        "lib/io/tf_record.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":errors",

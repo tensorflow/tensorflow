@@ -13,9 +13,13 @@ filegroup(
 
 py_library(
     name = "datasets",
-    srcs = glob([
-        "*.py",
-    ]),
+    srcs = [
+        "__init__.py",
+        "base.py",
+        "mnist.py",
+        "produce_small_datasets.py",
+        "text_datasets.py",
+    ],
     data = [":data_csv"],
     srcs_version = "PY2AND3",
 )
