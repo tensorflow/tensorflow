@@ -54,6 +54,5 @@ passing_tests=$(bazel query "kind(cc_test, //tensorflow/cc/... + //tensorflow/co
   # We need to strip \r so that the result could be store into a variable under MSYS
   tr '\r' ' ')
 
-BUILD_OPTS='--cpu=x64_windows_msvc --host_cpu=x64_windows_msvc --copt=/w --verbose_failures --experimental_ui'
 bazel test $BUILD_OPTS -k $slow_compiling_test --test_output=errors
 bazel test -c opt $BUILD_OPTS -k $passing_tests --test_output=errors

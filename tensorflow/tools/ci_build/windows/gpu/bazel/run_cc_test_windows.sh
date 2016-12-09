@@ -46,7 +46,6 @@ clean_output_base
 
 run_configure_for_gpu_build
 
-
 # Compliling the following test is extremely slow with -c opt
 slow_compiling_test="//tensorflow/core/kernels:eigen_backward_spatial_convolutions_test"
 
@@ -55,8 +54,7 @@ passing_tests=$(bazel query "kind(cc_test, //tensorflow/cc/... + //tensorflow/co
   # We need to strip \r so that the result could be store into a variable under MSYS
   tr '\r' ' ')
 
-BUILD_OPTS='--config=win-cuda --cpu=x64_windows_msvc --host_cpu=x64_windows_msvc --copt=/w --verbose_failures --experimental_ui'
 # TODO(pcloudy): There is a bug in Bazel preventing build with GPU support without -c opt
 # Re-enable this test after it is fixed.
-# bazel test $BUILD_OPTS -k $slow_compiling_test --test_output=errors
-bazel test -c opt $BUILD_OPTS -k $passing_tests --test_output=errors
+# bazel test --config=win-cuda $BUILD_OPTS -k $slow_compiling_test --test_output=errors
+bazel test -c opt --config=win-cuda $BUILD_OPTS -k $passing_tests --test_output=errors

@@ -46,21 +46,17 @@ clean_output_base
 
 run_configure_for_gpu_build
 
-bazel build $BUILD_OPTS tensorflow/tools/pip_package:build_pip_package || exit $?
-
-rm -f ./tensorflow-*.whl
-./bazel-bin/tensorflow/tools/pip_package/build_pip_package $PWD
-
-# Running python tests on Windows needs pip package installed
-echo "y" | pip uninstall tensorflow -q || true
-PIP_NAME=$(ls tensorflow-*.whl)
-pip install ${PIP_NAME}
+bazel build -c opt --config=win-cuda $BUILD_OPTS tensorflow/tools/pip_package:build_pip_package || exit $?
 
 # Create a python test directory to avoid package name conflict
 PY_TEST_DIR="py_test_dir"
-rm -rf "${PY_TEST_DIR}"
-mkdir -p "${PY_TEST_DIR}"
-cmd /c "mklink /J ${PY_TEST_DIR}\\tensorflow .\\tensorflow"
+create_python_test_dir "${PY_TEST_DIR}"
+
+./bazel-bin/tensorflow/tools/pip_package/build_pip_package "$PWD/${PY_TEST_DIR}"
+
+# Running python tests on Windows needs pip package installed
+PIP_NAME=$(ls ${PY_TEST_DIR}/tensorflow-*.whl)
+reinstall_tensorflow_pip ${PIP_NAME}
 
 failing_gpu_py_tests=$(get_failing_gpu_py_tests ${PY_TEST_DIR})
 
@@ -68,10 +64,7 @@ passing_tests=$(bazel query "kind(py_test,  //${PY_TEST_DIR}/tensorflow/python/.
   # We need to strip \r so that the result could be store into a variable under MSYS
   tr '\r' ' ')
 
-BUILD_OPTS='--config=win-cuda -c opt --cpu=x64_windows_msvc --host_cpu=x64_windows_msvc --copt=/w --verbose_failures --experimental_ui'
 # Define no_tensorflow_py_deps=true so that every py_test has no deps anymore,
 # which will result testing system installed tensorflow
 # GPU tests are very flaky when running concurently, so set local_test_jobs=5
-bazel test $BUILD_OPTS -k $passing_tests --define=no_tensorflow_py_deps=true --test_output=errors --local_test_jobs=5
-
-
+bazel test -c opt --config=win-cuda $BUILD_OPTS -k $passing_tests --define=no_tensorflow_py_deps=true --test_output=errors --local_test_jobs=5

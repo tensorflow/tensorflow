@@ -179,7 +179,7 @@ function run_configure_for_cpu_build {
 function run_configure_for_gpu_build {
   # Due to a bug in Bazel: https://github.com/bazelbuild/bazel/issues/2182
   # yes "" | ./configure doesn't work on Windows, so we set all the
-  # environment variables in advance to avoid interact with the script.    
+  # environment variables in advance to avoid interact with the script.
   export TF_NEED_CUDA=1
   export TF_CUDA_VERSION=8.0
   export CUDA_TOOLKIT_PATH="C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v8.0"
@@ -187,4 +187,15 @@ function run_configure_for_gpu_build {
   export CUDNN_INSTALL_PATH="C:/tools/cuda"
   export TF_CUDA_COMPUTE_CAPABILITIES="3.5,5.2"
   echo "" | ./configure
+}
+
+function create_python_test_dir() {
+  rm -rf "$1"
+  mkdir -p "$1"
+  cmd /c "mklink /J $1\\tensorflow .\\tensorflow"
+}
+
+function reinstall_tensorflow_pip() {
+  echo "y" | pip uninstall tensorflow -q || true
+  pip install ${1}
 }
