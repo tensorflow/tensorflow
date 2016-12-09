@@ -27,7 +27,6 @@ import collections
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.python import summary
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -41,6 +40,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.summary import summary
 from tensorflow.python.training import queue_runner
 
 

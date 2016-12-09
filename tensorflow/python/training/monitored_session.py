@@ -23,7 +23,6 @@ import abc
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import saver_pb2
-from tensorflow.python import summary
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -31,6 +30,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import resources
 from tensorflow.python.ops import variables
+from tensorflow.python.summary import summary
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import queue_runner
