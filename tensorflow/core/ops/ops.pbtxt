@@ -11082,6 +11082,10 @@ op {
     description: "Number of negative samples per example."
   }
   summary: "Training via negative sampling."
+  deprecation {
+    version: 19
+    explanation: "Moving word2vec into tensorflow_models/tutorials and deprecating its ops here as a result"
+  }
   is_stateful: true
 }
 op {
@@ -17045,6 +17049,10 @@ op {
     description: "Threshold for word occurrence. Words that appear with higher\nfrequency will be randomly down-sampled. Set to 0 to disable."
   }
   summary: "Parses a text file and creates a batch of examples."
+  deprecation {
+    version: 19
+    explanation: "Moving word2vec into tensorflow_models/tutorials and deprecating its ops here as a result"
+  }
   is_stateful: true
 }
 op {
