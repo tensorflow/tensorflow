@@ -1641,7 +1641,6 @@ def sparse_softmax_cross_entropy_with_logits(logits, labels, name=None):
   labels of shape `[batch_size]`. But higher dimensions are supported.
 
   Args:
-
     logits: Unscaled log probabilities of rank `r` and shape
       `[d_0, d_1, ..., d_{r-2}, num_classes]` and dtype `float32` or `float64`.
     labels: `Tensor` of shape `[d_0, d_1, ..., d_{r-2}]` and dtype `int32` or
