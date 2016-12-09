@@ -1367,6 +1367,23 @@ to pretend that the value was a constant. Some examples include:
    example generation process.
 )Doc");
 
+REGISTER_OP("PreventGradient")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"Doc(
+An identity op that triggers an error if a gradient is requested.
+
+When executed in a graph, this op outputs its input tensor as-is.
+
+When building ops to compute gradients, the TensorFlow gradient system
+will return an error when trying to lookup the gradient of this op,
+because no gradient must ever be registered for this function.  This
+op exists to prevent subtle bugs from silently returning unimplemented
+gradients in some corner cases.
+)Doc");
+
 // --------------------------------------------------------------------------
 REGISTER_OP("CheckNumerics")
     .Input("tensor: T")
