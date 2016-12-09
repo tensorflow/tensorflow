@@ -56,6 +56,7 @@ import re
 import numpy as np
 import six
 
+from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib.distributions.python.ops import operator_pd_cholesky
 from tensorflow.contrib.distributions.python.ops import operator_pd_diag
 from tensorflow.contrib.distributions.python.ops import operator_pd_identity
@@ -1412,7 +1413,7 @@ class Affine(Bijector):
 
   def __init__(self,
                shift,
-               scale_identity_multiplier=1.0,
+               scale_identity_multiplier=None,
                scale_diag=None,
                scale_tril=None,
                scale_perturb_diag=None,
@@ -1491,7 +1492,9 @@ class Affine(Bijector):
       super(Affine, self).__init__(
           batch_ndims=self._infer_batch_ndims(),
           event_ndims=event_ndims,
-          graph_parents=[self._shift, self._scale],
+          graph_parents=[self._shift] + (
+              [self._scale] if contrib_framework.is_tensor(self._scale)
+              else self._scale.inputs),
           is_constant_jacobian=True,
           validate_args=validate_args,
           name=name)
@@ -1532,10 +1535,19 @@ class Affine(Bijector):
     """
     # Special case, only handling a scaled identity matrix. We don't know its
     # dimensions, so this is special cased.
-    self._is_only_identity_multiplier = (identity_multiplier is not None and
-                                         diag is None and
+    # We don't check identity_multiplier, since below we set it to 1. if all
+    # other scale args are None.
+    self._is_only_identity_multiplier = (diag is None and
                                          tril is None and
                                          perturb_factor is None)
+    # When no args are specified, treat this as if it were an identity matrix.
+    if self._is_only_identity_multiplier and identity_multiplier is None:
+      identity_multiplier = 1.
+
+    # Ambiguous definition of low rank update.
+    if perturb_diag is not None and perturb_factor is None:
+      raise ValueError("When perturb_diag is specified, perturb_factor must be "
+                       "specified.")
 
     # TODO(srvasude): Create a Linear Operator corresponding to a lower
     # triangular matrix, and make VDVTUpdate use that, removing this special
