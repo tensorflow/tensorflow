@@ -48,7 +48,8 @@ GENERATE_CONTRIB_OP_LIBRARY(cudnn_rnn "${tensorflow_source_dir}/tensorflow/contr
 GENERATE_CONTRIB_OP_LIBRARY(factorization_clustering "${tensorflow_source_dir}/tensorflow/contrib/factorization/ops/clustering_ops.cc")
 GENERATE_CONTRIB_OP_LIBRARY(factorization_factorization "${tensorflow_source_dir}/tensorflow/contrib/factorization/ops/factorization_ops.cc")
 GENERATE_CONTRIB_OP_LIBRARY(framework_variable "${tensorflow_source_dir}/tensorflow/contrib/framework/ops/variable_ops.cc")
-
+GENERATE_CONTRIB_OP_LIBRARY(metrics_set "${tensorflow_source_dir}/tensorflow/contrib/metrics/ops/set_ops.cc")
+GENERATE_CONTRIB_OP_LIBRARY(word2vec "${tensorflow_source_dir}/tensorflow/models/embedding/word2vec_ops.cc")
 
 ########################################################
 # tf_user_ops library
@@ -69,6 +70,7 @@ file(GLOB_RECURSE tf_core_ops_srcs
     "${tensorflow_source_dir}/tensorflow/core/ops/*.cc"
     "${tensorflow_source_dir}/tensorflow/core/user_ops/*.h"
     "${tensorflow_source_dir}/tensorflow/core/user_ops/*.cc"
+    "${tensorflow_source_dir}/tensorflow/models/embedding/word2vec_ops.cc"
 )
 
 file(GLOB_RECURSE tf_core_ops_exclude_srcs
