@@ -17,7 +17,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-REGISTER_OP("Skipgram")
+REGISTER_OP("SkipgramWord2vec")
     .Output("vocab_word: string")
     .Output("vocab_freq: int32")
     .Output("words_per_epoch: int64")
@@ -50,7 +50,7 @@ subsample: Threshold for word occurrence. Words that appear with higher
     frequency will be randomly down-sampled. Set to 0 to disable.
 )doc");
 
-REGISTER_OP("NegTrain")
+REGISTER_OP("NegTrainWord2vec")
     .Input("w_in: Ref(float)")
     .Input("w_out: Ref(float)")
     .Input("examples: int32")

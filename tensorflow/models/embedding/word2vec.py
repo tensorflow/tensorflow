@@ -347,11 +347,11 @@ class Word2Vec(object):
     opts = self._options
     # The training data. A text file.
     (words, counts, words_per_epoch, self._epoch, self._words, examples,
-     labels) = word2vec.skipgram(filename=opts.train_data,
-                                 batch_size=opts.batch_size,
-                                 window_size=opts.window_size,
-                                 min_count=opts.min_count,
-                                 subsample=opts.subsample)
+     labels) = word2vec.skipgram_word2vec(filename=opts.train_data,
+                                          batch_size=opts.batch_size,
+                                          window_size=opts.window_size,
+                                          min_count=opts.min_count,
+                                          subsample=opts.subsample)
     (opts.vocab_words, opts.vocab_counts,
      opts.words_per_epoch) = self._session.run([words, counts, words_per_epoch])
     opts.vocab_size = len(opts.vocab_words)

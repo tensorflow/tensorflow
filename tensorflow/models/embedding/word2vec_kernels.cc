@@ -46,9 +46,9 @@ bool ScanWord(StringPiece* input, string* word) {
 
 }  // end namespace
 
-class SkipgramOp : public OpKernel {
+class SkipgramWord2vecOp : public OpKernel {
  public:
-  explicit SkipgramOp(OpKernelConstruction* ctx)
+  explicit SkipgramWord2vecOp(OpKernelConstruction* ctx)
       : OpKernel(ctx), rng_(&philox_) {
     string filename;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("filename", &filename));
@@ -236,11 +236,11 @@ class SkipgramOp : public OpKernel {
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("Skipgram").Device(DEVICE_CPU), SkipgramOp);
+REGISTER_KERNEL_BUILDER(Name("SkipgramWord2vec").Device(DEVICE_CPU), SkipgramWord2vecOp);
 
-class NegTrainOp : public OpKernel {
+class NegTrainWord2vecOp : public OpKernel {
  public:
-  explicit NegTrainOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+  explicit NegTrainWord2vecOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     base_.Init(0, 0);
 
     OP_REQUIRES_OK(ctx, ctx->GetAttr("num_negative_samples", &num_samples_));
@@ -257,7 +257,7 @@ class NegTrainOp : public OpKernel {
     sampler_ = new random::DistributionSampler(vocab_weights);
   }
 
-  ~NegTrainOp() { delete sampler_; }
+  ~NegTrainWord2vecOp() { delete sampler_; }
 
   void Compute(OpKernelContext* ctx) override {
     Tensor w_in = ctx->mutable_input(0, false);
@@ -350,6 +350,6 @@ class NegTrainOp : public OpKernel {
   GuardedPhiloxRandom base_;
 };
 
-REGISTER_KERNEL_BUILDER(Name("NegTrain").Device(DEVICE_CPU), NegTrainOp);
+REGISTER_KERNEL_BUILDER(Name("NegTrainWord2vec").Device(DEVICE_CPU), NegTrainWord2vecOp);
 
 }  // end namespace tensorflow

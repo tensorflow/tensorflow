@@ -31,6 +31,7 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         ":gen_word2vec",
+        ":word2vec_kernels",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:platform",
     ],
@@ -44,6 +45,7 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         ":gen_word2vec",
+        ":word2vec_kernels",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:platform",
     ],
