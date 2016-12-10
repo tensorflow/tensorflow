@@ -2981,7 +2981,7 @@ inputs = tf.placeholder(shape=(max_time, batch_size, input_depth),
                         dtype=tf.float32)
 sequence_length = tf.placeholder(shape=(batch_size,), dtype=tf.int32)
 inputs_ta = tf.TensorArray(dtype=tf.float32, size=max_time)
-inputs_ta = inputs_ta.unpack(inputs)
+inputs_ta = inputs_ta.unstack(inputs)
 
 cell = tf.contrib.rnn.LSTMCell(num_units)
 
@@ -3002,7 +3002,7 @@ def loop_fn(time, cell_output, cell_state, loop_state):
           emit_output, next_loop_state)
 
 outputs_ta, final_state, _ = raw_rnn(cell, loop_fn)
-outputs = outputs_ta.pack()
+outputs = outputs_ta.stack()
 ```
 
 ##### Args:
