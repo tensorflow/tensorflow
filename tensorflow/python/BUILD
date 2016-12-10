@@ -376,6 +376,18 @@ py_library(
 )
 
 py_test(
+    name = "framework_registry_test",
+    size = "small",
+    srcs = ["framework/registry_test.py"],
+    main = "framework/registry_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_for_generated_wrappers",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
     name = "framework_errors_test",
     size = "small",
     srcs = ["framework/errors_test.py"],
