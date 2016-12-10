@@ -352,7 +352,7 @@ def tf_cuda_cc_test(name, srcs, deps, tags=[], data=[], size="medium",
              args=args)
 
 # Create a cc_test for each of the tensorflow tests listed in "tests"
-def tf_cc_tests(srcs, deps, linkstatic=0, tags=[], size="medium",
+def tf_cc_tests(srcs, deps, name='', linkstatic=0, tags=[], size="medium",
                 args=None, linkopts=[]):
   for src in srcs:
     tf_cc_test(
@@ -365,12 +365,12 @@ def tf_cc_tests(srcs, deps, linkstatic=0, tags=[], size="medium",
         args=args,
         linkopts=linkopts)
 
-def tf_cc_tests_gpu(srcs, deps, linkstatic=0, tags=[], size="medium",
+def tf_cc_tests_gpu(srcs, deps, name='', linkstatic=0, tags=[], size="medium",
                     args=None):
   tf_cc_tests(srcs, deps, linkstatic, tags=tags, size=size, args=args)
 
 
-def tf_cuda_cc_tests(srcs, deps, tags=[], size="medium", linkstatic=0,
+def tf_cuda_cc_tests(srcs, deps, name='', tags=[], size="medium", linkstatic=0,
                      args=None, linkopts=[]):
   for src in srcs:
     tf_cuda_cc_test(

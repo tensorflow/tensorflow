@@ -1272,6 +1272,7 @@ tf_kernel_library(
 )
 
 tf_cc_tests(
+    name = "dynamic_op_test",
     size = "small",
     srcs = [
         "dynamic_partition_op_test.cc",
@@ -1556,6 +1557,7 @@ tf_kernel_library(
 )
 
 tf_cc_tests(
+    name = "eigen_test",
     size = "small",
     srcs = [
         "eigen_activations_test.cc",
@@ -1577,6 +1579,7 @@ tf_cc_tests(
 )
 
 tf_cc_tests(
+    name = "basic_ops_benchmark_test",
     size = "small",
     srcs = [
         "basic_ops_benchmark_test.cc",
@@ -1594,6 +1597,7 @@ tf_cc_tests(
 )
 
 tf_cc_tests(
+    name = "bonus_tests",
     srcs = [
         "adjust_contrast_op_test.cc",
         "colorspace_op_test.cc",
@@ -1735,6 +1739,7 @@ tf_kernel_library(
 )
 
 tf_cc_tests(
+    name = "bonus2_tests",
     size = "small",
     srcs = [
         "merge_v2_checkpoints_op_test.cc",
@@ -1913,6 +1918,7 @@ tf_kernel_library(
 )
 
 tf_cc_tests(
+    name = "bonus3_tests",
     size = "small",
     srcs = [
         "logging_ops_test.cc",
@@ -2100,6 +2106,7 @@ tf_cc_test(
 )
 
 tf_cc_tests(
+    name = "sparse_tests",
     size = "small",
     srcs = [
         "sparse_add_op_test.cc",
@@ -2919,6 +2926,7 @@ tf_kernel_library(
 )
 
 tf_cuda_cc_tests(
+    name = "sparse2_tests",
     size = "small",
     srcs = [
         "sparse_tensor_dense_matmul_op_test.cc",

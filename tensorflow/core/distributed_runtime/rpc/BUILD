@@ -30,6 +30,7 @@ load(
     "tf_cuda_library",
     "tf_cc_test",
 )
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
 
 # For platform specific build config
@@ -368,6 +369,7 @@ cc_library(
 )
 
 tf_cuda_cc_tests(
+    name = "rpc_tests",
     size = "small",
     srcs = [
         "grpc_channel_test.cc",
@@ -418,11 +420,10 @@ tf_cc_test(
     ],
 )
 
-tf_cuda_cc_tests(
+tf_cuda_cc_test(
+    name = "grpc_session_test",
     size = "medium",
-    srcs = [
-        "grpc_session_test.cc",
-    ],
+    srcs = ["grpc_session_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["manual"],
     deps = [
