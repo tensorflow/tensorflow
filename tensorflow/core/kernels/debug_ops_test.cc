@@ -90,7 +90,7 @@ TEST_F(DebugIdentityOpTest, Int32Success_6_FileURLs) {
   test::ExpectTensorEqual<int32>(expected, *GetOutput(0));
 
   for (int i = 0; i < kNumDumpDirs; ++i) {
-    ASSERT_TRUE(env_->FileExists(dump_roots[i]));
+    ASSERT_TRUE(env_->FileExists(dump_roots[i]).ok());
     ASSERT_TRUE(env_->IsDirectory(dump_roots[i]).ok());
 
     DIR* dir = opendir(dump_roots[i].c_str());

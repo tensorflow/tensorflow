@@ -64,33 +64,31 @@ std::vector<Device*> FilterSupportedDevices(
 }
 
 // Returns the name of the colocation group of the node by inspecting
-// the "_class" attribute of the NodeDef.  Returns "" if it doesn't
-// exist.
-Status ColocationGroups(const Node& node,
-                        std::vector<string>* colocation_groups) {
+// the kColocationAttrName attribute of the NodeDef.
+void ColocationGroups(const Node& node,
+                      std::vector<string>* colocation_groups) {
   std::vector<string> class_specs;
   // TODO(vrv): We should consider adding a GetNodeAttr that returns a
   // StringPiece, to avoid a copy.
-  Status s = GetNodeAttr(node.def(), "_class", &class_specs);
+  Status s = GetNodeAttr(node.def(), kColocationAttrName, &class_specs);
   if (!s.ok()) {
-    // No "_class" attribute is equivalent to the empty colocation_group.
-    *colocation_groups = {strings::StrCat("loc:@", node.name())};
-    return Status::OK();
+    // No attribute value is equivalent to the empty colocation_group.
+    *colocation_groups = {strings::StrCat(kColocationGroupPrefix, node.name())};
+    return;
   }
 
   bool found_spec = false;
   for (const string& class_spec : class_specs) {
     StringPiece spec(class_spec);
-    if (spec.Consume("loc:@")) {
+    if (spec.Consume(kColocationGroupPrefix)) {
       found_spec = true;
       colocation_groups->emplace_back(class_spec);
     }
   }
 
   if (!found_spec) {
-    *colocation_groups = {strings::StrCat("loc:@", node.name())};
+    *colocation_groups = {strings::StrCat(kColocationGroupPrefix, node.name())};
   }
-  return Status::OK();
 }
 
 // This class maintains the connected components of a colocation
@@ -148,7 +146,7 @@ class ColocationGraph {
     // When adding the node, identify whether it is part of a
     // colocation group.
     std::vector<string> colocation_groups;
-    TF_RETURN_IF_ERROR(ColocationGroups(node, &colocation_groups));
+    ColocationGroups(node, &colocation_groups);
     Status s;
     for (const string& colocation_group : colocation_groups) {
       auto it = colocation_group_root_.find(colocation_group);
@@ -517,9 +515,15 @@ class ColocationGraph {
 
       // If no kernels are registered for this op type, fail with an error.
       if (member->supported_device_types.empty()) {
+        std::set<string> registered_device_types;
+        for (Device* d : device_set_->devices()) {
+          registered_device_types.insert(d->device_type());
+        }
         return errors::InvalidArgument(
             "No OpKernel was registered to support Op '", node.def().op(),
-            "' with these attrs.  Registered kernels:\n",
+            "' with these attrs.  Registered devices: [",
+            str_util::Join(registered_device_types, ","),
+            "], Registered kernels:\n",
             KernelsRegisteredForOp(node.def().op()));
       }
 
@@ -607,9 +611,7 @@ bool IsGeneratorNode(const Node* node) {
 
 SimplePlacer::SimplePlacer(Graph* graph, const DeviceSet* devices,
                            const SessionOptions* options)
-    : graph_(graph),
-      devices_(devices),
-      options_(options) {}
+    : graph_(graph), devices_(devices), options_(options) {}
 
 SimplePlacer::SimplePlacer(Graph* graph, const DeviceSet* devices)
     : graph_(graph), devices_(devices) {
@@ -649,7 +651,8 @@ Status SimplePlacer::Run() {
     // edge from the source of that edge to `node`.
     for (const auto& edge : node->in_edges()) {
       if (!edge->IsControlEdge() &&
-          IsRefType(node->input_type(edge->dst_input()))) {
+          (IsRefType(node->input_type(edge->dst_input())) ||
+           node->input_type(edge->dst_input()) == DT_RESOURCE)) {
         // If both the source node and this node have paritally
         // specified a device, then 'node's device should be
         // cleared: the reference edge forces 'node' to be on the
@@ -818,9 +821,11 @@ void SimplePlacer::AssignAndLog(const string& assigned_device,
   node->set_assigned_device_name(assigned_device);
   // Log placement if log_device_placement is set.
   if (options_ && options_->config.log_device_placement()) {
-    printf("%s: %s\n", node->name().c_str(),
+    printf("%s: (%s): %s\n", node->name().c_str(),
+           node->type_string().c_str(),
            node->assigned_device_name().c_str());
-    LOG(INFO) << node->name() << ": " << node->assigned_device_name();
+    LOG(INFO) << node->name() << ": " << "(" << node->type_string() << ")" 
+              << node->assigned_device_name();
   }
 }
 

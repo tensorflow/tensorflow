@@ -20,11 +20,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import,wildcard-import,line-too-long
+# pylint: disable=unused-import,line-too-long
 from tensorflow.contrib.bayesflow.python.ops import entropy
 from tensorflow.contrib.bayesflow.python.ops import monte_carlo
 from tensorflow.contrib.bayesflow.python.ops import special_math
 from tensorflow.contrib.bayesflow.python.ops import stochastic_gradient_estimators
 from tensorflow.contrib.bayesflow.python.ops import stochastic_graph
 from tensorflow.contrib.bayesflow.python.ops import stochastic_tensor
+from tensorflow.contrib.bayesflow.python.ops import stochastic_variables
 from tensorflow.contrib.bayesflow.python.ops import variational_inference
+# pylint: enable=unused-import,line-too-long

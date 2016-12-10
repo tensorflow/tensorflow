@@ -28,6 +28,7 @@ from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import standard_ops as tf
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import momentum
+from tensorflow.python.util.protobuf import compare
 
 
 class GroupTestCase(TensorFlowTestCase):
@@ -135,7 +136,7 @@ class SwitchTestCase(TensorFlowTestCase):
       optimizer = momentum.MomentumOptimizer(0.1, 0.9)
       train_op = optimizer.minimize(cost)
       with self.test_session() as sess:
-        sess.run(tf.initialize_all_variables())
+        sess.run(tf.global_variables_initializer())
         for _ in range(10):
           sess.run([train_op])
 
@@ -169,7 +170,7 @@ class SwitchTestCase(TensorFlowTestCase):
       static_grads = tf.segment_sum(static_grads.values, static_grads.indices)
 
       with self.test_session() as sess:
-        sess.run(tf.initialize_all_variables())
+        sess.run(tf.global_variables_initializer())
         self.assertAllEqual(*sess.run([static_grads, dynamic_grads]))
 
   def testIndexedSlicesWithShapeGradientInWhileLoop(self):
@@ -224,6 +225,36 @@ class SwitchTestCase(TensorFlowTestCase):
                            feed_dict={inputs: [1, 3, 2]})
         self.assertEquals(o, 6)
         self.assertAllEqual(grad, [1] * 3)
+
+
+class ContextTest(TensorFlowTestCase):
+
+  def testCondContext(self):
+    with self.test_session() as sess:
+      x = tf.constant(2)
+      y = tf.constant(5)
+      control_flow_ops.cond(tf.less(x, y),
+                            lambda: tf.mul(x, 17),
+                            lambda: tf.add(y, 23))
+      for op in sess.graph.get_operations():
+        c = op._get_control_flow_context()
+        if c:
+          compare.ProtoEq(
+              c.to_proto(),
+              control_flow_ops.CondContext.from_proto(c.to_proto()).to_proto())
+
+  def testWhileContext(self):
+    with self.test_session() as sess:
+      i = tf.constant(0)
+      c = lambda i: tf.less(i, 10)
+      b = lambda i: tf.add(i, 1)
+      tf.while_loop(c, b, [i])
+      for op in sess.graph.get_operations():
+        c = op._get_control_flow_context()
+        if c:
+          compare.ProtoEq(
+              c.to_proto(),
+              control_flow_ops.WhileContext.from_proto(c.to_proto()).to_proto())
 
 
 if __name__ == "__main__":

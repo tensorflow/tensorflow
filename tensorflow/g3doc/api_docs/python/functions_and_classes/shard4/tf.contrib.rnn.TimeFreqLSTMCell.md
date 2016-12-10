@@ -9,6 +9,36 @@ This implementation is based on:
 It uses peep-hole connections and optional cell clipping.
 - - -
 
+#### `tf.contrib.rnn.TimeFreqLSTMCell.__call__(inputs, state, scope=None)` {#TimeFreqLSTMCell.__call__}
+
+Run one step of LSTM.
+
+##### Args:
+
+
+*  <b>`inputs`</b>: input Tensor, 2D, batch x num_units.
+*  <b>`state`</b>: state Tensor, 2D, batch x state_size.
+*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to
+    "TimeFreqLSTMCell".
+
+##### Returns:
+
+  A tuple containing:
+  - A 2D, batch x output_dim, Tensor representing the output of the LSTM
+    after reading "inputs" when previous state was "state".
+    Here output_dim is num_units.
+  - A 2D, batch x state_size, Tensor representing the new state of LSTM
+    after reading "inputs" when previous state was "state".
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if an input_size was specified and the provided inputs have
+    a different dimension.
+
+
+- - -
+
 #### `tf.contrib.rnn.TimeFreqLSTMCell.__init__(num_units, use_peepholes=False, cell_clip=None, initializer=None, num_unit_shards=1, forget_bias=1.0, feature_size=None, frequency_skip=None)` {#TimeFreqLSTMCell.__init__}
 
 Initialize the parameters for an LSTM cell.

@@ -154,7 +154,7 @@ class Generator {
 string GetPackageReferencePrefix(const FileDescriptor* fd) {
   string result = "::";
   const string& package = fd->package();
-  for (int i = 0; i < package.size(); ++i) {
+  for (size_t i = 0; i < package.size(); ++i) {
     if (package[i] == '.') {
       result += "::";
     } else {
@@ -224,9 +224,18 @@ string GetProtoHeaderName(const FileDescriptor& fd) {
 
 // Returns the C++ class name for the given proto field.
 string GetCppClass(const FieldDescriptor& d) {
-  return d.cpp_type() == FieldDescriptor::CPPTYPE_MESSAGE
-             ? GetQualifiedName(*d.message_type())
-             : d.cpp_type_name();
+  string cpp_class = d.cpp_type() == FieldDescriptor::CPPTYPE_MESSAGE
+                         ? GetQualifiedName(*d.message_type())
+                         : d.cpp_type_name();
+
+  // In open-source TensorFlow, the definition of int64 varies across
+  // platforms. The following line, which is manipulated during internal-
+  // external sync'ing, takes care of the variability.
+  if (cpp_class == "int64") {
+    cpp_class = kProtobufInt64Typename;
+  }
+
+  return cpp_class;
 }
 
 // Returns the string that can be used for a header guard for the generated
@@ -437,6 +446,7 @@ void Generator::AppendParseMessageFunction(const Descriptor& md) {
   Print("StringPiece identifier;");
   Print("if (!scanner->GetResult(nullptr, &identifier)) return false;");
   Print("bool parsed_colon = false;");
+  Print("(void)parsed_colon;"); // Avoid "set but not used" compiler warning
   Print("ProtoSpaceAndComments(scanner);");
   Print("if (scanner->Peek() == ':') {");
   Nest().Print("parsed_colon = true;");
@@ -666,7 +676,7 @@ void Generator::AppendMessageFunctions(const Descriptor& md) {
 void Generator::AddNamespaceToCurrentSection(const string& package, bool open) {
   Print();
   std::vector<string> parts = {""};
-  for (int i = 0; i < package.size(); ++i) {
+  for (size_t i = 0; i < package.size(); ++i) {
     if (package[i] == '.') {
       parts.resize(parts.size() + 1);
     } else {

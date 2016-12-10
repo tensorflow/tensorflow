@@ -83,6 +83,8 @@ class Uniform(distribution.Distribution):
     Raises:
       InvalidArgumentError: if `a >= b` and `validate_args=False`.
     """
+    parameters = locals()
+    parameters.pop("self")
     with ops.name_scope(name, values=[a, b]) as ns:
       with ops.control_dependencies([
           check_ops.assert_less(
@@ -91,15 +93,15 @@ class Uniform(distribution.Distribution):
         self._a = array_ops.identity(a, name="a")
         self._b = array_ops.identity(b, name="b")
         contrib_tensor_util.assert_same_float_dtype((self._a, self._b))
-        super(Uniform, self).__init__(
-            dtype=self._a.dtype,
-            parameters={"a": self._a,
-                        "b": self._b},
-            is_reparameterized=True,
-            is_continuous=True,
-            validate_args=validate_args,
-            allow_nan_stats=allow_nan_stats,
-            name=ns)
+    super(Uniform, self).__init__(
+        dtype=self._a.dtype,
+        is_reparameterized=True,
+        is_continuous=True,
+        validate_args=validate_args,
+        allow_nan_stats=allow_nan_stats,
+        parameters=parameters,
+        graph_parents=[self._a, self._b],
+        name=ns)
 
   @staticmethod
   def _param_shapes(sample_shape):
@@ -134,7 +136,7 @@ class Uniform(distribution.Distribution):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):
-    shape = array_ops.concat(0, ([n], self.batch_shape()))
+    shape = array_ops.concat_v2(([n], self.batch_shape()), 0)
     samples = random_ops.random_uniform(shape=shape,
                                         dtype=self.dtype,
                                         seed=seed)
@@ -146,10 +148,10 @@ class Uniform(distribution.Distribution):
 
   def _prob(self, x):
     broadcasted_x = x * array_ops.ones(self.batch_shape())
-    return math_ops.select(
+    return array_ops.where(
         math_ops.is_nan(broadcasted_x),
         broadcasted_x,
-        math_ops.select(
+        array_ops.where(
             math_ops.logical_or(broadcasted_x < self.a,
                                 broadcasted_x > self.b),
             array_ops.zeros_like(broadcasted_x),
@@ -162,9 +164,9 @@ class Uniform(distribution.Distribution):
     broadcasted_x = x * array_ops.ones(self.batch_shape())
     zeros = array_ops.zeros_like(x + self.a + self.b, dtype=self.dtype)
     ones = array_ops.ones_like(x + self.a + self.b, dtype=self.dtype)
-    result_if_not_big = math_ops.select(
+    result_if_not_big = array_ops.where(
         x < self.a, zeros, (broadcasted_x - self.a) / self.range())
-    return math_ops.select(x >= self.b, ones, result_if_not_big)
+    return array_ops.where(x >= self.b, ones, result_if_not_big)
 
   def _entropy(self):
     return math_ops.log(self.range())

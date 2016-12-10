@@ -32,8 +32,8 @@ message MetaGraphDef {
   // Meta information regarding the graph to be exported.  To be used by users
   // of this protocol buffer to encode information regarding their meta graph.
   message MetaInfoDef {
-    // Version string. Can be the name of the model and revision, steps this
-    // model has been trained to, etc.
+    // User specified Version string. Can be the name of the model and revision,
+    // steps this model has been trained to, etc.
     string meta_graph_version = 1;
 
     // A copy of the OpDefs used by the producer of this graph_def.
@@ -51,6 +51,16 @@ message MetaGraphDef {
     // These tags enable loaders to access the MetaGraph(s) appropriate for a
     // specific use-case or runtime environment.
     repeated string tags = 4;
+
+    // The __version__ string of the tensorflow build used to write this graph.
+    // This will be populated by the framework, which will overwrite any user
+    // supplied value.
+    string tensorflow_version = 5;
+
+    // The __git_version__ string of the tensorflow build used to write this
+    // graph. This will be populated by the framework, which will overwrite any
+    // user supplied value.
+    string tensorflow_git_version = 6;
   }
   MetaInfoDef meta_info_def = 1;
 
@@ -67,6 +77,9 @@ message MetaGraphDef {
   // signature_def: Map from user supplied key for a signature to a single
   // SignatureDef.
   map<string, SignatureDef> signature_def = 5;
+
+  // Asset file def to be used with the defined graph.
+  repeated AssetFileDef asset_file_def = 6;
 }
 
 // CollectionDef should cover most collections.
@@ -127,7 +140,7 @@ message MetaGraphDef {
 //                                from_proto=YourPythonObject.from_proto)
 //    These functions will be invoked to serialize and de-serialize the
 //    collection. For example,
-//    ops.register_proto_function(ops.GraphKeys.VARIABLES,
+//    ops.register_proto_function(ops.GraphKeys.GLOBAL_VARIABLES,
 //                                proto_type=variable_pb2.VariableDef,
 //                                to_proto=Variable.to_proto,
 //                                from_proto=Variable.from_proto)
@@ -265,4 +278,15 @@ message SignatureDef {
   // method_name. This is commonly used to support multi-headed computation,
   // where a single graph computation may return multiple results.
   string method_name = 3;
+}
+
+// An asset file def for a single file or a set of sharded files with the same
+// name.
+message AssetFileDef {
+  // The tensor to bind the asset filename to.
+  TensorInfo tensor_info = 1;
+  // The filename within an assets directory. Note: does not include the path
+  // prefix, i.e. directories. For an asset at /tmp/path/vocab.txt, the filename
+  // would be "vocab.txt".
+  string filename = 2;
 }

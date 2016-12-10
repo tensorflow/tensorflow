@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_PLATFORM_CPU_INFO_H_
 #define TENSORFLOW_PLATFORM_CPU_INFO_H_
 
+#if defined(PLATFORM_WINDOWS)
+#include "tensorflow/core/platform/windows/cpu_info.h"
+#endif
+
 namespace tensorflow {
 namespace port {
 

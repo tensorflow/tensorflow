@@ -20,7 +20,7 @@ from __future__ import print_function
 
 from tensorflow.contrib.learn.python.learn.dataframe import series
 from tensorflow.contrib.learn.python.learn.dataframe import transform
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import math_ops
 
 # Each entry is a mapping from registered_name to operation. Each operation is
@@ -55,8 +55,8 @@ class SeriesBinaryTransform(transform.TensorFlowTransform):
 
   def _apply_transform(self, input_tensors, **kwargs):
     # TODO(jamieas): consider supporting sparse inputs.
-    if isinstance(input_tensors[0], ops.SparseTensor) or isinstance(
-        input_tensors[1], ops.SparseTensor):
+    if isinstance(input_tensors[0], sparse_tensor.SparseTensor) or isinstance(
+        input_tensors[1], sparse_tensor.SparseTensor):
       raise TypeError("{} does not support SparseTensors".format(
           type(self).__name__))
 
@@ -89,10 +89,10 @@ class ScalarBinaryTransform(transform.TensorFlowTransform):
 
   def _apply_transform(self, input_tensors, **kwargs):
     input_tensor = input_tensors[0]
-    if isinstance(input_tensor, ops.SparseTensor):
-      result = ops.SparseTensor(input_tensor.indices,
-                                self._apply_op(input_tensor.values),
-                                input_tensor.shape)
+    if isinstance(input_tensor, sparse_tensor.SparseTensor):
+      result = sparse_tensor.SparseTensor(input_tensor.indices,
+                                          self._apply_op(input_tensor.values),
+                                          input_tensor.dense_shape)
     else:
       result = self._apply_op(input_tensor)
 

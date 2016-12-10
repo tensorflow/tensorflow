@@ -48,15 +48,16 @@ The `local_init_op` is an `Operation` that is run always after a new session
 was created. If `None`, this step is skipped.
 
 The `ready_op` is an `Operation` used to check if the model is ready.  The
-model is considered ready if that operation returns an empty string tensor.
-If the operation returns non empty string tensor, the elements are
-concatenated and used to indicate to the user why the model is not ready.
+model is considered ready if that operation returns an empty 1D string
+tensor. If the operation returns a non empty 1D string tensor, the elements
+are concatenated and used to indicate to the user why the model is not
+ready.
 
 The `ready_for_local_init_op` is an `Operation` used to check if the model
 is ready to run local_init_op.  The model is considered ready if that
-operation returns an empty string tensor. If the operation returns non empty
-string tensor, the elements are concatenated and used to indicate to the
-user why the model is not ready.
+operation returns an empty 1D string tensor. If the operation returns a non
+empty 1D string tensor, the elements are concatenated and used to indicate
+to the user why the model is not ready.
 
 If `ready_op` is `None`, the model is not checked for readiness.
 

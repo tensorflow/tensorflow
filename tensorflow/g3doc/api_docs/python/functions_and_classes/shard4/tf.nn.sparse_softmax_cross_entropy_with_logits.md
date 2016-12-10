@@ -28,8 +28,9 @@ labels of shape `[batch_size]`. But higher dimensions are supported.
     `[d_0, d_1, ..., d_{r-2}, num_classes]` and dtype `float32` or `float64`.
 *  <b>`labels`</b>: `Tensor` of shape `[d_0, d_1, ..., d_{r-2}]` and dtype `int32` or
     `int64`. Each entry in `labels` must be an index in `[0, num_classes)`.
-    Other values will result in a loss of 0, but incorrect gradient
-    computations.
+    Other values will raise an exception when this op is run on CPU, and
+    return `NaN` for corresponding corresponding loss and gradient rows
+    on GPU.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:

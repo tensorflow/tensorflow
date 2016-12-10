@@ -22,7 +22,7 @@ import numpy as np
 import tensorflow as tf
 
 
-def np_split_sqeeze(array, axis):
+def np_split_squeeze(array, axis):
   axis_len = array.shape[axis]
   return [
       np.squeeze(arr, axis=(axis,))
@@ -34,85 +34,103 @@ class PackOpTest(tf.test.TestCase):
 
   def testSimple(self):
     np.random.seed(7)
-    for use_gpu in False, True:
-      with self.test_session(use_gpu=use_gpu):
-        for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
-          data = np.random.randn(*shape)
-          # Convert [data[0], data[1], ...] separately to tensorflow
-          # TODO(irving): Remove list() once we handle maps correctly
-          xs = list(map(tf.constant, data))
-          # Pack back into a single tensorflow tensor
-          c = tf.pack(xs)
-          self.assertAllEqual(c.eval(), data)
+    with self.test_session(use_gpu=True):
+      for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
+        data = np.random.randn(*shape)
+        # Convert [data[0], data[1], ...] separately to tensorflow
+        # TODO(irving): Remove list() once we handle maps correctly
+        xs = list(map(tf.constant, data))
+        # Pack back into a single tensorflow tensor
+        c = tf.pack(xs)
+        self.assertAllEqual(c.eval(), data)
+
+        c = tf.stack(xs)
+        self.assertAllEqual(c.eval(), data)
 
   def testConst(self):
     np.random.seed(7)
-    for use_gpu in False, True:
-      with self.test_session(use_gpu=use_gpu):
-        for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
-          data = np.random.randn(*shape).astype(np.float32)
-          # Pack back into a single tensorflow tensor directly using np array
-          c = tf.pack(data)
-          # This is implemented via a Const:
-          self.assertEqual(c.op.type, "Const")
-          self.assertAllEqual(c.eval(), data)
+    with self.test_session(use_gpu=True):
+      for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
+        data = np.random.randn(*shape).astype(np.float32)
+        # Pack back into a single tensorflow tensor directly using np array
+        c = tf.pack(data)
+        # This is implemented via a Const:
+        self.assertEqual(c.op.type, "Const")
+        self.assertAllEqual(c.eval(), data)
 
-          # Python lists also work for 1-D case:
-          if len(shape) == 1:
-            data_list = list(data)
-            cl = tf.pack(data_list)
-            self.assertEqual(cl.op.type, "Const")
-            self.assertAllEqual(cl.eval(), data)
+        # Python lists also work for 1-D case:
+        if len(shape) == 1:
+          data_list = list(data)
+          cl = tf.pack(data_list)
+          self.assertEqual(cl.op.type, "Const")
+          self.assertAllEqual(cl.eval(), data)
 
-        # Verify that shape induction works with shapes produced via const pack
-        a = tf.constant([1, 2, 3, 4, 5, 6])
-        b = tf.reshape(a, tf.pack([2, 3]))
-        self.assertAllEqual(b.get_shape(), [2, 3])
+          cl = tf.stack(data_list)
+          self.assertEqual(cl.op.type, "Const")
+          self.assertAllEqual(cl.eval(), data)
+
+      # Verify that shape induction works with shapes produced via const pack
+      a = tf.constant([1, 2, 3, 4, 5, 6])
+      b = tf.reshape(a, tf.pack([2, 3]))
+      self.assertAllEqual(b.get_shape(), [2, 3])
+
+      b = tf.reshape(a, tf.stack([2, 3]))
+      self.assertAllEqual(b.get_shape(), [2, 3])
 
   def testGradientsAxis0(self):
     np.random.seed(7)
-    for use_gpu in False, True:
-      for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
-        data = np.random.randn(*shape)
-        shapes = [shape[1:]] * shape[0]
-        with self.test_session(use_gpu=use_gpu):
-          # TODO(irving): Remove list() once we handle maps correctly
-          xs = list(map(tf.constant, data))
-          c = tf.pack(xs)
-          err = tf.test.compute_gradient_error(xs, shapes, c, shape)
-          self.assertLess(err, 1e-6)
+    for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
+      data = np.random.randn(*shape)
+      shapes = [shape[1:]] * shape[0]
+      with self.test_session(use_gpu=True):
+        # TODO(irving): Remove list() once we handle maps correctly
+        xs = list(map(tf.constant, data))
+        c = tf.pack(xs)
+        err = tf.test.compute_gradient_error(xs, shapes, c, shape)
+        self.assertLess(err, 1e-6)
+
+        c = tf.stack(xs)
+        err = tf.test.compute_gradient_error(xs, shapes, c, shape)
+        self.assertLess(err, 1e-6)
 
   def testGradientsAxis1(self):
     np.random.seed(7)
-    for use_gpu in False, True:
-      for shape in (2, 3), (3, 2), (4, 3, 2):
-        data = np.random.randn(*shape)
-        shapes = [shape[1:]] * shape[0]
-        out_shape = list(shape[1:])
-        out_shape.insert(1, shape[0])
-        with self.test_session(use_gpu=use_gpu):
-          # TODO(irving): Remove list() once we handle maps correctly
-          xs = list(map(tf.constant, data))
-          c = tf.pack(xs, axis=1)
-          err = tf.test.compute_gradient_error(xs, shapes, c, out_shape)
-          self.assertLess(err, 1e-6)
+    for shape in (2, 3), (3, 2), (4, 3, 2):
+      data = np.random.randn(*shape)
+      shapes = [shape[1:]] * shape[0]
+      out_shape = list(shape[1:])
+      out_shape.insert(1, shape[0])
+      with self.test_session(use_gpu=True):
+        # TODO(irving): Remove list() once we handle maps correctly
+        xs = list(map(tf.constant, data))
+        c = tf.pack(xs, axis=1)
+        err = tf.test.compute_gradient_error(xs, shapes, c, out_shape)
+        self.assertLess(err, 1e-6)
+
+        c = tf.stack(xs, axis=1)
+        err = tf.test.compute_gradient_error(xs, shapes, c, out_shape)
+        self.assertLess(err, 1e-6)
 
   def testZeroSize(self):
     # Verify that pack doesn't crash for zero size inputs
-    for use_gpu in False, True:
-      with self.test_session(use_gpu=use_gpu):
-        for shape in (0,), (3,0), (0, 3):
-          x = np.zeros((2,) + shape)
-          p = tf.pack(list(x)).eval()
-          self.assertAllEqual(p, x)
+    with self.test_session(use_gpu=True):
+      for shape in (0,), (3,0), (0, 3):
+        x = np.zeros((2,) + shape)
+        p = tf.pack(list(x)).eval()
+        self.assertAllEqual(p, x)
+
+        p = tf.stack(list(x)).eval()
+        self.assertAllEqual(p, x)
 
   def testAxis0Default(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       t = [tf.constant([1, 2, 3]), tf.constant([4, 5, 6])]
 
       packed = tf.pack(t).eval()
+      stacked = tf.stack(t).eval()
 
     self.assertAllEqual(packed, np.array([[1, 2, 3], [4, 5, 6]]))
+    self.assertAllEqual(stacked, np.array([[1, 2, 3], [4, 5, 6]]))
 
   def testAgainstNumpy(self):
     # For 1 to 5 dimensions.
@@ -121,30 +139,39 @@ class PackOpTest(tf.test.TestCase):
 
       # For all the possible axis to split it, including negative indices.
       for j in range(-i, i):
-        test_arrays = np_split_sqeeze(expected, j)
+        test_arrays = np_split_squeeze(expected, j)
 
-        with self.test_session():
-          actual = tf.pack(test_arrays, axis=j)
-          self.assertEqual(expected.shape, actual.get_shape())
-          actual = actual.eval()
+        with self.test_session(use_gpu=True):
+          actual_pack = tf.pack(test_arrays, axis=j)
+          self.assertEqual(expected.shape, actual_pack.get_shape())
+          actual_pack = actual_pack.eval()
 
-        self.assertNDArrayNear(expected, actual, 1e-6)
+          actual_stack = tf.pack(test_arrays, axis=j)
+          self.assertEqual(expected.shape, actual_stack.get_shape())
+          actual_stack = actual_stack.eval()
+
+        self.assertNDArrayNear(expected, actual_pack, 1e-6)
+        self.assertNDArrayNear(expected, actual_stack, 1e-6)
 
   def testDimOutOfRange(self):
     t = [tf.constant([1, 2, 3]), tf.constant([4, 5, 6])]
     with self.assertRaisesRegexp(ValueError, r"axis = 2 not in \[-2, 2\)"):
-      tf.unpack(t, axis=2)
+      tf.pack(t, axis=2)
+    with self.assertRaisesRegexp(ValueError, r"axis = 2 not in \[-2, 2\)"):
+      tf.stack(t, axis=2)
 
   def testDimOutOfNegativeRange(self):
     t = [tf.constant([1, 2, 3]), tf.constant([4, 5, 6])]
     with self.assertRaisesRegexp(ValueError, r"axis = -3 not in \[-2, 2\)"):
-      tf.unpack(t, axis=-3)
+      tf.pack(t, axis=-3)
+    with self.assertRaisesRegexp(ValueError, r"axis = -3 not in \[-2, 2\)"):
+      tf.stack(t, axis=-3)
 
 
 class AutomaticPackingTest(tf.test.TestCase):
 
   def testSimple(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       self.assertAllEqual([1, 0, 2],
                           tf.convert_to_tensor([1, tf.constant(0), 2]).eval())
       self.assertAllEqual(
@@ -164,7 +191,7 @@ class AutomaticPackingTest(tf.test.TestCase):
                                 tf.constant([0, 0, 0])]).eval())
 
   def testWithNDArray(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       result = tf.convert_to_tensor([[[0., 0.],
                                       tf.constant([1., 1.])],
                                      np.array([[2., 2.], [3., 3.]],
@@ -173,7 +200,7 @@ class AutomaticPackingTest(tf.test.TestCase):
           [[[0., 0.], [1., 1.]], [[2., 2.], [3., 3.]]], result.eval())
 
   def testVariable(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       v = tf.Variable(17)
       result = tf.convert_to_tensor([[0, 0, 0],
                                      [0, v, 0],
@@ -215,7 +242,7 @@ class AutomaticPackingTest(tf.test.TestCase):
                            dtype=tf.float32)
 
   def testPlaceholder(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       # Test using placeholder with a defined shape.
       ph_0 = tf.placeholder(tf.int32, shape=[])
       result_0 = tf.convert_to_tensor([[0, 0, 0],
@@ -249,7 +276,7 @@ class AutomaticPackingTest(tf.test.TestCase):
     # Dynamic shape error.
     ph_1 = tf.placeholder(tf.int32)
     result_1 = tf.convert_to_tensor([[0, 0, 0], [0, ph_1, 0], [0, 0, 0]])
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       with self.assertRaises(tf.errors.InvalidArgumentError):
         result_1.eval(feed_dict={ph_1: [1]})
 

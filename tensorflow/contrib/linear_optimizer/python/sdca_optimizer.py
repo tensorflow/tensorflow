@@ -1,5 +1,5 @@
 """Linear Estimators."""
-#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
+#  Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ from __future__ import print_function
 
 from tensorflow.contrib import layers
 from tensorflow.contrib.linear_optimizer.python.ops import sdca_ops
+from tensorflow.contrib.linear_optimizer.python.ops.sparse_feature_column import SparseFeatureColumn
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 
@@ -34,7 +35,7 @@ class SDCAOptimizer(object):
     real_feature_column = real_valued_column(...)
     sparse_feature_column = sparse_column_with_hash_bucket(...)
     sdca_optimizer = linear.SDCAOptimizer(example_id_column='example_id',
-                                          num_partitions=1,
+                                          num_loss_partitions=1,
                                           num_table_shards=1,
                                           symmetric_l2_regularization=2.0)
     classifier = tf.contrib.learn.LinearClassifier(
@@ -47,20 +48,25 @@ class SDCAOptimizer(object):
   Here the expectation is that the input_fn_* functions passed to train and
   evaluate return a pair (dict, label_tensor) where dict has `example_id_column`
   as `key` whose value is a `Tensor` of shape [batch_size] and dtype string.
-  num_partitions defines the number of partitions of the loss function, which
-  is equivalent to the number of concurrent workers running the train steps.
-  num_table_shards defines the number of shards for the internal state table,
-  typically set to match the number of parameter servers for large data sets.
+  num_loss_partitions defines the number of partitions of the global loss
+  function and should be set to (#concurrent train ops/per worker) x (#workers).
+  Convergence of (global) loss is guaranteed if num_loss_partitions is larger or
+  equal to the above product. Larger values for num_loss_partitions lead to
+  slower convergence. The recommended value for num_loss_partitions in tf.learn
+  (where currently there is one process per worker) is the number of workers
+  running the train steps. It defaults to 1 (single machine). num_table_shards
+  defines the number of shards for the internal state table, typically set to
+  match the number of parameter servers for large data sets.
   """
 
   def __init__(self,
                example_id_column,
-               num_partitions=1,
+               num_loss_partitions=1,
                num_table_shards=None,
                symmetric_l1_regularization=0.0,
                symmetric_l2_regularization=1.0):
     self._example_id_column = example_id_column
-    self._num_partitions = num_partitions
+    self._num_loss_partitions = num_loss_partitions
     self._num_table_shards = num_table_shards
     self._symmetric_l1_regularization = symmetric_l1_regularization
     self._symmetric_l2_regularization = symmetric_l2_regularization
@@ -81,7 +87,7 @@ class SDCAOptimizer(object):
       sparse_values = array_ops.gather_nd(dense_tensor, sparse_indices)
       # TODO(sibyl-Aix6ihai, sibyl-vie3Poto): Makes this efficient, as now SDCA supports
       # very sparse features with weights and not weights.
-      return sdca_ops.SparseFeatureColumn(
+      return SparseFeatureColumn(
           array_ops.reshape(
               array_ops.split(1, 2, sparse_indices)[0], [-1]),
           array_ops.reshape(
@@ -118,7 +124,8 @@ class SDCAOptimizer(object):
           # bucketized feature is "sparsified" for SDCA by converting it to a
           # SparseFeatureColumn respresenting the one-hot encoding of the
           # bucketized feature.
-          dense_bucket_tensor = column.to_dnn_input_layer(transformed_tensor)
+          dense_bucket_tensor = layers.input_from_feature_columns(
+              {column: transformed_tensor}, [column])
           sparse_feature_column = _tensor_to_sparse_feature_column(
               dense_bucket_tensor)
           sparse_feature_with_values.append(sparse_feature_column)
@@ -128,7 +135,7 @@ class SDCAOptimizer(object):
               columns_to_variables[column][0])
         elif isinstance(column, (layers.feature_column._CrossedColumn,
                                  layers.feature_column._SparseColumn)):
-          sparse_features.append(sdca_ops.SparseFeatureColumn(
+          sparse_features.append(SparseFeatureColumn(
               array_ops.reshape(
                   array_ops.split(1, 2, transformed_tensor.indices)[0], [-1]),
               array_ops.reshape(transformed_tensor.values, [-1]), None))
@@ -136,7 +143,7 @@ class SDCAOptimizer(object):
         elif isinstance(column, layers.feature_column._WeightedSparseColumn):
           id_tensor = column.id_tensor(transformed_tensor)
           weight_tensor = column.weight_tensor(transformed_tensor)
-          sparse_feature_with_values.append(sdca_ops.SparseFeatureColumn(
+          sparse_feature_with_values.append(SparseFeatureColumn(
               array_ops.reshape(
                   array_ops.split(1, 2, id_tensor.indices)[0], [-1]),
               array_ops.reshape(id_tensor.values, [-1]), array_ops.reshape(
@@ -172,7 +179,8 @@ class SDCAOptimizer(object):
         options=dict(
             symmetric_l1_regularization=self._symmetric_l1_regularization,
             symmetric_l2_regularization=self._symmetric_l2_regularization,
-            num_partitions=self._num_partitions,
+            num_loss_partitions=self._num_loss_partitions,
             num_table_shards=self._num_table_shards,
             loss_type=loss_type))
-    return sdca_model.minimize(global_step=global_step)
+    train_op = sdca_model.minimize(global_step=global_step)
+    return sdca_model, train_op

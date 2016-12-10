@@ -137,7 +137,7 @@ cc_library(
     deps = [
         ":call_options",
         ":master_env",
-        ":master_session_interface",
+        ":master_session",
         ":remote_device",
         ":worker_cache",
         ":worker_interface",
@@ -156,8 +156,9 @@ cc_library(
     srcs = ["master_session.cc"],
     hdrs = ["master_session.h"],
     deps = [
+        ":call_options",
         ":master_env",
-        ":master_session_interface",
+        ":scheduler",
         ":worker_cache",
         ":worker_interface",
         "//tensorflow/core:core_cpu",
@@ -180,10 +181,14 @@ cc_library(
 )
 
 cc_library(
-    name = "master_session_interface",
-    srcs = [],
-    hdrs = ["master_session_interface.h"],
-    deps = ["//tensorflow/core:lib"],
+    name = "scheduler",
+    srcs = ["scheduler.cc"],
+    hdrs = ["scheduler.h"],
+    deps = [
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:tensorflow_opensource",
+    ],
 )
 
 cc_library(

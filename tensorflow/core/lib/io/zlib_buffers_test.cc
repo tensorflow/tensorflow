@@ -48,7 +48,7 @@ static string GetRecord() {
   return lorem_ipsum;
 }
 
-static string GenTestString(uint copies = 1) {
+static string GenTestString(int copies = 1) {
   string result = "";
   for (int i = 0; i < copies; i++) {
     result += GetRecord();
@@ -75,7 +75,7 @@ void TestAllCombinations(CompressionOptions input_options,
                              output_options);
         TF_CHECK_OK(out.Init());
 
-        TF_CHECK_OK(out.Write(StringPiece(data)));
+        TF_CHECK_OK(out.Append(StringPiece(data)));
         TF_CHECK_OK(out.Close());
         TF_CHECK_OK(file_writer->Flush());
         TF_CHECK_OK(file_writer->Close());
@@ -124,7 +124,7 @@ void TestMultipleWrites(uint8 input_buf_size, uint8 output_buf_size,
   TF_CHECK_OK(out.Init());
 
   for (int i = 0; i < num_writes; i++) {
-    TF_CHECK_OK(out.Write(StringPiece(data)));
+    TF_CHECK_OK(out.Append(StringPiece(data)));
     if (with_flush) {
       TF_CHECK_OK(out.Flush());
     }
@@ -176,7 +176,7 @@ TEST(ZlibInputStream, FailsToReadIfWindowBitsAreIncompatible) {
                        output_options);
   TF_CHECK_OK(out.Init());
 
-  TF_CHECK_OK(out.Write(StringPiece(data)));
+  TF_CHECK_OK(out.Append(StringPiece(data)));
   TF_CHECK_OK(out.Close());
   TF_CHECK_OK(file_writer->Flush());
   TF_CHECK_OK(file_writer->Close());

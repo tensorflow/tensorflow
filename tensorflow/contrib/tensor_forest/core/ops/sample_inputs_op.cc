@@ -223,7 +223,7 @@ class SampleInputs : public OpKernel {
                       "sparse_input_indices and sparse_input_values should "
                       "agree on the number of non-zero values"));
       if (have_weights) {
-        OP_REQUIRES(context, sparse_input_values.shape().dim_size(0) ==
+        OP_REQUIRES(context, sparse_input_shape.unaligned_flat<int64>()(0) ==
                                  input_weights.shape().dim_size(0),
                     errors::InvalidArgument(
                         "sparse_input_values and input_weights should agree "
@@ -299,7 +299,7 @@ class SampleInputs : public OpKernel {
     const auto node_map = node_to_accumulator.unaligned_flat<int32>();
     const auto features = split_features.tensor<int32, 2>();
     const auto thresholds = split_thresholds.tensor<float, 2>();
-    const auto weights = input_weights.tensor<float, 1>();
+    const auto weights = input_weights.unaligned_flat<float>();
 
     const int32 num_data = static_cast<int32>(leaves.shape().dim_size(0));
     const int32 num_splits = static_cast<int32>(

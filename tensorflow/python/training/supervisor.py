@@ -24,12 +24,13 @@ import time
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.summary import summary as _summary
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import saver as saver_mod
 from tensorflow.python.training import session_manager as session_manager_mod
@@ -247,7 +248,7 @@ class Supervisor(object):
         ready to run the local_init_op.
         The model is considered ready if it returns an empty array.  Defaults to
         the tensor returned from
-        `tf.report_uninitialized_variables(tf.all_variables())`. If `None`, the
+        `tf.report_uninitialized_variables(tf.global_variables())`. If `None`, the
         model is not checked for readiness before running local_init_op.
       is_chief: If True, create a chief supervisor in charge of initializing
         and restoring the model.  If False, create a supervisor that relies
@@ -268,7 +269,7 @@ class Supervisor(object):
         The directory will be created if it does not exist.
       summary_op: An `Operation` that returns a Summary for the event logs.
         Used by chief supervisors if a `logdir` was specified.  Defaults to the
-        operation returned from merge_all_summaries().  If `None`, summaries are
+        operation returned from summary.merge_all().  If `None`, summaries are
         not computed automatically.
       saver: A Saver object.  Used by chief supervisors if a `logdir` was
         specified.  Defaults to the saved returned by Saver().
@@ -276,7 +277,7 @@ class Supervisor(object):
       global_step: An integer Tensor of size 1 that counts steps.  The value
         from 'global_step' is used in summaries and checkpoint filenames.
         Default to the op named 'global_step' in the graph if it exists, is of
-        rank 1, size 1, and of type tf.int32 ot tf.int64.  If `None` the global
+        rank 1, size 1, and of type tf.int32 or tf.int64.  If `None` the global
         step is not recorded in summaries and checkpoint files.  Used by chief
         supervisors if a `logdir` was specified.
       save_summaries_secs: Number of seconds between the computation of
@@ -314,6 +315,9 @@ class Supervisor(object):
       self._init_summary_op(summary_op=summary_op)
       self._init_global_step(global_step=global_step)
     self._graph = graph
+    self._meta_graph_def = meta_graph.create_meta_graph_def(
+        graph_def=graph.as_graph_def(add_shapes=True),
+        saver_def=self._saver.saver_def if self._saver else None)
     self._is_chief = is_chief
     self._coord = coordinator.Coordinator()
     self._recovery_wait_secs = recovery_wait_secs
@@ -418,7 +422,7 @@ class Supervisor(object):
     if init_op is Supervisor.USE_DEFAULT:
       init_op = self._get_first_op_from_collection(ops.GraphKeys.INIT_OP)
       if init_op is None:
-        init_op = variables.initialize_all_variables()
+        init_op = variables.global_variables_initializer()
         ops.add_to_collection(ops.GraphKeys.INIT_OP, init_op)
     self._init_op = init_op
     self._init_feed_dict = init_feed_dict
@@ -436,7 +440,7 @@ class Supervisor(object):
       local_init_op = self._get_first_op_from_collection(
           ops.GraphKeys.LOCAL_INIT_OP)
       if local_init_op is None:
-        op_list = [variables.initialize_local_variables(),
+        op_list = [variables.local_variables_initializer(),
                    data_flow_ops.initialize_all_tables()]
         if op_list:
           local_init_op = control_flow_ops.group(*op_list)
@@ -452,7 +456,7 @@ class Supervisor(object):
     """
     if saver is Supervisor.USE_DEFAULT:
       saver = self._get_first_op_from_collection(ops.GraphKeys.SAVERS)
-      if saver is None and variables.all_variables():
+      if saver is None and variables.global_variables():
         saver = saver_mod.Saver()
         ops.add_to_collection(ops.GraphKeys.SAVERS, saver)
     self._saver = saver
@@ -467,7 +471,7 @@ class Supervisor(object):
     if summary_op is Supervisor.USE_DEFAULT:
       summary_op = self._get_first_op_from_collection(ops.GraphKeys.SUMMARY_OP)
       if summary_op is None:
-        summary_op = logging_ops.merge_all_summaries()
+        summary_op = _summary.merge_all()
         if summary_op is not None:
           ops.add_to_collection(ops.GraphKeys.SUMMARY_OP, summary_op)
     self._summary_op = summary_op
@@ -620,6 +624,7 @@ class Supervisor(object):
                                 self._logdir, "graph.pbtxt")
     if self._summary_writer and not self._graph_added_to_summary:
       self._summary_writer.add_graph(self._graph)
+      self._summary_writer.add_meta_graph(self._meta_graph_def)
       self._graph_added_to_summary = True
 
   def start_standard_services(self, sess):
@@ -885,7 +890,7 @@ class Supervisor(object):
     # In that case all Variables must have their device set.
     if not self._is_chief:
       for op in self._graph.get_operations():
-        if op.type == "Variable" and not op.device:
+        if op.type in ["Variable", "VariableV2"] and not op.device:
           raise ValueError("When using replicas, all Variables must have "
                            "their device set: %s" % op)
 

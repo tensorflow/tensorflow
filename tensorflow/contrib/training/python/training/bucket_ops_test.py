@@ -264,16 +264,16 @@ class BucketBySequenceLengthTest(tf.test.TestCase):
     # The input reader will get input_length from the first tuple
     # entry.
     data_len = 4
-    target_len = 3
+    labels_len = 3
     input_pairs = [
         (length,
          ([np.int64(length)] * data_len,
-          [str(length).encode("ascii")] * target_len))
+          [str(length).encode("ascii")] * labels_len))
         for length in (1, 3, 4, 5, 6, 10)]
 
     lengths = tf.placeholder(tf.int32, ())
     data = tf.placeholder(tf.int64, (data_len,))
-    targets = tf.placeholder(tf.string, (target_len,))
+    labels = tf.placeholder(tf.string, (labels_len,))
 
     batch_size = 8
     bucket_boundaries = [3, 4, 5, 10]
@@ -282,15 +282,15 @@ class BucketBySequenceLengthTest(tf.test.TestCase):
     # main thread without blocking
     input_queue = tf.FIFOQueue(
         5000, (tf.int32, tf.int64, tf.string),
-        ((), (data_len,), (target_len,)))
-    input_enqueue_op = input_queue.enqueue((lengths, data, targets))
-    lengths_t, data_t, targets_t = input_queue.dequeue()
+        ((), (data_len,), (labels_len,)))
+    input_enqueue_op = input_queue.enqueue((lengths, data, labels))
+    lengths_t, data_t, labels_t = input_queue.dequeue()
     close_input_op = input_queue.close()
 
-    (out_lengths_t, data_and_targets_t) = (
+    (out_lengths_t, data_and_labels_t) = (
         tf.contrib.training.bucket_by_sequence_length(
             input_length=lengths_t,
-            tensors=[data_t, targets_t],
+            tensors=[data_t, labels_t],
             batch_size=batch_size,
             bucket_boundaries=bucket_boundaries,
             allow_smaller_final_batch=allow_small_batch,
@@ -299,29 +299,29 @@ class BucketBySequenceLengthTest(tf.test.TestCase):
     expected_batch_size = None if allow_small_batch else batch_size
     self.assertEqual(out_lengths_t.get_shape().as_list(),
                      [expected_batch_size])
-    self.assertEqual(data_and_targets_t[0].get_shape().as_list(),
+    self.assertEqual(data_and_labels_t[0].get_shape().as_list(),
                      [expected_batch_size, data_len])
-    self.assertEqual(data_and_targets_t[1].get_shape().as_list(),
-                     [expected_batch_size, target_len])
+    self.assertEqual(data_and_labels_t[1].get_shape().as_list(),
+                     [expected_batch_size, labels_len])
 
     def _read_test(sess):
       for _ in range(50):
-        (out_lengths, (data, targets)) = sess.run(
-            (out_lengths_t, data_and_targets_t))
+        (out_lengths, (data, labels)) = sess.run(
+            (out_lengths_t, data_and_labels_t))
         if allow_small_batch:
           self.assertEqual(data_len, data.shape[1])
-          self.assertEqual(target_len, targets.shape[1])
+          self.assertEqual(labels_len, labels.shape[1])
           self.assertGreaterEqual(batch_size, out_lengths.shape[0])
           self.assertGreaterEqual(batch_size, data.shape[0])
-          self.assertGreaterEqual(batch_size, targets.shape[0])
+          self.assertGreaterEqual(batch_size, labels.shape[0])
         else:
           self.assertEqual((batch_size, data_len), data.shape)
-          self.assertEqual((batch_size, target_len), targets.shape)
+          self.assertEqual((batch_size, labels_len), labels.shape)
           self.assertEqual((batch_size,), out_lengths.shape)
-        for (lr, dr, tr) in zip(out_lengths, data, targets):
-          # Make sure length matches data (here it's the same value)
+        for (lr, dr, tr) in zip(out_lengths, data, labels):
+          # Make sure length matches data (here it's the same value).
           self.assertEqual(dr[0], lr)
-          # Make sure data & targets match
+          # Make sure data & labels match.
           self.assertEqual(dr[0], int(tr[0].decode("ascii")))
           # Make sure for each row, data came from the same bucket.
           self.assertEqual(_which_bucket(bucket_boundaries, dr[0]),
@@ -335,7 +335,7 @@ class BucketBySequenceLengthTest(tf.test.TestCase):
         which = random.randint(0, len(input_pairs) - 1)
         length, pair = input_pairs[which]
         sess.run(input_enqueue_op, feed_dict={
-            lengths: length, data: pair[0], targets: pair[1]})
+            lengths: length, data: pair[0], labels: pair[1]})
       sess.run(close_input_op)
 
       # Start the queue runners

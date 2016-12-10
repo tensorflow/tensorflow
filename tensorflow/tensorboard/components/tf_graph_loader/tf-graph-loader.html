@@ -1,0 +1,183 @@
+<!--
+@license
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<link rel="import" href="../polymer/polymer.html">
+
+<!--
+An element which provides a filter parsing for pbtxt to graph output.
+-->
+<dom-module id="tf-graph-loader">
+</dom-module>
+
+<script>
+Polymer({
+
+  is: 'tf-graph-loader',
+
+  properties: {
+    /**
+     * @type {value: number, msg: string}
+     *
+     * A number between 0 and 100 denoting the % of progress
+     * for the progress bar and the displayed message.
+     */
+    progress: {
+      type: Object,
+      notify: true,
+    },
+    datasets: Array,
+    selectedDataset: Number,
+    selectedFile: {
+      type: Object,
+      observer: '_selectedFileChanged'
+    },
+    outGraphHierarchy: {
+      type: Object,
+      readOnly: true, //readonly so outsider can't change this via binding
+      notify: true
+    },
+    outGraph: {
+      type: Object,
+      readOnly: true, //readonly so outsider can't change this via binding
+      notify: true
+    },
+    outHierarchyParams: {
+      type: Object,
+      readOnly: true,
+      notify: true
+    },
+    outStats: {
+      type: Object,
+      readOnly: true, // This property produces data.
+      notify: true
+    }
+  },
+  observers: [
+    '_selectedDatasetChanged(selectedDataset, datasets)',
+    '_readAndParseMetadata(selectedMetadataTag)'
+  ],
+  _readAndParseMetadata: function(metadataIndex) {
+    if (metadataIndex == -1 || this.datasets[this.selectedDataset] == null ||
+        this.datasets[this.selectedDataset].runMetadata == null ||
+        this.datasets[this.selectedDataset].runMetadata[metadataIndex] == null) {
+      this._setOutStats(null);
+      return;
+    }
+    var path = this.datasets[this.selectedDataset].runMetadata[metadataIndex].path;
+    // Reset the progress bar to 0.
+    this.set('progress', {
+      value: 0,
+      msg: ''
+    });
+    var tracker = tf.graph.util.getTracker(this);
+    tf.graph.parser.fetchAndParseMetadata(path, tracker)
+    .then(function(stats) {
+      this._setOutStats(stats);
+    }.bind(this));
+  },
+  _parseAndConstructHierarchicalGraph: function(path, pbTxtFile) {
+    // Reset the progress bar to 0.
+    this.set('progress', {
+      value: 0,
+      msg: ''
+    });
+    var tracker = tf.graph.util.getTracker(this);
+    var hierarchyParams = {
+      verifyTemplate: true,
+      // If a set of numbered op nodes has at least this number of nodes
+      // then group them into a series node.
+      seriesNodeMinSize: 5,
+      // A map of series node names to series grouping settings, to indicate
+      // if a series is to be rendered as grouped or ungrouped.
+      // Starts out empty which allows the renderer to decide which series
+      // are initially rendered grouped and which aren't.
+      seriesMap: {},
+    };
+    this._setOutHierarchyParams(hierarchyParams);
+    var dataTracker = tf.graph.util.getSubtaskTracker(tracker, 30, 'Data');
+    tf.graph.parser.fetchAndParseGraphData(path, pbTxtFile, dataTracker)
+    .then(function(graph) {
+      if (!graph) {
+        throw 'The graph is empty. Make sure that the graph is passed to the ' +
+            'SummaryWriter after the graph is defined.';
+      }
+
+      // Build the flat graph (consists only of Op nodes).
+
+      // This is the whitelist of inputs on op types that are considered
+      // reference edges. "Assign 0" indicates that the first input to
+      // an OpNode with operation type "Assign" is a reference edge.
+      var refEdges = {};
+      refEdges["Assign 0"] = true;
+      refEdges["AssignAdd 0"] = true;
+      refEdges["AssignSub 0"] = true;
+      refEdges["assign 0"] = true;
+      refEdges["assign_add 0"] = true;
+      refEdges["assign_sub 0"] = true;
+      refEdges["count_up_to 0"] = true;
+      refEdges["ScatterAdd 0"] = true;
+      refEdges["ScatterSub 0"] = true;
+      refEdges["ScatterUpdate 0"] = true;
+      refEdges["scatter_add 0"] = true;
+      refEdges["scatter_sub 0"] = true;
+      refEdges["scatter_update 0"] = true;
+      var buildParams = {
+        enableEmbedding: true,
+        inEmbeddingTypes: ['Const'],
+        outEmbeddingTypes: ['^[a-zA-Z]+Summary$'],
+        refEdges: refEdges
+      };
+      var graphTracker = tf.graph.util.getSubtaskTracker(tracker, 20, 'Graph');
+      return tf.graph.build(graph, buildParams, graphTracker);
+    })
+    .then(function(graph) {
+      this._setOutGraph(graph);
+      var hierarchyTracker = tf.graph.util.getSubtaskTracker(tracker, 50,
+          'Namespace hierarchy');
+      return tf.graph.hierarchy.build(graph, hierarchyParams, hierarchyTracker);
+    }.bind(this))
+    .then(function(graphHierarchy) {
+      // Update the properties which notify the parent with the
+      // graph hierarchy and whether the data has live stats or not.
+      this._setOutGraphHierarchy(graphHierarchy);
+    }.bind(this))
+    .catch(function(e) {
+      // Generic error catch, for errors that happened outside
+      // asynchronous tasks.
+      tracker.reportError("Graph visualization failed: " + e, e);
+    });
+  },
+  _selectedDatasetChanged: function(datasetIndex, datasets) {
+    this._parseAndConstructHierarchicalGraph(datasets[datasetIndex].path);
+  },
+  _selectedFileChanged: function(e) {
+    if (!e) {
+      return;
+    }
+    var file = e.target.files[0];
+    if (!file) {
+      return;
+    }
+
+    // Clear out the value of the file chooser. This ensures that if the user
+    // selects the same file, we'll re-read it.
+    e.target.value = '';
+
+    this._parseAndConstructHierarchicalGraph(null, file);
+  }
+});
+</script>

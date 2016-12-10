@@ -338,13 +338,19 @@ std::string StatSummarizer::GetStatsByOrderOfNodeDefinitions(
   return stream.str();
 }
 
+std::string StatSummarizer::GetOutputString() const {
+  std::stringstream stream;
+  stream << "Total time (us): " << run_total_micros_ << std::endl;
+  stream << GetTimingStatsByRunOrder();
+  stream << GetTimingStatsByTopDurations();
+  stream << "Total Memory (bytes): " << memory_ << std::endl;
+  stream << GetMemoryStatsByRunOrder();
+  stream << GetMemoryStatsByUsage();
+  return stream.str();
+}
+
 void StatSummarizer::PrintStepStats() const {
-  LOG(INFO) << "Total time (us): " << run_total_micros_;
-  LOG(INFO) << GetTimingStatsByRunOrder();
-  LOG(INFO) << GetTimingStatsByTopDurations();
-  LOG(INFO) << "Total Memory (bytes): " << memory_;
-  LOG(INFO) << GetMemoryStatsByRunOrder();
-  LOG(INFO) << GetMemoryStatsByUsage();
+  LOG(INFO) << GetOutputString();
   LOG(INFO);
 }
 

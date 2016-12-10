@@ -19,8 +19,8 @@ limitations under the License.
 // TensorFlow uses semantic versioning, see http://semver.org/.
 
 #define TF_MAJOR_VERSION 0
-#define TF_MINOR_VERSION 10
-#define TF_PATCH_VERSION 0rc0
+#define TF_MINOR_VERSION 12
+#define TF_PATCH_VERSION head
 
 // TF_VERSION_SUFFIX is non-empty for pre-releases (e.g. "-alpha", "-alpha.1",
 // "-beta", "-rc", "-rc.1")
@@ -66,11 +66,17 @@ limitations under the License.
 // 10. Deprecate conv3d_backprop_{filter,input} (10jun2016).
 // 11. Deprecate {batch}_self_adjoint_eig (3aug2016).
 // 12. Graph consumers understand the node_def field of FunctionDef (22aug2016).
-// 13. Deprecate multiple batch linear algebra ops (see cl/132498310)
-// (9sep2016).
+// 13. Deprecate multiple batch linear algebra ops (9sep2016).
+// 14. Deprecate batch_matrix_* ops. (10sep2016).
+// 15. Deprecate batch_fft_* ops. (14sep2016).
+// 16. Deprecate tensor_array (v1) ops in favor of v2 (10nov2016).
+// 17. Deprecate inv (11nov2016).
+// 17. Expose reverse_v2 (10nov2016)
+// 18. Add VariableV2 (30nov2016)
+
 #define TF_GRAPH_DEF_VERSION_MIN_PRODUCER 0
 #define TF_GRAPH_DEF_VERSION_MIN_CONSUMER 0
-#define TF_GRAPH_DEF_VERSION 13
+#define TF_GRAPH_DEF_VERSION 19
 
 // Checkpoint compatibility versions (the versions field in SavedSliceMeta).
 //

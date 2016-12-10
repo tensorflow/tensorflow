@@ -293,6 +293,36 @@ TEST(BufferedInputStream, SkipNBytesRandomAccessFile) {
   }
 }
 
+TEST(BufferedInputStream, Seek) {
+  Env* env = Env::Default();
+  string fname = testing::TmpDir() + "/buffered_inputstream_test";
+  WriteStringToFile(env, fname, "0123456789");
+  std::unique_ptr<RandomAccessFile> file;
+  TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
+
+  for (auto buf_size : BufferSizes()) {
+    std::unique_ptr<RandomAccessInputStream> input_stream(
+        new RandomAccessInputStream(file.get()));
+    string read;
+    BufferedInputStream in(input_stream.get(), buf_size);
+
+    // Seek forward
+    TF_ASSERT_OK(in.Seek(3));
+    EXPECT_EQ(3, in.Tell());
+
+    // Read 4 bytes
+    TF_ASSERT_OK(in.ReadNBytes(4, &read));
+    EXPECT_EQ(read, "3456");
+    EXPECT_EQ(7, in.Tell());
+
+    // Seek backwards
+    TF_ASSERT_OK(in.Seek(1));
+    TF_ASSERT_OK(in.ReadNBytes(4, &read));
+    EXPECT_EQ(read, "1234");
+    EXPECT_EQ(5, in.Tell());
+  }
+}
+
 }  // anonymous namespace
 }  // namespace io
 }  // namespace tensorflow

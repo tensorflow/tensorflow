@@ -33,7 +33,7 @@ class ResizeNearestNeighborOpTest(tf.test.TestCase):
     for nptype in self.TYPES:
       x = np.arange(0, 4).reshape(in_shape).astype(nptype)
 
-      with self.test_session() as sess:
+      with self.test_session(use_gpu=True) as sess:
         input_tensor = tf.constant(x, shape=in_shape)
         resize_out = tf.image.resize_nearest_neighbor(input_tensor,
                                                     out_shape[1:3])
@@ -49,7 +49,7 @@ class ResizeNearestNeighborOpTest(tf.test.TestCase):
     for nptype in self.TYPES:
       x = np.arange(0, 6).reshape(in_shape).astype(nptype)
 
-      with self.test_session():
+      with self.test_session(use_gpu=True):
         input_tensor = tf.constant(x, shape=in_shape)
         resize_out = tf.image.resize_nearest_neighbor(input_tensor,
                                                     out_shape[1:3])
@@ -67,7 +67,7 @@ class ResizeNearestNeighborOpTest(tf.test.TestCase):
     for nptype in self.TYPES:
       x = np.arange(0, 24).reshape(in_shape).astype(nptype)
 
-      with self.test_session():
+      with self.test_session(use_gpu=True):
         input_tensor = tf.constant(x, shape=in_shape)
         resize_out = tf.image.resize_nearest_neighbor(input_tensor,
                                                     out_shape[1:3])
@@ -214,7 +214,7 @@ class CropAndResizeOpTest(tf.test.TestCase):
     boxes = np.array([[0, 0, 1, 1], [.1, .2, .7, .8]], dtype=np.float32)
     box_ind = np.array([0, 1], dtype=np.int32)
 
-    with self.test_session() as sess:
+    with self.test_session(use_gpu=True) as sess:
       crops = tf.image.crop_and_resize(
           tf.constant(image, shape=image_shape),
           tf.constant(boxes, shape=[num_boxes, 4]),
@@ -299,7 +299,7 @@ class CropAndResizeOpTest(tf.test.TestCase):
               boxes = np.array(boxes, dtype=np.float32)
               box_ind = np.arange(batch, dtype=np.int32)
 
-              with self.test_session():
+              with self.test_session(use_gpu=True):
                 image_tensor = tf.constant(image, shape=image_shape)
                 boxes_tensor = tf.constant(boxes, shape=[num_boxes, 4])
                 box_ind_tensor = tf.constant(box_ind, shape=[num_boxes])

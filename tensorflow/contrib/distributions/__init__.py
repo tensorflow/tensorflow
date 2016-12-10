@@ -19,36 +19,46 @@
 Classes that represent batches of statistical distributions.  Each class is
 initialized with parameters that define the distributions.
 
-### Base classes
+## Base classes
 
 @@Distribution
 
-### Univariate (scalar) distributions
+## Univariate (scalar) distributions
 
 @@Binomial
 @@Bernoulli
+@@BernoulliWithSigmoidP
 @@Beta
+@@BetaWithSoftplusAB
 @@Categorical
 @@Chi2
+@@Chi2WithAbsDf
 @@Exponential
+@@ExponentialWithSoftplusLam
 @@Gamma
+@@GammaWithSoftplusAlphaBeta
 @@InverseGamma
+@@InverseGammaWithSoftplusAlphaBeta
 @@Laplace
+@@LaplaceWithSoftplusScale
 @@Normal
+@@NormalWithSoftplusSigma
 @@Poisson
 @@StudentT
+@@StudentTWithAbsDfSoftplusSigma
 @@Uniform
 
-### Multivariate distributions
+## Multivariate distributions
 
-#### Multivariate normal
+### Multivariate normal
 
 @@MultivariateNormalDiag
 @@MultivariateNormalFull
 @@MultivariateNormalCholesky
-@@batch_matrix_diag_transform
+@@MultivariateNormalDiagPlusVDVT
+@@MultivariateNormalDiagWithSoftplusStDev
 
-#### Other multivariate distributions
+### Other multivariate distributions
 
 @@Dirichlet
 @@DirichletMultinomial
@@ -56,11 +66,16 @@ initialized with parameters that define the distributions.
 @@WishartCholesky
 @@WishartFull
 
-### Transformed distributions
+### Multivariate Utilities
+
+@@matrix_diag_transform
+
+## Transformed distributions
 
 @@TransformedDistribution
+@@QuantizedDistribution
 
-### Mixture Models
+## Mixture Models
 
 @@Mixture
 
@@ -69,12 +84,12 @@ initialized with parameters that define the distributions.
 Functions that transform conjugate prior/likelihood pairs to distributions
 representing the posterior or posterior predictive.
 
-### Normal likelihood with conjugate prior.
+## Normal likelihood with conjugate prior.
 
 @@normal_conjugates_known_sigma_posterior
-@@normal_congugates_known_sigma_predictive
+@@normal_conjugates_known_sigma_predictive
 
-## Kullback Leibler Divergence
+## Kullback-Leibler Divergence
 
 @@kl
 @@RegisterKL
@@ -85,6 +100,7 @@ from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import,line-too-long,g-importing-member
 
+from tensorflow.contrib.distributions.python.ops import bijector
 from tensorflow.contrib.distributions.python.ops.bernoulli import *
 from tensorflow.contrib.distributions.python.ops.beta import *
 from tensorflow.contrib.distributions.python.ops.binomial import *
@@ -93,7 +109,7 @@ from tensorflow.contrib.distributions.python.ops.chi2 import *
 from tensorflow.contrib.distributions.python.ops.dirichlet import *
 from tensorflow.contrib.distributions.python.ops.dirichlet_multinomial import *
 from tensorflow.contrib.distributions.python.ops.distribution import *
-from tensorflow.contrib.distributions.python.ops.distribution_util import batch_matrix_diag_transform
+from tensorflow.contrib.distributions.python.ops.distribution_util import matrix_diag_transform
 from tensorflow.contrib.distributions.python.ops.exponential import *
 from tensorflow.contrib.distributions.python.ops.gamma import *
 from tensorflow.contrib.distributions.python.ops.inverse_gamma import *
@@ -105,7 +121,10 @@ from tensorflow.contrib.distributions.python.ops.mvn import *
 from tensorflow.contrib.distributions.python.ops.normal import *
 from tensorflow.contrib.distributions.python.ops.normal_conjugate_posteriors import *
 from tensorflow.contrib.distributions.python.ops.poisson import *
+from tensorflow.contrib.distributions.python.ops.quantized_distribution import *
 from tensorflow.contrib.distributions.python.ops.student_t import *
 from tensorflow.contrib.distributions.python.ops.transformed_distribution import *
 from tensorflow.contrib.distributions.python.ops.uniform import *
 from tensorflow.contrib.distributions.python.ops.wishart import *
+
+# pylint: enable=unused-import,wildcard-import,line-too-long,g-importing-member

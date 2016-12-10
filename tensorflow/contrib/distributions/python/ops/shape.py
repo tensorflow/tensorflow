@@ -309,7 +309,7 @@ class _DistributionShape(object):
         start_sum = start_sum if start_sum else (
             array_ops.zeros((), dtype=dtypes.int32, name="zero"),)
         if self._is_all_constant_helper(size, *start_sum):
-          start = sum([tensor_util.constant_value(s) for s in start_sum])
+          start = sum(tensor_util.constant_value(s) for s in start_sum)
           stop = start + tensor_util.constant_value(size)
           return ops.convert_to_tensor(
               list(range(start, stop)), dtype=dtypes.int32, name=name)
@@ -342,7 +342,7 @@ class _DistributionShape(object):
             array_ops.zeros((), dtype=dtypes.int32, name="zero"),)
         if (x.get_shape().ndims is not None and
             self._is_all_constant_helper(size, *start_sum)):
-          start = sum([tensor_util.constant_value(s) for s in start_sum])
+          start = sum(tensor_util.constant_value(s) for s in start_sum)
           stop = start + tensor_util.constant_value(size)
           slice_ = x.get_shape()[start:stop].as_list()
           if all(s is not None for s in slice_):
@@ -357,17 +357,22 @@ class _DistributionShape(object):
               slice_shape((sample_ndims, self.batch_ndims), self.event_ndims,
                           name="event_shape"))
 
+  # TODO(jvdillon): Make remove expand_batch_dim and make expand_batch_dim=False
+  # the default behavior.
   def make_batch_of_event_sample_matrices(
-      self, x, name="make_batch_of_event_sample_matrices"):
+      self, x, expand_batch_dim=True,
+      name="make_batch_of_event_sample_matrices"):
     """Reshapes/transposes `Distribution` `Tensor` from S+B+E to B_+E_+S_.
 
     Where:
-      - `B_ = B if B else [1]`,
+      - `B_ = B if B or not expand_batch_dim  else [1]`,
       - `E_ = E if E else [1]`,
       - `S_ = [tf.reduce_prod(S)]`.
 
     Args:
       x: `Tensor`.
+      expand_batch_dim: Python `Boolean` scalar. If `True` the batch dims will
+        be expanded such that batch_ndims>=1.
       name: `String`. The name to give this op.
 
     Returns:
@@ -378,20 +383,24 @@ class _DistributionShape(object):
       x = ops.convert_to_tensor(x, name="x")
       sample_shape, batch_shape, event_shape = self.get_shape(x)
       event_shape = distribution_util.pick_vector(
-          self._event_ndims_is_0, (1,), event_shape)
-      batch_shape = distribution_util.pick_vector(
-          self._batch_ndims_is_0, (1,), batch_shape)
-      new_shape = array_ops.concat(0, ((-1,), batch_shape, event_shape))
+          self._event_ndims_is_0, [1], event_shape)
+      if expand_batch_dim:
+        batch_shape = distribution_util.pick_vector(
+            self._batch_ndims_is_0, [1], batch_shape)
+      new_shape = array_ops.concat_v2([[-1], batch_shape, event_shape], 0)
       x = array_ops.reshape(x, shape=new_shape)
       x = distribution_util.rotate_transpose(x, shift=-1)
       return x, sample_shape
 
+  # TODO(jvdillon): Make remove expand_batch_dim and make expand_batch_dim=False
+  # the default behavior.
   def undo_make_batch_of_event_sample_matrices(
-      self, x, sample_shape, name="undo_make_batch_of_event_sample_matrices"):
+      self, x, sample_shape, expand_batch_dim=True,
+      name="undo_make_batch_of_event_sample_matrices"):
     """Reshapes/transposes `Distribution` `Tensor` from B_+E_+S_ to S+B+E.
 
     Where:
-      - `B_ = B if B else [1]`,
+      - `B_ = B if B or not expand_batch_dim  else [1]`,
       - `E_ = E if E else [1]`,
       - `S_ = [tf.reduce_prod(S)]`.
 
@@ -400,6 +409,8 @@ class _DistributionShape(object):
     Args:
       x: `Tensor` of shape `B_+E_+S_`.
       sample_shape: `Tensor` (1D, `int32`).
+      expand_batch_dim: Python `Boolean` scalar. If `True` the batch dims will
+        be expanded such that batch_ndims>=1.
       name: `String`. The name to give this op.
 
     Returns:
@@ -411,21 +422,23 @@ class _DistributionShape(object):
       x = distribution_util.rotate_transpose(x, shift=1)
       if self._is_all_constant_helper(self.batch_ndims, self.event_ndims):
         if self._batch_ndims_is_0 or self._event_ndims_is_0:
-          b = ((min(-2, -1 - self._event_ndims_static),)
-               if self._batch_ndims_is_0 else ())
-          e = (-1,) if self._event_ndims_is_0 else ()
+          b = ([min(-2, -1 - self._event_ndims_static)]
+               if self._batch_ndims_is_0 and expand_batch_dim else [])
+          e = [-1] if self._event_ndims_is_0 else []
           x = array_ops.squeeze(x, squeeze_dims=b + e)
         _, batch_shape, event_shape = self.get_shape(x)
       else:
         s = (x.get_shape().as_list() if x.get_shape().is_fully_defined()
              else array_ops.shape(x))
-        batch_shape = array_ops.slice(s, (1,), (self.batch_ndims,))
+        batch_shape = s[1:1+self.batch_ndims]
         # Since sample_dims=1 and is left-most, we add 1 to the number of
         # batch_ndims to get the event start dim.
-        event_start = math_ops.select(
-            self._batch_ndims_is_0, 2, 1 + self.batch_ndims)
-        event_shape = array_ops.slice(s, (event_start,), (self.event_ndims,))
-      new_shape = array_ops.concat(0, (sample_shape, batch_shape, event_shape))
+        event_start = array_ops.where(
+            math_ops.logical_and(expand_batch_dim, self._batch_ndims_is_0),
+            2, 1 + self.batch_ndims)
+        event_shape = s[event_start:event_start+self.event_ndims]
+      new_shape = array_ops.concat_v2(
+          (sample_shape, batch_shape, event_shape), 0)
       x = array_ops.reshape(x, shape=new_shape)
       return x
 

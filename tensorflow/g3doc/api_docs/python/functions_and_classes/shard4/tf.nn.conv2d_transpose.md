@@ -1,4 +1,4 @@
-### `tf.nn.conv2d_transpose(value, filter, output_shape, strides, padding='SAME', name=None)` {#conv2d_transpose}
+### `tf.nn.conv2d_transpose(value, filter, output_shape, strides, padding='SAME', data_format='NHWC', name=None)` {#conv2d_transpose}
 
 The transpose of `conv2d`.
 
@@ -11,9 +11,10 @@ deconvolution.
 
 
 *  <b>`value`</b>: A 4-D `Tensor` of type `float` and shape
-    `[batch, in_height, in_width, in_channels]`.
+    `[batch, height, width, in_channels]` for `NHWC` data format or
+    `[batch, in_channels, height, width]` for `NCHW` data format.
 *  <b>`filter`</b>: A 4-D `Tensor` with the same type as `value` and shape
-    `[filter_height, filter_width, output_channels, in_channels]`.  `filter`'s
+    `[height, width, output_channels, in_channels]`.  `filter`'s
     `in_channels` dimension must match that of `value`.
 *  <b>`output_shape`</b>: A 1-D `Tensor` representing the output shape of the
     deconvolution op.
@@ -21,6 +22,7 @@ deconvolution.
     dimension of the input tensor.
 *  <b>`padding`</b>: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
     See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
+*  <b>`data_format`</b>: A string. 'NHWC' and 'NCHW' are supported.
 *  <b>`name`</b>: Optional name for the returned tensor.
 
 ##### Returns:

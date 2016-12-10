@@ -111,5 +111,161 @@ class LBetaTestGpu(LBetaTest):
   _use_gpu = True
 
 
+class EinsumTest(tf.test.TestCase):
+
+  simple_cases = [
+    'ij,jk->ik',
+    'ijk,jklm->il',
+    'ij,jk,kl->il',
+    'ijk->i',
+    'ijk->kji',
+    'ji,kj->ik',
+
+    'ikl,kji->kl',
+    'klj,lki->ij',
+    'ijk,ilj->kli',
+    'kij,mkb->ijmb',
+    'ijk,ijl,ikl->i',
+    'i,ijk,j->k',
+    'ij,ij,jk,kl->il',
+    'ij,kj,il,jm->ml',
+
+    'a,ab,abc->abc',
+    'a,b,ab->ab',
+    'ab,ab,c->',
+    'ab,ab,c->c',
+    'ab,ab,cd,cd->',
+    'ab,ab,cd,cd->ac',
+    'ab,ab,cd,cd->cd',
+    'ab,ab,cd,cd,ef,ef->',
+
+    'ab,cd,ef->abcdef',
+    'ab,cd,ef->acdf',
+    'ab,cd,de->abcde',
+    'ab,cd,de->be',
+    'ab,bcd,cd->abcd',
+    'ab,bcd,cd->abd',
+
+    'eb,cb,fb->cef',
+    'abcd,ad',
+    'bd,db,eac->ace',
+    'ba,ac,da->bcd',
+
+    'ab,ab',
+    'ab,ba',
+    'abc,abc',
+    'abc,bac',
+    'abc,cba',
+
+    'dba,ead,cad->bce',
+    'aef,fbc,dca->bde',
+  ]
+
+  long_cases = [
+    'bca,cdb,dbf,afc->',
+    'efc,dbc,acf,fd->abe',
+    'ea,fb,gc,hd,abcd->efgh',
+    'ea,fb,abcd,gc,hd->efgh',
+    'abhe,hidj,jgba,hiab,gab',
+  ]
+
+  invalid_cases = [
+    # bad formats
+    '',
+    'ijk ijk',
+    'ij.jk->ik',
+    'ij...,jk...->ik...',
+
+    # axis in output that does not exist
+    'ij,jk->im',
+
+    # incorrect number of dimensions
+    'ij,jkl->kl',
+
+    # this is allowed in numpy but not implemented here yet
+    'iij,jk'
+  ]
+
+  dim_mismatch_cases = [
+    ('ijk,jkl->il',
+     [(2,3,4), (3,5,6)]),
+
+  ]
+
+  def test_simple(self):
+    for case in self.simple_cases:
+      self.run_test(case)
+
+  def test_long(self):
+    for case in self.long_cases:
+      self.run_test(case)
+
+  def test_invalid(self):
+    for axes in self.invalid_cases:
+      inputs = [
+        tf.placeholder(tf.float32, shape=(3,4)),
+        tf.placeholder(tf.float32, shape=(3,4)),
+      ]
+      with self.assertRaises(ValueError):
+        _ = tf.einsum(axes, *inputs)
+
+  def test_dim_mismatch(self):
+    for axes, input_shapes in self.dim_mismatch_cases:
+      inputs = [
+        tf.placeholder(tf.float32, shape=shape)
+        for shape in input_shapes
+      ]
+      with self.assertRaises(ValueError):
+        _ = tf.einsum(axes, *inputs)
+
+  def run_test(self, axes):
+    all_axes = {ax: np.random.randint(4, 12)
+                for ax in axes if ax.isalpha()}
+
+    input_vals = []
+    input_axes, _, _ = axes.partition('->')
+
+    for idx in input_axes.split(','):
+      shape = [all_axes[ax] for ax in idx]
+      input_vals.append(np.random.random(shape))
+
+    input_tensors = [tf.constant(val) for val in input_vals]
+    output_tensor = tf.einsum(axes, *input_tensors)
+
+    with self.test_session():
+      output_value = output_tensor.eval()
+
+    correct_value = np.einsum(axes, *input_vals)
+
+    err = np.abs(correct_value - output_value).max()
+    print(axes, err)
+    assert err < 1e-8
+
+  def test_input_is_placeholder(self):
+    with tf.Graph().as_default():
+      m0 = tf.placeholder(tf.int32, shape=(1, None))
+      m1 = tf.placeholder(tf.int32, shape=(None, 1))
+      out = tf.einsum('ij,jk->ik', m0, m1)
+      with tf.Session() as sess:
+        feed_dict = {
+            m0: [[1, 2, 3]],
+            m1: [[2], [1], [1]],
+        }
+        np.testing.assert_almost_equal([[7]],
+                                       sess.run(out, feed_dict=feed_dict))
+
+    with tf.Graph().as_default():
+      m0 = tf.placeholder(tf.int32, shape=(None, 3))
+      m1 = tf.placeholder(tf.int32, shape=(3,))
+      out = tf.einsum('ij,j->i', m0, m1)
+      with tf.Session() as sess:
+        feed_dict = {
+            m0: [[1, 2, 3]],
+            m1: [2, 1, 1],
+        }
+        np.testing.assert_almost_equal([7],
+                                       sess.run(out, feed_dict=feed_dict))
+
+
 if __name__ == '__main__':
   tf.test.main()

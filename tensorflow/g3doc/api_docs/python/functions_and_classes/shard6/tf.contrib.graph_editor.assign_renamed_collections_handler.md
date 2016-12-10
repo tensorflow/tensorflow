@@ -6,6 +6,6 @@ Add the transformed elem to the (renamed) collections of elem.
 
 
 *  <b>`info`</b>: Transform._Info instance.
-*  <b>`elem`</b>: the original element (tf.Tensor or tf.Operation)
+*  <b>`elem`</b>: the original element (`tf.Tensor` or `tf.Operation`)
 *  <b>`elem_`</b>: the transformed element
 

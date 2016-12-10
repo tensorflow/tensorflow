@@ -1,4 +1,4 @@
-### `tf.contrib.util.make_tensor_proto(values, dtype=None, shape=None)` {#make_tensor_proto}
+### `tf.contrib.util.make_tensor_proto(values, dtype=None, shape=None, verify_shape=False)` {#make_tensor_proto}
 
 Create a TensorProto.
 
@@ -8,6 +8,7 @@ Create a TensorProto.
 *  <b>`values`</b>: Values to put in the TensorProto.
 *  <b>`dtype`</b>: Optional tensor_pb2 DataType value.
 *  <b>`shape`</b>: List of integers representing the dimensions of tensor.
+*  <b>`verify_shape`</b>: Boolean that enables verification of a shape of values.
 
 ##### Returns:
 
@@ -20,7 +21,8 @@ Create a TensorProto.
 
 
 *  <b>`TypeError`</b>: if unsupported types are provided.
-*  <b>`ValueError`</b>: if arguments have inappropriate values.
+*  <b>`ValueError`</b>: if arguments have inappropriate values or if verify_shape is
+   True and shape of values is not equals to a shape from the argument.
 
 make_tensor_proto accepts "values" of a python scalar, a python list, a
 numpy ndarray, or a numpy scalar.

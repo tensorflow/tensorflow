@@ -140,6 +140,31 @@ std::vector<Tensor> ConcatGrad(int dim, const Tensor& x0, const Tensor& x1,
   return out;
 }
 
+std::vector<Tensor> ConcatGradV2(int dim, const Tensor& x0, const Tensor& x1,
+                                 const Tensor& dy) {
+  auto T = DT_FLOAT;
+  auto gdef = test::function::GDef(
+      {f::NDef("x0", "Placeholder", {}, {{"dtype", T}}),
+       f::NDef("x1", "Placeholder", {}, {{"dtype", T}}),
+       f::NDef("dim", "Placeholder", {}, {{"dtype", DT_INT32}}),
+       f::NDef("dy", "Placeholder", {}, {{"dtype", T}}),
+       f::NDef("dx", "SymbolicGradient", {"x0", "x1", "dim", "dy"},
+               {{"f", FDH::FunctionRef("ConcatV2", {{"N", 2}, {"T", T}})},
+                {"Tin", DataTypeSlice{T, T, DT_INT32, T}},
+                {"Tout", DataTypeSlice{T, T, DT_INT32}}})});
+  VLOG(1) << DebugStringWhole(gdef);
+  auto sess = NewSession();
+  TF_CHECK_OK(sess->Create(gdef));
+  std::vector<Tensor> out;
+  TF_CHECK_OK(sess->Run(
+      {{"x0:0", x0}, {"x1:0", x1}, {"dim", test::AsScalar(dim)}, {"dy:0", dy}},
+      {"dx:0", "dx:1", "dx:2"}, {}, &out));
+  CHECK_EQ(out.size(), 3);
+  TF_CHECK_OK(sess->Close());
+  delete sess;
+  return out;
+}
+
 TEST_F(ArrayGradTest, ConcatGrad) {
   Tensor x0(DT_FLOAT, {2, 3, 5});
   x0.flat<float>().setZero();
@@ -156,6 +181,18 @@ TEST_F(ArrayGradTest, ConcatGrad) {
                              25., 26., 27., 28., 29., 30., 31., 32., 33., 34.},
                             {2, 3, 5}));
   test::ExpectClose(dx[2], test::AsTensor<float>({15., 16., 17., 18., 19., 35.,
+                                                  36., 37., 38., 39.},
+                                                 {2, 1, 5}));
+
+  dx = ConcatGradV2(1, x0, x1, dy);
+  test::ExpectTensorEqual<int32>(dx[dx.size() - 1], test::AsScalar(0));
+  test::ExpectClose(
+      dx[0],
+      test::AsTensor<float>({0.,  1.,  2.,  3.,  4.,  5.,  6.,  7.,  8.,  9.,
+                             10., 11., 12., 13., 14., 20., 21., 22., 23., 24.,
+                             25., 26., 27., 28., 29., 30., 31., 32., 33., 34.},
+                            {2, 3, 5}));
+  test::ExpectClose(dx[1], test::AsTensor<float>({15., 16., 17., 18., 19., 35.,
                                                   36., 37., 38., 39.},
                                                  {2, 1, 5}));
 }
@@ -389,6 +426,43 @@ TEST_F(ArrayGradTest, ReverseGrad) {
   test::ExpectClose(dx[0],
                     test::AsTensor<float>({3., 2., 1., 6., 5., 4.}, {2, 3}));
   test::ExpectTensorEqual<bool>(dx[1], test::AsTensor<bool>({false, false}));
+}
+
+std::vector<Tensor> ReverseV2Grad(const Tensor& x, const Tensor& axis,
+                                  const Tensor& dy) {
+  auto T = DT_FLOAT;
+  auto Tidx = DT_INT32;
+  auto gdef = test::function::GDef(
+      {f::NDef("x", "Placeholder", {}, {{"dtype", T}}),
+       f::NDef("axis", "Placeholder", {}, {{"dtype", DT_INT32}}),
+       f::NDef("dy", "Placeholder", {}, {{"dtype", T}}),
+       f::NDef(
+           "dx", "SymbolicGradient", {"x", "axis", "dy"},
+           {{"f", FDH::FunctionRef("ReverseV2", {{"T", T}, {"Tidx", Tidx}})},
+            {"Tin", DataTypeSlice{T, DT_INT32, T}},
+            {"Tout", DataTypeSlice{T, DT_INT32}}})});
+  VLOG(1) << DebugStringWhole(gdef);
+  auto sess = NewSession();
+  TF_CHECK_OK(sess->Create(gdef));
+  std::vector<Tensor> out;
+  TF_CHECK_OK(sess->Run({{"x:0", x}, {"axis:0", axis}, {"dy:0", dy}},
+                        {"dx:0", "dx:1"}, {}, &out));
+  CHECK_EQ(out.size(), 2);
+  TF_CHECK_OK(sess->Close());
+  delete sess;
+  return out;
+}
+
+TEST_F(ArrayGradTest, ReverseV2Grad) {
+  Tensor x(DT_FLOAT, {2, 3});
+  x.flat<float>().setZero();
+  auto axis = test::AsTensor<int32>({1});
+  Tensor dy(DT_FLOAT, {2, 3});
+  test::FillIota<float>(&dy, 1);
+  auto dx = ReverseV2Grad(x, axis, dy);
+  test::ExpectTensorEqual<float>(
+      dx[0], test::AsTensor<float>({3., 2., 1., 6., 5., 4.}, {2, 3}));
+  test::ExpectTensorEqual<int32>(dx[1], test::AsTensor<int32>({0}));
 }
 
 std::vector<Tensor> SliceGrad(const Tensor& x, const Tensor& b, const Tensor& s,

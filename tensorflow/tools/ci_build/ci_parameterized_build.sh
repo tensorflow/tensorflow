@@ -59,11 +59,11 @@
 #   TF_BUILD_BAZEL_CLEAN:
 #                      Will perform "bazel clean", if and only if this variable
 #                      is set to any non-empty and non-0 value
-#   TF_BUILD_SERIAL_TESTS:
-#                      Build parallely, but test serially
-#                      (i.e., bazel test --job=1), potentially useful for
-#                      builds where the tests cannot be run in parallel due to
-#                      resource contention (e.g., for GPU builds)
+#   TF_GPU_COUNT:
+#                      Run this many parallel tests for serial builds.
+#                      For now, only can be edited for PIP builds.
+#                      TODO(gunan): Find a way to pass this environment variable
+#                      to the script bazel runs (using --run_under).
 #   TF_BUILD_TEST_TUTORIALS:
 #                      If set to any non-empty and non-0 value, will perform
 #                      tutorials tests (Applicable only if TF_BUILD_IS_PIP is
@@ -104,7 +104,6 @@ die () {
   exit 1
 }
 
-
 ##########################################################
 # Default configuration
 CI_BUILD_DIR="tensorflow/tools/ci_build"
@@ -123,12 +122,14 @@ DO_DOCKER=1
 BAZEL_CMD="bazel test"
 BAZEL_BUILD_ONLY_CMD="bazel build"
 BAZEL_CLEAN_CMD="bazel clean"
-BAZEL_SERIAL_FLAG="--jobs=1"
 
 PIP_CMD="${CI_BUILD_DIR}/builds/pip.sh"
 PIP_TEST_TUTORIALS_FLAG="--test_tutorials"
 PIP_INTEGRATION_TESTS_FLAG="--integration_tests"
 ANDROID_CMD="${CI_BUILD_DIR}/builds/android.sh"
+
+TF_GPU_COUNT=${TF_GPU_COUNT:-8}
+PARALLEL_GPU_TEST_CMD='//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute'
 
 BENCHMARK_CMD="${CI_BUILD_DIR}/builds/benchmark.sh"
 
@@ -166,7 +167,6 @@ echo "  TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS="\
 echo "  TF_BUILD_APPEND_ARGUMENTS=${TF_BUILD_APPEND_ARGUMENTS}"
 echo "  TF_BUILD_BAZEL_TARGET=${TF_BUILD_BAZEL_TARGET}"
 echo "  TF_BUILD_BAZEL_CLEAN=${TF_BUILD_BAZEL_CLEAN}"
-echo "  TF_BUILD_SERIAL_TESTS=${TF_BUILD_SERIAL_TESTS}"
 echo "  TF_BUILD_TEST_TUTORIALS=${TF_BUILD_TEST_TUTORIALS}"
 echo "  TF_BUILD_INTEGRATION_TESTS=${TF_BUILD_INTEGRATION_TESTS}"
 echo "  TF_BUILD_RUN_BENCHMARKS=${TF_BUILD_RUN_BENCHMARKS}"
@@ -328,29 +328,17 @@ if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]] ||
   fi
 
   if [[ ${CTYPE} == "cpu" ]] || \
-     [[ ${CTYPE} == "debian.jessie.cpu" ]] || \
-     [[ ${CTYPE} == "gpu" ]]; then
-    # Run Bazel
-    NO_PIP_MAIN_CMD="${MAIN_CMD} ${BAZEL_CMD} ${OPT_FLAG} "\
-"${EXTRA_ARGS} ${BAZEL_TARGET}"
-    NO_PIP_MAIN_CMD=$(str_strip "${NO_PIP_MAIN_CMD}")
-
-    if [[ ! -z "${TF_BUILD_SERIAL_TESTS}" ]] &&
-       [[ "${TF_BUILD_SERIAL_TESTS}" != "0" ]]; then
-      # Break the operation into two steps: build and test
-      # The 1st (build) step will be done in parallel, as default
-      # But the 2nd (test) step will be done serially.
-
-      BUILD_ONLY_CMD="${BAZEL_BUILD_ONLY_CMD} ${OPT_FLAG} "\
-"${EXTRA_ARGS} ${BAZEL_TARGET}"
-      echo "Build-only command: ${BUILD_ONLY_CMD}"
-
-      NO_PIP_MAIN_CMD="${BUILD_ONLY_CMD} && "\
-"${BAZEL_CMD} ${OPT_FLAG} ${BAZEL_SERIAL_FLAG} "\
-"${EXTRA_ARGS} ${BAZEL_TARGET}"
-      echo "Parallel-build + serial-test command: ${NO_PIP_MAIN_CMD}"
-    fi
+     [[ ${CTYPE} == "debian.jessie.cpu" ]]; then
+    # CPU only command, fully parallel.
+    NO_PIP_MAIN_CMD="${MAIN_CMD} ${BAZEL_CMD} ${OPT_FLAG} ${EXTRA_ARGS} "\
+"${BAZEL_TARGET}"
+  elif [[ ${CTYPE} == "gpu" ]]; then
+    # GPU only command, run as many jobs as the GPU count only.
+    NO_PIP_MAIN_CMD="${BAZEL_CMD} ${OPT_FLAG} "\
+"--local_test_jobs=${TF_GPU_COUNT} "\
+"--run_under=${PARALLEL_GPU_TEST_CMD} ${EXTRA_ARGS} ${BAZEL_TARGET}"
   elif [[ ${CTYPE} == "android" ]]; then
+    # Run android specific script for android build.
     NO_PIP_MAIN_CMD="${ANDROID_CMD} ${OPT_FLAG} "
   fi
 

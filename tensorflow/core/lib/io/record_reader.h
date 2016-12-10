@@ -37,6 +37,9 @@ class RecordReaderOptions {
   enum CompressionType { NONE = 0, ZLIB_COMPRESSION = 1 };
   CompressionType compression_type = NONE;
 
+  static RecordReaderOptions CreateRecordReaderOptions(
+      const string& compression_type);
+
 #if !defined(IS_SLIM_BUILD)
   // Options specific to zlib compression.
   ZlibCompressionOptions zlib_options;

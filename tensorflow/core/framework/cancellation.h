@@ -18,10 +18,11 @@ limitations under the License.
 
 #include <atomic>
 #include <functional>
-#include <unordered_map>
 
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
@@ -128,8 +129,7 @@ class CancellationManager {
   mutex mu_;
   Notification cancelled_notification_;
   CancellationToken next_cancellation_token_ GUARDED_BY(mu_);
-  std::unordered_map<CancellationToken, CancelCallback> callbacks_
-      GUARDED_BY(mu_);
+  gtl::FlatMap<CancellationToken, CancelCallback> callbacks_ GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

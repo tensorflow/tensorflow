@@ -18,8 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import,wildcard-import
-from tensorflow.contrib.quantization.ops import gen_array_ops as quantized_gen_array_ops
-from tensorflow.contrib.quantization.ops.gen_array_ops import dequantize
-from tensorflow.contrib.quantization.ops.gen_array_ops import quantize_v2
-from tensorflow.contrib.quantization.ops.gen_array_ops import quantized_concat
+# pylint: disable=unused-import
+from tensorflow.python.ops import gen_array_ops as quantized_gen_array_ops
+from tensorflow.python.ops.gen_array_ops import dequantize
+from tensorflow.python.ops.gen_array_ops import quantize_v2
+from tensorflow.python.ops.gen_array_ops import quantized_concat
+# pylint: enable=unused-import

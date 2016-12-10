@@ -5,9 +5,11 @@ Computes the LSTM cell forward propagation for 1 time step.
 
 This kernel op implements the following mathematical equations:
 
-Baises are initialized with :
-`b_ru` - constant_initializer(1.0)
-`b_c` - constant_initializer(0.0)
+Biases are initialized with:
+
+* `b_ru` - constant_initializer(1.0)
+* `b_c` - constant_initializer(0.0)
+
 ```
 x_h_prev = [x, h_prev]
 
@@ -25,6 +27,13 @@ c = tanh(c_bar)
 
 h = (1-u) \circ c + u \circ h_prev
 ```
+- - -
+
+#### `tf.contrib.rnn.GRUBlockCell.__call__(x, h_prev, scope=None)` {#GRUBlockCell.__call__}
+
+GRU cell.
+
+
 - - -
 
 #### `tf.contrib.rnn.GRUBlockCell.__init__(cell_size)` {#GRUBlockCell.__init__}

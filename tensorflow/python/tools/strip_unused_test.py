@@ -41,8 +41,7 @@ class StripUnusedTest(test_util.TensorFlowTestCase):
       sess = tf.Session()
       output = sess.run(output_node)
       self.assertNear(-4.0, output, 0.00001)
-      tf.train.write_graph(sess.graph.as_graph_def(), self.get_temp_dir(),
-                           input_graph_name)
+      tf.train.write_graph(sess.graph, self.get_temp_dir(), input_graph_name)
 
     # We save out the graph to disk, and then call the const conversion
     # routine.

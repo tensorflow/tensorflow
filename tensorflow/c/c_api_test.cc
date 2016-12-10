@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 #include "tensorflow/core/framework/graph.pb_text.h"
 #include "tensorflow/core/framework/node_def.pb_text.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -44,7 +45,12 @@ TF_Tensor* TF_Tensor_EncodeStrings(const Tensor& src);
 
 namespace {
 
-TEST(CApi, Status) {
+typedef std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)>
+    unique_tensor_ptr;
+
+TEST(CAPI, Version) { EXPECT_NE("", string(TF_Version())); }
+
+TEST(CAPI, Status) {
   TF_Status* s = TF_NewStatus();
   EXPECT_EQ(TF_OK, TF_GetCode(s));
   EXPECT_EQ(string(), TF_Message(s));
@@ -59,7 +65,7 @@ static void Deallocator(void* data, size_t, void* arg) {
   *reinterpret_cast<bool*>(arg) = true;
 }
 
-TEST(CApi, Tensor) {
+TEST(CAPI, Tensor) {
   const int num_bytes = 6 * sizeof(float);
   float* values =
       reinterpret_cast<float*>(tensorflow::cpu_allocator()->AllocateRaw(
@@ -79,7 +85,7 @@ TEST(CApi, Tensor) {
   EXPECT_TRUE(deallocator_called);
 }
 
-TEST(CApi, AllocateTensor) {
+TEST(CAPI, AllocateTensor) {
   const int num_bytes = 6 * sizeof(float);
   int64_t dims[] = {2, 3};
   TF_Tensor* t = TF_AllocateTensor(TF_FLOAT, dims, 2, num_bytes);
@@ -89,6 +95,26 @@ TEST(CApi, AllocateTensor) {
   EXPECT_EQ(dims[1], TF_Dim(t, 1));
   EXPECT_EQ(num_bytes, TF_TensorByteSize(t));
   TF_DeleteTensor(t);
+}
+
+TEST(CAPI, LibraryLoadFunctions) {
+  // Load the library.
+  TF_Status* status = TF_NewStatus();
+  TF_Library* lib =
+      TF_LoadLibrary("tensorflow/c/test_op.so", status);
+  TF_Code code = TF_GetCode(status);
+  string status_msg(TF_Message(status));
+  TF_DeleteStatus(status);
+  ASSERT_EQ(TF_OK, code) << status_msg;
+
+  // Test op list.
+  TF_Buffer op_list_buf = TF_GetOpList(lib);
+  tensorflow::OpList op_list;
+  EXPECT_TRUE(op_list.ParseFromArray(op_list_buf.data, op_list_buf.length));
+  ASSERT_EQ(op_list.op_size(), 1);
+  EXPECT_EQ("TestCApi", op_list.op(0).name());
+
+  TF_DeleteLibraryHandle(lib);
 }
 
 static void TestEncodeDecode(int line, const std::vector<string>& data) {
@@ -118,7 +144,7 @@ static void TestEncodeDecode(int line, const std::vector<string>& data) {
   }
 }
 
-TEST(CApi, TensorEncodeDecodeStrings) {
+TEST(CAPI, TensorEncodeDecodeStrings) {
   TestEncodeDecode(__LINE__, {});
   TestEncodeDecode(__LINE__, {"hello"});
   TestEncodeDecode(__LINE__,
@@ -128,15 +154,15 @@ TEST(CApi, TensorEncodeDecodeStrings) {
   TestEncodeDecode(__LINE__, {"small", big, "small2"});
 }
 
-TEST(CApi, SessionOptions) {
+TEST(CAPI, SessionOptions) {
   TF_SessionOptions* opt = TF_NewSessionOptions();
   TF_DeleteSessionOptions(opt);
 }
 
-TEST(CApi, SessionWithRunMetadata) {
+TEST(CAPI, DeprecatedSession) {
   TF_Status* s = TF_NewStatus();
   TF_SessionOptions* opt = TF_NewSessionOptions();
-  TF_Session* session = TF_NewSession(opt, s);
+  TF_DeprecatedSession* session = TF_NewDeprecatedSession(opt, s);
   TF_DeleteSessionOptions(opt);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
@@ -150,7 +176,7 @@ TEST(CApi, SessionWithRunMetadata) {
   TF_DeleteBuffer(run_metadata);
   TF_DeleteBuffer(run_options);
 
-  TF_DeleteSession(session, s);
+  TF_DeleteDeprecatedSession(session, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
   TF_DeleteStatus(s);
@@ -209,7 +235,7 @@ TEST(CAPI, StatusEnum) {
   EXPECT_EQ(TF_DATA_LOSS, static_cast<TF_Code>(tensorflow::error::DATA_LOSS));
 }
 
-TEST(CApi, GetAllOpList) {
+TEST(CAPI, GetAllOpList) {
   TF_Buffer* buf = TF_GetAllOpList();
   tensorflow::OpList op_list;
   EXPECT_TRUE(op_list.ParseFromArray(buf->data, buf->length));
@@ -236,8 +262,9 @@ TF_Operation* Placeholder(TF_Graph* graph, TF_Status* s) {
 }
 
 TF_Operation* ScalarConst(int32 v, TF_Graph* graph, TF_Status* s) {
+  unique_tensor_ptr tensor(Int32Tensor(v), TF_DeleteTensor);
   TF_OperationDescription* desc = TF_NewOperation(graph, "Const", "scalar");
-  TF_SetAttrTensor(desc, "value", Int32Tensor(v), s);
+  TF_SetAttrTensor(desc, "value", tensor.get(), s);
   if (TF_GetCode(s) != TF_OK) return nullptr;
   TF_SetAttrType(desc, "dtype", TF_INT32);
   return TF_FinishOperation(desc, s);
@@ -246,14 +273,14 @@ TF_Operation* ScalarConst(int32 v, TF_Graph* graph, TF_Status* s) {
 TF_Operation* Add(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
                   TF_Status* s) {
   TF_OperationDescription* desc = TF_NewOperation(graph, "AddN", "add");
-  TF_Port add_inputs[2] = {{l, 0}, {r, 0}};
+  TF_Output add_inputs[2] = {{l, 0}, {r, 0}};
   TF_AddInputList(desc, add_inputs, 2);
   return TF_FinishOperation(desc, s);
 }
 
 TF_Operation* Neg(TF_Operation* n, TF_Graph* graph, TF_Status* s) {
   TF_OperationDescription* desc = TF_NewOperation(graph, "Neg", "neg");
-  TF_Port neg_input = {n, 0};
+  TF_Output neg_input = {n, 0};
   TF_AddInput(desc, neg_input);
   return TF_FinishOperation(desc, s);
 }
@@ -374,7 +401,7 @@ TEST(CAPI, SetShape) {
 
   TF_Operation* feed = Placeholder(graph, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-  TF_Port feed_out_0 = TF_Port{feed, 0};
+  TF_Output feed_out_0 = TF_Output{feed, 0};
   int num_dims;
 
   // Fetch the shape, it should be completely unknown.
@@ -435,7 +462,7 @@ TEST(CAPI, SetShape) {
   // Test for a scalar.
   TF_Operation* three = ScalarConst(3, graph, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-  TF_Port three_out_0 = TF_Port{three, 0};
+  TF_Output three_out_0 = TF_Output{three, 0};
 
   num_dims = TF_GraphGetTensorNumDims(graph, three_out_0, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
@@ -461,11 +488,11 @@ TEST(CAPI, Graph) {
   EXPECT_EQ(string("Placeholder"), string(TF_OperationOpType(feed)));
   EXPECT_EQ(string(""), string(TF_OperationDevice(feed)));
   EXPECT_EQ(1, TF_OperationNumOutputs(feed));
-  EXPECT_EQ(TF_INT32, TF_OperationOutputType(TF_Port{feed, 0}));
+  EXPECT_EQ(TF_INT32, TF_OperationOutputType(TF_Output{feed, 0}));
   EXPECT_EQ(1, TF_OperationOutputListLength(feed, "output", s));
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
   EXPECT_EQ(0, TF_OperationNumInputs(feed));
-  EXPECT_EQ(0, TF_OperationOutputNumConsumers(TF_Port{feed, 0}));
+  EXPECT_EQ(0, TF_OperationOutputNumConsumers(TF_Output{feed, 0}));
   EXPECT_EQ(0, TF_OperationNumControlInputs(feed));
   EXPECT_EQ(0, TF_OperationNumControlOutputs(feed));
 
@@ -494,21 +521,21 @@ TEST(CAPI, Graph) {
   EXPECT_EQ(string("AddN"), string(TF_OperationOpType(add)));
   EXPECT_EQ(string(""), string(TF_OperationDevice(add)));
   EXPECT_EQ(1, TF_OperationNumOutputs(add));
-  EXPECT_EQ(TF_INT32, TF_OperationOutputType(TF_Port{add, 0}));
+  EXPECT_EQ(TF_INT32, TF_OperationOutputType(TF_Output{add, 0}));
   EXPECT_EQ(1, TF_OperationOutputListLength(add, "sum", s));
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
   EXPECT_EQ(2, TF_OperationNumInputs(add));
   EXPECT_EQ(2, TF_OperationInputListLength(add, "inputs", s));
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-  EXPECT_EQ(TF_INT32, TF_OperationInputType(TF_Port{add, 0}));
-  EXPECT_EQ(TF_INT32, TF_OperationInputType(TF_Port{add, 1}));
-  TF_Port add_in_0 = TF_OperationInput(TF_Port{add, 0});
+  EXPECT_EQ(TF_INT32, TF_OperationInputType(TF_Input{add, 0}));
+  EXPECT_EQ(TF_INT32, TF_OperationInputType(TF_Input{add, 1}));
+  TF_Output add_in_0 = TF_OperationInput(TF_Input{add, 0});
   EXPECT_EQ(feed, add_in_0.oper);
   EXPECT_EQ(0, add_in_0.index);
-  TF_Port add_in_1 = TF_OperationInput(TF_Port{add, 1});
+  TF_Output add_in_1 = TF_OperationInput(TF_Input{add, 1});
   EXPECT_EQ(three, add_in_1.oper);
   EXPECT_EQ(0, add_in_1.index);
-  EXPECT_EQ(0, TF_OperationOutputNumConsumers(TF_Port{add, 0}));
+  EXPECT_EQ(0, TF_OperationOutputNumConsumers(TF_Output{add, 0}));
   EXPECT_EQ(0, TF_OperationNumControlInputs(add));
   EXPECT_EQ(0, TF_OperationNumControlOutputs(add));
 
@@ -518,16 +545,17 @@ TEST(CAPI, Graph) {
   EXPECT_EQ(attr_value.i(), 2);
 
   // Placeholder oper now has a consumer.
-  ASSERT_EQ(1, TF_OperationOutputNumConsumers(TF_Port{feed, 0}));
-  TF_Port feed_port;
-  EXPECT_EQ(1, TF_OperationOutputConsumers(TF_Port{feed, 0}, &feed_port, 1));
+  ASSERT_EQ(1, TF_OperationOutputNumConsumers(TF_Output{feed, 0}));
+  TF_Input feed_port;
+  EXPECT_EQ(1, TF_OperationOutputConsumers(TF_Output{feed, 0}, &feed_port, 1));
   EXPECT_EQ(add, feed_port.oper);
   EXPECT_EQ(0, feed_port.index);
 
   // The scalar const oper also has a consumer.
-  ASSERT_EQ(1, TF_OperationOutputNumConsumers(TF_Port{three, 0}));
-  TF_Port three_port;
-  EXPECT_EQ(1, TF_OperationOutputConsumers(TF_Port{three, 0}, &three_port, 1));
+  ASSERT_EQ(1, TF_OperationOutputNumConsumers(TF_Output{three, 0}));
+  TF_Input three_port;
+  EXPECT_EQ(1,
+            TF_OperationOutputConsumers(TF_Output{three, 0}, &three_port, 1));
   EXPECT_EQ(add, three_port.oper);
   EXPECT_EQ(1, three_port.index);
 
@@ -625,15 +653,56 @@ TEST(CAPI, Graph) {
   TF_DeleteStatus(s);
 }
 
-class CSessionWithGraph {
+TEST(CAPI, ImportGraphDef) {
+  TF_Status* s = TF_NewStatus();
+  TF_Graph* graph = TF_NewGraph();
+
+  // Create a graph with two nodes: x and 3
+  Placeholder(graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  ASSERT_TRUE(TF_GraphOperationByName(graph, "feed") != nullptr);
+  ScalarConst(3, graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  ASSERT_TRUE(TF_GraphOperationByName(graph, "scalar") != nullptr);
+
+  // Export to a GraphDef
+  TF_Buffer* graph_def = TF_NewBuffer();
+  TF_GraphToGraphDef(graph, graph_def, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Import it again, with a prefix, in a fresh graph.
+  TF_DeleteGraph(graph);
+  graph = TF_NewGraph();
+  TF_ImportGraphDefOptions* opts = TF_NewImportGraphDefOptions();
+  TF_ImportGraphDefOptionsSetPrefix(opts, "imported");
+  TF_GraphImportGraphDef(graph, graph_def, opts, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_DeleteImportGraphDefOptions(opts);
+  TF_DeleteBuffer(graph_def);
+
+  TF_Operation* scalar = TF_GraphOperationByName(graph, "imported/scalar");
+  TF_Operation* feed = TF_GraphOperationByName(graph, "imported/feed");
+  ASSERT_TRUE(scalar != nullptr);
+  ASSERT_TRUE(feed != nullptr);
+
+  // Can add nodes to the imported graph without trouble.
+  Add(feed, scalar, graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(s);
+}
+
+class CSession {
  public:
-  CSessionWithGraph(TF_Graph* graph, TF_Status* s) {
+  CSession(TF_Graph* graph, TF_Status* s) {
     TF_SessionOptions* opts = TF_NewSessionOptions();
-    session_ = TF_NewSessionWithGraph(graph, opts, s);
+    session_ = TF_NewSession(graph, opts, s);
     TF_DeleteSessionOptions(opts);
   }
 
-  ~CSessionWithGraph() {
+  ~CSession() {
     TF_Status* s = TF_NewStatus();
     CloseAndDelete(s);
     EXPECT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
@@ -645,7 +714,7 @@ class CSessionWithGraph {
     DeleteInputValues();
     inputs_.clear();
     for (const auto& p : inputs) {
-      inputs_.emplace_back(TF_Port{p.first, 0});
+      inputs_.emplace_back(TF_Output{p.first, 0});
       input_values_.emplace_back(p.second);
     }
   }
@@ -654,7 +723,7 @@ class CSessionWithGraph {
     ResetOutputValues();
     outputs_.clear();
     for (TF_Operation* o : outputs) {
-      outputs_.emplace_back(TF_Port{o, 0});
+      outputs_.emplace_back(TF_Output{o, 0});
     }
   }
 
@@ -673,11 +742,11 @@ class CSessionWithGraph {
     ResetOutputValues();
     output_values_.resize(outputs_.size(), nullptr);
 
-    const TF_Port* inputs_ptr = inputs_.empty() ? nullptr : &inputs_[0];
+    const TF_Output* inputs_ptr = inputs_.empty() ? nullptr : &inputs_[0];
     TF_Tensor* const* input_values_ptr =
         input_values_.empty() ? nullptr : &input_values_[0];
 
-    const TF_Port* outputs_ptr = outputs_.empty() ? nullptr : &outputs_[0];
+    const TF_Output* outputs_ptr = outputs_.empty() ? nullptr : &outputs_[0];
     TF_Tensor** output_values_ptr =
         output_values_.empty() ? nullptr : &output_values_[0];
 
@@ -688,17 +757,16 @@ class CSessionWithGraph {
                   inputs_.size(), outputs_ptr, output_values_ptr,
                   outputs_.size(), targets_ptr, targets_.size(), nullptr, s);
 
-    // TF_SessionRun() takes ownership of the tensors in input_values_.
-    input_values_.clear();
+    DeleteInputValues();
   }
 
   void CloseAndDelete(TF_Status* s) {
     DeleteInputValues();
     ResetOutputValues();
     if (session_ != nullptr) {
-      TF_CloseSessionWithGraph(session_, s);
+      TF_CloseSession(session_, s);
       EXPECT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-      TF_DeleteSessionWithGraph(session_, s);
+      TF_DeleteSession(session_, s);
       session_ = nullptr;
     }
   }
@@ -720,15 +788,15 @@ class CSessionWithGraph {
     output_values_.clear();
   }
 
-  TF_SessionWithGraph* session_;
-  std::vector<TF_Port> inputs_;
+  TF_Session* session_;
+  std::vector<TF_Output> inputs_;
   std::vector<TF_Tensor*> input_values_;
-  std::vector<TF_Port> outputs_;
+  std::vector<TF_Output> outputs_;
   std::vector<TF_Tensor*> output_values_;
   std::vector<TF_Operation*> targets_;
 };
 
-TEST(CAPI, SessionWithGraph) {
+TEST(CAPI, Session) {
   TF_Status* s = TF_NewStatus();
   TF_Graph* graph = TF_NewGraph();
 
@@ -745,7 +813,7 @@ TEST(CAPI, SessionWithGraph) {
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
   // Create a session for this graph.
-  CSessionWithGraph csession(graph, s);
+  CSession csession(graph, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
   // Run the graph.
@@ -785,6 +853,41 @@ TEST(CAPI, SessionWithGraph) {
   TF_DeleteStatus(s);
 }
 
+TEST(CAPI, ColocateWith) {
+  TF_Status* s = TF_NewStatus();
+  TF_Graph* graph = TF_NewGraph();
+
+  TF_Operation* feed = Placeholder(graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_Operation* constant = ScalarConst(10, graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_OperationDescription* desc = TF_NewOperation(graph, "AddN", "add");
+  TF_Output inputs[] = {{feed, 0}, {constant, 0}};
+  TF_AddInputList(desc, inputs, TF_ARRAYSIZE(inputs));
+  TF_ColocateWith(desc, feed);
+  TF_Operation* add = TF_FinishOperation(desc, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_AttrMetadata m =
+      TF_OperationGetAttrMetadata(add, tensorflow::kColocationAttrName, s);
+  EXPECT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  EXPECT_EQ(1, m.is_list);
+  EXPECT_EQ(1, m.list_size);
+  EXPECT_EQ(TF_ATTR_STRING, m.type);
+  void* values[1];
+  size_t lens[1];
+  std::unique_ptr<char[]> storage(new char[m.total_size]);
+  TF_OperationGetAttrStringList(add, tensorflow::kColocationAttrName, values,
+                                lens, 1, storage.get(), m.total_size, s);
+  EXPECT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  EXPECT_EQ("loc:@feed", string(static_cast<const char*>(values[0]), lens[0]));
+
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(s);
+}
+
 // Create a tensor with values of type TF_INT8 provided by `values`.
 TF_Tensor* Int8Tensor(const int64_t* dims, int num_dims, const char* values) {
   int64_t num_values = 1;
@@ -799,9 +902,9 @@ TF_Tensor* Int8Tensor(const int64_t* dims, int num_dims, const char* values) {
 
 void StringVectorToArrays(const std::vector<string>& v,
                           std::unique_ptr<const void* []>* ptrs,
-                          std::unique_ptr<int[]>* lens) {
+                          std::unique_ptr<size_t[]>* lens) {
   ptrs->reset(new const void*[v.size()]);
-  lens->reset(new int[v.size()]);
+  lens->reset(new size_t[v.size()]);
   for (size_t i = 0; i < v.size(); ++i) {
     (*ptrs)[i] = v[i].data();
     (*lens)[i] = v[i].size();
@@ -889,7 +992,7 @@ TEST_F(CApiAttributesTest, String) {
 TEST_F(CApiAttributesTest, StringList) {
   std::vector<string> list = {"bugs", "bunny", "duck"};
   std::unique_ptr<const void* []> list_ptrs;
-  std::unique_ptr<int[]> list_lens;
+  std::unique_ptr<size_t[]> list_lens;
   StringVectorToArrays(list, &list_ptrs, &list_lens);
   int list_total_size = 0;
   for (const auto& s : list) {
@@ -905,7 +1008,7 @@ TEST_F(CApiAttributesTest, StringList) {
 
   EXPECT_TF_META("v", list.size(), TF_ATTR_STRING, list_total_size);
   std::unique_ptr<void* []> values(new void*[list.size()]);
-  std::unique_ptr<int[]> lens(new int[list.size()]);
+  std::unique_ptr<size_t[]> lens(new size_t[list.size()]);
   std::unique_ptr<char[]> storage(new char[list_total_size]);
   TF_OperationGetAttrStringList(oper, "v", values.get(), lens.get(),
                                 list.size(), storage.get(), list_total_size,
@@ -1130,7 +1233,7 @@ TEST_F(CApiAttributesTest, TensorShapeProtoList) {
   proto.SerializeToString(&bytes2);
 
   std::unique_ptr<const void* []> list_ptrs;
-  std::unique_ptr<int[]> list_lens;
+  std::unique_ptr<size_t[]> list_lens;
   const std::vector<string> list = {bytes1, bytes2};
   StringVectorToArrays(list, &list_ptrs, &list_lens);
 
@@ -1162,7 +1265,8 @@ TEST_F(CApiAttributesTest, Tensor) {
   const size_t ndims = TF_ARRAYSIZE(dims);
 
   auto desc = init("tensor");
-  TF_SetAttrTensor(desc, "v", Int8Tensor(dims, ndims, tensor), s_);
+  unique_tensor_ptr v(Int8Tensor(dims, ndims, tensor), TF_DeleteTensor);
+  TF_SetAttrTensor(desc, "v", v.get(), s_);
   ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
 
   auto oper = TF_FinishOperation(desc, s_);
@@ -1197,6 +1301,9 @@ TEST_F(CApiAttributesTest, TensorList) {
       Int8Tensor(dims1, ndims1, tensor1), Int8Tensor(dims2, ndims2, tensor2),
   };
   TF_SetAttrTensorList(desc, "v", tmp, TF_ARRAYSIZE(tmp), s_);
+  for (int i = 0; i < TF_ARRAYSIZE(tmp); ++i) {
+    TF_DeleteTensor(tmp[i]);
+  }
   ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
   auto oper = TF_FinishOperation(desc, s_);
   ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
@@ -1249,6 +1356,6 @@ TEST_F(CApiAttributesTest, Errors) {
 // * TF_SetDevice(desc, "/job:worker");
 // * control inputs / outputs
 // * targets
-// * TF_DeleteGraph() before TF_DeleteSessionWithGraph()
+// * TF_DeleteGraph() before TF_DeleteSession()
 
 }  // namespace

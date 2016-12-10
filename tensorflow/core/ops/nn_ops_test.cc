@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
@@ -150,6 +151,38 @@ TEST(NNOpsTest, BatchNormWithGlobalNormalization_ShapeFn) {
            "[d0_0,d0_1,d0_2,d0_3|d1_0|d2_0|d3_0|d4_0]");
 }
 
+TEST(NNOpsTest, QuantizedBatchNormWithGlobalNormalization_ShapeFn) {
+  // These are the same tests as BatchNormWithGlobalNormalization tests, but
+  // with extra scalar inputs and outputs for the mins and maxes.
+
+  ShapeInferenceTestOp op("QuantizedBatchNormWithGlobalNormalization");
+
+  // Test rank errors.
+  INFER_ERROR("Shape must be rank 4 but is rank 3", op,
+              "[1,2,3];?;?;?;?;?;?;?;?;?;?;?;?;?;?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op,
+              "?;?;?;[1,2,3];?;?;?;?;?;?;?;?;?;?;?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op,
+              "?;?;?;?;?;?;[1,2,3];?;?;?;?;?;?;?;?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op,
+              "?;?;?;?;?;?;?;?;?;[1,2,3];?;?;?;?;?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op,
+              "?;?;?;?;?;?;?;?;?;?;?;?;[1,2,3];?;?");
+
+  // last dim of first input is merged with the single dim in other 4 inputs.
+  INFER_OK(op, "?;[];[];?;[];[];?;[];[];?;[];[];?;[];[]", "[?,?,?,?];[];[]");
+  INFER_OK(op, "?;[];[];[1];[];[];?;[];[];?;[];[];?;[];[]",
+           "[?,?,?,d3_0];[];[]");
+  INFER_OK(op, "?;[];[];?;[];[];[1];[];[];?;[];[];?;[];[]",
+           "[?,?,?,d6_0];[];[]");
+  INFER_OK(op, "?;[];[];?;[];[];?;[];[];[1];[];[];?;[];[]",
+           "[?,?,?,d9_0];[];[]");
+  INFER_OK(op, "?;[];[];?;[];[];?;[];[];?;[];[];[1];[];[]",
+           "[?,?,?,d12_0];[];[]");
+  INFER_OK(op, "[1,2,3,4];[];[];[4];[];[];[4];[];[];[4];[];[];[4];[];[]",
+           "[d0_0,d0_1,d0_2,d0_3|d3_0|d6_0|d9_0|d12_0];[];[]");
+}
+
 TEST(NNOpsTest, BatchNormWithGlobalNormalizationGrad_ShapeFn) {
   ShapeInferenceTestOp op("BatchNormWithGlobalNormalizationGrad");
 
@@ -170,6 +203,132 @@ TEST(NNOpsTest, BatchNormWithGlobalNormalizationGrad_ShapeFn) {
   INFER_OK(op, "?;?;?;[1];?", "[?,?,?,d3_0];[d3_0];[d3_0];[d3_0];[d3_0]");
   INFER_OK(op, "[1,?,3,?];[?];[?];[?];[?,2,?,4]",
            "[d0_0,d4_1,d0_2,d4_3];[d4_3];[d4_3];[d4_3];[d4_3]");
+}
+
+TEST(NNOpsTest, FusedBatchNorm_ShapeFn) {
+  ShapeInferenceTestOp op("FusedBatchNorm");
+
+  auto set_op = [&op](bool is_training, string data_format) {
+    TF_ASSERT_OK(NodeDefBuilder("test", "FusedBatchNorm")
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(DT_FLOAT))
+                     .Attr("data_format", data_format)
+                     .Attr("is_training", is_training)
+                     .Finalize(&op.node_def));
+  };
+
+  set_op(true, "NHWC");
+  // Test rank errors.
+  INFER_ERROR("Shape must be rank 4 but is rank 3", op, "[1,2,3];?;?;?;?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;[1,2,3];?;?;?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;?;[1,2,3];?;?");
+  // Channel dim of first input is merged with the single dim in other 4 inputs.
+  INFER_OK(op, "?;?;?;?;?", "[?,?,?,?];[?];[?];[?];[?]");
+  INFER_OK(op, "?;[1];?;?;?", "[?,?,?,d1_0];[d1_0];[d1_0];[d1_0];[d1_0]");
+  INFER_OK(op, "?;?;[1];?;?", "[?,?,?,d2_0];[d2_0];[d2_0];[d2_0];[d2_0]");
+  INFER_OK(op, "[1,2,3,4];[4];[4];?;?",
+           "[d0_0,d0_1,d0_2,d0_3|d1_0|d2_0];"
+           "[d0_3|d1_0|d2_0];[d0_3|d1_0|d2_0];"
+           "[d0_3|d1_0|d2_0];[d0_3|d1_0|d2_0]");
+
+  set_op(true, "NCHW");
+  // Test rank errors.
+  INFER_ERROR("Shape must be rank 4 but is rank 3", op, "[1,2,3];?;?;?;?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;[1,2,3];?;?;?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;?;[1,2,3];?;?");
+  // Channel dim of first input is merged with the single dim in other 4 inputs.
+  INFER_OK(op, "?;?;?;?;?", "[?,?,?,?];[?];[?];[?];[?]");
+  INFER_OK(op, "?;[1];?;?;?", "[?,d1_0,?,?];[d1_0];[d1_0];[d1_0];[d1_0]");
+  INFER_OK(op, "?;?;[1];?;?", "[?,d2_0,?,?];[d2_0];[d2_0];[d2_0];[d2_0]");
+  INFER_OK(op, "[1,4,2,3];[4];[4];?;?",
+           "[d0_0,d0_1|d1_0|d2_0,d0_2,d0_3];"
+           "[d0_1|d1_0|d2_0];[d0_1|d1_0|d2_0];"
+           "[d0_1|d1_0|d2_0];[d0_1|d1_0|d2_0]");
+
+  set_op(false, "NHWC");
+  // Test rank errors.
+  INFER_ERROR("Shape must be rank 4 but is rank 3", op, "[1,2,3];?;?;?;?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;[1,2,3];?;?;?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;?;[1,2,3];?;?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;?;?;[1,2,3];?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;?;?;?;[1,2,3]");
+  // Channel dim of first input is merged with the single dim in other 4 inputs.
+  INFER_OK(op, "?;?;?;?;?", "[?,?,?,?];[?];[?];[?];[?]");
+  INFER_OK(op, "?;[1];?;?;?", "[?,?,?,d1_0];[d1_0];[d1_0];[d1_0];[d1_0]");
+  INFER_OK(op, "?;?;[1];?;?", "[?,?,?,d2_0];[d2_0];[d2_0];[d2_0];[d2_0]");
+  INFER_OK(op, "?;?;?;[1];?", "[?,?,?,d3_0];[d3_0];[d3_0];[d3_0];[d3_0]");
+  INFER_OK(op, "?;?;?;?;[1]", "[?,?,?,d4_0];[d4_0];[d4_0];[d4_0];[d4_0]");
+  INFER_OK(op, "[1,2,3,4];[4];[4];[4];[4]",
+           "[d0_0,d0_1,d0_2,d0_3|d1_0|d2_0|d3_0|d4_0];"
+           "[d0_3|d1_0|d2_0|d3_0|d4_0];[d0_3|d1_0|d2_0|d3_0|d4_0];"
+           "[d0_3|d1_0|d2_0|d3_0|d4_0];[d0_3|d1_0|d2_0|d3_0|d4_0]");
+
+  set_op(false, "NCHW");
+  // Test rank errors.
+  INFER_ERROR("Shape must be rank 4 but is rank 3", op, "[1,2,3];?;?;?;?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;[1,2,3];?;?;?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;?;[1,2,3];?;?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;?;?;[1,2,3];?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;?;?;?;[1,2,3]");
+  // Channel dim of first input is merged with the single dim in other 4 inputs.
+  INFER_OK(op, "?;?;?;?;?", "[?,?,?,?];[?];[?];[?];[?]");
+  INFER_OK(op, "?;[1];?;?;?", "[?,d1_0,?,?];[d1_0];[d1_0];[d1_0];[d1_0]");
+  INFER_OK(op, "?;?;[1];?;?", "[?,d2_0,?,?];[d2_0];[d2_0];[d2_0];[d2_0]");
+  INFER_OK(op, "?;?;?;[1];?", "[?,d3_0,?,?];[d3_0];[d3_0];[d3_0];[d3_0]");
+  INFER_OK(op, "?;?;?;?;[1]", "[?,d4_0,?,?];[d4_0];[d4_0];[d4_0];[d4_0]");
+  INFER_OK(op, "[1,4,2,3];[4];[4];[4];[4]",
+           "[d0_0,d0_1|d1_0|d2_0|d3_0|d4_0,d0_2,d0_3];"
+           "[d0_1|d1_0|d2_0|d3_0|d4_0];[d0_1|d1_0|d2_0|d3_0|d4_0];"
+           "[d0_1|d1_0|d2_0|d3_0|d4_0];[d0_1|d1_0|d2_0|d3_0|d4_0]");
+}
+
+TEST(NNOpsTest, FusedBatchNormGrad_ShapeFn) {
+  ShapeInferenceTestOp op("FusedBatchNormGrad");
+  auto set_op = [&op](string data_format) {
+    TF_ASSERT_OK(NodeDefBuilder("test", "FusedBatchNormGrad")
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(DT_FLOAT))
+                     .Attr("data_format", data_format)
+                     .Finalize(&op.node_def));
+  };
+
+  set_op("NHWC");
+  // Test rank errors.
+  INFER_ERROR("Shape must be rank 4 but is rank 3", op, "[1,2,3];?;?;?;?");
+  INFER_ERROR("Shape must be rank 4 but is rank 3", op, "?;[1,2,3];?;?;?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;?;[1,2,3];?;?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;?;?;[1,2,3];?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;?;?;?;[1,2,3]");
+  // Channel dim of first input is merged with the single dim in other 4 inputs.
+  INFER_OK(op, "?;?;?;?;?", "[?,?,?,?];[?];[?];[0];[0]");
+  INFER_OK(op, "?;?;[1];?;?", "[?,?,?,d2_0];[d2_0];[d2_0];[0];[0]");
+  INFER_OK(op, "?;?;?;[1];?", "[?,?,?,d3_0];[d3_0];[d3_0];[0];[0]");
+  INFER_OK(op, "?;?;?;?;[1]", "[?,?,?,d4_0];[d4_0];[d4_0];[0];[0]");
+  INFER_OK(op, "[1,2,3,4];[1,2,3,4];[4];[4];[4]",
+           "[d0_0,d0_1,d0_2,d0_3|d2_0|d3_0|d4_0];"
+           "[d0_3|d2_0|d3_0|d4_0];[d0_3|d2_0|d3_0|d4_0];[0];[0]");
+
+  set_op("NCHW");
+  // Test rank errors.
+  INFER_ERROR("Shape must be rank 4 but is rank 3", op, "[1,2,3];?;?;?;?");
+  INFER_ERROR("Shape must be rank 4 but is rank 3", op, "?;[1,2,3];?;?;?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;?;[1,2,3];?;?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;?;?;[1,2,3];?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;?;?;?;[1,2,3]");
+  // Channel dim of first input is merged with the single dim in other 4 inputs.
+  INFER_OK(op, "?;?;?;?;?", "[?,?,?,?];[?];[?];[0];[0]");
+  INFER_OK(op, "?;?;[1];?;?", "[?,d2_0,?,?];[d2_0];[d2_0];[0];[0]");
+  INFER_OK(op, "?;?;?;[1];?", "[?,d3_0,?,?];[d3_0];[d3_0];[0];[0]");
+  INFER_OK(op, "?;?;?;?;[1]", "[?,d4_0,?,?];[d4_0];[d4_0];[0];[0]");
+  INFER_OK(op, "[1,4,2,3];[1,4,2,3];[4];[4];[4]",
+           "[d0_0,d0_1|d2_0|d3_0|d4_0,d0_2,d0_3];"
+           "[d0_1|d2_0|d3_0|d4_0];[d0_1|d2_0|d3_0|d4_0];[0];[0]");
 }
 
 TEST(NNOpsTest, Conv3DBackpropInput_ShapeFn) {
@@ -348,7 +507,7 @@ TEST(NNOpsTest, FractionalPool_ShapeFn) {
                        .Finalize(&op.node_def));
     };
 
-    set_op(std::vector<float>{2.0, 1, 1 / 1.5, 1 / 2.0});
+    set_op(std::vector<float>{2.0f, 1, 1 / 1.5f, 1 / 2.0f});
 
     // Rank check.
     INFER_ERROR("must be rank 4", op, "[?,?,?]");

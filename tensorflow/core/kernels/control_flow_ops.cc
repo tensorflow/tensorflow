@@ -112,6 +112,18 @@ REGISTER_GPU_HOST_REF_KERNEL(string);
 #undef REGISTER_GPU_HOST_KERNEL
 #undef REGISTER_GPU_HOST_REF_KERNEL
 
+#if TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(type)                       \
+  REGISTER_KERNEL_BUILDER(Name("Switch")                 \
+                              .Device(DEVICE_SYCL)       \
+                              .TypeConstraint<type>("T") \
+                              .HostMemory("pred"),       \
+                          SwitchOp)
+REGISTER_SYCL_KERNEL(bool);
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_SYCL_KERNEL);
+#undef REGISTER_SYCL_KERNEL
+#endif
+
 class RefSelectOp : public OpKernel {
  public:
   explicit RefSelectOp(OpKernelConstruction* context) : OpKernel(context) {
@@ -209,6 +221,18 @@ REGISTER_GPU_REF_KERNEL(bool);
 #undef REGISTER_GPU_KERNEL
 #undef REGISTER_GPU_REF_KERNEL
 
+#if TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(type)                        \
+  REGISTER_KERNEL_BUILDER(Name("Merge")                   \
+                              .Device(DEVICE_SYCL)        \
+                              .TypeConstraint<type>("T")  \
+                              .HostMemory("value_index"), \
+                          MergeOp)
+REGISTER_SYCL_KERNEL(bool);
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_SYCL_KERNEL);
+#undef REGISTER_SYCL_KERNEL
+#endif
+
 // Special GPU kernels for int32 and string.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
@@ -258,6 +282,15 @@ REGISTER_GPU_REF_KERNEL(bool);
 
 #undef REGISTER_GPU_KERNEL
 #undef REGISTER_GPU_REF_KERNEL
+
+#if TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(type)  \
+  REGISTER_KERNEL_BUILDER(          \
+      Name("Enter").Device(DEVICE_SYCL).TypeConstraint<type>("T"), EnterOp)
+REGISTER_SYCL_KERNEL(bool);
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_SYCL_KERNEL);
+#undef REGISTER_SYCL_KERNEL
+#endif
 
 // Special GPU kernels for int32 and string.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -309,6 +342,15 @@ REGISTER_GPU_KERNEL(bool);
 
 #undef REGISTER_GPU_KERNEL
 #undef REGISTER_GPU_REF_KERNEL
+
+#if TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(type)  \
+  REGISTER_KERNEL_BUILDER(          \
+  Name("Exit").Device(DEVICE_SYCL).TypeConstraint<type>("T"), ExitOp)
+REGISTER_SYCL_KERNEL(bool);
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_SYCL_KERNEL);
+#undef REGISTER_SYCL_KERNEL
+#endif
 
 // Special GPU kernels for int32 and string.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -380,6 +422,19 @@ REGISTER_GPU_HOST_KERNEL(string);
 
 #undef REGISTER_GPU_HOST_KERNEL
 
+#if TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(type)  \
+  REGISTER_KERNEL_BUILDER(Name("NextIteration")           \
+                              .Device(DEVICE_SYCL)        \
+                              .HostMemory("data")         \
+                              .HostMemory("output")       \
+                              .TypeConstraint<type>("T"), \
+                          NextIterationOp)
+  REGISTER_SYCL_KERNEL(bool);
+  TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_SYCL_KERNEL);
+#undef REGISTER_SYCL_KERNEL
+#endif
+
 // A LoopCond op has one input and one output. The input is a boolean
 // scalar representing the taken branches of the "pivot" Switch that
 // determines loop termination. As a contract, any high-level front-end
@@ -419,14 +474,22 @@ class AbortOp : public OpKernel {
  public:
   explicit AbortOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("error_msg", &error_msg_));
+    OP_REQUIRES_OK(
+        context, context->GetAttr("exit_without_error", &exit_without_error_));
   }
 
   void Compute(OpKernelContext* context) override {
-    CHECK(false) << "Abort_op intentional failure; " << error_msg_;
+    if (!exit_without_error_) {
+      CHECK(false) << "Abort_op intentional failure; " << error_msg_;
+    } else {
+      LOG(WARNING) << "Exiting the process: " << error_msg_;
+      exit(0);
+    }
   }
 
  private:
   string error_msg_;
+  bool exit_without_error_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("Abort").Device(DEVICE_CPU), AbortOp);

@@ -23,7 +23,8 @@ import tensorflow as tf
 
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_state_ops
 
 
 class TensorUtilTest(tf.test.TestCase):
@@ -376,6 +377,34 @@ class TensorUtilTest(tf.test.TestCase):
     self.assertEquals(np.object, a.dtype)
     self.assertAllEqual(np.array([[b"a", b"ab"], [b"abc", b"abcd"]]), a)
 
+  def testStringTuple(self):
+    t = tensor_util.make_tensor_proto((b"a", b"ab", b"abc", b"abcd"))
+    self.assertProtoEquals("""
+      dtype: DT_STRING
+      tensor_shape { dim { size: 4 } }
+      string_val: "a"
+      string_val: "ab"
+      string_val: "abc"
+      string_val: "abcd"
+      """, t)
+    a = tensor_util.MakeNdarray(t)
+    self.assertEquals(np.object, a.dtype)
+    self.assertAllEqual(np.array((b"a", b"ab", b"abc", b"abcd")), a)
+
+  def testStringNestedTuple(self):
+    t = tensor_util.make_tensor_proto(((b"a", b"ab"), (b"abc", b"abcd")))
+    self.assertProtoEquals("""
+      dtype: DT_STRING
+      tensor_shape { dim { size: 2 } dim { size: 2 } }
+      string_val: "a"
+      string_val: "ab"
+      string_val: "abc"
+      string_val: "abcd"
+      """, t)
+    a = tensor_util.MakeNdarray(t)
+    self.assertEquals(np.object, a.dtype)
+    self.assertAllEqual(np.array(((b"a", b"ab"), (b"abc", b"abcd"))), a)
+
   def testComplex64(self):
     t = tensor_util.make_tensor_proto((1+2j), dtype=tf.complex64)
     self.assertProtoEquals("""
@@ -485,9 +514,23 @@ class TensorUtilTest(tf.test.TestCase):
     self.assertEquals(np.complex128, a.dtype)
     self.assertAllEqual(np.array([[(1+2j), (3+4j)], [(5+6j), (7+8j)]]), a)
 
-  def testUnsupportedDType(self):
+  def testUnsupportedDTypes(self):
     with self.assertRaises(TypeError):
       tensor_util.make_tensor_proto(np.array([1]), 0)
+    with self.assertRaises(TypeError):
+      tensor_util.make_tensor_proto(3, dtype=tf.qint8)
+    with self.assertRaises(TypeError):
+      tensor_util.make_tensor_proto([3], dtype=tf.qint8)
+
+  def testTensorShapeVerification(self):
+    array = np.array([[1], [2]])
+    correct_shape = (2, 1)
+    incorrect_shape = (1, 2)
+    tensor_util.make_tensor_proto(array, shape=correct_shape,
+        verify_shape=True)
+    with self.assertRaises(TypeError):
+      tensor_util.make_tensor_proto(array, shape=incorrect_shape,
+          verify_shape=True)
 
   def testShapeTooLarge(self):
     with self.assertRaises(ValueError):
@@ -524,7 +567,8 @@ class ConstantValueTest(tf.test.TestCase):
     self.assertAllClose(np_val, tf.contrib.util.constant_value(tf_val))
 
   def testUnknown(self):
-    tf_val = state_ops.variable_op(shape=[3, 4, 7], dtype=tf.float32)
+    tf_val = gen_state_ops._variable(shape=[3, 4, 7], dtype=tf.float32,
+        name="tf_val", container="", shared_name="")
     self.assertIs(None, tf.contrib.util.constant_value(tf_val))
 
   def testShape(self):
@@ -548,7 +592,21 @@ class ConstantValueTest(tf.test.TestCase):
   def testRank(self):
     tf_val = tf.rank(tf.constant(0.0, shape=[1, 2, 3]))
     c_val = tf.contrib.util.constant_value(tf_val)
+
+    self.assertEqual(np.ndarray, type(c_val))
+    self.assertEqual((), c_val.shape)
     self.assertEqual(3, c_val)
+
+    # Repeat test using array_ops.rank_internal to avoid the optimization that
+    # happens in the rank function.
+    tf_val = array_ops.rank_internal(tf.constant(0.0, shape=[1, 2, 3]),
+                                     optimize=False)
+    c_val = tf.contrib.util.constant_value(tf_val)
+
+    self.assertEqual(np.ndarray, type(c_val))
+    self.assertEqual((), c_val.shape)
+    self.assertEqual(3, c_val)
+    self.assertEqual([3], c_val)
 
   def testCast(self):
     np_val = np.random.rand(3, 4, 7).astype(np.float32)
@@ -563,32 +621,29 @@ class ConstantValueTest(tf.test.TestCase):
 
   def testConcat(self):
     np_val = np.random.rand(3, 4, 7).astype(np.float32)
-    tf_val = tf.concat(
-        0, [np_val[0:1, :, :], np_val[1:2, :, :], np_val[2:3, :, :]])
+    tf_val = tf.concat_v2(
+        [np_val[0:1, :, :], np_val[1:2, :, :], np_val[2:3, :, :]], 0)
     c_val = tf.contrib.util.constant_value(tf_val)
     self.assertAllClose(np_val, c_val)
 
-    tf_val = tf.concat(
-        tf.placeholder(tf.int32),
-        [np_val[0, :, :], np_val[1, :, :], np_val[2, :, :]])
+    tf_val = tf.concat_v2([np_val[0, :, :], np_val[1, :, :], np_val[2, :, :]],
+                          tf.placeholder(tf.int32))
     c_val = tf.contrib.util.constant_value(tf_val)
     self.assertIs(None, c_val)
 
-    tf_val = tf.concat(
-        1,
-        [np_val[0, :, :], tf.placeholder(tf.float32),
-         np_val[2, :, :]])
+    tf_val = tf.concat_v2(
+        [np_val[0, :, :], tf.placeholder(tf.float32), np_val[2, :, :]], 1)
     c_val = tf.contrib.util.constant_value(tf_val)
     self.assertIs(None, c_val)
 
   def testPack(self):
     inputs = [np.random.rand(4, 7) for _ in range(3)]
     np_val = np.array(inputs)
-    tf_val = tf.pack(inputs)
+    tf_val = tf.stack(inputs)
     c_val = tf.contrib.util.constant_value(tf_val)
     self.assertAllClose(np_val, c_val)
 
-    tf_val = tf.pack([inputs[0], tf.placeholder(tf.float32), inputs[2]])
+    tf_val = tf.stack([inputs[0], tf.placeholder(tf.float32), inputs[2]])
     c_val = tf.contrib.util.constant_value(tf_val)
     self.assertIs(None, c_val)
 
@@ -611,17 +666,18 @@ class ConstantValueAsShapeTest(tf.test.TestCase):
     self.assertEqual(tf.TensorShape([1, 2, 3]), c_val)
 
   def testPack(self):
-    tf_val = tf.pack([tf.constant(16), 37, tf.placeholder(tf.int32)])
+    tf_val = tf.stack([tf.constant(16), 37, tf.placeholder(tf.int32)])
     c_val = tensor_util.constant_value_as_shape(tf_val)
     self.assertEqual([16, 37, None], c_val.as_list())
 
   def testConcat(self):
-    tf_val = tf.concat(0, [[16, 37], tf.placeholder(tf.int32, shape=(2,))])
+    tf_val = tf.concat_v2([[16, 37], tf.placeholder(tf.int32, shape=(2,))], 0)
     c_val = tensor_util.constant_value_as_shape(tf_val)
     self.assertEqual([16, 37, None, None], c_val.as_list())
 
-    tf_val = tf.concat(0,
-                       [[16, 37], tf.placeholder(tf.int32, shape=(1,)), [48]])
+    tf_val = tf.concat_v2(
+        [[16, 37], tf.placeholder(
+            tf.int32, shape=(1,)), [48]], 0)
     c_val = tensor_util.constant_value_as_shape(tf_val)
     self.assertEqual([16, 37, None, 48], c_val.as_list())
 

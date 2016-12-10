@@ -217,9 +217,9 @@ class _VariableStore(object):
     `uniform_unit_scaling_initializer`. If initializer is a Tensor, we use
     it as a value and derive the shape from the initializer.
 
-    If a partitioner is provided, first a sharded `Variable` is created
-    via `_get_partitioned_variable`, and the return value is a
-    `Tensor` composed of the shards concatenated along the partition axis.
+    If a partitioner is provided, a `PartitionedVariable` is returned.
+    Accessing this object as a `Tensor` returns the shards concatenated along
+    the partition axis.
 
     Some useful partitioners are available.  See, e.g.,
     `variable_axis_size_partitioner` and `min_max_variable_partitioner`.
@@ -234,13 +234,13 @@ class _VariableStore(object):
         GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
       reuse: a Boolean or `None`. Controls reuse or creation of variables.
       trainable: If `True` also add the variable to the graph collection
-        `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-      collections: List of graph collections keys to add the Variable to.
-        Defaults to `[GraphKeys.VARIABLES]` (see tf.Variable).
+        `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
+      collections: List of graph collections keys to add the `Variable` to.
+        Defaults to `[GraphKeys.GLOBAL_VARIABLES]` (see `tf.Variable`).
       caching_device: Optional device string or function describing where the
         Variable should be cached for reading.  Defaults to the Variable's
         device.  If not `None`, caches on another device.  Typical use is to
-        cache on the device where the Ops using the Variable reside, to
+        cache on the device where the Ops using the `Variable` reside, to
         deduplicate copying through `Switch` and other conditional statements.
       partitioner: Optional callable that accepts a fully defined `TensorShape`
         and dtype of the `Variable` to be created, and returns a list of
@@ -262,7 +262,8 @@ class _VariableStore(object):
         ```
 
     Returns:
-      The created or existing variable.
+      The created or existing `Variable` (or `PartitionedVariable`, if a
+      partitioner was used).
 
     Raises:
       ValueError: when creating a new variable and shape is not declared,
@@ -282,8 +283,9 @@ class _VariableStore(object):
                      initializer=None, regularizer=None, reuse=None,
                      trainable=True, collections=None, caching_device=None,
                      partitioner=None, validate_shape=True):
+      is_scalar = shape is not None and not shape
       # Partitioned variable case
-      if partitioner is not None:
+      if partitioner is not None and not is_scalar:
         if not callable(partitioner):
           raise ValueError(
               "Partitioner must be callable, but received: %s" % partitioner)
@@ -392,9 +394,9 @@ class _VariableStore(object):
         GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
       reuse: a Boolean or `None`. Controls reuse or creation of variables.
       trainable: If `True` also add the variable to the graph collection
-        `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+        `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
       collections: List of graph collections keys to add the Variable to.
-        Defaults to `[GraphKeys.VARIABLES]` (see tf.Variable).
+        Defaults to `[GraphKeys.GLOBAL_VARIABLES]` (see `tf.Variable`).
       caching_device: Optional device string or function describing where the
         Variable should be cached for reading.  Defaults to the Variable's
         device.  If not `None`, caches on another device.  Typical use is to
@@ -405,9 +407,7 @@ class _VariableStore(object):
         must be known.
 
     Returns:
-      A tuple `(shards, partitions)` where `shards` is the list of `Variable`
-      shards and `partitions` is the output of the partitioner on the input
-      shape.
+      A `PartitionedVariable` object.
 
     Raises:
       ValueError: when creating a new variable and shape is not declared,
@@ -563,11 +563,11 @@ class _VariableStore(object):
       # pylint: enable=protected-access
 
       # pylint: disable=protected-access
-    partitioned_var = variables._PartitionedVariable(name=name,
-                                                     shape=shape,
-                                                     dtype=dtype,
-                                                     variable_list=vs,
-                                                     partitions=partitions)
+    partitioned_var = variables.PartitionedVariable(name=name,
+                                                    shape=shape,
+                                                    dtype=dtype,
+                                                    variable_list=vs,
+                                                    partitions=partitions)
     # pylint: enable=protected-access
 
     self._partitioned_vars[name] = partitioned_var
@@ -667,13 +667,14 @@ class _VariableStore(object):
         variable_dtype = dtype.base_dtype
 
     # Create the variable.
-    v = variables.Variable(initial_value=init_val,
-                           name=name,
-                           trainable=trainable,
-                           collections=collections,
-                           caching_device=caching_device,
-                           dtype=variable_dtype,
-                           validate_shape=validate_shape)
+    v = variables.Variable(
+        initial_value=init_val,
+        name=name,
+        trainable=trainable,
+        collections=collections,
+        caching_device=caching_device,
+        dtype=variable_dtype,
+        validate_shape=validate_shape)
     self._vars[name] = v
     logging.vlog(1, "Created variable %s with shape %s and init %s", v.name,
                  format(shape), initializer)
@@ -963,9 +964,9 @@ def get_variable(name,
   passed in the variable scope will be used (if that is `None` too,
   then by default no regularization is performed).
 
-  If a partitioner is provided, first a sharded `Variable` is created
-  via `_get_partitioned_variable`, and the return value is a
-  `Tensor` composed of the shards concatenated along the partition axis.
+  If a partitioner is provided, a `PartitionedVariable` is returned.
+  Accessing this object as a `Tensor` returns the shards concatenated along
+  the partition axis.
 
   Some useful partitioners are available.  See, e.g.,
   `variable_axis_size_partitioner` and `min_max_variable_partitioner`.
@@ -979,9 +980,9 @@ def get_variable(name,
       applying it on a newly created variable will be added to the collection
       GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
     trainable: If `True` also add the variable to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     collections: List of graph collections keys to add the Variable to.
-      Defaults to `[GraphKeys.VARIABLES]` (see tf.Variable).
+      Defaults to `[GraphKeys.GLOBAL_VARIABLES]` (see `tf.Variable`).
     caching_device: Optional device string or function describing where the
       Variable should be cached for reading.  Defaults to the Variable's
       device.  If not `None`, caches on another device.  Typical use is to
@@ -1007,7 +1008,8 @@ def get_variable(name,
       ```
 
   Returns:
-    The created or existing variable.
+    The created or existing `Variable` (or `PartitionedVariable`, if a
+    partitioner was used).
 
   Raises:
     ValueError: when creating a new variable and shape is not declared,
@@ -1083,9 +1085,9 @@ def _get_partitioned_variable(name,
       applying it on a newly created variable will be added to the collection
       GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
     trainable: If `True` also add the variable to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     collections: List of graph collections keys to add the Variable to.
-      Defaults to `[GraphKeys.VARIABLES]` (see tf.Variable).
+      Defaults to `[GraphKeys.GLOBAL_VARIABLES]` (see `tf.Variable`).
     caching_device: Optional device string or function describing where the
       Variable should be cached for reading.  Defaults to the Variable's
       device.  If not `None`, caches on another device.  Typical use is to
@@ -1348,7 +1350,7 @@ def variable_scope(name_or_scope,
       a reuse scope, or if reuse is not `None` or `True`.
     TypeError: when the types of some arguments are not appropriate.
   """
-  if default_name is None and not name_or_scope:
+  if default_name is None and name_or_scope is None:
     raise TypeError("If default_name is None then name_or_scope is required")
   if values is None:
     values = []

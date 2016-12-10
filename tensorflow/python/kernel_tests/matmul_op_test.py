@@ -305,7 +305,7 @@ class MatMulTest(tf.test.TestCase):
     a = tf.placeholder(np.float32)
     b = tf.placeholder(np.float32)
     mm = tf.matmul(a, b)
-    self.assertEqual([None, None], mm.get_shape().as_list())
+    self.assertEqual(tf.TensorShape(None), mm.get_shape())
 
     a = tf.constant([1] * 6, shape=[2, 3])
     b = tf.constant([2] * 2, shape=[1, 2])

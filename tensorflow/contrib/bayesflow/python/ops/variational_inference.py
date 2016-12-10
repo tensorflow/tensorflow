@@ -14,9 +14,13 @@
 # ==============================================================================
 """Variational inference.
 
+## Ops
+
 @@elbo
 @@elbo_with_log_joint
 @@ELBOForms
+@@register_prior
+
 """
 
 from __future__ import absolute_import
@@ -34,27 +38,27 @@ VI_PRIORS = "__vi_priors__"
 
 
 def register_prior(variational, prior):
-  """Associate a variational `DistributionTensor` with a `Distribution` prior.
+  """Associate a variational `StochasticTensor` with a `Distribution` prior.
 
   This is a helper function used in conjunction with `elbo` that allows users
   to specify the mapping between variational distributions and their priors
   without having to pass in `variational_with_prior` explicitly.
 
   Args:
-    variational: `DistributionTensor` q(Z). Approximating distribution.
+    variational: `StochasticTensor` q(Z). Approximating distribution.
     prior: `Distribution` p(Z). Prior distribution.
 
   Returns:
     None
 
   Raises:
-    ValueError: if variational is not a `DistributionTensor` or `prior` is not
+    ValueError: if variational is not a `StochasticTensor` or `prior` is not
       a `Distribution`.
   """
   if not isinstance(variational, st.StochasticTensor):
-    raise TypeError("variational must be a DistributionTensor")
-  if not isinstance(prior, distributions.BaseDistribution):
-    raise TypeError("prior must be a BaseDistribution")
+    raise TypeError("variational must be a StochasticTensor")
+  if not isinstance(prior, distributions.Distribution):
+    raise TypeError("prior must be a Distribution")
   ops.add_to_collection(VI_PRIORS, (variational, prior))
 
 
@@ -95,12 +99,12 @@ def elbo(log_likelihood,
   Optimization objective for inference of hidden variables by variational
   inference.
 
-  This function is meant to be used in conjunction with `DistributionTensor`.
-  The user should build out the inference network, using `DistributionTensor`s
+  This function is meant to be used in conjunction with `StochasticTensor`.
+  The user should build out the inference network, using `StochasticTensor`s
   as latent variables, and the generative network. `elbo` at minimum needs
-  `p(x|Z)` and assumes that all `DistributionTensor`s upstream of `p(x|Z)` are
+  `p(x|Z)` and assumes that all `StochasticTensor`s upstream of `p(x|Z)` are
   the variational distributions. Use `register_prior` to register `Distribution`
-  priors for each `DistributionTensor`. Alternatively, pass in
+  priors for each `StochasticTensor`. Alternatively, pass in
   `variational_with_prior` specifying all variational distributions and their
   priors.
 
@@ -132,8 +136,8 @@ def elbo(log_likelihood,
 
   Args:
     log_likelihood: `Tensor` log p(x|Z).
-    variational_with_prior: dict from `DistributionTensor` q(Z) to
-      `Distribution` p(Z). If `None`, defaults to all `DistributionTensor`
+    variational_with_prior: dict from `StochasticTensor` q(Z) to
+      `Distribution` p(Z). If `None`, defaults to all `StochasticTensor`
       objects upstream of `log_likelihood` with priors registered with
       `register_prior`.
     keep_batch_dim: bool. Whether to keep the batch dimension when summing
@@ -148,10 +152,10 @@ def elbo(log_likelihood,
 
   Raises:
     TypeError: if variationals in `variational_with_prior` are not
-      `DistributionTensor`s or if priors are not `BaseDistribution`s.
+      `StochasticTensor`s or if priors are not `Distribution`s.
     TypeError: if form is not a valid ELBOForms constant.
     ValueError: if `variational_with_prior` is None and there are no
-      `DistributionTensor`s upstream of `log_likelihood`.
+      `StochasticTensor`s upstream of `log_likelihood`.
     ValueError: if any variational does not have a prior passed or registered.
   """
   if form is None:
@@ -178,8 +182,8 @@ def elbo_with_log_joint(log_joint,
 
   Args:
     log_joint: `Tensor` log p(x, Z).
-    variational: list of `DistributionTensor` q(Z). If `None`, defaults to all
-      `DistributionTensor` objects upstream of `log_joint`.
+    variational: list of `StochasticTensor` q(Z). If `None`, defaults to all
+      `StochasticTensor` objects upstream of `log_joint`.
     keep_batch_dim: bool. Whether to keep the batch dimension when summing
       entropy term. When the sample is per data point, this should be True;
       otherwise (e.g. in a Bayesian NN), this should be False.
@@ -191,9 +195,9 @@ def elbo_with_log_joint(log_joint,
     `Tensor` ELBO of the same type and shape as `log_joint`.
 
   Raises:
-    TypeError: if variationals in `variational` are not `DistributionTensor`s.
+    TypeError: if variationals in `variational` are not `StochasticTensor`s.
     TypeError: if form is not a valid ELBOForms constant.
-    ValueError: if `variational` is None and there are no `DistributionTensor`s
+    ValueError: if `variational` is None and there are no `StochasticTensor`s
       upstream of `log_joint`.
     ValueError: if form is ELBOForms.analytic_kl.
   """
@@ -222,7 +226,7 @@ def _elbo(form, log_likelihood, log_joint, variational_with_prior,
     form: ELBOForms constant. Controls how the ELBO is computed.
     log_likelihood: `Tensor` log p(x|Z).
     log_joint: `Tensor` log p(x, Z).
-    variational_with_prior: `dict<DistributionTensor, Distribution>`, varational
+    variational_with_prior: `dict<StochasticTensor, Distribution>`, varational
       distributions to prior distributions.
     keep_batch_dim: bool. Whether to keep the batch dimension when reducing
       the entropy/KL.
@@ -293,7 +297,7 @@ def _elbo(form, log_likelihood, log_joint, variational_with_prior,
 def _find_variational_and_priors(model,
                                  variational_with_prior,
                                  require_prior=True):
-  """Find upstream DistributionTensors and match with registered priors."""
+  """Find upstream StochasticTensors and match with registered priors."""
   if variational_with_prior is None:
     # pylint: disable=protected-access
     upstreams = sg._upstream_stochastic_nodes([model])
@@ -306,14 +310,14 @@ def _find_variational_and_priors(model,
     variational_with_prior = {}
     for q in upstreams:
       if require_prior and (q not in prior_map or prior_map[q] is None):
-        raise ValueError("No prior specified for DistributionTensor: %s", q)
+        raise ValueError("No prior specified for StochasticTensor: %s", q)
       variational_with_prior[q] = prior_map.get(q)
 
   if not all(
       [isinstance(q, st.StochasticTensor) for q in variational_with_prior]):
-    raise TypeError("variationals must be DistributionTensors")
+    raise TypeError("variationals must be StochasticTensors")
   if not all([p is None or isinstance(p, distributions.Distribution)
               for p in variational_with_prior.values()]):
-    raise TypeError("priors must be BaseDistributions")
+    raise TypeError("priors must be Distributions")
 
   return variational_with_prior

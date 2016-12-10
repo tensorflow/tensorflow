@@ -23,10 +23,6 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-from tensorflow.contrib.factorization.python.ops.gmm import GMM
-from tensorflow.contrib.factorization.python.ops.kmeans import KMeansClustering as KMeans
-from tensorflow.contrib.learn.python.learn.estimators import run_config
-
 FLAGS = tf.app.flags.FLAGS
 
 
@@ -47,7 +43,8 @@ class GMMTest(tf.test.TestCase):
     self.true_score = np.add.reduce(self.scores)
 
     # Use initial means from kmeans (just like scikit-learn does).
-    clusterer = KMeans(num_clusters=self.num_centers)
+    clusterer = tf.contrib.learn.KMeansClustering(
+        num_clusters=self.num_centers)
     clusterer.fit(self.points, steps=30)
     self.initial_means = clusterer.clusters()
 
@@ -77,44 +74,48 @@ class GMMTest(tf.test.TestCase):
 
   def test_clusters(self):
     """Tests the shape of the clusters."""
-    gmm = GMM(self.num_centers,
-              initial_clusters=self.initial_means,
-              batch_size=self.batch_size,
-              steps=40,
-              continue_training=True,
-              random_seed=4,
-              config=run_config.RunConfig(tf_random_seed=2))
+    gmm = tf.contrib.factorization.GMM(
+        self.num_centers,
+        initial_clusters=self.initial_means,
+        batch_size=self.batch_size,
+        steps=40,
+        continue_training=True,
+        random_seed=4,
+        config=tf.contrib.learn.RunConfig(tf_random_seed=2))
     gmm.fit(x=self.points, steps=0)
     clusters = gmm.clusters()
     self.assertAllEqual(list(clusters.shape),
                         [self.num_centers, self.num_dims])
 
   def test_fit(self):
-    gmm = GMM(self.num_centers,
-              initial_clusters='random',
-              batch_size=self.batch_size,
-              random_seed=4,
-              config=run_config.RunConfig(tf_random_seed=2))
+    gmm = tf.contrib.factorization.GMM(
+        self.num_centers,
+        initial_clusters='random',
+        batch_size=self.batch_size,
+        random_seed=4,
+        config=tf.contrib.learn.RunConfig(tf_random_seed=2))
     gmm.fit(x=self.points, steps=1)
     score1 = gmm.score(x=self.points)
-    gmm = GMM(self.num_centers,
-              initial_clusters='random',
-              batch_size=self.batch_size,
-              random_seed=4,
-              config=run_config.RunConfig(tf_random_seed=2))
+    gmm = tf.contrib.factorization.GMM(
+        self.num_centers,
+        initial_clusters='random',
+        batch_size=self.batch_size,
+        random_seed=4,
+        config=tf.contrib.learn.RunConfig(tf_random_seed=2))
     gmm.fit(x=self.points, steps=10)
     score2 = gmm.score(x=self.points)
     self.assertGreater(score1, score2)
     self.assertNear(self.true_score, score2, self.true_score * 0.15)
 
   def test_infer(self):
-    gmm = GMM(self.num_centers,
-              initial_clusters=self.initial_means,
-              batch_size=self.batch_size,
-              steps=40,
-              continue_training=True,
-              random_seed=4,
-              config=run_config.RunConfig(tf_random_seed=2))
+    gmm = tf.contrib.factorization.GMM(
+        self.num_centers,
+        initial_clusters=self.initial_means,
+        batch_size=self.batch_size,
+        steps=40,
+        continue_training=True,
+        random_seed=4,
+        config=tf.contrib.learn.RunConfig(tf_random_seed=2))
     gmm.fit(x=self.points, steps=60)
     clusters = gmm.clusters()
 
@@ -142,13 +143,14 @@ class GMMTest(tf.test.TestCase):
                                 [-31.27834935, 391.74249925]]])
 
     # skflow version.
-    gmm = GMM(self.num_centers,
-              initial_clusters=self.initial_means,
-              covariance_type=cov_type,
-              batch_size=self.num_points,
-              steps=iterations,
-              continue_training=True,
-              config=run_config.RunConfig(tf_random_seed=2))
+    gmm = tf.contrib.factorization.GMM(
+        self.num_centers,
+        initial_clusters=self.initial_means,
+        covariance_type=cov_type,
+        batch_size=self.num_points,
+        steps=iterations,
+        continue_training=True,
+        config=tf.contrib.learn.RunConfig(tf_random_seed=2))
     gmm.fit(self.points)
     skflow_assignments = gmm.predict(self.points[:10, :]).astype(int)
     self.assertAllClose(sklearn_assignments,

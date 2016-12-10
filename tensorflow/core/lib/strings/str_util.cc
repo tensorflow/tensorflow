@@ -84,8 +84,8 @@ inline int hex_digit_to_int(char c) {
   return x & 0xf;
 }
 
-bool CUnescapeInternal(StringPiece source, char* dest, int* dest_len,
-                       string* error) {
+bool CUnescapeInternal(StringPiece source, char* dest,
+                       string::size_type* dest_len, string* error) {
   char* d = dest;
   const char* p = source.data();
   const char* end = source.end();
@@ -196,11 +196,25 @@ bool CUnescapeInternal(StringPiece source, char* dest, int* dest_len,
   return true;
 }
 
+template <typename T>
+bool SplitAndParseAsInts(StringPiece text, char delim,
+                         std::function<bool(StringPiece, T*)> converter,
+                         std::vector<T>* result) {
+  result->clear();
+  std::vector<string> num_strings = Split(text, delim);
+  for (const auto& s : num_strings) {
+    T num;
+    if (!converter(s, &num)) return false;
+    result->push_back(num);
+  }
+  return true;
+}
+
 }  // namespace
 
 bool CUnescape(StringPiece source, string* dest, string* error) {
   dest->resize(source.size());
-  int dest_size;
+  string::size_type dest_size;
   if (!CUnescapeInternal(source, const_cast<char*>(dest->data()), &dest_size,
                          error)) {
     return false;
@@ -279,6 +293,14 @@ bool ConsumePrefix(StringPiece* s, StringPiece expected) {
   return false;
 }
 
+bool ConsumeSuffix(StringPiece* s, StringPiece expected) {
+  if (s->ends_with(expected)) {
+    s->remove_suffix(expected.size());
+    return true;
+  }
+  return false;
+}
+
 bool ConsumeLeadingDigits(StringPiece* s, uint64* val) {
   const char* p = s->data();
   const char* limit = p + s->size();
@@ -325,67 +347,12 @@ bool ConsumeNonWhitespace(StringPiece* s, StringPiece* val) {
 
 bool SplitAndParseAsInts(StringPiece text, char delim,
                          std::vector<int32>* result) {
-  result->clear();
-  std::vector<string> num_strings = Split(text, delim);
-  for (const auto& s : num_strings) {
-    int32 num;
-    if (!strings::safe_strto32(s, &num)) return false;
-    result->push_back(num);
-  }
-  return true;
+  return SplitAndParseAsInts<int32>(text, delim, strings::safe_strto32, result);
 }
 
-string HumanReadableElapsedTime(double seconds) {
-  string human_readable;
-
-  if (seconds < 0) {
-    human_readable = "-";
-    seconds = -seconds;
-  }
-
-  // Start with us and keep going up to years.
-  // The comparisons must account for rounding to prevent the format breaking
-  // the tested condition and returning, e.g., "1e+03 us" instead of "1 ms".
-  const double microseconds = seconds * 1.0e6;
-  if (microseconds < 999.5) {
-    strings::Appendf(&human_readable, "%0.3g us", microseconds);
-    return human_readable;
-  }
-  double milliseconds = seconds * 1e3;
-  if (milliseconds >= .995 && milliseconds < 1) {
-    // Round half to even in Appendf would convert this to 0.999 ms.
-    milliseconds = 1.0;
-  }
-  if (milliseconds < 999.5) {
-    strings::Appendf(&human_readable, "%0.3g ms", milliseconds);
-    return human_readable;
-  }
-  if (seconds < 60.0) {
-    strings::Appendf(&human_readable, "%0.3g s", seconds);
-    return human_readable;
-  }
-  seconds /= 60.0;
-  if (seconds < 60.0) {
-    strings::Appendf(&human_readable, "%0.3g min", seconds);
-    return human_readable;
-  }
-  seconds /= 60.0;
-  if (seconds < 24.0) {
-    strings::Appendf(&human_readable, "%0.3g h", seconds);
-    return human_readable;
-  }
-  seconds /= 24.0;
-  if (seconds < 30.0) {
-    strings::Appendf(&human_readable, "%0.3g days", seconds);
-    return human_readable;
-  }
-  if (seconds < 365.2425) {
-    strings::Appendf(&human_readable, "%0.3g months", seconds / 30.436875);
-    return human_readable;
-  }
-  seconds /= 365.2425;
-  strings::Appendf(&human_readable, "%0.3g years", seconds);
-  return human_readable;
+bool SplitAndParseAsInts(StringPiece text, char delim,
+                         std::vector<int64>* result) {
+  return SplitAndParseAsInts<int64>(text, delim, strings::safe_strto64, result);
 }
 
 }  // namespace str_util

@@ -22,36 +22,36 @@ import numpy as np
 import tensorflow as tf
 
 
+def _upsample_filters(filters, rate):
+  """Upsamples the filters by a factor of rate along the spatial dimensions.
+
+  Args:
+    filters: [h, w, in_depth, out_depth]. Original filters.
+    rate: An int, specifying the upsampling rate.
+
+  Returns:
+    filters_up: [h_up, w_up, in_depth, out_depth]. Upsampled filters with
+      h_up = h + (h - 1) * (rate - 1)
+      w_up = w + (w - 1) * (rate - 1)
+      containing (rate - 1) zeros between consecutive filter values along
+      the filters' spatial dimensions.
+  """
+  if rate == 1:
+    return filters
+  # [h, w, in_depth, out_depth] -> [in_depth, out_depth, h, w]
+  filters_up = np.transpose(filters, [2, 3, 0, 1])
+  ker = np.zeros([rate, rate], dtype=np.float32)
+  ker[0, 0] = 1
+  filters_up = np.kron(filters_up, ker)[:, :, :-(rate-1), :-(rate-1)]
+  # [in_depth, out_depth, h_up, w_up] -> [h_up, w_up, in_depth, out_depth]
+  filters_up = np.transpose(filters_up, [2, 3, 0, 1])
+  return filters_up
+
+
 class AtrousConv2DTest(tf.test.TestCase):
 
-  def _upsample_filters(self, filters, rate):
-    """Upsamples the filters by a factor of rate along the spatial dimensions.
-
-    Args:
-      filters: [h, w, in_depth, out_depth]. Original filters.
-      rate: An int, specifying the upsampling rate.
-
-    Returns:
-      filters_up: [h_up, w_up, in_depth, out_depth]. Upsampled filters with
-        h_up = h + (h - 1) * (rate - 1)
-        w_up = w + (w - 1) * (rate - 1)
-        containing (rate - 1) zeros between consecutive filter values along
-        the filters' spatial dimensions.
-    """
-    if rate == 1:
-      return filters
-    # [h, w, in_depth, out_depth] -> [in_depth, out_depth, h, w]
-    filters_up = np.transpose(filters, [2, 3, 0, 1])
-    ker = np.zeros([rate, rate])
-    ker[0, 0] = 1
-    filters_up = np.kron(filters_up, ker)[:, :, :-(rate-1), :-(rate-1)]
-    # [in_depth, out_depth, h_up, w_up] -> [h_up, w_up, in_depth, out_depth]
-    filters_up = np.transpose(filters_up, [2, 3, 0, 1])
-    self.assertEqual(np.sum(filters), np.sum(filters_up))
-    return filters_up
-
   def testAtrousConv2DForward(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       # Input: [batch, height, width, input_depth]
       height = 9
       for width in [9, 10]:  # Test both odd and even width.
@@ -65,14 +65,13 @@ class AtrousConv2DTest(tf.test.TestCase):
             f = np.arange(np.prod(f_shape), dtype=np.float32).reshape(f_shape)
 
             for rate in range(1, 4):
-              f_up = self._upsample_filters(f, rate)
+              f_up = _upsample_filters(f, rate)
 
               for padding in ["SAME", "VALID"]:
                 y1 = tf.nn.atrous_conv2d(x, f, rate, padding=padding)
                 y2 = tf.nn.conv2d(x, f_up, strides=[1, 1, 1, 1],
                                   padding=padding)
-                self.assertAllClose(y1.eval(), y2.eval(), rtol=1e-2,
-                                    atol=1e-2)
+                self.assertAllClose(y1.eval(), y2.eval(), rtol=1e-3, atol=1e-3)
 
   def testAtrousSequence(self):
     """Tests optimization of sequence of atrous convolutions.
@@ -98,7 +97,7 @@ class AtrousConv2DTest(tf.test.TestCase):
     padding = "SAME"  # The padding needs to be "SAME"
     np.random.seed(1)  # Make it reproducible.
 
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       # Input: [batch, height, width, input_depth]
       for height in range(15, 17):
         for width in range(15, 17):
@@ -127,7 +126,7 @@ class AtrousConv2DTest(tf.test.TestCase):
               self.assertAllClose(y1.eval(), y2.eval(), rtol=1e-2, atol=1e-2)
 
   def testGradient(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       # Input: [batch, height, width, input_depth]
       x_shape = [2, 5, 6, 2]
       # Filter: [kernel_height, kernel_width, input_depth, output_depth]
@@ -148,6 +147,70 @@ class AtrousConv2DTest(tf.test.TestCase):
         print("atrous_conv2d gradient err = %g " % err)
         err_tolerance = 1e-3
         self.assertLess(err, err_tolerance)
+
+
+class AtrousConv2DTransposeTest(tf.test.TestCase):
+
+  def testAtrousConv2DTransposeForward(self):
+    with self.test_session(use_gpu=True):
+      # Input: [batch, height, width, input_depth]
+      height = 9
+      for width in [9, 10]:  # Test both odd and even width.
+        x_shape = [2, height, width, 2]
+        x = np.arange(np.prod(x_shape), dtype=np.float32).reshape(x_shape)
+
+        # Filter: [kernel_height, kernel_width, input_depth, output_depth]
+        for kernel_height in range(1, 4):
+          for kernel_width in range(1, 4):
+            f_shape = [kernel_height, kernel_width, 2, 2]
+            f = np.arange(np.prod(f_shape), dtype=np.float32).reshape(f_shape)
+
+            for rate in range(1, 4):
+              f_up = _upsample_filters(f, rate)
+              kernel_height_up = (kernel_height +
+                                  (kernel_height - 1) * (rate - 1))
+              kernel_width_up = kernel_width + (kernel_width - 1) * (rate - 1)
+
+              for padding in ["SAME", "VALID"]:
+                if padding == "SAME":
+                  y_shape = [2, height, width, 2]
+                else:
+                  y_shape = [2,
+                             height + kernel_height_up - 1,
+                             width + kernel_width_up - 1,
+                             2]
+
+                y1 = tf.nn.atrous_conv2d_transpose(x, f, y_shape, rate, padding)
+                y2 = tf.nn.conv2d_transpose(
+                    x, f_up, y_shape, strides=[1, 1, 1, 1], padding=padding)
+                self.assertAllClose(y1.eval(), y2.eval(), rtol=1e-3, atol=1e-3)
+
+
+class AtrousDepthwiseConv2DTest(tf.test.TestCase):
+
+  def testAtrousDepthwiseConv2DForward(self):
+    strides = [1, 1, 1, 1]
+    with self.test_session(use_gpu=True):
+      # Input: [batch, height, width, input_depth]
+      height = 9
+      for width in [9, 10]:  # Test both odd and even width.
+        x_shape = [2, height, width, 2]
+        x = np.arange(np.prod(x_shape), dtype=np.float32).reshape(x_shape)
+
+        # Filter: [kernel_height, kernel_width, input_depth, output_depth]
+        for kernel_height in range(1, 4):
+          for kernel_width in range(1, 4):
+            f_shape = [kernel_height, kernel_width, 2, 2]
+            f = np.arange(np.prod(f_shape), dtype=np.float32).reshape(f_shape)
+
+            for rate in range(1, 4):
+              f_up = _upsample_filters(f, rate)
+
+              for padding in ["SAME", "VALID"]:
+                y1 = tf.nn.depthwise_conv2d(x, f, strides, padding,
+                                            rate=[rate, rate])
+                y2 = tf.nn.depthwise_conv2d(x, f_up, strides, padding)
+                self.assertAllClose(y1.eval(), y2.eval(), rtol=1e-3, atol=1e-3)
 
 
 if __name__ == "__main__":

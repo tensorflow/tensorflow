@@ -48,7 +48,7 @@ class Dimension(object):
     """Returns true if `other` has the same known value as this Dimension."""
     try:
       other = as_dimension(other)
-    except ValueError:
+    except (TypeError, ValueError):
       return NotImplemented
     if self._value is None or other.value is None:
       return None
@@ -58,7 +58,7 @@ class Dimension(object):
     """Returns true if `other` has a different known value from `self`."""
     try:
       other = as_dimension(other)
-    except ValueError:
+    except (TypeError, ValueError):
       return NotImplemented
     if self._value is None or other.value is None:
       return None
@@ -112,11 +112,13 @@ class Dimension(object):
 
     Dimensions are combined as follows:
 
+    ```python
         Dimension(n)   .merge_with(Dimension(n))    == Dimension(n)
         Dimension(n)   .merge_with(Dimension(None)) == Dimension(n)
         Dimension(None).merge_with(Dimension(n))    == Dimension(n)
         Dimension(None).merge_with(Dimension(None)) == Dimension(None)
         Dimension(n)   .merge_with(Dimension(m)) raises ValueError for n != m
+    ```
 
     Args:
       other: Another Dimension.
@@ -185,16 +187,18 @@ class Dimension(object):
 
     Dimensions are summed as follows:
 
+    ```
       Dimension(m)    * Dimension(n)    == Dimension(m * n)
       Dimension(m)    * Dimension(None) == Dimension(None)
       Dimension(None) * Dimension(n)    == Dimension(None)
       Dimension(None) * Dimension(None) == Dimension(None)
+    ```
 
     Args:
       other: Another Dimension.
 
     Returns:
-      A Dimension whose value is the sum of `self` and `other`.
+      A Dimension whose value is the product of `self` and `other`.
     """
     other = as_dimension(other)
     if self._value is None or other.value is None:
@@ -389,10 +393,11 @@ class TensorShape(object):
 
   If a tensor is produced by an operation of type `"Foo"`, its shape
   may be inferred if there is a registered shape function for
-  `"Foo"`. See [`tf.RegisterShape()`](../../api_docs/python/framework.md#RegisterShape)
-  for details of shape
-  functions and how to register them. Alternatively, the shape may be set
-  explicitly using [`Tensor.set_shape()`](../../api_docs/python/framework.md#Tensor.set_shape).
+  `"Foo"`. See [`Shape functions in
+  C++`](../../how_tos/adding_an_op/index.md#shape-functions-in-c) for
+  details of shape functions and how to register them. Alternatively,
+  the shape may be set explicitly using
+  [`Tensor.set_shape()`](../../api_docs/python/framework.md#Tensor.set_shape).
 
   @@merge_with
   @@concatenate
@@ -412,6 +417,7 @@ class TensorShape(object):
   @@assert_same_rank
   @@assert_is_compatible_with
   @@assert_is_fully_defined
+
   """
 
   def __init__(self, dims):
@@ -767,11 +773,10 @@ class TensorShape(object):
     """Returns a list of integers or `None` for each dimension.
 
     Returns:
-      `None` if shape is unknown; otherwise, a list of integers or `None` for
-      each dimension.
+      A list of integers or `None` for each dimension.
 
     Raises:
-      ValueError: if `self` is completely unknown.
+      ValueError: If `self` is an unknown shape with an unknown rank.
     """
     if self._dims is None:
       raise ValueError("as_list() is not defined on an unknown TensorShape.")

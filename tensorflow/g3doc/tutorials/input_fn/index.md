@@ -14,10 +14,10 @@ operations. Here's an example taken from the [tf.contrib.learn quickstart
 tutorial](../tflearn/index.md):
 
 ```py
-training_set = tf.contrib.learn.datasets.base.load_csv(filename=IRIS_TRAINING,
-                                                       target_dtype=np.int)
-test_set = tf.contrib.learn.datasets.base.load_csv(filename=IRIS_TEST,
-                                                   target_dtype=np.int)
+training_set = tf.contrib.learn.datasets.base.load_csv_with_header(
+    filename=IRIS_TRAINING, target_dtype=np.int, features_dtype=np.float32)
+test_set = tf.contrib.learn.datasets.base.load_csv_with_header(
+    filename=IRIS_TEST, target_dtype=np.int, features_dtype=np.float32)
 ...
 
 classifier.fit(x=training_set.data,
@@ -104,8 +104,8 @@ This corresponds to the following dense tensor:
  [0, 0, 0, 0, 0.5]]
 ```
 
-For more on `SparseTensor`, see the [TensorFlow API documentation]
-(../../api_docs/python/sparse_ops.md#SparseTensor).
+For more on `SparseTensor`, see the
+[TensorFlow API documentation](../../api_docs/python/sparse_ops.md#SparseTensor).
 
 ### Passing input_fn Data to Your Model
 
@@ -139,8 +139,8 @@ arguments as your `input_fn` and use it to invoke your input function
 with the desired parameters. For example:
 
 ```python
-def my_input_function_training_set:
-  my_input_function(training_set)
+def my_input_function_training_set():
+  return my_input_function(training_set)
 
 classifier.fit(input_fn=my_input_fn_training_set, steps=2000)
 ```
@@ -153,9 +153,9 @@ classifier.fit(input_fn=functools.partial(my_input_function,
                                           data_set=training_set), steps=2000)
 ```
 
-A third option is to wrap your input_fn invocation in a [`lambda`]
-(https://docs.python.org/3/tutorial/controlflow.html#lambda-expressions) and
-pass it to the `input_fn` parameter:
+A third option is to wrap your input_fn invocation in a
+[`lambda`](https://docs.python.org/3/tutorial/controlflow.html#lambda-expressions)
+and pass it to the `input_fn` parameter:
 
 ```python
 classifier.fit(input_fn=lambda: my_input_fn(training_set), steps=2000)
@@ -181,8 +181,8 @@ Set](https://archive.ics.uci.edu/ml/datasets/Housing) and use it to feed data to
 a neural network regressor for predicting median house values.
 
 The [Boston CSV data sets](#setup) you'll use to train your neural network
-contain the following [feature data]
-(https://archive.ics.uci.edu/ml/machine-learning-databases/housing/housing.names)
+contain the following
+[feature data](https://archive.ics.uci.edu/ml/machine-learning-databases/housing/housing.names)
 for Boston suburbs:
 
 Feature | Description
@@ -202,15 +202,15 @@ owner-occupied residences in thousands of dollars.
 
 ## Setup {#setup}
 
-Download the following data sets: [boston_train.csv]
-(http://download.tensorflow.org/data/boston_train.csv), [boston_test.csv]
-(http://download.tensorflow.org/data/boston_test.csv), and [boston_predict.csv]
-(http://download.tensorflow.org/data/boston_predict.csv).
+Download the following data sets:
+[boston_train.csv](http://download.tensorflow.org/data/boston_train.csv),
+[boston_test.csv](http://download.tensorflow.org/data/boston_test.csv), and
+[boston_predict.csv](http://download.tensorflow.org/data/boston_predict.csv).
 
 The following sections provide a step-by-step walkthrough of how to create an
 input function, feed these data sets into a neural network regressor, train and
-evaluate the model, and make house value predictions. Final code is [available
-here](../../../examples/tutorials/input_fn/boston.py).
+evaluate the model, and make house value predictions. The full, final code is [available
+here](https://www.tensorflow.org/code/tensorflow/examples/tutorials/input_fn/boston.py).
 
 ### Importing the Housing Data
 
@@ -222,6 +222,9 @@ logging verbosity](../monitors/index.md#enabling-logging-with-tensorflow) to
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+import itertools
+
 import pandas as pd
 import tensorflow as tf
 
@@ -230,9 +233,9 @@ tf.logging.set_verbosity(tf.logging.INFO)
 
 Define the column names for the data set in `COLUMNS`. To distinguish features
 from the label, also define `FEATURES` and `LABEL`. Then read the three CSVs
-([train](http://download.tensorflow.org/data/boston_train.csv), [test]
-(http://download.tensorflow.org/data/boston_test.csv), and [predict]
-(http://download.tensorflow.org/data/boston_predict.csv)) into _pandas_
+([train](http://download.tensorflow.org/data/boston_train.csv),
+[test](http://download.tensorflow.org/data/boston_test.csv), and
+[predict](http://download.tensorflow.org/data/boston_predict.csv)) into _pandas_
 `DataFrame`s:
 
 ```python
@@ -262,10 +265,10 @@ feature_cols = [tf.contrib.layers.real_valued_column(k)
                   for k in FEATURES]
 ```
 
-NOTE: For a more in-depth overview of feature columns, see [this introduction]
-(../linear/overview.md#feature-columns-and-transformations), and for an example
-that illustrates how to define `FeatureColumns` for categorical data, see the
-[Linear Model Tutorial](../wide/index.md).
+NOTE: For a more in-depth overview of feature columns, see
+[this introduction](../linear/overview.md#feature-columns-and-transformations),
+and for an example that illustrates how to define `FeatureColumns` for
+categorical data, see the [Linear Model Tutorial](../wide/index.md).
 
 Now, instantiate a `DNNRegressor` for the neural network regression model.
 You'll need to provide two arguments here: `hidden_units`, a hyperparameter
@@ -286,7 +289,7 @@ accept a _pandas_ `Dataframe` and return feature column and label values as
 
 ```python
 def input_fn(data_set):
-  feature_cols = {k: tf.constant(data_set[k].values
+  feature_cols = {k: tf.constant(data_set[k].values)
                   for k in FEATURES}
   labels = tf.constant(data_set[LABEL].values)
   return feature_cols, labels
@@ -300,8 +303,6 @@ which means the function can process any of the `DataFrame`s you've imported:
 
 To train the neural network regressor, run `fit` with the `training_set` passed
 to the `input_fn` as follows:
-
-<!-- TODO(skleinfeld): Decide on the best step value to use here for pedagogical purposes -->
 
 ```python
 regressor.fit(input_fn=lambda: input_fn(training_set), steps=5000)
@@ -355,7 +356,9 @@ Finally, you can use the model to predict median house values for the
 
 ```python
 y = regressor.predict(input_fn=lambda: input_fn(prediction_set))
-print ("Predictions: {}".format(str(y)))
+# .predict() returns an iterator; convert to a list and print predictions
+predictions = list(itertools.islice(y, 6))
+print ("Predictions: {}".format(str(predictions)))
 ```
 
 Your results should contain six house-value predictions in thousands of dollars,

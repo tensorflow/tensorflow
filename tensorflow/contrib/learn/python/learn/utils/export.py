@@ -19,12 +19,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib import layers
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
+from tensorflow.contrib.learn.python.learn.estimators import model_fn
 from tensorflow.contrib.session_bundle import exporter
 from tensorflow.contrib.session_bundle import gc
+from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -53,8 +54,8 @@ def _get_saver():
       saver = saver[0]
     else:
       saver = None
-  if saver is None and variables.all_variables():
-    saver = tf_saver.Saver()
+  if saver is None and variables.global_variables():
+    saver = tf_saver.Saver(write_version=saver_pb2.SaverDef.V1)
     ops.add_to_collection(ops.GraphKeys.SAVERS, saver)
   return saver
 
@@ -65,20 +66,20 @@ def _export_graph(graph, saver, checkpoint_path, export_dir,
   """Exports graph via session_bundle, by creating a Session."""
   with graph.as_default():
     with tf_session.Session('') as session:
-      variables.initialize_local_variables()
+      variables.local_variables_initializer()
       data_flow_ops.initialize_all_tables()
       saver.restore(session, checkpoint_path)
 
       export = exporter.Exporter(saver)
       export.init(init_op=control_flow_ops.group(
-          variables.initialize_local_variables(),
+          variables.local_variables_initializer(),
           data_flow_ops.initialize_all_tables()),
                   default_graph_signature=default_graph_signature,
                   named_graph_signatures=named_graph_signatures,
                   assets_collection=ops.get_collection(
                       ops.GraphKeys.ASSET_FILEPATHS))
-      export.export(export_dir, contrib_variables.get_global_step(), session,
-                    exports_to_keep=exports_to_keep)
+      return export.export(export_dir, contrib_variables.get_global_step(),
+                           session, exports_to_keep=exports_to_keep)
 
 
 def generic_signature_fn(examples, unused_features, predictions):
@@ -94,7 +95,13 @@ def generic_signature_fn(examples, unused_features, predictions):
 
   Returns:
     Tuple of default signature and empty named signatures.
+
+  Raises:
+    ValueError: If examples is `None`.
   """
+  if examples is None:
+    raise ValueError('examples cannot be None when using this signature fn.')
+
   tensors = {'inputs': examples}
   if not isinstance(predictions, dict):
     predictions = {'outputs': predictions}
@@ -109,13 +116,52 @@ def classification_signature_fn(examples, unused_features, predictions):
   Args:
     examples: `Tensor`.
     unused_features: `dict` of `Tensor`s.
-    predictions: `Tensor`.
+    predictions: `Tensor` or dict of tensors that contains the classes tensor
+      as in {'classes': `Tensor`}.
 
   Returns:
     Tuple of default classification signature and empty named signatures.
+
+  Raises:
+    ValueError: If examples is `None`.
   """
-  default_signature = exporter.classification_signature(
-      examples, classes_tensor=predictions)
+  if examples is None:
+    raise ValueError('examples cannot be None when using this signature fn.')
+
+  if isinstance(predictions, dict):
+    default_signature = exporter.classification_signature(
+        examples, classes_tensor=predictions['classes'])
+  else:
+    default_signature = exporter.classification_signature(
+        examples, classes_tensor=predictions)
+  return default_signature, {}
+
+
+def classification_signature_fn_with_prob(
+    examples, unused_features, predictions):
+  """Classification signature from given examples and predicted probabilities.
+
+  Args:
+    examples: `Tensor`.
+    unused_features: `dict` of `Tensor`s.
+    predictions: `Tensor` of predicted probabilities or dict that contains the
+      probabilities tensor as in {'probabilities', `Tensor`}.
+
+  Returns:
+    Tuple of default classification signature and empty named signatures.
+
+  Raises:
+    ValueError: If examples is `None`.
+  """
+  if examples is None:
+    raise ValueError('examples cannot be None when using this signature fn.')
+
+  if isinstance(predictions, dict):
+    default_signature = exporter.classification_signature(
+        examples, scores_tensor=predictions['probabilities'])
+  else:
+    default_signature = exporter.classification_signature(
+        examples, scores_tensor=predictions)
   return default_signature, {}
 
 
@@ -129,7 +175,13 @@ def regression_signature_fn(examples, unused_features, predictions):
 
   Returns:
     Tuple of default regression signature and empty named signatures.
+
+  Raises:
+    ValueError: If examples is `None`.
   """
+  if examples is None:
+    raise ValueError('examples cannot be None when using this signature fn.')
+
   default_signature = exporter.regression_signature(
       input_tensor=examples, output_tensor=predictions)
   return default_signature, {}
@@ -141,15 +193,27 @@ def logistic_regression_signature_fn(examples, unused_features, predictions):
   Args:
     examples: `Tensor`.
     unused_features: `dict` of `Tensor`s.
-    predictions: `Tensor` of shape [batch_size, 2]
+    predictions: `Tensor` of shape [batch_size, 2] of predicted probabilities or
+      dict that contains the probabilities tensor as in
+      {'probabilities', `Tensor`}.
 
   Returns:
     Tuple of default regression signature and named signature.
+
+  Raises:
+    ValueError: If examples is `None`.
   """
+  if examples is None:
+    raise ValueError('examples cannot be None when using this signature fn.')
+
+  if isinstance(predictions, dict):
+    predictions_tensor = predictions['probabilities']
+  else:
+    predictions_tensor = predictions
   # predictions should have shape [batch_size, 2] where first column is P(Y=0|x)
   # while second column is P(Y=1|x). We are only interested in the second
   # column for inference.
-  predictions_shape = predictions.get_shape()
+  predictions_shape = predictions_tensor.get_shape()
   predictions_rank = len(predictions_shape)
   if predictions_rank != 2:
     logging.fatal(
@@ -159,10 +223,10 @@ def logistic_regression_signature_fn(examples, unused_features, predictions):
     logging.fatal(
         'Expected predictions to have 2nd dimension: 2, but received '
         'predictions with 2nd dimension: {} and shape: {}. Did you mean to use '
-        'regression_signature_fn instead?'.format(predictions_shape[1],
-                                                  predictions_shape))
+        'regression_signature_fn or classification_signature_fn_with_prob '
+        'instead?'.format(predictions_shape[1], predictions_shape))
 
-  positive_predictions = predictions[:, 1]
+  positive_predictions = predictions_tensor[:, 1]
   default_signature = exporter.regression_signature(
       input_tensor=examples, output_tensor=positive_predictions)
   return default_signature, {}
@@ -200,12 +264,11 @@ def export_estimator(estimator,
     '2016-09-23',
     'The signature of the input_fn accepted by export is changing to be '
     'consistent with what\'s used by tf.Learn Estimator\'s train/evaluate. '
-    'input_fn and input_feature_key will become required args. '
-    'use_deprecated_input_fn will default to False and be removed. '
+    'input_fn and (and in most cases, input_feature_key) will become required '
+    'args. use_deprecated_input_fn will default to False and be removed. '
     'default_batch_size will also be removed since it will now be a part of '
     'the input_fn.',
     use_deprecated_input_fn=True,
-    input_feature_key=None,
     default_batch_size=1)
 def _export_estimator(estimator,
                       export_dir,
@@ -214,11 +277,12 @@ def _export_estimator(estimator,
                       default_batch_size,
                       exports_to_keep,
                       input_feature_key=None,
-                      use_deprecated_input_fn=True):
+                      use_deprecated_input_fn=True,
+                      prediction_key=None):
   if use_deprecated_input_fn:
     input_fn = input_fn or _default_input_fn
-  elif input_fn is None or input_feature_key is None:
-    raise ValueError('input_fn and input_feature_key must both be defined.')
+  elif input_fn is None:
+    raise ValueError('input_fn must be defined.')
 
   checkpoint_path = tf_saver.latest_checkpoint(estimator._model_dir)
   with ops.Graph().as_default() as g:
@@ -231,9 +295,28 @@ def _export_estimator(estimator,
       features = input_fn(estimator, examples)
     else:
       features, _ = input_fn()
-      examples = features[input_feature_key]
+      examples = None
+      if input_feature_key is not None:
+        examples = features.pop(input_feature_key)
 
-    predictions = estimator._get_predict_ops(features)
+    if (not features) and (examples is None):
+      raise ValueError('Either features or examples must be defined.')
+
+    # The default return type of _get_predict_ops is ModelFnOps. But there are
+    # some subclasses of tf.contrib.learn.Estimator which override this
+    # method and use the legacy signature, namely _get_predict_ops returns a
+    # `predictions` Tensor or dict or Tensors. The following else-statement
+    # code covers these cases, but will soon be deleted after the subclasses
+    # are updated.
+    # TODO(b/32664904): Update subclasses and delete the else-statement.
+    infer_ops = estimator._get_predict_ops(features)
+    if isinstance(infer_ops, model_fn.ModelFnOps):  # Default signature
+      predictions = infer_ops.predictions
+    else:  # Legacy signature
+      predictions = infer_ops
+
+    if prediction_key is not None:
+      predictions = predictions[prediction_key]
 
     # Explicit signature_fn takes priority
     if signature_fn:
@@ -242,21 +325,10 @@ def _export_estimator(estimator,
                                                                predictions)
     else:
       try:
-        # Some estimators provide a target_column of known type
-        target_column = estimator._get_target_column()
-        problem_type = target_column.problem_type
-
-        if problem_type == layers.ProblemType.CLASSIFICATION:
-          signature_fn = classification_signature_fn
-        elif problem_type == layers.ProblemType.LINEAR_REGRESSION:
-          signature_fn = regression_signature_fn
-        elif problem_type == layers.ProblemType.LOGISTIC_REGRESSION:
-          signature_fn = logistic_regression_signature_fn
-        else:
-          raise ValueError(
-              'signature_fn must be provided because the TargetColumn is a %s, '
-              'which does not have a standard problem type and so cannot use a '
-              'standard export signature.' % type(target_column).__name__)
+        # Some estimators provide a signature function.
+        # TODO(zakaria): check if the estimator has this function,
+        #   raise helpful error if not
+        signature_fn = estimator._create_signature_fn()
 
         default_signature, named_graph_signatures = (
             signature_fn(examples, features, predictions))
@@ -273,8 +345,12 @@ def _export_estimator(estimator,
             examples, features, predictions)
     if exports_to_keep is not None:
       exports_to_keep = gc.largest_export_versions(exports_to_keep)
-    _export_graph(g, _get_saver(), checkpoint_path, export_dir,
-                  default_graph_signature=default_signature,
-                  named_graph_signatures=named_graph_signatures,
-                  exports_to_keep=exports_to_keep)
+    return _export_graph(
+        g,
+        _get_saver(),
+        checkpoint_path,
+        export_dir,
+        default_graph_signature=default_signature,
+        named_graph_signatures=named_graph_signatures,
+        exports_to_keep=exports_to_keep)
 # pylint: enable=protected-access

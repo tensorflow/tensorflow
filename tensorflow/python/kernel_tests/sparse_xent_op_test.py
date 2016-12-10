@@ -72,18 +72,28 @@ class SparseXentTest(tf.test.TestCase):
         [1., 2., 3., 4.],
         [1., 2., 3., 4.]]
     labels = [4, 3, 0, -1]
-    with self.test_session(use_gpu=True) as sess:
-      loss, backprop = gen_nn_ops._sparse_softmax_cross_entropy_with_logits(
-          features, labels)
-      tf_loss, tf_backprop = sess.run([loss, backprop])
-      self.assertAllClose(
-          [[np.nan] * 4,
-           [0.25, 0.25, 0.25, -0.75],
-           [-0.968, 0.087, 0.237, 0.6439],
-           [np.nan] * 4],
-          tf_backprop, rtol=1e-3, atol=1e-3)
-      self.assertAllClose(
-          [np.nan, 1.3862, 3.4420, np.nan], tf_loss, rtol=1e-3, atol=1e-3)
+
+    if tf.test.is_built_with_cuda() and tf.test.is_gpu_available():
+      with self.test_session(use_gpu=True) as sess:
+        loss, backprop = (
+            gen_nn_ops._sparse_softmax_cross_entropy_with_logits(
+                features, labels))
+        tf_loss, tf_backprop = sess.run([loss, backprop])
+        self.assertAllClose(
+            [[np.nan] * 4,
+             [0.25, 0.25, 0.25, -0.75],
+             [-0.968, 0.087, 0.237, 0.6439],
+             [np.nan] * 4],
+            tf_backprop, rtol=1e-3, atol=1e-3)
+        self.assertAllClose(
+            [np.nan, 1.3862, 3.4420, np.nan], tf_loss, rtol=1e-3, atol=1e-3)
+
+    with self.test_session(use_gpu=False) as sess:
+      loss, backprop = (
+          gen_nn_ops._sparse_softmax_cross_entropy_with_logits(
+              features, labels))
+      with self.assertRaisesOpError("Received a label value of"):
+        sess.run([loss, backprop])
 
   def testNpXent(self):
     # We create 2 batches of logits for testing.
@@ -176,6 +186,22 @@ class SparseXentTest(tf.test.TestCase):
     print("cross entropy gradient err = ", err)
     self.assertLess(err, 5e-8)
 
+  def testSecondGradient(self):
+    images_placeholder = tf.placeholder(tf.float32, shape=(3, 2))
+    labels_placeholder = tf.placeholder(tf.int32, shape=(3))
+    weights = tf.Variable(tf.truncated_normal([2], stddev=1.0))
+    weights_with_zeros = tf.pack([tf.zeros([2]), weights], axis=1)
+    logits = tf.matmul(images_placeholder, weights_with_zeros)
+    cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
+        logits, labels_placeholder)
+    loss = tf.reduce_mean(cross_entropy)
+
+    # Taking ths second gradient should fail, since it is not
+    # yet supported.
+    with self.assertRaisesRegexp(LookupError,
+                                 ".*No gradient defined.*PreventGradient.*"):
+      _ = tf.hessians(loss, [weights])
+
   def _testHighDim(self, features, labels):
     np_loss, np_backprop = self._npXent(np.array(features), np.array(labels))
     # manually reshape loss
@@ -222,9 +248,8 @@ def _sparse_vs_dense_xent_benchmark_dense(labels, logits):
     num_entries = tf.shape(logits)[1]
     length = batch_size * num_entries
     labels += num_entries * tf.range(batch_size)
-    target = sparse_ops.sparse_to_dense(
-        labels, tf.pack([length]), 1.0, 0.0)
-  target = tf.reshape(target, tf.pack([-1, num_entries]))
+    target = sparse_ops.sparse_to_dense(labels, tf.stack([length]), 1.0, 0.0)
+  target = tf.reshape(target, tf.stack([-1, num_entries]))
   crossent = tf.nn.softmax_cross_entropy_with_logits(
       logits, target, name="SequenceLoss/CrossEntropy")
   crossent_sum = tf.reduce_sum(crossent)

@@ -10,7 +10,9 @@ components/*
 # This rule should always be in sync with TF_COMPONENTS_TYPESCRIPT_GLOB
 # in gulpfile.js
 !components/tf-*
+!components/tf_*
 !components/vz-*
+!components/vz_*
 !components/index.html
 !components/BUILD
 # Ignore the sample graph files since they are too large to
@@ -20,4 +22,6 @@ components/tf-graph/demo/tf_model_zoo/*
 # All standalone code for TensorBoard components should be written in
 # typescript, and the compiled javascript code should be ignored.
 components/tf-*/**/*.js
+components/tf_*/**/*.js
 components/vz-*/**/*.js
+components/vz_*/**/*.js

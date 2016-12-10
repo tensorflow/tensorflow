@@ -18,9 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 from tensorflow.contrib.ffmpeg.ops import gen_decode_audio_op_py
 from tensorflow.contrib.ffmpeg.ops import gen_encode_audio_op_py
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
@@ -28,18 +29,18 @@ from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import tf_logging as logging
 
 
-ops.RegisterShape('DecodeAudio')(common_shapes.call_cpp_shape_fn)
-
-
 def decode_audio(contents, file_format=None, samples_per_second=None,
                  channel_count=None):
   """Create an op that decodes the contents of an audio file.
+
+  Note that ffmpeg is free to select the "best" audio track from an mp4.
+  https://trac.ffmpeg.org/wiki/Map
 
   Args:
     contents: The binary contents of the audio file to decode. This is a
         scalar.
     file_format: A string specifying which format the contents will conform
-        to. This can be mp3, ogg, or wav.
+        to. This can be mp3, mp4, ogg, or wav.
     samples_per_second: The number of samples per second that is assumed.
         In some cases, resampling will occur to generate the correct sample
         rate.
@@ -60,9 +61,6 @@ def decode_audio(contents, file_format=None, samples_per_second=None,
 
 
 ops.NotDifferentiable('DecodeAudio')
-
-
-ops.RegisterShape('EncodeAudio')(common_shapes.call_cpp_shape_fn)
 
 
 def encode_audio(audio, file_format=None, samples_per_second=None):
@@ -112,4 +110,5 @@ def _load_library(name, op_list=None):
     logging.warning('%s file could not be loaded.', name)
 
 
-_load_library('ffmpeg.so', ['DecodeAudio', 'EncodeAudio'])
+if os.name != 'nt':
+  _load_library('ffmpeg.so', ['DecodeAudio', 'EncodeAudio'])

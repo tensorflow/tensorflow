@@ -23,12 +23,12 @@ import random
 import numpy as np
 
 from tensorflow.contrib.learn.python.learn.dataframe.queues import feeding_queue_runner as fqr
+from tensorflow.python import summary
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import queue_runner
@@ -69,9 +69,9 @@ class _ArrayFeedFn(object):
       raise errors.OutOfRangeError(None, None,
                                    "Already emitted %s epochs." % self._epoch)
 
-    integer_indexes = [j % self._max
-                       for j in range(self._trav, self._trav + self._batch_size)
-                      ]
+    integer_indexes = [
+        j % self._max for j in range(self._trav, self._trav + self._batch_size)
+    ]
 
     if self._epoch_end in integer_indexes:
       # after this batch we will have processed self._epoch epochs, possibly
@@ -79,8 +79,10 @@ class _ArrayFeedFn(object):
       self._epoch += 1
 
     self._trav = (integer_indexes[-1] + 1) % self._max
-    return {self._placeholders[0]: integer_indexes,
-            self._placeholders[1]: self._array[integer_indexes]}
+    return {
+        self._placeholders[0]: integer_indexes,
+        self._placeholders[1]: self._array[integer_indexes]
+    }
 
 
 class _OrderedDictNumpyFeedFn(object):
@@ -99,7 +101,7 @@ class _OrderedDictNumpyFeedFn(object):
     self._index_placeholder = placeholders[0]
     self._col_placeholders = placeholders[1:]
     self._ordered_dict_of_arrays = ordered_dict_of_arrays
-    self._max = len(ordered_dict_of_arrays.values()[0])
+    self._max = len(next(iter(ordered_dict_of_arrays.values())))
     for _, v in ordered_dict_of_arrays.items():
       if len(v) != self._max:
         raise ValueError("Array lengths must match.")
@@ -115,9 +117,9 @@ class _OrderedDictNumpyFeedFn(object):
       raise errors.OutOfRangeError(None, None,
                                    "Already emitted %s epochs." % self._epoch)
 
-    integer_indexes = [j % self._max
-                       for j in range(self._trav, self._trav + self._batch_size)
-                      ]
+    integer_indexes = [
+        j % self._max for j in range(self._trav, self._trav + self._batch_size)
+    ]
 
     if self._epoch_end in integer_indexes:
       # after this batch we will have processed self._epoch epochs, possibly
@@ -126,8 +128,10 @@ class _OrderedDictNumpyFeedFn(object):
 
     self._trav = (integer_indexes[-1] + 1) % self._max
     feed_dict = {self._index_placeholder: integer_indexes}
-    cols = [column[integer_indexes]
-            for column in self._ordered_dict_of_arrays.values()]
+    cols = [
+        column[integer_indexes]
+        for column in self._ordered_dict_of_arrays.values()
+    ]
     feed_dict.update(dict(zip(self._col_placeholders, cols)))
     return feed_dict
 
@@ -161,9 +165,9 @@ class _PandasFeedFn(object):
       raise errors.OutOfRangeError(None, None,
                                    "Already emitted %s epochs." % self._epoch)
 
-    integer_indexes = [j % self._max
-                       for j in range(self._trav, self._trav + self._batch_size)
-                      ]
+    integer_indexes = [
+        j % self._max for j in range(self._trav, self._trav + self._batch_size)
+    ]
 
     if self._epoch_end in integer_indexes:
       # after this batch we will have processed self._epoch epochs, possibly
@@ -172,7 +176,7 @@ class _PandasFeedFn(object):
       if self._epoch == self._num_epochs:
         # trim this batch, so as not to overshoot the last epoch.
         batch_end_inclusive = integer_indexes.index(self._epoch_end)
-        integer_indexes = integer_indexes[:(batch_end_inclusive+1)]
+        integer_indexes = integer_indexes[:(batch_end_inclusive + 1)]
 
     self._trav = (integer_indexes[-1] + 1) % self._max
     result = self._dataframe.iloc[integer_indexes]
@@ -193,14 +197,14 @@ def enqueue_data(data,
                  num_epochs=None):
   """Creates a queue filled from a numpy array or pandas `DataFrame`.
 
-    Returns a queue filled with the rows of the given array or `DataFrame`. In
-    the case of a pandas `DataFrame`, the first enqueued `Tensor` corresponds to
-    the index of the `DataFrame`. For numpy arrays, the first enqueued `Tensor`
-    contains the row number.
+    Returns a queue filled with the rows of the given (`OrderedDict` of) array
+    or `DataFrame`. In the case of a pandas `DataFrame`, the first enqueued
+    `Tensor` corresponds to the index of the `DataFrame`. For (`OrderedDict` of)
+    numpy arrays, the first enqueued `Tensor` contains the row number.
 
   Args:
-    data: a numpy `ndarray or` pandas `DataFrame` that will be read into the
-      queue.
+    data: a numpy `ndarray`, `OrderedDict` of numpy arrays, or pandas
+      `DataFrame` that will be read into the queue.
     capacity: the capacity of the queue.
     shuffle: whether or not to shuffle the rows of the array.
     min_after_dequeue: minimum number of elements that can remain in the queue
@@ -213,10 +217,12 @@ def enqueue_data(data,
     num_epochs: limit enqueuing to a specified number of epochs, if provided.
 
   Returns:
-    A queue filled with the rows of the given array or `DataFrame`.
+    A queue filled with the rows of the given (`OrderedDict` of) array or
+      `DataFrame`.
 
   Raises:
-    TypeError: `data` is not a Pandas `DataFrame` or a numpy `ndarray`.
+    TypeError: `data` is not a Pandas `DataFrame`, an `OrderedDict` of numpy
+      arrays  or a numpy `ndarray`.
   """
   with ops.name_scope(name):
     if isinstance(data, np.ndarray):
@@ -229,8 +235,9 @@ def enqueue_data(data,
       queue_shapes = [()] + [col.shape[1:] for col in data.values()]
       get_feed_fn = _OrderedDictNumpyFeedFn
     elif HAS_PANDAS and isinstance(data, pd.DataFrame):
-      types = [dtypes.as_dtype(dt)
-               for dt in [data.index.dtype] + list(data.dtypes)]
+      types = [
+          dtypes.as_dtype(dt) for dt in [data.index.dtype] + list(data.dtypes)
+      ]
       queue_shapes = [() for _ in types]
       get_feed_fn = _PandasFeedFn
     else:
@@ -264,16 +271,16 @@ def enqueue_data(data,
     if shuffle:
       min_after_dequeue = int(capacity / 4 if min_after_dequeue is None else
                               min_after_dequeue)
-      queue = data_flow_ops.RandomShuffleQueue(capacity,
-                                               min_after_dequeue,
-                                               dtypes=types,
-                                               shapes=queue_shapes,
-                                               seed=seed)
+      queue = data_flow_ops.RandomShuffleQueue(
+          capacity,
+          min_after_dequeue,
+          dtypes=types,
+          shapes=queue_shapes,
+          seed=seed)
     else:
       min_after_dequeue = 0  # just for the summary text
-      queue = data_flow_ops.FIFOQueue(capacity,
-                                      dtypes=types,
-                                      shapes=queue_shapes)
+      queue = data_flow_ops.FIFOQueue(
+          capacity, dtypes=types, shapes=queue_shapes)
 
     enqueue_ops = []
     feed_fns = []
@@ -285,16 +292,17 @@ def enqueue_data(data,
 
       enqueue_ops.append(queue.enqueue_many(placeholders))
       seed_i = None if seed is None else (i + 1) * seed
-      feed_fns.append(get_feed_fn(placeholders,
-                                  data,
-                                  enqueue_size,
-                                  random_start=shuffle,
-                                  seed=seed_i,
-                                  num_epochs=num_epochs))
+      feed_fns.append(
+          get_feed_fn(
+              placeholders,
+              data,
+              enqueue_size,
+              random_start=shuffle,
+              seed=seed_i,
+              num_epochs=num_epochs))
 
-    runner = fqr.FeedingQueueRunner(queue=queue,
-                                    enqueue_ops=enqueue_ops,
-                                    feed_fns=feed_fns)
+    runner = fqr.FeedingQueueRunner(
+        queue=queue, enqueue_ops=enqueue_ops, feed_fns=feed_fns)
     queue_runner.add_queue_runner(runner)
 
     full = (math_ops.cast(
@@ -305,5 +313,5 @@ def enqueue_data(data,
     summary_name = ("queue/%sfraction_over_%d_of_%d_full" %
                     (queue.name, min_after_dequeue,
                      capacity - min_after_dequeue))
-    logging_ops.scalar_summary(summary_name, full)
+    summary.scalar(summary_name, full)
     return queue

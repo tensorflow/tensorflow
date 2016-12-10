@@ -32,6 +32,7 @@ def func2(*args, **kwargs):
 
 @tf.contrib.framework.add_arg_scope
 def func3(args, a=None, b=1, c=2):
+  """Some cool doc string."""
   return (args, a, b, c)
 
 
@@ -199,6 +200,10 @@ class ArgScopeTest(tf.test.TestCase):
           args, kwargs = func2(1)
           self.assertTupleEqual(args, func2_args)
           self.assertDictEqual(kwargs, func2_kwargs)
+
+  def testDocString(self):
+    self.assertEqual(func3.__doc__, 'Some cool doc string.')
+
 
 if __name__ == '__main__':
   tf.test.main()

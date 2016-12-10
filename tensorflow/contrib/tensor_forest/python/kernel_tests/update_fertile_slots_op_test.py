@@ -40,6 +40,8 @@ class UpdateFertileSlotsTest(test_util.TensorFlowTestCase):
     self.total_counts = [[80., 40., 40.]]
     self.ops = training_ops.Load()
     self.stale_leaves = []
+    self.node_sums = [[3, 1, 2], [4, 2, 2], [5, 2, 3], [6, 1, 5], [7, 5, 2],
+                      [8, 4, 4], [9, 7, 2]]
 
   def testSimple(self):
     with self.test_session():
@@ -47,7 +49,7 @@ class UpdateFertileSlotsTest(test_util.TensorFlowTestCase):
        accumulators_allocated) = self.ops.update_fertile_slots(
            self.finished, self.non_fertile_leaves, self.non_fertile_leaf_scores,
            self.end_of_tree, self.total_counts, self.node_map,
-           self.stale_leaves)
+           self.stale_leaves, self.node_sums)
 
       self.assertAllEqual([[2, 4], [-1, 0]], n2a_map_updates.eval())
       self.assertAllEqual([[0], [4]], a2n_map_updates.eval())
@@ -60,12 +62,26 @@ class UpdateFertileSlotsTest(test_util.TensorFlowTestCase):
        accumulators_allocated) = self.ops.update_fertile_slots(
            [], self.non_fertile_leaves, self.non_fertile_leaf_scores,
            self.end_of_tree, self.total_counts, self.node_map,
-           self.stale_leaves)
+           self.stale_leaves, self.node_sums)
 
       self.assertAllEqual((2, 0), n2a_map_updates.eval().shape)
       self.assertAllEqual((2, 0), a2n_map_updates.eval().shape)
       self.assertAllEqual([], accumulators_cleared.eval())
       self.assertAllEqual([], accumulators_allocated.eval())
+
+  def testPureCounts(self):
+    with self.test_session():
+      self.node_sums[4] = [10, 0, 10]
+      (n2a_map_updates, a2n_map_updates, accumulators_cleared,
+       accumulators_allocated) = self.ops.update_fertile_slots(
+           self.finished, self.non_fertile_leaves, self.non_fertile_leaf_scores,
+           self.end_of_tree, self.total_counts, self.node_map,
+           self.stale_leaves, self.node_sums)
+
+      self.assertAllEqual([[2, 3], [-1, 0]], n2a_map_updates.eval())
+      self.assertAllEqual([[0], [3]], a2n_map_updates.eval())
+      self.assertAllEqual([], accumulators_cleared.eval())
+      self.assertAllEqual([0], accumulators_allocated.eval())
 
   def testBadInput(self):
     del self.non_fertile_leaf_scores[-1]
@@ -76,7 +92,7 @@ class UpdateFertileSlotsTest(test_util.TensorFlowTestCase):
         (n2a_map_updates, _, _, _) = self.ops.update_fertile_slots(
             self.finished, self.non_fertile_leaves,
             self.non_fertile_leaf_scores, self.end_of_tree, self.total_counts,
-            self.node_map, self.stale_leaves)
+            self.node_map, self.stale_leaves, self.node_sums)
         self.assertAllEqual((2, 0), n2a_map_updates.eval().shape)
 
 

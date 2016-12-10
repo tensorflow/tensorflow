@@ -343,6 +343,14 @@ each element of `y_` with the corresponding element of `tf.log(y)`. Then
 `reduction_indices=[1]` parameter. Finally, `tf.reduce_mean` computes the mean
 over all the examples in the batch.
 
+Note that in the source code, we don't use this formulation, because it is
+numerically unstable.  Instead, we apply
+`tf.nn.softmax_cross_entropy_with_logits` on the unnormalized logits (e.g., we
+call `softmax_cross_entropy_with_logits` on `tf.matmul(x, W) + b`), because this
+more numerically stable function internally computes the softmax activation.  In
+your code, consider using `tf.nn.softmax_cross_entropy_with_logits`
+instead.
+
 Now that we know what we want our model to do, it's very easy to have TensorFlow
 train it to do so.  Because TensorFlow knows the entire graph of your
 computations, it can automatically use the
@@ -360,9 +368,8 @@ In this case, we ask TensorFlow to minimize `cross_entropy` using the
 with a learning rate of 0.5. Gradient descent is a simple procedure, where
 TensorFlow simply shifts each variable a little bit in the direction that
 reduces the cost. But TensorFlow also provides
-[many other optimization algorithms]
-(../../../api_docs/python/train.md#optimizers): using one is as simple as
-tweaking one line.
+[many other optimization algorithms](../../../api_docs/python/train.md#optimizers):
+using one is as simple as tweaking one line.
 
 What TensorFlow actually does here, behind the scenes, is to add new operations
 to your graph which implement backpropagation and gradient descent. Then it
@@ -374,7 +381,7 @@ have to create an operation to initialize the variables we created. Note that
 this defines the operation but does not run it yet:
 
 ```python
-init = tf.initialize_all_variables()
+init = tf.global_variables_initializer()
 ```
 
 We can now launch the model in a `Session`, and now we run the operation that

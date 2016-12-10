@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import contextlib
-import functools
 
 import numpy as np
 import tensorflow as tf
@@ -69,9 +68,9 @@ def make_univariate_mixture(batch_shape, num_components):
   logits = tf.random_uniform(
       list(batch_shape) + [num_components], -1, 1, dtype=tf.float32) - 50.
   components = [
-      (distributions_py.Normal,
-       {"mu": np.float32(np.random.randn(*list(batch_shape))),
-        "sigma": np.float32(10 * np.random.rand(*list(batch_shape)))})
+      distributions_py.Normal(
+          mu=np.float32(np.random.randn(*list(batch_shape))),
+          sigma=np.float32(10 * np.random.rand(*list(batch_shape))))
       for _ in range(num_components)
   ]
   cat = distributions_py.Categorical(logits, dtype=tf.int32)
@@ -82,10 +81,10 @@ def make_multivariate_mixture(batch_shape, num_components, event_shape):
   logits = tf.random_uniform(
       list(batch_shape) + [num_components], -1, 1, dtype=tf.float32) - 50.
   components = [
-      (distributions_py.MultivariateNormalDiag,
-       {"mu": np.float32(np.random.randn(*list(batch_shape + event_shape))),
-        "diag_stdev": np.float32(10 * np.random.rand(
-            *list(batch_shape + event_shape)))})
+      distributions_py.MultivariateNormalDiag(
+          mu=np.float32(np.random.randn(*list(batch_shape + event_shape))),
+          diag_stdev=np.float32(10 * np.random.rand(
+              *list(batch_shape + event_shape))))
       for _ in range(num_components)
   ]
   cat = distributions_py.Categorical(logits, dtype=tf.int32)
@@ -116,7 +115,7 @@ class MixtureTest(tf.test.TestCase):
                                              r"cat.num_classes != len"):
       distributions_py.Mixture(
           distributions_py.Categorical([0.1, 0.5]),  # 2 classes
-          [(distributions_py.Normal, {"mu": 1.0, "sigma": 2.0})])
+          [distributions_py.Normal(mu=1.0, sigma=2.0)])
     with self.assertRaisesWithPredicateMatch(
         ValueError, r"\(\) and \(2,\) are not compatible"):
       # The value error is raised because the batch shapes of the
@@ -124,13 +123,13 @@ class MixtureTest(tf.test.TestCase):
       # vector of size (2,).
       distributions_py.Mixture(
           distributions_py.Categorical([-0.5, 0.5]),  # scalar batch
-          [(distributions_py.Normal, {"mu": 1.0, "sigma": 2.0}),  # scalar dist
-           (distributions_py.Normal, {"mu": [1.0, 1.0], "sigma": [2.0, 2.0]})])
+          [distributions_py.Normal(mu=1.0, sigma=2.0),  # scalar dist
+           distributions_py.Normal(mu=[1.0, 1.0], sigma=[2.0, 2.0])])
     with self.assertRaisesWithPredicateMatch(ValueError, r"Could not infer"):
-      cat_logits = tf.placeholder(shape=[1, None], dtype=tf.int32)
+      cat_logits = tf.placeholder(shape=[1, None], dtype=tf.float32)
       distributions_py.Mixture(
           distributions_py.Categorical(cat_logits),
-          [(distributions_py.Normal, {"mu": [1.0], "sigma": [2.0]})])
+          [distributions_py.Normal(mu=[1.0], sigma=[2.0])])
 
   def testBrokenShapesDynamic(self):
     with self.test_session():
@@ -138,8 +137,8 @@ class MixtureTest(tf.test.TestCase):
       d1_param = tf.placeholder(dtype=tf.float32)
       d = distributions_py.Mixture(
           distributions_py.Categorical([0.1, 0.2]),
-          [(distributions_py.Normal, {"mu": d0_param, "sigma": d0_param}),
-           (distributions_py.Normal, {"mu": d1_param, "sigma": d1_param})],
+          [distributions_py.Normal(mu=d0_param, sigma=d0_param),
+           distributions_py.Normal(mu=d1_param, sigma=d1_param)],
           validate_args=True)
       with self.assertRaisesOpError(r"batch shape must match"):
         d.sample().eval(feed_dict={d0_param: [2.0, 3.0], d1_param: [1.0]})
@@ -150,42 +149,24 @@ class MixtureTest(tf.test.TestCase):
     with self.assertRaisesWithPredicateMatch(TypeError, "Categorical"):
       distributions_py.Mixture(None, [])
     cat = distributions_py.Categorical([0.3, 0.2])
-    # components must be a list of tuples
-    with self.assertRaisesWithPredicateMatch(TypeError, "tuples of the form"):
+    # components must be a list of distributions
+    with self.assertRaisesWithPredicateMatch(
+        TypeError, "all .* must be Distribution instances"):
       distributions_py.Mixture(cat, [None])
-    # components tuples must be size 2
-    with self.assertRaisesWithPredicateMatch(TypeError, "tuples of the form"):
-      distributions_py.Mixture(cat, [tuple()])
-    # components tuples must be size 2
-    with self.assertRaisesWithPredicateMatch(TypeError, "tuples of the form"):
-      distributions_py.Mixture(cat, [(None)])
-    # components tuples must be of the form (callable, dict)
-    with self.assertRaisesWithPredicateMatch(TypeError, "tuples of the form"):
-      distributions_py.Mixture(cat, [(None, None)])
-    # components tuples must be size 2
-    with self.assertRaisesWithPredicateMatch(TypeError, "tuples of the form"):
-      distributions_py.Mixture(cat, [(None, None, None)])
-    # components tuples must be of the form (callable, dict)
-    with self.assertRaisesWithPredicateMatch(TypeError, "tuples of the form"):
-      distributions_py.Mixture(cat, [(lambda x: x, None)])
-    # components tuples must be of the form (callable, dict)
-    with self.assertRaisesWithPredicateMatch(TypeError, "tuples of the form"):
-      distributions_py.Mixture(cat, [(None, {})])
     with self.assertRaisesWithPredicateMatch(TypeError, "same dtype"):
       distributions_py.Mixture(
           cat,
-          [(distributions_py.Normal, {"mu": [1.0], "sigma": [2.0]}),
-           (distributions_py.Normal, {"mu": [np.float16(1.0)],
-                                      "sigma": [np.float16(2.0)]})])
+          [distributions_py.Normal(mu=[1.0], sigma=[2.0]),
+           distributions_py.Normal(mu=[np.float16(1.0)],
+                                   sigma=[np.float16(2.0)])])
     with self.assertRaisesWithPredicateMatch(ValueError, "non-empty list"):
       distributions_py.Mixture(distributions_py.Categorical([0.3, 0.2]), None)
     with self.assertRaisesWithPredicateMatch(TypeError,
                                              "either be continuous or not"):
       distributions_py.Mixture(
           cat,
-          [(distributions_py.Normal, {"mu": [1.0], "sigma": [2.0]}),
-           (functools.partial(distributions_py.Bernoulli, dtype=tf.float32),
-            {"logits": [1.0]})])
+          [distributions_py.Normal(mu=[1.0], sigma=[2.0]),
+           distributions_py.Bernoulli(dtype=tf.float32, logits=[1.0])])
 
   def testMeanUnivariate(self):
     with self.test_session() as sess:
@@ -196,7 +177,7 @@ class MixtureTest(tf.test.TestCase):
         self.assertEqual(batch_shape, mean.get_shape())
 
         cat_probs = tf.nn.softmax(dist.cat.logits)
-        dist_means = [d.mean() for d in dist.distributions]
+        dist_means = [d.mean() for d in dist.components]
 
         mean_value, cat_probs_value, dist_means_value = sess.run(
             [mean, cat_probs, dist_means])
@@ -217,7 +198,7 @@ class MixtureTest(tf.test.TestCase):
         self.assertEqual(batch_shape + (4,), mean.get_shape())
 
         cat_probs = tf.nn.softmax(dist.cat.logits)
-        dist_means = [d.mean() for d in dist.distributions]
+        dist_means = [d.mean() for d in dist.components]
 
         mean_value, cat_probs_value, dist_means_value = sess.run(
             [mean, cat_probs, dist_means])
@@ -243,7 +224,7 @@ class MixtureTest(tf.test.TestCase):
 
         self.assertEqual(x.shape, p_x.get_shape())
         cat_probs = tf.nn.softmax([dist.cat.logits])[0]
-        dist_probs = [d.prob(x) for d in dist.distributions]
+        dist_probs = [d.prob(x) for d in dist.components]
 
         p_x_value, cat_probs_value, dist_probs_value = sess.run(
             [p_x, cat_probs, dist_probs])
@@ -269,7 +250,7 @@ class MixtureTest(tf.test.TestCase):
         self.assertEqual(x.shape[:-1], p_x.get_shape())
 
         cat_probs = tf.nn.softmax([dist.cat.logits])[0]
-        dist_probs = [d.prob(x) for d in dist.distributions]
+        dist_probs = [d.prob(x) for d in dist.components]
 
         p_x_value, cat_probs_value, dist_probs_value = sess.run(
             [p_x, cat_probs, dist_probs])
@@ -292,7 +273,7 @@ class MixtureTest(tf.test.TestCase):
         self.assertEqual(x.shape, p_x.get_shape())
 
         cat_probs = tf.nn.softmax(dist.cat.logits)
-        dist_probs = [d.prob(x) for d in dist.distributions]
+        dist_probs = [d.prob(x) for d in dist.components]
 
         p_x_value, cat_probs_value, dist_probs_value = sess.run(
             [p_x, cat_probs, dist_probs])
@@ -318,7 +299,7 @@ class MixtureTest(tf.test.TestCase):
         self.assertEqual(x.shape[:-1], p_x.get_shape())
 
         cat_probs = tf.nn.softmax(dist.cat.logits)
-        dist_probs = [d.prob(x) for d in dist.distributions]
+        dist_probs = [d.prob(x) for d in dist.components]
 
         p_x_value, cat_probs_value, dist_probs_value = sess.run(
             [p_x, cat_probs, dist_probs])
@@ -352,6 +333,32 @@ class MixtureTest(tf.test.TestCase):
         # Scalar Batch univariate case: batch_size == 1, rank 1
         which_dist_samples = dist_sample_values[c][:size_c]
         self.assertAllClose(which_dist_samples, sample_values[which_c])
+
+  # Test that sampling with the same seed twice gives the same results.
+  def testSampleMultipleTimes(self):
+    # 5 component mixture.
+    logits = [-10.0, -5.0, 0.0, 5.0, 10.0]
+    mus = [-5.0, 0.0, 5.0, 4.0, 20.0]
+    sigmas = [0.1, 5.0, 3.0, 0.2, 4.0]
+
+    with self.test_session():
+      n = 100
+
+      tf.set_random_seed(654321)
+      components = [distributions_py.Normal(
+          mu=mu, sigma=sigma) for mu, sigma in zip(mus, sigmas)]
+      cat = distributions_py.Categorical(logits, dtype=tf.int32, name="cat1")
+      dist1 = distributions_py.Mixture(cat, components, name="mixture1")
+      samples1 = dist1.sample_n(n, seed=123456).eval()
+
+      tf.set_random_seed(654321)
+      components2 = [distributions_py.Normal(
+          mu=mu, sigma=sigma) for mu, sigma in zip(mus, sigmas)]
+      cat2 = distributions_py.Categorical(logits, dtype=tf.int32, name="cat2")
+      dist2 = distributions_py.Mixture(cat2, components2, name="mixture2")
+      samples2 = dist2.sample_n(n, seed=123456).eval()
+
+      self.assertAllClose(samples1, samples2)
 
   def testSampleScalarBatchMultivariate(self):
     with self.test_session() as sess:
@@ -430,7 +437,7 @@ class MixtureTest(tf.test.TestCase):
         self.assertEqual(batch_shape, entropy_lower_bound.get_shape())
 
         cat_probs = tf.nn.softmax(dist.cat.logits)
-        dist_entropy = [d.entropy() for d in dist.distributions]
+        dist_entropy = [d.entropy() for d in dist.components]
 
         entropy_lower_bound_value, cat_probs_value, dist_entropy_value = (
             sess.run([entropy_lower_bound, cat_probs, dist_entropy]))
@@ -444,6 +451,103 @@ class MixtureTest(tf.test.TestCase):
             [c_p * m for (c_p, m) in zip(cat_probs_value, dist_entropy_value)])
 
         self.assertAllClose(true_entropy_lower_bound, entropy_lower_bound_value)
+
+
+class MixtureBenchmark(tf.test.Benchmark):
+
+  def _runSamplingBenchmark(self, name,
+                            create_distribution, use_gpu, num_components,
+                            batch_size, num_features, sample_size):
+    config = tf.ConfigProto()
+    config.allow_soft_placement = True
+    np.random.seed(127)
+    with tf.Session(config=config, graph=tf.Graph()) as sess:
+      tf.set_random_seed(0)
+      with tf.device("/gpu:0" if use_gpu else "/cpu:0"):
+        mixture = create_distribution(
+            num_components=num_components,
+            batch_size=batch_size,
+            num_features=num_features)
+        sample_op = mixture.sample(sample_size).op
+        sess.run(tf.global_variables_initializer())
+        reported = self.run_op_benchmark(
+            sess, sample_op,
+            min_iters=10,
+            name=("%s_%s_components_%d_batch_%d_features_%d_sample_%d"
+                  % (name, use_gpu, num_components,
+                     batch_size, num_features, sample_size)))
+        print("\t".join(["%s", "%d", "%d", "%d", "%d", "%g"])
+              % (use_gpu, num_components, batch_size,
+                 num_features, sample_size, reported["wall_time"]))
+
+  def benchmarkSamplingMVNDiag(self):
+    print("mvn_diag\tuse_gpu\tcomponents\tbatch\tfeatures\tsample\twall_time")
+
+    def create_distribution(batch_size, num_components, num_features):
+      cat = distributions_py.Categorical(
+          logits=np.random.randn(batch_size, num_components))
+      mus = [
+          tf.Variable(np.random.randn(batch_size, num_features))
+          for _ in range(num_components)]
+      sigmas = [
+          tf.Variable(np.random.rand(batch_size, num_features))
+          for _ in range(num_components)]
+      components = list(
+          distributions_py.MultivariateNormalDiag(mu=mu, diag_stdev=sigma)
+          for (mu, sigma) in zip(mus, sigmas))
+      return distributions_py.Mixture(cat, components)
+
+    for use_gpu in False, True:
+      if use_gpu and not tf.test.is_gpu_available():
+        continue
+      for num_components in 1, 8, 16:
+        for batch_size in 1, 32:
+          for num_features in 1, 64, 512:
+            for sample_size in 1, 32, 128:
+              self._runSamplingBenchmark(
+                  "mvn_diag", create_distribution=create_distribution,
+                  use_gpu=use_gpu,
+                  num_components=num_components,
+                  batch_size=batch_size,
+                  num_features=num_features,
+                  sample_size=sample_size)
+
+  def benchmarkSamplingMVNFull(self):
+    print("mvn_full\tuse_gpu\tcomponents\tbatch\tfeatures\tsample\twall_time")
+
+    def psd(x):
+      """Construct batch-wise PSD matrices."""
+      return np.stack([np.dot(np.transpose(z), z) for z in x])
+
+    def create_distribution(batch_size, num_components, num_features):
+      cat = distributions_py.Categorical(
+          logits=np.random.randn(batch_size, num_components))
+      mus = [
+          tf.Variable(np.random.randn(batch_size, num_features))
+          for _ in range(num_components)]
+      sigmas = [
+          tf.Variable(
+              psd(np.random.rand(batch_size, num_features, num_features)))
+          for _ in range(num_components)]
+      components = list(
+          distributions_py.MultivariateNormalFull(mu=mu, sigma=sigma)
+          for (mu, sigma) in zip(mus, sigmas))
+      return distributions_py.Mixture(cat, components)
+
+    for use_gpu in False, True:
+      if use_gpu and not tf.test.is_gpu_available():
+        continue
+      for num_components in 1, 8, 16:
+        for batch_size in 1, 32:
+          for num_features in 1, 64, 512:
+            for sample_size in 1, 32, 128:
+              self._runSamplingBenchmark(
+                  "mvn_full", create_distribution=create_distribution,
+                  use_gpu=use_gpu,
+                  num_components=num_components,
+                  batch_size=batch_size,
+                  num_features=num_features,
+                  sample_size=sample_size)
 
 
 if __name__ == "__main__":

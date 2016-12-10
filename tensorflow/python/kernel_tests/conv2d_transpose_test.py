@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
+from tensorflow.python.client import device_lib
 
 
 class Conv2DTransposeTest(tf.test.TestCase):
@@ -156,6 +157,119 @@ class Conv2DTransposeTest(tf.test.TestCase):
     print("conv2d_transpose gradient err = %g " % err)
     err_tolerance = 0.0005
     self.assertLess(err, err_tolerance)
+
+  def testConv2DTransposeSingleStrideNCHW(self):
+    # `NCHW` data fomat is only supported for CUDA device.
+    if tf.test.is_gpu_available(cuda_only=True):
+      with self.test_session(use_gpu=True):
+        strides = [1, 1, 1, 1]
+
+        # Input, output: [batch, depth, height, width, depth]
+        x_shape = [2, 3, 6, 4]
+        y_shape = [2, 2, 6, 4]
+
+        # Filter: [kernel_height, kernel_width, output_depth, input_depth]
+        f_shape = [3, 3, 2, 3]
+
+        x = tf.constant(1.0, shape=x_shape, name="x", dtype=tf.float32)
+        f = tf.constant(1.0, shape=f_shape, name="filter", dtype=tf.float32)
+
+        output = tf.nn.conv2d_transpose(x, f, y_shape, strides=strides,
+                                     padding="SAME", data_format='NCHW')
+
+        value = output.eval()
+        for n in xrange(x_shape[0]):
+          for k in xrange(f_shape[2]):
+            for w in xrange(y_shape[3]):
+              for h in xrange(y_shape[2]):
+                target = 4 * 3.0
+                h_in = h > 0 and h < y_shape[2] - 1
+                w_in = w > 0 and w < y_shape[3] - 1
+                if h_in and w_in:
+                  target += 5 * 3.0
+                elif h_in or w_in:
+                  target += 2 * 3.0
+                self.assertAllClose(target, value[n, k, h, w])
+
+  def testConv2DTransposeSameNCHW(self):
+    # `NCHW` data fomat is only supported for CUDA device.
+    if tf.test.is_gpu_available(cuda_only=True):
+      with self.test_session(use_gpu=True):
+        strides = [1, 1, 2, 2]
+
+        # Input, output: [batch, depth, height, width]
+        x_shape = [2, 3, 6, 4]
+        y_shape = [2, 2, 12, 8]
+
+        # Filter: [kernel_height, kernel_width, output_depth, input_depth]
+        f_shape = [3, 3, 2, 3]
+
+        x = tf.constant(1.0, shape=x_shape, name="x", dtype=tf.float32)
+        f = tf.constant(1.0, shape=f_shape, name="filter", dtype=tf.float32)
+
+        output = tf.nn.conv2d_transpose(x, f, y_shape, strides=strides,
+                                          padding="SAME", data_format='NCHW')
+
+        value = output.eval()
+        for n in xrange(x_shape[0]):
+          for k in xrange(f_shape[2]):
+            for w in xrange(y_shape[3]):
+              for h in xrange(y_shape[2]):
+                target = 3.0
+                # We add a case for locations divisible by the stride.
+                h_in = h % strides[2] == 0 and h > 0 and h < y_shape[2] - 1
+                w_in = w % strides[3] == 0 and w > 0 and w < y_shape[3] - 1
+                if h_in and w_in:
+                  target += 9.0
+                elif h_in or w_in:
+                  target += 3.0
+                self.assertAllClose(target, value[n, k, h, w])
+
+  def testConv2DTransposeValidNCHW(self):
+    # `NCHW` data fomat is only supported for CUDA device.
+    if tf.test.is_gpu_available(cuda_only=True):
+      with self.test_session(use_gpu=True):
+        strides = [1, 1, 2, 2]
+
+        # Input, output: [batch, depth, height, width]
+        x_shape = [2, 3, 6, 4]
+        y_shape = [2, 2, 13, 9]
+
+        # Filter: [kernel_height, kernel_width, output_depth, input_depth]
+        f_shape = [3, 3, 2, 3]
+
+        x = tf.constant(1.0, shape=x_shape, name="x", dtype=tf.float32)
+        f = tf.constant(1.0, shape=f_shape, name="filter", dtype=tf.float32)
+        output = tf.nn.conv2d_transpose(x, f, y_shape, strides=strides,
+                                        padding="VALID", data_format='NCHW')
+
+        value = output.eval()
+        cache_values = np.zeros(y_shape, dtype=np.float32)
+        # The amount of padding added
+        pad = 1
+        for n in xrange(x_shape[0]):
+          for k in xrange(f_shape[2]):
+            for w in xrange(pad, y_shape[3] - pad):
+              for h in xrange(pad, y_shape[2] - pad):
+                target = 3.0
+                # We add a case for locations divisible by the stride.
+                h_in = h % strides[
+                    2] == 0 and h > pad and h < y_shape[2] - 1 - pad
+                w_in = w % strides[
+                    3] == 0 and w > pad and w < y_shape[3] - 1 - pad
+                if h_in and w_in:
+                  target += 9.0
+                elif h_in or w_in:
+                  target += 3.0
+                cache_values[n, k, h, w] = target
+
+            # copy values in the border
+            cache_values[n, k, :, 0] = cache_values[n, k, :, 1]
+            cache_values[n, k, :, -1] = cache_values[n, k, :, -2]
+            cache_values[n, k, 0, :] = cache_values[n, k, 1, :]
+            cache_values[n, k, -1, :] = cache_values[n, k, -2, :]
+
+        self.assertAllClose(cache_values, value)
 
 
 if __name__ == "__main__":

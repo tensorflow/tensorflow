@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/graph_def_util.h"
 
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
@@ -169,6 +170,58 @@ TEST(RemoveNewDefaultAttrsFromGraphDefTest, UnderscoreAttrs) {
 
   TF_EXPECT_GRAPH_EQ(expected_graph_def, produced_graph_def);
   EXPECT_EQ(op_attr_removed.size(), 0);
+}
+
+TEST(RemoveNewDefaultAttrsFromGraphDefTest, HasFunction) {
+  OpList consumer_op_list;
+  TF_ASSERT_OK(
+      FinalizeOpDef(OpDefBuilder("UsesDefault"), consumer_op_list.add_op()));
+  TF_ASSERT_OK(FinalizeOpDef(OpDefBuilder("ChangedFromDefault"),
+                             consumer_op_list.add_op()));
+  OpListOpRegistry consumer_registry(&consumer_op_list);
+
+  OpList producer_op_list;
+  TF_ASSERT_OK(FinalizeOpDef(OpDefBuilder("UsesDefault").Attr("a: int = 17"),
+                             producer_op_list.add_op()));
+  TF_ASSERT_OK(
+      FinalizeOpDef(OpDefBuilder("ChangedFromDefault").Attr("a: int = 17"),
+                    producer_op_list.add_op()));
+  OpListOpRegistry producer_registry(&producer_op_list);
+
+  GraphDef produced_graph_def;
+  *produced_graph_def.mutable_library()->add_function() =
+      FunctionDefHelper::Create(
+          "my_func", {}, {}, {},
+          {{{"x"}, "UsesDefault", {}, {{"a", 17}}},
+           {{"y"}, "ChangedFromDefault", {}, {{"a", 99}}}},
+          {});
+  OpList function_op_list;
+  *function_op_list.add_op() =
+      produced_graph_def.library().function(0).signature();
+  OpListOpRegistry function_registry(&function_op_list);
+  TF_ASSERT_OK(NodeDefBuilder("call_func", "my_func", &function_registry)
+                   .Finalize(produced_graph_def.add_node()));
+
+  std::set<std::pair<string, string>> op_attr_removed;
+  TF_ASSERT_OK(
+      RemoveNewDefaultAttrsFromGraphDef(&produced_graph_def, consumer_registry,
+                                        producer_registry, &op_attr_removed));
+
+  GraphDef expected_graph_def;
+  *expected_graph_def.mutable_library()->add_function() =
+      FunctionDefHelper::Create(
+          "my_func", {}, {}, {},
+          {{{"x"}, "UsesDefault", {}, {}},
+           {{"y"}, "ChangedFromDefault", {}, {{"a", 99}}}},
+          {});
+  TF_ASSERT_OK(NodeDefBuilder("call_func", "my_func", &function_registry)
+                   .Finalize(expected_graph_def.add_node()));
+  TF_EXPECT_GRAPH_EQ(expected_graph_def, produced_graph_def);
+  EXPECT_EQ(expected_graph_def.library().DebugString(),
+            produced_graph_def.library().DebugString());
+
+  std::set<std::pair<string, string>> expected_removed({{"UsesDefault", "a"}});
+  EXPECT_EQ(expected_removed, op_attr_removed);
 }
 
 TEST(StrippedOpListForGraphTest, FlatTest) {

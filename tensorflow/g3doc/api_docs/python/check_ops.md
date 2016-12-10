@@ -18,12 +18,6 @@ with tf.control_dependencies([tf.assert_negative(x)]):
   output = tf.reduce_sum(x)
 ```
 
-Example of adding dependency to the tensor being checked:
-
-```python
-x = tf.with_dependencies([tf.assert_negative(x)], x)
-```
-
 Negative means, for every element `x[i]` of `x`, we have `x[i] < 0`.
 If `x` is empty this is trivially satisfied.
 
@@ -53,12 +47,6 @@ Example of adding a dependency to an operation:
 ```python
 with tf.control_dependencies([tf.assert_positive(x)]):
   output = tf.reduce_sum(x)
-```
-
-Example of adding dependency to the tensor being checked:
-
-```python
-x = tf.with_dependencies([tf.assert_positive(x)], x)
 ```
 
 Positive means, for every element `x[i]` of `x`, we have `x[i] > 0`.
@@ -113,12 +101,6 @@ with tf.control_dependencies([tf.assert_non_negative(x)]):
   output = tf.reduce_sum(x)
 ```
 
-Example of adding dependency to the tensor being checked:
-
-```python
-x = tf.with_dependencies([tf.assert_non_negative(x)], x)
-```
-
 Non-negative means, for every element `x[i]` of `x`, we have `x[i] >= 0`.
 If `x` is empty this is trivially satisfied.
 
@@ -151,12 +133,6 @@ with tf.control_dependencies([tf.assert_non_positive(x)]):
   output = tf.reduce_sum(x)
 ```
 
-Example of adding dependency to the tensor being checked:
-
-```python
-x = tf.with_dependencies([tf.assert_non_positive(x)], x)
-```
-
 Non-positive means, for every element `x[i]` of `x`, we have `x[i] <= 0`.
 If `x` is empty this is trivially satisfied.
 
@@ -187,12 +163,6 @@ Example of adding a dependency to an operation:
 ```python
 with tf.control_dependencies([tf.assert_equal(x, y)]):
   output = tf.reduce_sum(x)
-```
-
-Example of adding dependency to the tensor being checked:
-
-```python
-x = tf.with_dependencies([tf.assert_equal(x, y)], x)
 ```
 
 This condition holds if for every pair of (possibly broadcast) elements
@@ -228,12 +198,6 @@ with tf.control_dependencies([tf.assert_integer(x)]):
   output = tf.reduce_sum(x)
 ```
 
-Example of adding dependency to the tensor being checked:
-
-```python
-x = tf.with_dependencies([tf.assert_integer(x)], x)
-```
-
 ##### Args:
 
 
@@ -262,12 +226,6 @@ Example of adding a dependency to an operation:
 ```python
 with tf.control_dependencies([tf.assert_less(x, y)]):
   output = tf.reduce_sum(x)
-```
-
-Example of adding dependency to the tensor being checked:
-
-```python
-x = tf.with_dependencies([tf.assert_less(x, y)], x)
 ```
 
 This condition holds if for every pair of (possibly broadcast) elements
@@ -303,12 +261,6 @@ with tf.control_dependencies([tf.assert_less_equal(x, y)]):
   output = tf.reduce_sum(x)
 ```
 
-Example of adding dependency to the tensor being checked:
-
-```python
-x = tf.with_dependencies([tf.assert_less_equal(x, y)], x)
-```
-
 This condition holds if for every pair of (possibly broadcast) elements
 `x[i]`, `y[i]`, we have `x[i] <= y[i]`.
 If both `x` and `y` are empty, this is trivially satisfied.
@@ -340,12 +292,6 @@ Example of adding a dependency to an operation:
 ```python
 with tf.control_dependencies([tf.assert_greater(x, y)]):
   output = tf.reduce_sum(x)
-```
-
-Example of adding dependency to the tensor being checked:
-
-```python
-x = tf.with_dependencies([tf.assert_greater(x, y)], x)
 ```
 
 This condition holds if for every pair of (possibly broadcast) elements
@@ -381,12 +327,6 @@ with tf.control_dependencies([tf.assert_greater_equal(x, y)]):
   output = tf.reduce_sum(x)
 ```
 
-Example of adding dependency to the tensor being checked:
-
-```python
-x = tf.with_dependencies([tf.assert_greater_equal(x, y)], x)
-```
-
 This condition holds if for every pair of (possibly broadcast) elements
 `x[i]`, `y[i]`, we have `x[i] >= y[i]`.
 If both `x` and `y` are empty, this is trivially satisfied.
@@ -419,12 +359,6 @@ Example of adding a dependency to an operation:
 ```python
 with tf.control_dependencies([tf.assert_rank(x, 2)]):
   output = tf.reduce_sum(x)
-```
-
-Example of adding dependency to the tensor being checked:
-
-```python
-x = tf.with_dependencies([tf.assert_rank(x, 2)], x)
 ```
 
 ##### Args:
@@ -462,12 +396,6 @@ with tf.control_dependencies([tf.assert_rank_at_least(x, 2)]):
   output = tf.reduce_sum(x)
 ```
 
-Example of adding dependency to the tensor being checked:
-
-```python
-x = tf.with_dependencies([tf.assert_rank_at_least(x, 2)], x)
-```
-
 ##### Args:
 
 
@@ -501,14 +429,15 @@ Statically asserts that the given `Tensor` is of the specified type.
 
 
 *  <b>`tensor`</b>: A tensorflow `Tensor`.
-*  <b>`tf_type`</b>: A tensorflow type (dtypes.float32, tf.int64, dtypes.bool, etc).
+*  <b>`tf_type`</b>: A tensorflow type (`dtypes.float32`, `tf.int64`, `dtypes.bool`,
+    etc).
 *  <b>`message`</b>: A string to prefix to the default message.
 *  <b>`name`</b>: A name to give this `Op`.  Defaults to "assert_type"
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: If the tensors data type doesn't match tf_type.
+*  <b>`TypeError`</b>: If the tensors data type doesn't match `tf_type`.
 
 ##### Returns:
 

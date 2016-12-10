@@ -30,6 +30,14 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import special_math_ops
 
 
+_dirichlet_prob_note = """
+Note that the input must be a non-negative tensor with dtype `dtype` and whose
+shape can be broadcast with `self.alpha`.  For fixed leading dimensions, the
+last dimension represents counts for the corresponding Dirichlet distribution
+in `self.alpha`. `x` is only legal if it sums up to one.
+"""
+
+
 class Dirichlet(distribution.Distribution):
   """Dirichlet distribution.
 
@@ -127,6 +135,8 @@ class Dirichlet(distribution.Distribution):
     ```
 
     """
+    parameters = locals()
+    parameters.pop("self")
     with ops.name_scope(name, values=[alpha]) as ns:
       alpha = ops.convert_to_tensor(alpha, name="alpha")
       with ops.control_dependencies([
@@ -137,14 +147,15 @@ class Dirichlet(distribution.Distribution):
         self._alpha_sum = math_ops.reduce_sum(alpha,
                                               reduction_indices=[-1],
                                               keep_dims=False)
-        super(Dirichlet, self).__init__(
-            dtype=self._alpha.dtype,
-            parameters={"alpha": self._alpha, "alpha_sum": self._alpha_sum},
-            validate_args=validate_args,
-            allow_nan_stats=allow_nan_stats,
-            is_continuous=True,
-            is_reparameterized=False,
-            name=ns)
+    super(Dirichlet, self).__init__(
+        dtype=self._alpha.dtype,
+        validate_args=validate_args,
+        allow_nan_stats=allow_nan_stats,
+        is_continuous=True,
+        is_reparameterized=False,
+        parameters=parameters,
+        graph_parents=[self._alpha, self._alpha_sum],
+        name=ns)
 
   @property
   def alpha(self):
@@ -175,6 +186,7 @@ class Dirichlet(distribution.Distribution):
     return gamma_sample / math_ops.reduce_sum(
         gamma_sample, reduction_indices=[-1], keep_dims=True)
 
+  @distribution_util.AppendDocstring(_dirichlet_prob_note)
   def _log_prob(self, x):
     x = ops.convert_to_tensor(x, name="x")
     x = self._assert_valid_sample(x)
@@ -184,6 +196,7 @@ class Dirichlet(distribution.Distribution):
         keep_dims=False) - special_math_ops.lbeta(self.alpha)
     return log_prob
 
+  @distribution_util.AppendDocstring(_dirichlet_prob_note)
   def _prob(self, x):
     return math_ops.exp(self._log_prob(x))
 
@@ -203,23 +216,30 @@ class Dirichlet(distribution.Distribution):
   def _variance(self):
     scale = self.alpha_sum * math_ops.sqrt(1. + self.alpha_sum)
     alpha = self.alpha / scale
-    outer_prod = -math_ops.batch_matmul(
-        array_ops.expand_dims(alpha, dim=-1),  # column
-        array_ops.expand_dims(alpha, dim=-2))  # row
-    return array_ops.batch_matrix_set_diag(
-        outer_prod, alpha * (self.alpha_sum / scale - alpha))
+    outer_prod = -math_ops.matmul(
+        array_ops.expand_dims(
+            alpha, dim=-1),  # column
+        array_ops.expand_dims(
+            alpha, dim=-2))  # row
+    return array_ops.matrix_set_diag(outer_prod,
+                                     alpha * (self.alpha_sum / scale - alpha))
 
   def _std(self):
     return math_ops.sqrt(self._variance())
 
+  @distribution_util.AppendDocstring(
+      """Note that the mode for the Dirichlet distribution is only defined
+      when `alpha > 1`. This returns the mode when `alpha > 1`,
+      and NaN otherwise. If `self.allow_nan_stats` is `False`, an exception
+      will be raised rather than returning `NaN`.""")
   def _mode(self):
     mode = ((self.alpha - 1.) /
             (array_ops.expand_dims(self.alpha_sum, dim=-1) -
              math_ops.cast(self.event_shape()[0], self.dtype)))
     if self.allow_nan_stats:
       nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
-      shape = array_ops.concat(0, (self.batch_shape(), self.event_shape()))
-      return math_ops.select(
+      shape = array_ops.concat_v2((self.batch_shape(), self.event_shape()), 0)
+      return array_ops.where(
           math_ops.greater(self.alpha, 1.),
           mode,
           array_ops.fill(shape, nan, name="nan"))
@@ -238,22 +258,3 @@ class Dirichlet(distribution.Distribution):
             array_ops.ones((), dtype=self.dtype),
             math_ops.reduce_sum(x, reduction_indices=[-1])),
     ], x)
-
-
-_prob_note = """
-
-  Note that the input must be a non-negative tensor with dtype `dtype` and whose
-  shape can be broadcast with `self.alpha`.  For fixed leading dimensions, the
-  last dimension represents counts for the corresponding Dirichlet distribution
-  in `self.alpha`. `x` is only legal if it sums up to one.
-"""
-distribution_util.append_class_fun_doc(Dirichlet.log_prob, doc_str=_prob_note)
-distribution_util.append_class_fun_doc(Dirichlet.prob, doc_str=_prob_note)
-
-distribution_util.append_class_fun_doc(Dirichlet.mode, doc_str="""
-
-  Note that the mode for the Dirichlet distribution is only defined
-  when `alpha > 1`. This returns the mode when `alpha > 1`,
-  and NaN otherwise. If `self.allow_nan_stats` is `False`, an exception
-  will be raised rather than returning `NaN`.
-""")

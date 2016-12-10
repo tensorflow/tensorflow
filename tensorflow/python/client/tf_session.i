@@ -24,7 +24,6 @@ limitations under the License.
 %}
 
 // Required to use PyArray_* functions.
-%include "tensorflow/python/platform/numpy.i"
 %init %{
 tensorflow::ImportNumpy();
 %}
@@ -48,21 +47,6 @@ tensorflow::ImportNumpy();
   Py_END_ALLOW_THREADS;
 }
 
-// Proto input arguments to C API functions are passed as a (const
-// void*, size_t) pair. In Python, typemap these to a single string
-// argument.  This typemap does *not* make a copy of the input.
-%typemap(in) (const void* proto, size_t proto_len) {
-  char* c_string;
-  Py_ssize_t py_size;
-  // PyBytes_AsStringAndSize() does not copy but simply interprets the input
-  if (PyBytes_AsStringAndSize($input, &c_string, &py_size) == -1) {
-    // Python has raised an error (likely TypeError or UnicodeEncodeError).
-    SWIG_fail;
-  }
-  $1 = static_cast<void*>(c_string);
-  $2 = static_cast<size_t>(py_size);
-}
-
 // The target input to TF_SetTarget() is passed as a null-terminated
 // const char*.
 %typemap(in) (const char* target) {
@@ -76,57 +60,6 @@ tensorflow::ImportNumpy();
 ////////////////////////////////////////////////////////////////////////////////
 // BEGIN TYPEMAPS FOR tensorflow::TF_Run_wrapper()
 ////////////////////////////////////////////////////////////////////////////////
-
-// The wrapper takes a vector of pairs of feed names and feed
-// values. In Python this is represented as dictionary mapping strings
-// to numpy arrays.
-%typemap(in) const tensorflow::FeedVector& inputs (
-    tensorflow::FeedVector temp,
-    tensorflow::Safe_PyObjectPtr temp_string_list(tensorflow::make_safe(nullptr)),
-    tensorflow::Safe_PyObjectPtr temp_array_list(tensorflow::make_safe(nullptr))) {
-  if (!PyDict_Check($input)) {
-    SWIG_fail;
-  }
-
-  temp_string_list = tensorflow::make_safe(PyList_New(0));
-  if (!temp_string_list) {
-    SWIG_fail;
-  }
-  temp_array_list = tensorflow::make_safe(PyList_New(0));
-  if (!temp_array_list) {
-    SWIG_fail;
-  }
-
-  PyObject* key;
-  PyObject* value;
-  Py_ssize_t pos = 0;
-  while (PyDict_Next($input, &pos, &key, &value)) {
-    char* key_string = PyBytes_AsString(key);
-    if (!key_string) {
-      SWIG_fail;
-    }
-
-    // The ndarray must be stored as contiguous bytes in C (row-major) order.
-    PyObject* array_object = PyArray_FromAny(
-        value, nullptr, 0, 0, NPY_ARRAY_CARRAY, nullptr);
-    if (!array_object) {
-      SWIG_fail;
-    }
-    PyArrayObject* array = reinterpret_cast<PyArrayObject*>(array_object);
-
-    // Keep a reference to the key and the array, in case the incoming dict is
-    // modified, and/or to avoid leaking references on failure.
-    if (PyList_Append(temp_string_list.get(), key) == -1) {
-      SWIG_fail;
-    }
-    if (PyList_Append(temp_array_list.get(), array_object) == -1) {
-      SWIG_fail;
-    }
-
-    temp.push_back(std::make_pair(key_string, array));
-  }
-  $1 = &temp;
-}
 
 // The wrapper also takes a list of fetch and target names.  In Python this is
 // represented as a list of strings.
@@ -237,9 +170,9 @@ tensorflow::ImportNumpy();
 %rename("_TF_SetConfig") TF_SetConfig;
 %rename("_TF_NewSessionOptions") TF_NewSessionOptions;
 %unignore TF_DeleteSessionOptions;
-%unignore TF_NewSession;
-%unignore TF_CloseSession;
-%unignore TF_DeleteSession;
+%unignore TF_NewDeprecatedSession;
+%unignore TF_CloseDeprecatedSession;
+%unignore TF_DeleteDeprecatedSession;
 %unignore TF_ExtendGraph;
 %unignore TF_NewLibrary;
 %unignore TF_LoadLibrary;

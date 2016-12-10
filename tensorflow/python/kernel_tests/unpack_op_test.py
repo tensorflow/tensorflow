@@ -23,7 +23,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 
-def np_split_sqeeze(array, axis):
+def np_split_squeeze(array, axis):
   axis_len = array.shape[axis]
   return [
       np.squeeze(arr, axis=(axis,))
@@ -35,26 +35,32 @@ class UnpackOpTest(tf.test.TestCase):
 
   def testSimple(self):
     np.random.seed(7)
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
         data = np.random.randn(*shape)
         # Convert data to a single tensorflow tensor
         x = tf.constant(data)
         # Unpack into a list of tensors
-        cs = tf.unpack(x, num=shape[0])
-        self.assertEqual(type(cs), list)
-        self.assertEqual(len(cs), shape[0])
-        cs = [c.eval() for c in cs]
-        self.assertAllEqual(cs, data)
+        cs_unpacked = tf.unpack(x, num=shape[0])
+        cs_unstacked = tf.unpack(x, num=shape[0])
+        for cs in (cs_unpacked, cs_unstacked):
+          self.assertEqual(type(cs), list)
+          self.assertEqual(len(cs), shape[0])
+          cs = [c.eval() for c in cs]
+          self.assertAllEqual(cs, data)
 
   def testGradientsAxis0(self):
     for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
       data = np.random.randn(*shape)
       shapes = [shape[1:]] * shape[0]
       for i in xrange(shape[0]):
-        with self.test_session():
+        with self.test_session(use_gpu=True):
           x = tf.constant(data)
           cs = tf.unpack(x, num=shape[0])
+          err = tf.test.compute_gradient_error(x, shape, cs[i], shapes[i])
+          self.assertLess(err, 1e-6)
+
+          cs = tf.unstack(x, num=shape[0])
           err = tf.test.compute_gradient_error(x, shape, cs[i], shapes[i])
           self.assertLess(err, 1e-6)
 
@@ -64,9 +70,13 @@ class UnpackOpTest(tf.test.TestCase):
       out_shape = list(shape)
       del out_shape[1]
       for i in xrange(shape[1]):
-        with self.test_session():
+        with self.test_session(use_gpu=True):
           x = tf.constant(data)
           cs = tf.unpack(x, num=shape[1], axis=1)
+          err = tf.test.compute_gradient_error(x, shape, cs[i], out_shape)
+          self.assertLess(err, 1e-6)
+
+          cs = tf.unstack(x, num=shape[1], axis=1)
           err = tf.test.compute_gradient_error(x, shape, cs[i], out_shape)
           self.assertLess(err, 1e-6)
 
@@ -78,21 +88,32 @@ class UnpackOpTest(tf.test.TestCase):
         self.assertEqual(type(cs), list)
         self.assertEqual(len(cs), shape[0])
 
+        cs = tf.unstack(x)
+        self.assertEqual(type(cs), list)
+        self.assertEqual(len(cs), shape[0])
+
   def testCannotInferNumFromUnknownShape(self):
     x = tf.placeholder(np.float32)
     with self.assertRaisesRegexp(
         ValueError, r'Cannot infer num from shape <unknown>'):
       tf.unpack(x)
+    with self.assertRaisesRegexp(
+        ValueError, r'Cannot infer num from shape <unknown>'):
+      tf.unstack(x)
 
   def testUnknownShapeOkWithNum(self):
     x = tf.placeholder(np.float32)
     tf.unpack(x, num=2)
+    tf.unstack(x, num=2)
 
   def testCannotInferNumFromNoneShape(self):
     x = tf.placeholder(np.float32, shape=(None,))
     with self.assertRaisesRegexp(ValueError,
                                  r'Cannot infer num from shape \(\?,\)'):
       tf.unpack(x)
+    with self.assertRaisesRegexp(ValueError,
+                                 r'Cannot infer num from shape \(\?,\)'):
+      tf.unstack(x)
 
   def testAgainstNumpy(self):
     # For 1 to 5 dimensions.
@@ -101,37 +122,50 @@ class UnpackOpTest(tf.test.TestCase):
 
       # For all the possible axis to split it, including negative indices.
       for j in range(-i, i):
-        expected = np_split_sqeeze(a, j)
+        expected = np_split_squeeze(a, j)
 
         with self.test_session() as sess:
-          actual = sess.run(tf.unpack(a, axis=j))
+          actual_unpack = sess.run(tf.unpack(a, axis=j))
+          actual_unstack = sess.run(tf.unstack(a, axis=j))
 
-        self.assertAllEqual(expected, actual)
+        self.assertAllEqual(expected, actual_unpack)
+        self.assertAllEqual(expected, actual_unstack)
 
   def testAxis0Default(self):
     with self.test_session() as sess:
       a = tf.constant([[1, 2, 3], [4, 5, 6]], name='a')
 
       unpacked = sess.run(tf.unpack(a))
+      unstacked = sess.run(tf.unstack(a))
 
     self.assertEqual(len(unpacked), 2)
     self.assertAllEqual(unpacked[0], [1, 2, 3])
     self.assertAllEqual(unpacked[1], [4, 5, 6])
+    self.assertEqual(len(unstacked), 2)
+    self.assertAllEqual(unstacked[0], [1, 2, 3])
+    self.assertAllEqual(unstacked[1], [4, 5, 6])
 
   def testAxisOutOfRange(self):
     a = tf.constant([[1, 2, 3], [4, 5, 6]], name='a')
     with self.assertRaisesRegexp(ValueError, r'axis = 2 not in \[-2, 2\)'):
       tf.unpack(a, axis=2)
+    with self.assertRaisesRegexp(ValueError, r'axis = 2 not in \[-2, 2\)'):
+      tf.unstack(a, axis=2)
 
   def testAxisOutOfNegativeRange(self):
     a = tf.constant([[1, 2, 3], [4, 5, 6]], name='a')
     with self.assertRaisesRegexp(ValueError, r'axis = -3 not in \[-2, 2\)'):
       tf.unpack(a, axis=-3)
+    with self.assertRaisesRegexp(ValueError, r'axis = -3 not in \[-2, 2\)'):
+      tf.unstack(a, axis=-3)
 
   def testZeroLengthDim(self):
     with self.test_session():
       x = tf.zeros(shape=(0, 1, 2))
       y = tf.unpack(x, axis=1)[0].eval()
+      self.assertEqual(y.shape, (0, 2))
+
+      y = tf.unstack(x, axis=1)[0].eval()
       self.assertEqual(y.shape, (0, 2))
 
 

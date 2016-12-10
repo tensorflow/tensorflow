@@ -58,6 +58,7 @@ inline int32 GetTensorDimIndex(TensorFormat format, char dimension) {
         return 1 + NDIMS;
       default:
         LOG(FATAL) << "Invalid dimension: " << dimension;
+        return -1; // Avoid compiler warning about missing return value
     }
   } else if (format == FORMAT_NCHW) {
     switch (dimension) {
@@ -77,9 +78,11 @@ inline int32 GetTensorDimIndex(TensorFormat format, char dimension) {
         return NDIMS + 1;
       default:
         LOG(FATAL) << "Invalid dimension: " << dimension;
+        return -1; // Avoid compiler warning about missing return value
     }
   } else {
     LOG(FATAL) << "Invalid format: " << static_cast<int>(format);
+    return -1; // Avoid compiler warning about missing return value
   }
 }
 

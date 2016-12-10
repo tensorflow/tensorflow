@@ -29,8 +29,8 @@ def GetTestConfigs():
     all the valid test configs as tuples of data_format and use_gpu.
   """
   test_configs = [("NHWC", False), ("NHWC", True)]
-  if tf.test.is_gpu_available():
-    # "NCHW" format is not currently supported on CPU.
+  if tf.test.is_gpu_available(cuda_only=True):
+    # "NCHW" format is currently only supported on CUDA.
     test_configs += [("NCHW", True)]
   return test_configs
 
@@ -89,7 +89,7 @@ class BiasAddTest(tf.test.TestCase):
     self._testBias(np_inputs, np_bias, use_gpu=False)
     if np_inputs.dtype in [np.float16, np.float32, np.float64]:
       self._testBias(np_inputs, np_bias, use_gpu=True)
-      if tf.test.is_gpu_available():
+      if tf.test.is_gpu_available(cuda_only=True):
         self._testBiasNCHW(np_inputs, np_bias, use_gpu=True)
 
   def testInputDims(self):
@@ -128,7 +128,13 @@ class BiasAddTest(tf.test.TestCase):
           input_tensor, np_input.shape, output_tensor, np_input.shape)
       bias_jacob_t, bias_jacob_n = tf.test.compute_gradient(
           bias_tensor, bias.shape, output_tensor, np_input.shape)
-
+         
+      # Test gradient of BiasAddGrad
+      bias_add_grad = tf.gradients(tf.nn.l2_loss(output_tensor),
+                                   bias_tensor)[0]
+      grad_jacob_t, grad_jacob_n = tf.test.compute_gradient(
+          output_tensor, np_input.shape, bias_add_grad, bias.shape)
+      
       if dtype == np.float16:
         # Compare fp16 theoretical gradients to fp32 numerical gradients,
         # since fp16 numerical gradients are too imprecise unless great
@@ -144,12 +150,18 @@ class BiasAddTest(tf.test.TestCase):
             input_tensor, np_input.shape, output_tensor, np_input.shape)
         _, bias_jacob_n = tf.test.compute_gradient(
             bias_tensor, bias.shape, output_tensor, np_input.shape)
-
+        
+        bias_add_grad = tf.gradients(tf.nn.l2_loss(output_tensor),
+                                     bias_tensor)[0]
+        _, grad_jacob_n = tf.test.compute_gradient(
+            output_tensor, np_input.shape, bias_add_grad, bias.shape)
+        
       threshold = 2e-3
       if dtype == tf.float64:
         threshold = 1e-10
       self.assertAllClose(tensor_jacob_t, tensor_jacob_n, threshold, threshold)
       self.assertAllClose(bias_jacob_t, bias_jacob_n, threshold, threshold)
+      self.assertAllClose(grad_jacob_t, grad_jacob_n, threshold, threshold)
 
   def testGradientTensor(self):
     for (data_format, use_gpu) in GetTestConfigs():

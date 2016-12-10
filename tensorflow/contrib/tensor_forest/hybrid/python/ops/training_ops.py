@@ -21,7 +21,6 @@ import threading
 
 from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import resource_loader
@@ -40,87 +39,6 @@ ops.NotDifferentiable('KFeatureDataGradient')
 ops.NotDifferentiable('KFeatureRoutingGradient')
 ops.NotDifferentiable('KFeatureWeightGradient')
 ops.NotDifferentiable('UnpackPath')
-
-
-@ops.RegisterShape('RoutingFunction')
-def _RoutingFunctionShape(op):
-  num_points = op.inputs[0].get_shape()[0].value
-  num_nodes = op.inputs[1].get_shape()[0].value
-  return [tensor_shape.TensorShape([num_points, num_nodes])]
-
-
-@ops.RegisterShape('KFeatureRoutingFunction')
-def _KFeatureRoutingFunctionShape(op):
-  num_points = op.inputs[0].get_shape()[0].value
-  num_nodes = op.inputs[1].get_shape()[0].value
-  return [tensor_shape.TensorShape([num_points, num_nodes])]
-
-
-@ops.RegisterShape('HardRoutingFunction')
-def _HardRoutingFunctionShape(op):
-  num_points = op.inputs[0].get_shape()[0].value
-  tree_depth = op.get_attr('tree_depth')
-  return [[num_points, tree_depth], [num_points, tree_depth]]
-
-
-@ops.RegisterShape('StochasticHardRoutingFunction')
-def _StochasticHardRoutingFunctionShape(op):
-  num_points = op.inputs[0].get_shape()[0].value
-  tree_depth = op.get_attr('tree_depth')
-  return [[num_points, tree_depth], [num_points, tree_depth]]
-
-
-@ops.RegisterShape('StochasticHardRoutingGradient')
-def _StochasticHardRoutingGradientShape(op):
-  num_points = op.inputs[0].get_shape()[0].value
-  num_features = op.inputs[0].get_shape()[1].value
-  num_nodes = op.inputs[1].get_shape()[0]
-
-  return [
-      [num_points, num_nodes], [num_nodes, num_features],
-      [num_points, num_nodes, num_features], [num_nodes]
-  ]
-
-
-@ops.RegisterShape('UnpackPath')
-def _UnpackPathShape(op):
-  num_points = op.inputs[0].get_shape()[0].value
-  tree_depth = op.inputs[1].get_shape()[1].value
-
-  num_nodes = 2**(tree_depth) - 1
-
-  return [tensor_shape.TensorShape([num_points, num_nodes])]
-
-
-@ops.RegisterShape('RoutingGradient')
-def _RoutingGradientShape(op):
-  num_points = op.inputs[0].get_shape()[0].value
-  num_nodes = op.inputs[1].get_shape()[0].value
-  return [tensor_shape.TensorShape([num_points, num_nodes])]
-
-
-@ops.RegisterShape('KFeatureDataGradient')
-def _KFeatureDataGradientShape(op):
-  num_nodes = op.get_attr('max_nodes')
-  num_features = op.get_attr('num_features')
-
-  return [tensor_shape.TensorShape([num_nodes, num_features])]
-
-
-@ops.RegisterShape('KFeatureRoutingGradient')
-def _KFeatureRoutingGradientShape(op):
-  num_points = op.inputs[0].get_shape()[0].value
-  num_nodes = op.inputs[1].get_shape()[0].value
-  return [tensor_shape.TensorShape([num_points, num_nodes])]
-
-
-@ops.RegisterShape('KFeatureWeightGradient')
-def _KFeatureWeightGradientShape(op):
-  num_points = op.inputs[0].get_shape()[0].value
-  num_nodes = op.get_attr('max_nodes')
-  num_features_per_node = op.get_attr('num_features_per_node')
-  return [tensor_shape.TensorShape(
-      [num_points, num_nodes, num_features_per_node])]
 
 
 @ops.RegisterGradient('RoutingFunction')

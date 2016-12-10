@@ -45,14 +45,14 @@ class CTCGreedyDecoderTest(tf.test.TestCase):
     inputs_t = [tf.convert_to_tensor(x) for x in inputs]
     # convert inputs_t into a [max_time x batch_size x depth] tensor
     # from a len time python list of [batch_size x depth] tensors
-    inputs_t = tf.pack(inputs_t)
+    inputs_t = tf.stack(inputs_t)
 
     with self.test_session(use_gpu=False) as sess:
       decoded_list, log_probability = decoder(
           inputs_t,
           sequence_length=seq_lens, **decoder_args)
       decoded_unwrapped = list(flatten([
-          (st.indices, st.values, st.shape) for st in decoded_list]))
+          (st.indices, st.values, st.dense_shape) for st in decoded_list]))
 
       if expected_err_re is None:
         outputs = sess.run(
@@ -77,7 +77,7 @@ class CTCGreedyDecoderTest(tf.test.TestCase):
           self.assertEqual([None, truth_st[0].shape[1]],
                            tf_st.indices.get_shape().as_list())
           self.assertEqual([None], tf_st.values.get_shape().as_list())
-          self.assertShapeEqual(truth_st[2], tf_st.shape)
+          self.assertShapeEqual(truth_st[2], tf_st.dense_shape)
 
         # Make sure decoded probabilities match
         self.assertAllClose(output_log_probability, log_prob_truth, atol=1e-6)

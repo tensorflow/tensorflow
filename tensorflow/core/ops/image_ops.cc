@@ -318,6 +318,7 @@ REGISTER_OP("DecodeJpeg")
     .Attr("fancy_upscaling: bool = true")
     .Attr("try_recover_truncated: bool = false")
     .Attr("acceptable_fraction: float = 1.0")
+    .Attr("dct_method: string = ''")
     .Output("image: uint8")
     .SetShapeFn(DecodeImageShapeFn)
     .Doc(R"doc(
@@ -347,6 +348,12 @@ fancy_upscaling: If true use a slower but nicer upscaling of the
 try_recover_truncated:  If true try to recover an image from truncated input.
 acceptable_fraction: The minimum required fraction of lines before a truncated
   input is accepted.
+dct_method: string specifying a hint about the algorithm used for
+  decompression.  Defaults to "" which maps to a system-specific
+  default.  Currently valid values are ["INTEGER_FAST",
+  "INTEGER_ACCURATE"].  The hint may be ignored (e.g., the internal
+  jpeg library changes to a version that does not have that specific
+  option.)
 image: 3-D with shape `[height, width, channels]`..
 )doc");
 
@@ -438,6 +445,29 @@ channel and then adjusts each component of each pixel to
 images: Images to adjust.  At least 3-D.
 contrast_factor: A float multiplier for adjusting contrast.
 output: The contrast-adjusted image or images.
+)Doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("AdjustHue")
+    .Input("images: float")
+    .Input("delta: float")
+    .Output("output: float")
+    .SetShapeFn([](InferenceContext* c) {
+      return shape_inference::UnchangedShapeWithRankAtLeast(c, 3);
+    })
+    .Doc(R"Doc(
+Adjust the hue of one or more images.
+
+`images` is a tensor of at least 3 dimensions.  The last dimension is
+interpretted as channels, and must be three.
+
+The input image is considered in the RGB colorspace. Conceptually, the RGB
+colors are first mapped into HSV. A delta is then applied all the hue values,
+and then remapped back to RGB colorspace.
+
+images: Images to adjust.  At least 3-D.
+delta: A float delta to add to the hue.
+output: The hue-adjusted image or images.
 )Doc");
 
 // --------------------------------------------------------------------------
@@ -578,7 +608,7 @@ bounding box coordinates are floats in `[0.0, 1.0]` relative to the width and
 height of the underlying image.
 
 For example, if an image is 100 x 200 pixels and the bounding box is
-`[0.1, 0.5, 0.2, 0.9]`, the bottom-left and upper-right coordinates of the
+`[0.1, 0.2, 0.5, 0.9]`, the bottom-left and upper-right coordinates of the
 bounding box will be `(10, 40)` to `(50, 180)`.
 
 Parts of the bounding box may fall outside the image.
@@ -625,7 +655,7 @@ localization of an object, i.e. bounding box, given an `image_size`,
 The output of this Op is a single bounding box that may be used to crop the
 original image. The output is returned as 3 tensors: `begin`, `size` and
 `bboxes`. The first 2 tensors can be fed directly into `tf.slice` to crop the
-image. The latter may be supplied to `tf.image.draw_bounding_box` to visualize
+image. The latter may be supplied to `tf.image.draw_bounding_boxes` to visualize
 what the bounding box looks like.
 
 Bounding boxes are supplied and returned as `[y_min, x_min, y_max, x_max]`. The
@@ -634,6 +664,7 @@ height of the underlying image.
 
 For example,
 
+```python
     # Generate a single distorted bounding box.
     begin, size, bbox_for_draw = tf.image.sample_distorted_bounding_box(
         tf.shape(image),
@@ -646,6 +677,7 @@ For example,
 
     # Employ the bounding box to distort the image.
     distorted_image = tf.slice(image, begin, size)
+```
 
 Note that if no bounding box information is available, setting
 `use_image_if_no_bounding_boxes = true` will assume there is a single implicit
@@ -749,7 +781,7 @@ centered: indicates if the offset coordinates are centered relative to
   upper left corner of the input images.
 normalized: indicates if the offset coordinates are normalized.
 uniform_noise: indicates if the noise should be generated using a
-  uniform distribution or a gaussian distribution.
+  uniform distribution or a Gaussian distribution.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -920,7 +952,7 @@ system result in the same boxes being selected by the algorithm.
 The output of this operation is a set of integers indexing into the input
 collection of bounding boxes representing the selected boxes.  The bounding
 box coordinates corresponding to the selected indices can then be obtained
-using the tf.gather operation.  For example:
+using the `tf.gather operation`.  For example:
 
   selected_indices = tf.image.non_max_suppression(
       boxes, scores, max_output_size, iou_threshold)

@@ -202,5 +202,35 @@ class CTCLossTest(tf.test.TestCase):
 
     self._testCTCLoss(inputs, seq_lens, labels, loss_truth, grad_truth)
 
+
+  def test_time_major(self):
+    """Testing time_major param.
+    
+    testing if transposing and setting time_major=False will result in the same loss
+    """
+    # [max_time x batch_size x depth tensor]
+    inputs = np.random.randn(2, 2, 3).astype(np.float32)
+    labels = SimpleSparseTensorFrom([[0, 1], [1, 0]])
+    seq_lens = np.array([2, 2], dtype=np.int32)
+
+
+    inputs_t = tf.constant(inputs)
+
+    # Transposing tensor to [batch_size x max_time x depth tensor]
+    inputs_t_transposed = tf.constant(inputs.transpose(1, 0, 2))
+
+
+    with self.test_session(use_gpu=False) as sess:
+      loss = tf.nn.ctc_loss(inputs=inputs_t,
+                            labels=labels,
+                            sequence_length=seq_lens)
+      loss_transposed = tf.nn.ctc_loss(inputs=inputs_t_transposed,
+                            labels=labels,
+                            sequence_length=seq_lens, time_major=False)
+
+      (tf_loss, tf_loss_transposed) = sess.run([loss, loss_transposed])
+      self.assertAllEqual(tf_loss, tf_loss_transposed)
+
+
 if __name__ == "__main__":
   tf.test.main()

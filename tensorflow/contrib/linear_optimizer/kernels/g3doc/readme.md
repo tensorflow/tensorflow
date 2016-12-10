@@ -64,7 +64,28 @@ Hinge loss is given by $$ \l_i(u) = \max(0,1-y u) $$. Its convex dual is $$
 The solution for the update is given explicitly in [3]. To derive the CoCoA+
 formulation, we replace $$\lambda$$ by $$\frac{\lambda}{\sigma}$$. This gives
 
-$$ \d = y \max\left(0,\min\left(1,\frac{\lambda n}{\sigma X_i^2} (1- w^T X_i y) + \a y\right)\right) - \a $$
+$$ \d = \frac{y - \bar{y}}{A} $$
+
+with the restriction that $$y(\a+\d)\in(0,1)$$.
+
+### Smooth Hinge Loss
+
+Smooth hinge loss is given by
+
+$$ \l_i(u) =
+\begin{cases}
+0 \:\:\: & y_i u \geq 1\\
+1-y_i u -\gamma/2 \:\:\:& y_i u \leq1-\gamma \\
+\frac{(1-y_i u)^2}{2\gamma} & \text{otherwise}
+\end{cases} $$
+
+The optimal $$\d$$ is computed to be
+
+$$\d = \frac{y-\bar{y}-\gamma\a}{A+\gamma} $$
+
+with the restriction that $$y(\a+\d)\in(0,1)$$. We see that we recover standard
+hinge update for $$\gamma = 0$$. The details of the computation can be found in
+Appendix.
 
 ### Squared Loss
 
@@ -115,7 +136,7 @@ We can start Newton algorithm at $$x_0=0$$ which corresponds to $$ y(\a+\d) =
 
 $$x_{k+1} = x_k - \frac{H(x_k)}{H'(x_k)} $$
 
-The convergence is very fast with the modified fonction and 5 Newton steps
+The convergence is very fast with the modified function and 5 Newton steps
 should be largely enough.
 
 ##### Plots and experiments
@@ -193,3 +214,34 @@ Regularized Loss Minimization, 2013
 Ascent for Regularized Loss Minimization, 2013
 
 [5] A. Galantai, The theory of Newton’s method, 2000
+
+## Appendix
+
+##### Dual computation for smooth hinge loss
+
+We want to compute $$\l^\star(v) = \max_u [ uv-\l(u) ] $$ where $$\l$$ is smooth
+hinge loss. We thus have to solve $$v=\l'(u)$$. The derivative of smooth hinge
+loss is given by
+
+$$ \l'(u) =
+\begin{cases}
+0 \:\:\: & y_i u \geq 1\\
+-y \:\:\:& y_i u \leq1-\gamma \\
+\frac{u-y}{\gamma} & \text{otherwise}
+\end{cases} $$
+
+By solving for $$v$$, we find the dual of smooth hinge loss as
+
+$$ \l^\star(v) = yv + \frac{\gamma}{2}v^2 $$
+
+with the restriction $$ yv \in (0,1) $$.
+
+Now, we can now minimize the dual objective with respect to $$\d$$
+
+$$ D(\a+\d) = -\l^\star(-\a-\d)-\bar{y}\d-\frac{A}{2} \d^2 $$
+
+which gives the expected result
+
+$$\d = \frac{y-\bar{y}-\gamma\a}{A+\gamma} $$
+
+with the constraint $$ y(\a+\d) \in (0,1)$$.

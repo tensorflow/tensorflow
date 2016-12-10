@@ -100,7 +100,7 @@ class Seq2SeqModel(object):
       b = tf.get_variable("proj_b", [self.target_vocab_size], dtype=dtype)
       output_projection = (w, b)
 
-      def sampled_loss(inputs, labels):
+      def sampled_loss(labels, inputs):
         labels = tf.reshape(labels, [-1, 1])
         # We need to compute the sampled_softmax_loss using 32bit floats to
         # avoid numerical instabilities.
@@ -114,12 +114,12 @@ class Seq2SeqModel(object):
       softmax_loss_function = sampled_loss
 
     # Create the internal multi-layer cell for our RNN.
-    single_cell = tf.nn.rnn_cell.GRUCell(size)
+    single_cell = tf.contrib.rnn.GRUCell(size)
     if use_lstm:
-      single_cell = tf.nn.rnn_cell.BasicLSTMCell(size)
+      single_cell = tf.contrib.rnn.BasicLSTMCell(size)
     cell = single_cell
     if num_layers > 1:
-      cell = tf.nn.rnn_cell.MultiRNNCell([single_cell] * num_layers)
+      cell = tf.contrib.rnn.MultiRNNCell([single_cell] * num_layers)
 
     # The seq2seq function: we use embedding for the input and attention.
     def seq2seq_f(encoder_inputs, decoder_inputs, do_decode):
@@ -139,12 +139,12 @@ class Seq2SeqModel(object):
     self.decoder_inputs = []
     self.target_weights = []
     for i in xrange(buckets[-1][0]):  # Last bucket is the biggest one.
-      self.encoder_inputs.append(tf.placeholder(tf.int32, shape=[batch_size],
+      self.encoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
                                                 name="encoder{0}".format(i)))
     for i in xrange(buckets[-1][1] + 1):
-      self.decoder_inputs.append(tf.placeholder(tf.int32, shape=[batch_size],
+      self.decoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
                                                 name="decoder{0}".format(i)))
-      self.target_weights.append(tf.placeholder(dtype, shape=[batch_size],
+      self.target_weights.append(tf.placeholder(dtype, shape=[None],
                                                 name="weight{0}".format(i)))
 
     # Our targets are decoder inputs shifted by one.
@@ -185,7 +185,7 @@ class Seq2SeqModel(object):
         self.updates.append(opt.apply_gradients(
             zip(clipped_gradients, params), global_step=self.global_step))
 
-    self.saver = tf.train.Saver(tf.all_variables())
+    self.saver = tf.train.Saver(tf.global_variables())
 
   def step(self, session, encoder_inputs, decoder_inputs, target_weights,
            bucket_id, forward_only):

@@ -35,7 +35,7 @@ namespace {
 // The complete set of audio file formats that are supported by the op. These
 // strings are defined by FFmpeg and documented here:
 // https://www.ffmpeg.org/ffmpeg-formats.html
-const char* kValidFileFormats[] = {"mp3", "ogg", "wav"};
+const char* kValidFileFormats[] = {"mp3", "mp4", "ogg", "wav"};
 
 // Writes binary data to a file.
 Status WriteFile(const string& filename, tensorflow::StringPiece contents) {

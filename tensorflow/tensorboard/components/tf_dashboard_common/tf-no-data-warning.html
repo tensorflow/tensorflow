@@ -1,0 +1,130 @@
+<!--
+@license
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<link rel="import" href="../polymer/polymer.html">
+
+<!--
+Display a warning when there is no data found.
+-->
+<dom-module id="tf-no-data-warning">
+  <template>
+    <template is="dom-if" if="[[showWarning]]">
+      <div class="warning">
+        <template is="dom-if" if="[[_isGraph(dataType)]]">
+          <h3>
+            No graph definition files were found.
+          </h3>
+          <p>
+            To store a graph, create a
+            <code>tf.summary.FileWriter</code>
+            and pass the graph either via the constructor, or by calling its
+            <code>add_graph()</code> method.
+            You may want to check out the
+            <a href="https://www.tensorflow.org/versions/master/how_tos/graph_viz/index.html">
+              graph visualizer tutorial
+            </a>
+            .
+          </p>
+        </template>
+        <template is="dom-if" if="[[_isProjector(dataType)]]">
+          <h3>
+            No checkpoint was found.
+          </h3>
+          <p>
+            Probable causes:
+            <ul>
+              <li>
+                No checkpoint has been saved yet. Please refresh the page periodically.
+              </li>
+              <li>
+                You are not saving any checkpoint. To save your model,
+                create a
+                <a href="https://www.tensorflow.org/versions/master/api_docs/python/state_ops.html#Saver">
+                  <code>tf.train.Saver</code>
+                </a>
+                and save your model periodically
+                by calling <code>saver.save(session, LOG_DIR/model.ckpt, step)</code>.
+              </li>
+            </ul>
+          </p>
+        </template>
+        <template is="dom-if" if="[[_isOther(dataType)]]">
+          <h3>
+            No <span>[[dataType]]</span> data was found.
+          </h3>
+          <p>
+            Probable causes:
+            <ul>
+              <li>
+                You haven't written any <span>[[dataType]]</span> data
+                to your event files.
+              </li>
+              <li>
+                TensorBoard can't find your event files.
+              </li>
+            </ul>
+          </p>
+        </template>
+        <p>
+          If you're new to using TensorBoard, and want to find out how to add
+          data and set up your event files, check out the
+          <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tensorboard/README.md">
+            README
+          </a>
+          and perhaps the
+          <a href="https://www.tensorflow.org/versions/master/how_tos/summaries_and_tensorboard/index.html">
+            TensorBoard tutorial
+          </a>.
+        </p>
+
+        <p>
+          If you think TensorBoard is configured properly, please see the
+          <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tensorboard/README.md#my-tensorboard-isnt-showing-any-data-whats-wrong">
+            section of the README devoted to missing data problems
+          </a>
+          and consider filing an issue on GitHub.
+        </p>
+
+      </div>
+    </template>
+    <style>
+      .warning {
+        max-width: 540px;
+        margin: 80px auto 0 auto;
+      }
+    </style>
+  </template>
+
+  <script>
+    Polymer({
+      is: "tf-no-data-warning",
+      properties: {
+        dataType: String,
+        showWarning: Boolean
+      },
+      _isGraph: function(dataType) {
+        return dataType === "graph";
+      },
+      _isProjector: function(dataType) {
+        return dataType === "projector";
+      },
+      _isOther: function(dataType) {
+        return !this._isGraph(dataType) && !this._isProjector(dataType);
+      }
+    });
+  </script>
+</dom-module>

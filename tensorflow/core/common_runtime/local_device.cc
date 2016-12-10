@@ -26,42 +26,60 @@ limitations under the License.
 
 namespace tensorflow {
 
-namespace {
+/* static */
+bool LocalDevice::use_global_threadpool_ = true;
 
-DeviceBase::CpuWorkerThreads eigen_worker_threads;
-Eigen::ThreadPoolInterface* eigen_thread_pool = nullptr;
-Eigen::ThreadPoolDevice* eigen_device = nullptr;
-
-static bool InitModule(const SessionOptions& options) {
-  int32 intra_op_parallelism_threads =
-      options.config.intra_op_parallelism_threads();
-  if (intra_op_parallelism_threads == 0) {
-    intra_op_parallelism_threads = port::NumSchedulableCPUs();
+struct LocalDevice::EigenThreadPoolInfo {
+  EigenThreadPoolInfo(const SessionOptions& options) {
+    int32 intra_op_parallelism_threads =
+        options.config.intra_op_parallelism_threads();
+    if (intra_op_parallelism_threads == 0) {
+      intra_op_parallelism_threads = port::NumSchedulableCPUs();
+    }
+    VLOG(1) << "Local device intra op parallelism threads: "
+            << intra_op_parallelism_threads;
+    eigen_worker_threads_.num_threads = intra_op_parallelism_threads;
+    eigen_worker_threads_.workers = new thread::ThreadPool(
+        options.env, "Eigen", intra_op_parallelism_threads);
+    eigen_threadpool_wrapper_.reset(
+        new EigenThreadPoolWrapper(eigen_worker_threads_.workers));
+    eigen_device_.reset(new Eigen::ThreadPoolDevice(
+        eigen_threadpool_wrapper_.get(), eigen_worker_threads_.num_threads));
   }
-  VLOG(1) << "Local device intra op parallelism threads: "
-          << intra_op_parallelism_threads;
-  eigen_worker_threads.num_threads = intra_op_parallelism_threads;
-  eigen_worker_threads.workers = new thread::ThreadPool(
-      options.env, "Eigen", intra_op_parallelism_threads);
-  eigen_thread_pool = new EigenThreadPoolWrapper(eigen_worker_threads.workers);
-  eigen_device = new Eigen::ThreadPoolDevice(eigen_thread_pool,
-                                             eigen_worker_threads.num_threads);
-  return true;
-}
-}  // end namespace
 
-// LocalDevice ----------------------------------------------------------------
+  ~EigenThreadPoolInfo() {
+    eigen_threadpool_wrapper_.reset();
+    eigen_device_.reset();
+    delete eigen_worker_threads_.workers;
+  }
+
+  DeviceBase::CpuWorkerThreads eigen_worker_threads_;
+  std::unique_ptr<Eigen::ThreadPoolInterface> eigen_threadpool_wrapper_;
+  std::unique_ptr<Eigen::ThreadPoolDevice> eigen_device_;
+};
 
 LocalDevice::LocalDevice(const SessionOptions& options,
                          const DeviceAttributes& attributes,
                          Allocator* device_allocator)
-    : Device(options.env, attributes, device_allocator) {
-  // All ThreadPoolDevices in the process will use this single fixed
-  // sized threadpool for numerical computations.
-  static bool init = InitModule(options);
-  CHECK(init);  // Avoids compiler warning that init is unused.
-  set_tensorflow_cpu_worker_threads(&eigen_worker_threads);
-  set_eigen_cpu_device(eigen_device);
+    : Device(options.env, attributes, device_allocator),
+      owned_tp_info_(nullptr) {
+  LocalDevice::EigenThreadPoolInfo* tp_info;
+  if (use_global_threadpool_) {
+    // All ThreadPoolDevices in the process will use this single fixed
+    // sized threadpool for numerical computations.
+    static LocalDevice::EigenThreadPoolInfo* global_tp_info =
+        new LocalDevice::EigenThreadPoolInfo(options);
+    tp_info = global_tp_info;
+  } else {
+    // Each LocalDevice owns a separate ThreadPoolDevice for numerical
+    // computations.
+    owned_tp_info_.reset(new LocalDevice::EigenThreadPoolInfo(options));
+    tp_info = owned_tp_info_.get();
+  }
+  set_tensorflow_cpu_worker_threads(&tp_info->eigen_worker_threads_);
+  set_eigen_cpu_device(tp_info->eigen_device_.get());
 }
+
+LocalDevice::~LocalDevice() {}
 
 }  // namespace tensorflow

@@ -219,8 +219,7 @@ class RenyiRatioTest(tf.test.TestCase):
       mu = tf.Variable(np.zeros(mu_true.shape), dtype=mu_true.dtype, name='mu')
       mat = tf.Variable(
           np.zeros(chol_true.shape), dtype=chol_true.dtype, name='mat')
-      chol = distributions.batch_matrix_diag_transform(
-          mat, transform=tf.nn.softplus)
+      chol = distributions.matrix_diag_transform(mat, transform=tf.nn.softplus)
       q = distributions.MultivariateNormalCholesky(mu, chol)
       for alpha in [0.25, 0.75]:
 
@@ -232,7 +231,7 @@ class RenyiRatioTest(tf.test.TestCase):
             learning_rate=0.5,
             decay=0.1)
 
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         renyis = []
         for step in range(1000):
           sess.run(train_op)

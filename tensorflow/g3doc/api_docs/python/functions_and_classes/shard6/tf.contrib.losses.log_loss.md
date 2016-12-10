@@ -1,6 +1,14 @@
-### `tf.contrib.losses.log_loss(predictions, targets, weight=1.0, epsilon=1e-07, scope=None)` {#log_loss}
+### `tf.contrib.losses.log_loss(*args, **kwargs)` {#log_loss}
 
-Adds a Log Loss term to the training procedure.
+Adds a Log Loss term to the training procedure. (deprecated arguments) (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
+Instructions for updating:
+Use tf.losses.log_loss instead.
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-11-25.
+Instructions for updating:
+`targets` is being deprecated, use `labels`. `weight` is being deprecated, use `weights`.
 
 `weight` acts as a coefficient for the loss. If a scalar is provided, then the
 loss is simply scaled by the given value. If `weight` is a tensor of size
@@ -14,11 +22,13 @@ measurable element of `predictions` is scaled by the corresponding value of
 
 
 *  <b>`predictions`</b>: The predicted outputs.
-*  <b>`targets`</b>: The ground truth output tensor, same dimensions as 'predictions'.
-*  <b>`weight`</b>: Coefficients for the loss a scalar, a tensor of shape
+*  <b>`labels`</b>: The ground truth output tensor, same dimensions as 'predictions'.
+*  <b>`weights`</b>: Coefficients for the loss a scalar, a tensor of shape
     [batch_size] or a tensor whose shape matches `predictions`.
 *  <b>`epsilon`</b>: A small increment to add to avoid taking a log of zero.
 *  <b>`scope`</b>: The scope for the operations performed in computing the loss.
+*  <b>`targets`</b>: Deprecated alias for `labels`.
+*  <b>`weight`</b>: Deprecated alias for `weights`.
 
 ##### Returns:
 
@@ -27,6 +37,6 @@ measurable element of `predictions` is scaled by the corresponding value of
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If the shape of `predictions` doesn't match that of `targets` or
+*  <b>`ValueError`</b>: If the shape of `predictions` doesn't match that of `labels` or
     if the shape of `weight` is invalid.
 

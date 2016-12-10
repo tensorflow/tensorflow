@@ -50,11 +50,9 @@ given.
     most TensorFlow data is batch-major, so by default this function
     accepts input and emits output in batch-major form.
 *  <b>`dtype`</b>: (optional) The data type for the initial state.  Required if
-    initial_state is not provided.
-*  <b>`sequence_length`</b>: An int32/int64 vector, size `[batch_size]`,
-    containing the actual lengths for each of the sequences.
     either of the initial states are not provided.
-*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "BiRNN"
+*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to
+    "bidirectional_rnn"
 
 ##### Returns:
 
@@ -75,7 +73,7 @@ given.
       It returns a tuple instead of a single concatenated `Tensor`, unlike
       in the `bidirectional_rnn`. If the concatenated one is preferred,
       the forward and backward outputs can be concatenated as
-      `tf.concat(2, outputs)`.
+      `tf.concat_v2(outputs, 2)`.
 *  <b>`output_states`</b>: A tuple (output_state_fw, output_state_bw) containing
       the forward and the backward final states of bidirectional rnn.
 

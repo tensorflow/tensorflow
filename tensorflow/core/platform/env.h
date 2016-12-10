@@ -132,14 +132,25 @@ class Env {
   Status NewReadOnlyMemoryRegionFromFile(
       const string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result);
 
-  /// Returns true iff the named file exists.
-  bool FileExists(const string& fname);
+  /// Returns OK if the named path exists and NOT_FOUND otherwise.
+  Status FileExists(const string& fname);
 
   /// \brief Stores in *result the names of the children of the specified
   /// directory. The names are relative to "dir".
   ///
   /// Original contents of *results are dropped.
   Status GetChildren(const string& dir, std::vector<string>* result);
+
+  /// \brief Returns true if the path matches the given pattern. The wildcards
+  /// allowed in pattern are described in FileSystem::GetMatchingPaths.
+  virtual bool MatchPath(const string& path, const string& pattern) = 0;
+
+  /// \brief Given a pattern, stores in *results the set of paths that matches
+  /// that pattern. *results is cleared.
+  ///
+  /// More details about `pattern` in FileSystem::GetMatchingPaths.
+  virtual Status GetMatchingPaths(const string& pattern,
+                                  std::vector<string>* results);
 
   /// Deletes the named file.
   Status DeleteFile(const string& fname);
@@ -197,12 +208,10 @@ class Env {
   // TODO(jeff,sanjay): if needed, tighten spec so relative to epoch, or
   // provide a routine to get the absolute time.
 
-  /// \brief Returns the number of micro-seconds since some fixed point in
-  /// time. Only useful for computing deltas of time.
+  /// \brief Returns the number of micro-seconds since the Unix epoch.
   virtual uint64 NowMicros() = 0;
 
-  /// \brief Returns the number of seconds since some fixed point in
-  /// time. Only useful for computing deltas of time.
+  /// \brief Returns the number of seconds since the Unix epoch.
   virtual uint64 NowSeconds() { return NowMicros() / 1000000L; }
 
   /// Sleeps/delays the thread for the prescribed number of micro-seconds.
@@ -250,12 +259,17 @@ class Env {
   virtual Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
                                       void** symbol) = 0;
 
- private:
-  /// No copying allowed
-  Env(const Env&);
-  void operator=(const Env&);
+  // \brief build the name of dynamic library.
+  //
+  // "name" should be name of the library.
+  // "version" should be the version of the library or NULL
+  // returns the name that LoadLibrary() can use
+  virtual string FormatLibraryFileName(const string& name,
+      const string& version) = 0;
 
+ private:
   std::unique_ptr<FileSystemRegistry> file_system_registry_;
+  TF_DISALLOW_COPY_AND_ASSIGN(Env);
 };
 
 /// \brief An implementation of Env that forwards all calls to another Env.
@@ -285,6 +299,10 @@ class EnvWrapper : public Env {
     return target_->RegisterFileSystem(scheme, factory);
   }
 
+  bool MatchPath(const string& path, const string& pattern) override {
+    return target_->MatchPath(path, pattern);
+  }
+
   uint64 NowMicros() override { return target_->NowMicros(); }
   void SleepForMicroseconds(int64 micros) override {
     target_->SleepForMicroseconds(micros);
@@ -306,11 +324,15 @@ class EnvWrapper : public Env {
                               void** symbol) override {
     return target_->GetSymbolFromLibrary(handle, symbol_name, symbol);
   }
-
+  string FormatLibraryFileName(const string& name,
+                               const string& version) override {
+    return target_->FormatLibraryFileName(name, version);
+  }
  private:
   Env* target_;
 };
 
+/// Represents a thread used to run a Tensorflow function.
 class Thread {
  public:
   Thread() {}
@@ -319,9 +341,7 @@ class Thread {
   virtual ~Thread();
 
  private:
-  /// No copying allowed
-  Thread(const Thread&);
-  void operator=(const Thread&);
+  TF_DISALLOW_COPY_AND_ASSIGN(Thread);
 };
 
 /// \brief Options to configure a Thread.
@@ -343,10 +363,25 @@ Status ReadFileToString(Env* env, const string& fname, string* data);
 Status WriteStringToFile(Env* env, const string& fname,
                          const StringPiece& data);
 
+/// Write binary representation of "proto" to the named file.
+Status WriteBinaryProto(Env* env, const string& fname,
+                        const ::tensorflow::protobuf::MessageLite& proto);
+
 /// Reads contents of named file and parse as binary encoded proto data
 /// and store into `*proto`.
 Status ReadBinaryProto(Env* env, const string& fname,
                        ::tensorflow::protobuf::MessageLite* proto);
+
+/// Write the text representation of "proto" to the named file.
+Status WriteTextProto(Env* env, const string& fname,
+                      const ::tensorflow::protobuf::Message& proto);
+
+/// Read contents of named file and parse as text encoded proto data
+/// and store into `*proto`.
+Status ReadTextProto(Env* env, const string& fname,
+                     ::tensorflow::protobuf::Message* proto);
+
+// START_SKIP_DOXYGEN
 
 namespace register_file_system {
 
@@ -359,6 +394,8 @@ struct Register {
 };
 
 }  // namespace register_file_system
+
+// END_SKIP_DOXYGEN
 
 }  // namespace tensorflow
 

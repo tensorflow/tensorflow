@@ -4,7 +4,7 @@ Computes log softmax activations.
 
 For each batch `i` and class `j` we have
 
-    logsoftmax = logits - reduce_sum(exp(logits), dim)
+    logsoftmax = logits - log(reduce_sum(exp(logits), dim))
 
 ##### Args:
 

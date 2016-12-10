@@ -23,7 +23,7 @@ all elements set to zero.
 For example:
 
 ```python
-tf.zeros([3, 4], int32) ==> [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
+tf.zeros([3, 4], tf.int32) ==> [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
 ```
 
 ##### Args:
@@ -84,7 +84,7 @@ elements set to 1.
 For example:
 
 ```python
-tf.ones([2, 3], int32) ==> [[1, 1, 1], [1, 1, 1]]
+tf.ones([2, 3], tf.int32) ==> [[1, 1, 1], [1, 1, 1]]
 ```
 
 ##### Args:
@@ -155,6 +155,11 @@ fill([2, 3], 9) ==> [[9, 9, 9]
 *  <b>`dims`</b>: A `Tensor` of type `int32`.
     1-D. Represents the shape of the output tensor.
 *  <b>`value`</b>: A `Tensor`. 0-D (scalar). Value to fill the returned tensor.
+
+    @compatibility(numpy)
+    Equivalent to np.full
+    @end_compatibility
+
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -165,7 +170,7 @@ fill([2, 3], 9) ==> [[9, 9, 9]
 
 - - -
 
-### `tf.constant(value, dtype=None, shape=None, name='Const')` {#constant}
+### `tf.constant(value, dtype=None, shape=None, name='Const', verify_shape=False)` {#constant}
 
 Creates a constant tensor.
 
@@ -211,6 +216,9 @@ Creates a constant tensor.
 
 *  <b>`name`</b>: Optional name for the tensor.
 
+
+*  <b>`verify_shape`</b>: Boolean that enables verification of a shape of values.
+
 ##### Returns:
 
   A Constant Tensor.
@@ -254,23 +262,31 @@ tf.linspace(10.0, 12.0, 3, name="linspace") => [ 10.0  11.0  12.0]
 
 - - -
 
-### `tf.range(start, limit=None, delta=1, name='range')` {#range}
+### `tf.range(start, limit=None, delta=1, dtype=None, name='range')` {#range}
 
-Creates a sequence of integers.
+Creates a sequence of numbers.
 
-Creates a sequence of integers that begins at `start` and extends by
+Creates a sequence of numbers that begins at `start` and extends by
 increments of `delta` up to but not including `limit`.
+
+The dtype of the resulting tensor is inferred from the inputs unless
+it is provided explicitly.
 
 Like the Python builtin `range`, `start` defaults to 0, so that
 `range(n) = range(0, n)`.
 
 For example:
 
-```
+```python
 # 'start' is 3
 # 'limit' is 18
 # 'delta' is 3
 tf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]
+
+# 'start' is 3
+# 'limit' is 1
+# 'delta' is -0.5
+tf.range(start, limit, delta) ==> [3, 2.5, 2, 1.5]
 
 # 'limit' is 5
 tf.range(limit) ==> [0, 1, 2, 3, 4]
@@ -279,19 +295,24 @@ tf.range(limit) ==> [0, 1, 2, 3, 4]
 ##### Args:
 
 
-*  <b>`start`</b>: A 0-D (scalar) of type `int32`. Acts as first entry in the range if
+*  <b>`start`</b>: A 0-D `Tensor` (scalar). Acts as first entry in the range if
     `limit` is not None; otherwise, acts as range limit and first entry
     defaults to 0.
-*  <b>`limit`</b>: A 0-D (scalar) of type `int32`. Upper limit of sequence,
+*  <b>`limit`</b>: A 0-D `Tensor` (scalar). Upper limit of sequence,
     exclusive. If None, defaults to the value of `start` while the first
     entry of the range defaults to 0.
-*  <b>`delta`</b>: A 0-D `Tensor` (scalar) of type `int32`. Number that increments
+*  <b>`delta`</b>: A 0-D `Tensor` (scalar). Number that increments
     `start`. Defaults to 1.
+*  <b>`dtype`</b>: The type of the elements of the resulting tensor.
 *  <b>`name`</b>: A name for the operation. Defaults to "range".
 
 ##### Returns:
 
-  An 1-D `int32` `Tensor`.
+  An 1-D `Tensor` of type `dtype`.
+
+@compatibility(numpy)
+Equivalent to np.arange
+@end_compatibility
 
 
 
@@ -344,7 +365,7 @@ the [Variables How To](../../how_tos/variables/index.md).
 # Use random uniform values in [0, 1) as the initializer for a variable of shape
 # [2, 3]. The default type is float32.
 var = tf.Variable(tf.random_uniform([2, 3]), name="var")
-init = tf.initialize_all_variables()
+init = tf.global_variables_initializer()
 
 sess = tf.Session()
 sess.run(init)
@@ -606,8 +627,8 @@ Example:
 ##### Returns:
 
 
-*  <b>`samples`</b>: a `Tensor` of shape `tf.concat(shape, tf.shape(alpha + beta))` with
-    values of type `dtype`.
+*  <b>`samples`</b>: a `Tensor` of shape `tf.concat_v2(shape, tf.shape(alpha + beta))`
+    with values of type `dtype`.
 
 
 - - -

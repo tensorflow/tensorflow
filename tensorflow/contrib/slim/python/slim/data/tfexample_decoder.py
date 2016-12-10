@@ -27,7 +27,7 @@ import abc
 
 from tensorflow.contrib.slim.python.slim.data import data_decoder
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import image_ops
@@ -137,7 +137,7 @@ class BoundingBox(ItemHandler):
       side = array_ops.expand_dims(keys_to_tensors[key].values, 0)
       sides.append(side)
 
-    bounding_box = array_ops.concat(0, sides)
+    bounding_box = array_ops.concat_v2(sides, 0)
     return array_ops.transpose(bounding_box)
 
 
@@ -189,11 +189,11 @@ class Tensor(ItemHandler):
       shape_dims = []
       for k in self._shape_keys:
         shape_dim = keys_to_tensors[k]
-        if isinstance(shape_dim, ops.SparseTensor):
+        if isinstance(shape_dim, sparse_tensor.SparseTensor):
           shape_dim = sparse_ops.sparse_tensor_to_dense(shape_dim)
         shape_dims.append(shape_dim)
-      shape = array_ops.squeeze(array_ops.pack(shape_dims))
-    if isinstance(tensor, ops.SparseTensor):
+      shape = array_ops.reshape(array_ops.pack(shape_dims), [-1])
+    if isinstance(tensor, sparse_tensor.SparseTensor):
       if shape is not None:
         tensor = sparse_ops.sparse_reshape(tensor, shape)
       tensor = sparse_ops.sparse_tensor_to_dense(tensor, self._default_value)
@@ -241,21 +241,21 @@ class SparseTensor(ItemHandler):
     values = keys_to_tensors[self._values_key]
     if self._shape_key:
       shape = keys_to_tensors[self._shape_key]
-      if isinstance(shape, ops.SparseTensor):
+      if isinstance(shape, sparse_tensor.SparseTensor):
         shape = sparse_ops.sparse_tensor_to_dense(shape)
     elif self._shape:
       shape = self._shape
     else:
-      shape = indices.shape
+      shape = indices.dense_shape
     indices_shape = array_ops.shape(indices.indices)
     rank = indices_shape[1]
     ids = math_ops.to_int64(indices.values)
     indices_columns_to_preserve = array_ops.slice(
         indices.indices, [0, 0], array_ops.pack([-1, rank - 1]))
-    new_indices = array_ops.concat(1, [indices_columns_to_preserve,
-                                       array_ops.reshape(ids, [-1, 1])])
+    new_indices = array_ops.concat_v2(
+        [indices_columns_to_preserve, array_ops.reshape(ids, [-1, 1])], 1)
 
-    tensor = ops.SparseTensor(new_indices, values.values, shape)
+    tensor = sparse_tensor.SparseTensor(new_indices, values.values, shape)
     if self._densify:
       tensor = sparse_ops.sparse_tensor_to_dense(tensor, self._default_value)
     return tensor
@@ -294,10 +294,7 @@ class Image(ItemHandler):
     image_buffer = keys_to_tensors[self._image_key]
     image_format = keys_to_tensors[self._format_key]
 
-    image = self._decode(image_buffer, image_format)
-    if self._shape is not None:
-      image = array_ops.reshape(image, self._shape)
-    return image
+    return self._decode(image_buffer, image_format)
 
   def _decode(self, image_buffer, image_format):
     """Decodes the image buffer.
@@ -316,12 +313,23 @@ class Image(ItemHandler):
     def decode_jpg():
       return image_ops.decode_jpeg(image_buffer, self._channels)
 
-    image = control_flow_ops.case({
+    # For RGBA images JPEG is not a valid decoder option.
+    if self._channels > 3:
+      pred_fn_pairs = {
+        math_ops.logical_or(math_ops.equal(image_format, 'raw'),
+                            math_ops.equal(image_format, 'RAW')): decode_raw,
+      }
+      default_decoder = decode_png
+    else:
+      pred_fn_pairs = {
         math_ops.logical_or(math_ops.equal(image_format, 'png'),
                             math_ops.equal(image_format, 'PNG')): decode_png,
         math_ops.logical_or(math_ops.equal(image_format, 'raw'),
                             math_ops.equal(image_format, 'RAW')): decode_raw,
-    }, default=decode_jpg, exclusive=True)
+      }
+      default_decoder = decode_jpg
+
+    image = control_flow_ops.case(pred_fn_pairs, default=default_decoder, exclusive=True)
 
     image.set_shape([None, None, self._channels])
     if self._shape is not None:

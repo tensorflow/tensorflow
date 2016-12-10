@@ -20,8 +20,8 @@ from __future__ import print_function
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 
 
 def exponential_decay(learning_rate, global_step, decay_steps, decay_rate,
@@ -68,14 +68,19 @@ def exponential_decay(learning_rate, global_step, decay_steps, decay_rate,
       Must be positive.  See the decay computation above.
     decay_rate: A scalar `float32` or `float64` `Tensor` or a
       Python number.  The decay rate.
-    staircase: Boolean.  It `True` decay the learning rate at discrete intervals
-    name: String.  Optional name of the operation.  Defaults to 
-      'ExponentialDecay'
+    staircase: Boolean.  If `True` decay the learning rate at discrete intervals
+    name: String.  Optional name of the operation.  Defaults to
+      'ExponentialDecay'.
 
   Returns:
     A scalar `Tensor` of the same type as `learning_rate`.  The decayed
     learning rate.
+
+  Raises:
+    ValueError: if `global_step` is not supplied.
   """
+  if global_step is None:
+    raise ValueError("global_step is required for exponential_decay.")
   with ops.name_scope(name, "ExponentialDecay",
                       [learning_rate, global_step,
                        decay_steps, decay_rate]) as name:
@@ -91,7 +96,7 @@ def exponential_decay(learning_rate, global_step, decay_steps, decay_rate,
 
 
 def piecewise_constant(x, boundaries, values, name=None):
-  """ Piecewise constant from boundaries and interval values.
+  """Piecewise constant from boundaries and interval values.
 
   Example: use a learning rate that's 1.0 for the first 100000 steps, 0.5
     for steps 100001 to 110000, and 0.1 for any additional steps.
@@ -120,20 +125,29 @@ def piecewise_constant(x, boundaries, values, name=None):
     A 0-D Tensor. Its value is `values[0]` when `x <= boundaries[0]`,
     `values[1]` when `x > boundaries[0]` and `x <= boundaries[1]`, ...,
     and values[-1] when `x > boundaries[-1]`.
-  """
 
-  with ops.name_scope(name, 'PiecewiseConstant',
+  Raises:
+    ValueError: if types of `x` and `buondaries` do not match, or types of all
+        `values` do not match.
+  """
+  with ops.name_scope(name, "PiecewiseConstant",
                       [x, boundaries, values, name]) as name:
     x = ops.convert_to_tensor(x)
     # Avoid explicit conversion to x's dtype. This could result in faulty
     # comparisons, for example if floats are converted to integers.
     boundaries = ops.convert_n_to_tensor(boundaries)
-    if not all(b.dtype == x.dtype for b in boundaries):
-      raise ValueError('boundaries must have the same dtype as x.')
+    for b in boundaries:
+      if b.dtype != x.dtype:
+        raise ValueError(
+            "Boundaries (%s) must have the same dtype as x (%s)." % (
+                b.dtype, x.dtype))
     # TODO(rdipietro): Ensure that boundaries' elements are strictly increasing.
     values = ops.convert_n_to_tensor(values)
-    if not all(v.dtype == values[0].dtype for v in values):
-      raise ValueError('values must have elements all with the same dtype.')
+    for v in values[1:]:
+      if v.dtype != values[0].dtype:
+        raise ValueError(
+            "Values must have elements all with the same dtype (%s vs %s)." % (
+                values[0].dtype, v.dtype))
 
     pred_fn_pairs = {}
     pred_fn_pairs[x <= boundaries[0]] = lambda: values[0]
@@ -213,12 +227,18 @@ def polynomial_decay(learning_rate, global_step, decay_steps,
     power: A scalar `float32` or `float64` `Tensor` or a
       Python number.  The power of the polynomial. Defaults to sqrt, i.e. 0.5.
     cycle: A boolean, whether or not it should cycle beyond decay_steps.
-    name: String.  Optional name of the operation. Defaults to 'PolynomialDecay'
+    name: String.  Optional name of the operation. Defaults to
+      'PolynomialDecay'.
 
   Returns:
     A scalar `Tensor` of the same type as `learning_rate`.  The decayed
     learning rate.
+
+  Raises:
+    ValueError: if `global_step` is not supplied.
   """
+  if global_step is None:
+    raise ValueError("global_step is required for polynomial_decay.")
   with ops.name_scope(name, "PolynomialDecay",
                       [learning_rate, global_step,
                        decay_steps, end_learning_rate, power]) as name:
@@ -279,14 +299,22 @@ def natural_exp_decay(learning_rate, global_step, decay_steps, decay_rate,
       Python number.  The initial learning rate.
     global_step: A Python number.
       Global step to use for the decay computation.  Must not be negative.
+    decay_steps: How often to apply decay.
     decay_rate: A Python number.  The decay rate.
+    staircase: Whether to apply decay in a discrete staircase, as opposed to
+      continuous, fashion.
     name: String.  Optional name of the operation.  Defaults to
-      'ExponentialTimeDecay'
+      'ExponentialTimeDecay'.
 
   Returns:
     A scalar `Tensor` of the same type as `learning_rate`.  The decayed
     learning rate.
+
+  Raises:
+    ValueError: if `global_step` is not supplied.
   """
+  if global_step is None:
+    raise ValueError("global_step is required for natural_exp_decay.")
   with ops.name_scope(name, "NaturalExpDecay",
                       [learning_rate, global_step, decay_rate]) as name:
     learning_rate = ops.convert_to_tensor(learning_rate, name="learning_rate")
@@ -338,15 +366,22 @@ def inverse_time_decay(learning_rate, global_step, decay_steps, decay_rate,
       Python number.  The initial learning rate.
     global_step: A Python number.
       Global step to use for the decay computation.  Must not be negative.
+    decay_steps: How often to apply decay.
     decay_rate: A Python number.  The decay rate.
+    staircase: Whether to apply decay in a discrete staircase, as opposed to
+      continuous, fashion.
     name: String.  Optional name of the operation.  Defaults to
-      'InverseTimeDecay'
+      'InverseTimeDecay'.
 
   Returns:
     A scalar `Tensor` of the same type as `learning_rate`.  The decayed
     learning rate.
-  """
 
+  Raises:
+    ValueError: if `global_step` is not supplied.
+  """
+  if global_step is None:
+    raise ValueError("global_step is required for inverse_time_decay.")
   with ops.name_scope(name, "InverseTimeDecay",
                       [learning_rate, global_step, decay_rate]) as name:
     learning_rate = ops.convert_to_tensor(learning_rate, name="learning_rate")

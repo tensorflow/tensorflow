@@ -75,7 +75,7 @@ class MatrixSolveOp : public LinearAlgebraOp<Scalar> {
     Eigen::PartialPivLU<Matrix> lu_decomposition(matrix.rows());
     if (adjoint_) {
       // TODO(rmlarsen): For Eigen 3.2, this creates a temporary copy.
-      // Make sure to backport: https://bitbucket.org/eigen/eigen/commits/ \
+      // Make sure to backport: https://bitbucket.org/eigen/eigen/commits/
       // bd2219a74c96dfe3f6bc2c23588749e36d2d8173
       lu_decomposition.compute(matrix.adjoint());
     } else {
@@ -87,14 +87,15 @@ class MatrixSolveOp : public LinearAlgebraOp<Scalar> {
     // a result of basic user mistakes such providing integer valued
     // matrices that are exactly singular, or due to underflow if this
     // code is run with denormals being flushed to zero.
-    const Scalar min_abs_pivot =
+    using RealScalar = typename Base::RealScalar;
+    const RealScalar min_abs_pivot =
         lu_decomposition.matrixLU().diagonal().cwiseAbs().minCoeff();
-    OP_REQUIRES(context, min_abs_pivot > Scalar(0),
+    OP_REQUIRES(context, min_abs_pivot > RealScalar(0),
                 errors::InvalidArgument("Input matrix is not invertible."));
 
     // TODO(rmlarsen): Add check based on condition number estimation.
     // The necessary changes to Eigen are in
-    // https://bitbucket.org/eigen/eigen/pull-requests/174/ \
+    // https://bitbucket.org/eigen/eigen/pull-requests/174/
     // add-matrix-condition-number-estimation/diff
     outputs->at(0) = lu_decomposition.solve(rhs);
   }
@@ -107,7 +108,10 @@ class MatrixSolveOp : public LinearAlgebraOp<Scalar> {
 
 REGISTER_LINALG_OP("MatrixSolve", (MatrixSolveOp<float>), float);
 REGISTER_LINALG_OP("MatrixSolve", (MatrixSolveOp<double>), double);
+REGISTER_LINALG_OP("MatrixSolve", (MatrixSolveOp<complex64>), complex64);
+REGISTER_LINALG_OP("MatrixSolve", (MatrixSolveOp<complex128>), complex128);
 REGISTER_LINALG_OP("BatchMatrixSolve", (MatrixSolveOp<float>), float);
 REGISTER_LINALG_OP("BatchMatrixSolve", (MatrixSolveOp<double>), double);
-
+REGISTER_LINALG_OP("BatchMatrixSolve", (MatrixSolveOp<complex64>), complex64);
+REGISTER_LINALG_OP("BatchMatrixSolve", (MatrixSolveOp<complex128>), complex128);
 }  // namespace tensorflow

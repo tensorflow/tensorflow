@@ -235,8 +235,6 @@ class FractionalAvgPoolGradOp : public OpKernel {
     // tensor of double type. And cast it to the corresponding type.
     typedef Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
         ConstEigenMatrixMap;
-    typedef Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
-        EigenMatrixMap;
     typedef Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>>
         EigenDoubleMatrixMap;
 

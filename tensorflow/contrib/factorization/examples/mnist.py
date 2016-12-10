@@ -23,11 +23,11 @@ To train this model on real mnist data, run this model as follows:
   mnist --nofake_data --max_steps=2000
 """
 
-# pylint: disable=missing-docstring
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import math
 import tempfile
 import time
@@ -35,22 +35,10 @@ import time
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-from tensorflow.contrib.factorization.python.ops import clustering_ops
 from tensorflow.examples.tutorials.mnist import input_data
 from tensorflow.examples.tutorials.mnist import mnist
 
-# Basic model parameters as external flags.
-flags = tf.app.flags
-FLAGS = flags.FLAGS
-flags.DEFINE_float('learning_rate', 0.3, 'Initial learning rate.')
-flags.DEFINE_integer('max_steps', 200, 'Number of steps to run trainer.')
-flags.DEFINE_integer('num_clusters', 384, 'Number of input feature clusters')
-flags.DEFINE_integer('hidden1', 256, 'Number of units in hidden layer 1.')
-flags.DEFINE_integer('hidden2', 32, 'Number of units in hidden layer 2.')
-flags.DEFINE_integer('batch_size', 100, 'Batch size.  '
-                     'Must divide evenly into the dataset sizes.')
-flags.DEFINE_string('train_dir', 'data', 'Directory to put the training data.')
-flags.DEFINE_bool('fake_data', True, 'Use fake input data.')
+FLAGS = None
 
 # The MNIST dataset has 10 classes, representing the digits 0 through 9.
 NUM_CLASSES = 10
@@ -143,13 +131,13 @@ def inference(inp, num_clusters, hidden1_units, hidden2_units):
     kmeans_training_op: An op to train the clustering.
   """
   # Clustering
-  kmeans = clustering_ops.KMeans(
+  kmeans = tf.contrib.factorization.KMeans(
       inp,
       num_clusters,
-      distance_metric=clustering_ops.COSINE_DISTANCE,
+      distance_metric=tf.contrib.factorization.COSINE_DISTANCE,
       # TODO(agarwal): kmeans++ is currently causing crash in dbg mode.
       # Enable this after fixing.
-      # initial_clusters=clustering_ops.KMEANS_PLUS_PLUS_INIT,
+      # initial_clusters=tf.contrib.factorization.KMEANS_PLUS_PLUS_INIT,
       use_mini_batch=True)
 
   all_scores, _, clustering_scores, kmeans_training_op = kmeans.training_graph()
@@ -218,7 +206,7 @@ def run_training():
     eval_correct = mnist.evaluation(logits, labels_placeholder)
 
     # Add the variable initializer Op.
-    init = tf.initialize_all_variables()
+    init = tf.global_variables_initializer()
 
     # Create a session for running Ops on the Graph.
     sess = tf.Session()
@@ -288,4 +276,57 @@ class MnistTest(tf.test.TestCase):
 
 
 if __name__ == '__main__':
+  parser = argparse.ArgumentParser(
+      description='Basic model parameters as external flags.'
+  )
+  parser.add_argument(
+      '--learning_rate',
+      type=float,
+      default=0.3,
+      help='Initial learning rate.'
+  )
+  parser.add_argument(
+      '--max_steps',
+      type=int,
+      default=200,
+      help='Number of steps to run trainer.'
+  )
+  parser.add_argument(
+      '--num_clusters',
+      type=int,
+      default=384,
+      help='Number of input feature clusters'
+  )
+  parser.add_argument(
+      '--hidden1',
+      type=int,
+      default=256,
+      help='Number of units in hidden layer 1.'
+  )
+  parser.add_argument(
+      '--hidden2',
+      type=int,
+      default=32,
+      help='Number of units in hidden layer 2.'
+  )
+  parser.add_argument(
+      '--batch_size',
+      type=int,
+      default=100,
+      help='Batch size.  Must divide evenly into the dataset sizes.'
+  )
+  parser.add_argument(
+      '--train_dir',
+      type=str,
+      default='data',
+      help='Directory to put the training data.'
+  )
+  parser.add_argument(
+      '--fake_data',
+      type=bool,
+      default=True,
+      help='Use fake input data.'
+  )
+  FLAGS, unparsed = parser.parse_known_args()
+
   tf.test.main()

@@ -3,6 +3,7 @@
 # ...with small modifications to fix the build rules for :grpc++_unsecure.
 #
 # TODO(mrry): Upstream these fixes back to the gRPC repository.
+# TODO(jart): Fix nanopb's BUILD file. Fix grpc BUILD file.
 
 # GRPC Bazel BUILD file.
 # This currently builds C, C++ and Objective-C code.
@@ -44,9 +45,28 @@ licenses(["notice"])  # 3-clause BSD
 
 package(default_visibility = ["//visibility:public"])
 
+exports_files(["LICENSE"])
 
+genrule(
+    name = "pb_h",
+    outs = ["third_party/nanopb/pb.h"],
+    cmd = "echo '#include <pb.h>' >$@",
+    visibility = ["//visibility:private"],
+)
 
+genrule(
+    name = "pb_decode_h",
+    outs = ["third_party/nanopb/pb_decode.h"],
+    cmd = "echo '#include <pb_decode.h>' >$@",
+    visibility = ["//visibility:private"],
+)
 
+genrule(
+    name = "pb_encode_h",
+    outs = ["third_party/nanopb/pb_encode.h"],
+    cmd = "echo '#include <pb_encode.h>' >$@",
+    visibility = ["//visibility:private"],
+)
 
 cc_library(
   name = "gpr",
@@ -499,6 +519,9 @@ cc_library(
     "src/core/ext/census/placeholders.c",
     "src/core/ext/census/tracing.c",
     "src/core/plugin_registry/grpc_plugin_registry.c",
+    "third_party/nanopb/pb.h",
+    "third_party/nanopb/pb_decode.h",
+    "third_party/nanopb/pb_encode.h",
   ],
   hdrs = [
     "include/grpc/byte_buffer.h",
@@ -856,6 +879,9 @@ cc_library(
     "src/core/lib/tsi/ssl_transport_security.c",
     "src/core/lib/tsi/transport_security.c",
     "src/core/plugin_registry/grpc_cronet_plugin_registry.c",
+    "third_party/nanopb/pb.h",
+    "third_party/nanopb/pb_decode.h",
+    "third_party/nanopb/pb_encode.h",
   ],
   hdrs = [
     "include/grpc/byte_buffer.h",
@@ -1185,6 +1211,9 @@ cc_library(
     "src/core/ext/census/placeholders.c",
     "src/core/ext/census/tracing.c",
     "src/core/plugin_registry/grpc_unsecure_plugin_registry.c",
+    "third_party/nanopb/pb.h",
+    "third_party/nanopb/pb_decode.h",
+    "third_party/nanopb/pb_encode.h",
   ],
   hdrs = [
     "include/grpc/byte_buffer.h",
@@ -1224,6 +1253,7 @@ cc_library(
   deps = [
     ":gpr",
     "//external:nanopb",
+    "//external:zlib",
   ],
   copts = [
     "-std=gnu99",
@@ -1531,6 +1561,7 @@ cc_library(
     "include/grpc++/impl/codegen/create_auth_context.h",
     "include/grpc++/impl/codegen/grpc_library.h",
     "include/grpc++/impl/codegen/method_handler_impl.h",
+    "include/grpc++/impl/codegen/proto_utils.h",
     "include/grpc++/impl/codegen/rpc_method.h",
     "include/grpc++/impl/codegen/rpc_service_method.h",
     "include/grpc++/impl/codegen/security/auth_context.h",
@@ -1557,6 +1588,9 @@ cc_library(
     "//external:protobuf_clib",
     ":grpc",
     ":gpr",
+  ],
+  copts = [
+    "-std=gnu99",
   ],
 )
 
@@ -1733,10 +1767,12 @@ cc_library(
     "include/grpc++/impl/codegen/completion_queue.h",
     "include/grpc++/impl/codegen/completion_queue_tag.h",
     "include/grpc++/impl/codegen/config.h",
+    "include/grpc++/impl/codegen/config_protobuf.h",        
     "include/grpc++/impl/codegen/core_codegen_interface.h",
     "include/grpc++/impl/codegen/create_auth_context.h",
     "include/grpc++/impl/codegen/grpc_library.h",
     "include/grpc++/impl/codegen/method_handler_impl.h",
+    "include/grpc++/impl/codegen/proto_utils.h",
     "include/grpc++/impl/codegen/rpc_method.h",
     "include/grpc++/impl/codegen/rpc_service_method.h",
     "include/grpc++/impl/codegen/security/auth_context.h",
@@ -2309,6 +2345,9 @@ objc_library(
     "src/core/ext/census/grpc_filter.h",
     "src/core/ext/census/mlog.h",
     "src/core/ext/census/rpc_metric_id.h",
+    "third_party/nanopb/pb.h",
+    "third_party/nanopb/pb_decode.h",
+    "third_party/nanopb/pb_encode.h",
   ],
   includes = [
     "include",

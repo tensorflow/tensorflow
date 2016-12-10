@@ -25,7 +25,7 @@ import tensorflow as tf
 class ZeroDivisionTest(tf.test.TestCase):
 
   def testZeros(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       for dtype in tf.uint8, tf.int16, tf.int32, tf.int64:
         zero = tf.constant(0, dtype=dtype)
         one = tf.constant(1, dtype=dtype)

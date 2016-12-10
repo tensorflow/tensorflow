@@ -185,10 +185,6 @@ class TreePredictions : public OpKernel {
       };
     } else {
       num_data = static_cast<int32>(input_data.shape().dim_size(0));
-      int32 num_features = 0;
-      if (num_data > 0) {
-        num_features = input_data.NumElements() / num_data;
-      }
       decide_function = [&input_data](
           int32 i, int32 feature, float bias, DataColumnTypes type) {
         const auto input_matrix = input_data.matrix<float>();
@@ -218,26 +214,15 @@ class TreePredictions : public OpKernel {
                     errors::InvalidArgument("node_index not in valid range."))
         const int32 left_child = tree(node_index, CHILDREN_INDEX);
         if (left_child == LEAF_NODE) {
-          float sum = node_pcw(node_index, 0);
-          float parent_weight = 0.0;
-          if (sum < valid_leaf_threshold_ && parent >= 0) {
-            VLOG(1) << "not enough samples at leaf, including parent counts."
-                    << "child sum = " << sum;
-            float parent_sum = node_pcw(parent, 0);
-            // Weight the parent's counts just enough so that the new sum is
-            // valid_leaf_threshold_, but never give any counts a weight of
-            // more than 1.
-            parent_weight = std::min(1.0f,
-                                (valid_leaf_threshold_ - sum) / parent_sum);
-            sum += parent_weight * parent_sum;
-            VLOG(1) << "Sum w/ parent included = " << sum;
-          }
+          const int32 flat_leaf_index = node_index * num_classes + 1;
+          const int32 flat_parent_index = parent * num_classes + 1;
+          std::vector<float> means(num_classes - 1);
+          tensorforest::GetParentWeightedMean(
+              node_pcw(node_index, 0), node_pcw.data() + flat_leaf_index,
+              node_pcw(parent, 0), node_pcw.data() + flat_parent_index,
+              valid_leaf_threshold_, num_classes - 1, &means);
           for (int c = 1; c < num_classes; c++) {
-            float w = node_pcw(node_index, c);
-            if (parent_weight > 0.0) {
-              w += parent_weight * node_pcw(parent, c);
-            }
-            out(i, c - 1) = w / sum;
+            out(i, c - 1) = means[c - 1];
           }
           break;
         } else if (left_child == FREE_NODE) {

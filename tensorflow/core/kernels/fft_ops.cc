@@ -49,16 +49,10 @@ class FFTGPUBase : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor& in = ctx->input(0);
     const TensorShape& shape = in.shape();
-    if (IsBatched()) {
-      OP_REQUIRES(
-          ctx, shape.dims() >= Rank(),
-          errors::InvalidArgument("Input must have rank of at least ", Rank(),
-                                  " but got: ", shape.DebugString()));
-    } else {
-      OP_REQUIRES(ctx, shape.dims() == Rank(),
-                  errors::InvalidArgument("Input must be of rank ", Rank(),
-                                          " but got: ", shape.DebugString()));
-    }
+    OP_REQUIRES(
+        ctx, shape.dims() >= Rank(),
+        errors::InvalidArgument("Input must have rank of at least ", Rank(),
+                                " but got: ", shape.DebugString()));
     Tensor* out;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, shape, &out));
     if (shape.num_elements() == 0) {
@@ -70,7 +64,6 @@ class FFTGPUBase : public OpKernel {
  protected:
   virtual int Rank() const = 0;
   virtual bool IsForward() const = 0;
-  virtual bool IsBatched() const = 0;
 
  private:
   void DoFFT(OpKernelContext* ctx, const Tensor& in, Tensor* out) {
@@ -121,7 +114,7 @@ class FFTGPUBase : public OpKernel {
   }
 };
 
-template <bool Forward, bool Batched, int FFTRank>
+template <bool Forward, int FFTRank>
 class FFTGPU : public FFTGPUBase {
  public:
   static_assert(FFTRank >= 1 && FFTRank <= 3,
@@ -131,32 +124,24 @@ class FFTGPU : public FFTGPUBase {
  protected:
   int Rank() const override { return FFTRank; }
   bool IsForward() const override { return Forward; }
-  bool IsBatched() const override { return Batched; }
 };
 
-REGISTER_KERNEL_BUILDER(Name("FFT").Device(DEVICE_GPU), FFTGPU<true, false, 1>);
-REGISTER_KERNEL_BUILDER(Name("IFFT").Device(DEVICE_GPU),
-                        FFTGPU<false, false, 1>);
-REGISTER_KERNEL_BUILDER(Name("FFT2D").Device(DEVICE_GPU),
-                        FFTGPU<true, false, 2>);
-REGISTER_KERNEL_BUILDER(Name("IFFT2D").Device(DEVICE_GPU),
-                        FFTGPU<false, false, 2>);
-REGISTER_KERNEL_BUILDER(Name("FFT3D").Device(DEVICE_GPU),
-                        FFTGPU<true, false, 3>);
-REGISTER_KERNEL_BUILDER(Name("IFFT3D").Device(DEVICE_GPU),
-                        FFTGPU<false, false, 3>);
-REGISTER_KERNEL_BUILDER(Name("BatchFFT").Device(DEVICE_GPU),
-                        FFTGPU<true, true, 1>);
-REGISTER_KERNEL_BUILDER(Name("BatchIFFT").Device(DEVICE_GPU),
-                        FFTGPU<false, true, 1>);
-REGISTER_KERNEL_BUILDER(Name("BatchFFT2D").Device(DEVICE_GPU),
-                        FFTGPU<true, true, 2>);
+REGISTER_KERNEL_BUILDER(Name("FFT").Device(DEVICE_GPU), FFTGPU<true, 1>);
+REGISTER_KERNEL_BUILDER(Name("IFFT").Device(DEVICE_GPU), FFTGPU<false, 1>);
+REGISTER_KERNEL_BUILDER(Name("FFT2D").Device(DEVICE_GPU), FFTGPU<true, 2>);
+REGISTER_KERNEL_BUILDER(Name("IFFT2D").Device(DEVICE_GPU), FFTGPU<false, 2>);
+REGISTER_KERNEL_BUILDER(Name("FFT3D").Device(DEVICE_GPU), FFTGPU<true, 3>);
+REGISTER_KERNEL_BUILDER(Name("IFFT3D").Device(DEVICE_GPU), FFTGPU<false, 3>);
+
+// Deprecated kernels.
+REGISTER_KERNEL_BUILDER(Name("BatchFFT").Device(DEVICE_GPU), FFTGPU<true, 1>);
+REGISTER_KERNEL_BUILDER(Name("BatchIFFT").Device(DEVICE_GPU), FFTGPU<false, 1>);
+REGISTER_KERNEL_BUILDER(Name("BatchFFT2D").Device(DEVICE_GPU), FFTGPU<true, 2>);
 REGISTER_KERNEL_BUILDER(Name("BatchIFFT2D").Device(DEVICE_GPU),
-                        FFTGPU<false, true, 2>);
-REGISTER_KERNEL_BUILDER(Name("BatchFFT3D").Device(DEVICE_GPU),
-                        FFTGPU<true, true, 3>);
+                        FFTGPU<false, 2>);
+REGISTER_KERNEL_BUILDER(Name("BatchFFT3D").Device(DEVICE_GPU), FFTGPU<true, 3>);
 REGISTER_KERNEL_BUILDER(Name("BatchIFFT3D").Device(DEVICE_GPU),
-                        FFTGPU<false, true, 3>);
+                        FFTGPU<false, 3>);
 
 }  // end namespace tensorflow
 

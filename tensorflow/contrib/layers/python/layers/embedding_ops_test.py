@@ -261,7 +261,7 @@ class SafeEmbeddingLookupSparseTest(tf.test.TestCase):
                         embedding_weights, sparse_ids, sparse_weights)
 
 
-class HashedEmbeddingLookupTest(tf.test.TestCase):
+class ScatteredEmbeddingLookupTest(tf.test.TestCase):
 
   def setUp(self):
     tf.set_random_seed(1)
@@ -281,24 +281,24 @@ class HashedEmbeddingLookupTest(tf.test.TestCase):
       w.initializer.run()
     return embedding_weights
 
-  def test_hashed_embedding_consistency(self):
+  def test_scattered_embedding_consistency(self):
     with self.test_session():
       embedding_weights = self._random_weights()
       values = tf.constant(["foo", "foo"])
 
-      embedding_lookup_result = tf.contrib.layers.hashed_embedding_lookup(
+      embedding_lookup_result = tf.contrib.layers.scattered_embedding_lookup(
           embedding_weights, values, dimension=10).eval()
 
       self.assertAllEqual(embedding_lookup_result.shape, [2, 10])
       self.assertAllEqual(embedding_lookup_result[0],
                           embedding_lookup_result[1])
 
-  def test_hashed_embedding_multiple_partition(self):
+  def test_scattered_embedding_multiple_partition(self):
     with self.test_session():
       embedding_weights = self._random_weights(num_shards=7)
       values = tf.constant([4, 4, 5])
 
-      embedding_lookup_result = tf.contrib.layers.hashed_embedding_lookup(
+      embedding_lookup_result = tf.contrib.layers.scattered_embedding_lookup(
           embedding_weights, values, dimension=5).eval()
 
       self.assertAllEqual(embedding_lookup_result.shape, [3, 5])
@@ -309,39 +309,39 @@ class HashedEmbeddingLookupTest(tf.test.TestCase):
                                embedding_lookup_result[0]) ** 2)
       self.assertGreater(embedding_diff, 0)
 
-  def test_hashed_embedding_coverage(self):
+  def test_scattered_embedding_coverage(self):
     with self.test_session():
       size = 8
       embedding_weights = self._random_weights(size=size, num_shards=3)
       values = tf.constant(["foo"])
 
       # Large embedding dimension to cover the full range of weights.
-      embedding_lookup_result = tf.contrib.layers.hashed_embedding_lookup(
+      embedding_lookup_result = tf.contrib.layers.scattered_embedding_lookup(
           embedding_weights, values, dimension=100).eval()
 
       self.assertEqual(len(np.unique(embedding_lookup_result[0])), size)
 
-  def test_hashed_embedding_multi_dimension(self):
+  def test_scattered_embedding_multi_dimension(self):
     with self.test_session():
       embedding_weights = self._random_weights()
       values = tf.constant([["foo", "bar", "bar"], ["bar", "bar", "foo"]])
 
-      embedding_lookup_result = tf.contrib.layers.hashed_embedding_lookup(
+      embedding_lookup_result = tf.contrib.layers.scattered_embedding_lookup(
           embedding_weights, values, dimension=10).eval()
 
       self.assertAllEqual(embedding_lookup_result.shape, [2, 3, 10])
       self.assertAllEqual(embedding_lookup_result[0][0],
                           embedding_lookup_result[1][2])
 
-  def test_hashed_embedding_lookup_sparse(self):
+  def test_scattered_embedding_lookup_sparse(self):
     with self.test_session():
       embedding_weights = self._random_weights(num_shards=3)
       sparse_tensor = tf.SparseTensor(values=["foo", "bar", "foo", "bar"],
                                       indices=[[0, 0], [1, 0], [1, 1], [3, 0]],
-                                      shape=[5, 2])
+                                      dense_shape=[5, 2])
 
       embedding_lookup_result = (
-          tf.contrib.layers.hashed_embedding_lookup_sparse(
+          tf.contrib.layers.scattered_embedding_lookup_sparse(
               embedding_weights, sparse_tensor, dimension=5, combiner="mean")
           .eval())
 
@@ -355,6 +355,44 @@ class HashedEmbeddingLookupTest(tf.test.TestCase):
       self.assertAllEqual(embedding_lookup_result[1],
                           0.5 * (embedding_lookup_result[0] +
                                  embedding_lookup_result[3]))
+
+  def test_embedding_lookup_unique(self):
+    d_embed = 5
+    n_embed = 10
+    idx_shape = (2, 3, 4)
+    embeds = np.random.randn(n_embed, d_embed)
+    idx = np.random.randint(0, n_embed, idx_shape)
+
+    with self.test_session():
+      embedded_np = embeds[idx]
+      embedded_tf = tf.contrib.layers.embedding_lookup_unique(
+          embeds, idx).eval()
+
+    self.assertEqual(embedded_np.shape, embedded_tf.shape)
+    np.testing.assert_almost_equal(embedded_np, embedded_tf)
+
+  def test_embedding_lookup_unique_param3d(self):
+    embeds = np.random.randn(5, 3, 3)
+    idx = np.random.randint(0, 5, 10)
+    idx2d = np.random.randint(0, 5, (10, 2))
+
+    with self.test_session():
+      embedded_np = embeds[idx]
+      embedded_np2d = embeds[idx2d]
+      embedded_tf = tf.contrib.layers.embedding_lookup_unique(
+          embeds, idx).eval()
+      embedded_tf_lst = tf.contrib.layers.embedding_lookup_unique(
+          [embeds], idx).eval()
+      embedded_tf2d = tf.contrib.layers.embedding_lookup_unique(
+          embeds, idx2d).eval()
+
+    self.assertEqual(embedded_np.shape, embedded_tf.shape)
+    np.testing.assert_almost_equal(embedded_np, embedded_tf)
+    self.assertEqual(embedded_np.shape, embedded_tf_lst.shape)
+    np.testing.assert_almost_equal(embedded_np, embedded_tf_lst)
+    self.assertEqual(embedded_np2d.shape, embedded_tf2d.shape)
+    np.testing.assert_almost_equal(embedded_np2d, embedded_tf2d)
+
 
 if __name__ == "__main__":
   tf.test.main()

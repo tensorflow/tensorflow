@@ -37,7 +37,8 @@ class SaverLargeVariableTest(tf.test.TestCase):
       with tf.device("/cpu:0"):
         var = tf.Variable(
             tf.constant(False, shape=[2, 1024, 1024, 1024], dtype=tf.bool))
-      save = tf.train.Saver({var.op.name: var})
+      save = tf.train.Saver({var.op.name: var},
+                            write_version=tf.train.SaverDef.V1)
       var.initializer.run()
       with self.assertRaisesRegexp(
           tf.errors.InvalidArgumentError,

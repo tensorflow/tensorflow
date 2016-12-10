@@ -18,28 +18,32 @@
 Monitors are useful to track training, report progress, request early
 stopping and more. Monitors use the observer pattern and notify at the following
 points:
- - when training begins
- - before a training step
- - after a training step
- - when training ends
+
+* when training begins
+* before a training step
+* after a training step
+* when training ends
 
 Monitors are not intended to be reusable.
 
 There are a few pre-defined monitors:
- - CaptureVariable: saves a variable's values
- - GraphDump: intended for debug only - saves all tensor values
- - PrintTensor: outputs one or more tensor values to log
- - SummarySaver: saves summaries to a summary writer
- - ValidationMonitor: runs model validation, by periodically calculating eval
-     metrics on a separate data set; supports optional early stopping
+
+* `CaptureVariable`: saves a variable's values
+* `GraphDump`: intended for debug only - saves all tensor values
+* `PrintTensor`: outputs one or more tensor values to log
+* `SummarySaver`: saves summaries to a summary writer
+* `ValidationMonitor`: runs model validation, by periodically calculating eval
+    metrics on a separate data set; supports optional early stopping
 
 For more specific needs, you can create custom monitors by extending one of the
 following classes:
- - BaseMonitor: the base class for all monitors
- - EveryN: triggers a callback every N training steps
+
+* `BaseMonitor`: the base class for all monitors
+* `EveryN`: triggers a callback every N training steps
 
 Example:
 
+```python
   class ExampleMonitor(monitors.BaseMonitor):
     def __init__(self):
       print 'Init'
@@ -62,6 +66,7 @@ Example:
   example_monitor = ExampleMonitor()
   linear_regressor.fit(
     x, y, steps=2, batch_size=1, monitors=[example_monitor])
+```
 
 @@get_default_monitors
 @@BaseMonitor
@@ -100,6 +105,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import summary_io
+from tensorflow.python.util import deprecation
 
 
 # TODO(ptucker): Split each monitor class into a separate file.
@@ -112,6 +118,9 @@ class BaseMonitor(object):
   to run exclusively on the elected chief worker.
   """
 
+  @deprecation.deprecated(
+      "2016-12-05",
+      "Monitors are deprecated. Please use tf.train.SessionRunHook.")
   def __init__(self):
     self._begun = False
     self._current_epoch = None
@@ -125,6 +134,8 @@ class BaseMonitor(object):
 
   def set_estimator(self, estimator):
     """A setter called automatically by the target estimator.
+
+    If the estimator is locked, this method does nothing.
 
     Args:
       estimator: the estimator that this monitor monitors.
@@ -275,7 +286,7 @@ class EveryN(BaseMonitor):
   This class adds three new callbacks:
     - every_n_step_begin
     - every_n_step_end
-    - every_n_pos_step
+    - every_n_post_step
 
   The callbacks are executed every n steps, or optionally every step for the
   first m steps, where m and n can both be user-specified.
@@ -287,7 +298,7 @@ class EveryN(BaseMonitor):
       super(ExampleMonitor, self).step_begin(step)
       return []
 
-  Failing to call the super implementation will cause unpredictible behavior.
+  Failing to call the super implementation will cause unpredictable behavior.
 
   The `every_n_post_step()` callback is also called after the last step if it
   was not already called through the regular conditions.  Note that
@@ -376,8 +387,7 @@ class EveryN(BaseMonitor):
         step == self._max_steps):  # Note: max_steps can be None here.
       self._every_n_step_begin_called = True
       return self.every_n_step_begin(step)
-    else:
-      self._every_n_step_begin_called = False
+    self._every_n_step_begin_called = False
     return []
 
   def step_end(self, step, output):
@@ -548,8 +558,8 @@ class SummarySaver(EveryN):
 
     Args:
       summary_op: `Tensor` of type `string`. A serialized `Summary` protocol
-          buffer, as output by TF summary methods like `scalar_summary` or
-          `merge_all_summaries`.
+          buffer, as output by TF summary methods like `summary.scalar` or
+          `summary.merge_all`.
       save_steps: `int`, save summaries every N steps. See `EveryN`.
       output_dir: `string`, the directory to save the summaries to. Only used
           if no `summary_writer` is supplied.
@@ -683,28 +693,32 @@ class ValidationMonitor(EveryN):
     # Check that we are not running evaluation on the same checkpoint.
     latest_path = saver_lib.latest_checkpoint(self._estimator.model_dir)
     if latest_path is None:
-      logging.info("Skipping evaluation since model has not been saved yet "
-                   "at step %d.", step)
+      logging.debug("Skipping evaluation since model has not been saved yet "
+                    "at step %d.", step)
       return False
     if latest_path is not None and latest_path == self._latest_path:
-      logging.info("Skipping evaluation due to same checkpoint %s for step %d "
-                   "as for step %d.", latest_path, step, self._latest_path_step)
+      logging.debug("Skipping evaluation due to same checkpoint %s for step %d "
+                    "as for step %d.", latest_path, step,
+                    self._latest_path_step)
       return False
     self._latest_path = latest_path
     self._latest_path_step = step
 
     # Run evaluation and log it.
-    outputs = self._estimator.evaluate(
+    validation_outputs = self._estimator.evaluate(
         x=self.x, y=self.y, input_fn=self.input_fn, batch_size=self.batch_size,
         steps=self.eval_steps, metrics=self.metrics, name=self.name)
     stats = []
-    for name in outputs:
-      stats.append("%s = %s" % (name, str(outputs[name])))
+    for name in validation_outputs:
+      stats.append("%s = %s" % (name, str(validation_outputs[name])))
     logging.info("Validation (step %d): %s", step, ", ".join(stats))
 
     # Early stopping logic.
     if self.early_stopping_rounds is not None:
-      current_value = outputs[self.early_stopping_metric]
+      if self.early_stopping_metric not in validation_outputs:
+        raise ValueError("Metric %s missing from outputs %s." % (
+            self.early_stopping_metric, set(validation_outputs.keys())))
+      current_value = validation_outputs[self.early_stopping_metric]
       if (self._best_value is None or (self.early_stopping_metric_minimize and
                                        (current_value < self._best_value)) or
           (not self.early_stopping_metric_minimize and
@@ -888,9 +902,9 @@ class ExportMonitor(EveryN):
       "2016-09-23",
       "The signature of the input_fn accepted by export is changing to be "
       "consistent with what's used by tf.Learn Estimator's train/evaluate. "
-      "input_fn and input_feature_key will both become required args.",
-      input_fn=None,
-      input_feature_key=None)
+      "input_fn (and in most cases, input_feature_key) will both become "
+      "required args.",
+      input_fn=None)
   def __init__(self,
                every_n_steps,
                export_dir,
@@ -905,12 +919,14 @@ class ExportMonitor(EveryN):
       every_n_steps: Run monitor every N steps.
       export_dir: str, folder to export.
       input_fn: A function that takes no argument and returns a tuple of
-        (features, targets), where features is a dict of string key to `Tensor`
-        and targets is a `Tensor` that's currently not used (and so can be
+        (features, labels), where features is a dict of string key to `Tensor`
+        and labels is a `Tensor` that's currently not used (and so can be
         `None`).
       input_feature_key: String key into the features dict returned by
         `input_fn` that corresponds to the raw `Example` strings `Tensor` that
-        the exported model will take as input.
+        the exported model will take as input. Should be `None` if and only if
+        you're passing in a `signature_fn` that does not use the first arg
+        (`Tensor` of `Example` strings).
       exports_to_keep: int, number of exports to keep.
       signature_fn: Function that returns a default signature and a named
         signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
@@ -921,12 +937,6 @@ class ExportMonitor(EveryN):
       ValueError: If `input_fn` and `input_feature_key` are not both defined or
         are not both `None`.
     """
-    if (input_fn is None) != (input_feature_key is None):
-      raise ValueError(
-          "input_fn and input_feature_key must both be defined or both be "
-          "None. Not passing in input_fn and input_feature_key is also "
-          "deprecated, so you should go with the former.")
-
     super(ExportMonitor, self).__init__(every_n_steps=every_n_steps)
     self._export_dir = export_dir
     self._input_fn = input_fn
@@ -935,6 +945,7 @@ class ExportMonitor(EveryN):
     self._exports_to_keep = exports_to_keep
     self._signature_fn = signature_fn
     self._default_batch_size = default_batch_size
+    self._last_export_dir = None
 
   @property
   def export_dir(self):
@@ -948,10 +959,22 @@ class ExportMonitor(EveryN):
   def signature_fn(self):
     return self._signature_fn
 
+  @property
+  def last_export_dir(self):
+    """Returns the directory containing the last completed export.
+
+    Returns:
+      The string path to the exported directory. NB: this functionality was
+      added on 2016/09/25; clients that depend on the return value may need
+      to handle the case where this function returns None because the
+      estimator being fitted does not yet return a value during export.
+    """
+    return self._last_export_dir
+
   def every_n_step_end(self, step, outputs):
     super(ExportMonitor, self).every_n_step_end(step, outputs)
     try:
-      self._estimator.export(
+      self._last_export_dir = self._estimator.export(
           self.export_dir,
           exports_to_keep=self.exports_to_keep,
           signature_fn=self.signature_fn,
@@ -959,15 +982,16 @@ class ExportMonitor(EveryN):
           default_batch_size=self._default_batch_size,
           input_feature_key=self._input_feature_key,
           use_deprecated_input_fn=self._use_deprecated_input_fn)
-    except (RuntimeError, TypeError):
+    except RuntimeError:
       # Currently we are not syncronized with saving checkpoints, which leads to
       # runtime errors when we are calling export on the same global step.
       # Exports depend on saved checkpoints for constructing the graph and
       # getting the global step from the graph instance saved in the checkpoint.
       # If the checkpoint is stale with respect to current step, the global step
-      # is taken to be the last saved checkpoints global step and exporter
+      # is taken to be the last saved checkpoint's global step and exporter
       # doesn't export the same checkpoint again with the following error.
-      logging.info("Skipping exporting for the same step. "
+      logging.info("Skipping exporting because the existing checkpoint has "
+                   "already been exported. "
                    "Consider exporting less frequently.")
 
   def end(self, session=None):
@@ -978,7 +1002,7 @@ class ExportMonitor(EveryN):
                    "yet.")
       return
     try:
-      self._estimator.export(
+      self._last_export_dir = self._estimator.export(
           self.export_dir,
           exports_to_keep=self.exports_to_keep,
           signature_fn=self.signature_fn,
@@ -986,7 +1010,7 @@ class ExportMonitor(EveryN):
           default_batch_size=self._default_batch_size,
           input_feature_key=self._input_feature_key,
           use_deprecated_input_fn=self._use_deprecated_input_fn)
-    except (RuntimeError, TypeError):
+    except RuntimeError:
       logging.info("Skipping exporting for the same step.")
 
 
@@ -1014,7 +1038,7 @@ class CheckpointSaver(BaseMonitor):
       ValueError: If both `save_steps` and `save_secs` are not `None`.
       ValueError: If both `save_steps` and `save_secs` are `None`.
     """
-    logging.info("Create CheckpointSaver")
+    logging.info("Create CheckpointSaver.")
     super(CheckpointSaver, self).__init__()
     self._saver = saver
     self._summary_writer = SummaryWriterCache.get(checkpoint_dir)
@@ -1199,6 +1223,48 @@ class RunHookAdapterForMonitors(session_run_hook.SessionRunHook):
         m.end(session=session)
       else:
         m.end()
+
+
+def replace_monitors_with_hooks(monitors_or_hooks, estimator):
+  """Wraps monitors with a hook.
+
+  `Monitor` is deprecated in favor of `SessionRunHook`. If you're using a
+  monitor, you can wrap it with a hook using function. It is recommended to
+  implement hook version of your monitor.
+
+  Args:
+    monitors_or_hooks: A `list` may contain both monitors and hooks.
+    estimator: An `Estimator` that monitor will be used with.
+
+  Returns:
+    Returns a list of hooks. If there is any monitor in the given list, it is
+    replaced by a hook.
+  """
+  monitors_or_hooks = monitors_or_hooks or []
+  hooks = [
+      m for m in monitors_or_hooks
+      if isinstance(m, session_run_hook.SessionRunHook)
+  ]
+
+  deprecated_monitors = [
+      m for m in monitors_or_hooks
+      if not isinstance(m, session_run_hook.SessionRunHook)
+  ]
+
+  if not estimator.config.is_chief:
+    # Prune list of monitor to the ones runnable on all workers.
+    deprecated_monitors = [
+        m for m in deprecated_monitors if m.run_on_all_workers
+    ]
+
+  # Setup monitors.
+  for monitor in deprecated_monitors:
+    monitor.set_estimator(estimator)
+
+  if deprecated_monitors:
+    hooks.append(RunHookAdapterForMonitors(deprecated_monitors))
+
+  return hooks
 
 
 def _as_graph_element(obj):

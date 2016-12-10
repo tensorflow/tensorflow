@@ -43,7 +43,7 @@ pad(t, paddings, "SYMMETRIC") ==> [[2, 1, 1, 2, 3, 3, 2],
 
 *  <b>`tensor`</b>: A `Tensor`.
 *  <b>`paddings`</b>: A `Tensor` of type `int32`.
-*  <b>`mode`</b>: One of "CONSTANT", "REFLECT", or "SYMMETRIC".
+*  <b>`mode`</b>: One of "CONSTANT", "REFLECT", or "SYMMETRIC" (case-insensitive)
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:

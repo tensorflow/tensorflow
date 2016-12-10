@@ -1,4 +1,4 @@
-### `tf.contrib.graph_editor.compute_boundary_ts(ops, ambiguous_are_outputs=True)` {#compute_boundary_ts}
+### `tf.contrib.graph_editor.compute_boundary_ts(ops, ambiguous_ts_are_outputs=True)` {#compute_boundary_ts}
 
 Compute the tensors at the boundary of a set of ops.
 
@@ -12,9 +12,10 @@ and classify them into three categories:
 
 
 *  <b>`ops`</b>: an object convertible to a list of tf.Operation.
-*  <b>`ambiguous_are_outputs`</b>: a tensor can have consumers both inside and outside
-    ops. Such tensors are treated as outside tensor if inside_output_as_output
-    is True, otherwise they are treated as inside tensor.
+*  <b>`ambiguous_ts_are_outputs`</b>: a tensor can have consumers both inside and
+    outside ops. Such tensors are treated as outside tensor if
+    ambiguous_ts_are_outputs is True, otherwise they are treated as
+    inside tensor.
 
 ##### Returns:
 

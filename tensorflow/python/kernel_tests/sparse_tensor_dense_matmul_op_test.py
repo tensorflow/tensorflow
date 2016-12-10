@@ -52,7 +52,7 @@ class SparseTensorDenseMatMulTest(tf.test.TestCase):
 
     with self.test_session(use_gpu=True):
       sp_x_value = tf.SparseTensorValue(
-          indices=x_indices, values=x_values, shape=x_shape)
+          indices=x_indices, values=x_values, dense_shape=x_shape)
       tf_value_ans = sparse_ops.sparse_tensor_dense_matmul(
           sp_x_value, y, adjoint_a=adjoint_a, adjoint_b=adjoint_b)
       tf_tensor_ans = sparse_ops.sparse_tensor_dense_matmul(
@@ -86,6 +86,30 @@ class SparseTensorDenseMatMulTest(tf.test.TestCase):
     self._testBasic(np.float64)
     self._testBasic(np.complex64)
     self._testBasic(np.complex128)
+
+  def testShapeInference(self):
+    x = np.random.rand(10, 10)
+    x[np.abs(x) < 0.5] = 0  # Make it sparse
+    y = np.random.randn(10, 20)
+    x_indices = np.vstack(np.where(x)).astype(np.int64).T
+    x_values = x[np.where(x)]
+    x_shape = x.shape
+    x_st = tf.SparseTensor(x_indices, x_values, x_shape)
+    result = tf.sparse_tensor_dense_matmul(x_st, y)
+    self.assertEqual(result.get_shape(), (10, 20))
+
+    x_shape_unknown = tf.placeholder(dtype=tf.int64, shape=None)
+    x_st_shape_unknown = tf.SparseTensor(x_indices, x_values, x_shape_unknown)
+    result_left_shape_unknown = tf.sparse_tensor_dense_matmul(
+        x_st_shape_unknown, y)
+    self.assertEqual(
+        result_left_shape_unknown.get_shape().as_list(), [None, 20])
+
+    x_shape_inconsistent = [10, 15]
+    x_st_shape_inconsistent = tf.SparseTensor(
+        x_indices, x_values, x_shape_inconsistent)
+    with self.assertRaisesRegexp(ValueError, "Dimensions must be equal"):
+      tf.sparse_tensor_dense_matmul(x_st_shape_inconsistent, y)
 
   # Tests setting one dimension to be a high value.
   def _testLarge(self, np_dtype):
@@ -145,7 +169,7 @@ def _sparse_tensor_dense_vs_dense_matmul_benchmark_dense(
 
 def _sparse_tensor_dense_vs_dense_matmul_benchmark_sparse(
     x_ind, x_val, x_shape, y, adjoint_a, adjoint_b):
-  sp_x = tf.SparseTensor(indices=x_ind, values=x_val, shape=x_shape)
+  sp_x = tf.SparseTensor(indices=x_ind, values=x_val, dense_shape=x_shape)
 
   def body(t, prev):
     with tf.control_dependencies([prev]):

@@ -24,11 +24,14 @@ import threading
 import numpy as np
 
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf.config_pb2 import RunMetadata
 from tensorflow.core.util.event_pb2 import SessionLog
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.summary import summary
 from tensorflow.python.summary.impl import directory_watcher
-from tensorflow.python.summary.impl import io_wrapper
+from tensorflow.python.summary.impl import event_file_loader
 from tensorflow.python.summary.impl import reservoir
 from tensorflow.python.util import compat
 
@@ -71,6 +74,7 @@ IMAGES = 'images'
 AUDIO = 'audio'
 SCALARS = 'scalars'
 GRAPH = 'graph'
+META_GRAPH = 'meta_graph'
 RUN_METADATA = 'run_metadata'
 
 ## Normal CDF for std_devs: (-Inf, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, Inf)
@@ -126,6 +130,7 @@ class EventAccumulator(object):
   @@Tags
   @@Scalars
   @@Graph
+  @@MetaGraph
   @@RunMetadata
   @@Histograms
   @@CompressedHistograms
@@ -165,10 +170,12 @@ class EventAccumulator(object):
     self._first_event_timestamp = None
     self._scalars = reservoir.Reservoir(size=sizes[SCALARS])
     self._graph = None
+    self._graph_from_metagraph = False
+    self._meta_graph = None
     self._tagged_metadata = {}
     self._histograms = reservoir.Reservoir(size=sizes[HISTOGRAMS])
     self._compressed_histograms = reservoir.Reservoir(
-        size=sizes[COMPRESSED_HISTOGRAMS])
+        size=sizes[COMPRESSED_HISTOGRAMS], always_keep_last=False)
     self._images = reservoir.Reservoir(size=sizes[IMAGES])
     self._audio = reservoir.Reservoir(size=sizes[AUDIO])
 
@@ -185,6 +192,7 @@ class EventAccumulator(object):
     # The attributes that get built up by the accumulator
     self.accumulated_attrs = ('_scalars', '_histograms',
                               '_compressed_histograms', '_images', '_audio')
+    self._tensor_summaries = {}
 
   def Reload(self):
     """Loads all events added since the last call to `Reload`.
@@ -242,12 +250,39 @@ class EventAccumulator(object):
 
     self._MaybePurgeOrphanedData(event)
 
-    ## Process the event
+    ## Process the event.
+    # GraphDef and MetaGraphDef are handled in a special way:
+    # If no graph_def Event is available, but a meta_graph_def is, and it
+    # contains a graph_def, then use the meta_graph_def.graph_def as our graph.
+    # If a graph_def Event is available, always prefer it to the graph_def
+    # inside the meta_graph_def.
     if event.HasField('graph_def'):
       if self._graph is not None:
-        logging.warn(('Found more than one graph event per run. '
-                      'Overwriting the graph with the newest event.'))
+        logging.warn(('Found more than one graph event per run, or there was '
+                      'a metagraph containing a graph_def, as well as one or '
+                      'more graph events.  Overwriting the graph with the '
+                      'newest event.'))
       self._graph = event.graph_def
+      self._graph_from_metagraph = False
+      self._UpdateTensorSummaries()
+    elif event.HasField('meta_graph_def'):
+      if self._meta_graph is not None:
+        logging.warn(('Found more than one metagraph event per run. '
+                      'Overwriting the metagraph with the newest event.'))
+      self._meta_graph = event.meta_graph_def
+      if self._graph is None or self._graph_from_metagraph:
+        # We may have a graph_def in the metagraph.  If so, and no
+        # graph_def is directly available, use this one instead.
+        meta_graph = meta_graph_pb2.MetaGraphDef()
+        meta_graph.ParseFromString(self._meta_graph)
+        if meta_graph.graph_def:
+          if self._graph is not None:
+            logging.warn(('Found multiple metagraphs containing graph_defs,'
+                          'but did not find any graph events.  Overwriting the '
+                          'graph with the newest metagraph version.'))
+          self._graph_from_metagraph = True
+          self._graph = meta_graph.graph_def.SerializeToString()
+          self._UpdateTensorSummaries()
     elif event.HasField('tagged_run_metadata'):
       tag = event.tagged_run_metadata.tag
       if tag in self._tagged_metadata:
@@ -256,11 +291,71 @@ class EventAccumulator(object):
       self._tagged_metadata[tag] = event.tagged_run_metadata.run_metadata
     elif event.HasField('summary'):
       for value in event.summary.value:
-        for summary_type, summary_func in SUMMARY_TYPES.items():
-          if value.HasField(summary_type):
-            datum = getattr(value, summary_type)
-            getattr(self, summary_func)(value.tag, event.wall_time,
-                                        event.step, datum)
+        if value.HasField('tensor'):
+          self._ProcessTensorSummary(value, event)
+        else:
+          for summary_type, summary_func in SUMMARY_TYPES.items():
+            if value.HasField(summary_type):
+              datum = getattr(value, summary_type)
+              getattr(self, summary_func)(value.tag, event.wall_time,
+                                          event.step, datum)
+
+  def _ProcessTensorSummary(self, value, event):
+    """Process summaries generated by the TensorSummary op.
+
+    These summaries are distinguished by the fact that they have a Tensor field,
+    rather than one of the old idiosyncratic per-summary data fields.
+
+    Processing Tensor summaries is complicated by the fact that Tensor summaries
+    are not self-descriptive; you need to read the NodeDef of the corresponding
+    TensorSummary op to know the summary_type, the tag, etc.
+
+    This method emits ERROR-level messages to the logs if it encounters Tensor
+    summaries that it cannot process.
+
+    Args:
+      value: A summary_pb2.Summary.Value with a Tensor field.
+      event: The event_pb2.Event containing that value.
+    """
+
+    def LogErrorOnce(msg):
+      logging.log_first_n(logging.ERROR, msg, 1)
+
+    name = value.node_name
+    if self._graph is None:
+      LogErrorOnce('Attempting to process TensorSummary output, but '
+                   'no graph is present, so processing is impossible. '
+                   'All TensorSummary output will be ignored.')
+      return
+
+    if name not in self._tensor_summaries:
+      LogErrorOnce('No node_def for TensorSummary {}; skipping this sequence.'.
+                   format(name))
+      return
+
+    summary_description = self._tensor_summaries[name]
+    type_hint = summary_description.type_hint
+
+    if not type_hint:
+      LogErrorOnce('No type_hint for TensorSummary {}; skipping this sequence.'.
+                   format(name))
+      return
+
+    if type_hint == 'scalar':
+      scalar = float(tensor_util.MakeNdarray(value.tensor))
+      self._ProcessScalar(name, event.wall_time, event.step, scalar)
+    else:
+      LogErrorOnce(
+          'Unsupported type {} for TensorSummary {}; skipping this sequence.'.
+          format(type_hint, name))
+
+  def _UpdateTensorSummaries(self):
+    g = self.Graph()
+    for node in g.node:
+      if node.op == 'TensorSummary':
+        d = summary.get_summary_description(node)
+
+        self._tensor_summaries[node.name] = d
 
   def Tags(self):
     """Return all tags found in the value stream.
@@ -273,7 +368,10 @@ class EventAccumulator(object):
             HISTOGRAMS: self._histograms.Keys(),
             SCALARS: self._scalars.Keys(),
             COMPRESSED_HISTOGRAMS: self._compressed_histograms.Keys(),
+            # Use a heuristic: if the metagraph is available, but
+            # graph is not, then we assume the metagraph contains the graph.
             GRAPH: self._graph is not None,
+            META_GRAPH: self._meta_graph is not None,
             RUN_METADATA: list(self._tagged_metadata.keys())}
 
   def Scalars(self, tag):
@@ -293,17 +391,35 @@ class EventAccumulator(object):
   def Graph(self):
     """Return the graph definition, if there is one.
 
+    If the graph is stored directly, return that.  If no graph is stored
+    directly but a metagraph is stored containing a graph, return that.
+
     Raises:
       ValueError: If there is no graph for this run.
 
     Returns:
       The `graph_def` proto.
     """
-    if self._graph is None:
-      raise ValueError('There is no graph in this EventAccumulator')
     graph = graph_pb2.GraphDef()
-    graph.ParseFromString(self._graph)
-    return graph
+    if self._graph is not None:
+      graph.ParseFromString(self._graph)
+      return graph
+    raise ValueError('There is no graph in this EventAccumulator')
+
+  def MetaGraph(self):
+    """Return the metagraph definition, if there is one.
+
+    Raises:
+      ValueError: If there is no metagraph for this run.
+
+    Returns:
+      The `meta_graph_def` proto.
+    """
+    if self._meta_graph is None:
+      raise ValueError('There is no metagraph in this EventAccumulator')
+    meta_graph = meta_graph_pb2.MetaGraphDef()
+    meta_graph.ParseFromString(self._meta_graph)
+    return meta_graph
 
   def RunMetadata(self, tag):
     """Given a tag, return the associated session.run() metadata.
@@ -453,11 +569,10 @@ class EventAccumulator(object):
   def _ProcessHistogram(self, tag, wall_time, step, histo):
     """Processes a proto histogram by adding it to accumulated state."""
     histo = self._ConvertHistogramProtoToTuple(histo)
-    self._histograms.AddItem(tag, HistogramEvent(wall_time, step, histo))
+    histo_ev = HistogramEvent(wall_time, step, histo)
+    self._histograms.AddItem(tag, histo_ev)
     self._compressed_histograms.AddItem(
-        tag,
-        CompressedHistogramEvent(
-            wall_time, step, _CompressHistogram(histo, self._compression_bps)))
+        tag, histo_ev, lambda x: _CompressHistogram(x, self._compression_bps))
 
   def _ProcessImage(self, tag, wall_time, step, image):
     """Processes an image by adding it to accumulated state."""
@@ -548,10 +663,10 @@ def _GetPurgeMessage(most_recent_step, most_recent_wall_time, event_step,
 def _GeneratorFromPath(path):
   """Create an event generator for file or directory at given path string."""
   if IsTensorFlowEventsFile(path):
-    return io_wrapper.CreateFileLoader(path)
+    return event_file_loader.EventFileLoader(path)
   else:
-    return directory_watcher.DirectoryWatcher(path, io_wrapper.CreateFileLoader,
-                                              IsTensorFlowEventsFile)
+    return directory_watcher.DirectoryWatcher(
+        path, event_file_loader.EventFileLoader, IsTensorFlowEventsFile)
 
 
 def _ParseFileVersion(file_version):
@@ -574,7 +689,7 @@ def _ParseFileVersion(file_version):
     return -1
 
 
-def _CompressHistogram(histo, bps):
+def _CompressHistogram(histo_ev, bps):
   """Creates fixed size histogram by adding compression to accumulated state.
 
   This routine transforms a histogram at a particular step by linearly
@@ -585,13 +700,14 @@ def _CompressHistogram(histo, bps):
   coordinate.
 
   Args:
-    histo: A HistogramValue namedtuple.
+    histo_ev: A HistogramEvent namedtuple.
     bps: Compression points represented in basis points, 1/100ths of a percent.
 
   Returns:
-    List of CompressedHistogramValue namedtuples.
+    CompressedHistogramEvent namedtuple.
   """
   # See also: Histogram::Percentile() in core/lib/histogram/histogram.cc
+  histo = histo_ev.histogram_value
   if not histo.num:
     return [CompressedHistogramValue(b, 0.0) for b in bps]
   bucket = np.array(histo.bucket)
@@ -620,7 +736,7 @@ def _CompressHistogram(histo, bps):
   while j < len(bps):
     values.append(CompressedHistogramValue(bps[j], histo.max))
     j += 1
-  return values
+  return CompressedHistogramEvent(histo_ev.wall_time, histo_ev.step, values)
 
 
 def _Remap(x, x0, x1, y0, y1):

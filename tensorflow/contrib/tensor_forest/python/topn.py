@@ -113,9 +113,10 @@ class TopN(object):
       shortlist_ids_to_remove, new_length = self.ops.top_n_remove(self.sl_ids,
                                                                   ids)
       u1 = tf.scatter_update(
-          self.sl_ids, tf.concat(0, [[0], shortlist_ids_to_remove]),
-          tf.concat(0, [new_length,
-                        tf.ones_like(shortlist_ids_to_remove) * -1]))
+          self.sl_ids,
+          tf.concat_v2([[0], shortlist_ids_to_remove], 0),
+          tf.concat_v2([new_length, tf.ones_like(shortlist_ids_to_remove) * -1],
+                       0))
       u2 = tf.scatter_update(
           self.sl_scores,
           shortlist_ids_to_remove,
@@ -133,9 +134,9 @@ class TopN(object):
       new_length = tf.reduce_sum(
           tf.to_int32(tf.greater(new_scores, tf.float32.min)))
       u1 = self.sl_ids.assign(
-          tf.to_int64(tf.concat(0, [[new_length], new_ids])))
+          tf.to_int64(tf.concat_v2([[new_length], new_ids], 0)))
       u2 = self.sl_scores.assign(
-          tf.concat(0, [[smallest_new_score], new_scores]))
+          tf.concat_v2([[smallest_new_score], new_scores], 0))
       self.last_ops = [u1, u2]
       return tf.group(u1, u2)
 

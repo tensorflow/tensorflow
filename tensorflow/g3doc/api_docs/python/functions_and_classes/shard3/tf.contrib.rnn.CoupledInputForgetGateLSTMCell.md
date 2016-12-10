@@ -25,6 +25,40 @@ The class uses optional peep-hole connections, and an optional projection
 layer.
 - - -
 
+#### `tf.contrib.rnn.CoupledInputForgetGateLSTMCell.__call__(inputs, state, scope=None)` {#CoupledInputForgetGateLSTMCell.__call__}
+
+Run one step of LSTM.
+
+##### Args:
+
+
+*  <b>`inputs`</b>: input Tensor, 2D, batch x num_units.
+*  <b>`state`</b>: if `state_is_tuple` is False, this must be a state Tensor,
+    `2-D, batch x state_size`.  If `state_is_tuple` is True, this must be a
+    tuple of state Tensors, both `2-D`, with column sizes `c_state` and
+    `m_state`.
+*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "LSTMCell".
+
+##### Returns:
+
+  A tuple containing:
+  - A `2-D, [batch x output_dim]`, Tensor representing the output of the
+    LSTM after reading `inputs` when previous state was `state`.
+    Here output_dim is:
+       num_proj if num_proj was set,
+       num_units otherwise.
+  - Tensor(s) representing the new state of LSTM after reading `inputs` when
+    the previous state was `state`.  Same type and shape(s) as `state`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If input size cannot be inferred from inputs via
+    static shape inference.
+
+
+- - -
+
 #### `tf.contrib.rnn.CoupledInputForgetGateLSTMCell.__init__(num_units, use_peepholes=False, initializer=None, num_proj=None, proj_clip=None, num_unit_shards=1, num_proj_shards=1, forget_bias=1.0, state_is_tuple=False, activation=tanh)` {#CoupledInputForgetGateLSTMCell.__init__}
 
 Initialize the parameters for an LSTM cell.

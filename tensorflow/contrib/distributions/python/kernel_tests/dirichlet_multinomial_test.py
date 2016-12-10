@@ -69,7 +69,7 @@ class DirichletMultinomialTest(tf.test.TestCase):
       with self.assertRaisesOpError("counts do not sum to n"):
         dist.pmf([3., 3, 0]).eval()
 
-  def testPmf_non_integer_counts(self):
+  def testPmfNonIntegerCounts(self):
     alpha = [[1., 2, 3]]
     n = [[5.]]
     with self.test_session():
@@ -233,7 +233,7 @@ class DirichletMultinomialTest(tf.test.TestCase):
         self.assertEqual((2, 2), variance.get_shape())
         self.assertAllClose(expected_variance, variance.eval())
 
-  def testVariance_n_alpha_broadcast(self):
+  def testVarianceNAlphaBroadcast(self):
     alpha_v = [1., 2, 3]
     alpha_0 = 6.
 
@@ -266,7 +266,7 @@ class DirichletMultinomialTest(tf.test.TestCase):
       self.assertEqual((4, 3, 3), variance.get_shape())
       self.assertAllClose(expected_variance, variance.eval())
 
-  def testVariance_multidimensional(self):
+  def testVarianceMultidimensional(self):
     alpha = np.random.rand(3, 5, 4).astype(np.float32)
     alpha2 = np.random.rand(6, 3, 3).astype(np.float32)
 

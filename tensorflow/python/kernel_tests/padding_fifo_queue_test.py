@@ -32,7 +32,6 @@ class PaddingFIFOQueueTest(tf.test.TestCase):
     with tf.Graph().as_default():
       q = tf.PaddingFIFOQueue(10, tf.float32, ((None,),), name="Q")
     self.assertTrue(isinstance(q.queue_ref, tf.Tensor))
-    self.assertEquals(tf.string_ref, q.queue_ref.dtype)
     self.assertProtoEquals("""
       name:'Q' op:'PaddingFIFOQueue'
       attr { key: 'component_types' value { list { type: DT_FLOAT } } }
@@ -48,7 +47,6 @@ class PaddingFIFOQueueTest(tf.test.TestCase):
                               ((), ()),
                               shared_name="foo", name="Q")
     self.assertTrue(isinstance(q.queue_ref, tf.Tensor))
-    self.assertEquals(tf.string_ref, q.queue_ref.dtype)
     self.assertProtoEquals("""
       name:'Q' op:'PaddingFIFOQueue'
       attr { key: 'component_types' value { list {
@@ -66,7 +64,6 @@ class PaddingFIFOQueueTest(tf.test.TestCase):
                               shapes=(tf.TensorShape([1, 1, 2, 3]),
                                       tf.TensorShape([5, 8])), name="Q")
     self.assertTrue(isinstance(q.queue_ref, tf.Tensor))
-    self.assertEquals(tf.string_ref, q.queue_ref.dtype)
     self.assertProtoEquals("""
       name:'Q' op:'PaddingFIFOQueue'
       attr { key: 'component_types' value { list {
@@ -1344,19 +1341,19 @@ class PaddingFIFOQueueTest(tf.test.TestCase):
         enq_q.dequeue().eval()
 
   def _blockingDequeue(self, sess, dequeue_op):
-    with self.assertRaisesOpError("Dequeue operation was cancelled"):
+    with self.assertRaisesOpError("was cancelled"):
       sess.run(dequeue_op)
 
   def _blockingDequeueMany(self, sess, dequeue_many_op):
-    with self.assertRaisesOpError("Dequeue operation was cancelled"):
+    with self.assertRaisesOpError("was cancelled"):
       sess.run(dequeue_many_op)
 
   def _blockingEnqueue(self, sess, enqueue_op):
-    with self.assertRaisesOpError("Enqueue operation was cancelled"):
+    with self.assertRaisesOpError("was cancelled"):
       sess.run(enqueue_op)
 
   def _blockingEnqueueMany(self, sess, enqueue_many_op):
-    with self.assertRaisesOpError("Enqueue operation was cancelled"):
+    with self.assertRaisesOpError("was cancelled"):
       sess.run(enqueue_many_op)
 
   def testResetOfBlockingOperation(self):

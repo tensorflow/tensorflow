@@ -11,11 +11,11 @@ those kind of tools.
 
 ## Protocol Buffers
 
-All of TensorFlow's file formats are based on [Protocol Buffers]
-(https://developers.google.com/protocol-buffers/?hl=en), so to start
-it's worth getting familiar with how they work. The summary is that you define
-data structures in text files, and the protobuf tools generate classes in C,
-Python, and other languages that can load, save, and access the data in a
+All of TensorFlow's file formats are based on
+[Protocol Buffers](https://developers.google.com/protocol-buffers/?hl=en), so to
+start it's worth getting familiar with how they work. The summary is that you
+define data structures in text files, and the protobuf tools generate classes in
+C, Python, and other languages that can load, save, and access the data in a
 friendly way. We often refer to Protocol Buffers as protobufs, and I'll use
 that convention in this guide.
 
@@ -34,11 +34,7 @@ definitions. If you see a standalone TensorFlow file representing a model, it's
 likely to contain a serialized version of one of these `GraphDef` objects
 saved out by the protobuf code.
 
-This generated code is used to save and load the GraphDef files from disk. A
-good example to look at as we dig into this is
-[graph_metrics.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/tools/graph_metrics.py). This Python script takes a saved graph
-definition, and analyzes the model to estimate performance and resource
-statistics. The code that actually loads the model looks like this:
+This generated code is used to save and load the GraphDef files from disk. The code that actually loads the model looks like this:
 
 ```python
 graph_def = graph_pb2.GraphDef()
@@ -67,7 +63,7 @@ There are actually two different formats that a ProtoBuf can be saved in.
 TextFormat is a human-readable form, which makes it nice for debugging and
 editing, but can get large when there's numerical data like weights stored in
 it. You can see a small example of that in
-[graph_run_run2.pbtxt](https://github.com/tensorflow/tensorflow/blob/ae3c8479f88da1cd5636b974f653f27755cb0034/tensorflow/tensorboard/components/tf-tensorboard/test/data/graph_run_run2.pbtxt).
+[graph_run_run2.pbtxt](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tensorboard/components/tf_tensorboard/test/data/graph_run_run2.pbtxt).
 
 Binary format files are a lot smaller than their text equivalents, even though
 they're not as readable for us. In this script, we ask the user to supply a

@@ -20,6 +20,7 @@
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/bounds_check.h"
+#include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -54,21 +55,27 @@ T Sum(Tensor counts) {
 // is stored in index 0, individual feature types start at index 1.
 DataColumnTypes FeatureSpec(int32 input_feature, const Tensor& spec);
 
-// Given an Eigen::Tensor type, calculate the Gini impurity, which we use
-// to determine the best split (lowest) and which nodes to allocate first
-// (highest).
-template<typename T>
-float WeightedGiniImpurity(const T& counts) {
+// Given an Eigen::Tensor type, calculate the Gini impurity.
+template <typename T>
+float RawWeightedGiniImpurity(const T& counts) {
   // Our split score is the Gini impurity times the number of examples
   // seen by the leaf.  If c(i) denotes the i-th class count and c = sum_i c(i)
   // then
   // score = c * (1 - sum_i ( c(i) / c )^2 )
   //       = c - sum_i c(i)^2 / c
-  const auto smoothed = counts + counts.constant(1.0f);
-  const auto sum = smoothed.sum();
-  const auto sum2 = smoothed.square().sum();
+  const auto sum = counts.sum();
+  const auto sum2 = counts.square().sum();
   Eigen::Tensor<float, 0, Eigen::RowMajor> ret = sum - (sum2 / sum);
   return ret(0);
+}
+
+// Given an Eigen::Tensor type, calculate the smoothed Gini impurity, which we
+// use to determine the best split (lowest) and which nodes to allocate first
+// (highest).
+template <typename T>
+float WeightedGiniImpurity(const T& counts) {
+  const auto smoothed = counts + counts.constant(1.0f);
+  return RawWeightedGiniImpurity(smoothed);
 }
 
 template<typename T1, typename T2>
@@ -99,12 +106,27 @@ bool BestSplitDominatesRegression(
     const Tensor& split_sums, const Tensor& split_squares,
     int32 accumulator);
 
+// Performs booststrap_samples bootstrap samples of the best split's class
+// counts and the second best splits's class counts, and returns true if at
+// least dominate_fraction of the time, the former has a better (lower)
+// Gini impurity.  Does not take over ownership of *rand.
+bool BestSplitDominatesClassificationBootstrap(
+    const Tensor& total_counts, const Tensor& split_counts, int32 accumulator,
+    float dominate_fraction, tensorflow::random::SimplePhilox* rand);
+
 // Returns true if the best split's Gini impurity is sufficiently smaller than
-// that of the next best split.
-bool BestSplitDominatesClassification(
-    const Tensor& total_counts,
-    const Tensor& split_counts, int32 accumulator,
-    float dominate_fraction);
+// that of the next best split, as measured by the Hoeffding Tree bound.
+bool BestSplitDominatesClassificationHoeffding(const Tensor& total_counts,
+                                               const Tensor& split_counts,
+                                               int32 accumulator,
+                                               float dominate_fraction);
+
+// Returns true if the best split's Gini impurity is sufficiently smaller than
+// that of the next best split, as measured by a Chebyshev bound.
+bool BestSplitDominatesClassificationChebyshev(const Tensor& total_counts,
+                                               const Tensor& split_counts,
+                                               int32 accumulator,
+                                               float dominate_fraction);
 
 // Initializes everything in the given tensor to the given value.
 template <typename T>
@@ -205,6 +227,11 @@ inline bool CheckTensorBounds(OpKernelContext* context, const Tensor& tensor) {
   }
   return true;
 }
+
+void GetParentWeightedMean(float leaf_sum, const float* leaf_data,
+                           float parent_sum, const float* parent_data,
+                           float valid_leaf_threshold, int num_outputs,
+                           std::vector<float>* mean);
 
 }  // namespace tensorforest
 }  // namespace tensorflow

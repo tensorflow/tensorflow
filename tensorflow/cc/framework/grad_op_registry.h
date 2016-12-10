@@ -36,8 +36,8 @@ typedef Status (*GradFunc)(const Scope& scope, const Operation& op,
 // "MatMul" -> MatMulGrad func).
 class GradOpRegistry {
  public:
-  // Registers 'func' as the the gradient function for 'op'.
-  // Returns true if registration was succesful, check fails otherwise.
+  // Registers 'func' as the gradient function for 'op'.
+  // Returns true if registration was successful, check fails otherwise.
   bool Register(const string& op, GradFunc func);
 
   // Sets 'func' to the gradient function for 'op' and returns Status OK if

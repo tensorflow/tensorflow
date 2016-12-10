@@ -294,6 +294,10 @@ class GrpcWorkerService : public AsyncServiceInterface {
 
   Status PrepareRunGraph(const RunGraphRequest& req, GraphMgr::NamedTensors* in,
                          GraphMgr::NamedTensors* out) {
+    if (req.is_partial()) {
+      return errors::Unimplemented(
+          "Partial run not implemented for GRPC worker service");
+    }
     if (req.send_size() > 0) {
       // TODO(zhifengc): Let the caller decide on which device to
       // allocate the tensor.
@@ -325,7 +329,8 @@ class GrpcWorkerService : public AsyncServiceInterface {
       return;
     }
     StepStatsCollector* collector = nullptr;
-    if (call->request.exec_opts().record_timeline()) {
+    if (call->request.exec_opts().record_timeline() ||
+        call->request.exec_opts().record_costs()) {
       collector = new StepStatsCollector(call->response.mutable_step_stats());
       // TODO(mrry,pbar): GPU tracing for distributed steps.
     }
@@ -338,13 +343,25 @@ class GrpcWorkerService : public AsyncServiceInterface {
     {
       mutex_lock l(mu_);
       token = cancellation_manager_->get_cancellation_token();
-      cancellation_manager_->RegisterCallback(token,
-                                              [cm]() { cm->StartCancel(); });
+      bool already_cancelled = !cancellation_manager_->RegisterCallback(
+          token, [cm]() { cm->StartCancel(); });
+      if (already_cancelled) {
+        call->ClearCancelCallback();
+        delete cm;
+        delete collector;
+        delete out;
+        call->SendResponse(ToGrpcStatus(errors::Aborted("Call was aborted")));
+        return;
+      }
     }
+    CostGraphDef* cost_graph = call->response.mutable_cost_graph();
     env_->graph_mgr->ExecuteAsync(
         call->request.graph_handle(), step_id, call->request.exec_opts(),
-        collector, cm, in, out,
-        [this, call, cm, out, token, collector](Status s) {
+        collector, cost_graph, cm, in,
+        [this, step_id, call, cm, out, token, collector](Status s) {
+          if (s.ok()) {
+            env_->graph_mgr->RecvOutputs(step_id, out);
+          }
           call->ClearCancelCallback();
           {
             mutex_lock l(mu_);
@@ -421,8 +438,7 @@ class GrpcWorkerService : public AsyncServiceInterface {
                               const Rendezvous::Args& recv_args,
                               const Tensor& val, const bool is_dead) {
           call->ClearCancelCallback();
-          Status s = status;
-          if (s.ok()) {
+          if (status.ok()) {
             // DMA can only be used for Tensors that do not fall into
             // the following three odd edge cases: 1) a zero-size
             // buffer, 2) a dead tensor which has an uninit value, and
@@ -431,11 +447,12 @@ class GrpcWorkerService : public AsyncServiceInterface {
             // device type*.
             // const size_t bytes = is_dead ? 0 : val.TotalBytes();
             const bool on_host = send_args.alloc_attrs.on_host();
-            const DeviceContext* send_dev_context = send_args.device_context;
             {
               // Non-DMA cases.
               if (src_dev->tensorflow_gpu_device_info() && (!on_host)) {
 #if GOOGLE_CUDA
+                const DeviceContext* send_dev_context =
+                    send_args.device_context;
                 RecvTensorResponse* tmp = new RecvTensorResponse;
                 tmp->set_is_dead(is_dead);
                 CHECK(send_dev_context)
@@ -464,8 +481,8 @@ class GrpcWorkerService : public AsyncServiceInterface {
                                          tmp->mutable_tensor(), is_dead,
                                          response_ready);
 #else
-                call->SendResponse(ToGrpcStatus(
-                    errors::Internal("No GPU device in process")));
+                call->SendResponse(
+                    ToGrpcStatus(errors::Internal("No GPU device in process")));
 #endif  // GOOGLE_CUDA
               } else {
                 grpc::EncodeTensorToByteBuffer(is_dead, val, &call->response);
@@ -474,7 +491,7 @@ class GrpcWorkerService : public AsyncServiceInterface {
             }
           } else {
             //  !s.ok()
-            call->SendResponse(ToGrpcStatus(s));
+            call->SendResponse(ToGrpcStatus(status));
           }
         });
   }

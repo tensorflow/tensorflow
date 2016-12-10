@@ -114,8 +114,7 @@ template <typename T>
 struct functor_traits<scalar_sqrt_gradient_op<T>> {
   enum {
     PacketAccess = packet_traits<T>::HasMul & packet_traits<T>::HasDiv,
-    Cost =
-        NumTraits<T>::MulCost + NumTraits<T>::template Div<PacketAccess>::Cost,
+    Cost = NumTraits<T>::MulCost + scalar_div_cost<T, PacketAccess>::value,
   };
 };
 

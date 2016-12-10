@@ -23,10 +23,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-static string ParseHelper(const string& n) {
-  TensorId id = ParseTensorName(n);
-  return strings::StrCat(id.first, ":", id.second);
-}
+string ParseHelper(const string& n) { return ParseTensorName(n).ToString(); }
 
 TEST(TensorIdTest, ParseTensorName) {
   EXPECT_EQ(ParseHelper("W1"), "W1:0");
@@ -36,12 +33,12 @@ TEST(TensorIdTest, ParseTensorName) {
   EXPECT_EQ(ParseHelper("xyz1_17"), "xyz1_17:0");
 }
 
-static uint32 Skewed(random::SimplePhilox* rnd, int max_log) {
+uint32 Skewed(random::SimplePhilox* rnd, int max_log) {
   const uint32 space = 1 << (rnd->Rand32() % (max_log + 1));
   return rnd->Rand32() % space;
 }
 
-static void BM_ParseTensorName(int iters, int arg) {
+void BM_ParseTensorName(int iters, int arg) {
   testing::StopTiming();
   random::PhiloxRandom philox(301, 17);
   random::SimplePhilox rnd(&philox);

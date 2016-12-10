@@ -38,12 +38,12 @@ class SummaryOpsTest(tf.test.TestCase):
   def testNodeNames(self):
     with self.test_session() as sess:
       c = tf.constant(1)
-      s1 = tf.summary.tensor_summary("", c, name="s1")
+      s1 = tf.summary.tensor_summary("s1", c)
       with tf.name_scope("foo"):
-        s2 = tf.summary.tensor_summary("", c, name="s2")
+        s2 = tf.summary.tensor_summary("s2", c)
         with tf.name_scope("zod"):
-          s3 = tf.summary.tensor_summary("", c, name="s3")
-          s4 = tf.summary.tensor_summary("", c)
+          s3 = tf.summary.tensor_summary("s3", c)
+          s4 = tf.summary.tensor_summary("TensorSummary", c)
       summ1, summ2, summ3, summ4 = sess.run([s1, s2, s3, s4])
 
     v1 = self._SummarySingleValue(summ1)

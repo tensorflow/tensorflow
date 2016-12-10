@@ -18,8 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import unittest
 import tensorflow as tf
+from tensorflow.python.framework import ops
 from tensorflow.python.framework.test_util import TensorFlowTestCase
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
 
@@ -39,6 +43,90 @@ class CudnnRNNTest(TensorFlowTestCase):
     else:
       raise ValueError("Invalid rnn_mode: %s" % rnn_mode)
     return model
+
+  def _create_params_savable(self, params, model):
+    """Create a RNNParamsSaveable for the weight and bias parameters.
+
+    Args:
+      params: a Variable for weight and bias parameters.
+      model: a CudnnRNN model.
+    """
+    params_saveable = tf.contrib.cudnn_rnn.RNNParamsSaveable(
+        model.params_to_canonical, model.canonical_to_params, params)
+    ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, params_saveable)
+
+  def _testSaveRestoreVariable(self, rnn_mode):
+    model = self._CreateModel(rnn_mode, num_layers=2, num_units=7, input_size=3)
+    tf.set_random_seed(1234)
+    params_size_t = model.params_size()
+    params = variables.Variable(
+        tf.random_uniform([params_size_t]), validate_shape=False)
+    self._create_params_savable(params, model)
+    save_path = os.path.join(self.get_temp_dir(), "save-restore-variable-test")
+    saver = tf.train.Saver(write_version=tf.train.SaverDef.V2)
+    with self.test_session(use_gpu=True) as sess:
+      sess.run(tf.global_variables_initializer())
+      params_v = sess.run(params)
+      val = saver.save(sess, save_path)
+      self.assertEqual(save_path, val)
+    with self.test_session(use_gpu=True) as sess:
+      reset_params = tf.assign(params, tf.zeros([params_size_t]))
+      sess.run(reset_params)
+      saver.restore(sess, save_path)
+      params_v_restored = sess.run(params)
+      self.assertAllEqual(params_v, params_v_restored)
+
+  def _testSaveRestoreOutput(self, rnn_mode):
+    num_layers = 2
+    num_units = 7
+    input_size = 7
+    seq_length = 10
+    batch_size = 5
+    dir_count = 1
+    model = self._CreateModel(rnn_mode, num_layers, num_units, input_size)
+    params_size_t = model.params_size()
+    params = variables.Variable(tf.ones([params_size_t]), validate_shape=False)
+    self._create_params_savable(params, model)
+    save_path = os.path.join(self.get_temp_dir(), "save-restore-output-test")
+    saver = tf.train.Saver(write_version=tf.train.SaverDef.V2)
+
+    has_input_c = (rnn_mode == "lstm")
+    input_data = tf.ones([seq_length, batch_size, input_size])
+    input_h = tf.ones([num_layers * dir_count, batch_size, num_units])
+    if has_input_c:
+      input_c = tf.ones([num_layers * dir_count, batch_size, num_units])
+      outputs = model(
+          input_data=input_data,
+          input_h=input_h,
+          input_c=input_c,
+          params=params,
+          is_training=False)
+    else:
+      outputs = model(
+          input_data=input_data,
+          input_h=input_h,
+          params=params,
+          is_training=False)
+    total_sum = sum(map(tf.reduce_sum, outputs))
+    with self.test_session(use_gpu=True) as sess:
+      sess.run(tf.global_variables_initializer())
+      total_sum_v = sess.run(total_sum)
+      val = saver.save(sess, save_path)
+      self.assertEqual(save_path, val)
+    with self.test_session(use_gpu=True) as sess:
+      reset_params = tf.assign(params, tf.zeros([params_size_t]))
+      sess.run(reset_params)
+      saver.restore(sess, save_path)
+      total_sum_v_restored = sess.run(total_sum)
+      self.assertAllEqual(total_sum_v, total_sum_v_restored)
+
+  @unittest.skipUnless(tf.test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def testSaveRestore(self):
+    rnn_modes = ["lstm", "gru", "rnn_tanh", "rnn_relu"]
+    for rnn_mode in rnn_modes:
+      self._testSaveRestoreVariable(rnn_mode)
+      self._testSaveRestoreOutput(rnn_mode)
 
   def _MinLSTMParamSize(self,
                         num_layers,
@@ -62,9 +150,9 @@ class CudnnRNNTest(TensorFlowTestCase):
       params_size_v = sess.run(params_size)
       self.assertLessEqual(min_params_size, params_size_v)
 
+  @unittest.skipUnless(tf.test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
   def testLSTMParamsSize(self):
-    if not tf.test.is_built_with_cuda():
-      return
     test_configs = [
         [4, 200, 200],
         [4, 200, 300],
@@ -85,10 +173,9 @@ class CudnnRNNTest(TensorFlowTestCase):
     params_size_t = model.params_size()
     input_data = tf.ones([seq_length, batch_size, input_size])
     input_h = tf.ones([num_layers * dir_count, batch_size, num_units])
-    if has_input_c:
-      input_c = tf.ones([num_layers * dir_count, batch_size, num_units])
     params = tf.Variable(tf.ones([params_size_t]), validate_shape=False)
     if has_input_c:
+      input_c = tf.ones([num_layers * dir_count, batch_size, num_units])
       output, output_h, output_c = model(
           input_data=input_data,
           input_h=input_h,
@@ -108,14 +195,14 @@ class CudnnRNNTest(TensorFlowTestCase):
       output_c_sum = tf.reduce_sum(output_c)
       total_sum += output_c_sum
     with self.test_session(use_gpu=True) as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       total_sum_v = sess.run([total_sum])
       self.assertAllClose(
           total_sum_v[0], expected, atol=tolerance, rtol=tolerance)
 
+  @unittest.skipUnless(tf.test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
   def testSimpleInference(self):
-    if not tf.test.is_built_with_cuda():
-      return
     test_configs = [
         ["lstm",
          231833.22,
@@ -183,12 +270,11 @@ class CudnnRNNTest(TensorFlowTestCase):
         tf.random_uniform([seq_length, batch_size, input_size]))
     input_h = tf.Variable(
         tf.random_uniform([num_layers * dir_count, batch_size, num_units]))
-    if has_input_c:
-      input_c = tf.Variable(
-          tf.random_uniform([num_layers * dir_count, batch_size, num_units]))
     params = tf.Variable(
         tf.random_uniform([params_size_t]), validate_shape=False)
     if has_input_c:
+      input_c = tf.Variable(
+          tf.random_uniform([num_layers * dir_count, batch_size, num_units]))
       output, output_h, output_c = model(
           input_data=input_data,
           input_h=input_h,
@@ -214,16 +300,16 @@ class CudnnRNNTest(TensorFlowTestCase):
       if has_input_c:
         inputs_and_shapes.append(
             (input_c, [num_layers * dir_count, batch_size, num_units]),)
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       all_inputs = [entry[0] for entry in inputs_and_shapes]
       all_shapes = [entry[1] for entry in inputs_and_shapes]
       err = tf.test.compute_gradient_error(all_inputs, all_shapes, total_sum,
                                            [1])
       self.assertLess(err, tolerance)
 
+  @unittest.skipUnless(tf.test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
   def testSimpleTraining(self):
-    if not tf.test.is_built_with_cuda():
-      return
     test_configs = [
         ["lstm",
          1e-2,

@@ -71,8 +71,6 @@ endfunction()
 # tf_protos_cc library
 ########################################################
 
-include_directories(${PROTOBUF_INCLUDE_DIRS})
-include_directories(${CMAKE_CURRENT_BINARY_DIR})
 file(GLOB_RECURSE tf_protos_cc_srcs RELATIVE ${tensorflow_source_dir}
     "${tensorflow_source_dir}/tensorflow/core/*.proto"
 )
@@ -94,6 +92,7 @@ set(tf_proto_text_srcs
     "tensorflow/core/framework/log_memory.proto"
     "tensorflow/core/framework/node_def.proto"
     "tensorflow/core/framework/op_def.proto"
+    "tensorflow/core/framework/resource_handle.proto"
     "tensorflow/core/framework/step_stats.proto"
     "tensorflow/core/framework/summary.proto"
     "tensorflow/core/framework/tensor.proto"
@@ -104,6 +103,8 @@ set(tf_proto_text_srcs
     "tensorflow/core/framework/versions.proto"
     "tensorflow/core/lib/core/error_codes.proto"
     "tensorflow/core/protobuf/config.proto"
+    "tensorflow/core/protobuf/debug.proto"
+    "tensorflow/core/protobuf/tensor_bundle.proto"
     "tensorflow/core/protobuf/saver.proto"
     "tensorflow/core/util/memmapped_file_system.proto"
     "tensorflow/core/util/saved_tensor_slice.proto"
@@ -113,16 +114,6 @@ RELATIVE_PROTOBUF_TEXT_GENERATE_CPP(PROTO_TEXT_SRCS PROTO_TEXT_HDRS
 )
 
 add_library(tf_protos_cc ${PROTO_SRCS} ${PROTO_HDRS})
-target_include_directories(tf_protos_cc PUBLIC
-     ${CMAKE_CURRENT_BINARY_DIR}
-)
-target_link_libraries(tf_protos_cc PUBLIC
-    ${PROTOBUF_LIBRARIES}
-)
-# C++11
-target_compile_features(tf_protos_cc PRIVATE
-    cxx_rvalue_references
-)
 
 ########################################################
 # tf_core_lib library
@@ -130,10 +121,42 @@ target_compile_features(tf_protos_cc PRIVATE
 file(GLOB_RECURSE tf_core_lib_srcs
     "${tensorflow_source_dir}/tensorflow/core/lib/*.h"
     "${tensorflow_source_dir}/tensorflow/core/lib/*.cc"
-    "${tensorflow_source_dir}/tensorflow/core/platform/*.h"
-    "${tensorflow_source_dir}/tensorflow/core/platform/*.cc"
     "${tensorflow_source_dir}/tensorflow/core/public/*.h"
 )
+
+file(GLOB tf_core_platform_srcs
+    "${tensorflow_source_dir}/tensorflow/core/platform/*.h"
+    "${tensorflow_source_dir}/tensorflow/core/platform/*.cc"
+    "${tensorflow_source_dir}/tensorflow/core/platform/default/*.h"
+    "${tensorflow_source_dir}/tensorflow/core/platform/default/*.cc")
+list(APPEND tf_core_lib_srcs ${tf_core_platform_srcs})
+
+if(UNIX)
+  file(GLOB tf_core_platform_posix_srcs
+      "${tensorflow_source_dir}/tensorflow/core/platform/posix/*.h"
+      "${tensorflow_source_dir}/tensorflow/core/platform/posix/*.cc"
+  )
+  list(APPEND tf_core_lib_srcs ${tf_core_platform_posix_srcs})
+endif(UNIX)
+
+if(WIN32)
+  file(GLOB tf_core_platform_windows_srcs
+      "${tensorflow_source_dir}/tensorflow/core/platform/windows/*.h"
+      "${tensorflow_source_dir}/tensorflow/core/platform/windows/*.cc"
+      "${tensorflow_source_dir}/tensorflow/core/platform/posix/error.h"
+      "${tensorflow_source_dir}/tensorflow/core/platform/posix/error.cc"
+  )
+  list(APPEND tf_core_lib_srcs ${tf_core_platform_windows_srcs})
+endif(WIN32)
+
+if(tensorflow_ENABLE_SSL_SUPPORT)
+  # Cloud libraries require boringssl.
+  file(GLOB tf_core_platform_cloud_srcs
+      "${tensorflow_source_dir}/tensorflow/core/platform/cloud/*.h"
+      "${tensorflow_source_dir}/tensorflow/core/platform/cloud/*.cc"
+  )
+  list(APPEND tf_core_lib_srcs ${tf_core_platform_cloud_srcs})
+endif()
 
 file(GLOB_RECURSE tf_core_lib_test_srcs
     "${tensorflow_source_dir}/tensorflow/core/lib/*test*.h"
@@ -142,40 +165,10 @@ file(GLOB_RECURSE tf_core_lib_test_srcs
     "${tensorflow_source_dir}/tensorflow/core/platform/*test*.cc"
     "${tensorflow_source_dir}/tensorflow/core/public/*test*.h"
 )
-
-list(REMOVE_ITEM tf_core_lib_srcs ${tf_core_lib_test_srcs}) 
+list(REMOVE_ITEM tf_core_lib_srcs ${tf_core_lib_test_srcs})
 
 add_library(tf_core_lib OBJECT ${tf_core_lib_srcs})
-target_include_directories(tf_core_lib PUBLIC
-    ${tensorflow_source_dir}
-    ${gif_INCLUDE_DIR}
-    ${jpeg_INCLUDE_DIR}
-    ${png_INCLUDE_DIR}
-    ${eigen_INCLUDE_DIRS}
-    ${re2_EXTRA_INCLUDE_DIR}
-    ${jsoncpp_INCLUDE_DIR}
-    ${boringssl_INCLUDE_DIR}
-)
-target_compile_options(tf_core_lib PRIVATE
-    -fno-exceptions
-    -DEIGEN_AVOID_STL_ARRAY
-)
-
-# C++11
-target_compile_features(tf_core_lib PRIVATE
-    cxx_rvalue_references
-)
-
-add_dependencies(tf_core_lib
-    gif_copy_headers_to_destination
-    jpeg_copy_headers_to_destination
-    png_copy_headers_to_destination
-    re2_copy_headers_to_destination
-    eigen
-    tf_protos_cc
-    jsoncpp
-    boringssl
-)
+add_dependencies(tf_core_lib ${tensorflow_EXTERNAL_DEPENDENCIES} tf_protos_cc)
 
 # Tricky setup to force always rebuilding
 # force_rebuild always runs forcing ${VERSION_INFO_CC} target to run
@@ -186,12 +179,11 @@ add_custom_target(force_rebuild_target ALL DEPENDS ${VERSION_INFO_CC})
 add_custom_command(OUTPUT __force_rebuild COMMAND cmake -E echo)
 add_custom_command(OUTPUT
     ${VERSION_INFO_CC}
-    COMMAND ${tensorflow_source_dir}/tensorflow/tools/git/gen_git_source.py
+    COMMAND ${PYTHON_EXECUTABLE} ${tensorflow_source_dir}/tensorflow/tools/git/gen_git_source.py
     --raw_generate ${VERSION_INFO_CC}
     DEPENDS __force_rebuild)
 
 set(tf_version_srcs ${tensorflow_source_dir}/tensorflow/core/util/version_info.cc)
-
 
 ########################################################
 # tf_core_framework library
@@ -201,7 +193,6 @@ file(GLOB_RECURSE tf_core_framework_srcs
     "${tensorflow_source_dir}/tensorflow/core/framework/*.cc"
     "${tensorflow_source_dir}/tensorflow/core/util/*.h"
     "${tensorflow_source_dir}/tensorflow/core/util/*.cc"
-    "${tensorflow_source_dir}/tensorflow/core/client/tensor_c_api.cc"
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/session.cc"
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/session_factory.cc"
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/session_options.cc"
@@ -226,30 +217,7 @@ add_library(tf_core_framework OBJECT
     ${tf_version_srcs}
     ${PROTO_TEXT_HDRS}
     ${PROTO_TEXT_SRCS})
-target_include_directories(tf_core_framework PUBLIC
-    ${tensorflow_source_dir}
-    ${eigen_INCLUDE_DIRS}
-    ${re2_INCLUDES}
-)
-#target_link_libraries(tf_core_framework
-#    ${CMAKE_THREAD_LIBS_INIT}
-#    ${PROTOBUF_LIBRARIES}
-#    #${re2_STATIC_LIBRARIES}
-#    re2_lib
-#    ${jpeg_STATIC_LIBRARIES}
-#    ${png_STATIC_LIBRARIES}
-#    tf_protos_cc
-#    tf_core_lib
-#)
 add_dependencies(tf_core_framework
     tf_core_lib
     proto_text
-)
-target_compile_options(tf_core_framework PRIVATE
-    -fno-exceptions
-    -DEIGEN_AVOID_STL_ARRAY
-)
-# C++11
-target_compile_features(tf_core_framework PRIVATE
-    cxx_rvalue_references
 )

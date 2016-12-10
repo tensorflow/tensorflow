@@ -31,14 +31,14 @@ android {
     compileSdkVersion 24
     buildToolsVersion "24.0.1"
 
-    lintOptions {t
+    lintOptions {
         abortOnError false
     }
 
     sourceSets {
         main {
             manifest.srcFile 'AndroidManifest.xml'
-            java.srcDirs = ['src']
+            java.srcDirs = ['src', '../../contrib/android/java']
             resources.srcDirs = ['src']
             aidl.srcDirs = ['src']
             renderscript.srcDirs = ['src']

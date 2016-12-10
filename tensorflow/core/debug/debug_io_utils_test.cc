@@ -42,33 +42,6 @@ class DebugIOUtilsTest : public ::testing::Test {
     tensor_b_->flat<string>()(1) = "garply";
   }
 
-  Status ReadEventFromFile(const string& dump_file_path, Event* event) {
-    string content;
-    uint64 file_size = 0;
-
-    Status s = env_->GetFileSize(dump_file_path, &file_size);
-    if (!s.ok()) {
-      return s;
-    }
-
-    content.resize(file_size);
-
-    std::unique_ptr<RandomAccessFile> file;
-    s = env_->NewRandomAccessFile(dump_file_path, &file);
-    if (!s.ok()) {
-      return s;
-    }
-
-    StringPiece result;
-    s = file->Read(0, file_size, &result, &(content)[0]);
-    if (!s.ok()) {
-      return s;
-    }
-
-    event->ParseFromString(content);
-    return Status::OK();
-  }
-
   Env* env_;
   std::unique_ptr<Tensor> tensor_a_;
   std::unique_ptr<Tensor> tensor_b_;
@@ -84,7 +57,7 @@ TEST_F(DebugIOUtilsTest, DumpFloatTensorToFileSunnyDay) {
   const string kNodeName = "foo/bar/qux/tensor_a";
   const string kDebugOpName = "DebugIdentity";
   const int32 output_slot = 0;
-  uint64 wall_time = env_->NowMicros();
+  const uint64 wall_time = env_->NowMicros();
 
   string dump_file_path;
   TF_ASSERT_OK(DebugFileIO::DumpTensorToDir(kNodeName, output_slot,
@@ -127,7 +100,7 @@ TEST_F(DebugIOUtilsTest, DumpStringTensorToFileSunnyDay) {
   const string kNodeName = "quux/grault/tensor_b";
   const string kDebugOpName = "DebugIdentity";
   const int32 output_slot = 1;
-  uint64 wall_time = env_->NowMicros();
+  const uint64 wall_time = env_->NowMicros();
 
   string dump_file_name;
   Status s = DebugFileIO::DumpTensorToDir(kNodeName, output_slot, kDebugOpName,
@@ -170,10 +143,10 @@ TEST_F(DebugIOUtilsTest, DumpTensorToFileCannotCreateDirectory) {
   const string test_dir = testing::TmpDir();
   const string txt_file_name = strings::StrCat(test_dir, "/baz");
 
-  if (!env_->FileExists(test_dir)) {
+  if (!env_->FileExists(test_dir).ok()) {
     ASSERT_TRUE(env_->CreateDir(test_dir).ok());
   }
-  ASSERT_FALSE(env_->FileExists(txt_file_name));
+  ASSERT_EQ(error::Code::NOT_FOUND, env_->FileExists(txt_file_name).code());
 
   std::unique_ptr<WritableFile> file;
   ASSERT_TRUE(env_->NewWritableFile(txt_file_name, &file).ok());
@@ -182,7 +155,7 @@ TEST_F(DebugIOUtilsTest, DumpTensorToFileCannotCreateDirectory) {
   file->Close();
 
   // Verify that the path exists and that it is a file, not a directory.
-  ASSERT_TRUE(env_->FileExists(txt_file_name));
+  ASSERT_TRUE(env_->FileExists(txt_file_name).ok());
   ASSERT_FALSE(env_->IsDirectory(txt_file_name).ok());
 
   // Second, try to dump the tensor to a path that requires "baz" to be a
@@ -190,7 +163,7 @@ TEST_F(DebugIOUtilsTest, DumpTensorToFileCannotCreateDirectory) {
   const string kNodeName = "baz/tensor_a";
   const string kDebugOpName = "DebugIdentity";
   const int32 output_slot = 0;
-  uint64 wall_time = env_->NowMicros();
+  const uint64 wall_time = env_->NowMicros();
 
   string dump_file_name;
   Status s = DebugFileIO::DumpTensorToDir(kNodeName, output_slot, kDebugOpName,
@@ -215,8 +188,7 @@ TEST_F(DebugIOUtilsTest, PublishTensorToMultipleFileURLs) {
   const string kNodeName = "foo/bar/qux/tensor_a";
   const string kDebugOpName = "DebugIdentity";
   const int32 output_slot = 0;
-
-  uint64 wall_time = env_->NowMicros();
+  const uint64 wall_time = env_->NowMicros();
 
   std::vector<string> dump_roots;
   std::vector<string> dump_file_paths;
@@ -237,6 +209,7 @@ TEST_F(DebugIOUtilsTest, PublishTensorToMultipleFileURLs) {
   const string tensor_name = strings::StrCat(kNodeName, ":", output_slot);
   const string debug_node_name =
       strings::StrCat(tensor_name, ":", kDebugOpName);
+
   Status s = DebugIO::PublishDebugTensor(tensor_name, kDebugOpName, *tensor_a_,
                                          wall_time, urls);
   ASSERT_TRUE(s.ok());
@@ -283,7 +256,7 @@ TEST_F(DebugIOUtilsTest, PublishTensorConcurrentlyToPartiallyOverlappingPaths) {
 
   thread::ThreadPool* tp =
       new thread::ThreadPool(Env::Default(), "test", kConcurrentPubs);
-  uint64 wall_time = env_->NowMicros();
+  const uint64 wall_time = env_->NowMicros();
 
   const string dump_root_base = testing::TmpDir();
   const string tensor_name = strings::StrCat(kNodeName, ":", kOutputSlot);
@@ -300,7 +273,8 @@ TEST_F(DebugIOUtilsTest, PublishTensorConcurrentlyToPartiallyOverlappingPaths) {
 
   auto fn = [this, &dump_count, &done_count, &mu, &dump_root_base, &dump_roots,
              &dump_file_paths, &wall_time, &tensor_name, &debug_node_name,
-             &kNodeName, &kDebugOpName, &kConcurrentPubs, &all_done]() {
+             &kNodeName, &kDebugOpName, &kConcurrentPubs, &kOutputSlot,
+             &all_done]() {
     // "gumpy" is the shared directory part of the path.
     string dump_root;
     string debug_url;
@@ -318,6 +292,7 @@ TEST_F(DebugIOUtilsTest, PublishTensorConcurrentlyToPartiallyOverlappingPaths) {
 
     std::vector<string> urls;
     urls.push_back(debug_url);
+
     Status s = DebugIO::PublishDebugTensor(tensor_name, kDebugOpName,
                                            *tensor_a_, wall_time, urls);
     ASSERT_TRUE(s.ok());

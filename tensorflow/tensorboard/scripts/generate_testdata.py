@@ -110,7 +110,7 @@ def WriteImageSeries(writer, tag, n_images=1):
   step = 0
   session = tf.Session()
   p = tf.placeholder("uint8", (1, 4, 4, 3))
-  s = tf.image_summary(tag, p)
+  s = tf.contrib.deprecated.image_summary(tag, p)
   for _ in xrange(n_images):
     im = np.random.random_integers(0, 255, (1, 4, 4, 3))
     summ = session.run(s, feed_dict={p: im})
@@ -133,7 +133,7 @@ def WriteAudioSeries(writer, tag, n_audio=1):
 
   p = tf.placeholder("float32", (frequencies_per_run, duration_frames,
                                  num_channels))
-  s = tf.audio_summary(tag, p, sample_rate)
+  s = tf.contrib.deprecated.audio_summary(tag, p, sample_rate)
 
   for _ in xrange(n_audio):
     # Generate a different frequency for each channel to show stereo works.
@@ -158,7 +158,7 @@ def GenerateTestData(path):
   """Generates the test data directory."""
   run1_path = os.path.join(path, "run1")
   os.makedirs(run1_path)
-  writer1 = tf.train.SummaryWriter(run1_path)
+  writer1 = tf.summary.FileWriter(run1_path)
   WriteScalarSeries(writer1, "foo/square", lambda x: x * x)
   WriteScalarSeries(writer1, "bar/square", lambda x: x * x)
   WriteScalarSeries(writer1, "foo/sin", math.sin)
@@ -171,7 +171,7 @@ def GenerateTestData(path):
 
   run2_path = os.path.join(path, "run2")
   os.makedirs(run2_path)
-  writer2 = tf.train.SummaryWriter(run2_path)
+  writer2 = tf.summary.FileWriter(run2_path)
   WriteScalarSeries(writer2, "foo/square", lambda x: x * x * 2)
   WriteScalarSeries(writer2, "bar/square", lambda x: x * x * 3)
   WriteScalarSeries(writer2, "foo/cos", lambda x: math.cos(x) * 2)

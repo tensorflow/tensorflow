@@ -991,6 +991,9 @@ EIGEN_DEVICE_FUNC
       out_width = numext::ceil(InputCols / static_cast<float>(col_stride));
       break;
     default:
+      // Initialize unused variables to avoid a compiler warning
+      out_height = 0;
+      out_width  = 0;
       eigen_assert(false && "unexpected padding");
   }
 

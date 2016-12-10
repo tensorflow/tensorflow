@@ -36,7 +36,7 @@ cuda_py_tests(
 
 cuda_py_tests(
     name = "operator_pd_cholesky_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/operator_pd_cholesky_test.py"],
     additional_deps = [
         ":distributions_py",
@@ -48,7 +48,7 @@ cuda_py_tests(
 
 cuda_py_tests(
     name = "operator_pd_diag_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/operator_pd_diag_test.py"],
     additional_deps = [
         ":distributions_py",
@@ -60,7 +60,7 @@ cuda_py_tests(
 
 cuda_py_tests(
     name = "operator_pd_full_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/operator_pd_full_test.py"],
     additional_deps = [
         ":distributions_py",
@@ -72,7 +72,7 @@ cuda_py_tests(
 
 cuda_py_tests(
     name = "operator_pd_identity_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/operator_pd_identity_test.py"],
     additional_deps = [
         ":distributions_py",
@@ -92,6 +92,7 @@ cuda_py_tests(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
+    shard_count = 5,
     tags = ["notap"],  # http://b/30441813
 )
 
@@ -121,7 +122,6 @@ cuda_py_tests(
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:platform_test",
     ],
-    tags = ["notsan"],  #http://b/31216497
 )
 
 cuda_py_tests(
@@ -261,7 +261,7 @@ cuda_py_tests(
 
 cuda_py_tests(
     name = "normal_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/normal_test.py"],
     additional_deps = [
         ":distributions_py",
@@ -293,6 +293,7 @@ cuda_py_tests(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
+    tags = ["nomsan"],  # disable to avoid false positives from scipy.
 )
 
 cuda_py_tests(
@@ -340,6 +341,17 @@ cuda_py_tests(
 )
 
 cuda_py_tests(
+    name = "quantized_distribution_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/quantized_distribution_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_tests(
     name = "transformed_distribution_test",
     size = "medium",
     srcs = ["python/kernel_tests/transformed_distribution_test.py"],
@@ -376,7 +388,7 @@ cuda_py_tests(
 
 cuda_py_tests(
     name = "bijector_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/bijector_test.py"],
     additional_deps = [
         ":distributions_py",

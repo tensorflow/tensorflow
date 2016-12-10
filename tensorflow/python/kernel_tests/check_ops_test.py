@@ -29,7 +29,8 @@ class AssertProperIterableTest(tf.test.TestCase):
       tf.assert_proper_iterable(tensor)
 
   def test_single_sparse_tensor_raises(self):
-    ten = tf.SparseTensor(indices=[[0, 0], [1, 2]], values=[1, 2], shape=[3, 4])
+    ten = tf.SparseTensor(
+        indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])
     with self.assertRaisesRegexp(TypeError, "proper"):
       tf.assert_proper_iterable(ten)
 

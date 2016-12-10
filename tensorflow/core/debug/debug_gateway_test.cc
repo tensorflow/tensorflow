@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <unordered_map>
 
+#include "tensorflow/core/debug/debug_graph_utils.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/lib/core/notification.h"
@@ -168,11 +169,9 @@ TEST_F(SessionDebugMinusAXTest, RunSimpleNetwork) {
   // NodeOutputCallback as well.
   ASSERT_GT(completed_nodes_wo_outputs.size(), 0);
 
-  // The DebugGateway should have captured the _SOURCE and _SINK nodes.
+  // The DebugGateway should have captured the _SOURCE node.
   ASSERT_LE(1, std::count(completed_nodes_wo_outputs.begin(),
                           completed_nodes_wo_outputs.end(), "_SOURCE"));
-  ASSERT_LE(1, std::count(completed_nodes_wo_outputs.begin(),
-                          completed_nodes_wo_outputs.end(), "_SINK"));
 
   // Verify the calling history of the value callabck
   ASSERT_EQ(completed_nodes_w_outputs.size(), tensors_initialized.size());
@@ -230,7 +229,8 @@ TEST_F(SessionDebugMinusAXTest, RunSimpleNetworkWithTwoDebugNodesInserted) {
 
   const string debug_identity = "DebugIdentity";
   const string debug_nan_count = "DebugNanCount";
-  DebugTensorWatch* tensor_watch_opts = run_opts.add_debug_tensor_watch_opts();
+  DebugTensorWatch* tensor_watch_opts =
+      run_opts.mutable_debug_options()->add_debug_tensor_watch_opts();
   tensor_watch_opts->set_node_name(y_);
   tensor_watch_opts->set_output_slot(0);
   tensor_watch_opts->add_debug_ops(debug_identity);
@@ -337,7 +337,9 @@ TEST_F(SessionDebugMinusAXTest, RunSimpleNetworkWithTwoDebugNodesInserted) {
 }
 
 TEST_F(SessionDebugMinusAXTest,
-       RunSimpleNetworkConcurrentlyWithDebugNodesInserted) {
+       RunSimpleNetworkConcurrentlyWithDifferentDebugTensorWatches) {
+  // Test concurrent Run() calls on a graph with different debug watches.
+
   Initialize({3, 2, -1, 0});
   std::unique_ptr<DirectSession> session(CreateSession());
   ASSERT_TRUE(session != nullptr);
@@ -353,33 +355,39 @@ TEST_F(SessionDebugMinusAXTest,
 
   mutex mu;
   DebugGateway debug_gateway(session.get());
-  std::vector<Tensor> debug_identity_tensor_vals;
+  std::unordered_map<string, Tensor> debug_identity_tensor_vals;
 
   const string debug_identity = "DebugIdentity";
-  const string debug_identity_node_name = DebugNodeInserter::GetDebugNodeName(
+
+  const string a_debug_identity_node_name = DebugNodeInserter::GetDebugNodeName(
+      strings::StrCat(a_, ":", 0), 0, debug_identity);
+  const string x_debug_identity_node_name = DebugNodeInserter::GetDebugNodeName(
+      strings::StrCat(x_, ":", 0), 0, debug_identity);
+  const string y_debug_identity_node_name = DebugNodeInserter::GetDebugNodeName(
       strings::StrCat(y_, ":", 0), 0, debug_identity);
 
   Notification callbacks_done;
-  int comp_callback_count = 0;
-  int val_callback_count = 0;
-  debug_gateway.SetNodeCompletionCallback(
-      [&mu, &callbacks_done, &comp_callback_count, &debug_identity_node_name](
-          const string& node_name, const bool any_output) {
-        mutex_lock l(mu);
-        if (node_name == debug_identity_node_name) {
-          comp_callback_count++;
-        }
-      });
+  volatile int val_callback_count = 0;
 
   debug_gateway.SetNodeValueCallback(
-      [this, &mu, &val_callback_count, &debug_identity_node_name,
-       &debug_identity_tensor_vals,
-       &callbacks_done](const string& node_name, const int output_slot,
-                        const Tensor& tensor_value, const bool is_ref) {
+      [this, &mu, &val_callback_count, &a_debug_identity_node_name,
+       &x_debug_identity_node_name, &y_debug_identity_node_name,
+       &debug_identity_tensor_vals, &callbacks_done, &kConcurrentRuns](
+           const string& node_name, const int output_slot,
+           const Tensor& tensor_value, const bool is_ref) {
         mutex_lock l(mu);
-        if (node_name == debug_identity_node_name && output_slot == 0) {
+
+        if (node_name == a_debug_identity_node_name && output_slot == 0) {
+          debug_identity_tensor_vals["a"] = tensor_value;
+          val_callback_count++;
+        } else if (node_name == x_debug_identity_node_name &&
+                   output_slot == 0) {
           // output_slot == 0 carries the debug signal.
-          debug_identity_tensor_vals.push_back(tensor_value);
+          debug_identity_tensor_vals["x"] = tensor_value;
+          val_callback_count++;
+        } else if (node_name == y_debug_identity_node_name &&
+                   output_slot == 0) {
+          debug_identity_tensor_vals["y"] = tensor_value;
           val_callback_count++;
         }
 
@@ -391,18 +399,40 @@ TEST_F(SessionDebugMinusAXTest,
         }
       });
 
+  int run_counter = 0;
+  mutex run_lock;
+
   // Function to be executed concurrently.
-  auto fn = [this, &session, output_names, target_nodes, &debug_identity]() {
-    // Create unique debug tensor watch options for each of the two concurrent
+  auto fn = [this, &run_lock, &run_counter, &session, output_names,
+             target_nodes, &debug_identity]() {
+    // Create unique debug tensor watch options for each of the concurrent
     // run calls.
     RunOptions run_opts;
     run_opts.set_output_partition_graphs(true);
-    DebugTensorWatch* tensor_watch_opts =
-        run_opts.add_debug_tensor_watch_opts();
 
-    tensor_watch_opts->set_node_name(y_);
+    DebugTensorWatch* tensor_watch_opts =
+        run_opts.mutable_debug_options()->add_debug_tensor_watch_opts();
     tensor_watch_opts->set_output_slot(0);
     tensor_watch_opts->add_debug_ops(debug_identity);
+
+    {
+      // Let the concurrent runs watch different tensors.
+
+      mutex_lock l(run_lock);
+
+      if (run_counter == 0) {
+        // Let the 1st concurrent run watch a.
+        tensor_watch_opts->set_node_name(a_);
+      } else if (run_counter == 1) {
+        // Let the 2nd concurrent watch x.
+        tensor_watch_opts->set_node_name(x_);
+      } else if (run_counter == 2) {
+        // Let the 3rd concurrent watch y.
+        tensor_watch_opts->set_node_name(y_);
+      }
+
+      run_counter++;
+    }
 
     // Run the graph.
     RunMetadata run_metadata;
@@ -438,16 +468,127 @@ TEST_F(SessionDebugMinusAXTest,
 
   {
     mutex_lock l(mu);
-    ASSERT_EQ(kConcurrentRuns, comp_callback_count);
+
     ASSERT_EQ(kConcurrentRuns, val_callback_count);
     ASSERT_EQ(kConcurrentRuns, debug_identity_tensor_vals.size());
-    for (int i = 0; i < kConcurrentRuns; ++i) {
-      ASSERT_EQ(TensorShape({2, 1}), debug_identity_tensor_vals[i].shape());
-      auto mat_identity = debug_identity_tensor_vals[i].matrix<float>();
-      ASSERT_EQ(5.0, mat_identity(0, 0));
-      ASSERT_EQ(-1.0, mat_identity(1, 0));
-    }
+
+    ASSERT_EQ(TensorShape({2, 2}), debug_identity_tensor_vals["a"].shape());
+    auto a_mat_identity = debug_identity_tensor_vals["a"].matrix<float>();
+    ASSERT_EQ(3.0, a_mat_identity(0, 0));
+    ASSERT_EQ(2.0, a_mat_identity(0, 1));
+    ASSERT_EQ(-1.0, a_mat_identity(1, 0));
+    ASSERT_EQ(0.0, a_mat_identity(1, 1));
+
+    ASSERT_EQ(TensorShape({2, 1}), debug_identity_tensor_vals["x"].shape());
+    auto x_mat_identity = debug_identity_tensor_vals["x"].matrix<float>();
+    ASSERT_EQ(1.0, x_mat_identity(0, 0));
+    ASSERT_EQ(1.0, x_mat_identity(1, 0));
+
+    ASSERT_EQ(TensorShape({2, 1}), debug_identity_tensor_vals["y"].shape());
+    auto y_mat_identity = debug_identity_tensor_vals["y"].matrix<float>();
+    ASSERT_EQ(5.0, y_mat_identity(0, 0));
+    ASSERT_EQ(-1.0, y_mat_identity(1, 0));
   }
+}
+
+class SessionDebugOutputSlotWithoutOngoingEdgeTest : public ::testing::Test {
+ public:
+  void Initialize() {
+    Graph graph(OpRegistry::Global());
+
+#if GOOGLE_CUDA
+    const string kDeviceName = "/job:localhost/replica:0/task:0/gpu:0";
+#else
+    const string kDeviceName = "/job:localhost/replica:0/task:0/cpu:0";
+#endif
+
+    Tensor a_tensor(DT_FLOAT, TensorShape({1, 1}));
+    test::FillValues<float>(&a_tensor, {42.0});
+    Node* a = test::graph::Constant(&graph, a_tensor);
+    a->set_assigned_device_name(kDeviceName);
+
+    Node* c = test::graph::Constant(&graph, a_tensor);
+    c->set_assigned_device_name(kDeviceName);
+    c_ = c->name();
+
+    // Node c will be executed only because of the control edge from c to y.
+    // Its output slot (slot 0) does not have an outgoing edge. This test
+    // is for testing that the debugger can watch that slot properly.
+    Node* y = test::graph::NoOp(&graph, {c});
+    y->set_assigned_device_name(kDeviceName);
+    y_ = y->name();
+
+    test::graph::ToGraphDef(&graph, &def_);
+  }
+
+  string c_;
+  string y_;
+  GraphDef def_;
+};
+
+TEST_F(SessionDebugOutputSlotWithoutOngoingEdgeTest,
+       WatchSlotWithoutOutgoingEdge) {
+  Initialize();
+  std::unique_ptr<DirectSession> session(CreateSession());
+  ASSERT_TRUE(session != nullptr);
+
+  DebugGateway debug_gateway(session.get());
+
+  // Supply completion and value callbacks
+  mutex mu;
+
+  string debug_identity_node_name = DebugNodeInserter::GetDebugNodeName(
+      strings::StrCat(c_, ":", 0), 0, "DebugIdentity");
+
+  Notification callbacks_done;
+
+  std::vector<Tensor> debug_identity_tensor_vals;
+  debug_gateway.SetNodeValueCallback([this, &mu, &callbacks_done,
+                                      &debug_identity_node_name,
+                                      &debug_identity_tensor_vals](
+      const string& node_name, const int output_slot,
+      const Tensor& tensor_value, const bool is_ref) {
+    mutex_lock l(mu);
+
+    if (node_name == debug_identity_node_name && output_slot == 0) {
+      debug_identity_tensor_vals.push_back(tensor_value);
+
+      if (!callbacks_done.HasBeenNotified()) {
+        callbacks_done.Notify();
+      }
+    }
+  });
+
+  // Add DebugIdentity watch on c:0, which does not have an outgoing edge.
+  RunOptions run_opts;
+  run_opts.set_output_partition_graphs(true);
+
+  DebugTensorWatch* tensor_watch_opts =
+      run_opts.mutable_debug_options()->add_debug_tensor_watch_opts();
+  tensor_watch_opts->set_node_name(c_);
+  tensor_watch_opts->set_output_slot(0);
+  tensor_watch_opts->add_debug_ops("DebugIdentity");
+
+  TF_ASSERT_OK(session->Create(def_));
+
+  // Invoke Session::Run() on y.
+  std::vector<std::pair<string, Tensor>> inputs;
+  std::vector<string> output_names;
+  std::vector<string> target_nodes = {y_};
+  std::vector<Tensor> outputs;
+
+  RunMetadata run_metadata;
+  Status s = session->Run(run_opts, inputs, output_names, target_nodes,
+                          &outputs, &run_metadata);
+  TF_ASSERT_OK(s);
+
+  // Wait for callbacks to complete.
+  callbacks_done.WaitForNotification();
+
+  // Assert that DebugIdentity node watching the control edge has been run.
+  ASSERT_EQ(1, debug_identity_tensor_vals.size());
+  auto mat_identity = debug_identity_tensor_vals[0].matrix<float>();
+  ASSERT_EQ(42.0, mat_identity(0, 0));
 }
 
 class SessionDebugVariableTest : public ::testing::Test {
@@ -521,7 +662,8 @@ TEST_F(SessionDebugVariableTest, WatchUninitializedVariableWithDebugOps) {
   // Set up DebugTensorWatch for an uninitialized tensor (in node var).
   RunOptions run_opts;
   const string debug_identity = "DebugIdentity";
-  DebugTensorWatch* tensor_watch_opts = run_opts.add_debug_tensor_watch_opts();
+  DebugTensorWatch* tensor_watch_opts =
+      run_opts.mutable_debug_options()->add_debug_tensor_watch_opts();
   tensor_watch_opts->set_node_name(var_node_name_);
   tensor_watch_opts->set_output_slot(0);
   tensor_watch_opts->add_debug_ops(debug_identity);
@@ -608,7 +750,8 @@ TEST_F(SessionDebugVariableTest, VariableAssignWithDebugOps) {
   run_opts.set_output_partition_graphs(true);
   const string debug_identity = "DebugIdentity";
   const string debug_nan_count = "DebugNanCount";
-  DebugTensorWatch* tensor_watch_opts = run_opts.add_debug_tensor_watch_opts();
+  DebugTensorWatch* tensor_watch_opts =
+      run_opts.mutable_debug_options()->add_debug_tensor_watch_opts();
   tensor_watch_opts->set_node_name(var_node_name_);
   tensor_watch_opts->set_output_slot(0);
   tensor_watch_opts->add_debug_ops(debug_identity);
@@ -766,7 +909,8 @@ TEST_F(SessionDebugGPUSwitchTest, RunSwitchWithHostMemoryDebugOp) {
   const string watched_tensor = strings::StrCat(pred_node_name_, "/_1");
 
   const string debug_identity = "DebugIdentity";
-  DebugTensorWatch* tensor_watch_opts = run_opts.add_debug_tensor_watch_opts();
+  DebugTensorWatch* tensor_watch_opts =
+      run_opts.mutable_debug_options()->add_debug_tensor_watch_opts();
   tensor_watch_opts->set_node_name(watched_tensor);
   tensor_watch_opts->set_output_slot(0);
   tensor_watch_opts->add_debug_ops(debug_identity);

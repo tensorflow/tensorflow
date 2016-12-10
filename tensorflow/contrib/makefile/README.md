@@ -1,7 +1,8 @@
 ### TensorFlow Makefile
 
 The recommended way to build TensorFlow from source is using the Bazel
-open-source build system. Sometimes this isn't possible.
+open-source build system. Sometimes this isn't possible. For example,
+if you are building for iOS, you currently need to use the Makefile.
 
  - The build system may not have the RAM or processing power to support Bazel.
  - Bazel or its dependencies may not be available.
@@ -46,44 +47,20 @@ You should download the example graph from [https://storage.googleapis.com/downl
 
 _Note: This has only been tested on Ubuntu._
 
-Don't forget to download dependencies if you haven't already:
-
+As a first step, you need to make sure the required packages are installed:
 ```bash
-tensorflow/contrib/makefile/download_dependencies.sh
+sudo apt-get install autoconf automake libtool curl make g++ unzip zlib1g-dev \
+git python
 ```
 
-You will need install a version of
-[protobuf 3](https://github.com/google/protobuf) on your system. We strongly
-recommend that you compile and install the version downloaded in the script
-above.
-
-On Ubuntu, you can do this:
+You should then be able to run the `build_all_linux.sh` script to compile:
 ```bash
-sudo apt-get install autoconf automake libtool curl make g++ unzip
-pushd .
-cd tensorflow/contrib/makefile/downloads/protobuf
-./autogen.sh
-./configure
-make
-make check
-sudo make install
-sudo ldconfig # refresh shared library cache
-popd
-```
-
-If you have issues (or can't use apt-get), see
-[these instructions](https://github.com/google/protobuf/blob/master/src/README.md)
-for specific installation of C++ support tools.
-
-After you have installed protobufs, you can run this from the repository root:
-
-```bash
-make -f tensorflow/contrib/makefile/Makefile
+tensorflow/contrib/makefile/build_all_linux.sh
 ```
 
 This should compile a static library in 
-`tensorflow/contrib/makefile/gen/lib/tf_lib.a`, and create an example executable
-at `tensorflow/contrib/makefile/gen/bin/benchmark`. 
+`tensorflow/contrib/makefile/gen/lib/libtensorflow-core.a`, 
+and create an example executable at `tensorflow/contrib/makefile/gen/bin/benchmark`. 
 
 Get the graph file, if you have not already:
 
@@ -140,7 +117,7 @@ attached Android device:
 adb push ~/graphs/inception/tensorflow_inception_graph.pb /data/local/tmp/
 adb push tensorflow/contrib/makefile/gen/bin/benchmark /data/local/tmp/
 adb shell '/data/local/tmp/benchmark \
- --graph=/data/local/tmp/classify_image_graph_def.pb \
+ --graph=/data/local/tmp/tensorflow_inception_graph.pb \
  --input_layer="input:0" \
  --input_layer_shape="1,224,224,3" \
  --input_layer_type="float" \
@@ -164,6 +141,13 @@ xcode-select --install
 
 If this is a new install, you will need to run XCode once to agree to the
 license before continuing.
+
+Then install [automake](https://en.wikipedia.org/wiki/Automake)/[libtool](https://en.wikipedia.org/wiki/GNU_Libtool):
+
+```bash
+brew install automake
+brew install libtool
+```
 
 Also, download the graph if you haven't already:
 
@@ -207,7 +191,7 @@ tensorflow/contrib/makefile/download_dependencies.sh
 Next, you will need to compile protobufs for iOS:
 
 ```bash
-compile_ios_protobuf.sh 
+tensorflow/contrib/makefile/compile_ios_protobuf.sh 
 ```
 
 Then, you can run the makefile specifying iOS as the target, along with the
@@ -264,7 +248,7 @@ download the dependencies, install the required packages and build protobuf:
 
 ```bash
 tensorflow/contrib/makefile/download_dependencies.sh
-sudo apt-get install autoconf automake libtool
+sudo apt-get install -y autoconf automake libtool gcc-4.8 g++-4.8
 cd tensorflow/contrib/makefile/downloads/protobuf/
 ./autogen.sh
 ./configure
@@ -277,7 +261,7 @@ cd ../../../../..
 Once that's done, you can use make to build the library and example:
 
 ```bash
-make -f tensorflow/contrib/makefile/Makefile HOST_OS=PI TARGET=PI OPTFLAGS="-Os"
+make -f tensorflow/contrib/makefile/Makefile HOST_OS=PI TARGET=PI OPTFLAGS="-Os" CXX=g++-4.8
 ```
 
 If you're only interested in building for Raspberry Pi's 2 and 3, you can supply
@@ -285,18 +269,17 @@ some extra optimization flags to give you code that will run faster:
 
 ```bash
 make -f tensorflow/contrib/makefile/Makefile HOST_OS=PI TARGET=PI \
- OPTFLAGS="-Os -mfpu=neon-vfpv4 -funsafe-math-optimizations -ftree-vectorize"
+ OPTFLAGS="-Os -mfpu=neon-vfpv4 -funsafe-math-optimizations -ftree-vectorize" CXX=g++-4.8
 ```
 
-If you hit compilation errors mentioning `__atomic_compare_exchange` and you're
-using gcc 4.9, you should try installing gcc 4.8 and using that instead:
-
-```bash
-sudo apt-get install -y gcc-4.8 g++-4.8
-make -f tensorflow/contrib/makefile/Makefile HOST_OS=PI TARGET=PI \
-OPTFLAGS="-Os -mfpu=neon-vfpv4 -funsafe-math-optimizations -ftree-vectorize" \
-CXX=g++-4.8
-```
+One thing to be careful of is that the gcc version 4.9 currently installed on
+Jessie by default will hit an error mentioning `__atomic_compare_exchange`. This
+is why the examples above specify `CXX=g++-4.8` explicitly, and why we install
+it using apt-get. If you have partially built using the default gcc 4.9, hit the
+error and switch to 4.8, you need to do a
+`make -f tensorflow/contrib/makefile/Makefile clean` before you build. If you
+don't, the build will appear to succeed but you'll encounter [malloc(): memory corruption errors](https://github.com/tensorflow/tensorflow/issues/3442)
+when you try to run any programs using the library.
 
 For more examples, look at the tensorflow/contrib/pi_examples folder in the
 source tree, which contains code samples aimed at the Raspberry Pi.

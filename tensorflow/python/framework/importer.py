@@ -60,7 +60,7 @@ def _ArgToTypesNoRef(node_def, arg_def):
 def _SingleArgToTypes(node_def, arg_def):
   types = _ArgToTypesNoRef(node_def, arg_def)
   if arg_def.is_ref:
-    return [dtypes.as_dtype(dt).as_ref.as_datatype_enum for dt in types]
+    return [dtypes.as_dtype(dt)._as_ref.as_datatype_enum for dt in types]  # pylint: disable=protected-access
   return types
 
 
@@ -231,8 +231,14 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
   else:
     producer_op_dict = {op.name: op for op in producer_op_list.op}
 
+  # LINT.IfChange
   with ops.name_scope(name, 'import', input_map.values()) as scope:
     g = ops.get_default_graph()
+    # TODO(ashankar): Should this just copy over or should it do some
+    # more nuanced merging? For example, the graph may already have some
+    # marked "bad versions" and we don't want to lose those because of
+    # what's in graph_def.versions? The C++ ImporGraphDef does something
+    # more nuanced.
     g.graph_def_versions.CopyFrom(graph_def.versions)
 
     if input_map:
@@ -249,6 +255,8 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
     # 1. Add operations without their inputs.
     for node in graph_def.node:
       # Set any default attr values that aren't present.
+      if node.op not in op_dict:
+        raise ValueError('No op named %s in defined operations.' % node.op)
       op_def = op_dict[node.op]
       for attr_def in op_def.attr:
         key = attr_def.name
@@ -379,7 +387,43 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
           output_shape = tensor_shape.TensorShape(
               None if dims.unknown_rank else
               [dim.size if dim.size >= 0 else None for dim in dims.dim])
-          output.set_shape(output_shape)
+
+          try:
+            output.set_shape(output_shape)
+          except ValueError as e:
+            # If the output shape is incompatible with what is inferred
+            # by the graph for a very specific whitelist of ops, then we
+            # ignore this output shape.  This can happen if there is a
+            # bug in the shape function for some operation, and the
+            # serialized graph def has the incorrect shape set when
+            # running on a newer binary with the fixed shape function.
+            # This is an escape hatch that allows us to correct shape
+            # functions that are not critical to correct execution but
+            # would cause graphs to fail if imported after correcting.
+            #
+            # This can be removed after 2017/03/08.
+            if op.type in ['RandomShuffleQueue', 'PaddingFIFOQueue',
+                           'FIFOQueue', 'PriorityQueue', 'QueueSize',
+                           'Stack', 'Barrier', 'BarrierReadySize',
+                           'BarrierIncompleteSize', 'HashTable',
+                           'MutableHashTable',
+                           'MutableHashTableOfTensors', 'Mutex',
+                           'CuckooTable', 'IndexTable',
+                           'WholeFileReader', 'TextLineReader',
+                           'FixedLengthRecordReader',
+                           'TFRecordReader', 'IdentityReader',
+                           'RefSwitch', 'RefEnter', 'RefNextIteration',
+                           'RefMerge', 'RefIdentity']:
+              pass
+            elif op.type in [
+                'ConditionalAccumulator', 'SparseConditionalAccumulator',
+                'Table'
+            ]:
+              # This can be removed after 2017/04/24.
+              pass
+            else:
+              raise e
+
         del op.node_def.attr['_output_shapes']
 
       # Apply device functions for this op.
@@ -416,3 +460,4 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
             raise ValueError(
                 'Requested return_element %r not found in graph_def.' % name)
       return ret
+  # LINT.ThenChange(//tensorflow/core/graph/graph_constructor.cc)

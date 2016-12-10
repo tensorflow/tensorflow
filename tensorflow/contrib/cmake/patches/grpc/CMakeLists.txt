@@ -47,6 +47,11 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_C_FLAGS   "${CMAKE_C_FLAGS}   -std=c11")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
+if(WIN32)
+  add_definitions(-D_WIN32_WINNT=0x0A00)
+  find_package(ZLIB REQUIRED)
+endif(WIN32)
+
 add_library(gpr
   src/core/lib/profiling/basic_timers.c
   src/core/lib/profiling/stap_timers.c
@@ -99,6 +104,7 @@ target_include_directories(gpr
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
   PRIVATE ${PROTOBUF_INCLUDE_DIRS}
+  PRIVATE ${ZLIB_INCLUDE_DIRS}
 )
 
 add_library(grpc_unsecure
@@ -265,6 +271,7 @@ target_include_directories(grpc_unsecure
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
   PRIVATE ${PROTOBUF_ROOT_DIR}/src
+  PRIVATE ${ZLIB_INCLUDE_DIRS}
 )
 
 target_link_libraries(grpc_unsecure
@@ -306,6 +313,7 @@ target_include_directories(grpc++_unsecure
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
   PRIVATE ${PROTOBUF_INCLUDE_DIRS}
+  PRIVATE ${ZLIB_INCLUDE_DIRS}
 )
 
 target_link_libraries(grpc++_unsecure

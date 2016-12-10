@@ -99,7 +99,7 @@ def detach_inputs(sgv, control_inputs=False):
 
 
 def detach_outputs(sgv, control_outputs=None):
-  """Detach the outputa of a subgraph view.
+  """Detach the output of a subgraph view.
 
   Args:
     sgv: the subgraph view to be detached. This argument is converted to a

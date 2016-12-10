@@ -7,6 +7,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
     "tf_cuda_library",
+    "tf_custom_op_library",
 )
 
 # For platform specific build config
@@ -50,6 +51,7 @@ tf_cuda_library(
         ":tf_status_helper",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/util/tensor_bundle",
     ],
 )
 
@@ -60,6 +62,7 @@ tf_cc_test(
     name = "c_api_test",
     size = "small",
     srcs = ["c_api_test.cc"],
+    data = [":test_op.so"],
     linkopts = select({
         "//tensorflow:darwin": ["-headerpad_max_install_names"],
         "//conditions:default": [],
@@ -79,6 +82,11 @@ tf_cc_test(
         "//tensorflow/core/kernels:math",
         "//third_party/eigen3",
     ],
+)
+
+tf_custom_op_library(
+    name = "test_op.so",
+    srcs = ["test_op.cc"],
 )
 
 # -----------------------------------------------------------------------------

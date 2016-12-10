@@ -17,16 +17,19 @@
   Allows one to define models much more compactly by eliminating boilerplate
   code. This is accomplished through the use of argument scoping (arg_scope).
 
-  Example of how to use tf.contrib.arg_scope:
+  Example of how to use tf.contrib.framework.arg_scope:
 
+  ```
   from third_party.tensorflow.contrib.layers.python import layers
 
-  with tf.contrib.arg_scope([layers.conv2d], padding='SAME',
-                      initializer=layers.variance_scaling_initializer(),
-                      regularizer=layers.l2_regularizer(0.05)):
+  arg_scope = tf.contrib.framework.arg_scope
+
+  with arg_scope([layers.conv2d], padding='SAME',
+                 initializer=layers.variance_scaling_initializer(),
+                 regularizer=layers.l2_regularizer(0.05)):
     net = layers.conv2d(inputs, 64, [11, 11], 4, padding='VALID', scope='conv1')
     net = layers.conv2d(net, 256, [5, 5], scope='conv2')
-
+  ```
   The first call to conv2d will use predefined args:
     layers.conv2d(inputs, 64, [11, 11], 4, padding='VALID', ..., scope='conv1')
 
@@ -34,18 +37,21 @@
     layers.conv2d(inputs, 256, [5, 5], padding='SAME', ..., scope='conv2')
 
   Example of how to reuse an arg_scope:
-  with tf.contrib.arg_scope([layers.conv2d], padding='SAME',
-                        initializer=layers.variance_scaling_initializer(),
-                        regularizer=layers.l2_regularizer(0.05)) as sc:
+
+  ```
+  with arg_scope([layers.conv2d], padding='SAME',
+                 initializer=layers.variance_scaling_initializer(),
+                 regularizer=layers.l2_regularizer(0.05)) as sc:
     net = layers.conv2d(net, 256, [5, 5], scope='conv1')
     ....
 
-  with tf.contrib.arg_scope(sc):
+  with arg_scope(sc):
     net = layers.conv2d(net, 256, [5, 5], scope='conv2')
+  ```
 
-  Example of how to use tf.contrib.add_arg_scope:
+  Example of how to use tf.contrib.framework.add_arg_scope:
 
-  @tf.contrib.add_arg_scope
+  @tf.contrib.framework.add_arg_scope
   def conv2d(*args, **kwargs)
 """
 from __future__ import absolute_import
@@ -104,9 +110,9 @@ def arg_scope(list_ops_or_scope, **kwargs):
 
   Args:
     list_ops_or_scope: List or tuple of operations to set argument scope for or
-      a dictionary containg the current scope. When list_ops_or_scope is a dict,
-      kwargs must be empty. When list_ops_or_scope is a list or tuple, then
-      every op in it need to be decorated with @add_arg_scope to work.
+      a dictionary containing the current scope. When list_ops_or_scope is a
+      dict, kwargs must be empty. When list_ops_or_scope is a list or tuple,
+      then every op in it need to be decorated with @add_arg_scope to work.
     **kwargs: keyword=value that will define the defaults for each op in
               list_ops. All the ops need to accept the given set of arguments.
 
@@ -171,6 +177,7 @@ def add_arg_scope(func):
     return func(*args, **current_args)
   _add_op(func)
   setattr(func_with_args, '_key_op', _key_op(func))
+  setattr(func_with_args, '__doc__', func.__doc__)
   return func_with_args
 
 

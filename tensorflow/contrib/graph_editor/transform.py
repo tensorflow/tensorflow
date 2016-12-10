@@ -33,7 +33,6 @@ from tensorflow.contrib.graph_editor import select
 from tensorflow.contrib.graph_editor import subgraph
 from tensorflow.contrib.graph_editor import util
 from tensorflow.python.framework import ops as tf_ops
-from tensorflow.python.platform import tf_logging as logging
 
 __all__ = [
     "replace_t_with_placeholder_handler",
@@ -90,7 +89,7 @@ def assign_renamed_collections_handler(info, elem, elem_):
 
   Args:
     info: Transform._Info instance.
-    elem: the original element (tf.Tensor or tf.Operation)
+    elem: the original element (`tf.Tensor` or `tf.Operation`)
     elem_: the transformed element
   """
   # TODO(fkp): handle known special cases
@@ -129,11 +128,11 @@ def transform_op_if_inside_handler(info, op, keep_if_possible=True):
 
 
 def copy_op_handler(info, op, copy_shape=True):
-  """Copy a tf.Operation.
+  """Copy a `tf.Operation`.
 
   Args:
     info: Transform._Info instance.
-    op: the tf.Operation to be copied.
+    op: the `tf.Operation` to be copied.
     copy_shape: also copy the shape of the tensor
   Returns:
     A copy of op.
@@ -146,7 +145,7 @@ def copy_op_handler(info, op, copy_shape=True):
   control_inputs_ = [ci for ci in control_inputs_ if ci is not None]
 
   # Transform it if any:
-  original_op_ = info.transformer.transform_original_op_hanlder(info,
+  original_op_ = info.transformer.transform_original_op_handler(info,
                                                                 op._original_op)
 
   # Transform inputs:
@@ -230,6 +229,7 @@ class Transformer(object):
     def __init__(self, transformer, sgv, dst_graph, dst_scope, src_scope):
       self.transformer = transformer
       self.sgv = sgv
+      self.sgv_inputs_set = frozenset(sgv.inputs)
       self.ops = frozenset(sgv.ops)
       self.control_outputs = util.ControlOutputs(sgv.graph)
       self.graph = sgv.graph
@@ -367,7 +367,7 @@ class Transformer(object):
     """Transformer constructor.
 
     The following members can be modified:
-    transform_op_handler: handle the transformation of a tf.Operation.
+    transform_op_handler: handle the transformation of a `tf.Operation`.
       This handler defaults to a simple copy.
     assign_collections_handler: handle the assignment of collections.
       This handler defaults to assigning new collections created under the
@@ -380,7 +380,7 @@ class Transformer(object):
       in sgv.inputs. This handler defaults to a transform which keep the same
       input if the source and destination graphs are the same, otherwise
       use placeholders.
-    transform_original_op_hanlder: handle the transform of original_op. This
+    transform_original_op_handler: handle the transform of original_op. This
       handler defaults to transforming original_op only if they are in the
       subgraph, otherwise they are ignored.
     """
@@ -391,7 +391,7 @@ class Transformer(object):
     self.assign_collections_handler = assign_renamed_collections_handler
     self.transform_external_input_handler = replace_t_with_placeholder_handler
     self.transform_external_hidden_input_handler = keep_t_if_possible_handler
-    self.transform_original_op_hanlder = transform_op_if_inside_handler
+    self.transform_original_op_handler = transform_op_if_inside_handler
 
     # temporary per-call variable
     self._info = None
@@ -422,7 +422,7 @@ class Transformer(object):
         information about the transform, including mapping between
         original and transformed tensors and operations.
     Raises:
-      ValueError: if the argumens are invalid.
+      ValueError: if the arguments are invalid.
     """
     sgv = subgraph.make_view(sgv)
     if not isinstance(dst_graph, tf_ops.Graph):
@@ -435,10 +435,7 @@ class Transformer(object):
     if dst_scope and not reuse_dst_scope:
       dst_scope = util.scope_finalize(dst_graph.unique_name(dst_scope[:-1]))
 
-    if sgv.graph is dst_graph and not dst_scope:
-      logging.warning("The source and the destination are the same! "
-                      "Beware: in-place transormation are currently "
-                      "experimental.")
+    # Create temporary info used during this transform call
     self._info = Transformer._Info(self, sgv, dst_graph, dst_scope, src_scope)
 
     # Transform the graph starting from the output tensors.
@@ -449,10 +446,7 @@ class Transformer(object):
     # without any outputs. So the walk is now finalized from those roots.
     remaining_ops = [op for op in self._info.sgv.ops
                      if op not in self._info.transformed_ops]
-    remaining_roots = [
-        op for op in remaining_ops
-        if not op.outputs and not self._info.control_outputs.get(op)
-    ]
+    remaining_roots = [op for op in remaining_ops if not op.outputs]
     for op in remaining_roots:
       self._transform_op(op)
 
@@ -518,7 +512,7 @@ class Transformer(object):
     # If op is not in the subgraph:
     if op not in self._info.ops:
       # t_ is an input of the subgraph
-      if t in self._info.sgv.inputs:
+      if t in self._info.sgv_inputs_set:
         t_ = self.transform_external_input_handler(self._info, t)
       # t_ is a hidden input of the subgraph
       else:
@@ -608,7 +602,7 @@ def copy(sgv, dst_graph=None, dst_scope="", src_scope="",
       information about the transform, including mapping between
       original and transformed tensors and operations.
   Raises:
-    TypeError: if dst_graph is not a tf.Graph.
+    TypeError: if `dst_graph` is not a `tf.Graph`.
     StandardError: if sgv cannot be converted to a SubGraphView using
       the same rules than the function subgraph.make_view.
   """
@@ -677,7 +671,7 @@ def graph_replace(target_ts, replacement_ts, dst_scope="",
   """Create a new graph which compute the targets from the replaced Tensors.
 
   Args:
-    target_ts: a single tf.Tensor or an iterabble of tf.Tensor.
+    target_ts: a single tf.Tensor or an iterable of tf.Tensor.
     replacement_ts: dictionary mapping from original tensors to replaced tensors
     dst_scope: the destination scope.
     src_scope: the source scope.

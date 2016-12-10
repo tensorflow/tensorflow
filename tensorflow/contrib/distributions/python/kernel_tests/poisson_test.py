@@ -58,7 +58,7 @@ class PoissonTest(tf.test.TestCase):
       self.assertEqual(pmf.get_shape(), (6,))
       self.assertAllClose(pmf.eval(), stats.poisson.pmf(x, lam_v))
 
-  def testPoissonLogPmf_validate_args(self):
+  def testPoissonLogPmfValidateArgs(self):
     with self.test_session():
       batch_size = 6
       lam = tf.constant([3.0] * batch_size)

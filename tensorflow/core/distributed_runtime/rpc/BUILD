@@ -91,6 +91,7 @@ cc_library(
     hdrs = ["grpc_channel.h"],
     deps = [
         ":grpc_util",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "@grpc//:grpc++_unsecure",

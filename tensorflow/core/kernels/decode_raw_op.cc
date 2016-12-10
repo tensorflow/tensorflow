@@ -93,6 +93,7 @@ class DecodeRawOp : public OpKernel {
       Name("DecodeRaw").Device(DEVICE_CPU).TypeConstraint<type>("out_type"), \
       DecodeRawOp<type>)
 
+REGISTER(Eigen::half);
 REGISTER(float);
 REGISTER(double);
 REGISTER(int32);

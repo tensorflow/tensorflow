@@ -244,13 +244,8 @@ TEST_F(DirectSessionMinusAXTest, InvalidDevice) {
   (*options.config.mutable_device_count())["CPU"] = 2;
   std::unique_ptr<Session> session(NewSession(options));
   ASSERT_TRUE(session != nullptr);
-  TF_ASSERT_OK(session->Create(def));
-  std::vector<std::pair<string, Tensor>> inputs;
-  std::vector<string> output_names = {y->name() + ":0"};
-  std::vector<Tensor> outputs;
-
   // Should return an error.
-  ASSERT_FALSE(session->Run(inputs, output_names, {}, &outputs).ok());
+  ASSERT_FALSE(session->Create(def).ok());
 
   // Fix placement and run again
   def.Clear();
@@ -258,7 +253,8 @@ TEST_F(DirectSessionMinusAXTest, InvalidDevice) {
   test::graph::ToGraphDef(&graph, &def);
   session.reset(NewSession(options));
   TF_ASSERT_OK(session->Create(def));
-  TF_ASSERT_OK(session->Run(inputs, output_names, {}, &outputs));
+  std::vector<Tensor> outputs;
+  TF_ASSERT_OK(session->Run({}, {y->name() + ":0"}, {}, &outputs));
 }
 
 TEST_F(DirectSessionMinusAXTest, RunSimpleNetworkWithOpts) {
@@ -454,12 +450,10 @@ TEST(DirectSessionTest, PlacePrunedGraph) {
     test::graph::ToGraphDef(&g, &def);
 
     // By default, we place the entire graph, so we should fail the
-    // call to Run, even if we don't run the bad op.
+    // call to Create.
     SessionOptions options;
     std::unique_ptr<Session> sess(NewSession(options));
-    TF_ASSERT_OK(sess->Create(def));
-    std::vector<Tensor> outputs;
-    auto s = sess->Run({}, {x->name() + ":0"}, {}, &outputs);
+    auto s = sess->Create(def);
     EXPECT_TRUE(errors::IsInvalidArgument(s));
   }
 
@@ -824,6 +818,8 @@ class BlockingOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("BlockingOp").Device(DEVICE_CPU), BlockingOp);
 REGISTER_OP("BlockingOp").Input("x: float").Output("y: float").Doc("");
 
+REGISTER_KERNEL_BUILDER(Name("BlockingOp").Device(DEVICE_SYCL), BlockingOp);
+
 static void TestSessionInterOpThreadsImpl(bool use_function_lib) {
   FunctionDefLibrary library_graph_def;
   if (use_function_lib) {
@@ -839,7 +835,7 @@ static void TestSessionInterOpThreadsImpl(bool use_function_lib) {
   FunctionLibraryDefinition flib(OpRegistry::Global(), library_graph_def);
   Graph g(&flib);
   Tensor t(DT_FLOAT, TensorShape({}));
-  t.scalar<float>()() = {1.2};
+  t.scalar<float>()() = {1.2f};
   Node* x = test::graph::Constant(&g, t);
   Node* y;
   if (use_function_lib) {
@@ -859,6 +855,7 @@ static void TestSessionInterOpThreadsImpl(bool use_function_lib) {
       ->mutable_optimizer_options()
       ->set_opt_level(OptimizerOptions_Level_L0);
   (*options.config.mutable_device_count())["CPU"] = 2;
+  (*options.config.mutable_device_count())["GPU"] = 0;
 
   options.config.add_session_inter_op_thread_pool();
   auto* p = options.config.add_session_inter_op_thread_pool();
@@ -881,7 +878,7 @@ static void TestSessionInterOpThreadsImpl(bool use_function_lib) {
       Status s = session->Run(run_options, {} /* inputs */,
                               {node->name() + ":0"} /* output_names */, {},
                               &outputs, nullptr /* run_metadata */);
-      TF_ASSERT_OK(s);
+      TF_CHECK_OK(s);
       ASSERT_EQ(1, outputs.size());
       auto flat = outputs[0].flat<float>();
       EXPECT_FLOAT_EQ(1.2, flat(0));
@@ -948,7 +945,7 @@ TEST(DirectSessionTest, TestSessionInterOpThreadsWithFunctions) {
 TEST(DirectSessionTest, TestSessionInterOpThreadsInvalidOptions) {
   Graph g(OpRegistry::Global());
   Tensor t(DT_FLOAT, TensorShape({}));
-  t.scalar<float>()() = {1.2};
+  t.scalar<float>()() = {1.2f};
   Node* x = test::graph::Constant(&g, t);
   GraphDef def;
   test::graph::ToGraphDef(&g, &def);
@@ -982,7 +979,7 @@ TEST(DirectSessionTest, TestDirectSessionRunClose) {
   // Construct a graph with a variable and a single assign.
   Graph g(OpRegistry::Global());
   Tensor t(DT_FLOAT, TensorShape({}));
-  t.scalar<float>()() = {1.2};
+  t.scalar<float>()() = {1.2f};
   Node* var_val = test::graph::Constant(&g, t);
   Node* var = test::graph::Var(&g, DT_FLOAT, {});
   Node* var_assign = test::graph::Assign(&g, var, var_val);
@@ -1066,7 +1063,7 @@ TEST(DirectSessionTest, TestDirectSessionReset) {
   // Construct a graph with a variable and a single assign.
   Graph g(OpRegistry::Global());
   Tensor t(DT_FLOAT, TensorShape({}));
-  t.scalar<float>()() = {1.2};
+  t.scalar<float>()() = {1.2f};
   Node* var_val = test::graph::Constant(&g, t);
   Node* var = test::graph::Var(&g, DT_FLOAT, {});
   Node* var_assign = test::graph::Assign(&g, var, var_val);

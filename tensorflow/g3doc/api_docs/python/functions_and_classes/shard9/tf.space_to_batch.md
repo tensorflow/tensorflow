@@ -2,6 +2,8 @@
 
 SpaceToBatch for 4-D tensors of type T.
 
+This is a legacy version of the more general SpaceToBatchND.
+
 Zero-pads and then rearranges (permutes) blocks of spatial data into batch.
 More specifically, this op outputs a copy of the input tensor where values from
 the `height` and `width` dimensions are moved to the `batch` dimension. After

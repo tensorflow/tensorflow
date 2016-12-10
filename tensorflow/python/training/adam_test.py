@@ -57,7 +57,7 @@ class AdamOptimizerTest(tf.test.TestCase):
                                   tf.constant([2]))
         opt = tf.train.AdamOptimizer()
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
 
         # Fetch params to validate initial values
         self.assertAllClose([1.0, 2.0], var0.eval())
@@ -94,7 +94,7 @@ class AdamOptimizerTest(tf.test.TestCase):
         grads1 = tf.constant(grads1_np)
         opt = tf.train.AdamOptimizer()
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
 
         # Fetch params to validate initial values
         self.assertAllClose([1.0, 2.0], var0.eval())
@@ -131,7 +131,7 @@ class AdamOptimizerTest(tf.test.TestCase):
         grads1 = tf.constant(grads1_np)
         opt = tf.train.AdamOptimizer(tf.constant(0.001))
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
 
         # Fetch params to validate initial values
         self.assertAllClose([1.0, 2.0], var0.eval())
@@ -169,7 +169,7 @@ class AdamOptimizerTest(tf.test.TestCase):
         opt = tf.train.AdamOptimizer()
         update1 = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
         update2 = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
 
         beta1_power, beta2_power = opt._get_beta_accumulators()
 
@@ -192,6 +192,25 @@ class AdamOptimizerTest(tf.test.TestCase):
           # Validate updated params
           self.assertAllCloseAccordingToType(var0_np, var0.eval())
           self.assertAllCloseAccordingToType(var1_np, var1.eval())
+
+  def testTwoSessions(self):
+    optimizer = tf.train.AdamOptimizer()
+    g = tf.Graph()
+    with g.as_default():
+      with tf.Session():
+        var0 = tf.Variable(np.array([1.0, 2.0]), name="v0")
+        grads0 = tf.constant(np.array([0.1, 0.1]))
+        optimizer.apply_gradients([(grads0, var0)])
+
+    gg = tf.Graph()
+    with gg.as_default():
+      with tf.Session():
+        var0 = tf.Variable(np.array([1.0, 2.0]), name="v0")
+        grads0 = tf.constant(np.array([0.1, 0.1]))
+
+        # If the optimizer saves any state not keyed by graph the following line
+        # fails.
+        optimizer.apply_gradients([(grads0, var0)])
 
 
 if __name__ == "__main__":

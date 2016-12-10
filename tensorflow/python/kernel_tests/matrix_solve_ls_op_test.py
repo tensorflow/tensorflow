@@ -22,7 +22,7 @@ import tensorflow as tf
 
 
 def BatchMatMul(a, b):
-  # A numpy implementation of tf.batch_matmul().
+  # A numpy implementation of tf.matmul().
   if a.ndim < 3:
     return np.dot(a, b)
   # Get the number of matrices.
@@ -80,12 +80,7 @@ class MatrixSolveLsOpTest(tf.test.TestCase):
         self.assertAllClose(np_r_norm, tf_r_norm)
 
         # Check solution.
-        if fast or a.shape[0] >= a.shape[1]:
-          # We skip this test for the underdetermined case when using the
-          # slow path, because Eigen does not return a minimum norm solution.
-          # TODO(rmlarsen): Enable this check for all paths if/when we fix
-          # Eigen's solver.
-          self.assertAllClose(np_ans, ans, atol=1e-5, rtol=1e-5)
+        self.assertAllClose(np_ans, ans, atol=1e-5, rtol=1e-5)
 
   def _verifySolveBatch(self, x, y):
     # Since numpy.linalg.lsqr does not support batch solves, as opposed

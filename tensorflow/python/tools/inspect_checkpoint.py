@@ -25,6 +25,8 @@ import tensorflow as tf
 FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string("file_name", "", "Checkpoint filename")
 tf.app.flags.DEFINE_string("tensor_name", "", "Name of the tensor to inspect")
+tf.app.flags.DEFINE_bool("all_tensors", "False",
+                         "If True, print the values of all the tensors.")
 
 
 def print_tensors_in_checkpoint_file(file_name, tensor_name):
@@ -41,7 +43,12 @@ def print_tensors_in_checkpoint_file(file_name, tensor_name):
   """
   try:
     reader = tf.train.NewCheckpointReader(file_name)
-    if not tensor_name:
+    if FLAGS.all_tensors:
+      var_to_shape_map = reader.get_variable_to_shape_map()
+      for key in var_to_shape_map:
+        print("tensor_name: ", key)
+        print(reader.get_tensor(key))
+    elif not tensor_name:
       print(reader.debug_string().decode("utf-8"))
     else:
       print("tensor_name: ", tensor_name)

@@ -21,6 +21,8 @@ from __future__ import print_function
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.python.ops import array_ops
+
 
 class ConstantTest(tf.test.TestCase):
 
@@ -320,7 +322,7 @@ class ZerosTest(tf.test.TestCase):
 class ZerosLikeTest(tf.test.TestCase):
 
   def _compareZeros(self, dtype, use_gpu):
-    with self.test_session(use_gpu=False):
+    with self.test_session(use_gpu=use_gpu):
       # Creates a tensor of non-zero values with shape 2 x 3.
       numpy_dtype = dtype.as_numpy_dtype
       d = tf.constant(np.ones((2, 3), dtype=numpy_dtype), dtype=dtype)
@@ -340,7 +342,7 @@ class ZerosLikeTest(tf.test.TestCase):
       self._compareZeros(dtype, False)
 
   def testZerosLikeGPU(self):
-    for dtype in [tf.float32, tf.float64, tf.int32]:
+    for dtype in [tf.float32, tf.float64, tf.int32, tf.bool, tf.int64]:
       self._compareZeros(dtype, True)
 
   def testZerosLikePartialShape(self):
@@ -499,14 +501,14 @@ class FillTest(tf.test.TestCase):
 
   def testFillNegative(self):
     with self.test_session():
-      for shape in (-1,), (2, -1), (-1, 2):
+      for shape in (-1,), (2, -1), (-1, 2), (-2), (-3):
         with self.assertRaises(ValueError):
           tf.fill(shape, 7)
 
-      # Using a placeholder so this won't be caught in Python.
+      # Using a placeholder so this won't be caught in static analysis.
       dims = tf.placeholder(tf.int32)
       fill_t = tf.fill(dims, 3.0)
-      for shape in (-1,), (2, -1), (-1, 2):
+      for shape in (-1,), (2, -1), (-1, 2), (-2), (-3):
         with self.assertRaises(tf.errors.InvalidArgumentError):
           fill_t.eval({dims: shape})
 
@@ -605,6 +607,101 @@ class PlaceholderTest(tf.test.TestCase):
     self.assertEqual(
         "<tf.Tensor 'c:0' shape=(32, ?, 2) dtype=qint32>",
         repr(c))
+
+
+class PlaceholderV2Test(tf.test.TestCase):
+
+  def testDtype(self):
+    with self.test_session():
+      p = array_ops.placeholder_v2(tf.float32, shape=None, name="p")
+      p_identity = tf.identity(p)
+      feed_array = np.random.rand(10, 10)
+      self.assertAllClose(
+          p_identity.eval(feed_dict={
+              p: feed_array
+          }), feed_array)
+
+      with self.assertRaisesOpError(
+          "must feed a value for placeholder tensor 'p' with dtype float"):
+        p_identity.eval()
+
+  def testShape(self):
+    with self.test_session():
+      p = array_ops.placeholder_v2(tf.float32, shape=(10, 10), name="p")
+      p_identity = tf.identity(p)
+      feed_array = np.random.rand(10, 10)
+      self.assertAllClose(
+          p_identity.eval(feed_dict={
+              p: feed_array
+          }), feed_array)
+
+      with self.assertRaisesOpError(
+          "must feed a value for placeholder tensor 'p' with dtype float and "
+          r"shape \[10,10\]"):
+        p_identity.eval()
+
+      with self.assertRaisesWithPredicateMatch(
+          ValueError, lambda e: "Cannot feed value of shape" in str(e)):
+        p_identity.eval(feed_dict={p: feed_array[:5, :5]})
+
+  def testUnknownShape(self):
+    with self.test_session():
+      p = array_ops.placeholder_v2(tf.float32, shape=None, name="p")
+      p_identity = tf.identity(p)
+      # can feed anything
+      feed_array = np.random.rand(10, 3)
+      self.assertAllClose(
+          p_identity.eval(feed_dict={
+              p: feed_array
+          }), feed_array)
+      feed_array = np.random.rand(4, 2, 5)
+      self.assertAllClose(
+          p_identity.eval(feed_dict={
+              p: feed_array
+          }), feed_array)
+
+  def testScalarShape(self):
+    with self.test_session():
+      p = array_ops.placeholder_v2(tf.float32, shape=[], name="p")
+      p_identity = tf.identity(p)
+      self.assertAllClose(p_identity.eval(feed_dict={p: 5}), 5)
+
+  def testPartialShape(self):
+    with self.test_session():
+      p = array_ops.placeholder_v2(tf.float32, shape=[None, 3], name="p")
+      p_identity = tf.identity(p)
+      feed_array = np.random.rand(10, 3)
+      self.assertAllClose(
+          p_identity.eval(feed_dict={
+              p: feed_array
+          }), feed_array)
+
+      with self.assertRaisesWithPredicateMatch(
+          ValueError, lambda e: "Cannot feed value of shape" in str(e)):
+        p_identity.eval(feed_dict={p: feed_array[:5, :2]})
+
+  def testControlDependency(self):
+    with self.test_session():
+      p = array_ops.placeholder_v2(tf.int32, shape=[], name="p")
+      with tf.control_dependencies([p]):
+        c = tf.constant(5, tf.int32)
+      d = tf.mul(p, c)
+      val = np.array(2).astype(np.int)
+      self.assertEqual(10, d.eval(feed_dict={p: val}))
+
+  def testBadShape(self):
+    with self.assertRaises(ValueError):
+      array_ops.placeholder_v2(tf.float32, shape=(-1, 10))
+
+  def testTensorStr(self):
+    a = array_ops.placeholder_v2(tf.float32, shape=None, name="a")
+    self.assertEqual("<tf.Tensor 'a:0' shape=<unknown> dtype=float32>", repr(a))
+
+    b = array_ops.placeholder_v2(tf.int32, shape=(32, 40), name="b")
+    self.assertEqual("<tf.Tensor 'b:0' shape=(32, 40) dtype=int32>", repr(b))
+
+    c = array_ops.placeholder_v2(tf.qint32, shape=(32, None, 2), name="c")
+    self.assertEqual("<tf.Tensor 'c:0' shape=(32, ?, 2) dtype=qint32>", repr(c))
 
 
 class PlaceholderWithDefaultTest(tf.test.TestCase):

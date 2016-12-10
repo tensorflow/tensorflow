@@ -39,7 +39,7 @@ class AdagradDAOptimizerTest(tf.test.TestCase):
             l2_regularization_strength=0.0)
         update = opt.apply_gradients(
             zip([grads0, grads1], [var0, var1]), global_step=global_step)
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
 
         v0_val, v1_val = sess.run([var0, var1])
         self.assertAllClose([0.0, 0.0], v0_val)
@@ -77,7 +77,7 @@ class AdagradDAOptimizerTest(tf.test.TestCase):
             l2_regularization_strength=0.0)
         update = opt.apply_gradients(
             zip([grads0, grads1], [var0, var1]), global_step=global_step)
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
 
         v0_val, v1_val = sess.run([var0, var1])
         self.assertAllCloseAccordingToType([1.0, 2.0], v0_val)
@@ -109,7 +109,7 @@ class AdagradDAOptimizerTest(tf.test.TestCase):
             l2_regularization_strength=0.0)
         update = opt.apply_gradients(
             zip([grads0, grads1], [var0, var1]), global_step=global_step)
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
 
         v0_val, v1_val = sess.run([var0, var1])
         self.assertAllCloseAccordingToType([1.0, 2.0], v0_val)
@@ -141,7 +141,7 @@ class AdagradDAOptimizerTest(tf.test.TestCase):
             l2_regularization_strength=2.0)
         update = opt.apply_gradients(
             zip([grads0, grads1], [var0, var1]), global_step=global_step)
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
 
         v0_val, v1_val = sess.run([var0, var1])
         self.assertAllCloseAccordingToType([1.0, 2.0], v0_val)

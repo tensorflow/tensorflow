@@ -101,7 +101,7 @@ with tf.Session() as sess:
   print(sess.run(y, feed_dict={
     x: (indices, values, shape)}))  # Will succeed.
 
-  sp = tf.SparseTensor(indices=indices, values=values, shape=shape)
+  sp = tf.SparseTensor(indices=indices, values=values, dense_shape=shape)
   sp_value = sp.eval(session)
   print(sess.run(y, feed_dict={x: sp_value}))  # Will succeed.
 ```
@@ -1259,7 +1259,7 @@ Reinterpret the bytes of a string as a vector of numbers.
 
 *  <b>`bytes`</b>: A `Tensor` of type `string`.
     All the elements must have the same length.
-*  <b>`out_type`</b>: A `tf.DType` from: `tf.float32, tf.float64, tf.int32, tf.uint8, tf.int16, tf.int8, tf.int64`.
+*  <b>`out_type`</b>: A `tf.DType` from: `tf.half, tf.float32, tf.float64, tf.int32, tf.uint8, tf.int16, tf.int8, tf.int64`.
 *  <b>`little_endian`</b>: An optional `bool`. Defaults to `True`.
     Whether the input `bytes` are in little-endian order.
     Ignored for `out_type` values that are stored in a single byte like
@@ -1296,6 +1296,34 @@ Fields:
   dtype: Data type of input.
 - - -
 
+#### `tf.VarLenFeature.__getnewargs__()` {#VarLenFeature.__getnewargs__}
+
+Return self as a plain tuple.  Used by copy and pickle.
+
+
+- - -
+
+#### `tf.VarLenFeature.__getstate__()` {#VarLenFeature.__getstate__}
+
+Exclude the OrderedDict from pickling
+
+
+- - -
+
+#### `tf.VarLenFeature.__new__(_cls, dtype)` {#VarLenFeature.__new__}
+
+Create new instance of VarLenFeature(dtype,)
+
+
+- - -
+
+#### `tf.VarLenFeature.__repr__()` {#VarLenFeature.__repr__}
+
+Return a nicely formatted representation string
+
+
+- - -
+
 #### `tf.VarLenFeature.dtype` {#VarLenFeature.dtype}
 
 Alias for field number 0
@@ -1316,6 +1344,34 @@ Fields:
   dtype: Data type of input.
   default_value: Value to be used if an example is missing this feature. It
       must be compatible with `dtype`.
+- - -
+
+#### `tf.FixedLenFeature.__getnewargs__()` {#FixedLenFeature.__getnewargs__}
+
+Return self as a plain tuple.  Used by copy and pickle.
+
+
+- - -
+
+#### `tf.FixedLenFeature.__getstate__()` {#FixedLenFeature.__getstate__}
+
+Exclude the OrderedDict from pickling
+
+
+- - -
+
+#### `tf.FixedLenFeature.__new__(_cls, shape, dtype, default_value=None)` {#FixedLenFeature.__new__}
+
+Create new instance of FixedLenFeature(shape, dtype, default_value)
+
+
+- - -
+
+#### `tf.FixedLenFeature.__repr__()` {#FixedLenFeature.__repr__}
+
+Return a nicely formatted representation string
+
+
 - - -
 
 #### `tf.FixedLenFeature.default_value` {#FixedLenFeature.default_value}
@@ -1354,6 +1410,34 @@ Fields:
     list item.
 - - -
 
+#### `tf.FixedLenSequenceFeature.__getnewargs__()` {#FixedLenSequenceFeature.__getnewargs__}
+
+Return self as a plain tuple.  Used by copy and pickle.
+
+
+- - -
+
+#### `tf.FixedLenSequenceFeature.__getstate__()` {#FixedLenSequenceFeature.__getstate__}
+
+Exclude the OrderedDict from pickling
+
+
+- - -
+
+#### `tf.FixedLenSequenceFeature.__new__(_cls, shape, dtype, allow_missing=False)` {#FixedLenSequenceFeature.__new__}
+
+Create new instance of FixedLenSequenceFeature(shape, dtype, allow_missing)
+
+
+- - -
+
+#### `tf.FixedLenSequenceFeature.__repr__()` {#FixedLenSequenceFeature.__repr__}
+
+Return a nicely formatted representation string
+
+
+- - -
+
 #### `tf.FixedLenSequenceFeature.allow_missing` {#FixedLenSequenceFeature.allow_missing}
 
 Alias for field number 2
@@ -1376,27 +1460,116 @@ Alias for field number 0
 
 - - -
 
+### `class tf.SparseFeature` {#SparseFeature}
+
+Configuration for parsing a sparse input feature.
+
+Fields:
+  index_key: Name of index feature.  The underlying feature's type must
+    be `int64` and its length must always match that of the `value_key`
+    feature.
+  value_key: Name of value feature.  The underlying feature's type must
+    be `dtype` and its length must always match that of the `index_key`
+    feature.
+  dtype: Data type of the `value_key` feature.
+  size: Each value in the `index_key` feature must be in `[0, size)`.
+  already_sorted: A boolean to specify whether the values in `index_key` are
+    already sorted. If so skip sorting, False by default (optional).
+- - -
+
+#### `tf.SparseFeature.__getnewargs__()` {#SparseFeature.__getnewargs__}
+
+Return self as a plain tuple.  Used by copy and pickle.
+
+
+- - -
+
+#### `tf.SparseFeature.__getstate__()` {#SparseFeature.__getstate__}
+
+Exclude the OrderedDict from pickling
+
+
+- - -
+
+#### `tf.SparseFeature.__new__(_cls, index_key, value_key, dtype, size, already_sorted=False)` {#SparseFeature.__new__}
+
+Create new instance of SparseFeature(index_key, value_key, dtype, size, already_sorted)
+
+
+- - -
+
+#### `tf.SparseFeature.__repr__()` {#SparseFeature.__repr__}
+
+Return a nicely formatted representation string
+
+
+- - -
+
+#### `tf.SparseFeature.already_sorted` {#SparseFeature.already_sorted}
+
+Alias for field number 4
+
+
+- - -
+
+#### `tf.SparseFeature.dtype` {#SparseFeature.dtype}
+
+Alias for field number 2
+
+
+- - -
+
+#### `tf.SparseFeature.index_key` {#SparseFeature.index_key}
+
+Alias for field number 0
+
+
+- - -
+
+#### `tf.SparseFeature.size` {#SparseFeature.size}
+
+Alias for field number 3
+
+
+- - -
+
+#### `tf.SparseFeature.value_key` {#SparseFeature.value_key}
+
+Alias for field number 1
+
+
+
+- - -
+
 ### `tf.parse_example(serialized, features, name=None, example_names=None)` {#parse_example}
 
 Parses `Example` protos into a `dict` of tensors.
 
-Parses a number of serialized [`Example`]
-(https://www.tensorflow.org/code/tensorflow/core/example/example.proto)
+Parses a number of serialized [`Example`](https://www.tensorflow.org/code/tensorflow/core/example/example.proto)
 protos given in `serialized`.
 
 `example_names` may contain descriptive names for the corresponding serialized
 protos. These may be useful for debugging purposes, but they have no effect on
-the output. If not `None`, `example_names` must be the same length as `serialized`.
+the output. If not `None`, `example_names` must be the same length as
+`serialized`.
 
 This op parses serialized examples into a dictionary mapping keys to `Tensor`
-and `SparseTensor` objects. `features` is a dict from keys to `VarLenFeature`
-and `FixedLenFeature` objects. Each `VarLenFeature` is mapped to a
-`SparseTensor`, and each `FixedLenFeature` is mapped to a `Tensor`.
+and `SparseTensor` objects. `features` is a dict from keys to `VarLenFeature`,
+`SparseFeature`, and `FixedLenFeature` objects. Each `VarLenFeature`
+and `SparseFeature` is mapped to a `SparseTensor`, and each
+`FixedLenFeature` is mapped to a `Tensor`.
 
 Each `VarLenFeature` maps to a `SparseTensor` of the specified type
 representing a ragged matrix. Its indices are `[batch, index]` where `batch`
 is the batch entry the value is from in `serialized`, and `index` is the
 value's index in the list of values associated with that feature and example.
+
+Each `SparseFeature` maps to a `SparseTensor` of the specified type
+representing a sparse matrix of shape
+`(serialized.size(), SparseFeature.size)`. Its indices are `[batch, index]`
+where `batch` is the batch entry the value is from in `serialized`, and
+`index` is the value's index is given by the values in the
+`SparseFeature.index_key` feature column.
 
 Each `FixedLenFeature` `df` maps to a `Tensor` of the specified type (or
 `tf.float32` if not specified) and shape `(serialized.size(),) + df.shape`.
@@ -1426,7 +1599,7 @@ then the output will look like:
 ```
 {"ft": SparseTensor(indices=[[0, 0], [0, 1], [2, 0]],
                     values=[1.0, 2.0, 3.0],
-                    shape=(3, 2)) }
+                    dense_shape=(3, 2)) }
 ```
 
 Given two `Example` input protos in `serialized`:
@@ -1463,15 +1636,15 @@ Then the output is a dictionary:
   "kw": SparseTensor(
       indices=[[0, 0], [0, 1], [1, 0]],
       values=["knit", "big", "emmy"]
-      shape=[2, 2]),
+      dense_shape=[2, 2]),
   "dank": SparseTensor(
       indices=[[1, 0]],
       values=[42],
-      shape=[2, 1]),
+      dense_shape=[2, 1]),
   "gps": SparseTensor(
       indices=[],
       values=[],
-      shape=[2, 0]),
+      dense_shape=[2, 0]),
 }
 ```
 
@@ -1509,13 +1682,48 @@ And the expected output is:
 }
 ```
 
+Given two `Example` input protos in `serialized`:
+
+```
+[
+  features {
+    feature { key: "val" value { float_list { value: [ 0.5, -1.0 ] } } }
+    feature { key: "ix" value { int64_list { value: [ 3, 20 ] } } }
+  },
+  features {
+    feature { key: "val" value { float_list { value: [ 0.0 ] } } }
+    feature { key: "ix" value { int64_list { value: [ 42 ] } } }
+  }
+]
+```
+
+And arguments
+
+```
+example_names: ["input0", "input1"],
+features: {
+    "sparse": SparseFeature("ix", "val", tf.float32, 100),
+}
+```
+
+Then the output is a dictionary:
+
+```python
+{
+  "sparse": SparseTensor(
+      indices=[[0, 3], [0, 20], [1, 42]],
+      values=[0.5, -1.0, 0.0]
+      dense_shape=[2, 100]),
+}
+```
+
 ##### Args:
 
 
 *  <b>`serialized`</b>: A vector (1-D Tensor) of strings, a batch of binary
     serialized `Example` protos.
-*  <b>`features`</b>: A `dict` mapping feature keys to `FixedLenFeature` or
-    `VarLenFeature` values.
+*  <b>`features`</b>: A `dict` mapping feature keys to `FixedLenFeature`,
+    `VarLenFeature`, and `SparseFeature` values.
 *  <b>`name`</b>: A name for this operation (optional).
 *  <b>`example_names`</b>: A vector (1-D Tensor) of strings (optional), the names of
     the serialized protos in the batch.
@@ -1724,7 +1932,7 @@ until there is an element to dequeue.
 At runtime, this operation may raise an error if the queue is
 [closed](#QueueBase.close) before or during its execution. If the
 queue is closed, the queue is empty, and there are no pending
-enqueue operations that can fulfil this request,
+enqueue operations that can fulfill this request,
 `tf.errors.OutOfRangeError` will be raised. If the session is
 [closed](../../api_docs/python/client.md#Session.close),
 `tf.errors.CancelledError` will be raised.
@@ -1755,7 +1963,7 @@ If the queue is closed and there are less than `n` elements left, then an
 At runtime, this operation may raise an error if the queue is
 [closed](#QueueBase.close) before or during its execution. If the
 queue is closed, the queue contains fewer than `n` elements, and
-there are no pending enqueue operations that can fulfil this
+there are no pending enqueue operations that can fulfill this
 request, `tf.errors.OutOfRangeError` will be raised. If the
 session is [closed](../../api_docs/python/client.md#Session.close),
 `tf.errors.CancelledError` will be raised.
@@ -2160,6 +2368,448 @@ an int64 scalar (for `enqueue`) or an int64 vector (for `enqueue_many`).
 
 
 
+## Conditional Accumulators
+
+- - -
+
+### `class tf.ConditionalAccumulatorBase` {#ConditionalAccumulatorBase}
+
+A conditional accumulator for aggregating gradients.
+
+Up-to-date gradients (i.e., time step at which gradient was computed is
+equal to the accumulator's time step) are added to the accumulator.
+
+Extraction of the average gradient is blocked until the required number of
+gradients has been accumulated.
+- - -
+
+#### `tf.ConditionalAccumulatorBase.__init__(dtype, shape, accumulator_ref)` {#ConditionalAccumulatorBase.__init__}
+
+Creates a new ConditionalAccumulator.
+
+##### Args:
+
+
+*  <b>`dtype`</b>: Datatype of the accumulated gradients.
+*  <b>`shape`</b>: Shape of the accumulated gradients.
+*  <b>`accumulator_ref`</b>: A handle to the conditional accumulator, created by sub-
+    classes
+
+
+- - -
+
+#### `tf.ConditionalAccumulatorBase.accumulator_ref` {#ConditionalAccumulatorBase.accumulator_ref}
+
+The underlying accumulator reference.
+
+
+- - -
+
+#### `tf.ConditionalAccumulatorBase.dtype` {#ConditionalAccumulatorBase.dtype}
+
+The datatype of the gradients accumulated by this accumulator.
+
+
+- - -
+
+#### `tf.ConditionalAccumulatorBase.name` {#ConditionalAccumulatorBase.name}
+
+The name of the underlying accumulator.
+
+
+- - -
+
+#### `tf.ConditionalAccumulatorBase.num_accumulated(name=None)` {#ConditionalAccumulatorBase.num_accumulated}
+
+Number of gradients that have currently been aggregated in accumulator.
+
+##### Args:
+
+
+*  <b>`name`</b>: Optional name for the operation.
+
+##### Returns:
+
+  Number of accumulated gradients currently in accumulator.
+
+
+- - -
+
+#### `tf.ConditionalAccumulatorBase.set_global_step(new_global_step, name=None)` {#ConditionalAccumulatorBase.set_global_step}
+
+Sets the global time step of the accumulator.
+
+The operation logs a warning if we attempt to set to a time step that is
+lower than the accumulator's own time step.
+
+##### Args:
+
+
+*  <b>`new_global_step`</b>: Value of new time step. Can be a variable or a constant
+*  <b>`name`</b>: Optional name for the operation.
+
+##### Returns:
+
+  Operation that sets the accumulator's time step.
+
+
+
+- - -
+
+### `class tf.ConditionalAccumulator` {#ConditionalAccumulator}
+
+A conditional accumulator for aggregating gradients.
+
+Up-to-date gradients (i.e., time step at which gradient was computed is
+equal to the accumulator's time step) are added to the accumulator.
+
+Extraction of the average gradient is blocked until the required number of
+gradients has been accumulated.
+- - -
+
+#### `tf.ConditionalAccumulator.__init__(dtype, shape=None, shared_name=None, name='conditional_accumulator')` {#ConditionalAccumulator.__init__}
+
+Creates a new ConditionalAccumulator.
+
+##### Args:
+
+
+*  <b>`dtype`</b>: Datatype of the accumulated gradients.
+*  <b>`shape`</b>: Shape of the accumulated gradients.
+*  <b>`shared_name`</b>: Optional. If non-empty, this accumulator will be shared under
+    the given name across multiple sessions.
+*  <b>`name`</b>: Optional name for the accumulator.
+
+
+- - -
+
+#### `tf.ConditionalAccumulator.accumulator_ref` {#ConditionalAccumulator.accumulator_ref}
+
+The underlying accumulator reference.
+
+
+- - -
+
+#### `tf.ConditionalAccumulator.apply_grad(grad, local_step=0, name=None)` {#ConditionalAccumulator.apply_grad}
+
+Attempts to apply a gradient to the accumulator.
+
+The attempt is silently dropped if the gradient is stale, i.e., local_step
+is less than the accumulator's global time step.
+
+##### Args:
+
+
+*  <b>`grad`</b>: The gradient tensor to be applied.
+*  <b>`local_step`</b>: Time step at which the gradient was computed.
+*  <b>`name`</b>: Optional name for the operation.
+
+##### Returns:
+
+  The operation that (conditionally) applies a gradient to the accumulator.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If grad is of the wrong shape
+
+
+- - -
+
+#### `tf.ConditionalAccumulator.dtype` {#ConditionalAccumulator.dtype}
+
+The datatype of the gradients accumulated by this accumulator.
+
+
+- - -
+
+#### `tf.ConditionalAccumulator.name` {#ConditionalAccumulator.name}
+
+The name of the underlying accumulator.
+
+
+- - -
+
+#### `tf.ConditionalAccumulator.num_accumulated(name=None)` {#ConditionalAccumulator.num_accumulated}
+
+Number of gradients that have currently been aggregated in accumulator.
+
+##### Args:
+
+
+*  <b>`name`</b>: Optional name for the operation.
+
+##### Returns:
+
+  Number of accumulated gradients currently in accumulator.
+
+
+- - -
+
+#### `tf.ConditionalAccumulator.set_global_step(new_global_step, name=None)` {#ConditionalAccumulator.set_global_step}
+
+Sets the global time step of the accumulator.
+
+The operation logs a warning if we attempt to set to a time step that is
+lower than the accumulator's own time step.
+
+##### Args:
+
+
+*  <b>`new_global_step`</b>: Value of new time step. Can be a variable or a constant
+*  <b>`name`</b>: Optional name for the operation.
+
+##### Returns:
+
+  Operation that sets the accumulator's time step.
+
+
+- - -
+
+#### `tf.ConditionalAccumulator.take_grad(num_required, name=None)` {#ConditionalAccumulator.take_grad}
+
+Attempts to extract the average gradient from the accumulator.
+
+The operation blocks until sufficient number of gradients have been
+successfully applied to the accumulator.
+
+Once successful, the following actions are also triggered:
+- Counter of accumulated gradients is reset to 0.
+- Aggregated gradient is reset to 0 tensor.
+- Accumulator's internal time step is incremented by 1.
+
+##### Args:
+
+
+*  <b>`num_required`</b>: Number of gradients that needs to have been aggregated
+*  <b>`name`</b>: Optional name for the operation
+
+##### Returns:
+
+  A tensor holding the value of the average gradient.
+
+##### Raises:
+
+
+*  <b>`InvalidArgumentError`</b>: If num_required < 1
+
+
+
+- - -
+
+### `class tf.SparseConditionalAccumulator` {#SparseConditionalAccumulator}
+
+A conditional accumulator for aggregating sparse gradients.
+
+Sparse gradients are represented by IndexedSlices.
+
+Up-to-date gradients (i.e., time step at which gradient was computed is
+equal to the accumulator's time step) are added to the accumulator.
+
+Extraction of the average gradient is blocked until the required number of
+gradients has been accumulated.
+
+Args:
+  dtype: Datatype of the accumulated gradients.
+  shape: Shape of the accumulated gradients.
+  shared_name: Optional. If non-empty, this accumulator will be shared under
+    the given name across multiple sessions.
+  name: Optional name for the accumulator.
+- - -
+
+#### `tf.SparseConditionalAccumulator.__init__(dtype, shape=None, shared_name=None, name='sparse_conditional_accumulator')` {#SparseConditionalAccumulator.__init__}
+
+
+
+
+- - -
+
+#### `tf.SparseConditionalAccumulator.accumulator_ref` {#SparseConditionalAccumulator.accumulator_ref}
+
+The underlying accumulator reference.
+
+
+- - -
+
+#### `tf.SparseConditionalAccumulator.apply_grad(grad_indices, grad_values, grad_shape=None, local_step=0, name=None)` {#SparseConditionalAccumulator.apply_grad}
+
+Attempts to apply a sparse gradient to the accumulator.
+
+The attempt is silently dropped if the gradient is stale, i.e., local_step
+is less than the accumulator's global time step.
+
+A sparse gradient is represented by its indices, values and possibly empty
+or None shape. Indices must be a vector representing the locations of
+non-zero entries in the tensor. Values are the non-zero slices of the
+gradient, and must have the same first dimension as indices, i.e., the nnz
+represented by indices and values must be consistent. Shape, if not empty or
+None, must be consistent with the accumulator's shape (if also provided).
+
+##### Example:
+
+  A tensor [[0, 0], [0. 1], [2, 3]] can be represented
+
+*  <b>`indices`</b>: [1,2]
+*  <b>`values`</b>: [[0,1],[2,3]]
+*  <b>`shape`</b>: [3, 2]
+
+##### Args:
+
+
+*  <b>`grad_indices`</b>: Indices of the sparse gradient to be applied.
+*  <b>`grad_values`</b>: Values of the sparse gradient to be applied.
+*  <b>`grad_shape`</b>: Shape of the sparse gradient to be applied.
+*  <b>`local_step`</b>: Time step at which the gradient was computed.
+*  <b>`name`</b>: Optional name for the operation.
+
+##### Returns:
+
+  The operation that (conditionally) applies a gradient to the accumulator.
+
+##### Raises:
+
+
+*  <b>`InvalidArgumentError`</b>: If grad is of the wrong shape
+
+
+- - -
+
+#### `tf.SparseConditionalAccumulator.apply_indexed_slices_grad(grad, local_step=0, name=None)` {#SparseConditionalAccumulator.apply_indexed_slices_grad}
+
+Attempts to apply a gradient to the accumulator.
+
+The attempt is silently dropped if the gradient is stale, i.e., local_step
+is less than the accumulator's global time step.
+
+##### Args:
+
+
+*  <b>`grad`</b>: The gradient IndexedSlices to be applied.
+*  <b>`local_step`</b>: Time step at which the gradient was computed.
+*  <b>`name`</b>: Optional name for the operation.
+
+##### Returns:
+
+  The operation that (conditionally) applies a gradient to the accumulator.
+
+##### Raises:
+
+
+*  <b>`InvalidArgumentError`</b>: If grad is of the wrong shape
+
+
+- - -
+
+#### `tf.SparseConditionalAccumulator.dtype` {#SparseConditionalAccumulator.dtype}
+
+The datatype of the gradients accumulated by this accumulator.
+
+
+- - -
+
+#### `tf.SparseConditionalAccumulator.name` {#SparseConditionalAccumulator.name}
+
+The name of the underlying accumulator.
+
+
+- - -
+
+#### `tf.SparseConditionalAccumulator.num_accumulated(name=None)` {#SparseConditionalAccumulator.num_accumulated}
+
+Number of gradients that have currently been aggregated in accumulator.
+
+##### Args:
+
+
+*  <b>`name`</b>: Optional name for the operation.
+
+##### Returns:
+
+  Number of accumulated gradients currently in accumulator.
+
+
+- - -
+
+#### `tf.SparseConditionalAccumulator.set_global_step(new_global_step, name=None)` {#SparseConditionalAccumulator.set_global_step}
+
+Sets the global time step of the accumulator.
+
+The operation logs a warning if we attempt to set to a time step that is
+lower than the accumulator's own time step.
+
+##### Args:
+
+
+*  <b>`new_global_step`</b>: Value of new time step. Can be a variable or a constant
+*  <b>`name`</b>: Optional name for the operation.
+
+##### Returns:
+
+  Operation that sets the accumulator's time step.
+
+
+- - -
+
+#### `tf.SparseConditionalAccumulator.take_grad(num_required, name=None)` {#SparseConditionalAccumulator.take_grad}
+
+Attempts to extract the average gradient from the accumulator.
+
+The operation blocks until sufficient number of gradients have been
+successfully applied to the accumulator.
+
+Once successful, the following actions are also triggered:
+- Counter of accumulated gradients is reset to 0.
+- Aggregated gradient is reset to 0 tensor.
+- Accumulator's internal time step is incremented by 1.
+
+##### Args:
+
+
+*  <b>`num_required`</b>: Number of gradients that needs to have been aggregated
+*  <b>`name`</b>: Optional name for the operation
+
+##### Returns:
+
+  A tuple of indices, values, and shape representing the average gradient.
+
+##### Raises:
+
+
+*  <b>`InvalidArgumentError`</b>: If num_required < 1
+
+
+- - -
+
+#### `tf.SparseConditionalAccumulator.take_indexed_slices_grad(num_required, name=None)` {#SparseConditionalAccumulator.take_indexed_slices_grad}
+
+Attempts to extract the average gradient from the accumulator.
+
+The operation blocks until sufficient number of gradients have been
+successfully applied to the accumulator.
+
+Once successful, the following actions are also triggered:
+- Counter of accumulated gradients is reset to 0.
+- Aggregated gradient is reset to 0 tensor.
+- Accumulator's internal time step is incremented by 1.
+
+##### Args:
+
+
+*  <b>`num_required`</b>: Number of gradients that needs to have been aggregated
+*  <b>`name`</b>: Optional name for the operation
+
+##### Returns:
+
+  An IndexedSlices holding the value of the average gradient.
+
+##### Raises:
+
+
+*  <b>`InvalidArgumentError`</b>: If num_required < 1
+
+
+
+
 ## Dealing with the filesystem
 
 - - -
@@ -2199,6 +2849,26 @@ Reads and outputs the entire contents of the input filename.
   A `Tensor` of type `string`.
 
 
+- - -
+
+### `tf.write_file(filename, contents, name=None)` {#write_file}
+
+Writes contents to the file at input filename. Creates file if not existing.
+
+##### Args:
+
+
+*  <b>`filename`</b>: A `Tensor` of type `string`.
+    scalar. The name of the file to which we write the contents.
+*  <b>`contents`</b>: A `Tensor` of type `string`.
+    scalar. The content to be written to the output file.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  The created Operation.
+
+
 
 ## Input pipeline
 
@@ -2234,6 +2904,9 @@ Save the list of files matching pattern, so it is only computed once.
 
 Returns tensor `num_epochs` times and then raises an `OutOfRange` error.
 
+Note: creates local counter `epochs`. Use `local_variable_initializer()` to
+initialize local variables.
+
 ##### Args:
 
 
@@ -2254,9 +2927,12 @@ Returns tensor `num_epochs` times and then raises an `OutOfRange` error.
 
 - - -
 
-### `tf.train.input_producer(input_tensor, element_shape=None, num_epochs=None, shuffle=True, seed=None, capacity=32, shared_name=None, summary_name=None, name=None)` {#input_producer}
+### `tf.train.input_producer(input_tensor, element_shape=None, num_epochs=None, shuffle=True, seed=None, capacity=32, shared_name=None, summary_name=None, name=None, cancel_op=None)` {#input_producer}
 
 Output the rows of `input_tensor` to a queue for an input pipeline.
+
+Note: if `num_epochs` is not `None`, this function creates local counter
+`epochs`. Use `local_variable_initializer()` to initialize local variables.
 
 ##### Args:
 
@@ -2280,6 +2956,7 @@ Output the rows of `input_tensor` to a queue for an input pipeline.
 *  <b>`summary_name`</b>: (Optional.) If set, a scalar summary for the current queue
     size will be generated, using this name as part of the tag.
 *  <b>`name`</b>: (Optional.) A name for queue.
+*  <b>`cancel_op`</b>: (Optional.) Cancel op for the queue
 
 ##### Returns:
 
@@ -2298,6 +2975,9 @@ Output the rows of `input_tensor` to a queue for an input pipeline.
 ### `tf.train.range_input_producer(limit, num_epochs=None, shuffle=True, seed=None, capacity=32, shared_name=None, name=None)` {#range_input_producer}
 
 Produces the integers from 0 to limit-1 in a queue.
+
+Note: if `num_epochs` is not `None`, this function creates local counter
+`epochs`. Use `local_variable_initializer()` to initialize local variables.
 
 ##### Args:
 
@@ -2361,9 +3041,12 @@ is added to the current `Graph`'s `QUEUE_RUNNER` collection.
 
 - - -
 
-### `tf.train.string_input_producer(string_tensor, num_epochs=None, shuffle=True, seed=None, capacity=32, shared_name=None, name=None)` {#string_input_producer}
+### `tf.train.string_input_producer(string_tensor, num_epochs=None, shuffle=True, seed=None, capacity=32, shared_name=None, name=None, cancel_op=None)` {#string_input_producer}
 
 Output strings (e.g. filenames) to a queue for an input pipeline.
+
+Note: if `num_epochs` is not `None`, this function creates local counter
+`epochs`. Use `local_variable_initializer()` to initialize local variables.
 
 ##### Args:
 
@@ -2381,6 +3064,7 @@ Output strings (e.g. filenames) to a queue for an input pipeline.
 *  <b>`shared_name`</b>: (optional). If set, this queue will be shared under the given
     name across multiple sessions.
 *  <b>`name`</b>: A name for the operations (optional).
+*  <b>`cancel_op`</b>: Cancel op for the queue (optional).
 
 ##### Returns:
 
@@ -2413,7 +3097,7 @@ single subgraph producing examples but you want to run it in *N* threads
 (where you increase *N* until it can keep the queue full).  Use
 [`batch_join`](#batch_join) or [`shuffle_batch_join`](#shuffle_batch_join)
 if you have *N* different subgraphs producing examples to batch and you
-want them run by *N* threads.
+want them run by *N* threads. Use `maybe_*` to enqueue conditionally.
 
 - - -
 
@@ -2465,10 +3149,55 @@ In addition, all output tensors' static shapes, as accessed via the
 `get_shape` method will have a first `Dimension` value of `None`, and
 operations that depend on fixed batch_size would fail.
 
+Note: if `num_epochs` is not `None`, this function creates local counter
+`epochs`. Use `local_variable_initializer()` to initialize local variables.
+
 ##### Args:
 
 
 *  <b>`tensors`</b>: The list or dictionary of tensors to enqueue.
+*  <b>`batch_size`</b>: The new batch size pulled from the queue.
+*  <b>`num_threads`</b>: The number of threads enqueuing `tensors`.
+*  <b>`capacity`</b>: An integer. The maximum number of elements in the queue.
+*  <b>`enqueue_many`</b>: Whether each tensor in `tensors` is a single example.
+*  <b>`shapes`</b>: (Optional) The shapes for each example.  Defaults to the
+    inferred shapes for `tensors`.
+*  <b>`dynamic_pad`</b>: Boolean.  Allow variable dimensions in input shapes.
+    The given dimensions are padded upon dequeue so that tensors within a
+    batch have the same shapes.
+*  <b>`allow_smaller_final_batch`</b>: (Optional) Boolean. If `True`, allow the final
+    batch to be smaller if there are insufficient items left in the queue.
+*  <b>`shared_name`</b>: (Optional). If set, this queue will be shared under the given
+    name across multiple sessions.
+*  <b>`name`</b>: (Optional) A name for the operations.
+
+##### Returns:
+
+  A list or dictionary of tensors with the same types as `tensors`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If the `shapes` are not specified, and cannot be
+    inferred from the elements of `tensors`.
+
+
+- - -
+
+### `tf.train.maybe_batch(tensors, keep_input, batch_size, num_threads=1, capacity=32, enqueue_many=False, shapes=None, dynamic_pad=False, allow_smaller_final_batch=False, shared_name=None, name=None)` {#maybe_batch}
+
+Conditionally creates batches of tensors based on `keep_input`.
+
+See docstring in `batch` for more details.
+
+##### Args:
+
+
+*  <b>`tensors`</b>: The list or dictionary of tensors to enqueue.
+*  <b>`keep_input`</b>: A `bool` scalar Tensor.  This tensor controls whether the input
+    is added to the queue or not.  If it evaluates `True`, then `tensors` are
+    added to the queue; otherwise they are dropped.  This tensor essentially
+    acts as a filtering mechanism.
 *  <b>`batch_size`</b>: The new batch size pulled from the queue.
 *  <b>`num_threads`</b>: The number of threads enqueuing `tensors`.
 *  <b>`capacity`</b>: An integer. The maximum number of elements in the queue.
@@ -2588,6 +3317,49 @@ operations that depend on fixed batch_size would fail.
 
 - - -
 
+### `tf.train.maybe_batch_join(tensors_list, keep_input, batch_size, capacity=32, enqueue_many=False, shapes=None, dynamic_pad=False, allow_smaller_final_batch=False, shared_name=None, name=None)` {#maybe_batch_join}
+
+Runs a list of tensors to conditionally fill a queue to create batches.
+
+See docstring in `batch_join` for more details.
+
+##### Args:
+
+
+*  <b>`tensors_list`</b>: A list of tuples or dictionaries of tensors to enqueue.
+*  <b>`keep_input`</b>: A `bool` scalar Tensor.  This tensor controls whether the input
+    is added to the queue or not.  If it evaluates `True`, then `tensors` are
+    added to the queue; otherwise they are dropped.  This tensor essentially
+    acts as a filtering mechanism.
+*  <b>`batch_size`</b>: An integer. The new batch size pulled from the queue.
+*  <b>`capacity`</b>: An integer. The maximum number of elements in the queue.
+*  <b>`enqueue_many`</b>: Whether each tensor in `tensor_list_list` is a single
+    example.
+*  <b>`shapes`</b>: (Optional) The shapes for each example.  Defaults to the
+    inferred shapes for `tensor_list_list[i]`.
+*  <b>`dynamic_pad`</b>: Boolean.  Allow variable dimensions in input shapes.
+    The given dimensions are padded upon dequeue so that tensors within a
+    batch have the same shapes.
+*  <b>`allow_smaller_final_batch`</b>: (Optional) Boolean. If `True`, allow the final
+    batch to be smaller if there are insufficient items left in the queue.
+*  <b>`shared_name`</b>: (Optional) If set, this queue will be shared under the given
+    name across multiple sessions.
+*  <b>`name`</b>: (Optional) A name for the operations.
+
+##### Returns:
+
+  A list or dictionary of tensors with the same number and types as
+  `tensors_list[i]`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If the `shapes` are not specified, and cannot be
+    inferred from the elements of `tensor_list_list`.
+
+
+- - -
+
 ### `tf.train.shuffle_batch(tensors, batch_size, capacity, min_after_dequeue, num_threads=1, seed=None, enqueue_many=False, shapes=None, allow_smaller_final_batch=False, shared_name=None, name=None)` {#shuffle_batch}
 
 Creates batches by randomly shuffling tensors.
@@ -2642,6 +3414,9 @@ In addition, all output tensors' static shapes, as accessed via the
 `get_shape` method will have a first `Dimension` value of `None`, and
 operations that depend on fixed batch_size would fail.
 
+Note: if `num_epochs` is not `None`, this function creates local counter
+`epochs`. Use `local_variable_initializer()` to initialize local variables.
+
 ##### Args:
 
 
@@ -2650,6 +3425,48 @@ operations that depend on fixed batch_size would fail.
 *  <b>`capacity`</b>: An integer. The maximum number of elements in the queue.
 *  <b>`min_after_dequeue`</b>: Minimum number elements in the queue after a
     dequeue, used to ensure a level of mixing of elements.
+*  <b>`num_threads`</b>: The number of threads enqueuing `tensor_list`.
+*  <b>`seed`</b>: Seed for the random shuffling within the queue.
+*  <b>`enqueue_many`</b>: Whether each tensor in `tensor_list` is a single example.
+*  <b>`shapes`</b>: (Optional) The shapes for each example.  Defaults to the
+    inferred shapes for `tensor_list`.
+*  <b>`allow_smaller_final_batch`</b>: (Optional) Boolean. If `True`, allow the final
+    batch to be smaller if there are insufficient items left in the queue.
+*  <b>`shared_name`</b>: (Optional) If set, this queue will be shared under the given
+    name across multiple sessions.
+*  <b>`name`</b>: (Optional) A name for the operations.
+
+##### Returns:
+
+  A list or dictionary of tensors with the types as `tensors`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If the `shapes` are not specified, and cannot be
+    inferred from the elements of `tensors`.
+
+
+- - -
+
+### `tf.train.maybe_shuffle_batch(tensors, batch_size, capacity, min_after_dequeue, keep_input, num_threads=1, seed=None, enqueue_many=False, shapes=None, allow_smaller_final_batch=False, shared_name=None, name=None)` {#maybe_shuffle_batch}
+
+Creates batches by randomly shuffling conditionally-enqueued tensors.
+
+See docstring in `shuffle_batch` for more details.
+
+##### Args:
+
+
+*  <b>`tensors`</b>: The list or dictionary of tensors to enqueue.
+*  <b>`batch_size`</b>: The new batch size pulled from the queue.
+*  <b>`capacity`</b>: An integer. The maximum number of elements in the queue.
+*  <b>`min_after_dequeue`</b>: Minimum number elements in the queue after a
+    dequeue, used to ensure a level of mixing of elements.
+*  <b>`keep_input`</b>: A `bool` scalar Tensor.  This tensor controls whether the input
+    is added to the queue or not.  If it evaluates `True`, then `tensors` are
+    added to the queue; otherwise they are dropped.  This tensor essentially
+    acts as a filtering mechanism.
 *  <b>`num_threads`</b>: The number of threads enqueuing `tensor_list`.
 *  <b>`seed`</b>: Seed for the random shuffling within the queue.
 *  <b>`enqueue_many`</b>: Whether each tensor in `tensor_list` is a single example.
@@ -2729,6 +3546,49 @@ operations that depend on fixed batch_size would fail.
 *  <b>`capacity`</b>: An integer. The maximum number of elements in the queue.
 *  <b>`min_after_dequeue`</b>: Minimum number elements in the queue after a
     dequeue, used to ensure a level of mixing of elements.
+*  <b>`seed`</b>: Seed for the random shuffling within the queue.
+*  <b>`enqueue_many`</b>: Whether each tensor in `tensor_list_list` is a single
+    example.
+*  <b>`shapes`</b>: (Optional) The shapes for each example.  Defaults to the
+    inferred shapes for `tensors_list[i]`.
+*  <b>`allow_smaller_final_batch`</b>: (Optional) Boolean. If `True`, allow the final
+    batch to be smaller if there are insufficient items left in the queue.
+*  <b>`shared_name`</b>: (optional). If set, this queue will be shared under the given
+    name across multiple sessions.
+*  <b>`name`</b>: (Optional) A name for the operations.
+
+##### Returns:
+
+  A list or dictionary of tensors with the same number and types as
+  `tensors_list[i]`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If the `shapes` are not specified, and cannot be
+    inferred from the elements of `tensors_list`.
+
+
+- - -
+
+### `tf.train.maybe_shuffle_batch_join(tensors_list, batch_size, capacity, min_after_dequeue, keep_input, seed=None, enqueue_many=False, shapes=None, allow_smaller_final_batch=False, shared_name=None, name=None)` {#maybe_shuffle_batch_join}
+
+Create batches by randomly shuffling conditionally-enqueued tensors.
+
+See docstring in `shuffle_batch_join` for more details.
+
+##### Args:
+
+
+*  <b>`tensors_list`</b>: A list of tuples or dictionaries of tensors to enqueue.
+*  <b>`batch_size`</b>: An integer. The new batch size pulled from the queue.
+*  <b>`capacity`</b>: An integer. The maximum number of elements in the queue.
+*  <b>`min_after_dequeue`</b>: Minimum number elements in the queue after a
+    dequeue, used to ensure a level of mixing of elements.
+*  <b>`keep_input`</b>: A `bool` scalar Tensor.  If provided, this tensor controls
+    whether the input is added to the queue or not.  If it evaluates `True`,
+    then `tensors_list` are added to the queue; otherwise they are dropped.
+    This tensor essentially acts as a filtering mechanism.
 *  <b>`seed`</b>: Seed for the random shuffling within the queue.
 *  <b>`enqueue_many`</b>: Whether each tensor in `tensor_list_list` is a single
     example.

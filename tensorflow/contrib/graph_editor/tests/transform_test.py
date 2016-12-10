@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import numpy as np
 import tensorflow as tf
 from tensorflow.contrib import graph_editor as ge
@@ -56,6 +57,20 @@ class TransformTest(tf.test.TestCase):
       self.assertTrue(t_ in dst_ts)
       self.assertEqual(t.name, t_.name)
       self.assertEqual(info.original(t_), t)
+
+  def test_copy_assert(self):
+    tf.reset_default_graph()
+    a = tf.constant(1)
+    b = tf.constant(1)
+    eq = tf.equal(a, b)
+    assert_op = tf.Assert(eq, [a, b])
+    with tf.control_dependencies([assert_op]):
+      _ = tf.add(a, b)
+    sgv = ge.make_view([assert_op, eq.op, a.op, b.op])
+    copier = ge.Transformer()
+    copied_sgv, info = copier(sgv, sgv.graph, "", "")
+    new_assert_op = info.transformed(assert_op)
+    self.assertIsNotNone(new_assert_op)
 
   def test_transform(self):
     transformer = ge.Transformer()
@@ -130,10 +145,47 @@ class TransformTest(tf.test.TestCase):
     a_new = tf.constant(2.0, name="a_new")
     c_new = ge.graph_replace(c, {a: a_new})
     with tf.Session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       c_val, c_new_val = sess.run([c, c_new])
     self.assertNear(c_val, 2.001, ERROR_TOLERANCE)
     self.assertNear(c_new_val, 3.001, ERROR_TOLERANCE)
+
+  def test_graph_replace_dict(self):
+    tf.reset_default_graph()
+    a = tf.constant(1.0, name="a")
+    b = tf.Variable(1.0, name="b")
+    eps = tf.constant(0.001, name="eps")
+    c = tf.identity(a + b + eps, name="c")
+    a_new = tf.constant(2.0, name="a_new")
+    c_new = ge.graph_replace({"c": c}, {a: a_new})
+    self.assertTrue(isinstance(c_new, dict))
+    with tf.Session() as sess:
+      sess.run(tf.global_variables_initializer())
+      c_val, c_new_val = sess.run([c, c_new])
+    self.assertTrue(isinstance(c_new_val, dict))
+    self.assertNear(c_val, 2.001, ERROR_TOLERANCE)
+    self.assertNear(c_new_val["c"], 3.001, ERROR_TOLERANCE)
+
+  def test_graph_replace_ordered_dict(self):
+    tf.reset_default_graph()
+    a = tf.constant(1.0, name="a")
+    b = tf.Variable(1.0, name="b")
+    eps = tf.constant(0.001, name="eps")
+    c = tf.identity(a + b + eps, name="c")
+    a_new = tf.constant(2.0, name="a_new")
+    c_new = ge.graph_replace(collections.OrderedDict({"c": c}), {a: a_new})
+    self.assertTrue(isinstance(c_new, collections.OrderedDict))
+
+  def test_graph_replace_named_tuple(self):
+    tf.reset_default_graph()
+    a = tf.constant(1.0, name="a")
+    b = tf.Variable(1.0, name="b")
+    eps = tf.constant(0.001, name="eps")
+    c = tf.identity(a + b + eps, name="c")
+    a_new = tf.constant(2.0, name="a_new")
+    one_tensor = collections.namedtuple("OneTensor", ["t"])
+    c_new = ge.graph_replace(one_tensor(c), {a: a_new})
+    self.assertTrue(isinstance(c_new, one_tensor))
 
   def test_graph_replace_missing(self):
     tf.reset_default_graph()

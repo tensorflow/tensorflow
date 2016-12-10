@@ -159,7 +159,7 @@ class CastOpTest(tf.test.TestCase):
       x = tf.Variable(5, dtype=tf.float32)
       y = tf.Variable(True, dtype=tf.bool)
       cast = tf.cast(y, x.dtype)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.assertEqual(1.0, sess.run(cast))
 
   def testGradients(self):
@@ -186,7 +186,7 @@ class SparseTensorCastTest(tf.test.TestCase):
       self.assertAllEqual(st_cast.indices.eval(), [[0], [1], [2]])
       self.assertAllEqual(st_cast.values.eval(),
                           np.array([1, 2, 3], np.float32))
-      self.assertAllEqual(st_cast.shape.eval(), [3])
+      self.assertAllEqual(st_cast.dense_shape.eval(), [3])
 
 
 class SaturateCastTest(tf.test.TestCase):

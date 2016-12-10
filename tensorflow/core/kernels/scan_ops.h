@@ -24,20 +24,19 @@ namespace functor {
 
 typedef Eigen::Index Index;
 
-template <typename Device, typename Reducer, typename T, int Dims>
+template <typename Device, typename Reducer, typename T>
 struct Scan {
-  void operator()(const Device& d, typename TTypes<T, Dims>::ConstTensor in,
-                  typename TTypes<T, Dims>::Tensor out, const Reducer& reducer,
-                  const Index& axis, const bool reverse, const bool exclusive) {
+  void operator()(const Device& d, typename TTypes<T, 3>::ConstTensor in,
+                  typename TTypes<T, 3>::Tensor out, const Reducer& reducer,
+                  const bool reverse, const bool exclusive) {
     // Perform the reverse ops directly with Eigen, which avoids copying the
     // tensor twice compared to using individual ops.
-    Eigen::array<bool, Dims> dims;
-    for (int i = 0; i < dims.size(); i++) {
-      dims[i] = reverse && (i == axis);
-    }
-    To32Bit(out).device(d) = To32Bit(in).reverse(dims)
-                                        .scan(axis, reducer, exclusive)
-                                        .reverse(dims);
+    Eigen::array<bool, 3> dims;
+    dims[0] = false;
+    dims[1] = reverse;
+    dims[2] = false;
+    To32Bit(out).device(d) =
+        To32Bit(in).reverse(dims).scan(1, reducer, exclusive).reverse(dims);
   }
 };
 
