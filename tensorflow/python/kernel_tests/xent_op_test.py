@@ -162,25 +162,6 @@ class XentTest(tf.test.TestCase):
     print("cross entropy gradient err = ", err)
     self.assertLess(err, 5e-8)
 
-  def testSecondGradient(self):
-    with self.test_session():
-      l = tf.constant([0.0, 0.0, 1.0, 0.0,
-                       1.0, 0.0, 0.0, 0.0,
-                       0.0, 0.5, 0.0, 0.5], shape=[12],
-                      dtype=tf.float64, name="l")
-      f = tf.constant([0.1, 0.2, 0.3, 0.4,
-                       0.1, 0.4, 0.9, 1.6,
-                       0.1, 0.8, 2.7, 6.4], shape=[12],
-                      dtype=tf.float64, name="f")
-      x = tf.nn.softmax_cross_entropy_with_logits(f, l, name="xent")
-      loss = tf.reduce_mean(x)
-
-    # Taking ths second gradient should fail, since it is not
-    # yet supported.
-    with self.assertRaisesRegexp(LookupError,
-                                 ".*No gradient defined.*PreventGradient.*"):
-      _ = tf.hessians(loss, [f])
-
   def testWrapper(self):
     features = np.array(
         [[[1., 1., 1., 1.], [1., 2., 3., 4.]],
