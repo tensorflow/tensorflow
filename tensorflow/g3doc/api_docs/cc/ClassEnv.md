@@ -186,13 +186,13 @@ Renames file src to target. If target already exists, it will be replaced.
 
 #### `virtual uint64 tensorflow::Env::NowMicros()=0` {#virtual_uint64_tensorflow_Env_NowMicros}
 
-Returns the number of micro-seconds since some fixed point in time. Only useful for computing deltas of time.
+Returns the number of micro-seconds since the Unix epoch.
 
 
 
 #### `virtual uint64 tensorflow::Env::NowSeconds()` {#virtual_uint64_tensorflow_Env_NowSeconds}
 
-Returns the number of seconds since some fixed point in time. Only useful for computing deltas of time.
+Returns the number of seconds since the Unix epoch.
 
 
 

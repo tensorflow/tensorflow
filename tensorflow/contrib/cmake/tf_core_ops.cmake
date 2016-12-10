@@ -49,7 +49,6 @@ GENERATE_CONTRIB_OP_LIBRARY(factorization_clustering "${tensorflow_source_dir}/t
 GENERATE_CONTRIB_OP_LIBRARY(factorization_factorization "${tensorflow_source_dir}/tensorflow/contrib/factorization/ops/factorization_ops.cc")
 GENERATE_CONTRIB_OP_LIBRARY(framework_variable "${tensorflow_source_dir}/tensorflow/contrib/framework/ops/variable_ops.cc")
 
-
 ########################################################
 # tf_user_ops library
 ########################################################

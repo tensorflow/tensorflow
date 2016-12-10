@@ -401,6 +401,7 @@ add_python_module("tensorflow/contrib/training/python")
 add_python_module("tensorflow/contrib/training/python/training")
 add_python_module("tensorflow/contrib/util")
 
+
 # Additional directories with no Python sources.
 add_custom_command(TARGET tf_python_touchup_modules PRE_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/tensorboard/dist")
@@ -432,6 +433,7 @@ set(tf_python_op_lib_names
 )
 
 function(GENERATE_PYTHON_OP_LIB tf_python_op_lib_name)
+    set(options SHAPE_FUNCTIONS_NOT_REQUIRED)
     set(oneValueArgs DESTINATION)
     set(multiValueArgs ADDITIONAL_LIBRARIES)
     cmake_parse_arguments(GENERATE_PYTHON_OP_LIB
@@ -441,7 +443,12 @@ function(GENERATE_PYTHON_OP_LIB tf_python_op_lib_name)
       set(GENERATE_PYTHON_OP_LIB_DESTINATION
           "${python_ops_target_dir}/gen_${tf_python_op_lib_name}.py")
     endif()
-
+    if(GENERATE_PYTHON_OP_LIB_SHAPE_FUNCTIONS_NOT_REQUIRED)
+      set(require_shape_fn 0)
+    else()
+      set(require_shape_fn 1)
+    endif()
+    
     # Create a C++ executable that links in the appropriate op
     # registrations and generates Python wrapper code based on the
     # registered ops.
@@ -462,7 +469,7 @@ function(GENERATE_PYTHON_OP_LIB tf_python_op_lib_name)
     # containing the wrappers.
     add_custom_command(
       OUTPUT ${GENERATE_PYTHON_OP_LIB_DESTINATION}
-      COMMAND ${tf_python_op_lib_name}_gen_python @${tensorflow_source_dir}/tensorflow/python/ops/hidden_ops.txt 1 > ${GENERATE_PYTHON_OP_LIB_DESTINATION}
+      COMMAND ${tf_python_op_lib_name}_gen_python @${tensorflow_source_dir}/tensorflow/python/ops/hidden_ops.txt ${require_shape_fn} > ${GENERATE_PYTHON_OP_LIB_DESTINATION}
       DEPENDS ${tf_python_op_lib_name}_gen_python
     )
 
