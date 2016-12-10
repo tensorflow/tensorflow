@@ -90,15 +90,6 @@ def boston_eval_fn():
   return tf.concat_v2([features, features], 0), tf.concat_v2([labels, labels],
                                                              0)
 
-
-def extract(data, key):
-  if isinstance(data, dict):
-    assert key in data
-    return data[key]
-  else:
-    return data
-
-
 def extract(data, key):
   if isinstance(data, dict):
     assert key in data
