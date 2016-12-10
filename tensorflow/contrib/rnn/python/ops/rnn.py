@@ -212,7 +212,7 @@ def stack_bidirectional_dynamic_rnn(cells_fw,
             sequence_length=sequence_length,
             dtype=dtype)
         # Concat the outputs to create the new input.
-        prev_layer = tf.concat(2, outputs)
+        prev_layer = tf.concat_v2(outputs, 2)
       states_fw.append(state_fw)
       states_bw.append(state_bw)
 

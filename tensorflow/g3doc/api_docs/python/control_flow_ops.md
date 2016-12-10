@@ -186,7 +186,7 @@ it has occasionally surprised some users who expected a lazier semantics.
   y = tf.constant(5)
   def f1(): return tf.mul(x, 17)
   def f2(): return tf.add(y, 23)
-  r = cond(tf.less(x, y), f1, f2)
+  r = tf.cond(tf.less(x, y), f1, f2)
   # r is set to f1().
   # Operations in f2 (e.g., tf.add) are not executed.
 ```
@@ -383,7 +383,7 @@ Example using shape_invariants:
   i0 = tf.constant(0)
   m0 = tf.ones([2, 2])
   c = lambda i, m: i < 10
-  b = lambda i, m: [i+1, tf.concat(0, [m, m])]
+  b = lambda i, m: [i+1, tf.concat_v2(0, [m, m])]
   tf.while_loop(
       c, b, loop_vars=[i0, m0],
       shape_invariants=[i0.get_shape(), tensor_shape.TensorShape([None, 2])])
@@ -592,67 +592,6 @@ Returns the truth value of (x >= y) element-wise.
 ##### Returns:
 
   A `Tensor` of type `bool`.
-
-
-- - -
-
-### `tf.select(*args, **kwargs)` {#select}
-
-Selects elements from `t` or `e`, depending on `condition`.
-
-The `t`, and `e` tensors must all have the same shape, and the
-output will also have that shape.
-
-The `condition` tensor must be a scalar if `t` and `e` are scalars.
-If `t` and `e` are vectors or higher rank, then `condition` must be either a
-scalar, a vector with size matching the first dimension of `t`, or must have
-the same shape as `t`.
-
-The `condition` tensor acts as a mask that chooses, based on the value at each
-element, whether the corresponding element / row in the output should be
-taken from `t` (if true) or `e` (if false).
-
-If `condition` is a vector and `t` and `e` are higher rank matrices, then
-it chooses which row (outer dimension) to copy from `t` and `e`.
-If `condition` has the same shape as `t` and `e`, then it chooses which
-element to copy from `t` and `e`.
-
-For example:
-
-```prettyprint
-# 'condition' tensor is [[True,  False]
-#                        [False, True]]
-# 't' is [[1, 2],
-#         [3, 4]]
-# 'e' is [[5, 6],
-#         [7, 8]]
-select(condition, t, e) ==> [[1, 6],
-                             [7, 4]]
-
-
-# 'condition' tensor is [True, False]
-# 't' is [[1, 2],
-#         [3, 4]]
-# 'e' is [[5, 6],
-#         [7, 8]]
-select(condition, t, e) ==> [[1, 2],
-                             [7, 8]]
-
-```
-
-##### Args:
-
-
-*  <b>`condition`</b>: A `Tensor` of type `bool`.
-*  <b>`t`</b>: A `Tensor` which may have the same shape as `condition`.
-    If `condition` is rank 1, `t` may have higher rank,
-    but its first dimension must match the size of `condition`.
-*  <b>`e`</b>: A `Tensor` with the same type and shape as `t`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor` with the same type and shape as `t` and `e`.
 
 
 - - -

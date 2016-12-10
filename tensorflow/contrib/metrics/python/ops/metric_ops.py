@@ -1438,13 +1438,12 @@ def expand_and_tile(tensor, multiple, dim=0, name=None):
             array_ops.size(tensor.dense_shape) + dim, [1])
       else:
         expand_dims = [dim]
-      expanded_shape = array_ops.concat(
-          0, (array_ops.strided_slice(
-                  tensor.dense_shape, [0], expand_dims),
-              [1],
-              array_ops.strided_slice(
-                  tensor.dense_shape, expand_dims, [-1], end_mask=1 << 0)),
-          name='expanded_shape')
+      expanded_shape = array_ops.concat_v2(
+          (array_ops.strided_slice(tensor.dense_shape, [0], expand_dims),
+           [1],
+           array_ops.strided_slice(
+               tensor.dense_shape, expand_dims, [-1], end_mask=1 << 0)),
+          0, name='expanded_shape')
       expanded = sparse_ops.sparse_reshape(
           tensor, shape=expanded_shape, name='expand')
       if multiple == 1:
@@ -1458,8 +1457,8 @@ def expand_and_tile(tensor, multiple, dim=0, name=None):
     if multiple == 1:
       return expanded
     ones = array_ops.ones_like(array_ops.shape(tensor))
-    tile_multiples = array_ops.concat(
-        0, (ones[:dim], (multiple,), ones[dim:]), name='multiples')
+    tile_multiples = array_ops.concat_v2(
+        (ones[:dim], (multiple,), ones[dim:]), 0, name='multiples')
     return array_ops.tile(expanded, tile_multiples, name=scope)
 
 

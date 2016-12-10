@@ -452,8 +452,8 @@ class ComputeSampledLogitsTest(tf.test.TestCase):
     pred_logits_tf, pred_labels_tf = _compute_sampled_logits(
         weights_tf,
         biases_tf,
-        hidden_acts_tf,
         labels_tf,
+        hidden_acts_tf,
         num_sampled,
         num_classes,
         num_true,
@@ -672,8 +672,8 @@ class ComputeSampledLogitsTest(tf.test.TestCase):
       nce_loss_tf = tf.nn.nce_loss(
           weights_tf,
           biases_tf,
-          inputs_tf,
           labels_tf,
+          inputs_tf,
           num_sampled=1,
           num_classes=self._num_classes,
           num_true=1,
@@ -685,8 +685,8 @@ class ComputeSampledLogitsTest(tf.test.TestCase):
       nce_loss_tf = tf.nn.nce_loss(
           [tf.constant(shard) for shard in sharded_weights],
           biases_tf,
-          inputs_tf,
           labels_tf,
+          inputs_tf,
           num_sampled=1,
           num_classes=self._num_classes,
           num_true=1,

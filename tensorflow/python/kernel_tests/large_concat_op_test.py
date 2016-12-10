@@ -28,7 +28,7 @@ class LargeConcatOpTest(tf.test.TestCase):
     with tf.device("/cpu:0"):
       a = tf.ones([2**31 + 6], dtype=tf.int8)
       b = tf.zeros([1024], dtype=tf.int8)
-      onezeros = tf.concat(0, [a, b])
+      onezeros = tf.concat_v2([a, b], 0)
     with self.test_session(use_gpu=False):
       # TODO(dga):  Add more depth to this test to validate correctness,
       # not just non-crashingness, once other large tensor fixes have gone in.

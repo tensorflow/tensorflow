@@ -24,7 +24,6 @@ import numpy as np
 import tensorflow as tf
 
 from tensorflow.contrib.learn.python.learn.estimators import dynamic_rnn_estimator
-from tensorflow.python.ops import rnn_cell
 
 
 class IdentityRNNCell(tf.contrib.rnn.RNNCell):
@@ -87,7 +86,7 @@ class DynamicRnnEstimatorTest(tf.test.TestCase):
 
   def setUp(self):
     super(DynamicRnnEstimatorTest, self).setUp()
-    self.rnn_cell = rnn_cell.BasicRNNCell(self.NUM_RNN_CELL_UNITS)
+    self.rnn_cell = tf.contrib.rnn.BasicRNNCell(self.NUM_RNN_CELL_UNITS)
     self.mock_target_column = MockTargetColumn(
         num_label_columns=self.NUM_LABEL_COLUMNS)
 
@@ -110,7 +109,7 @@ class DynamicRnnEstimatorTest(tf.test.TestCase):
         'location': tf.SparseTensor(
             indices=[[0, 0], [1, 0], [2, 0]],
             values=['west_side', 'west_side', 'nyc'],
-            shape=[3, 1]),
+            dense_shape=[3, 1]),
         'wire_cast': tf.SparseTensor(
             indices=[[0, 0, 0], [0, 1, 0],
                      [1, 0, 0], [1, 1, 0], [1, 1, 1],
@@ -118,7 +117,7 @@ class DynamicRnnEstimatorTest(tf.test.TestCase):
             values=[b'marlo', b'stringer',
                     b'omar', b'stringer', b'marlo',
                     b'marlo'],
-            shape=[3, 2, 2]),
+            dense_shape=[3, 2, 2]),
         'measurements': tf.random_uniform([3, 2, 2], seed=4711)}
 
   def GetClassificationTargetsOrNone(self, mode):

@@ -33,7 +33,7 @@ __all__ = ["LinearOperatorTriL",]
 class LinearOperatorTriL(linear_operator.LinearOperator):
   """`LinearOperator` acting like a [batch] square lower triangular matrix.
 
-  This operator acts like a [batch] matrix `A` with shape
+  This operator acts like a [batch] lower triangular matrix `A` with shape
   `[B1,...,Bb, N, N]` for some `b >= 0`.  The first `b` indices index a
   batch member.  For every batch index `(i1,...,ib)`, `A[i1,...,ib, : :]` is
   an `N x N` matrix.
@@ -64,16 +64,9 @@ class LinearOperatorTriL(linear_operator.LinearOperator):
   # Create a [2, 3] batch of 4 x 4 linear operators.
   tril = tf.random_normal(shape=[2, 3, 4, 4])
   operator = LinearOperatorTriL(tril)
-
-  # Create a shape [2, 1, 4, 2] vector.  Note that this shape is compatible
-  # since the batch dimensions, [2, 1], are brodcast to
-  # operator.batch_shape = [2, 3].
-  y = tf.random_normal(shape=[2, 1, 4, 2])
-  x = operator.solve(y)
-  ==> operator.apply(x) = y
   ```
 
-  ### Shape compatibility
+  #### Shape compatibility
 
   This operator acts on [batch] matrix with compatible shape.
   `x` is a batch matrix with compatible shape for `apply` and `solve` if
@@ -83,7 +76,7 @@ class LinearOperatorTriL(linear_operator.LinearOperator):
   x.shape =        [B1,...,Bb] + [N, R],  with R >= 0.
   ```
 
-  ### Performance
+  #### Performance
 
   Suppose `operator` is a `LinearOperatorTriL` of shape `[N, N]`,
   and `x.shape = [N, R]`.  Then
@@ -95,10 +88,10 @@ class LinearOperatorTriL(linear_operator.LinearOperator):
   If instead `operator` and `x` have shape `[B1,...,Bb, N, N]` and
   `[B1,...,Bb, N, R]`, every operation increases in complexity by `B1*...*Bb`.
 
-  ### Matrix property hints
+  #### Matrix property hints
 
   This `LinearOperator` is initialized with boolean flags of the form `is_X`,
-  for `X = non_singular, self_adjoint` etc...
+  for `X = non_singular, self_adjoint, positive_definite`.
   These have the following meaning
   * If `is_X == True`, callers should expect the operator to have the
     property `X`.  This is a promise that should be fulfilled, but is *not* a
@@ -150,7 +143,7 @@ class LinearOperatorTriL(linear_operator.LinearOperator):
       dtype = self._tril.dtype
       if dtype not in allowed_dtypes:
         raise TypeError(
-            "Argument diag must have dtype in %s.  Found: %s"
+            "Argument tril must have dtype in %s.  Found: %s"
             % (allowed_dtypes, dtype))
 
       super(LinearOperatorTriL, self).__init__(

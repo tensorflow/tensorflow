@@ -302,7 +302,7 @@ class _MultiClassTargetColumn(_TargetColumn):
 
   def logits_to_predictions(self, logits, proba=False):
     if self.num_label_columns == 1:
-      logits = array_ops.concat(1, [array_ops.zeros_like(logits), logits])
+      logits = array_ops.concat_v2([array_ops.zeros_like(logits), logits], 1)
 
     if proba:
       return nn.softmax(logits)
@@ -387,7 +387,7 @@ class _BinarySvmTargetColumn(_MultiClassTargetColumn):
       raise ValueError(
           "logits to probabilities is not supported for _BinarySvmTargetColumn")
 
-    logits = array_ops.concat(1, [array_ops.zeros_like(logits), logits])
+    logits = array_ops.concat_v2([array_ops.zeros_like(logits), logits], 1)
     return math_ops.argmax(logits, 1)
 
 

@@ -55,7 +55,7 @@ class SparseReshapeTest(tf.test.TestCase):
       output_val = sess.run(sp_output)
       self.assertAllEqual(output_val.indices, input_val.indices)
       self.assertAllEqual(output_val.values, input_val.values)
-      self.assertAllEqual(output_val.shape, input_val.shape)
+      self.assertAllEqual(output_val.dense_shape, input_val.dense_shape)
 
   def testFeedSameShape(self):
     with self.test_session(use_gpu=False) as sess:
@@ -66,7 +66,7 @@ class SparseReshapeTest(tf.test.TestCase):
       output_val = sess.run(sp_output, {sp_input: input_val})
       self.assertAllEqual(output_val.indices, input_val.indices)
       self.assertAllEqual(output_val.values, input_val.values)
-      self.assertAllEqual(output_val.shape, input_val.shape)
+      self.assertAllEqual(output_val.dense_shape, input_val.dense_shape)
 
   def testFeedSameShapeWithInferredDim(self):
     with self.test_session(use_gpu=False) as sess:
@@ -77,7 +77,7 @@ class SparseReshapeTest(tf.test.TestCase):
       output_val = sess.run(sp_output, {sp_input: input_val})
       self.assertAllEqual(output_val.indices, input_val.indices)
       self.assertAllEqual(output_val.values, input_val.values)
-      self.assertAllEqual(output_val.shape, input_val.shape)
+      self.assertAllEqual(output_val.dense_shape, input_val.dense_shape)
 
   def testFeedNewShapeSameRank(self):
     with self.test_session(use_gpu=False) as sess:
@@ -90,7 +90,7 @@ class SparseReshapeTest(tf.test.TestCase):
           [0, 0], [0, 6], [0, 9], [1, 0], [2, 0], [2, 1]
       ]))
       self.assertAllEqual(output_val.values, input_val.values)
-      self.assertAllEqual(output_val.shape, [3, 10])
+      self.assertAllEqual(output_val.dense_shape, [3, 10])
 
   def testFeedNewShapeSameRankWithInferredDim(self):
     with self.test_session(use_gpu=False) as sess:
@@ -103,7 +103,7 @@ class SparseReshapeTest(tf.test.TestCase):
           [0, 0], [0, 6], [0, 9], [1, 0], [2, 0], [2, 1]
       ]))
       self.assertAllEqual(output_val.values, input_val.values)
-      self.assertAllEqual(output_val.shape, [3, 10])
+      self.assertAllEqual(output_val.dense_shape, [3, 10])
 
   def testUpRank(self):
     with self.test_session(use_gpu=False) as sess:
@@ -115,7 +115,7 @@ class SparseReshapeTest(tf.test.TestCase):
           [0, 0, 0], [0, 1, 1], [0, 1, 4], [0, 2, 0], [1, 1, 0], [1, 1, 1]
       ]))
       self.assertAllEqual(output_val.values, input_val.values)
-      self.assertAllEqual(output_val.shape, [2, 3, 5])
+      self.assertAllEqual(output_val.dense_shape, [2, 3, 5])
 
   def testFeedUpRank(self):
     with self.test_session(use_gpu=False) as sess:
@@ -128,7 +128,7 @@ class SparseReshapeTest(tf.test.TestCase):
           [0, 0, 0], [0, 1, 1], [0, 1, 4], [0, 2, 0], [1, 1, 0], [1, 1, 1]
       ]))
       self.assertAllEqual(output_val.values, input_val.values)
-      self.assertAllEqual(output_val.shape, [2, 3, 5])
+      self.assertAllEqual(output_val.dense_shape, [2, 3, 5])
 
   def testFeedUpRankWithInferredDim(self):
     with self.test_session(use_gpu=False) as sess:
@@ -141,7 +141,7 @@ class SparseReshapeTest(tf.test.TestCase):
           [0, 0, 0], [0, 1, 1], [0, 1, 4], [0, 2, 0], [1, 1, 0], [1, 1, 1]
       ]))
       self.assertAllEqual(output_val.values, input_val.values)
-      self.assertAllEqual(output_val.shape, [2, 3, 5])
+      self.assertAllEqual(output_val.dense_shape, [2, 3, 5])
 
   def testFeedDownRank(self):
     with self.test_session(use_gpu=False) as sess:
@@ -154,7 +154,7 @@ class SparseReshapeTest(tf.test.TestCase):
           [0, 1], [1, 0], [1, 2], [3, 3], [4, 1], [4, 3], [5, 2]
       ]))
       self.assertAllEqual(output_val.values, input_val.values)
-      self.assertAllEqual(output_val.shape, [6, 4])
+      self.assertAllEqual(output_val.dense_shape, [6, 4])
 
   def testFeedDownRankWithInferredDim(self):
     with self.test_session(use_gpu=False) as sess:
@@ -167,7 +167,7 @@ class SparseReshapeTest(tf.test.TestCase):
           [0, 1], [1, 0], [1, 2], [3, 3], [4, 1], [4, 3], [5, 2]
       ]))
       self.assertAllEqual(output_val.values, input_val.values)
-      self.assertAllEqual(output_val.shape, [6, 4])
+      self.assertAllEqual(output_val.dense_shape, [6, 4])
 
   def testFeedMultipleInferredDims(self):
     with self.test_session(use_gpu=False) as sess:
@@ -247,7 +247,7 @@ class SparseReshapeTest(tf.test.TestCase):
       output_val = sess.run(sp_output, {sp_input: input_val})
       self.assertAllEqual(output_val.indices, new_indices)
       self.assertAllEqual(output_val.values, new_values)
-      self.assertAllEqual(output_val.shape, new_shape)
+      self.assertAllEqual(output_val.dense_shape, new_shape)
 
 
 if __name__ == "__main__":

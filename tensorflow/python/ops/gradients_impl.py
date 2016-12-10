@@ -770,8 +770,8 @@ def _AggregatedGrads(grads, op, loop_state, aggregation_method=None):
         # Form IndexedSlices out of the concatenated values and
         # indices.
         out_grads[i] = ops.IndexedSlices(
-            array_ops.concat(0, [x.values for x in out_grad]),
-            array_ops.concat(0, [x.indices for x in out_grad]),
+            array_ops.concat_v2([x.values for x in out_grad], 0),
+            array_ops.concat_v2([x.indices for x in out_grad], 0),
             out_grad[0].dense_shape)
     else:
       out_grads[i] = []

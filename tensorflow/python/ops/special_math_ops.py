@@ -121,6 +121,7 @@ def einsum(equation, *inputs):
 
   Many common operations can be expressed in this way.  For example:
 
+  ```python
   # Matrix multiplication
   >>> einsum('ij,jk->ik', m0, m1)  # output[i,k] = sum_j m0[i,j] * m1[j, k]
 
@@ -135,6 +136,7 @@ def einsum(equation, *inputs):
 
   # Batch matrix multiplication
   >>> einsum('aij,ajk->aik', s, t)  # out[a,i,k] = sum_j s[a,i,j] * t[a, j, k]
+  ```
 
   This function behaves like `numpy.einsum`, but does not support:
   * Ellipses (subscripts like `ij...,jk...->ik...`)
@@ -358,6 +360,8 @@ def _transpose_if_necessary(tensor, perm):
 
 def _reshape_if_necessary(tensor, new_shape):
   """Like reshape(), but avoids creating a new tensor if possible."""
+  # Accept None as an alias for -1 in new_shape.
+  new_shape = tuple(-1 if x is None else x for x in new_shape)
   cur_shape = tuple(x.value for x in tensor.get_shape())
   if (len(new_shape) == len(cur_shape) and
       all(d0 == d1 or d1 == -1 for d0, d1 in zip(cur_shape, new_shape))):

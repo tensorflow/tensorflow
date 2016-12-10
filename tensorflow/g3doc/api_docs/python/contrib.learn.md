@@ -347,9 +347,12 @@ Constructs an `Estimator` instance.
              `labels=None`.
       * `mode` specifies if this training, evaluation or
              prediction. See `ModeKeys`.
-      * `params` is a `dict` of hyperparameters. Will receive what
+      * `params` is a `dict` of hyperparameters.  Will receive what
              is passed to Estimator in `params` parameter. This allows
              to configure Estimators from hyper parameter tuning.
+      * `config` is a Configuration object. Will receive what is passed to
+             Estimator in `config` parameter. This allows updating things in
+             your model_fn based on configuration such as num_ps_replicas.
 
     * Returns:
       `ModelFnOps`
@@ -367,6 +370,8 @@ Constructs an `Estimator` instance.
       * `(features, labels) -> (predictions, loss, train_op)`
       * `(features, labels, mode) -> (predictions, loss, train_op)`
       * `(features, labels, mode, params) -> (predictions, loss, train_op)`
+      * `(features, labels, mode, params, config) ->
+         (predictions, loss, train_op)`
 
 
 *  <b>`model_dir`</b>: Directory to save model parameters, graph and etc. This can
@@ -724,17 +729,17 @@ Trains a model given training data `x` predictions and `y` labels.
 ##### Args:
 
 
-*  <b>`x`</b>: Matrix of shape [n_samples, n_features...]. Can be iterator that
-     returns arrays of features. The training input samples for fitting the
-     model. If set, `input_fn` must be `None`.
-*  <b>`y`</b>: Vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-     iterator that returns array of labels. The training label values
-     (class labels in classification, real numbers in regression). If set,
-     `input_fn` must be `None`. Note: For classification, label values must
+*  <b>`x`</b>: Matrix of shape [n_samples, n_features...] or the dictionary of Matrices.
+     Can be iterator that returns arrays of features or dictionary of arrays of features.
+     The training input samples for fitting the model. If set, `input_fn` must be `None`.
+*  <b>`y`</b>: Vector or matrix [n_samples] or [n_samples, n_outputs] or the dictionary of same.
+     Can be iterator that returns array of labels or dictionary of array of labels.
+     The training label values (class labels in classification, real numbers in regression).
+     If set, `input_fn` must be `None`. Note: For classification, label values must
      be integers representing the class index (i.e. values from 0 to
      n_classes-1).
 *  <b>`input_fn`</b>: Input function returning a tuple of:
-      features - Dictionary of string feature name to `Tensor` or `Tensor`.
+      features - `Tensor` or dictionary of string feature name to `Tensor`.
       labels - `Tensor` or dictionary of `Tensor` with labels.
     If input_fn is set, `x`, `y`, and `batch_size` must be `None`.
 *  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
@@ -786,12 +791,14 @@ for which this evaluation was performed.
 ##### Args:
 
 
-*  <b>`x`</b>: Matrix of shape [n_samples, n_features...] containing the input samples
-     for fitting the model. Can be iterator that returns arrays of features.
-     If set, `input_fn` must be `None`.
+*  <b>`x`</b>: Matrix of shape [n_samples, n_features...] or dictionary of many matrices
+     containing the input samples for fitting the model. Can be iterator that returns
+     arrays of features or dictionary of array of features. If set, `input_fn` must
+     be `None`.
 *  <b>`y`</b>: Vector or matrix [n_samples] or [n_samples, n_outputs] containing the
      label values (class labels in classification, real numbers in
-     regression). Can be iterator that returns array of labels. If set,
+     regression) or dictionary of multiple vectors/matrices. Can be iterator
+     that returns array of targets or dictionary of array of targets. If set,
      `input_fn` must be `None`. Note: For classification, label values must
      be integers representing the class index (i.e. values from 0 to
      n_classes-1).
@@ -2217,6 +2224,20 @@ variable.
 
 - - -
 
+#### `tf.contrib.learn.RunConfig.keep_checkpoint_every_n_hours` {#RunConfig.keep_checkpoint_every_n_hours}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.RunConfig.keep_checkpoint_max` {#RunConfig.keep_checkpoint_max}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.RunConfig.master` {#RunConfig.master}
 
 
@@ -2231,6 +2252,27 @@ variable.
 
 - - -
 
+#### `tf.contrib.learn.RunConfig.save_checkpoints_secs` {#RunConfig.save_checkpoints_secs}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.RunConfig.save_checkpoints_steps` {#RunConfig.save_checkpoints_steps}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.RunConfig.save_summary_steps` {#RunConfig.save_summary_steps}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.RunConfig.task_id` {#RunConfig.task_id}
 
 
@@ -2239,6 +2281,20 @@ variable.
 - - -
 
 #### `tf.contrib.learn.RunConfig.task_type` {#RunConfig.task_type}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.RunConfig.tf_config` {#RunConfig.tf_config}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.RunConfig.tf_random_seed` {#RunConfig.tf_random_seed}
 
 
 

@@ -17,14 +17,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated
 
 
@@ -241,9 +242,9 @@ class Variable(object):
       initial_value: A `Tensor`, or Python object convertible to a `Tensor`,
         which is the initial value for the Variable. The initial value must have
         a shape specified unless `validate_shape` is set to False. Can also be a
-        callable with no argument that returns the initial value when called. In
-        that case, `dtype` must be specified. (Note that initializer functions
-        from init_ops.py must first be bound to a shape before being used here.)
+        callable with no argument that returns the initial value when called.
+        (Note that initializer functions  from init_ops.py must first be bound
+         to a shape before being used here.)
       trainable: If `True`, the default, also adds the variable to the graph
         collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
         the default list of variables to use by the `Optimizer` classes.
@@ -263,13 +264,13 @@ class Variable(object):
         If None, either the datatype will be kept (if initial_value is
        a Tensor) or float32 will be used (if it is a Python object convertible
        to a Tensor).
-      expected_shape: A TensorShape. If set, initial_value is expected
-        to have this shape.
+      expected_shape: Deprecated. Ignored.
 
     Raises:
       ValueError: If the initial value is not specified, or does not have a
         shape and `validate_shape` is `True`.
     """
+    _ = expected_shape
     if initial_value is None:
       raise ValueError("initial_value must be specified.")
     init_from_fn = callable(initial_value)
@@ -285,7 +286,6 @@ class Variable(object):
           "or set. Got %s of type %s" % (collections, type(collections)))
     if trainable and ops.GraphKeys.TRAINABLE_VARIABLES not in collections:
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
-    expected_shape = tensor_shape.as_shape(expected_shape)
     with ops.control_dependencies(None):
       with ops.name_scope(name, "Variable", [] if init_from_fn else
                           [initial_value]) as name:
@@ -307,31 +307,31 @@ class Variable(object):
           else:
             return []
 
-        def assert_expected_shape():
-          """Asserts that the initial value has the expected shape."""
-          if expected_shape:
-            expected_shape.assert_is_compatible_with(
-                self._initial_value.get_shape())
-
         if init_from_fn:
-          expected_shape_list = full_shape_to_list(expected_shape)
-          set_shape = validate_shape and expected_shape.is_fully_defined()
-          self._variable = state_ops.variable_op(
-              expected_shape_list, dtype.base_dtype, set_shape=set_shape,
-              name=name)
-          with ops.colocate_with(self._variable.op):
-            with ops.name_scope("Initializer"):
-              # Colocate the tensors created by the initial_value() function
-              # with the variable itself.
+          # Use attr_scope and device(None) to simulate the behavior of
+          # colocate_with when the variable we want to colocate with doesn't
+          # yet exist.
+          true_name = ops._name_from_scope_name(name)
+          attr = attr_value_pb2.AttrValue(
+              list=attr_value_pb2.AttrValue.ListValue(
+                  s=[compat.as_bytes("loc:@%s" % true_name)]))
+          # pylint: disable=protected-access
+          with ops.get_default_graph()._attr_scope({"_class": attr}):
+            with ops.name_scope("Initializer"),  ops.device(None):
               self._initial_value = ops.convert_to_tensor(
                   initial_value(), name="initial_value", dtype=dtype)
-              assert_expected_shape()
+            set_shape = (validate_shape
+                         and self._initial_value.get_shape().is_fully_defined())
+            self._variable = state_ops.variable_op(
+                full_shape_to_list(self._initial_value.get_shape()),
+                self._initial_value.dtype.base_dtype,
+                set_shape=set_shape,
+                name=name)
 
         # Or get the initial value from a Tensor or Python object.
         else:
           self._initial_value = ops.convert_to_tensor(
               initial_value, name="initial_value", dtype=dtype)
-          assert_expected_shape()
           set_shape = (validate_shape
                        and self._initial_value.get_shape().is_fully_defined())
           # In this case, the variable op can't be created until after the
@@ -1000,7 +1000,7 @@ class PartitionedVariable(object):
     partition_ix = partition_axes[0]
 
     with ops.name_scope(self._name + "/ConcatPartitions/"):
-      concatenated = array_ops.concat(partition_ix, self._variable_list)
+      concatenated = array_ops.concat_v2(self._variable_list, partition_ix)
 
     with ops.name_scope(None):
       return array_ops.identity(concatenated, name=self._name)

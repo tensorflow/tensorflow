@@ -97,7 +97,7 @@ def ParseDataTensorOrDict(data):
     if is_sparse:
       return sparse_ops.sparse_concat(1, features), data_spec
     else:
-      return array_ops.concat(1, features), data_spec
+      return array_ops.concat_v2(features, 1), data_spec
   else:
     return (data, [constants.DATA_FLOAT])
 
@@ -118,10 +118,15 @@ def ParseLabelTensorOrDict(labels):
     A 2-D tensor for labels/outputs.
   """
   if isinstance(labels, dict):
-    return math_ops.to_float(array_ops.concat(
-        1, [sparse_ops.sparse_tensor_to_dense(labels[k], default_value=-1)
-            if isinstance(labels, sparse_tensor.SparseTensor)
-            else labels[k] for k in sorted(labels.keys())]))
+    return math_ops.to_float(
+        array_ops.concat_v2(
+            [
+                sparse_ops.sparse_tensor_to_dense(
+                    labels[k], default_value=-1) if isinstance(
+                        labels, sparse_tensor.SparseTensor) else labels[k]
+                for k in sorted(labels.keys())
+            ],
+            1))
   else:
     if isinstance(labels, sparse_tensor.SparseTensor):
       return math_ops.to_float(sparse_ops.sparse_tensor_to_dense(

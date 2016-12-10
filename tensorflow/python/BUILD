@@ -22,6 +22,7 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library_py")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_lib_deps")
+load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_plugin_deps")
 load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
 
 py_library(
@@ -165,7 +166,6 @@ cc_library(
         "//third_party/py/numpy:headers",
         "//util/python:python_headers",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -240,6 +240,15 @@ py_test(
 py_test(
     name = "deprecation_test",
     srcs = ["util/deprecation_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "keyword_args_test",
+    srcs = ["util/keyword_args_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
@@ -2020,15 +2029,20 @@ tf_py_wrap_cc(
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:lib",
+        "//tensorflow/core/debug",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/tools/tfprof/internal:print_model_analysis",
         "//util/python:python_headers",
-    ] + tf_additional_lib_deps(),
+    ] + tf_additional_lib_deps() + tf_additional_plugin_deps(),
 )
 
 py_library(
     name = "lib",
-    srcs = glob(["lib/**/*.py"]),
+    srcs = [
+        "lib/io/file_io.py",
+        "lib/io/python_io.py",
+        "lib/io/tf_record.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":errors",
@@ -2173,6 +2187,7 @@ cuda_py_tests(
         "training/proximal_gradient_descent_test.py",
         "training/queue_runner_test.py",
         "training/rmsprop_test.py",
+        "training/saver_test.py",
         "training/slot_creator_test.py",
         "training/tensorboard_logging_test.py",
         "training/training_ops_test.py",
@@ -2181,17 +2196,6 @@ cuda_py_tests(
         ":training",
         "//tensorflow:tensorflow_py",
     ],
-)
-
-cuda_py_test(
-    name = "saver_test",
-    size = "small",
-    srcs = ["training/saver_test.py"],
-    additional_deps = [
-        ":training",
-        "//tensorflow:tensorflow_py",
-    ],
-    tags = ["manual"],
 )
 
 py_test(
@@ -2315,16 +2319,25 @@ py_tests(
 
 py_library(
     name = "layers",
-    srcs = glob(
-        ["layers/*.py"],
-    ),
+    srcs = [
+        "layers/__init__.py",
+        "layers/base.py",
+        "layers/conv_utils.py",
+        "layers/convolutional.py",
+        "layers/core.py",
+        "layers/layers.py",
+        "layers/normalization.py",
+        "layers/pooling.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
         ":framework",
         ":framework_for_generated_wrappers",
         ":init_ops",
+        ":nn",
         ":standard_ops",
+        ":training",
         ":util",
         ":variable_scope",
     ],
@@ -2339,8 +2352,13 @@ py_test(
     main = "layers/base_test.py",
     srcs_version = "PY2AND3",
     deps = [
+        ":client_testlib",
+        ":framework_for_generated_wrappers",
+        ":init_ops",
         ":layers",
-        "//tensorflow:tensorflow_py",
+        ":math_ops",
+        ":random_ops",
+        ":variable_scope",
     ],
 )
 
@@ -2353,8 +2371,15 @@ py_test(
     main = "layers/core_test.py",
     srcs_version = "PY2AND3",
     deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":framework_for_generated_wrappers",
         ":layers",
-        "//tensorflow:tensorflow_py",
+        ":math_ops",
+        ":nn_ops",
+        ":random_ops",
+        ":variable_scope",
+        ":variables",
     ],
 )
 
@@ -2367,8 +2392,12 @@ py_test(
     main = "layers/convolutional_test.py",
     srcs_version = "PY2AND3",
     deps = [
+        ":client_testlib",
+        ":framework_for_generated_wrappers",
         ":layers",
-        "//tensorflow:tensorflow_py",
+        ":math_ops",
+        ":nn_ops",
+        ":random_ops",
     ],
 )
 
@@ -2381,8 +2410,8 @@ py_test(
     main = "layers/conv_utils_test.py",
     srcs_version = "PY2AND3",
     deps = [
+        ":client_testlib",
         ":layers",
-        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -2395,8 +2424,9 @@ py_test(
     main = "layers/pooling_test.py",
     srcs_version = "PY2AND3",
     deps = [
+        ":client_testlib",
         ":layers",
-        "//tensorflow:tensorflow_py",
+        ":random_ops",
     ],
 )
 
@@ -2409,8 +2439,13 @@ py_test(
     main = "layers/normalization_test.py",
     srcs_version = "PY2AND3",
     deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":framework_for_generated_wrappers",
         ":layers",
-        "//tensorflow:tensorflow_py",
+        ":math_ops",
+        ":random_ops",
+        ":variables",
     ],
 )
 

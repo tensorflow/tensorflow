@@ -47,7 +47,7 @@ def _get_concat_variable(name, shape, dtype, num_shards):
     if value.name == concat_full_name:
       return value
 
-  concat_variable = array_ops.concat(0, sharded_variable, name=concat_name)
+  concat_variable = array_ops.concat_v2(sharded_variable, 0, name=concat_name)
   ops.add_to_collection(ops.GraphKeys.CONCATENATED_VARIABLES,
                         concat_variable)
   return concat_variable
@@ -131,7 +131,7 @@ class CoupledInputForgetGateLSTMCell(rnn_cell.RNNCell):
     if not state_is_tuple:
       logging.warn(
           "%s: Using a concatenated state is slower and will soon be "
-          "deprecated.  Use state_is_tuple=True." % self)
+          "deprecated.  Use state_is_tuple=True.", self)
     self._num_units = num_units
     self._use_peepholes = use_peepholes
     self._initializer = initializer
@@ -212,7 +212,7 @@ class CoupledInputForgetGateLSTMCell(rnn_cell.RNNCell):
           initializer=init_ops.zeros_initializer, dtype=dtype)
 
       # j = new_input, f = forget_gate, o = output_gate
-      cell_inputs = array_ops.concat(1, [inputs, m_prev])
+      cell_inputs = array_ops.concat_v2([inputs, m_prev], 1)
       lstm_matrix = nn_ops.bias_add(math_ops.matmul(cell_inputs, concat_w), b)
       j, f, o = array_ops.split(1, 3, lstm_matrix)
 
@@ -245,8 +245,8 @@ class CoupledInputForgetGateLSTMCell(rnn_cell.RNNCell):
           m = clip_ops.clip_by_value(m, -self._proj_clip, self._proj_clip)
           # pylint: enable=invalid-unary-operand-type
 
-    new_state = (rnn_cell.LSTMStateTuple(c, m) if self._state_is_tuple
-                 else array_ops.concat(1, [c, m]))
+    new_state = (rnn_cell.LSTMStateTuple(c, m) if self._state_is_tuple else
+                 array_ops.concat_v2([c, m], 1))
     return m, new_state
 
 
@@ -356,8 +356,8 @@ class TimeFreqLSTMCell(rnn_cell.RNNCell):
         m_prev = array_ops.slice(state, [0, (2*fq+1)*self._num_units],
                                  [-1, self._num_units])
         # i = input_gate, j = new_input, f = forget_gate, o = output_gate
-        cell_inputs = array_ops.concat(1, [freq_inputs[fq], m_prev,
-                                           m_prev_freq])
+        cell_inputs = array_ops.concat_v2(
+            [freq_inputs[fq], m_prev, m_prev_freq], 1)
         lstm_matrix = nn_ops.bias_add(math_ops.matmul(cell_inputs, concat_w), b)
         i, j, f, o = array_ops.split(1, 4, lstm_matrix)
 
@@ -378,11 +378,11 @@ class TimeFreqLSTMCell(rnn_cell.RNNCell):
           m = sigmoid(o) * tanh(c)
         m_prev_freq = m
         if fq == 0:
-          state_out = array_ops.concat(1, [c, m])
+          state_out = array_ops.concat_v2([c, m], 1)
           m_out = m
         else:
-          state_out = array_ops.concat(1, [state_out, c, m])
-          m_out = array_ops.concat(1, [m_out, m])
+          state_out = array_ops.concat_v2([state_out, c, m], 1)
+          m_out = array_ops.concat_v2([m_out, m], 1)
     return m_out, state_out
 
   def _make_tf_features(self, input_feat):
@@ -560,8 +560,8 @@ class GridLSTMCell(rnn_cell.RNNCell):
       if self._state_is_tuple:
         state_out = self._state_tuple_type(*state_out_lst)
       else:
-        state_out = array_ops.concat(1, state_out_lst)
-      m_out = array_ops.concat(1, m_out_lst)
+        state_out = array_ops.concat_v2(state_out_lst, 1)
+      m_out = array_ops.concat_v2(m_out_lst, 1)
     return m_out, state_out
 
   def _compute(self, freq_inputs, block, state, batch_size,
@@ -655,8 +655,8 @@ class GridLSTMCell(rnn_cell.RNNCell):
             [-1, self._num_units])
 
       # i = input_gate, j = new_input, f = forget_gate, o = output_gate
-      cell_inputs = array_ops.concat(1, [freq_inputs[freq_index], m_prev_time,
-                                         m_prev_freq])
+      cell_inputs = array_ops.concat_v2(
+          [freq_inputs[freq_index], m_prev_time, m_prev_freq], 1)
 
       # F-LSTM
       lstm_matrix_freq = nn_ops.bias_add(math_ops.matmul(cell_inputs,
@@ -994,7 +994,7 @@ class BidirectionalGridLSTMCell(GridLSTMCell):
           bwd_state_out_lst.extend(bwd_state_out_lst_current)
     state_out = self._state_tuple_type(*(fwd_state_out_lst + bwd_state_out_lst))
     # Outputs are always concated as it is never used separately.
-    m_out = array_ops.concat(1, fwd_m_out_lst + bwd_m_out_lst)
+    m_out = array_ops.concat_v2(fwd_m_out_lst + bwd_m_out_lst, 1)
     return m_out, state_out
 
 
@@ -1045,7 +1045,7 @@ class AttentionCellWrapper(rnn_cell.RNNCell):
     if not state_is_tuple:
       logging.warn(
           "%s: Using a concatenated state is slower and will soon be "
-          "deprecated.  Use state_is_tuple=True." % self)
+          "deprecated.  Use state_is_tuple=True.", self)
     if attn_size is None:
       attn_size = cell.output_size
     if attn_vec_size is None:
@@ -1091,19 +1091,19 @@ class AttentionCellWrapper(rnn_cell.RNNCell):
       inputs = _linear([inputs, attns], input_size, True)
       lstm_output, new_state = self._cell(inputs, state)
       if self._state_is_tuple:
-        new_state_cat = array_ops.concat(1, nest.flatten(new_state))
+        new_state_cat = array_ops.concat_v2(nest.flatten(new_state), 1)
       else:
         new_state_cat = new_state
       new_attns, new_attn_states = self._attention(new_state_cat, attn_states)
       with vs.variable_scope("attn_output_projection"):
         output = _linear([lstm_output, new_attns], self._attn_size, True)
-      new_attn_states = array_ops.concat(1, [new_attn_states,
-                                             array_ops.expand_dims(output, 1)])
+      new_attn_states = array_ops.concat_v2(
+          [new_attn_states, array_ops.expand_dims(output, 1)], 1)
       new_attn_states = array_ops.reshape(
           new_attn_states, [-1, self._attn_length * self._attn_size])
       new_state = (new_state, new_attns, new_attn_states)
       if not self._state_is_tuple:
-        new_state = array_ops.concat(1, list(new_state))
+        new_state = array_ops.concat_v2(list(new_state), 1)
       return output, new_state
 
   def _attention(self, query, attn_states):
@@ -1218,7 +1218,7 @@ class LayerNormBasicLSTMCell(rnn_cell.RNNCell):
 
     with vs.variable_scope(scope or "layer_norm_basic_lstm_cell"):
       c, h = state
-      args = array_ops.concat(1, [inputs, h])
+      args = array_ops.concat_v2([inputs, h], 1)
       concat = self._linear(args)
 
       i, j, f, o = array_ops.split(1, 4, concat)

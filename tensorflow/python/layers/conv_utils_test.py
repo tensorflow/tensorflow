@@ -18,12 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-
 from tensorflow.python.layers import conv_utils
+from tensorflow.python.platform import test
 
 
-class ConvUtilsTest(tf.test.TestCase):
+class ConvUtilsTest(test.TestCase):
 
   def testConvertDataFormat(self):
     self.assertEqual(
@@ -39,9 +38,11 @@ class ConvUtilsTest(tf.test.TestCase):
 
   def testNormalizeTuple(self):
     self.assertEqual(
-        conv_utils.normalize_tuple(2, n=3, name='strides'), (2, 2, 2))
+        conv_utils.normalize_tuple(
+            2, n=3, name='strides'), (2, 2, 2))
     self.assertEqual(
-        conv_utils.normalize_tuple((2, 1, 2), n=3, name='strides'), (2, 1, 2))
+        conv_utils.normalize_tuple(
+            (2, 1, 2), n=3, name='strides'), (2, 1, 2))
 
     with self.assertRaises(ValueError):
       conv_utils.normalize_tuple((2, 1), n=3, name='strides')
@@ -59,14 +60,12 @@ class ConvUtilsTest(tf.test.TestCase):
       conv_utils.normalize_data_format('invalid')
 
   def testNormalizePadding(self):
-    self.assertEqual(
-        conv_utils.normalize_padding('SAME'), 'same')
-    self.assertEqual(
-        conv_utils.normalize_padding('VALID'), 'valid')
+    self.assertEqual(conv_utils.normalize_padding('SAME'), 'same')
+    self.assertEqual(conv_utils.normalize_padding('VALID'), 'valid')
 
     with self.assertRaises(ValueError):
       conv_utils.normalize_padding('invalid')
 
 
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

@@ -674,8 +674,7 @@ class _VariableStore(object):
         collections=collections,
         caching_device=caching_device,
         dtype=variable_dtype,
-        validate_shape=validate_shape,
-        expected_shape=shape)
+        validate_shape=validate_shape)
     self._vars[name] = v
     logging.vlog(1, "Created variable %s with shape %s and init %s", v.name,
                  format(shape), initializer)

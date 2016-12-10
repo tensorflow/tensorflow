@@ -161,7 +161,7 @@ class TimeReversedFusedRNN(FusedRNNCell):
       return list(reversed(t))
     else:
       if lengths is None:
-        return array_ops.reverse(t, [True, False, False])
+        return array_ops.reverse_v2(t, [0])
       else:
         return array_ops.reverse_sequence(t, lengths, 0, 1)
 

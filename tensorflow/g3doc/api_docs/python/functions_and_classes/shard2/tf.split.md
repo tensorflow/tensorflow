@@ -2,8 +2,6 @@
 
 DEPRECATED: use split_v; split_v rename to split happening soon.
 
-Splits a tensor into `num_split` tensors along one dimension.
-
 Splits `value` along dimension `axis` into `num_or_size_splits` smaller
 tensors. Requires that `num_or_size_splits` evenly divide `value.shape[axis]`.
 
@@ -12,7 +10,7 @@ For example:
 ```python
 # 'value' is a tensor with shape [5, 30]
 # Split 'value' into 3 tensors along dimension 1
-split0, split1, split2 = tf.split(1, 3, value)
+split0, split1, split2 = tf.split(value=value, num_or_size_splits=3, axis=1)
 tf.shape(split0) ==> [5, 10]
 ```
 
@@ -21,7 +19,8 @@ using unpack, e.g.
 
 ```python
 num_items = t.get_shape()[axis].value
-[tf.squeeze(s, [axis]) for s in tf.split(axis, num_items, t)]
+[tf.squeeze(s, [axis]) for s in
+ tf.split(value=t, num_or_size_splits=num_items, axis=axis)]
 ```
 
 can be rewritten as
@@ -43,5 +42,5 @@ tf.unpack(t, axis=axis)
 
 ##### Returns:
 
-  `num_split` `Tensor` objects resulting from splitting `value`.
+  `num_or_size_splits` `Tensor` objects resulting from splitting `value`.
 

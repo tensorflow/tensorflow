@@ -554,7 +554,7 @@ class SessionTest(test_util.TensorFlowTestCase):
           array_ops.placeholder(dtype=np.int64, shape=(3,)),)
       sp_indices = array_ops.identity(sp.indices)
       sp_values = array_ops.identity(sp.values)
-      sp_shape = array_ops.identity(sp.shape)
+      sp_shape = array_ops.identity(sp.dense_shape)
       sp2 = sparse_tensor.SparseTensor(sp_indices, sp_values, sp_shape)
       # Feed with tuple
       indices_out, values_out, shape_out = s.run(
@@ -595,7 +595,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       sp = array_ops.sparse_placeholder(dtype=np.float32, name='placeholder1')
       sp_indices = array_ops.identity(sp.indices)
       sp_values = array_ops.identity(sp.values)
-      sp_shape = array_ops.identity(sp.shape)
+      sp_shape = array_ops.identity(sp.dense_shape)
       sp2 = sparse_tensor.SparseTensor(sp_indices, sp_values, sp_shape)
       # Feed with tuple
       indices_out, values_out, shape_out = s.run(
@@ -626,7 +626,7 @@ class SessionTest(test_util.TensorFlowTestCase):
           shape=[None, 9, 2], dtype=np.float32, name='placeholder1')
       sp_indices = array_ops.identity(sp.indices)
       sp_values = array_ops.identity(sp.values)
-      sp_shape = array_ops.identity(sp.shape)
+      sp_shape = array_ops.identity(sp.dense_shape)
       sp2 = sparse_tensor.SparseTensor(sp_indices, sp_values, sp_shape)
       # Feed with tuple
       indices_out, values_out, shape_out = s.run(
@@ -656,11 +656,11 @@ class SessionTest(test_util.TensorFlowTestCase):
       sp = array_ops.sparse_placeholder(dtype=np.float32,
                                         shape=shape,
                                         name='placeholder1')
-      self.assertAllEqual(sp.shape.eval(session=s), shape)
-      self.assertAllEqual(tensor_util.constant_value(sp.shape), shape)
+      self.assertAllEqual(sp.dense_shape.eval(session=s), shape)
+      self.assertAllEqual(tensor_util.constant_value(sp.dense_shape), shape)
       sp_indices = array_ops.identity(sp.indices)
       sp_values = array_ops.identity(sp.values)
-      sp_shape = array_ops.identity(sp.shape)
+      sp_shape = array_ops.identity(sp.dense_shape)
       # Feed with tuple
       indices_out, values_out, shape_out = s.run(
           [sp_indices, sp_values, sp_shape], {sp: (indices, values)})

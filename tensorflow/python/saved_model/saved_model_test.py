@@ -33,6 +33,9 @@ from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.util import compat
 
 
+SAVED_MODEL_PATH = (
+    "python/saved_model/example/saved_model_half_plus_two/00000123")
+
 def tearDownModule():
   file_io.delete_recursively(tf.test.get_temp_dir())
 
@@ -71,6 +74,16 @@ class SavedModelTest(tf.test.TestCase):
                      compat.as_text(actual_asset_contents))
     self.assertEqual(expected_asset_file_name, asset.filename)
     self.assertEqual(expected_asset_tensor_name, asset.tensor_info.name)
+
+
+  def testMaybeSavedModelDir(self):
+    base_path = tf.test.test_src_dir_path("/python/saved_model")
+    self.assertFalse(loader.maybe_saved_model_directory(base_path))
+    base_path = tf.test.test_src_dir_path(SAVED_MODEL_PATH)
+    self.assertTrue(loader.maybe_saved_model_directory(base_path))
+    base_path = "complete_garbage"
+    self.assertFalse(loader.maybe_saved_model_directory(base_path))
+
 
   def testSequence(self):
     export_dir = os.path.join(tf.test.get_temp_dir(), "test_sequence")

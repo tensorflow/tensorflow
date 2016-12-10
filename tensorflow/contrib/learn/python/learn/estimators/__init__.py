@@ -285,10 +285,9 @@ tutorial for building a custom estimator.
 
 ## Additional Estimators
 
-There are two additional estimators under
+There is an additional estimators under
 `tensorflow.contrib.factorization.python.ops`:
 
-*   K-Means
 *   Gaussian mixture model (GMM) clustering
 
 ## Further reading
@@ -317,6 +316,7 @@ from tensorflow.contrib.learn.python.learn.estimators.estimator import Estimator
 from tensorflow.contrib.learn.python.learn.estimators.estimator import infer_real_valued_columns_from_input
 from tensorflow.contrib.learn.python.learn.estimators.estimator import infer_real_valued_columns_from_input_fn
 from tensorflow.contrib.learn.python.learn.estimators.estimator import SKCompat
+from tensorflow.contrib.learn.python.learn.estimators.kmeans import KMeansClustering
 from tensorflow.contrib.learn.python.learn.estimators.linear import LinearClassifier
 from tensorflow.contrib.learn.python.learn.estimators.linear import LinearRegressor
 from tensorflow.contrib.learn.python.learn.estimators.logistic_regressor import LogisticRegressor

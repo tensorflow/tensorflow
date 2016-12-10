@@ -1253,7 +1253,7 @@ class LinearRegressorTest(tf.test.TestCase):
           'country': tf.SparseTensor(
               values=['IT', 'US', 'GB'],
               indices=[[0, 0], [1, 3], [2, 1]],
-              shape=[3, 5]),
+              dense_shape=[3, 5]),
           'weights': tf.constant([[3.0], [5.0], [7.0]])
       }, tf.constant([[1.55], [-1.25], [-3.0]])
 
@@ -1285,7 +1285,7 @@ class LinearRegressorTest(tf.test.TestCase):
           'country': tf.SparseTensor(
               values=['IT', 'US', 'GB'],
               indices=[[0, 0], [1, 3], [2, 1]],
-              shape=[3, 5]),
+              dense_shape=[3, 5]),
           'weights': tf.constant([[10.0], [10.0], [10.0]])
       }, tf.constant([[1.4], [-0.8], [2.6]])
 

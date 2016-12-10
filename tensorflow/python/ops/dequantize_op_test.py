@@ -54,7 +54,7 @@ class DequantizeOpTest(tf.test.TestCase):
 
     np_ans = ((inputs.astype(np.float32) + half_range) *
               (max_range - min_range) / type_range) + min_range
-    self.assertAllClose(tf_ans, np_ans)
+    self.assertAllClose(tf_ans, np_ans, rtol=1e-5, atol=1e-5)
 
   def testBasicQuint8(self):
     self._testDequantizeOp(np.array([0, 128, 255]),

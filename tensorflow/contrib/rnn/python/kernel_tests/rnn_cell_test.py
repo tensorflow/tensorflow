@@ -483,8 +483,8 @@ class RNNCellTest(tf.test.TestCase):
                                           dtype=np.float32), dtype=tf.float32)
             output, state = cell(inputs, zero_state)
             if state_is_tuple:
-              concat_state = tf.concat(
-                  1, [state[0][0], state[0][1], state[1], state[2]])
+              concat_state = tf.concat_v2(
+                  [state[0][0], state[0][1], state[1], state[2]], 1)
             else:
               concat_state = state
             sess.run(tf.global_variables_initializer())
@@ -501,25 +501,29 @@ class RNNCellTest(tf.test.TestCase):
     attn_length = 6
     batch_size = 2
     expected_output = np.array(
-        [[-0.76951641, -0.77613342, 0.1882876, 0.4528169],
-         [-0.62173879, -0.53987527, 0.06999521, 0.43236512]], dtype=np.float32)
+        [[0.955392, 0.408507, -0.60122, 0.270718],
+         [0.903681, 0.331165, -0.500238, 0.224052]],
+        dtype=np.float32)
     expected_state = np.array(
-        [[0.00686008, 0.32751927, 0.65842509, 0.13517606, 0.00341745,
-          0.21539585, 0.2087716, 0.04919484, 0.65901887, 0.71350443, 0.45989594,
-          0.32038051, 0.58086717, 0.49446869, 0.7641536, 0.12814975, 0.92231739,
-          0.89857256, 0.21889746, 0.38442063, 0.53481543, 0.8876909, 0.45823169,
-          0.5905602, 0.78038228, 0.56501579, 0.03971386, 0.09870267, 0.8074435,
-          0.66821432, 0.99211812, 0.12295902, -0.78066337, -0.55385113,
-          0.25296241, 0.29621673],
-         [-2.65422642e-01, 7.69232273e-01, 2.61641771e-01, 3.12298536e-03,
-          -1.54120743e-01, 4.68760282e-01, 9.73877981e-02, 9.45428968e-04,
-          7.77730405e-01, 6.53964162e-01, 4.54966187e-01, 4.93799955e-01,
-          7.30002642e-01, 6.69868946e-01, 7.35766888e-01, 8.63012671e-01,
-          8.78873706e-01, 3.51857543e-01, 9.34172153e-01, 6.47329569e-01,
-          6.31730437e-01, 6.66278243e-01, 5.36446571e-01, 2.04774857e-01,
-          9.84584212e-01, 3.82772446e-01, 3.74667645e-02, 9.25101876e-01,
-          5.77141643e-01, 8.49329710e-01, 3.61274123e-01, 1.21259212e-01,
-          -6.95882142e-01, -7.14576960e-01, 5.69079161e-01, 3.14788610e-01]],
+        [[
+            0.81331915, 0.32036272, 0.28079176, 1.08888793, 0.41264394,
+            0.1062041, 0.10444493, 0.32050529, 0.64655536, 0.70794445,
+            0.51896095, 0.31809306, 0.58086717, 0.49446869, 0.7641536,
+            0.12814975, 0.92231739, 0.89857256, 0.21889746, 0.38442063,
+            0.53481543, 0.8876909, 0.45823169, 0.5905602, 0.78038228,
+            0.56501579, 0.03971386, 0.09870267, 0.8074435, 0.66821432,
+            0.99211812, 0.12295902, 1.01412082, 0.33123279, -0.71114945,
+            0.40583119
+        ], [
+            0.59962207, 0.42597458, -0.22491696, 0.98063421, 0.32548007,
+            0.11623692, -0.10100613, 0.27708149, 0.76956916, 0.6360054,
+            0.51719815, 0.50458527, 0.73000264, 0.66986895, 0.73576689,
+            0.86301267, 0.87887371, 0.35185754, 0.93417215, 0.64732957,
+            0.63173044, 0.66627824, 0.53644657, 0.20477486, 0.98458421,
+            0.38277245, 0.03746676, 0.92510188, 0.57714164, 0.84932971,
+            0.36127412, 0.12125921, 0.99780077, 0.31886846, -0.67595094,
+            0.56531656
+        ]],
         dtype=np.float32)
     seed = 12345
     tf.set_random_seed(seed)
@@ -531,23 +535,24 @@ class RNNCellTest(tf.test.TestCase):
           cell = tf.contrib.rnn.AttentionCellWrapper(
               lstm_cell, attn_length, state_is_tuple=state_is_tuple)
           zeros1 = tf.random_uniform(
-              (batch_size, num_units), 0.0, 1.0, seed=seed+1)
+              (batch_size, num_units), 0.0, 1.0, seed=seed + 1)
           zeros2 = tf.random_uniform(
-              (batch_size, num_units), 0.0, 1.0, seed=seed+2)
+              (batch_size, num_units), 0.0, 1.0, seed=seed + 2)
           zeros3 = tf.random_uniform(
-              (batch_size, num_units), 0.0, 1.0, seed=seed+3)
+              (batch_size, num_units), 0.0, 1.0, seed=seed + 3)
           attn_state_zeros = tf.random_uniform(
-              (batch_size, attn_length * num_units), 0.0, 1.0, seed=seed+4)
+              (batch_size, attn_length * num_units), 0.0, 1.0, seed=seed + 4)
           zero_state = ((zeros1, zeros2), zeros3, attn_state_zeros)
           if not state_is_tuple:
-            zero_state = tf.concat(1,
-                                   [zero_state[0][0], zero_state[0][1],
-                                    zero_state[1], zero_state[2]])
+            zero_state = tf.concat_v2([
+                zero_state[0][0], zero_state[0][1], zero_state[1], zero_state[2]
+            ], 1)
           inputs = tf.random_uniform(
-              (batch_size, num_units), 0.0, 1.0, seed=seed+5)
+              (batch_size, num_units), 0.0, 1.0, seed=seed + 5)
           output, state = cell(inputs, zero_state)
           if state_is_tuple:
-            state = tf.concat(1, [state[0][0], state[0][1], state[1], state[2]])
+            state = tf.concat_v2([state[0][0], state[0][1], state[1], state[2]],
+                                 1)
           sess.run(tf.global_variables_initializer())
           self.assertAllClose(sess.run(output), expected_output)
           self.assertAllClose(sess.run(state), expected_state)

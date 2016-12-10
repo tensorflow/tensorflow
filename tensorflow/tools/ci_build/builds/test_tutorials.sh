@@ -180,7 +180,7 @@ test_cifar10_train() {
   fi
 
   run_in_directory "${TEST_DIR}" "${LOG_FILE}" \
-    tensorflow/models/image/cifar10/cifar10_train.py \
+    tensorflow_models/tutorials/image/cifar10/cifar10_train.py \
     --data_dir="${TUT_TEST_DATA_DIR}/cifar10" --max_steps=50 \
     --train_dir="${TUT_TEST_ROOT}/cifar10_train"
 
@@ -208,7 +208,7 @@ test_word2vec_test() {
   LOG_FILE=$1
 
   run_in_directory "${TEST_DIR}" "${LOG_FILE}" \
-    tensorflow/models/embedding/word2vec_test.py
+    tensorflow_models/tutorials/embedding/word2vec_test.py
 }
 
 
@@ -218,7 +218,7 @@ test_word2vec_optimized_test() {
   LOG_FILE=$1
 
   run_in_directory "${TEST_DIR}" "${LOG_FILE}" \
-    tensorflow/models/embedding/word2vec_optimized_test.py
+    tensorflow_models/tutorials/embedding/word2vec_optimized_test.py
 }
 
 
@@ -251,7 +251,7 @@ test_ptb_word_lm() {
   fi
 
   run_in_directory "${TEST_DIR}" "${LOG_FILE}" \
-    tensorflow/models/rnn/ptb/ptb_word_lm.py \
+    tensorflow_models/tutorials/rnn/ptb/ptb_word_lm.py \
     --data_path="${DATA_DIR}/simple-examples/data" --model test
 
   if [[ $? != 0 ]]; then
@@ -282,7 +282,7 @@ test_translate_test() {
   LOG_FILE=$1
 
   run_in_directory "${TEST_DIR}" "${LOG_FILE}" \
-    tensorflow/models/rnn/translate/translate.py --self_test=True
+    tensorflow_models/tutorials/rnn/translate/translate.py --self_test=True
 }
 
 

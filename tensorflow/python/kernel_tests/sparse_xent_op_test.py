@@ -186,6 +186,22 @@ class SparseXentTest(tf.test.TestCase):
     print("cross entropy gradient err = ", err)
     self.assertLess(err, 5e-8)
 
+  def testSecondGradient(self):
+    images_placeholder = tf.placeholder(tf.float32, shape=(3, 2))
+    labels_placeholder = tf.placeholder(tf.int32, shape=(3))
+    weights = tf.Variable(tf.truncated_normal([2], stddev=1.0))
+    weights_with_zeros = tf.pack([tf.zeros([2]), weights], axis=1)
+    logits = tf.matmul(images_placeholder, weights_with_zeros)
+    cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
+        logits, labels_placeholder)
+    loss = tf.reduce_mean(cross_entropy)
+
+    # Taking ths second gradient should fail, since it is not
+    # yet supported.
+    with self.assertRaisesRegexp(LookupError,
+                                 ".*No gradient defined.*PreventGradient.*"):
+      _ = tf.hessians(loss, [weights])
+
   def _testHighDim(self, features, labels):
     np_loss, np_backprop = self._npXent(np.array(features), np.array(labels))
     # manually reshape loss

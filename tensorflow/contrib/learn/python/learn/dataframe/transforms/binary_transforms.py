@@ -92,7 +92,7 @@ class ScalarBinaryTransform(transform.TensorFlowTransform):
     if isinstance(input_tensor, sparse_tensor.SparseTensor):
       result = sparse_tensor.SparseTensor(input_tensor.indices,
                                           self._apply_op(input_tensor.values),
-                                          input_tensor.shape)
+                                          input_tensor.dense_shape)
     else:
       result = self._apply_op(input_tensor)
 

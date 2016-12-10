@@ -348,13 +348,17 @@ class VariablesTest(tf.test.TestCase):
           e_init = tf.constant(12)
         e = tf.contrib.framework.variable('e', initializer=e_init)
       self.assertDeviceEqual(a.device, 'cpu:0')
-      self.assertDeviceEqual(a.initial_value.device, 'cpu:0')
+      self.assertEqual(a.initial_value.op.colocation_groups(),
+                       a.op.colocation_groups())
       self.assertDeviceEqual(b.device, 'cpu:1')
-      self.assertDeviceEqual(b.initial_value.device, 'cpu:1')
+      self.assertEqual(b.initial_value.op.colocation_groups(),
+                       b.op.colocation_groups())
       self.assertDeviceEqual(c.device, 'cpu:12')
-      self.assertDeviceEqual(c.initial_value.device, 'cpu:12')
+      self.assertEqual(c.initial_value.op.colocation_groups(),
+                       c.op.colocation_groups())
       self.assertDeviceEqual(d.device, 'cpu:2')
-      self.assertDeviceEqual(d.initial_value.device, 'cpu:2')
+      self.assertEqual(d.initial_value.op.colocation_groups(),
+                       d.op.colocation_groups())
       self.assertDeviceEqual(e.device, 'cpu:3')
       self.assertDeviceEqual(e.initial_value.device, 'cpu:99')
 
@@ -371,13 +375,17 @@ class VariablesTest(tf.test.TestCase):
       # The values below highlight how the replica_device_setter puts initial
       # values on the worker job, and how it merges explicit devices.
       self.assertDeviceEqual(a.device, '/job:ps/task:0/cpu:0')
-      self.assertDeviceEqual(a.initial_value.device, a.device)
+      self.assertEqual(a.initial_value.op.colocation_groups(),
+                       a.op.colocation_groups())
       self.assertDeviceEqual(b.device, '/job:ps/task:1/cpu:0')
-      self.assertDeviceEqual(b.initial_value.device, b.device)
+      self.assertEqual(b.initial_value.op.colocation_groups(),
+                       b.op.colocation_groups())
       self.assertDeviceEqual(c.device, '/job:ps/task:0/cpu:12')
-      self.assertDeviceEqual(c.initial_value.device, c.device)
+      self.assertEqual(c.initial_value.op.colocation_groups(),
+                       c.op.colocation_groups())
       self.assertDeviceEqual(d.device, '/job:ps/task:1/cpu:0')
-      self.assertDeviceEqual(d.initial_value.device, d.device)
+      self.assertEqual(d.initial_value.op.colocation_groups(),
+                       d.op.colocation_groups())
       self.assertDeviceEqual(e.device, '/job:ps/task:0/cpu:0')
       self.assertDeviceEqual(e.initial_value.device, '/job:worker/cpu:99')
 
@@ -397,13 +405,17 @@ class VariablesTest(tf.test.TestCase):
       # The values below highlight how the VariableDeviceChooser puts initial
       # values on the same device as the variable job.
       self.assertDeviceEqual(a.device, '/job:ps/task:0/cpu:0')
-      self.assertDeviceEqual(a.initial_value.device, a.device)
+      self.assertEqual(a.initial_value.op.colocation_groups(),
+                       a.op.colocation_groups())
       self.assertDeviceEqual(b.device, '/job:ps/task:1/cpu:0')
-      self.assertDeviceEqual(b.initial_value.device, b.device)
+      self.assertEqual(b.initial_value.op.colocation_groups(),
+                       b.op.colocation_groups())
       self.assertDeviceEqual(c.device, '/cpu:12')
-      self.assertDeviceEqual(c.initial_value.device, c.device)
+      self.assertEqual(c.initial_value.op.colocation_groups(),
+                       c.op.colocation_groups())
       self.assertDeviceEqual(d.device, '/job:ps/task:0/cpu:0')
-      self.assertDeviceEqual(d.initial_value.device, d.device)
+      self.assertEqual(d.initial_value.op.colocation_groups(),
+                       d.op.colocation_groups())
       self.assertDeviceEqual(e.device, '/job:ps/task:1/cpu:0')
       self.assertDeviceEqual(e.initial_value.device, '/cpu:99')
 
@@ -423,13 +435,17 @@ class VariablesTest(tf.test.TestCase):
       # The values below highlight how the VariableDeviceChooser puts initial
       # values on the same device as the variable job.
       self.assertDeviceEqual(a.device, '/gpu:0')
-      self.assertDeviceEqual(a.initial_value.device, a.device)
+      self.assertEqual(a.initial_value.op.colocation_groups(),
+                       a.op.colocation_groups())
       self.assertDeviceEqual(b.device, '/gpu:0')
-      self.assertDeviceEqual(b.initial_value.device, b.device)
+      self.assertEqual(b.initial_value.op.colocation_groups(),
+                       b.op.colocation_groups())
       self.assertDeviceEqual(c.device, '/cpu:12')
-      self.assertDeviceEqual(c.initial_value.device, c.device)
+      self.assertEqual(c.initial_value.op.colocation_groups(),
+                       c.op.colocation_groups())
       self.assertDeviceEqual(d.device, '/gpu:0')
-      self.assertDeviceEqual(d.initial_value.device, d.device)
+      self.assertEqual(d.initial_value.op.colocation_groups(),
+                       d.op.colocation_groups())
       self.assertDeviceEqual(e.device, '/gpu:0')
       self.assertDeviceEqual(e.initial_value.device, '/cpu:99')
 
@@ -502,9 +518,11 @@ class ModelVariablesTest(tf.test.TestCase):
         a = tf.contrib.framework.model_variable('a', [5])
         b = tf.contrib.framework.model_variable('b', [20])
         self.assertDeviceEqual(a.device, '/cpu:0')
-        self.assertDeviceEqual(a.initial_value.device, '/cpu:0')
+        self.assertEqual(a.initial_value.op.colocation_groups(),
+                         a.op.colocation_groups())
         self.assertDeviceEqual(b.device, '/cpu:1')
-        self.assertDeviceEqual(b.initial_value.device, '/cpu:1')
+        self.assertEqual(b.initial_value.op.colocation_groups(),
+                         b.op.colocation_groups())
 
   def testVariableWithVariableDeviceChooser(self):
 
@@ -515,9 +533,11 @@ class ModelVariablesTest(tf.test.TestCase):
         a = tf.contrib.framework.model_variable('a', [5])
         b = tf.contrib.framework.model_variable('b', [20])
         self.assertDeviceEqual(a.device, 'cpu:0')
-        self.assertDeviceEqual(a.initial_value.device, a.device)
+        self.assertEqual(a.initial_value.op.colocation_groups(),
+                         a.op.colocation_groups())
         self.assertDeviceEqual(b.device, 'cpu:0')
-        self.assertDeviceEqual(b.initial_value.device, b.device)
+        self.assertEqual(a.initial_value.op.colocation_groups(),
+                         a.op.colocation_groups())
 
 
 class GetVariablesCollections(tf.test.TestCase):

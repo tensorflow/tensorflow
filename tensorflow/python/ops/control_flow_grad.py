@@ -154,10 +154,7 @@ def _ExitGrad(op, grad):
       raise TypeError("Type %s not supported" % type(grad))
     grad_ctxt.AddName(grad.values.name)
     grad_ctxt.AddName(grad.indices.name)
-    if isinstance(grad, ops.IndexedSlices):
-      dense_shape = grad.dense_shape
-    else:
-      dense_shape = grad.shape
+    dense_shape = grad.dense_shape
     if dense_shape is not None:
       grad_ctxt.AddName(dense_shape.name)
   enter_fn = control_flow_ops._Enter  # pylint: disable=protected-access

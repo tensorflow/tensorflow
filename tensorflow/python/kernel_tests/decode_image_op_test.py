@@ -22,13 +22,14 @@ import os.path
 import numpy as np
 import tensorflow as tf
 
+# Double-quote usage here is intentional to make internal path rewriting easier.
+prefix_path = os.path.join("tensorflow", "core", "lib")
 
 class DecodeImageOpTest(tf.test.TestCase):
 
   def testGif(self):
     # Read some real GIFs
-    path = os.path.join('tensorflow', 'core', 'lib', 'gif', 'testdata', 
-                        'scan.gif')
+    path = os.path.join(prefix_path, 'gif', 'testdata', 'scan.gif')
     WIDTH = 20
     HEIGHT = 40
     STRIDE = 5
@@ -63,8 +64,7 @@ class DecodeImageOpTest(tf.test.TestCase):
 
   def testJpeg(self):
     # Read a real jpeg and verify shape
-    path = os.path.join('tensorflow', 'core', 'lib', 'jpeg', 'testdata',
-                        'jpeg_merge_test1.jpg')
+    path = os.path.join(prefix_path, 'jpeg', 'testdata', 'jpeg_merge_test1.jpg')
     with self.test_session(use_gpu=True) as sess:
       jpeg0 = tf.read_file(path)
       image0 = tf.image.decode_image(jpeg0)
@@ -76,13 +76,12 @@ class DecodeImageOpTest(tf.test.TestCase):
 
   def testPng(self):
     # Read some real PNGs, converting to different channel numbers
-    prefix = ['tensorflow', 'core', 'lib', 'png', 'testdata']
     inputs = [(1, 'lena_gray.png')]
     for channels_in, filename in inputs:
       for channels in 0, 1, 3:
         with self.test_session(use_gpu=True) as sess:
-          path = prefix + [filename]
-          png0 = tf.read_file(os.path.join(*path))
+          path = os.path.join(prefix_path, 'png', 'testdata', filename)
+          png0 = tf.read_file(path)
           image0 = tf.image.decode_image(png0, channels=channels)
           image1 = tf.image.decode_png(png0, channels=channels)
           png0, image0, image1 = sess.run([png0, image0, image1])

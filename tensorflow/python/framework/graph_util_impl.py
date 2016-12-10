@@ -176,7 +176,8 @@ def tensor_shape_from_node_def_name(graph, input_name):
 
 
 def convert_variables_to_constants(sess, input_graph_def, output_node_names,
-                                   variable_names_whitelist=None):
+                                   variable_names_whitelist=None,
+                                   variable_names_blacklist=None):
   """Replaces all the variables in a graph with constants of the same values.
 
   If you have a trained graph containing Variable ops, it can be convenient to
@@ -190,6 +191,8 @@ def convert_variables_to_constants(sess, input_graph_def, output_node_names,
     output_node_names: List of name strings for the result nodes of the graph.
     variable_names_whitelist: The set of variable names to convert (by default,
                               all variables are converted).
+    variable_names_blacklist: The set of variable names to omit converting
+                              to constants.
 
   Returns:
     GraphDef containing a simplified version of the original.
@@ -204,8 +207,10 @@ def convert_variables_to_constants(sess, input_graph_def, output_node_names,
   for node in inference_graph.node:
     if node.op == "Variable":
       variable_name = node.name
-      if (variable_names_whitelist is not None and
-          variable_name not in variable_names_whitelist):
+      if ((variable_names_whitelist is not None and
+           variable_name not in variable_names_whitelist) or
+          (variable_names_blacklist is not None and
+           variable_name in variable_names_blacklist)):
         continue
       variable_dict_names.append(variable_name)
       variable_names.append(variable_name + ":0")

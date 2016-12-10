@@ -24,6 +24,7 @@ import os
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -159,6 +160,25 @@ def _CheckAtLeast3DImage(image):
                      image.get_shape())
 
 
+def fix_image_flip_shape(image, result):
+  """Set the shape to 3 dimensional if we don't know anything else.
+
+  Args:
+    image: original image size
+    result: flipped or transformed image
+
+  Returns:
+    An image whose shape is at least None,None,None.
+  """
+
+  image_shape = image.get_shape()
+  if image_shape == tensor_shape.unknown_shape():
+    result.set_shape([None, None, None])
+  else:
+    result.set_shape(image_shape)
+  return result
+
+
 def random_flip_up_down(image, seed=None):
   """Randomly flips an image vertically (upside down).
 
@@ -180,8 +200,10 @@ def random_flip_up_down(image, seed=None):
   image = ops.convert_to_tensor(image, name='image')
   _Check3DImage(image, require_static=False)
   uniform_random = random_ops.random_uniform([], 0, 1.0, seed=seed)
-  mirror = math_ops.less(array_ops.pack([uniform_random, 1.0, 1.0]), 0.5)
-  return array_ops.reverse(image, mirror)
+  mirror_cond = math_ops.less(uniform_random, .5)
+  stride = array_ops.where(mirror_cond, -1, 1)
+  result = image[::stride, :, :]
+  return fix_image_flip_shape(image, result)
 
 
 def random_flip_left_right(image, seed=None):
@@ -205,8 +227,10 @@ def random_flip_left_right(image, seed=None):
   image = ops.convert_to_tensor(image, name='image')
   _Check3DImage(image, require_static=False)
   uniform_random = random_ops.random_uniform([], 0, 1.0, seed=seed)
-  mirror = math_ops.less(array_ops.pack([1.0, uniform_random, 1.0]), 0.5)
-  return array_ops.reverse(image, mirror)
+  mirror_cond = math_ops.less(uniform_random, .5)
+  stride = array_ops.where(mirror_cond, -1, 1)
+  result = image[:, ::stride, :]
+  return fix_image_flip_shape(image, result)
 
 
 def flip_left_right(image):
@@ -228,7 +252,7 @@ def flip_left_right(image):
   """
   image = ops.convert_to_tensor(image, name='image')
   _Check3DImage(image, require_static=False)
-  return array_ops.reverse(image, [False, True, False])
+  return fix_image_flip_shape(image, image[:, ::-1, :])
 
 
 def flip_up_down(image):
@@ -250,7 +274,7 @@ def flip_up_down(image):
   """
   image = ops.convert_to_tensor(image, name='image')
   _Check3DImage(image, require_static=False)
-  return array_ops.reverse(image, [True, False, False])
+  return fix_image_flip_shape(image, array_ops.reverse_v2(image, [0]))
 
 
 def rot90(image, k=1, name=None):
@@ -272,13 +296,13 @@ def rot90(image, k=1, name=None):
     k = math_ops.mod(k, 4)
 
     def _rot90():
-      return array_ops.transpose(array_ops.reverse(image, [False, True, False]),
+      return array_ops.transpose(array_ops.reverse_v2(image, [1]),
                                  [1, 0, 2])
     def _rot180():
-      return array_ops.reverse(image, [True, True, False])
+      return array_ops.reverse_v2(image, [0, 1])
     def _rot270():
-      return array_ops.reverse(array_ops.transpose(image, [1, 0, 2]),
-                               [False, True, False])
+      return array_ops.reverse_v2(array_ops.transpose(image, [1, 0, 2]),
+                                  [1])
     cases = [(math_ops.equal(k, 1), _rot90),
              (math_ops.equal(k, 2), _rot180),
              (math_ops.equal(k, 3), _rot270)]
@@ -1018,7 +1042,7 @@ def grayscale_to_rgb(images, name=None):
     shape_list = (
         [array_ops.ones(rank_1,
                         dtype=dtypes.int32)] + [array_ops.expand_dims(3, 0)])
-    multiples = array_ops.concat(0, shape_list)
+    multiples = array_ops.concat_v2(shape_list, 0)
     rgb = array_ops.tile(images, multiples, name=name)
     rgb.set_shape(images.get_shape()[:-1].concatenate([3]))
     return rgb
@@ -1101,7 +1125,7 @@ def adjust_hue(image, delta, name=None):
       # floating point number since delta is [-0.5, 0.5].
       hue = math_ops.mod(hue + (delta + 1.), 1.)
 
-      hsv_altered = array_ops.concat(2, [hue, saturation, value])
+      hsv_altered = array_ops.concat_v2([hue, saturation, value], 2)
       rgb_altered = gen_image_ops.hsv_to_rgb(hsv_altered)
     else:
       rgb_altered = gen_image_ops.adjust_hue(flt_image, delta)
@@ -1177,7 +1201,7 @@ def adjust_saturation(image, saturation_factor, name=None):
     saturation *= saturation_factor
     saturation = clip_ops.clip_by_value(saturation, 0.0, 1.0)
 
-    hsv_altered = array_ops.concat(2, [hue, saturation, value])
+    hsv_altered = array_ops.concat_v2([hue, saturation, value], 2)
     rgb_altered = gen_image_ops.hsv_to_rgb(hsv_altered)
 
     return convert_image_dtype(rgb_altered, orig_dtype)

@@ -903,7 +903,7 @@ class WhereTest(Base):
     where_lt = ops.where(condition, x, y)
 
     golden_lt = core.LabeledTensor(
-        tf.concat(0, [tf.ones(3), tf.zeros(2)]), ['x'])
+        tf.concat_v2([tf.ones(3), tf.zeros(2)], 0), ['x'])
     self.assertLabeledTensorsEqual(where_lt, golden_lt)
 
   def test_mismatched_axes(self):

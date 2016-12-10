@@ -58,6 +58,7 @@ class MockQueueRunner : public RunnerInterface {
     coord_ = coord;
     join_counter_ = nullptr;
     thread_pool_.reset(new thread::ThreadPool(Env::Default(), "test-pool", 10));
+    stopped_ = false;
   }
 
   MockQueueRunner(Coordinator* coord, int* join_counter)
@@ -87,6 +88,10 @@ class MockQueueRunner : public RunnerInterface {
 
   void SetStatus(const Status& status) { status_ = status; }
 
+  bool IsRunning() const override { return !stopped_; };
+
+  void Stop() { stopped_ = true; }
+
  private:
   void CountThread(std::atomic<int>* counter, int until) {
     while (!coord_->ShouldStop() && counter->load() < until) {
@@ -104,6 +109,7 @@ class MockQueueRunner : public RunnerInterface {
   Status status_;
   Coordinator* coord_;
   int* join_counter_;
+  bool stopped_;
 };
 
 TEST(CoordinatorTest, TestRealStop) {
@@ -187,6 +193,16 @@ TEST(CoordinatorTest, JoinWithoutStop) {
   coord.RegisterRunner(std::move(qr));
 
   EXPECT_EQ(coord.Join().code(), Code::FAILED_PRECONDITION);
+}
+
+TEST(CoordinatorTest, AllRunnersStopped) {
+  Coordinator coord;
+  MockQueueRunner* qr = new MockQueueRunner(&coord);
+  coord.RegisterRunner(std::unique_ptr<RunnerInterface>(qr));
+
+  EXPECT_FALSE(coord.AllRunnersStopped());
+  qr->Stop();
+  EXPECT_TRUE(coord.AllRunnersStopped());
 }
 
 }  // namespace

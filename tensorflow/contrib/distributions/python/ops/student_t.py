@@ -182,7 +182,7 @@ class StudentT(distribution.Distribution):
   def _sample_n(self, n, seed=None):
     # The sampling method comes from the well known fact that if X ~ Normal(0,
     # 1), and Z ~ Chi2(df), then X / sqrt(Z / df) ~ StudentT(df).
-    shape = array_ops.concat(0, ([n], self.batch_shape()))
+    shape = array_ops.concat_v2(([n], self.batch_shape()), 0)
     normal_sample = random_ops.random_normal(
         shape, dtype=self.dtype, seed=seed)
     half = constant_op.constant(0.5, self.dtype)
@@ -214,7 +214,7 @@ class StudentT(distribution.Distribution):
   def _entropy(self):
     u = array_ops.expand_dims(self.df * self._ones(), -1)
     v = array_ops.expand_dims(self._ones(), -1)
-    beta_arg = array_ops.concat(len(u.get_shape()) - 1, [u, v]) / 2
+    beta_arg = array_ops.concat_v2([u, v], len(u.get_shape()) - 1) / 2
     half_df = 0.5 * self.df
     return ((0.5 + half_df) * (math_ops.digamma(0.5 + half_df) -
                                math_ops.digamma(half_df)) +

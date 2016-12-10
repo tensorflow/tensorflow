@@ -255,6 +255,8 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
     # 1. Add operations without their inputs.
     for node in graph_def.node:
       # Set any default attr values that aren't present.
+      if node.op not in op_dict:
+        raise ValueError('No op named %s in defined operations.' % node.op)
       op_def = op_dict[node.op]
       for attr_def in op_def.attr:
         key = attr_def.name

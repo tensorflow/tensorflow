@@ -9,12 +9,13 @@ package(default_visibility = ["//tensorflow:__subpackages__"])
 
 py_library(
     name = "learn",
-    srcs = glob([
-        "python/learn/**/*.py",
-    ]) + [
+    srcs = [
         "__init__.py",
         "python/__init__.py",
-    ],
+    ] + glob(
+        ["python/learn/**/*.py"],
+        exclude = ["python/learn/**/*_test.py"],
+    ),
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/contrib/learn/python/learn/datasets",
@@ -437,6 +438,18 @@ py_test(
         "//learning/brain/google/guitar:__subpackages__",
         "//tensorflow:__subpackages__",
     ],
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "kmeans_test",
+    size = "medium",
+    srcs = ["python/learn/estimators/kmeans_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",

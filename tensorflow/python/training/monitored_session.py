@@ -23,7 +23,6 @@ import abc
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import saver_pb2
-from tensorflow.python import summary
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -31,6 +30,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import resources
 from tensorflow.python.ops import variables
+from tensorflow.python.summary import summary
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import queue_runner
@@ -62,17 +62,22 @@ class Scaffold(object):
   object:
 
   * `saver`: A `tf.Saver` object taking care of saving the variables.  Picked
-    from and stored into the `SAVERS` collection in the graph.
+    from and stored into the `SAVERS` collection in the graph by default.
   * `init_op`: An op to run to initialize the variables.  Picked from and
-    stored into the `INIT_OP` collection in the graph.
+    stored into the `INIT_OP` collection in the graph by default.
   * `ready_op`: An op to verify that the variables are initialized.  Picked
-    from and stored into the `READY_OP` collection in the graph.
+    from and stored into the `READY_OP` collection in the graph by default.
+  * `ready_for_local_init_op`: An op to verify that global state has been
+    initialized and it is alright to run `local_init_op`.  Picked from and
+    stored into the `READY_FOR_LOCAL_INIT_OP` collection in the graph by
+    default. This is needed when the initialization of local variables depends
+    on the values of global variables.
   * `local_init_op`: An op to initialize the local variables.  Picked
-    from and stored into the `LOCAL_INIT_OP` collection in the graph.
+    from and stored into the `LOCAL_INIT_OP` collection in the graph by default.
   * `summary_op`: An op to run and merge the summaries in the graph.  Picked
-    from and stored into the `SUMMARY_OP` collection in the graph.
+    from and stored into the `SUMMARY_OP` collection in the graph by default.
   * `global_step`: A tensor containing the global step counter.  Picked
-    from and stored into the `GLOBAL_STEP` collection in the graph.
+    from and stored into the `GLOBAL_STEP` collection in the graph by default.
 
   You can also pass the following additional pieces to the constructor:
 
@@ -89,6 +94,7 @@ class Scaffold(object):
                init_feed_dict=None,
                init_fn=None,
                ready_op=None,
+               ready_for_local_init_op=None,
                local_init_op=None,
                summary_op=None,
                saver=None):
@@ -101,9 +107,14 @@ class Scaffold(object):
       init_fn: Optional function to use to initialize the model after running
         the init_op.  Will be called as `init_fn(scaffold, session)`.
       ready_op: Optional op to verify that the variables are initialized.  Must
-        return an empty scalar string tensor when the variables are
-        initialized, or a non-empty one listing the names of the
-        non-initialized variables.
+        return an empty 1D string tensor when the variables are initialized, or
+        a non-empty 1D string tensor listing the names of the non-initialized
+        variables.
+      ready_for_local_init_op: Optional op to verify that the global variables
+        are initialized and `local_init_op` can be run. Must return an empty
+        1D string tensor when the global variables are initialized, or a
+        non-empty 1D string tensor listing the names of the non-initialized
+        global variables.
       local_init_op: Optional op to initialize local variables.
       summary_op: Optional op to gather all summaries.  Must return a scalar
         string tensor containing a serialized `Summary` proto.
@@ -119,6 +130,7 @@ class Scaffold(object):
 
     self._init_op = init_op
     self._ready_op = ready_op
+    self._ready_for_local_init_op = ready_for_local_init_op
     self._local_init_op = local_init_op
     self._summary_op = summary_op
     self._saver = saver
@@ -137,13 +149,20 @@ class Scaffold(object):
           default_init_op)
     if self._ready_op is None:
       def default_ready_op():
-        return array_ops.concat(
-            0,
-            [variables.report_uninitialized_variables(),
-             resources.report_uninitialized_resources()])
+        return array_ops.concat_v2([
+            variables.report_uninitialized_variables(),
+            resources.report_uninitialized_resources()
+        ], 0)
       self._ready_op = Scaffold.get_or_default(
           'ready_op', ops.GraphKeys.READY_OP,
           default_ready_op)
+    if self._ready_for_local_init_op is None:
+      def default_ready_for_local_init_op():
+        return variables.report_uninitialized_variables(
+            variables.global_variables())
+      self._ready_for_local_init_op = Scaffold.get_or_default(
+          'ready_for_local_init_op', ops.GraphKeys.READY_FOR_LOCAL_INIT_OP,
+          default_ready_for_local_init_op)
     if self._local_init_op is None:
       self._local_init_op = Scaffold.get_or_default(
           'local_init_op', ops.GraphKeys.LOCAL_INIT_OP,
@@ -176,6 +195,10 @@ class Scaffold(object):
   @property
   def ready_op(self):
     return self._ready_op
+
+  @property
+  def ready_for_local_init_op(self):
+    return self._ready_for_local_init_op
 
   @property
   def local_init_op(self):
@@ -326,6 +349,7 @@ class ChiefSessionCreator(SessionCreator):
     self._session_manager = sm.SessionManager(
         local_init_op=self._scaffold.local_init_op,
         ready_op=self._scaffold.ready_op,
+        ready_for_local_init_op=self._scaffold.ready_for_local_init_op,
         graph=ops.get_default_graph())
     return self._session_manager
 
@@ -365,6 +389,7 @@ class WorkerSessionCreator(SessionCreator):
     self._session_manager = sm.SessionManager(
         local_init_op=self._scaffold.local_init_op,
         ready_op=self._scaffold.ready_op,
+        ready_for_local_init_op=self._scaffold.ready_for_local_init_op,
         graph=ops.get_default_graph())
     return self._session_manager
 
@@ -374,67 +399,18 @@ class WorkerSessionCreator(SessionCreator):
         self._master, config=self._config)
 
 
-class MonitoredSession(object):
-  """Session-like object that handles initialization, recovery and hooks.
+class _MonitoredSession(object):
+  """See `MonitoredSession` or `SingularMonitoredSession`."""
 
-  Example usage:
-  ```python
-  saver_hook = CheckpointSaverHook(...)
-  summary_hook = SummaryHook(...)
-  with MonitoredSession(session_creator=ChiefSessionCreator(...),
-                        hooks=[saver_hook, summary_hook]) as sess:
-    while not sess.should_stop():
-      sess.run(train_op)
-  ```
-
-  Initialization: At creation time the monitored session does following things
-  in given order:
-
-  * calls `hook.begin()`
-  * finalizes the graph via `scaffold.finalize()`
-  * create session
-  * initializes the model via initialization ops provided by `Scaffold`
-  * restores variables if a checkpoint exists
-  * launches queue runners
-
-  Run: When `run()` is called, the monitored session does following things:
-
-  * calls `hook.before_run()`
-  * calls TensorFlow `session.run()` with merged fetches and feed_dict
-  * calls `hook.after_run()`
-  * returns result of `session.run()` asked by user
-  * if `AbortedError` occurs, it recovers or reinitializes the session before
-    executing the run() call again
-
-
-  Exit: At the `close()`, the monitored session does following things in order:
-
-  * calls `hook.end()`
-  * closes the queue runners and the session
-  * surpresses `OutOfRange` error which indicates that all inputs have been
-    processed if the monitored_session is used as a context.
-
-  How to set `tf.Session` arguments:
-  * In most cases you can set session arguments as follows:
-    ```python
-    MonitoredSession(
-      session_creator=ChiefSessionCreator(master=..., config=...))
-    ```
-  * In distributed setting for a non-chief worker, you can use following:
-    ```python
-    MonitoredSession(
-      session_creator=WorkerSessionCreator(master=..., config=...))
-    ```
-  See `MonitoredTrainingSession` for an example usage based on chief or worker.
-  """
-
-  def __init__(self, session_creator=None, hooks=None):
-    """Creates a MonitoredSession.
+  def __init__(self, session_creator, hooks, should_recover):
+    """Sets up a Monitored or Hooked Session.
 
     Args:
       session_creator: A factory object to create session. Typically a
-        `ChiefSessionCreator` which is the default one.
+        `ChiefSessionCreator` or a `WorkerSessionCreator`.
       hooks: An iterable of `SessionRunHook' objects.
+      should_recover: A bool. Indicates whether to recover from `AbortedError`
+        or not.
     """
     self._graph_was_finalized = ops.get_default_graph().finalized
     self._hooks = hooks or []
@@ -444,14 +420,17 @@ class MonitoredSession(object):
     self._coordinated_creator = self._CoordinatedSessionCreator(
         session_creator=session_creator or ChiefSessionCreator(),
         hooks=self._hooks)
-    self._sess = _RecoverableSession(self._coordinated_creator)
+    if should_recover:
+      self._sess = _RecoverableSession(self._coordinated_creator)
+    else:
+      self._sess = self._coordinated_creator.create_session()
 
   @property
   def graph(self):
     """The graph that was launched in this session."""
-    if self._coordinated_creator.tf_sess is None:
+    if self._tf_sess() is None:
       return None
-    return self._coordinated_creator.tf_sess.graph
+    return self._tf_sess().graph
 
   def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
     """Run ops in the monitored session.
@@ -531,6 +510,157 @@ class MonitoredSession(object):
       A boolean.
     """
     return self._coordinated_creator.tf_sess is None
+
+  def _tf_sess(self):
+    return self._coordinated_creator.tf_sess
+
+
+class MonitoredSession(_MonitoredSession):
+  """Session-like object that handles initialization, recovery and hooks.
+
+  Example usage:
+  ```python
+  saver_hook = CheckpointSaverHook(...)
+  summary_hook = SummaryHook(...)
+  with MonitoredSession(session_creator=ChiefSessionCreator(...),
+                        hooks=[saver_hook, summary_hook]) as sess:
+    while not sess.should_stop():
+      sess.run(train_op)
+  ```
+
+  Initialization: At creation time the monitored session does following things
+  in given order:
+
+  * calls `hook.begin()` for each given hook
+  * finalizes the graph via `scaffold.finalize()`
+  * create session
+  * initializes the model via initialization ops provided by `Scaffold`
+  * restores variables if a checkpoint exists
+  * launches queue runners
+
+  Run: When `run()` is called, the monitored session does following things:
+
+  * calls `hook.before_run()`
+  * calls TensorFlow `session.run()` with merged fetches and feed_dict
+  * calls `hook.after_run()`
+  * returns result of `session.run()` asked by user
+  * if `AbortedError` occurs, it recovers or reinitializes the session before
+    executing the run() call again
+
+
+  Exit: At the `close()`, the monitored session does following things in order:
+
+  * calls `hook.end()`
+  * closes the queue runners and the session
+  * surpresses `OutOfRange` error which indicates that all inputs have been
+    processed if the monitored_session is used as a context.
+
+  How to set `tf.Session` arguments:
+  * In most cases you can set session arguments as follows:
+    ```python
+    MonitoredSession(
+      session_creator=ChiefSessionCreator(master=..., config=...))
+    ```
+  * In distributed setting for a non-chief worker, you can use following:
+    ```python
+    MonitoredSession(
+      session_creator=WorkerSessionCreator(master=..., config=...))
+    ```
+  See `MonitoredTrainingSession` for an example usage based on chief or worker.
+
+  Args:
+    session_creator: A factory object to create session. Typically a
+      `ChiefSessionCreator` which is the default one.
+    hooks: An iterable of `SessionRunHook' objects.
+
+  Returns:
+    A MonitoredSession object.
+  """
+
+  def __init__(self, session_creator=None, hooks=None):
+    super(MonitoredSession, self).__init__(
+        session_creator, hooks, should_recover=True)
+
+
+class SingularMonitoredSession(_MonitoredSession):
+  """Session-like object that handles initialization, restoring, and hooks.
+
+  Please note that this utility is not recommended for distributed settings.
+  For distributed settings, please use `tf.train.MonitoredSession`. The
+  differences between `MonitoredSession` and `SingularMonitoredSession` are:
+  * `MonitoredSession` handles `AbortedError` for distributed settings,
+    but `SingularMonitoredSession` does not.
+  * `MonitoredSession` can be created in `chief` or `worker` modes.
+    `SingularMonitoredSession` is always created as `chief`.
+  * You can access the raw `tf.Session` object used by
+    `SingularMonitoredSession`, whereas in MonitoredSession the raw session is
+    private. This can be used:
+    - To `run` without hooks.
+    - To save and restore.
+  * All other functionality is identical.
+
+  Example usage:
+  ```python
+  saver_hook = CheckpointSaverHook(...)
+  summary_hook = SummaryHook(...)
+  with SingularMonitoredSession(hooks=[saver_hook, summary_hook]) as sess:
+    while not sess.should_stop():
+      sess.run(train_op)
+  ```
+
+  Initialization: At creation time the hooked session does following things
+  in given order:
+
+  * calls `hook.begin()` for each given hook
+  * finalizes the graph via `scaffold.finalize()`
+  * create session
+  * initializes the model via initialization ops provided by `Scaffold`
+  * restores variables if a checkpoint exists
+  * launches queue runners
+
+  Run: When `run()` is called, the hooked session does following things:
+
+  * calls `hook.before_run()`
+  * calls TensorFlow `session.run()` with merged fetches and feed_dict
+  * calls `hook.after_run()`
+  * returns result of `session.run()` asked by user
+
+  Exit: At the `close()`, the hooked session does following things in order:
+
+  * calls `hook.end()`
+  * closes the queue runners and the session
+  * surpresses `OutOfRange` error which indicates that all inputs have been
+    processed if the `SingularMonitoredSession` is used as a context.
+  """
+
+  def __init__(self,
+               hooks=None,
+               scaffold=None,
+               master='',
+               config=None,
+               checkpoint_dir=None):
+    """Creates a SingularMonitoredSession.
+
+    Args:
+      hooks: An iterable of `SessionRunHook' objects.
+      scaffold: A `Scaffold` used for gathering or building supportive ops. If
+        not specified a default one is created. It's used to finalize the graph.
+      master: `String` representation of the TensorFlow master to use.
+      config: `ConfigProto` proto used to configure the session.
+      checkpoint_dir: A string.  Optional path to a directory where to restore
+        variables.
+    """
+    session_creator = ChiefSessionCreator(
+        scaffold=scaffold,
+        master=master,
+        config=config,
+        checkpoint_dir=checkpoint_dir)
+    super(SingularMonitoredSession, self).__init__(
+        session_creator, hooks, should_recover=False)
+
+  def raw_session(self):
+    """Returns underlying `TensorFlow.Session` object."""
+    return self._tf_sess()
 
 
 class _WrappedSession(object):
@@ -795,5 +925,5 @@ class _HookedSession(_WrappedSession):
         options.output_partition_graphs,
         incoming_options.output_partition_graphs)
 
-    options.debug_tensor_watch_opts.extend(
-        incoming_options.debug_tensor_watch_opts)
+    options.debug_options.debug_tensor_watch_opts.extend(
+        incoming_options.debug_options.debug_tensor_watch_opts)

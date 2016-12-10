@@ -74,11 +74,6 @@ class DsoLoader {
   // stripped off of the path.
   static string GetBinaryDirectory(bool strip_executable_name);
 
-  // Returns the location of the runfiles directory.
-  // * Manual invocation gets the runfiles as a relative path to the current
-  //   executable.
-  static string GetRunfilesDirectory();
-
   // Invokes realpath on the original path; updates candidate and returns true
   // if it succeeds (i.e. a file exists at the path); otherwise, returns false.
   static bool TrySymbolicDereference(string* candidate);

@@ -37,26 +37,13 @@ class LinearOperatorTriLTest(
     return [tf.float32, tf.float64]
 
   def _operator_and_mat_and_feed_dict(self, shape, dtype, use_placeholder):
-    shape = list(shape)
-    diag_shape = shape[:-1]
-
-    # Upper triangle will be ignored.
+    # Upper triangle will be nonzero, but ignored.
     # Use a diagonal that ensures this matrix is well conditioned.
-    tril = tf.random_normal(shape=shape, dtype=dtype.real_dtype)
-    diag = tf.random_uniform(
-        shape=diag_shape, dtype=dtype.real_dtype, minval=2., maxval=3.)
-    if dtype.is_complex:
-      tril = tf.complex(
-          tril, tf.random_normal(shape, dtype=dtype.real_dtype))
-      diag = tf.complex(
-          diag, tf.random_uniform(
-              shape=diag_shape, dtype=dtype.real_dtype, minval=2., maxval=3.))
-
-    tril = tf.matrix_set_diag(tril, diag)
-
-    tril_ph = tf.placeholder(dtype=dtype)
+    tril = linear_operator_test_util.random_tril_matrix(
+        shape, dtype=dtype, force_well_conditioned=True, remove_upper=False)
 
     if use_placeholder:
+      tril_ph = tf.placeholder(dtype=dtype)
       # Evaluate the tril here because (i) you cannot feed a tensor, and (ii)
       # tril is random and we want the same value used for both mat and
       # feed_dict.
@@ -88,7 +75,7 @@ class LinearOperatorTriLTest(
         operator.assert_non_singular().run()
 
   def test_is_x_flags(self):
-    # Matrix with one two positive eigenvalues.
+    # Matrix with two positive eigenvalues.
     tril = [[1., 0.], [1., 1.]]
     operator = linalg.LinearOperatorTriL(
         tril,

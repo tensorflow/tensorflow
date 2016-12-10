@@ -60,7 +60,7 @@ def build_graph(device, input_shape, variable, num_inputs, axis, grad):
             ]) for _ in range(num_inputs)
         ]
 
-    outputs = [tf.concat(axis, inputs) for _ in range(100)]
+    outputs = [tf.concat_v2(inputs, axis) for _ in range(100)]
     if grad:
       return tf.group(*list(
           itertools.chain.from_iterable(

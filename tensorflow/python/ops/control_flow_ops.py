@@ -48,7 +48,6 @@ operators to your graph.
 @@less_equal
 @@greater
 @@greater_equal
-@@select
 @@where
 
 ## Debugging Operations
@@ -252,10 +251,10 @@ def _Enter(data, frame_name, is_constant=False, parallel_iterations=10,
           dense_shape.set_shape(data.dense_shape.get_shape())
       return ops.IndexedSlices(values, indices, dense_shape)
     else:
-      dense_shape = enter(data.shape, frame_name, is_constant,
+      dense_shape = enter(data.dense_shape, frame_name, is_constant,
                           parallel_iterations, name="dense_shape")
       if use_input_shape:
-        dense_shape.set_shape(data.shape.get_shape())
+        dense_shape.set_shape(data.dense_shape.get_shape())
       return sparse_tensor.SparseTensor(indices, values, dense_shape)
 
 
@@ -335,7 +334,7 @@ def switch(data, pred, dtype=None, name=None):
       else:
         dense_shape = data.dense_shape
         dense_shape_f, dense_shape_t = gen_control_flow_ops._switch(
-            data.shape, pred, name="dense_shape")
+            data.dense_shape, pred, name="dense_shape")
         return (sparse_tensor.SparseTensor(ind_f, val_f, dense_shape_f),
                 sparse_tensor.SparseTensor(ind_t, val_t, dense_shape_t))
 
@@ -1448,20 +1447,6 @@ class ControlFlowContext(object):
       outer_ctxt = outer_ctxt.outer_context
     return True
 
-  def _MaybeAddToWhileContext(self, op):
-    """Add a control dependency to the containing WhileContext.
-
-    The added control dependency ensures that the outputs of this op
-    belong to the WhileContext. Do nothing if the op is not contained
-    in a WhileContext.
-
-    Args:
-      op: An operation.
-    """
-    while_ctxt = self.GetWhileContext()
-    if while_ctxt is not None:
-      op._add_control_input(while_ctxt.GetControlPivot().op)
-
   def _MaybeRemoveExternalControlEdges(self, op):
     """Remove any external control dependency on this op."""
     while_ctxt = self.GetWhileContext()
@@ -1628,8 +1613,6 @@ class CondContext(ControlFlowContext):
     if not op.inputs:
       # Remove any external control dependency on this op
       self._MaybeRemoveExternalControlEdges(op)
-      # Add this op to the enclosing while context
-      self._MaybeAddToWhileContext(op)
       # pylint: disable=protected-access
       op._add_control_input(self._pivot.op)
       # pylint: enable=protected-access
@@ -2302,7 +2285,7 @@ class WhileContext(ControlFlowContext):
       if self.outer_context: self.outer_context.Exit()
     else:
       values_shape = array_ops.shape_internal(op.inputs[0], optimize=False)[1:]
-      values_shape = array_ops.concat(0, [[1], values_shape])
+      values_shape = array_ops.concat_v2([[1], values_shape], 0)
       values_acc = array_ops.zeros(values_shape, dtype=values.dtype)
     indices_acc = constant_op.constant([0], indices.dtype)
     shape_acc = None
@@ -2333,8 +2316,10 @@ class WhileContext(ControlFlowContext):
     switch_acc = [switch(x, self._pivot) for x in merge_acc]
 
     # The actual accumulation.
-    acc_indexed_slices = [array_ops.concat(0, [xa[1], xv])
-                          for xa, xv in zip(switch_acc[:2], [indices, values])]
+    acc_indexed_slices = [
+        array_ops.concat_v2([xa[1], xv], 0)
+        for xa, xv in zip(switch_acc[:2], [indices, values])
+    ]
     if shape_acc is not None:
       # For the shape we just keep the maximum
       acc_indexed_slices.append(
@@ -2616,7 +2601,7 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
     i0 = tf.constant(0)
     m0 = tf.ones([2, 2])
     c = lambda i, m: i < 10
-    b = lambda i, m: [i+1, tf.concat(0, [m, m])]
+    b = lambda i, m: [i+1, tf.concat_v2(0, [m, m])]
     tf.while_loop(
         c, b, loop_vars=[i0, m0],
         shape_invariants=[i0.get_shape(), tensor_shape.TensorShape([None, 2])])

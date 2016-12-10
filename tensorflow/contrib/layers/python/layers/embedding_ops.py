@@ -156,11 +156,14 @@ def safe_embedding_lookup_sparse(embedding_weights,
                                name=scope)
 
     # Reshape back from linear ids back into higher-dimensional dense result.
-    final_result = array_ops.reshape(result, array_ops.concat(0, [
-        array_ops.slice(
-            math_ops.cast(original_shape, dtypes.int32),
-            [0], [original_rank - 1]),
-        array_ops.slice(array_ops.shape(result), [1], [-1])]))
+    final_result = array_ops.reshape(
+        result,
+        array_ops.concat_v2([
+            array_ops.slice(
+                math_ops.cast(original_shape, dtypes.int32), [0],
+                [original_rank - 1]),
+            array_ops.slice(array_ops.shape(result), [1], [-1])
+        ], 0))
     final_result.set_shape(tensor_shape.unknown_shape(
         (original_rank_dim - 1).value).concatenate(result.get_shape()[1:]))
     return final_result
@@ -267,8 +270,8 @@ def scattered_embedding_lookup(params,
     result = embedding_ops.embedding_lookup(
         params, ids, partition_strategy="div", validate_indices=False)
 
-    return array_ops.reshape(result, array_ops.concat(
-        0, [values_shape, [dimension]]))
+    return array_ops.reshape(
+        result, array_ops.concat_v2([values_shape, [dimension]], 0))
 
 
 def scattered_embedding_lookup_sparse(params,
@@ -382,8 +385,8 @@ def embedding_lookup_unique(params, ids, name=None):
     unique_ids, idx = array_ops.unique(ids_flat)
     unique_embeddings = embedding_ops.embedding_lookup(params, unique_ids)
     embeds_flat = array_ops.gather(unique_embeddings, idx)
-    embed_shape = array_ops.concat(
-        0, [shape, array_ops.shape(unique_embeddings)[1:]])
+    embed_shape = array_ops.concat_v2(
+        [shape, array_ops.shape(unique_embeddings)[1:]], 0)
     embeds = array_ops.reshape(embeds_flat, embed_shape)
     embeds.set_shape(ids.get_shape().concatenate(
         unique_embeddings.get_shape()[1:]))

@@ -228,4 +228,5 @@ def bidiag_matmul(matrix, alpha, beta, adjoint_b=False, name="bidiag_matmul"):
       beta = tf.expand_dims(beta[:-1], 0)
       shape = tf.shape(matrix)
       zero_column = tf.expand_dims(tf.zeros(shape[:1], dtype=matrix.dtype), 1)
-      return matrix * alpha + tf.concat(1, [zero_column, matrix[:, :-1] * beta])
+      return matrix * alpha + tf.concat_v2([zero_column, matrix[:, :-1] * beta],
+                                           1)

@@ -45,7 +45,7 @@ def _get_linear_equations_tests(dtype_, use_static_shape_, shape_):
     a_np = np.dot(a_np.T, a_np)
     rhs_np = np.random.uniform(
         low=-1.0, high=1.0, size=shape_[0]).astype(dtype_)
-    tol = 1e-8 if dtype_ == np.float64 else 1e-4
+    tol = 1e-6 if dtype_ == np.float64 else 1e-3
     max_iter = 20
     with self.test_session() as sess:
       if use_static_shape_:

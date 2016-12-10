@@ -146,7 +146,7 @@ def _EmbeddingParamsAsPartitionedVariable(num_shards, vocab_size,
   partitioned_variable = tf.get_variable(
       "p",
       shape=[vocab_size] + shape,
-      initializer=tf.concat(0, [params[p_i.name] for p_i in p]),
+      initializer=tf.concat_v2([params[p_i.name] for p_i in p], 0),
       partitioner=tf.min_max_variable_partitioner(
           max_partitions=num_shards, min_slice_size=1))
   return p, partitioned_variable, params, feed_dict

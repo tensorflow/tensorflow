@@ -203,8 +203,8 @@ def _auc_convert_hist_to_auc(hist_true_acc, hist_false_acc, nbins):
                                        math_ops.reduce_sum(hist_false_acc))
 
   # These become delta x, delta y from the paper.
-  delta_y_t = array_ops.reverse(normed_hist_true, [True], name='delta_y_t')
-  delta_x_t = array_ops.reverse(normed_hist_false, [True], name='delta_x_t')
+  delta_y_t = array_ops.reverse_v2(normed_hist_true, [0], name='delta_y_t')
+  delta_x_t = array_ops.reverse_v2(normed_hist_false, [0], name='delta_x_t')
 
   # strict_1d_cumsum requires float32 args.
   delta_y_t = math_ops.cast(delta_y_t, dtypes.float32)

@@ -31,17 +31,10 @@ class LinearOperatorDiagTest(
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
   def _operator_and_mat_and_feed_dict(self, shape, dtype, use_placeholder):
-    shape = list(shape)
-    diag_shape = shape[:-1]
-
-    diag = tf.random_normal(diag_shape, dtype=dtype.real_dtype)
-    if dtype.is_complex:
-      diag = tf.complex(
-          diag, tf.random_normal(diag_shape, dtype=dtype.real_dtype))
-
-    diag_ph = tf.placeholder(dtype=dtype)
-
+    diag = linear_operator_test_util.random_sign_uniform(
+        shape[:-1], minval=1., maxval=2., dtype=dtype)
     if use_placeholder:
+      diag_ph = tf.placeholder(dtype=dtype)
       # Evaluate the diag here because (i) you cannot feed a tensor, and (ii)
       # diag is random and we want the same value used for both mat and
       # feed_dict.
@@ -135,7 +128,7 @@ class LinearOperatorDiagTest(
       self.assertAllEqual((2, 1, 3, 3), operator.shape)
 
       # Create a batch matrix with the broadcast shape of operator.
-      diag_broadcast = tf.concat(1, (diag, diag))
+      diag_broadcast = tf.concat_v2((diag, diag), 1)
       mat = tf.matrix_diag(diag_broadcast)
       self.assertAllEqual((2, 2, 3, 3), mat.get_shape())  # being pedantic.
 

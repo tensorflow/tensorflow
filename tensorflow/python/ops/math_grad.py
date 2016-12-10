@@ -127,7 +127,7 @@ def _ProdGrad(op, grad):
     reduced = math_ops.cast(reduction_indices, dtypes.int32)
     idx = math_ops.range(0, array_ops.rank(op.inputs[0]))
     other, _ = array_ops.setdiff1d(idx, reduced)
-    perm = array_ops.concat(0, [reduced, other])
+    perm = array_ops.concat_v2([reduced, other], 0)
     reduced_num = math_ops.reduce_prod(array_ops.gather(input_shape, reduced))
     other_num = math_ops.reduce_prod(array_ops.gather(input_shape, other))
   permuted = array_ops.transpose(op.inputs[0], perm)
@@ -155,9 +155,10 @@ def _SegmentSumGrad(op, grad):
 def _SegmentMeanGrad(op, grad):
   """Gradient for SegmentMean."""
   input_rank = array_ops.rank(op.inputs[0])
-  ones_shape = array_ops.concat(
-      0, [array_ops.shape(op.inputs[1]),
-          array_ops.fill(array_ops.expand_dims(input_rank - 1, 0), 1)])
+  ones_shape = array_ops.concat_v2([
+      array_ops.shape(op.inputs[1]),
+      array_ops.fill(array_ops.expand_dims(input_rank - 1, 0), 1)
+  ], 0)
   ones = array_ops.fill(ones_shape,
                         constant_op.constant(1, dtype=grad.dtype))
   scaled_grad = math_ops.div(grad, math_ops.segment_sum(ones, op.inputs[1]))
@@ -920,7 +921,7 @@ def _CastGrad(op, grad):
 def _FFTSizeForGrad(grad, rank):
   return math_ops.reduce_prod(
       array_ops.slice(
-          array_ops.reverse(array_ops.shape(grad), (True,)), (0,), (rank,)))
+          array_ops.reverse_v2(array_ops.shape(grad), [0]), (0,), (rank,)))
 
 
 @ops.RegisterGradient("FFT")

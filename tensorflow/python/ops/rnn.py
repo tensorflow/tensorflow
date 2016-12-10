@@ -561,8 +561,9 @@ def bidirectional_rnn(cell_fw, cell_bw, inputs,
   flat_output_fw = nest.flatten(output_fw)
   flat_output_bw = nest.flatten(output_bw)
 
-  flat_outputs = tuple(array_ops.concat(1, [fw, bw])
-                       for fw, bw in zip(flat_output_fw, flat_output_bw))
+  flat_outputs = tuple(
+      array_ops.concat_v2([fw, bw], 1)
+      for fw, bw in zip(flat_output_fw, flat_output_bw))
 
   outputs = nest.pack_sequence_as(structure=output_fw,
                                   flat_sequence=flat_outputs)
@@ -643,7 +644,7 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
         It returns a tuple instead of a single concatenated `Tensor`, unlike
         in the `bidirectional_rnn`. If the concatenated one is preferred,
         the forward and backward outputs can be concatenated as
-        `tf.concat(2, outputs)`.
+        `tf.concat_v2(outputs, 2)`.
       output_states: A tuple (output_state_fw, output_state_bw) containing
         the forward and the backward final states of bidirectional rnn.
 

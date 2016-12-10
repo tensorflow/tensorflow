@@ -567,7 +567,7 @@ class ConstantValueTest(tf.test.TestCase):
     self.assertAllClose(np_val, tf.contrib.util.constant_value(tf_val))
 
   def testUnknown(self):
-    tf_val = gen_state_ops._variable(shape=[3, 4, 7], dtype=tf.float32, 
+    tf_val = gen_state_ops._variable(shape=[3, 4, 7], dtype=tf.float32,
         name="tf_val", container="", shared_name="")
     self.assertIs(None, tf.contrib.util.constant_value(tf_val))
 
@@ -621,21 +621,18 @@ class ConstantValueTest(tf.test.TestCase):
 
   def testConcat(self):
     np_val = np.random.rand(3, 4, 7).astype(np.float32)
-    tf_val = tf.concat(
-        0, [np_val[0:1, :, :], np_val[1:2, :, :], np_val[2:3, :, :]])
+    tf_val = tf.concat_v2(
+        [np_val[0:1, :, :], np_val[1:2, :, :], np_val[2:3, :, :]], 0)
     c_val = tf.contrib.util.constant_value(tf_val)
     self.assertAllClose(np_val, c_val)
 
-    tf_val = tf.concat(
-        tf.placeholder(tf.int32),
-        [np_val[0, :, :], np_val[1, :, :], np_val[2, :, :]])
+    tf_val = tf.concat_v2([np_val[0, :, :], np_val[1, :, :], np_val[2, :, :]],
+                          tf.placeholder(tf.int32))
     c_val = tf.contrib.util.constant_value(tf_val)
     self.assertIs(None, c_val)
 
-    tf_val = tf.concat(
-        1,
-        [np_val[0, :, :], tf.placeholder(tf.float32),
-         np_val[2, :, :]])
+    tf_val = tf.concat_v2(
+        [np_val[0, :, :], tf.placeholder(tf.float32), np_val[2, :, :]], 1)
     c_val = tf.contrib.util.constant_value(tf_val)
     self.assertIs(None, c_val)
 
@@ -674,12 +671,13 @@ class ConstantValueAsShapeTest(tf.test.TestCase):
     self.assertEqual([16, 37, None], c_val.as_list())
 
   def testConcat(self):
-    tf_val = tf.concat(0, [[16, 37], tf.placeholder(tf.int32, shape=(2,))])
+    tf_val = tf.concat_v2([[16, 37], tf.placeholder(tf.int32, shape=(2,))], 0)
     c_val = tensor_util.constant_value_as_shape(tf_val)
     self.assertEqual([16, 37, None, None], c_val.as_list())
 
-    tf_val = tf.concat(0,
-                       [[16, 37], tf.placeholder(tf.int32, shape=(1,)), [48]])
+    tf_val = tf.concat_v2(
+        [[16, 37], tf.placeholder(
+            tf.int32, shape=(1,)), [48]], 0)
     c_val = tensor_util.constant_value_as_shape(tf_val)
     self.assertEqual([16, 37, None, 48], c_val.as_list())
 

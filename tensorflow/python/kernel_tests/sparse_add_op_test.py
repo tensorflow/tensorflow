@@ -85,7 +85,7 @@ class SparseAddTest(tf.test.TestCase):
           self.assertAllEqual(
               sum_out.indices, [[0, 1], [1, 0], [2, 0], [2, 1]])
           self.assertAllEqual(sum_out.values, [2, 4, 6, 8])
-          self.assertAllEqual(sum_out.shape, [3, 3])
+          self.assertAllEqual(sum_out.dense_shape, [3, 3])
 
   def testAddSelfAndNegation(self):
     with self.test_session(use_gpu=False) as sess:
@@ -98,7 +98,7 @@ class SparseAddTest(tf.test.TestCase):
       self.assertEqual(sp_sum.dense_shape.get_shape(), [2])
       self.assertAllEqual(sum_out.indices, np.empty([0, 2]))
       self.assertAllEqual(sum_out.values, [])
-      self.assertAllEqual(sum_out.shape, [3, 3])
+      self.assertAllEqual(sum_out.dense_shape, [3, 3])
 
   def testSmallValuesShouldVanish(self):
     with self.test_session(use_gpu=False) as sess:
@@ -117,7 +117,7 @@ class SparseAddTest(tf.test.TestCase):
       self.assertEqual(sp_sum.dense_shape.get_shape(), [2])
       self.assertAllEqual(sum_out.indices, [[0, 1], [2, 0]])
       self.assertAllEqual(sum_out.values, [2, 6])
-      self.assertAllEqual(sum_out.shape, [3, 3])
+      self.assertAllEqual(sum_out.dense_shape, [3, 3])
 
       # only .1 vanishes
       sp_sum = tf.sparse_add(sp_a, sp_b, thresh=0.11)
@@ -126,7 +126,7 @@ class SparseAddTest(tf.test.TestCase):
       self.assertEqual(sp_sum.dense_shape.get_shape(), [2])
       self.assertAllEqual(sum_out.indices, [[0, 1], [2, 0], [2, 1]])
       self.assertAllClose(sum_out.values, [2, 6, -.2])
-      self.assertAllEqual(sum_out.shape, [3, 3])
+      self.assertAllEqual(sum_out.dense_shape, [3, 3])
 
   def testGradients(self):
     np.random.seed(1618)  # Make it reproducible.

@@ -151,6 +151,13 @@ Same meaning as `inverse_event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.bijector.Softplus.graph_parents` {#Softplus.graph_parents}
+
+Returns this `Bijector`'s graph_parents as a Python list.
+
+
+- - -
+
 #### `tf.contrib.distributions.bijector.Softplus.inverse(y, name='inverse', **condition_kwargs)` {#Softplus.inverse}
 
 Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
@@ -274,13 +281,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.Softplus.name` {#Softplus.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Softplus.parameters` {#Softplus.parameters}
-
-Returns this `Bijector`'s parameters as a name/value dictionary.
 
 
 - - -

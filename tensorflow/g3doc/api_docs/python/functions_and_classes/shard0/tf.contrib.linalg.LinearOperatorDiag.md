@@ -1,6 +1,6 @@
 `LinearOperator` acting like a [batch] square diagonal matrix.
 
-This operator acts like a [batch] matrix `A` with shape
+This operator acts like a [batch] diagonal matrix `A` with shape
 `[B1,...,Bb, N, N]` for some `b >= 0`.  The first `b` indices index a
 batch member.  For every batch index `(i1,...,ib)`, `A[i1,...,ib, : :]` is
 an `N x N` matrix.  This matrix `A` is not materialized, but for
@@ -39,7 +39,7 @@ x = operator.solve(y)
 ==> operator.apply(x) = y
 ```
 
-### Shape compatibility
+#### Shape compatibility
 
 This operator acts on [batch] matrix with compatible shape.
 `x` is a batch matrix with compatible shape for `apply` and `solve` if
@@ -50,22 +50,22 @@ x.shape =   [C1,...,Cc] + [N, R],
 and [C1,...,Cc] broadcasts with [B1,...,Bb] to [D1,...,Dd]
 ```
 
-### Performance
+#### Performance
 
 Suppose `operator` is a `LinearOperatorDiag` of shape `[N, N]`,
 and `x.shape = [N, R]`.  Then
 
-* `operator.apply(x)` involves `N*R` multiplications.
-* `operator.solve(x)` involves `N` divisions and `N*R` multiplications.
+* `operator.apply(x)` involves `N * R` multiplications.
+* `operator.solve(x)` involves `N` divisions and `N * R` multiplications.
 * `operator.determinant()` involves a size `N` `reduce_prod`.
 
 If instead `operator` and `x` have shape `[B1,...,Bb, N, N]` and
 `[B1,...,Bb, N, R]`, every operation increases in complexity by `B1*...*Bb`.
 
-### Matrix property hints
+#### Matrix property hints
 
 This `LinearOperator` is initialized with boolean flags of the form `is_X`,
-for `X = non_singular, self_adjoint` etc...
+for `X = non_singular, self_adjoint, positive_definite`.
 These have the following meaning
 * If `is_X == True`, callers should expect the operator to have the
   property `X`.  This is a promise that should be fulfilled, but is *not* a
@@ -234,8 +234,7 @@ If this operator acts like the batch matrix `A` with
 
 ##### Returns:
 
-  Python integer if vector space dimension can be determined statically,
-    otherwise `None`.
+  `Dimension` object.
 
 
 - - -
@@ -328,8 +327,7 @@ If this operator acts like the batch matrix `A` with
 
 ##### Returns:
 
-  Python integer if vector space dimension can be determined statically,
-    otherwise `None`.
+  `Dimension` object.
 
 
 - - -

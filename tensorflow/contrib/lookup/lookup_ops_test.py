@@ -23,6 +23,8 @@ import numpy as np
 import six
 import tensorflow as tf
 
+from tensorflow.python.framework import test_util
+
 
 class HashTableOpTest(tf.test.TestCase):
 
@@ -1493,6 +1495,250 @@ class InitializeTableFromFileOpTest(tf.test.TestCase):
       out = table.lookup(input_string)
       self.assertAllEqual([0, 1, 2, -1], out.eval())
       self.assertEquals(vocab_size, table.size().eval())
+
+
+class IdTableWithHashBucketsTest(tf.test.TestCase):
+
+  def _createVocabFile(self, basename):
+    vocabulary_file = os.path.join(self.get_temp_dir(), basename)
+    with open(vocabulary_file, "w") as f:
+      f.write("\n".join(["brain", "salad", "surgery"]) + "\n")
+    return vocabulary_file
+
+  def testIdTableWithHashBucketsInit(self):
+    vocab_file = self._createVocabFile("feat_to_id_3.txt")
+    with self.test_session():
+      default_value = -1
+      vocab_size = 3
+      oov_buckets = 1
+      table = tf.contrib.lookup.IdTableWithHashBuckets(
+          tf.contrib.lookup.HashTable(
+              tf.contrib.lookup.TextFileIdTableInitializer(
+                  vocab_file, vocab_size=vocab_size),
+              default_value),
+          oov_buckets)
+
+      table.init.run()
+
+      input_string = tf.constant(["brain", "salad", "surgery", "UNK"])
+
+      out = table.lookup(input_string)
+      self.assertAllEqual([0, 1, 2, 3], out.eval())
+      self.assertEquals(vocab_size + oov_buckets, table.size().eval())
+
+  def testIdTableWithOnlyHashBucket(self):
+    with self.test_session():
+      oov_buckets = 5
+
+      # Set a table that only uses hash buckets, for each input value returns
+      # an id calculated by fingerprint("input") mod oov_buckets.
+      table = tf.contrib.lookup.IdTableWithHashBuckets(None, oov_buckets)
+      table.init.run()
+
+      input_string = tf.constant(["brain", "salad", "surgery"])
+
+      out = table.lookup(input_string)
+      self.assertAllEqual(
+          [
+              3,  # fingerprint("brain") mod 5.
+              1,  # fingerprint("salad") mod 5.
+              4  # fingerprint("surgery") mod 5
+          ],
+          out.eval())
+      self.assertEquals(oov_buckets, table.size().eval())
+
+  def testIdTableWithHashBucketsWithMultipleInitializers(self):
+    vocab_file = self._createVocabFile("feat_to_id_4.txt")
+    with self.test_session() as sess:
+      default_value = -1
+      vocab_size = 3
+      oov_buckets = 3
+
+      vocab_table = tf.contrib.lookup.HashTable(
+          tf.contrib.lookup.TextFileIdTableInitializer(
+              vocab_file, vocab_size=vocab_size),
+          default_value)
+      table1 = tf.contrib.lookup.IdTableWithHashBuckets(
+          vocab_table,
+          oov_buckets,
+          hasher_spec=tf.contrib.lookup.FastHashSpec,
+          name="table1")
+
+      table2 = tf.contrib.lookup.IdTableWithHashBuckets(
+          vocab_table,
+          oov_buckets,
+          hasher_spec=tf.contrib.lookup.StrongHashSpec((1, 2)),
+          name="table2")
+
+      tf.initialize_all_tables().run()
+
+      input_string = tf.constant(["fruit", "brain", "salad", "surgery", "UNK"])
+
+      out1 = table1.lookup(input_string)
+      out2 = table2.lookup(input_string)
+
+      out1, out2 = sess.run([out1, out2])
+      self.assertAllEqual([5, 0, 1, 2, 5], out1)
+      self.assertAllEqual([5, 0, 1, 2, 3], out2)
+      self.assertEquals(vocab_size + oov_buckets, table1.size().eval())
+      self.assertEquals(vocab_size + oov_buckets, table2.size().eval())
+      test_util.assert_ops_in_graph({
+          "table1_Lookup/hash_bucket": "StringToHashBucketFast",
+          "table2_Lookup/hash_bucket": "StringToHashBucketStrong",
+      }, sess.graph)
+
+  def testIdTableWithHashBucketsInitializationAcrossSessions(self):
+    vocab_file = self._createVocabFile("feat_to_id_5.txt")
+    shared_name = "across-sessions"
+    with self.test_session():
+      default_value = -1
+      vocab_size = 3
+      oov_buckets = 1
+      table1 = tf.contrib.lookup.IdTableWithHashBuckets(
+          tf.contrib.lookup.HashTable(
+              tf.contrib.lookup.TextFileIdTableInitializer(
+                  vocab_file, vocab_size=vocab_size),
+              default_value,
+              shared_name=shared_name),
+          oov_buckets)
+
+      table1.init.run()
+
+      input_string_1 = tf.constant(["brain", "salad", "surgery", "UNK"])
+
+      out1 = table1.lookup(input_string_1)
+
+      self.assertAllEqual([0, 1, 2, 3], out1.eval())
+      self.assertEquals(vocab_size + oov_buckets, table1.size().eval())
+
+    with self.test_session():
+      default_value = -1
+      vocab_size = 3
+      oov_buckets = 1
+
+      # Underlying lookup table already initialized in previous session.
+      # No need to call table2.init.run()
+      table2 = tf.contrib.lookup.IdTableWithHashBuckets(
+          tf.contrib.lookup.HashTable(
+              tf.contrib.lookup.TextFileIdTableInitializer(
+                  vocab_file, vocab_size=vocab_size),
+              default_value,
+              shared_name=shared_name),
+          oov_buckets)
+
+      input_string_2 = tf.constant(["fruit", "salad", "UNK"])
+
+      out2 = table2.lookup(input_string_2)
+
+      self.assertAllEqual([3, 1, 3], out2.eval())
+      self.assertEquals(vocab_size + oov_buckets, table2.size().eval())
+
+  def testIdTableWithHashBucketsWithMultipleInitializersDifferentDefault(self):
+    vocab_file = self._createVocabFile("feat_to_id_6.txt")
+    with self.test_session() as sess:
+      default_value1 = -1
+      vocab_size = 3
+      oov_buckets = 0
+      table1 = tf.contrib.lookup.IdTableWithHashBuckets(
+          tf.contrib.lookup.HashTable(
+              tf.contrib.lookup.TextFileIdTableInitializer(
+                  vocab_file, vocab_size=vocab_size),
+              default_value1),
+          oov_buckets)
+
+      default_value2 = -2
+      table2 = tf.contrib.lookup.IdTableWithHashBuckets(
+          tf.contrib.lookup.HashTable(
+              tf.contrib.lookup.TextFileIdTableInitializer(
+                  vocab_file, vocab_size=vocab_size),
+              default_value2),
+          oov_buckets)
+
+      tf.initialize_all_tables().run()
+
+      input_string_1 = tf.constant(["brain", "salad", "surgery", "UNK"])
+      input_string_2 = tf.constant(["fruit", "salad", "UNK"])
+
+      out1 = table1.lookup(input_string_1)
+      out2 = table2.lookup(input_string_2)
+
+      out1, out2 = sess.run([out1, out2])
+      self.assertAllEqual([0, 1, 2, -1], out1)
+      self.assertAllEqual([-2, 1, -2], out2)
+      self.assertEquals(vocab_size + oov_buckets, table1.size().eval())
+      self.assertEquals(vocab_size + oov_buckets, table2.size().eval())
+
+  def testSparseTensor(self):
+    vocab_file = self._createVocabFile("feat_to_id_7.txt")
+    input_indices = [[0, 0], [0, 1], [2, 0], [2, 2], [3, 0]]
+    input_shape = [4, 4]
+    with self.test_session() as sess:
+      sp_features = tf.SparseTensor(
+          tf.constant(input_indices, tf.int64),
+          tf.constant(["brain", "salad", "brain", "surgery", "tarkus"],
+                      tf.string), tf.constant(input_shape, tf.int64))
+
+      table = tf.contrib.lookup.IdTableWithHashBuckets(
+          tf.contrib.lookup.HashTable(
+              tf.contrib.lookup.TextFileIdTableInitializer(
+                  vocab_file, vocab_size=3),
+              -1),
+          1)
+      table.init.run()
+
+      sp_ids = table.lookup(sp_features)
+
+      self.assertAllEqual([5], sp_ids.values._shape_as_list())
+
+      sp_ids_ind, sp_ids_val, sp_ids_shape = sess.run(
+          [sp_ids.indices, sp_ids.values, sp_ids.dense_shape])
+
+      self.assertAllEqual(input_indices, sp_ids_ind)
+      self.assertAllEqual([0, 1, 0, 2, 3], sp_ids_val)
+      self.assertAllEqual(input_shape, sp_ids_shape)
+
+  def testIdTableWithHashBucketsWithInvalidHashers(self):
+    vocab_file = self._createVocabFile("feat_to_id_4.txt")
+    with self.test_session():
+      default_value = -1
+      vocab_size = 3
+      oov_buckets = 1
+      lookup_table = tf.contrib.lookup.HashTable(
+          tf.contrib.lookup.TextFileIdTableInitializer(
+              vocab_file, vocab_size=vocab_size),
+          default_value)
+
+      with self.assertRaises(TypeError):
+        tf.contrib.lookup.IdTableWithHashBuckets(
+            lookup_table, oov_buckets, hasher_spec=1)
+
+      table = tf.contrib.lookup.IdTableWithHashBuckets(
+          lookup_table,
+          oov_buckets,
+          hasher_spec=tf.contrib.lookup.HasherSpec("my-awesome-hash", None))
+
+      input_string = tf.constant(["brain", "salad", "surgery", "UNK"])
+
+      with self.assertRaises(ValueError):
+        table.lookup(input_string)
+
+      with self.assertRaises(ValueError):
+        table = tf.contrib.lookup.IdTableWithHashBuckets(
+            lookup_table,
+            oov_buckets,
+            hasher_spec=tf.contrib.lookup.StrongHashSpec([]))
+
+      with self.assertRaises(ValueError):
+        table = tf.contrib.lookup.IdTableWithHashBuckets(
+            lookup_table,
+            oov_buckets,
+            hasher_spec=tf.contrib.lookup.StrongHashSpec([1, 2, 3]))
+
+      with self.assertRaises(TypeError):
+        table = tf.contrib.lookup.IdTableWithHashBuckets(
+            lookup_table,
+            oov_buckets,
+            hasher_spec=tf.contrib.lookup.StrongHashSpec([None, 2]))
 
 
 if __name__ == "__main__":

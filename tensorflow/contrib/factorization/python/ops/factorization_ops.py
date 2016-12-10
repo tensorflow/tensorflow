@@ -746,7 +746,8 @@ class WALSModel(object):
     # We use tf.unique to achieve this reindexing. Note that this is done so
     # that the downstream kernel can assume that the input is "dense" along the
     # row dimension.
-    row_ids, col_ids = tf.split(1, 2, sp_input.indices)
+    row_ids, col_ids = tf.split(
+        value=sp_input.indices, num_or_size_splits=2, axis=1)
     update_row_indices, all_row_ids = tf.unique(row_ids[:, 0])
     update_col_indices, all_col_ids = tf.unique(col_ids[:, 0])
     col_ids = tf.expand_dims(tf.cast(all_col_ids, tf.int64), 1)
@@ -765,9 +766,9 @@ class WALSModel(object):
     col_shape = [num_rows]
     right = embedding_ops.embedding_lookup(right_factors, gather_indices,
                                            partition_strategy='div')
-    new_sp_indices = tf.concat(1, [row_ids, col_ids])
-    new_sp_shape = (tf.concat(0, [row_shape, col_shape]) if transpose_input
-                    else tf.concat(0, [col_shape, row_shape]))
+    new_sp_indices = tf.concat_v2([row_ids, col_ids], 1)
+    new_sp_shape = (tf.concat_v2([row_shape, col_shape], 0) if transpose_input
+                    else tf.concat_v2([col_shape, row_shape], 0))
     new_sp_input = tf.SparseTensor(indices=new_sp_indices,
                                    values=sp_input.values,
                                    dense_shape=new_sp_shape)

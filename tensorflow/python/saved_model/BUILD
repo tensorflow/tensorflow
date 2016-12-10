@@ -2,10 +2,7 @@
 # TensorFlow SavedModel.
 
 package(
-    default_visibility = [
-        "//tensorflow/contrib/learn:__subpackages__",
-        "//tensorflow/python/saved_model:__subpackages__",
-    ],
+    default_visibility = ["//visibility:public"],
 )
 
 licenses(["notice"])  # Apache 2.0
@@ -69,29 +66,34 @@ py_library(
     ],
 )
 
-py_test(
-    name = "saved_model_test",
-    size = "small",
-    srcs = [
-        "saved_model_test.py",
-    ],
-    srcs_version = "PY2AND3",
-    visibility = ["//visibility:private"],
-    deps = [
-        ":builder",
-        ":loader",
-        ":main_op",
-        ":tag_constants",
-        ":utils",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:training",
-        "//tensorflow/python:util",
-    ],
-)
+# Reenable target once half_plus_two_data does not run TF during build.
+# py_test(
+#     name = "saved_model_test",
+#     size = "small",
+#     srcs = [
+#         "saved_model_test.py",
+#     ],
+#     data = [
+#         "//tensorflow/python/saved_model/example:saved_model_half_plus_two_data",
+#     ],
+#     srcs_version = "PY2AND3",
+#     tags = ["manual"],
+#     visibility = ["//visibility:private"],
+#     deps = [
+#         ":builder",
+#         ":loader",
+#         ":main_op",
+#         ":tag_constants",
+#         ":utils",
+#         "//tensorflow:tensorflow_py",
+#         "//tensorflow/core:protos_all_py",
+#         "//tensorflow/python:framework",
+#         "//tensorflow/python:framework_for_generated_wrappers",
+#         "//tensorflow/python:platform",
+#         "//tensorflow/python:training",
+#         "//tensorflow/python:util",
+#     ],
+# )
 
 py_library(
     name = "utils",
