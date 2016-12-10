@@ -781,7 +781,7 @@ class RawRNNTest(tf.test.TestCase):
                               dtype=tf.float32)
       sequence_length = tf.placeholder(shape=(batch_size,), dtype=tf.int32)
       inputs_ta = tf.TensorArray(dtype=tf.float32, size=tf.shape(inputs)[0])
-      inputs_ta = inputs_ta.unpack(inputs)
+      inputs_ta = inputs_ta.unstack(inputs)
 
       cell = tf.contrib.rnn.LSTMCell(num_units, state_is_tuple=True)
 
@@ -804,7 +804,7 @@ class RawRNNTest(tf.test.TestCase):
 
       outputs_ta, final_state, _ = tf.nn.raw_rnn(
           cell, loop_fn, scope=reuse_scope)
-      outputs = outputs_ta.pack()
+      outputs = outputs_ta.stack()
 
       reuse_scope.reuse_variables()
       outputs_dynamic_rnn, final_state_dynamic_rnn = tf.nn.dynamic_rnn(
@@ -874,7 +874,7 @@ class RawRNNTest(tf.test.TestCase):
 
       inputs = np.random.randn(max_time, batch_size, input_depth)
       inputs_ta = tf.TensorArray(dtype=tf.float32, size=tf.shape(inputs)[0])
-      inputs_ta = inputs_ta.unpack(inputs)
+      inputs_ta = inputs_ta.unstack(inputs)
 
       cell = tf.contrib.rnn.LSTMCell(num_units, state_is_tuple=True)
 
@@ -909,7 +909,7 @@ class RawRNNTest(tf.test.TestCase):
 
       inputs = np.random.randn(max_time, batch_size, input_depth)
       inputs_ta = tf.TensorArray(dtype=tf.float32, size=tf.shape(inputs)[0])
-      inputs_ta = inputs_ta.unpack(inputs)
+      inputs_ta = inputs_ta.unstack(inputs)
 
       cell = tf.contrib.rnn.LSTMCell(num_units, state_is_tuple=True)
       def loop_fn(time_, cell_output, cell_state, loop_state):
@@ -935,7 +935,7 @@ class RawRNNTest(tf.test.TestCase):
 
       r = tf.nn.raw_rnn(cell, loop_fn)
       loop_state = r[-1]
-      loop_state = loop_state.pack()
+      loop_state = loop_state.stack()
       self.assertAllEqual([1, 2, 2 + 2, 4 + 3, 7 + 4], loop_state.eval())
 
   def testEmitDifferentStructureThanCellOutput(self):
@@ -947,7 +947,7 @@ class RawRNNTest(tf.test.TestCase):
 
       inputs = np.random.randn(max_time, batch_size, input_depth)
       inputs_ta = tf.TensorArray(dtype=tf.float32, size=tf.shape(inputs)[0])
-      inputs_ta = inputs_ta.unpack(inputs)
+      inputs_ta = inputs_ta.unstack(inputs)
 
       cell = tf.contrib.rnn.LSTMCell(num_units, state_is_tuple=True)
       def loop_fn(time_, cell_output, cell_state, _):
@@ -972,7 +972,7 @@ class RawRNNTest(tf.test.TestCase):
       output_ta = r[0]
       self.assertEqual(2, len(output_ta))
       self.assertEqual([tf.int32, tf.int64], [ta.dtype for ta in output_ta])
-      output = [ta.pack() for ta in output_ta]
+      output = [ta.stack() for ta in output_ta]
       output_vals = sess.run(output)
       self.assertAllEqual(
           np.ones((max_time, batch_size, 2, 3), np.int32), output_vals[0])
@@ -1010,7 +1010,7 @@ class RawRNNTest(tf.test.TestCase):
                               dtype=tf.float32)
       sequence_length = tf.placeholder(shape=(batch_size,), dtype=tf.int32)
       inputs_ta = tf.TensorArray(dtype=tf.float32, size=tf.shape(inputs)[0])
-      inputs_ta = inputs_ta.unpack(inputs)
+      inputs_ta = inputs_ta.unstack(inputs)
 
       cell = tf.contrib.rnn.LSTMCell(num_units, state_is_tuple=True)
       def loop_fn(time_, cell_output, cell_state, unused_loop_state):

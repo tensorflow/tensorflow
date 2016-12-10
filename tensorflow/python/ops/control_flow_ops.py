@@ -2977,7 +2977,7 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
       return prev_case
 
     if exclusive:
-      preds_c = array_ops.pack(preds, name="preds_c")
+      preds_c = array_ops.stack(preds, name="preds_c")
       num_true_conditions = math_ops.reduce_sum(
           math_ops.cast(preds_c, dtypes.int32), name="num_true_conds")
       at_most_one_true_condition = math_ops.less(
