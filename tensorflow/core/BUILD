@@ -1111,7 +1111,6 @@ cc_library(
         "platform/demangle.h",
         "platform/denormal.h",
         "platform/host_info.h",
-        "platform/monitoring.h",
         "platform/platform.h",
         "platform/protobuf_internal.h",
         "platform/tensor_coding.h",
