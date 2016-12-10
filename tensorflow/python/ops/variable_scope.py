@@ -662,8 +662,12 @@ class _VariableStore(object):
         init_val = initializer
         variable_dtype = None
       else:
-        init_val = lambda: initializer(
-            shape.as_list(), dtype=dtype, partition_info=partition_info)
+        if partition_info is not None:
+          init_val = lambda: initializer(
+              shape.as_list(), dtype=dtype, partition_info=partition_info)
+        else:
+          init_val = lambda: initializer(
+              shape.as_list(), dtype=dtype)
         variable_dtype = dtype.base_dtype
 
     # Create the variable.
