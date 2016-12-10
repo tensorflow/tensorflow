@@ -1626,7 +1626,7 @@ Read [the section on
 Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
 of segments.
 
-This operator is similar to the [unsorted segment sum operator] (../../api_docs/python/math_ops.md#UnsortedSegmentSum).
+This operator is similar to the [unsorted segment sum operator](../../api_docs/python/math_ops.md#UnsortedSegmentSum).
 Instead of computing the sum over segments, it computes the maximum
 such that:
 
