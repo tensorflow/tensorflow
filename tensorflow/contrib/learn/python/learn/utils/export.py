@@ -25,7 +25,6 @@ from tensorflow.contrib.framework.python.ops import variables as contrib_variabl
 from tensorflow.contrib.learn.python.learn.estimators import model_fn
 from tensorflow.contrib.session_bundle import exporter
 from tensorflow.contrib.session_bundle import gc
-from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -55,7 +54,7 @@ def _get_saver():
     else:
       saver = None
   if saver is None and variables.global_variables():
-    saver = tf_saver.Saver(write_version=saver_pb2.SaverDef.V1)
+    saver = tf_saver.Saver()
     ops.add_to_collection(ops.GraphKeys.SAVERS, saver)
   return saver
 
