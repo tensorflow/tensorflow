@@ -369,7 +369,7 @@ class GrpcWorkerService : public AsyncServiceInterface {
               recv->set_key(key);
               // TODO(zhifengc): Deal with gpu -> cpu copy.
               TensorProto* proto = recv->mutable_val();
-              val.AsProtoField(proto);
+              val.AsProtoTensorContent(proto);
             }
           }
           delete collector;
