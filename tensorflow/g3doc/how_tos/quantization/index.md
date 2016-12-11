@@ -89,7 +89,7 @@ here's how you can translate the latest GoogLeNet model into a version that uses
 eight-bit computations:
 
 ```sh
-curl http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz -o /tmp/inceptionv3.tgz
+curl http://download.tensorflow.org/models/image/imagenet/inception-v3-2016-03-01.tar.gz -o /tmp/inceptionv3.tgz
 tar xzf /tmp/inceptionv3.tgz -C /tmp/
 bazel build tensorflow/contrib/quantization/tools:quantize_graph
 bazel-bin/tensorflow/contrib/quantization/tools/quantize_graph \
