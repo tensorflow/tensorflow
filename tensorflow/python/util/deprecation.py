@@ -57,14 +57,20 @@ def _validate_deprecation_args(date, instructions):
     raise ValueError('Don\'t deprecate things without conversion instructions!')
 
 
-def _call_location(level=2):
+def _call_location():
   """Returns call location given level up from current call."""
-  stack = inspect.stack()
-  # Check that stack has enough elements.
-  if len(stack) > level:
-    location = stack[level]
-    return '%s:%d in %s.' % (location[1], location[2], location[3])
-  return '<unknown>'
+  frame = inspect.currentframe()
+  if frame:
+    # CPython internals are available, use them for performance.
+    # walk back two frames to get to deprecated function caller.
+    frame = frame.f_back
+    frame = frame.f_back
+    return '%s:%d' % (frame.f_code.co_filename, frame.f_lineno)
+  else:
+    # Slow fallback path
+    stack = inspect.stack(0)  # 0 avoids generating unused context
+    entry = stack[2]
+    return '%s:%d' % (entry[1], entry[2])
 
 
 def deprecated(date, instructions):
