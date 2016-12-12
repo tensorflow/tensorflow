@@ -5142,6 +5142,43 @@ op {
   allows_uninitialized_input: true
 }
 op {
+  name: "DebugNumericSummary"
+  input_arg {
+    name: "input"
+    description: "Input tensor, non-Reference type, float or double."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "A double tensor of shape [12], the elements of which are:\n  [0]: is initialized (1.0) or not (0.0).\n  [1]: total number of elements\n  [2]: -inf count\n  [3]: negative element count (excluding -inf)\n  [4]: zero element count\n  [5]: positive element count (excluding +inf)\n  [6]: +inf element count\n  [7]: NaN element count\nOutput elements [1:8] are all zero, if the tensor is uninitialized.\n  [8]: minimum of all non-inf and non-NaN elements.\n       If uninitialized or no such element exists: +inf.\n  [9]: maximum of all non-inf and non-NaN elements.\n       If uninitialized or no such element exists: -inf.\n  [10]: mean of all non-inf and non-NaN elements.\n        If uninitialized or no such element exists: NaN.\n  [11]: variance of all non-inf and non-NaN elements.\n        If uninitialized or no such element exists: NaN."
+    type: DT_DOUBLE
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "tensor_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "Name of the input tensor."
+  }
+  attr {
+    name: "debug_urls"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+    description: "List of URLs to debug targets, e.g.,\nfile:///foo/tfdbg_dump, grpc:://localhost:11011"
+  }
+  summary: "Debug Numeric Summary Op."
+  description: "Provide a basic summary of numeric value types, range and distribution."
+  allows_uninitialized_input: true
+}
+op {
   name: "DecodeBase64"
   input_arg {
     name: "input"
