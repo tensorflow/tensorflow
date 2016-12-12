@@ -61,7 +61,7 @@ state.
 * Allowing you to register special "filters" for tensor values, to facilitate
 the diagnosis of issues.
 
-In this example, we are registering a tensor filter called `"has_nan_or_inf"`,
+In this example, we are registering a tensor filter called `"has_inf_or_nan"`,
 which simply determines if there are any `nan` or `inf` values in any
 intermediate tensor of the graph. (This filter is a common enough use case that
 we ship it with the `debug_data` module.)
