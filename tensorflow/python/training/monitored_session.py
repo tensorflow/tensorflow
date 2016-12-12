@@ -485,6 +485,9 @@ class _MonitoredSession(object):
       # We don't want coordinator to suppress any exception.
       self.coord = coordinator.Coordinator(clean_stop_exception_types=[])
       queue_runner.start_queue_runners(sess=self.tf_sess, coord=self.coord)
+      # Inform the hooks that a new session has been created.
+      for hook in self._hooks:
+        hook.after_create_session(self.tf_sess)
       return _CoordinatedSession(
           _HookedSession(self.tf_sess, self._hooks), self.coord)
 
