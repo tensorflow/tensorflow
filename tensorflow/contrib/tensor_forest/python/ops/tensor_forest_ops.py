@@ -12,12 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Random forest implementation in tensorflow."""
-
+"""Custom ops used by tensorforest."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.tensor_forest.python import constants
-from tensorflow.contrib.tensor_forest.python import tensor_forest
-from tensorflow.contrib.tensor_forest.python.ops import tensor_forest_ops
+# go/tf-wildcard-import
+# pylint: disable=wildcard-import
+from tensorflow.contrib.tensor_forest.python.ops.gen_tensor_forest_ops import *
+# pylint: enable=wildcard-import
+from tensorflow.contrib.util import loader
+from tensorflow.python.platform import resource_loader
+
+_tensor_forest_ops = loader.load_op_library(
+    resource_loader.get_path_to_datafile('_tensor_forest_ops.so'))

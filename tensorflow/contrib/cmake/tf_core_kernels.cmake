@@ -52,7 +52,7 @@ if(tensorflow_BUILD_CONTRIB_KERNELS)
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/core/ops/tree_predictions_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/core/ops/tree_utils.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/core/ops/update_fertile_slots_op.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/data/string_to_float_op.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/data/reinterpret_string_to_float_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/hybrid/core/ops/hard_routing_function_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/hybrid/core/ops/k_feature_gradient_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/hybrid/core/ops/k_feature_routing_function_op.cc"

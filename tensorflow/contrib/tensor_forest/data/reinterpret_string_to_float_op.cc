@@ -49,25 +49,9 @@ void Evaluate(const Tensor& input_data, Tensor output_data,
   }
 }
 
-REGISTER_OP("StringToFloat")
-    .Input("input_data: string")
-    .Output("output_data: float")
-    .SetShapeFn(shape_inference::UnchangedShape)
-    .Doc(R"doc(
-   Converts byte arrays represented by strings to 32-bit
-   floating point numbers. The output numbers themselves are meaningless, and
-   should only be used in == comparisons.
-
-   input_data: A batch of string features as a 2-d tensor; `input_data[i][j]`
-     gives the j-th feature of the i-th input.
-   output_data: A tensor of the same shape as input_data but the values are
-     float32.
-
-)doc");
-
-class StringToFloat : public OpKernel {
+class ReinterpretStringToFloat : public OpKernel {
  public:
-  explicit StringToFloat(OpKernelConstruction* context)
+  explicit ReinterpretStringToFloat(OpKernelConstruction* context)
       : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
@@ -104,8 +88,7 @@ class StringToFloat : public OpKernel {
   }
 };
 
-
-REGISTER_KERNEL_BUILDER(Name("StringToFloat").Device(DEVICE_CPU),
-                        StringToFloat);
+REGISTER_KERNEL_BUILDER(Name("ReinterpretStringToFloat").Device(DEVICE_CPU),
+                        ReinterpretStringToFloat);
 
 }  // namespace tensorflow

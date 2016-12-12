@@ -7,6 +7,8 @@ package(default_visibility = [
     "//visibility:public",
 ])
 
+load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
+load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 
 filegroup(
@@ -27,6 +29,7 @@ filegroup(
         [
             "core/ops/*.cc",
             "data/*.cc",
+            "ops/*.cc",
         ],
         exclude = [
             "core/ops/*_test.cc",
@@ -64,27 +67,54 @@ py_library(
     srcs_version = "PY2AND3",
 )
 
-tf_custom_op_library(
-    name = "data/_data_ops.so",
-    srcs = [
-        "data/string_to_float_op.cc",
-    ],
-    deps = [
-        ":tree_utils",
-    ],
-)
-
 py_library(
-    name = "data_ops_lib",
+    name = "data_ops_py",
     srcs = [
         "data/data_ops.py",
     ],
+    srcs_version = "PY2AND3",
+)
+
+tf_gen_op_libs(
+    op_lib_names = ["tensor_forest_ops"],
+)
+
+tf_gen_op_wrapper_py(
+    name = "gen_tensor_forest_ops",
+    out = "python/ops/gen_tensor_forest_ops.py",
+    deps = [":tensor_forest_ops_op_lib"],
+)
+
+tf_custom_op_library(
+    name = "python/ops/_tensor_forest_ops.so",
+    srcs = [
+        "core/ops/best_splits_op.cc",
+        "core/ops/count_extremely_random_stats_op.cc",
+        "core/ops/finished_nodes_op.cc",
+        "core/ops/grow_tree_op.cc",
+        "core/ops/sample_inputs_op.cc",
+        "core/ops/scatter_add_ndim_op.cc",
+        "core/ops/topn_ops.cc",
+        "core/ops/tree_predictions_op.cc",
+        "core/ops/update_fertile_slots_op.cc",
+        "data/reinterpret_string_to_float_op.cc",
+        "ops/tensor_forest_ops.cc",
+    ],
+    deps = [":tree_utils"],
+)
+
+py_library(
+    name = "tensor_forest_ops_py",
+    srcs = [
+        "__init__.py",
+        "python/ops/tensor_forest_ops.py",
+    ],
     data = [
-        "data/_data_ops.so",
+        ":python/ops/_tensor_forest_ops.so",
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":constants",
+        ":gen_tensor_forest_ops",
     ],
 )
 
@@ -98,8 +128,8 @@ py_library(
     name = "client_lib",
     srcs_version = "PY2AND3",
     deps = [
-        ":data_ops_lib",
         ":eval_metrics",
+        ":tensor_forest_ops_py",
         ":tensor_forest_py",
     ],
 )
@@ -117,58 +147,13 @@ cc_library(
     ],
 )
 
-tf_custom_op_library(
-    name = "python/ops/_inference_ops.so",
-    srcs = [
-        "core/ops/tree_predictions_op.cc",
-    ],
-    deps = [":tree_utils"],
-)
-
-tf_custom_op_library(
-    name = "python/ops/_training_ops.so",
-    srcs = [
-        "core/ops/best_splits_op.cc",
-        "core/ops/count_extremely_random_stats_op.cc",
-        "core/ops/finished_nodes_op.cc",
-        "core/ops/grow_tree_op.cc",
-        "core/ops/sample_inputs_op.cc",
-        "core/ops/scatter_add_ndim_op.cc",
-        "core/ops/update_fertile_slots_op.cc",
-    ],
-    deps = [":tree_utils"],
-)
-
-tf_custom_op_library(
-    name = "python/ops/_topn_ops.so",
-    srcs = [
-        "core/ops/topn_ops.cc",
-    ],
-)
-
-py_library(
-    name = "ops_lib",
-    srcs = [
-        "__init__.py",
-        "python/ops/inference_ops.py",
-        "python/ops/topn_ops.py",
-        "python/ops/training_ops.py",
-    ],
-    data = [
-        "python/ops/_inference_ops.so",
-        "python/ops/_topn_ops.so",
-        "python/ops/_training_ops.so",
-    ],
-    srcs_version = "PY2AND3",
-)
-
 py_test(
     name = "best_splits_op_test",
     size = "small",
     srcs = ["python/kernel_tests/best_splits_op_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":ops_lib",
+        ":tensor_forest_ops_py",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
@@ -182,7 +167,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":constants",
-        ":ops_lib",
+        ":tensor_forest_ops_py",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
@@ -195,7 +180,7 @@ py_test(
     srcs = ["python/kernel_tests/grow_tree_op_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":ops_lib",
+        ":tensor_forest_ops_py",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
@@ -208,7 +193,7 @@ py_test(
     srcs = ["python/kernel_tests/finished_nodes_op_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":ops_lib",
+        ":tensor_forest_ops_py",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
@@ -221,7 +206,7 @@ py_test(
     srcs = ["python/kernel_tests/sample_inputs_op_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":ops_lib",
+        ":tensor_forest_ops_py",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
@@ -234,7 +219,7 @@ py_test(
     srcs = ["python/kernel_tests/scatter_add_ndim_op_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":ops_lib",
+        ":tensor_forest_ops_py",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
@@ -248,7 +233,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":constants",
-        ":ops_lib",
+        ":tensor_forest_ops_py",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
@@ -261,7 +246,7 @@ py_test(
     srcs = ["python/kernel_tests/update_fertile_slots_op_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":ops_lib",
+        ":tensor_forest_ops_py",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
@@ -274,7 +259,8 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":constants",
-        ":ops_lib",
+        ":data_ops_py",
+        ":tensor_forest_ops_py",
     ],
 )
 
@@ -292,10 +278,10 @@ py_test(
 )
 
 cc_test(
-    name = "training_ops_test",
+    name = "tensor_forest_ops_test",
     size = "small",
     srcs = [
-        "core/ops/training_ops_test.cc",
+        "core/ops/tensor_forest_ops_test.cc",
         ":custom_op_sources",
     ],
     deps = [
@@ -316,7 +302,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":constants",
-        ":ops_lib",
+        ":tensor_forest_ops_py",
     ],
 )
 
