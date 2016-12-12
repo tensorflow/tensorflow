@@ -50,7 +50,6 @@ or join multiple tensors together.
 @@slice
 @@strided_slice
 @@split
-@@split_v
 @@tile
 @@pad
 @@concat
@@ -1226,63 +1225,7 @@ def sparse_mask(a, mask_indices, name=None):
     return ops.IndexedSlices(out_values, out_indices, a.dense_shape)
 
 
-def split(axis=None,
-          num_or_size_splits=None,
-          value=None,
-          name="split",
-          split_dim=None):
-  """DEPRECATED: use split_v; split_v rename to split happening soon.
-
-  Splits `value` along dimension `axis` into `num_or_size_splits` smaller
-  tensors. Requires that `num_or_size_splits` evenly divide `value.shape[axis]`.
-
-  For example:
-
-  ```python
-  # 'value' is a tensor with shape [5, 30]
-  # Split 'value' into 3 tensors along dimension 1
-  split0, split1, split2 = tf.split(value=value, num_or_size_splits=3, axis=1)
-  tf.shape(split0) ==> [5, 10]
-  ```
-
-  Note: If you are splitting along an axis by the length of that axis, consider
-  using unpack, e.g.
-
-  ```python
-  num_items = t.get_shape()[axis].value
-  [tf.squeeze(s, [axis]) for s in
-   tf.split(value=t, num_or_size_splits=num_items, axis=axis)]
-  ```
-
-  can be rewritten as
-
-  ```python
-  tf.unpack(t, axis=axis)
-  ```
-
-  Args:
-    axis: A 0-D `int32` `Tensor`. The dimension along which to split.
-      Must be in the range `[0, rank(value))`.
-    num_or_size_splits: A Python integer. The number of ways to split. Has a
-      different meaning in split_v (see docs).
-    value: The `Tensor` to split.
-    name: A name for the operation (optional).
-    split_dim: The old (deprecated) name for axis.
-
-  Returns:
-    `num_or_size_splits` `Tensor` objects resulting from splitting `value`.
-  """
-  axis = deprecation.deprecated_argument_lookup("axis", axis, "split_dim",
-                                                split_dim)
-  return gen_array_ops._split(
-      split_dim=axis, num_split=num_or_size_splits, value=value, name=name)
-
-
-def split_v(value=None,
-            num_or_size_splits=None,
-            axis=0,
-            num=None,
-            name="split_v"):
+def split(value, num_or_size_splits, axis=0, num=None, name="split"):
   """Splits a tensor into sub tensors.
 
   If `num_or_size_splits` is a scalar, `num_split`, then splits `value` along
@@ -1298,7 +1241,7 @@ def split_v(value=None,
   ```python
   # 'value' is a tensor with shape [5, 30]
   # Split 'value' into 3 tensors with sizes [4, 15, 11] along dimension 1
-  split0, split1, split2 = tf.split_v(value, [4, 15, 11], 1)
+  split0, split1, split2 = tf.split(value, [4, 15, 11], 1)
   tf.shape(split0) ==> [5, 4]
   tf.shape(split1) ==> [5, 15]
   tf.shape(split2) ==> [5, 11]

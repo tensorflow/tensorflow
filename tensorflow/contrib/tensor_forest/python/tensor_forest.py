@@ -334,7 +334,8 @@ class RandomForestGraphs(object):
     ]
 
   def _bag_features(self, tree_num, input_data):
-    split_data = array_ops.split(1, self.params.num_features, input_data)
+    split_data = array_ops.split(
+        value=input_data, num_or_size_splits=self.params.num_features, axis=1)
     return array_ops.concat_v2(
         [split_data[ind] for ind in self.params.bagged_features[tree_num]], 1)
 

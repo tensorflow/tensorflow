@@ -22,7 +22,7 @@ import numpy as np
 import tensorflow as tf
 
 
-class SplitVOpTest(tf.test.TestCase):
+class SplitOpTest(tf.test.TestCase):
 
   def testExplicitNum(self):
     size_splits = tf.placeholder(dtype=tf.int32, shape=[None])
@@ -31,11 +31,11 @@ class SplitVOpTest(tf.test.TestCase):
 
     with self.test_session(use_gpu=False) as sess:
       with self.assertRaises(ValueError) as context:
-        sess.run(tf.split_v(value, size_splits), {size_splits: [2, 2, 6]})
+        sess.run(tf.split(value, size_splits), {size_splits: [2, 2, 6]})
 
       self.assertTrue("Cannot infer num from shape" in str(context.exception))
 
-      result = sess.run(tf.split_v(value, size_splits, num=3),
+      result = sess.run(tf.split(value, size_splits, num=3),
                         {size_splits: [2, 2, 6]})
 
     self.assertAllEqual(result[0], value[0:2])
@@ -49,12 +49,12 @@ class SplitVOpTest(tf.test.TestCase):
     value = np.random.rand(11, 11)
 
     with self.test_session(use_gpu=False) as sess:
-      result = sess.run(tf.split_v(value, [a, b]))
+      result = sess.run(tf.split(value, [a, b]))
 
     self.assertAllEqual(result[0], value[0:5, :])
     self.assertAllEqual(result[1], value[5:, :])
 
-  def _RunAndVerify(self, use_gpu, large_num_splits=False):
+  def _RunAndVerifyVariable(self, use_gpu, large_num_splits=False):
     # Random dims of rank 5
     shape = np.random.randint(1, 5, size=5)
     split_dim = np.random.randint(0, 5)
@@ -66,7 +66,7 @@ class SplitVOpTest(tf.test.TestCase):
     shape[split_dim] = np.sum(size_splits)
     inp = np.random.rand(*shape).astype("f")
     with self.test_session(use_gpu=use_gpu) as sess:
-      result = sess.run(tf.split_v(inp, size_splits, split_dim))
+      result = sess.run(tf.split(inp, size_splits, split_dim))
     slices = [slice(0, x) for x in shape]
     offset = 0
     for i in range(num_split):
@@ -74,53 +74,25 @@ class SplitVOpTest(tf.test.TestCase):
       offset += size_splits[i]
       self.assertAllEqual(result[i], inp[slices])
 
-  def _RunAndVerifyScalar(self, use_gpu, large_num_splits=False):
-    shape = np.random.randint(0, 5, size=5)
-    split_dim = np.random.randint(0, 5)
-    if large_num_splits:
-      num_split = np.random.randint(16, 25)
-    else:
-      num_split = np.random.randint(2, 8)
-    shape[split_dim] = np.random.randint(2, 5) * num_split
-    inp = np.random.rand(*shape).astype("f")
-    with self.test_session(use_gpu=use_gpu) as sess:
-      result = sess.run(tf.split_v(inp, num_split, split_dim))
-    slices = [slice(0, x) for x in shape]
-    offset = 0
-    length = shape[split_dim] // num_split
-    for i in range(num_split):
-      slices[split_dim] = slice(offset, offset + length)
-      offset += length
-      self.assertAllEqual(result[i], inp[slices])
-
-  def testRandom(self):
-    for _ in range(5):
-      self._RunAndVerify(use_gpu=False)
-      self._RunAndVerify(use_gpu=True)
-      self._RunAndVerify(use_gpu=True, large_num_splits=True)
-      self._RunAndVerifyScalar(use_gpu=False)
-      self._RunAndVerifyScalar(use_gpu=True)
-      self._RunAndVerifyScalar(use_gpu=True, large_num_splits=True)
-
-  def _testSpecialCases(self, use_gpu):
+  def _testSpecialCasesVariable(self, use_gpu):
     inp = np.random.rand(4, 4).astype("f")
 
     with self.test_session(use_gpu=use_gpu) as sess:
-      result = sess.run(tf.split_v(inp, [4], 0))
+      result = sess.run(tf.split(inp, [4], 0))
       self.assertAllEqual(result[0], inp)
 
-      result = sess.run(tf.split_v(inp, [-1, 3], 0))
+      result = sess.run(tf.split(inp, [-1, 3], 0))
       self.assertAllEqual(result[0], inp[0:1, :])
       self.assertAllEqual(result[1], inp[1:4, :])
 
-  def _testHugeNumberOfTensors(self, use_gpu):
+  def _testHugeNumberOfTensorsVariable(self, use_gpu):
     num_split = 10000
     size_splits = np.random.randint(1, 3, num_split)
     shape = [3, np.sum(size_splits)]
     split_dim = 1
     inp = np.random.rand(*shape).astype("f")
     with self.test_session(use_gpu=use_gpu) as sess:
-      result = sess.run(tf.split_v(inp, size_splits, split_dim))
+      result = sess.run(tf.split(inp, size_splits, split_dim))
     slices = [slice(0, x) for x in shape]
     offset = 0
     for i in range(num_split):
@@ -128,17 +100,17 @@ class SplitVOpTest(tf.test.TestCase):
       offset += size_splits[i]
       self.assertAllEqual(result[i], inp[slices])
 
-  def testSpecialCases(self):
-    self._testSpecialCases(False)
-    self._testSpecialCases(True)
-    self._testHugeNumberOfTensors(False)
-    self._testHugeNumberOfTensors(True)
+  def testSpecialCasesVariable(self):
+    self._testSpecialCasesVariable(False)
+    self._testSpecialCasesVariable(True)
+    self._testHugeNumberOfTensorsVariable(False)
+    self._testHugeNumberOfTensorsVariable(True)
 
-  def _testGradientsSimple(self, use_gpu):
+  def _testGradientsSimpleVariable(self, use_gpu):
     inp = np.random.rand(4, 4).astype("f")
     with self.test_session(use_gpu=use_gpu):
       inp_tensor = tf.convert_to_tensor(inp)
-      s = tf.split_v(inp_tensor, [1, 4], 1)
+      s = tf.split(inp_tensor, [1, 4], 1)
       inp_grads = [
           np.random.rand(4, 1).astype("f"), np.random.rand(4, 3).astype("f")
       ]
@@ -148,13 +120,6 @@ class SplitVOpTest(tf.test.TestCase):
 
     self.assertAllEqual(result[:, 0:1], inp_grads[0])
     self.assertAllEqual(result[:, 1:4], inp_grads[1])
-
-  def testGradientsAll(self):
-    self._testGradientsSimple(use_gpu=False)
-    self._testGradientsSimple(use_gpu=True)
-
-
-class SplitOpTest(tf.test.TestCase):
 
   def _compare(self, x, dim, num, use_gpu):
     np_ans = np.split(x, num, dim)
@@ -244,6 +209,9 @@ class SplitOpTest(tf.test.TestCase):
       self._RunAndVerify(use_gpu=False)
       self._RunAndVerify(use_gpu=True)
       self._RunAndVerify(use_gpu=True, large_num_splits=True)
+      self._RunAndVerifyVariable(use_gpu=False)
+      self._RunAndVerifyVariable(use_gpu=True)
+      self._RunAndVerifyVariable(use_gpu=True, large_num_splits=True)
 
   def _testGradientsSimple(self, use_gpu):
     inp = np.random.rand(4, 4).astype("f")
@@ -260,6 +228,8 @@ class SplitOpTest(tf.test.TestCase):
   def testGradientsAll(self):
     self._testGradientsSimple(use_gpu=False)
     self._testGradientsSimple(use_gpu=True)
+    self._testGradientsSimpleVariable(use_gpu=False)
+    self._testGradientsSimpleVariable(use_gpu=True)
 
   def testShapeFunctionEdgeCases(self):
     # split_dim greater than rank of input.
