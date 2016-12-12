@@ -406,6 +406,13 @@ def _MaxPoolGrad(op, grad):
                                    data_format=op.get_attr("data_format"))
 
 
+@ops.RegisterGradient("MaxPoolGrad")
+def _MaxPoolGradGrad(op, grad):
+    return (array_ops.zeros(shape = array_ops.shape(op.inputs[0]), dtype = op.inputs[0].dtype),
+            array_ops.zeros(shape = array_ops.shape(op.inputs[1]), dtype = op.inputs[1].dtype),
+            array_ops.ones(shape = array_ops.shape(op.inputs[2]), dtype = op.inputs[2].dtype))
+
+
 @ops.RegisterGradient("FractionalMaxPool")
 def _FractionalMaxPoolGrad(op, grad_0, unused_grad_1, unused_grad_2):
   """Returns gradient for FractionalMaxPool.
