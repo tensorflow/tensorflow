@@ -17,42 +17,48 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-
+from tensorflow.python.client import session
 from tensorflow.python.debug.stepper import NodeStepper
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
+from tensorflow.python.training import gradient_descent
 
 
 class StepperTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
-    self.a = tf.Variable(2.0, name="a")
-    self.b = tf.Variable(3.0, name="b")
+    self.a = variables.Variable(2.0, name="a")
+    self.b = variables.Variable(3.0, name="b")
 
-    self.c = tf.mul(self.a, self.b, name="c")  # Should be 6.0.
-    self.d = tf.mul(self.a, self.a, name="d")  # Should be 4.0.
+    self.c = math_ops.mul(self.a, self.b, name="c")  # Should be 6.0.
+    self.d = math_ops.mul(self.a, self.a, name="d")  # Should be 4.0.
 
-    self.e = tf.mul(self.d, self.c, name="e")  # Should be 24.0.
+    self.e = math_ops.mul(self.d, self.c, name="e")  # Should be 24.0.
 
-    self.f_y = tf.constant(0.30, name="f_y")
-    self.f = tf.div(self.b, self.f_y, name="f")  # Should be 10.0.
+    self.f_y = constant_op.constant(0.30, name="f_y")
+    self.f = math_ops.div(self.b, self.f_y, name="f")  # Should be 10.0.
 
     # The there nodes x, y and z form a graph with "cross-links" in. I.e., x
     # and y are both direct inputs to z, but x is also a direct input to y.
-    self.x = tf.Variable(2.0, name="x")  # Should be 2.0
-    self.y = tf.neg(self.x, name="y")  # Should be -2.0.
+    self.x = variables.Variable(2.0, name="x")  # Should be 2.0
+    self.y = math_ops.neg(self.x, name="y")  # Should be -2.0.
 
-    self.z = tf.mul(self.x, self.y, name="z")  # Should be -4.0.
+    self.z = math_ops.mul(self.x, self.y, name="z")  # Should be -4.0.
 
-    self.sess = tf.Session()
-    self.sess.run(tf.global_variables_initializer())
+    self.sess = session.Session()
+    self.sess.run(variables.global_variables_initializer())
 
-    self.sess = tf.Session()
-    self.sess.run(tf.global_variables_initializer())
+    self.sess = session.Session()
+    self.sess.run(variables.global_variables_initializer())
 
   def tearDown(self):
-    tf.reset_default_graph()
+    ops.reset_default_graph()
 
   def testContToFetchNotInTransitiveClosureShouldError(self):
     stepper = NodeStepper(self.sess, "e:0")
@@ -401,16 +407,16 @@ class StepperTest(test_util.TensorFlowTestCase):
 class StepperTestWithPlaceHolders(test_util.TensorFlowTestCase):
 
   def setUp(self):
-    self.ph0 = tf.placeholder(tf.float32, shape=(2, 2), name="ph0")
-    self.ph1 = tf.placeholder(tf.float32, shape=(2, 1), name="ph1")
+    self.ph0 = array_ops.placeholder(dtypes.float32, shape=(2, 2), name="ph0")
+    self.ph1 = array_ops.placeholder(dtypes.float32, shape=(2, 1), name="ph1")
 
-    self.x = tf.matmul(self.ph0, self.ph1, name="x")
-    self.y = tf.add(self.x, self.ph1, name="y")
+    self.x = math_ops.matmul(self.ph0, self.ph1, name="x")
+    self.y = math_ops.add(self.x, self.ph1, name="y")
 
-    self.sess = tf.Session()
+    self.sess = session.Session()
 
   def tearDown(self):
-    tf.reset_default_graph()
+    ops.reset_default_graph()
 
   def testGetTensorValueWorksOnPlaceholder(self):
     stepper = NodeStepper(
@@ -421,10 +427,10 @@ class StepperTestWithPlaceHolders(test_util.TensorFlowTestCase):
             self.ph1: [[-1.0], [0.5]]
         })
 
-    self.assertAllClose(
-        [[1.0, 2.0], [-3.0, 5.0]], stepper.get_tensor_value("ph0"))
-    self.assertAllClose(
-        [[1.0, 2.0], [-3.0, 5.0]], stepper.get_tensor_value("ph0:0"))
+    self.assertAllClose([[1.0, 2.0], [-3.0, 5.0]],
+                        stepper.get_tensor_value("ph0"))
+    self.assertAllClose([[1.0, 2.0], [-3.0, 5.0]],
+                        stepper.get_tensor_value("ph0:0"))
     with self.assertRaisesRegexp(
         KeyError, r"The name 'ph0:1' refers to a Tensor which does not exist"):
       stepper.get_tensor_value("ph0:1")
@@ -556,21 +562,22 @@ class StepperBackwardRunTest(test_util.TensorFlowTestCase):
     Construct a backward graph using the GradientDescentOptimizer.
     """
 
-    self.a = tf.Variable(1.0, name="a")
-    self.b = tf.Variable(2.0, name="b")
-    self.c = tf.Variable(4.0, name="c")
-    self.d = tf.mul(self.a, self.b, name="d")
-    self.e = tf.mul(self.b, self.c, name="e")
-    self.f = tf.mul(self.d, self.e, name="f")
+    self.a = variables.Variable(1.0, name="a")
+    self.b = variables.Variable(2.0, name="b")
+    self.c = variables.Variable(4.0, name="c")
+    self.d = math_ops.mul(self.a, self.b, name="d")
+    self.e = math_ops.mul(self.b, self.c, name="e")
+    self.f = math_ops.mul(self.d, self.e, name="f")
 
     # Gradient descent optimizer that minimizes g.
-    tf.train.GradientDescentOptimizer(0.01).minimize(self.f, name="optim")
+    gradient_descent.GradientDescentOptimizer(0.01).minimize(
+        self.f, name="optim")
 
-    self.sess = tf.Session()
-    self.sess.run(tf.global_variables_initializer())
+    self.sess = session.Session()
+    self.sess.run(variables.global_variables_initializer())
 
   def tearDown(self):
-    tf.reset_default_graph()
+    ops.reset_default_graph()
 
   def testContToUpdateA(self):
     stepper = NodeStepper(self.sess, "optim")
@@ -627,8 +634,8 @@ class StepperBackwardRunTest(test_util.TensorFlowTestCase):
     stepper = NodeStepper(self.sess, "optim")
 
     # First, update Variable a from 1.0 to 0.84.
-    result = stepper.cont("optim/update_a/ApplyGradientDescent",
-                          restore_variable_values=True)
+    result = stepper.cont(
+        "optim/update_a/ApplyGradientDescent", restore_variable_values=True)
     self.assertIsNone(result)
     self.assertEqual(set(["a:0"]), stepper.dirty_variables())
     self.assertAllClose(0.84, self.sess.run(self.a))
@@ -649,13 +656,13 @@ class StepperBackwardRunTest(test_util.TensorFlowTestCase):
   def testUpdateTwiceRestoreVariable(self):
     stepper = NodeStepper(self.sess, "optim")
 
-    result = stepper.cont("optim/update_a/ApplyGradientDescent",
-                          restore_variable_values=True)
+    result = stepper.cont(
+        "optim/update_a/ApplyGradientDescent", restore_variable_values=True)
     self.assertIsNone(result)
     self.assertEqual({"a:0"}, stepper.dirty_variables())
 
-    result = stepper.cont("optim/update_b/ApplyGradientDescent",
-                          restore_variable_values=True)
+    result = stepper.cont(
+        "optim/update_b/ApplyGradientDescent", restore_variable_values=True)
     self.assertIsNone(result)
     # Variables a and c should have been restored and hence no longer dirty.
     # Variable b should have been marked as dirty.
@@ -688,14 +695,14 @@ class StepperBackwardRunTest(test_util.TensorFlowTestCase):
     self.assertEqual(set(), stepper.dirty_variables())
 
     # Now run update_a, so as to let Variable a be diry.
-    result = stepper.cont("optim/update_a/ApplyGradientDescent",
-                          restore_variable_values=True)
+    result = stepper.cont(
+        "optim/update_a/ApplyGradientDescent", restore_variable_values=True)
     self.assertIsNone(result)
     self.assertEqual({"a:0"}, stepper.dirty_variables())
 
     # Now, run update_b.
-    result = stepper.cont("optim/update_b/ApplyGradientDescent",
-                          restore_variable_values=True)
+    result = stepper.cont(
+        "optim/update_b/ApplyGradientDescent", restore_variable_values=True)
     self.assertIsNone(result)
 
     # The last cont() run should have use the handle of tensor e, but not the
@@ -716,8 +723,8 @@ class StepperBackwardRunTest(test_util.TensorFlowTestCase):
 
     stepper = NodeStepper(self.sess, "optim")
 
-    stepper.cont("optim/update_b/ApplyGradientDescent",
-                 restore_variable_values=True)
+    stepper.cont(
+        "optim/update_b/ApplyGradientDescent", restore_variable_values=True)
     self.assertAllClose(1.84, self.sess.run(self.b))
 
     stepper.restore_variable_values()
@@ -729,8 +736,8 @@ class StepperBackwardRunTest(test_util.TensorFlowTestCase):
     stepper = NodeStepper(self.sess, "optim")
 
     # Invoke update_b before calling finalize.
-    stepper.cont("optim/update_b/ApplyGradientDescent",
-                 restore_variable_values=True)
+    stepper.cont(
+        "optim/update_b/ApplyGradientDescent", restore_variable_values=True)
 
     result = stepper.finalize()
     self.assertIsNone(result)
@@ -758,8 +765,8 @@ class StepperBackwardRunTest(test_util.TensorFlowTestCase):
 
     self.assertEqual(["a/read:0"], stepper.override_names())
 
-    result = stepper.cont("optim/update_c/ApplyGradientDescent",
-                          restore_variable_values=True)
+    result = stepper.cont(
+        "optim/update_c/ApplyGradientDescent", restore_variable_values=True)
     self.assertIsNone(result)
 
     # The last cont() call should have not used the tensor handle to d:0,

@@ -21,12 +21,18 @@ import re
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
-import tensorflow as tf
 
+from tensorflow.python.client import session
 from tensorflow.python.debug import stepper
 from tensorflow.python.debug.cli import stepper_cli
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
+from tensorflow.python.training import gradient_descent
 
 # Regex pattern for a node line in the stepper CLI output.
 NODE_LINE_PATTERN = re.compile(r".*\(.*\).*\[.*\].*")
@@ -92,26 +98,26 @@ def _parsed_used_feeds(lines):
 class NodeStepperSimpleGraphTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
-    self.a = tf.Variable(10.0, name="a")
-    self.b = tf.Variable(20.0, name="b")
+    self.a = variables.Variable(10.0, name="a")
+    self.b = variables.Variable(20.0, name="b")
 
-    self.c = tf.add(self.a, self.b, name="c")  # Should be 30.0.
-    self.d = tf.sub(self.a, self.c, name="d")  # Should be -20.0.
-    self.e = tf.mul(self.c, self.d, name="e")  # Should be -600.0.
+    self.c = math_ops.add(self.a, self.b, name="c")  # Should be 30.0.
+    self.d = math_ops.sub(self.a, self.c, name="d")  # Should be -20.0.
+    self.e = math_ops.mul(self.c, self.d, name="e")  # Should be -600.0.
 
-    self.ph = tf.placeholder(tf.float32, shape=(2, 2), name="ph")
-    self.f = tf.mul(self.e, self.ph, name="f")
+    self.ph = array_ops.placeholder(dtypes.float32, shape=(2, 2), name="ph")
+    self.f = math_ops.mul(self.e, self.ph, name="f")
 
-    self.opt = tf.train.GradientDescentOptimizer(0.1).minimize(
+    self.opt = gradient_descent.GradientDescentOptimizer(0.1).minimize(
         self.e, name="opt")
 
-    self.sess = tf.Session()
+    self.sess = session.Session()
 
     self.sess.run(self.a.initializer)
     self.sess.run(self.b.initializer)
 
   def tearDown(self):
-    tf.reset_default_graph()
+    ops.reset_default_graph()
 
   def _assert_nodes_topologically_sorted_with_target_e(self, node_names):
     """Check the topologically sorted order of the node names."""
@@ -171,17 +177,19 @@ class NodeStepperSimpleGraphTest(test_util.TensorFlowTestCase):
     cli = stepper_cli.NodeStepperCLI(stepper.NodeStepper(self.sess, self.f))
 
     output = cli.cont(["foobar"])
-    self.assertEqual(
-        ["ERROR: foobar is not in the transitive closure of this stepper "
-         "instance."], output.lines)
+    self.assertEqual([
+        "ERROR: foobar is not in the transitive closure of this stepper "
+        "instance."
+    ], output.lines)
 
   def testContToNodeOutsideTransitiveClosureShouldError(self):
     cli = stepper_cli.NodeStepperCLI(stepper.NodeStepper(self.sess, self.e))
 
     output = cli.cont(["f"])
-    self.assertEqual(
-        ["ERROR: f is not in the transitive closure of this stepper "
-         "instance."], output.lines)
+    self.assertEqual([
+        "ERROR: f is not in the transitive closure of this stepper "
+        "instance."
+    ], output.lines)
 
   def testContToValidNodeShouldUpdateStatus(self):
     cli = stepper_cli.NodeStepperCLI(stepper.NodeStepper(self.sess, self.e))
@@ -303,8 +311,7 @@ class NodeStepperSimpleGraphTest(test_util.TensorFlowTestCase):
     output = cli.cont(["opt/update_b/ApplyGradientDescent"])
 
     output = cli.list_sorted_nodes([])
-    node_names, stat_labels, _ = _parse_sorted_nodes_list(
-        output.lines)
+    node_names, stat_labels, _ = _parse_sorted_nodes_list(output.lines)
     self.assertIn(stepper_cli.NodeStepperCLI.STATE_DIRTY_VARIABLE,
                   stat_labels[node_names.index("b")])
     self.assertNotIn(stepper_cli.NodeStepperCLI.STATE_DIRTY_VARIABLE,
@@ -317,8 +324,7 @@ class NodeStepperSimpleGraphTest(test_util.TensorFlowTestCase):
     # After cont() call on .../update_a/..., Variable a should have been marked
     # as dirty, whereas b should not have.
     output = cli.list_sorted_nodes([])
-    node_names, stat_labels, _ = _parse_sorted_nodes_list(
-        output.lines)
+    node_names, stat_labels, _ = _parse_sorted_nodes_list(output.lines)
     self.assertIn(stepper_cli.NodeStepperCLI.STATE_DIRTY_VARIABLE,
                   stat_labels[node_names.index("a")])
     self.assertNotIn(stepper_cli.NodeStepperCLI.STATE_DIRTY_VARIABLE,
@@ -330,8 +336,7 @@ class NodeStepperSimpleGraphTest(test_util.TensorFlowTestCase):
     # have been marked as dirty, whereas Variable a should not be because it
     # should have been restored.
     output = cli.list_sorted_nodes([])
-    node_names, stat_labels, _ = _parse_sorted_nodes_list(
-        output.lines)
+    node_names, stat_labels, _ = _parse_sorted_nodes_list(output.lines)
     self.assertIn(stepper_cli.NodeStepperCLI.STATE_DIRTY_VARIABLE,
                   stat_labels[node_names.index("b")])
     self.assertNotIn(stepper_cli.NodeStepperCLI.STATE_DIRTY_VARIABLE,
@@ -357,10 +362,9 @@ class NodeStepperSimpleGraphTest(test_util.TensorFlowTestCase):
 
   def testPrintTensorShouldWorkSlicingString(self):
     ph_value = np.array([[1.0, 0.0], [0.0, 2.0]])
-    cli = stepper_cli.NodeStepperCLI(stepper.NodeStepper(
-        self.sess,
-        self.f,
-        feed_dict={self.ph: ph_value}))
+    cli = stepper_cli.NodeStepperCLI(
+        stepper.NodeStepper(
+            self.sess, self.f, feed_dict={self.ph: ph_value}))
 
     output = cli.print_tensor(["ph:0[:, 1]"])
     self.assertEqual("Tensor \"ph:0[:, 1]\":", output.lines[0])
@@ -374,17 +378,19 @@ class NodeStepperSimpleGraphTest(test_util.TensorFlowTestCase):
     cli = stepper_cli.NodeStepperCLI(stepper.NodeStepper(self.sess, self.e))
 
     output = cli.print_tensor(["foobar"])
-    self.assertEqual(
-        ["ERROR: foobar is not in the transitive closure of this stepper "
-         "instance."], output.lines)
+    self.assertEqual([
+        "ERROR: foobar is not in the transitive closure of this stepper "
+        "instance."
+    ], output.lines)
 
   def testPrintTensorWithNoHandleShouldError(self):
     cli = stepper_cli.NodeStepperCLI(stepper.NodeStepper(self.sess, self.e))
 
     output = cli.print_tensor("e")
-    self.assertEqual(
-        ["This stepper instance does not have access to the value of tensor "
-         "\"e:0\""], output.lines)
+    self.assertEqual([
+        "This stepper instance does not have access to the value of tensor "
+        "\"e:0\""
+    ], output.lines)
 
   def testInjectTensorValueByTensorNameShouldBeReflected(self):
     node_stepper = stepper.NodeStepper(self.sess, self.e)
@@ -399,10 +405,9 @@ class NodeStepperSimpleGraphTest(test_util.TensorFlowTestCase):
         output.lines)
 
     index_d = node_names.index("d")
-    self.assertIn(
-        stepper_cli.NodeStepperCLI.STATE_CONT, stat_labels[index_d])
-    self.assertNotIn(
-        stepper_cli.NodeStepperCLI.STATE_OVERRIDDEN, stat_labels[index_d])
+    self.assertIn(stepper_cli.NodeStepperCLI.STATE_CONT, stat_labels[index_d])
+    self.assertNotIn(stepper_cli.NodeStepperCLI.STATE_OVERRIDDEN,
+                     stat_labels[index_d])
 
     self.assertAllClose(-20.0, node_stepper.get_tensor_value("d:0"))
 
@@ -418,10 +423,10 @@ class NodeStepperSimpleGraphTest(test_util.TensorFlowTestCase):
         output.lines)
 
     index_d = node_names.index("d")
-    self.assertNotIn(
-        stepper_cli.NodeStepperCLI.STATE_CONT, stat_labels[index_d])
-    self.assertIn(
-        stepper_cli.NodeStepperCLI.STATE_OVERRIDDEN, stat_labels[index_d])
+    self.assertNotIn(stepper_cli.NodeStepperCLI.STATE_CONT,
+                     stat_labels[index_d])
+    self.assertIn(stepper_cli.NodeStepperCLI.STATE_OVERRIDDEN,
+                  stat_labels[index_d])
 
   def testInjectTensorValueByNodeNameShouldBeReflected(self):
     node_stepper = stepper.NodeStepper(self.sess, self.e)
@@ -435,9 +440,10 @@ class NodeStepperSimpleGraphTest(test_util.TensorFlowTestCase):
     cli = stepper_cli.NodeStepperCLI(node_stepper)
 
     output = cli.inject_value(["foobar:0", "20.0"])
-    self.assertEqual(
-        ["ERROR: foobar:0 is not in the transitive closure of this stepper "
-         "instance."], output.lines)
+    self.assertEqual([
+        "ERROR: foobar:0 is not in the transitive closure of this stepper "
+        "instance."
+    ], output.lines)
 
 
 if __name__ == "__main__":
