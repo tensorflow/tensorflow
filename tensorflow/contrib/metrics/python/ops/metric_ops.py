@@ -2371,8 +2371,8 @@ def streaming_mean_cosine_distance(predictions, labels, dim, weights=None,
     name: An optional variable_scope name.
 
   Returns:
-    mean_distance: A `Tensor` representing the current mean, the value of `total`
-      divided by `count`.
+    mean_distance: A `Tensor` representing the current mean, the value of
+      `total` divided by `count`.
     update_op: An operation that increments the `total` and `count` variables
       appropriately.
 

@@ -36,17 +36,18 @@ def _enqueue_vector(sess, queue, values, shape=None):
   sess.run(queue.enqueue(tf.constant(values, dtype=dtype, shape=shape)))
 
 
-def _binary_2d_label_to_sparse_value(labels):
+def _binary_2d_label_to_2d_sparse_value(labels):
   """Convert dense 2D binary indicator to sparse ID.
 
   Only 1 values in `labels` are included in result.
 
   Args:
-    labels: Dense 2D binary indicator.
+    labels: Dense 2D binary indicator, shape [batch_size, num_classes].
 
   Returns:
-    `SparseTensorValue` whose values are indices along the last dimension of
-    `labels`.
+    `SparseTensorValue` of shape [batch_size, num_classes], where num_classes
+    is the number of `1` values in each row of `labels`. Values are indices
+    of `1` values along the last dimension of `labels`.
   """
   indices = []
   values = []
@@ -64,6 +65,46 @@ def _binary_2d_label_to_sparse_value(labels):
       label += 1
     batch += 1
   shape = [len(labels), len(labels[0])]
+  return tf.SparseTensorValue(
+      np.array(indices, np.int64),
+      np.array(values, np.int64),
+      np.array(shape, np.int64))
+
+
+def _binary_2d_label_to_1d_sparse_value(labels):
+  """Convert dense 2D binary indicator to sparse ID.
+
+  Only 1 values in `labels` are included in result.
+
+  Args:
+    labels: Dense 2D binary indicator, shape [batch_size, num_classes]. Each
+    row must contain exactly 1 `1` value.
+
+  Returns:
+    `SparseTensorValue` of shape [batch_size]. Values are indices of `1` values
+    along the last dimension of `labels`.
+
+  Raises:
+    ValueError: if there is not exactly 1 `1` value per row of `labels`.
+  """
+  indices = []
+  values = []
+  batch = 0
+  for row in labels:
+    label = 0
+    xi = 0
+    for x in row:
+      if x == 1:
+        indices.append([batch])
+        values.append(label)
+        xi += 1
+      else:
+        assert x == 0
+      label += 1
+    batch += 1
+  if indices != [[i] for i in range(len(labels))]:
+    raise ValueError('Expected 1 label/example, got %s.' % indices)
+  shape = [len(labels)]
   return tf.SparseTensorValue(
       np.array(indices, np.int64),
       np.array(values, np.int64),
@@ -1699,8 +1740,7 @@ def _test_sparse_average_precision_at_k(
     # Fails without initialized vars.
     test_case.assertRaises(tf.OpError, metric.eval)
     test_case.assertRaises(tf.OpError, update.eval)
-    local_variables = tf.local_variables()
-    tf.variables_initializer(local_variables).run()
+    tf.variables_initializer(tf.local_variables()).run()
 
     # Run per-step op and assert expected values.
     if math.isnan(expected):
@@ -1719,7 +1759,9 @@ class SingleLabelSparsePrecisionTest(tf.test.TestCase):
     class_labels = (3, 2)
     # Sparse vs dense, and 1d vs 2d labels should all be handled the same.
     self._labels = (
-        _binary_2d_label_to_sparse_value(indicator_labels),
+        _binary_2d_label_to_1d_sparse_value(indicator_labels),
+        _binary_2d_label_to_2d_sparse_value(indicator_labels),
+        np.array(class_labels, dtype=np.int64),
         np.array([[class_id] for class_id in class_labels], dtype=np.int64))
     self._test_sparse_precision_at_k = functools.partial(
         _test_sparse_precision_at_k, test_case=self)
@@ -1862,7 +1904,7 @@ class MultiLabelSparsePrecisionTest(tf.test.TestCase):
         [0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9],
         [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6]
     ]
-    sparse_labels = _binary_2d_label_to_sparse_value([
+    sparse_labels = _binary_2d_label_to_2d_sparse_value([
         [0, 0, 1, 0, 0, 0, 0, 1, 1, 0],
         [0, 1, 1, 0, 0, 1, 0, 0, 0, 0]
     ])
@@ -1879,7 +1921,7 @@ class MultiLabelSparsePrecisionTest(tf.test.TestCase):
         [0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9],
         [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6]
     ]
-    sparse_labels = _binary_2d_label_to_sparse_value([
+    sparse_labels = _binary_2d_label_to_2d_sparse_value([
         [0, 0, 1, 0, 0, 0, 0, 1, 1, 0],
         [0, 1, 1, 0, 0, 1, 0, 0, 0, 0]
     ])
@@ -1896,7 +1938,7 @@ class MultiLabelSparsePrecisionTest(tf.test.TestCase):
         [0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9],
         [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6]
     ]
-    sparse_labels = _binary_2d_label_to_sparse_value([
+    sparse_labels = _binary_2d_label_to_2d_sparse_value([
         [0, 0, 1, 0, 0, 0, 0, 1, 1, 0],
         [0, 1, 1, 0, 0, 1, 0, 0, 0, 0]
     ])
@@ -2103,7 +2145,9 @@ class SingleLabelRecallAtKTest(tf.test.TestCase):
     class_labels = (3, 2)
     # Sparse vs dense, and 1d vs 2d labels should all be handled the same.
     self._labels = (
-        _binary_2d_label_to_sparse_value(indicator_labels),
+        _binary_2d_label_to_1d_sparse_value(indicator_labels),
+        _binary_2d_label_to_2d_sparse_value(indicator_labels),
+        np.array(class_labels, dtype=np.int64),
         np.array([[class_id] for class_id in class_labels], dtype=np.int64))
     self._test_recall_at_k = functools.partial(
         _test_recall_at_k, test_case=self)
@@ -2204,7 +2248,7 @@ class MultiLabel2dRecallAtKTest(tf.test.TestCase):
     class_labels = ((2, 7, 8), (1, 2, 5))
     # Sparse vs dense labels should be handled the same.
     self._labels = (
-        _binary_2d_label_to_sparse_value(indicator_labels),
+        _binary_2d_label_to_2d_sparse_value(indicator_labels),
         np.array(class_labels, dtype=np.int64))
     self._test_recall_at_k = functools.partial(
         _test_recall_at_k, test_case=self)
