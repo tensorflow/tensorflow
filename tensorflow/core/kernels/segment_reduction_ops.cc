@@ -270,7 +270,6 @@ struct UnsortedSegmentMaxFunctor<CPUDevice, T, Index>
     }
   }
 };
-
 }  // namespace functor
 
 // Base class for SegmentReductionOps that can handle unsorted segment
@@ -284,7 +283,6 @@ class UnsortedSegmentBaseOp : public OpKernel {
       functor::UnsortedSegmentBaseFunctor<Device, T, Index>& functor)
       : OpKernel(context), reductionFunctor(functor) {}
 
-  ~UnsortedSegmentBaseOp() { delete& reductionFunctor; }
   void Compute(OpKernelContext* context) override {
     const Tensor& data = context->input(0);
     const Tensor& segment_ids = context->input(1);
@@ -332,7 +330,8 @@ class UnsortedSegmentSumOp : public UnsortedSegmentBaseOp<Device, T, Index> {
   explicit UnsortedSegmentSumOp(OpKernelConstruction* context)
       : UnsortedSegmentBaseOp<Device, T, Index>(
             context,
-           *(new functor::UnsortedSegmentSumFunctor<Device, T, Index>())) {}
+            sumFunctor) {}
+    functor::UnsortedSegmentSumFunctor<Device, T, Index> sumFunctor;
 };
 
 template <typename Device, class T, class Index>
@@ -341,7 +340,8 @@ class UnsortedSegmentMaxOp : public UnsortedSegmentBaseOp<Device, T, Index> {
   explicit UnsortedSegmentMaxOp(OpKernelConstruction* context)
       : UnsortedSegmentBaseOp<Device, T, Index>(
             context,
-           *(new functor::UnsortedSegmentMaxFunctor<Device, T, Index>())) {}
+            maxFunctor) {}
+    functor::UnsortedSegmentMaxFunctor<Device, T, Index> maxFunctor;
 };
 
 #define REGISTER_REAL_CPU_UNSORTED_KERNELS(type, index_type)                  \
