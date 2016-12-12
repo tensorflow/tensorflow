@@ -1,4 +1,4 @@
-### `tf.reverse_v2(tensor, axis, name=None)` {#reverse_v2}
+### `tf.reverse(tensor, axis, name=None)` {#reverse}
 
 Reverses specific dimensions of a tensor.
 
