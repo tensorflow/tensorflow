@@ -1951,7 +1951,7 @@ class StreamingSparsePrecisionTest(tf.test.TestCase):
         # values -1 and 10 are outside the [0, n_classes) range and are ignored.
         values=np.array([2, 7, -1, 8,
                          1, 2, 5, 10], np.int64),
-        shape=[2, 4])
+        dense_shape=[2, 4])
 
     # Class 2: 2 labels, 2 correct predictions.
     self._test_streaming_sparse_precision_at_k(
@@ -2303,7 +2303,7 @@ class RecallAtkTest(tf.test.TestCase):
         # values -1 and 10 are outside the [0, n_classes) range.
         values=np.array([2, 7, -1, 8,
                          1, 2, 5, 10], np.int64),
-        shape=[2, 4])
+        dense_shape=[2, 4])
 
     # Class 2: 2 labels, both correct.
     self._test_streaming_sparse_recall_at_k(
