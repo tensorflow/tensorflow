@@ -4246,6 +4246,43 @@ debug_urls: List of URLs to debug targets, e.g.,
             file:///foo/tfdbg_dump, grpc:://localhost:11011
 )doc");
 
+REGISTER_OP("DebugNumericSummary")
+    .Input("input: T")
+    .Output("output: double")
+    .Attr("T: type")
+    .Attr("tensor_name: string = ''")
+    .Attr("debug_urls: list(string) = []")
+    .SetAllowsUninitializedInput()
+    .Doc(R"doc(
+Debug Numeric Summary Op.
+
+Provide a basic summary of numeric value types, range and distribution.
+
+input: Input tensor, non-Reference type, float or double.
+output: A double tensor of shape [12], the elements of which are:
+  [0]: is initialized (1.0) or not (0.0).
+  [1]: total number of elements
+  [2]: -inf count
+  [3]: negative element count (excluding -inf)
+  [4]: zero element count
+  [5]: positive element count (excluding +inf)
+  [6]: +inf element count
+  [7]: NaN element count
+Output elements [1:8] are all zero, if the tensor is uninitialized.
+  [8]: minimum of all non-inf and non-NaN elements.
+       If uninitialized or no such element exists: +inf.
+  [9]: maximum of all non-inf and non-NaN elements.
+       If uninitialized or no such element exists: -inf.
+  [10]: mean of all non-inf and non-NaN elements.
+        If uninitialized or no such element exists: NaN.
+  [11]: variance of all non-inf and non-NaN elements.
+        If uninitialized or no such element exists: NaN.
+
+tensor_name: Name of the input tensor.
+debug_urls: List of URLs to debug targets, e.g.,
+            file:///foo/tfdbg_dump, grpc:://localhost:11011
+)doc");
+
 REGISTER_OP("QuantizeV2")
     .Input("input: float")
     .Input("min_range: float")
