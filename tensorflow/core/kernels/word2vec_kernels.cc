@@ -116,7 +116,7 @@ class SkipgramOp : public OpKernel {
   int32 vocab_size_ = 0;
   Tensor word_;
   Tensor freq_;
-  int32 corpus_size_ = 0;
+  int64 corpus_size_ = 0;
   std::vector<int32> corpus_;
   std::vector<Example> precalc_examples_;
   int precalc_index_ = 0;
