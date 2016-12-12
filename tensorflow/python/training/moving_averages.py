@@ -114,14 +114,16 @@ def weighted_moving_average(value,
                                      [value, weight, decay]) as scope:
     value_x_weight_var = variable_scope.get_variable(
         "value_x_weight",
-        initializer=init_ops.zeros_initializer(value.get_shape(),
-                                               dtype=value.dtype),
+        shape=value.get_shape(),
+        dtype=value.dtype,
+        initializer=init_ops.zeros_initializer(),
         trainable=False,
         collections=collections)
     weight_var = variable_scope.get_variable(
         "weight",
-        initializer=init_ops.zeros_initializer(weight.get_shape(),
-                                               dtype=weight.dtype),
+        shape=weight.get_shape(),
+        dtype=weight.dtype,
+        initializer=init_ops.zeros_initializer(),
         trainable=False,
         collections=collections)
     numerator = assign_moving_average(

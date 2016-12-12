@@ -854,7 +854,7 @@ class VariableHoistingTest(tf.test.TestCase):
     def _Model(x):
       w = tf.get_variable(
           "w", (64, 64), initializer=tf.random_uniform_initializer(seed=312))
-      b = tf.get_variable("b", (64), initializer=tf.zeros_initializer),
+      b = tf.get_variable("b", (64), initializer=tf.zeros_initializer()),
       return tf.sigmoid(tf.matmul(x, w) + b)
 
     @function.Defun()

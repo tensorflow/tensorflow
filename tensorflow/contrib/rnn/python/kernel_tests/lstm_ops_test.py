@@ -229,7 +229,7 @@ class LSTMBlockCellTest(tf.test.TestCase):
             "b",
             shape=[cell_size * 4],
             dtype=tf.float32,
-            initializer=tf.zeros_initializer)
+            initializer=tf.zeros_initializer())
 
         _, _, _, _, _, _, outputs = block_lstm(
             tf.convert_to_tensor(
@@ -300,7 +300,7 @@ class LSTMBlockCellTest(tf.test.TestCase):
             "b",
             shape=[cell_size * 4],
             dtype=tf.float32,
-            initializer=tf.zeros_initializer)
+            initializer=tf.zeros_initializer())
 
         wci = tf.get_variable("wci", shape=[cell_size], dtype=tf.float32)
         wcf = tf.get_variable("wcf", shape=[cell_size], dtype=tf.float32)

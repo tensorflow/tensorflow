@@ -62,12 +62,16 @@ def _assert_float_dtype(dtype):
   return dtype
 
 
-def zeros_initializer(shape, dtype=dtypes.float32, partition_info=None):
-  """An adaptor for zeros() to match the Initializer spec."""
-  return array_ops.zeros(shape, dtype)
+def zeros_initializer(dtype=dtypes.float32):
+  """Returns an initializer that generates tensors initialized to 0."""
+
+  def _initializer(shape, dtype=dtype, partition_info=None):
+    return constant_op.constant(0, dtype=dtype, shape=shape)
+
+  return _initializer
 
 
-def ones_initializer(dtype=dtypes.float32, partition_info=None):
+def ones_initializer(dtype=dtypes.float32):
   """An adaptor for ones() to match the Initializer spec."""
   def _initializer(shape, dtype=dtype, partition_info=None):
     return constant_op.constant(1, dtype=dtype, shape=shape)

@@ -400,7 +400,7 @@ class _SparseColumn(_FeatureColumn,
         input_tensor=self.id_tensor(input_tensor),
         weight_tensor=self.weight_tensor(input_tensor),
         vocab_size=self.length,
-        initializer=init_ops.zeros_initializer,
+        initializer=init_ops.zeros_initializer(),
         combiner=self.combiner)
 
   def _get_input_sparse_tensor(self, columns_to_tensors):
@@ -692,7 +692,7 @@ class _WeightedSparseColumn(_FeatureColumn, collections.namedtuple(
         input_tensor=self.id_tensor(input_tensor),
         weight_tensor=self.weight_tensor(input_tensor),
         vocab_size=self.length,
-        initializer=init_ops.zeros_initializer,
+        initializer=init_ops.zeros_initializer(),
         combiner=self.sparse_id_column.combiner)
 
 
@@ -1573,7 +1573,7 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
         input_tensor=self.to_sparse_tensor(input_tensor),
         weight_tensor=None,
         vocab_size=self.length * self.source_column.dimension,
-        initializer=init_ops.zeros_initializer,
+        initializer=init_ops.zeros_initializer(),
         combiner="sum")
 
 
@@ -1769,7 +1769,7 @@ class _CrossedColumn(_FeatureColumn,
         input_tensor=input_tensor,
         weight_tensor=None,
         vocab_size=self.length,
-        initializer=init_ops.zeros_initializer,
+        initializer=init_ops.zeros_initializer(),
         combiner=self.combiner)
 
 

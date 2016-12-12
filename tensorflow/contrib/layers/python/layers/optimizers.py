@@ -295,8 +295,11 @@ def _adaptive_max_norm(norm, std_factor, decay, global_step, epsilon, name):
 
     def moving_average(name, value, decay):
       moving_average_variable = vs.get_variable(
-          name, shape=value.get_shape(), dtype=value.dtype,
-          initializer=init_ops.zeros_initializer, trainable=False)
+          name,
+          shape=value.get_shape(),
+          dtype=value.dtype,
+          initializer=init_ops.zeros_initializer(),
+          trainable=False)
       return moving_averages.assign_moving_average(
           moving_average_variable, value, decay, zero_debias=False)
 

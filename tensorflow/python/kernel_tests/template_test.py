@@ -26,24 +26,19 @@ from tensorflow.python.ops import template
 
 
 def var_scoped_function():
-  return tf.get_variable("dummy",
-                         shape=[1],
-                         initializer=tf.zeros_initializer)
+  return tf.get_variable("dummy", shape=[1], initializer=tf.zeros_initializer())
 
 
 def internally_var_scoped_function(scope_name):
   with tf.variable_scope(scope_name):
-    return tf.get_variable("dummy",
-                           shape=[1],
-                           initializer=tf.zeros_initializer)
+    return tf.get_variable(
+        "dummy", shape=[1], initializer=tf.zeros_initializer())
 
 
 def function_with_create(trainable):
   """Creates a variable as a side effect using tf.Variable."""
   tf.Variable(0, trainable=trainable)
-  return tf.get_variable("dummy",
-                         shape=[1],
-                         initializer=tf.zeros_initializer)
+  return tf.get_variable("dummy", shape=[1], initializer=tf.zeros_initializer())
 
 
 class TemplateTest(tf.test.TestCase):
@@ -189,7 +184,7 @@ class TemplateTest(tf.test.TestCase):
   def test_internal_variable_reuse(self):
     def nested():
       with tf.variable_scope("nested") as vs:
-        v1 = tf.get_variable("x", initializer=tf.zeros_initializer, shape=[])
+        v1 = tf.get_variable("x", initializer=tf.zeros_initializer(), shape=[])
       with tf.variable_scope(vs, reuse=True):
         v2 = tf.get_variable("x")
       self.assertEqual(v1, v2)

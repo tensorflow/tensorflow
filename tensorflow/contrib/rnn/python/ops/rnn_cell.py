@@ -208,8 +208,10 @@ class CoupledInputForgetGateLSTMCell(rnn_cell.RNNCell):
           dtype, self._num_unit_shards)
 
       b = vs.get_variable(
-          "B", shape=[3 * self._num_units],
-          initializer=init_ops.zeros_initializer, dtype=dtype)
+          "B",
+          shape=[3 * self._num_units],
+          initializer=init_ops.zeros_initializer(),
+          dtype=dtype)
 
       # j = new_input, f = forget_gate, o = output_gate
       cell_inputs = array_ops.concat_v2([inputs, m_prev], 1)
@@ -335,8 +337,10 @@ class TimeFreqLSTMCell(rnn_cell.RNNCell):
           "W", [actual_input_size + 2*self._num_units, 4 * self._num_units],
           dtype, self._num_unit_shards)
       b = vs.get_variable(
-          "B", shape=[4 * self._num_units],
-          initializer=init_ops.zeros_initializer, dtype=dtype)
+          "B",
+          shape=[4 * self._num_units],
+          initializer=init_ops.zeros_initializer(),
+          dtype=dtype)
 
       # Diagonal connections
       if self._use_peepholes:
@@ -597,16 +601,20 @@ class GridLSTMCell(rnn_cell.RNNCell):
                            num_gates * self._num_units],
         dtype, self._num_unit_shards)
     b_f = vs.get_variable(
-        "B_f_%d" % block, shape=[num_gates * self._num_units],
-        initializer=init_ops.zeros_initializer, dtype=dtype)
+        "B_f_%d" % block,
+        shape=[num_gates * self._num_units],
+        initializer=init_ops.zeros_initializer(),
+        dtype=dtype)
     if not self._share_time_frequency_weights:
       concat_w_t = _get_concat_variable(
           "W_t_%d" % block, [actual_input_size + 2 * self._num_units,
                              num_gates * self._num_units],
           dtype, self._num_unit_shards)
       b_t = vs.get_variable(
-          "B_t_%d" % block, shape=[num_gates * self._num_units],
-          initializer=init_ops.zeros_initializer, dtype=dtype)
+          "B_t_%d" % block,
+          shape=[num_gates * self._num_units],
+          initializer=init_ops.zeros_initializer(),
+          dtype=dtype)
 
     if self._use_peepholes:
       # Diagonal connections
