@@ -242,18 +242,19 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
   def _reverse2DimAuto(self, np_dtype):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np_dtype)
 
-    for use_gpu in [False, True]:
-      with self.test_session(use_gpu=use_gpu):
-        x_tf_1 = array_ops.reverse_v2(x_np, [0]).eval()
-        x_tf_2 = array_ops.reverse_v2(x_np, [-2]).eval()
-        x_tf_3 = array_ops.reverse_v2(x_np, [1]).eval()
-        x_tf_4 = array_ops.reverse_v2(x_np, [-1]).eval()
-        x_tf_5 = array_ops.reverse_v2(x_np, [1, 0]).eval()
-        self.assertAllEqual(x_tf_1, np.asarray(x_np)[::-1, :])
-        self.assertAllEqual(x_tf_2, np.asarray(x_np)[::-1, :])
-        self.assertAllEqual(x_tf_3, np.asarray(x_np)[:, ::-1])
-        self.assertAllEqual(x_tf_4, np.asarray(x_np)[:, ::-1])
-        self.assertAllEqual(x_tf_5, np.asarray(x_np)[::-1, ::-1])
+    for reverse_f in [array_ops.reverse_v2, array_ops.reverse]:
+      for use_gpu in [False, True]:
+        with self.test_session(use_gpu=use_gpu):
+          x_tf_1 = reverse_f(x_np, [0]).eval()
+          x_tf_2 = reverse_f(x_np, [-2]).eval()
+          x_tf_3 = reverse_f(x_np, [1]).eval()
+          x_tf_4 = reverse_f(x_np, [-1]).eval()
+          x_tf_5 = reverse_f(x_np, [1, 0]).eval()
+          self.assertAllEqual(x_tf_1, np.asarray(x_np)[::-1, :])
+          self.assertAllEqual(x_tf_2, np.asarray(x_np)[::-1, :])
+          self.assertAllEqual(x_tf_3, np.asarray(x_np)[:, ::-1])
+          self.assertAllEqual(x_tf_4, np.asarray(x_np)[:, ::-1])
+          self.assertAllEqual(x_tf_5, np.asarray(x_np)[::-1, ::-1])
 
   # This is the version of reverse that uses axis indices rather than
   # bool tensors

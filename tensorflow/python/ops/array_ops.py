@@ -60,6 +60,7 @@ or join multiple tensors together.
 @@unstack
 @@unpack
 @@reverse_sequence
+@@reverse
 @@reverse_v2
 @@transpose
 @@extract_image_patches
@@ -2436,6 +2437,11 @@ def where(condition, x=None, y=None, name=None):
     return gen_math_ops._select(condition=condition, t=x, e=y, name=name)
   else:
     raise ValueError("x and y must both be non-None or both be None.")
+
+
+def reverse(tensor, axis, name=None):
+  return gen_array_ops.reverse_v2(tensor, axis, name)
+reverse.__doc__ = gen_array_ops.reverse_v2.__doc__
 
 
 # pylint: disable=redefined-builtin
