@@ -32,6 +32,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.training.saver import BaseSaverBuilder
 from tensorflow.python.util import compat
+from tensorflow.python.util.deprecation import deprecated
 
 
 class LookupInterface(object):
@@ -775,6 +776,191 @@ class IdTableWithHashBuckets(LookupInterface):
     return ids
 
 
+def string_to_index_table_from_file(vocabulary_file=None,
+                                    num_oov_buckets=0,
+                                    vocab_size=None,
+                                    default_value=-1,
+                                    hasher_spec=FastHashSpec,
+                                    name=None):
+  """Returns a lookup table that converts a string tensor into int64 IDs.
+
+  This operation constructs a lookup table to convert tensor of strings into
+  int64 IDs. The mapping can be initialized from a vocabulary file specified in
+  `vocabulary_file`, where the whole line is the key and the zero-based line
+  number is the ID.
+
+  Any lookup of an out-of-vocabulary token will return a bucket ID based on its
+  hash if `num_oov_buckets` is greater than zero. Otherwise it is assigned the
+  `default_value`.
+  The bucket ID range is `[vocabulary size, vocabulary size + num_oov_buckets]`.
+
+  The underlying table must be initialized by calling
+  `tf.initialize_all_tables.run()` or `table.init.run()` once.
+
+  Sample Usages:
+
+  If we have a vocabulary file "test.txt" with the following content:
+
+  ```
+  emerson
+  lake
+  palmer
+  ```
+
+  ```python
+  features = tf.constant(["emerson", "lake", "and", "palmer"])
+  table = tf.contrib.lookup.string_to_index_table_from_file(
+      vocabulary_file="test.txt", num_oov_buckets=1)
+  ids = table.lookup(features)
+  ...
+  tf.initialize_all_tables().run()
+
+  ids.eval()  ==> [0, 1, 3, 2]  # where 3 is the out-of-vocabulary bucket
+  ```
+
+  Args:
+    vocabulary_file: The vocabulary filename.
+    num_oov_buckets: The number of out-of-vocabulary buckets.
+    vocab_size: Number of the elements in the vocabulary, if known.
+    default_value: The value to use for out-of-vocabulary feature values.
+      Defaults to -1.
+    hasher_spec: A `HasherSpec` to specify the hash function to use for
+      assignation of out-of-vocabulary buckets.
+    name: A name for this op (optional).
+
+  Returns:
+    The lookup table to map a string `Tensor` to index `int64` `Tensor`.
+
+  Raises:
+    ValueError: If `vocabulary_file` is not set.
+    ValueError: If `num_oov_buckets` is negative or `vocab_size` is not greater
+      than zero.
+  """
+  if not vocabulary_file:
+    raise ValueError("vocabulary_file must be specified.")
+  if num_oov_buckets < 0:
+    raise ValueError("num_oov_buckets must be greater or equal than 0, got %d."
+                     % num_oov_buckets)
+  if vocab_size is not None and vocab_size < 1:
+    raise ValueError("vocab_size must be greater than 0, got %d." % vocab_size)
+
+  with ops.name_scope(name, "string_to_index") as feat_to_id_scope:
+    table = None
+    shared_name = ""
+    with ops.name_scope(None, "hash_table") as hash_table_scope:
+      if vocab_size:
+        # Keep the shared_name:
+        # <table_type>_<filename>_<vocab_size>_<key_index>_<value_index>
+        shared_name = "hash_table_%s_%d_%s_%s" % (vocabulary_file, vocab_size,
+                                                  TextFileIndex.WHOLE_LINE,
+                                                  TextFileIndex.LINE_NUMBER)
+      else:
+        # Keep the shared_name
+        # <table_type>_<filename>_<key_index>_<value_index>
+        shared_name = "hash_table_%s_%s_%s" % (vocabulary_file,
+                                               TextFileIndex.WHOLE_LINE,
+                                               TextFileIndex.LINE_NUMBER)
+      init = TextFileIdTableInitializer(
+          vocabulary_file, vocab_size=vocab_size, name="table_init")
+
+      table = HashTable(
+          init, default_value, shared_name=shared_name, name=hash_table_scope)
+    if num_oov_buckets:
+      table = IdTableWithHashBuckets(
+          table,
+          num_oov_buckets=num_oov_buckets,
+          hasher_spec=hasher_spec,
+          name=feat_to_id_scope)
+
+    return table
+
+
+def string_to_index_table_from_tensor(mapping,
+                                      num_oov_buckets=0,
+                                      default_value=-1,
+                                      hasher_spec=FastHashSpec,
+                                      name=None):
+  """Returns a lookup table that converts a string tensor into int64 IDs.
+
+  This operation constructs a lookup table to convert tensor of strings into
+  int64 IDs. The mapping can be initialized from a string `mapping` 1-D tensor
+  where each element is a key and corresponding index within the tensor is the
+  value.
+
+  Any lookup of an out-of-vocabulary token will return a bucket ID based on its
+  hash if `num_oov_buckets` is greater than zero. Otherwise it is assigned the
+  `default_value`.
+  The bucket ID range is `[mapping size, mapping size + num_oov_buckets]`.
+
+  The underlying table must be initialized by calling
+  `tf.initialize_all_tables.run()` or `table.init.run()` once.
+
+  Elements in `mapping` cannot have duplicates, otherwise when executing the
+  table initializer op, it will throw a `FailedPreconditionError`.
+
+  Sample Usages:
+
+  ```python
+  mapping_strings = t.constant(["emerson", "lake", "palmer")
+  table = tf.contrib.lookup.string_to_index_table_from_tensor(
+      mapping=mapping_strings, num_oov_buckets=1, default_value=-1)
+  features = tf.constant(["emerson", "lake", "and", "palmer"])
+  ids = table.lookup(features)
+  ...
+  tf.initialize_all_tables().run()
+
+  ids.eval()  ==> [0, 1, 4, 2]
+  ```
+
+  Args:
+    mapping: A 1-D string `Tensor` that specifies the mapping of strings to
+      indices.
+    num_oov_buckets: The number of out-of-vocabulary buckets.
+    default_value: The value to use for out-of-vocabulary feature values.
+      Defaults to -1.
+    hasher_spec: A `HasherSpec` to specify the hash function to use for
+      assignation of out-of-vocabulary buckets.
+    name: A name for this op (optional).
+
+  Returns:
+    The lookup table to map a string `Tensor` to index `int64` `Tensor`.
+
+  Raises:
+    ValueError: `mapping` is invalid.
+    ValueError: If `num_oov_buckets` is negative.
+  """
+  if mapping is None:
+    raise ValueError("mapping must be specified.")
+
+  if num_oov_buckets < 0:
+    raise ValueError("num_oov_buckets must be greater or equal than 0, got %d."
+                     % num_oov_buckets)
+
+  with ops.name_scope(name, "string_to_index") as feat_to_id_scope:
+    keys = ops.convert_to_tensor(mapping, dtypes.string)
+    num_elements = array_ops.size(keys)
+    values = math_ops.cast(math_ops.range(num_elements), dtypes.int64)
+
+    shared_name = ""
+    with ops.name_scope(None, "hash_table") as hash_table_scope:
+      init = KeyValueTensorInitializer(
+          keys, values, dtypes.string, dtypes.int64, name="table_init")
+      table = HashTable(
+          init, default_value, shared_name=shared_name, name=hash_table_scope)
+    if num_oov_buckets:
+      table = IdTableWithHashBuckets(
+          table,
+          num_oov_buckets=num_oov_buckets,
+          hasher_spec=hasher_spec,
+          name=feat_to_id_scope)
+
+    return table
+
+
+@deprecated(
+    "2017-01-07", "This op will be removed after the deprecation date. "
+    "Please switch to string_to_index_table_from_tensor and call the lookup "
+    "method of the returned table.")
 def string_to_index(tensor, mapping, default_value=-1, name=None):
   """Maps `tensor` of strings into `int64` indices based on `mapping`.
 
@@ -816,22 +1002,9 @@ def string_to_index(tensor, mapping, default_value=-1, name=None):
     The mapped indices. It has the same shape and tensor type (dense or sparse)
     as `tensor`.
   """
-  with ops.name_scope(name, "string_to_index", [tensor]) as scope:
-    shared_name = ""
-    keys = ops.convert_to_tensor(mapping, dtypes.string)
-    vocab_size = array_ops.size(keys)
-    values = math_ops.cast(math_ops.range(vocab_size), dtypes.int64)
-    init = KeyValueTensorInitializer(keys,
-                                     values,
-                                     dtypes.string,
-                                     dtypes.int64,
-                                     name="table_init")
-
-    t = HashTable(init,
-                  default_value,
-                  shared_name=shared_name,
-                  name="hash_table")
-    return t.lookup(tensor, name=scope)
+  table = string_to_index_table_from_tensor(
+      mapping=mapping, default_value=default_value, name=name)
+  return table.lookup(tensor)
 
 
 def index_to_string(tensor, mapping, default_value="UNK", name=None):
