@@ -175,7 +175,6 @@
   * [`space_to_batch_nd`](../../api_docs/python/array_ops.md#space_to_batch_nd)
   * [`space_to_depth`](../../api_docs/python/array_ops.md#space_to_depth)
   * [`split`](../../api_docs/python/array_ops.md#split)
-  * [`split_v`](../../api_docs/python/array_ops.md#split_v)
   * [`squeeze`](../../api_docs/python/array_ops.md#squeeze)
   * [`stack`](../../api_docs/python/array_ops.md#stack)
   * [`strided_slice`](../../api_docs/python/array_ops.md#strided_slice)
