@@ -124,6 +124,19 @@ py_library(
     srcs_version = "PY2AND3",
 )
 
+py_test(
+    name = "eval_metrics_test",
+    size = "small",
+    srcs = ["client/eval_metrics_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":eval_metrics",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
 py_library(
     name = "client_lib",
     srcs_version = "PY2AND3",
