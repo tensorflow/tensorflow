@@ -566,7 +566,7 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
     bias = contrib_variables.model_variable(
         'bias_weight',
         shape=[num_outputs],
-        initializer=init_ops.zeros_initializer([num_outputs]),
+        initializer=init_ops.zeros_initializer(),
         trainable=trainable,
         collections=_add_variable_collection(weight_collections))
     _log_variable(bias)

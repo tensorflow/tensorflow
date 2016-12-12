@@ -174,7 +174,7 @@ def _zero_debias(unbiased_var, value, decay):
     with ops.colocate_with(unbiased_var):
       with ops.control_dependencies(None):
         biased_initializer = init_ops.zeros_initializer(
-            unbiased_var.get_shape(), dtype=unbiased_var.dtype)
+            dtype=unbiased_var.dtype)(unbiased_var.get_shape())
         local_step_initializer = init_ops.ones_initializer()
       biased_var = variable_scope.get_variable(
           "biased", initializer=biased_initializer, trainable=False)

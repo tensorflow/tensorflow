@@ -47,7 +47,7 @@ class BaseLayerTest(test.TestCase):
 
       # Test basic variable creation.
       variable = layer._add_variable(
-          'my_var', [2, 2], initializer=init_ops.zeros_initializer)
+          'my_var', [2, 2], initializer=init_ops.zeros_initializer())
       self.assertEqual(variable.name, 'my_var:0')
       self.assertListEqual(layer.variables, [variable])
       self.assertListEqual(layer.trainable_variables, [variable])
@@ -60,7 +60,7 @@ class BaseLayerTest(test.TestCase):
       # layer._add_variable should work even outside `build` and `call`.
       variable_2 = layer._add_variable(
           'non_trainable_var', [2, 2],
-          initializer=init_ops.zeros_initializer,
+          initializer=init_ops.zeros_initializer(),
           trainable=False)
       self.assertListEqual(layer.variables, [variable, variable_2])
       self.assertListEqual(layer.trainable_variables, [variable])
@@ -72,7 +72,7 @@ class BaseLayerTest(test.TestCase):
       regularizer = lambda x: math_ops.reduce_sum(x) * 1e-3
       variable = layer._add_variable(
           'reg_var', [2, 2],
-          initializer=init_ops.zeros_initializer,
+          initializer=init_ops.zeros_initializer(),
           regularizer=regularizer)
       self.assertEqual(len(layer.losses), 1)
 
@@ -85,7 +85,7 @@ class BaseLayerTest(test.TestCase):
 
         def build(self, input_shape):
           self.my_var = variable_scope.get_variable(
-              'my_var', [2, 2], initializer=init_ops.zeros_initializer)
+              'my_var', [2, 2], initializer=init_ops.zeros_initializer())
 
         def call(self, inputs):
           return inputs

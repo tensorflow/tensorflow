@@ -171,9 +171,9 @@ def _fused_batch_norm(
       `batch_size`. The normalization is over all but the last dimension if
       `data_format` is `NHWC` and the second dimension if `data_format` is
       `NCHW`.
-    decay: decay for the moving average. Reasonable values for `decay` are close 
-      to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc. Lower 
-      `decay` value (recommend trying `decay`=0.9) if model experiences reasonably 
+    decay: decay for the moving average. Reasonable values for `decay` are close
+      to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc. Lower
+      `decay` value (recommend trying `decay`=0.9) if model experiences reasonably
       good training performance but poor validation and/or test performance.
     center: If True, subtract `beta`. If False, `beta` is ignored.
     scale: If True, multiply by `gamma`. If False, `gamma` is
@@ -399,9 +399,9 @@ def batch_norm(
       `batch_size`. The normalization is over all but the last dimension if
       `data_format` is `NHWC` and the second dimension if `data_format` is
       `NCHW`.
-    decay: decay for the moving average. Reasonable values for `decay` are close 
-      to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc. Lower 
-      `decay` value (recommend trying `decay`=0.9) if model experiences reasonably 
+    decay: decay for the moving average. Reasonable values for `decay` are close
+      to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc. Lower
+      `decay` value (recommend trying `decay`=0.9) if model experiences reasonably
       good training performance but poor validation and/or test performance.
     center: If True, subtract `beta`. If False, `beta` is ignored.
     scale: If True, multiply by `gamma`. If False, `gamma` is
@@ -483,11 +483,11 @@ def batch_norm(
       if not param_initializers:
         param_initializers = {}
       beta_initializer = param_initializers.get('beta',
-                                                init_ops.zeros_initializer)
+                                                init_ops.zeros_initializer())
       gamma_initializer = param_initializers.get('gamma',
                                                  init_ops.ones_initializer())
       moving_mean_initializer = param_initializers.get(
-          'moving_mean', init_ops.zeros_initializer)
+          'moving_mean', init_ops.zeros_initializer())
       moving_variance_initializer = param_initializers.get(
           'moving_variance', init_ops.ones_initializer())
       layer = normalization_layers.BatchNormalization(
