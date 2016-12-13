@@ -665,7 +665,8 @@ class _VariableStore(object):
         if partition_info is not None:
           init_val = lambda: initializer(
               shape.as_list(), dtype=dtype, partition_info=partition_info)
-        else:
+        else: 
+          # Backward compatible custom initializer.
           init_val = lambda: initializer(
               shape.as_list(), dtype=dtype)
         variable_dtype = dtype.base_dtype
