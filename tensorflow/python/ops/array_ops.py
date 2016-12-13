@@ -54,6 +54,7 @@ or join multiple tensors together.
 @@tile
 @@pad
 @@concat
+@@concat_v2
 @@stack
 @@pack
 @@unstack
@@ -932,6 +933,79 @@ def unpack(value, num=None, axis=0, name="unpack"):
   return unstack(value, num, axis, name)
 
 
+def concat_v2(values, axis, name="concat_v2"):
+  """Concatenates tensors along one dimension.
+
+  Concatenates the list of tensors `values` along dimension `axis`.  If
+  `values[i].shape = [D0, D1, ... Daxis(i), ...Dn]`, the concatenated
+  result has shape
+
+      [D0, D1, ... Raxis, ...Dn]
+
+  where
+
+      Raxis = sum(Daxis(i))
+
+  That is, the data from the input tensors is joined along the `axis`
+  dimension.
+
+  The number of dimensions of the input tensors must match, and all dimensions
+  except `axis` must be equal.
+
+  For example:
+
+  ```python
+  t1 = [[1, 2, 3], [4, 5, 6]]
+  t2 = [[7, 8, 9], [10, 11, 12]]
+  tf.concat_v2([t1, t2], 0) ==> [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]]
+  tf.concat_v2([t1, t2], 1) ==> [[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]]
+
+  # tensor t3 with shape [2, 3]
+  # tensor t4 with shape [2, 3]
+  tf.shape(tf.concat_v2([t3, t4], 0)) ==> [4, 3]
+  tf.shape(tf.concat_v2([t3, t4], 1)) ==> [2, 6]
+  ```
+
+  Note: If you are concatenating along a new axis consider using pack.
+  E.g.
+
+  ```python
+  tf.concat(axis, [tf.expand_dims(t, axis) for t in tensors])
+  ```
+
+  can be rewritten as
+
+  ```python
+  tf.pack(tensors, axis=axis)
+  ```
+
+  Args:
+    values: A list of `Tensor` objects or a single `Tensor`.
+    axis: 0-D `int32` `Tensor`.  Dimension along which to concatenate.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` resulting from concatenation of the input tensors.
+  """
+  if not isinstance(values, (list, tuple)):
+    values = [values]
+  # TODO(mrry): Change to return values?
+  if len(values) == 1:  # Degenerate case of one tensor.
+    # Make a throwaway call to convert_to_tensor to make sure
+    # that axis is of the correct type, and make sure that
+    # the returned tensor is a scalar.
+    # TODO(keveman): Implement a standalone type and shape checker.
+    with ops.name_scope(name) as scope:
+      ops.convert_to_tensor(axis,
+                            name="concat_dim",
+                            dtype=dtypes.int32).get_shape(
+                            ).assert_is_compatible_with(tensor_shape.scalar())
+      return identity(values[0], name=scope)
+  return gen_array_ops._concat_v2(values=values,
+                                  axis=axis,
+                                  name=name)
+
+
 def concat(concat_dim, values, name="concat"):
   """Concatenates tensors along one dimension.
 
@@ -986,12 +1060,13 @@ def concat(concat_dim, values, name="concat"):
   Returns:
     A `Tensor` resulting from concatenation of the input tensors.
   """
+  # TODO(annarev): switch to call concat_v2 instead.
   if not isinstance(values, (list, tuple)):
     values = [values]
   # TODO(mrry): Change to return values?
   if len(values) == 1:  # Degenerate case of one tensor.
     # Make a throwaway call to convert_to_tensor to make sure
-    # that concat_dim is of the correct type, and make sure that
+    # that axis is of the correct type, and make sure that
     # the returned tensor is a scalar.
     # TODO(keveman): Implement a standalone type and shape checker.
     with ops.name_scope(name) as scope:
