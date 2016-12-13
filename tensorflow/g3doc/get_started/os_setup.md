@@ -23,7 +23,7 @@ We support different ways to install TensorFlow:
    Python programs on your machine.
 *  [Virtualenv install](#virtualenv-installation): Install TensorFlow in its own
    directory, not impacting any existing Python programs on your machine.
-*  [Anaconda install](#anaconda-installation): Install TensorFlow in its own
+*  [Anaconda install](#anaconda-environment-installation): Install TensorFlow in its own
    environment for those running the Anaconda Python distribution.  Does not
    impact existing Python programs on your machine.
 *  [Docker install](#docker-installation): Run TensorFlow in a Docker container
