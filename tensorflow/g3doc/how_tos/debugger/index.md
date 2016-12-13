@@ -330,6 +330,11 @@ stuck. Success!
 *   Navigation through command history using the Up and Down arrow keys.
     Prefix-based navigation is also supported.
 *   Tab completion of commands and some command arguments.
+*   Write screen output to file by using bash-style redirection. For example:
+
+  ```none
+  tfdbg> pt cross_entropy/Log:0[:, 0:10] > /tmp/xent_value_slices.txt
+  ```
 
 ## Frequently Asked Questions
 
