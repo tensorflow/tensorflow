@@ -28,15 +28,14 @@ import numpy as np
 
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope as vs
-from tensorflow.python.ops import control_flow_ops
 
 from tensorflow.python.layers import base
+from tensorflow.python.layers import utils
 
 
 class Dense(base._Layer):  # pylint: disable=protected-access
@@ -247,20 +246,13 @@ class Dropout(base._Layer):  # pylint: disable=protected-access
     self.seed = seed
 
   def call(self, inputs, training=False):
-    if isinstance(training, bool):
-      training_bool = training
-    else:
-      training_bool = tensor_util.constant_value(training)
-    if training_bool is False:
-      return array_ops.identity(inputs)
-    dropped_inputs = nn.dropout(inputs, 1  - self.rate,
-                                noise_shape=self.noise_shape,
-                                seed=self.seed)
-    if training_bool is True:
-      return dropped_inputs
-    return control_flow_ops.cond(training,
-                                 lambda: dropped_inputs,
-                                 lambda: inputs)
+    def dropped_inputs():
+      return nn.dropout(inputs, 1  - self.rate,
+                        noise_shape=self.noise_shape,
+                        seed=self.seed)
+    return utils.smart_cond(training,
+                            dropped_inputs,
+                            lambda: array_ops.identity(inputs))
 
 
 def dropout(inputs,

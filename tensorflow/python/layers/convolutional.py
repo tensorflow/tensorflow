@@ -34,7 +34,7 @@ from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope as vs
 
 from tensorflow.python.layers import base
-from tensorflow.python.layers import conv_utils as utils
+from tensorflow.python.layers import utils
 
 
 class _Conv(base._Layer):  # pylint: disable=protected-access

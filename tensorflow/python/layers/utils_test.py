@@ -18,53 +18,48 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.layers import conv_utils
+from tensorflow.python.layers import utils
 from tensorflow.python.platform import test
 
 
 class ConvUtilsTest(test.TestCase):
 
   def testConvertDataFormat(self):
-    self.assertEqual(
-        conv_utils.convert_data_format('channels_first', 4), 'NCHW')
-    self.assertEqual(conv_utils.convert_data_format('channels_first', 3), 'NCW')
-    self.assertEqual(conv_utils.convert_data_format('channels_last', 4), 'NHWC')
-    self.assertEqual(conv_utils.convert_data_format('channels_last', 3), 'NWC')
-    self.assertEqual(
-        conv_utils.convert_data_format('channels_last', 5), 'NDHWC')
+    self.assertEqual(utils.convert_data_format('channels_first', 4), 'NCHW')
+    self.assertEqual(utils.convert_data_format('channels_first', 3), 'NCW')
+    self.assertEqual(utils.convert_data_format('channels_last', 4), 'NHWC')
+    self.assertEqual(utils.convert_data_format('channels_last', 3), 'NWC')
+    self.assertEqual(utils.convert_data_format('channels_last', 5), 'NDHWC')
 
     with self.assertRaises(ValueError):
-      conv_utils.convert_data_format('invalid', 2)
+      utils.convert_data_format('invalid', 2)
 
   def testNormalizeTuple(self):
+    self.assertEqual(utils.normalize_tuple(2, n=3, name='strides'), (2, 2, 2))
     self.assertEqual(
-        conv_utils.normalize_tuple(
-            2, n=3, name='strides'), (2, 2, 2))
-    self.assertEqual(
-        conv_utils.normalize_tuple(
-            (2, 1, 2), n=3, name='strides'), (2, 1, 2))
+        utils.normalize_tuple((2, 1, 2), n=3, name='strides'), (2, 1, 2))
 
     with self.assertRaises(ValueError):
-      conv_utils.normalize_tuple((2, 1), n=3, name='strides')
+      utils.normalize_tuple((2, 1), n=3, name='strides')
 
     with self.assertRaises(ValueError):
-      conv_utils.normalize_tuple(None, n=3, name='strides')
+      utils.normalize_tuple(None, n=3, name='strides')
 
   def testNormalizeDataFormat(self):
     self.assertEqual(
-        conv_utils.normalize_data_format('Channels_Last'), 'channels_last')
+        utils.normalize_data_format('Channels_Last'), 'channels_last')
     self.assertEqual(
-        conv_utils.normalize_data_format('CHANNELS_FIRST'), 'channels_first')
+        utils.normalize_data_format('CHANNELS_FIRST'), 'channels_first')
 
     with self.assertRaises(ValueError):
-      conv_utils.normalize_data_format('invalid')
+      utils.normalize_data_format('invalid')
 
   def testNormalizePadding(self):
-    self.assertEqual(conv_utils.normalize_padding('SAME'), 'same')
-    self.assertEqual(conv_utils.normalize_padding('VALID'), 'valid')
+    self.assertEqual(utils.normalize_padding('SAME'), 'same')
+    self.assertEqual(utils.normalize_padding('VALID'), 'valid')
 
     with self.assertRaises(ValueError):
-      conv_utils.normalize_padding('invalid')
+      utils.normalize_padding('invalid')
 
 
 if __name__ == '__main__':

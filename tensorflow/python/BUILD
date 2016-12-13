@@ -2334,12 +2334,12 @@ py_library(
     srcs = [
         "layers/__init__.py",
         "layers/base.py",
-        "layers/conv_utils.py",
         "layers/convolutional.py",
         "layers/core.py",
         "layers/layers.py",
         "layers/normalization.py",
         "layers/pooling.py",
+        "layers/utils.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -2414,12 +2414,12 @@ py_test(
 )
 
 py_test(
-    name = "layers_conv_utils_test",
+    name = "layers_utils_test",
     size = "small",
     srcs = [
-        "layers/conv_utils_test.py",
+        "layers/utils_test.py",
     ],
-    main = "layers/conv_utils_test.py",
+    main = "layers/utils_test.py",
     srcs_version = "PY2AND3",
     deps = [
         ":client_testlib",
