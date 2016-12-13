@@ -831,7 +831,7 @@ class AffineBijectorTest(tf.test.TestCase):
         self.assertAllClose([3., 0], run(bijector.forward, x))
         self.assertAllClose([0., 2], run(bijector.inverse, x))
         self.assertAllClose(
-            [-math.log(2.)], run(bijector.inverse_log_det_jacobian, x))
+            -math.log(2.), run(bijector.inverse_log_det_jacobian, x))
 
         # x is a 2-batch of 2-vectors.
         # The first vector is [1, 1], the second is [-1, -1].
@@ -844,8 +844,8 @@ class AffineBijectorTest(tf.test.TestCase):
         self.assertAllClose([[0., 2],
                              [-1., 0]],
                             run(bijector.inverse, x))
-        self.assertAllClose(
-            [-math.log(2.)], run(bijector.inverse_log_det_jacobian, x))
+        self.assertAllClose(-math.log(2.),
+                            run(bijector.inverse_log_det_jacobian, x))
 
   def testNoBatchMultivariateFullDynamic(self):
     with self.test_session() as sess:
@@ -869,7 +869,7 @@ class AffineBijectorTest(tf.test.TestCase):
       self.assertAllClose([[3., 1]], sess.run(bijector.forward(x), feed_dict))
       self.assertAllClose([[0., 1]], sess.run(bijector.inverse(x), feed_dict))
       self.assertAllClose(
-          [-math.log(4)],
+          -math.log(4),
           sess.run(bijector.inverse_log_det_jacobian(x), feed_dict))
 
   def testBatchMultivariateIdentity(self):
@@ -988,7 +988,7 @@ class AffineBijectorTest(tf.test.TestCase):
         x = [[1., 2]]  # One multivariate sample.
         self.assertAllClose([[1., 5]], run(bijector.forward, x))
         self.assertAllClose([[1., 0.5]], run(bijector.inverse, x))
-        self.assertAllClose([-math.log(4.)],
+        self.assertAllClose(-math.log(4.),
                             run(bijector.inverse_log_det_jacobian, x))
 
   def testDiagWithTriL(self):
@@ -1012,7 +1012,7 @@ class AffineBijectorTest(tf.test.TestCase):
         x = [[1., 2]]  # One multivariate sample.
         self.assertAllClose([[1., 7]], run(bijector.forward, x))
         self.assertAllClose([[1., 1 / 3.]], run(bijector.inverse, x))
-        self.assertAllClose([-math.log(6.)],
+        self.assertAllClose(-math.log(6.),
                             run(bijector.inverse_log_det_jacobian, x))
 
   def testIdentityAndDiagWithTriL(self):
@@ -1037,7 +1037,7 @@ class AffineBijectorTest(tf.test.TestCase):
         x = [[1., 2]]  # One multivariate sample.
         self.assertAllClose([[2., 9]], run(bijector.forward, x))
         self.assertAllClose([[2 / 3., 5 / 12.]], run(bijector.inverse, x))
-        self.assertAllClose([-math.log(12.)],
+        self.assertAllClose(-math.log(12.),
                             run(bijector.inverse_log_det_jacobian, x))
 
   def testIdentityWithVDVTUpdate(self):
@@ -1071,7 +1071,7 @@ class AffineBijectorTest(tf.test.TestCase):
         self.assertAllClose([0.2, 1.5, 4/3.], run(bijector.inverse, x))
         self.assertAllClose(
             run(bijector_ref.inverse, x), run(bijector.inverse, x))
-        self.assertAllClose([-math.log(60.)],
+        self.assertAllClose(-math.log(60.),
                             run(bijector.inverse_log_det_jacobian, x))
         self.assertAllClose(
             run(bijector.inverse_log_det_jacobian, x),
@@ -1107,7 +1107,7 @@ class AffineBijectorTest(tf.test.TestCase):
         self.assertAllClose([0.2, 1., 0.8], run(bijector.inverse, x))
         self.assertAllClose(
             run(bijector_ref.inverse, x), run(bijector.inverse, x))
-        self.assertAllClose([-math.log(150.)],
+        self.assertAllClose(-math.log(150.),
                             run(bijector.inverse_log_det_jacobian, x))
         self.assertAllClose(
             run(bijector.inverse_log_det_jacobian, x),
@@ -1149,7 +1149,7 @@ class AffineBijectorTest(tf.test.TestCase):
         self.assertAllClose([0.2, 14 / 15., 4 / 25.], run(bijector.inverse, x))
         self.assertAllClose(
             run(bijector_ref.inverse, x), run(bijector.inverse, x))
-        self.assertAllClose([-math.log(150.)],
+        self.assertAllClose(-math.log(150.),
                             run(bijector.inverse_log_det_jacobian, x))
         self.assertAllClose(
             run(bijector.inverse_log_det_jacobian, x),
@@ -1191,7 +1191,7 @@ class AffineBijectorTest(tf.test.TestCase):
         self.assertAllClose([1 / 3., 8 / 9., 4 / 30.], run(bijector.inverse, x))
         self.assertAllClose(
             run(bijector_ref.inverse, x), run(bijector.inverse, x))
-        self.assertAllClose([-math.log(90.)],
+        self.assertAllClose(-math.log(90.),
                             run(bijector.inverse_log_det_jacobian, x))
         self.assertAllClose(
             run(bijector.inverse_log_det_jacobian, x),
@@ -1341,12 +1341,19 @@ class AffineBijectorTest(tf.test.TestCase):
             backward = np.squeeze(backward, axis=-1)
           self.assertAllClose(backward, bijector.inverse(x).eval())
 
-          # TODO(srvasude): Reenable once we switch to LinOp.
-          # ildj = -np.log(np.abs(np.linalg.det(scale)))
-          # if x.ndim != scale.ndim - 1:
-          #   ildj = np.expand_dims(ildj, axis=-1)
-          # self.assertAllClose(
-          #   ildj, bijector.inverse_log_det_jacobian(x).eval())
+          ildj = -np.log(np.abs(np.linalg.det(scale)))
+          # TODO(jvdillon): We need to make it so the scale_identity_multiplier
+          # case does not deviate in expected shape. Fixing this will get rid of
+          # these special cases.
+          if (ildj.ndim > 0 and (
+              len(scale_args) == 1 or
+              (len(scale_args) == 2 and
+               scale_args.get("scale_identity_multiplier", None) is not None))):
+            ildj = np.squeeze(ildj[0])
+          elif ildj.ndim < scale.ndim - 2:
+            ildj = np.reshape(ildj, scale.shape[0:-2])
+          self.assertAllClose(
+              ildj, bijector.inverse_log_det_jacobian(x).eval())
 
   def testLegalInputs(self):
     self._testLegalInputs(

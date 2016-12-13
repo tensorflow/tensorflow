@@ -1850,11 +1850,16 @@ class Affine(Bijector):
     return -self._forward_log_det_jacobian(y)
 
   def _forward_log_det_jacobian(self, x):
-    if not self._is_only_identity_multiplier:
-      return self._scale.sqrt_log_abs_det()
-    d = math_ops.cast(array_ops.shape(x)[-1], dtype=self._scale.dtype)
-    return math_ops.log(math_ops.abs(self._scale)) * array_ops.where(
-        math_ops.equal(self.shaper.event_ndims, 0), 1., d)
+    if self._is_only_identity_multiplier:
+      # TODO(jvdillon): We don't pad in this case and instead let the fldj be
+      # applied via broadcast.
+      d = math_ops.cast(array_ops.shape(x)[-1], dtype=self._scale.dtype)
+      return math_ops.log(math_ops.abs(self._scale)) * array_ops.where(
+          math_ops.equal(self.shaper.event_ndims, 0), 1., d)
+    fldj = self._scale.sqrt_log_abs_det()
+    # We need to squeeze off the padded dimension.
+    start = array_ops.where(self._rank_two_event_ndims_one, 1, 0)
+    return array_ops.reshape(fldj, array_ops.shape(fldj)[start:])
 
 
 class AffineLinearOperator(Bijector):

@@ -306,15 +306,15 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
     #                = det(C) * det(D) * det(M)
     #
     # Here we compute the Cholesky factor of "C", then pass the result on.
-    diag_chol_c = array_ops.matrix_diag_part(
-        self._chol_capacitance(batch_mode=False))
-    return self._sqrt_log_det_core(diag_chol_c)
+    abs_diag_chol_c = math_ops.abs(array_ops.matrix_diag_part(
+        self._chol_capacitance(batch_mode=False)))
+    return self._sqrt_log_det_core(abs_diag_chol_c)
 
   def _batch_sqrt_log_det(self):
     # Here we compute the Cholesky factor of "C", then pass the result on.
-    diag_chol_c = array_ops.matrix_diag_part(
-        self._chol_capacitance(batch_mode=True))
-    return self._sqrt_log_det_core(diag_chol_c)
+    abs_diag_chol_c = math_ops.abs(array_ops.matrix_diag_part(
+        self._chol_capacitance(batch_mode=True)))
+    return self._sqrt_log_det_core(abs_diag_chol_c)
 
   def _chol_capacitance(self, batch_mode):
     """Cholesky factorization of the capacitance term."""
@@ -346,7 +346,7 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
     #                = det(C) * det(D) * det(M)
     # Multiply by 2 here because this is the log-det of the Cholesky factor of C
     log_det_c = 2 * math_ops.reduce_sum(
-        math_ops.log(diag_chol_c),
+        math_ops.log(math_ops.abs(diag_chol_c)),
         reduction_indices=[-1])
     # Add together to get Log[det(M + VDV^T)], the Log-det of the updated square
     # root.
