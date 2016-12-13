@@ -1211,6 +1211,10 @@ void DirectSession::WaitForNotification(RunState* run_state,
       run_state->status.Update(status);
     }
     cm->StartCancel();
+    // We must wait for the executors to complete, because they have borrowed
+    // references to `cm` and other per-step state. After this notification, it
+    // is safe to clean up the step.
+    run_state->executors_done.WaitForNotification();
   }
 }
 
