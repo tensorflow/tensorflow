@@ -30,8 +30,7 @@ from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.util import compat
 
-SAVED_MODEL_PATH = ("python/saved_model/example/saved_model_half_plus_two/"
-                    "00000123")
+SAVED_MODEL_PATH = ("cc/saved_model/testdata/half_plus_two/00000123")
 SESSION_BUNDLE_PATH = "contrib/session_bundle/example/half_plus_two/00000123"
 
 

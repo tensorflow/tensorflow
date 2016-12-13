@@ -45,7 +45,7 @@ tf_cc_test(
     name = "loader_test",
     srcs = ["loader_test.cc"],
     data = [
-        "//tensorflow/python/saved_model/example:saved_model_half_plus_two_data",
+        ":saved_model_half_plus_two",
     ],
     linkstatic = 1,
     tags = ["manual"],
@@ -60,6 +60,15 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
     ],
+)
+
+# TODO(b/32673259): add a test to continuously validate these files.
+filegroup(
+    name = "saved_model_half_plus_two",
+    srcs = glob([
+        "testdata/half_plus_two_pbtxt/**",
+        "testdata/half_plus_two/**",
+    ]),
 )
 
 # -----------------------------------------------------------------------------

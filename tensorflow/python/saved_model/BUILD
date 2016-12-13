@@ -71,7 +71,7 @@ py_test(
         "saved_model_test.py",
     ],
     data = [
-        "//tensorflow/python/saved_model/example:saved_model_half_plus_two_data",
+        "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     ],
     srcs_version = "PY2AND3",
     tags = ["manual"],

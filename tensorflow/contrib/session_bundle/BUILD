@@ -55,8 +55,8 @@ py_test(
         "bundle_shim_test.py",
     ],
     data = [
+        "//tensorflow/cc/saved_model:saved_model_half_plus_two",
         "//tensorflow/contrib/session_bundle/example:half_plus_two",
-        "//tensorflow/python/saved_model/example:saved_model_half_plus_two_data",
     ],
     main = "bundle_shim_test.py",
     srcs_version = "PY2AND3",
@@ -317,8 +317,8 @@ cc_test(
     size = "small",
     srcs = ["bundle_shim_test.cc"],
     data = [
+        "//tensorflow/cc/saved_model:saved_model_half_plus_two",
         "//tensorflow/contrib/session_bundle/example:half_plus_two",
-        "//tensorflow/python/saved_model/example:saved_model_half_plus_two_data",
     ],
     # Link in all registered kernels.
     linkstatic = 1,
