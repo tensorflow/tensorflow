@@ -5350,7 +5350,7 @@ Called when the thread stops.
 ## Other Functions and Classes
 - - -
 
-### `class tf.train.SyncReplicasOptimizerV2` {#SyncReplicasOptimizerV2}
+### `class tf.train.SyncReplicasOptimizer` {#SyncReplicasOptimizer}
 
 Class to synchronize, aggregate gradients and pass them to the optimizer.
 
@@ -5412,8 +5412,8 @@ opt = GradientDescentOptimizer(learning_rate=0.1)
 # Note that if you want to have 2 backup replicas, you can change
 # total_num_replicas=52 and make sure this number matches how many physical
 # replicas you started in your job.
-opt = tf.SyncReplicasOptimizerV2(opt, replicas_to_aggregate=50,
-                                 total_num_replicas=50)
+opt = tf.SyncReplicasOptimizer(opt, replicas_to_aggregate=50,
+                               total_num_replicas=50)
 
 # Some models have startup_delays to help stabilize the model but when using
 # sync_replicas training, set it to 0.
@@ -5461,7 +5461,7 @@ if is_chief and FLAGS.sync_replicas:
 
 - - -
 
-#### `tf.train.SyncReplicasOptimizerV2.__init__(opt, replicas_to_aggregate, total_num_replicas=None, variable_averages=None, variables_to_average=None, use_locking=False, name='sync_replicas')` {#SyncReplicasOptimizerV2.__init__}
+#### `tf.train.SyncReplicasOptimizer.__init__(opt, replicas_to_aggregate, total_num_replicas=None, variable_averages=None, variables_to_average=None, use_locking=False, name='sync_replicas')` {#SyncReplicasOptimizer.__init__}
 
 Construct a sync_replicas optimizer.
 
@@ -5489,7 +5489,7 @@ Construct a sync_replicas optimizer.
 
 - - -
 
-#### `tf.train.SyncReplicasOptimizerV2.compute_gradients(*args, **kwargs)` {#SyncReplicasOptimizerV2.compute_gradients}
+#### `tf.train.SyncReplicasOptimizer.compute_gradients(*args, **kwargs)` {#SyncReplicasOptimizer.compute_gradients}
 
 Compute gradients of "loss" for the variables in "var_list".
 
@@ -5512,7 +5512,7 @@ gradients can hurt the gradients from other replicas.
 
 - - -
 
-#### `tf.train.SyncReplicasOptimizerV2.apply_gradients(grads_and_vars, global_step=None, name=None)` {#SyncReplicasOptimizerV2.apply_gradients}
+#### `tf.train.SyncReplicasOptimizer.apply_gradients(grads_and_vars, global_step=None, name=None)` {#SyncReplicasOptimizer.apply_gradients}
 
 Apply gradients to variables.
 
@@ -5545,7 +5545,7 @@ apply_gradients() from the real optimizer.
 
 - - -
 
-#### `tf.train.SyncReplicasOptimizerV2.get_chief_queue_runner()` {#SyncReplicasOptimizerV2.get_chief_queue_runner}
+#### `tf.train.SyncReplicasOptimizer.get_chief_queue_runner()` {#SyncReplicasOptimizer.get_chief_queue_runner}
 
 Returns the QueueRunner for the chief to execute.
 
@@ -5567,7 +5567,7 @@ actually generates this queuerunner.
 
 - - -
 
-#### `tf.train.SyncReplicasOptimizerV2.get_init_tokens_op(num_tokens=-1)` {#SyncReplicasOptimizerV2.get_init_tokens_op}
+#### `tf.train.SyncReplicasOptimizer.get_init_tokens_op(num_tokens=-1)` {#SyncReplicasOptimizer.get_init_tokens_op}
 
 Returns the op to fill the sync_token_queue with the tokens.
 
@@ -5598,7 +5598,7 @@ variable update. Make sure:
 #### Other Methods
 - - -
 
-#### `tf.train.SyncReplicasOptimizerV2.get_slot(*args, **kwargs)` {#SyncReplicasOptimizerV2.get_slot}
+#### `tf.train.SyncReplicasOptimizer.get_slot(*args, **kwargs)` {#SyncReplicasOptimizer.get_slot}
 
 Return a slot named "name" created for "var" by the Optimizer.
 
@@ -5617,7 +5617,7 @@ This simply wraps the get_slot() from the actual optimizer.
 
 - - -
 
-#### `tf.train.SyncReplicasOptimizerV2.get_slot_names(*args, **kwargs)` {#SyncReplicasOptimizerV2.get_slot_names}
+#### `tf.train.SyncReplicasOptimizer.get_slot_names(*args, **kwargs)` {#SyncReplicasOptimizer.get_slot_names}
 
 Return a list of the names of slots created by the `Optimizer`.
 

@@ -167,7 +167,9 @@ from tensorflow.python.training.optimizer import Optimizer
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
 from tensorflow.python.training.gradient_descent import GradientDescentOptimizer
 from tensorflow.python.training.proximal_gradient_descent import ProximalGradientDescentOptimizer
+# TODO(xpan): Remove SyncReplicasOptimizerV2 once all users are migrated.
 from tensorflow.python.training.sync_replicas_optimizer import SyncReplicasOptimizerV2
+from tensorflow.python.training.sync_replicas_optimizer import SyncReplicasOptimizerV2 as SyncReplicasOptimizer
 
 # Utility classes for training.
 from tensorflow.python.training.coordinator import Coordinator
@@ -255,7 +257,7 @@ _allowed_symbols = [
     # TODO(drpng): document these. The reference in howtos/distributed does
     # not link.
     "SyncReplicasOptimizerV2",
-
+    "SyncReplicasOptimizer",
     # Protobufs:
     "BytesList",          # from example_pb2.
     "ClusterDef",

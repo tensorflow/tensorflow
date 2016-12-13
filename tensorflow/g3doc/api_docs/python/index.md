@@ -660,7 +660,7 @@
   * [`summary_iterator`](../../api_docs/python/train.md#summary_iterator)
   * [`SummarySaverHook`](../../api_docs/python/train.md#SummarySaverHook)
   * [`Supervisor`](../../api_docs/python/train.md#Supervisor)
-  * [`SyncReplicasOptimizerV2`](../../api_docs/python/train.md#SyncReplicasOptimizerV2)
+  * [`SyncReplicasOptimizer`](../../api_docs/python/train.md#SyncReplicasOptimizer)
   * [`WorkerSessionCreator`](../../api_docs/python/train.md#WorkerSessionCreator)
   * [`write_graph`](../../api_docs/python/train.md#write_graph)
 
