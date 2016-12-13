@@ -1007,6 +1007,147 @@ def string_to_index(tensor, mapping, default_value=-1, name=None):
   return table.lookup(tensor)
 
 
+def index_to_string_table_from_file(vocabulary_file,
+                                    vocab_size=None,
+                                    default_value="UNK",
+                                    name=None):
+  """Returns a lookup table that maps a `Tensor` of indices into strings.
+
+  This operation constructs a lookup table to map int64 indices into string
+  values. The table is initialized from a vocabulary file specified in
+  `vocabulary_file`, where the whole line is the value and the
+  zero-based line number is the index.
+
+  Any input which does not have a corresponding index in the vocabulary file
+  (an out-of-vocabulary entry) is assigned the `default_value`
+
+  The underlying table must be initialized by calling
+  `tf.initialize_all_tables.run()` or `table.init.run()` once.
+
+  Sample Usages:
+
+  If we have a vocabulary file "test.txt" with the following content:
+
+  ```
+  emerson
+  lake
+  palmer
+  ```
+
+  ```python
+  indices = tf.constant([1, 5], tf.int64)
+  table = tf.contrib.lookup.index_to_string_from_file(
+      vocabulary_file="test.txt", default_value="UNKNOWN")
+  values = table.lookup(indices)
+  ...
+  tf.initialize_all_tables().run()
+
+  values.eval() ==> ["lake", "UNKNOWN"]
+  ```
+
+  Args:
+    vocabulary_file: The vocabulary filename.
+    vocab_size: Number of the elements in the vocabulary, if known.
+    default_value: The value to use for out-of-vocabulary indices.
+    name: A name for this op (optional).
+
+  Returns:
+    The lookup table to map a string values associated to a given index `int64`
+    `Tensors`.
+
+  Raises:
+    ValueError: when `vocabulary_file` is empty.
+    ValueError: when `vocab_size` is invalid.
+  """
+  if not vocabulary_file:
+    raise ValueError("vocabulary_file must be specified.")
+  if vocab_size is not None and vocab_size < 1:
+    raise ValueError("vocab_size must be greater than 0, got %d." % vocab_size)
+
+  with ops.name_scope(name, "index_to_string") as scope:
+    shared_name = ""
+    if vocab_size:
+      # Keep a shared_name
+      # <table_type>_<filename>_<vocab_size>_<key_index>_<value_index>
+      shared_name = "hash_table_%s_%d_%s_%s" % (vocabulary_file, vocab_size,
+                                                TextFileIndex.LINE_NUMBER,
+                                                TextFileIndex.WHOLE_LINE)
+    else:
+      # Keep a shared_name <table_type>_<filename>_<key_index>_<value_index>
+      shared_name = "hash_table_%s_%s_%s" % (vocabulary_file,
+                                             TextFileIndex.LINE_NUMBER,
+                                             TextFileIndex.WHOLE_LINE)
+    init = TextFileStringTableInitializer(
+        vocabulary_file, vocab_size=vocab_size, name="table_init")
+
+    # TODO(yleon): Use a more effienct structure.
+    return HashTable(init, default_value, shared_name=shared_name, name=scope)
+
+
+def index_to_string_table_from_tensor(mapping, default_value="UNK", name=None):
+  """Returns a lookup table that maps a `Tensor` of indices into strings.
+
+  This operation constructs a lookup table to map int64 indices into string
+  values. The mapping is initialized from a string `mapping` 1-D `Tensor` where
+  each element is a value and the corresponding index within the tensor is the
+  key.
+
+  Any input which does not have a corresponding index in 'mapping'
+  (an out-of-vocabulary entry) is assigned the `default_value`
+
+  The underlying table must be initialized by calling
+  `tf.initialize_all_tables.run()` or `table.init.run()` once.
+
+  Elements in `mapping` cannot have duplicates, otherwise when executing the
+  table initializer op, it will throw a `FailedPreconditionError`.
+
+  Sample Usages:
+
+  ```python
+  mapping_string = t.constant(["emerson", "lake", "palmer")
+  indices = tf.constant([1, 5], tf.int64)
+  table = tf.contrib.lookup.index_to_string_from_tensor(
+      mapping_string, default_value="UNKNOWN")
+  values = table.lookup(indices)
+  ...
+  tf.initialize_all_tables().run()
+
+  values.eval() ==> ["lake", "UNKNOWN"]
+  ```
+
+  Args:
+    mapping: A 1-D string `Tensor` that specifies the strings to map from
+      indices.
+    default_value: The value to use for out-of-vocabulary indices.
+    name: A name for this op (optional).
+
+  Returns:
+    The lookup table to map a string values associated to a given index `int64`
+    `Tensors`.
+
+  Raises:
+    ValueError: when `mapping` is not set.
+  """
+
+  if mapping is None:
+    raise ValueError("mapping must be specified.")
+
+  with ops.name_scope(name, "index_to_string") as scope:
+    values = ops.convert_to_tensor(mapping, dtypes.string)
+    num_elements = array_ops.size(values)
+    keys = math_ops.cast(math_ops.range(num_elements), dtypes.int64)
+
+    shared_name = ""
+    init = KeyValueTensorInitializer(
+        keys, values, dtypes.int64, dtypes.string, name="table_init")
+    # TODO(yleon): Use a more effienct structure.
+    return HashTable(init, default_value, shared_name=shared_name, name=scope)
+
+
+@deprecated(
+    "2017-01-07", "This op will be removed after the deprecation date. "
+    "Please switch to index_to_string_table_from_tensor and call the lookup "
+    "method of the returned table.")
 def index_to_string(tensor, mapping, default_value="UNK", name=None):
   """Maps `tensor` of indices into string values based on `mapping`.
 
@@ -1044,21 +1185,9 @@ def index_to_string(tensor, mapping, default_value="UNK", name=None):
     The strings values associated to the indices. The resultant dense
     feature value tensor has the same shape as the corresponding `indices`.
   """
-  with ops.name_scope(name, "index_to_string", [tensor]) as scope:
-    shared_name = ""
-    values = ops.convert_to_tensor(mapping, dtypes.string)
-    vocab_size = array_ops.size(values)
-    keys = math_ops.cast(math_ops.range(vocab_size), dtypes.int64)
-    init = KeyValueTensorInitializer(keys,
-                                     values,
-                                     dtypes.int64,
-                                     dtypes.string,
-                                     name="table_init")
-    t = HashTable(init,
-                  default_value,
-                  shared_name=shared_name,
-                  name="hash_table")
-    return t.lookup(tensor, name=scope)
+  table = index_to_string_table_from_tensor(
+      mapping=mapping, default_value=default_value, name=name)
+  return table.lookup(tensor)
 
 
 class MutableHashTable(LookupInterface):

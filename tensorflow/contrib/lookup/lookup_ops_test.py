@@ -1319,6 +1319,116 @@ class StringToIndexTest(tf.test.TestCase):
       self.assertAllEqual((1, 2, default_value), indices.eval())
 
 
+class IndexToStringTableFromFileTest(tf.test.TestCase):
+
+  def _createVocabFile(self, basename):
+    vocabulary_file = os.path.join(self.get_temp_dir(), basename)
+    with open(vocabulary_file, "w") as f:
+      f.write("\n".join(["brain", "salad", "surgery"]) + "\n")
+    return vocabulary_file
+
+  def test_index_to_string_table(self):
+    vocabulary_file = self._createVocabFile("i2f_vocab1.txt")
+    with self.test_session():
+      table = tf.contrib.lookup.index_to_string_table_from_file(
+          vocabulary_file=vocabulary_file)
+      features = table.lookup(tf.constant([0, 1, 2, 3], tf.int64))
+      self.assertRaises(tf.OpError, features.eval)
+      tf.initialize_all_tables().run()
+      self.assertAllEqual((b"brain", b"salad", b"surgery", b"UNK"),
+                          features.eval())
+
+  def test_index_to_string_table_with_default_value(self):
+    default_value = b"NONE"
+    vocabulary_file = self._createVocabFile("f2i_vocab2.txt")
+    with self.test_session():
+      table = tf.contrib.lookup.index_to_string_table_from_file(
+          vocabulary_file=vocabulary_file, default_value=default_value)
+      features = table.lookup(tf.constant([1, 2, 4], tf.int64))
+      self.assertRaises(tf.OpError, features.eval)
+      tf.initialize_all_tables().run()
+      self.assertAllEqual((b"salad", b"surgery", default_value),
+                          features.eval())
+
+  def test_index_to_string_table_with_vocab_size_too_small(self):
+    default_value = b"NONE"
+    vocabulary_file = self._createVocabFile("f2i_vocab2.txt")
+    with self.test_session():
+      table = tf.contrib.lookup.index_to_string_table_from_file(
+          vocabulary_file=vocabulary_file,
+          vocab_size=2,
+          default_value=default_value)
+      features = table.lookup(tf.constant([1, 2, 4], tf.int64))
+      self.assertRaises(tf.OpError, features.eval)
+      tf.initialize_all_tables().run()
+      self.assertAllEqual((b"salad", default_value, default_value),
+                          features.eval())
+
+  def test_index_to_string_table_with_vocab_size_too_large(self):
+    vocabulary_file = self._createVocabFile("f2i_vocab6.txt")
+    with self.test_session():
+      table = tf.contrib.lookup.index_to_string_table_from_file(
+          vocabulary_file=vocabulary_file, vocab_size=4)
+      features = table.lookup(tf.constant([1, 2, 4], tf.int64))
+
+      self.assertRaises(tf.OpError, features.eval)
+      init = tf.initialize_all_tables()
+      self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
+                              "Invalid vocab_size", init.run)
+
+  def test_index_to_string_table_with_vocab_size(self):
+    vocabulary_file = self._createVocabFile("f2i_vocab7.txt")
+    with self.test_session():
+      table = tf.contrib.lookup.index_to_string_table_from_file(
+          vocabulary_file=vocabulary_file, vocab_size=3)
+      features = table.lookup(tf.constant([1, 2, 4], tf.int64))
+
+      self.assertRaises(tf.OpError, features.eval)
+      tf.initialize_all_tables().run()
+      self.assertAllEqual((b"salad", b"surgery", b"UNK"), features.eval())
+
+
+class IndexToStringTableFromTensorTest(tf.test.TestCase):
+
+  def test_index_to_string_table_from_tensor(self):
+    with self.test_session():
+      mapping_strings = tf.constant(["brain", "salad", "surgery"])
+      table = tf.contrib.lookup.index_to_string_table_from_tensor(
+          mapping=mapping_strings)
+
+      indices = tf.constant([0, 1, 2, 3], tf.int64)
+      features = table.lookup(indices)
+      self.assertRaises(tf.OpError, features.eval)
+      tf.initialize_all_tables().run()
+
+      self.assertAllEqual((b"brain", b"salad", b"surgery", b"UNK"),
+                          features.eval())
+
+  def test_duplicate_entries(self):
+    with self.test_session():
+      mapping_strings = tf.constant(["hello", "hello"])
+      table = tf.contrib.lookup.index_to_string_table_from_tensor(
+          mapping=mapping_strings)
+      indices = tf.constant([0, 1, 4], tf.int64)
+      features = table.lookup(indices)
+      tf.initialize_all_tables().run()
+      self.assertAllEqual((b"hello", b"hello", b"UNK"), features.eval())
+
+  def test_index_to_string_with_default_value(self):
+    default_value = b"NONE"
+    with self.test_session():
+      mapping_strings = tf.constant(["brain", "salad", "surgery"])
+      table = tf.contrib.lookup.index_to_string_table_from_tensor(
+          mapping=mapping_strings, default_value=default_value)
+      indices = tf.constant([1, 2, 4], tf.int64)
+      features = table.lookup(indices)
+      self.assertRaises(tf.OpError, features.eval)
+
+      tf.initialize_all_tables().run()
+      self.assertAllEqual((b"salad", b"surgery", default_value),
+                          features.eval())
+
+
 class IndexToStringTest(tf.test.TestCase):
 
   def test_index_to_string(self):
