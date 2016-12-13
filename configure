@@ -22,7 +22,7 @@ function bazel_clean_and_fetch() {
   # bazel clean --expunge currently doesn't work on Windows
   # TODO(pcloudy): Re-enable it after bazel clean --expunge is fixed.
   if ! is_windows; then
-    bazel clean --expunge
+    bazel clean --expunge_async
   fi
   bazel fetch //tensorflow/...
 }
