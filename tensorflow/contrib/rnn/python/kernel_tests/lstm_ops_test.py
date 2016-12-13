@@ -76,8 +76,9 @@ class LSTMBlockCellTest(tf.test.TestCase):
       cell = tf.contrib.rnn.LSTMCell(10)
       pcell = tf.contrib.rnn.LSTMCell(10, use_peepholes=True)
       inputs = [tf.zeros([4, 5])] * 6
-      tf.nn.rnn(cell, inputs, dtype=tf.float32, scope="basic")
-      tf.nn.rnn(pcell, inputs, dtype=tf.float32, scope="peephole")
+      tf.contrib.rnn.static_rnn(cell, inputs, dtype=tf.float32, scope="basic")
+      tf.contrib.rnn.static_rnn(
+          pcell, inputs, dtype=tf.float32, scope="peephole")
       basic_names = {v.name: v.get_shape() for v in tf.trainable_variables()}
 
     with self.test_session(use_gpu=self._use_gpu, graph=tf.Graph()):
@@ -85,8 +86,9 @@ class LSTMBlockCellTest(tf.test.TestCase):
       pcell = tf.contrib.rnn.LSTMBlockCell(
           10, use_peephole=True)
       inputs = [tf.zeros([4, 5])] * 6
-      tf.nn.rnn(cell, inputs, dtype=tf.float32, scope="basic")
-      tf.nn.rnn(pcell, inputs, dtype=tf.float32, scope="peephole")
+      tf.contrib.rnn.static_rnn(cell, inputs, dtype=tf.float32, scope="basic")
+      tf.contrib.rnn.static_rnn(
+          pcell, inputs, dtype=tf.float32, scope="peephole")
       block_names = {v.name: v.get_shape() for v in tf.trainable_variables()}
 
     with self.test_session(use_gpu=self._use_gpu, graph=tf.Graph()):
@@ -213,7 +215,8 @@ class LSTMBlockCellTest(tf.test.TestCase):
       initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=19890212)
       with tf.variable_scope("basic", initializer=initializer):
         cell = tf.contrib.rnn.BasicLSTMCell(cell_size, state_is_tuple=True)
-        outputs, state = tf.nn.rnn(cell, inputs, dtype=tf.float32)
+        outputs, state = tf.contrib.rnn.static_rnn(
+            cell, inputs, dtype=tf.float32)
 
         sess.run([tf.global_variables_initializer()])
         basic_outputs, basic_state = sess.run([outputs, state[0]])
@@ -284,7 +287,8 @@ class LSTMBlockCellTest(tf.test.TestCase):
       with tf.variable_scope("basic", initializer=initializer):
         cell = tf.contrib.rnn.LSTMCell(
             cell_size, use_peepholes=True, state_is_tuple=True)
-        outputs, state = tf.nn.rnn(cell, inputs, dtype=tf.float32)
+        outputs, state = tf.contrib.rnn.static_rnn(
+            cell, inputs, dtype=tf.float32)
 
         sess.run([tf.global_variables_initializer()])
         basic_outputs, basic_state = sess.run([outputs, state[0]])
@@ -364,10 +368,10 @@ class LSTMBlockCellTest(tf.test.TestCase):
       initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=19890213)
       with tf.variable_scope("basic", initializer=initializer):
         cell = tf.contrib.rnn.BasicLSTMCell(cell_size, state_is_tuple=True)
-        outputs, state = tf.nn.rnn(cell,
-                                   inputs,
-                                   dtype=tf.float32,
-                                   sequence_length=seq_lengths)
+        outputs, state = tf.contrib.rnn.static_rnn(cell,
+                                                   inputs,
+                                                   dtype=tf.float32,
+                                                   sequence_length=seq_lengths)
         sess.run([tf.global_variables_initializer()])
         basic_outputs, basic_state = sess.run([outputs, state[0]])
         basic_grads = sess.run(tf.gradients(outputs, inputs))
