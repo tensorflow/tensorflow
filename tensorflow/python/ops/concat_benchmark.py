@@ -28,7 +28,7 @@ tf.app.flags.DEFINE_boolean("use_gpu", True, """Run GPU benchmarks.""")
 
 
 def build_graph(device, input_shape, variable, num_inputs, axis, grad):
-  """Build a graph containing a sequence of batch normalizations.
+  """Build a graph containing a sequence of concat operations.
 
   Args:
     device: string, the device to run on.
@@ -70,7 +70,7 @@ def build_graph(device, input_shape, variable, num_inputs, axis, grad):
 
 
 class ConcatBenchmark(tf.test.Benchmark):
-  """Benchmark batch normalization."""
+  """Benchmark concat."""
 
   def _run_graph(self, device, input_shape, variable, num_inputs, axis, grad,
                  num_iters):
@@ -128,13 +128,13 @@ class ConcatBenchmark(tf.test.Benchmark):
     shapes = [[2000, 8], [8, 2000], [100, 18], [1000, 18], [100, 97],
               [1000, 97], [10000, 1], [1, 10000]]
     axis_ = [0, 1]
-    num_inputs = 256
-    num_iters = [20] * len(shapes)
+    num_inputs = 20
+    num_iters = [10] * len(shapes)
     variable = [False, True]  # fixed input size or not
     for shape, iters in zip(shapes, num_iters):
       for axis in axis_:
         for v in variable:
-          self._run_graph("gpu", shape, v, num_inputs, axis, True, iters)
+          self._run_graph("cpu", shape, v, num_inputs, axis, True, iters)
 
 
 if __name__ == "__main__":
