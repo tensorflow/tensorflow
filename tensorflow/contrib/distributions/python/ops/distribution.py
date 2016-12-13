@@ -475,6 +475,10 @@ class Distribution(_BaseDistribution):
       batch_shape: `Tensor`.
     """
     with self._name_scope(name):
+      if self.get_batch_shape().is_fully_defined():
+        return ops.convert_to_tensor(self.get_batch_shape().as_list(),
+                                     dtype=dtypes.int32,
+                                     name="batch_shape")
       return self._batch_shape()
 
   def _get_batch_shape(self):
@@ -503,6 +507,10 @@ class Distribution(_BaseDistribution):
       event_shape: `Tensor`.
     """
     with self._name_scope(name):
+      if self.get_event_shape().is_fully_defined():
+        return ops.convert_to_tensor(self.get_event_shape().as_list(),
+                                     dtype=dtypes.int32,
+                                     name="event_shape")
       return self._event_shape()
 
   def _get_event_shape(self):
@@ -517,6 +525,20 @@ class Distribution(_BaseDistribution):
       event_shape: `TensorShape`, possibly unknown.
     """
     return self._get_event_shape()
+
+  @property
+  def is_scalar_event(self):
+    """Indicates that `event_shape==[]`."""
+    return ops.convert_to_tensor(
+        self._is_scalar_helper(self.get_event_shape, self.event_shape),
+        name="is_scalar_event")
+
+  @property
+  def is_scalar_batch(self):
+    """Indicates that `batch_shape==[]`."""
+    return ops.convert_to_tensor(
+        self._is_scalar_helper(self.get_batch_shape, self.batch_shape),
+        name="is_scalar_batch")
 
   def _sample_n(self, n, seed=None):
     raise NotImplementedError("sample_n is not implemented")
@@ -943,3 +965,16 @@ class Distribution(_BaseDistribution):
       total = np.prod(sample_shape_static_val,
                       dtype=dtypes.int32.as_numpy_dtype())
     return sample_shape, total
+
+  def _is_scalar_helper(self, static_shape_fn, dynamic_shape_fn):
+    """Implementation for `is_scalar_batch` and `is_scalar_event`."""
+    if static_shape_fn().ndims is not None:
+      return static_shape_fn().ndims == 0
+    shape = dynamic_shape_fn()
+    if (shape.get_shape().ndims is not None and
+        shape.get_shape()[0].value is not None):
+      # If the static_shape_fn is correctly written then we should never execute
+      # this branch. We keep it just in case there's some unimagined corner
+      # case.
+      return shape.get_shape().as_list() == [0]
+    return math_ops.equal(array_ops.shape(shape)[0], 0)
