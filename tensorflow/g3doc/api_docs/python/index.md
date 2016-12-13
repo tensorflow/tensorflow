@@ -1040,6 +1040,12 @@
   * [`softmax_cross_entropy`](../../api_docs/python/contrib.losses.md#softmax_cross_entropy)
   * [`sparse_softmax_cross_entropy`](../../api_docs/python/contrib.losses.md#sparse_softmax_cross_entropy)
 
+* **[Optimization (contrib)](../../api_docs/python/contrib.opt.md)**:
+  * [`ExternalOptimizerInterface`](../../api_docs/python/contrib.opt.md#ExternalOptimizerInterface)
+  * [`MovingAverageOptimizer`](../../api_docs/python/contrib.opt.md#MovingAverageOptimizer)
+  * [`ScipyOptimizerInterface`](../../api_docs/python/contrib.opt.md#ScipyOptimizerInterface)
+  * [`VariableClippingOptimizer`](../../api_docs/python/contrib.opt.md#VariableClippingOptimizer)
+
 * **[RNN and Cells (contrib)](../../api_docs/python/contrib.rnn.md)**:
   * [`AttentionCellWrapper`](../../api_docs/python/contrib.rnn.md#AttentionCellWrapper)
   * [`BasicLSTMCell`](../../api_docs/python/contrib.rnn.md#BasicLSTMCell)
