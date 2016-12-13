@@ -733,10 +733,10 @@ class ComputeSampledLogitsTest(tf.test.TestCase):
       inputs_tf = tf.constant(hidden_acts)
 
       sampled_softmax_loss_tf = tf.nn.sampled_softmax_loss(
-          weights_tf,
-          biases_tf,
-          inputs_tf,
-          labels_tf,
+          weights=weights_tf,
+          biases=biases_tf,
+          labels=labels_tf,
+          inputs=inputs_tf,
           num_sampled=1,
           num_classes=self._num_classes,
           num_true=1,
@@ -748,10 +748,10 @@ class ComputeSampledLogitsTest(tf.test.TestCase):
 
       # Test with sharded weights
       sampled_softmax_loss_tf = tf.nn.sampled_softmax_loss(
-          [tf.constant(shard) for shard in sharded_weights],
-          biases_tf,
-          inputs_tf,
-          labels_tf,
+          weights=[tf.constant(shard) for shard in sharded_weights],
+          biases=biases_tf,
+          labels=labels_tf,
+          inputs=inputs_tf,
           num_sampled=1,
           num_classes=self._num_classes,
           num_true=1,
