@@ -1,4 +1,4 @@
-Bijector which computes Y = g(X) = X X^T where X is a lower-triangular, positive-diagonal matrix.
+Bijector which computes Y = g(X) = X X.T where X is a lower-triangular, positive-diagonal matrix.
 
 `event_ndims` must be 0 or 2, i.e., scalar or matrix.
 
@@ -8,7 +8,7 @@ Examples:
 
 ```python
 bijector.CholeskyOuterProduct(event_ndims=2).forward(x=[[1., 0], [2, 1]])
-# Result: [[1, 1], [1, 5]], i.e., x x^T
+# Result: [[1, 1], [1, 5]], i.e., x x.T
 
 bijector.SoftmaxCentered(event_ndims=2).inverse(y=[[1., 1], [1, 5]])
 # Result: [[1, 0], [2, 1]], i.e., chol(y).

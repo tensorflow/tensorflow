@@ -4219,6 +4219,26 @@ tf.train.write_graph(sess.graph, '/tmp/my-model', 'train.pbtxt')
 Hook to extend calls to MonitoredSession.run().
 - - -
 
+#### `tf.train.SessionRunHook.after_create_session(session)` {#SessionRunHook.after_create_session}
+
+Called when new TensorFlow session is created.
+
+This is called to signal the hooks that a new session has been created. This
+has two essential differences with the situation in which `begin` is called:
+
+* When this is called, the graph is finalized and ops can no longer be added
+    to the graph.
+* This method will be called as a result of recovering a wrapped session,
+    instead of at the beginning of the overall session.
+
+##### Args:
+
+
+*  <b>`session`</b>: A TensorFlow Session that has been created.
+
+
+- - -
+
 #### `tf.train.SessionRunHook.after_run(run_context, run_values)` {#SessionRunHook.after_run}
 
 Called after each call to run().
@@ -4325,6 +4345,26 @@ Initializes a LoggingHook monitor.
 
 - - -
 
+#### `tf.train.LoggingTensorHook.after_create_session(session)` {#LoggingTensorHook.after_create_session}
+
+Called when new TensorFlow session is created.
+
+This is called to signal the hooks that a new session has been created. This
+has two essential differences with the situation in which `begin` is called:
+
+* When this is called, the graph is finalized and ops can no longer be added
+    to the graph.
+* This method will be called as a result of recovering a wrapped session,
+    instead of at the beginning of the overall session.
+
+##### Args:
+
+
+*  <b>`session`</b>: A TensorFlow Session that has been created.
+
+
+- - -
+
 #### `tf.train.LoggingTensorHook.after_run(run_context, run_values)` {#LoggingTensorHook.after_run}
 
 
@@ -4390,6 +4430,26 @@ call.
 
 
 *  <b>`ValueError`</b>: If one of the arguments is invalid.
+
+
+- - -
+
+#### `tf.train.StopAtStepHook.after_create_session(session)` {#StopAtStepHook.after_create_session}
+
+Called when new TensorFlow session is created.
+
+This is called to signal the hooks that a new session has been created. This
+has two essential differences with the situation in which `begin` is called:
+
+* When this is called, the graph is finalized and ops can no longer be added
+    to the graph.
+* This method will be called as a result of recovering a wrapped session,
+    instead of at the beginning of the overall session.
+
+##### Args:
+
+
+*  <b>`session`</b>: A TensorFlow Session that has been created.
 
 
 - - -
@@ -4463,6 +4523,26 @@ Initialize CheckpointSaverHook monitor.
 
 - - -
 
+#### `tf.train.CheckpointSaverHook.after_create_session(session)` {#CheckpointSaverHook.after_create_session}
+
+Called when new TensorFlow session is created.
+
+This is called to signal the hooks that a new session has been created. This
+has two essential differences with the situation in which `begin` is called:
+
+* When this is called, the graph is finalized and ops can no longer be added
+    to the graph.
+* This method will be called as a result of recovering a wrapped session,
+    instead of at the beginning of the overall session.
+
+##### Args:
+
+
+*  <b>`session`</b>: A TensorFlow Session that has been created.
+
+
+- - -
+
 #### `tf.train.CheckpointSaverHook.after_run(run_context, run_values)` {#CheckpointSaverHook.after_run}
 
 
@@ -4507,6 +4587,26 @@ Steps per second monitor.
 #### `tf.train.StepCounterHook.__init__(every_n_steps=100, every_n_secs=None, output_dir=None, summary_writer=None)` {#StepCounterHook.__init__}
 
 
+
+
+- - -
+
+#### `tf.train.StepCounterHook.after_create_session(session)` {#StepCounterHook.after_create_session}
+
+Called when new TensorFlow session is created.
+
+This is called to signal the hooks that a new session has been created. This
+has two essential differences with the situation in which `begin` is called:
+
+* When this is called, the graph is finalized and ops can no longer be added
+    to the graph.
+* This method will be called as a result of recovering a wrapped session,
+    instead of at the beginning of the overall session.
+
+##### Args:
+
+
+*  <b>`session`</b>: A TensorFlow Session that has been created.
 
 
 - - -
@@ -4578,6 +4678,26 @@ Initializes NanLoss monitor.
 
 *  <b>`loss_tensor`</b>: `Tensor`, the loss tensor.
 *  <b>`fail_on_nan_loss`</b>: `bool`, whether to raise exception when loss is NaN.
+
+
+- - -
+
+#### `tf.train.NanTensorHook.after_create_session(session)` {#NanTensorHook.after_create_session}
+
+Called when new TensorFlow session is created.
+
+This is called to signal the hooks that a new session has been created. This
+has two essential differences with the situation in which `begin` is called:
+
+* When this is called, the graph is finalized and ops can no longer be added
+    to the graph.
+* This method will be called as a result of recovering a wrapped session,
+    instead of at the beginning of the overall session.
+
+##### Args:
+
+
+*  <b>`session`</b>: A TensorFlow Session that has been created.
 
 
 - - -
@@ -4659,6 +4779,26 @@ Initializes a `SummarySaver` monitor.
 
 - - -
 
+#### `tf.train.SummarySaverHook.after_create_session(session)` {#SummarySaverHook.after_create_session}
+
+Called when new TensorFlow session is created.
+
+This is called to signal the hooks that a new session has been created. This
+has two essential differences with the situation in which `begin` is called:
+
+* When this is called, the graph is finalized and ops can no longer be added
+    to the graph.
+* This method will be called as a result of recovering a wrapped session,
+    instead of at the beginning of the overall session.
+
+##### Args:
+
+
+*  <b>`session`</b>: A TensorFlow Session that has been created.
+
+
+- - -
+
 #### `tf.train.SummarySaverHook.after_run(run_context, run_values)` {#SummarySaverHook.after_run}
 
 
@@ -4706,6 +4846,26 @@ Create a _GlobalStepWaiterHook.
 
 
 *  <b>`wait_until_step`</b>: an `int` shows until which global step should we wait.
+
+
+- - -
+
+#### `tf.train.GlobalStepWaiterHook.after_create_session(session)` {#GlobalStepWaiterHook.after_create_session}
+
+Called when new TensorFlow session is created.
+
+This is called to signal the hooks that a new session has been created. This
+has two essential differences with the situation in which `begin` is called:
+
+* When this is called, the graph is finalized and ops can no longer be added
+    to the graph.
+* This method will be called as a result of recovering a wrapped session,
+    instead of at the beginning of the overall session.
+
+##### Args:
+
+
+*  <b>`session`</b>: A TensorFlow Session that has been created.
 
 
 - - -
