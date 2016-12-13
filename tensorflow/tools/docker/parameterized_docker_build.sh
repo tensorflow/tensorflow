@@ -327,15 +327,6 @@ if [[ "${TF_DOCKER_BUILD_IS_DEVEL}" == "no" ]]; then
   sleep 1
   "${DOCKER_BINARY}" stop --time=0 ${CONTAINER_ID}
 
-else
-  "${DOCKER_BINARY}" run --rm -p ${CONTAINER_PORT}:${CONTAINER_PORT} \
-      -v ${TMP_DIR}/notebooks:/root/notebooks "${IMG}" \
-      bash -c \
-      "cd /tensorflow; tensorflow/tools/ci_build/builds/test_tutorials.sh"
-  if [[ $? != "0" ]]; then
-    CHECK_FAILED=1
-  fi
-
 fi
 
 
