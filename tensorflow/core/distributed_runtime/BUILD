@@ -173,6 +173,17 @@ cc_library(
 )
 
 cc_library(
+    name = "local_master",
+    srcs = ["local_master.cc"],
+    hdrs = ["local_master.h"],
+    deps = [
+        ":master",
+        ":master_interface",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "rendezvous_mgr_interface",
     srcs = [],
     hdrs = ["rendezvous_mgr_interface.h"],

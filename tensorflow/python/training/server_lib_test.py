@@ -22,6 +22,8 @@ import time
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.core.protobuf import config_pb2
+
 
 class GrpcServerTest(tf.test.TestCase):
 
@@ -203,9 +205,23 @@ class GrpcServerTest(tf.test.TestCase):
     self.assertAllEqual(1.0, sess.run(v0))
     self.assertAllEqual(2.0, sess.run(v1))
 
+  def _useRPCConfig(self):
+    """Return a `tf.ConfigProto` that ensures we use the RPC stack for tests.
+
+    This configuration ensures that we continue to exercise the gRPC
+    stack when testing, rather than using the in-process optimization,
+    which avoids using gRPC as the transport between a client and
+    master in the same process.
+
+    Returns:
+      A `tf.ConfigProto`.
+    """
+    return tf.ConfigProto(rpc_options=config_pb2.RPCOptions(
+        use_rpc_for_inprocess_master=True))
+
   def testLargeConstant(self):
     server = tf.train.Server.create_local_server()
-    with tf.Session(server.target) as sess:
+    with tf.Session(server.target, config=self._useRPCConfig()) as sess:
       const_val = np.empty([10000, 3000], dtype=np.float32)
       const_val.fill(0.5)
       c = tf.constant(const_val)
@@ -214,7 +230,7 @@ class GrpcServerTest(tf.test.TestCase):
 
   def testLargeFetch(self):
     server = tf.train.Server.create_local_server()
-    with tf.Session(server.target) as sess:
+    with tf.Session(server.target, config=self._useRPCConfig()) as sess:
       c = tf.fill([10000, 3000], 0.5)
       expected_val = np.empty([10000, 3000], dtype=np.float32)
       expected_val.fill(0.5)
@@ -222,7 +238,7 @@ class GrpcServerTest(tf.test.TestCase):
 
   def testLargeFeed(self):
     server = tf.train.Server.create_local_server()
-    with tf.Session(server.target) as sess:
+    with tf.Session(server.target, config=self._useRPCConfig()) as sess:
       feed_val = np.empty([10000, 3000], dtype=np.float32)
       feed_val.fill(0.5)
       p = tf.placeholder(tf.float32, shape=[10000, 3000])
@@ -234,7 +250,7 @@ class GrpcServerTest(tf.test.TestCase):
 
   def testCloseCancelsBlockingOperation(self):
     server = tf.train.Server.create_local_server()
-    sess = tf.Session(server.target)
+    sess = tf.Session(server.target, config=self._useRPCConfig())
 
     q = tf.FIFOQueue(10, [tf.float32])
     enqueue_op = q.enqueue(37.0)
