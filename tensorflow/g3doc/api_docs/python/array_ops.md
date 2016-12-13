@@ -865,9 +865,13 @@ pad(t, paddings, "SYMMETRIC") ==> [[2, 1, 1, 2, 3, 3, 2],
 
 - - -
 
-### `tf.concat(concat_dim, values, name='concat')` {#concat}
+### `tf.concat(*args, **kwargs)` {#concat}
 
-Concatenates tensors along one dimension.
+Concatenates tensors along one dimension. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-14.
+Instructions for updating:
+This op will be removed after the deprecation date. Please switch to tf.concat_v2().
 
 Concatenates the list of tensors `values` along dimension `concat_dim`.  If
 `values[i].shape = [D0, D1, ... Dconcat_dim(i), ...Dn]`, the concatenated
@@ -1034,9 +1038,13 @@ This is the opposite of unstack.  The numpy equivalent is
 
 - - -
 
-### `tf.pack(values, axis=0, name='pack')` {#pack}
+### `tf.pack(*args, **kwargs)` {#pack}
 
-Packs a list of rank-`R` tensors into one rank-`(R+1)` tensor.
+Packs a list of rank-`R` tensors into one rank-`(R+1)` tensor. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-14.
+Instructions for updating:
+This op will be removed after the deprecation date. Please switch to tf.stack().
 
 Packs the list of tensors in `values` into a tensor with rank one higher than
 each tensor in `values`, by packing them along the `axis` dimension.
@@ -1126,11 +1134,13 @@ This is the opposite of pack.  The numpy equivalent is
 
 - - -
 
-### `tf.unpack(value, num=None, axis=0, name='unpack')` {#unpack}
+### `tf.unpack(*args, **kwargs)` {#unpack}
 
-DEPRECATED: Use unstack.
+Unpacks the given dimension of a rank-`R` tensor into rank-`(R-1)` tensors. (deprecated)
 
-Unpacks the given dimension of a rank-`R` tensor into rank-`(R-1)` tensors.
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-14.
+Instructions for updating:
+This op will be removed after the deprecation date. Please switch to tf.unstack().
 
 Unpacks `num` tensors from `value` by chipping it along the `axis` dimension.
 If `num` is not specified (the default), it is inferred from `value`'s shape.
