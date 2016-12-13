@@ -1,0 +1,140 @@
+{{$info := .}}{{$filtered := .IsFiltered}}{{/*
+
+---------------------------------------
+
+*/}}{{if $filtered}}{{range .PAst}}{{range .Decls}}{{node $info .}}
+
+{{end}}{{end}}{{else}}{{with .PAst}}{{range $filename, $ast := .}}{{$filename}}:
+{{node $ $ast}}{{end}}{{end}}{{end}}{{/*
+
+---------------------------------------
+
+*/}}{{if and $filtered (not (or .PDoc .PAst))}}No match found.
+{{end}}{{with .PDoc}}{{if $.IsMain}}COMMAND DOCUMENTATION
+
+{{comment_text .Doc "    " "\t"}}
+{{else}}{{if not $filtered}}# TensorFlow Go API reference documentation
+
+
+{{comment_text .Doc "" ""}}
+
+## Go API Import path
+
+```Go
+import "{{.ImportPath}}"
+```
+
+{{example_text $ "" ""}}{{end}}{{/*
+
+---------------------------------------
+
+*/}}{{with .Consts}}{{if not $filtered}}CONSTANTS
+
+{{end}}{{range .}}{{node $ .Decl}}
+{{comment_text .Doc "    " "\t"}}
+{{end}}{{end}}{{/*
+
+---------------------------------------
+
+*/}}{{with .Vars}}{{if not $filtered}}## Variables
+
+{{end}}{{range .}}
+```Go
+{{node $ .Decl}}
+```
+{{comment_text .Doc "" ""}}
+{{end}}{{end}}{{/*
+
+---------------------------------------
+
+*/}}{{with .Funcs}}{{if not $filtered}}## Functions
+
+{{end}}{{range .}}{{node $ .Decl}}
+{{comment_text .Doc "    " "\t"}}
+{{example_text $ .Name "    "}}{{end}}{{end}}{{/*
+
+---------------------------------------
+
+*/}}{{with .Types}}{{if not $filtered}}## Types
+{{end}}{{range .}}{{$tname := .Name}}# {{.Name}}
+
+```Go
+{{node $ .Decl}}
+```
+
+{{comment_text .Doc "" ""}}{{/*
+
+---------------------------------------
+
+*/}}{{if .Consts}}{{range .Consts}}{{node $ .Decl}}
+{{comment_text .Doc "    " "\t"}}
+{{end}}{{end}}{{/*
+
+---------------------------------------
+
+*/}}{{if .Vars}}{{range .Vars}}{{node $ .Decl}}
+{{comment_text .Doc "    " "\t"}}
+{{range $name := .Names}}{{example_text $ $name "    "}}{{end}}{{end}}{{end}}{{/*
+
+---------------------------------------
+
+*/}}{{if .Funcs}}
+## {{.Name}} Constructors
+{{range .Funcs}}
+### {{.Name}}
+
+```go
+{{node $ .Decl}}
+```
+
+{{comment_text .Doc "" ""}}{{if example_text $ .Name ""}}
+```Go
+{{example_text $ .Name ""}}
+```
+{{end}}{{end}}{{end}}{{/*
+
+---------------------------------------
+
+*/}}{{if .Methods}}
+## {{.Name}} Methods
+{{range .Methods}}
+#### {{.Name}}
+
+```go
+{{node $ .Decl}}
+```
+
+{{comment_text .Doc "" "  "}}{{$name := printf "%s_%s" $tname .Name}}{{if example_text $ $name ""}}
+```Go
+{{example_text $ $name ""}}
+```
+{{end}}{{end}}{{end}}{{/*
+
+---------------------------------------
+
+*/}}{{end}}{{end}}{{/*
+
+---------------------------------------
+
+*/}}{{if and $filtered (not (or .Consts (or .Vars (or .Funcs .Types))))}}No match found.
+{{end}}{{/*
+
+---------------------------------------
+
+*/}}{{end}}{{/*
+
+---------------------------------------
+
+*/}}{{with $.Notes}}
+{{range $marker, $content := .}}
+{{$marker}}S
+
+{{range $content}}{{comment_text .Body "" "  "}}
+{{end}}{{end}}{{end}}{{end}}{{/*
+
+---------------------------------------
+
+*/}}{{/*
+Make sure there is no newline at the end of this file.
+perl -i -pe 'chomp if eof' package.txt
+*/}}

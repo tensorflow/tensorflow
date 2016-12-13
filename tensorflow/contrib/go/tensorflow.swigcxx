@@ -1,0 +1,44 @@
+/* Copyright 2015 Google Inc. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+%include "typemaps.i"
+%include "std_vector.i"
+%include "std_string.i"
+
+%{
+#include "tensorflow/core/public/tensor_c_api.h"
+#include "tensorflow/core/public/version.h"
+#include "tf_tensor_helper.h"
+#include "tf_session_helper.h"
+%}
+
+%include "typemaps.i"
+
+namespace std {
+   %template(StringVector) vector<string>;
+   %template(TensorVector) vector<TF_Tensor*>;
+}
+
+%typemap(gotype) void *proto %{[]byte%}
+%typemap(in) (const void* proto, size_t proto_len) {
+  $1 = $input.array;
+  $2 = $input.len;
+}
+
+%include "tensorflow/core/public/version.h"
+%include "tensorflow/core/public/tensor_c_api.h"
+%include "tf_tensor_helper.h"
+%include "tf_session_helper.h"
+
