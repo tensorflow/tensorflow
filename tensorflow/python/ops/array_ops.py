@@ -765,6 +765,10 @@ def stack(values, axis=0, name="stack"):
   return gen_array_ops._pack(values, axis=axis, name=name)
 
 
+@deprecated(
+    "2016-12-14",
+    "This op will be removed after the deprecation date. "
+    "Please switch to tf.stack().")
 def pack(values, axis=0, name="pack"):
   """Packs a list of rank-`R` tensors into one rank-`(R+1)` tensor.
 
@@ -942,10 +946,12 @@ def unstack(value, num=None, axis=0, name="unstack"):
   return gen_array_ops._unpack(value, num=num, axis=axis, name=name)
 
 
+@deprecated(
+    "2016-12-14",
+    "This op will be removed after the deprecation date. "
+    "Please switch to tf.unstack().")
 def unpack(value, num=None, axis=0, name="unpack"):
-  """DEPRECATED: Use unstack.
-
-  Unpacks the given dimension of a rank-`R` tensor into rank-`(R-1)` tensors.
+  """Unpacks the given dimension of a rank-`R` tensor into rank-`(R-1)` tensors.
 
   Unpacks `num` tensors from `value` by chipping it along the `axis` dimension.
   If `num` is not specified (the default), it is inferred from `value`'s shape.
@@ -1056,6 +1062,10 @@ def concat_v2(values, axis, name="concat_v2"):
                                   name=name)
 
 
+@deprecated(
+    "2016-12-14",
+    "This op will be removed after the deprecation date. "
+    "Please switch to tf.concat_v2().")
 def concat(concat_dim, values, name="concat"):
   """Concatenates tensors along one dimension.
 
