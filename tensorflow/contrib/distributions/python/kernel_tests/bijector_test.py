@@ -608,7 +608,7 @@ class AffineBijectorTest(tf.test.TestCase):
     with self.test_session():
       mu = -1.
       # scale corresponds to 1.
-      bijector = bijectors.Affine(shift=mu)
+      bijector = bijectors.Affine(shift=mu, event_ndims=0)
       self.assertEqual("affine", bijector.name)
 
   def testNoBatchScalarViaIdentity(self):
@@ -625,7 +625,7 @@ class AffineBijectorTest(tf.test.TestCase):
         mu = -1.
         # Corresponds to scale = 2
         bijector = bijectors.Affine(
-            shift=mu, scale_identity_multiplier=2.0)
+            shift=mu, scale_identity_multiplier=2., event_ndims=0)
         self.assertEqual(0, bijector.shaper.event_ndims.eval())  # "is scalar"
         x = [1., 2, 3]  # Three scalar samples (no batches).
         self.assertAllClose([1., 3, 5], run(bijector.forward, x))
@@ -646,7 +646,7 @@ class AffineBijectorTest(tf.test.TestCase):
       for run in (static_run, dynamic_run):
         mu = -1.
         # Corresponds to scale = 2
-        bijector = bijectors.Affine(shift=mu, scale_diag=[2.])
+        bijector = bijectors.Affine(shift=mu, scale_diag=[2.], event_ndims=0)
         self.assertEqual(0, bijector.shaper.event_ndims.eval())  # "is scalar"
         x = [1., 2, 3]  # Three scalar samples (no batches).
         self.assertAllClose([1., 3, 5], run(bijector.forward, x))
@@ -667,7 +667,9 @@ class AffineBijectorTest(tf.test.TestCase):
       for run in (static_run, dynamic_run):
         mu = -1.
         # Corresponds to scale = 2.
-        bijector = bijectors.Affine(shift=mu, scale_identity_multiplier=2.0)
+        bijector = bijectors.Affine(shift=mu,
+                                    scale_identity_multiplier=2.,
+                                    event_ndims=0)
         self.assertEqual(0, bijector.shaper.event_ndims.eval())  # "is scalar"
         x = [[1., 2, 3],
              [4, 5, 6]]  # Weird sample shape.
@@ -694,7 +696,7 @@ class AffineBijectorTest(tf.test.TestCase):
         mu = [1.]
         # One batch, scalar.
         # Corresponds to scale = 1.
-        bijector = bijectors.Affine(shift=mu)
+        bijector = bijectors.Affine(shift=mu, event_ndims=0)
         self.assertEqual(
             0, bijector.shaper.event_ndims.eval())  # "is scalar"
         x = [1.]  # One sample from one batches.
@@ -717,7 +719,7 @@ class AffineBijectorTest(tf.test.TestCase):
         mu = [1.]
         # One batch, scalar.
         # Corresponds to scale = 1.
-        bijector = bijectors.Affine(shift=mu, scale_diag=[1.])
+        bijector = bijectors.Affine(shift=mu, scale_diag=[1.], event_ndims=0)
         self.assertEqual(
             0, bijector.shaper.event_ndims.eval())  # "is scalar"
         x = [1.]  # One sample from one batches.
@@ -740,7 +742,7 @@ class AffineBijectorTest(tf.test.TestCase):
         mu = [1., -1]
         # Univariate, two batches.
         # Corresponds to scale = 1.
-        bijector = bijectors.Affine(shift=mu)
+        bijector = bijectors.Affine(shift=mu, event_ndims=0)
         self.assertEqual(
             0, bijector.shaper.event_ndims.eval())  # "is scalar"
         x = [1., 1]  # One sample from each of two batches.
@@ -763,7 +765,7 @@ class AffineBijectorTest(tf.test.TestCase):
         mu = [1., -1]
         # Univariate, two batches.
         # Corresponds to scale = 1.
-        bijector = bijectors.Affine(shift=mu, scale_diag=[1.])
+        bijector = bijectors.Affine(shift=mu, scale_diag=[1.], event_ndims=0)
         self.assertEqual(
             0, bijector.shaper.event_ndims.eval())  # "is scalar"
         x = [1., 1]  # One sample from each of two batches.
@@ -786,7 +788,7 @@ class AffineBijectorTest(tf.test.TestCase):
         mu = [1., -1]
         # Multivariate
         # Corresponds to scale = [[1., 0], [0, 1.]]
-        bijector = bijectors.Affine(shift=mu, event_ndims=1)
+        bijector = bijectors.Affine(shift=mu)
         self.assertEqual(1, bijector.shaper.event_ndims.eval())  # "is vector"
         x = [1., 1]
         # matmul(sigma, x) + shift
@@ -821,7 +823,7 @@ class AffineBijectorTest(tf.test.TestCase):
         mu = [1., -1]
         # Multivariate
         # Corresponds to scale = [[2., 0], [0, 1.]]
-        bijector = bijectors.Affine(shift=mu, scale_diag=[2., 1], event_ndims=1)
+        bijector = bijectors.Affine(shift=mu, scale_diag=[2., 1])
         self.assertEqual(1, bijector.shaper.event_ndims.eval())  # "is vector"
         x = [1., 1]
         # matmul(sigma, x) + shift
@@ -861,7 +863,8 @@ class AffineBijectorTest(tf.test.TestCase):
 
       bijector = bijectors.Affine(
           shift=mu,
-          scale_diag=scale_diag, event_ndims=event_ndims)
+          scale_diag=scale_diag,
+          event_ndims=event_ndims)
       self.assertEqual(1, sess.run(bijector.shaper.event_ndims, feed_dict))
       self.assertAllClose([[3., 1]], sess.run(bijector.forward(x), feed_dict))
       self.assertAllClose([[0., 1]], sess.run(bijector.inverse(x), feed_dict))
@@ -883,8 +886,7 @@ class AffineBijectorTest(tf.test.TestCase):
         mu = [[1., -1]]
         # Corresponds to 1 2x2 matrix, with twos on the diagonal.
         scale = 2.
-        bijector = bijectors.Affine(
-            shift=mu, scale_identity_multiplier=scale, event_ndims=1)
+        bijector = bijectors.Affine(shift=mu, scale_identity_multiplier=scale)
         self.assertEqual(
             1, bijector.shaper.event_ndims.eval())  # "is vector"
         x = [[[1., 1]]]
@@ -907,9 +909,7 @@ class AffineBijectorTest(tf.test.TestCase):
         mu = [[1., -1]]
         # Corresponds to 1 2x2 matrix, with twos on the diagonal.
         scale_diag = [[2., 2]]
-        bijector = bijectors.Affine(
-            shift=mu,
-            scale_diag=scale_diag, event_ndims=1)
+        bijector = bijectors.Affine(shift=mu, scale_diag=scale_diag)
         self.assertEqual(
             1, bijector.shaper.event_ndims.eval())  # "is vector"
         x = [[[1., 1]]]
@@ -933,9 +933,8 @@ class AffineBijectorTest(tf.test.TestCase):
       feed_dict = {x: x_value, mu: mu_value, scale_diag:
                    scale_diag_value, event_ndims: event_ndims_value}
 
-      bijector = bijectors.Affine(
-          shift=mu,
-          scale_diag=scale_diag, event_ndims=event_ndims)
+      bijector = bijectors.Affine(shift=mu, scale_diag=scale_diag,
+                                  event_ndims=event_ndims)
       self.assertEqual(1, sess.run(bijector.shaper.event_ndims, feed_dict))
       self.assertAllClose([[[3., 1]]], sess.run(bijector.forward(x), feed_dict))
       self.assertAllClose([[[0., 1]]], sess.run(bijector.inverse(x), feed_dict))
@@ -957,8 +956,10 @@ class AffineBijectorTest(tf.test.TestCase):
         mu = -1.
         # Corresponds to scale = 2
         bijector = bijectors.Affine(
-            shift=mu, scale_identity_multiplier=1.0,
-            scale_diag=[1.])
+            shift=mu,
+            scale_identity_multiplier=1.,
+            scale_diag=[1.],
+            event_ndims=0)
         self.assertEqual(0, bijector.shaper.event_ndims.eval())  # "is vector"
         x = [1., 2, 3]  # Three scalar samples (no batches).
         self.assertAllClose([1., 3, 5], run(bijector.forward, x))
@@ -980,9 +981,9 @@ class AffineBijectorTest(tf.test.TestCase):
         mu = -1.
         # scale = [[2., 0], [2, 2]]
         bijector = bijectors.Affine(
-            shift=mu, scale_identity_multiplier=1.0,
-            scale_tril=[[1., 0], [2., 1]],
-            event_ndims=1)
+            shift=mu,
+            scale_identity_multiplier=1.,
+            scale_tril=[[1., 0], [2., 1]])
         self.assertEqual(1, bijector.shaper.event_ndims.eval())  # "is vector"
         x = [[1., 2]]  # One multivariate sample.
         self.assertAllClose([[1., 5]], run(bijector.forward, x))
@@ -1006,8 +1007,7 @@ class AffineBijectorTest(tf.test.TestCase):
         bijector = bijectors.Affine(
             shift=mu,
             scale_diag=[1., 2.],
-            scale_tril=[[1., 0], [2., 1]],
-            event_ndims=1)
+            scale_tril=[[1., 0], [2., 1]])
         self.assertEqual(1, bijector.shaper.event_ndims.eval())  # "is vector"
         x = [[1., 2]]  # One multivariate sample.
         self.assertAllClose([[1., 7]], run(bijector.forward, x))
@@ -1032,8 +1032,7 @@ class AffineBijectorTest(tf.test.TestCase):
             shift=mu,
             scale_identity_multiplier=1.0,
             scale_diag=[1., 2.],
-            scale_tril=[[1., 0], [2., 1]],
-            event_ndims=1)
+            scale_tril=[[1., 0], [2., 1]])
         self.assertEqual(1, bijector.shaper.event_ndims.eval())  # "is vector"
         x = [[1., 2]]  # One multivariate sample.
         self.assertAllClose([[2., 9]], run(bijector.forward, x))
@@ -1056,14 +1055,12 @@ class AffineBijectorTest(tf.test.TestCase):
         # Corresponds to scale = [[10, 0, 0], [0, 2, 0], [0, 0, 3]]
         bijector = bijectors.Affine(
             shift=mu,
-            scale_identity_multiplier=2.0,
+            scale_identity_multiplier=2.,
             scale_perturb_diag=[2., 1],
-            scale_perturb_factor=[[2., 0], [0., 0], [0, 1]],
-            event_ndims=1)
-        bijector_ref = bijectors.Affine(
-            shift=mu,
-            scale_diag=[10., 2, 3],
-            event_ndims=1)
+            scale_perturb_factor=[[2., 0],
+                                  [0., 0],
+                                  [0, 1]])
+        bijector_ref = bijectors.Affine(shift=mu, scale_diag=[10., 2, 3])
 
         self.assertEqual(1, bijector.shaper.event_ndims.eval())  # "is vector"
         x = [1., 2, 3]  # Vector.
@@ -1097,12 +1094,10 @@ class AffineBijectorTest(tf.test.TestCase):
             shift=mu,
             scale_diag=[2., 3, 4],
             scale_perturb_diag=[2., 1],
-            scale_perturb_factor=[[2., 0], [0., 0], [0, 1]],
-            event_ndims=1)
-        bijector_ref = bijectors.Affine(
-            shift=mu,
-            scale_diag=[10., 3, 5],
-            event_ndims=1)
+            scale_perturb_factor=[[2., 0],
+                                  [0., 0],
+                                  [0, 1]])
+        bijector_ref = bijectors.Affine(shift=mu, scale_diag=[10., 3, 5])
 
         self.assertEqual(1, bijector.shaper.event_ndims.eval())  # "is vector"
         x = [1., 2, 3]  # Vector.
@@ -1133,14 +1128,18 @@ class AffineBijectorTest(tf.test.TestCase):
         # Corresponds to scale = [[10, 0, 0], [1, 3, 0], [2, 3, 5]]
         bijector = bijectors.Affine(
             shift=mu,
-            scale_tril=[[2., 0, 0], [1, 3, 0], [2, 3, 4]],
+            scale_tril=[[2., 0, 0],
+                        [1, 3, 0],
+                        [2, 3, 4]],
             scale_perturb_diag=[2., 1],
-            scale_perturb_factor=[[2., 0], [0., 0], [0, 1]],
-            event_ndims=1)
+            scale_perturb_factor=[[2., 0],
+                                  [0., 0],
+                                  [0, 1]])
         bijector_ref = bijectors.Affine(
             shift=mu,
-            scale_tril=[[10., 0, 0], [1, 3, 0], [2, 3, 5]],
-            event_ndims=1)
+            scale_tril=[[10., 0, 0],
+                        [1, 3, 0],
+                        [2, 3, 5]])
 
         self.assertEqual(1, bijector.shaper.event_ndims.eval())  # "is vector"
         x = [1., 2, 3]  # Vector.
@@ -1171,14 +1170,18 @@ class AffineBijectorTest(tf.test.TestCase):
         # Corresponds to scale = [[6, 0, 0], [1, 3, 0], [2, 3, 5]]
         bijector = bijectors.Affine(
             shift=mu,
-            scale_tril=[[2., 0, 0], [1, 3, 0], [2, 3, 4]],
+            scale_tril=[[2., 0, 0],
+                        [1, 3, 0],
+                        [2, 3, 4]],
             scale_perturb_diag=None,
-            scale_perturb_factor=[[2., 0], [0., 0], [0, 1]],
-            event_ndims=1)
+            scale_perturb_factor=[[2., 0],
+                                  [0., 0],
+                                  [0, 1]])
         bijector_ref = bijectors.Affine(
             shift=mu,
-            scale_tril=[[6., 0, 0], [1, 3, 0], [2, 3, 5]],
-            event_ndims=1)
+            scale_tril=[[6., 0, 0],
+                        [1, 3, 0],
+                        [2, 3, 5]])
 
         self.assertEqual(1, bijector.shaper.event_ndims.eval())  # "is vector"
         x = [1., 2, 3]  # Vector.
@@ -1201,7 +1204,6 @@ class AffineBijectorTest(tf.test.TestCase):
           shift=mu,
           # Has zero on the diagonal.
           scale_diag=[0., 1],
-          event_ndims=1,
           validate_args=True)
       with self.assertRaisesOpError("Condition x > 0"):
         bijector.forward([1., 1.]).eval()
@@ -1221,6 +1223,7 @@ class AffineBijectorTest(tf.test.TestCase):
       bijector = bijectors.Affine(
           shift=mu,
           scale_identity_multiplier=0.0,
+          event_ndims=0,
           validate_args=True)
       with self.assertRaisesOpError("Condition x > 0"):
         bijector.forward(1.).eval()
@@ -1229,6 +1232,7 @@ class AffineBijectorTest(tf.test.TestCase):
       bijector = bijectors.Affine(
           shift=mu,
           scale_diag=[0.0],
+          event_ndims=0,
           validate_args=True)
       with self.assertRaisesOpError("Condition x > 0"):
         bijector.forward(1.).eval()
@@ -1337,6 +1341,13 @@ class AffineBijectorTest(tf.test.TestCase):
             backward = np.squeeze(backward, axis=-1)
           self.assertAllClose(backward, bijector.inverse(x).eval())
 
+          # TODO(srvasude): Reenable once we switch to LinOp.
+          # ildj = -np.log(np.abs(np.linalg.det(scale)))
+          # if x.ndim != scale.ndim - 1:
+          #   ildj = np.expand_dims(ildj, axis=-1)
+          # self.assertAllClose(
+          #   ildj, bijector.inverse_log_det_jacobian(x).eval())
+
   def testLegalInputs(self):
     self._testLegalInputs(
         shift=np.float32(-1),
@@ -1360,6 +1371,27 @@ class AffineBijectorTest(tf.test.TestCase):
                 [[[1., 0], [1.5, 3.]]], [[[1., 0], [1., 1.]]]],
             "scale_perturb_diag": [[[3., 1.]], [[0.5, 1.]]]},
         x=np.array([[[1., 2]], [[3., 4]]], dtype=np.float32))
+
+  def testNegativeDetTrilPlusVDVT(self):
+    # scale = [[3.7, 2.7],
+    #          [-0.3, -1.3]]
+    # inv(scale) = [[0.325, 0.675],
+    #               [-0.075, -0.925]]
+    # eig(scale) = [3.5324, -1.1324]
+    self._testLegalInputs(
+        shift=np.float32(-1),
+        scale_params={
+            "scale_tril": [[1., 0], [-3, -4]],
+            "scale_perturb_factor": [[0.1, 0], [0.5, 0.3]],
+            "scale_perturb_diag": [3., 1]},
+        x=np.array([1., 2], dtype=np.float32))
+
+  def testScalePropertyAssertsCorrectly(self):
+    with self.test_session():
+      with self.assertRaises(NotImplementedError):
+        scale = bijectors.Affine(  # pylint:disable=unused-variable
+            scale_tril=[[1., 0], [2, 1]],
+            scale_perturb_factor=[2., 1.]).scale
 
 
 class SoftplusBijectorTest(tf.test.TestCase):
