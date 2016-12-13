@@ -43,9 +43,10 @@ limitations under the License.
 // This can be used to register a different template instantiation of
 // an OpKernel for different signatures, e.g.:
 /*
-   #define REGISTER_PARTITION(type)                                  \
-     REGISTER_TF_OP_KERNEL("partition", DEVICE_CPU, #type ", int32", \
-                           PartitionOp<type>);
+   #define REGISTER_PARTITION(type)                                      \
+     REGISTER_KERNEL_BUILDER(                                            \
+         Name("Partition").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
+         PartitionOp<type>);
    TF_CALL_ALL_TYPES(REGISTER_PARTITION)
    #undef REGISTER_PARTITION
 */
