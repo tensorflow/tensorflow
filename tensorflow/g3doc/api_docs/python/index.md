@@ -31,6 +31,7 @@
   * [`register_tensor_conversion_function`](../../api_docs/python/framework.md#register_tensor_conversion_function)
   * [`RegisterGradient`](../../api_docs/python/framework.md#RegisterGradient)
   * [`reset_default_graph`](../../api_docs/python/framework.md#reset_default_graph)
+  * [`shape`](../../api_docs/python/framework.md#shape)
   * [`Tensor`](../../api_docs/python/framework.md#Tensor)
   * [`TensorShape`](../../api_docs/python/framework.md#TensorShape)
 
