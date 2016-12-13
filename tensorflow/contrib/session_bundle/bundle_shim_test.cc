@@ -31,7 +31,7 @@ namespace internal {
 namespace {
 
 constexpr char kSessionBundlePath[] =
-    "session_bundle/example/half_plus_two/00000123";
+    "session_bundle/testdata/half_plus_two/00000123";
 constexpr char kSessionBundleMetaGraphFilename[] = "export.meta";
 constexpr char kSessionBundleVariablesFilename[] = "export-00000-of-00001";
 constexpr char kSavedModelBundlePath[] =

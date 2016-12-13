@@ -31,6 +31,15 @@ filegroup(
     ),
 )
 
+# TODO(b/32673259): add a test to continuously validate these files.
+filegroup(
+    name = "session_bundle_half_plus_two",
+    srcs = glob([
+        "testdata/half_plus_two/**",
+        "testdata/half_plus_two_ckpt_v2/**",
+    ]),
+)
+
 py_library(
     name = "bundle_shim_py",
     srcs = ["bundle_shim.py"],
@@ -55,8 +64,8 @@ py_test(
         "bundle_shim_test.py",
     ],
     data = [
+        ":session_bundle_half_plus_two",
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
-        "//tensorflow/contrib/session_bundle/example:half_plus_two",
     ],
     main = "bundle_shim_test.py",
     srcs_version = "PY2AND3",
@@ -176,7 +185,7 @@ cc_test(
     size = "small",
     srcs = ["session_bundle_test.cc"],
     data = [
-        "//tensorflow/contrib/session_bundle/example:half_plus_two",
+        ":session_bundle_half_plus_two",
     ],
     # Link in all registered kernels.
     linkstatic = 1,
@@ -214,7 +223,7 @@ py_test(
         "session_bundle_test.py",
     ],
     data = [
-        "//tensorflow/contrib/session_bundle/example:half_plus_two",
+        ":session_bundle_half_plus_two",
     ],
     main = "session_bundle_test.py",
     srcs_version = "PY2AND3",
@@ -317,8 +326,8 @@ cc_test(
     size = "small",
     srcs = ["bundle_shim_test.cc"],
     data = [
+        ":session_bundle_half_plus_two",
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
-        "//tensorflow/contrib/session_bundle/example:half_plus_two",
     ],
     # Link in all registered kernels.
     linkstatic = 1,
