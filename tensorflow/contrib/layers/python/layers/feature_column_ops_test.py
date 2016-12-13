@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import numpy as np
 import tensorflow as tf
 
@@ -263,6 +264,96 @@ class TransformerTest(tf.test.TestCase):
       self.assertEqual(output[weighted_ids][1].values.dtype, tf.float32)
       self.assertAllEqual(output[weighted_ids][1].values.eval(),
                           weights_tensor.values.eval())
+
+  def testSparseColumnWithVocabulary(self):
+    vocabulary_file = os.path.join(self.get_temp_dir(), "movies.txt")
+    with open(vocabulary_file, "w") as f:
+      f.write("\n".join(["marlo", "omar", "stringer"]) + "\n")
+    vocab_sparse = tf.contrib.layers.sparse_column_with_vocabulary_file(
+        "wire", vocabulary_file, vocab_size=3)
+    wire_tensor = tf.SparseTensor(
+        values=["omar", "stringer", "marlo"],
+        indices=[[0, 0], [1, 0], [1, 1]],
+        dense_shape=[2, 2])
+    features = {"wire": wire_tensor}
+    output = tf.contrib.layers.transform_features(
+      features=features, feature_columns=[vocab_sparse])
+    self.assertEqual(len(output), 1)
+    self.assertIn(vocab_sparse, output)
+    with self.test_session():
+      tf.initialize_all_tables().run()
+      self.assertEqual(output[vocab_sparse].values.dtype, tf.int64)
+      self.assertAllEqual(output[vocab_sparse].values.eval(), [1, 2, 0])
+      self.assertAllEqual(output[vocab_sparse].indices.eval(),
+                          wire_tensor.indices.eval())
+      self.assertAllEqual(output[vocab_sparse].dense_shape.eval(),
+                          wire_tensor.dense_shape.eval())
+
+  def testSparseColumnWithVocabularyWithDenseInputTensor(self):
+    vocabulary_file = os.path.join(self.get_temp_dir(), "movies.txt")
+    with open(vocabulary_file, "w") as f:
+      f.write("\n".join(["marlo", "omar", "stringer"]) + "\n")
+    vocab_sparse = tf.contrib.layers.sparse_column_with_vocabulary_file(
+        "wire", vocabulary_file, vocab_size=3)
+    wire_tensor = tf.constant([["omar", "stringer"], ["marlo", "omar"]])
+    features = {"wire": wire_tensor}
+    output = tf.contrib.layers.transform_features(
+      features=features, feature_columns=[vocab_sparse])
+    self.assertEqual(len(output), 1)
+    self.assertIn(vocab_sparse, output)
+    with self.test_session():
+      tf.initialize_all_tables().run()
+      self.assertEqual(output[vocab_sparse].values.dtype, tf.int64)
+      self.assertAllEqual(output[vocab_sparse].values.eval(), [1, 2, 0, 1])
+      self.assertAllEqual(output[vocab_sparse].indices.eval(),
+                          [[0, 0], [0, 1], [1, 0], [1, 1]])
+      self.assertAllEqual(output[vocab_sparse].dense_shape.eval(), [2, 2])
+
+  def testSparseIntColumnWithVocabulary(self):
+    """Tests a sparse integer column with vocabulary."""
+    vocabulary_file = os.path.join(self.get_temp_dir(), "courses.txt")
+    with open(vocabulary_file, "w") as f:
+      f.write("\n".join(["101", "201", "301"]) + "\n")
+    vocab_sparse = tf.contrib.layers.sparse_column_with_vocabulary_file(
+        "wire", vocabulary_file, vocab_size=3, dtype=tf.int64)
+    wire_tensor = tf.SparseTensor(
+        values=[201, 301, 101],
+        indices=[[0, 0], [1, 0], [1, 1]],
+        dense_shape=[2, 2])
+    features = {"wire": wire_tensor}
+    output = tf.contrib.layers.transform_features(
+      features=features, feature_columns=[vocab_sparse])
+    self.assertEqual(len(output), 1)
+    self.assertIn(vocab_sparse, output)
+    with self.test_session():
+      tf.initialize_all_tables().run()
+      self.assertEqual(output[vocab_sparse].values.dtype, tf.int64)
+      self.assertAllEqual(output[vocab_sparse].values.eval(), [1, 2, 0])
+      self.assertAllEqual(output[vocab_sparse].indices.eval(),
+                          wire_tensor.indices.eval())
+      self.assertAllEqual(output[vocab_sparse].dense_shape.eval(),
+                          wire_tensor.dense_shape.eval())
+
+  def testSparseIntColumnWithVocabularyWithDenseInputTensor(self):
+    """Tests a sparse integer column with vocabulary."""
+    vocabulary_file = os.path.join(self.get_temp_dir(), "courses.txt")
+    with open(vocabulary_file, "w") as f:
+      f.write("\n".join(["101", "201", "301"]) + "\n")
+    vocab_sparse = tf.contrib.layers.sparse_column_with_vocabulary_file(
+        "wire", vocabulary_file, vocab_size=3, dtype=tf.int64)
+    wire_tensor = tf.constant([[201, 301], [101, 201]])
+    features = {"wire": wire_tensor}
+    output = tf.contrib.layers.transform_features(
+      features=features, feature_columns=[vocab_sparse])
+    self.assertEqual(len(output), 1)
+    self.assertIn(vocab_sparse, output)
+    with self.test_session():
+      tf.initialize_all_tables().run()
+      self.assertEqual(output[vocab_sparse].values.dtype, tf.int64)
+      self.assertAllEqual(output[vocab_sparse].values.eval(), [1, 2, 0, 1])
+      self.assertAllEqual(output[vocab_sparse].indices.eval(),
+                          [[0, 0], [0, 1], [1, 0], [1, 1]])
+      self.assertAllEqual(output[vocab_sparse].dense_shape.eval(), [2, 2])
 
   def testCrossColumn(self):
     language = tf.contrib.layers.sparse_column_with_hash_bucket(
@@ -1279,6 +1370,34 @@ class WeightedSumTest(tf.test.TestCase):
         tf.contrib.layers.weighted_sum_from_feature_columns(features,
                                                             [embeded_sparse],
                                                             num_outputs=5)
+
+  def testSparseFeatureColumnWithVocabularyFile(self):
+    vocabulary_file = os.path.join(self.get_temp_dir(), "movies.txt")
+    with open(vocabulary_file, "w") as f:
+      f.write("\n".join(["head-on", "matrix", "winter sleep"]) + "\n")
+    movies = tf.contrib.layers.sparse_column_with_vocabulary_file(
+        column_name="movies", vocabulary_file=vocabulary_file, vocab_size=3)
+    with tf.Graph().as_default():
+      features = {
+          "movies":
+              tf.SparseTensor(
+                  values=["matrix", "head-on", "winter sleep"],
+                  indices=[[0, 0], [0, 1], [1, 0]],
+                  dense_shape=[2, 2])
+      }
+      output, column_to_variable, _ = (
+          tf.contrib.layers.weighted_sum_from_feature_columns(
+              features, [movies], num_outputs=1))
+      with self.test_session() as sess:
+        tf.initialize_all_variables().run()
+        tf.initialize_all_tables().run()
+
+        weights = column_to_variable[movies][0]
+        self.assertEqual(weights.get_shape(), (3, 1))
+        sess.run(weights.assign([[0.1], [0.3], [0.5]]))
+        # score for first example = 0.3 (matrix) + 0.1 (head-on) = 0.4
+        # score for second example = 0.5 (winter sleep)
+        self.assertAllClose(output.eval(), [[0.4], [0.5]])
 
   def testRealValuedColumnWithMultiDimensions(self):
     real_valued = tf.contrib.layers.real_valued_column("price", 2)
