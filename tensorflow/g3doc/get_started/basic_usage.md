@@ -234,7 +234,7 @@ one = tf.constant(1)
 new_value = tf.add(state, one)
 update = tf.assign(state, new_value)
 
-# Variables must be initialized by running an `init` Op after having
+# Variables must be initialized by running an `init` Op before having
 # launched the graph.  We first have to add the `init` Op to the graph.
 init_op = tf.global_variables_initializer()
 
