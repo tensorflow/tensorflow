@@ -36,6 +36,7 @@ from tensorflow.python.layers import  normalization as normalization_layers
 from tensorflow.python.layers import pooling as pooling_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -171,9 +172,9 @@ def _fused_batch_norm(
       `batch_size`. The normalization is over all but the last dimension if
       `data_format` is `NHWC` and the second dimension if `data_format` is
       `NCHW`.
-    decay: decay for the moving average. Reasonable values for `decay` are close 
-      to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc. Lower 
-      `decay` value (recommend trying `decay`=0.9) if model experiences reasonably 
+    decay: decay for the moving average. Reasonable values for `decay` are close
+      to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc. Lower
+      `decay` value (recommend trying `decay`=0.9) if model experiences reasonably
       good training performance but poor validation and/or test performance.
     center: If True, subtract `beta`. If False, `beta` is ignored.
     scale: If True, multiply by `gamma`. If False, `gamma` is
@@ -399,9 +400,9 @@ def batch_norm(
       `batch_size`. The normalization is over all but the last dimension if
       `data_format` is `NHWC` and the second dimension if `data_format` is
       `NCHW`.
-    decay: decay for the moving average. Reasonable values for `decay` are close 
-      to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc. Lower 
-      `decay` value (recommend trying `decay`=0.9) if model experiences reasonably 
+    decay: decay for the moving average. Reasonable values for `decay` are close
+      to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc. Lower
+      `decay` value (recommend trying `decay`=0.9) if model experiences reasonably
       good training performance but poor validation and/or test performance.
     center: If True, subtract `beta`. If False, `beta` is ignored.
     scale: If True, multiply by `gamma`. If False, `gamma` is
@@ -1191,16 +1192,23 @@ def flatten(inputs,
     ValueError: if inputs.dense_shape is wrong.
   """
   with ops.name_scope(scope, 'Flatten', [inputs]) as sc:
-    inputs = ops.convert_to_tensor(inputs)
-    inputs_shape = inputs.get_shape()
-    inputs_rank = inputs_shape.ndims
-    if (inputs_rank is None) or (inputs_rank < 2):
-      raise ValueError('Inputs must have a least 2 dimensions.')
-    dims = inputs_shape[1:]
-    if not dims.is_fully_defined():
-      raise ValueError('Inputs 2nd dimension must be defined.')
-    k = dims.num_elements()
-    outputs = array_ops.reshape(inputs, [-1, k])
+
+    inputs_shape = array_ops.shape(inputs)
+    inputs_rank = array_ops.rank(inputs)
+
+    assertion = [control_flow_ops.Assert(inputs_rank > 1,
+                 ['Inputs must have a least 2 dimensions.'])]
+    inputs = control_flow_ops.with_dependencies(assertion, inputs)
+    batch_dim = array_ops.slice(inputs_shape, [0], [1])
+    spatial_dims = array_ops.slice(inputs_shape, [1], [inputs_rank - 1])
+
+    flat_spatial_dim = math_ops.reduce_prod(spatial_dims)
+    flat_spatial_dim = array_ops.expand_dims(flat_spatial_dim, 0)
+
+    flat_shape = array_ops.concat(0, [batch_dim, flat_spatial_dim])
+
+    outputs = array_ops.reshape(inputs, flat_shape)
+
     return utils.collect_named_outputs(outputs_collections, sc, outputs)
 
 
