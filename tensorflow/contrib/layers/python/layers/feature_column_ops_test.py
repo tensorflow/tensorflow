@@ -35,6 +35,45 @@ class TransformerTest(tf.test.TestCase):
     with self.test_session():
       self.assertAllEqual(output.eval(), [[20.], [110], [-3]])
 
+  def testSparseRealValuedColumnIdentityTransformation(self):
+    sparse_real_valued = tf.contrib.layers.real_valued_column("rating",
+                                                              dimension=None)
+    rating_tensor = tf.SparseTensor(values=[2.0, 5.0],
+                                    indices=[[0, 0], [2, 0]],
+                                    dense_shape=[3, 1])
+    features = {"rating": rating_tensor}
+    output = feature_column_ops._Transformer(features).transform(
+        sparse_real_valued)
+    with self.test_session():
+      self.assertAllEqual(output.values.eval(),
+                          rating_tensor.values.eval())
+      self.assertAllEqual(output.indices.eval(),
+                          rating_tensor.indices.eval())
+      self.assertAllEqual(output.dense_shape.eval(),
+                          rating_tensor.dense_shape.eval())
+
+  def testSparseRealValuedColumnWithTransformation(self):
+    def square_fn(x):
+      return tf.SparseTensor(values=x.values ** 2,
+                             indices=x.indices,
+                             dense_shape=x.dense_shape)
+    sparse_real_valued = tf.contrib.layers.real_valued_column(
+        "rating", dimension=None, normalizer=square_fn)
+    rating_tensor = tf.SparseTensor(values=[2.0, 5.0],
+                                    indices=[[0, 0], [2, 0]],
+                                    dense_shape=[3, 1])
+    features = {"rating": rating_tensor}
+    output_dict = tf.contrib.layers.transform_features(features,
+                                                       [sparse_real_valued])
+    self.assertTrue(sparse_real_valued in output_dict)
+    output = output_dict[sparse_real_valued]
+    with self.test_session():
+      self.assertArrayNear(output.values.eval(), [4.0, 25.0], 1e-6)
+      self.assertAllEqual(output.indices.eval(),
+                          rating_tensor.indices.eval())
+      self.assertAllEqual(output.dense_shape.eval(),
+                          rating_tensor.dense_shape.eval())
+
   def testBucketizedColumn(self):
     bucket = tf.contrib.layers.bucketized_column(
         tf.contrib.layers.real_valued_column("price"),
@@ -481,6 +520,8 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
         "ids", ["a", "b", "c", "unseen"])
 
     real_valued_column = tf.contrib.layers.real_valued_column("income", 2)
+    sparse_real_valued_column = tf.contrib.layers.real_valued_column(
+        "rating", dimension=None)
     one_hot_column = tf.contrib.layers.one_hot_column(sparse_column)
     embedding_column = tf.contrib.layers.embedding_column(sparse_column, 10)
     features = {
@@ -488,16 +529,19 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
             values=["c", "b", "a"],
             indices=[[0, 0], [1, 0], [2, 0]],
             dense_shape=[3, 1]),
-        "income": tf.constant([[20.3, 10], [110.3, 0.4], [-3.0, 30.4]])
+        "income": tf.constant([[20.3, 10], [110.3, 0.4], [-3.0, 30.4]]),
+        "rating": tf.SparseTensor(values=[3.5, 5.0],
+                                  indices=[[0, 0], [2, 0]],
+                                  dense_shape=[3, 1])
     }
-    output = tf.contrib.layers.input_from_feature_columns(features,
-                                                          [one_hot_column,
-                                                           embedding_column,
-                                                           real_valued_column])
+    output = tf.contrib.layers.input_from_feature_columns(
+        features,
+        [one_hot_column, embedding_column,
+         real_valued_column, sparse_real_valued_column])
     with self.test_session():
       tf.global_variables_initializer().run()
       tf.initialize_all_tables().run()
-      self.assertAllEqual(output.eval().shape, [3, 2 + 4 + 10])
+      self.assertAllEqual(output.eval().shape, [3, 3 + 4 + 10])
 
   def testRealValuedColumn(self):
     real_valued = tf.contrib.layers.real_valued_column("price")
@@ -517,6 +561,19 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
     with self.test_session():
       self.assertAllClose(output.eval(), features["price"].eval())
 
+  def testRealValuedColumnSparse(self):
+    sparse_real_valued = tf.contrib.layers.real_valued_column("rating",
+                                                              dimension=None,
+                                                              default_value=-1)
+    rating_tensor = tf.SparseTensor(values=[2.0, 5.0],
+                                    indices=[[0, 0], [2, 0]],
+                                    dense_shape=[3, 1])
+    features = {"rating": rating_tensor}
+    output = tf.contrib.layers.input_from_feature_columns(features,
+                                                          [sparse_real_valued])
+    with self.test_session():
+      self.assertAllClose(output.eval(), [[2.0], [-1.0], [5.0]])
+
   def testRealValuedColumnWithNormalizer(self):
     real_valued = tf.contrib.layers.real_valued_column(
         "price", normalizer=lambda x: x - 2)
@@ -534,17 +591,6 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
                                                           [real_valued])
     with self.test_session():
       self.assertAllClose(output.eval(), features["price"].eval() - 2)
-
-  def testBucketizedColumnSucceedsForDNN(self):
-    bucket = tf.contrib.layers.bucketized_column(
-        tf.contrib.layers.real_valued_column("price"),
-        boundaries=[0., 10., 100.])
-    # buckets 2, 3, 0
-    features = {"price": tf.constant([[20.], [110], [-3]])}
-    output = tf.contrib.layers.input_from_feature_columns(features, [bucket])
-    expected = [[0, 0, 1, 0], [0, 0, 0, 1], [1, 0, 0, 0]]
-    with self.test_session():
-      self.assertAllClose(output.eval(), expected)
 
   def testBucketizedColumnWithNormalizerSucceedsForDNN(self):
     bucket = tf.contrib.layers.bucketized_column(
@@ -1768,32 +1814,46 @@ class WeightedSumTest(tf.test.TestCase):
         sess.run(incomes_weights.assign([[0.1], [0.2], [0.3]]))
         self.assertAllClose(output.eval(), [[140.], [14.]])
 
-  def testMulticlassWithRealValuedColumnHavingMultiDimensions(self):
+  def testMulticlassWithRealValuedColumnHavingMultiDimensionsAndSparse(self):
     country = tf.contrib.layers.sparse_column_with_hash_bucket(
         "country", hash_bucket_size=5)
     age = tf.contrib.layers.real_valued_column("age")
+    # The following RealValuedColumn has no predefined dimension so it
+    # can be missing.
+    height = tf.contrib.layers.real_valued_column("height", dimension=None)
     # The following RealValuedColumn has 3 dimensions.
     incomes = tf.contrib.layers.real_valued_column("incomes", 3)
     with tf.Graph().as_default():
       features = {"age": tf.constant([[1], [1]]),
                   "incomes": tf.constant([[100., 200., 300.], [10., 20., 30.]]),
+                  "height": tf.SparseTensor(values=[5.0, 4.0, 6.0],
+                                            indices=[[0, 0], [0, 1], [1, 1]],
+                                            dense_shape=[2, 2]),
                   "country": tf.SparseTensor(values=["US", "SV"],
                                              indices=[[0, 0], [1, 0]],
                                              dense_shape=[2, 2])}
       output, column_to_variable, _ = (
           tf.contrib.layers.weighted_sum_from_feature_columns(
-              features, [country, age, incomes],
+              features, [country, age, height, incomes],
               num_outputs=5))
       with self.test_session() as sess:
         tf.global_variables_initializer().run()
         tf.initialize_all_tables().run()
 
+        height_weights = column_to_variable[height][0]
+        sess.run(height_weights.assign([[1., 2., 3., 5., 10.],
+                                        [1., 2., 3., 5., 10.]]))
+        self.assertAllClose(output.eval(), [[9., 18., 27., 45., 90.],
+                                            [6., 12., 18., 30., 60.]])
+
         incomes_weights = column_to_variable[incomes][0]
         sess.run(incomes_weights.assign([[0.01, 0.1, 1., 10., 100.],
                                          [0.02, 0.2, 2., 20., 200.],
                                          [0.03, 0.3, 3., 30., 300.]]))
-        self.assertAllClose(output.eval(), [[14., 140., 1400., 14000., 140000.],
-                                            [1.4, 14., 140., 1400., 14000.]])
+        self.assertAllClose(
+            output.eval(),
+            [[14. + 9., 140. + 18., 1400. + 27., 14000. + 45., 140000. + 90.],
+             [1.4 + 6., 14. + 12., 140. + 18., 1400. + 30., 14000. + 60.]])
 
   def testBucketizedColumn(self):
     bucket = tf.contrib.layers.bucketized_column(
