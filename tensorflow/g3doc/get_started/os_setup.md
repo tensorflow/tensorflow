@@ -1114,14 +1114,14 @@ This file is not included in Anaconda packages, which causes the `pip` installat
 
 #### Cupti_wrapper.cc: Could not find cuptiActivityRegisterCallbacksin libcupti DSO
 
-If running TensorFlow Python script you encounter the error:
+If, when running a TensorFlow Python script, you encounter the following error:
 ```
-c:\tf_jenkins\home\workspace\nightly-win\device\gpu\os\windows\tensorflow\core\platform\default\gpu\cupti_wrapper.cc:59] Check failed: ::tensorflow::Status::OK() == (::tensor     flow::Env::Default()->GetSymbolFromLibrary( GetDsoHandle(), kName, &f  )) (OK vs. Not found: cuptiActivityRegisterCallbacks not found)could not find cuptiActivityRegisterCallb     acksin libcupti DSO
+c:\tf_jenkins\home\workspace\nightly-win\device\gpu\os\windows\tensorflow\core\platform\default\gpu\cupti_wrapper.cc:59] Check failed: ::tensorflow::Status::OK() == (::tensorflow::Env::Default()->GetSymbolFromLibrary( GetDsoHandle(), kName, &f  )) (OK vs. Not found: cuptiActivityRegisterCallbacks not found)could not find cuptiActivityRegisterCallbacksin libcupti DSO
 ```
 
 Add `<path-to-cuda-folder>\NVIDIA GPU Computing Toolkit\CUDA\v8.0\extras\CUPTI\libx64` to your `PATH`.
 
-This issue occurs because on CUDA 8.0 the location of the files `cupti64_80.dll` and `cupti.lib` is not on `PATH` by default.
+This issue occurs because on CUDA 8.0 the location of the file `cupti64_80.dll` is not on `PATH` by default.
 
 
 ### Linux issues
