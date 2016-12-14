@@ -159,36 +159,36 @@ class TransformedDistributionTest(tf.test.TestCase):
       self.assertAllClose(actual_mvn.entropy().eval(),
                           fake_mvn.entropy().eval())
 
-  def testMultivariateFromScalarBatchScalarEvent(self):
-    with self.test_session() as sess:
-      shift = np.array([-1, 0, 1], dtype=np.float32)
-      scale = la.LinearOperatorTriL(
-          [[[-1., 0, 0],
-            [2, 1, 0],
-            [3, 2, 1]],
-           [[2, 0, 0],
-            [3, -2, 0],
-            [4, 3, 2]]],
-          is_non_singular=True,
-          is_positive_definite=False)
 
+class ScalarToMultiTest(tf.test.TestCase):
+
+  def setUp(self):
+    self._shift = np.array([-1, 0, 1], dtype=np.float32)
+    self._tril = np.array(
+        [[[-1., 0, 0],
+          [2, 1, 0],
+          [3, 2, 1]],
+         [[2, 0, 0],
+          [3, -2, 0],
+          [4, 3, 2]]], dtype=np.float32)
+
+  def _testMVN(self, base_distribution, batch_shape=None,
+               event_shape=None, not_implemented_message=None):
+    with self.test_session() as sess:
       # Overriding shapes must be compatible w/bijector; most bijectors are
       # batch_shape agnostic and only care about event_ndims.
       # In the case of `Affine`, if we got it wrong then it would fire an
       # exception due to incompatible dimensions.
       fake_mvn = ds.TransformedDistribution(
-          distribution=ds.Normal(mu=0., sigma=1.),
-          bijector=bs.AffineLinearOperator(shift, scale),
-          batch_shape=scale.batch_shape,               # [2]
-          event_shape=[scale.domain_dimension.value],  # [3]
+          distribution=base_distribution[0](validate_args=True,
+                                            **base_distribution[1]),
+          bijector=bs.Affine(shift=self._shift, scale_tril=self._tril),
+          batch_shape=batch_shape,
+          event_shape=event_shape,
           validate_args=True)
 
-      # Note: Affine ellided this tile.
-      actual_mean = np.tile(shift, [2, 1])
-      # Since LinOp.apply doesn't support `adjoint_b` nor composition,
-      # we cannot do: scale.apply(scale, adjoint_b=True).eval()
-      actual_cov = scale.apply(tf.matrix_transpose(scale.to_dense())).eval()
-
+      actual_mean = np.tile(self._shift, [2, 1])  # Affine elided this tile.
+      actual_cov = np.matmul(self._tril, np.transpose(self._tril, [0, 2, 1]))
       actual_mvn = ds.MultivariateNormalFull(mu=actual_mean, sigma=actual_cov)
 
       # Ensure sample works by checking first, second moments.
@@ -226,63 +226,60 @@ class TransformedDistributionTest(tf.test.TestCase):
                              fake_mvn.survival_function,
                              fake_mvn.log_survival_function):
         with self.assertRaisesRegexp(
-            NotImplementedError, "not implemented when overriding event_shape"):
+            NotImplementedError, not_implemented_message):
           self.assertRaisesRegexp(unsupported_fn(x))
 
-  def testMultivariateFromNonScalarBatchOrNonScalarEvent(self):
+  def testScalarBatchScalarEvent(self):
+    self._testMVN(
+        base_distribution=[ds.Normal, {"mu": 0., "sigma": 1.}],
+        batch_shape=[2],
+        event_shape=[3],
+        not_implemented_message="not implemented when overriding event_shape")
+
+  def testScalarBatchNonScalarEvent(self):
+    self._testMVN(
+        base_distribution=[ds.MultivariateNormalDiag, {
+            "mu": [0., 0., 0.], "diag_stdev": [1., 1, 1]}],
+        batch_shape=[2],
+        not_implemented_message="not implemented$")
+
     with self.test_session():
-      shift = np.array([[-1, 0], [1, 0]], dtype=np.float32)
-      scale = la.LinearOperatorDiag(
-          [[-1., 2, 3],
-           [-1., 2, 3]],
-          is_non_singular=True,
-          is_positive_definite=False)
-
-      # Can't override batch_shape for scalar batch, non-scalar event.
+      # Can't override event_shape for scalar batch, non-scalar event.
       with self.assertRaisesRegexp(ValueError, "requires scalar"):
         ds.TransformedDistribution(
-            distribution=ds.MultivariateNormalDiag(
-                mu=[0.], diag_stdev=[1.]),
-            bijector=bs.AffineLinearOperator(shift, scale),
-            batch_shape=scale.batch_shape,               # [2]
+            distribution=ds.MultivariateNormalDiag(mu=[0.], diag_stdev=[1.]),
+            bijector=bs.Affine(shift=self._shift, scale_tril=self._tril),
+            batch_shape=[2],
+            event_shape=[3],
             validate_args=True)
 
-      # Can't override event_shape for non-scalar batch, scalar event.
-      with self.assertRaisesRegexp(ValueError, "requires scalar"):
-        ds.TransformedDistribution(
-            distribution=ds.Normal(mu=[0.], sigma=[1.]),
-            bijector=bs.AffineLinearOperator(shift, scale),
-            event_shape=[scale.domain_dimension.value],  # [3]
-            validate_args=True)
+  def testNonScalarBatchScalarEvent(self):
+    self._testMVN(
+        base_distribution=[ds.Normal, {"mu": [0., 0], "sigma": [1., 1]}],
+        event_shape=[3],
+        not_implemented_message="not implemented when overriding event_shape")
 
+    with self.test_session():
       # Can't override batch_shape for non-scalar batch, scalar event.
       with self.assertRaisesRegexp(ValueError, "requires scalar"):
         ds.TransformedDistribution(
             distribution=ds.Normal(mu=[0.], sigma=[1.]),
-            bijector=bs.AffineLinearOperator(shift, scale),
-            batch_shape=scale.batch_shape,               # [2]
-            event_shape=[scale.domain_dimension.value],  # [3]
+            bijector=bs.Affine(shift=self._shift, scale_tril=self._tril),
+            batch_shape=[2],
+            event_shape=[3],
             validate_args=True)
 
-      # Can't override event_shape for scalar batch, non-scalar event.
-      with self.assertRaisesRegexp(ValueError, "requires scalar"):
-        ds.TransformedDistribution(
-            distribution=ds.MultivariateNormalDiag(
-                mu=[0.], diag_stdev=[1.]),
-            bijector=bs.AffineLinearOperator(shift, scale),
-            batch_shape=scale.batch_shape,               # [2]
-            event_shape=[scale.domain_dimension.value],  # [3]
-            validate_args=True)
-
+  def testNonScalarBatchNonScalarEvent(self):
+    with self.test_session():
       # Can't override event_shape and/or batch_shape for non_scalar batch,
       # non-scalar event.
       with self.assertRaisesRegexp(ValueError, "requires scalar"):
         ds.TransformedDistribution(
-            distribution=ds.MultivariateNormalDiag(
-                mu=[[0.]], diag_stdev=[[1.]]),
-            bijector=bs.AffineLinearOperator(shift, scale),
-            batch_shape=scale.batch_shape,               # [2]
-            event_shape=[scale.domain_dimension.value],  # [3]
+            distribution=ds.MultivariateNormalDiag(mu=[[0.]],
+                                                   diag_stdev=[[1.]]),
+            bijector=bs.Affine(shift=self._shift, scale_tril=self._tril),
+            batch_shape=[2],
+            event_shape=[3],
             validate_args=True)
 
 
