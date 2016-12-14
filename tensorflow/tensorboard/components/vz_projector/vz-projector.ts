@@ -171,7 +171,10 @@ export class Projector extends ProjectorPolymer implements
         spriteAndMetadata.pointsInfo = pointsInfo;
         spriteAndMetadata.stats = stats;
       }
-      ds.mergeMetadata(spriteAndMetadata);
+      let metadataMergeSucceeded = ds.mergeMetadata(spriteAndMetadata);
+      if (!metadataMergeSucceeded) {
+        return;
+      }
     }
     if (this.projectorScatterPlotAdapter != null) {
       if (ds == null) {
