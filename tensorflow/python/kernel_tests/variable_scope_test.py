@@ -106,7 +106,7 @@ class VariableScopeTest(tf.test.TestCase):
       for (i, dtype) in enumerate(types):
         x = tf.get_variable(name='x%d' % i, shape=(3, 4), dtype=dtype)
         y = tf.get_variable(name='y%d' % i, shape=(3, 4), dtype=dtype,
-                            initializer=init_ops.zeros_initializer())
+                            initializer=init_ops.zeros_initializer(dtype=dtype))
 
         tf.global_variables_initializer().run()
         self.assertAllEqual(x.eval(), y.eval())
@@ -700,7 +700,7 @@ class VariableScopeWithPartitioningTest(tf.test.TestCase):
             partitioner=axis0_into2_partitioner)
         y = tf.get_variable(name='y%d' % i, shape=(6, 4), dtype=dtype,
             partitioner=axis0_into2_partitioner,
-            initializer=init_ops.zeros_initializer())
+            initializer=init_ops.zeros_initializer(dtype=dtype))
 
         tf.global_variables_initializer().run()
         # x and y would become var list after partition
