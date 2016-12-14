@@ -99,10 +99,5 @@ bool Snappy_Uncompress(const char* input, size_t length, char* output) {
 
 string Demangle(const char* mangled) { return mangled; }
 
-bool TestCPUFeature(CPUFeature feature) {
-  // TODO(petewarden): Checking CPU features is not yet implemented for Windows.
-  return false;
-}
-
 }  // namespace port
 }  // namespace tensorflow
