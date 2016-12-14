@@ -1069,6 +1069,47 @@ the variable.
 
 - - -
 
+#### `tf.Variable.load(value, session=None)` {#Variable.load}
+
+Load new value into this variable
+
+Writes new value to variable's memory. Doesn't add ops to the graph.
+
+This convenience method requires a session where the graph containing this
+variable has been launched. If no session is passed, the default session is
+used.  See the [Session class](../../api_docs/python/client.md#Session) for
+more information on launching a graph and on sessions.
+
+```python
+v = tf.Variable([1, 2])
+init = tf.global_variables_initializer()
+
+with tf.Session() as sess:
+    sess.run(init)
+    # Usage passing the session explicitly.
+    v.load([2, 3], sess)
+    print(v.eval(sess)) # prints [2 3]
+    # Usage with the default session.  The 'with' block
+    # above makes 'sess' the default session.
+    v.load([3, 4], sess)
+    print(v.eval()) # prints [3 4]
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: New variable value
+*  <b>`session`</b>: The session to use to evaluate this variable. If
+      none, the default session is used.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: Session is not passed and no default session
+
+
+- - -
+
 #### `tf.Variable.read_value()` {#Variable.read_value}
 
 Returns the value of this variable, read in the current context.
