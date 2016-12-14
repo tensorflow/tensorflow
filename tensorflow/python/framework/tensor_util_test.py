@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 import tensorflow as tf
+import sys
 
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -43,7 +44,14 @@ class TensorUtilTest(tf.test.TestCase):
 
   def testFloatN(self):
     t = tensor_util.make_tensor_proto([10.0, 20.0, 30.0])
-    self.assertProtoEquals("""
+    if sys.byteorder == "big":
+     self.assertProtoEquals("""
+      dtype: DT_FLOAT
+      tensor_shape { dim { size: 3 } }
+      tensor_content: "A \000\000A\240\000\000A\360\000\000"
+      """, t)
+    else:
+     self.assertProtoEquals("""
       dtype: DT_FLOAT
       tensor_shape { dim { size: 3 } }
       tensor_content: "\000\000 A\000\000\240A\000\000\360A"
@@ -54,7 +62,14 @@ class TensorUtilTest(tf.test.TestCase):
 
   def testFloatTyped(self):
     t = tensor_util.make_tensor_proto([10.0, 20.0, 30.0], dtype=tf.float32)
-    self.assertProtoEquals("""
+    if sys.byteorder == "big":
+     self.assertProtoEquals("""
+      dtype: DT_FLOAT
+      tensor_shape { dim { size: 3 } }
+      tensor_content: "A \000\000A\240\000\000A\360\000\000"
+      """, t)
+    else:
+     self.assertProtoEquals("""
       dtype: DT_FLOAT
       tensor_shape { dim { size: 3 } }
       tensor_content: "\000\000 A\000\000\240A\000\000\360A"
@@ -65,7 +80,14 @@ class TensorUtilTest(tf.test.TestCase):
 
   def testFloatTypeCoerce(self):
     t = tensor_util.make_tensor_proto([10, 20, 30], dtype=tf.float32)
-    self.assertProtoEquals("""
+    if sys.byteorder == "big":
+     self.assertProtoEquals("""
+      dtype: DT_FLOAT
+      tensor_shape { dim { size: 3 } }
+      tensor_content: "A \000\000A\240\000\000A\360\000\000"
+      """, t)
+    else:
+     self.assertProtoEquals("""
       dtype: DT_FLOAT
       tensor_shape { dim { size: 3 } }
       tensor_content: "\000\000 A\000\000\240A\000\000\360A"
@@ -77,7 +99,14 @@ class TensorUtilTest(tf.test.TestCase):
   def testFloatTypeCoerceNdarray(self):
     arr = np.asarray([10, 20, 30], dtype="int")
     t = tensor_util.make_tensor_proto(arr, dtype=tf.float32)
-    self.assertProtoEquals("""
+    if sys.byteorder == "big":
+     self.assertProtoEquals("""
+      dtype: DT_FLOAT
+      tensor_shape { dim { size: 3 } }
+      tensor_content: "A \000\000A\240\000\000A\360\000\000"
+      """, t)
+    else:
+     self.assertProtoEquals("""
       dtype: DT_FLOAT
       tensor_shape { dim { size: 3 } }
       tensor_content: "\000\000 A\000\000\240A\000\000\360A"
@@ -88,7 +117,14 @@ class TensorUtilTest(tf.test.TestCase):
 
   def testFloatSizes(self):
     t = tensor_util.make_tensor_proto([10.0, 20.0, 30.0], shape=[1, 3])
-    self.assertProtoEquals("""
+    if sys.byteorder == "big":
+     self.assertProtoEquals("""
+      dtype: DT_FLOAT
+      tensor_shape { dim { size: 1 } dim { size: 3 } }
+      tensor_content: "A \000\000A\240\000\000A\360\000\000"
+      """, t)
+    else:
+     self.assertProtoEquals("""
       dtype: DT_FLOAT
       tensor_shape { dim { size: 1 } dim { size: 3 } }
       tensor_content: "\000\000 A\000\000\240A\000\000\360A"
@@ -99,7 +135,14 @@ class TensorUtilTest(tf.test.TestCase):
 
   def testFloatSizes2(self):
     t = tensor_util.make_tensor_proto([10.0, 20.0, 30.0], shape=[3, 1])
-    self.assertProtoEquals("""
+    if sys.byteorder == "big":
+     self.assertProtoEquals("""
+      dtype: DT_FLOAT
+      tensor_shape { dim { size: 3 } dim { size: 1 } }
+      tensor_content: "A \000\000A\240\000\000A\360\000\000"
+      """, t)
+    else:
+     self.assertProtoEquals("""
       dtype: DT_FLOAT
       tensor_shape { dim { size: 3 } dim { size: 1 } }
       tensor_content: "\000\000 A\000\000\240A\000\000\360A"
@@ -121,7 +164,14 @@ class TensorUtilTest(tf.test.TestCase):
   def testFloatNpArrayFloat64(self):
     t = tensor_util.make_tensor_proto(
         np.array([[10.0, 20.0, 30.0]], dtype=np.float64))
-    self.assertProtoEquals("""
+    if sys.byteorder == "big":
+     self.assertProtoEquals("""
+      dtype: DT_DOUBLE
+      tensor_shape { dim { size: 1 } dim { size: 3 } }
+      tensor_content: "@$\000\000\000\000\000\000@4\000\000\000\000\000\000@>\000\000\000\000\000\000"
+      """, t)
+    else:
+     self.assertProtoEquals("""
       dtype: DT_DOUBLE
       tensor_shape { dim { size: 1 } dim { size: 3 } }
       tensor_content: "\000\000\000\000\000\000$@\000\000\000\000\000\0004@\000\000\000\000\000\000>@"
@@ -200,7 +250,14 @@ class TensorUtilTest(tf.test.TestCase):
 
   def testIntNDefaultType(self):
     t = tensor_util.make_tensor_proto([10, 20, 30, 40], shape=[2, 2])
-    self.assertProtoEquals("""
+    if sys.byteorder == "big":
+     self.assertProtoEquals("""
+      dtype: DT_INT32
+      tensor_shape { dim { size: 2 } dim { size: 2 } }
+      tensor_content: "\000\000\000\\n\000\000\000\024\000\000\000\036\000\000\000("
+      """, t)
+    else:
+     self.assertProtoEquals("""
       dtype: DT_INT32
       tensor_shape { dim { size: 2 } dim { size: 2 } }
       tensor_content: "\\n\000\000\000\024\000\000\000\036\000\000\000(\000\000\000"
@@ -259,7 +316,14 @@ class TensorUtilTest(tf.test.TestCase):
   def testLongN(self):
     t = tensor_util.make_tensor_proto([10, 20, 30], shape=[1, 3],
                                       dtype=tf.int64)
-    self.assertProtoEquals("""
+    if  sys.byteorder == "big":
+     self.assertProtoEquals("""
+      dtype: DT_INT64
+      tensor_shape { dim { size: 1 } dim { size: 3 } }
+      tensor_content: "\000\000\000\000\000\000\000\\n\000\000\000\000\000\000\000\024\000\000\000\000\000\000\000\036"
+      """, t)
+    else:
+     self.assertProtoEquals("""
       dtype: DT_INT64
       tensor_shape { dim { size: 1 } dim { size: 3 } }
       tensor_content: "\\n\000\000\000\000\000\000\000\024\000\000\000\000\000\000\000\036\000\000\000\000\000\000\000"
@@ -270,7 +334,14 @@ class TensorUtilTest(tf.test.TestCase):
 
   def testLongNpArray(self):
     t = tensor_util.make_tensor_proto(np.array([10, 20, 30]))
-    self.assertProtoEquals("""
+    if sys.byteorder == "big":
+     self.assertProtoEquals("""
+      dtype: DT_INT64
+      tensor_shape { dim { size: 3 } }
+      tensor_content: "\000\000\000\000\000\000\000\\n\000\000\000\000\000\000\000\024\000\000\000\000\000\000\000\036"
+      """, t)
+    else:
+     self.assertProtoEquals("""
       dtype: DT_INT64
       tensor_shape { dim { size: 3 } }
       tensor_content: "\\n\000\000\000\000\000\000\000\024\000\000\000\000\000\000\000\036\000\000\000\000\000\000\000"
@@ -284,7 +355,14 @@ class TensorUtilTest(tf.test.TestCase):
     data = [(21,), (22,), (23,)]
 
     t = tensor_util.make_tensor_proto(data, dtype=tf.qint32)
-    self.assertProtoEquals("""
+    if sys.byteorder == "big":
+     self.assertProtoEquals("""
+      dtype: DT_QINT32
+      tensor_shape { dim { size: 3 } }
+      tensor_content: "\000\000\000\025\000\000\000\026\000\000\000\027"
+      """, t)
+    else:
+     self.assertProtoEquals("""
       dtype: DT_QINT32
       tensor_shape { dim { size: 3 } }
       tensor_content: "\025\000\000\000\026\000\000\000\027\000\000\000"
@@ -314,7 +392,14 @@ class TensorUtilTest(tf.test.TestCase):
     self.assertAllEqual(np.array(data, dtype=a.dtype), a)
 
     t = tensor_util.make_tensor_proto(data, dtype=tf.quint16)
-    self.assertProtoEquals("""
+    if sys.byteorder == "big":
+     self.assertProtoEquals("""
+      dtype: DT_QUINT16
+      tensor_shape { dim { size: 3 } }
+      tensor_content: "\000\025\000\026\000\027"
+      """, t)
+    else:
+     self.assertProtoEquals("""
       dtype: DT_QUINT16
       tensor_shape { dim { size: 3 } }
       tensor_content: "\025\000\026\000\027\000"
@@ -324,7 +409,14 @@ class TensorUtilTest(tf.test.TestCase):
     self.assertAllEqual(np.array(data, dtype=a.dtype), a)
 
     t = tensor_util.make_tensor_proto(data, dtype=tf.qint16)
-    self.assertProtoEquals("""
+    if sys.byteorder == "big":
+     self.assertProtoEquals("""
+      dtype: DT_QINT16
+      tensor_shape { dim { size: 3 } }
+      tensor_content: "\000\025\000\026\000\027"
+      """, t)
+    else:
+     self.assertProtoEquals("""
       dtype: DT_QINT16
       tensor_shape { dim { size: 3 } }
       tensor_content: "\025\000\026\000\027\000"

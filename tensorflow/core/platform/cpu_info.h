@@ -24,7 +24,11 @@ namespace tensorflow {
 namespace port {
 
 // TODO(jeff,sanjay): Make portable
-static const bool kLittleEndian = true;
+#if __BYTE_ORDER == __BIG_ENDIAN 
+ static const bool kLittleEndian = false; 
+#else 
+ static const bool kLittleEndian = true; 
+#endif
 
 // Returns an estimate of the number of schedulable CPUs for this
 // process.  Usually, it's constant throughout the lifetime of a
