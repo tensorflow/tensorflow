@@ -1146,7 +1146,6 @@ py_library(
         ":nn_ops",
         ":rnn",
         ":rnn_cell",
-        ":seq2seq",
         ":sparse_ops",
     ],
 )
@@ -1277,23 +1276,6 @@ py_library(
     deps = [
         ":framework",
         ":sdca_ops_gen",
-    ],
-)
-
-py_library(
-    name = "seq2seq",
-    srcs = ["ops/seq2seq.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":array_ops",
-        ":control_flow_ops",
-        ":embedding_ops",
-        ":framework",
-        ":math_ops",
-        ":nn_ops",
-        ":rnn",
-        ":rnn_cell",
-        ":variable_scope",
     ],
 )
 
@@ -1587,7 +1569,6 @@ py_library(
         ":rnn",
         ":rnn_cell",
         ":script_ops",
-        ":seq2seq",
         ":session_ops",
         ":sets",
         ":sparse_grad",

@@ -12,7 +12,13 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 
 py_library(
     name = "seq2seq_py",
-    srcs = ["__init__.py"] + glob(["python/ops/*.py"]),
+    srcs = [
+        "__init__.py",
+        "python/__init__.py",
+    ] + glob(
+        ["python/ops/*.py"],
+        exclude = ["python/ops/**/*_test.py"],
+    ),
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
 )
