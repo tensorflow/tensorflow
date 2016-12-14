@@ -54,7 +54,7 @@ class ArgMaxTest(tf.test.TestCase):
     x = np.asarray(100*np.random.randn(3, 2, 4, 5, 6), dtype=dtype)
 
     # Check that argmin and argmax match numpy along all dimensions
-    for dim in range(5):
+    for dim in range(-5, 5):
       self._testBothArg(tf.argmax, x, dim, x.argmax(dim))
       self._testBothArg(tf.argmin, x, dim, x.argmin(dim))
 

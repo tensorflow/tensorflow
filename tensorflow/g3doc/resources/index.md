@@ -1,11 +1,16 @@
 # Additional Resources
 
-## TensorFlow WhitePaper
+## TensorFlow WhitePapers
 
 Additional details about the TensorFlow programming model and the underlying
 implementation can be found in our white paper:
 
 * [TensorFlow: Large-scale machine learning on heterogeneous systems](http://download.tensorflow.org/paper/whitepaper2015.pdf)
+
+
+A white paper is also available for [TF.Learn](https://www.tensorflow.org/tutorials/tflearn/):
+
+* [TF.Learn: TensorFlow's High-level Module for Distributed Machine Learning](https://arxiv.org/abs/1612.04251)
 
 ### Citation
 

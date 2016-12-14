@@ -532,7 +532,7 @@ class ConvolutionTest(tf.test.TestCase):
       self.assertListEqual(list(eval_output.shape), expected_size_dynamic)
 
   def testDynamicOutputSizeWithRateOneValidPaddingNCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       num_filters = 32
       input_size = [5, 3, 9, 11]
       expected_size = [None, num_filters, None, None]
@@ -624,7 +624,7 @@ class Convolution2dTransposeTests(tf.test.TestCase):
 
   def testOutputSizeWithStrideOneSamePaddingNCHW(self):
     # `NCHW` data fomat is only supported for `GPU` device.
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True) as sess:
         num_filters = 32
         input_size = [5, 3, 10, 12]
@@ -1782,7 +1782,7 @@ class BatchNormTest(tf.test.TestCase):
     self._testNoneUpdatesCollections(False, data_format='NCHW')
 
   def testNoneUpdatesCollectionsFusedNCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       self._testNoneUpdatesCollections(True, data_format='NCHW')
 
   def testNoneUpdatesCollectionsFusedNHWC(self):
@@ -1849,7 +1849,7 @@ class BatchNormTest(tf.test.TestCase):
     self._testDelayedUpdateMovingVars(False, data_format='NCHW')
 
   def testDelayedUpdateMovingVarsFusedNCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       self._testDelayedUpdateMovingVars(True, data_format='NCHW')
 
   def testDelayedUpdateMovingVarsFusedNHWC(self):
@@ -2037,7 +2037,7 @@ class BatchNormTest(tf.test.TestCase):
     self._testIsTrainingVariable(False, data_format='NCHW')
 
   def testIsTrainingVariableFusedNCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       self._testIsTrainingVariable(True, data_format='NCHW')
 
   def testIsTrainingVariableFusedNHWC(self):
@@ -2176,7 +2176,7 @@ class BatchNormTest(tf.test.TestCase):
     self._testNoneUpdatesCollectionIsTrainingVariable(False, data_format='NCHW')
 
   def testNoneUpdatesCollectionIsTrainingVariableFusedNCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       self._testNoneUpdatesCollectionIsTrainingVariable(
           True, data_format='NCHW')
 
@@ -2255,7 +2255,7 @@ class BatchNormTest(tf.test.TestCase):
     self._testTrainMovingVars(False, data_format='NCHW')
 
   def testTrainMovingVarsFusedNCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       self._testTrainMovingVars(True, data_format='NCHW')
 
   def testTrainMovingVarsFusedNHWC(self):

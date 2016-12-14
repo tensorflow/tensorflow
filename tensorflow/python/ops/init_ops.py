@@ -66,7 +66,8 @@ def zeros_initializer(dtype=dtypes.float32):
   """Returns an initializer that generates tensors initialized to 0."""
 
   def _initializer(shape, dtype=dtype, partition_info=None):
-    return constant_op.constant(0, dtype=dtype, shape=shape)
+    return constant_op.constant(False if dtype is dtypes.bool else 0,
+                                dtype=dtype, shape=shape)
 
   return _initializer
 

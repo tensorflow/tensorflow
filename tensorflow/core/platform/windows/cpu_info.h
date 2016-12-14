@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,19 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// SWIG test helper for lib::tensorflow::Status
+#ifndef TENSORFLOW_PLATFORM_WINDOWS_CPU_INFO_H_
+#define TENSORFLOW_PLATFORM_WINDOWS_CPU_INFO_H_
 
-%include "tensorflow/python/platform/base.i"
-%import(module="tensorflow.python.pywrap_tensorflow") "tensorflow/python/lib/core/status.i"
+// Byte order defines provided by gcc. MSVC doesn't define those so 
+// we define them here.
+// We assume that all windows platform out there are little endian.
+#define __ORDER_LITTLE_ENDIAN__ 0x4d2
+#define __ORDER_BIG_ENDIAN__ 0x10e1
+#define __BYTE_ORDER__ __ORDER_LITTLE_ENDIAN__
 
-%inline %{
-#include "tensorflow/core/lib/core/status.h"
-
-tensorflow::Status NotOkay() {
-  return tensorflow::Status(tensorflow::error::INVALID_ARGUMENT, "Testing 1 2 3");
-}
-
-tensorflow::Status Okay() {
-  return tensorflow::Status();
-}
-%}
+#endif  // TENSORFLOW_PLATFORM_WINDOWS_CPU_INFO_H_

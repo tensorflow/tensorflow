@@ -51,6 +51,12 @@ config_setting(
 )
 
 config_setting(
+    name = "no_tensorflow_py_deps",
+    values = {"define": "no_tensorflow_py_deps=true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "ios",
     values = {
         "crosstool_top": "//tools/osx/crosstool:crosstool",

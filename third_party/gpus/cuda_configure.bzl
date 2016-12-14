@@ -584,6 +584,18 @@ def _create_dummy_repository(repository_ctx):
            "%{curand_lib}": _lib_name("curand", cpu_value),
            "%{cupti_lib}": _lib_name("cupti", cpu_value),
        })
+  _tpl(repository_ctx, "cuda:BUILD",
+       {
+           "%{cudart_static_lib}": _lib_name("cudart_static", cpu_value,
+                                             static=True),
+           "%{cudart_static_linkopt}": _cudart_static_linkopt(cpu_value),
+           "%{cudart_lib}": _lib_name("cudart", cpu_value),
+           "%{cublas_lib}": _lib_name("cublas", cpu_value),
+           "%{cudnn_lib}": _lib_name("cudnn", cpu_value),
+           "%{cufft_lib}": _lib_name("cufft", cpu_value),
+           "%{curand_lib}": _lib_name("curand", cpu_value),
+           "%{cupti_lib}": _lib_name("cupti", cpu_value),
+       })
   _tpl(repository_ctx, "cuda:platform.bzl",
        {
            "%{cuda_version}": _DEFAULT_CUDA_VERSION,
@@ -701,6 +713,7 @@ def _create_cuda_repository(repository_ctx):
        "crosstool:clang/bin/crosstool_wrapper_driver_is_not_gcc",
        {
            "%{cpu_compiler}": str(cc),
+           "%{cuda_version}": cuda_config.cuda_version,
            "%{gcc_host_compiler_path}": str(cc),
            "%{cuda_compute_capabilities}": ", ".join(
                ["\"%s\"" % c for c in cuda_config.compute_capabilities]),

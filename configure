@@ -24,7 +24,8 @@ function bazel_clean_and_fetch() {
   if ! is_windows; then
     bazel clean --expunge
   fi
-  bazel fetch //tensorflow/...
+  # TODO(https://github.com/bazelbuild/bazel/issues/2220) Remove the nested `bazel query`.
+  bazel fetch $(bazel query "//tensorflow/... -//tensorflow/examples/android/...")
 }
 
 ## Set up python-related environment settings
@@ -279,7 +280,7 @@ while true; do
       TF_CUDNN_VERSION=${BASH_REMATCH[1]}
       echo "libcudnn.so resolves to libcudnn${TF_CUDNN_EXT}"
     elif [[ "$REALVAL" =~ ([0-9]*).dylib ]]; then
-      TF_CUDNN_EXT=${BASH_REMATCH[1]}".dylib"
+      TF_CUDNN_EXT="."${BASH_REMATCH[1]}".dylib"
       TF_CUDNN_VERSION=${BASH_REMATCH[1]}
       echo "libcudnn.dylib resolves to libcudnn${TF_CUDNN_EXT}"
     fi
@@ -435,7 +436,7 @@ while true; do
   # Point to ComputeCpp root
   if [ -z "$COMPUTECPP_TOOLKIT_PATH" ]; then
     default_computecpp_toolkit_path=/usr/local/computecpp
-    read -p "Please specify the location where ComputeCpp $TF_OPENCL_VERSION is installed. Refer to README.md for more details. [Default is $default_computecpp_toolkit_path]: " COMPUTECPP_TOOLKIT_PATH
+    read -p "Please specify the location where ComputeCpp for SYCL $TF_OPENCL_VERSION is installed. [Default is $default_computecpp_toolkit_path]: " COMPUTECPP_TOOLKIT_PATH
     fromuser="1"
     if [ -z "$COMPUTECPP_TOOLKIT_PATH" ]; then
       COMPUTECPP_TOOLKIT_PATH=$default_computecpp_toolkit_path
