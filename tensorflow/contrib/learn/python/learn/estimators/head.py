@@ -464,6 +464,7 @@ class _BinaryLogisticHead(_Head):
     self._weight_column_name = weight_column_name
     self._loss_fn = loss_fn
     self._enable_centered_bias = enable_centered_bias
+    self._problem_type = constants.ProblemType.LOGISTIC_REGRESSION
 
   @property
   def logits_dimension(self):
@@ -504,7 +505,8 @@ class _BinaryLogisticHead(_Head):
         loss=loss,
         train_op=train_op,
         eval_metric_ops=eval_metric_ops,
-        signature_fn=self._signature_fn())
+        signature_fn=self._signature_fn(),
+        output_alternatives=self._create_output_alternatives(predictions))
 
   def _logits_to_predictions(self, logits):
     """Returns a dict of predictions.
