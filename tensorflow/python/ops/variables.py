@@ -274,9 +274,6 @@ class Variable(object):
     if initial_value is None:
       raise ValueError("initial_value must be specified.")
     init_from_fn = callable(initial_value)
-    if init_from_fn and dtype is None:
-      raise ValueError(
-          "dtype must also be specified when initial_value is callable.")
 
     if collections is None:
       collections = [ops.GraphKeys.GLOBAL_VARIABLES]

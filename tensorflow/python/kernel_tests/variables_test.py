@@ -328,9 +328,6 @@ class VariablesTestCase(tf.test.TestCase):
     shape = [2, 1]
     with self.test_session():
       initializer = lambda: tf.constant(value)
-      with self.assertRaises(ValueError):
-        # Checks that dtype must be specified.
-        tf.Variable(initializer)
 
       v1 = tf.Variable(initializer, dtype=tf.float32)
       self.assertEqual(shape, v1.get_shape())
