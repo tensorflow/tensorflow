@@ -2564,3 +2564,15 @@ cuda_py_test(
     ],
     main = "ops/split_benchmark.py",
 )
+
+cuda_py_test(
+    name = "session_benchmark",
+    srcs = [
+        "client/session_benchmark.py",
+    ],
+    additional_deps = [
+        ":platform_benchmark",
+        "//tensorflow:tensorflow_py",
+    ],
+    main = "client/session_benchmark.py",
+)
