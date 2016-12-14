@@ -519,6 +519,7 @@ export class Projector extends ProjectorPolymer implements
     state.filteredPoints = this.dataSetFilterIndices;
     this.projectorScatterPlotAdapter.populateBookmarkFromUI(state);
     state.selectedColorOptionName = this.dataPanel.selectedColorOptionName;
+    state.forceCategoricalColoring = this.dataPanel.forceCategoricalColoring;
     state.selectedLabelOption = this.selectedLabelOption;
     this.projectionsPanel.populateBookmarkFromUI(state);
     return state;
@@ -550,6 +551,8 @@ export class Projector extends ProjectorPolymer implements
     this.projectionsPanel.restoreUIFromBookmark(state);
     this.inspectorPanel.restoreUIFromBookmark(state);
     this.dataPanel.selectedColorOptionName = state.selectedColorOptionName;
+    this.dataPanel.setForceCategoricalColoring(
+        !!state.forceCategoricalColoring);
     this.selectedLabelOption = state.selectedLabelOption;
     this.projectorScatterPlotAdapter.restoreUIFromBookmark(state);
     {

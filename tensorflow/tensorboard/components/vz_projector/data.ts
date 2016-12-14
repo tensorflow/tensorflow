@@ -431,6 +431,7 @@ export interface ColorOption {
   /** Threshold values and their colors. Defined for gradient color map. */
   thresholds?: {value: number, color: string}[];
   isSeparator?: boolean;
+  tooManyUniqueValues?: boolean;
 }
 
 /**
@@ -484,6 +485,7 @@ export class State {
 
   /** Color by option. */
   selectedColorOptionName: string;
+  forceCategoricalColoring: boolean;
 
   /** Label by option. */
   selectedLabelOption: string;

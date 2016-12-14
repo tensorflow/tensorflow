@@ -256,12 +256,9 @@ export function analyzeMetadata(
     });
   });
   columnStats.forEach((stats, colIndex) => {
-    let map = mapOfValues[colIndex];
-    if (!stats.tooManyUniqueValues) {
-      stats.uniqueEntries = map.entries().map(e => {
-        return {label: e.key, count: e.value};
-      });
-    }
+    stats.uniqueEntries = mapOfValues[colIndex].entries().map(e => {
+      return {label: e.key, count: e.value};
+    });
   });
   return columnStats;
 }
