@@ -100,6 +100,11 @@ typedef enum {
   TF_RESOURCE = 20,
 } TF_DataType;
 
+// TF_DataTypeSize returns the sizeof() for the underlying type corresponding
+// to the given TF_DataType enum value. Returns 0 for variable length types
+// (eg. TF_STRING) or on failure.
+extern size_t TF_DataTypeSize(TF_DataType dt);
+
 // --------------------------------------------------------------------------
 // TF_Code holds an error code.  The enum values here are identical to
 // corresponding values in error_codes.proto.
