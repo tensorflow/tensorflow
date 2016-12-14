@@ -19,6 +19,7 @@ py_library(
         "mnist.py",
         "produce_small_datasets.py",
         "text_datasets.py",
+        "synthetic.py",
     ],
     data = [":data_csv"],
     srcs_version = "PY2AND3",
