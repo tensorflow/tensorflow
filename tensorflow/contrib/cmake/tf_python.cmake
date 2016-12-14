@@ -512,6 +512,8 @@ GENERATE_PYTHON_OP_LIB("contrib_factorization_factorization_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/factorization/python/ops/gen_factorization_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_framework_variable_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/framework/python/ops/gen_variable_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_tensor_forest_ops"
+	  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/tensor_forest/python/ops/gen_tensor_forest_ops.py)
 
 add_custom_target(tf_python_ops SOURCES ${tf_python_ops_generated_files} ${PYTHON_PROTO_GENFILES})
 add_dependencies(tf_python_ops tf_python_op_gen_main)
