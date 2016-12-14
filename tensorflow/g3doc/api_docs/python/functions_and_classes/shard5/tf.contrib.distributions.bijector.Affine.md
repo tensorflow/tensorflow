@@ -1,9 +1,7 @@
-Bijector which computes Y = g(X; shift, scale) = matmul(scale, X) + shift.
+Bijector which computes `Y = g(X; shift, scale) = matmul(scale, X) + shift` where `scale = c * I + diag(D1) + tril(L) + V @ diag(D2) @ V.T`.
 
-`shift` is a numeric `Tensor`, while `scale` is constructed from several
-arguments specified in the constructor.
-
-The most general `scale` construction is described as follows:
+Write `A @ X` for `matmul(A, X)`. In TF parlance, the `scale` term is
+logically equivalent to:
 
 ```python
 scale = (
@@ -12,102 +10,111 @@ scale = (
   scale_tril +
   scale_perturb_factor @ diag(scale_perturb_diag) @
     tf.transpose([scale_perturb_factor])
-
-scale = c * I + diag(D1) + V @ diag(D2) @ V^T + tril(L)
+)
 ```
 
-Example Use:
+The `scale` term is applied without necessarily materializing constituent
+matrices, i.e., the matmul is [matrix-free](
+https://en.wikipedia.org/wiki/Matrix-free_methods) when possible.
+
+Examples:
 
 ```python
-# No batch, scalar
-mu = 0     # shape=[]
-sigma = 1. # shape=[], treated like a 1x1 matrix.
-# Corresponds to forward: x + mu.
-b = Affine(shift=mu)
+# Y = X
+b = Affine()
 
-# No batch, scalar
-mu = 0     # shape=[]
-sigma = 3.  # shape=[], treated like a 1x1 matrix.
-# Corresponds to forward: 3 * x + mu.
-b = Affine(
-  shift=mu,
-  scale_identity_multiplier=3.0)
+# Y = X + shift
+b = Affine(shift=[1., 2, 3])
 
-# One batch, scalar.
-mu = ...    # shape=[b], b>0
-sigma = 2. # shape=[], b>0, treated like a batch of 1x1 matrices
-# Corresponds to forward: 2 * x + mu.
-b = Affine(
-  shift=mu,
-  scale_identity_multiplier=2.0)
+# Y = 2 * I @ X.T + shift
+b = Affine(shift=[1., 2, 3],
+           scale_identity_multiplier=2.)
 
-# No batch, multivariate.
-mu = [1., 2, 3]  # shape=[3],
-diag = [1, 3, 3] # shape=[3, 3], treated like 3x3 matrix.
-b = Affine(
-  shift=mu,
-  scale_identity_multiplier=None,
-  scale_diag=diag,
-  event_ndims=1)
+# Y = tf.diag(d1) @ X.T + shift
+b = Affine(shift=[1., 2, 3],
+           scale_diag=[-1., 2, 1])         # Implicitly 3x3.
 
-# Low rank update.
-mu = [1, 2, 3]    # shape=[3],
-d2 = [2, 1] # shape=[2], treated like a 2x2 matrix.
-v = [[1, 0] [0, 1], [0, 0]] # shape=[2, 3]
-d1 = [1, 3, 3] # shape=[3, 3], treated like 3x3 matrix.
-# Corresponds to scale of the form d1 + v * d2 * v^T
-b = Affine(
-  shift=mu,
-  scale_identity_multiplier=None,
-  scale_diag=d1,
-  scale_perturb_diag=d2,
-  scale_perturb_factor=v,
-  event_ndims=1)
+# Y = (I + v * v.T) @ X.T + shift
+b = Affine(shift=[1., 2, 3],
+           scale_perturb_factor=[[1., 0],
+                                 [0, 1],
+                                 [1, 1]])
+
+# Y = (diag(d1) + v * diag(d2) * v.T) @ X.T + shift
+b = Affine(shift=[1., 2, 3],
+           scale_diag=[1., 3, 3],          # Implicitly 3x3.
+           scale_perturb_diag=[2., 1],     # Implicitly 2x2.
+           scale_perturb_factor=[[1., 0],
+                                 [0, 1],
+                                 [1, 1]])
 
 ```
 - - -
 
-#### `tf.contrib.distributions.bijector.Affine.__init__(shift, scale_identity_multiplier=None, scale_diag=None, scale_tril=None, scale_perturb_diag=None, scale_perturb_factor=None, event_ndims=0, validate_args=False, name='affine')` {#Affine.__init__}
+#### `tf.contrib.distributions.bijector.Affine.__init__(shift=None, scale_identity_multiplier=None, scale_diag=None, scale_tril=None, scale_perturb_factor=None, scale_perturb_diag=None, event_ndims=1, validate_args=False, name='affine')` {#Affine.__init__}
 
 Instantiates the `Affine` bijector.
 
 This `Bijector` is initialized with `shift` `Tensor` and `scale` arguments,
 giving the forward operation:
 
-```Y = g(X) = scale @ X + shift```
+```none
+Y = g(X) = scale @ X + shift
+```
+
+where the `scale` term is logically equivalent to:
+
+```python
+scale = (
+  scale_identity_multiplier * tf.diag(tf.ones(d)) +
+  tf.diag(scale_diag) +
+  scale_tril +
+  scale_perturb_factor @ diag(scale_perturb_diag) @
+    tf.transpose([scale_perturb_factor])
+)
+```
+
+If none of `scale_identity_multiplier`, `scale_diag`, or `scale_tril` are
+specified then `scale += IdentityMatrix`. Otherwise specifying a
+`scale` argument has the semantics of `scale += Expand(arg)`, i.e.,
+`scale_diag != None` means `scale += tf.diag(scale_diag)`.
 
 ##### Args:
 
 
-*  <b>`shift`</b>: Numeric `Tensor`.
+*  <b>`shift`</b>: Numeric `Tensor`.  If this is set to `None`, no shift is applied.
 *  <b>`scale_identity_multiplier`</b>: floating point rank 0 `Tensor` representing a
     scaling done to the identity matrix.
-    The default is 1.0.  If this is set to `None`, do not scale by an
-    identity matrix.
+    When `scale_identity_multiplier = scale_diag=scale_tril = None` then
+    `scale += IdentityMatrix`. Otherwise no scaled-identity-matrix is added
+    to `scale`.
 *  <b>`scale_diag`</b>: Numeric `Tensor` representing the diagonal matrix.
     `scale_diag` has shape [N1, N2, ... k], which represents a k x k
     diagonal matrix.
-    The default is `None`. If this is set to `None`, scale_diag is not used
-    for scale construction.
+    When `None` no diagonal term is added to `scale`.
 *  <b>`scale_tril`</b>: Numeric `Tensor` representing the diagonal matrix.
     `scale_diag` has shape [N1, N2, ... k, k], which represents a k x k
     lower triangular matrix.
-    The default is `None`. If this is set to `None`, scale_tril is not used
-    for scale construction.
+    When `None` no `scale_tril` term is added to `scale`.
+*  <b>`scale_perturb_factor`</b>: Numeric `Tensor` representing factor matrix with
+    last two dimensions of shape `(k, r)`.
+    When `None`, no rank-r update is added to `scale`.
 *  <b>`scale_perturb_diag`</b>: Numeric `Tensor` representing the diagonal matrix.
     `scale_perturb_diag` has shape [N1, N2, ... r], which represents an
     r x r Diagonal matrix.
-    The default is`None`. If this is set to `None`, low rank updates will
-    take the form `scale_perturb_factor * scale_perturb_factor^T`.
-*  <b>`scale_perturb_factor`</b>: Numeric `Tensor` representing factor matrix with
-    last two dimensions of shape `(k, r)`.
-    The default is `None`. If this is set to `None`, no rank update is
-    performed.
+    When `None` low rank updates will take the form `scale_perturb_factor *
+    scale_perturb_factor.T`.
 *  <b>`event_ndims`</b>: Scalar `int32` `Tensor` indicating the number of dimensions
     associated with a particular draw from the distribution. Must be 0 or 1.
 *  <b>`validate_args`</b>: `Boolean` indicating whether arguments should be checked
     for correctness.
 *  <b>`name`</b>: `String` name given to ops managed by this object.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `perturb_diag` is specified but not `perturb_factor`.
+*  <b>`TypeError`</b>: if `shift` has different `dtype` from `scale` arguments.
 
 
 - - -

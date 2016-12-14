@@ -184,8 +184,8 @@ def lanczos_bidiag(operator,
     i = tf.constant(0, dtype=tf.int32)
     _, ls = tf.while_loop(stopping_criterion, lanczos_bidiag_step, [i, ls])
     return lanzcos_bidiag_state(
-        tf.matrix_transpose(ls.u.pack()),
-        tf.matrix_transpose(ls.v.pack()), ls.alpha.pack(), ls.beta.pack())
+        tf.matrix_transpose(ls.u.stack()),
+        tf.matrix_transpose(ls.v.stack()), ls.alpha.stack(), ls.beta.stack())
 
 
 # TODO(rmlarsen): Implement C++ ops for handling bidiagonal matrices

@@ -170,7 +170,8 @@ class GridRNNCell(rnn.RNNCell):
       # project input
       if inputs is not None and sum(inputs.get_shape().as_list()) > 0 and len(
           conf.inputs) > 0:
-        input_splits = array_ops.split(1, len(conf.inputs), inputs)
+        input_splits = array_ops.split(
+            value=inputs, num_or_size_splits=len(conf.inputs), axis=1)
         input_sz = input_splits[0].get_shape().as_list()[1]
 
         for i, j in enumerate(conf.inputs):

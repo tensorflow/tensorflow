@@ -699,7 +699,7 @@ def train(train_op,
             data_flow_ops.initialize_all_tables())
 
       if sync_optimizer is not None and isinstance(
-          sync_optimizer, sync_replicas_optimizer.SyncReplicasOptimizerV2):
+          sync_optimizer, sync_replicas_optimizer.SyncReplicasOptimizer):
         with ops.control_dependencies([local_init_op] if local_init_op is
                                       not None else []):
           if is_chief:
@@ -720,11 +720,9 @@ def train(train_op,
 
     if is_chief and sync_optimizer is not None:
       if not isinstance(sync_optimizer,
-                        (sync_replicas_optimizer.SyncReplicasOptimizer,
-                         sync_replicas_optimizer.SyncReplicasOptimizerV2)):
+                        (sync_replicas_optimizer.SyncReplicasOptimizer)):
         raise ValueError(
-            '`sync_optimizer` must be a tf.train.SyncReplicasOptimizer or '
-            'tf.train.SyncReplicasOptimizerV2.')
+            '`sync_optimizer` must be a tf.train.SyncReplicasOptimizer.')
 
       # Need to create these BEFORE the supervisor finalizes the graph:
       init_tokens_op = sync_optimizer.get_init_tokens_op()

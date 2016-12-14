@@ -144,6 +144,15 @@ message ThreadPoolOptionProto {
   int32 num_threads = 1;
 };
 
+message RPCOptions {
+  // If true, always use RPC to contact the session target.
+  //
+  // If false (the default option), TensorFlow may use an optimized
+  // transport for client-master communication that avoids the RPC
+  // stack. This option is primarily for used testing the RPC stack.
+  bool use_rpc_for_inprocess_master = 1;
+};
+
 // Session configuration parameters.
 // The system picks appropriate values for fields that are not set.
 message ConfigProto {
@@ -221,6 +230,9 @@ message ConfigProto {
   // and not overridden on a per-operation basis, this value will be used as the
   // deadline for all blocking operations.
   int64 operation_timeout_in_ms = 11;
+
+  // Options that apply when this session uses the distributed runtime.
+  RPCOptions rpc_options = 13;
 };
 
 // EXPERIMENTAL. Options for a single Run() call.

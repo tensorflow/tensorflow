@@ -139,6 +139,13 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "draw_bounding_box_op_test",
+    size = "small",
+    srcs = ["draw_bounding_box_op_test.py"],
+    additional_deps = ["//tensorflow:tensorflow_py"],
+)
+
+tf_py_test(
     name = "edit_distance_op_test",
     size = "small",
     srcs = ["edit_distance_op_test.py"],

@@ -31,6 +31,7 @@
   * [`register_tensor_conversion_function`](../../api_docs/python/framework.md#register_tensor_conversion_function)
   * [`RegisterGradient`](../../api_docs/python/framework.md#RegisterGradient)
   * [`reset_default_graph`](../../api_docs/python/framework.md#reset_default_graph)
+  * [`shape`](../../api_docs/python/framework.md#shape)
   * [`Tensor`](../../api_docs/python/framework.md#Tensor)
   * [`TensorShape`](../../api_docs/python/framework.md#TensorShape)
 
@@ -160,6 +161,7 @@
   * [`rank`](../../api_docs/python/array_ops.md#rank)
   * [`required_space_to_batch_paddings`](../../api_docs/python/array_ops.md#required_space_to_batch_paddings)
   * [`reshape`](../../api_docs/python/array_ops.md#reshape)
+  * [`reverse`](../../api_docs/python/array_ops.md#reverse)
   * [`reverse_sequence`](../../api_docs/python/array_ops.md#reverse_sequence)
   * [`reverse_v2`](../../api_docs/python/array_ops.md#reverse_v2)
   * [`saturate_cast`](../../api_docs/python/array_ops.md#saturate_cast)
@@ -174,7 +176,6 @@
   * [`space_to_batch_nd`](../../api_docs/python/array_ops.md#space_to_batch_nd)
   * [`space_to_depth`](../../api_docs/python/array_ops.md#space_to_depth)
   * [`split`](../../api_docs/python/array_ops.md#split)
-  * [`split_v`](../../api_docs/python/array_ops.md#split_v)
   * [`squeeze`](../../api_docs/python/array_ops.md#squeeze)
   * [`stack`](../../api_docs/python/array_ops.md#stack)
   * [`strided_slice`](../../api_docs/python/array_ops.md#strided_slice)
@@ -660,6 +661,7 @@
   * [`summary_iterator`](../../api_docs/python/train.md#summary_iterator)
   * [`SummarySaverHook`](../../api_docs/python/train.md#SummarySaverHook)
   * [`Supervisor`](../../api_docs/python/train.md#Supervisor)
+  * [`SyncReplicasOptimizer`](../../api_docs/python/train.md#SyncReplicasOptimizer)
   * [`SyncReplicasOptimizerV2`](../../api_docs/python/train.md#SyncReplicasOptimizerV2)
   * [`WorkerSessionCreator`](../../api_docs/python/train.md#WorkerSessionCreator)
   * [`write_graph`](../../api_docs/python/train.md#write_graph)
@@ -1038,6 +1040,12 @@
   * [`sigmoid_cross_entropy`](../../api_docs/python/contrib.losses.md#sigmoid_cross_entropy)
   * [`softmax_cross_entropy`](../../api_docs/python/contrib.losses.md#softmax_cross_entropy)
   * [`sparse_softmax_cross_entropy`](../../api_docs/python/contrib.losses.md#sparse_softmax_cross_entropy)
+
+* **[Optimization (contrib)](../../api_docs/python/contrib.opt.md)**:
+  * [`ExternalOptimizerInterface`](../../api_docs/python/contrib.opt.md#ExternalOptimizerInterface)
+  * [`MovingAverageOptimizer`](../../api_docs/python/contrib.opt.md#MovingAverageOptimizer)
+  * [`ScipyOptimizerInterface`](../../api_docs/python/contrib.opt.md#ScipyOptimizerInterface)
+  * [`VariableClippingOptimizer`](../../api_docs/python/contrib.opt.md#VariableClippingOptimizer)
 
 * **[RNN and Cells (contrib)](../../api_docs/python/contrib.rnn.md)**:
   * [`AttentionCellWrapper`](../../api_docs/python/contrib.rnn.md#AttentionCellWrapper)

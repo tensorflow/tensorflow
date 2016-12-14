@@ -1233,7 +1233,7 @@ def _centered_bias(logits_dimension, head_name=None):
   centered_bias = variable_scope.get_variable(
       name="centered_bias_weight",
       shape=(logits_dimension,),
-      initializer=init_ops.zeros_initializer,
+      initializer=init_ops.zeros_initializer(),
       trainable=True)
   for dim in range(logits_dimension):
     if head_name:

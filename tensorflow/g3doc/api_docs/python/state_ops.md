@@ -2568,14 +2568,14 @@ numerically computed: for a linear layer it's 1.0, relu: ~1.43, tanh: ~1.15.
 
 - - -
 
-### `tf.zeros_initializer(shape, dtype=tf.float32, partition_info=None)` {#zeros_initializer}
+### `tf.zeros_initializer(dtype=tf.float32)` {#zeros_initializer}
 
-An adaptor for zeros() to match the Initializer spec.
+Returns an initializer that generates tensors initialized to 0.
 
 
 - - -
 
-### `tf.ones_initializer(dtype=tf.float32, partition_info=None)` {#ones_initializer}
+### `tf.ones_initializer(dtype=tf.float32)` {#ones_initializer}
 
 An adaptor for ones() to match the Initializer spec.
 

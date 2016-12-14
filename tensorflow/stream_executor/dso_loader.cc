@@ -19,22 +19,14 @@ limitations under the License.
 #include "tensorflow/stream_executor/dso_loader.h"
 
 #include <limits.h>
-#if defined(__APPLE__)
-#include <mach-o/dyld.h>
-#endif
 #include <stdlib.h>
-#if defined(PLATFORM_WINDOWS)
-#include <windows.h>
-#define PATH_MAX MAX_PATH
-#else
-#include <unistd.h>
-#endif
 #include <initializer_list>
 #include <vector>
 
 #include "tensorflow/core/platform/load_library.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/error.h"
+#include "tensorflow/stream_executor/lib/path.h"
 #include "tensorflow/stream_executor/lib/str_util.h"
 #include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
@@ -130,29 +122,8 @@ string GetCudnnVersion() { return TF_CUDNN_VERSION; }
 }
 
 /* static */ string DsoLoader::GetBinaryDirectory(bool strip_executable_name) {
-  char exe_path[PATH_MAX] = {0};
-#ifdef __APPLE__
-  uint32_t buffer_size(0U);
-  _NSGetExecutablePath(nullptr, &buffer_size);
-  char unresolved_path[buffer_size];
-  _NSGetExecutablePath(unresolved_path, &buffer_size);
-  CHECK_ERR(realpath(unresolved_path, exe_path) ? 1 : -1);
-#elif defined(PLATFORM_WINDOWS)
-  HMODULE hModule = GetModuleHandle(NULL);
-  GetModuleFileName(hModule, exe_path, MAX_PATH);
-#else
-  CHECK_ERR(readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1));
-#endif
-  // Make sure it's null-terminated:
-  exe_path[sizeof(exe_path) - 1] = 0;
-
-  if (strip_executable_name) {
-    // The exe is the last component of the path, so remove one component.
-    std::vector<string> components = port::Split(exe_path, '/');
-    components.pop_back();
-    return port::Join(components, "/");
-  }
-  return exe_path;
+  string exe_path = port::Env::Default()->GetExecutablePath();
+  return strip_executable_name ? port::Dirname(exe_path).ToString() : exe_path;
 }
 
 // Creates a heap-allocated vector for initial rpaths.

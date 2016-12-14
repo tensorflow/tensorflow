@@ -17,44 +17,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import threading
-
 from tensorflow.contrib.tensor_forest.python import constants
+from tensorflow.contrib.tensor_forest.python.ops import tensor_forest_ops
 
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import load_library
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
-from tensorflow.python.platform import resource_loader
-from tensorflow.python.platform import tf_logging as logging
-
-DATA_OPS_FILE = '_data_ops.so'
-
-_data_ops = None
-_ops_lock = threading.Lock()
-
-ops.NotDifferentiable('StringToFloat')
-
-
-# Workaround for the fact that importing tensorflow imports contrib
-# (even if a user isn't using this or any other contrib op), but
-# there's not yet any guarantee that the shared object exists.
-# In which case, "import tensorflow" will always crash, even for users that
-# never use contrib.
-def Load():
-  """Load the data ops library and return the loaded module."""
-  with _ops_lock:
-    global _data_ops
-    if not _data_ops:
-      ops_path = resource_loader.get_path_to_datafile(DATA_OPS_FILE)
-      logging.info('data path: %s', ops_path)
-      _data_ops = load_library.load_op_library(ops_path)
-
-      assert _data_ops, 'Could not load _data_ops.so'
-  return _data_ops
 
 
 def ParseDataTensorOrDict(data):
@@ -87,8 +57,7 @@ def ParseDataTensorOrDict(data):
     features = []
     for k in sorted(data.keys()):
       if data[k].dtype == dtypes.string:
-        convert_ops = Load()
-        features.append(convert_ops.string_to_float(data[k]))
+        features.append(tensor_forest_ops.reinterpret_string_to_float(data[k]))
       elif data[k].dtype.is_integer:
         features.append(math_ops.to_float(data[k]))
       else:

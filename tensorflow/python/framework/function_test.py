@@ -583,7 +583,40 @@ class FunctionTest(tf.test.TestCase):
     def Foo(x, y, z):
       return tf.tanh(tf.matmul(x, y) + z)
 
-    self.assertEqual("Foo_e0cb6030", Foo.instantiate([tf.float32] * 3).name)
+    self.assertEqual("Foo_d643acf7", Foo.instantiate([tf.float32] * 3).name)
+
+  def testSignatureHash(self):
+    # Foo.Inner and Bar.Inner have identical function body but have
+    # different signatures. They should be treated as two different functions.
+
+    @function.Defun()
+    def Foo(x):
+
+      @function.Defun()
+      def Inner(x):
+        return x + 10.
+
+      return Inner(x)
+
+    @function.Defun()
+    def Bar(x):
+
+      @function.Defun()
+      def Inner(x, unused_y, unused_z):
+        return x + 10.
+
+      return Inner(x, 2., 3.)
+
+    g = tf.Graph()
+    with g.as_default():
+      x = tf.constant(10.0)
+      y = Foo(x)
+      z = Bar(x)
+
+    with self.test_session(graph=g) as sess:
+      v0, v1 = sess.run([y, z])
+      self.assertAllEqual(v0, 20.)
+      self.assertAllEqual(v1, 20.)
 
 
 class FunctionOverloadTest(tf.test.TestCase):
@@ -854,7 +887,7 @@ class VariableHoistingTest(tf.test.TestCase):
     def _Model(x):
       w = tf.get_variable(
           "w", (64, 64), initializer=tf.random_uniform_initializer(seed=312))
-      b = tf.get_variable("b", (64), initializer=tf.zeros_initializer),
+      b = tf.get_variable("b", (64), initializer=tf.zeros_initializer()),
       return tf.sigmoid(tf.matmul(x, w) + b)
 
     @function.Defun()

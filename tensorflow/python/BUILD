@@ -377,6 +377,18 @@ py_library(
 )
 
 py_test(
+    name = "framework_registry_test",
+    size = "small",
+    srcs = ["framework/registry_test.py"],
+    main = "framework/registry_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_for_generated_wrappers",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
     name = "framework_errors_test",
     size = "small",
     srcs = ["framework/errors_test.py"],
@@ -2172,6 +2184,7 @@ cuda_py_tests(
     size = "small",
     srcs = [
         "training/adadelta_test.py",
+        "training/adagrad_da_test.py",
         "training/adagrad_test.py",
         "training/adam_test.py",
         "training/basic_loops_test.py",
@@ -2322,12 +2335,12 @@ py_library(
     srcs = [
         "layers/__init__.py",
         "layers/base.py",
-        "layers/conv_utils.py",
         "layers/convolutional.py",
         "layers/core.py",
         "layers/layers.py",
         "layers/normalization.py",
         "layers/pooling.py",
+        "layers/utils.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -2402,12 +2415,12 @@ py_test(
 )
 
 py_test(
-    name = "layers_conv_utils_test",
+    name = "layers_utils_test",
     size = "small",
     srcs = [
-        "layers/conv_utils_test.py",
+        "layers/utils_test.py",
     ],
-    main = "layers/conv_utils_test.py",
+    main = "layers/utils_test.py",
     srcs_version = "PY2AND3",
     deps = [
         ":client_testlib",

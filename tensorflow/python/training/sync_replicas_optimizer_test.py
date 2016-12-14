@@ -70,7 +70,7 @@ def get_workers(num_workers, replicas_to_aggregate, workers):
             tf.constant([1]),
             tf.constant([2, 1]))
         sgd_opt = tf.train.GradientDescentOptimizer(2.0)
-        sync_rep_opt = tf.train.SyncReplicasOptimizerV2(
+        sync_rep_opt = tf.train.SyncReplicasOptimizer(
             sgd_opt, replicas_to_aggregate=replicas_to_aggregate,
             total_num_replicas=num_workers)
         train_op = [sync_rep_opt.apply_gradients(
@@ -111,7 +111,7 @@ def get_workers(num_workers, replicas_to_aggregate, workers):
   return sessions, graphs, train_ops
 
 
-class SyncReplicasOptimizerV2Test(tf.test.TestCase):
+class SyncReplicasOptimizerTest(tf.test.TestCase):
 
   def _run(self, train_op, sess):
     sess.run(train_op)

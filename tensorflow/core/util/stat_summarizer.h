@@ -16,13 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_UTIL_STAT_SUMMARIZER_H_
 #define TENSORFLOW_UTIL_STAT_SUMMARIZER_H_
 
+#include <stdlib.h>
+
 #include <cmath>
 #include <limits>
 #include <map>
 #include <sstream>
 #include <string>
-
-#include <stdlib.h>
 
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -158,6 +158,8 @@ class StatSummarizer {
       double cdf_cutoff_ratio = 1.0,
       int num_max_nodes_to_print = std::numeric_limits<int>::max()) const;
 
+  std::string GetStatsByNodeType() const;
+
   void Reset() {
     run_total_micros_.Reset();
     memory_.Reset();
@@ -183,6 +185,8 @@ class StatSummarizer {
     BY_TOTAL,
     BY_RUN_ORDER,
   };
+
+  void Validate(const Detail* detail, const NodeExecStats& ns) const;
 
   // Summarizes all nodes' stat in the order of node names defined in the graph.
   std::string GetStatsByOrderOfNodeDefinitions(bool use_memory) const;

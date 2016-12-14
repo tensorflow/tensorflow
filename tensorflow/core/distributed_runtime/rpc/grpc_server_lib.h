@@ -32,6 +32,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+class Master;
+
 class GrpcServer : public ServerInterface {
  protected:
   GrpcServer(const ServerDef& server_def, Env* env);
@@ -40,6 +42,8 @@ class GrpcServer : public ServerInterface {
   static Status Create(const ServerDef& server_def, Env* env,
                        std::unique_ptr<ServerInterface>* out_server);
 
+  // Destruction is only supported in the factory method. Clean
+  // shutdown is not currently implemented for this server type.
   virtual ~GrpcServer();
 
   // Implementations of ServerInterface methods.
@@ -89,6 +93,7 @@ class GrpcServer : public ServerInterface {
 
   // Implementation of a TensorFlow master, and RPC polling thread.
   MasterEnv master_env_;
+  std::unique_ptr<Master> master_impl_;
   AsyncServiceInterface* master_service_ = nullptr;
   std::unique_ptr<Thread> master_thread_ GUARDED_BY(mu_);
 

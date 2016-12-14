@@ -51,6 +51,9 @@ type AugmSPNode = SPNode&{numCells: number, yCell: number[], rCell: number};
  * results. Recommended value mentioned in the paper is 0.8.
  */
 const THETA = 0.8;
+
+const MIN_POSSIBLE_PROB = 1E-9;
+
 // Variables used for memorizing the second random number since running
 // gaussRandom() generates two random numbers at the cost of 1 atomic
 // computation. This optimization results in 2X speed-up of the generator.
@@ -159,6 +162,7 @@ function nearest2P(
       for (let k = 0; k < neighbors.length; ++k) {
         let neighbor = neighbors[k];
         let pij = (i === neighbor.index) ? 0 : Math.exp(-neighbor.dist * beta);
+        pij = Math.max(pij, MIN_POSSIBLE_PROB);
         pRow[k] = pij;
         psum += pij;
       }
@@ -433,7 +437,8 @@ export class TSNE {
         let squaredDistToCell = this.dist2(pointI, node.yCell);
         // Squared distance from point i to cell.
         if (node.children == null ||
-            (node.rCell / Math.sqrt(squaredDistToCell) < THETA)) {
+            (squaredDistToCell > 0 &&
+             node.rCell / Math.sqrt(squaredDistToCell) < THETA)) {
           let qijZ = 1 / (1 + squaredDistToCell);
           let dZ = node.numCells * qijZ;
           Z += dZ;

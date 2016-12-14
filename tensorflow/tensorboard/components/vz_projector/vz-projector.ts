@@ -100,17 +100,28 @@ export class Projector extends ProjectorPolymer implements
   private pageViewLogging: boolean;
 
   ready() {
+    this.dom = d3.select(this);
+    logging.setDomContainer(this);
+
     this.analyticsLogger =
         new AnalyticsLogger(this.pageViewLogging, this.eventLogging);
     this.analyticsLogger.logPageView('embeddings');
+
+    if (!util.hasWebGLSupport()) {
+      this.analyticsLogger.logWebGLDisabled();
+      logging.setErrorMessage(
+          'Your browser or device does not have WebGL enabled. Please enable ' +
+          'hardware acceleration, or use a browser that supports WebGL.');
+      return;
+    }
+
     this.selectionChangedListeners = [];
     this.hoverListeners = [];
     this.projectionChangedListeners = [];
     this.distanceMetricChangedListeners = [];
     this.selectedPointIndices = [];
     this.neighborsOfFirstPoint = [];
-    this.dom = d3.select(this);
-    logging.setDomContainer(this);
+
     this.dataPanel = this.$['data-panel'] as DataPanel;
     this.inspectorPanel = this.$['inspector-panel'] as InspectorPanel;
     this.inspectorPanel.initialize(this, this as ProjectorEventContext);

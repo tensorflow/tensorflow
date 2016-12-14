@@ -20,7 +20,7 @@ from __future__ import print_function
 import tensorflow as tf
 
 from tensorflow.contrib.tensor_forest.python import constants
-from tensorflow.contrib.tensor_forest.python.ops import training_ops
+from tensorflow.contrib.tensor_forest.python.ops import tensor_forest_ops
 
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
@@ -37,7 +37,6 @@ class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
     self.node_map = [-1, 0, -1]
     self.split_features = [[1], [-1]]
     self.split_thresholds = [[1.], [0.]]
-    self.ops = training_ops.Load()
     self.epochs = [0, 1, 1]
     self.current_epoch = [1]
     self.data_spec = [constants.DATA_FLOAT]
@@ -46,7 +45,7 @@ class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
     with self.test_session():
       (pcw_node_sums, _, pcw_splits_indices, pcw_splits_sums, _,
        pcw_totals_indices, pcw_totals_sums, _,
-       leaves) = (self.ops.count_extremely_random_stats(
+       leaves) = (tensor_forest_ops.count_extremely_random_stats(
            self.input_data, [], [], [],
            self.data_spec,
            self.input_labels, [],
@@ -74,7 +73,7 @@ class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
       input_weights = [1.5, 2.0, 3.0, 4.0]
       (pcw_node_sums, _, pcw_splits_indices, pcw_splits_sums, _,
        pcw_totals_indices, pcw_totals_sums, _,
-       leaves) = (self.ops.count_extremely_random_stats(
+       leaves) = (tensor_forest_ops.count_extremely_random_stats(
            self.input_data, [], [], [],
            self.data_spec,
            self.input_labels,
@@ -104,7 +103,7 @@ class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
     with self.test_session():
       (pcw_node_sums, _, pcw_splits_indices, pcw_splits_sums, _,
        pcw_totals_indices, pcw_totals_sums, _,
-       leaves) = (self.ops.count_extremely_random_stats(
+       leaves) = (tensor_forest_ops.count_extremely_random_stats(
            self.input_data, [], [], [],
            self.data_spec,
            labels, [],
@@ -140,7 +139,7 @@ class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
     with self.test_session():
       (pcw_node_sums, _, pcw_splits_indices, pcw_splits_sums, _,
        pcw_totals_indices, pcw_totals_sums, _,
-       leaves) = (self.ops.count_extremely_random_stats(
+       leaves) = (tensor_forest_ops.count_extremely_random_stats(
            [],
            sparse_indices,
            sparse_values,
@@ -173,7 +172,7 @@ class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
     current_epoch = [3]
     with self.test_session():
       (pcw_node_sums, _, _, pcw_splits_sums, _, _, pcw_totals_sums, _,
-       leaves) = (self.ops.count_extremely_random_stats(
+       leaves) = (tensor_forest_ops.count_extremely_random_stats(
            self.input_data, [], [], [],
            self.data_spec,
            self.input_labels, [],
@@ -199,7 +198,7 @@ class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
         config=tf.ConfigProto(intra_op_parallelism_threads=2)):
       (pcw_node_sums, _, pcw_splits_indices, pcw_splits_sums, _,
        pcw_totals_indices, pcw_totals_sums, _,
-       leaves) = (self.ops.count_extremely_random_stats(
+       leaves) = (tensor_forest_ops.count_extremely_random_stats(
            self.input_data, [], [], [],
            self.data_spec,
            self.input_labels, [],
@@ -226,7 +225,7 @@ class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
     with self.test_session():
       (pcw_node_sums, _, pcw_splits_indices, pcw_splits_sums, _,
        pcw_totals_indices, pcw_totals_sums, _,
-       leaves) = (self.ops.count_extremely_random_stats(
+       leaves) = (tensor_forest_ops.count_extremely_random_stats(
            self.input_data, [], [], [],
            self.data_spec,
            self.input_labels, [],
@@ -256,7 +255,7 @@ class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
           'Number of nodes should be the same in '
           'tree, tree_thresholds, node_to_accumulator, and birth_epoch.'):
         pcw_node, _, _, _, _, _, _, _, _ = (
-            self.ops.count_extremely_random_stats(
+            tensor_forest_ops.count_extremely_random_stats(
                 self.input_data, [], [], [],
                 self.data_spec,
                 self.input_labels, [],
@@ -284,7 +283,6 @@ class CountExtremelyRandomStatsRegressionTest(test_util.TensorFlowTestCase):
     self.node_map = [-1, 0, -1]
     self.split_features = [[1], [-1]]
     self.split_thresholds = [[1.], [0.]]
-    self.ops = training_ops.Load()
     self.epochs = [0, 1, 1]
     self.current_epoch = [1]
     self.data_spec = [constants.DATA_FLOAT] * 2
@@ -293,7 +291,8 @@ class CountExtremelyRandomStatsRegressionTest(test_util.TensorFlowTestCase):
     with self.test_session():
       (pcw_node_sums, pcw_node_squares, pcw_splits_indices, pcw_splits_sums,
        pcw_splits_squares, pcw_totals_indices, pcw_totals_sums,
-       pcw_totals_squares, leaves) = (self.ops.count_extremely_random_stats(
+       pcw_totals_squares,
+       leaves) = (tensor_forest_ops.count_extremely_random_stats(
            self.input_data, [], [], [],
            self.data_spec,
            self.input_labels, [],
@@ -324,7 +323,8 @@ class CountExtremelyRandomStatsRegressionTest(test_util.TensorFlowTestCase):
       input_weights = [1.0, 2.0, 3.0, 4.0]
       (pcw_node_sums, pcw_node_squares, pcw_splits_indices, pcw_splits_sums,
        pcw_splits_squares, pcw_totals_indices, pcw_totals_sums,
-       pcw_totals_squares, leaves) = (self.ops.count_extremely_random_stats(
+       pcw_totals_squares,
+       leaves) = (tensor_forest_ops.count_extremely_random_stats(
            self.input_data, [], [], [],
            self.data_spec,
            self.input_labels,

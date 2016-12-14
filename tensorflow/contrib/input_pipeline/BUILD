@@ -72,6 +72,7 @@ py_test(
 )
 
 tf_cc_tests(
+    name = "input_pipeline_ops_test",
     size = "small",
     srcs = [
         "ops/input_pipeline_ops_test.cc",

@@ -85,41 +85,62 @@ class BatchMatrixTransposeTest(test_util.TensorFlowTestCase):
 
 class BooleanMaskTest(test_util.TensorFlowTestCase):
 
+  def setUp(self):
+    self.rng = np.random.RandomState(42)
+
   def CheckVersusNumpy(self, ndims_mask, arr_shape, make_mask=None):
     """Check equivalence between boolean_mask and numpy masking."""
     if make_mask is None:
-      make_mask = lambda shape: np.random.randint(0, 2, size=shape).astype(bool)
+      make_mask = lambda shape: self.rng.randint(0, 2, size=shape).astype(bool)
     arr = np.random.rand(*arr_shape)
     mask = make_mask(arr_shape[: ndims_mask])
     masked_arr = arr[mask]
     with self.test_session():
       masked_tensor = array_ops.boolean_mask(arr, mask)
-      np.testing.assert_allclose(
-          masked_arr,
-          masked_tensor.eval(),
-          err_msg="masked_arr:\n%s\n\nmasked_tensor:\n%s" % (
-              masked_arr, masked_tensor.eval()))
-      masked_tensor.get_shape().assert_is_compatible_with(masked_arr.shape)
-      self.assertSequenceEqual(
-          masked_tensor.get_shape()[1:].as_list(),
-          masked_arr.shape[1:],
-          msg="shape information lost %s -> %s" % (
-              masked_arr.shape, masked_tensor.get_shape()))
 
-  def testOneDimensionalMask(self):
-    # Do 1d separately because it's the only easy one to debug!
+      # Leading dimension size of masked_tensor is always unknown until runtime
+      # since we don't how many elements will be kept.
+      self.assertAllEqual(masked_tensor.get_shape()[1:], masked_arr.shape[1:])
+
+      self.assertAllClose(masked_arr, masked_tensor.eval())
+
+  def testMaskDim1ArrDim1(self):
     ndims_mask = 1
-    for ndims_arr in range(ndims_mask, ndims_mask + 3):
-      for _ in range(3):
-        arr_shape = np.random.randint(1, 5, size=ndims_arr)
-        self.CheckVersusNumpy(ndims_mask, arr_shape)
+    for arr_shape in [(1,), (2,), (3,), (10,)]:
+      self.CheckVersusNumpy(ndims_mask, arr_shape)
 
-  def testMultiDimensionalMask(self):
-    for ndims_mask in range(1, 4):
-      for ndims_arr in range(ndims_mask, ndims_mask + 3):
-        for _ in range(3):
-          arr_shape = np.random.randint(1, 5, size=ndims_arr)
-          self.CheckVersusNumpy(ndims_mask, arr_shape)
+  def testMaskDim1ArrDim2(self):
+    ndims_mask = 1
+    for arr_shape in [(1, 1), (2, 2), (2, 5)]:
+      self.CheckVersusNumpy(ndims_mask, arr_shape)
+
+  def testMaskDim2ArrDim2(self):
+    ndims_mask = 2
+    for arr_shape in [(1, 1), (2, 2), (2, 5)]:
+      self.CheckVersusNumpy(ndims_mask, arr_shape)
+
+  def testMaskDim2ArrDim3(self):
+    ndims_mask = 2
+    for arr_shape in [(1, 1, 1), (1, 2, 2), (2, 2, 1)]:
+      self.CheckVersusNumpy(ndims_mask, arr_shape)
+
+  def testEmptyInput2D(self):
+    mask = np.array([True, False])
+    arr = np.array([[], []]).astype(np.float32)
+    numpy_result = arr[mask]
+    tf_result = tf.boolean_mask(arr, mask)
+    self.assertAllEqual(numpy_result.shape[1:], tf_result.get_shape()[1:])
+    with self.test_session():
+      self.assertAllClose(numpy_result, tf_result.eval())
+
+  def testEmptyInput1D(self):
+    mask = np.array([]).astype(bool)
+    arr = np.array([]).astype(np.float32)
+    numpy_result = arr[mask]
+    tf_result = tf.boolean_mask(arr, mask)
+    self.assertAllEqual(numpy_result.shape[1:], tf_result.get_shape()[1:])
+    with self.test_session():
+      self.assertAllClose(numpy_result, tf_result.eval())
 
   def testEmptyOutput(self):
     make_mask = lambda shape: np.zeros(shape, dtype=bool)
@@ -221,18 +242,19 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
   def _reverse2DimAuto(self, np_dtype):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np_dtype)
 
-    for use_gpu in [False, True]:
-      with self.test_session(use_gpu=use_gpu):
-        x_tf_1 = array_ops.reverse_v2(x_np, [0]).eval()
-        x_tf_2 = array_ops.reverse_v2(x_np, [-2]).eval()
-        x_tf_3 = array_ops.reverse_v2(x_np, [1]).eval()
-        x_tf_4 = array_ops.reverse_v2(x_np, [-1]).eval()
-        x_tf_5 = array_ops.reverse_v2(x_np, [1, 0]).eval()
-        self.assertAllEqual(x_tf_1, np.asarray(x_np)[::-1, :])
-        self.assertAllEqual(x_tf_2, np.asarray(x_np)[::-1, :])
-        self.assertAllEqual(x_tf_3, np.asarray(x_np)[:, ::-1])
-        self.assertAllEqual(x_tf_4, np.asarray(x_np)[:, ::-1])
-        self.assertAllEqual(x_tf_5, np.asarray(x_np)[::-1, ::-1])
+    for reverse_f in [array_ops.reverse_v2, array_ops.reverse]:
+      for use_gpu in [False, True]:
+        with self.test_session(use_gpu=use_gpu):
+          x_tf_1 = reverse_f(x_np, [0]).eval()
+          x_tf_2 = reverse_f(x_np, [-2]).eval()
+          x_tf_3 = reverse_f(x_np, [1]).eval()
+          x_tf_4 = reverse_f(x_np, [-1]).eval()
+          x_tf_5 = reverse_f(x_np, [1, 0]).eval()
+          self.assertAllEqual(x_tf_1, np.asarray(x_np)[::-1, :])
+          self.assertAllEqual(x_tf_2, np.asarray(x_np)[::-1, :])
+          self.assertAllEqual(x_tf_3, np.asarray(x_np)[:, ::-1])
+          self.assertAllEqual(x_tf_4, np.asarray(x_np)[:, ::-1])
+          self.assertAllEqual(x_tf_5, np.asarray(x_np)[::-1, ::-1])
 
   # This is the version of reverse that uses axis indices rather than
   # bool tensors

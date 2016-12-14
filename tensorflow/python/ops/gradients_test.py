@@ -151,7 +151,7 @@ class GradientsTest(test_util.TensorFlowTestCase):
       w = constant(1.0, shape=[2, 2])
       x = constant(1.0, shape=[2, 2])
       wx = math_ops.matmul(w, x)
-      split_wx = array_ops.split(0, 2, wx)
+      split_wx = array_ops.split(value=wx, num_or_size_splits=2, axis=0)
       c = math_ops.reduce_sum(split_wx[1])
       gw = gradients.gradients(c, [w])[0]
     self.assertEquals("MatMul", gw.op.type)
@@ -392,16 +392,6 @@ class StopGradientTest(test_util.TensorFlowTestCase):
       out = array_ops.stop_gradient(inp)
       igrad = gradients.gradients(out, inp)[0]
     assert igrad is None
-
-
-class PreventGradientTest(test_util.TensorFlowTestCase):
-
-  def testPreventGradient(self):
-    with ops.Graph().as_default():
-      inp = constant(1.0, shape=[100, 32], name="in")
-      out = array_ops.prevent_gradient(inp)
-      with self.assertRaisesRegexp(LookupError, "No gradient defined"):
-        _ = gradients.gradients(out, inp)
 
 
 class HessianVectorProductTest(test_util.TensorFlowTestCase):

@@ -194,9 +194,8 @@ class OperatorPDIdentity(operator_pd.OperatorPDBase):
     rank = array_ops.size(self._shape_arg)
     last_dim = math_ops.cast(
         array_ops.gather(self._shape_arg, rank - 1), dtype=self.dtype)
-    log_det = last_dim * math_ops.log(
-        self._scale) * array_ops.ones(
-            self.batch_shape(), dtype=self.dtype)
+    log_det = (last_dim * math_ops.log(math_ops.abs(self._scale)) *
+               array_ops.ones(self.batch_shape(), dtype=self.dtype))
     log_det.set_shape(self.get_batch_shape())
     return log_det
 

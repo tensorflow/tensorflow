@@ -168,6 +168,9 @@ class FakeHook(tf.train.SessionRunHook):
   def begin(self):
     self.call_counter['begin'] += 1
 
+  def after_create_session(self, session):  # pylint: disable=unused-argument
+    self.call_counter['after_create_session'] += 1
+
   def before_run(self, run_context):
     self.call_counter['before_run'] += 1
     self.last_run_context = run_context
@@ -546,6 +549,8 @@ class HookedSessionTest(tf.test.TestCase):
         self.assertEqual(hook.last_run_context.original_args,
                          tf.train.SessionRunArgs(a_tensor))
         self.assertEqual(hook.last_run_context.session, sess)
+        self.assertEqual(hook.call_counter['begin'], 0)
+        self.assertEqual(hook.call_counter['after_create_session'], 0)
         self.assertEqual(hook.call_counter['before_run'], 1)
         self.assertEqual(hook.call_counter['after_run'], 1)
 

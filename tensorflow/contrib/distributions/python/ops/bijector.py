@@ -102,6 +102,11 @@ def _expm1(x):
                          x, math_ops.exp(x) - 1.)
 
 
+def _as_tensor(x, name):
+  """Convenience to convert to `Tensor` or leave as `None`."""
+  return None if x is None else ops.convert_to_tensor(x, name=name)
+
+
 class _Mapping(collections.namedtuple("_Mapping",
                                       ["x", "y", "ildj", "condition_kwargs"])):
   """Helper class to make it easier to manage caching in `Bijector`."""
@@ -1340,13 +1345,150 @@ class Exp(PowerTransform):
         name=name)
 
 
+# TODO(srvasude): Deprecate this class with a dedicated Linear Operator
+# corresponding to TriL + V D V.T.
+class _TriLPlusVDVTLightweightOperatorPD(object):
+  """Helper/hidden class fake an OperatorPD for TriL+VDV.T."""
+
+  def __init__(self, tril, v, diag=None, validate_args=False):
+    """Creates an instance of _TriLPlusVDVTLightweightOperatorPD.
+
+    WARNING: This object is not to be used outside of `Affine` where it is
+    currently being temporarily used for refactoring purposes.
+
+    Args:
+      tril: `Tensor` of shape `[B1,..,Bb, d, d]`.
+      v: `Tensor` of shape `[B1,...,Bb, d, k]`.
+      diag: `Tensor` of shape `[B1,...,Bb, k, k]` or None
+      validate_args: `Boolean` indicating whether arguments should be checked
+        for correctness.
+    """
+    self._m = tril
+    self._v = v
+    self._validate_args = validate_args
+    self._inputs = [tril, v]
+    if diag is not None:
+      self._inputs += [diag]
+      self._d = operator_pd_diag.OperatorPDDiag(diag, verify_pd=validate_args)
+      self._d_inv = operator_pd_diag.OperatorPDDiag(1. / diag,
+                                                    verify_pd=validate_args)
+      return
+    if v.get_shape().is_fully_defined():
+      v_shape = v.get_shape().as_list()
+      id_shape = v_shape[:-2] + [v_shape[-1], v_shape[-1]]
+    else:
+      v_shape = array_ops.shape(v)
+      id_shape = array_ops.concat_v2(
+          [v_shape[:-2], [v_shape[-1], v_shape[-1]]], 0)
+    self._d = operator_pd_identity.OperatorPDIdentity(
+        id_shape, v.dtype, verify_pd=self.validate_args)
+    self._d_inv = self._d
+
+  @property
+  def inputs(self):
+    return self._inputs
+
+  @property
+  def dtype(self):
+    return self._m.dtype.base_dtype
+
+  @property
+  def validate_args(self):
+    return self._validate_args
+
+  def rank(self):
+    """Returns `rank(self)`."""
+    return array_ops.rank(self._m)
+
+  def sqrt_matmul(self, x):
+    """Computes `matmul(self, x)`.
+
+    Doesn't actually do the sqrt! Named as such to agree with API.
+
+    Args:
+      x: `Tensor`
+
+    Returns:
+      self_times_x: `Tensor`
+    """
+    m_x = math_ops.matmul(self._m, x)
+    vt_x = math_ops.matmul(self._v, x, adjoint_a=True)
+    d_vt_x = self._d.matmul(vt_x)
+    v_d_vt_x = math_ops.matmul(self._v, d_vt_x)
+    return m_x + v_d_vt_x
+
+  def sqrt_solve(self, x):
+    """Computes `solve(self, x)`.
+
+    Doesn't actually do the sqrt! Named as such to agree with API.
+
+    To compute (M + V D V.T), we use the the Woodbury matrix identity:
+      inv(M + V D V.T) = inv(M) - inv(M) V inv(C) V.T inv(M)
+    where,
+      C = inv(D) + V.T inv(M) V.
+    See: https://en.wikipedia.org/wiki/Woodbury_matrix_identity
+
+    Args:
+      x: `Tensor`
+
+    Returns:
+      inv_of_self_times_x: `Tensor`
+    """
+    minv_x = linalg_ops.matrix_triangular_solve(self._m, x)
+    vt_minv_x = math_ops.matmul(self._v, minv_x, transpose_a=True)
+    cinv_vt_minv_x = linalg_ops.matrix_solve(
+        self._woodbury_sandwiched_term(), vt_minv_x)
+    v_cinv_vt_minv_x = math_ops.matmul(self._v, cinv_vt_minv_x)
+    minv_v_cinv_vt_minv_x = linalg_ops.matrix_triangular_solve(
+        self._m, v_cinv_vt_minv_x)
+    return minv_x - minv_v_cinv_vt_minv_x
+
+  def sqrt_log_abs_det(self):
+    """Computes (log o abs o det)(X) for matrix X.
+
+    Doesn't actually do the sqrt! Named as such to agree with API.
+
+    To compute det(M + V D V.T), we use the matrix determinant lemma:
+      det(Tril + V D V.T) = det(C) det(D) det(M)
+    where C is defined as in `_inverse`, ie,
+      C = inv(D) + V.T inv(M) V.
+
+    See: https://en.wikipedia.org/wiki/Matrix_determinant_lemma
+
+    Returns:
+      log_abs_det: `Tensor`.
+    """
+    log_det_c = math_ops.log(math_ops.abs(
+        linalg_ops.matrix_determinant(self._woodbury_sandwiched_term())))
+    # Reduction is ok because we always prepad inputs to this class.
+    log_det_m = math_ops.reduce_sum(math_ops.log(math_ops.abs(
+        array_ops.matrix_diag_part(self._m))), reduction_indices=[-1])
+    return log_det_c + 2. * self._d.sqrt_log_abs_det() + log_det_m
+
+  def _woodbury_sandwiched_term(self):
+    """Computes the sandwiched term in the Woodbury identity.
+
+    Computes the "`C`" in the the identity:
+       inv(M + V D V.T) = inv(M) - inv(M) V inv(C) V.T inv(M)
+    where,
+       C = inv(D) + V.T inv(M) V.
+
+    See: https://en.wikipedia.org/wiki/Woodbury_matrix_identity
+
+    Returns:
+      woodbury_sandwich_term: A `Tensor` to be used like `C`, above.
+    """
+    minv_v = linalg_ops.matrix_triangular_solve(self._m, self._v)
+    vt_minv_v = math_ops.matmul(self._v, minv_v, adjoint_a=True)
+    return self._d_inv.add_to_tensor(vt_minv_v)
+
+
 class Affine(Bijector):
-  """Bijector which computes Y = g(X; shift, scale) = matmul(scale, X) + shift.
+  # pylint: disable=line-too-long
+  """Bijector which computes `Y = g(X; shift, scale) = matmul(scale, X) + shift` where `scale = c * I + diag(D1) + tril(L) + V @ diag(D2) @ V.T`.
 
-  `shift` is a numeric `Tensor`, while `scale` is constructed from several
-  arguments specified in the constructor.
-
-  The most general `scale` construction is described as follows:
+  Write `A @ X` for `matmul(A, X)`. In TF parlance, the `scale` term is
+  logically equivalent to:
 
   ```python
   scale = (
@@ -1355,70 +1497,57 @@ class Affine(Bijector):
     scale_tril +
     scale_perturb_factor @ diag(scale_perturb_diag) @
       tf.transpose([scale_perturb_factor])
-
-  scale = c * I + diag(D1) + V @ diag(D2) @ V^T + tril(L)
+  )
   ```
 
-  Example Use:
+  The `scale` term is applied without necessarily materializing constituent
+  matrices, i.e., the matmul is [matrix-free](
+  https://en.wikipedia.org/wiki/Matrix-free_methods) when possible.
+
+  Examples:
 
   ```python
-  # No batch, scalar
-  mu = 0     # shape=[]
-  sigma = 1. # shape=[], treated like a 1x1 matrix.
-  # Corresponds to forward: x + mu.
-  b = Affine(shift=mu)
+  # Y = X
+  b = Affine()
 
-  # No batch, scalar
-  mu = 0     # shape=[]
-  sigma = 3.  # shape=[], treated like a 1x1 matrix.
-  # Corresponds to forward: 3 * x + mu.
-  b = Affine(
-    shift=mu,
-    scale_identity_multiplier=3.0)
+  # Y = X + shift
+  b = Affine(shift=[1., 2, 3])
 
-  # One batch, scalar.
-  mu = ...    # shape=[b], b>0
-  sigma = 2. # shape=[], b>0, treated like a batch of 1x1 matrices
-  # Corresponds to forward: 2 * x + mu.
-  b = Affine(
-    shift=mu,
-    scale_identity_multiplier=2.0)
+  # Y = 2 * I @ X.T + shift
+  b = Affine(shift=[1., 2, 3],
+             scale_identity_multiplier=2.)
 
-  # No batch, multivariate.
-  mu = [1., 2, 3]  # shape=[3],
-  diag = [1, 3, 3] # shape=[3, 3], treated like 3x3 matrix.
-  b = Affine(
-    shift=mu,
-    scale_identity_multiplier=None,
-    scale_diag=diag,
-    event_ndims=1)
+  # Y = tf.diag(d1) @ X.T + shift
+  b = Affine(shift=[1., 2, 3],
+             scale_diag=[-1., 2, 1])         # Implicitly 3x3.
 
-  # Low rank update.
-  mu = [1, 2, 3]    # shape=[3],
-  d2 = [2, 1] # shape=[2], treated like a 2x2 matrix.
-  v = [[1, 0] [0, 1], [0, 0]] # shape=[2, 3]
-  d1 = [1, 3, 3] # shape=[3, 3], treated like 3x3 matrix.
-  # Corresponds to scale of the form d1 + v * d2 * v^T
-  b = Affine(
-    shift=mu,
-    scale_identity_multiplier=None,
-    scale_diag=d1,
-    scale_perturb_diag=d2,
-    scale_perturb_factor=v,
-    event_ndims=1)
+  # Y = (I + v * v.T) @ X.T + shift
+  b = Affine(shift=[1., 2, 3],
+             scale_perturb_factor=[[1., 0],
+                                   [0, 1],
+                                   [1, 1]])
+
+  # Y = (diag(d1) + v * diag(d2) * v.T) @ X.T + shift
+  b = Affine(shift=[1., 2, 3],
+             scale_diag=[1., 3, 3],          # Implicitly 3x3.
+             scale_perturb_diag=[2., 1],     # Implicitly 2x2.
+             scale_perturb_factor=[[1., 0],
+                                   [0, 1],
+                                   [1, 1]])
 
   ```
 
   """
+  # pylint: enable=line-too-long
 
   def __init__(self,
-               shift,
+               shift=None,
                scale_identity_multiplier=None,
                scale_diag=None,
                scale_tril=None,
-               scale_perturb_diag=None,
                scale_perturb_factor=None,
-               event_ndims=0,
+               scale_perturb_diag=None,
+               event_ndims=1,
                validate_args=False,
                name="affine"):
     """Instantiates the `Affine` bijector.
@@ -1426,89 +1555,117 @@ class Affine(Bijector):
     This `Bijector` is initialized with `shift` `Tensor` and `scale` arguments,
     giving the forward operation:
 
-    ```Y = g(X) = scale @ X + shift```
+    ```none
+    Y = g(X) = scale @ X + shift
+    ```
+
+    where the `scale` term is logically equivalent to:
+
+    ```python
+    scale = (
+      scale_identity_multiplier * tf.diag(tf.ones(d)) +
+      tf.diag(scale_diag) +
+      scale_tril +
+      scale_perturb_factor @ diag(scale_perturb_diag) @
+        tf.transpose([scale_perturb_factor])
+    )
+    ```
+
+    If none of `scale_identity_multiplier`, `scale_diag`, or `scale_tril` are
+    specified then `scale += IdentityMatrix`. Otherwise specifying a
+    `scale` argument has the semantics of `scale += Expand(arg)`, i.e.,
+    `scale_diag != None` means `scale += tf.diag(scale_diag)`.
 
     Args:
-      shift: Numeric `Tensor`.
+      shift: Numeric `Tensor`.  If this is set to `None`, no shift is applied.
       scale_identity_multiplier: floating point rank 0 `Tensor` representing a
         scaling done to the identity matrix.
-        The default is 1.0.  If this is set to `None`, do not scale by an
-        identity matrix.
+        When `scale_identity_multiplier = scale_diag=scale_tril = None` then
+        `scale += IdentityMatrix`. Otherwise no scaled-identity-matrix is added
+        to `scale`.
       scale_diag: Numeric `Tensor` representing the diagonal matrix.
         `scale_diag` has shape [N1, N2, ... k], which represents a k x k
         diagonal matrix.
-        The default is `None`. If this is set to `None`, scale_diag is not used
-        for scale construction.
+        When `None` no diagonal term is added to `scale`.
       scale_tril: Numeric `Tensor` representing the diagonal matrix.
         `scale_diag` has shape [N1, N2, ... k, k], which represents a k x k
         lower triangular matrix.
-        The default is `None`. If this is set to `None`, scale_tril is not used
-        for scale construction.
+        When `None` no `scale_tril` term is added to `scale`.
+      scale_perturb_factor: Numeric `Tensor` representing factor matrix with
+        last two dimensions of shape `(k, r)`.
+        When `None`, no rank-r update is added to `scale`.
       scale_perturb_diag: Numeric `Tensor` representing the diagonal matrix.
         `scale_perturb_diag` has shape [N1, N2, ... r], which represents an
         r x r Diagonal matrix.
-        The default is`None`. If this is set to `None`, low rank updates will
-        take the form `scale_perturb_factor * scale_perturb_factor^T`.
-      scale_perturb_factor: Numeric `Tensor` representing factor matrix with
-        last two dimensions of shape `(k, r)`.
-        The default is `None`. If this is set to `None`, no rank update is
-        performed.
+        When `None` low rank updates will take the form `scale_perturb_factor *
+        scale_perturb_factor.T`.
       event_ndims: Scalar `int32` `Tensor` indicating the number of dimensions
         associated with a particular draw from the distribution. Must be 0 or 1.
       validate_args: `Boolean` indicating whether arguments should be checked
         for correctness.
       name: `String` name given to ops managed by this object.
-    """
 
+    Raises:
+      ValueError: if `perturb_diag` is specified but not `perturb_factor`.
+      TypeError: if `shift` has different `dtype` from `scale` arguments.
+    """
     self._graph_parents = []
     self._name = name
     self._validate_args = validate_args
-    with self._name_scope("init", values=[shift, event_ndims]):
-      self._shift = ops.convert_to_tensor(shift, name="shift")
-      self._scale = self._create_scale_operator(
-          scale_identity_multiplier,
-          scale_diag,
-          scale_tril,
-          scale_perturb_diag,
-          scale_perturb_factor,
-          event_ndims,
-          self.shift.dtype,
-          validate_args)
-
+    # Ambiguous definition of low rank update.
+    if scale_perturb_diag is not None and scale_perturb_factor is None:
+      raise ValueError("When scale_perturb_diag is specified, "
+                       "scale_perturb_factor must be specified.")
+    # Special case, only handling a scaled identity matrix. We don't know its
+    # dimensions, so this is special cased.
+    # We don't check identity_multiplier, since below we set it to 1. if all
+    # other scale args are None.
+    self._is_only_identity_multiplier = (scale_tril is None and
+                                         scale_diag is None and
+                                         scale_perturb_factor is None)
+    # When no args are specified, pretend the scale matrix is the identity
+    # matrix.
+    if self._is_only_identity_multiplier and scale_identity_multiplier is None:
+      scale_identity_multiplier = 1.
+    with self._name_scope("init", values=[
+        shift, scale_identity_multiplier, scale_diag, scale_tril,
+        scale_perturb_diag, scale_perturb_factor, event_ndims]):
       event_ndims = ops.convert_to_tensor(event_ndims, name="event_ndims")
-
       if validate_args:
+        is_less_than_two = check_ops.assert_less(
+            event_ndims, 2,
+            message="event_ndims must be 0 or 1")
         event_ndims = control_flow_ops.with_dependencies(
-            [check_ops.assert_less(
-                event_ndims, 2, message="event_ndims must be 0 or 1")],
-            event_ndims)
-      if self.shift.dtype.base_dtype != self.scale.dtype.base_dtype:
-        raise TypeError("%s.dtype=%s does not match %s.dtype=%s" %
-                        (self.shift.name, self.shift.dtype, self.scale.name,
-                         self.scale.dtype))
-      if event_ndims.dtype.base_dtype != dtypes.int32.base_dtype:
-        raise TypeError("%s.dtype=%s does not match %s" %
-                        (event_ndims.name, event_ndims.dtype, dtypes.int32))
+            [is_less_than_two], event_ndims)
+      self._shift = _as_tensor(shift, "shift")
+      # self._create_scale_operator returns an OperatorPD in all cases except if
+      # self._is_only_identity_multiplier; in which case it returns a scalar
+      # Tensor.
+      self._scale = self._create_scale_operator(
+          identity_multiplier=scale_identity_multiplier,
+          diag=scale_diag,
+          tril=scale_tril,
+          perturb_diag=scale_perturb_diag,
+          perturb_factor=scale_perturb_factor,
+          event_ndims=event_ndims,
+          validate_args=validate_args)
+      if (self._shift is not None and
+          self._shift.dtype.base_dtype != self._scale.dtype.base_dtype):
+        raise TypeError("shift.dtype({}) does not match scale.dtype({})".format(
+            self._shift.dtype, self._scale.dtype))
       super(Affine, self).__init__(
           batch_ndims=self._infer_batch_ndims(),
           event_ndims=event_ndims,
-          graph_parents=[self._shift] + (
+          graph_parents=[self._shift, event_ndims] + (
               [self._scale] if contrib_framework.is_tensor(self._scale)
               else self._scale.inputs),
           is_constant_jacobian=True,
           validate_args=validate_args,
           name=name)
 
-  def _create_scale_operator(
-      self,
-      identity_multiplier,
-      diag,
-      tril,
-      perturb_diag,
-      perturb_factor,
-      event_ndims,
-      dtype,
-      validate_args):
+  def _create_scale_operator(self, identity_multiplier, diag, tril,
+                             perturb_diag, perturb_factor, event_ndims,
+                             validate_args):
     """Construct `scale` from various components.
 
     Args:
@@ -1523,116 +1680,68 @@ class Affine(Bijector):
       perturb_factor: Numeric `Tensor` representing factor matrix.
       event_ndims: Scalar `int32` `Tensor` indicating the number of dimensions
         associated with a particular draw from the distribution.  Must be 0 or 1
-      dtype: `dtype` to default to when constructing an identity matrix.
       validate_args: `Boolean` indicating whether arguments should be checked
         for correctness.
+
     Returns:
       scale and batch_ndims. In the case of scaling by a constant, scale is a
       floating point `Tensor`. Otherwise, scale is an `OperatorPD`.
+
     Raises:
-      ValueError: if a low rank update is specified, with nothing to update
-        (i.e.  perturb_factor is specified without identity_multiplier or diag).
+      ValueError: if all of `tril`, `diag` and `identity_multiplier` are `None`.
     """
-    # Special case, only handling a scaled identity matrix. We don't know its
-    # dimensions, so this is special cased.
-    # We don't check identity_multiplier, since below we set it to 1. if all
-    # other scale args are None.
-    self._is_only_identity_multiplier = (diag is None and
-                                         tril is None and
-                                         perturb_factor is None)
-    # When no args are specified, treat this as if it were an identity matrix.
-    if self._is_only_identity_multiplier and identity_multiplier is None:
-      identity_multiplier = 1.
+    identity_multiplier = _as_tensor(identity_multiplier, "identity_multiplier")
+    diag = _as_tensor(diag, "diag")
+    tril = _as_tensor(tril, "tril")
+    perturb_diag = _as_tensor(perturb_diag, "perturb_diag")
+    perturb_factor = _as_tensor(perturb_factor, "perturb_factor")
 
-    # Ambiguous definition of low rank update.
-    if perturb_diag is not None and perturb_factor is None:
-      raise ValueError("When perturb_diag is specified, perturb_factor must be "
-                       "specified.")
-
-    # TODO(srvasude): Create a Linear Operator corresponding to a lower
-    # triangular matrix, and make VDVTUpdate use that, removing this special
-    # casing logic.  Special case, handling a lower triangular matrix with
-    # a low rank update.
-    self._is_tril_and_vdvt_update = (
-        tril is not None and perturb_factor is not None)
-
-    identity_multiplier = self._check_identity_multiplier(
+    identity_multiplier = self._maybe_validate_identity_multiplier(
         identity_multiplier, validate_args)
 
-    # Preprocess low rank update.
     if perturb_factor is not None:
-      perturb_factor = ops.convert_to_tensor(
-          perturb_factor, name="perturb_factor")
       perturb_factor = self._process_matrix(
           perturb_factor, min_rank=2, event_ndims=event_ndims)
-      if perturb_diag is not None:
-        perturb_diag = ops.convert_to_tensor(
-            perturb_diag, name="perturb_diag")
-        perturb_diag = self._process_matrix(
-            perturb_diag, min_rank=1, event_ndims=event_ndims)
 
-    # Lower triangular with low rank update.
-    if tril is not None and perturb_factor is not None:
-      self._tril = self._preprocess_tril(
-          identity_multiplier,
-          diag,
-          tril,
-          event_ndims)
-      self._v = perturb_factor
-      if perturb_diag is None:
-        if self._v.get_shape().is_fully_defined():
-          v_shape = self._v.get_shape().as_list()
-          id_shape = v_shape[:-2] + [v_shape[-1], v_shape[-1]]
-        else:
-          v_shape = array_ops.shape(self._v)
-          id_shape = array_ops.concat_v2(
-              [v_shape[:-2], (v_shape[-1], v_shape[-1])], 0)
-        self._d = operator_pd_identity.OperatorPDIdentity(
-            id_shape, self._v.dtype, verify_pd=self.validate_args)
-        self._d_inv = self._d
-      else:
-        self._d = operator_pd_diag.OperatorPDDiag(perturb_diag,
-                                                  verify_pd=validate_args)
-        self._d_inv = operator_pd_diag.OperatorPDDiag(1. / perturb_diag,
-                                                      verify_pd=validate_args)
-      return self._tril
-    # Just lower triangular.
-    elif tril is not None:
-      scale_mat = self._preprocess_tril(
-          identity_multiplier,
-          diag,
-          tril,
-          event_ndims)
-      return operator_pd_cholesky.OperatorPDCholesky(
-          scale_mat, verify_pd=validate_args)
-    # Diagonal with low rank update.
-    elif diag is not None and perturb_factor is not None:
-      scale_mat = self._preprocess_diag(
-          identity_multiplier,
-          diag,
-          event_ndims)
-      diag = operator_pd_diag.OperatorPDDiag(
-          scale_mat, verify_pd=validate_args)
+    if perturb_diag is not None:
+      perturb_diag = self._process_matrix(
+          perturb_diag, min_rank=1, event_ndims=event_ndims)
+
+    # The following if-statments are ordered by increasingly stronger
+    # assumptions in the base matrix, i.e., we process in the order:
+    # TriL, Diag, Identity.
+
+    if tril is not None:
+      tril = self._preprocess_tril(
+          identity_multiplier, diag, tril, event_ndims)
+      if perturb_factor is None:
+        return operator_pd_cholesky.OperatorPDCholesky(
+            tril, verify_pd=validate_args)
+      return _TriLPlusVDVTLightweightOperatorPD(
+          tril=tril, v=perturb_factor, diag=perturb_diag,
+          validate_args=validate_args)
+
+    if diag is not None:
+      diag = self._preprocess_diag(identity_multiplier, diag, event_ndims)
+      if perturb_factor is None:
+        return operator_pd_diag.OperatorPDSqrtDiag(
+            diag, verify_pd=validate_args)
       return operator_pd_vdvt_update.OperatorPDSqrtVDVTUpdate(
-          operator=diag,
+          operator=operator_pd_diag.OperatorPDDiag(
+              diag, verify_pd=validate_args),
           v=perturb_factor,
           diag=perturb_diag,
           verify_pd=validate_args)
-    # Just diagonal.
-    elif diag is not None:
-      scale_mat = self._preprocess_diag(
-          identity_multiplier,
-          diag,
-          event_ndims)
-      return operator_pd_diag.OperatorPDSqrtDiag(
-          scale_mat, verify_pd=validate_args)
-    # Identity with low rank update.
-    elif identity_multiplier is not None and perturb_factor is not None:
+
+    if identity_multiplier is not None:
+      if perturb_factor is None:
+        return identity_multiplier
       # Infer the shape from the V and D.
       v_shape = array_ops.shape(perturb_factor)
       identity_shape = array_ops.concat_v2((v_shape[:-1], (v_shape[-2],)), 0)
       scaled_identity = operator_pd_identity.OperatorPDIdentity(
-          identity_shape, dtype,
+          identity_shape,
+          perturb_factor.dtype.base_dtype,
           scale=identity_multiplier,
           verify_pd=validate_args)
       return operator_pd_vdvt_update.OperatorPDSqrtVDVTUpdate(
@@ -1640,61 +1749,38 @@ class Affine(Bijector):
           v=perturb_factor,
           diag=perturb_diag,
           verify_pd=validate_args)
-    # Only identity.
-    elif identity_multiplier is not None:
-      return identity_multiplier
-    else:
-      raise ValueError("One of tril, diag and/or identity_multiplier must be "
-                       "specified.")
 
-  def _check_identity_multiplier(self, identity_multiplier, validate_args):
+    raise ValueError("One of tril, diag and/or identity_multiplier must be "
+                     "specified.")
+
+  def _maybe_validate_identity_multiplier(self, identity_multiplier,
+                                          validate_args):
     """Check that the init arg `identity_multiplier` is valid."""
-    if identity_multiplier is not None:
-      identity_multiplier = ops.convert_to_tensor(
-          identity_multiplier, name="identity_multiplier")
-
-      if validate_args:
-        identity_multiplier = control_flow_ops.with_dependencies(
-            [check_ops.assert_positive(identity_multiplier)],
-            identity_multiplier)
-
+    if identity_multiplier is None or not validate_args:
+      return identity_multiplier
+    if validate_args:
+      identity_multiplier = control_flow_ops.with_dependencies(
+          [check_ops.assert_positive(identity_multiplier)],
+          identity_multiplier)
     return identity_multiplier
 
-  def _preprocess_tril(
-      self,
-      identity_multiplier,
-      diag,
-      tril,
-      event_ndims):
+  def _preprocess_tril(self, identity_multiplier, diag, tril, event_ndims):
     """Helper to preprocess a lower triangular matrix."""
-    tril = ops.convert_to_tensor(tril, name="tril")
-    # Zero out the upper triangular portion.
-    tril = array_ops.matrix_band_part(tril, -1, 0)
-    if diag is not None:
-      tril = array_ops.matrix_set_diag(
-          tril,
-          array_ops.matrix_diag_part(tril) +
-          diag)
+    tril = array_ops.matrix_band_part(tril, -1, 0)  # Zero out TriU.
+    if identity_multiplier is None and diag is None:
+      return self._process_matrix(tril, min_rank=2, event_ndims=event_ndims)
+    new_diag = array_ops.matrix_diag_part(tril)
     if identity_multiplier is not None:
-      tril = array_ops.matrix_set_diag(
-          tril,
-          array_ops.matrix_diag_part(tril) +
-          identity_multiplier)
-    tril = self._process_matrix(tril, 2, event_ndims)
+      new_diag += identity_multiplier
+    if diag is not None:
+      new_diag += diag
+    tril = array_ops.matrix_set_diag(tril, new_diag)
+    return self._process_matrix(tril, min_rank=2, event_ndims=event_ndims)
 
-    return tril
-
-  def _preprocess_diag(
-      self,
-      identity_multiplier,
-      diag,
-      event_ndims):
+  def _preprocess_diag(self, identity_multiplier, diag, event_ndims):
     """Helper to preprocess a diagonal matrix."""
-    diag = ops.convert_to_tensor(diag, name="diag")
-
     if identity_multiplier is not None:
       diag += identity_multiplier
-
     return self._process_matrix(diag, min_rank=1, event_ndims=event_ndims)
 
   def _process_matrix(self, matrix, min_rank, event_ndims):
@@ -1702,6 +1788,8 @@ class Affine(Bijector):
     # Pad the matrix so that matmul works in the case of a matrix and vector
     # input.  Keep track if the matrix was padded, to distinguish between a
     # rank 3 tensor and a padded rank 2 tensor.
+    # TODO(srvasude): Remove side-effects from functions. Its currently unbroken
+    # but error-prone since the function call order may change in the future.
     self._rank_two_event_ndims_one = math_ops.logical_and(
         math_ops.equal(array_ops.rank(matrix), min_rank),
         math_ops.equal(event_ndims, 1))
@@ -1715,15 +1803,11 @@ class Affine(Bijector):
     """Return batch_ndims."""
     if self._is_only_identity_multiplier:
       return 0
-    elif self._is_tril_and_vdvt_update:
-      batch_dims = array_ops.rank(self._scale) - 2
-    else:
-      batch_dims = self._scale.rank() - 2
     # The real batch dims is one less when we pad in the case of event_ndims =
     # 1, and the rank of the underlying scale being 2. This allows us to have
     # non-negative sample dims.
-    return array_ops.where(
-        self._rank_two_event_ndims_one, batch_dims - 1, batch_dims)
+    return (self._scale.rank() - 2 -
+            array_ops.where(self._rank_two_event_ndims_one, 1, 0))
 
   @property
   def shift(self):
@@ -1731,99 +1815,51 @@ class Affine(Bijector):
 
   @property
   def scale(self):
+    # TODO(srvasude): Remove this exception once TriLPlusVDVT is properly
+    # implemented.
+    if isinstance(self._scale, _TriLPlusVDVTLightweightOperatorPD):
+      raise NotImplementedError("Cannot access scale when Tril+VDV.T.")
     return self._scale
 
   def _forward(self, x):
+    y = x
     if self._is_only_identity_multiplier:
-      return self.scale * x + self.shift
-
-    x, sample_shape = self.shaper.make_batch_of_event_sample_matrices(x)
-
-    # Special case for TriL + VDV^T
-    if self._is_tril_and_vdvt_update:
-      m_x = math_ops.matmul(self._tril, x)
-      vt_x = math_ops.matmul(self._v, x, adjoint_a=True)
-      d_vt_x = self._d.matmul(vt_x)
-      v_d_vt_x = math_ops.matmul(self._v, d_vt_x)
-      x = m_x + v_d_vt_x
-    else:
-      x = self.scale.sqrt_matmul(x)
-
-    x = self.shaper.undo_make_batch_of_event_sample_matrices(x, sample_shape)
-    x += self.shift
-    return x
+      y *= self._scale
+      if self.shift is not None:
+        return y + self.shift
+      return  y
+    y, sample_shape = self.shaper.make_batch_of_event_sample_matrices(y)
+    y = self._scale.sqrt_matmul(y)
+    y = self.shaper.undo_make_batch_of_event_sample_matrices(y, sample_shape)
+    if self.shift is not None:
+      return y + self.shift
+    return y
 
   def _inverse(self, y):
-    x = y - self.shift
+    x = y
+    if self.shift is not None:
+      x -= self.shift
     if self._is_only_identity_multiplier:
-      return x / self.scale
-
+      return x / self._scale
     x, sample_shape = self.shaper.make_batch_of_event_sample_matrices(x)
-
-    # Special case for TriL + VDV^T
-    # The Woodbury formula gives:
-    # (M + VDV^T)^{-1}
-    # = M^{-1} - M^{-1} V (D^{-1} + V^T M^{-1} V)^{-1} V^T M^{-1}
-    # = M^{-1} - M^{-1} V C^{-1} V^T M^{-1}
-    # where C is the capacitance matrix, defined as
-    # (D^{-1} + V^T M^{-1} V)
-    # See https://en.wikipedia.org/wiki/Woodbury_matrix_identity for more
-    # details.
-    if self._is_tril_and_vdvt_update:
-      # M^{-1} x
-      minv_x = linalg_ops.matrix_triangular_solve(self._tril, x)
-      # V^T M^{-1} x
-      vt_minv_x = math_ops.matmul(self._v, minv_x, transpose_a=True)
-      # C^{-1} V^T M^{-1} x
-      cinv_vt_minv_x = linalg_ops.matrix_solve(
-          self._shared_factor(), vt_minv_x)
-      # V C^{-1} V^T M^{-1} x
-      v_cinv_vt_minv_x = math_ops.matmul(self._v, cinv_vt_minv_x)
-      # M^{-1} V C^{-1} V^T M^{-1} x
-      minv_v_cinv_vt_minv_x = linalg_ops.matrix_triangular_solve(
-          self._tril, v_cinv_vt_minv_x)
-      # M^{-1} - M^{-1} V C^{-1} V^T M^{-1}
-      x = minv_x - minv_v_cinv_vt_minv_x
-    else:
-      x = self.scale.sqrt_solve(x)
-
+    x = self._scale.sqrt_solve(x)
     x = self.shaper.undo_make_batch_of_event_sample_matrices(x, sample_shape)
     return x
 
-  def _inverse_log_det_jacobian(self, y):  # pylint: disable=unused-argument
+  def _inverse_log_det_jacobian(self, y):
+    return -self._forward_log_det_jacobian(y)
+
+  def _forward_log_det_jacobian(self, x):
     if self._is_only_identity_multiplier:
-      # This needs to respect event size.
-      d = math_ops.cast(array_ops.shape(y)[-1], dtype=self.scale.dtype)
-      return (-math_ops.log(math_ops.abs(self.scale)) *
-              array_ops.where(
-                  math_ops.equal(self.shaper.event_ndims, 0), 1., d))
-
-    # Special case for TriL + VDV^T
-    # The matrix determinant lemma states:
-    # det(M + VDV^T) = det(D^{-1} + V^T M^{-1} V) * det(D) * det(M)
-    #                = det(C) * det(D) * det(M)
-    # See https://en.wikipedia.org/wiki/Matrix_determinant_lemma for more
-    # details.
-    if self._is_tril_and_vdvt_update:
-      log_det_c = math_ops.log(
-          linalg_ops.matrix_determinant(self._shared_factor()))
-      log_det_tril = math_ops.reduce_sum(
-          math_ops.log(
-              array_ops.matrix_diag_part(self._tril)),
-          reduction_indices=[-1])
-      return -(log_det_c + self._d.log_det() + log_det_tril)
-
-    return -self.scale.sqrt_log_abs_det()
-
-  def _forward_log_det_jacobian(self, x):  # pylint: disable=unused-argument
-    return -self._inverse_log_det_jacobian(x)
-
-  def _shared_factor(self):
-    """Matrix calculation shared in jacobian and inverse calculation."""
-    minv_v = linalg_ops.matrix_triangular_solve(self._tril, self._v)
-    vt_minv_v = math_ops.matmul(self._v, minv_v, adjoint_a=True)
-    capacitance = self._d_inv.add_to_tensor(vt_minv_v)
-    return capacitance
+      # TODO(jvdillon): We don't pad in this case and instead let the fldj be
+      # applied via broadcast.
+      d = math_ops.cast(array_ops.shape(x)[-1], dtype=self._scale.dtype)
+      return math_ops.log(math_ops.abs(self._scale)) * array_ops.where(
+          math_ops.equal(self.shaper.event_ndims, 0), 1., d)
+    fldj = self._scale.sqrt_log_abs_det()
+    # We need to squeeze off the padded dimension.
+    start = array_ops.where(self._rank_two_event_ndims_one, 1, 0)
+    return array_ops.reshape(fldj, array_ops.shape(fldj)[start:])
 
 
 class AffineLinearOperator(Bijector):
@@ -2308,7 +2344,7 @@ class SigmoidCentered(SoftmaxCentered):
 
 class CholeskyOuterProduct(Bijector):
   # pylint: disable=line-too-long
-  """Bijector which computes Y = g(X) = X X^T where X is a lower-triangular, positive-diagonal matrix.
+  """Bijector which computes Y = g(X) = X X.T where X is a lower-triangular, positive-diagonal matrix.
 
   `event_ndims` must be 0 or 2, i.e., scalar or matrix.
 
@@ -2318,7 +2354,7 @@ class CholeskyOuterProduct(Bijector):
 
   ```python
   bijector.CholeskyOuterProduct(event_ndims=2).forward(x=[[1., 0], [2, 1]])
-  # Result: [[1, 1], [1, 5]], i.e., x x^T
+  # Result: [[1, 1], [1, 5]], i.e., x x.T
 
   bijector.SoftmaxCentered(event_ndims=2).inverse(y=[[1., 1], [1, 5]])
   # Result: [[1, 0], [2, 1]], i.e., chol(y).
@@ -2373,7 +2409,7 @@ class CholeskyOuterProduct(Bijector):
 
   def _forward_log_det_jacobian(self, x):
     # Let Y be a symmetric, positive definite matrix and write:
-    #   Y = X X^T
+    #   Y = X X.T
     # where X is lower-triangular.
     #
     # Observe that,
@@ -2433,7 +2469,7 @@ class CholeskyOuterProduct(Bijector):
       x = control_flow_ops.with_dependencies(
           [is_matrix, is_square, is_positive_definite], x)
 
-    # Create a column vector equal to: [p, p-1, ..., 2, 1]^T.
+    # Create a column vector equal to: [p, p-1, ..., 2, 1].T.
     if x.get_shape().ndims is None or x.get_shape()[-1].value is None:
       p = array_ops.shape(x)[-1]
     else:

@@ -34,7 +34,7 @@ from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope as vs
 
 from tensorflow.python.layers import base
-from tensorflow.python.layers import conv_utils as utils
+from tensorflow.python.layers import utils
 
 
 class _Conv(base._Layer):  # pylint: disable=protected-access
@@ -90,7 +90,7 @@ class _Conv(base._Layer):  # pylint: disable=protected-access
                activation=None,
                use_bias=True,
                kernel_initializer=None,
-               bias_initializer=init_ops.zeros_initializer,
+               bias_initializer=init_ops.zeros_initializer(),
                kernel_regularizer=None,
                bias_regularizer=None,
                activity_regularizer=None,
@@ -135,14 +135,14 @@ class _Conv(base._Layer):  # pylint: disable=protected-access
                                   initializer=self.kernel_initializer,
                                   regularizer=self.kernel_regularizer,
                                   trainable=True,
-                                  dtype=self._dtype)
+                                  dtype=self.dtype)
     if self.use_bias:
       self.bias = vs.get_variable('bias',
                                   shape=(self.filters,),
                                   initializer=self.bias_initializer,
                                   regularizer=self.bias_regularizer,
                                   trainable=True,
-                                  dtype=self._dtype)
+                                  dtype=self.dtype)
     else:
       self.bias = None
 
@@ -226,7 +226,7 @@ class Conv1D(_Conv):
                activation=None,
                use_bias=True,
                kernel_initializer=None,
-               bias_initializer=init_ops.zeros_initializer,
+               bias_initializer=init_ops.zeros_initializer(),
                kernel_regularizer=None,
                bias_regularizer=None,
                activity_regularizer=None,
@@ -262,7 +262,7 @@ def conv1d(inputs,
            activation=None,
            use_bias=True,
            kernel_initializer=None,
-           bias_initializer=init_ops.zeros_initializer,
+           bias_initializer=init_ops.zeros_initializer(),
            kernel_regularizer=None,
            bias_regularizer=None,
            activity_regularizer=None,
@@ -393,7 +393,7 @@ class Conv2D(_Conv):
                activation=None,
                use_bias=True,
                kernel_initializer=None,
-               bias_initializer=init_ops.zeros_initializer,
+               bias_initializer=init_ops.zeros_initializer(),
                kernel_regularizer=None,
                bias_regularizer=None,
                activity_regularizer=None,
@@ -429,7 +429,7 @@ def conv2d(inputs,
            activation=None,
            use_bias=True,
            kernel_initializer=None,
-           bias_initializer=init_ops.zeros_initializer,
+           bias_initializer=init_ops.zeros_initializer(),
            kernel_regularizer=None,
            bias_regularizer=None,
            activity_regularizer=None,
@@ -566,7 +566,7 @@ class Conv3D(_Conv):
                activation=None,
                use_bias=True,
                kernel_initializer=None,
-               bias_initializer=init_ops.zeros_initializer,
+               bias_initializer=init_ops.zeros_initializer(),
                kernel_regularizer=None,
                bias_regularizer=None,
                activity_regularizer=None,
@@ -602,7 +602,7 @@ def conv3d(inputs,
            activation=None,
            use_bias=True,
            kernel_initializer=None,
-           bias_initializer=init_ops.zeros_initializer,
+           bias_initializer=init_ops.zeros_initializer(),
            kernel_regularizer=None,
            bias_regularizer=None,
            activity_regularizer=None,
@@ -746,7 +746,7 @@ class SeparableConv2D(Conv2D):
                use_bias=True,
                depthwise_initializer=None,
                pointwise_initializer=None,
-               bias_initializer=init_ops.zeros_initializer,
+               bias_initializer=init_ops.zeros_initializer(),
                depthwise_regularizer=None,
                pointwise_regularizer=None,
                bias_regularizer=None,
@@ -801,21 +801,21 @@ class SeparableConv2D(Conv2D):
         initializer=self.depthwise_initializer,
         regularizer=self.depthwise_regularizer,
         trainable=True,
-        dtype=self._dtype)
+        dtype=self.dtype)
     self.pointwise_kernel = vs.get_variable(
         'pointwise_kernel',
         shape=pointwise_kernel_shape,
         initializer=self.pointwise_initializer,
         regularizer=self.pointwise_regularizer,
         trainable=True,
-        dtype=self._dtype)
+        dtype=self.dtype)
     if self.use_bias:
       self.bias = vs.get_variable('bias',
                                   shape=(self.filters,),
                                   initializer=self.bias_initializer,
                                   regularizer=self.bias_regularizer,
                                   trainable=True,
-                                  dtype=self._dtype)
+                                  dtype=self.dtype)
     else:
       self.bias = None
 
@@ -860,7 +860,7 @@ def separable_conv2d(inputs,
                      use_bias=True,
                      depthwise_initializer=None,
                      pointwise_initializer=None,
-                     bias_initializer=init_ops.zeros_initializer,
+                     bias_initializer=init_ops.zeros_initializer(),
                      depthwise_regularizer=None,
                      pointwise_regularizer=None,
                      bias_regularizer=None,
@@ -996,7 +996,7 @@ class Conv2DTranspose(Conv2D):
                activation=None,
                use_bias=True,
                kernel_initializer=None,
-               bias_initializer=init_ops.zeros_initializer,
+               bias_initializer=init_ops.zeros_initializer(),
                kernel_regularizer=None,
                bias_regularizer=None,
                activity_regularizer=None,
@@ -1040,14 +1040,14 @@ class Conv2DTranspose(Conv2D):
                                   initializer=self.kernel_initializer,
                                   regularizer=self.kernel_regularizer,
                                   trainable=True,
-                                  dtype=self._dtype)
+                                  dtype=self.dtype)
     if self.use_bias:
       self.bias = vs.get_variable('bias',
                                   shape=(self.filters,),
                                   initializer=self.bias_initializer,
                                   regularizer=self.bias_regularizer,
                                   trainable=True,
-                                  dtype=self._dtype)
+                                  dtype=self.dtype)
     else:
       self.bias = None
 
@@ -1122,7 +1122,7 @@ def conv2d_transpose(inputs,
                      activation=None,
                      use_bias=True,
                      kernel_initializer=None,
-                     bias_initializer=init_ops.zeros_initializer,
+                     bias_initializer=init_ops.zeros_initializer(),
                      kernel_regularizer=None,
                      bias_regularizer=None,
                      activity_regularizer=None,

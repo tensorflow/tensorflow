@@ -26,8 +26,8 @@ should choose depends on (1) the feature type and (2) the model type.
 (1) Feature type:
  * Continuous features can be represented by `real_valued_column`.
  * Categorical features can be represented by any `sparse_column_with_*`
- column (`sparse_column_with_keys`, `sparse_column_with_hash_bucket`,
- `sparse_column_with_integerized_feature`).
+ column (`sparse_column_with_keys`, `sparse_column_with_vocabulary_file`,
+ `sparse_column_with_hash_bucket`, `sparse_column_with_integerized_feature`).
 
 (2) Model type:
  * Deep neural network models (`DNNClassifier`, `DNNRegressor`).
@@ -400,7 +400,7 @@ class _SparseColumn(_FeatureColumn,
         input_tensor=self.id_tensor(input_tensor),
         weight_tensor=self.weight_tensor(input_tensor),
         vocab_size=self.length,
-        initializer=init_ops.zeros_initializer,
+        initializer=init_ops.zeros_initializer(),
         combiner=self.combiner)
 
   def _get_input_sparse_tensor(self, columns_to_tensors):
@@ -585,15 +585,14 @@ class _SparseColumnKeys(_SparseColumn):
     """Handles sparse column to id conversion."""
     input_tensor = self._get_input_sparse_tensor(columns_to_tensors)
 
-    columns_to_tensors[self] = contrib_lookup_ops.string_to_index(
-        tensor=input_tensor,
+    table = contrib_lookup_ops.string_to_index_table_from_tensor(
         mapping=list(self.lookup_config.keys),
         default_value=self.lookup_config.default_value,
         name="lookup")
+    columns_to_tensors[self] = table.lookup(input_tensor)
 
 
-def sparse_column_with_keys(column_name, keys, default_value=-1,
-                            combiner=None):
+def sparse_column_with_keys(column_name, keys, default_value=-1, combiner=None):
   """Creates a _SparseColumn with keys.
 
   Look up logic is as follows:
@@ -621,6 +620,104 @@ def sparse_column_with_keys(column_name, keys, default_value=-1,
     combiner = "sum"
   return _SparseColumnKeys(
       column_name, tuple(keys), default_value=default_value, combiner=combiner)
+
+
+class _SparseColumnVocabulary(_SparseColumn):
+  """See `sparse_column_with_vocabulary_file`."""
+
+  def __new__(cls,
+              column_name,
+              vocabulary_file,
+              num_oov_buckets=0,
+              vocab_size=None,
+              default_value=-1,
+              combiner="sum",
+              dtype=dtypes.string):
+
+    if dtype != dtypes.string and not dtype.is_integer:
+      raise ValueError("dtype must be string or integer. "
+                       "dtype: {}, column_name: {}".format(dtype, column_name))
+
+    return super(_SparseColumnVocabulary, cls).__new__(
+        cls,
+        column_name,
+        combiner=combiner,
+        lookup_config=_SparseIdLookupConfig(
+            vocabulary_file=vocabulary_file,
+            num_oov_buckets=num_oov_buckets,
+            vocab_size=vocab_size,
+            default_value=default_value),
+        dtype=dtype)
+
+  def insert_transformed_feature(self, columns_to_tensors):
+    """Handles sparse column to id conversion."""
+    st = self._get_input_sparse_tensor(columns_to_tensors)
+    if self.dtype.is_integer:
+      sparse_string_values = string_ops.as_string(st.values)
+      sparse_string_tensor = sparse_tensor_py.SparseTensor(st.indices,
+                                                           sparse_string_values,
+                                                           st.dense_shape)
+    else:
+      sparse_string_tensor = st
+
+    table = contrib_lookup_ops.string_to_index_table_from_file(
+        vocabulary_file=self.lookup_config.vocabulary_file,
+        num_oov_buckets=self.lookup_config.num_oov_buckets,
+        vocab_size=self.lookup_config.vocab_size,
+        default_value=self.lookup_config.default_value,
+        name=self.name + "_lookup")
+    columns_to_tensors[self] = table.lookup(sparse_string_tensor)
+
+
+def sparse_column_with_vocabulary_file(column_name,
+                                       vocabulary_file,
+                                       num_oov_buckets=0,
+                                       vocab_size=None,
+                                       default_value=-1,
+                                       combiner="sum",
+                                       dtype=dtypes.string):
+  """Creates a _SparseColumn with vocabulary file configuration.
+
+  Use this when your sparse features are in string or integer format, and you
+  have a vocab file that maps each value to an integer ID.
+  output_id = LookupIdFromVocab(input_feature_string)
+
+  Args:
+    column_name: A string defining sparse column name.
+    vocabulary_file: The vocabulary filename.
+    num_oov_buckets: The number of out-of-vocabulary buckets. If zero all out of
+      vocabulary features will be ignored.
+    vocab_size: Number of the elements in the vocabulary.
+    default_value: The value to use for out-of-vocabulary feature values.
+      Defaults to -1.
+    combiner: A string specifying how to reduce if the sparse column is
+      multivalent. Currently "mean", "sqrtn" and "sum" are supported, with
+      "sum" the default:
+        * "sum": do not normalize features in the column
+        * "mean": do l1 normalization on features in the column
+        * "sqrtn": do l2 normalization on features in the column
+      For more information: `tf.embedding_lookup_sparse`.
+    dtype: The type of features. Only string and integer types are supported.
+
+  Returns:
+    A _SparseColumn with vocabulary file configuration.
+
+  Raises:
+    ValueError: vocab_size is not defined.
+    ValueError: dtype is neither string nor integer.
+  """
+  if vocab_size is None:
+    raise ValueError("vocab_size should be defined. "
+                     "column_name: {}".format(column_name))
+
+  return _SparseColumnVocabulary(
+      column_name,
+      vocabulary_file,
+      num_oov_buckets=num_oov_buckets,
+      vocab_size=vocab_size,
+      default_value=default_value,
+      combiner=combiner,
+      dtype=dtype)
 
 
 class _WeightedSparseColumn(_FeatureColumn, collections.namedtuple(
@@ -692,7 +789,7 @@ class _WeightedSparseColumn(_FeatureColumn, collections.namedtuple(
         input_tensor=self.id_tensor(input_tensor),
         weight_tensor=self.weight_tensor(input_tensor),
         vocab_size=self.length,
-        initializer=init_ops.zeros_initializer,
+        initializer=init_ops.zeros_initializer(),
         combiner=self.sparse_id_column.combiner)
 
 
@@ -1090,7 +1187,7 @@ def shared_embedding_columns(sparse_id_columns,
         shared_embedding_name = "_".join([column.name
                                           for column in sorted_columns[0:3]])
         shared_embedding_name += (
-            "_plus_{}_others".format(len(sorted_columns)-3))
+            "_plus_{}_others".format(len(sorted_columns) - 3))
       shared_embedding_name += "_shared_embedding"
     shared_vocab_size = sparse_id_columns[0].length
 
@@ -1573,7 +1670,7 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
         input_tensor=self.to_sparse_tensor(input_tensor),
         weight_tensor=None,
         vocab_size=self.length * self.source_column.dimension,
-        initializer=init_ops.zeros_initializer,
+        initializer=init_ops.zeros_initializer(),
         combiner="sum")
 
 
@@ -1769,7 +1866,7 @@ class _CrossedColumn(_FeatureColumn,
         input_tensor=input_tensor,
         weight_tensor=None,
         vocab_size=self.length,
-        initializer=init_ops.zeros_initializer,
+        initializer=init_ops.zeros_initializer(),
         combiner=self.combiner)
 
 

@@ -24,6 +24,11 @@ import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import numpy as np
 
+from tensorflow.python.ops import variables
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
+
 
 def convert_data_format(data_format, ndim):
   if data_format == 'channels_last':
@@ -103,3 +108,60 @@ def normalize_padding(value):
     raise ValueError('The `padding` argument must be one of "valid", "same". '
                      'Received: ' + str(padding))
   return padding
+
+
+def smart_cond(pred, fn1, fn2, name=None):
+  """Return either `fn1()` or `fn2()` based on the boolean predicate `pred`.
+
+  If `pred` is a bool or has a constant value, we return either `fn1()`
+  or `fn2()`, otherwise we use `tf.cond` to dynamically route to both.
+
+  Arguments:
+    pred: A scalar determining whether to return the result of `fn1` or `fn2`.
+    fn1: The callable to be performed if pred is true.
+    fn2: The callable to be performed if pred is false.
+    name: Optional name prefix when using `tf.cond`.
+
+  Returns:
+    Tensors returned by the call to either `fn1` or `fn2`.
+
+  Raises:
+    TypeError is fn1 or fn2 is not callable.
+  """
+  if not callable(fn1):
+    raise TypeError('`fn1` must be callable.')
+  if not callable(fn2):
+    raise TypeError('`fn2` must be callable.')
+
+  pred_value = constant_value(pred)
+  if pred_value is not None:
+    if pred_value:
+      return fn1()
+    else:
+      return fn2()
+  else:
+    return control_flow_ops.cond(pred, fn1, fn2, name)
+
+
+def constant_value(pred):
+  """Return the bool value for `pred`, or None if `pred` had a dynamic value.
+
+  Arguments:
+    pred: A scalar, either a Python bool or a TensorFlow boolean variable
+      or tensor.
+
+  Returns:
+    True or False if `pred` has a constant boolean value, None otherwise.
+
+  Raises:
+    TypeError is pred is not a Variable, Tensor or bool.
+  """
+  if isinstance(pred, bool):
+    pred_value = pred
+  elif isinstance(pred, variables.Variable):
+    pred_value = None
+  elif isinstance(pred, ops.Tensor):
+    pred_value = tensor_util.constant_value(pred)
+  else:
+    raise TypeError('`pred` must be a Tensor, a Variable, or a Python bool.')
+  return pred_value

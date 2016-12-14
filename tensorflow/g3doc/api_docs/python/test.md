@@ -917,7 +917,7 @@ Creates an absolute test srcdir path given a relative path.
 
 - - -
 
-### `tf.test.assert_equal_graph_def(actual, expected)` {#assert_equal_graph_def}
+### `tf.test.assert_equal_graph_def(actual, expected, checkpoint_v2=False)` {#assert_equal_graph_def}
 
 Asserts that two `GraphDef`s are (mostly) the same.
 
@@ -930,6 +930,8 @@ between the graphs, so the naming of nodes must be consistent.
 
 *  <b>`actual`</b>: The `GraphDef` we have.
 *  <b>`expected`</b>: The `GraphDef` we expected.
+*  <b>`checkpoint_v2`</b>: boolean determining whether to ignore randomized attribute
+      values that appear in V2 checkpoints.
 
 ##### Raises:
 

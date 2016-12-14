@@ -3,9 +3,50 @@
 ## Breaking Changes to the API
 
 * Division and modulus operators (/, //, %) now match Python (flooring)
-  semantics. tf.div is renamed to tf.division. New operators tf.truncatediv and
-  tf.truncatemod are available for achieving the previous C++ (truncation)
-  division/modulus semantics.
+  semantics. This applies to `tf.div` and `tf.mod` as well. To obtain forced
+  integer truncation based behaviors you can use `tf.truncatediv`
+  and `tf.truncatemod`.
+* `tf.divide()` is now the recommended division function. `tf.div()` will
+  remain, but its semantics do not respond to Python 3 or `from future`
+  mechanisms.
+* tf.reverse() now takes indices of axes to be reversed. E.g.
+  `tf.reverse(a, [True, False, True])` must now be written as
+  `tf.reverse(a, [0, 2])`. `tf.reverse_v2()` will remain until 1.0 final.
+* `tf.mul`, `tf.sub` and `tf.neg` are deprecated in favor of `tf.multiply`,
+  `tf.subtract` and `tf.negative`.
+* The following Python functions have had their arguments changed to use `axis`
+  when referring to specific dimensions. We have kept the old keyword arguments
+  for compatibility currently, but we will be removing them well before the
+  final 1.0.
+  * `tf.argmax`: `dimension` becomes `axis`
+  * `tf.argmin`: `dimension` becomes `axis`
+  * `tf.count_nonzero`: `reduction_indices` becomes `axis`
+  * `tf.expand_dims`: `dim` becomes `axis`
+  * `tf.reduce_all`: `reduction_indices` becomes `axis`
+  * `tf.reduce_any`: `reduction_indices` becomes `axis`
+  * `tf.reduce_join`: `reduction_indices` becomes `axis`
+  * `tf.reduce_logsumexp`: `reduction_indices` becomes `axis`
+  * `tf.reduce_max`: `reduction_indices` becomes `axis`
+  * `tf.reduce_mean`: `reduction_indices` becomes `axis`
+  * `tf.reduce_min`: `reduction_indices` becomes `axis`
+  * `tf.reduce_prod`: `reduction_indices` becomes `axis`
+  * `tf.reduce_sum`: `reduction_indices` becomes `axis`
+  * `tf.reverse_sequence`: `batch_dim` becomes `batch_axis`, `seq_dim` becomes `seq_axis`
+  * `tf.sparse_concat`: `concat_dim` becomes `axis`
+  * `tf.sparse_reduce_sum`: `reduction_axes` becomes `axis`
+  * `tf.sparse_reduce_sum_sparse`: `reduction_axes` becomes `axis`
+  * `tf.sparse_split`: `split_dim` becomes `axis`
+* `tf.listdiff` has been renamed to `tf.setdiff1d` to match NumPy naming.
+* `tf.inv` has been renamed to be `tf.reciprocal` (component-wise reciprocal)
+  to avoid confusion with `np.inv` which is matrix inversion
+* tf.round now uses banker's rounding (round to even) semantics to match NumPy.
+* `tf.split` now takes arguments in a reversed order and with different
+  keywords. In particular, we now match NumPy order as
+  `tf.split(value, num_or_size_splits, axis)`.
+* `tf.sparse_split` now takes arguments in reversed order and with different
+  keywords. In particular we now match NumPy order as
+  `tf.sparse_split(sp_input, num_split, axis)`. NOTE: we have temporarily
+  made `tf.sparse_split` require keyword arguments.
 
 # Release 0.12.0
 
