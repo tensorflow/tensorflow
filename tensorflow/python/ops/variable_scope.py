@@ -720,7 +720,7 @@ class _VariableStore(object):
     # If dtype is DT_INT/DT_UINT, provide a default value `zero`
     # If dtype is DT_BOOL, provide a default value `FALSE`
     elif dtype.is_integer or dtype.is_unsigned or dtype.is_bool:
-      initializer = init_ops.zeros_initializer(
+      initializer = init_ops.zeros_initializer()(
           shape=shape, dtype=dtype.base_dtype)
       initializing_from_value = True
     # NOTES:Do we need to support for handling DT_STRING and DT_COMPLEX here?

@@ -40,4 +40,3 @@ py_binary(
         "//tensorflow/python/saved_model:utils",
     ],
 )
-

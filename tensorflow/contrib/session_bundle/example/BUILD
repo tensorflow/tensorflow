@@ -34,4 +34,3 @@ py_binary(
         "//tensorflow/contrib/session_bundle:exporter",
     ],
 )
-
