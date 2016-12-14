@@ -43,14 +43,15 @@ A `TransformedDistribution` implements the following operations:
     Mathematically:
 
     ```none
-    (log o pdf)(Y=y) = (log o pdf o g^{-1})(y) + (log o det o J o g^{-1})(y)
+    (log o pdf)(Y=y) = (log o pdf o g^{-1})(y) +
+                         (log o abs o det o J o g^{-1})(y)
     ```
 
     Programmatically:
 
     ```python
-    return (bijector.inverse_log_det_jacobian(x) +
-            distribution.log_prob(bijector.inverse(x))
+    return (distribution.log_prob(bijector.inverse(x)) +
+            bijector.inverse_log_det_jacobian(x))
     ```
 
   * `log_cdf`:
@@ -64,7 +65,7 @@ A `TransformedDistribution` implements the following operations:
     Programmatically:
 
     ```python
-    return distribution.log_prob(bijector.inverse(x))
+    return distribution.log_cdf(bijector.inverse(x))
     ```
 
   * and similarly for: `cdf`, `prob`, `log_survival_function`,
@@ -145,12 +146,10 @@ Construct a Transformed Distribution.
 *  <b>`bijector`</b>: The object responsible for calculating the transformation.
     Typically an instance of `Bijector`. `None` means `Identity()`.
 *  <b>`batch_shape`</b>: `integer` vector `Tensor` which overrides `distribution`
-    `batch_shape`; valid only if `distribution.is_scalar_batch` and
-    `distribution.is_scalar_event`.
+    `batch_shape`; valid only if `distribution.is_scalar_batch`.
 *  <b>`event_shape`</b>: `integer` vector `Tensor` which overrides `distribution`
-    `event_shape`; valid only if `distribution.is_scalar_batch` and
-    `distribution.is_scalar_event`
-*  <b>`validate_args`</b>: Python `Boolean`.  Whether to validate input with asserts.
+    `event_shape`; valid only if `distribution.is_scalar_event`.
+*  <b>`validate_args`</b>: Python Boolean.  Whether to validate input with asserts.
     If `validate_args` is `False`, and the inputs are invalid,
     correct behavior is not guaranteed.
 *  <b>`name`</b>: The name for the distribution. Default:
@@ -453,7 +452,7 @@ Log probability density/mass function (depending on `is_continuous`).
 
 Additional documentation from `TransformedDistribution`:
 
-Implements `(log o p o g^{-1})(y) + (log o det o J o g^{-1})(y)`,
+Implements `(log o p o g^{-1})(y) + (log o abs o det o J o g^{-1})(y)`,
       where `g^{-1}` is the inverse of `transform`.
 
       Also raises a `ValueError` if `inverse` was not provided to the
