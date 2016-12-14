@@ -307,7 +307,7 @@ def _MatrixSetDiagGrad(op, grad):
       batch_shape = array_ops.slice(grad_shape, [0], [grad_rank - 2])
       matrix_shape = array_ops.slice(grad_shape, [grad_rank - 2], [2])
       min_dim = math_ops.reduce_min(matrix_shape)
-      diag_shape = array_ops.concat(0, [batch_shape, [min_dim]])
+      diag_shape = array_ops.concat_v2([batch_shape, [min_dim]], 0)
   grad_input = array_ops.matrix_set_diag(
       grad, array_ops.zeros(
           diag_shape, dtype=grad.dtype))
@@ -345,7 +345,7 @@ def _GatherGrad(op, grad):
   # Build appropriately shaped IndexedSlices
   indices = op.inputs[1]
   size = array_ops.expand_dims(array_ops.size(indices), 0)
-  values_shape = array_ops.concat(0, [size, params_shape[1:]])
+  values_shape = array_ops.concat_v2([size, params_shape[1:]], 0)
   values = array_ops.reshape(grad, values_shape)
   indices = array_ops.reshape(indices, size)
   return [ops.IndexedSlices(values, indices, params_shape), None]
