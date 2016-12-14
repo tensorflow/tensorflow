@@ -124,7 +124,7 @@ class Dense(base._Layer):  # pylint: disable=protected-access
                                   shape=[self.units,],
                                   initializer=self.bias_initializer,
                                   regularizer=self.bias_regularizer,
-                                  dtype=self._dtype,
+                                  dtype=self.dtype,
                                   trainable=True)
     else:
       self.bias = None

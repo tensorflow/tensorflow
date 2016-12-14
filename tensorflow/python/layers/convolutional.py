@@ -135,14 +135,14 @@ class _Conv(base._Layer):  # pylint: disable=protected-access
                                   initializer=self.kernel_initializer,
                                   regularizer=self.kernel_regularizer,
                                   trainable=True,
-                                  dtype=self._dtype)
+                                  dtype=self.dtype)
     if self.use_bias:
       self.bias = vs.get_variable('bias',
                                   shape=(self.filters,),
                                   initializer=self.bias_initializer,
                                   regularizer=self.bias_regularizer,
                                   trainable=True,
-                                  dtype=self._dtype)
+                                  dtype=self.dtype)
     else:
       self.bias = None
 
@@ -801,21 +801,21 @@ class SeparableConv2D(Conv2D):
         initializer=self.depthwise_initializer,
         regularizer=self.depthwise_regularizer,
         trainable=True,
-        dtype=self._dtype)
+        dtype=self.dtype)
     self.pointwise_kernel = vs.get_variable(
         'pointwise_kernel',
         shape=pointwise_kernel_shape,
         initializer=self.pointwise_initializer,
         regularizer=self.pointwise_regularizer,
         trainable=True,
-        dtype=self._dtype)
+        dtype=self.dtype)
     if self.use_bias:
       self.bias = vs.get_variable('bias',
                                   shape=(self.filters,),
                                   initializer=self.bias_initializer,
                                   regularizer=self.bias_regularizer,
                                   trainable=True,
-                                  dtype=self._dtype)
+                                  dtype=self.dtype)
     else:
       self.bias = None
 
@@ -1040,14 +1040,14 @@ class Conv2DTranspose(Conv2D):
                                   initializer=self.kernel_initializer,
                                   regularizer=self.kernel_regularizer,
                                   trainable=True,
-                                  dtype=self._dtype)
+                                  dtype=self.dtype)
     if self.use_bias:
       self.bias = vs.get_variable('bias',
                                   shape=(self.filters,),
                                   initializer=self.bias_initializer,
                                   regularizer=self.bias_regularizer,
                                   trainable=True,
-                                  dtype=self._dtype)
+                                  dtype=self.dtype)
     else:
       self.bias = None
 
