@@ -353,6 +353,7 @@ class SplitVOpGPU : public SplitVOpBase<GPUDevice, T, Tlen> {
   REGISTER_SPLIT(type, int64);
 
 TF_CALL_ALL_TYPES(REGISTER_SPLIT_LEN);
+REGISTER_SPLIT_LEN(bfloat16);
 
 #undef REGISTER_SPLIT_LEN
 #undef REGISTER_SPLIT
