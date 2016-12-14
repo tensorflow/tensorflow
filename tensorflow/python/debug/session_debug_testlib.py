@@ -540,46 +540,6 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
                                    "does not exist in partition graphs"):
         dump.node_op_type(u_name + "foo")
 
-      # Now load the dump again, without the parition graphs, so we can check
-      # the errors raised for no partition graphs loaded.
-      dump = debug_data.DebugDumpDir(self._dump_root, validate=False)
-
-      with self.assertRaisesRegexp(RuntimeError,
-                                   "No partition graphs have been loaded"):
-        dump.partition_graphs()
-      self.assertFalse(dump.loaded_partition_graphs())
-
-      with self.assertRaisesRegexp(
-          RuntimeError, "Node inputs are not loaded from partition graphs yet"):
-        dump.node_inputs(u_name)
-
-      with self.assertRaisesRegexp(RuntimeError,
-                                   "No partition graphs have been loaded"):
-        dump.nodes()
-
-      with self.assertRaisesRegexp(
-          RuntimeError,
-          "Node recipients are not loaded from partition graphs yet"):
-        dump.node_recipients(u_name)
-
-      with self.assertRaisesRegexp(
-          RuntimeError, "Node inputs are not loaded from partition graphs yet"):
-        dump.transitive_inputs(u_name)
-
-      with self.assertRaisesRegexp(
-          RuntimeError, "Devices are not loaded from partition graphs yet"):
-        dump.devices()
-
-      with self.assertRaisesRegexp(
-          RuntimeError,
-          "Node devices are not loaded from partition graphs yet"):
-        dump.node_device(u_name)
-
-      with self.assertRaisesRegexp(
-          RuntimeError,
-          "Node op types are not loaded from partition graphs yet"):
-        dump.node_op_type(u_name)
-
   def testDumpCausalityCheck(self):
     with session.Session() as sess:
       u_name = "testDumpCausalityCheck/u"
@@ -826,7 +786,11 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
                  feed_dict={ph: np.array([[-3.0], [0.0]])})
 
       dump = debug_data.DebugDumpDir(self._dump_root)
-      self.assertFalse(dump.loaded_partition_graphs())
+
+      # Despite the fact that the run() call errored out and partition_graphs
+      # are not available via run_metadata, the partition graphs should still
+      # have been loaded from the dump directory.
+      self.assertTrue(dump.loaded_partition_graphs())
 
       m_dumps = dump.watch_key_to_data("mismatch/m:0:DebugIdentity")
       self.assertEqual(1, len(m_dumps))

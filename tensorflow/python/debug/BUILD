@@ -102,6 +102,7 @@ py_library(
     deps = [
         ":cli_shared",
         ":command_parser",
+        ":curses_ui",
         ":debug_data",
         ":debugger_cli_common",
         ":tensor_format",
@@ -156,6 +157,17 @@ py_library(
         ":local_cli_wrapper",
         ":stepper",
         "//tensorflow/python:session",
+    ],
+)
+
+py_binary(
+    name = "offline_analyzer",
+    srcs = ["cli/offline_analyzer.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":analyzer_cli",
+        ":debug_data",
+        "//tensorflow/python:platform",
     ],
 )
 

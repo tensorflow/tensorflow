@@ -23,8 +23,10 @@ import os
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.core.framework import graph_pb2
 from tensorflow.core.util import event_pb2
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.platform import gfile
 
 
 def load_tensor_from_event_file(event_file_path):
@@ -40,8 +42,9 @@ def load_tensor_from_event_file(event_file_path):
     The tensor value loaded from the event file. For uninitialized tensors,
     return None.
   """
+
   event = event_pb2.Event()
-  with open(event_file_path, "rb") as f:
+  with gfile.Open(event_file_path, "rb") as f:
     event.ParseFromString(f.read())
 
     if (event.summary.value[0].tensor.tensor_content or
@@ -53,6 +56,14 @@ def load_tensor_from_event_file(event_file_path):
       tensor_value = None
 
   return tensor_value
+
+
+def _load_graph_def_from_event_file(event_file_path):
+  event = event_pb2.Event()
+  with gfile.Open(event_file_path, "rb") as f:
+    event.ParseFromString(f.read())
+
+  return graph_pb2.GraphDef.FromString(event.graph_def)
 
 
 def parse_node_or_tensor_name(name):
@@ -77,6 +88,10 @@ def parse_node_or_tensor_name(name):
     return node_name, output_slot
   else:
     return name, None
+
+
+def _is_graph_file(file_name):
+  return file_name.startswith("_tfdbg_graph_")
 
 
 def _get_tensor_name(node_name, output_slot):
@@ -328,11 +343,12 @@ class DebugDumpDir(object):
          that do not conform to the canonical dump file naming pattern.
     """
 
-    if not os.path.isdir(dump_root):
+    if not gfile.IsDirectory(dump_root):
       raise IOError("Dump root directory %s does not exist" % dump_root)
 
     self._dump_root = dump_root
     self._dump_tensor_data = []
+    dump_graph_file_paths = []
 
     # A map from node name to debug watches.
     # The key is the watched node name.
@@ -342,8 +358,12 @@ class DebugDumpDir(object):
     self._debug_watches = collections.defaultdict(
         lambda: collections.defaultdict(set))
 
-    for root, _, files in os.walk(self._dump_root):
+    for root, _, files in gfile.Walk(self._dump_root):
       for f in files:
+        if _is_graph_file(f):
+          dump_graph_file_paths.append(os.path.join(self._dump_root, root, f))
+          continue
+
         if f.count("_") < 3:
           raise ValueError(
               "Dump file path does not conform to the naming pattern: %s" % f)
@@ -409,8 +429,16 @@ class DebugDumpDir(object):
     # Check the dump data against partition executor graphs.
     if partition_graphs:
       self._load_partition_graphs(partition_graphs)
+    elif dump_graph_file_paths:
+      # In case partition graphs are not available from arguments, load them
+      # from the dump directory.
+      dump_graph_defs = [
+          _load_graph_def_from_event_file(dump_file_path)
+          for dump_file_path in dump_graph_file_paths
+      ]
+      self._load_partition_graphs(dump_graph_defs)
 
-    if (partition_graphs is not None) and validate:
+    if (self._partition_graphs is not None) and validate:
       self._validate_dump_with_graphs()
 
   @property
