@@ -836,6 +836,72 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       self.assertEqual(1, len(x_dumps))
       self.assertAllClose(np.array([[-3.0, 0.0]]), x_dumps[0].get_tensor())
 
+  def testDebugNumericSummaryOnInitializedTensorGivesCorrectResult(self):
+    with session.Session() as sess:
+      a = variables.Variable(
+          [
+              np.nan, np.nan, 0.0, 0.0, 0.0, -1.0, -3.0, 3.0, 7.0, -np.inf,
+              -np.inf, np.inf, np.inf, np.inf, np.inf, np.inf, np.nan, np.nan
+          ],
+          dtype=np.float32,
+          name="numeric_summary/a")
+      b = variables.Variable(
+          [0.0] * 18, dtype=np.float32, name="numeric_summary/b")
+      c = math_ops.add(a, b, name="numeric_summary/c")
+
+      sess.run(variables.global_variables_initializer())
+
+      run_metadata = config_pb2.RunMetadata()
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          run_options,
+          sess.graph,
+          debug_ops=["DebugNumericSummary"],
+          debug_urls=self._debug_urls())
+
+      sess.run(c, options=run_options, run_metadata=run_metadata)
+
+      dump = debug_data.DebugDumpDir(
+          self._dump_root, partition_graphs=run_metadata.partition_graphs)
+      self.assertTrue(dump.loaded_partition_graphs())
+
+      self.assertAllClose([[
+          1.0, 18.0, 2.0, 2.0, 3.0, 2.0, 5.0, 4.0, -3.0, 7.0, 0.85714286,
+          8.97959184
+      ]], dump.get_tensors("numeric_summary/a/read", 0, "DebugNumericSummary"))
+
+  def testDebugNumericSummaryOnUninitializedTensorGivesCorrectResult(self):
+    with session.Session() as sess:
+      a = variables.Variable(
+          [42], dtype=np.float32, name="numeric_summary_uninit/a")
+
+      run_metadata = config_pb2.RunMetadata()
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          run_options,
+          sess.graph,
+          debug_ops=["DebugNumericSummary"],
+          debug_urls=self._debug_urls())
+
+      sess.run(a.initializer, options=run_options, run_metadata=run_metadata)
+
+      dump = debug_data.DebugDumpDir(
+          self._dump_root, partition_graphs=run_metadata.partition_graphs)
+      self.assertTrue(dump.loaded_partition_graphs())
+
+      # DebugNumericSummary output should reflect the uninitialized state of
+      # the watched tensor.
+      numeric_summary = dump.get_tensors(
+          "numeric_summary_uninit/a", 0, "DebugNumericSummary")[0]
+      self.assertAllClose(
+          [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], numeric_summary[0:8])
+      self.assertTrue(np.isinf(numeric_summary[8]))
+      self.assertGreater(numeric_summary[8], 0.0)
+      self.assertTrue(np.isinf(numeric_summary[9]))
+      self.assertLess(numeric_summary[9], 0.0)
+      self.assertTrue(np.isnan(numeric_summary[10]))
+      self.assertTrue(np.isnan(numeric_summary[11]))
+
 
 if __name__ == "__main__":
   googletest.main()

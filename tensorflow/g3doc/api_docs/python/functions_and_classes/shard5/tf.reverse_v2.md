@@ -2,6 +2,9 @@
 
 Reverses specific dimensions of a tensor.
 
+NOTE `tf.reverse` has now changed behavior in preparation for 1.0.
+`tf.reverse_v2` is currently an alias that will be deprecated before TF 1.0.
+
 Given a `tensor`, and a `int32` tensor `axis` representing the set of
 dimensions of `tensor` to reverse. This operation reverses each dimension
 `i` for which there exists `j` s.t. `axis[j] == i`.

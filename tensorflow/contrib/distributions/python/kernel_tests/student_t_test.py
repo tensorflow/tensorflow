@@ -397,6 +397,10 @@ class StudentTTest(tf.test.TestCase):
       student = tf.contrib.distributions.StudentT(df=[7., 11.],
                                                   mu=[[5.], [6.]],
                                                   sigma=3.)
+      self.assertAllEqual([], student.get_event_shape())
+      self.assertAllEqual([], student.event_shape().eval())
+      self.assertAllEqual([2, 2], student.get_batch_shape())
+      self.assertAllEqual([2, 2], student.batch_shape().eval())
       num = 50000
       samples = student.sample(num)
       pdfs = student.pdf(samples)
@@ -416,7 +420,7 @@ class StudentTTest(tf.test.TestCase):
       self._assertIntegral(sample_vals[:, 1, 0], pdf_vals[:, 1, 0], err=0.02)
       self._assertIntegral(sample_vals[:, 1, 1], pdf_vals[:, 1, 1], err=0.02)
 
-  def _assertIntegral(self, sample_vals, pdf_vals, err=1e-3):
+  def _assertIntegral(self, sample_vals, pdf_vals, err=1.5e-3):
     s_p = zip(sample_vals, pdf_vals)
     prev = (sample_vals.min() - 1000, 0)
     total = 0

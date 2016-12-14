@@ -230,9 +230,14 @@ cuda_py_test(
     ],
     additional_deps = [
         ":stepper",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -372,10 +377,14 @@ cuda_py_test(
     additional_deps = [
         ":stepper",
         ":stepper_cli",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:session",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -389,8 +398,13 @@ py_test(
     deps = [
         ":debugger_cli_common",
         ":local_cli_wrapper",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:variables",
     ],
 )
 

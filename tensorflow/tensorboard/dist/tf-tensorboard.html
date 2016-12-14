@@ -32,18 +32,8 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
---><meta charset="UTF-8"><link rel="import" href="../polymer/polymer.html">
-<link rel="import" href="../iron-icons/iron-icons.html">
-<link rel="import" href="../paper-tabs/paper-tabs.html">
-<link rel="import" href="../paper-dialog/paper-dialog.html">
-<link rel="import" href="../paper-checkbox/paper-checkbox.html">
-<link rel="import" href="../paper-toolbar/paper-toolbar.html">
-<link rel="import" href="../paper-button/paper-button.html">
-<link rel="import" href="../paper-icon-button/paper-icon-button.html">
-<link rel="import" href="../paper-header-panel/paper-header-panel.html">
-
-
-</head><body><div hidden="" by-vulcanize=""><dom-module id="tf-globals" assetpath="../tf-globals/">
+--><meta charset="UTF-8">
+</head><body><div hidden="" by-vulcanize=""><link rel="import" href="../polymer/polymer.html"><link rel="import" href="../iron-icons/iron-icons.html"><link rel="import" href="../paper-tabs/paper-tabs.html"><link rel="import" href="../paper-dialog/paper-dialog.html"><link rel="import" href="../paper-checkbox/paper-checkbox.html"><link rel="import" href="../paper-toolbar/paper-toolbar.html"><link rel="import" href="../paper-button/paper-button.html"><link rel="import" href="../paper-icon-button/paper-icon-button.html"><link rel="import" href="../paper-header-panel/paper-header-panel.html"><dom-module id="tf-globals" assetpath="../tf-globals/">
   <script>/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -79,11 +69,9 @@ var TF;
 </script>
 </dom-module>
 
-<script src="../lodash/lodash.min.js"></script>
-<link rel="import" href="../paper-slider/paper-slider.html">
-<link rel="import" href="../paper-input/paper-input.html">
 
-<dom-module id="tf-smoothing-input" assetpath="../tf-scalar-dashboard/">
+
+<link rel="import" href="../paper-slider/paper-slider.html"><link rel="import" href="../paper-input/paper-input.html"><script src="../lodash/lodash.min.js"></script><dom-module id="tf-smoothing-input" assetpath="../tf-scalar-dashboard/">
   <template>
     <h3 class="title">Smoothing</h3>
     <div class="smoothing-block">
@@ -178,8 +166,7 @@ var TF;
     });
   </script>
 </dom-module>
-<script src="../d3/d3.js"></script>
-<script>/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+<script src="../d3/d3.js"></script><script>/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -303,8 +290,7 @@ var VZ;
         }
     })(Sorting = VZ.Sorting || (VZ.Sorting = {}));
 })(VZ || (VZ = {}));
-</script>
-<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+</script><script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -1046,11 +1032,6 @@ var TF;
     })(Backend = TF.Backend || (TF.Backend = {}));
 })(TF || (TF = {}));
 </script>
-
-
-
-
-
 <dom-module id="tf-color-scale" assetpath="../tf-color-scale/">
   <script>/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
@@ -1220,9 +1201,8 @@ var TF;
     })();
   </script>
 </dom-module>
-<link rel="import" href="../paper-styles/paper-styles.html">
 
-<dom-module id="scrollbar-style" assetpath="../tf-dashboard-common/">
+<link rel="import" href="../paper-styles/paper-styles.html"><dom-module id="scrollbar-style" assetpath="/">
   <template>
     <style>
       .scrollbar::-webkit-scrollbar-track
@@ -1261,7 +1241,6 @@ var TF;
   }
 
 </style>
-
 <dom-module id="tf-dashboard-layout" assetpath="../tf-dashboard-common/">
   <template>
     <div id="sidebar">
@@ -1338,11 +1317,7 @@ var TF;
     </style>
   </template>
 </dom-module>
-<link rel="import" href="../paper-dropdown-menu/paper-dropdown-menu.html">
-<link rel="import" href="../paper-menu/paper-menu.html">
-<link rel="import" href="../paper-item/paper-item.html">
-
-<dom-module id="tf-downloader" assetpath="../tf-dashboard-common/">
+<link rel="import" href="../paper-dropdown-menu/paper-dropdown-menu.html"><link rel="import" href="../paper-menu/paper-menu.html"><link rel="import" href="../paper-item/paper-item.html"><dom-module id="tf-downloader" assetpath="../tf-dashboard-common/">
   <template>
     <paper-dropdown-menu no-label-float="true" label="run to download" selected-item-label="{{_run}}">
       <paper-menu class="dropdown-content">
@@ -1420,7 +1395,7 @@ var TF;
           </h3>
           <p>
             To store a graph, create a
-            <code>tf.train.SummaryWriter</code>
+            <code>tf.summary.FileWriter</code>
             and pass the graph either via the constructor, or by calling its
             <code>add_graph()</code> method.
             You may want to check out the
@@ -1432,29 +1407,17 @@ var TF;
         </template>
         <template is="dom-if" if="[[_isProjector(dataType)]]">
           <h3>
-            No projector data was found.
+            No checkpoint was found.
           </h3>
           <p>
             Probable causes:
             </p><ul>
               <li>
-                There is no <code>projector_config.pbtxt</code> in the <code>logdir</code>.
-                To store a config file, create a
-                <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/tensorboard/plugins/projector/projector_config.proto">
-                  <code>projector.ProjectorConfig</code>
-                </a>
-                proto and a
-                <a href="https://www.tensorflow.org/versions/master/api_docs/python/train.html#SummaryWriter">
-                  <code>tf.train.SummaryWriter</code>
-                </a> and pass them to
-                <code>projector.visualize_embeddings()</code>.
-                The <code>projector</code> module lives in
-                <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/tensorboard/plugins/projector/__init__.py">
-                  <code>tensorflow.contrib.tensorboard.plugins</code>.
-                </a>
+                No checkpoint has been saved yet. Please refresh the page periodically.
               </li>
               <li>
-                There is no checkpoint file. To save your model, create a
+                You are not saving any checkpoint. To save your model,
+                create a
                 <a href="https://www.tensorflow.org/versions/master/api_docs/python/state_ops.html#Saver">
                   <code>tf.train.Saver</code>
                 </a>
@@ -1574,7 +1537,6 @@ var TF;
     })(Dashboard = TF.Dashboard || (TF.Dashboard = {}));
 })(TF || (TF = {}));
 </script>
-
 <dom-module id="tf-option-selector" assetpath="../tf-dashboard-common/">
   <template>
     <div id="wrap">
@@ -1645,9 +1607,8 @@ var TF;
     });
   </script>
 </dom-module>
-<link rel="import" href="../iron-collapse/iron-collapse.html">
 
-<dom-module id="tf-collapsable-pane" assetpath="../tf-dashboard-common/">
+<link rel="import" href="../iron-collapse/iron-collapse.html"><dom-module id="tf-collapsable-pane" assetpath="../tf-dashboard-common/">
   <template>
     <button class="heading" on-tap="togglePane" open-button$="[[opened]]">
     <span class="name">[[name]]</span>
@@ -1732,10 +1693,8 @@ var TF;
   </script>
 
 </dom-module>
-<script src="../plottable/plottable.js"></script>
-<link rel="stylesheet" type="text/css" href="../plottable/plottable.css">
 
-<dom-module id="tf-chart-scaffold" assetpath="../tf-dashboard-common/">
+<script src="../plottable/plottable.js"></script><link rel="stylesheet" type="text/css" href="../plottable/plottable.css"><dom-module id="tf-chart-scaffold" assetpath="../tf-dashboard-common/">
   <template>
     <content></content>
     <style>
@@ -1820,7 +1779,6 @@ var TF;
     });
   </script>
 </dom-module>
-
 <dom-module id="tf-panes-helper" assetpath="../tf-dashboard-common/">
   <template>
     <content></content> 
@@ -2098,7 +2056,9 @@ var TF;
     });
   </script>
 </dom-module>
-<dom-module id="tf-storage" assetpath="../tf-storage/">
+
+
+<link rel="import" href="../paper-toggle-button/paper-toggle-button.html"><dom-module id="tf-storage" assetpath="../tf-storage/">
  <script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -2439,7 +2399,7 @@ var TF;
 </script>
 </dom-module>
 
-<dom-module id="tf-regex-group" assetpath="../tf-dashboard-common/">
+<dom-module id="tf-regex-group" assetpath="/">
   <template>
     <div class="regex-list">
       <template is="dom-repeat" items="{{rawRegexes}}">
@@ -2545,8 +2505,6 @@ var TF;
     });
   </script>
 </dom-module>
-<link rel="import" href="../paper-toggle-button/paper-toggle-button.html">
-
 <dom-module id="tf-categorizer" assetpath="../tf-dashboard-common/">
   <template>
     <div class="inputs">
@@ -2730,7 +2688,9 @@ var Categorizer;
     });
   </script>
 </dom-module>
-<dom-module id="run-color-style" assetpath="../tf-dashboard-common/">
+
+
+<dom-module id="run-color-style" assetpath="/">
   <template>
     <style>
     [color-class="light-blue"] paper-checkbox {
@@ -2790,8 +2750,7 @@ var Categorizer;
     </style>
   </template>
 </dom-module>
-
-<dom-module id="tf-multi-checkbox" assetpath="../tf-dashboard-common/">
+<dom-module id="tf-multi-checkbox" assetpath="/">
   <style include="scrollbar-style"></style>
   <style include="run-color-style"></style>
 
@@ -3063,7 +3022,6 @@ var Categorizer;
   });
   </script>
 </dom-module>
-
 <dom-module id="tf-run-selector" assetpath="../tf-dashboard-common/">
   <template>
     <div id="top-text">
@@ -3154,7 +3112,6 @@ var Categorizer;
   });
   </script>
 </dom-module>
-
 <dom-module id="tf-sidebar-helper" assetpath="../tf-dashboard-common/">
   <template>
     <div class="sidebar-section">
@@ -4375,7 +4332,6 @@ var VZ;
     });
   </script>
 </dom-module>
-
 <dom-module id="tf-scalar-dashboard" assetpath="../tf-scalar-dashboard/">
   <template>
     <div id="plumbing">
@@ -4526,6 +4482,7 @@ var VZ;
     });
   </script>
 </dom-module>
+
 <dom-module id="vz-distribution-chart" assetpath="../vz-distribution-chart/">
   <template>
     <svg id="chartsvg"></svg>
@@ -4913,7 +4870,6 @@ var VZ;
     });
   </script>
 </dom-module>
-
 <dom-module id="tf-distribution-dashboard" assetpath="../tf-distribution-dashboard/">
   <template>
     <div id="plumbing">
@@ -4963,6 +4919,7 @@ var VZ;
     });
   </script>
 </dom-module>
+
 
 <dom-module id="vz-histogram-timeseries" assetpath="../vz-histogram-timeseries/">
     <template>
@@ -5643,7 +5600,6 @@ var VZ;
     </script>
 
   </dom-module>
-
 <dom-module id="tf-histogram-dashboard" assetpath="../tf-histogram-dashboard/">
   <template>
     <div id="plumbing">
@@ -5725,6 +5681,7 @@ var VZ;
   </script>
 </dom-module>
 
+
 <dom-module id="tf-image-loader" assetpath="../tf-image-dashboard/">
   <template>
     <div id="image-annotation">
@@ -5793,7 +5750,6 @@ var VZ;
     });
   </script>
 </dom-module>
-
 <dom-module id="tf-image-dashboard" assetpath="../tf-image-dashboard/">
   <template>
     <paper-dialog with-backdrop="" id="actual-image-size-dialog"></paper-dialog>
@@ -5892,7 +5848,9 @@ var VZ;
   </script>
 </dom-module>
 
-<dom-module id="tf-audio-loader" assetpath="../tf-audio-dashboard/">
+
+
+<dom-module id="tf-audio-loader" assetpath="/">
   <style>
   :host {
     display: block;
@@ -5940,7 +5898,6 @@ var VZ;
     });
   </script>
 </dom-module>
-
 <dom-module id="tf-audio-grid" assetpath="../tf-audio-dashboard/">
   <template>
     <style include="scrollbar-style"></style>
@@ -6048,7 +6005,6 @@ var VZ;
     });
   </script>
 </dom-module>
-
 <dom-module id="tf-audio-dashboard" assetpath="../tf-audio-dashboard/">
   <template>
     <div class="center">
@@ -6094,6 +6050,7 @@ var VZ;
     });
   </script>
 </dom-module>
+
 
 <dom-module id="tf-graph-loader" assetpath="../tf-graph-loader/">
 </dom-module>
@@ -6256,12 +6213,8 @@ Polymer({
   }
 });
 </script>
-<script src="../lodash/lodash.min.js"></script>
-<script src="../graphlib/dist/graphlib.core.js"></script>
-<script src="../dagre/dist/dagre.core.js"></script>
-<script src="../lodash/lodash.min.js"></script>
-<script src="../graphlib/dist/graphlib.core.js"></script>
-<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+
+<link rel="import" href="../iron-flex-layout/iron-flex-layout.html"><script src="../lodash/lodash.min.js"></script><script src="../graphlib/dist/graphlib.core.js"></script><script src="../dagre/dist/dagre.core.js"></script><script src="../lodash/lodash.min.js"></script><script src="../graphlib/dist/graphlib.core.js"></script><script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -6390,8 +6343,7 @@ var tf;
         return m;
     }, {});
 })(tf || (tf = {}));
-</script>
-<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+</script><script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -6405,8 +6357,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-</script>
-<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+</script><script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -6420,8 +6371,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-</script>
-<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+</script><script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -7273,8 +7223,7 @@ var tf;
         ;
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {})); // close module tf.graph
-</script>
-<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+</script><script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -7955,8 +7904,7 @@ var tf;
         })(hierarchy = graph_1.hierarchy || (graph_1.hierarchy = {}));
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {})); // close module tf.graph.hierarchy
-</script>
-<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+</script><script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -8655,8 +8603,7 @@ var tf;
         })(layout = graph_1.layout || (graph_1.layout = {}));
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {})); // close module
-</script>
-<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+</script><script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -8922,8 +8869,7 @@ var tf;
         })(parser = graph.parser || (graph.parser = {}));
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {})); // Close module tf.graph.parser.
-</script>
-<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+</script><script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -8937,8 +8883,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-</script>
-<script>var __extends = (this && this.__extends) || function (d, b) {
+</script><script>var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
     function __() { this.constructor = d; }
     d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
@@ -10160,8 +10105,7 @@ var tf;
         })(render = graph_1.render || (graph_1.render = {}));
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {})); // close module tf.graph.render
-</script>
-<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+</script><script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -10373,8 +10317,7 @@ var tf;
         })(scene = graph.scene || (graph.scene = {}));
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {})); // close module
-</script>
-<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+</script><script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -10438,8 +10381,7 @@ var tf;
         })(scene = graph.scene || (graph.scene = {}));
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {})); // close module
-</script>
-<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+</script><script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -10757,8 +10699,7 @@ var tf;
         })(scene = graph_1.scene || (graph_1.scene = {}));
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {})); // close module
-</script>
-<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+</script><script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -11754,8 +11695,7 @@ var tf;
         })(scene = graph.scene || (graph.scene = {}));
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {})); // Close module.
-</script>
-<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+</script><script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -12190,8 +12130,7 @@ var tf;
         })(scene = graph.scene || (graph.scene = {}));
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {})); // close module
-</script>
-<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+</script><script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -12458,8 +12397,7 @@ var tf;
         })(template = graph_1.template || (graph_1.template = {}));
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {}));
-</script>
-<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+</script><script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -13020,9 +12958,7 @@ var tf;
         scene.Minimap = Minimap;
     })(scene = tf.scene || (tf.scene = {}));
 })(tf || (tf = {})); // close module tf.scene
-</script>
-
-<dom-module id="tf-graph-minimap" assetpath="../tf-graph/">
+</script><dom-module id="tf-graph-minimap" assetpath="/">
 <template>
 <style>
 :host {
@@ -13090,7 +13026,6 @@ Polymer({
 });
 </script>
 </dom-module>
-
 <dom-module id="tf-graph-scene" assetpath="../tf-graph/">
 <template>
 <style>
@@ -14042,7 +13977,6 @@ Polymer({
 });
 </script>
 </dom-module>
-<link rel="import" href="../iron-flex-layout/iron-flex-layout.html">
 <dom-module id="tf-graph" assetpath="../tf-graph/">
 <template>
 <style>
@@ -14314,7 +14248,7 @@ Polymer({
   }
 });
 </script>
-<dom-module id="tf-graph-icon" assetpath="../tf-graph/">
+<link rel="import" href="../iron-list/iron-list.html"><link rel="import" href="../paper-item/all-imports.html"><dom-module id="tf-graph-icon" assetpath="../tf-graph/">
   <style>
     .faded-rect {
       fill: url("#rectHatch");
@@ -14562,7 +14496,7 @@ Polymer({
     })();
   </script>
 </dom-module>
-<dom-module id="tf-node-list-item" assetpath="../tf-graph-info/">
+<dom-module id="tf-node-list-item" assetpath="/">
   <style>
   #list-item {
     width: 100%;
@@ -14673,8 +14607,6 @@ Polymer({
     })();
   </script>
 </dom-module>
-<link rel="import" href="../iron-list/iron-list.html">
-<link rel="import" href="../paper-item/all-imports.html">
 <dom-module id="tf-node-info" assetpath="../tf-graph-info/">
   <style>
   .sub-list-group {
@@ -15316,10 +15248,7 @@ h2 {
 })();
 </script>
 </dom-module>
-<link rel="import" href="../paper-progress/paper-progress.html">
-
-
-<dom-module id="tf-graph-board" assetpath="../tf-graph-board/">
+<link rel="import" href="../paper-progress/paper-progress.html"><dom-module id="tf-graph-board" assetpath="../tf-graph-board/">
 <template>
 <style>
 ::host {
@@ -15491,9 +15420,7 @@ Polymer({
   }
 });
 </script>
-<link rel="import" href="../paper-radio-group/paper-radio-group.html">
-<link rel="import" href="../paper-tooltip/paper-tooltip.html">
-<dom-module id="tf-graph-controls" assetpath="../tf-graph/">
+<link rel="import" href="../paper-radio-group/paper-radio-group.html"><link rel="import" href="../paper-tooltip/paper-tooltip.html"><dom-module id="tf-graph-controls" assetpath="../tf-graph/">
 <template>
 <style>
 :host {
@@ -16174,7 +16101,6 @@ Polymer({
 })(); // Closing private scope.
 </script>
 </dom-module>
-
 <dom-module id="tf-graph-dashboard" assetpath="../tf-graph-dashboard/">
 <template>
 <tf-no-data-warning data-type="graph" show-warning="[[_datasetsEmpty(_datasets)]]"></tf-no-data-warning>
@@ -16242,7 +16168,7 @@ Polymer({
 });
 })();
 </script>
-<dom-module id="vz-projector-styles" assetpath="../vz-projector/">
+<link rel="import" href="../paper-listbox/paper-listbox.html"><link rel="import" href="../iron-icons/image-icons.html"><link rel="import" href="../paper-toast/paper-toast.html"><link rel="import" href="../paper-styles/typography.html"><link rel="import" href="../paper-spinner/paper-spinner-lite.html"><link rel="import" href="../paper-dialog-scrollable/paper-dialog-scrollable.html"><link rel="import" href="../paper-input/paper-textarea.html"><dom-module id="vz-projector-styles" assetpath="/">
 <template>
 <style>
 :host {
@@ -16410,8 +16336,7 @@ h4 {
 </style>
 </template>
 </dom-module>
-<link rel="import" href="../paper-input/paper-textarea.html">
-<dom-module id="vz-projector-bookmark-panel" assetpath="../vz-projector/">
+<dom-module id="vz-projector-bookmark-panel" assetpath="/">
 <template>
 <style include="vz-projector-styles"></style>
 <style>
@@ -16564,7 +16489,7 @@ paper-textarea {
 
 </template>
 </dom-module>
-<dom-module id="vz-projector-legend" assetpath="../vz-projector/">
+<dom-module id="vz-projector-legend" assetpath="/">
 <template>
 <style include="vz-projector-styles"></style>
 <style>
@@ -16619,7 +16544,7 @@ paper-textarea {
 </template>
 
 </template>
-</dom-module><dom-module id="vz-projector-data-panel" assetpath="../vz-projector/">
+</dom-module><dom-module id="vz-projector-data-panel" assetpath="/">
 <template>
 <style include="vz-projector-styles"></style>
 <style>
@@ -16970,7 +16895,7 @@ paper-dropdown-menu paper-item {
 
 </template>
 </dom-module>
-<dom-module id="vz-projector-input" assetpath="../vz-projector/">
+<dom-module id="vz-projector-input" assetpath="/">
 <template>
 <style include="vz-projector-styles"></style>
 <style>
@@ -17010,7 +16935,7 @@ paper-dropdown-menu paper-item {
 
 
 </template>
-</dom-module><dom-module id="vz-projector-inspector-panel" assetpath="../vz-projector/">
+</dom-module><dom-module id="vz-projector-inspector-panel" assetpath="/">
 <style include="vz-projector-styles"></style>
 <style>
 :host {
@@ -17227,7 +17152,7 @@ paper-dropdown-menu paper-item {
 
 </template>
 </dom-module>
-<dom-module id="vz-projector-metadata-card" assetpath="../vz-projector/">
+<dom-module id="vz-projector-metadata-card" assetpath="/">
 <template>
 <style>
 #metadata-card {
@@ -17298,7 +17223,7 @@ paper-dropdown-menu paper-item {
 </template>
 </template>
 </dom-module>
-<dom-module id="vz-projector-projections-panel" assetpath="../vz-projector/">
+<dom-module id="vz-projector-projections-panel" assetpath="/">
 <template>
 <style include="vz-projector-styles"></style>
 <style>
@@ -17482,7 +17407,7 @@ paper-dropdown-menu paper-item {
       </p>
       <p>Iteration: <span class="run-tsne-iter">0</span></p>
       <p id="tsne-sampling" class="notice">
-        For fast results, the data will be sampled down to [[getTsneSampleSize()]] points.
+        For fast results, the data will be sampled down to [[getTsneSampleSizeText()]] points.
       </p>
       <p>
         <iron-icon icon="book" class="book-icon"></iron-icon>
@@ -17548,7 +17473,7 @@ paper-dropdown-menu paper-item {
       </p>
       <div id="total-variance">Total variance</div>
       <paper-tooltip for="pca-sampling" position="top" animation-delay="0" fit-to-visible-bounds="">
-        For fast results, the data was randomly projected down to [[getPcaSampledDim()]] dimensions.
+        For fast results, the data was sampled to [[getPcaSampleSizeText()]] points and randomly projected down to [[getPcaSampledDimText()]] dimensions.
       </paper-tooltip>
     </div>
     
@@ -17575,12 +17500,6 @@ paper-dropdown-menu paper-item {
 </div>
 </template>
 </dom-module>
-<link rel="import" href="../paper-listbox/paper-listbox.html">
-<link rel="import" href="../iron-icons/image-icons.html">
-<link rel="import" href="../paper-toast/paper-toast.html">
-<link rel="import" href="../paper-styles/typography.html">
-<link rel="import" href="../paper-dialog-scrollable/paper-dialog-scrollable.html">
-
 <dom-module id="vz-projector" assetpath="../vz-projector/">
 <template>
 <style include="vz-projector-styles"></style>
@@ -17679,13 +17598,13 @@ paper-dropdown-menu paper-item {
   text-transform: uppercase;
 }
 
-#notification-dialog paper-progress {
-  --paper-progress-indeterminate-cycle-duration: 1s;
-  --paper-progress-active-color: #880E4F;
-  width: 100%;
+#notification-dialog .progress {
+  --paper-spinner-color: #880E4F;
+  --paper-spinner-stroke-width: 2px;
 }
 
 #notify-msgs {
+  text-align: center;
   display: block;
 }
 
@@ -17693,6 +17612,10 @@ paper-dropdown-menu paper-item {
   font-weight: 500;
   margin: 0;
   padding: 0;
+}
+
+.notify-msg.error {
+  text-align: left;
 }
 
 .brush .extent {
@@ -17812,7 +17735,7 @@ paper-dropdown-menu paper-item {
   <paper-dialog-scrollable>
     <div id="notify-msgs"></div>
   </paper-dialog-scrollable>
-  <div><paper-progress class="progress-bar" indeterminate=""></paper-progress></div>
+  <div style="text-align: center;"><paper-spinner-lite active="" class="progress"></paper-spinner-lite></div>
   <div class="buttons">
     <paper-button class="close-button" dialog-confirm="" autofocus="">Close</paper-button>
   </div>
@@ -18233,6 +18156,16 @@ var AnalyticsLogger = (function () {
             });
         }
     };
+    AnalyticsLogger.prototype.logWebGLDisabled = function () {
+        if (this.eventLogging) {
+            ga('send', {
+                hitType: 'event',
+                eventCategory: 'Error',
+                eventAction: 'PageLoad',
+                eventLabel: 'WebGL_disabled'
+            });
+        }
+    };
     return AnalyticsLogger;
 }());
 exports.AnalyticsLogger = AnalyticsLogger;
@@ -18286,6 +18219,7 @@ var sptree_1 = require('./sptree');
  * results. Recommended value mentioned in the paper is 0.8.
  */
 var THETA = 0.8;
+var MIN_POSSIBLE_PROB = 1E-9;
 // Variables used for memorizing the second random number since running
 // gaussRandom() generates two random numbers at the cost of 1 atomic
 // computation. This optimization results in 2X speed-up of the generator.
@@ -18388,6 +18322,7 @@ function nearest2P(nearest, perplexity, tol) {
             for (var k = 0; k < neighbors.length; ++k) {
                 var neighbor = neighbors[k];
                 var pij = (i === neighbor.index) ? 0 : Math.exp(-neighbor.dist * beta);
+                pij = Math.max(pij, MIN_POSSIBLE_PROB);
                 pRow[k] = pij;
                 psum += pij;
             }
@@ -18615,7 +18550,8 @@ var TSNE = (function () {
                 var squaredDistToCell = _this.dist2(pointI, node.yCell);
                 // Squared distance from point i to cell.
                 if (node.children == null ||
-                    (node.rCell / Math.sqrt(squaredDistToCell) < THETA)) {
+                    (squaredDistToCell > 0 &&
+                        node.rCell / Math.sqrt(squaredDistToCell) < THETA)) {
                     var qijZ_1 = 1 / (1 + squaredDistToCell);
                     var dZ = node.numCells * qijZ_1;
                     Z += dZ;
@@ -18674,6 +18610,7 @@ var data_1 = require('./data');
 var data_provider_1 = require('./data-provider');
 var dataProvider = require('./data-provider');
 var logging = require('./logging');
+var BYTES_EXTENSION = '.bytes';
 /** Data provider that loads data from a demo folder. */
 var DemoDataProvider = (function () {
     function DemoDataProvider(projectorConfigPath) {
@@ -18705,24 +18642,25 @@ var DemoDataProvider = (function () {
             callback(projectorConfig);
         });
     };
-    DemoDataProvider.prototype.getDefaultTensor = function (run, callback) {
-        // Return the first tensor as the default tensor.
-        callback(this.projectorConfig.embeddings[0].tensorName);
-    };
     DemoDataProvider.prototype.retrieveTensor = function (run, tensorName, callback) {
         var embedding = this.getEmbeddingInfo(tensorName);
-        var separator = embedding.tensorPath.substr(-3) === 'tsv' ? '\t' : ' ';
         var url = "" + embedding.tensorPath;
-        logging.setModalMessage('Fetching tensors...', data_provider_1.TENSORS_MSG_ID);
-        d3.text(url, function (error, dataString) {
-            if (error) {
-                logging.setErrorMessage(error.responseText);
-                return;
-            }
-            dataProvider.parseTensors(dataString, separator).then(function (points) {
-                callback(new data_1.DataSet(points));
+        if (embedding.tensorPath.substr(-1 * BYTES_EXTENSION.length) ===
+            BYTES_EXTENSION) {
+            dataProvider.retrieveTensorAsBytes(this, this.getEmbeddingInfo(tensorName), run, tensorName, url, callback);
+        }
+        else {
+            logging.setModalMessage('Fetching tensors...', data_provider_1.TENSORS_MSG_ID);
+            d3.text(url, function (error, dataString) {
+                if (error) {
+                    logging.setErrorMessage(error.responseText);
+                    return;
+                }
+                dataProvider.parseTensors(dataString).then(function (points) {
+                    callback(new data_1.DataSet(points));
+                });
             });
-        });
+        }
     };
     DemoDataProvider.prototype.retrieveSpriteAndMetadata = function (run, tensorName, callback) {
         var embedding = this.getEmbeddingInfo(tensorName);
@@ -18802,9 +18740,6 @@ var ProtoDataProvider = (function () {
             pointsInfo: pointsMetadata
         });
     };
-    ProtoDataProvider.prototype.getDefaultTensor = function (run, callback) {
-        callback('proto');
-    };
     ProtoDataProvider.prototype.getBookmarks = function (run, tensorName, callback) {
         return callback([]);
     };
@@ -18846,12 +18781,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 "use strict";
-var data_1 = require('./data');
-var data_provider_1 = require('./data-provider');
 var dataProvider = require('./data-provider');
 var logging = require('./logging');
 // Limit for the number of data points we receive from the server.
-var LIMIT_NUM_POINTS = 100000;
+exports.LIMIT_NUM_POINTS = 100000;
 /**
  * Data provider that loads data provided by a python server (usually backed
  * by a checkpoint file).
@@ -18904,35 +18837,10 @@ var ServerDataProvider = (function () {
     };
     ServerDataProvider.prototype.retrieveTensor = function (run, tensorName, callback) {
         var _this = this;
-        // Get the tensor.
-        logging.setModalMessage('Fetching tensor values...', data_provider_1.TENSORS_MSG_ID);
-        var xhr = new XMLHttpRequest();
-        xhr.open('GET', (this.routePrefix + "/tensor?") +
-            ("run=" + run + "&name=" + tensorName + "&num_rows=" + LIMIT_NUM_POINTS));
-        xhr.responseType = 'arraybuffer';
-        xhr.onprogress = function (ev) {
-            if (ev.lengthComputable) {
-                var percent = (ev.loaded * 100 / ev.total).toFixed(1);
-                logging.setModalMessage('Fetching tensor values: ' + percent + '%', data_provider_1.TENSORS_MSG_ID);
-            }
-        };
-        xhr.onload = function () {
-            var data = new Float32Array(xhr.response);
-            _this.getEmbeddingInfo(run, tensorName, function (embedding) {
-                if (embedding.tensorShape[0] > LIMIT_NUM_POINTS) {
-                    logging.setWarningMessage(("Showing the first " + LIMIT_NUM_POINTS.toLocaleString()) +
-                        (" of " + embedding.tensorShape[0].toLocaleString() + " data points"));
-                }
-                var dim = embedding.tensorShape[1];
-                dataProvider.parseTensorsFromFloat32Array(data, dim).then(function (dataPoints) {
-                    callback(new data_1.DataSet(dataPoints));
-                });
-            });
-        };
-        xhr.onerror = function () {
-            logging.setErrorMessage(xhr.responseText);
-        };
-        xhr.send(null);
+        this.getEmbeddingInfo(run, tensorName, function (embedding) {
+            dataProvider.retrieveTensorAsBytes(_this, embedding, run, tensorName, (_this.routePrefix + "/tensor?run=" + run + "&name=" + tensorName) +
+                ("&num_rows=" + exports.LIMIT_NUM_POINTS), callback);
+        });
     };
     ServerDataProvider.prototype.retrieveSpriteAndMetadata = function (run, tensorName, callback) {
         var _this = this;
@@ -18941,7 +18849,7 @@ var ServerDataProvider = (function () {
             if (embedding.metadataPath) {
                 metadataPath =
                     (_this.routePrefix + "/metadata?") +
-                        ("run=" + run + "&name=" + tensorName + "&num_rows=" + LIMIT_NUM_POINTS);
+                        ("run=" + run + "&name=" + tensorName + "&num_rows=" + exports.LIMIT_NUM_POINTS);
             }
             var spriteImagePath = null;
             if (embedding.sprite && embedding.sprite.imagePath) {
@@ -18949,20 +18857,6 @@ var ServerDataProvider = (function () {
                     _this.routePrefix + "/sprite_image?run=" + run + "&name=" + tensorName;
             }
             dataProvider.retrieveSpriteAndMetadataInfo(metadataPath, spriteImagePath, embedding.sprite, callback);
-        });
-    };
-    ServerDataProvider.prototype.getDefaultTensor = function (run, callback) {
-        this.retrieveProjectorConfig(run, function (config) {
-            var tensorNames = config.embeddings.map(function (e) { return e.tensorName; });
-            // Return the first tensor that has metadata.
-            for (var i = 0; i < tensorNames.length; i++) {
-                var e = config.embeddings[i];
-                if (e.metadataPath) {
-                    callback(e.tensorName);
-                    return;
-                }
-            }
-            callback(tensorNames.length >= 1 ? tensorNames[0] : null);
         });
     };
     ServerDataProvider.prototype.getBookmarks = function (run, tensorName, callback) {
@@ -18978,7 +18872,7 @@ var ServerDataProvider = (function () {
 }());
 exports.ServerDataProvider = ServerDataProvider;
 
-},{"./data":7,"./data-provider":6,"./logging":12}],6:[function(require,module,exports){
+},{"./data-provider":6,"./logging":12}],6:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -19002,6 +18896,38 @@ var NUM_COLORS_COLOR_MAP = 50;
 var MAX_SPRITE_IMAGE_SIZE_PX = 8192;
 exports.METADATA_MSG_ID = 'metadata';
 exports.TENSORS_MSG_ID = 'tensors';
+function retrieveTensorAsBytes(dp, embedding, run, tensorName, tensorsPath, callback) {
+    // Get the tensor.
+    logging.setModalMessage('Fetching tensor values...', exports.TENSORS_MSG_ID);
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', tensorsPath);
+    xhr.responseType = 'arraybuffer';
+    xhr.onprogress = function (ev) {
+        if (ev.lengthComputable) {
+            var percent = (ev.loaded * 100 / ev.total).toFixed(1);
+            logging.setModalMessage('Fetching tensor values: ' + percent + '%', exports.TENSORS_MSG_ID);
+        }
+    };
+    xhr.onload = function () {
+        if (xhr.status !== 200) {
+            var msg = String.fromCharCode.apply(null, new Uint8Array(xhr.response));
+            logging.setErrorMessage(msg);
+            return;
+        }
+        var data = new Float32Array(xhr.response);
+        var dim = embedding.tensorShape[1];
+        var N = data.length / dim;
+        if (embedding.tensorShape[0] > N) {
+            logging.setWarningMessage(("Showing the first " + N.toLocaleString()) +
+                (" of " + embedding.tensorShape[0].toLocaleString() + " data points"));
+        }
+        parseTensorsFromFloat32Array(data, dim).then(function (dataPoints) {
+            callback(new data_1.DataSet(dataPoints));
+        });
+    };
+    xhr.send();
+}
+exports.retrieveTensorAsBytes = retrieveTensorAsBytes;
 function parseRawTensors(content, callback) {
     parseTensors(content).then(function (data) {
         callback(new data_1.DataSet(data));
@@ -19171,6 +19097,7 @@ function fetchImage(url) {
         var image = new Image();
         image.onload = function () { return resolve(image); };
         image.onerror = function (err) { return reject(err); };
+        image.crossOrigin = '';
         image.src = url;
     });
 }
@@ -19236,25 +19163,13 @@ limitations under the License.
 var bh_tsne_1 = require('./bh_tsne');
 var knn = require('./knn');
 var logging = require('./logging');
-var util_1 = require('./util');
+var util = require('./util');
 var vector = require('./vector');
-/** Checks to see if the browser supports webgl. */
-function hasWebGLSupport() {
-    try {
-        var c = document.createElement('canvas');
-        var gl = c.getContext('webgl') || c.getContext('experimental-webgl');
-        return gl != null && typeof weblas !== 'undefined';
-    }
-    catch (e) {
-        return false;
-    }
-}
-var WEBGL_SUPPORT = hasWebGLSupport();
 var IS_FIREFOX = navigator.userAgent.toLowerCase().indexOf('firefox') >= 0;
 /** Controls whether nearest neighbors computation is done on the GPU or CPU. */
-var KNN_GPU_ENABLED = WEBGL_SUPPORT && !IS_FIREFOX;
-/** Sampling is used when computing expensive operations such as T-SNE. */
-exports.SAMPLE_SIZE = 10000;
+var KNN_GPU_ENABLED = util.hasWebGLSupport() && !IS_FIREFOX;
+exports.TSNE_SAMPLE_SIZE = 10000;
+exports.PCA_SAMPLE_SIZE = 50000;
 /** Number of dimensions to sample when doing approximate PCA. */
 exports.PCA_SAMPLE_DIM = 200;
 /** Number of pca components to compute. */
@@ -19271,7 +19186,7 @@ var TRACE_METADATA_ATTR = '__next__';
 var DataSet = (function () {
     /** Creates a new Dataset */
     function DataSet(points, spriteAndMetadataInfo) {
-        this.sampledDataIndices = [];
+        this.shuffledDataIndices = [];
         /**
          * This keeps a list of all current projections so you can easily test to see
          * if it's been calculated already.
@@ -19282,8 +19197,7 @@ var DataSet = (function () {
         this.dim = [0, 0];
         this.hasTSNERun = false;
         this.points = points;
-        this.sampledDataIndices =
-            util_1.shuffle(d3.range(this.points.length)).slice(0, exports.SAMPLE_SIZE);
+        this.shuffledDataIndices = util.shuffle(d3.range(this.points.length));
         this.traces = this.computeTraces(points);
         this.dim = [this.points.length, this.points[0].vector.length];
         this.spriteAndMetadataInfo = spriteAndMetadataInfo;
@@ -19331,28 +19245,6 @@ var DataSet = (function () {
         }
         return traces;
     };
-    DataSet.prototype.getPointAccessors = function (projection, components) {
-        var _this = this;
-        if (components.length > 3) {
-            throw new RangeError('components length must be <= 3');
-        }
-        var accessors = [null, null, null];
-        var prefix = (projection === 'custom') ? 'linear' : projection;
-        var _loop_1 = function(i) {
-            if (components[i] == null) {
-                return "continue";
-            }
-            accessors[i] =
-                (function (index) {
-                    return _this.points[index].projections[prefix + '-' + components[i]];
-                });
-        };
-        for (var i = 0; i < components.length; ++i) {
-            var state_1 = _loop_1(i);
-            if (state_1 === "continue") continue;
-        }
-        return accessors;
-    };
     DataSet.prototype.projectionCanBeRendered = function (projection) {
         if (projection !== 'tsne') {
             return true;
@@ -19369,8 +19261,9 @@ var DataSet = (function () {
      */
     DataSet.prototype.getSubset = function (subset) {
         var _this = this;
-        var pointsSubset = subset && subset.length ?
-            subset.map(function (i) { return _this.points[i]; }) : this.points;
+        var pointsSubset = ((subset != null) && (subset.length > 0)) ?
+            subset.map(function (i) { return _this.points[i]; }) :
+            this.points;
         var points = pointsSubset.map(function (dp) {
             return {
                 metadata: dp.metadata,
@@ -19411,14 +19304,15 @@ var DataSet = (function () {
         if (this.projections.has('pca-0')) {
             return Promise.resolve(null);
         }
-        return util_1.runAsyncTask('Computing PCA...', function () {
+        return util.runAsyncTask('Computing PCA...', function () {
             // Approximate pca vectors by sampling the dimensions.
             var dim = _this.points[0].vector.length;
-            var vectors = _this.points.map(function (d) { return d.vector; });
+            var vectors = _this.shuffledDataIndices.map(function (i) { return _this.points[i].vector; });
             if (dim > exports.PCA_SAMPLE_DIM) {
                 vectors = vector.projectRandom(vectors, exports.PCA_SAMPLE_DIM);
             }
-            var sigma = numeric.div(numeric.dot(numeric.transpose(vectors), vectors), vectors.length);
+            var sampledVectors = vectors.slice(0, exports.PCA_SAMPLE_SIZE);
+            var sigma = numeric.div(numeric.dot(numeric.transpose(sampledVectors), sampledVectors), sampledVectors.length);
             var svd = numeric.svd(sigma);
             var variances = svd.S;
             var totalVariance = 0;
@@ -19431,25 +19325,23 @@ var DataSet = (function () {
             _this.fracVariancesExplained = variances;
             var U = svd.U;
             var pcaVectors = vectors.map(function (vector) {
-                var newV = [];
-                for (var d = 0; d < NUM_PCA_COMPONENTS; d++) {
+                var newV = new Float32Array(NUM_PCA_COMPONENTS);
+                for (var newDim = 0; newDim < NUM_PCA_COMPONENTS; newDim++) {
                     var dot = 0;
-                    for (var i = 0; i < vector.length; i++) {
-                        dot += vector[i] * U[i][d];
+                    for (var oldDim = 0; oldDim < vector.length; oldDim++) {
+                        dot += vector[oldDim] * U[oldDim][newDim];
                     }
-                    newV.push(dot);
+                    newV[newDim] = dot;
                 }
                 return newV;
             });
-            var _loop_2 = function(j) {
-                var label = 'pca-' + j;
+            for (var d = 0; d < NUM_PCA_COMPONENTS; d++) {
+                var label = 'pca-' + d;
                 _this.projections.add(label);
-                _this.points.forEach(function (d, i) {
-                    d.projections[label] = pcaVectors[i][j];
-                });
-            };
-            for (var j = 0; j < NUM_PCA_COMPONENTS; j++) {
-                _loop_2(j);
+                for (var i = 0; i < pcaVectors.length; i++) {
+                    var pointIndex = _this.shuffledDataIndices[i];
+                    _this.points[pointIndex].projections[label] = pcaVectors[i][d];
+                }
             }
         });
     };
@@ -19462,6 +19354,7 @@ var DataSet = (function () {
         this.tsne = new bh_tsne_1.TSNE(opt);
         this.tSNEShouldStop = false;
         this.tSNEIteration = 0;
+        var sampledIndices = this.shuffledDataIndices.slice(0, exports.TSNE_SAMPLE_SIZE);
         var step = function () {
             if (_this.tSNEShouldStop) {
                 stepCallback(null);
@@ -19470,7 +19363,7 @@ var DataSet = (function () {
             }
             _this.tsne.step();
             var result = _this.tsne.getSolution();
-            _this.sampledDataIndices.forEach(function (index, i) {
+            sampledIndices.forEach(function (index, i) {
                 var dataPoint = _this.points[index];
                 dataPoint.projections['tsne-0'] = result[i * tsneDim + 0];
                 dataPoint.projections['tsne-1'] = result[i * tsneDim + 1];
@@ -19489,7 +19382,7 @@ var DataSet = (function () {
             knnComputation = Promise.resolve(this.nearest);
         }
         else {
-            var sampledData = this.sampledDataIndices.map(function (i) { return _this.points[i]; });
+            var sampledData = sampledIndices.map(function (i) { return _this.points[i]; });
             this.nearestK = k;
             knnComputation = KNN_GPU_ENABLED ?
                 knn.findKNNGPUCosine(sampledData, k, (function (d) { return d.vector; })) :
@@ -19497,7 +19390,7 @@ var DataSet = (function () {
         }
         knnComputation.then(function (nearest) {
             _this.nearest = nearest;
-            util_1.runAsyncTask('Initializing T-SNE...', function () {
+            util.runAsyncTask('Initializing T-SNE...', function () {
                 _this.tsne.initDataDist(_this.nearest);
             }).then(step);
         });
@@ -19512,7 +19405,9 @@ var DataSet = (function () {
         metadata.pointsInfo.slice(0, this.points.length)
             .forEach(function (m, i) { return _this.points[i].metadata = m; });
     };
-    DataSet.prototype.stopTSNE = function () { this.tSNEShouldStop = true; };
+    DataSet.prototype.stopTSNE = function () {
+        this.tSNEShouldStop = true;
+    };
     /**
      * Finds the nearest neighbors of the query point using a
      * user-specified distance metric.
@@ -19528,7 +19423,7 @@ var DataSet = (function () {
      * Search the dataset based on a metadata field.
      */
     DataSet.prototype.query = function (query, inRegexMode, fieldName) {
-        var predicate = util_1.getSearchPredicate(query, inRegexMode, fieldName);
+        var predicate = util.getSearchPredicate(query, inRegexMode, fieldName);
         var matches = [];
         this.points.forEach(function (point, id) {
             if (predicate(point)) {
@@ -19540,6 +19435,16 @@ var DataSet = (function () {
     return DataSet;
 }());
 exports.DataSet = DataSet;
+var Projection = (function () {
+    function Projection(projectionType, projectionComponents, dimensionality, dataSet) {
+        this.projectionType = projectionType;
+        this.projectionComponents = projectionComponents;
+        this.dimensionality = dimensionality;
+        this.dataSet = dataSet;
+    }
+    return Projection;
+}());
+exports.Projection = Projection;
 /**
  * An interface that holds all the data for serializing the current state of
  * the world.
@@ -19565,6 +19470,21 @@ var State = (function () {
     return State;
 }());
 exports.State = State;
+function getProjectionComponents(projection, components) {
+    if (components.length > 3) {
+        throw new RangeError('components length must be <= 3');
+    }
+    var projectionComponents = [null, null, null];
+    var prefix = (projection === 'custom') ? 'linear' : projection;
+    for (var i = 0; i < components.length; ++i) {
+        if (components[i] == null) {
+            continue;
+        }
+        projectionComponents[i] = prefix + '-' + components[i];
+    }
+    return projectionComponents;
+}
+exports.getProjectionComponents = getProjectionComponents;
 function stateGetAccessorDimensions(state) {
     var dimensions;
     switch (state.selectedProjection) {
@@ -20102,13 +20022,14 @@ exports.setDomContainer = setDomContainer;
  * @param id The id of an existing message. If no id is provided, a unique id
  *     is assigned.
  * @param title The title of the notification.
- * @param showCloseButton If true, the dialog will have a close button.
+ * @param isErrorMsg If true, the message is error and the dialog will have a
+ *                   close button.
  * @return The id of the message.
  */
-function setModalMessage(msg, id, title, showCloseButton) {
+function setModalMessage(msg, id, title, isErrorMsg) {
     if (id === void 0) { id = null; }
-    if (title === void 0) { title = 'Loading...'; }
-    if (showCloseButton === void 0) { showCloseButton = false; }
+    if (title === void 0) { title = null; }
+    if (isErrorMsg === void 0) { isErrorMsg = false; }
     if (dom == null) {
         console.warn('Can\'t show modal message before the dom is initialized');
         return;
@@ -20118,19 +20039,33 @@ function setModalMessage(msg, id, title, showCloseButton) {
     }
     var dialog = dom.querySelector('#notification-dialog');
     dialog.querySelector('.close-button').style.display =
-        showCloseButton ? null : 'none';
-    dialog.querySelector('.progress-bar').style.display =
-        showCloseButton ? 'none' : null;
+        isErrorMsg ? null : 'none';
+    var spinner = dialog.querySelector('.progress');
+    spinner.style.display = isErrorMsg ? 'none' : null;
+    spinner.active = isErrorMsg ? null : true;
     dialog.querySelector('#notification-title').innerHTML = title;
     var msgsContainer = dialog.querySelector('#notify-msgs');
+    if (isErrorMsg) {
+        d3.select(msgsContainer).html('');
+    }
+    else {
+        d3.select(msgsContainer).selectAll('.error').remove();
+    }
     var divId = "notify-msg-" + id;
     var msgDiv = d3.select(dialog.querySelector('#' + divId));
     var exists = msgDiv.size() > 0;
     if (!exists) {
-        msgDiv = d3.select(msgsContainer).insert('div', ':first-child')
+        msgDiv = d3.select(msgsContainer)
+            .insert('div', ':first-child')
             .attr('class', 'notify-msg')
+            .classed('error', isErrorMsg)
             .attr('id', divId);
-        numActiveMessages++;
+        if (!isErrorMsg) {
+            numActiveMessages++;
+        }
+        else {
+            numActiveMessages = 0;
+        }
     }
     if (msg == null) {
         numActiveMessages--;
@@ -20195,6 +20130,11 @@ limitations under the License.
 ==============================================================================*/
 "use strict";
 var renderContext_1 = require('./renderContext');
+var scatterPlot_1 = require('./scatterPlot');
+var scatterPlotVisualizer3DLabels_1 = require('./scatterPlotVisualizer3DLabels');
+var scatterPlotVisualizerCanvasLabels_1 = require('./scatterPlotVisualizerCanvasLabels');
+var scatterPlotVisualizerSprites_1 = require('./scatterPlotVisualizerSprites');
+var scatterPlotVisualizerTraces_1 = require('./scatterPlotVisualizerTraces');
 var vector = require('./vector');
 var LABEL_FONT_SIZE = 10;
 var LABEL_SCALE_DEFAULT = 1.0;
@@ -20237,24 +20177,141 @@ var NN_COLOR_SCALE = d3.scale.linear()
  * to use the ScatterPlot to render the current projected data set.
  */
 var ProjectorScatterPlotAdapter = (function () {
-    function ProjectorScatterPlotAdapter() {
+    function ProjectorScatterPlotAdapter(scatterPlotContainer, projectorEventContext) {
+        var _this = this;
+        this.renderLabelsIn3D = false;
+        this.scatterPlot =
+            new scatterPlot_1.ScatterPlot(scatterPlotContainer, projectorEventContext);
+        this.scatterPlotContainer = scatterPlotContainer;
+        projectorEventContext.registerProjectionChangedListener(function (projection) {
+            _this.projection = projection;
+            _this.updateScatterPlotWithNewProjection(projection);
+        });
+        projectorEventContext.registerSelectionChangedListener(function (selectedPointIndices, neighbors) {
+            _this.selectedPointIndices = selectedPointIndices;
+            _this.neighborsOfFirstSelectedPoint = neighbors;
+            _this.updateScatterPlotPositions();
+            _this.updateScatterPlotAttributes();
+            _this.scatterPlot.render();
+        });
+        projectorEventContext.registerHoverListener(function (hoverPointIndex) {
+            _this.hoverPointIndex = hoverPointIndex;
+            _this.updateScatterPlotAttributes();
+            _this.scatterPlot.render();
+        });
+        projectorEventContext.registerDistanceMetricChangedListener(function (distanceMetric) {
+            _this.distanceMetric = distanceMetric;
+            _this.updateScatterPlotAttributes();
+            _this.scatterPlot.render();
+        });
+        this.createVisualizers(false);
     }
-    ProjectorScatterPlotAdapter.prototype.generatePointPositionArray = function (ds, pointAccessors) {
+    ProjectorScatterPlotAdapter.prototype.notifyProjectionPositionsUpdated = function () {
+        this.updateScatterPlotPositions();
+        this.scatterPlot.render();
+    };
+    ProjectorScatterPlotAdapter.prototype.setDataSet = function (dataSet) {
+        if (this.projection != null) {
+            // TODO(nicholsonc): setDataSet needs to go away, the projection is the
+            // atomic unit of update.
+            this.projection.dataSet = dataSet;
+        }
+        if (this.traceVisualizer != null) {
+            this.traceVisualizer.setDataSet(dataSet);
+        }
+        if (this.labels3DVisualizer != null) {
+            this.labels3DVisualizer.setLabelStrings(this.generate3DLabelsArray(dataSet, this.labelPointAccessor));
+        }
+        if (this.spriteVisualizer == null) {
+            return;
+        }
+        this.spriteVisualizer.clearSpriteAtlas();
+        if ((dataSet == null) || (dataSet.spriteAndMetadataInfo == null)) {
+            return;
+        }
+        var metadata = dataSet.spriteAndMetadataInfo;
+        if ((metadata.spriteImage == null) || (metadata.spriteMetadata == null)) {
+            return;
+        }
+        var n = dataSet.points.length;
+        var spriteIndices = new Float32Array(n);
+        for (var i = 0; i < n; ++i) {
+            spriteIndices[i] = dataSet.points[i].index;
+        }
+        this.spriteVisualizer.setSpriteAtlas(metadata.spriteImage, metadata.spriteMetadata.singleImageDim, spriteIndices);
+    };
+    ProjectorScatterPlotAdapter.prototype.set3DLabelMode = function (renderLabelsIn3D) {
+        this.renderLabelsIn3D = renderLabelsIn3D;
+        this.createVisualizers(renderLabelsIn3D);
+        this.updateScatterPlotAttributes();
+        this.scatterPlot.render();
+    };
+    ProjectorScatterPlotAdapter.prototype.setLegendPointColorer = function (legendPointColorer) {
+        this.legendPointColorer = legendPointColorer;
+    };
+    ProjectorScatterPlotAdapter.prototype.setLabelPointAccessor = function (labelPointAccessor) {
+        this.labelPointAccessor = labelPointAccessor;
+        if (this.labels3DVisualizer != null) {
+            var ds = (this.projection == null) ? null : this.projection.dataSet;
+            this.labels3DVisualizer.setLabelStrings(this.generate3DLabelsArray(ds, labelPointAccessor));
+        }
+    };
+    ProjectorScatterPlotAdapter.prototype.resize = function () {
+        this.scatterPlot.resize();
+    };
+    ProjectorScatterPlotAdapter.prototype.populateBookmarkFromUI = function (state) {
+        state.cameraDef = this.scatterPlot.getCameraDef();
+    };
+    ProjectorScatterPlotAdapter.prototype.restoreUIFromBookmark = function (state) {
+        this.scatterPlot.setCameraParametersForNextCameraCreation(state.cameraDef, false);
+    };
+    ProjectorScatterPlotAdapter.prototype.updateScatterPlotPositions = function () {
+        var ds = (this.projection == null) ? null : this.projection.dataSet;
+        var projectionComponents = (this.projection == null) ? null : this.projection.projectionComponents;
+        var newPositions = this.generatePointPositionArray(ds, projectionComponents);
+        this.scatterPlot.setPointPositions(newPositions);
+    };
+    ProjectorScatterPlotAdapter.prototype.updateScatterPlotAttributes = function () {
+        if (this.projection == null) {
+            return;
+        }
+        var dataSet = this.projection.dataSet;
+        var selectedSet = this.selectedPointIndices;
+        var hoverIndex = this.hoverPointIndex;
+        var neighbors = this.neighborsOfFirstSelectedPoint;
+        var pointColorer = this.legendPointColorer;
+        var pointColors = this.generatePointColorArray(dataSet, pointColorer, this.distanceMetric, selectedSet, neighbors, hoverIndex, this.renderLabelsIn3D, this.getSpriteImageMode());
+        var pointScaleFactors = this.generatePointScaleFactorArray(dataSet, selectedSet, neighbors, hoverIndex);
+        var labels = this.generateVisibleLabelRenderParams(dataSet, selectedSet, neighbors, hoverIndex);
+        var traceColors = this.generateLineSegmentColorMap(dataSet, pointColorer);
+        var traceOpacities = this.generateLineSegmentOpacityArray(dataSet, selectedSet);
+        var traceWidths = this.generateLineSegmentWidthArray(dataSet, selectedSet);
+        this.scatterPlot.setPointColors(pointColors);
+        this.scatterPlot.setPointScaleFactors(pointScaleFactors);
+        this.scatterPlot.setLabels(labels);
+        this.scatterPlot.setTraceColors(traceColors);
+        this.scatterPlot.setTraceOpacities(traceOpacities);
+        this.scatterPlot.setTraceWidths(traceWidths);
+    };
+    ProjectorScatterPlotAdapter.prototype.render = function () {
+        this.scatterPlot.render();
+    };
+    ProjectorScatterPlotAdapter.prototype.generatePointPositionArray = function (ds, projectionComponents) {
         if (ds == null) {
-            return new Float32Array(0);
+            return null;
         }
         var xScaler = d3.scale.linear();
         var yScaler = d3.scale.linear();
         var zScaler = null;
         {
             // Determine max and min of each axis of our data.
-            var xExtent = d3.extent(ds.points, function (p, i) { return pointAccessors[0](i); });
-            var yExtent = d3.extent(ds.points, function (p, i) { return pointAccessors[1](i); });
+            var xExtent = d3.extent(ds.points, function (p, i) { return ds.points[i].projections[projectionComponents[0]]; });
+            var yExtent = d3.extent(ds.points, function (p, i) { return ds.points[i].projections[projectionComponents[1]]; });
             var range = [-SCATTER_PLOT_CUBE_LENGTH / 2, SCATTER_PLOT_CUBE_LENGTH / 2];
             xScaler.domain(xExtent).range(range);
             yScaler.domain(yExtent).range(range);
-            if (pointAccessors[2] != null) {
-                var zExtent = d3.extent(ds.points, function (p, i) { return pointAccessors[2](i); });
+            if (projectionComponents[2] != null) {
+                var zExtent = d3.extent(ds.points, function (p, i) { return ds.points[i].projections[projectionComponents[2]]; });
                 zScaler = d3.scale.linear();
                 zScaler.domain(zExtent).range(range);
             }
@@ -20262,79 +20319,81 @@ var ProjectorScatterPlotAdapter = (function () {
         var positions = new Float32Array(ds.points.length * 3);
         var dst = 0;
         ds.points.forEach(function (d, i) {
-            positions[dst++] = xScaler(pointAccessors[0](i));
-            positions[dst++] = yScaler(pointAccessors[1](i));
+            positions[dst++] =
+                xScaler(ds.points[i].projections[projectionComponents[0]]);
+            positions[dst++] =
+                yScaler(ds.points[i].projections[projectionComponents[1]]);
             positions[dst++] = 0.0;
         });
         if (zScaler) {
             dst = 2;
             ds.points.forEach(function (d, i) {
-                positions[dst] = zScaler(pointAccessors[2](i));
+                positions[dst] =
+                    zScaler(ds.points[i].projections[projectionComponents[2]]);
                 dst += 3;
             });
         }
         return positions;
     };
-    ProjectorScatterPlotAdapter.prototype.packRgbIntoUint8Array = function (rgbArray, labelIndex, r, g, b) {
-        rgbArray[labelIndex * 3] = r;
-        rgbArray[labelIndex * 3 + 1] = g;
-        rgbArray[labelIndex * 3 + 2] = b;
-    };
-    ProjectorScatterPlotAdapter.prototype.styleRgbFromHexColor = function (hex) {
-        var c = new THREE.Color(hex);
-        return [(c.r * 255) | 0, (c.g * 255) | 0, (c.b * 255) | 0];
-    };
     ProjectorScatterPlotAdapter.prototype.generateVisibleLabelRenderParams = function (ds, selectedPointIndices, neighborsOfFirstPoint, hoverPointIndex) {
         if (ds == null) {
             return null;
         }
-        var n = selectedPointIndices.length + neighborsOfFirstPoint.length +
+        var selectedPointCount = (selectedPointIndices == null) ? 0 : selectedPointIndices.length;
+        var neighborCount = (neighborsOfFirstPoint == null) ? 0 : neighborsOfFirstPoint.length;
+        var n = selectedPointCount + neighborCount +
             ((hoverPointIndex != null) ? 1 : 0);
         var visibleLabels = new Uint32Array(n);
         var scale = new Float32Array(n);
         var opacityFlags = new Int8Array(n);
         var fillColors = new Uint8Array(n * 3);
         var strokeColors = new Uint8Array(n * 3);
+        var labelStrings = [];
         scale.fill(LABEL_SCALE_DEFAULT);
         opacityFlags.fill(1);
         var dst = 0;
         if (hoverPointIndex != null) {
+            labelStrings.push(this.getLabelText(ds, hoverPointIndex, this.labelPointAccessor));
             visibleLabels[dst] = hoverPointIndex;
             scale[dst] = LABEL_SCALE_LARGE;
             opacityFlags[dst] = 0;
-            var fillRgb = this.styleRgbFromHexColor(LABEL_FILL_COLOR_HOVER);
-            this.packRgbIntoUint8Array(fillColors, dst, fillRgb[0], fillRgb[1], fillRgb[2]);
-            var strokeRgb = this.styleRgbFromHexColor(LABEL_STROKE_COLOR_HOVER);
-            this.packRgbIntoUint8Array(strokeColors, dst, strokeRgb[0], strokeRgb[1], strokeRgb[1]);
+            var fillRgb = styleRgbFromHexColor(LABEL_FILL_COLOR_HOVER);
+            packRgbIntoUint8Array(fillColors, dst, fillRgb[0], fillRgb[1], fillRgb[2]);
+            var strokeRgb = styleRgbFromHexColor(LABEL_STROKE_COLOR_HOVER);
+            packRgbIntoUint8Array(strokeColors, dst, strokeRgb[0], strokeRgb[1], strokeRgb[1]);
             ++dst;
         }
         // Selected points
         {
-            var n_1 = selectedPointIndices.length;
-            var fillRgb = this.styleRgbFromHexColor(LABEL_FILL_COLOR_SELECTED);
-            var strokeRgb = this.styleRgbFromHexColor(LABEL_STROKE_COLOR_SELECTED);
+            var n_1 = selectedPointCount;
+            var fillRgb = styleRgbFromHexColor(LABEL_FILL_COLOR_SELECTED);
+            var strokeRgb = styleRgbFromHexColor(LABEL_STROKE_COLOR_SELECTED);
             for (var i = 0; i < n_1; ++i) {
-                visibleLabels[dst] = selectedPointIndices[i];
+                var labelIndex = selectedPointIndices[i];
+                labelStrings.push(this.getLabelText(ds, labelIndex, this.labelPointAccessor));
+                visibleLabels[dst] = labelIndex;
                 scale[dst] = LABEL_SCALE_LARGE;
                 opacityFlags[dst] = (n_1 === 1) ? 0 : 1;
-                this.packRgbIntoUint8Array(fillColors, dst, fillRgb[0], fillRgb[1], fillRgb[2]);
-                this.packRgbIntoUint8Array(strokeColors, dst, strokeRgb[0], strokeRgb[1], strokeRgb[2]);
+                packRgbIntoUint8Array(fillColors, dst, fillRgb[0], fillRgb[1], fillRgb[2]);
+                packRgbIntoUint8Array(strokeColors, dst, strokeRgb[0], strokeRgb[1], strokeRgb[2]);
                 ++dst;
             }
         }
         // Neighbors
         {
-            var n_2 = neighborsOfFirstPoint.length;
-            var fillRgb = this.styleRgbFromHexColor(LABEL_FILL_COLOR_NEIGHBOR);
-            var strokeRgb = this.styleRgbFromHexColor(LABEL_STROKE_COLOR_NEIGHBOR);
+            var n_2 = neighborCount;
+            var fillRgb = styleRgbFromHexColor(LABEL_FILL_COLOR_NEIGHBOR);
+            var strokeRgb = styleRgbFromHexColor(LABEL_STROKE_COLOR_NEIGHBOR);
             for (var i = 0; i < n_2; ++i) {
-                visibleLabels[dst] = neighborsOfFirstPoint[i].index;
-                this.packRgbIntoUint8Array(fillColors, dst, fillRgb[0], fillRgb[1], fillRgb[2]);
-                this.packRgbIntoUint8Array(strokeColors, dst, strokeRgb[0], strokeRgb[1], strokeRgb[2]);
+                var labelIndex = neighborsOfFirstPoint[i].index;
+                labelStrings.push(this.getLabelText(ds, labelIndex, this.labelPointAccessor));
+                visibleLabels[dst] = labelIndex;
+                packRgbIntoUint8Array(fillColors, dst, fillRgb[0], fillRgb[1], fillRgb[2]);
+                packRgbIntoUint8Array(strokeColors, dst, strokeRgb[0], strokeRgb[1], strokeRgb[2]);
                 ++dst;
             }
         }
-        return new renderContext_1.LabelRenderParams(visibleLabels, scale, opacityFlags, LABEL_FONT_SIZE, fillColors, strokeColors);
+        return new renderContext_1.LabelRenderParams(visibleLabels, labelStrings, scale, opacityFlags, LABEL_FONT_SIZE, fillColors, strokeColors);
     };
     ProjectorScatterPlotAdapter.prototype.generatePointScaleFactorArray = function (ds, selectedPointIndices, neighborsOfFirstPoint, hoverPointIndex) {
         if (ds == null) {
@@ -20342,9 +20401,11 @@ var ProjectorScatterPlotAdapter = (function () {
         }
         var scale = new Float32Array(ds.points.length);
         scale.fill(POINT_SCALE_DEFAULT);
+        var selectedPointCount = (selectedPointIndices == null) ? 0 : selectedPointIndices.length;
+        var neighborCount = (neighborsOfFirstPoint == null) ? 0 : neighborsOfFirstPoint.length;
         // Scale up all selected points.
         {
-            var n = selectedPointIndices.length;
+            var n = selectedPointCount;
             for (var i = 0; i < n; ++i) {
                 var p = selectedPointIndices[i];
                 scale[p] = POINT_SCALE_SELECTED;
@@ -20352,7 +20413,7 @@ var ProjectorScatterPlotAdapter = (function () {
         }
         // Scale up the neighbor points.
         {
-            var n = neighborsOfFirstPoint.length;
+            var n = neighborCount;
             for (var i = 0; i < n; ++i) {
                 var p = neighborsOfFirstPoint[i].index;
                 scale[p] = POINT_SCALE_NEIGHBOR;
@@ -20375,8 +20436,8 @@ var ProjectorScatterPlotAdapter = (function () {
             var colorIndex = 0;
             if (legendPointColorer) {
                 for (var j = 0; j < dataTrace.pointIndices.length - 1; j++) {
-                    var c1 = new THREE.Color(legendPointColorer(dataTrace.pointIndices[j]));
-                    var c2 = new THREE.Color(legendPointColorer(dataTrace.pointIndices[j + 1]));
+                    var c1 = new THREE.Color(legendPointColorer(ds, dataTrace.pointIndices[j]));
+                    var c2 = new THREE.Color(legendPointColorer(ds, dataTrace.pointIndices[j + 1]));
                     colors[colorIndex++] = c1.r;
                     colors[colorIndex++] = c1.g;
                     colors[colorIndex++] = c1.b;
@@ -20387,8 +20448,8 @@ var ProjectorScatterPlotAdapter = (function () {
             }
             else {
                 for (var j = 0; j < dataTrace.pointIndices.length - 1; j++) {
-                    var c1 = this.getDefaultPointInTraceColor(j, dataTrace.pointIndices.length);
-                    var c2 = this.getDefaultPointInTraceColor(j + 1, dataTrace.pointIndices.length);
+                    var c1 = getDefaultPointInTraceColor(j, dataTrace.pointIndices.length);
+                    var c2 = getDefaultPointInTraceColor(j + 1, dataTrace.pointIndices.length);
                     colors[colorIndex++] = c1.r;
                     colors[colorIndex++] = c1.g;
                     colors[colorIndex++] = c1.b;
@@ -20406,7 +20467,8 @@ var ProjectorScatterPlotAdapter = (function () {
             return new Float32Array(0);
         }
         var opacities = new Float32Array(ds.traces.length);
-        if (selectedPoints.length > 0) {
+        var selectedPointCount = (selectedPoints == null) ? 0 : selectedPoints.length;
+        if (selectedPointCount > 0) {
             opacities.fill(TRACE_DESELECTED_OPACITY);
             var i = ds.points[selectedPoints[0]].traceIndex;
             opacities[i] = TRACE_SELECTED_OPACITY;
@@ -20422,22 +20484,19 @@ var ProjectorScatterPlotAdapter = (function () {
         }
         var widths = new Float32Array(ds.traces.length);
         widths.fill(TRACE_DEFAULT_LINEWIDTH);
-        if (selectedPoints.length > 0) {
+        var selectedPointCount = (selectedPoints == null) ? 0 : selectedPoints.length;
+        if (selectedPointCount > 0) {
             var i = ds.points[selectedPoints[0]].traceIndex;
             widths[i] = TRACE_SELECTED_LINEWIDTH;
         }
         return widths;
     };
-    ProjectorScatterPlotAdapter.prototype.getDefaultPointInTraceColor = function (index, totalPoints) {
-        var hue = TRACE_START_HUE +
-            (TRACE_END_HUE - TRACE_START_HUE) * index / totalPoints;
-        var rgb = d3.hsl(hue, TRACE_SATURATION, TRACE_LIGHTNESS).rgb();
-        return new THREE.Color(rgb.r / 255, rgb.g / 255, rgb.b / 255);
-    };
     ProjectorScatterPlotAdapter.prototype.generatePointColorArray = function (ds, legendPointColorer, distFunc, selectedPointIndices, neighborsOfFirstPoint, hoverPointIndex, label3dMode, spriteImageMode) {
         if (ds == null) {
             return new Float32Array(0);
         }
+        var selectedPointCount = (selectedPointIndices == null) ? 0 : selectedPointIndices.length;
+        var neighborCount = (neighborsOfFirstPoint == null) ? 0 : neighborsOfFirstPoint.length;
         var colors = new Float32Array(ds.points.length * 3);
         var unselectedColor = POINT_COLOR_UNSELECTED;
         var noSelectionColor = POINT_COLOR_NO_SELECTION;
@@ -20453,7 +20512,7 @@ var ProjectorScatterPlotAdapter = (function () {
         {
             var n = ds.points.length;
             var dst = 0;
-            if (selectedPointIndices.length > 0) {
+            if (selectedPointCount > 0) {
                 var c = new THREE.Color(unselectedColor);
                 for (var i = 0; i < n; ++i) {
                     colors[dst++] = c.r;
@@ -20464,7 +20523,7 @@ var ProjectorScatterPlotAdapter = (function () {
             else {
                 if (legendPointColorer != null) {
                     for (var i = 0; i < n; ++i) {
-                        var c = new THREE.Color(legendPointColorer(i));
+                        var c = new THREE.Color(legendPointColorer(ds, i));
                         colors[dst++] = c.r;
                         colors[dst++] = c.g;
                         colors[dst++] = c.b;
@@ -20482,7 +20541,7 @@ var ProjectorScatterPlotAdapter = (function () {
         }
         // Color the selected points.
         {
-            var n = selectedPointIndices.length;
+            var n = selectedPointCount;
             var c = new THREE.Color(POINT_COLOR_SELECTED);
             for (var i = 0; i < n; ++i) {
                 var dst = selectedPointIndices[i] * 3;
@@ -20493,7 +20552,7 @@ var ProjectorScatterPlotAdapter = (function () {
         }
         // Color the neighbors.
         {
-            var n = neighborsOfFirstPoint.length;
+            var n = neighborCount;
             var minDist = n > 0 ? neighborsOfFirstPoint[0].dist : 0;
             for (var i = 0; i < n; ++i) {
                 var c = new THREE.Color(dist2color(distFunc, neighborsOfFirstPoint[i].dist, minDist));
@@ -20513,9 +20572,92 @@ var ProjectorScatterPlotAdapter = (function () {
         }
         return colors;
     };
+    ProjectorScatterPlotAdapter.prototype.generate3DLabelsArray = function (ds, accessor) {
+        if ((ds == null) || (accessor == null)) {
+            return null;
+        }
+        var labels = [];
+        var n = ds.points.length;
+        for (var i = 0; i < n; ++i) {
+            labels.push(this.getLabelText(ds, i, accessor));
+        }
+        return labels;
+    };
+    ProjectorScatterPlotAdapter.prototype.getLabelText = function (ds, i, accessor) {
+        return ds.points[i].metadata[accessor].toString();
+    };
+    ProjectorScatterPlotAdapter.prototype.updateScatterPlotWithNewProjection = function (projection) {
+        if (projection == null) {
+            this.createVisualizers(this.renderLabelsIn3D);
+            this.scatterPlot.render();
+            return;
+        }
+        this.setDataSet(projection.dataSet);
+        this.scatterPlot.setDimensions(projection.dimensionality);
+        if (projection.dataSet.projectionCanBeRendered(projection.projectionType)) {
+            this.updateScatterPlotAttributes();
+            this.notifyProjectionPositionsUpdated();
+        }
+        this.scatterPlot.setCameraParametersForNextCameraCreation(null, false);
+    };
+    ProjectorScatterPlotAdapter.prototype.createVisualizers = function (inLabels3DMode) {
+        var ds = (this.projection == null) ? null : this.projection.dataSet;
+        var scatterPlot = this.scatterPlot;
+        scatterPlot.removeAllVisualizers();
+        this.labels3DVisualizer = null;
+        this.canvasLabelsVisualizer = null;
+        this.spriteVisualizer = null;
+        this.traceVisualizer = null;
+        if (inLabels3DMode) {
+            this.labels3DVisualizer = new scatterPlotVisualizer3DLabels_1.ScatterPlotVisualizer3DLabels();
+            this.labels3DVisualizer.setLabelStrings(this.generate3DLabelsArray(ds, this.labelPointAccessor));
+        }
+        else {
+            this.spriteVisualizer = new scatterPlotVisualizerSprites_1.ScatterPlotVisualizerSprites();
+            scatterPlot.addVisualizer(this.spriteVisualizer);
+            this.canvasLabelsVisualizer =
+                new scatterPlotVisualizerCanvasLabels_1.ScatterPlotVisualizerCanvasLabels(this.scatterPlotContainer);
+        }
+        this.traceVisualizer = new scatterPlotVisualizerTraces_1.ScatterPlotVisualizerTraces();
+        this.setDataSet(ds);
+        if (this.spriteVisualizer) {
+            scatterPlot.addVisualizer(this.spriteVisualizer);
+        }
+        if (this.labels3DVisualizer) {
+            scatterPlot.addVisualizer(this.labels3DVisualizer);
+        }
+        if (this.canvasLabelsVisualizer) {
+            scatterPlot.addVisualizer(this.canvasLabelsVisualizer);
+        }
+        scatterPlot.addVisualizer(this.traceVisualizer);
+    };
+    ProjectorScatterPlotAdapter.prototype.getSpriteImageMode = function () {
+        if (this.projection == null) {
+            return false;
+        }
+        var ds = this.projection.dataSet;
+        if ((ds == null) || (ds.spriteAndMetadataInfo == null)) {
+            return false;
+        }
+        return ds.spriteAndMetadataInfo.spriteImage != null;
+    };
     return ProjectorScatterPlotAdapter;
 }());
 exports.ProjectorScatterPlotAdapter = ProjectorScatterPlotAdapter;
+function packRgbIntoUint8Array(rgbArray, labelIndex, r, g, b) {
+    rgbArray[labelIndex * 3] = r;
+    rgbArray[labelIndex * 3 + 1] = g;
+    rgbArray[labelIndex * 3 + 2] = b;
+}
+function styleRgbFromHexColor(hex) {
+    var c = new THREE.Color(hex);
+    return [(c.r * 255) | 0, (c.g * 255) | 0, (c.b * 255) | 0];
+}
+function getDefaultPointInTraceColor(index, totalPoints) {
+    var hue = TRACE_START_HUE + (TRACE_END_HUE - TRACE_START_HUE) * index / totalPoints;
+    var rgb = d3.hsl(hue, TRACE_SATURATION, TRACE_LIGHTNESS).rgb();
+    return new THREE.Color(rgb.r / 255, rgb.g / 255, rgb.b / 255);
+}
 /**
  * Normalizes the distance so it can be visually encoded with color.
  * The normalization depends on the distance metric (cosine vs euclidean).
@@ -20530,7 +20672,7 @@ function dist2color(distFunc, d, minDist) {
 }
 exports.dist2color = dist2color;
 
-},{"./renderContext":15,"./vector":25}],15:[function(require,module,exports){
+},{"./renderContext":15,"./scatterPlot":16,"./scatterPlotVisualizer3DLabels":19,"./scatterPlotVisualizerCanvasLabels":20,"./scatterPlotVisualizerSprites":21,"./scatterPlotVisualizerTraces":22,"./vector":25}],15:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -20551,8 +20693,9 @@ limitations under the License.
  * rendered next to them.
  */
 var LabelRenderParams = (function () {
-    function LabelRenderParams(pointIndices, scaleFactors, useSceneOpacityFlags, defaultFontSize, fillColors, strokeColors) {
+    function LabelRenderParams(pointIndices, labelStrings, scaleFactors, useSceneOpacityFlags, defaultFontSize, fillColors, strokeColors) {
         this.pointIndices = pointIndices;
+        this.labelStrings = labelStrings;
         this.scaleFactors = scaleFactors;
         this.useSceneOpacityFlags = useSceneOpacityFlags;
         this.defaultFontSize = defaultFontSize;
@@ -20577,7 +20720,7 @@ var CameraType = exports.CameraType;
  * only when they change.
  */
 var RenderContext = (function () {
-    function RenderContext(camera, cameraType, cameraTarget, screenWidth, screenHeight, nearestCameraSpacePointZ, farthestCameraSpacePointZ, backgroundColor, pointColors, pointScaleFactors, labelAccessor, labels, traceColors, traceOpacities, traceWidths) {
+    function RenderContext(camera, cameraType, cameraTarget, screenWidth, screenHeight, nearestCameraSpacePointZ, farthestCameraSpacePointZ, backgroundColor, pointColors, pointScaleFactors, labels, traceColors, traceOpacities, traceWidths) {
         this.camera = camera;
         this.cameraType = cameraType;
         this.cameraTarget = cameraTarget;
@@ -20588,7 +20731,6 @@ var RenderContext = (function () {
         this.backgroundColor = backgroundColor;
         this.pointColors = pointColors;
         this.pointScaleFactors = pointScaleFactors;
-        this.labelAccessor = labelAccessor;
         this.labels = labels;
         this.traceColors = traceColors;
         this.traceOpacities = traceOpacities;
@@ -20640,11 +20782,11 @@ var START_CAMERA_TARGET_2D = new THREE.Vector3(0, 0, 0);
 var ORBIT_MOUSE_ROTATION_SPEED = 1;
 var ORBIT_ANIMATION_ROTATION_CYCLE_IN_SECONDS = 7;
 /** Supported modes of interaction. */
-(function (Mode) {
-    Mode[Mode["SELECT"] = 0] = "SELECT";
-    Mode[Mode["HOVER"] = 1] = "HOVER";
-})(exports.Mode || (exports.Mode = {}));
-var Mode = exports.Mode;
+(function (MouseMode) {
+    MouseMode[MouseMode["AREA_SELECT"] = 0] = "AREA_SELECT";
+    MouseMode[MouseMode["CAMERA_AND_CLICK_SELECT"] = 1] = "CAMERA_AND_CLICK_SELECT";
+})(exports.MouseMode || (exports.MouseMode = {}));
+var MouseMode = exports.MouseMode;
 /** Defines a camera, suitable for serialization. */
 var CameraDef = (function () {
     function CameraDef() {
@@ -20660,7 +20802,7 @@ exports.CameraDef = CameraDef;
  * array of visualizers and dispatches application events to them.
  */
 var ScatterPlot = (function () {
-    function ScatterPlot(container, labelAccessor, projectorEventContext) {
+    function ScatterPlot(container, projectorEventContext) {
         var _this = this;
         this.visualizers = [];
         this.onCameraMoveListeners = [];
@@ -20674,10 +20816,8 @@ var ScatterPlot = (function () {
         this.containerNode = container.node();
         this.projectorEventContext = projectorEventContext;
         this.getLayoutValues();
-        this.labelAccessor = labelAccessor;
         this.scene = new THREE.Scene();
-        this.renderer =
-            new THREE.WebGLRenderer({ alpha: true, premultipliedAlpha: false });
+        this.renderer = new THREE.WebGLRenderer({ alpha: true, premultipliedAlpha: false, antialias: false });
         this.renderer.setClearColor(BACKGROUND_COLOR, 1);
         this.containerNode.appendChild(this.renderer.domElement);
         this.light = new THREE.PointLight(0xFFECBF, 1, 0);
@@ -20866,9 +21006,6 @@ var ScatterPlot = (function () {
      * hoverlisteners (usually called from embedding.ts)
      */
     ScatterPlot.prototype.onMouseMove = function (e) {
-        if (!this.dataSet) {
-            return;
-        }
         this.isDragSequence = this.mouseIsDown;
         // Depending if we're selecting or just navigating, handle accordingly.
         if (this.selecting && this.mouseIsDown) {
@@ -20901,7 +21038,7 @@ var ScatterPlot = (function () {
         }
         // If shift is released, stop selecting
         if (e.keyCode === SHIFT_KEY) {
-            this.selecting = (this.getMode() === Mode.SELECT);
+            this.selecting = (this.getMouseMode() === MouseMode.AREA_SELECT);
             if (!this.selecting) {
                 this.containerNode.style.cursor = 'default';
             }
@@ -20914,6 +21051,10 @@ var ScatterPlot = (function () {
      * @param boundingBox The bounding box to select from.
      */
     ScatterPlot.prototype.getPointIndicesFromPickingTexture = function (boundingBox) {
+        if (this.worldSpacePointPositions == null) {
+            return null;
+        }
+        var pointCount = this.worldSpacePointPositions.length / 3;
         var dpr = window.devicePixelRatio || 1;
         var x = Math.floor(boundingBox.x * dpr);
         var y = Math.floor(boundingBox.y * dpr);
@@ -20929,7 +21070,7 @@ var ScatterPlot = (function () {
         for (var i = 0; i < width * height; i++) {
             var id = (pixelBuffer[i * 4] << 16) | (pixelBuffer[i * 4 + 1] << 8) |
                 pixelBuffer[i * 4 + 2];
-            if (id !== 0xffffff && (id < this.dataSet.points.length)) {
+            if (id !== 0xffffff && (id < pointCount)) {
                 pointIndicesSelection[id] = 1;
             }
         }
@@ -20952,7 +21093,7 @@ var ScatterPlot = (function () {
         }
         var boundingBox = { x: e.offsetX, y: e.offsetY, width: 1, height: 1 };
         var pointIndices = this.getPointIndicesFromPickingTexture(boundingBox);
-        this.nearestPoint = pointIndices[0];
+        this.nearestPoint = (pointIndices != null) ? pointIndices[0] : null;
     };
     ScatterPlot.prototype.getLayoutValues = function () {
         this.width = this.containerNode.offsetWidth;
@@ -20962,7 +21103,7 @@ var ScatterPlot = (function () {
     ScatterPlot.prototype.sceneIs3D = function () {
         return this.dimensionality === 3;
     };
-    ScatterPlot.prototype.remove3dAxis = function () {
+    ScatterPlot.prototype.remove3dAxisFromScene = function () {
         var axes = this.scene.getObjectByName('axes');
         if (axes != null) {
             this.scene.remove(axes);
@@ -20982,7 +21123,7 @@ var ScatterPlot = (function () {
         this.dimensionality = dimensionality;
         var def = this.cameraDef || this.makeDefaultCameraDef(dimensionality);
         this.recreateCamera(def);
-        this.remove3dAxis();
+        this.remove3dAxisFromScene();
         if (dimensionality === 3) {
             this.add3dAxis();
         }
@@ -21054,13 +21195,8 @@ var ScatterPlot = (function () {
         if (this.scene) {
             visualizer.setScene(this.scene);
         }
-        if (this.labelAccessor) {
-            visualizer.onSetLabelAccessor(this.labelAccessor);
-        }
         visualizer.onResize(this.width, this.height);
-        if (this.dataSet) {
-            visualizer.onPointPositionsChanged(this.worldSpacePointPositions, this.dataSet);
-        }
+        visualizer.onPointPositionsChanged(this.worldSpacePointPositions);
         this.visualizers.push(visualizer);
     };
     /** Removes all visualizers attached to this scatter plot. */
@@ -21069,18 +21205,11 @@ var ScatterPlot = (function () {
         this.visualizers = [];
     };
     /** Update scatter plot with a new array of packed xyz point positions. */
-    ScatterPlot.prototype.setPointPositions = function (dataSet, worldSpacePointPositions) {
-        var _this = this;
-        this.dataSet = dataSet;
+    ScatterPlot.prototype.setPointPositions = function (worldSpacePointPositions) {
         this.worldSpacePointPositions = worldSpacePointPositions;
-        this.visualizers.forEach(function (v) {
-            v.onPointPositionsChanged(worldSpacePointPositions, _this.dataSet);
-        });
+        this.visualizers.forEach(function (v) { return v.onPointPositionsChanged(worldSpacePointPositions); });
     };
     ScatterPlot.prototype.render = function () {
-        if (this.dataSet == null) {
-            return;
-        }
         {
             var lightPos = this.camera.position.clone();
             lightPos.x += 1;
@@ -21090,35 +21219,30 @@ var ScatterPlot = (function () {
         var cameraType = (this.camera instanceof THREE.PerspectiveCamera) ?
             renderContext_1.CameraType.Perspective :
             renderContext_1.CameraType.Orthographic;
-        var cameraSpacePointExtents = util.getNearFarPoints(this.worldSpacePointPositions, this.camera.position, this.orbitCameraControls.target);
-        var rc = new renderContext_1.RenderContext(this.camera, cameraType, this.orbitCameraControls.target, this.width, this.height, cameraSpacePointExtents[0], cameraSpacePointExtents[1], this.backgroundColor, this.pointColors, this.pointScaleFactors, this.labelAccessor, this.labels, this.traceColors, this.traceOpacities, this.traceWidths);
+        var cameraSpacePointExtents = [0, 0];
+        if (this.worldSpacePointPositions != null) {
+            cameraSpacePointExtents = util.getNearFarPoints(this.worldSpacePointPositions, this.camera.position, this.orbitCameraControls.target);
+        }
+        var rc = new renderContext_1.RenderContext(this.camera, cameraType, this.orbitCameraControls.target, this.width, this.height, cameraSpacePointExtents[0], cameraSpacePointExtents[1], this.backgroundColor, this.pointColors, this.pointScaleFactors, this.labels, this.traceColors, this.traceOpacities, this.traceWidths);
         // Render first pass to picking target. This render fills pickingTexture
         // with colors that are actually point ids, so that sampling the texture at
         // the mouse's current x,y coordinates will reveal the data point that the
         // mouse is over.
-        this.visualizers.forEach(function (v) {
-            v.onPickingRender(rc);
-        });
+        this.visualizers.forEach(function (v) { return v.onPickingRender(rc); });
         {
-            var axes = this.remove3dAxis();
+            var axes = this.remove3dAxisFromScene();
             this.renderer.render(this.scene, this.camera, this.pickingTexture);
-            this.scene.add(axes);
+            if (axes != null) {
+                this.scene.add(axes);
+            }
         }
         // Render second pass to color buffer, to be displayed on the canvas.
-        this.visualizers.forEach(function (v) {
-            v.onRender(rc);
-        });
+        this.visualizers.forEach(function (v) { return v.onRender(rc); });
         this.renderer.render(this.scene, this.camera);
     };
-    ScatterPlot.prototype.setLabelAccessor = function (labelAccessor) {
-        this.labelAccessor = labelAccessor;
-        this.visualizers.forEach(function (v) {
-            v.onSetLabelAccessor(labelAccessor);
-        });
-    };
-    ScatterPlot.prototype.setMode = function (mode) {
-        this.mode = mode;
-        if (mode === Mode.SELECT) {
+    ScatterPlot.prototype.setMouseMode = function (mouseMode) {
+        this.mouseMode = mouseMode;
+        if (mouseMode === MouseMode.AREA_SELECT) {
             this.selecting = true;
             this.containerNode.style.cursor = 'crosshair';
         }
@@ -21149,8 +21273,8 @@ var ScatterPlot = (function () {
     ScatterPlot.prototype.setTraceWidths = function (widths) {
         this.traceWidths = widths;
     };
-    ScatterPlot.prototype.getMode = function () {
-        return this.mode;
+    ScatterPlot.prototype.getMouseMode = function () {
+        return this.mouseMode;
     };
     ScatterPlot.prototype.resetZoom = function () {
         this.recreateCamera(this.makeDefaultCameraDef(this.dimensionality));
@@ -21194,9 +21318,7 @@ var ScatterPlot = (function () {
             this.pickingTexture = new THREE.WebGLRenderTarget(renderCanvasSize.width * pixelRatio, renderCanvasSize.height * pixelRatio);
             this.pickingTexture.texture.minFilter = THREE.LinearFilter;
         }
-        this.visualizers.forEach(function (v) {
-            v.onResize(newW, newH);
-        });
+        this.visualizers.forEach(function (v) { return v.onResize(newW, newH); });
         if (render) {
             this.render();
         }
@@ -21372,11 +21494,11 @@ var ScatterPlotVisualizer3DLabels = (function () {
         var tex = util.createTexture(canvas);
         return { texture: tex, lengths: glyphLengths, offsets: glyphOffset };
     };
-    ScatterPlotVisualizer3DLabels.prototype.processLabelVerts = function () {
+    ScatterPlotVisualizer3DLabels.prototype.processLabelVerts = function (pointCount) {
         var numTotalLetters = 0;
         this.labelVertexMap = [];
-        for (var i = 0; i < this.dataSet.points.length; i++) {
-            var label = this.labelAccessor(i).toString();
+        for (var i = 0; i < pointCount; i++) {
+            var label = this.labelStrings[i];
             var vertsArray = [];
             for (var j = 0; j < label.length; j++) {
                 for (var k = 0; k < VERTICES_PER_GLYPH; k++) {
@@ -21388,9 +21510,8 @@ var ScatterPlotVisualizer3DLabels = (function () {
         }
         this.totalVertexCount = numTotalLetters * VERTICES_PER_GLYPH;
     };
-    ScatterPlotVisualizer3DLabels.prototype.createColorBuffers = function () {
+    ScatterPlotVisualizer3DLabels.prototype.createColorBuffers = function (pointCount) {
         var _this = this;
-        var numPoints = this.dataSet.points.length;
         this.pickingColors =
             new Float32Array(this.totalVertexCount * RGB_ELEMENTS_PER_ENTRY);
         this.renderColors =
@@ -21407,12 +21528,20 @@ var ScatterPlotVisualizer3DLabels = (function () {
             });
         };
         var this_1 = this;
-        for (var i = 0; i < numPoints; i++) {
+        for (var i = 0; i < pointCount; i++) {
             _loop_1(i);
         }
     };
-    ScatterPlotVisualizer3DLabels.prototype.createLabels = function (dataSet) {
+    ScatterPlotVisualizer3DLabels.prototype.createLabels = function () {
         var _this = this;
+        if ((this.labelStrings == null) ||
+            (this.worldSpacePointPositions == null)) {
+            return;
+        }
+        var pointCount = this.worldSpacePointPositions.length / XYZ_ELEMENTS_PER_ENTRY;
+        if (pointCount !== this.labelStrings.length) {
+            return;
+        }
         this.glyphTexture = this.createGlyphTexture();
         this.uniforms = {
             texture: { type: 't' },
@@ -21424,8 +21553,8 @@ var ScatterPlotVisualizer3DLabels = (function () {
             vertexShader: VERTEX_SHADER,
             fragmentShader: FRAGMENT_SHADER,
         });
-        this.processLabelVerts();
-        this.createColorBuffers();
+        this.processLabelVerts(pointCount);
+        this.createColorBuffers(pointCount);
         var positionArray = new Float32Array(this.totalVertexCount * XYZ_ELEMENTS_PER_ENTRY);
         this.positions =
             new THREE.BufferAttribute(positionArray, XYZ_ELEMENTS_PER_ENTRY);
@@ -21441,8 +21570,8 @@ var ScatterPlotVisualizer3DLabels = (function () {
         this.geometry.addAttribute('uv', uv);
         this.geometry.addAttribute('color', colors);
         var lettersSoFar = 0;
-        for (var i = 0; i < dataSet.points.length; i++) {
-            var label = this.labelAccessor(i).toString();
+        for (var i = 0; i < pointCount; i++) {
+            var label = this.labelStrings[i];
             var leftOffset = 0;
             // Determine length of word in pixels.
             for (var j = 0; j < label.length; j++) {
@@ -21483,7 +21612,6 @@ var ScatterPlotVisualizer3DLabels = (function () {
                 leftOffset += letterWidth;
             }
         }
-        var n = dataSet.points.length;
         var _loop_2 = function(i) {
             var p = util.vector3FromPackedArray(this_2.worldSpacePointPositions, i);
             this_2.labelVertexMap[i].forEach(function (j) {
@@ -21491,7 +21619,7 @@ var ScatterPlotVisualizer3DLabels = (function () {
             });
         };
         var this_2 = this;
-        for (var i = 0; i < n; i++) {
+        for (var i = 0; i < pointCount; i++) {
             _loop_2(i);
         }
         ;
@@ -21500,13 +21628,13 @@ var ScatterPlotVisualizer3DLabels = (function () {
         this.scene.add(this.labelsMesh);
     };
     ScatterPlotVisualizer3DLabels.prototype.colorLabels = function (pointColors) {
-        if (this.labelAccessor == null || this.geometry == null ||
-            this.dataSet == null || pointColors == null) {
+        if (this.labelStrings == null || this.geometry == null ||
+            pointColors == null) {
             return;
         }
         var colors = this.geometry.getAttribute('color');
         colors.array = this.renderColors;
-        var n = this.dataSet.points.length;
+        var n = pointColors.length / XYZ_ELEMENTS_PER_ENTRY;
         var src = 0;
         for (var i = 0; i < n; ++i) {
             var c = new THREE.Color(pointColors[src], pointColors[src + 1], pointColors[src + 2]);
@@ -21537,12 +21665,13 @@ var ScatterPlotVisualizer3DLabels = (function () {
             this.glyphTexture.texture = null;
         }
     };
-    ScatterPlotVisualizer3DLabels.prototype.onSetLabelAccessor = function (labelAccessor) {
-        this.labelAccessor = labelAccessor;
-        this.dispose();
-        this.onPointPositionsChanged(this.worldSpacePointPositions, this.dataSet);
-    };
     ScatterPlotVisualizer3DLabels.prototype.onPickingRender = function (rc) {
+        if (this.geometry == null) {
+            this.createLabels();
+        }
+        if (this.geometry == null) {
+            return;
+        }
         this.material.uniforms.texture.value = this.glyphTexture.texture;
         this.material.uniforms.picking.value = true;
         var colors = this.geometry.getAttribute('color');
@@ -21550,6 +21679,12 @@ var ScatterPlotVisualizer3DLabels = (function () {
         colors.needsUpdate = true;
     };
     ScatterPlotVisualizer3DLabels.prototype.onRender = function (rc) {
+        if (this.geometry == null) {
+            this.createLabels();
+        }
+        if (this.geometry == null) {
+            return;
+        }
         this.colorLabels(rc.pointColors);
         this.material.uniforms.texture.value = this.glyphTexture.texture;
         this.material.uniforms.picking.value = false;
@@ -21557,14 +21692,13 @@ var ScatterPlotVisualizer3DLabels = (function () {
         colors.array = this.renderColors;
         colors.needsUpdate = true;
     };
-    ScatterPlotVisualizer3DLabels.prototype.onPointPositionsChanged = function (newPositions, dataSet) {
+    ScatterPlotVisualizer3DLabels.prototype.onPointPositionsChanged = function (newPositions) {
         this.worldSpacePointPositions = newPositions;
-        this.dataSet = dataSet;
         this.dispose();
-        if ((this.dataSet != null) && (this.labelAccessor != null) &&
-            (this.worldSpacePointPositions != null)) {
-            this.createLabels(this.dataSet);
-        }
+    };
+    ScatterPlotVisualizer3DLabels.prototype.setLabelStrings = function (labelStrings) {
+        this.labelStrings = labelStrings;
+        this.dispose();
     };
     ScatterPlotVisualizer3DLabels.prototype.onResize = function (newWidth, newHeight) { };
     return ScatterPlotVisualizer3DLabels;
@@ -21615,6 +21749,9 @@ var ScatterPlotVisualizerCanvasLabels = (function () {
         if ((rc.labels == null) || (rc.labels.pointIndices.length === 0)) {
             return;
         }
+        if (this.worldSpacePointPositions == null) {
+            return;
+        }
         var lrc = rc.labels;
         var sceneIs3D = (rc.cameraType === renderContext_1.CameraType.Perspective);
         var labelHeight = parseInt(this.gc.font, 10);
@@ -21641,8 +21778,11 @@ var ScatterPlotVisualizerCanvasLabels = (function () {
         var xShift = 4;
         var n = Math.min(MAX_LABELS_ON_SCREEN, lrc.pointIndices.length);
         for (var i = 0; i < n; ++i) {
-            var index = lrc.pointIndices[i];
-            var point = util.vector3FromPackedArray(this.worldSpacePointPositions, index);
+            var point = void 0;
+            {
+                var pi = lrc.pointIndices[i];
+                point = util.vector3FromPackedArray(this.worldSpacePointPositions, pi);
+            }
             // discard points that are behind the camera
             camToPoint.copy(camPos).sub(point);
             if (camToTarget.dot(camToPoint) < 0) {
@@ -21660,7 +21800,7 @@ var ScatterPlotVisualizerCanvasLabels = (function () {
                 hiY: y + labelHeight / 2 + labelMargin
             };
             if (grid.insert(textBoundingBox, true)) {
-                var text = rc.labelAccessor(index);
+                var text = lrc.labelStrings[i];
                 var fontSize = lrc.defaultFontSize * lrc.scaleFactors[i] * dpr;
                 this.gc.font = fontSize + 'px roboto';
                 // Now, check with properly computed width.
@@ -21701,7 +21841,7 @@ var ScatterPlotVisualizerCanvasLabels = (function () {
         this.canvas = null;
         this.gc = null;
     };
-    ScatterPlotVisualizerCanvasLabels.prototype.onPointPositionsChanged = function (newPositions, dataSet) {
+    ScatterPlotVisualizerCanvasLabels.prototype.onPointPositionsChanged = function (newPositions) {
         this.worldSpacePointPositions = newPositions;
         this.removeAllLabels();
     };
@@ -21714,7 +21854,6 @@ var ScatterPlotVisualizerCanvasLabels = (function () {
     };
     ScatterPlotVisualizerCanvasLabels.prototype.setScene = function (scene) { };
     ScatterPlotVisualizerCanvasLabels.prototype.onPickingRender = function (renderContext) { };
-    ScatterPlotVisualizerCanvasLabels.prototype.onSetLabelAccessor = function (labelAccessor) { };
     return ScatterPlotVisualizerCanvasLabels;
 }());
 exports.ScatterPlotVisualizerCanvasLabels = ScatterPlotVisualizerCanvasLabels;
@@ -21744,9 +21883,9 @@ var IMAGE_SIZE = 30;
 var RGB_NUM_ELEMENTS = 3;
 var INDEX_NUM_ELEMENTS = 1;
 var XYZ_NUM_ELEMENTS = 3;
-var VERTEX_SHADER = "\n  // Index of the specific vertex (passed in as bufferAttribute), and the\n  // variable that will be used to pass it to the fragment shader.\n  attribute float vertexIndex;\n  attribute vec3 color;\n  attribute float scaleFactor;\n\n  varying vec2 xyIndex;\n  varying vec3 vColor;\n\n  uniform bool sizeAttenuation;\n  uniform float pointSize;\n  uniform float imageWidth;\n  uniform float imageHeight;\n\n  void main() {\n    // Pass index and color values to fragment shader.\n    vColor = color;\n    xyIndex = vec2(mod(vertexIndex, imageWidth),\n              floor(vertexIndex / imageWidth));\n\n    // Transform current vertex by modelViewMatrix (model world position and\n    // camera world position matrix).\n    vec4 cameraSpacePos = modelViewMatrix * vec4(position, 1.0);\n\n    // Project vertex in camera-space to screen coordinates using the camera's\n    // projection matrix.\n    gl_Position = projectionMatrix * cameraSpacePos;\n\n    // Create size attenuation (if we're in 3D mode) by making the size of\n    // each point inversly proportional to its distance to the camera.\n    float outputPointSize = pointSize;\n    if (sizeAttenuation) {\n      outputPointSize = -pointSize / cameraSpacePos.z;\n    }\n\n    gl_PointSize =\n      max(outputPointSize * scaleFactor, " + MIN_POINT_SIZE.toFixed(1) + ");\n  }";
+var VERTEX_SHADER = "\n  // Index of the specific vertex (passed in as bufferAttribute), and the\n  // variable that will be used to pass it to the fragment shader.\n  attribute float spriteIndex;\n  attribute vec3 color;\n  attribute float scaleFactor;\n\n  varying vec2 xyIndex;\n  varying vec3 vColor;\n\n  uniform bool sizeAttenuation;\n  uniform float pointSize;\n  uniform float spritesPerRow;\n  uniform float spritesPerColumn;\n\n  void main() {\n    // Pass index and color values to fragment shader.\n    vColor = color;\n    xyIndex = vec2(mod(spriteIndex, spritesPerRow),\n              floor(spriteIndex / spritesPerColumn));\n\n    // Transform current vertex by modelViewMatrix (model world position and\n    // camera world position matrix).\n    vec4 cameraSpacePos = modelViewMatrix * vec4(position, 1.0);\n\n    // Project vertex in camera-space to screen coordinates using the camera's\n    // projection matrix.\n    gl_Position = projectionMatrix * cameraSpacePos;\n\n    // Create size attenuation (if we're in 3D mode) by making the size of\n    // each point inversly proportional to its distance to the camera.\n    float outputPointSize = pointSize;\n    if (sizeAttenuation) {\n      outputPointSize = -pointSize / cameraSpacePos.z;\n    }\n\n    gl_PointSize =\n      max(outputPointSize * scaleFactor, " + MIN_POINT_SIZE.toFixed(1) + ");\n  }";
 var FRAGMENT_SHADER_POINT_TEST_CHUNK = "\n  bool point_in_unit_circle(vec2 spriteCoord) {\n    vec2 centerToP = spriteCoord - vec2(0.5, 0.5);\n    return dot(centerToP, centerToP) < (0.5 * 0.5);\n  }\n\n  bool point_in_unit_equilateral_triangle(vec2 spriteCoord) {\n    vec3 v0 = vec3(0, 1, 0);\n    vec3 v1 = vec3(0.5, 0, 0);\n    vec3 v2 = vec3(1, 1, 0);\n    vec3 p = vec3(spriteCoord, 0);\n    float p_in_v0_v1 = cross(v1 - v0, p - v0).z;\n    float p_in_v1_v2 = cross(v2 - v1, p - v1).z;\n    return (p_in_v0_v1 > 0.0) && (p_in_v1_v2 > 0.0);\n  }\n\n  bool point_in_unit_square(vec2 spriteCoord) {\n    return true;\n  }\n";
-var FRAGMENT_SHADER = "\n  varying vec2 xyIndex;\n  varying vec3 vColor;\n\n  uniform sampler2D texture;\n  uniform float imageWidth;\n  uniform float imageHeight;\n  uniform bool isImage;\n\n  " + THREE.ShaderChunk['common'] + "\n  " + THREE.ShaderChunk['fog_pars_fragment'] + "\n  " + FRAGMENT_SHADER_POINT_TEST_CHUNK + "\n\n  void main() {\n    if (isImage) {\n      // Coordinates of the vertex within the entire sprite image.\n      vec2 coords = (gl_PointCoord + xyIndex) / vec2(imageWidth, imageHeight);\n      gl_FragColor = vec4(vColor, 1.0) * texture2D(texture, coords);\n    } else {\n      bool inside = point_in_unit_circle(gl_PointCoord);\n      if (!inside) {\n        discard;\n      }\n      gl_FragColor = vec4(vColor, 1);\n    }\n    " + THREE.ShaderChunk['fog_fragment'] + "\n  }";
+var FRAGMENT_SHADER = "\n  varying vec2 xyIndex;\n  varying vec3 vColor;\n\n  uniform sampler2D texture;\n  uniform float spritesPerRow;\n  uniform float spritesPerColumn;\n  uniform bool isImage;\n\n  " + THREE.ShaderChunk['common'] + "\n  " + THREE.ShaderChunk['fog_pars_fragment'] + "\n  " + FRAGMENT_SHADER_POINT_TEST_CHUNK + "\n\n  void main() {\n    if (isImage) {\n      // Coordinates of the vertex within the entire sprite image.\n      vec2 coords =\n        (gl_PointCoord + xyIndex) / vec2(spritesPerRow, spritesPerColumn);\n      gl_FragColor = vec4(vColor, 1.0) * texture2D(texture, coords);\n    } else {\n      bool inside = point_in_unit_circle(gl_PointCoord);\n      if (!inside) {\n        discard;\n      }\n      gl_FragColor = vec4(vColor, 1);\n    }\n    " + THREE.ShaderChunk['fog_fragment'] + "\n  }";
 var FRAGMENT_SHADER_PICKING = "\n  varying vec2 xyIndex;\n  varying vec3 vColor;\n  uniform bool isImage;\n\n  " + FRAGMENT_SHADER_POINT_TEST_CHUNK + "\n\n  void main() {\n    xyIndex; // Silence 'unused variable' warning.\n    if (isImage) {\n      gl_FragColor = vec4(vColor, 1);\n    } else {\n      bool inside = point_in_unit_circle(gl_PointCoord);\n      if (!inside) {\n        discard;\n      }\n      gl_FragColor = vec4(vColor, 1);\n    }\n  }";
 /**
  * Uses GL point sprites to render the dataset.
@@ -21754,40 +21893,39 @@ var FRAGMENT_SHADER_PICKING = "\n  varying vec2 xyIndex;\n  varying vec3 vColor;
 var ScatterPlotVisualizerSprites = (function () {
     function ScatterPlotVisualizerSprites() {
         this.texture = null;
+        this.standinTextureForPoints =
+            util.createTexture(document.createElement('canvas'));
+        this.renderMaterial = this.createRenderMaterial(false);
+        this.pickingMaterial = this.createPickingMaterial(false);
     }
-    /**
-     * Create points, set their locations and actually instantiate the
-     * geometry.
-     */
-    ScatterPlotVisualizerSprites.prototype.createPointSprites = function (scene, positions, dataSet) {
-        var geometry = this.createGeometry(positions.length / XYZ_NUM_ELEMENTS, dataSet);
-        var haveImage = (this.image != null);
-        this.fog = new THREE.Fog(0xFFFFFF); // unused value, gets overwritten.
-        {
-            var image = this.image || document.createElement('canvas');
-            this.texture = util.createTexture(image);
+    ScatterPlotVisualizerSprites.prototype.createTextureFromSpriteAtlas = function (spriteAtlas, spriteDimensions, spriteIndices) {
+        this.texture = util.createTexture(spriteAtlas);
+        this.spritesPerRow = spriteAtlas.width / spriteDimensions[0];
+        this.spritesPerColumn = spriteAtlas.height / spriteDimensions[1];
+        this.spriteIndexBufferAttribute =
+            new THREE.BufferAttribute(spriteIndices, INDEX_NUM_ELEMENTS);
+        if (this.points != null) {
+            this.points.geometry
+                .addAttribute('spriteIndex', this.spriteIndexBufferAttribute);
         }
-        var imageDim = [1, 1];
-        {
-            var spriteMetadata = dataSet.spriteAndMetadataInfo.spriteMetadata;
-            if (haveImage && spriteMetadata) {
-                imageDim[0] = this.image.width / spriteMetadata.singleImageDim[0];
-                imageDim[1] = this.image.height / spriteMetadata.singleImageDim[1];
-            }
-        }
-        var uniforms = {
+    };
+    ScatterPlotVisualizerSprites.prototype.createUniforms = function () {
+        return {
             texture: { type: 't' },
-            imageWidth: { type: 'f', value: imageDim[0] },
-            imageHeight: { type: 'f', value: imageDim[1] },
+            spritesPerRow: { type: 'f' },
+            spritesPerColumn: { type: 'f' },
             fogColor: { type: 'c' },
             fogNear: { type: 'f' },
             fogFar: { type: 'f' },
-            isImage: { type: 'bool', value: haveImage },
+            isImage: { type: 'bool' },
             sizeAttenuation: { type: 'bool' },
             pointSize: { type: 'f' }
         };
-        this.renderMaterial = new THREE.ShaderMaterial({
-            uniforms: THREE.UniformsUtils.clone(uniforms),
+    };
+    ScatterPlotVisualizerSprites.prototype.createRenderMaterial = function (haveImage) {
+        var uniforms = this.createUniforms();
+        return new THREE.ShaderMaterial({
+            uniforms: uniforms,
             vertexShader: VERTEX_SHADER,
             fragmentShader: FRAGMENT_SHADER,
             transparent: !haveImage,
@@ -21796,8 +21934,11 @@ var ScatterPlotVisualizerSprites = (function () {
             fog: true,
             blending: THREE.MultiplyBlending,
         });
-        this.pickingMaterial = new THREE.ShaderMaterial({
-            uniforms: THREE.UniformsUtils.clone(uniforms),
+    };
+    ScatterPlotVisualizerSprites.prototype.createPickingMaterial = function (haveImage) {
+        var uniforms = this.createUniforms();
+        return new THREE.ShaderMaterial({
+            uniforms: uniforms,
             vertexShader: VERTEX_SHADER,
             fragmentShader: FRAGMENT_SHADER_PICKING,
             transparent: true,
@@ -21806,15 +21947,30 @@ var ScatterPlotVisualizerSprites = (function () {
             fog: false,
             blending: THREE.NormalBlending,
         });
+    };
+    /**
+     * Create points, set their locations and actually instantiate the
+     * geometry.
+     */
+    ScatterPlotVisualizerSprites.prototype.createPointSprites = function (scene, positions) {
+        var pointCount = (positions != null) ? (positions.length / XYZ_NUM_ELEMENTS) : 0;
+        var geometry = this.createGeometry(pointCount);
+        this.fog = new THREE.Fog(0xFFFFFF); // unused value, gets overwritten.
         this.points = new THREE.Points(geometry, this.renderMaterial);
         this.points.frustumCulled = false;
+        if (this.spriteIndexBufferAttribute != null) {
+            this.points.geometry
+                .addAttribute('spriteIndex', this.spriteIndexBufferAttribute);
+        }
         scene.add(this.points);
     };
     ScatterPlotVisualizerSprites.prototype.calculatePointSize = function (sceneIs3D) {
-        if (this.image != null) {
+        if (this.texture != null) {
             return IMAGE_SIZE;
         }
-        var n = this.worldSpacePointPositions.length / XYZ_NUM_ELEMENTS;
+        var n = (this.worldSpacePointPositions != null) ?
+            (this.worldSpacePointPositions.length / XYZ_NUM_ELEMENTS) :
+            1;
         var SCALE = 200;
         var LOG_BASE = 8;
         var DIVISOR = 1.5;
@@ -21825,7 +21981,7 @@ var ScatterPlotVisualizerSprites = (function () {
     /**
      * Set up buffer attributes to be used for the points/images.
      */
-    ScatterPlotVisualizerSprites.prototype.createGeometry = function (pointCount, dataSet) {
+    ScatterPlotVisualizerSprites.prototype.createGeometry = function (pointCount) {
         var n = pointCount;
         // Fill pickingColors with each point's unique id as its color.
         this.pickingColors = new Float32Array(n * RGB_NUM_ELEMENTS);
@@ -21838,15 +21994,10 @@ var ScatterPlotVisualizerSprites = (function () {
                 this.pickingColors[dst++] = c.b;
             }
         }
-        var spriteIndexes = new THREE.BufferAttribute(new Float32Array(n), INDEX_NUM_ELEMENTS);
-        for (var i = 0; i < n; i++) {
-            spriteIndexes.setX(i, dataSet.points[i].index);
-        }
         var geometry = new THREE.BufferGeometry();
         geometry.addAttribute('position', new THREE.BufferAttribute(null, XYZ_NUM_ELEMENTS));
         geometry.addAttribute('color', new THREE.BufferAttribute(null, RGB_NUM_ELEMENTS));
         geometry.addAttribute('scaleFactor', new THREE.BufferAttribute(null, INDEX_NUM_ELEMENTS));
-        geometry.addAttribute('vertexIndex', spriteIndexes);
         return geometry;
     };
     ScatterPlotVisualizerSprites.prototype.setFogDistances = function (sceneIs3D, nearestPointZ, farthestPointZ) {
@@ -21865,45 +22016,65 @@ var ScatterPlotVisualizerSprites = (function () {
         }
     };
     ScatterPlotVisualizerSprites.prototype.dispose = function () {
-        this.scene.remove(this.points);
-        this.points.geometry.dispose();
-        if (this.renderMaterial.uniforms.texture.value) {
-            this.renderMaterial.uniforms.texture.value.dispose();
+        this.disposeGeometry();
+        this.disposeTextureAtlas();
+    };
+    ScatterPlotVisualizerSprites.prototype.disposeGeometry = function () {
+        if (this.points != null) {
+            this.scene.remove(this.points);
+            this.points.geometry.dispose();
+            this.points = null;
+            this.worldSpacePointPositions = null;
         }
-        this.points = null;
+    };
+    ScatterPlotVisualizerSprites.prototype.disposeTextureAtlas = function () {
+        if (this.texture != null) {
+            this.texture.dispose();
+        }
+        this.texture = null;
         this.renderMaterial = null;
         this.pickingMaterial = null;
-        this.worldSpacePointPositions = null;
-        this.image = null;
     };
     ScatterPlotVisualizerSprites.prototype.setScene = function (scene) {
         this.scene = scene;
     };
-    ScatterPlotVisualizerSprites.prototype.onPointPositionsChanged = function (newPositions, dataSet) {
+    ScatterPlotVisualizerSprites.prototype.setSpriteAtlas = function (spriteImage, spriteDimensions, spriteIndices) {
+        this.disposeTextureAtlas();
+        this.createTextureFromSpriteAtlas(spriteImage, spriteDimensions, spriteIndices);
+        this.renderMaterial = this.createRenderMaterial(true);
+        this.pickingMaterial = this.createPickingMaterial(true);
+    };
+    ScatterPlotVisualizerSprites.prototype.clearSpriteAtlas = function () {
+        this.disposeTextureAtlas();
+        this.renderMaterial = this.createRenderMaterial(false);
+        this.pickingMaterial = this.createPickingMaterial(false);
+    };
+    ScatterPlotVisualizerSprites.prototype.onPointPositionsChanged = function (newPositions) {
+        if ((newPositions == null) || (newPositions.length === 0)) {
+            this.dispose();
+            return;
+        }
         if (this.points != null) {
-            var notEnoughSpace = (this.pickingColors.length < newPositions.length);
-            var newImage = (this.image !== dataSet.spriteAndMetadataInfo.spriteImage);
-            if (notEnoughSpace || newImage) {
-                this.dispose();
+            if (this.worldSpacePointPositions.length !== newPositions.length) {
+                this.disposeGeometry();
             }
         }
-        this.image = dataSet.spriteAndMetadataInfo.spriteImage;
         this.worldSpacePointPositions = newPositions;
         if (this.points == null) {
-            this.createPointSprites(this.scene, newPositions, dataSet);
+            this.createPointSprites(this.scene, newPositions);
         }
-        if (newPositions) {
-            var positions = this.points.geometry
-                .getAttribute('position');
-            positions.array = newPositions;
-            positions.needsUpdate = true;
-        }
+        var positions = this.points.geometry
+            .getAttribute('position');
+        positions.array = newPositions;
+        positions.needsUpdate = true;
     };
     ScatterPlotVisualizerSprites.prototype.onPickingRender = function (rc) {
-        if (!this.points) {
+        if (this.points == null) {
             return;
         }
         var sceneIs3D = (rc.cameraType === renderContext_1.CameraType.Perspective);
+        this.pickingMaterial.uniforms.spritesPerRow.value = this.spritesPerRow;
+        this.pickingMaterial.uniforms.spritesPerRow.value = this.spritesPerColumn;
         this.pickingMaterial.uniforms.sizeAttenuation.value = sceneIs3D;
         this.pickingMaterial.uniforms.pointSize.value =
             this.calculatePointSize(sceneIs3D);
@@ -21928,7 +22099,11 @@ var ScatterPlotVisualizerSprites = (function () {
         this.renderMaterial.uniforms.fogColor.value = this.scene.fog.color;
         this.renderMaterial.uniforms.fogNear.value = this.fog.near;
         this.renderMaterial.uniforms.fogFar.value = this.fog.far;
-        this.renderMaterial.uniforms.texture.value = this.texture;
+        this.renderMaterial.uniforms.spritesPerRow.value = this.spritesPerRow;
+        this.renderMaterial.uniforms.spritesPerColumn.value = this.spritesPerColumn;
+        this.renderMaterial.uniforms.isImage.value = (this.texture != null);
+        this.renderMaterial.uniforms.texture.value =
+            (this.texture != null) ? this.texture : this.standinTextureForPoints;
         this.renderMaterial.uniforms.sizeAttenuation.value = sceneIs3D;
         this.renderMaterial.uniforms.pointSize.value =
             this.calculatePointSize(sceneIs3D);
@@ -21944,7 +22119,6 @@ var ScatterPlotVisualizerSprites = (function () {
         scaleFactors.needsUpdate = true;
     };
     ScatterPlotVisualizerSprites.prototype.onResize = function (newWidth, newHeight) { };
-    ScatterPlotVisualizerSprites.prototype.onSetLabelAccessor = function (labelAccessor) { };
     return ScatterPlotVisualizerSprites;
 }());
 exports.ScatterPlotVisualizerSprites = ScatterPlotVisualizerSprites;
@@ -22008,7 +22182,7 @@ var ScatterPlotVisualizerTraces = (function () {
         }
     };
     ScatterPlotVisualizerTraces.prototype.dispose = function () {
-        if (!this.traces) {
+        if (this.traces == null) {
             return;
         }
         for (var i = 0; i < this.traces.length; i++) {
@@ -22022,27 +22196,26 @@ var ScatterPlotVisualizerTraces = (function () {
     ScatterPlotVisualizerTraces.prototype.setScene = function (scene) {
         this.scene = scene;
     };
-    ScatterPlotVisualizerTraces.prototype.onPointPositionsChanged = function (newPositions, dataSet) {
+    ScatterPlotVisualizerTraces.prototype.setDataSet = function (dataSet) {
         this.dataSet = dataSet;
-        if (dataSet == null) {
+    };
+    ScatterPlotVisualizerTraces.prototype.onPointPositionsChanged = function (newPositions) {
+        if ((newPositions == null) || (this.traces != null)) {
+            this.dispose();
+        }
+        if ((newPositions == null) || (this.dataSet == null)) {
             return;
         }
-        if ((this.traces == null) ||
-            (this.traces.length !== dataSet.traces.length)) {
-            if (this.traces != null) {
-                this.dispose();
-            }
-            // Set up the position buffer arrays for each trace.
-            for (var i = 0; i < this.dataSet.traces.length; i++) {
-                var dataTrace = this.dataSet.traces[i];
-                var vertexCount = 2 * (dataTrace.pointIndices.length - 1);
-                var traces = new Float32Array(vertexCount * XYZ_NUM_ELEMENTS);
-                this.tracePositionBuffer[i] =
-                    new THREE.BufferAttribute(traces, XYZ_NUM_ELEMENTS);
-                var colors = new Float32Array(vertexCount * RGB_NUM_ELEMENTS);
-                this.traceColorBuffer[i] =
-                    new THREE.BufferAttribute(colors, RGB_NUM_ELEMENTS);
-            }
+        // Set up the position buffer arrays for each trace.
+        for (var i = 0; i < this.dataSet.traces.length; i++) {
+            var dataTrace = this.dataSet.traces[i];
+            var vertexCount = 2 * (dataTrace.pointIndices.length - 1);
+            var traces = new Float32Array(vertexCount * XYZ_NUM_ELEMENTS);
+            this.tracePositionBuffer[i] =
+                new THREE.BufferAttribute(traces, XYZ_NUM_ELEMENTS);
+            var colors = new Float32Array(vertexCount * RGB_NUM_ELEMENTS);
+            this.traceColorBuffer[i] =
+                new THREE.BufferAttribute(colors, RGB_NUM_ELEMENTS);
         }
         for (var i = 0; i < this.dataSet.traces.length; i++) {
             var dataTrace = this.dataSet.traces[i];
@@ -22076,7 +22249,6 @@ var ScatterPlotVisualizerTraces = (function () {
     };
     ScatterPlotVisualizerTraces.prototype.onPickingRender = function (renderContext) { };
     ScatterPlotVisualizerTraces.prototype.onResize = function (newWidth, newHeight) { };
-    ScatterPlotVisualizerTraces.prototype.onSetLabelAccessor = function (labelAccessor) { };
     return ScatterPlotVisualizerTraces;
 }());
 exports.ScatterPlotVisualizerTraces = ScatterPlotVisualizerTraces;
@@ -22410,6 +22582,34 @@ function getURLParams(url) {
     return queryParams;
 }
 exports.getURLParams = getURLParams;
+/** List of substrings that auto generated tensors have in their name. */
+var SUBSTR_GEN_TENSORS = ['/Adagrad'];
+/** Returns true if the tensor was automatically generated by TF API calls. */
+function tensorIsGenerated(tensorName) {
+    for (var i = 0; i < SUBSTR_GEN_TENSORS.length; i++) {
+        if (tensorName.indexOf(SUBSTR_GEN_TENSORS[i]) >= 0) {
+            return true;
+        }
+    }
+    return false;
+}
+exports.tensorIsGenerated = tensorIsGenerated;
+function xor(cond1, cond2) {
+    return (cond1 || cond2) && !(cond1 && cond2);
+}
+exports.xor = xor;
+/** Checks to see if the browser supports webgl. */
+function hasWebGLSupport() {
+    try {
+        var c = document.createElement('canvas');
+        var gl = c.getContext('webgl') || c.getContext('experimental-webgl');
+        return gl != null && typeof weblas !== 'undefined';
+    }
+    catch (e) {
+        return false;
+    }
+}
+exports.hasWebGLSupport = hasWebGLSupport;
 
 },{"./logging":12}],25:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
@@ -22713,23 +22913,28 @@ var BookmarkPanel = (function (_super) {
     };
     BookmarkPanel.prototype.setSelectedTensor = function (run, tensorInfo, dataProvider) {
         var _this = this;
+        // Clear any existing bookmarks.
+        this.addStates(null);
         if (tensorInfo && tensorInfo.bookmarksPath) {
-            this.loadAllStates([]);
             // Get any bookmarks that may come when the projector starts up.
             dataProvider.getBookmarks(run, tensorInfo.tensorName, function (bookmarks) {
-                _this.loadAllStates(bookmarks);
+                _this.addStates(bookmarks);
+                _this._expandMore();
             });
+        }
+        else {
+            this._expandLess();
         }
     };
     /** Handles a click on show bookmarks tray button. */
     BookmarkPanel.prototype._expandMore = function () {
-        this.$.panel.toggle();
+        this.$.panel.show();
         this.dom.select('#expand-more').style('display', 'none');
         this.dom.select('#expand-less').style('display', '');
     };
     /** Handles a click on hide bookmarks tray button. */
     BookmarkPanel.prototype._expandLess = function () {
-        this.$.panel.toggle();
+        this.$.panel.hide();
         this.dom.select('#expand-more').style('display', '');
         this.dom.select('#expand-less').style('display', 'none');
     };
@@ -22783,7 +22988,7 @@ var BookmarkPanel = (function (_super) {
                 var savedStates = JSON.parse(str);
                 // Verify the bookmarks match.
                 if (_this.savedStatesValid(savedStates)) {
-                    _this.loadAllStates(savedStates);
+                    _this.addStates(savedStates);
                     _this.loadSavedState(0);
                 }
                 else {
@@ -22794,40 +22999,46 @@ var BookmarkPanel = (function (_super) {
             fileReader.readAsText(file);
         });
     };
-    BookmarkPanel.prototype.loadAllStates = function (savedStates) {
-        for (var i = 0; i < savedStates.length; i++) {
-            savedStates[i].isSelected = false;
-            this.push('savedStates', savedStates[i]);
+    BookmarkPanel.prototype.addStates = function (savedStates) {
+        if (savedStates == null) {
+            this.savedStates = [];
+        }
+        else {
+            for (var i = 0; i < savedStates.length; i++) {
+                savedStates[i].isSelected = false;
+                this.push('savedStates', savedStates[i]);
+            }
         }
         this.updateHasStates();
     };
     /** Deselects any selected state selection. */
     BookmarkPanel.prototype.clearStateSelection = function () {
         for (var i = 0; i < this.savedStates.length; i++) {
-            if (this.savedStates[i].isSelected) {
-                this.savedStates[i].isSelected = false;
-                this.notifyPath('savedStates.' + i + '.isSelected', false, false);
-                return;
-            }
+            this.setSelectionState(i, false);
         }
     };
     /** Handles a radio button click on a saved state. */
     BookmarkPanel.prototype._radioButtonHandler = function (evt) {
-        this.loadSavedState(this.getParentDataIndex(evt));
+        var index = this.getParentDataIndex(evt);
+        this.loadSavedState(index);
+        this.setSelectionState(index, true);
     };
     BookmarkPanel.prototype.loadSavedState = function (index) {
         for (var i = 0; i < this.savedStates.length; i++) {
             if (this.savedStates[i].isSelected) {
-                this.savedStates[i].isSelected = false;
-                this.notifyPath('savedStates.' + i + '.isSelected', false, false);
+                this.setSelectionState(i, false);
             }
             else if (index === i) {
-                this.savedStates[i].isSelected = true;
-                this.notifyPath('savedStates.' + i + '.isSelected', true, false);
+                this.setSelectionState(i, true);
                 this.ignoreNextProjectionEvent = true;
                 this.projector.loadState(this.savedStates[i]);
             }
         }
+    };
+    BookmarkPanel.prototype.setSelectionState = function (stateIndex, selected) {
+        this.savedStates[stateIndex].isSelected = selected;
+        var path = 'savedStates.' + stateIndex + '.isSelected';
+        this.notifyPath(path, selected, false);
     };
     /**
      * Crawls up the DOM to find an ancestor with a data-index attribute. This is
@@ -22919,6 +23130,7 @@ var __extends = (this && this.__extends) || function (d, b) {
     d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
 };
 var data_provider_1 = require('./data-provider');
+var util = require('./util');
 // tslint:disable-next-line:no-unused-variable
 var vz_projector_util_1 = require('./vz-projector-util');
 exports.DataPanelPolymer = vz_projector_util_1.PolymerElement({
@@ -23044,6 +23256,7 @@ var DataPanel = (function (_super) {
     };
     DataPanel.prototype._selectedTensorChanged = function () {
         var _this = this;
+        this.projector.updateDataSet(null, null, null);
         if (this.selectedTensor == null) {
             return;
         }
@@ -23065,36 +23278,46 @@ var DataPanel = (function (_super) {
                 return shape.length === 2 && shape[0] > 1 && shape[1] > 1;
             })
                 .sort(function (a, b) {
-                var sizeA = _this.getEmbeddingInfoByName(a).tensorShape[0];
-                var sizeB = _this.getEmbeddingInfoByName(b).tensorShape[0];
-                if (sizeA === sizeB) {
-                    // If the same dimension, sort alphabetically by tensor
-                    // name.
-                    return a <= b ? -1 : 1;
+                var embA = _this.getEmbeddingInfoByName(a);
+                var embB = _this.getEmbeddingInfoByName(b);
+                // Prefer tensors with metadata.
+                if (util.xor(!!embA.metadataPath, !!embB.metadataPath)) {
+                    return embA.metadataPath ? -1 : 1;
                 }
-                // Sort by first tensor dimension.
-                return sizeB - sizeA;
+                // Prefer non-generated tensors.
+                var isGenA = util.tensorIsGenerated(a);
+                var isGenB = util.tensorIsGenerated(b);
+                if (util.xor(isGenA, isGenB)) {
+                    return isGenB ? -1 : 1;
+                }
+                // Prefer bigger tensors.
+                var sizeA = embA.tensorShape[0];
+                var sizeB = embB.tensorShape[0];
+                if (sizeA !== sizeB) {
+                    return sizeB - sizeA;
+                }
+                // Sort alphabetically by tensor name.
+                return a <= b ? -1 : 1;
             });
             _this.tensorNames = names.map(function (name) {
-                return {
-                    name: name,
-                    shape: _this.getEmbeddingInfoByName(name).tensorShape
-                };
+                return { name: name, shape: _this.getEmbeddingInfoByName(name).tensorShape };
             });
             var wordBreakablePath = _this.addWordBreaks(_this.projectorConfig.modelCheckpointPath);
             _this.dom.select('#checkpoint-file')
                 .html(wordBreakablePath)
                 .attr('title', _this.projectorConfig.modelCheckpointPath);
-            _this.dataProvider.getDefaultTensor(_this.selectedRun, function (defaultTensor) {
-                if (_this.selectedTensor === defaultTensor) {
-                    // Explicitly call the observer. Polymer won't call it if the previous
-                    // string matches the current string.
-                    _this._selectedTensorChanged();
-                }
-                else {
-                    _this.selectedTensor = defaultTensor;
-                }
-            });
+            // If in demo mode, let the order decide which tensor to load by default.
+            var defaultTensor = _this.projector.servingMode === 'demo' ?
+                _this.projectorConfig.embeddings[0].tensorName :
+                names[0];
+            if (_this.selectedTensor === defaultTensor) {
+                // Explicitly call the observer. Polymer won't call it if the previous
+                // string matches the current string.
+                _this._selectedTensorChanged();
+            }
+            else {
+                _this.selectedTensor = defaultTensor;
+            }
         });
     };
     DataPanel.prototype._selectedLabelOptionChanged = function () {
@@ -23172,7 +23395,9 @@ var DataPanel = (function (_super) {
             fileReader.readAsText(file);
         });
         var uploadButton = this.dom.select('#upload-tensors');
-        uploadButton.on('click', function () { fileInput.node().click(); });
+        uploadButton.on('click', function () {
+            fileInput.node().click();
+        });
         // Show and setup the upload metadata button.
         var fileMetadataInput = this.dom.select('#file-metadata');
         fileMetadataInput.on('change', function () {
@@ -23274,7 +23499,7 @@ var DataPanel = (function (_super) {
 exports.DataPanel = DataPanel;
 document.registerElement(DataPanel.prototype.is, DataPanel);
 
-},{"./data-provider":6,"./vz-projector-util":33}],28:[function(require,module,exports){
+},{"./data-provider":6,"./util":24,"./vz-projector-util":33}],28:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -23803,6 +24028,7 @@ var __extends = (this && this.__extends) || function (d, b) {
     function __() { this.constructor = d; }
     d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
 };
+var data = require('./data');
 var data_1 = require('./data');
 var vector = require('./vector');
 // tslint:disable-next-line:no-unused-variable
@@ -23989,14 +24215,17 @@ var ProjectionsPanel = (function (_super) {
         this.dataSet = dataSet;
         this.originalDataSet = originalDataSet;
         this.dim = dim;
-        var perplexity = Math.max(5, Math.ceil(Math.sqrt(dataSet.points.length) / 4));
+        var pointCount = (dataSet == null) ? 0 : dataSet.points.length;
+        var perplexity = Math.max(5, Math.ceil(Math.sqrt(pointCount) / 4));
         this.perplexitySlider.value = perplexity.toString();
         this.updateTSNEPerplexityFromSliderChange();
         this.clearCentroids();
         this.dom.select('#tsne-sampling')
-            .style('display', dataSet.points.length > data_1.SAMPLE_SIZE ? null : 'none');
+            .style('display', pointCount > data.TSNE_SAMPLE_SIZE ? null : 'none');
+        var wasSampled = (dataSet == null) ? false : (dataSet.dim[0] > data.PCA_SAMPLE_DIM ||
+            dataSet.dim[1] > data.PCA_SAMPLE_DIM);
         this.dom.select('#pca-sampling')
-            .style('display', dataSet.dim[1] > data_1.PCA_SAMPLE_DIM ? null : 'none');
+            .style('display', wasSampled ? null : 'none');
         this.showTab('pca');
     };
     ProjectionsPanel.prototype._pcaDimensionToggleObserver = function () {
@@ -24044,14 +24273,18 @@ var ProjectionsPanel = (function (_super) {
             return;
         }
         if (projection === 'pca') {
-            this.dataSet.stopTSNE();
+            if (this.dataSet != null) {
+                this.dataSet.stopTSNE();
+            }
             this.showPCA();
         }
         else if (projection === 'tsne') {
             this.showTSNE();
         }
         else if (projection === 'custom') {
-            this.dataSet.stopTSNE();
+            if (this.dataSet != null) {
+                this.dataSet.stopTSNE();
+            }
             this.computeAllCentroids();
             this.reprojectCustom();
         }
@@ -24061,13 +24294,15 @@ var ProjectionsPanel = (function (_super) {
         if (dataSet == null) {
             return;
         }
-        var accessors = dataSet.getPointAccessors('tsne', [0, 1, this.tSNEis3d ? 2 : null]);
-        this.projector.setProjection('tsne', this.tSNEis3d ? 3 : 2, accessors);
+        var accessors = data.getProjectionComponents('tsne', [0, 1, this.tSNEis3d ? 2 : null]);
+        var dimensionality = this.tSNEis3d ? 3 : 2;
+        var projection = new data_1.Projection('tsne', accessors, dimensionality, dataSet);
+        this.projector.setProjection(projection);
         if (!this.dataSet.hasTSNERun) {
             this.runTSNE();
         }
         else {
-            this.projector.notifyProjectionsUpdated();
+            this.projector.notifyProjectionPositionsUpdated();
         }
     };
     ProjectionsPanel.prototype.runTSNE = function () {
@@ -24077,7 +24312,7 @@ var ProjectionsPanel = (function (_super) {
         this.dataSet.projectTSNE(this.perplexity, this.learningRate, this.tSNEis3d ? 3 : 2, function (iteration) {
             if (iteration != null) {
                 _this.iterationLabel.text(iteration);
-                _this.projector.notifyProjectionsUpdated();
+                _this.projector.notifyProjectionPositionsUpdated();
             }
             else {
                 _this.runTsneButton.attr('disabled', null);
@@ -24108,8 +24343,10 @@ var ProjectionsPanel = (function (_super) {
         }
         this.dataSet.projectPCA().then(function () {
             // Polymer properties are 1-based.
-            var accessors = _this.dataSet.getPointAccessors('pca', [_this.pcaX, _this.pcaY, _this.pcaZ]);
-            _this.projector.setProjection('pca', _this.pcaIs3d ? 3 : 2, accessors);
+            var accessors = data.getProjectionComponents('pca', [_this.pcaX, _this.pcaY, _this.pcaZ]);
+            var dimensionality = _this.pcaIs3d ? 3 : 2;
+            var projection = new data_1.Projection('pca', accessors, dimensionality, _this.dataSet);
+            _this.projector.setProjection(projection);
             var numComponents = Math.min(NUM_PCA_COMPONENTS, _this.dataSet.dim[1]);
             _this.updateTotalVarianceMessage();
             _this.pcaComponents = d3.range(0, numComponents).map(function (i) {
@@ -24132,8 +24369,9 @@ var ProjectionsPanel = (function (_super) {
         this.dataSet.projectLinear(xDir, 'linear-x');
         var yDir = vector.sub(this.centroids.yUp, this.centroids.yDown);
         this.dataSet.projectLinear(yDir, 'linear-y');
-        var accessors = this.dataSet.getPointAccessors('custom', ['x', 'y']);
-        this.projector.setProjection('custom', 2, accessors);
+        var accessors = data.getProjectionComponents('custom', ['x', 'y']);
+        var projection = new data_1.Projection('custom', accessors, 2, this.dataSet);
+        this.projector.setProjection(projection);
     };
     ProjectionsPanel.prototype.clearCentroids = function () {
         this.centroids = { xLeft: null, xRight: null, yUp: null, yDown: null };
@@ -24207,11 +24445,14 @@ var ProjectionsPanel = (function (_super) {
         var r = this.originalDataSet.query(pattern, inRegexMode, this.customSelectedSearchByMetadataOption);
         return { centroid: vector.centroid(r, accessor), numMatches: r.length };
     };
-    ProjectionsPanel.prototype.getPcaSampledDim = function () {
-        return data_1.PCA_SAMPLE_DIM.toLocaleString();
+    ProjectionsPanel.prototype.getPcaSampledDimText = function () {
+        return data.PCA_SAMPLE_DIM.toLocaleString();
     };
-    ProjectionsPanel.prototype.getTsneSampleSize = function () {
-        return data_1.SAMPLE_SIZE.toLocaleString();
+    ProjectionsPanel.prototype.getPcaSampleSizeText = function () {
+        return data.PCA_SAMPLE_SIZE.toLocaleString();
+    };
+    ProjectionsPanel.prototype.getTsneSampleSizeText = function () {
+        return data.TSNE_SAMPLE_SIZE.toLocaleString();
     };
     return ProjectionsPanel;
 }(exports.ProjectionsPanelPolymer));
@@ -24261,6 +24502,7 @@ var __extends = (this && this.__extends) || function (d, b) {
     d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
 };
 var analyticsLogger_1 = require('./analyticsLogger');
+var data = require('./data');
 var data_1 = require('./data');
 var data_provider_demo_1 = require('./data-provider-demo');
 var data_provider_proto_1 = require('./data-provider-proto');
@@ -24268,10 +24510,6 @@ var data_provider_server_1 = require('./data-provider-server');
 var logging = require('./logging');
 var projectorScatterPlotAdapter_1 = require('./projectorScatterPlotAdapter');
 var scatterPlot_1 = require('./scatterPlot');
-var scatterPlotVisualizer3DLabels_1 = require('./scatterPlotVisualizer3DLabels');
-var scatterPlotVisualizerCanvasLabels_1 = require('./scatterPlotVisualizerCanvasLabels');
-var scatterPlotVisualizerSprites_1 = require('./scatterPlotVisualizerSprites');
-var scatterPlotVisualizerTraces_1 = require('./scatterPlotVisualizerTraces');
 var util = require('./util');
 // tslint:disable-next-line:no-unused-variable
 var vz_projector_util_1 = require('./vz-projector-util');
@@ -24299,16 +24537,23 @@ var Projector = (function (_super) {
         _super.apply(this, arguments);
     }
     Projector.prototype.ready = function () {
+        this.dom = d3.select(this);
+        logging.setDomContainer(this);
         this.analyticsLogger =
             new analyticsLogger_1.AnalyticsLogger(this.pageViewLogging, this.eventLogging);
         this.analyticsLogger.logPageView('embeddings');
+        if (!util.hasWebGLSupport()) {
+            this.analyticsLogger.logWebGLDisabled();
+            logging.setErrorMessage('Your browser or device does not have WebGL enabled. Please enable ' +
+                'hardware acceleration, or use a browser that supports WebGL.');
+            return;
+        }
         this.selectionChangedListeners = [];
         this.hoverListeners = [];
         this.projectionChangedListeners = [];
+        this.distanceMetricChangedListeners = [];
         this.selectedPointIndices = [];
         this.neighborsOfFirstPoint = [];
-        this.dom = d3.select(this);
-        logging.setDomContainer(this);
         this.dataPanel = this.$['data-panel'];
         this.inspectorPanel = this.$['inspector-panel'];
         this.inspectorPanel.initialize(this, this);
@@ -24323,20 +24568,17 @@ var Projector = (function (_super) {
         this.initializeDataProvider();
     };
     Projector.prototype.setSelectedLabelOption = function (labelOption) {
-        var _this = this;
         this.selectedLabelOption = labelOption;
-        var labelAccessor = function (i) {
-            return _this.dataSet.points[i]
-                .metadata[_this.selectedLabelOption];
-        };
         this.metadataCard.setLabelOption(this.selectedLabelOption);
-        this.scatterPlot.setLabelAccessor(labelAccessor);
-        this.scatterPlot.render();
+        this.projectorScatterPlotAdapter.setLabelPointAccessor(labelOption);
+        this.projectorScatterPlotAdapter.updateScatterPlotAttributes();
+        this.projectorScatterPlotAdapter.render();
     };
     Projector.prototype.setSelectedColorOption = function (colorOption) {
         this.selectedColorOption = colorOption;
-        this.updateScatterPlotAttributes();
-        this.scatterPlot.render();
+        this.projectorScatterPlotAdapter.setLegendPointColorer(this.getLegendPointColorer(colorOption));
+        this.projectorScatterPlotAdapter.updateScatterPlotAttributes();
+        this.projectorScatterPlotAdapter.render();
     };
     Projector.prototype.setNormalizeData = function (normalizeData) {
         this.normalizeData = normalizeData;
@@ -24345,30 +24587,45 @@ var Projector = (function (_super) {
     Projector.prototype.updateDataSet = function (ds, spriteAndMetadata, metadataFile) {
         this.dataSetFilterIndices = null;
         this.originalDataSet = ds;
-        if (this.scatterPlot == null || ds == null) {
-            // We are not ready yet.
-            return;
+        if (ds != null) {
+            this.normalizeData =
+                this.originalDataSet.dim[1] >= THRESHOLD_DIM_NORMALIZE;
+            spriteAndMetadata = spriteAndMetadata || {};
+            if (spriteAndMetadata.pointsInfo == null) {
+                var _a = this.makeDefaultPointsInfoAndStats(ds.points), pointsInfo = _a[0], stats = _a[1];
+                spriteAndMetadata.pointsInfo = pointsInfo;
+                spriteAndMetadata.stats = stats;
+            }
+            ds.mergeMetadata(spriteAndMetadata);
         }
-        this.normalizeData = this.originalDataSet.dim[1] >= THRESHOLD_DIM_NORMALIZE;
-        spriteAndMetadata = spriteAndMetadata || {};
-        if (spriteAndMetadata.pointsInfo == null) {
-            var _a = this.makeDefaultPointsInfoAndStats(ds.points), pointsInfo = _a[0], stats = _a[1];
-            spriteAndMetadata.pointsInfo = pointsInfo;
-            spriteAndMetadata.stats = stats;
+        if (this.projectorScatterPlotAdapter != null) {
+            if (ds == null) {
+                this.projectorScatterPlotAdapter.setLabelPointAccessor(null);
+                this.setProjection(null);
+            }
+            else {
+                this.projectorScatterPlotAdapter.updateScatterPlotPositions();
+                this.projectorScatterPlotAdapter.updateScatterPlotAttributes();
+                this.projectorScatterPlotAdapter.resize();
+                this.projectorScatterPlotAdapter.render();
+            }
         }
-        ds.mergeMetadata(spriteAndMetadata);
-        this.dataPanel.setNormalizeData(this.normalizeData);
-        this.setCurrentDataSet(this.originalDataSet.getSubset());
-        this.inspectorPanel.datasetChanged();
-        this.inspectorPanel.metadataChanged(spriteAndMetadata);
-        this.projectionsPanel.metadataChanged(spriteAndMetadata);
-        this.dataPanel.metadataChanged(spriteAndMetadata, metadataFile);
-        // Set the container to a fixed height, otherwise in Colab the
-        // height can grow indefinitely.
-        var container = this.dom.select('#container');
-        container.style('height', container.property('clientHeight') + 'px');
-        this.scatterPlot.resize();
-        this.scatterPlot.render();
+        if (ds != null) {
+            this.dataPanel.setNormalizeData(this.normalizeData);
+            this.setCurrentDataSet(ds.getSubset());
+            this.projectorScatterPlotAdapter.setLabelPointAccessor(this.selectedLabelOption);
+            this.inspectorPanel.datasetChanged();
+            this.inspectorPanel.metadataChanged(spriteAndMetadata);
+            this.projectionsPanel.metadataChanged(spriteAndMetadata);
+            this.dataPanel.metadataChanged(spriteAndMetadata, metadataFile);
+            // Set the container to a fixed height, otherwise in Colab the
+            // height can grow indefinitely.
+            var container = this.dom.select('#container');
+            container.style('height', container.property('clientHeight') + 'px');
+        }
+        else {
+            this.setCurrentDataSet(null);
+        }
     };
     Projector.prototype.setSelectedTensor = function (run, tensorInfo) {
         this.bookmarkPanel.setSelectedTensor(run, tensorInfo, this.dataProvider);
@@ -24381,17 +24638,25 @@ var Projector = (function (_super) {
     };
     Projector.prototype.filterDataset = function (pointIndices) {
         var selectionSize = this.selectedPointIndices.length;
+        if (this.dataSetBeforeFilter == null) {
+            this.dataSetBeforeFilter = this.dataSet;
+        }
         this.setCurrentDataSet(this.dataSet.getSubset(pointIndices));
         this.dataSetFilterIndices = pointIndices;
+        this.projectorScatterPlotAdapter.updateScatterPlotPositions();
+        this.projectorScatterPlotAdapter.updateScatterPlotAttributes();
         this.adjustSelectionAndHover(d3.range(selectionSize));
     };
     Projector.prototype.resetFilterDataset = function () {
         var _this = this;
-        var originalPointIndices = this.selectedPointIndices.map(function (localIndex) {
-            return _this.dataSet.points[localIndex].index;
-        });
-        this.setCurrentDataSet(this.originalDataSet.getSubset());
-        this.updateScatterPlotPositions();
+        var originalPointIndices = this.selectedPointIndices.map(function (filteredIndex) { return _this.dataSet.points[filteredIndex].index; });
+        this.setCurrentDataSet(this.dataSetBeforeFilter);
+        if (this.projection != null) {
+            this.projection.dataSet = this.dataSetBeforeFilter;
+        }
+        this.dataSetBeforeFilter = null;
+        this.projectorScatterPlotAdapter.updateScatterPlotPositions();
+        this.projectorScatterPlotAdapter.updateScatterPlotAttributes();
         this.dataSetFilterIndices = [];
         this.adjustSelectionAndHover(originalPointIndices);
     };
@@ -24426,8 +24691,14 @@ var Projector = (function (_super) {
     Projector.prototype.registerProjectionChangedListener = function (listener) {
         this.projectionChangedListeners.push(listener);
     };
-    Projector.prototype.notifyProjectionChanged = function (dataSet) {
-        this.projectionChangedListeners.forEach(function (l) { return l(dataSet); });
+    Projector.prototype.notifyProjectionChanged = function (projection) {
+        this.projectionChangedListeners.forEach(function (l) { return l(projection); });
+    };
+    Projector.prototype.registerDistanceMetricChangedListener = function (l) {
+        this.distanceMetricChangedListeners.push(l);
+    };
+    Projector.prototype.notifyDistanceMetricChanged = function (distMetric) {
+        this.distanceMetricChangedListeners.forEach(function (l) { return l(distMetric); });
     };
     Projector.prototype._dataProtoChanged = function (dataProtoString) {
         var dataProto = dataProtoString ? JSON.parse(dataProtoString) : null;
@@ -24478,8 +24749,8 @@ var Projector = (function (_super) {
         if ((colorOption == null) || (colorOption.map == null)) {
             return null;
         }
-        var colorer = function (i) {
-            var value = _this.dataSet.points[i].metadata[_this.selectedColorOption.name];
+        var colorer = function (ds, i) {
+            var value = ds.points[i].metadata[_this.selectedColorOption.name];
             if (value == null) {
                 return POINT_COLOR_MISSING;
             }
@@ -24494,67 +24765,64 @@ var Projector = (function (_super) {
         var label3DModeButton = this.get3DLabelModeButton();
         return label3DModeButton.active;
     };
-    Projector.prototype.getSpriteImageMode = function () {
-        return this.dataSet && this.dataSet.spriteAndMetadataInfo &&
-            this.dataSet.spriteAndMetadataInfo.spriteImage != null;
-    };
     Projector.prototype.adjustSelectionAndHover = function (selectedPointIndices, hoverIndex) {
         this.notifySelectionChanged(selectedPointIndices);
         this.notifyHoverOverPoint(hoverIndex);
-        this.setMode(scatterPlot_1.Mode.HOVER);
+        this.setMouseMode(scatterPlot_1.MouseMode.CAMERA_AND_CLICK_SELECT);
     };
-    Projector.prototype.setMode = function (mode) {
+    Projector.prototype.setMouseMode = function (mouseMode) {
         var selectModeButton = this.querySelector('#selectMode');
-        selectModeButton.active = (mode === scatterPlot_1.Mode.SELECT);
-        this.scatterPlot.setMode(mode);
+        selectModeButton.active = (mouseMode === scatterPlot_1.MouseMode.AREA_SELECT);
+        this.projectorScatterPlotAdapter.scatterPlot.setMouseMode(mouseMode);
     };
     Projector.prototype.setCurrentDataSet = function (ds) {
         this.adjustSelectionAndHover([]);
         if (this.dataSet != null) {
             this.dataSet.stopTSNE();
         }
-        this.dataSet = ds;
-        if (this.normalizeData) {
-            this.dataSet.normalize();
+        if ((ds != null) && this.normalizeData) {
+            ds.normalize();
         }
-        this.dim = this.dataSet.dim[1];
-        this.dom.select('span.numDataPoints').text(this.dataSet.dim[0]);
-        this.dom.select('span.dim').text(this.dataSet.dim[1]);
-        this.selectedProjectionPointAccessors = null;
+        this.dim = (ds == null) ? 0 : ds.dim[1];
+        this.dom.select('span.numDataPoints').text((ds == null) ? '0' : ds.dim[0]);
+        this.dom.select('span.dim').text((ds == null) ? '0' : ds.dim[1]);
+        this.dataSet = ds;
         this.projectionsPanel.dataSetUpdated(this.dataSet, this.originalDataSet, this.dim);
-        this.scatterPlot.setCameraParametersForNextCameraCreation(null, true);
+        this.projectorScatterPlotAdapter.setDataSet(this.dataSet);
+        this.projectorScatterPlotAdapter.scatterPlot
+            .setCameraParametersForNextCameraCreation(null, true);
     };
     Projector.prototype.setupUIControls = function () {
         var _this = this;
         // View controls
         this.querySelector('#reset-zoom').addEventListener('click', function () {
-            _this.scatterPlot.resetZoom();
-            _this.scatterPlot.startOrbitAnimation();
+            _this.projectorScatterPlotAdapter.scatterPlot.resetZoom();
+            _this.projectorScatterPlotAdapter.scatterPlot.startOrbitAnimation();
         });
         var selectModeButton = this.querySelector('#selectMode');
         selectModeButton.addEventListener('click', function (event) {
-            _this.setMode(selectModeButton.active ? scatterPlot_1.Mode.SELECT : scatterPlot_1.Mode.HOVER);
+            _this.setMouseMode(selectModeButton.active ? scatterPlot_1.MouseMode.AREA_SELECT :
+                scatterPlot_1.MouseMode.CAMERA_AND_CLICK_SELECT);
         });
         var nightModeButton = this.querySelector('#nightDayMode');
         nightModeButton.addEventListener('click', function () {
-            _this.scatterPlot.setDayNightMode(nightModeButton.active);
+            _this.projectorScatterPlotAdapter.scatterPlot.setDayNightMode(nightModeButton.active);
         });
         var labels3DModeButton = this.get3DLabelModeButton();
         labels3DModeButton.addEventListener('click', function () {
-            _this.createVisualizers(_this.get3DLabelMode());
-            _this.updateScatterPlotAttributes();
-            _this.scatterPlot.render();
+            _this.projectorScatterPlotAdapter.set3DLabelMode(_this.get3DLabelMode());
         });
         window.addEventListener('resize', function () {
             var container = _this.dom.select('#container');
             var parentHeight = container.node().parentNode.clientHeight;
             container.style('height', parentHeight + 'px');
-            _this.scatterPlot.resize();
+            _this.projectorScatterPlotAdapter.resize();
         });
-        this.projectorScatterPlotAdapter = new projectorScatterPlotAdapter_1.ProjectorScatterPlotAdapter();
-        this.scatterPlot = new scatterPlot_1.ScatterPlot(this.getScatterContainer(), function (i) { return '' + _this.dataSet.points[i].metadata[_this.selectedLabelOption]; }, this);
-        this.createVisualizers(false);
-        this.scatterPlot.onCameraMove(function (cameraPosition, cameraTarget) {
+        {
+            this.projectorScatterPlotAdapter = new projectorScatterPlotAdapter_1.ProjectorScatterPlotAdapter(this.getScatterContainer(), this);
+            this.projectorScatterPlotAdapter.setLabelPointAccessor(this.selectedLabelOption);
+        }
+        this.projectorScatterPlotAdapter.scatterPlot.onCameraMove(function (cameraPosition, cameraTarget) {
             return _this.bookmarkPanel.clearStateSelection();
         });
         this.registerHoverListener(function (hoverIndex) { return _this.onHover(hoverIndex); });
@@ -24571,57 +24839,13 @@ var Projector = (function (_super) {
                 hoverText = point.metadata[this.selectedLabelOption].toString();
             }
         }
-        this.updateScatterPlotAttributes();
-        this.scatterPlot.render();
         if (this.selectedPointIndices.length === 0) {
             this.statusBar.style('display', hoverText ? null : 'none');
             this.statusBar.text(hoverText);
         }
     };
-    Projector.prototype.updateScatterPlotPositions = function () {
-        if (this.dataSet == null) {
-            return;
-        }
-        if (this.selectedProjectionPointAccessors == null) {
-            return;
-        }
-        var newPositions = this.projectorScatterPlotAdapter.generatePointPositionArray(this.dataSet, this.selectedProjectionPointAccessors);
-        this.scatterPlot.setPointPositions(this.dataSet, newPositions);
-    };
-    Projector.prototype.updateScatterPlotAttributes = function () {
-        var dataSet = this.dataSet;
-        var selectedSet = this.selectedPointIndices;
-        var hoverIndex = this.hoverPointIndex;
-        var neighbors = this.neighborsOfFirstPoint;
-        var pointColorer = this.getLegendPointColorer(this.selectedColorOption);
-        var adapter = this.projectorScatterPlotAdapter;
-        var pointColors = adapter.generatePointColorArray(dataSet, pointColorer, this.inspectorPanel.distFunc, selectedSet, neighbors, hoverIndex, this.get3DLabelMode(), this.getSpriteImageMode());
-        var pointScaleFactors = adapter.generatePointScaleFactorArray(dataSet, selectedSet, neighbors, hoverIndex);
-        var labels = adapter.generateVisibleLabelRenderParams(dataSet, selectedSet, neighbors, hoverIndex);
-        var traceColors = adapter.generateLineSegmentColorMap(dataSet, pointColorer);
-        var traceOpacities = adapter.generateLineSegmentOpacityArray(dataSet, selectedSet);
-        var traceWidths = adapter.generateLineSegmentWidthArray(dataSet, selectedSet);
-        this.scatterPlot.setPointColors(pointColors);
-        this.scatterPlot.setPointScaleFactors(pointScaleFactors);
-        this.scatterPlot.setLabels(labels);
-        this.scatterPlot.setTraceColors(traceColors);
-        this.scatterPlot.setTraceOpacities(traceOpacities);
-        this.scatterPlot.setTraceWidths(traceWidths);
-    };
     Projector.prototype.getScatterContainer = function () {
         return this.dom.select('#scatter');
-    };
-    Projector.prototype.createVisualizers = function (inLabels3DMode) {
-        var scatterPlot = this.scatterPlot;
-        scatterPlot.removeAllVisualizers();
-        if (inLabels3DMode) {
-            scatterPlot.addVisualizer(new scatterPlotVisualizer3DLabels_1.ScatterPlotVisualizer3DLabels());
-        }
-        else {
-            scatterPlot.addVisualizer(new scatterPlotVisualizerSprites_1.ScatterPlotVisualizerSprites());
-            scatterPlot.addVisualizer(new scatterPlotVisualizerCanvasLabels_1.ScatterPlotVisualizerCanvasLabels(this.getScatterContainer()));
-        }
-        scatterPlot.addVisualizer(new scatterPlotVisualizerTraces_1.ScatterPlotVisualizerTraces());
     };
     Projector.prototype.onSelectionChanged = function (selectedPointIndices, neighborsOfFirstPoint) {
         this.selectedPointIndices = selectedPointIndices;
@@ -24629,24 +24853,16 @@ var Projector = (function (_super) {
         var totalNumPoints = this.selectedPointIndices.length + neighborsOfFirstPoint.length;
         this.statusBar.text("Selected " + totalNumPoints + " points")
             .style('display', totalNumPoints > 0 ? null : 'none');
-        this.updateScatterPlotAttributes();
-        this.scatterPlot.render();
     };
-    Projector.prototype.setProjection = function (projection, dimensionality, pointAccessors) {
-        this.selectedProjection = projection;
-        this.selectedProjectionPointAccessors = pointAccessors;
-        this.scatterPlot.setDimensions(dimensionality);
-        this.analyticsLogger.logProjectionChanged(projection);
-        if (this.dataSet.projectionCanBeRendered(projection)) {
-            this.updateScatterPlotAttributes();
-            this.notifyProjectionsUpdated();
+    Projector.prototype.setProjection = function (projection) {
+        this.projection = projection;
+        if (projection != null) {
+            this.analyticsLogger.logProjectionChanged(projection.projectionType);
         }
-        this.scatterPlot.setCameraParametersForNextCameraCreation(null, false);
-        this.notifyProjectionChanged(this.dataSet);
+        this.notifyProjectionChanged(projection);
     };
-    Projector.prototype.notifyProjectionsUpdated = function () {
-        this.updateScatterPlotPositions();
-        this.scatterPlot.render();
+    Projector.prototype.notifyProjectionPositionsUpdated = function () {
+        this.projectorScatterPlotAdapter.notifyProjectionPositionsUpdated();
     };
     /**
      * Gets the current view of the embedding and saves it as a State object.
@@ -24664,12 +24880,12 @@ var Projector = (function (_super) {
             }
             state.projections.push(projections);
         }
-        state.selectedProjection = this.selectedProjection;
+        state.selectedProjection = this.projection.projectionType;
         state.dataSetDimensions = this.dataSet.dim;
         state.tSNEIteration = this.dataSet.tSNEIteration;
         state.selectedPoints = this.selectedPointIndices;
         state.filteredPoints = this.dataSetFilterIndices;
-        state.cameraDef = this.scatterPlot.getCameraDef();
+        this.projectorScatterPlotAdapter.populateBookmarkFromUI(state);
         state.selectedColorOptionName = this.dataPanel.selectedColorOptionName;
         state.selectedLabelOption = this.selectedLabelOption;
         this.projectionsPanel.populateBookmarkFromUI(state);
@@ -24677,9 +24893,12 @@ var Projector = (function (_super) {
     };
     /** Loads a State object into the world. */
     Projector.prototype.loadState = function (state) {
+        this.setProjection(null);
         {
             this.projectionsPanel.disablePolymerChangesTriggerReprojection();
-            this.resetFilterDataset();
+            if (this.dataSetBeforeFilter != null) {
+                this.resetFilterDataset();
+            }
             if (state.filteredPoints != null) {
                 this.filterDataset(state.filteredPoints);
             }
@@ -24699,24 +24918,21 @@ var Projector = (function (_super) {
         this.inspectorPanel.restoreUIFromBookmark(state);
         this.dataPanel.selectedColorOptionName = state.selectedColorOptionName;
         this.selectedLabelOption = state.selectedLabelOption;
-        this.scatterPlot.setCameraParametersForNextCameraCreation(state.cameraDef, false);
+        this.projectorScatterPlotAdapter.restoreUIFromBookmark(state);
         {
             var dimensions = data_1.stateGetAccessorDimensions(state);
-            var accessors = this.dataSet.getPointAccessors(state.selectedProjection, dimensions);
-            this.setProjection(state.selectedProjection, dimensions.length, accessors);
+            var components = data.getProjectionComponents(state.selectedProjection, dimensions);
+            var projection = new data_1.Projection(state.selectedProjection, components, dimensions.length, this.dataSet);
+            this.setProjection(projection);
         }
         this.notifySelectionChanged(state.selectedPoints);
-    };
-    Projector.prototype.notifyDistanceMetricChanged = function (distMetric) {
-        this.updateScatterPlotAttributes();
-        this.scatterPlot.render();
     };
     return Projector;
 }(exports.ProjectorPolymer));
 exports.Projector = Projector;
 document.registerElement(Projector.prototype.is, Projector);
 
-},{"./analyticsLogger":1,"./data":7,"./data-provider-demo":3,"./data-provider-proto":4,"./data-provider-server":5,"./logging":12,"./projectorScatterPlotAdapter":14,"./scatterPlot":16,"./scatterPlotVisualizer3DLabels":19,"./scatterPlotVisualizerCanvasLabels":20,"./scatterPlotVisualizerSprites":21,"./scatterPlotVisualizerTraces":22,"./util":24,"./vz-projector-util":33}],35:[function(require,module,exports){
+},{"./analyticsLogger":1,"./data":7,"./data-provider-demo":3,"./data-provider-proto":4,"./data-provider-server":5,"./logging":12,"./projectorScatterPlotAdapter":14,"./scatterPlot":16,"./util":24,"./vz-projector-util":33}],35:[function(require,module,exports){
 arguments[4][8][0].apply(exports,arguments)
 },{"dup":8}]},{},[35,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34]);
 </script>

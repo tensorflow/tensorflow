@@ -20,7 +20,7 @@ from __future__ import print_function
 import tensorflow as tf
 
 from tensorflow.contrib.tensor_forest.python import topn
-from tensorflow.contrib.tensor_forest.python.ops import topn_ops
+from tensorflow.contrib.tensor_forest.python.ops import tensor_forest_ops
 
 from tensorflow.python.client import session
 from tensorflow.python.framework import test_util
@@ -29,12 +29,9 @@ from tensorflow.python.platform import googletest
 
 class TopNOpsTest(test_util.TensorFlowTestCase):
 
-  def setUp(self):
-    self.ops = topn_ops.Load()
-
   def testInsertOpIntoEmptyShortlist(self):
     with self.test_session():
-      shortlist_ids, new_ids, new_scores = self.ops.top_n_insert(
+      shortlist_ids, new_ids, new_scores = tensor_forest_ops.top_n_insert(
           [0, -1, -1, -1, -1, -1],  # sl_ids
           [-999, -999, -999, -999, -999, -999],  # sl_scores
           [5],
@@ -46,7 +43,7 @@ class TopNOpsTest(test_util.TensorFlowTestCase):
 
   def testInsertOpIntoAlmostFullShortlist(self):
     with self.test_session():
-      shortlist_ids, new_ids, new_scores = self.ops.top_n_insert(
+      shortlist_ids, new_ids, new_scores = tensor_forest_ops.top_n_insert(
           [4, 13, -1, 27, 99, 15],  # sl_ids
           [60.0, 87.0, -999, 65.0, 1000.0, 256.0],  # sl_scores
           [5],
@@ -59,7 +56,7 @@ class TopNOpsTest(test_util.TensorFlowTestCase):
 
   def testInsertOpIntoFullShortlist(self):
     with self.test_session():
-      shortlist_ids, new_ids, new_scores = self.ops.top_n_insert(
+      shortlist_ids, new_ids, new_scores = tensor_forest_ops.top_n_insert(
           [5, 13, 44, 27, 99, 15],  # sl_ids
           [60.0, 87.0, 111.0, 65.0, 1000.0, 256.0],  # sl_scores
           [5],
@@ -73,7 +70,7 @@ class TopNOpsTest(test_util.TensorFlowTestCase):
 
   def testInsertOpHard(self):
     with self.test_session():
-      shortlist_ids, new_ids, new_scores = self.ops.top_n_insert(
+      shortlist_ids, new_ids, new_scores = tensor_forest_ops.top_n_insert(
           [4, 13, -1, 27, 99, 15],  # sl_ids
           [60.0, 87.0, -999, 65.0, 1000.0, 256.0],  # sl_scores
           [5, 6, 7, 8, 9],
@@ -87,21 +84,21 @@ class TopNOpsTest(test_util.TensorFlowTestCase):
 
   def testRemoveSimple(self):
     with self.test_session():
-      shortlist_ids, new_length = self.ops.top_n_remove(
+      shortlist_ids, new_length = tensor_forest_ops.top_n_remove(
           [5, 100, 200, 300, 400, 500], [200, 400, 600])
       self.assertAllEqual([2, 4], shortlist_ids.eval())
       self.assertAllEqual([3], new_length.eval())
 
   def testRemoveAllMissing(self):
     with self.test_session():
-      shortlist_ids, new_length = self.ops.top_n_remove(
+      shortlist_ids, new_length = tensor_forest_ops.top_n_remove(
           [5, 100, 200, 300, 400, 500], [1200, 1400, 600])
       self.assertAllEqual([], shortlist_ids.eval())
       self.assertAllEqual([5], new_length.eval())
 
   def testRemoveAll(self):
     with self.test_session():
-      shortlist_ids, new_length = self.ops.top_n_remove(
+      shortlist_ids, new_length = tensor_forest_ops.top_n_remove(
           [5, 100, 200, 300, 400, 500],
           [100, 200, 300, 400, 500],)
       self.assertAllEqual([1, 2, 3, 4, 5], shortlist_ids.eval())

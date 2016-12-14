@@ -171,9 +171,9 @@ def _fused_batch_norm(
       `batch_size`. The normalization is over all but the last dimension if
       `data_format` is `NHWC` and the second dimension if `data_format` is
       `NCHW`.
-    decay: decay for the moving average. Reasonable values for `decay` are close 
-      to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc. Lower 
-      `decay` value (recommend trying `decay`=0.9) if model experiences reasonably 
+    decay: decay for the moving average. Reasonable values for `decay` are close
+      to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc. Lower
+      `decay` value (recommend trying `decay`=0.9) if model experiences reasonably
       good training performance but poor validation and/or test performance.
     center: If True, subtract `beta`. If False, `beta` is ignored.
     scale: If True, multiply by `gamma`. If False, `gamma` is
@@ -249,7 +249,7 @@ def _fused_batch_norm(
     if not param_initializers:
       param_initializers = {}
     beta_initializer = param_initializers.get('beta',
-                                              init_ops.zeros_initializer)
+                                              init_ops.zeros_initializer())
     beta = variables.model_variable(
         'beta',
         shape=params_shape,
@@ -274,8 +274,8 @@ def _fused_batch_norm(
     # appropiate collections.
     moving_mean_collections = utils.get_variable_collections(
         variables_collections, 'moving_mean')
-    moving_mean_initializer = param_initializers.get('moving_mean',
-                                                     init_ops.zeros_initializer)
+    moving_mean_initializer = param_initializers.get(
+        'moving_mean', init_ops.zeros_initializer())
     moving_mean = variables.model_variable(
         'moving_mean',
         shape=params_shape,
@@ -399,9 +399,9 @@ def batch_norm(
       `batch_size`. The normalization is over all but the last dimension if
       `data_format` is `NHWC` and the second dimension if `data_format` is
       `NCHW`.
-    decay: decay for the moving average. Reasonable values for `decay` are close 
-      to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc. Lower 
-      `decay` value (recommend trying `decay`=0.9) if model experiences reasonably 
+    decay: decay for the moving average. Reasonable values for `decay` are close
+      to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc. Lower
+      `decay` value (recommend trying `decay`=0.9) if model experiences reasonably
       good training performance but poor validation and/or test performance.
     center: If True, subtract `beta`. If False, `beta` is ignored.
     scale: If True, multiply by `gamma`. If False, `gamma` is
@@ -483,11 +483,11 @@ def batch_norm(
       if not param_initializers:
         param_initializers = {}
       beta_initializer = param_initializers.get('beta',
-                                                init_ops.zeros_initializer)
+                                                init_ops.zeros_initializer())
       gamma_initializer = param_initializers.get('gamma',
                                                  init_ops.ones_initializer())
       moving_mean_initializer = param_initializers.get(
-          'moving_mean', init_ops.zeros_initializer)
+          'moving_mean', init_ops.zeros_initializer())
       moving_variance_initializer = param_initializers.get(
           'moving_variance', init_ops.ones_initializer())
       layer = normalization_layers.BatchNormalization(
@@ -563,7 +563,7 @@ def batch_norm(
       beta_collections = utils.get_variable_collections(variables_collections,
                                                         'beta')
       beta_initializer = param_initializers.get('beta',
-                                                init_ops.zeros_initializer)
+                                                init_ops.zeros_initializer())
       beta = variables.model_variable('beta',
                                       shape=params_shape,
                                       dtype=dtype,
@@ -592,7 +592,7 @@ def batch_norm(
       moving_mean_collections = utils.get_variable_collections(
           variables_collections, 'moving_mean')
       moving_mean_initializer = param_initializers.get(
-          'moving_mean', init_ops.zeros_initializer)
+          'moving_mean', init_ops.zeros_initializer())
       moving_mean = variables.model_variable(
           'moving_mean',
           shape=params_shape,
@@ -695,7 +695,7 @@ def batch_norm(
 @add_arg_scope
 def bias_add(inputs,
              activation_fn=None,
-             initializer=init_ops.zeros_initializer,
+             initializer=init_ops.zeros_initializer(),
              regularizer=None,
              reuse=None,
              variables_collections=None,
@@ -780,7 +780,7 @@ def convolution(inputs,
                 normalizer_params=None,
                 weights_initializer=initializers.xavier_initializer(),
                 weights_regularizer=None,
-                biases_initializer=init_ops.zeros_initializer,
+                biases_initializer=init_ops.zeros_initializer(),
                 biases_regularizer=None,
                 reuse=None,
                 variables_collections=None,
@@ -927,7 +927,7 @@ def convolution2d_in_plane(
     normalizer_params=None,
     weights_initializer=initializers.xavier_initializer(),
     weights_regularizer=None,
-    biases_initializer=init_ops.zeros_initializer,
+    biases_initializer=init_ops.zeros_initializer(),
     biases_regularizer=None,
     reuse=None,
     variables_collections=None,
@@ -1032,7 +1032,7 @@ def convolution2d_transpose(
     normalizer_params=None,
     weights_initializer=initializers.xavier_initializer(),
     weights_regularizer=None,
-    biases_initializer=init_ops.zeros_initializer,
+    biases_initializer=init_ops.zeros_initializer(),
     biases_regularizer=None,
     reuse=None,
     variables_collections=None,
@@ -1325,7 +1325,7 @@ def fully_connected(inputs,
                     normalizer_params=None,
                     weights_initializer=initializers.xavier_initializer(),
                     weights_regularizer=None,
-                    biases_initializer=init_ops.zeros_initializer,
+                    biases_initializer=init_ops.zeros_initializer(),
                     biases_regularizer=None,
                     reuse=None,
                     variables_collections=None,
@@ -1477,12 +1477,13 @@ def layer_norm(inputs,
     if center:
       beta_collections = utils.get_variable_collections(variables_collections,
                                                         'beta')
-      beta = variables.model_variable('beta',
-                                      shape=params_shape,
-                                      dtype=dtype,
-                                      initializer=init_ops.zeros_initializer,
-                                      collections=beta_collections,
-                                      trainable=trainable)
+      beta = variables.model_variable(
+          'beta',
+          shape=params_shape,
+          dtype=dtype,
+          initializer=init_ops.zeros_initializer(),
+          collections=beta_collections,
+          trainable=trainable)
     if scale:
       gamma_collections = utils.get_variable_collections(variables_collections,
                                                          'gamma')
@@ -1725,7 +1726,7 @@ def separable_convolution2d(
     normalizer_params=None,
     weights_initializer=initializers.xavier_initializer(),
     weights_regularizer=None,
-    biases_initializer=init_ops.zeros_initializer,
+    biases_initializer=init_ops.zeros_initializer(),
     biases_regularizer=None,
     reuse=None,
     variables_collections=None,
@@ -1995,7 +1996,7 @@ def legacy_fully_connected(x,
                            num_output_units,
                            activation_fn=None,
                            weight_init=initializers.xavier_initializer(),
-                           bias_init=init_ops.zeros_initializer,
+                           bias_init=init_ops.zeros_initializer(),
                            name=None,
                            weight_collections=(ops.GraphKeys.WEIGHTS,),
                            bias_collections=(ops.GraphKeys.BIASES,),

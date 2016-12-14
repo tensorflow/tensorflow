@@ -199,12 +199,16 @@ def has_inf_or_nan(datum, tensor):
     (bool) True if and only if tensor consists of any nan or inf values.
   """
 
-  _ = datum  # Datum metadata is unused in this predicte.
+  _ = datum  # Datum metadata is unused in this predicate.
   if tensor is None:
     # Uninitialized tensor doesn't have bad numerical values.
     return False
-  else:
+  elif (np.issubdtype(tensor.dtype, np.float) or
+        np.issubdtype(tensor.dtype, np.complex) or
+        np.issubdtype(tensor.dtype, np.integer)):
     return np.any(np.isnan(tensor)) or np.any(np.isinf(tensor))
+  else:
+    return False
 
 
 class DebugTensorDatum(object):

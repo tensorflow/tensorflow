@@ -17,8 +17,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import tempfile
+
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.framework import test_util
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import googletest
 
 
@@ -191,6 +195,40 @@ class RichTextLinesTest(test_util.TensorFlowTestCase):
         0: "longer wavelength",
         1: "shorter wavelength",
     }, screen_output_1.annotations)
+
+  def testWriteToFileSucceeds(self):
+    screen_output = debugger_cli_common.RichTextLines(
+        ["Roses are red", "Violets are blue"],
+        font_attr_segs={0: [(0, 5, "red")],
+                        1: [(0, 7, "blue")]})
+
+    file_path = tempfile.mktemp()
+    screen_output.write_to_file(file_path)
+
+    with gfile.Open(file_path, "r") as f:
+      self.assertEqual(b"Roses are red\nViolets are blue\n", f.read())
+
+    # Clean up.
+    gfile.Remove(file_path)
+
+  def testAttemptToWriteToADirectoryFails(self):
+    screen_output = debugger_cli_common.RichTextLines(
+        ["Roses are red", "Violets are blue"],
+        font_attr_segs={0: [(0, 5, "red")],
+                        1: [(0, 7, "blue")]})
+
+    with self.assertRaises(Exception):
+      screen_output.write_to_file("/")
+
+  def testAttemptToWriteToFileInNonexistentDirectoryFails(self):
+    screen_output = debugger_cli_common.RichTextLines(
+        ["Roses are red", "Violets are blue"],
+        font_attr_segs={0: [(0, 5, "red")],
+                        1: [(0, 7, "blue")]})
+
+    file_path = os.path.join(tempfile.mkdtemp(), "foo", "bar.txt")
+    with self.assertRaises(Exception):
+      screen_output.write_to_file(file_path)
 
 
 class CommandHandlerRegistryTest(test_util.TensorFlowTestCase):
@@ -660,7 +698,7 @@ class WrapScreenOutputTest(test_util.TensorFlowTestCase):
     self.assertEqual([], new_line_indices)
 
 
-class SliceRichTextLinesText(test_util.TensorFlowTestCase):
+class SliceRichTextLinesTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
     self._original = debugger_cli_common.RichTextLines(

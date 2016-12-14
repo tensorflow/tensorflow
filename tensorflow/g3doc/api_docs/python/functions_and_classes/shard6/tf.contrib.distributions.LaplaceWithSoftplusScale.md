@@ -171,6 +171,20 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.LaplaceWithSoftplusScale.is_scalar_batch` {#LaplaceWithSoftplusScale.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.LaplaceWithSoftplusScale.is_scalar_event` {#LaplaceWithSoftplusScale.is_scalar_event}
+
+Indicates that `event_shape==[]`.
+
+
+- - -
+
 #### `tf.contrib.distributions.LaplaceWithSoftplusScale.loc` {#LaplaceWithSoftplusScale.loc}
 
 Distribution parameter for the location.

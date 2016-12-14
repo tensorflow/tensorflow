@@ -14,7 +14,6 @@
 # ==============================================================================
 """Tests for layers.feature_column."""
 
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -64,11 +63,29 @@ class FeatureColumnTest(tf.test.TestCase):
     self.assertEqual(a.name, "aaa")
     self.assertEqual(a.dtype, tf.int64)
 
-    with self.assertRaisesRegexp(ValueError,
-                                 "dtype must be string or integer"):
-      a = tf.contrib.layers.sparse_column_with_hash_bucket("aaa",
-                                                           hash_bucket_size=100,
-                                                           dtype=tf.float32)
+    with self.assertRaisesRegexp(ValueError, "dtype must be string or integer"):
+      a = tf.contrib.layers.sparse_column_with_hash_bucket(
+          "aaa", hash_bucket_size=100, dtype=tf.float32)
+
+  def testSparseColumnWithVocabularyFile(self):
+    b = tf.contrib.layers.sparse_column_with_vocabulary_file(
+        "bbb", vocabulary_file="a_file", vocab_size=454)
+    self.assertEqual(b.dtype, tf.string)
+    self.assertEqual(b.lookup_config.vocab_size, 454)
+    self.assertEqual(b.lookup_config.vocabulary_file, "a_file")
+
+    with self.assertRaises(ValueError):
+      # Vocabulary size should be defined if vocabulary_file is used.
+      tf.contrib.layers.sparse_column_with_vocabulary_file(
+          "bbb", vocabulary_file="somefile")
+
+    b = tf.contrib.layers.sparse_column_with_vocabulary_file(
+        "bbb", vocabulary_file="a_file", vocab_size=454, dtype=tf.int64)
+    self.assertEqual(b.dtype, tf.int64)
+
+    with self.assertRaisesRegexp(ValueError, "dtype must be string or integer"):
+      b = tf.contrib.layers.sparse_column_with_vocabulary_file(
+          "bbb", vocabulary_file="a_file", vocab_size=454, dtype=tf.float32)
 
   def testWeightedSparseColumn(self):
     ids = tf.contrib.layers.sparse_column_with_keys(

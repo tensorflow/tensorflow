@@ -107,17 +107,22 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
   if isinstance(grad, ops.Tensor):
     # Get the inputs' tensor shapes
     sizes = _ExtractInputShapes(input_values)
-    # The following line to be enabled once ready
-    # if len(sizes) > 16:
-    # sizes = array_ops.squeeze(array_ops.slice(
-    # array_ops.pack(sizes, axis=1), [concat_dim, 0], [1, -1]))
-    # out_grads = array_ops.split_v(grad, sizes, concat_dim)
-    # else:
+    # The magic number of 16 was found through benchmarking a range of sizes
+    # on CPUs and a Maxwell TitanX.  A speedup was seen in a large majority of
+    # cases when switching implementations at N=16, but it is possible that
+    # there will be a small number of performance regressions.
     # pylint: disable=protected-access
-    offset = gen_array_ops._concat_offset(concat_dim, sizes)
+    if len(sizes) > 16:
+      # extract the size of each input along the concat dimension
+      sizes = array_ops.squeeze(array_ops.slice(array_ops.pack(sizes, axis=1),
+                                                [concat_dim, 0],
+                                                [1, -1]))
+      out_grads = array_ops.split(grad, sizes, concat_dim)
+    else:
+      offset = gen_array_ops._concat_offset(concat_dim, sizes)
+      for (begin, size) in zip(offset, sizes):
+        out_grads.append(array_ops.slice(grad, begin, size))
     # pylint: enable=protected-access
-    for (begin, size) in zip(offset, sizes):
-      out_grads.append(array_ops.slice(grad, begin, size))
   elif isinstance(grad, ops.IndexedSlices):
     concat_dim_static = tensor_util.constant_value(concat_dim)
     if concat_dim_static is None:

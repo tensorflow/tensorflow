@@ -777,6 +777,59 @@ TEST(DirectSessionTest, TimeoutSession) {
   session->Close();
 }
 
+// Accesses the cancellation manager for the step after the step has been
+// cancelled.
+class CancellationMgrPollingOp : public OpKernel {
+ public:
+  explicit CancellationMgrPollingOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {}
+  void Compute(OpKernelContext* ctx) override {
+    CancellationManager* cm = ctx->cancellation_manager();
+    while (!cm->IsCancelled()) {
+      ctx->env()->SleepForMicroseconds(1000);
+    }
+    notification.Notify();
+  }
+  static Notification notification;
+};
+Notification CancellationMgrPollingOp::notification;
+
+REGISTER_KERNEL_BUILDER(Name("CancellationMgrPollingOp").Device(DEVICE_CPU),
+                        CancellationMgrPollingOp);
+REGISTER_OP("CancellationMgrPollingOp").Doc("");
+
+TEST(DirectSessionTest, TestTimeoutCleanShutdown) {
+  GraphDef graph;
+  // Creates a graph with one FIFOQueue and one dequeue op.
+  protobuf::TextFormat::ParseFromString(R"proto(
+    node {
+      name: 'cm_polling'
+      op: 'CancellationMgrPollingOp'
+      device: '/device:CPU:0'
+    }
+    versions {
+      producer: 9
+    }
+  )proto",
+                                        &graph);
+
+  // Creates a session with operation_timeout_in_ms set to 100 milliseconds.
+  SessionOptions options;
+  options.config.set_operation_timeout_in_ms(100);
+  std::unique_ptr<Session> session(NewSession(options));
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(graph));
+
+  // Verifies that the error code is DEADLINE_EXCEEDED.
+  Status s = session->Run({}, {}, {"cm_polling"}, nullptr);
+  ASSERT_EQ(error::DEADLINE_EXCEEDED, s.code());
+
+  // Verify that the op ran to completion.
+  ASSERT_TRUE(CancellationMgrPollingOp::notification.HasBeenNotified());
+
+  session->Close();
+}
+
 class BlockingOpState {
  public:
   void AwaitState(int awaiting_state) {

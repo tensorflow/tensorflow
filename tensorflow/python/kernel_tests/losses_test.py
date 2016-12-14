@@ -1138,5 +1138,228 @@ class AddLossTest(tf.test.TestCase):
     tf.losses.softmax_cross_entropy(logits, labels, loss_collection=None)
     self.assertFalse(tf.losses.get_losses())
 
+
+class ComputeWeightedLossTest(tf.test.TestCase):
+
+  def setUp(self):
+    self._shape = (3, 2, 4)
+    raw_losses = np.zeros(self._shape)
+    next_loss = 0.0
+    for i in range(self._shape[0]):
+      for j in range(self._shape[1]):
+        for k in range(self._shape[2]):
+          raw_losses[i][j][k] = next_loss
+          next_loss += 1.0
+    raw_losses.setflags(write=False)
+    self._raw_losses = raw_losses
+    self._unweighted_loss = np.mean(self._raw_losses)
+
+  def testUnweighted(self):
+    with tf.Graph().as_default():
+      self.assertEqual(0, len(tf.contrib.losses.get_losses()))
+      raw_losses = self._raw_losses
+      shape = self._shape
+      unweighted_losses = (
+          tf.losses.compute_weighted_loss(raw_losses),
+          tf.losses.compute_weighted_loss(raw_losses, weights=1.0),
+          tf.losses.compute_weighted_loss(
+              raw_losses, weights=np.ones(shape=shape[0:1])),
+          tf.losses.compute_weighted_loss(
+              raw_losses, weights=np.ones(shape=shape[0:2])),
+          tf.losses.compute_weighted_loss(
+              raw_losses, weights=np.ones(shape=shape))
+      )
+      self.assertEqual(5, len(tf.contrib.losses.get_losses()))
+      with self.test_session():
+        for unweighted_loss in unweighted_losses:
+          self.assertAllClose(self._unweighted_loss, unweighted_loss.eval())
+
+  def testScalarWeight(self):
+    with tf.Graph().as_default():
+      self.assertEqual(0, len(tf.contrib.losses.get_losses()))
+      weight = 17.0
+      weighted_loss = tf.losses.compute_weighted_loss(
+          self._raw_losses, weights=weight)
+      self.assertEqual(1, len(tf.contrib.losses.get_losses()))
+      with self.test_session():
+        self.assertAllClose(
+            np.mean(weight * self._raw_losses),
+            weighted_loss.eval())
+
+  # TODO(b/33556118): Bug: `loss1` should be the same as `testUnweighted`, and
+  # `loss17` should be the same as `testScalarWeight`.
+  def testScalar1DWeight(self):
+    with tf.Graph().as_default():
+      self.assertEqual(0, len(tf.contrib.losses.get_losses()))
+      loss1 = tf.losses.compute_weighted_loss(self._raw_losses, weights=(1.0,))
+      self.assertEqual(1, len(tf.contrib.losses.get_losses()))
+      weight = 17.0
+      loss17 = tf.losses.compute_weighted_loss(
+          self._raw_losses, weights=(weight,))
+      self.assertEqual(2, len(tf.contrib.losses.get_losses()))
+      with self.test_session():
+        self.assertAllClose(
+            self._unweighted_loss * self._shape[0],
+            loss1.eval())
+        self.assertAllClose(
+            np.mean(weight * self._raw_losses) * self._shape[0],
+            loss17.eval())
+
+  def testInvalid1DWeight(self):
+    with tf.Graph().as_default():
+      with self.assertRaisesRegexp(ValueError, 'Dimensions must be equal'):
+        tf.losses.compute_weighted_loss(self._raw_losses, weights=(17.0, 31.0))
+
+  def testInvalid4DWeight(self):
+    with tf.Graph().as_default():
+      with self.assertRaisesRegexp(ValueError, 'Invalid weights shape'):
+        tf.losses.compute_weighted_loss(
+            self._raw_losses, weights=np.zeros(shape=(2, 2, 2, 2)))
+
+  def test3Weight(self):
+    with tf.Graph().as_default():
+      self.assertEqual(0, len(tf.contrib.losses.get_losses()))
+      weights3 = (17.0, 5.0, 2.0)
+      weighted_loss = tf.losses.compute_weighted_loss(
+          self._raw_losses, weights=weights3)
+      self.assertEqual(1, len(tf.contrib.losses.get_losses()))
+      with self.test_session():
+        weights3x1x1 = np.reshape(weights3, (3, 1, 1))
+        self.assertAllClose(
+            np.mean(weights3x1x1 * self._raw_losses),
+            weighted_loss.eval())
+
+  def test3x1Weight(self):
+    with tf.Graph().as_default():
+      self.assertEqual(0, len(tf.contrib.losses.get_losses()))
+      weights3x1 = ((17.0,), (5.0,), (2.0,),)
+      weighted_loss = tf.losses.compute_weighted_loss(
+          self._raw_losses, weights=weights3x1)
+      self.assertEqual(1, len(tf.contrib.losses.get_losses()))
+      with self.test_session():
+        weights3x1x1 = np.reshape(weights3x1, (3, 1, 1))
+        self.assertAllClose(
+            np.mean(weights3x1x1 * self._raw_losses),
+            weighted_loss.eval())
+
+  # TODO(ptucker): Bug: this should be the same as `test3x1Weight`.
+  def test3x1x1Weight(self):
+    with tf.Graph().as_default():
+      self.assertEqual(0, len(tf.contrib.losses.get_losses()))
+      weights3x1x1 = (((17.0,),), ((5.0,),), ((2.0,),),)
+      weighted_loss = tf.losses.compute_weighted_loss(
+          self._raw_losses, weights=weights3x1x1)
+      self.assertEqual(1, len(tf.contrib.losses.get_losses()))
+      with self.test_session():
+        self.assertAllClose(
+            np.mean(weights3x1x1 * self._raw_losses) * self._shape[1],
+            weighted_loss.eval())
+
+  def test3x2Weight(self):
+    with tf.Graph().as_default():
+      self.assertEqual(0, len(tf.contrib.losses.get_losses()))
+      weights3x2 = (
+          (17.0, 3.0),
+          (5.0, 31.0),
+          (2.0, 7.0),
+      )
+      weighted_loss = tf.losses.compute_weighted_loss(
+          self._raw_losses, weights=weights3x2)
+      self.assertEqual(1, len(tf.contrib.losses.get_losses()))
+      with self.test_session():
+        weights3x2x1 = np.reshape(weights3x2, (3, 2, 1))
+        self.assertAllClose(
+            np.mean(weights3x2x1 * self._raw_losses),
+            weighted_loss.eval())
+
+  # TODO(b/33556118): Bug: this should be averaged across all dimensions, not
+  # summed across dim 0.
+  def test1x2Weight(self):
+    with tf.Graph().as_default():
+      self.assertEqual(0, len(tf.contrib.losses.get_losses()))
+      weights1x2 = ((17.0, 3.0,),)
+      weighted_loss = tf.losses.compute_weighted_loss(
+          self._raw_losses, weights=weights1x2)
+      self.assertEqual(1, len(tf.contrib.losses.get_losses()))
+      with self.test_session():
+        weights1x2x1 = np.reshape(weights1x2, (1, 2, 1))
+        self.assertAllClose(
+            np.mean(weights1x2x1 * self._raw_losses) * self._shape[0],
+            weighted_loss.eval())
+
+  # TODO(b/33556118): Bug: this should be averaged across all dimensions, not
+  # summed across dim 0.
+  def test1x2x1Weight(self):
+    with tf.Graph().as_default():
+      self.assertEqual(0, len(tf.contrib.losses.get_losses()))
+      weights1x2x1 = (((17.0,), (3.0,),),)
+      weighted_loss = tf.losses.compute_weighted_loss(
+          self._raw_losses, weights=weights1x2x1)
+      self.assertEqual(1, len(tf.contrib.losses.get_losses()))
+      with self.test_session():
+        self.assertAllClose(
+            np.mean(weights1x2x1 * self._raw_losses) * self._shape[0],
+            weighted_loss.eval())
+
+  # TODO(b/33556118): Bug: this should be averaged across all dimensions, not
+  # summed across dims 0 & 1.
+  def test1x1x4Weight(self):
+    with tf.Graph().as_default():
+      self.assertEqual(0, len(tf.contrib.losses.get_losses()))
+      weights1x1x4 = (((17.0, 13.0, 2.0, 5.0),),)
+      weighted_loss = tf.losses.compute_weighted_loss(
+          self._raw_losses, weights=weights1x1x4)
+      self.assertEqual(1, len(tf.contrib.losses.get_losses()))
+      shape = self._shape
+      with self.test_session():
+        self.assertAllClose(
+            np.mean(weights1x1x4 * self._raw_losses) * shape[0] * shape[1],
+            weighted_loss.eval())
+
+  # TODO(b/33556118): Bug: this should be averaged across all dimensions, not
+  # summed across dim 0.
+  def test1x2x4Weight(self):
+    with tf.Graph().as_default():
+      self.assertEqual(0, len(tf.contrib.losses.get_losses()))
+      weights1x2x4 = (
+          (
+              (17.0, 13.0, 2.0, 5.0),
+              (3.0, 13.0, 11.0, 2.0),
+          ),
+      )
+      weighted_loss = tf.losses.compute_weighted_loss(
+          self._raw_losses, weights=weights1x2x4)
+      self.assertEqual(1, len(tf.contrib.losses.get_losses()))
+      with self.test_session():
+        self.assertAllClose(
+            np.mean(weights1x2x4 * self._raw_losses) * self._shape[0],
+            weighted_loss.eval())
+
+  def test3x2x4Weight(self):
+    with tf.Graph().as_default():
+      self.assertEqual(0, len(tf.contrib.losses.get_losses()))
+      weights3x2x4 = (
+          (
+              (17.0, 13.0, 2.0, 5.0),
+              (3.0, 13.0, 11.0, 2.0),
+          ),
+          (
+              (5.0, 31.0, 17.0, 5.0),
+              (13.0, 3.0, 1.0, 11.0),
+          ),
+          (
+              (7.0, 3.0, 11.0, 5.0),
+              (13.0, 11.0, 1.0, 7.0),
+          ),
+      )
+      weighted_loss = tf.losses.compute_weighted_loss(
+          self._raw_losses, weights=weights3x2x4)
+      self.assertEqual(1, len(tf.contrib.losses.get_losses()))
+      with self.test_session():
+        self.assertAllClose(
+            np.mean(weights3x2x4 * self._raw_losses),
+            weighted_loss.eval())
+
+
 if __name__ == '__main__':
   tf.test.main()

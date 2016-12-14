@@ -34,7 +34,7 @@ from tensorflow.python.util import compat
 
 
 SAVED_MODEL_PATH = (
-    "python/saved_model/example/saved_model_half_plus_two/00000123")
+    "cc/saved_model/testdata/half_plus_two/00000123")
 
 def tearDownModule():
   file_io.delete_recursively(tf.test.get_temp_dir())

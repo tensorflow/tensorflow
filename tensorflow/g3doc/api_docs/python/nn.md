@@ -2981,7 +2981,7 @@ inputs = tf.placeholder(shape=(max_time, batch_size, input_depth),
                         dtype=tf.float32)
 sequence_length = tf.placeholder(shape=(batch_size,), dtype=tf.int32)
 inputs_ta = tf.TensorArray(dtype=tf.float32, size=max_time)
-inputs_ta = inputs_ta.unpack(inputs)
+inputs_ta = inputs_ta.unstack(inputs)
 
 cell = tf.contrib.rnn.LSTMCell(num_units)
 
@@ -3002,7 +3002,7 @@ def loop_fn(time, cell_output, cell_state, loop_state):
           emit_output, next_loop_state)
 
 outputs_ta, final_state, _ = raw_rnn(cell, loop_fn)
-outputs = outputs_ta.pack()
+outputs = outputs_ta.stack()
 ```
 
 ##### Args:
@@ -3455,7 +3455,7 @@ with an otherwise unused class.
 
 - - -
 
-### `tf.nn.sampled_softmax_loss(weights, biases, inputs, labels, num_sampled, num_classes, num_true=1, sampled_values=None, remove_accidental_hits=True, partition_strategy='mod', name='sampled_softmax_loss')` {#sampled_softmax_loss}
+### `tf.nn.sampled_softmax_loss(weights, biases, labels, inputs, num_sampled, num_classes, num_true=1, sampled_values=None, remove_accidental_hits=True, partition_strategy='mod', name='sampled_softmax_loss')` {#sampled_softmax_loss}
 
 Computes and returns the sampled softmax training loss.
 
@@ -3481,11 +3481,11 @@ Also see Section 3 of [Jean et al., 2014](http://arxiv.org/abs/1412.2007)
       objects whose concatenation along dimension 0 has shape
       [num_classes, dim].  The (possibly-sharded) class embeddings.
 *  <b>`biases`</b>: A `Tensor` of shape `[num_classes]`.  The class biases.
-*  <b>`inputs`</b>: A `Tensor` of shape `[batch_size, dim]`.  The forward
-      activations of the input network.
 *  <b>`labels`</b>: A `Tensor` of type `int64` and shape `[batch_size,
       num_true]`. The target classes.  Note that this format differs from
       the `labels` argument of `nn.softmax_cross_entropy_with_logits`.
+*  <b>`inputs`</b>: A `Tensor` of shape `[batch_size, dim]`.  The forward
+      activations of the input network.
 *  <b>`num_sampled`</b>: An `int`.  The number of classes to randomly sample per batch.
 *  <b>`num_classes`</b>: An `int`. The number of possible classes.
 *  <b>`num_true`</b>: An `int`.  The number of target classes per training example.

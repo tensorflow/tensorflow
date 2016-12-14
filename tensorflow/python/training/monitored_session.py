@@ -485,6 +485,9 @@ class _MonitoredSession(object):
       # We don't want coordinator to suppress any exception.
       self.coord = coordinator.Coordinator(clean_stop_exception_types=[])
       queue_runner.start_queue_runners(sess=self.tf_sess, coord=self.coord)
+      # Inform the hooks that a new session has been created.
+      for hook in self._hooks:
+        hook.after_create_session(self.tf_sess)
       return _CoordinatedSession(
           _HookedSession(self.tf_sess, self._hooks), self.coord)
 
@@ -519,6 +522,7 @@ class MonitoredSession(_MonitoredSession):
   """Session-like object that handles initialization, recovery and hooks.
 
   Example usage:
+
   ```python
   saver_hook = CheckpointSaverHook(...)
   summary_hook = SummaryHook(...)
@@ -552,20 +556,25 @@ class MonitoredSession(_MonitoredSession):
 
   * calls `hook.end()`
   * closes the queue runners and the session
-  * surpresses `OutOfRange` error which indicates that all inputs have been
-    processed if the monitored_session is used as a context.
+  * suppresses `OutOfRange` error which indicates that all inputs have been
+    processed if the monitored_session is used as a context
 
   How to set `tf.Session` arguments:
+
   * In most cases you can set session arguments as follows:
-    ```python
-    MonitoredSession(
-      session_creator=ChiefSessionCreator(master=..., config=...))
-    ```
+
+  ```python
+  MonitoredSession(
+    session_creator=ChiefSessionCreator(master=..., config=...))
+  ```
+
   * In distributed setting for a non-chief worker, you can use following:
-    ```python
-    MonitoredSession(
-      session_creator=WorkerSessionCreator(master=..., config=...))
-    ```
+
+  ```python
+  MonitoredSession(
+    session_creator=WorkerSessionCreator(master=..., config=...))
+  ```
+
   See `MonitoredTrainingSession` for an example usage based on chief or worker.
 
   Args:

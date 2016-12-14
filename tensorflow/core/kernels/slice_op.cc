@@ -236,7 +236,7 @@ DECLARE_FOR_N(bfloat16);
                               .HostMemory("size"),       \
                           SliceOp<CPUDevice, type>)
 
-TF_CALL_ALL_TYPES(REGISTER_SLICE);
+TF_CALL_POD_STRING_TYPES(REGISTER_SLICE);
 REGISTER_SLICE(bfloat16);
 
 #undef REGISTER_SLICE

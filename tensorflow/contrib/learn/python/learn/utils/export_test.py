@@ -63,8 +63,12 @@ class ExportTest(tf.test.TestCase):
   def _assert_export(self, export_monitor, export_dir, expected_signature):
     self.assertTrue(tf.gfile.Exists(export_dir))
     # Only the written checkpoints are exported.
-    self.assertTrue(tf.gfile.Exists(export_dir + '00000001/export'))
-    self.assertTrue(tf.gfile.Exists(export_dir + '00000010/export'))
+    self.assertTrue(tf.train.checkpoint_exists(export_dir + '00000001/export'),
+                    'Exported checkpoint expected but not found: %s' %
+                    (export_dir + '00000001/export'))
+    self.assertTrue(tf.train.checkpoint_exists(export_dir + '00000010/export'),
+                    'Exported checkpoint expected but not found: %s' %
+                    (export_dir + '00000010/export'))
     self.assertEquals(six.b(os.path.join(export_dir, '00000010')),
                       export_monitor.last_export_dir)
     # Validate the signature
@@ -196,8 +200,8 @@ class ExportTest(tf.test.TestCase):
     regressor.fit(x, y, steps=10, monitors=[export_monitor])
 
     self.assertTrue(tf.gfile.Exists(export_dir))
-    self.assertFalse(tf.gfile.Exists(export_dir + '00000000/export'))
-    self.assertTrue(tf.gfile.Exists(export_dir + '00000010/export'))
+    self.assertFalse(tf.train.checkpoint_exists(export_dir + '00000000/export'))
+    self.assertTrue(tf.train.checkpoint_exists(export_dir + '00000010/export'))
     # Validate the signature
     signature = self._get_default_signature(export_dir + '00000010/export.meta')
     self.assertTrue(signature.HasField('regression_signature'))

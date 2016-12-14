@@ -1103,8 +1103,8 @@ def nce_loss(weights,
 
 def sampled_softmax_loss(weights,
                          biases,
-                         inputs,
                          labels,
+                         inputs,
                          num_sampled,
                          num_classes,
                          num_true=1,
@@ -1134,11 +1134,11 @@ def sampled_softmax_loss(weights,
         objects whose concatenation along dimension 0 has shape
         [num_classes, dim].  The (possibly-sharded) class embeddings.
     biases: A `Tensor` of shape `[num_classes]`.  The class biases.
-    inputs: A `Tensor` of shape `[batch_size, dim]`.  The forward
-        activations of the input network.
     labels: A `Tensor` of type `int64` and shape `[batch_size,
         num_true]`. The target classes.  Note that this format differs from
         the `labels` argument of `nn.softmax_cross_entropy_with_logits`.
+    inputs: A `Tensor` of shape `[batch_size, dim]`.  The forward
+        activations of the input network.
     num_sampled: An `int`.  The number of classes to randomly sample per batch.
     num_classes: An `int`. The number of possible classes.
     num_true: An `int`.  The number of target classes per training example.

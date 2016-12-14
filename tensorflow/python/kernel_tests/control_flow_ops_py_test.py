@@ -879,6 +879,18 @@ class ControlFlowTest(tf.test.TestCase):
         r = tf.while_loop(lambda x: x < 10, lambda x: x + tf.identity(c), [x0])
       self.assertEqual(10, sess.run(r, {b: True}))
 
+  def testWhileWithControl_5(self):
+    with self.test_session() as sess:
+      b = tf.placeholder(tf.bool)
+      c = tf.constant(1)
+      x0 = tf.constant(0)
+
+      def body(x):
+        with tf.control_dependencies([b]):
+          return x + c
+      r = tf.while_loop(lambda x: x < 10, body, [x0])
+      self.assertEqual(10, sess.run(r, {b: True}))
+
   def testWhileCondWithControl(self):
     # Ensure that no control edges by an outer control dependency context are
     # added to nodes inside cond/while contexts.

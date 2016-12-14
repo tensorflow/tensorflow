@@ -20,7 +20,7 @@ tf_workspace()
 
 # Specify the minimum required bazel version.
 load("//tensorflow:tensorflow.bzl", "check_version")
-check_version("0.3.2")
+check_version("0.4.2")
 
 new_http_archive(
   name = "inception5h",

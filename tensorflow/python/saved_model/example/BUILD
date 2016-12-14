@@ -40,29 +40,3 @@ py_binary(
         "//tensorflow/python/saved_model:utils",
     ],
 )
-
-# Genrule for SavedModel half-plus-two test data. Specifically, this genrule
-# exports the test SavedModel to a versioned directory in order to be compatible
-# with TensorFlow Serving model server requirements of a versioned subdirectory.
-# Please note that SavedModel itself accepts any valid directory as the save
-# location and does not perform any versioning.
-# genrule(
-#     name = "saved_model_half_plus_two_data",
-#     outs = [
-#         "saved_model_half_plus_two/00000123/saved_model.pb",
-#         "saved_model_half_plus_two/00000123/assets/foo.txt",
-#         "saved_model_half_plus_two/00000123/variables/variables.data-00000-of-00001",
-#         "saved_model_half_plus_two/00000123/variables/variables.index",
-#         "saved_model_half_plus_two_pbtxt/00000123/saved_model.pbtxt",
-#         "saved_model_half_plus_two_pbtxt/00000123/assets/foo.txt",
-#         "saved_model_half_plus_two_pbtxt/00000123/variables/variables.data-00000-of-00001",
-#         "saved_model_half_plus_two_pbtxt/00000123/variables/variables.index",
-#     ],
-#     cmd =
-#         "rm -rf $(@D)/saved_model_half_plus_two $(@D)/saved_model_half_plus_two_pbtxt; " +
-#         "./$(locations :saved_model_half_plus_two) --output_dir=$(@D)/saved_model_half_plus_two/00000123 --output_dir_pbtxt=$(@D)/saved_model_half_plus_two_pbtxt/00000123",
-#     tools = [
-#         ":saved_model_half_plus_two",
-#     ],
-#     visibility = ["//visibility:public"],
-# )
