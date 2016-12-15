@@ -28,8 +28,7 @@ from tensorflow.python.ops import io_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
-# Double-quote usage here is intentional to make internal path rewriting easier.
-prefix_path = os.path.join('third_party', 'tensorflow', 'core', 'lib')
+prefix_path = os.path.join('tensorflow', 'core', 'lib')
 
 
 class DecodeImageOpTest(test.TestCase):
