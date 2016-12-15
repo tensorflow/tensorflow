@@ -1,5 +1,6 @@
 # array_ops
 BatchToSpace
+BroadcastArgs
 BroadcastGradientArgs
 ConcatOffset
 Concat

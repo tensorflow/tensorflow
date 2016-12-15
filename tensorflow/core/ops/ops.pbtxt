@@ -3429,6 +3429,36 @@ op {
   description: "Given a tensor `input`, this operation returns a tensor that has the same buffer\ndata as `input` with datatype `type`.\n\nIf the input datatype `T` is larger than the output datatype `type` then the\nshape changes from [...] to [..., sizeof(`T`)/sizeof(`type`)].\n\nIf `T` is smaller than `type`, the operator requires that the rightmost\ndimension be equal to sizeof(`type`)/sizeof(`T`). The shape then goes from\n[..., sizeof(`type`)/sizeof(`T`)] to [...].\n\n*NOTE*: Bitcast is implemented as a low-level cast, so machines with different\nendian orderings will give different results."
 }
 op {
+  name: "BroadcastArgs"
+  input_arg {
+    name: "s0"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "s1"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "r0"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Return the shape of s0 op s1 under broadcast."
+  description: "Given `s0` and `s1`, tensors that represent shapes, compute `r0`, the\n broadcasted shape. `s0`, `s1` and `r0` are all integer vectors."
+}
+op {
   name: "BroadcastGradientArgs"
   input_arg {
     name: "s0"

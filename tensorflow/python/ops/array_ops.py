@@ -33,6 +33,8 @@ types in your graph.
 TensorFlow provides several operations that you can use to determine the shape
 of a tensor and change the shape of a tensor.
 
+@@broadcast_dynamic_shape
+@@broadcast_static_shape
 @@shape
 @@shape_n
 @@size
@@ -203,6 +205,36 @@ def setdiff1d(x, y, index_dtype=dtypes.int32, name=None):
   return gen_array_ops._list_diff(x, y, index_dtype, name)
 setdiff1d.__doc__ = gen_array_ops._list_diff.__doc__
 # pylint: enable=protected-access
+
+
+def broadcast_dynamic_shape(shape_x, shape_y):
+  # pylint: disable=protected-access
+  """Returns the broadcasted dynamic shape between `shape_x` and `shape_y`.
+
+  Args:
+    shape_x: A rank 1 integer `Tensor`, representing the shape of x.
+    shape_y: A rank 1 integer `Tensor`, representing the shape of x.
+  Returns:
+    A rank 1 integer `Tensor` representing the broadcasted shape.
+  """
+  return gen_array_ops._broadcast_args(shape_x, shape_y)
+  # pylint: enable=protected-access
+
+
+def broadcast_static_shape(shape_x, shape_y):
+  """Returns the broadcasted static shape between `shape_x` and `shape_y`.
+
+  Args:
+    shape_x: A `TensorShape`
+    shape_y: A `TensorShape`
+
+  Returns:
+    A `TensorShape` representing the broadcasted shape.
+
+  Raises:
+    ValueError: If the two shapes can not be broadcasted.
+  """
+  return common_shapes.broadcast_shape(shape_x, shape_y)
 
 
 def shape(input, name=None, out_type=dtypes.int32):
