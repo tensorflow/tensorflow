@@ -13,28 +13,36 @@
 # limitations under the License.
 # ==============================================================================
 """Functional tests for basic component wise operations using a GPU device."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-
 import math
-import numpy as np
-from tensorflow.python.ops import gen_math_ops
-from tensorflow.python.ops.gen_array_ops import _broadcast_gradient_args
 
-class GPUBinaryOpsTest(tf.test.TestCase):
+import numpy as np
+
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.gen_array_ops import _broadcast_gradient_args
+from tensorflow.python.platform import test
+
+
+class GPUBinaryOpsTest(test.TestCase):
+
   def _compareGPU(self, x, y, np_func, tf_func):
     with self.test_session(use_gpu=True) as sess:
-      inx = tf.convert_to_tensor(x)
-      iny = tf.convert_to_tensor(y)
+      inx = ops.convert_to_tensor(x)
+      iny = ops.convert_to_tensor(y)
       out = tf_func(inx, iny)
       tf_gpu = sess.run(out)
 
     with self.test_session(use_gpu=False) as sess:
-      inx = tf.convert_to_tensor(x)
-      iny = tf.convert_to_tensor(y)
+      inx = ops.convert_to_tensor(x)
+      iny = ops.convert_to_tensor(y)
       out = tf_func(inx, iny)
       tf_cpu = sess.run(out)
 
@@ -43,43 +51,44 @@ class GPUBinaryOpsTest(tf.test.TestCase):
   def testFloatBasic(self):
     x = np.linspace(-5, 20, 15).reshape(1, 3, 5).astype(np.float32)
     y = np.linspace(20, -5, 15).reshape(1, 3, 5).astype(np.float32)
-    self._compareGPU(x, y, np.add, tf.add)
-    self._compareGPU(x, y, np.subtract, tf.sub)
-    self._compareGPU(x, y, np.multiply, tf.mul)
-    self._compareGPU(x, y + 0.1, np.true_divide, tf.truediv)
-    self._compareGPU(x, y + 0.1, np.floor_divide, tf.floordiv)
-    self._compareGPU(x, y, np.power, tf.pow)
+    self._compareGPU(x, y, np.add, math_ops.add)
+    self._compareGPU(x, y, np.subtract, math_ops.sub)
+    self._compareGPU(x, y, np.multiply, math_ops.mul)
+    self._compareGPU(x, y + 0.1, np.true_divide, math_ops.truediv)
+    self._compareGPU(x, y + 0.1, np.floor_divide, math_ops.floordiv)
+    self._compareGPU(x, y, np.power, math_ops.pow)
 
   def testFloatWithBCast(self):
     x = np.linspace(-5, 20, 15).reshape(3, 5).astype(np.float32)
     y = np.linspace(20, -5, 30).reshape(2, 3, 5).astype(np.float32)
-    self._compareGPU(x, y, np.add, tf.add)
-    self._compareGPU(x, y, np.subtract, tf.sub)
-    self._compareGPU(x, y, np.multiply, tf.mul)
-    self._compareGPU(x, y + 0.1, np.true_divide, tf.truediv)
+    self._compareGPU(x, y, np.add, math_ops.add)
+    self._compareGPU(x, y, np.subtract, math_ops.sub)
+    self._compareGPU(x, y, np.multiply, math_ops.mul)
+    self._compareGPU(x, y + 0.1, np.true_divide, math_ops.truediv)
 
   def testDoubleBasic(self):
     x = np.linspace(-5, 20, 15).reshape(1, 3, 5).astype(np.float64)
     y = np.linspace(20, -5, 15).reshape(1, 3, 5).astype(np.float64)
-    self._compareGPU(x, y, np.add, tf.add)
-    self._compareGPU(x, y, np.subtract, tf.sub)
-    self._compareGPU(x, y, np.multiply, tf.mul)
-    self._compareGPU(x, y + 0.1, np.true_divide, tf.truediv)
+    self._compareGPU(x, y, np.add, math_ops.add)
+    self._compareGPU(x, y, np.subtract, math_ops.sub)
+    self._compareGPU(x, y, np.multiply, math_ops.mul)
+    self._compareGPU(x, y + 0.1, np.true_divide, math_ops.truediv)
 
   def testDoubleWithBCast(self):
     x = np.linspace(-5, 20, 15).reshape(3, 5).astype(np.float64)
     y = np.linspace(20, -5, 30).reshape(2, 3, 5).astype(np.float64)
-    self._compareGPU(x, y, np.add, tf.add)
-    self._compareGPU(x, y, np.subtract, tf.sub)
-    self._compareGPU(x, y, np.multiply, tf.mul)
-    self._compareGPU(x, y + 0.1, np.true_divide, tf.truediv)
+    self._compareGPU(x, y, np.add, math_ops.add)
+    self._compareGPU(x, y, np.subtract, math_ops.sub)
+    self._compareGPU(x, y, np.multiply, math_ops.mul)
+    self._compareGPU(x, y + 0.1, np.true_divide, math_ops.truediv)
 
 
-class MathBuiltinUnaryTest(tf.test.TestCase):
+class MathBuiltinUnaryTest(test.TestCase):
+
   def _compare(self, x, np_func, tf_func, use_gpu):
     np_out = np_func(x)
     with self.test_session(use_gpu=use_gpu) as sess:
-      inx = tf.convert_to_tensor(x)
+      inx = ops.convert_to_tensor(x)
       ofunc = tf_func(inx)
       tf_out = sess.run(ofunc)
     self.assertAllClose(np_out, tf_out)
@@ -92,44 +101,48 @@ class MathBuiltinUnaryTest(tf.test.TestCase):
 
   def _testDtype(self, dtype, use_gpu):
     data = (np.arange(-3, 3) / 4.).reshape([1, 3, 2]).astype(dtype)
-    self._compare(data, np.abs, tf.abs, use_gpu)
-    self._compare(data, np.arccos, tf.acos, use_gpu)
-    self._compare(data, np.arcsin, tf.asin, use_gpu)
-    self._compare(data, np.arctan, tf.atan, use_gpu)
-    self._compare(data, np.ceil, tf.ceil, use_gpu)
-    self._compare(data, np.cos, tf.cos, use_gpu)
-    self._compare(data, np.exp, tf.exp, use_gpu)
-    self._compare(data, np.floor, tf.floor, use_gpu)
-    self._compare(data, np.log, tf.log, use_gpu)
-    self._compare(data, np.log1p, tf.log1p, use_gpu)
-    self._compare(data, np.negative, tf.neg, use_gpu)
-    self._compare(data, self._rsqrt, tf.rsqrt, use_gpu)
-    self._compare(data, np.sin, tf.sin, use_gpu)
-    self._compare(data, np.sqrt, tf.sqrt, use_gpu)
-    self._compare(data, np.square, tf.square, use_gpu)
-    self._compare(data, np.tan, tf.tan, use_gpu)
-    self._compare(data, np.tanh, tf.tanh, use_gpu)
+    self._compare(data, np.abs, math_ops.abs, use_gpu)
+    self._compare(data, np.arccos, math_ops.acos, use_gpu)
+    self._compare(data, np.arcsin, math_ops.asin, use_gpu)
+    self._compare(data, np.arctan, math_ops.atan, use_gpu)
+    self._compare(data, np.ceil, math_ops.ceil, use_gpu)
+    self._compare(data, np.cos, math_ops.cos, use_gpu)
+    self._compare(data, np.exp, math_ops.exp, use_gpu)
+    self._compare(data, np.floor, math_ops.floor, use_gpu)
+    self._compare(data, np.log, math_ops.log, use_gpu)
+    self._compare(data, np.log1p, math_ops.log1p, use_gpu)
+    self._compare(data, np.negative, math_ops.neg, use_gpu)
+    self._compare(data, self._rsqrt, math_ops.rsqrt, use_gpu)
+    self._compare(data, np.sin, math_ops.sin, use_gpu)
+    self._compare(data, np.sqrt, math_ops.sqrt, use_gpu)
+    self._compare(data, np.square, math_ops.square, use_gpu)
+    self._compare(data, np.tan, math_ops.tan, use_gpu)
+    self._compare(data, np.tanh, math_ops.tanh, use_gpu)
 
   def testTypes(self):
     for dtype in [np.float32]:
       self._testDtype(dtype, use_gpu=True)
 
   def testFloorDevide(self):
-    x = (1 + np.linspace(0, 5, np.prod([1, 3, 2]))).astype(np.float32).reshape([1, 3, 2])
-    y = (1 + np.linspace(0, 5, np.prod([1, 3, 2]))).astype(np.float32).reshape([1, 3, 2])
+    x = (1 + np.linspace(0, 5, np.prod([1, 3, 2]))).astype(np.float32).reshape(
+        [1, 3, 2])
+    y = (1 + np.linspace(0, 5, np.prod([1, 3, 2]))).astype(np.float32).reshape(
+        [1, 3, 2])
 
     np_out = np.floor_divide(x, y + 0.1)
 
     with self.test_session(use_gpu=True) as sess:
-      inx = tf.convert_to_tensor(x)
-      iny = tf.convert_to_tensor(y + 0.1)
+      inx = ops.convert_to_tensor(x)
+      iny = ops.convert_to_tensor(y + 0.1)
       ofunc = inx / iny
-      out_func2 = tf.floor(ofunc)
+      out_func2 = math_ops.floor(ofunc)
       tf_out = sess.run(out_func2)
 
     self.assertAllClose(np_out, tf_out)
 
-class BroadcastSimpleTest(tf.test.TestCase):
+
+class BroadcastSimpleTest(test.TestCase):
+
   def _GetGradientArgs(self, xs, ys):
     with self.test_session(use_gpu=True) as sess:
       return sess.run(_broadcast_gradient_args(xs, ys))
@@ -139,53 +152,55 @@ class BroadcastSimpleTest(tf.test.TestCase):
     self.assertAllEqual(r0, [])
     self.assertAllEqual(r1, [0, 1, 2])
 
-  _GRAD_TOL = {tf.float32: 1e-3}
+  _GRAD_TOL = {dtypes.float32: 1e-3}
 
-  def _compareGradientX(self, x, y, np_func, tf_func,
-                      numeric_gradient_type=None):
+  def _compareGradientX(self,
+                        x,
+                        y,
+                        np_func,
+                        tf_func,
+                        numeric_gradient_type=None):
     z = np_func(x, y)
     zs = list(z.shape)
     with self.test_session():
-      inx = tf.convert_to_tensor(x)
-      iny = tf.convert_to_tensor(y)
+      inx = ops.convert_to_tensor(x)
+      iny = ops.convert_to_tensor(y)
       if x.dtype in (np.float32, np.float64):
         out = 1.1 * tf_func(inx, iny)
       else:
         out = tf_func(inx, iny)
       xs = list(x.shape)
-      jacob_t, jacob_n = tf.test.compute_gradient(inx,
-                                                  xs,
-                                                  out,
-                                                  zs,
-                                                  x_init_value=x)
-      tol = self._GRAD_TOL[tf.as_dtype(x.dtype)]
+      jacob_t, jacob_n = gradient_checker.compute_gradient(
+          inx, xs, out, zs, x_init_value=x)
+      tol = self._GRAD_TOL[dtypes.as_dtype(x.dtype)]
       self.assertAllClose(jacob_t, jacob_n, rtol=tol, atol=tol)
 
-  def _compareGradientY(self, x, y, np_func, tf_func,
+  def _compareGradientY(self,
+                        x,
+                        y,
+                        np_func,
+                        tf_func,
                         numeric_gradient_type=None):
     z = np_func(x, y)
     zs = list(z.shape)
     with self.test_session():
-      inx = tf.convert_to_tensor(x)
-      iny = tf.convert_to_tensor(y)
+      inx = ops.convert_to_tensor(x)
+      iny = ops.convert_to_tensor(y)
       if x.dtype in (np.float32, np.float64):
         out = 1.1 * tf_func(inx, iny)
       else:
         out = tf_func(inx, iny)
       ys = list(np.shape(y))
-      jacob_t, jacob_n = tf.test.compute_gradient(iny,
-                                                  ys,
-                                                  out,
-                                                  zs,
-                                                  x_init_value=y)
-    tol = self._GRAD_TOL[tf.as_dtype(x.dtype)]
+      jacob_t, jacob_n = gradient_checker.compute_gradient(
+          iny, ys, out, zs, x_init_value=y)
+    tol = self._GRAD_TOL[dtypes.as_dtype(x.dtype)]
     self.assertAllClose(jacob_t, jacob_n, rtol=tol, atol=tol)
 
   def _compareGpu(self, x, y, np_func, tf_func):
     np_ans = np_func(x, y)
     with self.test_session(use_gpu=True):
-      inx = tf.convert_to_tensor(x)
-      iny = tf.convert_to_tensor(y)
+      inx = ops.convert_to_tensor(x)
+      iny = ops.convert_to_tensor(y)
       out = tf_func(inx, iny)
       tf_gpu = out.eval()
     self.assertAllClose(np_ans, tf_gpu)
@@ -193,13 +208,16 @@ class BroadcastSimpleTest(tf.test.TestCase):
     # TODO(zhifengc/ke): make gradient checker work on GPU.
 
   def testGradient(self):
-    x = (1 + np.linspace(0, 5, np.prod([1, 3, 2]))).astype(np.float32).reshape([1, 3, 2])
-    y = (1 + np.linspace(0, 5, np.prod([1, 3, 2]))).astype(np.float32).reshape([1, 3, 2])
+    x = (1 + np.linspace(0, 5, np.prod([1, 3, 2]))).astype(np.float32).reshape(
+        [1, 3, 2])
+    y = (1 + np.linspace(0, 5, np.prod([1, 3, 2]))).astype(np.float32).reshape(
+        [1, 3, 2])
 
-    self._compareGradientX(x , y, np.true_divide, tf.truediv)
-    self._compareGradientY(x, y, np.true_divide, tf.truediv)
-    self._compareGpu(x, y, np.true_divide, tf.truediv)
-    self._compareGpu(x, y +0.1  , np.floor_divide, tf.floordiv)
+    self._compareGradientX(x, y, np.true_divide, math_ops.truediv)
+    self._compareGradientY(x, y, np.true_divide, math_ops.truediv)
+    self._compareGpu(x, y, np.true_divide, math_ops.truediv)
+    self._compareGpu(x, y + 0.1, np.floor_divide, math_ops.floordiv)
+
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

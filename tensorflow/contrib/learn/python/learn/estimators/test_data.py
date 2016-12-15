@@ -41,11 +41,11 @@ def iris_input_multiclass_fn():
   iris = tf.contrib.learn.datasets.load_iris()
   return {
       'feature': tf.constant(iris.data, dtype=tf.float32)
-  }, tf.constant(iris.target, shape=[150, 1], dtype=tf.int32)
+  }, tf.constant(iris.target, shape=(150, 1), dtype=tf.int32)
 
 
 def iris_input_logistic_fn():
   iris = prepare_iris_data_for_logistic_regression()
   return {
       'feature': tf.constant(iris.data, dtype=tf.float32)
-  }, tf.constant(iris.target, shape=[100, 1], dtype=tf.int32)
+  }, tf.constant(iris.target, shape=(100, 1), dtype=tf.int32)

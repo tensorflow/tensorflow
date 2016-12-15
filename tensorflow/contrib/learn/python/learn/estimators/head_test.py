@@ -354,6 +354,23 @@ class BinaryClassificationModelHeadTest(tf.test.TestCase):
           self, expected_loss, self._expected_eval_metrics(expected_loss),
           model_fn_ops)
 
+  def testBinaryClassificationInferMode(self):
+    n_classes = 2
+    head = head_lib._multi_class_head(n_classes=n_classes)
+    with tf.Graph().as_default(), tf.Session():
+      logits = tf.constant(self._logits)
+      labels = tf.constant(self._labels)
+      # logloss: z:label, x:logit
+      # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
+      model_fn_ops = head.head_ops({}, labels,
+                                   tf.contrib.learn.ModeKeys.INFER,
+                                   _noop_train_op, logits=logits)
+      self.assertIsNone(model_fn_ops.train_op)
+      _assert_no_variables(self)
+      self.assertEquals(1, len(model_fn_ops.output_alternatives))
+      self.assertEquals(constants.ProblemType.LOGISTIC_REGRESSION,
+                        model_fn_ops.output_alternatives[None][0])
+
   def testErrorInSparseTensorLabels(self):
     n_classes = 2
     head = head_lib._multi_class_head(n_classes=n_classes)

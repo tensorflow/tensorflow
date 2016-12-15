@@ -78,6 +78,13 @@ Returns the dtype correspond to this dtype's real part.
 
 - - -
 
+#### `tf.DType.is_bool` {#DType.is_bool}
+
+Returns whether this is a boolean data type
+
+
+- - -
+
 #### `tf.DType.is_floating` {#DType.is_floating}
 
 Returns whether this is a (non-quantized, real) floating point type.

@@ -17,6 +17,7 @@ cuda_py_tests(
     additional_deps = [
         ":distributions_py",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
@@ -100,6 +101,22 @@ py_library(
     name = "distributions_py",
     srcs = ["__init__.py"] + glob(["python/ops/*.py"]),
     srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/contrib/linalg:linalg_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:special_math_ops",
+    ],
 )
 
 cuda_py_tests(
@@ -142,6 +159,7 @@ cuda_py_tests(
     additional_deps = [
         ":distributions_py",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
@@ -324,6 +342,7 @@ cuda_py_tests(
     size = "small",
     srcs = ["python/kernel_tests/kullback_leibler_test.py"],
     additional_deps = [
+        ":distributions_py",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:platform_test",
     ],
@@ -369,6 +388,7 @@ cuda_py_tests(
     additional_deps = [
         ":distributions_py",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
@@ -381,6 +401,7 @@ cuda_py_tests(
     additional_deps = [
         ":distributions_py",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],

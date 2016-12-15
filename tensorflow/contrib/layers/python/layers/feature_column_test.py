@@ -224,6 +224,9 @@ class FeatureColumnTest(tf.test.TestCase):
     b = tf.contrib.layers.real_valued_column("bbb", 10)
     self.assertEqual(b.dimension, 10)
     self.assertTrue(b.default_value is None)
+    c = tf.contrib.layers.real_valued_column("ccc", dimension=None)
+    self.assertIsNone(c.dimension)
+    self.assertTrue(c.default_value is None)
 
     with self.assertRaisesRegexp(TypeError, "dimension must be an integer"):
       tf.contrib.layers.real_valued_column("d3", dimension=1.0)
@@ -252,6 +255,10 @@ class FeatureColumnTest(tf.test.TestCase):
                                               default_value=2,
                                               dtype=tf.int32)
     self.assertListEqual(list(c4.default_value), [2, 2, 2, 2])
+    c5 = tf.contrib.layers.real_valued_column("c5",
+                                              dimension=None,
+                                              default_value=2)
+    self.assertListEqual(list(c5.default_value), [2])
 
     # default_value is a float.
     d1 = tf.contrib.layers.real_valued_column("d1", default_value=2.)
@@ -265,6 +272,9 @@ class FeatureColumnTest(tf.test.TestCase):
       tf.contrib.layers.real_valued_column("d3",
                                            default_value=2.,
                                            dtype=tf.int32)
+    d4 = tf.contrib.layers.real_valued_column("d4", dimension=None,
+                                              default_value=2.)
+    self.assertListEqual(list(d4.default_value), [2.])
 
     # default_value is neither integer nor float.
     with self.assertRaisesRegexp(
@@ -307,6 +317,13 @@ class FeatureColumnTest(tf.test.TestCase):
                                            dimension=3,
                                            default_value=[2.])
 
+    # Default value is a list but dimension is None.
+    with self.assertRaisesRegexp(ValueError,
+                                 "Only scalar default value is supported "
+                                 "when dimension is None"):
+      tf.contrib.layers.real_valued_column("g5", dimension=None,
+                                           default_value=[2., 3.])
+
     # Test that the normalizer_fn gets stored for a real_valued_column
     normalizer = lambda x: x - 1
     h1 = tf.contrib.layers.real_valued_column("h1", normalizer=normalizer)
@@ -339,6 +356,32 @@ class FeatureColumnTest(tf.test.TestCase):
                         [np.prod(input_shape[output_rank - 1:])])
       self.assertEquals(expected_shape, list(real_valued_eval.shape))
 
+  def testRealValuedColumnDensification(self):
+    """Tests densification behavior of `RealValuedColumn`."""
+    # No default value, dimension 1 float.
+    real_valued_column = tf.contrib.layers.real_valued_column(
+        "sparse_real_valued1", dimension=None)
+    sparse_tensor = tf.SparseTensor(values=[2.0, 5.0],
+                                    indices=[[0, 0], [2, 0]],
+                                    dense_shape=[3, 1])
+    densified_output = real_valued_column._to_dnn_input_layer(
+        sparse_tensor)
+
+    # With default value, dimension 2 int.
+    real_valued_column_with_default = tf.contrib.layers.real_valued_column(
+        "sparse_real_valued2", dimension=None, default_value=-1, dtype=tf.int32)
+    sparse_tensor2 = tf.SparseTensor(values=[2, 5, 9, 0],
+                                     indices=[[0, 0], [1, 1], [2, 0], [2, 1]],
+                                     dense_shape=[3, 2])
+    densified_output2 = real_valued_column_with_default._to_dnn_input_layer(
+        sparse_tensor2)
+
+    with self.test_session() as sess:
+      densified_output_eval, densified_output_eval2 = sess.run(
+          [densified_output, densified_output2])
+      self.assertAllEqual(densified_output_eval, [[2.0], [0.0], [5.0]])
+      self.assertAllEqual(densified_output_eval2, [[2, -1], [-1, 5], [9, 0]])
+
   def testBucketizedColumnNameEndsWithUnderscoreBucketized(self):
     a = tf.contrib.layers.bucketized_column(
         tf.contrib.layers.real_valued_column("aaa"), [0, 4])
@@ -354,6 +397,12 @@ class FeatureColumnTest(tf.test.TestCase):
           tf.contrib.layers.sparse_column_with_integerized_feature(
               column_name="bbb", bucket_size=10),
           [0])
+
+  def testBucketizedColumnRequiresRealValuedColumnDimension(self):
+    with self.assertRaisesRegexp(
+        ValueError, "source_column must have a defined dimension"):
+      tf.contrib.layers.bucketized_column(
+          tf.contrib.layers.real_valued_column("bbb", dimension=None), [0])
 
   def testBucketizedColumnRequiresSortedBuckets(self):
     with self.assertRaisesRegexp(
@@ -422,15 +471,31 @@ class FeatureColumnTest(tf.test.TestCase):
             [1], dtype=tf.float32)},
         rvc.config)
 
+    rvc = tf.contrib.layers.real_valued_column("rvc", dimension=None)
+    self.assertDictEqual(
+        {"rvc": tf.VarLenFeature(dtype=tf.float32)},
+        rvc.config)
+
     rvc = tf.contrib.layers.real_valued_column("rvc", dtype=tf.int32)
     self.assertDictEqual(
         {"rvc": tf.FixedLenFeature(
             [1], dtype=tf.int32)},
         rvc.config)
 
+    rvc = tf.contrib.layers.real_valued_column("rvc", dimension=None,
+                                               dtype=tf.int32)
+    self.assertDictEqual(
+        {"rvc": tf.VarLenFeature(dtype=tf.int32)},
+        rvc.config)
+
     with self.assertRaisesRegexp(ValueError,
                                  "dtype must be convertible to float"):
       tf.contrib.layers.real_valued_column("rvc", dtype=tf.string)
+
+    with self.assertRaisesRegexp(ValueError,
+                                 "dtype must be convertible to float"):
+      tf.contrib.layers.real_valued_column("rvc", dimension=None,
+                                           dtype=tf.string)
 
   def testSparseColumnDtypes(self):
     sc = tf.contrib.layers.sparse_column_with_integerized_feature("sc", 10)
@@ -467,6 +532,8 @@ class FeatureColumnTest(tf.test.TestCase):
         "real_valued_column1")
     real_valued_col2 = tf.contrib.layers.real_valued_column(
         "real_valued_column2", 5)
+    real_valued_col3 = tf.contrib.layers.real_valued_column(
+        "real_valued_column3", dimension=None)
     bucketized_col1 = tf.contrib.layers.bucketized_column(
         tf.contrib.layers.real_valued_column(
             "real_valued_column_for_bucketization1"), [0, 4])
@@ -481,8 +548,8 @@ class FeatureColumnTest(tf.test.TestCase):
         set([a, b]), hash_bucket_size=10000)
     feature_columns = set([sparse_col, embedding_col, weighted_id_col,
                            real_valued_col1, real_valued_col2,
-                           bucketized_col1, bucketized_col2,
-                           cross_col])
+                           real_valued_col3, bucketized_col1,
+                           bucketized_col2, cross_col])
     expected_config = {
         "sparse_column": tf.VarLenFeature(tf.string),
         "sparse_column_for_embedding":
@@ -493,6 +560,7 @@ class FeatureColumnTest(tf.test.TestCase):
             [1], dtype=tf.float32),
         "real_valued_column2": tf.FixedLenFeature(
             [5], dtype=tf.float32),
+        "real_valued_column3": tf.VarLenFeature(dtype=tf.float32),
         "real_valued_column_for_bucketization1":
             tf.FixedLenFeature(
                 [1], dtype=tf.float32),
@@ -525,10 +593,13 @@ class FeatureColumnTest(tf.test.TestCase):
     real_valued_col4 = tf.contrib.layers.real_valued_column(
         "real_valued_column4", 3,
         default_value=[1, 0, 6])
+    real_valued_col5 = tf.contrib.layers.real_valued_column(
+        "real_valued_column5", dimension=None, default_value=2)
     feature_columns = [real_valued_col1, real_valued_col2,
-                       real_valued_col3, real_valued_col4]
+                       real_valued_col3, real_valued_col4,
+                       real_valued_col5]
     config = tf.contrib.layers.create_feature_spec_for_parsing(feature_columns)
-    self.assertEqual(4, len(config))
+    self.assertEqual(5, len(config))
     self.assertDictEqual({
         "real_valued_column1":
             tf.FixedLenFeature([1], dtype=tf.float32, default_value=[2.]),
@@ -539,7 +610,9 @@ class FeatureColumnTest(tf.test.TestCase):
             tf.FixedLenFeature([1], dtype=tf.float32, default_value=[8.]),
         "real_valued_column4":
             tf.FixedLenFeature([3], dtype=tf.float32,
-                               default_value=[1., 0., 6.])}, config)
+                               default_value=[1., 0., 6.]),
+        "real_valued_column5":
+            tf.VarLenFeature(dtype=tf.float32)}, config)
 
   def testCreateSequenceFeatureSpec(self):
     sparse_col = tf.contrib.layers.sparse_column_with_hash_bucket(
@@ -557,9 +630,12 @@ class FeatureColumnTest(tf.test.TestCase):
         "real_valued_column", dimension=2)
     real_valued_col2 = tf.contrib.layers.real_valued_column(
         "real_valued_default_column", dimension=5, default_value=3.0)
+    real_valued_col3 = tf.contrib.layers.real_valued_column(
+        "real_valued_var_len_column", dimension=None, default_value=3.0)
 
     feature_columns = set([sparse_col, embedding_col, weighted_id_col,
-                           real_valued_col1, real_valued_col2])
+                           real_valued_col1, real_valued_col2,
+                           real_valued_col3])
 
     feature_spec = fc._create_sequence_feature_spec_for_parsing(feature_columns)
 
@@ -571,25 +647,32 @@ class FeatureColumnTest(tf.test.TestCase):
         "real_valued_column": tf.FixedLenSequenceFeature(
             shape=[2], dtype=tf.float32, allow_missing=False),
         "real_valued_default_column": tf.FixedLenSequenceFeature(
-            shape=[5], dtype=tf.float32, allow_missing=True)}
+            shape=[5], dtype=tf.float32, allow_missing=True),
+        "real_valued_var_len_column": tf.VarLenFeature(dtype=tf.float32)}
 
     self.assertDictEqual(expected_feature_spec, feature_spec)
 
   def testMakePlaceHolderTensorsForBaseFeatures(self):
     sparse_col = tf.contrib.layers.sparse_column_with_hash_bucket(
         "sparse_column", hash_bucket_size=100)
-    real_valued_col = tf.contrib.layers.real_valued_column("real_valued_column",
-                                                           5)
+    real_valued_col = tf.contrib.layers.real_valued_column(
+        "real_valued_column", 5)
+    vlen_real_valued_col = tf.contrib.layers.real_valued_column(
+        "vlen_real_valued_column", dimension=None)
+
     bucketized_col = tf.contrib.layers.bucketized_column(
         tf.contrib.layers.real_valued_column(
             "real_valued_column_for_bucketization"), [0, 4])
-    feature_columns = set([sparse_col, real_valued_col, bucketized_col])
+    feature_columns = set([sparse_col, real_valued_col,
+                           vlen_real_valued_col, bucketized_col])
     placeholders = (
         tf.contrib.layers.make_place_holder_tensors_for_base_features(
             feature_columns))
 
-    self.assertEqual(3, len(placeholders))
+    self.assertEqual(4, len(placeholders))
     self.assertTrue(isinstance(placeholders["sparse_column"],
+                               tf.SparseTensor))
+    self.assertTrue(isinstance(placeholders["vlen_real_valued_column"],
                                tf.SparseTensor))
     placeholder = placeholders["real_valued_column"]
     self.assertGreaterEqual(

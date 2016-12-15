@@ -51,6 +51,7 @@ py_library(
         ":session_bundle_py",
         "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:framework",
         "//tensorflow/python/saved_model:constants",
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:signature_constants",
@@ -72,6 +73,12 @@ py_test(
     tags = ["manual"],
     deps = [
         ":bundle_shim_py",
+        ":constants",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:util",
+        "//tensorflow/python/saved_model:constants",
+        "//tensorflow/python/saved_model:signature_constants",
+        "//tensorflow/python/saved_model:tag_constants",
     ],
 )
 
@@ -90,6 +97,10 @@ py_library(
         ":gc",
         ":manifest_proto_py",
         "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:training",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -107,6 +118,7 @@ py_test(
         ":gc",
         ":manifest_proto_py",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:platform",
     ],
 )
 
@@ -116,6 +128,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:framework",
+        "//tensorflow/python:platform",
     ],
 )
 
@@ -129,6 +142,8 @@ py_test(
     deps = [
         ":gc",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform",
     ],
 )
 
@@ -213,6 +228,7 @@ py_library(
         ":manifest_proto_py",
         "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:lib",
     ],
 )
 
@@ -234,6 +250,8 @@ py_test(
         ":session_bundle_py",
         "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:util",
     ],
 )
 

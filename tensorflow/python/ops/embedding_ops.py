@@ -137,7 +137,7 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None,
               with ops.colocate_with(params[p]):
                 dim_0_sizes.append(array_ops.shape(params[p])[0])
           num_total_ids = math_ops.reduce_sum(
-              math_ops.cast(array_ops.pack(dim_0_sizes), flat_ids.dtype))
+              math_ops.cast(array_ops.stack(dim_0_sizes), flat_ids.dtype))
         ids_per_partition = num_total_ids // np
         extras = num_total_ids % np
 

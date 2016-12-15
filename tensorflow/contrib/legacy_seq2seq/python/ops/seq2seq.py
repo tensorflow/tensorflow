@@ -654,7 +654,7 @@ def attention_decoder(decoder_inputs,
 
     outputs = []
     prev = None
-    batch_attn_size = array_ops.pack([batch_size, attn_size])
+    batch_attn_size = array_ops.stack([batch_size, attn_size])
     attns = [
         array_ops.zeros(
             batch_attn_size, dtype=dtype) for _ in xrange(num_heads)

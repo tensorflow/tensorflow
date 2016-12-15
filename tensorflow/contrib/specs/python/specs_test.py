@@ -213,19 +213,6 @@ class SpecsTest(tf.test.TestCase):
       _ = g.funcall(inputs)
       self.assertEqual(len(tf.global_variables()), 2)
 
-  def testAutoFunction(self):
-    with self.test_session():
-      inputs = tf.constant(_rand(1, 18, 19, 5))
-      with specs.ops:
-        # pylint: disable=undefined-variable
-        net = SL.conv2d(64, 5)
-      outputs = net.funcall(inputs)
-      self.assertEqual(outputs.get_shape().as_list(), [1, 18, 19, 64])
-      tf.global_variables_initializer().run()
-      result = outputs.eval()
-      self.assertEqual(tuple(result.shape), (1, 18, 19, 64))
-      self.assertEqual(summaries.tf_spec_structure("net = Cr(64, 5)", inputs),
-                       "_ var conv var biasadd relu")
 
 if __name__ == "__main__":
   tf.test.main()

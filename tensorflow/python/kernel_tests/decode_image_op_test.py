@@ -19,13 +19,19 @@ from __future__ import division
 from __future__ import print_function
 
 import os.path
+
 import numpy as np
-import tensorflow as tf
 
-# Double-quote usage here is intentional to make internal path rewriting easier.
-prefix_path = os.path.join("tensorflow", "core", "lib")
+from tensorflow.python.framework import errors_impl
+from tensorflow.python.ops import image_ops
+from tensorflow.python.ops import io_ops
+import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
+from tensorflow.python.platform import test
 
-class DecodeImageOpTest(tf.test.TestCase):
+prefix_path = os.path.join('tensorflow', 'core', 'lib')
+
+
+class DecodeImageOpTest(test.TestCase):
 
   def testGif(self):
     # Read some real GIFs
@@ -36,9 +42,9 @@ class DecodeImageOpTest(tf.test.TestCase):
     shape = (12, HEIGHT, WIDTH, 3)
 
     with self.test_session(use_gpu=True) as sess:
-      gif0 = tf.read_file(path)
-      image0 = tf.image.decode_image(gif0)
-      image1 = tf.image.decode_gif(gif0)
+      gif0 = io_ops.read_file(path)
+      image0 = image_ops.decode_image(gif0)
+      image1 = image_ops.decode_gif(gif0)
       gif0, image0, image1 = sess.run([gif0, image0, image1])
 
       self.assertEqual(image0.shape, shape)
@@ -57,18 +63,17 @@ class DecodeImageOpTest(tf.test.TestCase):
 
         self.assertAllClose(frame, gt)
 
-        bad_channels = tf.image.decode_image(gif0, channels=1)
-        with self.assertRaises(tf.errors.InvalidArgumentError):
+        bad_channels = image_ops.decode_image(gif0, channels=1)
+        with self.assertRaises(errors_impl.InvalidArgumentError):
           bad_channels.eval()
-
 
   def testJpeg(self):
     # Read a real jpeg and verify shape
     path = os.path.join(prefix_path, 'jpeg', 'testdata', 'jpeg_merge_test1.jpg')
     with self.test_session(use_gpu=True) as sess:
-      jpeg0 = tf.read_file(path)
-      image0 = tf.image.decode_image(jpeg0)
-      image1 = tf.image.decode_jpeg(jpeg0)
+      jpeg0 = io_ops.read_file(path)
+      image0 = image_ops.decode_image(jpeg0)
+      image1 = image_ops.decode_jpeg(jpeg0)
       jpeg0, image0, image1 = sess.run([jpeg0, image0, image1])
       self.assertEqual(len(jpeg0), 3771)
       self.assertEqual(image0.shape, (256, 128, 3))
@@ -81,25 +86,25 @@ class DecodeImageOpTest(tf.test.TestCase):
       for channels in 0, 1, 3:
         with self.test_session(use_gpu=True) as sess:
           path = os.path.join(prefix_path, 'png', 'testdata', filename)
-          png0 = tf.read_file(path)
-          image0 = tf.image.decode_image(png0, channels=channels)
-          image1 = tf.image.decode_png(png0, channels=channels)
+          png0 = io_ops.read_file(path)
+          image0 = image_ops.decode_image(png0, channels=channels)
+          image1 = image_ops.decode_png(png0, channels=channels)
           png0, image0, image1 = sess.run([png0, image0, image1])
           self.assertEqual(image0.shape, (26, 51, channels or channels_in))
           self.assertAllEqual(image0, image1)
 
   def testInvalidBytes(self):
     image_bytes = b'ThisIsNotAnImage!'
-    decode = tf.image.decode_image(image_bytes)
+    decode = image_ops.decode_image(image_bytes)
     with self.test_session():
-      with self.assertRaises(tf.errors.InvalidArgumentError):
+      with self.assertRaises(errors_impl.InvalidArgumentError):
         decode.eval()
 
   def testInvalidChannels(self):
     image_bytes = b'unused'
     with self.assertRaises(ValueError):
-      decode = tf.image.decode_image(image_bytes, channels=4)
+      decode = image_ops.decode_image(image_bytes, channels=4)
 
 
-if __name__ == "__main__":
-  tf.test.main()
+if __name__ == '__main__':
+  test.main()

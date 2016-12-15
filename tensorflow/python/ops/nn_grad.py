@@ -542,7 +542,7 @@ def _TopKGrad(op, grad, _):
 
   ind_lastdim = array_ops.gather(ind_shape, array_ops.size(ind_shape) - 1)
   # Flatten indices to 2D.
-  ind_2d = array_ops.reshape(op.outputs[1], array_ops.pack([-1, ind_lastdim]))
+  ind_2d = array_ops.reshape(op.outputs[1], array_ops.stack([-1, ind_lastdim]))
 
   in_lastdim = array_ops.gather(in_shape, array_ops.size(in_shape) - 1)
   outerdim = array_ops.shape(ind_2d)[0]

@@ -23,6 +23,7 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
         "//tensorflow/python:nn_ops",
+        "//tensorflow/python:platform",
     ],
 )
 

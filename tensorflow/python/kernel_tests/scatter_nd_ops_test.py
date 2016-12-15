@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tensorflow.ops.tf.scatter_nd."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -20,7 +21,15 @@ from __future__ import print_function
 import functools
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.client import session
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
 
 
 def _AsType(v, vtype):
@@ -29,16 +38,16 @@ def _AsType(v, vtype):
 
 def _FlatInnerDims(tensor, ndims=2):
   shape = list(tensor.shape)
-  return tensor.reshape([functools.reduce(lambda x, y: x * y,
-                                          shape[:-ndims + 1], 1)] +
-                        shape[-ndims + 1:])
+  return tensor.reshape([
+      functools.reduce(lambda x, y: x * y, shape[:-ndims + 1], 1)
+  ] + shape[-ndims + 1:])
 
 
 def _FlatOuterDims(tensor, ndims=2):
   shape = list(tensor.shape)
-  return tensor.reshape(shape[:ndims - 1] +
-                        [functools.reduce(lambda x, y: x * y,
-                                          shape[ndims - 1:], 1)])
+  return tensor.reshape(shape[:ndims - 1] + [
+      functools.reduce(lambda x, y: x * y, shape[ndims - 1:], 1)
+  ])
 
 
 def _NumpyScatterNd(ref, indices, updates, op):
@@ -78,7 +87,7 @@ def _NumpyDiv(ref, indices, updates):
   return _NumpyScatterNd(ref, indices, updates, lambda p, u: p / u)
 
 
-class ScatterNdTest(tf.test.TestCase):
+class ScatterNdTest(test.TestCase):
 
   def _VariableRankTest(self,
                         np_scatter,
@@ -125,7 +134,7 @@ class ScatterNdTest(tf.test.TestCase):
         new = ref.copy()
         np_scatter(new, indices, updates)
         # Scatter via tensorflow
-        ref_var = tf.Variable(ref)
+        ref_var = variables.Variable(ref)
         ref_var.initializer.run()
         tf_scatter(ref_var, indices, updates).eval()
 
@@ -139,13 +148,13 @@ class ScatterNdTest(tf.test.TestCase):
           self._VariableRankTest(np_scatter, tf_scatter, vtype, itype, use_gpu)
 
   def testVariableRankUpdate(self):
-    self._VariableRankTests(_NumpyUpdate, tf.scatter_nd_update)
+    self._VariableRankTests(_NumpyUpdate, state_ops.scatter_nd_update)
 
   def testVariableRankAdd(self):
-    self._VariableRankTests(_NumpyAdd, tf.scatter_nd_add)
+    self._VariableRankTests(_NumpyAdd, state_ops.scatter_nd_add)
 
   def testVariableRankSub(self):
-    self._VariableRankTests(_NumpySub, tf.scatter_nd_sub)
+    self._VariableRankTests(_NumpySub, state_ops.scatter_nd_sub)
 
   # TODO(simister): Re-enable once binary size increase due to
   # scatter_nd ops is under control.
@@ -169,8 +178,8 @@ class ScatterNdTest(tf.test.TestCase):
 
   def testScatterRepeatIndices(self):
     """This tests scatter_add using indices that repeat."""
-    self._ScatterRepeatIndicesTest(_NumpyAdd, tf.scatter_nd_add)
-    self._ScatterRepeatIndicesTest(_NumpySub, tf.scatter_nd_sub)
+    self._ScatterRepeatIndicesTest(_NumpyAdd, state_ops.scatter_nd_add)
+    self._ScatterRepeatIndicesTest(_NumpySub, state_ops.scatter_nd_sub)
     # TODO(simister): Re-enable once binary size increase due to
     # extra templating is back under control.
     # self._ScatterRepeatIndicesTest(_NumpyMul, tf.scatter_nd_mul)
@@ -193,11 +202,12 @@ class ScatterNdTest(tf.test.TestCase):
     # TODO(simister): Re-enable once binary size increase due to
     # scatter_nd ops is under control.
     #  tf.scatter_nd_mul, tf.scatter_nd_div,
-    for op in (tf.scatter_nd_add, tf.scatter_nd_sub, tf.scatter_nd_update):
+    for op in (state_ops.scatter_nd_add, state_ops.scatter_nd_sub,
+               state_ops.scatter_nd_update):
       params = np.array([1, 2, 3, 4, 5, 6]).astype(np.float32)
       updates = np.array([-3, -4, -5]).astype(np.float32)
       with self.test_session(use_gpu=False):
-        ref = tf.Variable(params)
+        ref = variables.Variable(params)
         ref.initializer.run()
 
         # Indices all in range, no problem.
@@ -216,29 +226,30 @@ class ScatterNdTest(tf.test.TestCase):
           op(ref, indices, updates).eval()
 
   def testRank3ValidShape(self):
-    indices = tf.zeros([2, 2, 2], tf.int32)
-    updates = tf.zeros([2, 2, 2], tf.int32)
+    indices = array_ops.zeros([2, 2, 2], dtypes.int32)
+    updates = array_ops.zeros([2, 2, 2], dtypes.int32)
     shape = np.array([2, 2, 2])
     self.assertAllEqual(
-        tf.scatter_nd(indices, updates, shape).get_shape().as_list(), shape)
-
-    ref = tf.Variable(tf.zeros(shape, tf.int32))
-    self.assertAllEqual(
-        tf.scatter_nd_update(ref, indices, updates).get_shape().as_list(),
+        array_ops.scatter_nd(indices, updates, shape).get_shape().as_list(),
         shape)
 
+    ref = variables.Variable(array_ops.zeros(shape, dtypes.int32))
+    self.assertAllEqual(
+        state_ops.scatter_nd_update(ref, indices,
+                                    updates).get_shape().as_list(), shape)
+
   def testExtraIndicesDimensions(self):
-    indices = tf.zeros([1, 1, 2], tf.int32)
-    updates = tf.zeros([1, 1], tf.int32)
+    indices = array_ops.zeros([1, 1, 2], dtypes.int32)
+    updates = array_ops.zeros([1, 1], dtypes.int32)
     shape = np.array([2, 2])
-    scatter = tf.scatter_nd(indices, updates, shape)
+    scatter = array_ops.scatter_nd(indices, updates, shape)
     self.assertAllEqual(scatter.get_shape().as_list(), shape)
     expected_result = np.zeros([2, 2], dtype=np.int32)
     with self.test_session():
       self.assertAllEqual(expected_result, scatter.eval())
 
-    ref = tf.Variable(tf.zeros(shape, tf.int32))
-    scatter_update = tf.scatter_nd_update(ref, indices, updates)
+    ref = variables.Variable(array_ops.zeros(shape, dtypes.int32))
+    scatter_update = state_ops.scatter_nd_update(ref, indices, updates)
     self.assertAllEqual(scatter_update.get_shape().as_list(), shape)
 
     with self.test_session():
@@ -246,39 +257,39 @@ class ScatterNdTest(tf.test.TestCase):
       self.assertAllEqual(expected_result, scatter_update.eval())
 
   def testUndefinedIndicesShape(self):
-    indices = tf.placeholder(tf.int32, shape=None)
-    updates = tf.placeholder(tf.int32, shape=[2, 2, 2])
-    shape = tf.constant([2, 2, 2], tf.int32)
-    tf.scatter_nd(indices, updates, shape)
+    indices = array_ops.placeholder(dtypes.int32, shape=None)
+    updates = array_ops.placeholder(dtypes.int32, shape=[2, 2, 2])
+    shape = constant_op.constant([2, 2, 2], dtypes.int32)
+    array_ops.scatter_nd(indices, updates, shape)
 
   def testUndefinedUpdatesShape(self):
-    indices = tf.placeholder(tf.int32, shape=[2, 2, 2])
-    updates = tf.placeholder(tf.int32, shape=None)
-    shape = tf.constant([2, 2, 2], tf.int32)
-    tf.scatter_nd(indices, updates, shape)
+    indices = array_ops.placeholder(dtypes.int32, shape=[2, 2, 2])
+    updates = array_ops.placeholder(dtypes.int32, shape=None)
+    shape = constant_op.constant([2, 2, 2], dtypes.int32)
+    array_ops.scatter_nd(indices, updates, shape)
 
   def testUndefinedOutputShape(self):
-    indices = tf.placeholder(tf.int32, shape=[2, 2, 2])
-    updates = tf.placeholder(tf.int32, shape=[2, 2, 2])
-    shape = tf.placeholder(tf.int32, shape=[None])
-    tf.scatter_nd(indices, updates, shape)
+    indices = array_ops.placeholder(dtypes.int32, shape=[2, 2, 2])
+    updates = array_ops.placeholder(dtypes.int32, shape=[2, 2, 2])
+    shape = array_ops.placeholder(dtypes.int32, shape=[None])
+    array_ops.scatter_nd(indices, updates, shape)
 
   def testEmptyOutputShape1(self):
-    indices = tf.zeros([2, 2, 2], tf.int32)
-    updates = tf.zeros([2, 2, 2], tf.int32)
-    shape = tf.constant([0, 3, 2], tf.int32)
+    indices = array_ops.zeros([2, 2, 2], dtypes.int32)
+    updates = array_ops.zeros([2, 2, 2], dtypes.int32)
+    shape = constant_op.constant([0, 3, 2], dtypes.int32)
 
     with self.assertRaisesWithPredicateMatch(
         ValueError, "Indices and updates specified for empty output shape"):
-      tf.scatter_nd(indices, updates, shape)
+      array_ops.scatter_nd(indices, updates, shape)
 
   def testEmptyOutputShape2(self):
-    indices = tf.placeholder(tf.int32, shape=None)
-    updates = tf.placeholder(tf.int32, shape=None)
-    shape = tf.constant([0, 3, 2], tf.int32)
+    indices = array_ops.placeholder(dtypes.int32, shape=None)
+    updates = array_ops.placeholder(dtypes.int32, shape=None)
+    shape = constant_op.constant([0, 3, 2], dtypes.int32)
 
     with self.test_session():
-      tf.scatter_nd(indices, updates, shape).eval(feed_dict={
+      array_ops.scatter_nd(indices, updates, shape).eval(feed_dict={
           indices: np.zeros(
               [2, 2, 2], dtype=np.int32),
           updates: np.zeros(
@@ -286,74 +297,75 @@ class ScatterNdTest(tf.test.TestCase):
       })
 
   def testEmptyOutputShape3(self):
-    indices = tf.zeros([0], tf.int32)
-    updates = tf.zeros([0], tf.int32)
-    shape = tf.constant([0], tf.int32)
-    scatter = tf.scatter_nd(indices, updates, shape)
+    indices = array_ops.zeros([0], dtypes.int32)
+    updates = array_ops.zeros([0], dtypes.int32)
+    shape = constant_op.constant([0], dtypes.int32)
+    scatter = array_ops.scatter_nd(indices, updates, shape)
 
     with self.test_session():
       self.assertEqual(scatter.eval().size, 0)
 
   def testRank3InvalidShape1(self):
-    indices = tf.zeros([3, 2, 2], tf.int32)
-    updates = tf.zeros([2, 2, 2], tf.int32)
+    indices = array_ops.zeros([3, 2, 2], dtypes.int32)
+    updates = array_ops.zeros([2, 2, 2], dtypes.int32)
     shape = np.array([2, 2, 2])
     with self.assertRaisesWithPredicateMatch(
         ValueError, "The outer \\d+ dimensions of indices\\.shape="):
-      tf.scatter_nd(indices, updates, shape)
+      array_ops.scatter_nd(indices, updates, shape)
 
-    ref = tf.Variable(tf.zeros(shape, tf.int32))
+    ref = variables.Variable(array_ops.zeros(shape, dtypes.int32))
     with self.assertRaisesWithPredicateMatch(
         ValueError, "The outer \\d+ dimensions of indices\\.shape="):
-      tf.scatter_nd_update(ref, indices, updates)
+      state_ops.scatter_nd_update(ref, indices, updates)
 
   def testRank3InvalidShape2(self):
-    indices = tf.zeros([2, 2, 1], tf.int32)
-    updates = tf.zeros([2, 2], tf.int32)
+    indices = array_ops.zeros([2, 2, 1], dtypes.int32)
+    updates = array_ops.zeros([2, 2], dtypes.int32)
     shape = np.array([2, 2, 2])
     with self.assertRaisesWithPredicateMatch(
         ValueError, "The inner \\d+ dimensions of output\\.shape="):
-      tf.scatter_nd(indices, updates, shape)
+      array_ops.scatter_nd(indices, updates, shape)
 
-    ref = tf.Variable(tf.zeros(shape, tf.int32))
+    ref = variables.Variable(array_ops.zeros(shape, dtypes.int32))
     with self.assertRaisesWithPredicateMatch(
         ValueError, "The inner \\d+ dimensions of ref\\.shape="):
-      tf.scatter_nd_update(ref, indices, updates)
+      state_ops.scatter_nd_update(ref, indices, updates)
 
   def testGradientsRank2ElementUpdate(self):
-    indices = tf.constant([[0, 0], [1, 1]], dtype=tf.int32)
-    updates = tf.constant([1, 4], dtype=tf.float64)
-    shape = tf.constant([2, 2], dtype=tf.int32)
-    outputs = tf.scatter_nd(indices, updates, shape)
+    indices = constant_op.constant([[0, 0], [1, 1]], dtype=dtypes.int32)
+    updates = constant_op.constant([1, 4], dtype=dtypes.float64)
+    shape = constant_op.constant([2, 2], dtype=dtypes.int32)
+    outputs = array_ops.scatter_nd(indices, updates, shape)
 
-    grad_vals = tf.constant([[1, 2], [3, 4]], dtype=tf.float64)
-    grads = tf.gradients([outputs], [updates], [grad_vals])[0]
+    grad_vals = constant_op.constant([[1, 2], [3, 4]], dtype=dtypes.float64)
+    grads = gradients_impl.gradients([outputs], [updates], [grad_vals])[0]
     expected_grads = np.array([1, 4], dtype=np.float64)
     with self.test_session():
       self.assertAllEqual(expected_grads, grads.eval())
 
   def testGradientsRank2SliceUpdate(self):
-    indices = tf.constant([[1], [0]], dtype=tf.int32)
-    updates = tf.constant([[3, 4], [1, 2]], dtype=tf.float64)
-    shape = tf.constant([2, 2], dtype=tf.int32)
-    outputs = tf.scatter_nd(indices, updates, shape)
+    indices = constant_op.constant([[1], [0]], dtype=dtypes.int32)
+    updates = constant_op.constant([[3, 4], [1, 2]], dtype=dtypes.float64)
+    shape = constant_op.constant([2, 2], dtype=dtypes.int32)
+    outputs = array_ops.scatter_nd(indices, updates, shape)
 
-    grad_vals = tf.constant([[3, 4], [1, 2]], dtype=tf.float64)
-    grads = tf.gradients([outputs], [updates], [grad_vals])[0]
+    grad_vals = constant_op.constant([[3, 4], [1, 2]], dtype=dtypes.float64)
+    grads = gradients_impl.gradients([outputs], [updates], [grad_vals])[0]
     expected_grads = np.array([[1, 2], [3, 4]], dtype=np.float64)
     with self.test_session():
       self.assertAllEqual(expected_grads, grads.eval())
 
   def testGradientsRank3SliceUpdate(self):
-    indices = tf.constant([[[0, 1], [1, 0]], [[0, 0], [1, 1]]], dtype=tf.int32)
-    updates = tf.constant(
-        [[[5, 7], [2, 4]], [[1, 3], [6, 8]]], dtype=tf.float64)
-    shape = tf.constant([2, 2, 2], dtype=tf.int32)
-    outputs = tf.scatter_nd(indices, updates, shape)
+    indices = constant_op.constant(
+        [[[0, 1], [1, 0]], [[0, 0], [1, 1]]], dtype=dtypes.int32)
+    updates = constant_op.constant(
+        [[[5, 7], [2, 4]], [[1, 3], [6, 8]]], dtype=dtypes.float64)
+    shape = constant_op.constant([2, 2, 2], dtype=dtypes.int32)
+    outputs = array_ops.scatter_nd(indices, updates, shape)
 
-    grad_vals = tf.constant(
-        [[[1, 2], [3, 4]], [[5, 6], [7, 8]]], dtype=tf.float64)
-    grads = tf.gradients([outputs], [updates], [grad_vals])[0]
+    grad_vals = constant_op.constant(
+        [[[1, 2], [3, 4]], [[5, 6], [7, 8]]], dtype=dtypes.float64)
+    grads = gradients_impl.gradients([outputs], [updates], [grad_vals])[0]
     expected_grads = np.array(
         [[[3, 4], [5, 6]], [[1, 2], [7, 8]]], dtype=np.float64)
     with self.test_session():
@@ -362,35 +374,36 @@ class ScatterNdTest(tf.test.TestCase):
   def testConcurrentUpdates(self):
     num_updates = 10000
     update_values = np.random.rand(num_updates)
-    ref = tf.Variable(np.zeros([2, 2]), dtype=tf.float64)
-    indices = tf.constant([[0, 1]] * num_updates, dtype=tf.int32)
-    updates = tf.constant(update_values, dtype=tf.float64)
+    ref = variables.Variable(np.zeros([2, 2]), dtype=dtypes.float64)
+    indices = constant_op.constant([[0, 1]] * num_updates, dtype=dtypes.int32)
+    updates = constant_op.constant(update_values, dtype=dtypes.float64)
 
     exepected_result = np.zeros([2, 2], dtype=np.float64)
     exepected_result[0, 1] = np.sum(update_values)
 
-    scatter = tf.scatter_nd_add(ref, indices, updates)
-    init = tf.global_variables_initializer()
+    scatter = state_ops.scatter_nd_add(ref, indices, updates)
+    init = variables.global_variables_initializer()
 
-    with tf.Session() as sess:
+    with session.Session() as sess:
       sess.run(init)
       result = sess.run(scatter)
       assert np.allclose(result, exepected_result)
 
   # TODO(fpmc): Re-enable this test when gpu_pip test actually runs on a GPU.
   def _disabledTestScatterOutOfRangeGpu(self):
-    if not tf.test.IsBuiltWithCuda():
+    if not test.IsBuiltWithCuda():
       return
     # TODO(simister): Re-enable once binary size increase due to
     # scatter_nd ops is under control.
     # tf.scatter_nd_mul, tf.scatter_nd_div,
-    for op in (tf.scatter_nd_add, tf.scatter_nd_sub, tf.scatter_nd_update):
+    for op in (state_ops.scatter_nd_add, state_ops.scatter_nd_sub,
+               state_ops.scatter_nd_update):
       params = np.array([1, 2, 3, 4, 5, 6]).astype(np.float32)
       updates = np.array([-3, -4, -5]).astype(np.float32)
       # With GPU, the code ignores indices that are out of range.
       # We don't test the implementation; just test there's no failures.
       with self.test_session(force_gpu=True):
-        ref = tf.Variable(params)
+        ref = variables.Variable(params)
         ref.initializer.run()
 
         # Indices all in range, no problem.
@@ -404,13 +417,13 @@ class ScatterNdTest(tf.test.TestCase):
         op(ref, indices, updates).eval()
 
   def testScatterNdRepatedIndicesAdd(self):
-    indices = tf.zeros([100000, 1], tf.int32)
+    indices = array_ops.zeros([100000, 1], dtypes.int32)
     values = np.random.randn(100000)
     shape = [1]
     with self.test_session():
-      val = tf.scatter_nd(indices, values, shape).eval()
+      val = array_ops.scatter_nd(indices, values, shape).eval()
     self.assertAllClose([np.sum(values)], val)
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

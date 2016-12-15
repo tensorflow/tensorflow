@@ -59,8 +59,8 @@ class RGBToHSVTest(test_util.TensorFlowTestCase):
         split0 = array_ops.unpack(batch0)
         split1 = list(map(image_ops.rgb_to_hsv, split0))
         split2 = list(map(image_ops.hsv_to_rgb, split1))
-        join1 = array_ops.pack(split1)
-        join2 = array_ops.pack(split2)
+        join1 = array_ops.stack(split1)
+        join2 = array_ops.stack(split2)
         batch1, batch2, join1, join2 = sess.run([batch1, batch2, join1, join2])
 
       # Verify that processing batch elements together is the same as separate

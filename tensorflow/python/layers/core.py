@@ -137,7 +137,7 @@ class Dense(base._Layer):  # pylint: disable=protected-access
       # Reshape the input to 2D.
       output_shape_tensors = array_ops.unpack(array_ops.shape(inputs))
       output_shape_tensors[-1] = self.units
-      output_shape_tensor = array_ops.pack(output_shape_tensors)
+      output_shape_tensor = array_ops.stack(output_shape_tensors)
       inputs = array_ops.reshape(inputs, [-1, input_dim])
 
     outputs = standard_ops.matmul(inputs, self.w)

@@ -985,7 +985,7 @@ Status DirectSession::GetOrCreateExecutors(
 
     // EXPERIMENTAL: tfdbg inserts debug nodes (i.e., probes) to the graph
     if (run_state_args->debugger_state) {
-      TF_RETURN_IF_ERROR(run_state_args->debugger_state->InsertNodes(
+      TF_RETURN_IF_ERROR(run_state_args->debugger_state->DecorateGraphForDebug(
           partition_graph, params.device));
     }
     iter->second.reset(partition_graph);

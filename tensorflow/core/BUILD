@@ -5,7 +5,7 @@
 # Public targets:
 #
 # ":protos_all" - exports all core TensorFlow protos
-#     ":protos_all_py_pb2" - py_proto_library version (Google-internal)
+#     ":protos_all_py" - py_proto_library version (Google-internal)
 # ":lib" - exports the public non-test headers for:
 #     platform/: Platform-specific code and external dependencies
 #     lib/: Low-level libraries that are not TensorFlow-specific

@@ -106,7 +106,7 @@ def histogram_summary(tag, values, collections=None, name=None):
 
 @deprecated(
     "2016-11-30", "Please switch to tf.summary.image. Note that "
-    "tf.summary.histogram uses the node name instead of the tag. "
+    "tf.summary.image uses the node name instead of the tag. "
     "This means that TensorFlow will automatically de-duplicate summary "
     "names based on the scope they are created in. Also, the max_images "
     "argument was renamed to max_outputs.")
@@ -167,7 +167,7 @@ def image_summary(tag, tensor, max_images=3, collections=None, name=None):
 
 @deprecated(
     "2016-11-30", "Please switch to tf.summary.audio. Note that "
-    "tf.summary.histogram uses the node name instead of the tag. "
+    "tf.summary.audio uses the node name instead of the tag. "
     "This means that TensorFlow will automatically de-duplicate summary "
     "names based on the scope they are created in.")
 def audio_summary(tag,

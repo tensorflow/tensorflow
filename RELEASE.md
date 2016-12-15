@@ -47,6 +47,9 @@
   keywords. In particular we now match NumPy order as
   `tf.sparse_split(sp_input, num_split, axis)`. NOTE: we have temporarily
   made `tf.sparse_split` require keyword arguments.
+* Deprecated `tf.concat` operator. Please switch to use `tf.concat_v2` for now.
+  In the Beta release, we will update `tf.concat` to match argument order of
+  `tf.concat_v2.
 
 # Release 0.12.0
 
@@ -105,6 +108,8 @@
   include `RNN` -> `rnn` in `tf.nn.rnn`, `tf.nn.dynamic_rnn` and moving from
   `Linear/Matrix` -> `weights` and `Linear/Bias` -> `biases` in most RNN cells.
 * Deprecated tf.select op. tf.where should be used instead.
+* `SparseTensor.shape` has been renamed to `SparseTensor.dense_shape`.  Same for
+  `SparseTensorValue.shape`.
 * `Env::FileExists` and `FileSystem::FileExists` now return a
   `tensorflow::Status` intead of a bool. Any callers to this function can be
   converted to a bool by adding `.ok()` to the call.

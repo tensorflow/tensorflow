@@ -14,6 +14,7 @@ py_binary(
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:platform",
+        "//tensorflow/python:summary",
         "//tensorflow/tensorboard/backend:server",
     ],
 )

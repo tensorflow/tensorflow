@@ -19,10 +19,12 @@ from __future__ import print_function
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -95,6 +97,37 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
       self.assertEqual(read.eval(), [[3]])
 
+  def testInitFn(self):
+    with self.test_session():
+      v = resource_variable_ops.ResourceVariable(initial_value=lambda: 1,
+                                                 dtype=dtypes.float32)
+      self.assertEqual(v.handle.op.colocation_groups(),
+                       v.initializer.inputs[1].op.colocation_groups())
+
+  def testInitFnDtype(self):
+    with self.test_session():
+      v = resource_variable_ops.ResourceVariable(initial_value=lambda: 1,
+                                                 dtype=dtypes.float32)
+      self.assertEqual(dtypes.float32, v.value.dtype)
+
+  def testInitFnNoDtype(self):
+    with self.test_session():
+      v = resource_variable_ops.ResourceVariable(initial_value=lambda: 1)
+      self.assertEqual(dtypes.int32, v.value.dtype)
+
+  def testInitializeAllVariables(self):
+    with self.test_session():
+      v = resource_variable_ops.ResourceVariable(1, dtype=dtypes.float32)
+      with self.assertRaises(errors.NotFoundError):
+        v.value.eval()
+      variables.global_variables_initializer().run()
+      self.assertEqual(1.0, v.value.eval())
+
+  def testOperatorOverload(self):
+    with self.test_session():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      variables.global_variables_initializer().run()
+      self.assertEqual(2.0, (v+v).eval())
 
 if __name__ == "__main__":
   test.main()

@@ -183,6 +183,19 @@ class DNNClassifierTest(tf.test.TestCase):
     scores = classifier.evaluate(x=train_x, y=train_y, steps=1)
     self._assertInRange(0.0, 1.0, scores['accuracy'])
 
+  def _assertBinaryPredictions(self, expected_len, predictions):
+    self.assertEqual(expected_len, len(predictions))
+    for prediction in predictions:
+      self.assertIn(prediction, (0, 1))
+
+  def _assertProbabilities(
+      self, expected_batch_size, expected_n_classes, probabilities):
+    self.assertEqual(expected_batch_size, len(probabilities))
+    for b in range(expected_batch_size):
+      self.assertEqual(expected_n_classes, len(probabilities[b]))
+      for i in range(expected_n_classes):
+        self._assertInRange(0.0, 1.0, probabilities[b][i])
+
   def testLogisticRegression_TensorData(self):
     """Tests binary classification using tensor data as input."""
     def _input_fn(num_epochs=None):
@@ -218,7 +231,7 @@ class DNNClassifierTest(tf.test.TestCase):
     predict_input_fn = functools.partial(_input_fn, num_epochs=1)
     predictions = list(
         classifier.predict(input_fn=predict_input_fn, as_iterable=True))
-    self.assertListEqual(predictions, [1, 0, 0])
+    self._assertBinaryPredictions(3, predictions)
 
   def testLogisticRegression_FloatLabel(self):
     """Tests binary classification with float labels."""
@@ -251,17 +264,12 @@ class DNNClassifierTest(tf.test.TestCase):
     classifier.fit(input_fn=_input_fn_float_label, steps=50)
 
     predict_input_fn = functools.partial(_input_fn_float_label, num_epochs=1)
-    predictions_proba = list(
-        classifier.predict_proba(input_fn=predict_input_fn, as_iterable=True))
-    self.assertEqual(3, len(predictions_proba))
     predictions = list(
         classifier.predict(input_fn=predict_input_fn, as_iterable=True))
-    self.assertEqual(3, len(predictions))
-    for b in range(3):
-      self.assertEqual(2, len(predictions_proba[b]))
-      for i in range(2):
-        self._assertInRange(0.0, 1.0, predictions_proba[b][i])
-      self.assertTrue(predictions[b] in (0, 1))
+    self._assertBinaryPredictions(3, predictions)
+    predictions_proba = list(
+        classifier.predict_proba(input_fn=predict_input_fn, as_iterable=True))
+    self._assertProbabilities(3, 2, predictions_proba)
 
   def testMultiClass_MatrixData(self):
     """Tests multi-class classification using matrix data as input."""
@@ -425,8 +433,9 @@ class DNNClassifierTest(tf.test.TestCase):
         tf.contrib.layers.embedding_column(sparse_column, dimension=1)
     ]
 
+    n_classes = 3
     classifier = tf.contrib.learn.DNNClassifier(
-        n_classes=3,
+        n_classes=n_classes,
         feature_columns=feature_columns,
         hidden_units=[10, 10],
         config=tf.contrib.learn.RunConfig(tf_random_seed=1))
@@ -437,11 +446,10 @@ class DNNClassifierTest(tf.test.TestCase):
     self._assertInRange(0.0, 1.0, scores['accuracy'])
     self.assertIn('loss', scores)
     predictions = classifier.predict(input_fn=_input_fn, as_iterable=False)
-    self.assertListEqual(list(predictions), [1, 0, 0])
-    predictions = classifier.predict_proba(input_fn=_input_fn,
-                                           as_iterable=False)
-    self.assertAllClose(
-        predictions, [[0., 1., 0.], [1., 0., 0.], [1., 0., 0.]], atol=0.1)
+    self._assertBinaryPredictions(3, predictions)
+    probabilities = classifier.predict_proba(input_fn=_input_fn,
+                                             as_iterable=False)
+    self._assertProbabilities(3, n_classes, probabilities)
 
   def testPredict_AsIterable(self):
     """Tests predict and predict_prob methods with as_iterable=True."""
