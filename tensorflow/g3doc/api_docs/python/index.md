@@ -262,6 +262,7 @@
   * [`multiply`](../../api_docs/python/math_ops.md#multiply)
   * [`neg`](../../api_docs/python/math_ops.md#neg)
   * [`negative`](../../api_docs/python/math_ops.md#negative)
+  * [`norm`](../../api_docs/python/math_ops.md#norm)
   * [`polygamma`](../../api_docs/python/math_ops.md#polygamma)
   * [`pow`](../../api_docs/python/math_ops.md#pow)
   * [`qr`](../../api_docs/python/math_ops.md#qr)
