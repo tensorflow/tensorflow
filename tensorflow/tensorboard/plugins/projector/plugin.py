@@ -132,7 +132,7 @@ class ProjectorPlugin(TBPlugin):
   @property
   def configs(self):
     """Returns a map of run paths to `ProjectorConfig` protos."""
-    run_path_pairs = self.run_paths.items()
+    run_path_pairs = list(self.run_paths.items())
     # If there are no summary event files, the projector should still work,
     # treating the `logdir` as the model checkpoint directory.
     if not run_path_pairs:
