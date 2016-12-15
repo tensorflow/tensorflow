@@ -66,12 +66,8 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import builder as saved_model_builder
 from tensorflow.python.saved_model import tag_constants
-from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import device_setter
-from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver
-from tensorflow.python.training import session_run_hook
-from tensorflow.python.training import summary_io
 from tensorflow.python.util import compat
 
 
@@ -1087,17 +1083,6 @@ class Estimator(BaseEstimator):
     """
     return self._call_model_fn(features, labels, model_fn_lib.ModeKeys.TRAIN)
 
-  # TODO(ispir): delete this function after converting all legacy usages.
-  def _call_legacy_get_train_ops(self, features, labels):
-    train_ops = self._get_train_ops(features, labels)
-    if isinstance(train_ops, model_fn_lib.ModelFnOps):  # Default signature
-      return train_ops
-    return model_fn_lib.ModelFnOps(
-        mode=model_fn_lib.ModeKeys.TRAIN,
-        predictions=None,
-        loss=train_ops[1],
-        train_op=train_ops[0])
-
   def _get_eval_ops(self, features, labels, metrics):
     """Method that builds model graph and returns evaluation ops.
 
@@ -1253,119 +1238,6 @@ class Estimator(BaseEstimator):
 
       return export_dir
 
-  @deprecated_args(SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, 'x', 'y',
-                   'batch_size')
-  def fit(self,
-          x=None,
-          y=None,
-          input_fn=None,
-          steps=None,
-          batch_size=None,
-          monitors=None,
-          max_steps=None):
-    # pylint: disable=g-doc-args,g-doc-return-or-yield
-    """See `Trainable`.
-
-    Raises:
-      ValueError: If `x` or `y` are not `None` while `input_fn` is not `None`.
-      ValueError: If both `steps` and `max_steps` are not `None`.
-    """
-    if (steps is not None) and (max_steps is not None):
-      raise ValueError('Can not provide both steps and max_steps.')
-    if max_steps is not None:
-      try:
-        start_step = load_variable(self._model_dir, ops.GraphKeys.GLOBAL_STEP)
-        if max_steps <= start_step:
-          logging.info('Skipping training since max_steps has already saved.')
-          return None
-      except:  # pylint: disable=bare-except
-        pass
-
-    hooks = monitor_lib.replace_monitors_with_hooks(monitors, self)
-    if steps is not None or max_steps is not None:
-      hooks.append(basic_session_run_hooks.StopAtStepHook(steps, max_steps))
-
-    input_fn, feed_fn = _get_input_fn(
-        x,
-        y,
-        input_fn,
-        feed_fn=None,
-        batch_size=batch_size,
-        shuffle=True,
-        epochs=None)
-    if feed_fn:
-      hooks.append(_FeedFnHook(feed_fn))
-    loss = self._train_model_v2(input_fn=input_fn, hooks=hooks)
-    logging.info('Loss for final step: %s.', loss)
-    return self
-
-  def _train_model_v2(self, input_fn, hooks):
-    all_hooks = []
-    self._graph = ops.Graph()
-    with self._graph.as_default() as g, g.device(self._device_fn):
-      random_seed.set_random_seed(self._config.tf_random_seed)
-      global_step = contrib_framework.create_global_step(g)
-      features, labels = input_fn()
-      self._check_inputs(features, labels)
-      model_fn_ops = self._call_legacy_get_train_ops(features, labels)
-      ops.add_to_collection(ops.GraphKeys.LOSSES, model_fn_ops.loss)
-      all_hooks.extend([
-          basic_session_run_hooks.NanTensorHook(model_fn_ops.loss),
-          basic_session_run_hooks.LoggingTensorHook(
-              {
-                  'loss': model_fn_ops.loss,
-                  'step': global_step
-              },
-              every_n_iter=100)
-      ])
-      all_hooks.extend(hooks)
-
-      scaffold = model_fn_ops.training_scaffold or monitored_session.Scaffold()
-      if not (scaffold.saver or ops.get_collection(ops.GraphKeys.SAVERS)):
-        ops.add_to_collection(
-            ops.GraphKeys.SAVERS,
-            saver.Saver(
-                sharded=True,
-                max_to_keep=self._config.keep_checkpoint_max,
-                defer_build=True))
-
-      chief_hooks = []
-      if (self._config.save_checkpoints_secs or
-          self._config.save_checkpoints_steps):
-        chief_hooks = [
-            basic_session_run_hooks.CheckpointSaverHook(
-                self._model_dir,
-                save_secs=self._config.save_checkpoints_secs,
-                save_steps=self._config.save_checkpoints_steps,
-                scaffold=scaffold)
-        ]
-      with monitored_session.MonitoredTrainingSession(
-          master=self._config.master,
-          is_chief=self._config.is_chief,
-          checkpoint_dir=self._model_dir,
-          scaffold=scaffold,
-          hooks=all_hooks + model_fn_ops.training_hooks,
-          chief_only_hooks=chief_hooks + model_fn_ops.training_chief_hooks,
-          save_checkpoint_secs=0,  # Saving is handled by a hook.
-          save_summaries_steps=self._config.save_summary_steps,
-          config=None) as mon_sess:
-        loss = None
-        while not mon_sess.should_stop():
-          _, loss = mon_sess.run([model_fn_ops.train_op, model_fn_ops.loss])
-      summary_io.SummaryWriterCache.clear()
-      return loss
-
-
-class _FeedFnHook(session_run_hook.SessionRunHook):
-  """Runs feed_fn and sets the feed_dict accordingly."""
-
-  def __init__(self, feed_fn):
-    self.feed_fn = feed_fn
-
-  def before_run(self, run_context):  # pylint: disable=unused-argument
-    return session_run_hook.SessionRunArgs(
-        fetches=None, feed_dict=self.feed_fn())
-
 
 # For time of deprecation x,y from Estimator allow direct access.
 # pylint: disable=protected-access
@@ -1377,19 +1249,19 @@ class SKCompat(sklearn.BaseEstimator):
 
   def fit(self, x, y, batch_size=128, steps=None, max_steps=None,
           monitors=None):
+    if (steps is not None) and (max_steps is not None):
+      raise ValueError('Can not provide both steps and max_steps.')
+
     input_fn, feed_fn = _get_input_fn(x, y, input_fn=None, feed_fn=None,
                                       batch_size=batch_size, shuffle=True,
                                       epochs=None)
-    all_monitors = []
-    if feed_fn:
-      all_monitors = [_FeedFnHook(feed_fn)]
-    if monitors:
-      all_monitors.extend(monitors)
-
-    self._estimator.fit(input_fn=input_fn,
-                        steps=steps,
-                        max_steps=max_steps,
-                        monitors=all_monitors)
+    loss = self._estimator._train_model(
+        input_fn=input_fn,
+        feed_fn=feed_fn,
+        steps=steps,
+        monitors=monitors,
+        max_steps=max_steps)
+    logging.info('Loss for final step: %s.', loss)
     return self
 
   def score(self, x, y, batch_size=128, steps=None, metrics=None):
