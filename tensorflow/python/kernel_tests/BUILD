@@ -2237,6 +2237,14 @@ cuda_py_test(
     tags = ["nomsan"],  # fails in msan from numpy calls
 )
 
+cuda_py_test(
+    name = "norm_op_test",
+    size = "medium",
+    srcs = ["norm_op_test.py"],
+    additional_deps = ["//tensorflow:tensorflow_py"],
+    shard_count = 20,
+)
+
 sycl_py_test(
     name = "basic_gpu_test",
     size = "small",

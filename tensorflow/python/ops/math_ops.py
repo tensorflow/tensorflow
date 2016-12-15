@@ -96,6 +96,7 @@ functions on matrices to your graph.
 
 @@matmul
 
+@@norm
 @@matrix_determinant
 @@matrix_inverse
 @@cholesky
