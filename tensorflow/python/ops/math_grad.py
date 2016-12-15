@@ -196,41 +196,53 @@ def _SparseSegmentSqrtNGrad(op, grad):
           None, None)
 
 
-def _SegmentMinOrMaxGrad(op, grad):
-  """Gradient for SegmentMin and SegmentMax. Both share the same code."""
+def _SegmentMinOrMaxGrad(op, grad, is_sorted):
+  """Gradient for SegmentMin and (unsorted) SegmentMax. They share similar code."""
   zeros = array_ops.zeros(array_ops.shape(op.inputs[0]),
                           dtype=op.inputs[0].dtype)
 
   # Get the number of selected (minimum or maximum) elements in each segment.
   gathered_outputs = array_ops.gather(op.outputs[0], op.inputs[1])
   is_selected = math_ops.equal(op.inputs[0], gathered_outputs)
-  num_selected = math_ops.segment_sum(math_ops.cast(is_selected, grad.dtype),
-                                      op.inputs[1])
+  if is_sorted:
+    num_selected = math_ops.segment_sum(math_ops.cast(is_selected, grad.dtype),
+                                        op.inputs[1])
+  else:
+    num_selected = math_ops.unsorted_segment_sum(math_ops.cast(is_selected, grad.dtype),
+                                                 op.inputs[1], op.inputs[2])
 
   # Compute the gradient for each segment. The gradient for the ith segment is
   # divided evenly among the selected elements in that segment.
   weighted_grads = math_ops.div(grad, num_selected)
   gathered_grads = array_ops.gather(weighted_grads, op.inputs[1])
 
-  return array_ops.where(is_selected, gathered_grads, zeros), None
+  if is_sorted:
+    return array_ops.where(is_selected, gathered_grads, zeros), None
+  else:
+    return array_ops.where(is_selected, gathered_grads, zeros), None, None
 
 
 @ops.RegisterGradient("SegmentMin")
 def _SegmentMinGrad(op, grad):
   """Gradient for SegmentMin."""
-  return _SegmentMinOrMaxGrad(op, grad)
+  return _SegmentMinOrMaxGrad(op, grad, True)
 
 
 @ops.RegisterGradient("SegmentMax")
 def _SegmentMaxGrad(op, grad):
   """Gradient for SegmentMax."""
-  return _SegmentMinOrMaxGrad(op, grad)
+  return _SegmentMinOrMaxGrad(op, grad, True)
 
 
 @ops.RegisterGradient("UnsortedSegmentSum")
 def _UnsortedSegmentSumGrad(op, grad):
   """Gradient for SegmentSum."""
   return array_ops.gather(grad, op.inputs[1]), None, None
+
+
+@ops.RegisterGradient("UnsortedSegmentMax")
+def _UnsortedSegmentMaxGrad(op, grad):
+  return _SegmentMinOrMaxGrad(op, grad, False)
 
 
 @ops.RegisterGradient("Abs")
