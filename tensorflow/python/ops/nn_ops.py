@@ -333,8 +333,8 @@ def with_space_to_batch(input, dilation_rate, padding, op, filter_shape=None,  #
     # convention as conv2d.
     pad_extra_start = pad_extra_shape // 2
     pad_extra_end = pad_extra_shape - pad_extra_start
-    base_paddings = array_ops.pack([[pad_extra_start[i], pad_extra_end[i]]
-                                    for i in range(num_spatial_dims)])
+    base_paddings = array_ops.stack([[pad_extra_start[i], pad_extra_end[i]]
+                                     for i in range(num_spatial_dims)])
   elif padding == "VALID":
     base_paddings = np.zeros([num_spatial_dims, 2], np.int32)
   else:

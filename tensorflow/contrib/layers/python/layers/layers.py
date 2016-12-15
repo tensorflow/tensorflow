@@ -2113,7 +2113,7 @@ def legacy_fully_connected(x,
       out_shape = array_ops.unpack(array_ops.shape(x))
       out_shape[-1] = num_output_units
 
-      y = array_ops.reshape(y, array_ops.pack(out_shape))
+      y = array_ops.reshape(y, array_ops.stack(out_shape))
 
       static_shape = x.get_shape().as_list()
       static_shape[-1] = num_output_units

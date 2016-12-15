@@ -1084,7 +1084,7 @@ class Conv2DTranspose(Conv2D):
       output_shape = (batch_size, out_height, out_width, self.filters)
       strides = (1, stride_h, stride_w, 1)
 
-    output_shape_tensor = array_ops.pack(output_shape)
+    output_shape_tensor = array_ops.stack(output_shape)
     outputs = nn.conv2d_transpose(
         inputs,
         self.kernel,

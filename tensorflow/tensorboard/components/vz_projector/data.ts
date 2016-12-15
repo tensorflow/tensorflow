@@ -339,15 +339,45 @@ export class DataSet {
     });
   }
 
-  mergeMetadata(metadata: SpriteAndMetadataInfo) {
+  /**
+   * Merges metadata to the dataset and returns whether it succeeded.
+   */
+  mergeMetadata(metadata: SpriteAndMetadataInfo): boolean {
     if (metadata.pointsInfo.length !== this.points.length) {
-      logging.setWarningMessage(
-          `Number of tensors (${this.points.length}) do not match` +
-          ` the number of lines in metadata (${metadata.pointsInfo.length}).`);
+      let errorMessage = `Number of tensors (${this.points.length}) do not` +
+          ` match the number of lines in metadata` +
+          ` (${metadata.pointsInfo.length}).`;
+
+      if (metadata.stats.length === 1 &&
+          this.points.length + 1 === metadata.pointsInfo.length) {
+        // If there is only one column of metadata and the number of points is
+        // exactly one less than the number of metadata lines, this is due to an
+        // unnecessary header line in the metadata and we can show a meaningful
+        // error.
+        logging.setErrorMessage(
+            errorMessage + ' Single column metadata should not have a header ' +
+                'row.',
+            'merging metadata');
+        return false;
+      } else if (
+          metadata.stats.length > 1 &&
+          this.points.length - 1 === metadata.pointsInfo.length) {
+        // If there are multiple columns of metadata and the number of points is
+        // exactly one greater than the number of lines in the metadata, this
+        // means there is a missing metadata header.
+        logging.setErrorMessage(
+            errorMessage + ' Multi-column metadata should have a header ' +
+                'row with column labels.',
+            'merging metadata');
+        return false;
+      }
+
+      logging.setWarningMessage(errorMessage);
     }
     this.spriteAndMetadataInfo = metadata;
     metadata.pointsInfo.slice(0, this.points.length)
         .forEach((m, i) => this.points[i].metadata = m);
+    return true;
   }
 
   stopTSNE() {
@@ -401,6 +431,7 @@ export interface ColorOption {
   /** Threshold values and their colors. Defined for gradient color map. */
   thresholds?: {value: number, color: string}[];
   isSeparator?: boolean;
+  tooManyUniqueValues?: boolean;
 }
 
 /**
@@ -454,6 +485,7 @@ export class State {
 
   /** Color by option. */
   selectedColorOptionName: string;
+  forceCategoricalColoring: boolean;
 
   /** Label by option. */
   selectedLabelOption: string;

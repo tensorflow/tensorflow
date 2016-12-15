@@ -232,7 +232,7 @@ class Mixture(distribution.Distribution):
           cat_lp + d_lp
           for (cat_lp, d_lp) in zip(cat_log_probs, distribution_log_probs)
       ]
-      concat_log_probs = array_ops.pack(final_log_probs, 0)
+      concat_log_probs = array_ops.stack(final_log_probs, 0)
       log_sum_exp = math_ops.reduce_logsumexp(concat_log_probs, [0])
       return log_sum_exp
 

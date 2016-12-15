@@ -2246,6 +2246,7 @@ REGISTER_OP("QuantizedMatMul")
     .Attr("Toutput: quantizedtype = DT_QINT32")
     .Attr("transpose_a: bool = false")
     .Attr("transpose_b: bool = false")
+    .Attr("Tactivation: quantizedtype = DT_QUINT8")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::MatMulShape(c));
       ShapeHandle unused;
@@ -2276,6 +2277,8 @@ min_b: The float value that the lowest quantized `b` value represents.
 max_b: The float value that the highest quantized `b` value represents.
 min_out: The float value that the lowest quantized output value represents.
 max_out: The float value that the highest quantized output value represents.
+Tactivation: The type of output produced by activation function
+    following this operation.
 
 )doc");
 

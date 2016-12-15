@@ -73,6 +73,15 @@ py_library(
         "data/data_ops.py",
     ],
     srcs_version = "PY2AND3",
+    deps = [
+        ":constants",
+        ":tensor_forest_ops_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:sparse_ops",
+    ],
 )
 
 tf_gen_op_libs(
@@ -114,7 +123,15 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":constants",
         ":gen_tensor_forest_ops",
+        "//tensorflow/contrib/util:util_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:sparse_ops",
     ],
 )
 
@@ -122,6 +139,12 @@ py_library(
     name = "eval_metrics",
     srcs = ["client/eval_metrics.py"],
     srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/metrics:metrics_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn",
+    ],
 )
 
 py_test(
@@ -274,6 +297,18 @@ py_library(
         ":constants",
         ":data_ops_py",
         ":tensor_forest_ops_py",
+        "//tensorflow/contrib/losses:losses_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -326,9 +361,11 @@ py_test(
     srcs_version = "PY2AND3",
     tags = ["manual"],
     deps = [
+        ":tensor_forest_ops_py",
         ":topn_py",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:session",
     ],
 )

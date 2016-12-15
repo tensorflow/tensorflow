@@ -1371,12 +1371,16 @@ class _RealValuedColumn(_FeatureColumn, collections.namedtuple(
     ["column_name", "dimension", "default_value", "dtype", "normalizer"])):
   """Represents a real valued feature column also known as continuous features.
 
-  Instances of this class are immutable. A real valued column means features are
-  dense. It means dictionary returned by InputBuilder contains a
-  ("column_name", Tensor) pair. Tensor shape should be (batch_size, 1).
+  Instances of this class are immutable. A real valued column with a specified
+  dimension means features are dense, otherwise they're sparse.
+  In the dense case, the dictionary returned by InputBuilder contains a
+  ("column_name", Tensor) pair with a Tensor shape of (batch_size, dimension).
+  In the sparse shape, the dictionary contains a ("column_name", SparseTensor)
+  pair instead with shape inferred after parsing.
   """
 
-  def __new__(cls, column_name, dimension, default_value, dtype, normalizer):
+  def __new__(cls, column_name, dimension, default_value,
+              dtype, normalizer):
     if default_value is not None:
       default_value = tuple(default_value)
     return super(_RealValuedColumn, cls).__new__(cls, column_name, dimension,
@@ -1389,12 +1393,15 @@ class _RealValuedColumn(_FeatureColumn, collections.namedtuple(
 
   @property
   def config(self):
-    default_value = self.default_value
-    if default_value is not None:
-      default_value = list(default_value)
-    return {self.column_name: parsing_ops.FixedLenFeature([self.dimension],
-                                                          self.dtype,
-                                                          default_value)}
+    if self.dimension is None:
+      return {self.column_name: parsing_ops.VarLenFeature(self.dtype)}
+    else:
+      default_value = self.default_value
+      if default_value is not None:
+        default_value = list(default_value)
+      return {self.column_name: parsing_ops.FixedLenFeature([self.dimension],
+                                                            self.dtype,
+                                                            default_value)}
 
   @property
   def key(self):
@@ -1429,11 +1436,17 @@ class _RealValuedColumn(_FeatureColumn, collections.namedtuple(
                           weight_collections=None,
                           trainable=True,
                           output_rank=2):
+    input_tensor = self._to_dense_tensor(input_tensor)
     if input_tensor.dtype != dtypes.float32:
       input_tensor = math_ops.to_float(input_tensor)
     return _reshape_real_valued_tensor(input_tensor, output_rank, self.name)
 
   def _to_dense_tensor(self, input_tensor):
+    if isinstance(input_tensor, sparse_tensor_py.SparseTensor):
+      default_value = (self.default_value[0] if self.default_value is not None
+                       else 0)
+      return sparse_ops.sparse_tensor_to_dense(
+          input_tensor, default_value=default_value)
     return input_tensor
 
 
@@ -1447,21 +1460,26 @@ def real_valued_column(column_name,
   Args:
     column_name: A string defining real valued column name.
     dimension: An integer specifying dimension of the real valued column.
-      The default is 1. The Tensor representing the _RealValuedColumn
-      will have the shape of [batch_size, dimension].
+      The default is 1. When dimension is not None, the Tensor representing
+      the _RealValuedColumn will have the shape of [batch_size, dimension].
+      A None dimension means the feature column should be treat as variable
+      length and will be parsed as a `SparseTensor`.
     default_value: A single value compatible with dtype or a list of values
       compatible with dtype which the column takes on during tf.Example parsing
-      if data is missing. If None, then tf.parse_example will fail if an example
-      does not contain this column. If a single value is provided, the same
-      value will be applied as the default value for every dimension. If a
-      list of values is provided, the length of the list should be equal to the
-      value of `dimension`.
+      if data is missing. When dimension is not None, a default value of None
+      will cause tf.parse_example to fail if an example does not contain this
+      column. If a single value is provided, the same value will be applied as
+      the default value for every dimension. If a list of values is provided,
+      the length of the list should be equal to the value of `dimension`.
+      Only scalar default value is supported in case dimension is not specified.
     dtype: defines the type of values. Default value is tf.float32. Must be a
       non-quantized, real integer or floating point type.
     normalizer: If not None, a function that can be used to normalize the value
       of the real valued column after default_value is applied for parsing.
       Normalizer function takes the input tensor as its argument, and returns
-      the output tensor. (e.g. lambda x: (x - 3.0) / 4.2).
+      the output tensor. (e.g. lambda x: (x - 3.0) / 4.2). Note that for
+      variable length columns, the normalizer should expect an input_tensor of
+      type `SparseTensor`.
   Returns:
     A _RealValuedColumn.
   Raises:
@@ -1473,15 +1491,15 @@ def real_valued_column(column_name,
     ValueError: if dtype is not convertable to tf.float32.
   """
 
-  if not isinstance(dimension, int):
-    raise TypeError("dimension must be an integer. "
-                    "dimension: {}, column_name: {}".format(dimension,
-                                                            column_name))
-
-  if dimension < 1:
-    raise ValueError("dimension must be greater than 0. "
-                     "dimension: {}, column_name: {}".format(dimension,
-                                                             column_name))
+  if dimension is not None:
+    if not isinstance(dimension, int):
+      raise TypeError("dimension must be an integer. "
+                      "dimension: {}, column_name: {}".format(dimension,
+                                                              column_name))
+    if dimension < 1:
+      raise ValueError("dimension must be greater than 0. "
+                       "dimension: {}, column_name: {}".format(dimension,
+                                                               column_name))
 
   if not (dtype.is_integer or dtype.is_floating):
     raise ValueError("dtype must be convertible to float. "
@@ -1493,22 +1511,30 @@ def real_valued_column(column_name,
 
   if isinstance(default_value, int):
     if dtype.is_integer:
-      default_value = [default_value for _ in range(dimension)]
+      default_value = ([default_value for _ in range(dimension)] if dimension
+                       else [default_value])
       return _RealValuedColumn(column_name, dimension, default_value, dtype,
                                normalizer)
     if dtype.is_floating:
       default_value = float(default_value)
-      default_value = [default_value for _ in range(dimension)]
+      default_value = ([default_value for _ in range(dimension)] if dimension
+                       else [default_value])
       return _RealValuedColumn(column_name, dimension, default_value, dtype,
                                normalizer)
 
   if isinstance(default_value, float):
     if dtype.is_floating and (not dtype.is_integer):
-      default_value = [default_value for _ in range(dimension)]
+      default_value = ([default_value for _ in range(dimension)] if dimension
+                       else [default_value])
       return _RealValuedColumn(column_name, dimension, default_value, dtype,
                                normalizer)
 
   if isinstance(default_value, list):
+    if dimension is None:
+      raise ValueError(
+          "Only scalar default value is supported when dimension is None. "
+          "default_value: {}, column_name: {}".format(
+              default_value, column_name))
     if len(default_value) != dimension:
       raise ValueError(
           "The length of default_value must be equal to dimension. "
@@ -1567,6 +1593,10 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
     if not isinstance(source_column, _RealValuedColumn):
       raise TypeError("source_column must be an instance of _RealValuedColumn. "
                       "source_column: {}".format(source_column))
+
+    if source_column.dimension is None:
+      raise ValueError("source_column must have a defined dimension. "
+                       "source_column: {}".format(source_column))
 
     if not isinstance(boundaries, list) or not boundaries:
       raise ValueError("boundaries must be a non-empty list. "
@@ -1658,8 +1688,8 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
       i2 = array_ops.zeros([batch_size], dtype=dtypes.int32, name="zeros")
       bucket_indices = array_ops.reshape(input_tensor, [-1], name="reshape")
 
-    indices = math_ops.to_int64(array_ops.transpose(array_ops.pack((i1, i2))))
-    shape = math_ops.to_int64(array_ops.pack([batch_size, dimension]))
+    indices = math_ops.to_int64(array_ops.transpose(array_ops.stack((i1, i2))))
+    shape = math_ops.to_int64(array_ops.stack([batch_size, dimension]))
     sparse_id_values = sparse_tensor_py.SparseTensor(
         indices, bucket_indices, shape)
 

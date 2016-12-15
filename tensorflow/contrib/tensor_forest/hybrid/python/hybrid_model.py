@@ -67,7 +67,7 @@ class HybridModel(object):
     # results.
     if isinstance(layer, collections.Iterable):
       return math_ops.reduce_mean(
-          array_ops.pack([l.inference_graph(data) for l in layer]), 0)
+          array_ops.stack([l.inference_graph(data) for l in layer]), 0)
     # If this is a single layer, return its inference result.
     else:
       return layer.inference_graph(data)

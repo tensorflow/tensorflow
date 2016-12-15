@@ -39,7 +39,7 @@ class DebuggerState : public DebuggerStateInterface {
 
   // Insert special-purpose debug nodes to graph. See the documentation of
   // DebugNodeInserter::InsertNodes() for details.
-  Status InsertNodes(Graph* graph, Device* device) override;
+  Status DecorateGraphForDebug(Graph* graph, Device* device) override;
 
   const protobuf::RepeatedPtrField<DebugTensorWatch>& watches;
 

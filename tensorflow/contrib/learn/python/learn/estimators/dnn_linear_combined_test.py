@@ -200,6 +200,7 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
 
     classifier.fit(input_fn=_input_fn, steps=100)
     scores = classifier.evaluate(input_fn=_input_fn, steps=100)
+    _assert_metrics_in_range(('accuracy', 'auc'), scores)
 
   def testTrainWithPartitionedVariables(self):
     """Tests training with partitioned variables."""

@@ -1,5 +1,4 @@
 variables/index.md
-../tutorials/mnist/tf/index.md
 summaries_and_tensorboard/index.md
 graph_viz/index.md
 embedding_viz/index.md

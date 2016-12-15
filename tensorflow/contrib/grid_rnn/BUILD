@@ -14,6 +14,12 @@ py_library(
     name = "grid_rnn_py",
     srcs = ["__init__.py"] + glob(["python/ops/*.py"]),
     srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:variable_scope",
+    ],
 )
 
 cuda_py_tests(

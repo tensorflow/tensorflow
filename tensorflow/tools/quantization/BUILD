@@ -23,6 +23,8 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
     ],
 )
@@ -37,6 +39,7 @@ py_test(
     tags = ["nomsan"],  # http://b/32242946
     deps = [
         ":quantize_graph",
+        "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
@@ -51,6 +54,7 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:platform",
     ],
 )
 

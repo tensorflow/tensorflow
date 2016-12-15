@@ -549,9 +549,10 @@ def fill_lower_triangular(x, validate_args=False, name="fill_lower_triangular"):
     batch_ids = math_ops.range(m)
 
     # Assemble the tril_ids into batch,tril_id pairs.
-    idx = array_ops.pack([
-        array_ops.tile(array_ops.expand_dims(batch_ids, 1), [1, n*n]),
-        array_ops.tile(array_ops.expand_dims(tril_ids(n), 0), [m, 1])])
+    idx = array_ops.stack([
+        array_ops.tile(array_ops.expand_dims(batch_ids, 1), [1, n * n]),
+        array_ops.tile(array_ops.expand_dims(tril_ids(n), 0), [m, 1])
+    ])
     idx = array_ops.transpose(idx, [1, 2, 0])
 
     # Gather up, reshape, and return.

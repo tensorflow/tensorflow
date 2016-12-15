@@ -891,5 +891,5 @@ def hessians(ys, xs, name="hessians", colocate_gradients_with_ops=False,
       # Compute the partial derivatives with respect to each element of the list
       _hess = [gradients(_gradient, x, **kwargs)[0] for _gradient in _gradients]
       # Pack the list into a matrix and add to the list of hessians
-      hessians.append(array_ops.pack(_hess, name=name))
+      hessians.append(array_ops.stack(_hess, name=name))
   return hessians

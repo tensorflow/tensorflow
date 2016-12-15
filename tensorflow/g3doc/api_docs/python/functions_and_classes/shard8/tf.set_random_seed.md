@@ -74,7 +74,7 @@ tf.set_random_seed(1234)
 a = tf.random_uniform([1])
 b = tf.random_normal([1])
 
-# Repeatedly running this block with the same graph will generate different
+# Repeatedly running this block with the same graph will generate the same
 # sequences of 'a' and 'b'.
 print("Session 1")
 with tf.Session() as sess1:

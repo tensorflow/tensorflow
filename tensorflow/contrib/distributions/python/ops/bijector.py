@@ -1656,9 +1656,11 @@ class Affine(Bijector):
       super(Affine, self).__init__(
           batch_ndims=self._infer_batch_ndims(),
           event_ndims=event_ndims,
-          graph_parents=[self._shift, event_ndims] + (
+          graph_parents=(
+              [event_ndims] +
               [self._scale] if contrib_framework.is_tensor(self._scale)
-              else self._scale.inputs),
+              else self._scale.inputs +
+              [self._shift] if self._shift is not None else []),
           is_constant_jacobian=True,
           validate_args=validate_args,
           name=name)

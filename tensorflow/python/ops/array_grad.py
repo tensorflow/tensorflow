@@ -40,7 +40,7 @@ def _PackGrad(op, grad):
 @ops.RegisterGradient("Unpack")
 def _UnpackGrad(op, *grads):
   """Gradient for unpack op."""
-  return array_ops.pack(grads, axis=op.get_attr("axis"))
+  return array_ops.stack(grads, axis=op.get_attr("axis"))
 
 
 def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
@@ -114,9 +114,10 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
     # pylint: disable=protected-access
     if len(sizes) > 16:
       # extract the size of each input along the concat dimension
-      sizes = array_ops.squeeze(array_ops.slice(array_ops.pack(sizes, axis=1),
-                                                [concat_dim, 0],
-                                                [1, -1]))
+      sizes = array_ops.squeeze(
+          array_ops.slice(
+              array_ops.stack(
+                  sizes, axis=1), [concat_dim, 0], [1, -1]))
       out_grads = array_ops.split(grad, sizes, concat_dim)
     else:
       offset = gen_array_ops._concat_offset(concat_dim, sizes)
@@ -206,7 +207,7 @@ def _SliceGrad(op, grad):
   input_rank = array_ops.rank(input_vec)
   slice_size = array_ops.shape(op.outputs[0])
 
-  shape = array_ops.pack([input_rank, 1])
+  shape = array_ops.stack([input_rank, 1])
   before_pad = array_ops.reshape(begin_vec, shape)
   after_pad = array_ops.reshape(
       array_ops.shape(input_vec) - slice_size - begin_vec, shape)
@@ -307,7 +308,7 @@ def _MatrixSetDiagGrad(op, grad):
       batch_shape = array_ops.slice(grad_shape, [0], [grad_rank - 2])
       matrix_shape = array_ops.slice(grad_shape, [grad_rank - 2], [2])
       min_dim = math_ops.reduce_min(matrix_shape)
-      diag_shape = array_ops.concat(0, [batch_shape, [min_dim]])
+      diag_shape = array_ops.concat_v2([batch_shape, [min_dim]], 0)
   grad_input = array_ops.matrix_set_diag(
       grad, array_ops.zeros(
           diag_shape, dtype=grad.dtype))
@@ -345,7 +346,7 @@ def _GatherGrad(op, grad):
   # Build appropriately shaped IndexedSlices
   indices = op.inputs[1]
   size = array_ops.expand_dims(array_ops.size(indices), 0)
-  values_shape = array_ops.concat(0, [size, params_shape[1:]])
+  values_shape = array_ops.concat_v2([size, params_shape[1:]], 0)
   values = array_ops.reshape(grad, values_shape)
   indices = array_ops.reshape(indices, size)
   return [ops.IndexedSlices(values, indices, params_shape), None]
@@ -435,8 +436,8 @@ def _TileGrad(op, grad):
   #   multiples = [2, 3, 4]
   #   split_shape = [2, 20, 3, 30, 4, 40]
   #   axes = [0, 2, 4]
-  split_shape = array_ops.reshape(array_ops.transpose(
-      array_ops.pack([op.inputs[1], input_shape])), [-1])
+  split_shape = array_ops.reshape(
+      array_ops.transpose(array_ops.stack([op.inputs[1], input_shape])), [-1])
   axes = math_ops.range(0, array_ops.size(split_shape), 2)
   input_grad = math_ops.reduce_sum(array_ops.reshape(grad, split_shape), axes)
   # Fix shape inference
@@ -456,7 +457,7 @@ def _PadGrad(op, grad):
   a = op.inputs[1]  # [Rank(x), 2]
   # Takes a slice of a. The 1st column. [Rank(x), 1].
   pad_before = array_ops.slice(a, [0, 0],
-                               array_ops.pack([array_ops.rank(x), 1]))
+                               array_ops.stack([array_ops.rank(x), 1]))
   # Make it a 1-D tensor.
   begin = array_ops.reshape(pad_before, [-1])
   sizes = array_ops.shape(x)

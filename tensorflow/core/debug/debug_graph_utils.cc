@@ -64,8 +64,15 @@ const string DebuggerState::SummarizeDebugTensorWatches() {
   return oss.str();
 }
 
-Status DebuggerState::InsertNodes(Graph* graph, Device* device) {
-  return DebugNodeInserter::InsertNodes(watches, graph, device);
+Status DebuggerState::DecorateGraphForDebug(Graph* graph, Device* device) {
+  Status status;
+
+  status.Update(DebugNodeInserter::InsertNodes(watches, graph, device));
+  if (status.ok()) {
+    status.Update(DebugIO::PublishGraph(*graph, debug_urls_));
+  }
+
+  return status;
 }
 
 // static

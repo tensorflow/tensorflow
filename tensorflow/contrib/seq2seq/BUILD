@@ -13,6 +13,17 @@ py_library(
     name = "seq2seq_py",
     srcs = ["__init__.py"] + glob(["python/ops/*.py"]),
     srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:rnn",
+        "//tensorflow/python:rnn_cell",
+        "//tensorflow/python:tensor_array_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
+    ],
 )
 
 cuda_py_test(

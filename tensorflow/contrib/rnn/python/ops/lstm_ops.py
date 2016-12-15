@@ -206,7 +206,7 @@ def _block_lstm(seq_len_max,
   # pylint: disable=protected-access
   i, cs, f, o, ci, co, h = _lstm_ops_so.block_lstm(
       seq_len_max=seq_len_max,
-      x=array_ops.pack(x),
+      x=array_ops.stack(x),
       cs_prev=cs_prev,
       h_prev=h_prev,
       w=w,
@@ -480,7 +480,7 @@ class LSTMBlockWrapper(fused_rnn_cell.FusedRNNCell):
     with vs.variable_scope(scope or "lstm_block_wrapper"):
       is_list = isinstance(inputs, list)
       if is_list:
-        inputs = array_ops.pack(inputs)
+        inputs = array_ops.stack(inputs)
       inputs_shape = inputs.get_shape().with_rank(3)
       if not inputs_shape[2]:
         raise ValueError("Expecting inputs_shape[2] to be set: %s" %
@@ -498,7 +498,7 @@ class LSTMBlockWrapper(fused_rnn_cell.FusedRNNCell):
           raise ValueError(
               "Either initial_state or dtype needs to be specified")
         z = array_ops.zeros(
-            array_ops.pack([batch_size, self.num_units]), dtype=dtype)
+            array_ops.stack([batch_size, self.num_units]), dtype=dtype)
         initial_state = z, z
       else:
         if len(initial_state) != 2:

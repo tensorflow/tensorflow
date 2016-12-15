@@ -13012,6 +13012,23 @@ op {
     }
     description: "If true, `b` is transposed before multiplication."
   }
+  attr {
+    name: "Tactivation"
+    type: "type"
+    default_value {
+      type: DT_QUINT8
+    }
+    description: "The type of output produced by activation function\nfollowing this operation."
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
   summary: "Perform a quantized matrix multiplication of  `a` by the matrix `b`."
   description: "The inputs must be two-dimensional matrices and the inner dimension of\n`a` (after being transposed if `transpose_a` is non-zero) must match the\nouter dimension of `b` (after being transposed if `transposed_b` is\nnon-zero)."
 }

@@ -43,14 +43,11 @@ of values and number of dimensions in the `SparseTensor`, respectively:
   [2,4] of the tensor has a value of 3.6.
 
 * `dense_shape`: A 1-D int64 tensor of dense_shape `[ndims]`, which specifies
-the
-  dense_shape of the sparse tensor. Takes a list indicating the number of
-  elements
-  in each dimension. For example, `dense_shape=[3,6]` specifies a
-  two-dimensional
-  3x6 tensor, `dense_shape=[2,3,4]` specifies a three-dimensional 2x3x4
-  tensor, and
-  `dense_shape=[9]` specifies a one-dimensional tensor with 9 elements.
+  the dense_shape of the sparse tensor. Takes a list indicating the number of
+  elements in each dimension. For example, `dense_shape=[3,6]` specifies a
+  two-dimensional 3x6 tensor, `dense_shape=[2,3,4]` specifies a
+  three-dimensional 2x3x4 tensor, and `dense_shape=[9]` specifies a
+  one-dimensional tensor with 9 elements.
 
 The corresponding dense tensor satisfies:
 
@@ -81,27 +78,20 @@ represents the dense tensor
 
 - - -
 
-#### `tf.SparseTensor.__init__(indices, values, dense_shape=None, shape=None)` {#SparseTensor.__init__}
+#### `tf.SparseTensor.__init__(indices, values, dense_shape)` {#SparseTensor.__init__}
 
 Creates a `SparseTensor`.
 
 ##### Args:
 
 
-*  <b>`indices`</b>: A 2-D int64 tensor of dense_shape `[N, ndims]`.
-*  <b>`values`</b>: A 1-D tensor of any type and dense_shape `[N]`.
-*  <b>`dense_shape`</b>: A 1-D int64 tensor of dense_shape `[ndims]`.
-*  <b>`shape`</b>: Temporary.  Legacy naming of dense_shape.  Only one of `shape` or
-    `dense_shape` must be provided.
+*  <b>`indices`</b>: A 2-D int64 tensor of shape `[N, ndims]`.
+*  <b>`values`</b>: A 1-D tensor of any type and shape `[N]`.
+*  <b>`dense_shape`</b>: A 1-D int64 tensor of shape `[ndims]`.
 
 ##### Returns:
 
   A `SparseTensor`.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: if both `shape` and `dense_shape` are provided.
 
 
 - - -
@@ -279,75 +269,59 @@ available, or `session` must be specified explicitly.
 
 
 
-- - -
-
-#### `tf.SparseTensor.shape` {#SparseTensor.shape}
-
-Legacy property returning `dense_shape`.
-
-
 
 - - -
 
 ### `class tf.SparseTensorValue` {#SparseTensorValue}
 
-Stores the calculated numpy arrays representing a `SparseTensor`.
-
-Returned as the output of a session.run on a `SparseTensor` object.
+SparseTensorValue(indices, values, dense_shape)
 - - -
 
-#### `tf.SparseTensorValue.__getitem__(i)` {#SparseTensorValue.__getitem__}
+#### `tf.SparseTensorValue.__getnewargs__()` {#SparseTensorValue.__getnewargs__}
 
-
-
-
-- - -
-
-#### `tf.SparseTensorValue.__init__(indices, values, dense_shape=None, shape=None)` {#SparseTensorValue.__init__}
-
-
+Return self as a plain tuple.  Used by copy and pickle.
 
 
 - - -
 
-#### `tf.SparseTensorValue.__iter__()` {#SparseTensorValue.__iter__}
+#### `tf.SparseTensorValue.__getstate__()` {#SparseTensorValue.__getstate__}
+
+Exclude the OrderedDict from pickling
 
 
+- - -
+
+#### `tf.SparseTensorValue.__new__(_cls, indices, values, dense_shape)` {#SparseTensorValue.__new__}
+
+Create new instance of SparseTensorValue(indices, values, dense_shape)
 
 
 - - -
 
 #### `tf.SparseTensorValue.__repr__()` {#SparseTensorValue.__repr__}
 
-
+Return a nicely formatted representation string
 
 
 - - -
 
 #### `tf.SparseTensorValue.dense_shape` {#SparseTensorValue.dense_shape}
 
-
+Alias for field number 2
 
 
 - - -
 
 #### `tf.SparseTensorValue.indices` {#SparseTensorValue.indices}
 
-
-
-
-- - -
-
-#### `tf.SparseTensorValue.shape` {#SparseTensorValue.shape}
-
-
+Alias for field number 0
 
 
 - - -
 
 #### `tf.SparseTensorValue.values` {#SparseTensorValue.values}
 
-
+Alias for field number 1
 
 
 

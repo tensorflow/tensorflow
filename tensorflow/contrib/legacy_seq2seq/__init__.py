@@ -33,19 +33,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.ops.seq2seq import attention_decoder
-from tensorflow.python.ops.seq2seq import basic_rnn_seq2seq
-from tensorflow.python.ops.seq2seq import embedding_attention_decoder
-from tensorflow.python.ops.seq2seq import embedding_attention_seq2seq
-from tensorflow.python.ops.seq2seq import embedding_rnn_decoder
-from tensorflow.python.ops.seq2seq import embedding_rnn_seq2seq
-from tensorflow.python.ops.seq2seq import embedding_tied_rnn_seq2seq
-from tensorflow.python.ops.seq2seq import model_with_buckets
-from tensorflow.python.ops.seq2seq import one2many_rnn_seq2seq
-from tensorflow.python.ops.seq2seq import rnn_decoder
-from tensorflow.python.ops.seq2seq import sequence_loss
-from tensorflow.python.ops.seq2seq import sequence_loss_by_example
-from tensorflow.python.ops.seq2seq import tied_rnn_seq2seq
+from tensorflow.contrib.legacy_seq2seq.python.ops.seq2seq import attention_decoder
+from tensorflow.contrib.legacy_seq2seq.python.ops.seq2seq import basic_rnn_seq2seq
+from tensorflow.contrib.legacy_seq2seq.python.ops.seq2seq import embedding_attention_decoder
+from tensorflow.contrib.legacy_seq2seq.python.ops.seq2seq import embedding_attention_seq2seq
+from tensorflow.contrib.legacy_seq2seq.python.ops.seq2seq import embedding_rnn_decoder
+from tensorflow.contrib.legacy_seq2seq.python.ops.seq2seq import embedding_rnn_seq2seq
+from tensorflow.contrib.legacy_seq2seq.python.ops.seq2seq import embedding_tied_rnn_seq2seq
+from tensorflow.contrib.legacy_seq2seq.python.ops.seq2seq import model_with_buckets
+from tensorflow.contrib.legacy_seq2seq.python.ops.seq2seq import one2many_rnn_seq2seq
+from tensorflow.contrib.legacy_seq2seq.python.ops.seq2seq import rnn_decoder
+from tensorflow.contrib.legacy_seq2seq.python.ops.seq2seq import sequence_loss
+from tensorflow.contrib.legacy_seq2seq.python.ops.seq2seq import sequence_loss_by_example
+from tensorflow.contrib.legacy_seq2seq.python.ops.seq2seq import tied_rnn_seq2seq
 
 from tensorflow.python.util.all_util import remove_undocumented
 
