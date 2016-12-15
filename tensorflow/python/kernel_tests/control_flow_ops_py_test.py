@@ -1415,6 +1415,27 @@ class ControlFlowTest(test.TestCase):
     self._testWhileGrad_Mul(use_gpu=True, p_iters=1)
     self._testWhileGrad_Mul(use_gpu=True, p_iters=10)
 
+  def _testNestedWhileCondWhileGrad(self, use_gpu):
+    with self.test_session(use_gpu=use_gpu):
+      v = constant_op.constant(1.0)
+      def inner_loop(s):
+        z = constant_op.constant(0)
+        c = lambda i, x: math_ops.less(i, 4)
+        b = lambda i, x: [math_ops.add(i, 1), math_ops.mul(x, 2.0)]
+        return control_flow_ops.while_loop(c, b, [z, s])
+      c = lambda x: math_ops.less(x, 128.0)
+      def b(x):
+        return control_flow_ops.cond(constant_op.constant(True),
+                                     lambda: math_ops.square(inner_loop(x)[1]),
+                                     lambda: math_ops.mul(x, 2.0))
+      r = control_flow_ops.while_loop(c, b, [v])
+      r = gradients_impl.gradients(r, v)[0]
+      self.assertAllClose(512.0, r.eval())
+
+  def testNestedWhileCondWhileGrad(self):
+    self._testNestedWhileCondWhileGrad(use_gpu=False)
+    self._testNestedWhileCondWhileGrad(use_gpu=True)
+
   def testWhileGrad_Variable(self):
     with self.test_session():
       a = variables.Variable(3.0)

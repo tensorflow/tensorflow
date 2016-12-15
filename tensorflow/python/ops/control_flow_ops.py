@@ -1993,6 +1993,8 @@ class WhileContext(ControlFlowContext):
           forward_ctxt = _GetWhileContext(val.op)
           if IsLoopExit(val.op):
             forward_ctxt = forward_ctxt.outer_context
+            if forward_ctxt:
+              forward_ctxt = forward_ctxt.GetWhileContext()
           if forward_ctxt == grad_ctxt.grad_state.forward_context:
             real_val = grad_ctxt.grad_state.GetRealValue(val)
             self._external_values[val.name] = real_val
