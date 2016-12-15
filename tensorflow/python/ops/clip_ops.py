@@ -142,7 +142,7 @@ def global_norm(t_list, name=None):
         with ops.colocate_with(v):
           half_squared_norms.append(gen_nn_ops.l2_loss(v))
 
-    half_squared_norm = math_ops.reduce_sum(array_ops.pack(half_squared_norms))
+    half_squared_norm = math_ops.reduce_sum(array_ops.stack(half_squared_norms))
 
     norm = math_ops.sqrt(
         half_squared_norm *

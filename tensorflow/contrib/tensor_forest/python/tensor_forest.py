@@ -416,7 +416,7 @@ class RandomForestGraphs(object):
         probabilities.append(self.trees[i].inference_graph(
             tree_data, data_spec, **inference_args))
     with ops.device(self.device_assigner.get_device(0)):
-      all_predict = array_ops.pack(probabilities)
+      all_predict = array_ops.stack(probabilities)
       return math_ops.div(
           math_ops.reduce_sum(all_predict, 0), self.params.num_trees,
           name='probabilities')
@@ -431,7 +431,7 @@ class RandomForestGraphs(object):
     for i in range(self.params.num_trees):
       with ops.device(self.device_assigner.get_device(i)):
         sizes.append(self.trees[i].size())
-    return math_ops.reduce_mean(math_ops.to_float(array_ops.pack(sizes)))
+    return math_ops.reduce_mean(math_ops.to_float(array_ops.stack(sizes)))
 
   # pylint: disable=unused-argument
   def training_loss(self, features, labels, data_spec=None,
@@ -452,7 +452,7 @@ class RandomForestGraphs(object):
     for i in range(self.params.num_trees):
       with ops.device(self.device_assigner.get_device(i)):
         impurities.append(self.trees[i].average_impurity())
-    return math_ops.reduce_mean(array_ops.pack(impurities))
+    return math_ops.reduce_mean(array_ops.stack(impurities))
 
   def get_stats(self, session):
     tree_stats = []

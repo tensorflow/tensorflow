@@ -620,7 +620,7 @@ def _streaming_confusion_matrix_at_thresholds(
     num_predictions = array_ops.shape(predictions_2d)[0]
   thresh_tiled = array_ops.tile(
       array_ops.expand_dims(array_ops.constant(thresholds), [1]),
-      array_ops.pack([1, num_predictions]))
+      array_ops.stack([1, num_predictions]))
 
   # Tile the predictions after thresholding them across different thresholds.
   pred_is_pos = math_ops.greater(
@@ -2605,7 +2605,7 @@ def streaming_concat(values,
 
     def reallocate():
       next_size = _next_array_size(new_size)
-      next_shape = array_ops.pack([next_size] + fixed_shape)
+      next_shape = array_ops.stack([next_size] + fixed_shape)
       new_value = array_ops.zeros(next_shape, dtype=values.dtype)
       old_value = array.value()
       assign_op = state_ops.assign(array, new_value, validate_shape=False)

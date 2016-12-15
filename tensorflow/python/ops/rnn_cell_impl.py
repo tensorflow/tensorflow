@@ -140,16 +140,17 @@ class RNNCell(object):
       state_size_flat = nest.flatten(state_size)
       zeros_flat = [
           array_ops.zeros(
-              array_ops.pack(_state_size_with_prefix(s, prefix=[batch_size])),
-              dtype=dtype)
-          for s in state_size_flat]
+              array_ops.stack(_state_size_with_prefix(
+                  s, prefix=[batch_size])),
+              dtype=dtype) for s in state_size_flat
+      ]
       for s, z in zip(state_size_flat, zeros_flat):
         z.set_shape(_state_size_with_prefix(s, prefix=[None]))
       zeros = nest.pack_sequence_as(structure=state_size,
                                     flat_sequence=zeros_flat)
     else:
       zeros_size = _state_size_with_prefix(state_size, prefix=[batch_size])
-      zeros = array_ops.zeros(array_ops.pack(zeros_size), dtype=dtype)
+      zeros = array_ops.zeros(array_ops.stack(zeros_size), dtype=dtype)
       zeros.set_shape(_state_size_with_prefix(state_size, prefix=[None]))
 
     return zeros

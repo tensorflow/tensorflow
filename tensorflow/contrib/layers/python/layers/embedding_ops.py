@@ -149,7 +149,7 @@ def safe_embedding_lookup_sparse(embedding_weights,
       # for use in Select.
       is_row_empty = array_ops.tile(
           array_ops.reshape(is_row_empty, [-1, 1]),
-          array_ops.pack([1, array_ops.shape(result)[1]]))
+          array_ops.stack([1, array_ops.shape(result)[1]]))
 
       result = array_ops.where(is_row_empty,
                                array_ops.zeros_like(result),

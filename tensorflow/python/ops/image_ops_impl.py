@@ -372,8 +372,8 @@ def central_crop(image, central_fraction):
   bbox_h_size = img_shape[0] - bbox_h_start * 2
   bbox_w_size = img_shape[1] - bbox_w_start * 2
 
-  bbox_begin = array_ops.pack([bbox_h_start, bbox_w_start, 0])
-  bbox_size = array_ops.pack([bbox_h_size, bbox_w_size, -1])
+  bbox_begin = array_ops.stack([bbox_h_start, bbox_w_start, 0])
+  bbox_size = array_ops.stack([bbox_h_size, bbox_w_size, -1])
   image = array_ops.slice(image, bbox_begin, bbox_size)
 
   # The first two dimensions are dynamic and unknown.
@@ -428,10 +428,10 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
 
   # Do not pad on the depth dimensions.
   paddings = array_ops.reshape(
-    array_ops.pack([offset_height, after_padding_height,
-                    offset_width, after_padding_width,
-                    0, 0]),
-    [3, 2])
+      array_ops.stack([
+          offset_height, after_padding_height, offset_width,
+          after_padding_width, 0, 0
+      ]), [3, 2])
   padded = array_ops.pad(image, paddings)
 
   padded_shape = [None if _is_tensor(i) else i
@@ -488,10 +488,9 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
                         'height must be >= target + offset.')
   image = control_flow_ops.with_dependencies(assert_ops, image)
 
-  cropped = array_ops.slice(
-    image,
-    array_ops.pack([offset_height, offset_width, 0]),
-    array_ops.pack([target_height, target_width, -1]))
+  cropped = array_ops.slice(image,
+                            array_ops.stack([offset_height, offset_width, 0]),
+                            array_ops.stack([target_height, target_width, -1]))
 
   cropped_shape = [None if _is_tensor(i) else i
                    for i in [target_height, target_width, depth]]
@@ -1229,7 +1228,7 @@ def decode_image(contents, channels=None, name=None):
       JPEG and PNG images and shape `[num_frames, height, width, 3]` for GIF 
       images.
   """
-  with ops.name_scope(name, 'decode_image') as scope: 
+  with ops.name_scope(name, 'decode_image') as scope:
     if channels not in (None, 0, 1, 3):
       raise ValueError('channels must be in (None, 0, 1, 3)')
     substr = string_ops.substr(contents, 0, 4)
@@ -1247,14 +1246,14 @@ def decode_image(contents, channels=None, name=None):
       assert_channels = control_flow_ops.Assert(good_channels, [channels_msg])
       with ops.control_dependencies([assert_decode, assert_channels]):
         return gen_image_ops.decode_gif(contents)
-    
+
     def _png():
       return gen_image_ops.decode_png(contents, channels)
-    
+
     def check_png():
       is_png = math_ops.equal(substr, b'\211PNG', name='is_png')
       return control_flow_ops.cond(is_png, _png, _gif, name='cond_png')
-    
+
     def _jpeg():
       return gen_image_ops.decode_jpeg(contents, channels)
 

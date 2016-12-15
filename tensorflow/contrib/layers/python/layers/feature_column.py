@@ -1688,8 +1688,8 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
       i2 = array_ops.zeros([batch_size], dtype=dtypes.int32, name="zeros")
       bucket_indices = array_ops.reshape(input_tensor, [-1], name="reshape")
 
-    indices = math_ops.to_int64(array_ops.transpose(array_ops.pack((i1, i2))))
-    shape = math_ops.to_int64(array_ops.pack([batch_size, dimension]))
+    indices = math_ops.to_int64(array_ops.transpose(array_ops.stack((i1, i2))))
+    shape = math_ops.to_int64(array_ops.stack([batch_size, dimension]))
     sparse_id_values = sparse_tensor_py.SparseTensor(
         indices, bucket_indices, shape)
 

@@ -86,7 +86,7 @@ class GradientsTest(test_util.TensorFlowTestCase):
     with ops.Graph().as_default() as g:
       t1 = constant(1.0)
       t2 = constant(2.0)
-      t3 = array_ops.pack([t1, t2])
+      t3 = array_ops.stack([t1, t2])
     # Full graph
     self._assertOpListEqual([t3.op, t2.op, t1.op],
                             _OpsBetween(g, [t3.op], [t1.op, t2.op]))
@@ -98,10 +98,10 @@ class GradientsTest(test_util.TensorFlowTestCase):
     with ops.Graph().as_default() as g:
       t1 = constant(1.0)
       t2 = constant(2.0)
-      _ = array_ops.pack([t1, t2])
+      _ = array_ops.stack([t1, t2])
       t4 = constant(1.0)
       t5 = constant(2.0)
-      t6 = array_ops.pack([t4, t5])
+      t6 = array_ops.stack([t4, t5])
     # Elements of to_ops are always listed.
     self._assertOpListEqual([t6.op], _OpsBetween(g, [t6.op], [t1.op]))
 
@@ -109,7 +109,7 @@ class GradientsTest(test_util.TensorFlowTestCase):
     with ops.Graph().as_default() as g:
       t1 = constant(1.0)
       t2 = constant(2.0)
-      t3 = array_ops.pack([t1, t2])
+      t3 = array_ops.stack([t1, t2])
       t4 = constant([1.0])
       t5 = array_ops.concat_v2([t4, t3], 0)
       t6 = constant([2.0])
@@ -121,7 +121,7 @@ class GradientsTest(test_util.TensorFlowTestCase):
     with ops.Graph().as_default() as g:
       t1 = constant(1.0)
       t2 = constant(2.0)
-      t3 = array_ops.pack([t1, t2])
+      t3 = array_ops.stack([t1, t2])
       t4 = array_ops.concat_v2([t3, t3, t3], 0)
       t5 = constant([1.0])
       t6 = array_ops.concat_v2([t4, t5], 0)
@@ -491,8 +491,8 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
         numpy_list.append(np_val)
         dense_list.append(c)
         sparse_list.append(c_sparse)
-      packed_dense = array_ops.pack(dense_list)
-      packed_sparse = array_ops.pack(sparse_list)
+      packed_dense = array_ops.stack(dense_list)
+      packed_sparse = array_ops.stack(sparse_list)
       self.assertAllClose(packed_dense.eval(), packed_sparse.eval())
 
   def testInt64Indices(self):
