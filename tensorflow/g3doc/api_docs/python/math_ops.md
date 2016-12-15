@@ -416,10 +416,6 @@ containing the absolute value of each element in `x`. For example, if x is
 an input element and y is an output element, this operation computes
 \\(y = |x|\\).
 
-See [`tf.complex_abs()`](#tf_complex_abs) to compute the absolute value of a
-complex
-number.
-
 ##### Args:
 
 
@@ -2215,7 +2211,8 @@ tf.complex(real, imag) ==> [[2.25 + 4.75j], [3.25 + 5.75j]]
 ##### Args:
 
 
-*  <b>`real`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`real`</b>: A `Tensor`. Must be one of the following types: `float32`,
+    `float64`.
 *  <b>`imag`</b>: A `Tensor`. Must have the same type as `real`.
 *  <b>`name`</b>: A name for the operation (optional).
 

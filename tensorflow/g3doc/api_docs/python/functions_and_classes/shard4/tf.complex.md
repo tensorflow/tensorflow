@@ -20,7 +20,8 @@ tf.complex(real, imag) ==> [[2.25 + 4.75j], [3.25 + 5.75j]]
 ##### Args:
 
 
-*  <b>`real`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`real`</b>: A `Tensor`. Must be one of the following types: `float32`,
+    `float64`.
 *  <b>`imag`</b>: A `Tensor`. Must have the same type as `real`.
 *  <b>`name`</b>: A name for the operation (optional).
 
