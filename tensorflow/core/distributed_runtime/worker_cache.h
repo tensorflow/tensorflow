@@ -45,6 +45,7 @@ class WorkerCacheInterface {
   // ownership, not a cache lookup.
   virtual WorkerInterface* CreateWorker(const string& target) = 0;
 
+  virtual void AddOnlineWorker(const string &jobId,const string& taskIndex,const string& addr)=0;
   // Release a worker previously returned by this->CreateWorker(target).
   //
   // TODO(jeff,sanjay): Consider moving target into WorkerInterface.

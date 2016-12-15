@@ -54,6 +54,7 @@ class MasterSession {
   // After this method returns, `def` will no longer be valid.
   Status Create(GraphDef* def);
 
+
   // Returns the session handle.
   const string& handle() const { return handle_; }
 

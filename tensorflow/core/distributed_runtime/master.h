@@ -60,6 +60,8 @@ class Master {
 
   void Reset(const ResetRequest* req, ResetResponse* resp, MyClosure done);
 
+  void AddOnlineWorker(const AddOnlineWorkerRequest *req,const AddOnlineWorkerResponse *resp,MyClosure done);
+
  private:
   typedef Master ME;
 

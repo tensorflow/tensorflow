@@ -176,6 +176,10 @@ class Session {
   /// on the TensorFlow runtime (specified during session creation by
   /// the `SessionOptions::target` field).
   virtual Status Close() = 0;
+
+
+
+  virtual  Status AddOnlineWorker(const string &job_id,const string &task_index,const string &addr)=0;
 };
 
 /// \brief Create a new session with the given options.

@@ -139,6 +139,22 @@ Status GrpcSession::ExtendImpl(CallOptions* call_options,
   return s;
 }
 
+
+Status GrpcSession::AddOnlineWorker(const string &job_id,const string &task_index,const string &addr) override{
+  CallOptions call_options;
+  call_options.SetTimeout(options_.config.operation_timeout_in_ms());
+  AddOnlineWorkerRequest req;
+  AddOnlineWorkerResponse resp;
+  req.set_job_id(job_id);
+  req.set_task_index(task_index);
+  req.set_addr(addr);
+
+
+  master_->AddOnlineWorker(&call_options,&req,&resp);
+
+  return  Status::OK();
+}
+
 Status GrpcSession::Extend(const GraphDef& graph) {
   CallOptions call_options;
   call_options.SetTimeout(options_.config.operation_timeout_in_ms());

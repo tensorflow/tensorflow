@@ -804,6 +804,13 @@ Status DirectSession::RecvOutputs(const std::vector<string>& output_names,
   return Status::OK();
 }
 
+
+
+
+Status DirectSession::AddOnlineWorker(const string &job_id, const string &task_index, const string &addr)  {
+  return Status::OK();
+}
+
 Status DirectSession::CheckFetch(const NamedTensorList& feeds,
                                  const std::vector<string>& fetches,
                                  const ExecutorsAndKeys* executors_and_keys,
@@ -1199,6 +1206,9 @@ DirectSession::RunState::~RunState() {
     rendez->Unref();
   }
 }
+
+
+
 
 void DirectSession::WaitForNotification(RunState* run_state,
                                         CancellationManager* cm,

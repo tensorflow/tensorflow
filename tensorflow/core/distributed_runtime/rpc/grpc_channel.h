@@ -75,6 +75,11 @@ class GrpcChannelCache {
 
   // Translates a string in the form `/job:X/task:Z` into a host_port.
   virtual string TranslateTask(const string& task) = 0;
+
+
+  virtual  Status  AddOnlineWorker(const string job_id,const string &name_prefix,const string &addr)=0;
+
+  virtual string getJobId()=0;
 };
 
 typedef std::function<SharedGrpcChannelPtr(string)> ChannelCreationFunction;

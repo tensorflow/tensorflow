@@ -149,6 +149,16 @@ class GrpcMasterService : public AsyncServiceInterface {
     ENQUEUE_REQUEST(CreateSession, true);
   }
 
+   //RPC handler for add oneline worker
+   void AddOnlineWorkerHandler(
+       MasterCall<AddOnlineWorkerRequest, AddOnlineWorkerResponse>* call) {
+            master_impl_->AddOnlineWorker(&call->request, &call->response,
+                                        [call](const Status& status) {
+                                            call->SendResponse(ToGrpcStatus(status));
+                                        });
+            ENQUEUE_REQUEST(AddOnlineWorker, false);
+   }
+
   // RPC handler for extending a session.
   void ExtendSessionHandler(
       MasterCall<ExtendSessionRequest, ExtendSessionResponse>* call) {
