@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 import tensorflow as tf
-
+import sys
 
 class CastOpTest(tf.test.TestCase):
 
@@ -127,8 +127,12 @@ class CastOpTest(tf.test.TestCase):
 
     self._compare(np.inf, np.float32, np.inf, False)
     self._compare(np.inf, np.float64, np.inf, False)
-    self._compare(np.inf, np.int32, i4.min, False)
-    self._compare(np.inf, np.int64, i8.min, False)
+    if sys.byteorder == "big":  
+      self._compare(np.inf, np.int32, i4.max, False)  
+      self._compare(np.inf, np.int64, i8.max, False)  
+    else:  
+      self._compare(np.inf, np.int32, i4.min, False)  
+      self._compare(np.inf, np.int64, i8.min, False)  
     self._compare(-np.inf, np.float32, -np.inf, False)
     self._compare(-np.inf, np.float64, -np.inf, False)
     self._compare(-np.inf, np.int32, i4.min, False)
