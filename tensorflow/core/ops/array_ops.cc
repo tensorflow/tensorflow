@@ -419,33 +419,44 @@ REGISTER_OP("SplitV")
       DimensionHandle split_dimension;
       TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(2, &split_dimension));
       int32 num_outputs = c->num_outputs();
-      // Return unknown shapes if input's rank, split dimension or tensor
-      // containing the split sizes aren't known. If we know the tensor
-      // containing size splits, then determine the output shape.
       ShapeHandle input = c->input(0);
       int32 rank = c->Rank(input);
       ShapeHandle output_shape;
       const Tensor* size_splits = c->input_tensor(1);
       if (rank == InferenceContext::kUnknownRank) {
+        // If the rank of input tensor is unknown, then return unkown shapes.
         output_shape = c->UnknownShape();
         for (int i = 0; i < num_outputs; ++i) {
           c->set_output(i, output_shape);
         }
       } else if (rank == 0) {
+        // Throw error if input is a scalar.
         return errors::InvalidArgument("Can't split scalars");
       } else if (size_splits == nullptr || !c->ValueKnown(split_dimension)) {
+        // If split dimension or tensor containing the split sizes is unkown,
+        // then return unknown shapes of same rank as input.
         output_shape = c->UnknownShapeOfRank(rank);
-        for (int i =0; i < num_outputs; ++i) {
+        for (int i = 0; i < num_outputs; ++i) {
           c->set_output(i, output_shape);
         }
       } else {
+        // Determine the output shape if split dimension and split sizes are known
         int64 split_dim = c->Value(split_dimension);
         TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, split_dim + 1, &input));
-        auto vec = size_splits->vec<int32>();
+        std::vector<int64> data;
+        if (size_splits->dtype() == DT_INT32) {
+          data = AsInt64<int32>(size_splits, size_splits->shape().dim_size(0));
+        } else {
+          data = AsInt64<int64>(size_splits, size_splits->shape().dim_size(0));
+        }
+        if (num_outputs != data.size()) {
+          return errors::InvalidArgument(
+            "Length of size_splits should be equal to num_outputs");
+        }
         for (int i = 0; i < num_outputs; ++i) {
           output_shape = c->UnknownShapeOfRank(rank);
           TF_RETURN_IF_ERROR(
-              c->ReplaceDim(input, split_dim, c->MakeDim(vec(i)), &output_shape));
+              c->ReplaceDim(input, split_dim, c->MakeDim(data[i]), &output_shape));
           c->set_output(i, output_shape);
         }
       }
