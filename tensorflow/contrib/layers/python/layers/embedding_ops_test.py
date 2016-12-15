@@ -479,7 +479,7 @@ class SampledScatteredEmbeddingLookupSparseTest(tf.test.TestCase):
       sp_values = tf.SparseTensor(
           values=["a", "a", "b", "c", "d", "e", "f"],
           indices=[[1, 0], [2, 0], [2, 1], [2, 2], [2, 3], [2, 4], [2, 5]],
-          shape=[3, 6])
+          dense_shape=[3, 6])
       params = tf.constant([.1, .2, .3])
 
       result = embedding_ops._sampled_scattered_embedding_lookup_sparse(
@@ -490,7 +490,8 @@ class SampledScatteredEmbeddingLookupSparseTest(tf.test.TestCase):
   def test_output_values(self):
     """Verifies the values in a trivial case."""
     with self.test_session():
-      sp_values = tf.SparseTensor(values=["a"], indices=[[1, 0]], shape=[3, 1])
+      sp_values = tf.SparseTensor(
+          values=["a"], indices=[[1, 0]], dense_shape=[3, 1])
       params = tf.constant([.1, .2, .3])
 
       result = embedding_ops._sampled_scattered_embedding_lookup_sparse(
@@ -506,7 +507,7 @@ class SampledScatteredEmbeddingLookupSparseTest(tf.test.TestCase):
       sp_values = tf.SparseTensor(
           values=["a", "a", "b", "c", "d", "e", "f"],
           indices=[[1, 0], [2, 0], [2, 1], [2, 2], [2, 3], [2, 4], [2, 5]],
-          shape=[3, 6])
+          dense_shape=[3, 6])
       params = tf.constant([.1, .2, .3])
 
       sampled_candidates = [[1, 0], [2, 1], [3, 2]]
@@ -526,7 +527,8 @@ class SampledScatteredEmbeddingLookupSparseTest(tf.test.TestCase):
   def test_output_values_with_sign_hash(self):
     """Verifies the values in a trivial case with hash_signs=True."""
     with self.test_session():
-      sp_values = tf.SparseTensor(values=["a"], indices=[[1, 0]], shape=[3, 1])
+      sp_values = tf.SparseTensor(
+          values=["a"], indices=[[1, 0]], dense_shape=[3, 1])
       params = tf.constant([.1, .1, .1])
 
       result = embedding_ops._sampled_scattered_embedding_lookup_sparse(
@@ -543,15 +545,15 @@ class SampledScatteredEmbeddingLookupSparseTest(tf.test.TestCase):
     with self.test_session():
       params = tf.constant([.1, .2, .3])
       sp_values_a = tf.SparseTensor(
-          values=["a"], indices=[[0, 0]], shape=[3, 1])
+          values=["a"], indices=[[0, 0]], dense_shape=[3, 1])
       sp_values_b = tf.SparseTensor(
-          values=["b"], indices=[[2, 0]], shape=[3, 1])
+          values=["b"], indices=[[2, 0]], dense_shape=[3, 1])
       sp_values_c = tf.SparseTensor(
-          values=["c"], indices=[[2, 0]], shape=[3, 1])
+          values=["c"], indices=[[2, 0]], dense_shape=[3, 1])
       sp_values = tf.SparseTensor(
           values=["a", "b", "c"],
           indices=[[0, 0], [2, 0], [2, 1]],
-          shape=[3, 2])
+          dense_shape=[3, 2])
 
       result_a = embedding_ops._sampled_scattered_embedding_lookup_sparse(
           params, sp_values_a, dimension=4, hash_key=self._hash_key)
