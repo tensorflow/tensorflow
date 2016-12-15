@@ -130,9 +130,9 @@ class SplitOpTest(test.TestCase):
 
   def testOutputShape(self):
     with self.test_session(use_gpu=False):
-      tensor = tf.placeholder(tf.float32, shape=[None, 12])
+      tensor = array_ops.placeholder(dtypes.float32, shape=[None, 12])
       size_splits = [3, 7, 2]
-      outputs = tf.split(tensor, size_splits, 1)
+      outputs = array_ops.split(tensor, size_splits, 1)
       for i, output in enumerate(outputs):
         self.assertEqual(output.get_shape().as_list(), [None, size_splits[i]])
 
