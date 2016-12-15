@@ -341,7 +341,8 @@ class BaseEstimator(
     return copy.deepcopy(self._config)
 
   @deprecated_args(
-      SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, 'x', 'y', 'batch_size'
+      SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, ('x', None),
+      ('y', None), ('batch_size', None)
   )
   def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
           monitors=None, max_steps=None):
@@ -367,7 +368,8 @@ class BaseEstimator(
     return self
 
   @deprecated_args(
-      SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, 'x', 'y', 'batch_size'
+      SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, ('x', None),
+      ('y', None), ('batch_size', None)
   )
   def partial_fit(
       self, x=None, y=None, input_fn=None, steps=1, batch_size=None,
@@ -411,7 +413,8 @@ class BaseEstimator(
                     batch_size=batch_size, monitors=monitors)
 
   @deprecated_args(
-      SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, 'x', 'y', 'batch_size'
+      SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, ('x', None),
+      ('y', None), ('batch_size', None)
   )
   def evaluate(
       self, x=None, y=None, input_fn=None, feed_fn=None, batch_size=None,
@@ -442,8 +445,8 @@ class BaseEstimator(
     return eval_results
 
   @deprecated_args(
-      SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, 'x', 'batch_size',
-      'as_iterable'
+      SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, ('x', None),
+      ('batch_size', None), ('as_iterable', True)
   )
   def predict(
       self, x=None, input_fn=None, batch_size=None, outputs=None,
