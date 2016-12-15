@@ -281,15 +281,15 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
   Returns:
     A `MonitoredSession` object.
   """
-  hooks = hooks or []
   scaffold = scaffold or Scaffold()
   if not is_chief:
     session_creator = WorkerSessionCreator(
         scaffold=scaffold, master=master, config=config)
-    return MonitoredSession(session_creator=session_creator, hooks=hooks)
+    return MonitoredSession(session_creator=session_creator, hooks=hooks or [])
 
+  all_hooks = []
   if chief_only_hooks:
-    hooks.extend(chief_only_hooks)
+    all_hooks.extend(chief_only_hooks)
   session_creator = ChiefSessionCreator(
       scaffold=scaffold,
       checkpoint_dir=checkpoint_dir,
@@ -297,19 +297,21 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
       config=config)
 
   if checkpoint_dir:
-    hooks.append(
+    all_hooks.append(
         basic_session_run_hooks.StepCounterHook(output_dir=checkpoint_dir))
 
     if save_summaries_steps > 0:
-      hooks.append(basic_session_run_hooks.SummarySaverHook(
+      all_hooks.append(basic_session_run_hooks.SummarySaverHook(
           scaffold=scaffold,
           save_steps=save_summaries_steps,
           output_dir=checkpoint_dir))
     if save_checkpoint_secs > 0:
-      hooks.append(basic_session_run_hooks.CheckpointSaverHook(
+      all_hooks.append(basic_session_run_hooks.CheckpointSaverHook(
           checkpoint_dir, save_secs=save_checkpoint_secs, scaffold=scaffold))
 
-  return MonitoredSession(session_creator=session_creator, hooks=hooks)
+  if hooks:
+    all_hooks.extend(hooks)
+  return MonitoredSession(session_creator=session_creator, hooks=all_hooks)
 
 
 class SessionCreator(object):
