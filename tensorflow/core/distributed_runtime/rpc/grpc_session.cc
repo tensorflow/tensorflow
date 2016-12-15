@@ -140,7 +140,7 @@ Status GrpcSession::ExtendImpl(CallOptions* call_options,
 }
 
 
-Status GrpcSession::AddOnlineWorker(const string &job_id,const string &task_index,const string &addr) override{
+Status GrpcSession::AddOnlineWorker(const string &job_id,const string &task_index,const string &addr) {
   CallOptions call_options;
   call_options.SetTimeout(options_.config.operation_timeout_in_ms());
   AddOnlineWorkerRequest req;

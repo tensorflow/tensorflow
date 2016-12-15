@@ -57,9 +57,9 @@ class GrpcWorkerCache : public WorkerCachePartial {
     channel_cache_->ListWorkers(workers);
   }
 
-  void AddOnlineWorker(const string& jobId,const string& taskIndex,const string &addr) override  {
+  Status AddOnlineWorker(const string& jobId,const string& taskIndex,const string &addr) override  {
       string namePrefix =strings::StrCat("/job:", jobId, "/replica:0", "/task:",taskIndex);
-      channel_cache_->AddOnlineWorker(jobId,namePrefix,addr);
+      return channel_cache_->AddOnlineWorker(jobId,namePrefix,addr);
   }
 
   WorkerInterface* CreateWorker(const string& target) override {

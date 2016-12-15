@@ -235,6 +235,10 @@ class WorkerFreeListCache : public WorkerCacheInterface {
                                     DeviceLocality* locality) override {
     return wrapped_->GetDeviceLocalityNonBlocking(device, locality);
   }
+  Status AddOnlineWorker(const string &jobId,const string& taskIndex,const string& addr) {
+    return Status::OK();
+  }
+
 
   void GetDeviceLocalityAsync(const string& device, DeviceLocality* locality,
                               StatusCallback done) override {
