@@ -121,21 +121,6 @@ class VariableScopeTest(test.TestCase):
         variables_lib.global_variables_initializer().run()
         self.assertAllEqual(x.eval(), y.eval())
 
-  def testInitFromNonInitializer(self):
-    with self.test_session() as sess:
-      # Test various dtypes with zeros initializer as following:
-      types = [tf.int8, tf.uint8, tf.int16, tf.uint16, tf.int32, tf.int64,
-              tf.bool]
-
-      # Use different varibale_name to distinguish various dtypes
-      for (i, dtype) in enumerate(types):
-        x = tf.get_variable(name='x%d' % i, shape=(3, 4), dtype=dtype)
-        y = tf.get_variable(name='y%d' % i, shape=(3, 4), dtype=dtype,
-                            initializer=init_ops.zeros_initializer(dtype=dtype))
-
-        tf.global_variables_initializer().run()
-        self.assertAllEqual(x.eval(), y.eval())
-
   def testVarScopeCachingDevice(self):
     with self.test_session():
       caching_device = "/job:moo"
@@ -754,27 +739,6 @@ class VariableScopeWithPartitioningTest(test.TestCase):
             initializer=init_ops.zeros_initializer(dtype=dtype))
 
         variables_lib.global_variables_initializer().run()
-        # x and y would become var list after partition
-        val_x = sess.run(list(x))
-        val_y = sess.run(list(y))
-
-        self.assertAllEqual(val_x, val_y)
-
-  def testInitFromNonInitializer(self):
-    with self.test_session() as sess:
-      # Test various dtypes with zeros initializer as following:
-      types = [tf.int8, tf.uint8, tf.int16, tf.uint16, tf.int32, tf.int64,
-              tf.bool]
-
-      # Use different varibale_name to distinguish various dtypes
-      for (i, dtype) in enumerate(types):
-        x = tf.get_variable(name='x%d' % i, shape=(3, 4), dtype=dtype,
-            partitioner=axis0_into2_partitioner)
-        y = tf.get_variable(name='y%d' % i, shape=(6, 4), dtype=dtype,
-            partitioner=axis0_into2_partitioner,
-            initializer=init_ops.zeros_initializer(dtype=dtype))
-
-        tf.global_variables_initializer().run()
         # x and y would become var list after partition
         val_x = sess.run(list(x))
         val_y = sess.run(list(y))
