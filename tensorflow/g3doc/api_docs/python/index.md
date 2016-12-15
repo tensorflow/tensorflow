@@ -301,6 +301,7 @@
   * [`subtract`](../../api_docs/python/math_ops.md#subtract)
   * [`svd`](../../api_docs/python/math_ops.md#svd)
   * [`tan`](../../api_docs/python/math_ops.md#tan)
+  * [`tensordot`](../../api_docs/python/math_ops.md#tensordot)
   * [`trace`](../../api_docs/python/math_ops.md#trace)
   * [`transpose`](../../api_docs/python/math_ops.md#transpose)
   * [`truediv`](../../api_docs/python/math_ops.md#truediv)
