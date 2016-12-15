@@ -2245,6 +2245,14 @@ cuda_py_test(
     shard_count = 20,
 )
 
+cuda_py_test(
+    name = "tensordot_op_test",
+    size = "medium",
+    srcs = ["tensordot_op_test.py"],
+    additional_deps = ["//tensorflow:tensorflow_py"],
+    shard_count = 20,
+)
+
 sycl_py_test(
     name = "basic_gpu_test",
     size = "small",
