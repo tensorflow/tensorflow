@@ -110,6 +110,7 @@ MasterService::Stub::Stub(
 ::grpc::Status MasterService::Stub::AddOnlineWorker(
      ::grpc::ClientContext* context, const AddOnlineWorkerRequest& request,
      AddOnlineWorkerResponse* response) {
+   std::cout<<"Grpc_master service impl sshoudao"<<std::endl;
    return ::grpc::BlockingUnaryCall(channel_.get(), rpcmethod_AddOnlineWorker_,
                                        context, request, response);
 }

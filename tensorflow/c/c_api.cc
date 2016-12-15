@@ -321,6 +321,13 @@ void TF_CloseDeprecatedSession(TF_DeprecatedSession* s, TF_Status* status) {
   status->status = s->session->Close();
 }
 
+
+void TF_AddOnlineWorkerDeprecatedSession(TF_DeprecatedSession* s, TF_Status* status,const char *job_id,const char *task_index,const char *addr){
+    std::cout<<"start c_api.cc add online worker"<<std::endl;
+    status->status=s->session->AddOnlineWorker(std::string(job_id),std::string(task_index),std::string(addr));
+}
+
+
 void TF_DeleteDeprecatedSession(TF_DeprecatedSession* s, TF_Status* status) {
   status->status = Status::OK();
   delete s->session;
@@ -639,6 +646,9 @@ void TF_PRunSetup(TF_DeprecatedSession* s,
     status->status = result;
   }
 }
+
+
+
 
 void TF_PRun(TF_DeprecatedSession* s, const char* handle,
              // Input tensors
@@ -1690,6 +1700,12 @@ TF_Session* TF_NewSession(TF_Graph* graph, const TF_SessionOptions* opt,
 void TF_CloseSession(TF_Session* s, TF_Status* status) {
   status->status = s->session->Close();
 }
+
+void TF_AddOnlineWorker(TF_DeprecatedSession* s, TF_Status* status,const char *job_id,const char *task_index,const char *addr){
+    status->status=s->session->AddOnlineWorker(std::string(job_id),std::string(task_index),std::string(addr));
+}
+
+
 
 void TF_DeleteSession(TF_Session* s, TF_Status* status) {
   status->status = Status::OK();

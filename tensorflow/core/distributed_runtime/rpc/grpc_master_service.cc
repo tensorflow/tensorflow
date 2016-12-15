@@ -110,7 +110,7 @@ class GrpcMasterService : public AsyncServiceInterface {
     ENQUEUE_REQUEST(CloseSession, false);
     ENQUEUE_REQUEST(ListDevices, false);
     ENQUEUE_REQUEST(Reset, false);
-
+    ENQUEUE_REQUEST(AddOnlineWorker, false);
     void* tag;
     bool ok;
     while (cq_->Next(&tag, &ok)) {
@@ -156,6 +156,7 @@ class GrpcMasterService : public AsyncServiceInterface {
                                         [call](const Status& status) {
                                             call->SendResponse(ToGrpcStatus(status));
                                         });
+            std::cout<<"ps master shoudaole "<<std::endl;
             ENQUEUE_REQUEST(AddOnlineWorker, false);
    }
 

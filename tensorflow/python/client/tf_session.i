@@ -172,6 +172,7 @@ tensorflow::ImportNumpy();
 %unignore TF_DeleteSessionOptions;
 %unignore TF_NewDeprecatedSession;
 %unignore TF_CloseDeprecatedSession;
+%unignore TF_AddOnlineWorkerDeprecatedSession;
 %unignore TF_DeleteDeprecatedSession;
 %unignore TF_ExtendGraph;
 %unignore TF_NewLibrary;

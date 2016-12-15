@@ -49,6 +49,7 @@ class GrpcRemoteMaster : public MasterInterface {
       ::grpc::ClientContext ctx;
       ctx.set_fail_fast(false);
       SetDeadline(&ctx, call_options->GetTimeout());
+      std::cout<<"start call request"<<std::endl;
       return FromGrpcStatus(stub_->AddOnlineWorker(&ctx, *request, response));
     }
 

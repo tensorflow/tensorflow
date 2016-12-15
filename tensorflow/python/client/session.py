@@ -553,6 +553,11 @@ class BaseSession(SessionInterface):
     finally:
       tf_session.TF_DeleteSessionOptions(opts)
 
+  def add_onlineworker(self,task_index,addr):
+    with errors.raise_exception_on_not_ok_status() as status:
+      tf_session.TF_AddOnlineWorkerDeprecatedSession(self._session, status,"worker",task_index,addr)
+
+
   def close(self):
     """Closes this session.
 

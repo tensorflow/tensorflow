@@ -101,6 +101,10 @@ void TF_PRun_wrapper(TF_DeprecatedSession* session, const char* handle,
 void TF_Reset_wrapper(const TF_SessionOptions* opt,
                       const NameVector& containers, TF_Status* out_status);
 
+
+void TF_AddOnlineWorker_wrapper(TF_DeprecatedSession* session,const char *job_id,
+                                const char *task_index,const char *addr);
+
 // Convenience wrapper around EqualGraphDef to make it easier to wrap.
 // Returns an explanation if a difference is found, or the empty string
 // for no difference.

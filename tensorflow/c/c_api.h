@@ -933,6 +933,12 @@ extern TF_DeprecatedSession* TF_NewDeprecatedSession(const TF_SessionOptions*,
 extern void TF_CloseDeprecatedSession(TF_DeprecatedSession*, TF_Status* status);
 extern void TF_DeleteDeprecatedSession(TF_DeprecatedSession*,
                                        TF_Status* status);
+
+
+extern void TF_AddOnlineWorkerDeprecatedSession(TF_DeprecatedSession* s,
+                                                TF_Status* status,const char *job_id,
+                                                const char *task_index,const char *addr);
+
 extern void TF_Reset(const TF_SessionOptions* opt, const char** containers,
                      int ncontainers, TF_Status* status);
 // Treat the bytes proto[0,proto_len-1] as a serialized GraphDef and
@@ -961,6 +967,8 @@ extern void TF_PRun(TF_DeprecatedSession*, const char* handle,
                     const char** output_names, TF_Tensor** outputs,
                     int noutputs, const char** target_oper_names, int ntargets,
                     TF_Status*);
+
+
 
 // --------------------------------------------------------------------------
 // Load plugins containing custom ops and kernels
