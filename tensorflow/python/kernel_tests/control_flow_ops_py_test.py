@@ -47,6 +47,7 @@ from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
@@ -332,6 +333,18 @@ class ControlFlowTest(test.TestCase):
       self.assertAllEqual([3.0, 5.0], r.values.eval())
       self.assertAllEqual([[1], [4]], r.indices.eval())
       self.assertAllEqual(r.values.get_shape(), (2,))
+
+  def testCondResource(self):
+    with self.test_session():
+      rv = resource_variable_ops.ResourceVariable(True)
+      variables.global_variables_initializer().run()
+      t = ops.convert_to_tensor(1.0)
+      def case():
+        assign = resource_variable_ops.assign_variable_op(
+            rv.handle, False)
+        with ops.control_dependencies([assign]):
+          return array_ops.identity(t)
+      self.assertEqual(1.0, control_flow_ops.cond(rv, case, lambda: t).eval())
 
   def testCondIndexedSlicesDifferentTypes(self):
     with self.test_session():
