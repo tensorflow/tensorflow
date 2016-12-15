@@ -128,6 +128,14 @@ class SplitOpTest(test.TestCase):
     self.assertAllEqual(result[:, 0:1], inp_grads[0])
     self.assertAllEqual(result[:, 1:4], inp_grads[1])
 
+  def testOutputShape(self):
+    with self.test_session(use_gpu=False):
+      tensor = tf.placeholder(tf.float32, shape=[None, 12])
+      size_splits = [3, 7, 2]
+      outputs = tf.split(tensor, size_splits, 1)
+      for i, output in enumerate(outputs):
+        self.assertEqual(output.get_shape().as_list(), [None, size_splits[i]])
+
   def _compare(self, x, dim, num, use_gpu):
     np_ans = np.split(x, num, dim)
     with self.test_session(use_gpu=use_gpu) as sess:
