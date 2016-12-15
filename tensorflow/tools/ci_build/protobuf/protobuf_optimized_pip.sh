@@ -15,7 +15,7 @@
 # ==============================================================================
 
 PROTOBUF_VERSION="3.1.0"
-DIR=/workspace/protobuf
+DIR=${WORKSPACE}/protobuf
 
 set -ex
 
