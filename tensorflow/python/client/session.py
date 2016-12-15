@@ -554,8 +554,13 @@ class BaseSession(SessionInterface):
       tf_session.TF_DeleteSessionOptions(opts)
 
   def add_onlineworker(self,task_index,addr):
+    try:
+      port=int(addr.split(':')[1])
+    except Exception,e:
+      print (e)
     with errors.raise_exception_on_not_ok_status() as status:
-      tf_session.TF_AddOnlineWorkerDeprecatedSession(self._session, status,"worker",task_index,addr)
+      tf_session.TF_AddOnlineWorkerDeprecatedSession(self._session, status,"worker",str(task_index),addr)
+    print(" worker task_index:%d addr:%s has add to ps server:%s"%(task_index,addr,self._target))
 
 
   def close(self):

@@ -156,7 +156,6 @@ class GrpcMasterService : public AsyncServiceInterface {
                                         [call](const Status& status) {
                                             call->SendResponse(ToGrpcStatus(status));
                                         });
-            std::cout<<"ps master shoudaole "<<std::endl;
             ENQUEUE_REQUEST(AddOnlineWorker, false);
    }
 

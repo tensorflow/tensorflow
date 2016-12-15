@@ -164,7 +164,6 @@ class MultiGrpcChannelCache : public CachingGrpcChannelCache {
   }
 
   Status  AddOnlineWorker(const string &job_id,const string &name_prefix,const string &addr) override {
-      std::cout<<"start add online worker"<<name_prefix<<addr<<std::endl;
       mutex_lock l(mu_);  // could use reader lock
       GrpcChannelCache* cache = gtl::FindPtrOrNull(target_caches_, name_prefix);
       if (cache!= nullptr){

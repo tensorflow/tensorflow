@@ -323,7 +323,6 @@ void TF_CloseDeprecatedSession(TF_DeprecatedSession* s, TF_Status* status) {
 
 
 void TF_AddOnlineWorkerDeprecatedSession(TF_DeprecatedSession* s, TF_Status* status,const char *job_id,const char *task_index,const char *addr){
-    std::cout<<"start c_api.cc add online worker"<<std::endl;
     status->status=s->session->AddOnlineWorker(std::string(job_id),std::string(task_index),std::string(addr));
 }
 

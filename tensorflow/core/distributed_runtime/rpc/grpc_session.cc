@@ -148,7 +148,6 @@ Status GrpcSession::AddOnlineWorker(const string &job_id,const string &task_inde
   req.set_job_id(job_id);
   req.set_task_index(task_index);
   req.set_addr(addr);
-  std::cout<<"grpc session jobid "<<job_id<<std::endl;
 
   master_->AddOnlineWorker(&call_options,&req,&resp);
 
