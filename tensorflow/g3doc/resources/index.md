@@ -38,6 +38,7 @@ something amazing with TensorFlow, we'd like to hear about it!
 
 The TensorFlow community has created many great projects around TensorFlow, including:
 
+* [Machine Learning with TensorFlow (Book & Code)](http://tensorflowbook.com)
 * [@jtoy's awesome "Awesome TensorFlow" list of awesome things](https://github.com/jtoy/awesome-tensorflow)
 * [TensorFlow tutorials](https://github.com/pkmital/tensorflow_tutorials)
 * [Scikit Flow - Simplified Interface for TensorFlow](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/learn/python/learn)
