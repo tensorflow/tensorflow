@@ -239,6 +239,45 @@ of a tensor and change the shape of a tensor.
 
 - - -
 
+### `tf.broadcast_dynamic_shape(shape_x, shape_y)` {#broadcast_dynamic_shape}
+
+Returns the broadcasted dynamic shape between `shape_x` and `shape_y`.
+
+##### Args:
+
+
+*  <b>`shape_x`</b>: A rank 1 integer `Tensor`, representing the shape of x.
+*  <b>`shape_y`</b>: A rank 1 integer `Tensor`, representing the shape of x.
+
+##### Returns:
+
+  A rank 1 integer `Tensor` representing the broadcasted shape.
+
+
+- - -
+
+### `tf.broadcast_static_shape(shape_x, shape_y)` {#broadcast_static_shape}
+
+Returns the broadcasted static shape between `shape_x` and `shape_y`.
+
+##### Args:
+
+
+*  <b>`shape_x`</b>: A `TensorShape`
+*  <b>`shape_y`</b>: A `TensorShape`
+
+##### Returns:
+
+  A `TensorShape` representing the broadcasted shape.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If the two shapes can not be broadcasted.
+
+
+- - -
+
 ### `tf.shape(input, name=None, out_type=tf.int32)` {#shape}
 
 Returns the shape of a tensor.
