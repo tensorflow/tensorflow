@@ -721,8 +721,8 @@ class DNNLinearCombinedClassifier(evaluable.Evaluable, trainable.Trainable):
       raise ValueError("n_classes should be greater than 1. Given: {}".format(
           n_classes))
     self._linear_optimizer = linear_optimizer or "Ftrl"
-    linear_feature_columns = linear_feature_columns or []
-    dnn_feature_columns = dnn_feature_columns or []
+    linear_feature_columns = tuple(linear_feature_columns or [])
+    dnn_feature_columns = tuple(dnn_feature_columns or [])
     self._feature_columns = linear_feature_columns + dnn_feature_columns
     if not self._feature_columns:
       raise ValueError("Either linear_feature_columns or dnn_feature_columns "
