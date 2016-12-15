@@ -26,6 +26,8 @@ def main():
 
   if(output_file_index == 1):
     # we are linking
+    # Inserting this flag is required as natively bazel adds "-Wl,-no-as-needed" for linking *.so's, but the CROSSTOOL doesn't.
+    compiler_flags.insert(5, "-Wl,-no-as-needed")
     return subprocess.call([CPU_CXX_COMPILER] + compiler_flags)
 
   compiler_flags = compiler_flags + ['-D_GLIBCXX_USE_CXX11_ABI=0', '-DEIGEN_USE_SYCL=1']
