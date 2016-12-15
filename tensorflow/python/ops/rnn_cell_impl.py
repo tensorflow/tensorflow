@@ -856,7 +856,7 @@ def _linear(args, output_size, bias, bias_start=0.0, scope=None):
   dtype = [a.dtype for a in args][0]
 
   # Now the computation.
-  scope = vs.get_variable_scope()
+  scope = scope or vs.get_variable_scope()
   with vs.variable_scope(scope) as outer_scope:
     weights = vs.get_variable(
         "weights", [total_arg_size, output_size], dtype=dtype)
