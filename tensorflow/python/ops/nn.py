@@ -236,10 +236,7 @@ Neural Networks.  Most accept an `RNNCell`-subclassed object
 (see the documentation for `tf.contrib.rnn`).
 
 @@dynamic_rnn
-@@rnn
-@@state_saving_rnn
 @@bidirectional_dynamic_rnn
-@@bidirectional_rnn
 @@raw_rnn
 
 ## Connectionist Temporal Classification (CTC)
