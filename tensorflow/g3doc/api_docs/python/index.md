@@ -225,6 +225,7 @@
   * [`erf`](../../api_docs/python/math_ops.md#erf)
   * [`erfc`](../../api_docs/python/math_ops.md#erfc)
   * [`exp`](../../api_docs/python/math_ops.md#exp)
+  * [`expm1`](../../api_docs/python/math_ops.md#expm1)
   * [`eye`](../../api_docs/python/math_ops.md#eye)
   * [`fft`](../../api_docs/python/math_ops.md#fft)
   * [`fft2d`](../../api_docs/python/math_ops.md#fft2d)
