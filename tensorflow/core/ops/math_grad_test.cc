@@ -470,6 +470,16 @@ TEST_F(MathGradTest, Exp) {
   test::ExpectClose(ans, dx);
 }
 
+TEST_F(MathGradTest, Expm1) {
+  auto x = test::AsTensor<float>({-3.f, -2.f, -1.f, 1.f, 2.f, 3.f},
+                                 TensorShape({2, 3}));
+  auto g = [](float x) { return std::exp(x); };
+  auto dx = test::AsTensor<float>(
+      {g(-3.f), g(-2.f), g(-1.f), g(1.f), g(2.f), g(3.f)}, TensorShape({2, 3}));
+  auto ans = SymGrad("Expm1", x);
+  test::ExpectClose(ans, dx);
+}
+
 TEST_F(MathGradTest, Log) {
   auto x = test::AsTensor<float>({0.1f, 1.f, 2.f, 3.f, 4.f, 10.f},
                                  TensorShape({2, 3}));

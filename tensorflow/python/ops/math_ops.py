@@ -52,6 +52,7 @@ mathematical functions to your graph.
 @@rsqrt
 @@pow
 @@exp
+@@expm1
 @@log
 @@log1p
 @@ceil
