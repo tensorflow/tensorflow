@@ -17,8 +17,8 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   # These lines need to be changed when updating Eigen. They are parsed from
   # this file by the cmake and make builds to determine the eigen version and
   # hash.
-  eigen_version = "9569d1f35bae"
-  eigen_sha256 = "34e8347f771932964cd367b8d512234cc96917323855e622c668a339c28a3572"
+  eigen_version = "6f7c5ff91efc"
+  eigen_sha256 = "a151aeed0c0bd19f497433ca5ec71dca66e46969cd7a1fc82b6853e69c7a0d9e"
 
   native.new_http_archive(
     name = "eigen_archive",
