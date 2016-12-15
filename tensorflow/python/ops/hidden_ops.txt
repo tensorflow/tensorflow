@@ -185,6 +185,7 @@ BatchIFFT
 BatchIFFT2D
 BatchIFFT3D
 Complex
+ComplexAbs
 Conj
 FloorDiv
 FloorMod

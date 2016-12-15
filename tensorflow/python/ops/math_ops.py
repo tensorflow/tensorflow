@@ -290,10 +290,6 @@ def abs(x, name=None):
   an input element and y is an output element, this operation computes
   \\\\(y = |x|\\\\).
 
-  See [`tf.complex_abs()`](#tf_complex_abs) to compute the absolute value of a
-  complex
-  number.
-
   Args:
     x: A `Tensor` or `SparseTensor` of type `float32`, `float64`, `int32`, or
       `int64`.
@@ -306,7 +302,7 @@ def abs(x, name=None):
   with ops.name_scope(name, "Abs", [x]) as name:
     if isinstance(x, sparse_tensor.SparseTensor):
       if x.values.dtype in (dtypes.complex64, dtypes.complex128):
-        x_abs = gen_math_ops.complex_abs(
+        x_abs = gen_math_ops._complex_abs(
             x.values, Tout=x.values.dtype.real_dtype, name=name)
         return sparse_tensor.SparseTensor(
             indices=x.indices, values=x_abs, dense_shape=x.dense_shape)
@@ -316,7 +312,7 @@ def abs(x, name=None):
     else:
       x = ops.convert_to_tensor(x, name="x")
       if x.dtype in (dtypes.complex64, dtypes.complex128):
-        return gen_math_ops.complex_abs(x, Tout=x.dtype.real_dtype, name=name)
+        return gen_math_ops._complex_abs(x, Tout=x.dtype.real_dtype, name=name)
       return gen_math_ops._abs(x, name=name)
 
 
@@ -464,7 +460,7 @@ def complex_abs(x, name=None):
   Returns:
     A `Tensor` of type `float32` or `float64`.
   """
-  return gen_math_ops.complex_abs(x, Tout=x.dtype.real_dtype, name=name)
+  return gen_math_ops._complex_abs(x, Tout=x.dtype.real_dtype, name=name)
 
 
 def scalar_mul(scalar, x):
@@ -522,7 +518,7 @@ def pow(x, y, name=None):
     return gen_math_ops._pow(x, y, name=name)
 
 
-# pylint: disable=redefined-outer-name,redefined-builtin
+# pylint: disable=redefined-builtin,redefined-outer-name
 def complex(real, imag, name=None):
   r"""Converts two real numbers to a complex number.
 
@@ -542,7 +538,8 @@ def complex(real, imag, name=None):
   ```
 
   Args:
-    real: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+    real: A `Tensor`. Must be one of the following types: `float32`,
+      `float64`.
     imag: A `Tensor`. Must have the same type as `real`.
     name: A name for the operation (optional).
 
@@ -559,7 +556,8 @@ def complex(real, imag, name=None):
       Tout = dtypes.complex64
     else:
       raise TypeError("real and imag have incorrect types: "
-                      "{} {}".format(real.dtype.name, imag.dtype.name))
+                      "{} {}".format(real.dtype.name,
+                                     imag.dtype.name))
     return gen_math_ops._complex(real, imag, Tout=Tout, name=name)
 
 
