@@ -135,7 +135,7 @@ class DNNClassifierBenchmark(tf.test.Benchmark):
               values=tf.train.limit_epochs(
                   ('en', 'fr', 'zh'), num_epochs=num_epochs),
               indices=((0, 0), (0, 1), (2, 0)),
-              shape=(3, 2))
+              dense_shape=(3, 2))
       }
       return features, tf.constant(((1,), (0,), (0,)), dtype=tf.int32)
 
@@ -173,7 +173,7 @@ class DNNClassifierBenchmark(tf.test.Benchmark):
               values=tf.train.limit_epochs(
                   ('en', 'fr', 'zh'), num_epochs=num_epochs),
               indices=((0, 0), (0, 1), (2, 0)),
-              shape=(3, 2))
+              dense_shape=(3, 2))
       }
       return features, tf.constant(((0.8,), (0.,), (0.2,)), dtype=tf.float32)
 
