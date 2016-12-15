@@ -139,7 +139,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "layer_norm_fused_test",
-    size = "medium",
+    size = "small",
     srcs = ["python/layers/layer_norm_fused_test.py"],
     additional_deps = [
         ":layers_py",

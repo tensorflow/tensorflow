@@ -22,9 +22,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.platform import resource_loader
 
 import tensorflow as tf
+import logging
 
 _layer_norm_fused_op = loader.load_op_library(
     resource_loader.get_path_to_datafile("_layer_norm_fused_op.so"))
+
 
 @ops.RegisterGradient("LayerNormCustom")
 def _LayerNormCustomGrad(op, grad):
@@ -49,7 +51,7 @@ def _LayerNormFusedCustomGrad(op, grad):
 
 
 def layer_norm_fused_op(input_tensor, gamma=None, beta=None,
-                     epsilon=1e-12, name=None):
+                        epsilon=1e-12, name=None):
     """Fast and efficient layer normalization along the last dimension
 
     See layer_norm_fused_op.cc for more details.
@@ -69,8 +71,7 @@ def layer_norm_fused_op(input_tensor, gamma=None, beta=None,
       A normalized `Tensor` with same dtype and shape as the input_tensor.
     """
     if epsilon <= 0:
-        print("WARNING: epsilon <=0, may result in NaN outputs.")
-
+        logging.warn("epsilon is %f <= ...", epsilon)
     if gamma is not None and beta is not None:
         return _layer_norm_fused_op.layer_norm_fused_custom(
             input_tensor, gamma, beta, epsilon=epsilon, name=name)

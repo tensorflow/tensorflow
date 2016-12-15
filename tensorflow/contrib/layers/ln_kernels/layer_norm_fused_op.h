@@ -24,11 +24,7 @@ struct LayerNormFusedArgs {
   float epsilon;
 
   LayerNormFusedArgs()
-      : depth(0),
-        n_slices(0),
-        slice_size(0),
-        n_inputs(0),
-        epsilon(0){}
+      : depth(0), n_slices(0), slice_size(0), n_inputs(0), epsilon(0) {}
 };
 
 }  // namespace tensorflow
