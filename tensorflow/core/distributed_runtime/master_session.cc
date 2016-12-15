@@ -881,19 +881,23 @@ void MasterSession::ReffedClientGraph::DeregisterPartitions() {
     DeregisterGraphResponse resp;
   };
   for (Part& part : partitions_) {
-    Call* c = new Call;
-    c->req.set_graph_handle(part.graph_handle);
-    WorkerInterface* w = part.worker;
-    auto cb = [c, w](const Status& s) {
-      if (!s.ok()) {
-        // This error is potentially benign, so we don't log at the
-        // error level.
-        LOG(INFO) << "DeregisterGraph error: " << s;
-      }
-      delete c;
-      delete w;
-    };
-    w->DeregisterGraphAsync(&c->req, &c->resp, cb);
+    // The graph handle may be empty if we failed during partition registration.
+    if (!part.graph_handle.empty()) {
+      Call* c = new Call;
+      c->req.set_graph_handle(part.graph_handle);
+      WorkerInterface* w = part.worker;
+      CHECK_NOTNULL(w);
+      auto cb = [c, w](const Status& s) {
+        if (!s.ok()) {
+          // This error is potentially benign, so we don't log at the
+          // error level.
+          LOG(INFO) << "DeregisterGraph error: " << s;
+        }
+        delete c;
+        delete w;
+      };
+      w->DeregisterGraphAsync(&c->req, &c->resp, cb);
+    }
   }
 }
 
@@ -1028,6 +1032,10 @@ Status MasterSession::Extend(const ExtendSessionRequest* req,
   std::unique_ptr<SimpleGraphExecutionState> extended_execution_state;
   {
     mutex_lock l(mu_);
+    if (closed_) {
+      return errors::FailedPrecondition("Session is closed.");
+    }
+
     // TODO(mrry): Redesign the locking with reader/writer locks to prevent
     //   starvation due to concurrent steps being issued. This is not
     //   immediately important because we expect Extend to be used in
@@ -1152,6 +1160,9 @@ Status MasterSession::Run(CallOptions* opts, const RunStepRequest* req,
   UpdateLastAccessTime();
   {
     mutex_lock l(mu_);
+    if (closed_) {
+      return errors::FailedPrecondition("Session is closed.");
+    }
     ++num_running_;
   }
   Status status;
@@ -1384,11 +1395,11 @@ Status MasterSession::Close() {
     while (num_running_ != 0) {
       num_running_is_zero_.wait(l);
     }
+    closed_ = true;  // All subsequent calls to Run() or Extend() will fail.
     ClearRunsTable(&to_unref, &run_graphs_);
     ClearRunsTable(&to_unref, &partial_run_graphs_);
   }
   for (ReffedClientGraph* rcg : to_unref) rcg->Unref();
-  delete this;
   return Status::OK();
 }
 

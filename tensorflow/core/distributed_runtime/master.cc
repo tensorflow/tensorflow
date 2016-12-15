@@ -102,6 +102,7 @@ void Master::GC() {
                        << "on a staggered delay, session_gc_seconds may need "
                        << "to be raised.";
           sess->Close();
+          sess->Unref();
         });
       }
     }
@@ -256,13 +257,13 @@ void Master::CreateSession(const CreateSessionRequest* req,
           const_cast<CreateSessionRequest*>(req)->mutable_graph_def();
       Status create_status = session->Create(gdef);
       if (!create_status.ok()) {
-        // Takes ownership of `session` (and destroys it).
         session->Close();
+        session->Unref();
         done(create_status);
         return;
       }
       resp->set_session_handle(session->handle());
-      // Insert into the session map.
+      // Insert into the session map, which takes ownership of the session.
       {
         mutex_lock l(mu_);
         CHECK(sessions_.insert({session->handle(), session}).second);
@@ -282,6 +283,7 @@ void Master::ExtendSession(const ExtendSessionRequest* req,
     done(errors::Aborted("Session ", req->session_handle(), " is not found."));
     return;
   }
+  session->Ref();
   mu_.unlock();
 
   SchedClosure([session, req, resp, done]() {
@@ -289,6 +291,7 @@ void Master::ExtendSession(const ExtendSessionRequest* req,
     if (status.ok()) {
       status = session->Extend(req, resp);
     }
+    session->Unref();
     done(status);
   });
 }
@@ -302,10 +305,13 @@ void Master::PartialRunSetup(const PartialRunSetupRequest* req,
     done(errors::Aborted("Session ", req->session_handle(), " is not found."));
     return;
   }
+  session->Ref();
   mu_.unlock();
 
   SchedClosure([this, session, req, resp, done]() {
-    done(session->PartialRunSetup(req, resp));
+    Status s = session->PartialRunSetup(req, resp);
+    session->Unref();
+    done(s);
   });
 }
 
@@ -319,10 +325,12 @@ void Master::RunStep(CallOptions* opts, const RunStepRequest* req,
     done(errors::Aborted("Session ", req->session_handle(), " is not found."));
     return;
   }
+  session->Ref();
   mu_.unlock();
 
   SchedClosure([this, start_time, session, opts, req, resp, done]() {
     Status status = session->Run(opts, req, resp);
+    session->Unref();
     uint64 done_time = env_->env->NowMicros();
     done(status);
     mutex_lock l(mu_);
@@ -344,6 +352,8 @@ void Master::CloseSession(const CloseSessionRequest* req,
           " is not found. Possibly, this master has restarted."));
       return;
     }
+    // NOTE(mrry): One reference to the session is transferred from
+    // `sessions_[req->session_handle()]` to `session`.
     session = iter->second;
     sessions_.erase(iter);
     mu_.unlock();
@@ -353,6 +363,7 @@ void Master::CloseSession(const CloseSessionRequest* req,
   // delete it in non-critical thread.
   SchedClosure([session, done]() {
     Status s = session->Close();
+    session->Unref();
     done(s);
   });
 }
@@ -409,21 +420,24 @@ void Master::Reset(const ResetRequest* req, ResetResponse* resp,
                    MyClosure done) {
   // Vector to hold the session pointers present in the sessions_
   // (string->Session*) map.
-  std::vector<MasterSession*> sessions;
+  std::vector<MasterSession*> sessions_to_close;
   {
     mutex_lock l(mu_);
+    // NOTE(mrry): Transfer one reference to each session from the
+    // `sessions_` map to the `sessions_to_close` vector.
     for (const auto& entry : sessions_) {
-      sessions.push_back(entry.second);
+      sessions_to_close.push_back(entry.second);
     }
     sessions_.clear();
   }
 
   CleanupWorkers(*req);
 
-  SchedClosure([sessions, done]() {
+  SchedClosure([sessions_to_close, done]() {
     Status s;
-    for (MasterSession* session : sessions) {
+    for (MasterSession* session : sessions_to_close) {
       s.Update(session->Close());
+      session->Unref();
     }
     done(s);
   });
