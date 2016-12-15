@@ -356,7 +356,7 @@ class MathGradTest : public ::testing::Test {
     TF_CHECK_OK(sess->Create(gdef));
     std::vector<Tensor> outputs;
     TF_CHECK_OK(sess->Run({{"c:0", c}, {"x:0", x}, {"y:0", y}},
-                           {"d:0", "d:1", "d:2"}, {}, &outputs));
+                          {"d:0", "d:1", "d:2"}, {}, &outputs));
     CHECK_EQ(outputs.size(), 3);
     TF_CHECK_OK(sess->Close());
     delete sess;
@@ -390,7 +390,7 @@ class TestOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("TestOpWithNoGrad").Device(DEVICE_CPU), TestOp);
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(Name("TestOpWithNoGrad").Device(DEVICE_SYCL), TestOp);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 TEST_F(MathGradTest, Error_Reporting) {
   auto x = test::AsTensor<float>({-3.f});

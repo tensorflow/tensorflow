@@ -245,7 +245,6 @@ struct ApplyAdam<CPUDevice, T> : ApplyAdamNonCuda<CPUDevice, T> {};
 template <typename T>
 struct ApplyAdam<SYCLDevice, T> : ApplyAdamNonCuda<SYCLDevice, T> {};
 
-
 template <typename T>
 struct ApplyRMSProp<CPUDevice, T> {
   void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
@@ -1617,8 +1616,9 @@ class ApplyFtrlOp : public OpKernel {
                                 grad.shape().DebugString()));
 
     const Tensor& lr = ctx->input(4);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()) &&
-                         lr.scalar<T>()() > static_cast<T>(0),
+    OP_REQUIRES(ctx,
+                TensorShapeUtils::IsScalar(lr.shape()) &&
+                    lr.scalar<T>()() > static_cast<T>(0),
                 errors::InvalidArgument("lr is not a scalar or <= 0.0: ",
                                         lr.shape().DebugString()));
     const Tensor& l1 = ctx->input(5);
@@ -1709,8 +1709,9 @@ class SparseApplyFtrlOp : public OpKernel {
                 errors::InvalidArgument("indices must be one-dimensional"));
 
     const Tensor& lr = ctx->input(5);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()) &&
-                         lr.scalar<T>()() > static_cast<T>(0),
+    OP_REQUIRES(ctx,
+                TensorShapeUtils::IsScalar(lr.shape()) &&
+                    lr.scalar<T>()() > static_cast<T>(0),
                 errors::InvalidArgument("lr is not a scalar or <= 0.0: ",
                                         lr.shape().DebugString()));
 
