@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for rnn module."""
 
 from __future__ import absolute_import
@@ -20,17 +19,46 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
+import sys
 import time
 import timeit
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
-import tensorflow as tf
 
+# TODO(mrry): Remove this hack which makes dlopen() in
+#             sparse_feature_cross_op.py not crash in the open source world.
+if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
+  import ctypes
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
+
+from tensorflow.contrib import rnn as rnn_lib
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.client import session
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops as ops_lib
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import rnn
+from tensorflow.python.ops import rnn_cell_impl
+from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables as variables_lib
+import tensorflow.python.ops.data_flow_grad  # pylint: disable=unused-import
+import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
+import tensorflow.python.ops.sparse_grad  # pylint: disable=unused-import
+import tensorflow.python.ops.tensor_array_grad  # pylint: disable=unused-import
+from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging
 from tensorflow.python.util import nest
 
 
-class Plus1RNNCell(tf.contrib.rnn.RNNCell):
+class Plus1RNNCell(rnn_cell_impl.RNNCell):
   """RNN Cell generating (output, new_state) = (input + 1, state + 1)."""
 
   @property
@@ -45,7 +73,7 @@ class Plus1RNNCell(tf.contrib.rnn.RNNCell):
     return (input_ + 1, state + 1)
 
 
-class DummyMultiDimensionalLSTM(tf.contrib.rnn.RNNCell):
+class DummyMultiDimensionalLSTM(rnn_cell_impl.RNNCell):
   """LSTM Cell generating (output, new_state) = (input + 1, state + 1).
 
   The input to this cell may have an arbitrary number of dimensions that follow
@@ -63,8 +91,9 @@ class DummyMultiDimensionalLSTM(tf.contrib.rnn.RNNCell):
       raise TypeError("The dimensions passed to DummyMultiDimensionalLSTM"
                       "should be a tuple of ints.")
     self._dims = dims
-    self._output_size = tf.TensorShape(self._dims)
-    self._state_size = (tf.TensorShape(self._dims), tf.TensorShape(self._dims))
+    self._output_size = tensor_shape.TensorShape(self._dims)
+    self._state_size = (tensor_shape.TensorShape(self._dims),
+                        tensor_shape.TensorShape(self._dims))
 
   @property
   def output_size(self):
@@ -79,7 +108,7 @@ class DummyMultiDimensionalLSTM(tf.contrib.rnn.RNNCell):
     return (input_ + 1, (h + 1, c + 1))
 
 
-class NestedRNNCell(tf.contrib.rnn.RNNCell):
+class NestedRNNCell(rnn_cell_impl.RNNCell):
   """RNN Cell generating (output, new_state) = (input + 1, state + 1).
 
   The input, output and state of this cell is a tuple of two tensors.
@@ -119,14 +148,14 @@ class TestStateSaver(object):
     else:
       raise TypeError("state_size should either be an int or a tuple")
 
-    return tf.zeros((self._batch_size,) + state_size)
+    return array_ops.zeros((self._batch_size,) + state_size)
 
   def save_state(self, name, state):
     self.saved_state[name] = state
-    return tf.identity(state)
+    return array_ops.identity(state)
 
 
-class RNNTest(tf.test.TestCase):
+class RNNTest(test.TestCase):
 
   def setUp(self):
     self._seed = 23489
@@ -134,13 +163,16 @@ class RNNTest(tf.test.TestCase):
 
   def testInvalidSequenceLengthShape(self):
     cell = Plus1RNNCell()
-    inputs = [tf.placeholder(tf.float32, shape=(3, 4))]
+    inputs = [array_ops.placeholder(dtypes.float32, shape=(3, 4))]
     with self.assertRaisesRegexp(ValueError, "must be a vector"):
-      tf.nn.dynamic_rnn(
-          cell, tf.stack(inputs), dtype=tf.float32, sequence_length=[[4]])
+      rnn.dynamic_rnn(
+          cell,
+          array_ops.stack(inputs),
+          dtype=dtypes.float32,
+          sequence_length=[[4]])
 
 
-class GRUTest(tf.test.TestCase):
+class GRUTest(test.TestCase):
 
   def setUp(self):
     self._seed = 23489
@@ -156,21 +188,24 @@ class GRUTest(tf.test.TestCase):
 
     sequence_length = np.random.randint(0, time_steps, size=batch_size)
 
-    with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
-      concat_inputs = tf.placeholder(
-          tf.float32, shape=(time_steps, batch_size, input_size))
+    with self.test_session(use_gpu=use_gpu, graph=ops_lib.Graph()) as sess:
+      concat_inputs = array_ops.placeholder(
+          dtypes.float32, shape=(time_steps, batch_size, input_size))
 
-      cell = tf.contrib.rnn.GRUCell(num_units=num_units)
+      cell = rnn_cell_impl.GRUCell(num_units=num_units)
 
-      with tf.variable_scope("dynamic_scope"):
-        outputs_dynamic, state_dynamic = tf.nn.dynamic_rnn(
-            cell, inputs=concat_inputs, sequence_length=sequence_length,
-            time_major=True, dtype=tf.float32)
+      with variable_scope.variable_scope("dynamic_scope"):
+        outputs_dynamic, state_dynamic = rnn.dynamic_rnn(
+            cell,
+            inputs=concat_inputs,
+            sequence_length=sequence_length,
+            time_major=True,
+            dtype=dtypes.float32)
 
       feeds = {concat_inputs: input_values}
 
       # Initialize
-      tf.global_variables_initializer().run(feed_dict=feeds)
+      variables_lib.global_variables_initializer().run(feed_dict=feeds)
 
       sess.run([outputs_dynamic, state_dynamic], feed_dict=feeds)
 
@@ -179,23 +214,23 @@ class GRUTest(tf.test.TestCase):
     self._testDynamic(use_gpu=True)
 
   def _testScope(self, factory, prefix="prefix", use_outer_scope=True):
-    with self.test_session(use_gpu=True, graph=tf.Graph()):
+    with self.test_session(use_gpu=True, graph=ops_lib.Graph()):
       if use_outer_scope:
-        with tf.variable_scope(prefix) as scope:
+        with variable_scope.variable_scope(prefix) as scope:
           factory(scope)
       else:
         factory(prefix)
-        tf.global_variables_initializer()
+        variables_lib.global_variables_initializer()
 
       # check that all the variables names starts
       # with the proper scope.
-      all_vars = tf.global_variables()
+      all_vars = variables_lib.global_variables()
       prefix = prefix or "rnn"
       scope_vars = [v for v in all_vars if v.name.startswith(prefix + "/")]
-      tf.logging.info("RNN with scope: %s (%s)"
-                      % (prefix, "scope" if use_outer_scope else "str"))
+      tf_logging.info("RNN with scope: %s (%s)" %
+                      (prefix, "scope" if use_outer_scope else "str"))
       for v in scope_vars:
-        tf.logging.info(v.name)
+        tf_logging.info(v.name)
       self.assertEqual(len(scope_vars), len(all_vars))
 
   def testDynamicScope(self):
@@ -206,30 +241,33 @@ class GRUTest(tf.test.TestCase):
     sequence_length = np.random.randint(0, time_steps, size=batch_size)
 
     def factory(scope):
-      concat_inputs = tf.placeholder(
-          tf.float32, shape=(time_steps, batch_size, input_size))
-      cell = tf.contrib.rnn.GRUCell(num_units=num_units)
-      return tf.nn.dynamic_rnn(cell, inputs=concat_inputs,
-                               sequence_length=sequence_length,
-                               time_major=True, dtype=tf.float32,
-                               scope=scope)
+      concat_inputs = array_ops.placeholder(
+          dtypes.float32, shape=(time_steps, batch_size, input_size))
+      cell = rnn_cell_impl.GRUCell(num_units=num_units)
+      return rnn.dynamic_rnn(
+          cell,
+          inputs=concat_inputs,
+          sequence_length=sequence_length,
+          time_major=True,
+          dtype=dtypes.float32,
+          scope=scope)
 
     self._testScope(factory, use_outer_scope=True)
     self._testScope(factory, use_outer_scope=False)
     self._testScope(factory, prefix=None, use_outer_scope=False)
 
 
-class LSTMTest(tf.test.TestCase):
+class LSTMTest(test.TestCase):
 
   def setUp(self):
     self._seed = 23489
     np.random.seed(self._seed)
 
   def testDynamicRNNAllowsUnknownTimeDimension(self):
-    inputs = tf.placeholder(tf.float32, shape=[1, None, 20])
-    cell = tf.contrib.rnn.GRUCell(30)
+    inputs = array_ops.placeholder(dtypes.float32, shape=[1, None, 20])
+    cell = rnn_cell_impl.GRUCell(30)
     # Smoke test, this should not raise an error
-    tf.nn.dynamic_rnn(cell, inputs, dtype=tf.float32)
+    rnn.dynamic_rnn(cell, inputs, dtype=dtypes.float32)
 
   def testDynamicRNNWithTupleStates(self):
     num_units = 3
@@ -238,44 +276,56 @@ class LSTMTest(tf.test.TestCase):
     num_proj = 4
     max_length = 8
     sequence_length = [4, 6]
-    with self.test_session(graph=tf.Graph()) as sess:
-      initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=self._seed)
+    with self.test_session(graph=ops_lib.Graph()) as sess:
+      initializer = init_ops.random_uniform_initializer(
+          -0.01, 0.01, seed=self._seed)
       inputs = max_length * [
-          tf.placeholder(tf.float32, shape=(None, input_size))]
-      inputs_c = tf.stack(inputs)
-      cell = tf.contrib.rnn.LSTMCell(
-          num_units, use_peepholes=True,
-          num_proj=num_proj, initializer=initializer, state_is_tuple=True)
-      with tf.variable_scope("root") as scope:
-        outputs_static, state_static = tf.contrib.rnn.static_rnn(
-            cell, inputs, dtype=tf.float32,
-            sequence_length=sequence_length, scope=scope)
+          array_ops.placeholder(
+              dtypes.float32, shape=(None, input_size))
+      ]
+      inputs_c = array_ops.stack(inputs)
+      cell = rnn_cell_impl.LSTMCell(
+          num_units,
+          use_peepholes=True,
+          num_proj=num_proj,
+          initializer=initializer,
+          state_is_tuple=True)
+      with variable_scope.variable_scope("root") as scope:
+        outputs_static, state_static = rnn_lib.static_rnn(
+            cell,
+            inputs,
+            dtype=dtypes.float32,
+            sequence_length=sequence_length,
+            scope=scope)
         scope.reuse_variables()
-        outputs_dynamic, state_dynamic = tf.nn.dynamic_rnn(
-            cell, inputs_c, dtype=tf.float32, time_major=True,
-            sequence_length=sequence_length, scope=scope)
-      self.assertTrue(isinstance(state_static, tf.contrib.rnn.LSTMStateTuple))
-      self.assertTrue(isinstance(state_dynamic, tf.contrib.rnn.LSTMStateTuple))
+        outputs_dynamic, state_dynamic = rnn.dynamic_rnn(
+            cell,
+            inputs_c,
+            dtype=dtypes.float32,
+            time_major=True,
+            sequence_length=sequence_length,
+            scope=scope)
+      self.assertTrue(isinstance(state_static, rnn_cell_impl.LSTMStateTuple))
+      self.assertTrue(isinstance(state_dynamic, rnn_cell_impl.LSTMStateTuple))
       self.assertEqual(state_static[0], state_static.c)
       self.assertEqual(state_static[1], state_static.h)
       self.assertEqual(state_dynamic[0], state_dynamic.c)
       self.assertEqual(state_dynamic[1], state_dynamic.h)
 
-      tf.global_variables_initializer().run()
+      variables_lib.global_variables_initializer().run()
 
       input_value = np.random.randn(batch_size, input_size)
-      outputs_static_v = sess.run(
-          outputs_static, feed_dict={inputs[0]: input_value})
-      outputs_dynamic_v = sess.run(
-          outputs_dynamic, feed_dict={inputs[0]: input_value})
+      outputs_static_v = sess.run(outputs_static,
+                                  feed_dict={inputs[0]: input_value})
+      outputs_dynamic_v = sess.run(outputs_dynamic,
+                                   feed_dict={inputs[0]: input_value})
       self.assertAllEqual(outputs_static_v, outputs_dynamic_v)
 
-      state_static_v = sess.run(
-          state_static, feed_dict={inputs[0]: input_value})
-      state_dynamic_v = sess.run(
-          state_dynamic, feed_dict={inputs[0]: input_value})
-      self.assertAllEqual(
-          np.hstack(state_static_v), np.hstack(state_dynamic_v))
+      state_static_v = sess.run(state_static,
+                                feed_dict={inputs[0]: input_value})
+      state_dynamic_v = sess.run(state_dynamic,
+                                 feed_dict={inputs[0]: input_value})
+      self.assertAllEqual(np.hstack(state_static_v), np.hstack(state_dynamic_v))
 
   def testDynamicRNNWithNestedTupleStates(self):
     num_units = 3
@@ -284,54 +334,67 @@ class LSTMTest(tf.test.TestCase):
     num_proj = 4
     max_length = 8
     sequence_length = [4, 6]
-    with self.test_session(graph=tf.Graph()) as sess:
-      initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=self._seed)
+    with self.test_session(graph=ops_lib.Graph()) as sess:
+      initializer = init_ops.random_uniform_initializer(
+          -0.01, 0.01, seed=self._seed)
       inputs = max_length * [
-          tf.placeholder(tf.float32, shape=(None, input_size))]
-      inputs_c = tf.stack(inputs)
+          array_ops.placeholder(
+              dtypes.float32, shape=(None, input_size))
+      ]
+      inputs_c = array_ops.stack(inputs)
+
       def _cell(i):
-        return tf.contrib.rnn.LSTMCell(
-            num_units + i, use_peepholes=True,
-            num_proj=num_proj + i, initializer=initializer, state_is_tuple=True)
+        return rnn_cell_impl.LSTMCell(
+            num_units + i,
+            use_peepholes=True,
+            num_proj=num_proj + i,
+            initializer=initializer,
+            state_is_tuple=True)
 
       # This creates a state tuple which has 4 sub-tuples of length 2 each.
-      cell = tf.contrib.rnn.MultiRNNCell(
+      cell = rnn_cell_impl.MultiRNNCell(
           [_cell(i) for i in range(4)], state_is_tuple=True)
 
       self.assertEqual(len(cell.state_size), 4)
       for i in range(4):
         self.assertEqual(len(cell.state_size[i]), 2)
 
-      test_zero = cell.zero_state(1, tf.float32)
+      test_zero = cell.zero_state(1, dtypes.float32)
       self.assertEqual(len(test_zero), 4)
       for i in range(4):
         self.assertEqual(test_zero[i][0].get_shape()[1], cell.state_size[i][0])
         self.assertEqual(test_zero[i][1].get_shape()[1], cell.state_size[i][1])
 
-      with tf.variable_scope("root") as scope:
-        outputs_static, state_static = tf.contrib.rnn.static_rnn(
-            cell, inputs, dtype=tf.float32,
-            sequence_length=sequence_length, scope=scope)
+      with variable_scope.variable_scope("root") as scope:
+        outputs_static, state_static = rnn_lib.static_rnn(
+            cell,
+            inputs,
+            dtype=dtypes.float32,
+            sequence_length=sequence_length,
+            scope=scope)
         scope.reuse_variables()
-        outputs_dynamic, state_dynamic = tf.nn.dynamic_rnn(
-            cell, inputs_c, dtype=tf.float32, time_major=True,
-            sequence_length=sequence_length, scope=scope)
+        outputs_dynamic, state_dynamic = rnn.dynamic_rnn(
+            cell,
+            inputs_c,
+            dtype=dtypes.float32,
+            time_major=True,
+            sequence_length=sequence_length,
+            scope=scope)
 
-      tf.global_variables_initializer().run()
+      variables_lib.global_variables_initializer().run()
 
       input_value = np.random.randn(batch_size, input_size)
-      outputs_static_v = sess.run(
-          outputs_static, feed_dict={inputs[0]: input_value})
-      outputs_dynamic_v = sess.run(
-          outputs_dynamic, feed_dict={inputs[0]: input_value})
+      outputs_static_v = sess.run(outputs_static,
+                                  feed_dict={inputs[0]: input_value})
+      outputs_dynamic_v = sess.run(outputs_dynamic,
+                                   feed_dict={inputs[0]: input_value})
       self.assertAllEqual(outputs_static_v, outputs_dynamic_v)
 
-      state_static_v = sess.run(
-          nest.flatten(state_static), feed_dict={inputs[0]: input_value})
-      state_dynamic_v = sess.run(
-          nest.flatten(state_dynamic), feed_dict={inputs[0]: input_value})
-      self.assertAllEqual(
-          np.hstack(state_static_v), np.hstack(state_dynamic_v))
+      state_static_v = sess.run(nest.flatten(state_static),
+                                feed_dict={inputs[0]: input_value})
+      state_dynamic_v = sess.run(nest.flatten(state_dynamic),
+                                 feed_dict={inputs[0]: input_value})
+      self.assertAllEqual(np.hstack(state_static_v), np.hstack(state_dynamic_v))
 
   def _testDynamicEquivalentToStaticRNN(self, use_gpu, use_sequence_length):
     time_steps = 8
@@ -348,46 +411,49 @@ class LSTMTest(tf.test.TestCase):
       sequence_length = None
 
     ########### Step 1: Run static graph and generate readouts
-    with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
-      concat_inputs = tf.placeholder(tf.float32,
-                                     shape=(time_steps, batch_size, input_size))
-      inputs = tf.unstack(concat_inputs)
-      initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=self._seed)
+    with self.test_session(use_gpu=use_gpu, graph=ops_lib.Graph()) as sess:
+      concat_inputs = array_ops.placeholder(
+          dtypes.float32, shape=(time_steps, batch_size, input_size))
+      inputs = array_ops.unstack(concat_inputs)
+      initializer = init_ops.random_uniform_initializer(
+          -0.01, 0.01, seed=self._seed)
 
-      cell = tf.contrib.rnn.LSTMCell(
-          num_units, use_peepholes=True,
-          initializer=initializer, num_proj=num_proj, state_is_tuple=False)
+      cell = rnn_cell_impl.LSTMCell(
+          num_units,
+          use_peepholes=True,
+          initializer=initializer,
+          num_proj=num_proj,
+          state_is_tuple=False)
 
-      with tf.variable_scope("dynamic_scope"):
-        outputs_static, state_static = tf.contrib.rnn.static_rnn(
-            cell, inputs, sequence_length=sequence_length, dtype=tf.float32)
+      with variable_scope.variable_scope("dynamic_scope"):
+        outputs_static, state_static = rnn_lib.static_rnn(
+            cell, inputs, sequence_length=sequence_length, dtype=dtypes.float32)
 
       feeds = {concat_inputs: input_values}
 
       # Initialize
-      tf.global_variables_initializer().run(feed_dict=feeds)
+      variables_lib.global_variables_initializer().run(feed_dict=feeds)
 
       # Generate gradients of sum of outputs w.r.t. inputs
-      static_gradients = tf.gradients(
+      static_gradients = gradients_impl.gradients(
           outputs_static + [state_static], [concat_inputs])
 
       # Generate gradients of individual outputs w.r.t. inputs
       static_individual_gradients = nest.flatten([
-          tf.gradients(y, [concat_inputs])
-          for y in [outputs_static[0],
-                    outputs_static[-1],
-                    state_static]])
+          gradients_impl.gradients(y, [concat_inputs])
+          for y in [outputs_static[0], outputs_static[-1], state_static]
+      ])
 
       # Generate gradients of individual variables w.r.t. inputs
-      trainable_variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
-      assert len(trainable_variables) > 1, (
-          "Count of trainable variables: %d" % len(trainable_variables))
+      trainable_variables = ops_lib.get_collection(
+          ops_lib.GraphKeys.TRAINABLE_VARIABLES)
+      assert len(trainable_variables) > 1, ("Count of trainable variables: %d" %
+                                            len(trainable_variables))
       # pylint: disable=bad-builtin
       static_individual_variable_gradients = nest.flatten([
-          tf.gradients(y, trainable_variables)
-          for y in [outputs_static[0],
-                    outputs_static[-1],
-                    state_static]])
+          gradients_impl.gradients(y, trainable_variables)
+          for y in [outputs_static[0], outputs_static[-1], state_static]
+      ])
 
       # Test forward pass
       values_static = sess.run(outputs_static, feed_dict=feeds)
@@ -396,65 +462,72 @@ class LSTMTest(tf.test.TestCase):
       # Test gradients to inputs and variables w.r.t. outputs & final state
       static_grad_values = sess.run(static_gradients, feed_dict=feeds)
 
-      static_individual_grad_values = sess.run(
-          static_individual_gradients, feed_dict=feeds)
+      static_individual_grad_values = sess.run(static_individual_gradients,
+                                               feed_dict=feeds)
 
       static_individual_var_grad_values = sess.run(
           static_individual_variable_gradients, feed_dict=feeds)
 
     ########## Step 2: Run dynamic graph and generate readouts
-    with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
-      concat_inputs = tf.placeholder(tf.float32,
-                                     shape=(time_steps, batch_size, input_size))
-      inputs = tf.unstack(concat_inputs)
-      initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=self._seed)
+    with self.test_session(use_gpu=use_gpu, graph=ops_lib.Graph()) as sess:
+      concat_inputs = array_ops.placeholder(
+          dtypes.float32, shape=(time_steps, batch_size, input_size))
+      inputs = array_ops.unstack(concat_inputs)
+      initializer = init_ops.random_uniform_initializer(
+          -0.01, 0.01, seed=self._seed)
 
-      cell = tf.contrib.rnn.LSTMCell(
-          num_units, use_peepholes=True,
-          initializer=initializer, num_proj=num_proj, state_is_tuple=False)
+      cell = rnn_cell_impl.LSTMCell(
+          num_units,
+          use_peepholes=True,
+          initializer=initializer,
+          num_proj=num_proj,
+          state_is_tuple=False)
 
-      with tf.variable_scope("dynamic_scope"):
-        outputs_dynamic, state_dynamic = tf.nn.dynamic_rnn(
-            cell, inputs=concat_inputs, sequence_length=sequence_length,
-            time_major=True, dtype=tf.float32)
-        split_outputs_dynamic = tf.unstack(outputs_dynamic, time_steps)
+      with variable_scope.variable_scope("dynamic_scope"):
+        outputs_dynamic, state_dynamic = rnn.dynamic_rnn(
+            cell,
+            inputs=concat_inputs,
+            sequence_length=sequence_length,
+            time_major=True,
+            dtype=dtypes.float32)
+        split_outputs_dynamic = array_ops.unstack(outputs_dynamic, time_steps)
 
       feeds = {concat_inputs: input_values}
 
       # Initialize
-      tf.global_variables_initializer().run(feed_dict=feeds)
+      variables_lib.global_variables_initializer().run(feed_dict=feeds)
 
       # Generate gradients of sum of outputs w.r.t. inputs
-      dynamic_gradients = tf.gradients(
+      dynamic_gradients = gradients_impl.gradients(
           split_outputs_dynamic + [state_dynamic], [concat_inputs])
 
       # Generate gradients of several individual outputs w.r.t. inputs
       dynamic_individual_gradients = nest.flatten([
-          tf.gradients(y, [concat_inputs])
-          for y in [split_outputs_dynamic[0],
-                    split_outputs_dynamic[-1],
-                    state_dynamic]])
+          gradients_impl.gradients(y, [concat_inputs])
+          for y in
+          [split_outputs_dynamic[0], split_outputs_dynamic[-1], state_dynamic]
+      ])
 
       # Generate gradients of individual variables w.r.t. inputs
-      trainable_variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
-      assert len(trainable_variables) > 1, (
-          "Count of trainable variables: %d" % len(trainable_variables))
+      trainable_variables = ops_lib.get_collection(
+          ops_lib.GraphKeys.TRAINABLE_VARIABLES)
+      assert len(trainable_variables) > 1, ("Count of trainable variables: %d" %
+                                            len(trainable_variables))
       dynamic_individual_variable_gradients = nest.flatten([
-          tf.gradients(y, trainable_variables)
-          for y in [split_outputs_dynamic[0],
-                    split_outputs_dynamic[-1],
-                    state_dynamic]])
+          gradients_impl.gradients(y, trainable_variables)
+          for y in
+          [split_outputs_dynamic[0], split_outputs_dynamic[-1], state_dynamic]
+      ])
 
       # Test forward pass
       values_dynamic = sess.run(split_outputs_dynamic, feed_dict=feeds)
-      (state_value_dynamic,) = sess.run(
-          (state_dynamic,), feed_dict=feeds)
+      (state_value_dynamic,) = sess.run((state_dynamic,), feed_dict=feeds)
 
       # Test gradients to inputs and variables w.r.t. outputs & final state
       dynamic_grad_values = sess.run(dynamic_gradients, feed_dict=feeds)
 
-      dynamic_individual_grad_values = sess.run(
-          dynamic_individual_gradients, feed_dict=feeds)
+      dynamic_individual_grad_values = sess.run(dynamic_individual_gradients,
+                                                feed_dict=feeds)
 
       dynamic_individual_var_grad_values = sess.run(
           dynamic_individual_variable_gradients, feed_dict=feeds)
@@ -467,20 +540,22 @@ class LSTMTest(tf.test.TestCase):
 
     self.assertAllEqual(static_grad_values, dynamic_grad_values)
 
-    self.assertEqual(len(static_individual_grad_values),
-                     len(dynamic_individual_grad_values))
-    self.assertEqual(len(static_individual_var_grad_values),
-                     len(dynamic_individual_var_grad_values))
+    self.assertEqual(
+        len(static_individual_grad_values), len(dynamic_individual_grad_values))
+    self.assertEqual(
+        len(static_individual_var_grad_values),
+        len(dynamic_individual_var_grad_values))
 
-    for i, (a, b) in enumerate(zip(static_individual_grad_values,
-                                   dynamic_individual_grad_values)):
-      tf.logging.info("Comparing individual gradients iteration %d" % i)
+    for i, (a, b) in enumerate(
+        zip(static_individual_grad_values, dynamic_individual_grad_values)):
+      tf_logging.info("Comparing individual gradients iteration %d" % i)
       self.assertAllEqual(a, b)
 
-    for i, (a, b) in enumerate(zip(static_individual_var_grad_values,
-                                   dynamic_individual_var_grad_values)):
-      tf.logging.info(
-          "Comparing individual variable gradients iteration %d" % i)
+    for i, (a, b) in enumerate(
+        zip(static_individual_var_grad_values,
+            dynamic_individual_var_grad_values)):
+      tf_logging.info("Comparing individual variable gradients iteration %d" %
+                      i)
       self.assertAllEqual(a, b)
 
   def testDynamicEquivalentToStaticRNN(self):
@@ -494,64 +569,66 @@ class LSTMTest(tf.test.TestCase):
         use_gpu=True, use_sequence_length=True)
 
 
-class BidirectionalRNNTest(tf.test.TestCase):
+class BidirectionalRNNTest(test.TestCase):
 
   def setUp(self):
     self._seed = 23489
     np.random.seed(self._seed)
 
-  def _createBidirectionalDynamicRNN(self, use_gpu, use_shape,
-                                     use_state_tuple, use_time_major,
+  def _createBidirectionalDynamicRNN(self,
+                                     use_gpu,
+                                     use_shape,
+                                     use_state_tuple,
+                                     use_time_major,
                                      scope=None):
     num_units = 3
     input_size = 5
     batch_size = 2
     max_length = 8
 
-    initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=self._seed)
-    sequence_length = tf.placeholder(tf.int64)
-    cell_fw = tf.contrib.rnn.LSTMCell(num_units,
-                                      initializer=initializer,
-                                      state_is_tuple=use_state_tuple)
-    cell_bw = tf.contrib.rnn.LSTMCell(num_units,
-                                      initializer=initializer,
-                                      state_is_tuple=use_state_tuple)
+    initializer = init_ops.random_uniform_initializer(
+        -0.01, 0.01, seed=self._seed)
+    sequence_length = array_ops.placeholder(dtypes.int64)
+    cell_fw = rnn_cell_impl.LSTMCell(
+        num_units, initializer=initializer, state_is_tuple=use_state_tuple)
+    cell_bw = rnn_cell_impl.LSTMCell(
+        num_units, initializer=initializer, state_is_tuple=use_state_tuple)
     inputs = max_length * [
-        tf.placeholder(tf.float32,
-                       shape=(batch_size if use_shape else None, input_size))]
-    inputs_c = tf.stack(inputs)
+        array_ops.placeholder(
+            dtypes.float32,
+            shape=(batch_size if use_shape else None, input_size))
+    ]
+    inputs_c = array_ops.stack(inputs)
     if not use_time_major:
-      inputs_c = tf.transpose(inputs_c, [1, 0, 2])
-    outputs, states = tf.nn.bidirectional_dynamic_rnn(
+      inputs_c = array_ops.transpose(inputs_c, [1, 0, 2])
+    outputs, states = rnn.bidirectional_dynamic_rnn(
         cell_fw,
         cell_bw,
         inputs_c,
         sequence_length,
-        dtype=tf.float32,
+        dtype=dtypes.float32,
         time_major=use_time_major,
         scope=scope)
-    outputs = tf.concat_v2(outputs, 2)
+    outputs = array_ops.concat_v2(outputs, 2)
     state_fw, state_bw = states
     outputs_shape = [None, max_length, 2 * num_units]
     if use_shape:
       outputs_shape[0] = batch_size
     if use_time_major:
       outputs_shape[0], outputs_shape[1] = outputs_shape[1], outputs_shape[0]
-    self.assertEqual(
-        outputs.get_shape().as_list(),
-        outputs_shape)
+    self.assertEqual(outputs.get_shape().as_list(), outputs_shape)
 
     input_value = np.random.randn(batch_size, input_size)
 
     return input_value, inputs, outputs, state_fw, state_bw, sequence_length
 
-  def _testBidirectionalDynamicRNN(self, use_gpu, use_shape,
-                                   use_state_tuple, use_time_major):
-    with self.test_session(use_gpu=use_gpu, graph=tf.Graph()) as sess:
+  def _testBidirectionalDynamicRNN(self, use_gpu, use_shape, use_state_tuple,
+                                   use_time_major):
+    with self.test_session(use_gpu=use_gpu, graph=ops_lib.Graph()) as sess:
       input_value, inputs, outputs, state_fw, state_bw, sequence_length = (
-          self._createBidirectionalDynamicRNN(
-              use_gpu, use_shape, use_state_tuple, use_time_major))
-      tf.global_variables_initializer().run()
+          self._createBidirectionalDynamicRNN(use_gpu, use_shape,
+                                              use_state_tuple, use_time_major))
+      variables_lib.global_variables_initializer().run()
       # Run with pre-specified sequence length of 2, 3
       if use_state_tuple:
         out, c_fw, m_fw, c_bw, m_bw = sess.run(
@@ -561,9 +638,10 @@ class BidirectionalRNNTest(tf.test.TestCase):
         s_fw = (c_fw, m_fw)
         s_bw = (c_bw, m_bw)
       else:
-        out, s_fw, s_bw = sess.run([outputs, state_fw, state_bw],
-                                   feed_dict={inputs[0]: input_value,
-                                              sequence_length: [2, 3]})
+        out, s_fw, s_bw = sess.run(
+            [outputs, state_fw, state_bw],
+            feed_dict={inputs[0]: input_value,
+                       sequence_length: [2, 3]})
 
       # Since the forward and backward LSTM cells were initialized with the
       # same parameters, the forward and backward output has to be the same,
@@ -606,39 +684,47 @@ class BidirectionalRNNTest(tf.test.TestCase):
     # from [True, True, True, True] to [False, False, False, False]
     options = itertools.product([True, False], repeat=4)
     for option in options:
-      self._testBidirectionalDynamicRNN(use_gpu=option[0], use_shape=option[1],
-                                       use_state_tuple=option[2],
-                                       use_time_major=option[3])
+      self._testBidirectionalDynamicRNN(
+          use_gpu=option[0],
+          use_shape=option[1],
+          use_state_tuple=option[2],
+          use_time_major=option[3])
 
   def _testScope(self, factory, prefix="prefix", use_outer_scope=True):
     # REMARKS: factory(scope) is a function accepting a scope
     #          as an argument, such scope can be None, a string
     #          or a VariableScope instance.
-    with self.test_session(use_gpu=True, graph=tf.Graph()):
+    with self.test_session(use_gpu=True, graph=ops_lib.Graph()):
       if use_outer_scope:
-        with tf.variable_scope(prefix) as scope:
+        with variable_scope.variable_scope(prefix) as scope:
           factory(scope)
       else:
         factory(prefix)
 
       # check that all the variables names starts
       # with the proper scope.
-      tf.global_variables_initializer()
-      all_vars = tf.global_variables()
+      variables_lib.global_variables_initializer()
+      all_vars = variables_lib.global_variables()
       prefix = prefix or "bidirectional_rnn"
       scope_vars = [v for v in all_vars if v.name.startswith(prefix + "/")]
-      tf.logging.info("BiRNN with scope: %s (%s)"
-                      % (prefix, "scope" if use_outer_scope else "str"))
+      tf_logging.info("BiRNN with scope: %s (%s)" %
+                      (prefix, "scope" if use_outer_scope else "str"))
       for v in scope_vars:
-        tf.logging.info(v.name)
+        tf_logging.info(v.name)
       self.assertEqual(len(scope_vars), len(all_vars))
 
   def testBidirectionalDynamicRNNScope(self):
+
     def get_factory(use_time_major):
+
       def factory(scope):
         return self._createBidirectionalDynamicRNN(
-            use_gpu=True, use_shape=True, use_state_tuple=True,
-            use_time_major=use_time_major, scope=scope)
+            use_gpu=True,
+            use_shape=True,
+            use_state_tuple=True,
+            use_time_major=use_time_major,
+            scope=scope)
+
       return factory
 
     self._testScope(get_factory(True), use_outer_scope=True)
@@ -649,7 +735,7 @@ class BidirectionalRNNTest(tf.test.TestCase):
     self._testScope(get_factory(False), prefix=None, use_outer_scope=False)
 
 
-class MultiDimensionalLSTMTest(tf.test.TestCase):
+class MultiDimensionalLSTMTest(test.TestCase):
 
   def setUp(self):
     self._seed = 23489
@@ -661,44 +747,49 @@ class MultiDimensionalLSTMTest(tf.test.TestCase):
     batch_size = 2
     max_length = 8
     sequence_length = [4, 6]
-    with self.test_session(graph=tf.Graph()) as sess:
+    with self.test_session(graph=ops_lib.Graph()) as sess:
       inputs = max_length * [
-          tf.placeholder(tf.float32, shape=(None,) + input_size)]
+          array_ops.placeholder(
+              dtypes.float32, shape=(None,) + input_size)
+      ]
       inputs_using_dim = max_length * [
-          tf.placeholder(tf.float32, shape=(batch_size,) + input_size)]
-      inputs_c = tf.stack(inputs)
+          array_ops.placeholder(
+              dtypes.float32, shape=(batch_size,) + input_size)
+      ]
+      inputs_c = array_ops.stack(inputs)
       # Create a cell for the whole test. This is fine because the cell has no
       # variables.
       cell = DummyMultiDimensionalLSTM(feature_dims)
       state_saver = TestStateSaver(batch_size, input_size)
-      outputs_static, state_static = tf.contrib.rnn.static_rnn(
-          cell, inputs, dtype=tf.float32,
-          sequence_length=sequence_length)
-      outputs_dynamic, state_dynamic = tf.nn.dynamic_rnn(
-          cell, inputs_c, dtype=tf.float32, time_major=True,
+      outputs_static, state_static = rnn_lib.static_rnn(
+          cell, inputs, dtype=dtypes.float32, sequence_length=sequence_length)
+      outputs_dynamic, state_dynamic = rnn.dynamic_rnn(
+          cell,
+          inputs_c,
+          dtype=dtypes.float32,
+          time_major=True,
           sequence_length=sequence_length)
       self.assertEqual(outputs_dynamic.get_shape().as_list(),
                        inputs_c.get_shape().as_list())
 
-      tf.global_variables_initializer().run()
+      variables_lib.global_variables_initializer().run()
 
       input_total_size = (batch_size,) + input_size
       input_value = np.random.randn(*input_total_size)
-      outputs_static_v = sess.run(
-          outputs_static, feed_dict={inputs[0]: input_value})
-      outputs_dynamic_v = sess.run(
-          outputs_dynamic, feed_dict={inputs[0]: input_value})
+      outputs_static_v = sess.run(outputs_static,
+                                  feed_dict={inputs[0]: input_value})
+      outputs_dynamic_v = sess.run(outputs_dynamic,
+                                   feed_dict={inputs[0]: input_value})
       self.assertAllEqual(outputs_static_v, outputs_dynamic_v)
 
-      state_static_v = sess.run(
-          state_static, feed_dict={inputs[0]: input_value})
-      state_dynamic_v = sess.run(
-          state_dynamic, feed_dict={inputs[0]: input_value})
-      self.assertAllEqual(
-          np.hstack(state_static_v), np.hstack(state_dynamic_v))
+      state_static_v = sess.run(state_static,
+                                feed_dict={inputs[0]: input_value})
+      state_dynamic_v = sess.run(state_dynamic,
+                                 feed_dict={inputs[0]: input_value})
+      self.assertAllEqual(np.hstack(state_static_v), np.hstack(state_dynamic_v))
 
 
-class NestedLSTMTest(tf.test.TestCase):
+class NestedLSTMTest(test.TestCase):
 
   def setUp(self):
     self._seed = 23489
@@ -710,27 +801,32 @@ class NestedLSTMTest(tf.test.TestCase):
     state_size = 6
     max_length = 8
     sequence_length = [4, 6]
-    with self.test_session(graph=tf.Graph()) as sess:
+    with self.test_session(graph=ops_lib.Graph()) as sess:
       state_saver = TestStateSaver(batch_size, state_size)
-      single_input = (tf.placeholder(tf.float32, shape=(None, input_size)),
-                      tf.placeholder(tf.float32, shape=(None, input_size)))
+      single_input = (array_ops.placeholder(
+          dtypes.float32, shape=(None, input_size)), array_ops.placeholder(
+              dtypes.float32, shape=(None, input_size)))
       inputs = max_length * [single_input]
-      inputs_c = (tf.stack([input_[0] for input_ in inputs]),
-                  tf.stack([input_[1] for input_ in inputs]))
+      inputs_c = (array_ops.stack([input_[0] for input_ in inputs]),
+                  array_ops.stack([input_[1] for input_ in inputs]))
       single_input_using_dim = (
-          tf.placeholder(tf.float32, shape=(batch_size, input_size)),
-          tf.placeholder(tf.float32, shape=(batch_size, input_size)))
+          array_ops.placeholder(
+              dtypes.float32, shape=(batch_size, input_size)),
+          array_ops.placeholder(
+              dtypes.float32, shape=(batch_size, input_size)))
       inputs_using_dim = max_length * [single_input_using_dim]
 
       # Create a cell for the whole test. This is fine because the cell has no
       # variables.
       cell = NestedRNNCell()
-      outputs_dynamic, state_dynamic = tf.nn.dynamic_rnn(
-          cell, inputs_c, dtype=tf.float32, time_major=True,
+      outputs_dynamic, state_dynamic = rnn.dynamic_rnn(
+          cell,
+          inputs_c,
+          dtype=dtypes.float32,
+          time_major=True,
           sequence_length=sequence_length)
-      outputs_static, state_static = tf.contrib.rnn.static_rnn(
-          cell, inputs, dtype=tf.float32,
-          sequence_length=sequence_length)
+      outputs_static, state_static = rnn_lib.static_rnn(
+          cell, inputs, dtype=dtypes.float32, sequence_length=sequence_length)
 
       def _assert_same_shape(input1, input2, double=False):
         flat_input1 = nest.flatten(input1)
@@ -744,79 +840,84 @@ class NestedLSTMTest(tf.test.TestCase):
       _assert_same_shape(inputs_c, outputs_dynamic)
       _assert_same_shape(inputs, outputs_static)
 
-      tf.global_variables_initializer().run()
+      variables_lib.global_variables_initializer().run()
 
       input_total_size = (batch_size, input_size)
       input_value = (np.random.randn(*input_total_size),
                      np.random.randn(*input_total_size))
-      outputs_dynamic_v = sess.run(
-          outputs_dynamic, feed_dict={single_input: input_value})
-      outputs_static_v = sess.run(
-          outputs_static, feed_dict={single_input: input_value})
+      outputs_dynamic_v = sess.run(outputs_dynamic,
+                                   feed_dict={single_input: input_value})
+      outputs_static_v = sess.run(outputs_static,
+                                  feed_dict={single_input: input_value})
 
       self.assertAllEqual(outputs_static_v,
                           np.transpose(outputs_dynamic_v, (1, 0, 2, 3)))
 
-      state_dynamic_v = sess.run(
-          state_dynamic, feed_dict={single_input: input_value})
-      state_static_v = sess.run(
-          state_static, feed_dict={single_input: input_value})
-      self.assertAllEqual(
-          np.hstack(state_static_v), np.hstack(state_dynamic_v))
+      state_dynamic_v = sess.run(state_dynamic,
+                                 feed_dict={single_input: input_value})
+      state_static_v = sess.run(state_static,
+                                feed_dict={single_input: input_value})
+      self.assertAllEqual(np.hstack(state_static_v), np.hstack(state_dynamic_v))
 
 
-class RawRNNTest(tf.test.TestCase):
+class RawRNNTest(test.TestCase):
 
   def setUp(self):
     self._seed = 23489
     np.random.seed(self._seed)
 
   def _testRawRNN(self, max_time):
-    with self.test_session(graph=tf.Graph()) as sess:
+    with self.test_session(graph=ops_lib.Graph()) as sess:
       batch_size = 16
       input_depth = 4
       num_units = 3
 
-      inputs = tf.placeholder(shape=(max_time, batch_size, input_depth),
-                              dtype=tf.float32)
-      sequence_length = tf.placeholder(shape=(batch_size,), dtype=tf.int32)
-      inputs_ta = tf.TensorArray(dtype=tf.float32, size=tf.shape(inputs)[0])
+      inputs = array_ops.placeholder(
+          shape=(max_time, batch_size, input_depth), dtype=dtypes.float32)
+      sequence_length = array_ops.placeholder(
+          shape=(batch_size,), dtype=dtypes.int32)
+      inputs_ta = tensor_array_ops.TensorArray(
+          dtype=dtypes.float32, size=array_ops.shape(inputs)[0])
       inputs_ta = inputs_ta.unstack(inputs)
 
-      cell = tf.contrib.rnn.LSTMCell(num_units, state_is_tuple=True)
+      cell = rnn_cell_impl.LSTMCell(num_units, state_is_tuple=True)
 
       def loop_fn(time_, cell_output, cell_state, unused_loop_state):
         emit_output = cell_output  # == None for time == 0
         if cell_output is None:  # time == 0
-          next_state = cell.zero_state(batch_size, tf.float32)
+          next_state = cell.zero_state(batch_size, dtypes.float32)
         else:
           next_state = cell_state  # copy state through
         elements_finished = (time_ >= sequence_length)
-        finished = tf.reduce_all(elements_finished)
+        finished = math_ops.reduce_all(elements_finished)
         # For the very final iteration, we must emit a dummy input
-        next_input = tf.cond(
+        next_input = control_flow_ops.cond(
             finished,
-            lambda: tf.zeros([batch_size, input_depth], dtype=tf.float32),
+            lambda: array_ops.zeros([batch_size, input_depth], dtype=dtypes.float32),
             lambda: inputs_ta.read(time_))
         return (elements_finished, next_input, next_state, emit_output, None)
 
-      reuse_scope = tf.get_variable_scope()
+      reuse_scope = variable_scope.get_variable_scope()
 
-      outputs_ta, final_state, _ = tf.nn.raw_rnn(
-          cell, loop_fn, scope=reuse_scope)
+      outputs_ta, final_state, _ = rnn.raw_rnn(cell, loop_fn, scope=reuse_scope)
       outputs = outputs_ta.stack()
 
       reuse_scope.reuse_variables()
-      outputs_dynamic_rnn, final_state_dynamic_rnn = tf.nn.dynamic_rnn(
-          cell, inputs, time_major=True, dtype=tf.float32,
-          sequence_length=sequence_length, scope=reuse_scope)
+      outputs_dynamic_rnn, final_state_dynamic_rnn = rnn.dynamic_rnn(
+          cell,
+          inputs,
+          time_major=True,
+          dtype=dtypes.float32,
+          sequence_length=sequence_length,
+          scope=reuse_scope)
 
-      variables = tf.trainable_variables()
-      gradients = tf.gradients([outputs, final_state], [inputs] + variables)
-      gradients_dynamic_rnn = tf.gradients(
+      variables = variables_lib.trainable_variables()
+      gradients = gradients_impl.gradients([outputs, final_state],
+                                           [inputs] + variables)
+      gradients_dynamic_rnn = gradients_impl.gradients(
           [outputs_dynamic_rnn, final_state_dynamic_rnn], [inputs] + variables)
 
-      tf.global_variables_initializer().run()
+      variables_lib.global_variables_initializer().run()
 
       rand_input = np.random.randn(max_time, batch_size, input_depth)
       if max_time == 0:
@@ -827,10 +928,11 @@ class RawRNNTest(tf.test.TestCase):
       # To ensure same output lengths for dynamic_rnn and raw_rnn
       rand_seq_len[0] = max_time
 
-      (outputs_val, outputs_dynamic_rnn_val,
-       final_state_val, final_state_dynamic_rnn_val) = sess.run(
+      (outputs_val, outputs_dynamic_rnn_val, final_state_val,
+       final_state_dynamic_rnn_val) = sess.run(
            [outputs, outputs_dynamic_rnn, final_state, final_state_dynamic_rnn],
-           feed_dict={inputs: rand_input, sequence_length: rand_seq_len})
+           feed_dict={inputs: rand_input,
+                      sequence_length: rand_seq_len})
 
       self.assertAllClose(outputs_dynamic_rnn_val, outputs_val)
       self.assertAllClose(final_state_dynamic_rnn_val, final_state_val)
@@ -843,15 +945,17 @@ class RawRNNTest(tf.test.TestCase):
         self.assertEqual(len(gradients), len(gradients_dynamic_rnn))
         gradients_val = sess.run(
             gradients,
-            feed_dict={inputs: rand_input, sequence_length: rand_seq_len})
+            feed_dict={inputs: rand_input,
+                       sequence_length: rand_seq_len})
         gradients_dynamic_rnn_val = sess.run(
             gradients_dynamic_rnn,
-            feed_dict={inputs: rand_input, sequence_length: rand_seq_len})
+            feed_dict={inputs: rand_input,
+                       sequence_length: rand_seq_len})
         self.assertEqual(len(gradients_val), len(gradients_dynamic_rnn_val))
         input_gradients_val = gradients_val[0]
         input_gradients_dynamic_rnn_val = gradients_dynamic_rnn_val[0]
-        self.assertAllClose(
-            input_gradients_val, input_gradients_dynamic_rnn_val)
+        self.assertAllClose(input_gradients_val,
+                            input_gradients_dynamic_rnn_val)
         for i in range(1, len(gradients_val)):
           self.assertAllClose(gradients_dynamic_rnn_val[i], gradients_val[i])
 
@@ -866,112 +970,123 @@ class RawRNNTest(tf.test.TestCase):
     self._testRawRNN(max_time=10)
 
   def testLoopState(self):
-    with self.test_session(graph=tf.Graph()):
+    with self.test_session(graph=ops_lib.Graph()):
       max_time = 10
       batch_size = 16
       input_depth = 4
       num_units = 3
 
       inputs = np.random.randn(max_time, batch_size, input_depth)
-      inputs_ta = tf.TensorArray(dtype=tf.float32, size=tf.shape(inputs)[0])
+      inputs_ta = tensor_array_ops.TensorArray(
+          dtype=dtypes.float32, size=array_ops.shape(inputs)[0])
       inputs_ta = inputs_ta.unstack(inputs)
 
-      cell = tf.contrib.rnn.LSTMCell(num_units, state_is_tuple=True)
+      cell = rnn_cell_impl.LSTMCell(num_units, state_is_tuple=True)
 
       def loop_fn(time_, cell_output, cell_state, loop_state):
         if cell_output is None:
-          loop_state = tf.constant([0])
-          next_state = cell.zero_state(batch_size, tf.float32)
+          loop_state = constant_op.constant([0])
+          next_state = cell.zero_state(batch_size, dtypes.float32)
         else:
-          loop_state = tf.stack([tf.squeeze(loop_state) + 1])
+          loop_state = array_ops.stack([array_ops.squeeze(loop_state) + 1])
           next_state = cell_state
         emit_output = cell_output  # == None for time == 0
-        elements_finished = tf.tile([time_ >= max_time], [batch_size])
-        finished = tf.reduce_all(elements_finished)
+        elements_finished = array_ops.tile([time_ >= max_time], [batch_size])
+        finished = math_ops.reduce_all(elements_finished)
         # For the very final iteration, we must emit a dummy input
-        next_input = tf.cond(
+        next_input = control_flow_ops.cond(
             finished,
-            lambda: tf.zeros([batch_size, input_depth], dtype=tf.float32),
+            lambda: array_ops.zeros([batch_size, input_depth], dtype=dtypes.float32),
             lambda: inputs_ta.read(time_))
-        return (elements_finished, next_input,
-                next_state, emit_output, loop_state)
+        return (elements_finished, next_input, next_state, emit_output,
+                loop_state)
 
-      r = tf.nn.raw_rnn(cell, loop_fn)
+      r = rnn.raw_rnn(cell, loop_fn)
       loop_state = r[-1]
       self.assertEqual([10], loop_state.eval())
 
   def testLoopStateWithTensorArray(self):
-    with self.test_session(graph=tf.Graph()):
+    with self.test_session(graph=ops_lib.Graph()):
       max_time = 4
       batch_size = 16
       input_depth = 4
       num_units = 3
 
       inputs = np.random.randn(max_time, batch_size, input_depth)
-      inputs_ta = tf.TensorArray(dtype=tf.float32, size=tf.shape(inputs)[0])
+      inputs_ta = tensor_array_ops.TensorArray(
+          dtype=dtypes.float32, size=array_ops.shape(inputs)[0])
       inputs_ta = inputs_ta.unstack(inputs)
 
-      cell = tf.contrib.rnn.LSTMCell(num_units, state_is_tuple=True)
+      cell = rnn_cell_impl.LSTMCell(num_units, state_is_tuple=True)
+
       def loop_fn(time_, cell_output, cell_state, loop_state):
         if cell_output is None:
-          loop_state = tf.TensorArray(
-              dynamic_size=True, size=0, dtype=tf.int32, clear_after_read=False)
+          loop_state = tensor_array_ops.TensorArray(
+              dynamic_size=True,
+              size=0,
+              dtype=dtypes.int32,
+              clear_after_read=False)
           loop_state = loop_state.write(0, 1)
-          next_state = cell.zero_state(batch_size, tf.float32)
+          next_state = cell.zero_state(batch_size, dtypes.float32)
         else:
-          loop_state = loop_state.write(
-              time_, loop_state.read(time_ - 1) + time_)
+          loop_state = loop_state.write(time_,
+                                        loop_state.read(time_ - 1) + time_)
           next_state = cell_state
         emit_output = cell_output  # == None for time == 0
-        elements_finished = tf.tile([time_ >= max_time], [batch_size])
-        finished = tf.reduce_all(elements_finished)
+        elements_finished = array_ops.tile([time_ >= max_time], [batch_size])
+        finished = math_ops.reduce_all(elements_finished)
         # For the very final iteration, we must emit a dummy input
-        next_input = tf.cond(
+        next_input = control_flow_ops.cond(
             finished,
-            lambda: tf.zeros([batch_size, input_depth], dtype=tf.float32),
+            lambda: array_ops.zeros([batch_size, input_depth], dtype=dtypes.float32),
             lambda: inputs_ta.read(time_))
-        return (elements_finished, next_input,
-                next_state, emit_output, loop_state)
+        return (elements_finished, next_input, next_state, emit_output,
+                loop_state)
 
-      r = tf.nn.raw_rnn(cell, loop_fn)
+      r = rnn.raw_rnn(cell, loop_fn)
       loop_state = r[-1]
       loop_state = loop_state.stack()
       self.assertAllEqual([1, 2, 2 + 2, 4 + 3, 7 + 4], loop_state.eval())
 
   def testEmitDifferentStructureThanCellOutput(self):
-    with self.test_session(graph=tf.Graph()) as sess:
+    with self.test_session(graph=ops_lib.Graph()) as sess:
       max_time = 10
       batch_size = 16
       input_depth = 4
       num_units = 3
 
       inputs = np.random.randn(max_time, batch_size, input_depth)
-      inputs_ta = tf.TensorArray(dtype=tf.float32, size=tf.shape(inputs)[0])
+      inputs_ta = tensor_array_ops.TensorArray(
+          dtype=dtypes.float32, size=array_ops.shape(inputs)[0])
       inputs_ta = inputs_ta.unstack(inputs)
 
-      cell = tf.contrib.rnn.LSTMCell(num_units, state_is_tuple=True)
+      cell = rnn_cell_impl.LSTMCell(num_units, state_is_tuple=True)
+
       def loop_fn(time_, cell_output, cell_state, _):
         if cell_output is None:
-          emit_output = (tf.zeros([2, 3], dtype=tf.int32),
-                         tf.zeros([1], dtype=tf.int64))
-          next_state = cell.zero_state(batch_size, tf.float32)
+          emit_output = (array_ops.zeros(
+              [2, 3], dtype=dtypes.int32), array_ops.zeros(
+                  [1], dtype=dtypes.int64))
+          next_state = cell.zero_state(batch_size, dtypes.float32)
         else:
-          emit_output = (tf.ones([batch_size, 2, 3], dtype=tf.int32),
-                         tf.ones([batch_size, 1], dtype=tf.int64))
+          emit_output = (array_ops.ones(
+              [batch_size, 2, 3], dtype=dtypes.int32), array_ops.ones(
+                  [batch_size, 1], dtype=dtypes.int64))
           next_state = cell_state
-        elements_finished = tf.tile([time_ >= max_time], [batch_size])
-        finished = tf.reduce_all(elements_finished)
+        elements_finished = array_ops.tile([time_ >= max_time], [batch_size])
+        finished = math_ops.reduce_all(elements_finished)
         # For the very final iteration, we must emit a dummy input
-        next_input = tf.cond(
+        next_input = control_flow_ops.cond(
             finished,
-            lambda: tf.zeros([batch_size, input_depth], dtype=tf.float32),
+            lambda: array_ops.zeros([batch_size, input_depth], dtype=dtypes.float32),
             lambda: inputs_ta.read(time_))
         return (elements_finished, next_input, next_state, emit_output, None)
 
-      r = tf.nn.raw_rnn(cell, loop_fn)
+      r = rnn.raw_rnn(cell, loop_fn)
       output_ta = r[0]
       self.assertEqual(2, len(output_ta))
-      self.assertEqual([tf.int32, tf.int64], [ta.dtype for ta in output_ta])
+      self.assertEqual([dtypes.int32, dtypes.int64],
+                       [ta.dtype for ta in output_ta])
       output = [ta.stack() for ta in output_ta]
       output_vals = sess.run(output)
       self.assertAllEqual(
@@ -980,23 +1095,23 @@ class RawRNNTest(tf.test.TestCase):
           np.ones((max_time, batch_size, 1), np.int64), output_vals[1])
 
   def _testScope(self, factory, prefix="prefix", use_outer_scope=True):
-    with self.test_session(use_gpu=True, graph=tf.Graph()):
+    with self.test_session(use_gpu=True, graph=ops_lib.Graph()):
       if use_outer_scope:
-        with tf.variable_scope(prefix) as scope:
+        with variable_scope.variable_scope(prefix) as scope:
           factory(scope)
       else:
         factory(prefix)
-        tf.global_variables_initializer()
+        variables_lib.global_variables_initializer()
 
       # check that all the variables names starts
       # with the proper scope.
-      all_vars = tf.global_variables()
+      all_vars = variables_lib.global_variables()
       prefix = prefix or "rnn"
       scope_vars = [v for v in all_vars if v.name.startswith(prefix + "/")]
-      tf.logging.info("RNN with scope: %s (%s)"
-                      % (prefix, "scope" if use_outer_scope else "str"))
+      tf_logging.info("RNN with scope: %s (%s)" %
+                      (prefix, "scope" if use_outer_scope else "str"))
       for v in scope_vars:
-        tf.logging.info(v.name)
+        tf_logging.info(v.name)
       self.assertEqual(len(scope_vars), len(all_vars))
 
   def testRawRNNScope(self):
@@ -1006,37 +1121,40 @@ class RawRNNTest(tf.test.TestCase):
     num_units = 3
 
     def factory(scope):
-      inputs = tf.placeholder(shape=(max_time, batch_size, input_depth),
-                              dtype=tf.float32)
-      sequence_length = tf.placeholder(shape=(batch_size,), dtype=tf.int32)
-      inputs_ta = tf.TensorArray(dtype=tf.float32, size=tf.shape(inputs)[0])
+      inputs = array_ops.placeholder(
+          shape=(max_time, batch_size, input_depth), dtype=dtypes.float32)
+      sequence_length = array_ops.placeholder(
+          shape=(batch_size,), dtype=dtypes.int32)
+      inputs_ta = tensor_array_ops.TensorArray(
+          dtype=dtypes.float32, size=array_ops.shape(inputs)[0])
       inputs_ta = inputs_ta.unstack(inputs)
 
-      cell = tf.contrib.rnn.LSTMCell(num_units, state_is_tuple=True)
+      cell = rnn_cell_impl.LSTMCell(num_units, state_is_tuple=True)
+
       def loop_fn(time_, cell_output, cell_state, unused_loop_state):
         emit_output = cell_output  # == None for time == 0
         if cell_output is None:  # time == 0
-          next_state = cell.zero_state(batch_size, tf.float32)
+          next_state = cell.zero_state(batch_size, dtypes.float32)
         else:
           next_state = cell_state
 
         elements_finished = (time_ >= sequence_length)
-        finished = tf.reduce_all(elements_finished)
+        finished = math_ops.reduce_all(elements_finished)
         # For the very final iteration, we must emit a dummy input
-        next_input = tf.cond(
+        next_input = control_flow_ops.cond(
             finished,
-            lambda: tf.zeros([batch_size, input_depth], dtype=tf.float32),
+            lambda: array_ops.zeros([batch_size, input_depth], dtype=dtypes.float32),
             lambda: inputs_ta.read(time_))
         return (elements_finished, next_input, next_state, emit_output, None)
 
-      return tf.nn.raw_rnn(cell, loop_fn, scope=scope)
+      return rnn.raw_rnn(cell, loop_fn, scope=scope)
 
     self._testScope(factory, use_outer_scope=True)
     self._testScope(factory, use_outer_scope=False)
     self._testScope(factory, prefix=None, use_outer_scope=False)
 
 
-class DeviceWrapperCell(tf.contrib.rnn.RNNCell):
+class DeviceWrapperCell(rnn_cell_impl.RNNCell):
   """Class to ensure cell calculation happens on a specific device."""
 
   def __init__(self, cell, device):
@@ -1053,49 +1171,57 @@ class DeviceWrapperCell(tf.contrib.rnn.RNNCell):
 
   def __call__(self, input_, state, scope=None):
     if self._device is not None:
-      with tf.device(self._device):
+      with ops_lib.device(self._device):
         return self._cell(input_, state, scope)
     else:
       return self._cell(input_, state, scope)
 
 
-class TensorArrayOnCorrectDeviceTest(tf.test.TestCase):
+class TensorArrayOnCorrectDeviceTest(test.TestCase):
 
-  def _execute_rnn_on(
-      self, rnn_device=None, cell_device=None, input_device=None):
+  def _execute_rnn_on(self,
+                      rnn_device=None,
+                      cell_device=None,
+                      input_device=None):
     batch_size = 3
     time_steps = 7
     input_size = 5
     num_units = 10
 
-    cell = tf.contrib.rnn.LSTMCell(num_units, use_peepholes=True)
+    cell = rnn_cell_impl.LSTMCell(num_units, use_peepholes=True)
     gpu_cell = DeviceWrapperCell(cell, cell_device)
-    inputs = np.random.randn(batch_size, time_steps, input_size).astype(
-        np.float32)
+    inputs = np.random.randn(batch_size, time_steps,
+                             input_size).astype(np.float32)
     sequence_length = np.random.randint(0, time_steps, size=batch_size)
 
     if input_device is not None:
-      with tf.device(input_device):
-        inputs = tf.constant(inputs)
+      with ops_lib.device(input_device):
+        inputs = constant_op.constant(inputs)
 
     if rnn_device is not None:
-      with tf.device(rnn_device):
-        outputs, _ = tf.nn.dynamic_rnn(
-            gpu_cell, inputs, sequence_length=sequence_length, dtype=tf.float32)
+      with ops_lib.device(rnn_device):
+        outputs, _ = rnn.dynamic_rnn(
+            gpu_cell,
+            inputs,
+            sequence_length=sequence_length,
+            dtype=dtypes.float32)
     else:
-      outputs, _ = tf.nn.dynamic_rnn(
-          gpu_cell, inputs, sequence_length=sequence_length, dtype=tf.float32)
+      outputs, _ = rnn.dynamic_rnn(
+          gpu_cell,
+          inputs,
+          sequence_length=sequence_length,
+          dtype=dtypes.float32)
 
     with self.test_session(use_gpu=True) as sess:
-      opts = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-      run_metadata = tf.RunMetadata()
-      tf.global_variables_initializer().run()
+      opts = config_pb2.RunOptions(trace_level=config_pb2.RunOptions.FULL_TRACE)
+      run_metadata = config_pb2.RunMetadata()
+      variables_lib.global_variables_initializer().run()
       sess.run(outputs, options=opts, run_metadata=run_metadata)
 
     return run_metadata
 
   def testRNNOnCPUCellOnGPU(self):
-    if not tf.test.is_gpu_available():
+    if not test.is_gpu_available():
       return  # Test requires access to a GPU
 
     run_metadata = self._execute_rnn_on(
@@ -1104,6 +1230,7 @@ class TensorArrayOnCorrectDeviceTest(tf.test.TestCase):
     ix = 0 if "gpu" in step_stats.dev_stats[0].device else 1
     gpu_stats = step_stats.dev_stats[ix].node_stats
     cpu_stats = step_stats.dev_stats[1 - ix].node_stats
+
     def _assert_in(op_str, in_stats, out_stats):
       self.assertTrue(any(op_str in s.node_name for s in in_stats))
       self.assertFalse(any(op_str in s.node_name for s in out_stats))
@@ -1118,7 +1245,7 @@ class TensorArrayOnCorrectDeviceTest(tf.test.TestCase):
     _assert_in("TensorArrayScatter", cpu_stats, gpu_stats)
 
   def testRNNOnCPUCellOnCPU(self):
-    if not tf.test.is_gpu_available():
+    if not test.is_gpu_available():
       return  # Test requires access to a GPU
 
     run_metadata = self._execute_rnn_on(
@@ -1127,6 +1254,7 @@ class TensorArrayOnCorrectDeviceTest(tf.test.TestCase):
     ix = 0 if "gpu" in step_stats.dev_stats[0].device else 1
     gpu_stats = step_stats.dev_stats[ix].node_stats
     cpu_stats = step_stats.dev_stats[1 - ix].node_stats
+
     def _assert_in(op_str, in_stats, out_stats):
       self.assertTrue(any(op_str in s.node_name for s in in_stats))
       self.assertFalse(any(op_str in s.node_name for s in out_stats))
@@ -1135,7 +1263,7 @@ class TensorArrayOnCorrectDeviceTest(tf.test.TestCase):
     _assert_in("TensorArray", cpu_stats, gpu_stats)
 
   def testInputOnGPUCellNotDeclared(self):
-    if not tf.test.is_gpu_available():
+    if not test.is_gpu_available():
       return  # Test requires access to a GPU
 
     run_metadata = self._execute_rnn_on(input_device="/gpu:0")
@@ -1143,6 +1271,7 @@ class TensorArrayOnCorrectDeviceTest(tf.test.TestCase):
     ix = 0 if "gpu" in step_stats.dev_stats[0].device else 1
     gpu_stats = step_stats.dev_stats[ix].node_stats
     cpu_stats = step_stats.dev_stats[1 - ix].node_stats
+
     def _assert_in(op_str, in_stats, out_stats):
       self.assertTrue(any(op_str in s.node_name for s in in_stats))
       self.assertFalse(any(op_str in s.node_name for s in out_stats))
@@ -1156,36 +1285,47 @@ class TensorArrayOnCorrectDeviceTest(tf.test.TestCase):
 
 def _static_vs_dynamic_rnn_benchmark_static(inputs_list_t, sequence_length):
   (_, input_size) = inputs_list_t[0].get_shape().as_list()
-  initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=127)
-  cell = tf.contrib.rnn.LSTMCell(
-      num_units=input_size, use_peepholes=True, initializer=initializer,
+  initializer = init_ops.random_uniform_initializer(-0.01, 0.01, seed=127)
+  cell = rnn_cell_impl.LSTMCell(
+      num_units=input_size,
+      use_peepholes=True,
+      initializer=initializer,
       state_is_tuple=False)
-  outputs, final_state = tf.contrib.rnn.static_rnn(
-      cell, inputs_list_t, sequence_length=sequence_length, dtype=tf.float32)
+  outputs, final_state = rnn_lib.static_rnn(
+      cell,
+      inputs_list_t,
+      sequence_length=sequence_length,
+      dtype=dtypes.float32)
 
-  trainable_variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
-  gradients = tf.gradients(outputs + [final_state], trainable_variables)
+  trainable_variables = ops_lib.get_collection(
+      ops_lib.GraphKeys.TRAINABLE_VARIABLES)
+  gradients = gradients_impl.gradients(outputs + [final_state],
+                                       trainable_variables)
 
-  return tf.group(final_state, *(gradients + outputs))
+  return control_flow_ops.group(final_state, *(gradients + outputs))
 
 
 def _static_vs_dynamic_rnn_benchmark_dynamic(inputs_t, sequence_length):
   (unused_0, unused_1, input_size) = inputs_t.get_shape().as_list()
-  initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=127)
-  cell = tf.contrib.rnn.LSTMCell(
-      num_units=input_size, use_peepholes=True, initializer=initializer,
+  initializer = init_ops.random_uniform_initializer(-0.01, 0.01, seed=127)
+  cell = rnn_cell_impl.LSTMCell(
+      num_units=input_size,
+      use_peepholes=True,
+      initializer=initializer,
       state_is_tuple=False)
-  outputs, final_state = tf.nn.dynamic_rnn(
-      cell, inputs_t, sequence_length=sequence_length, dtype=tf.float32)
+  outputs, final_state = rnn.dynamic_rnn(
+      cell, inputs_t, sequence_length=sequence_length, dtype=dtypes.float32)
 
-  trainable_variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
-  gradients = tf.gradients([outputs, final_state], trainable_variables)
+  trainable_variables = ops_lib.get_collection(
+      ops_lib.GraphKeys.TRAINABLE_VARIABLES)
+  gradients = gradients_impl.gradients([outputs, final_state],
+                                       trainable_variables)
 
-  return tf.group(final_state, outputs, *gradients)
+  return control_flow_ops.group(final_state, outputs, *gradients)
 
 
 def graph_creation_static_vs_dynamic_rnn_benchmark(max_time):
-  config = tf.ConfigProto()
+  config = config_pb2.ConfigProto()
   config.allow_soft_placement = True
 
   # These parameters don't matter
@@ -1197,27 +1337,29 @@ def graph_creation_static_vs_dynamic_rnn_benchmark(max_time):
   sequence_length = np.random.randint(0, max_time, size=batch_size)
   inputs_list = [
       np.random.randn(batch_size, num_units).astype(np.float32)
-      for _ in range(max_time)]
+      for _ in range(max_time)
+  ]
   inputs = np.dstack(inputs_list).transpose([0, 2, 1])  # batch x time x depth
 
   def _create_static_rnn():
-    with tf.Session(config=config, graph=tf.Graph()) as sess:
+    with session.Session(config=config, graph=ops_lib.Graph()) as sess:
       inputs_list_t = [
-          tf.Variable(x, trainable=False).value() for x in inputs_list]
-      ops = _static_vs_dynamic_rnn_benchmark_static(
-          inputs_list_t, sequence_length)
+          variables_lib.Variable(
+              x, trainable=False).value() for x in inputs_list
+      ]
+      ops = _static_vs_dynamic_rnn_benchmark_static(inputs_list_t,
+                                                    sequence_length)
 
   def _create_dynamic_rnn():
-    with tf.Session(config=config, graph=tf.Graph()) as sess:
-      inputs_t = tf.Variable(inputs, trainable=False).value()
-      ops = _static_vs_dynamic_rnn_benchmark_dynamic(
-          inputs_t, sequence_length)
+    with session.Session(config=config, graph=ops_lib.Graph()) as sess:
+      inputs_t = variables_lib.Variable(inputs, trainable=False).value()
+      ops = _static_vs_dynamic_rnn_benchmark_dynamic(inputs_t, sequence_length)
 
   delta_static = timeit.timeit(_create_static_rnn, number=5)
   delta_dynamic = timeit.timeit(_create_dynamic_rnn, number=5)
 
   print("%d \t %f \t %f \t %f" %
-        (max_time, delta_static, delta_dynamic, delta_dynamic/delta_static))
+        (max_time, delta_static, delta_dynamic, delta_dynamic / delta_static))
   return delta_static, delta_dynamic
 
 
@@ -1232,11 +1374,11 @@ def _timer(sess, ops):
   for _ in range(runs):
     sess.run(ops)
   end = time.time()
-  return (end - start)/float(runs)
+  return (end - start) / float(runs)
 
 
 def static_vs_dynamic_rnn_benchmark(batch_size, max_time, num_units, use_gpu):
-  config = tf.ConfigProto()
+  config = config_pb2.ConfigProto()
   config.allow_soft_placement = True
 
   # Set up sequence lengths
@@ -1244,53 +1386,62 @@ def static_vs_dynamic_rnn_benchmark(batch_size, max_time, num_units, use_gpu):
   sequence_length = np.random.randint(0, max_time, size=batch_size)
   inputs_list = [
       np.random.randn(batch_size, num_units).astype(np.float32)
-      for _ in range(max_time)]
+      for _ in range(max_time)
+  ]
   inputs = np.dstack(inputs_list).transpose([0, 2, 1])  # batch x time x depth
 
   # Using rnn()
-  with tf.Session(config=config, graph=tf.Graph()) as sess:
-    with tf.device("/cpu:0" if not use_gpu else None):
+  with session.Session(config=config, graph=ops_lib.Graph()) as sess:
+    with ops_lib.device("/cpu:0" if not use_gpu else None):
       inputs_list_t = [
-          tf.Variable(x, trainable=False).value() for x in inputs_list]
-      ops = _static_vs_dynamic_rnn_benchmark_static(
-          inputs_list_t, sequence_length)
-    tf.global_variables_initializer().run()
+          variables_lib.Variable(
+              x, trainable=False).value() for x in inputs_list
+      ]
+      ops = _static_vs_dynamic_rnn_benchmark_static(inputs_list_t,
+                                                    sequence_length)
+    variables_lib.global_variables_initializer().run()
     delta_static = _timer(sess, ops)
 
   # Using dynamic_rnn()
-  with tf.Session(config=config, graph=tf.Graph()) as sess:
-    with tf.device("/cpu:0" if not use_gpu else None):
-      inputs_t = tf.Variable(inputs, trainable=False).value()
-      ops = _static_vs_dynamic_rnn_benchmark_dynamic(
-          inputs_t, sequence_length)
-    tf.global_variables_initializer().run()
+  with session.Session(config=config, graph=ops_lib.Graph()) as sess:
+    with ops_lib.device("/cpu:0" if not use_gpu else None):
+      inputs_t = variables_lib.Variable(inputs, trainable=False).value()
+      ops = _static_vs_dynamic_rnn_benchmark_dynamic(inputs_t, sequence_length)
+    variables_lib.global_variables_initializer().run()
     delta_dynamic = _timer(sess, ops)
 
   print("%d \t %d \t %d \t %s \t %f \t %f \t %f" %
-        (batch_size, max_time, num_units, use_gpu, delta_static,
-         delta_dynamic, delta_dynamic/delta_static))
+        (batch_size, max_time, num_units, use_gpu, delta_static, delta_dynamic,
+         delta_dynamic / delta_static))
 
   return delta_static, delta_dynamic
 
 
 def _half_seq_len_vs_unroll_half_rnn_benchmark(inputs_list_t, sequence_length):
   (_, input_size) = inputs_list_t[0].get_shape().as_list()
-  initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=127)
-  cell = tf.contrib.rnn.LSTMCell(
-      num_units=input_size, use_peepholes=True, initializer=initializer,
+  initializer = init_ops.random_uniform_initializer(-0.01, 0.01, seed=127)
+  cell = rnn_cell_impl.LSTMCell(
+      num_units=input_size,
+      use_peepholes=True,
+      initializer=initializer,
       state_is_tuple=False)
-  outputs, final_state = tf.contrib.rnn.static_rnn(
-      cell, inputs_list_t, sequence_length=sequence_length, dtype=tf.float32)
+  outputs, final_state = rnn_lib.static_rnn(
+      cell,
+      inputs_list_t,
+      sequence_length=sequence_length,
+      dtype=dtypes.float32)
 
-  trainable_variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
-  gradients = tf.gradients(outputs + [final_state], trainable_variables)
+  trainable_variables = ops_lib.get_collection(
+      ops_lib.GraphKeys.TRAINABLE_VARIABLES)
+  gradients = gradients_impl.gradients(outputs + [final_state],
+                                       trainable_variables)
 
-  return tf.group(final_state, *(gradients + outputs))
+  return control_flow_ops.group(final_state, *(gradients + outputs))
 
 
-def half_seq_len_vs_unroll_half_rnn_benchmark(
-    batch_size, max_time, num_units, use_gpu):
-  config = tf.ConfigProto()
+def half_seq_len_vs_unroll_half_rnn_benchmark(batch_size, max_time, num_units,
+                                              use_gpu):
+  config = config_pb2.ConfigProto()
   config.allow_soft_placement = True
 
   # Set up sequence lengths
@@ -1298,55 +1449,67 @@ def half_seq_len_vs_unroll_half_rnn_benchmark(
   sequence_length = max_time * np.ones((batch_size,))
   inputs_list = [
       np.random.randn(batch_size, num_units).astype(np.float32)
-      for _ in range(max_time)]
+      for _ in range(max_time)
+  ]
 
   # Halve the sequence length, full static unroll
-  with tf.Session(config=config, graph=tf.Graph()) as sess:
-    with tf.device("/cpu:0" if not use_gpu else None):
+  with session.Session(config=config, graph=ops_lib.Graph()) as sess:
+    with ops_lib.device("/cpu:0" if not use_gpu else None):
       inputs_list_t = [
-          tf.Variable(x, trainable=False).value() for x in inputs_list]
-      ops = _half_seq_len_vs_unroll_half_rnn_benchmark(
-          inputs_list_t, sequence_length / 2)
-    tf.global_variables_initializer().run()
+          variables_lib.Variable(
+              x, trainable=False).value() for x in inputs_list
+      ]
+      ops = _half_seq_len_vs_unroll_half_rnn_benchmark(inputs_list_t,
+                                                       sequence_length / 2)
+    variables_lib.global_variables_initializer().run()
     delta_half_seq_len = _timer(sess, ops)
 
   # Halve the unroll size, don't use sequence length
-  with tf.Session(config=config, graph=tf.Graph()) as sess:
-    with tf.device("/cpu:0" if not use_gpu else None):
+  with session.Session(config=config, graph=ops_lib.Graph()) as sess:
+    with ops_lib.device("/cpu:0" if not use_gpu else None):
       inputs_list_t = [
-          tf.Variable(x, trainable=False).value() for x in inputs_list]
+          variables_lib.Variable(
+              x, trainable=False).value() for x in inputs_list
+      ]
       ops = _half_seq_len_vs_unroll_half_rnn_benchmark(
           inputs_list_t[:(max_time // 2)], sequence_length / 2)
-    tf.global_variables_initializer().run()
+    variables_lib.global_variables_initializer().run()
     delta_unroll_half = _timer(sess, ops)
   print("%d \t %d \t\t %d \t %s \t %f \t\t %f \t\t %f" %
         (batch_size, max_time, num_units, use_gpu, delta_half_seq_len,
-         delta_unroll_half, delta_half_seq_len/delta_unroll_half))
+         delta_unroll_half, delta_half_seq_len / delta_unroll_half))
 
   return delta_half_seq_len, delta_unroll_half
 
 
-def _concat_state_vs_tuple_state_rnn_benchmark(
-    inputs_list_t, sequence_length, state_is_tuple):
+def _concat_state_vs_tuple_state_rnn_benchmark(inputs_list_t, sequence_length,
+                                               state_is_tuple):
   (_, input_size) = inputs_list_t[0].get_shape().as_list()
-  initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=127)
-  cell = tf.contrib.rnn.LSTMCell(
-      num_units=input_size, use_peepholes=True,
-      initializer=initializer, state_is_tuple=state_is_tuple)
-  outputs, final_state = tf.contrib.rnn.static_rnn(
-      cell, inputs_list_t, sequence_length=sequence_length, dtype=tf.float32)
+  initializer = init_ops.random_uniform_initializer(-0.01, 0.01, seed=127)
+  cell = rnn_cell_impl.LSTMCell(
+      num_units=input_size,
+      use_peepholes=True,
+      initializer=initializer,
+      state_is_tuple=state_is_tuple)
+  outputs, final_state = rnn_lib.static_rnn(
+      cell,
+      inputs_list_t,
+      sequence_length=sequence_length,
+      dtype=dtypes.float32)
 
   final_state = list(final_state) if state_is_tuple else [final_state]
 
-  trainable_variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
-  gradients = tf.gradients(outputs + final_state, trainable_variables)
+  trainable_variables = ops_lib.get_collection(
+      ops_lib.GraphKeys.TRAINABLE_VARIABLES)
+  gradients = gradients_impl.gradients(outputs + final_state,
+                                       trainable_variables)
 
-  return tf.group(*(final_state + gradients + outputs))
+  return control_flow_ops.group(*(final_state + gradients + outputs))
 
 
-def concat_state_vs_tuple_state_rnn_benchmark(
-    batch_size, max_time, num_units, use_gpu):
-  config = tf.ConfigProto()
+def concat_state_vs_tuple_state_rnn_benchmark(batch_size, max_time, num_units,
+                                              use_gpu):
+  config = config_pb2.ConfigProto()
   config.allow_soft_placement = True
 
   # Set up sequence lengths
@@ -1354,53 +1517,64 @@ def concat_state_vs_tuple_state_rnn_benchmark(
   sequence_length = max_time * np.ones((batch_size,))
   inputs_list = [
       np.random.randn(batch_size, num_units).astype(np.float32)
-      for _ in range(max_time)]
+      for _ in range(max_time)
+  ]
 
   # Run with concatenated states (default)
-  with tf.Session(config=config, graph=tf.Graph()) as sess:
-    with tf.device("/cpu:0" if not use_gpu else None):
+  with session.Session(config=config, graph=ops_lib.Graph()) as sess:
+    with ops_lib.device("/cpu:0" if not use_gpu else None):
       inputs_list_t = [
-          tf.Variable(x, trainable=False).value() for x in inputs_list]
+          variables_lib.Variable(
+              x, trainable=False).value() for x in inputs_list
+      ]
       ops = _concat_state_vs_tuple_state_rnn_benchmark(
           inputs_list_t, sequence_length, state_is_tuple=False)
-    tf.global_variables_initializer().run()
+    variables_lib.global_variables_initializer().run()
     delta_concat_state = _timer(sess, ops)
 
   # Run with tuple states (new)
-  with tf.Session(config=config, graph=tf.Graph()) as sess:
-    with tf.device("/cpu:0" if not use_gpu else None):
+  with session.Session(config=config, graph=ops_lib.Graph()) as sess:
+    with ops_lib.device("/cpu:0" if not use_gpu else None):
       inputs_list_t = [
-          tf.Variable(x, trainable=False).value() for x in inputs_list]
+          variables_lib.Variable(
+              x, trainable=False).value() for x in inputs_list
+      ]
       ops = _concat_state_vs_tuple_state_rnn_benchmark(
           inputs_list_t, sequence_length, state_is_tuple=True)
-    tf.global_variables_initializer().run()
+    variables_lib.global_variables_initializer().run()
     delta_tuple_state = _timer(sess, ops)
   print("%d \t %d \t %d \t %s \t %f \t\t %f \t\t %f" %
         (batch_size, max_time, num_units, use_gpu, delta_concat_state,
-         delta_tuple_state, delta_concat_state/delta_tuple_state))
+         delta_tuple_state, delta_concat_state / delta_tuple_state))
 
   return delta_concat_state, delta_tuple_state
 
 
-def _dynamic_rnn_swap_memory_benchmark(inputs_t, sequence_length,
-                                       swap_memory):
+def _dynamic_rnn_swap_memory_benchmark(inputs_t, sequence_length, swap_memory):
   (unused_0, unused_1, input_size) = inputs_t.get_shape().as_list()
-  initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=127)
-  cell = tf.contrib.rnn.LSTMCell(
-      num_units=input_size, use_peepholes=True, initializer=initializer,
+  initializer = init_ops.random_uniform_initializer(-0.01, 0.01, seed=127)
+  cell = rnn_cell_impl.LSTMCell(
+      num_units=input_size,
+      use_peepholes=True,
+      initializer=initializer,
       state_is_tuple=False)
-  outputs, final_state = tf.nn.dynamic_rnn(
-      cell, inputs_t, sequence_length=sequence_length,
-      swap_memory=swap_memory, dtype=tf.float32)
+  outputs, final_state = rnn.dynamic_rnn(
+      cell,
+      inputs_t,
+      sequence_length=sequence_length,
+      swap_memory=swap_memory,
+      dtype=dtypes.float32)
 
-  trainable_variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
-  gradients = tf.gradients([outputs, final_state], trainable_variables)
+  trainable_variables = ops_lib.get_collection(
+      ops_lib.GraphKeys.TRAINABLE_VARIABLES)
+  gradients = gradients_impl.gradients([outputs, final_state],
+                                       trainable_variables)
 
-  return tf.group(final_state, outputs, *gradients)
+  return control_flow_ops.group(final_state, outputs, *gradients)
 
 
 def dynamic_rnn_swap_memory_benchmark(batch_size, max_time, num_units):
-  config = tf.ConfigProto()
+  config = config_pb2.ConfigProto()
   config.allow_soft_placement = True
 
   # Set up sequence lengths
@@ -1408,33 +1582,34 @@ def dynamic_rnn_swap_memory_benchmark(batch_size, max_time, num_units):
   sequence_length = np.random.randint(0, max_time, size=batch_size)
   inputs_list = [
       np.random.randn(batch_size, num_units).astype(np.float32)
-      for _ in range(max_time)]
+      for _ in range(max_time)
+  ]
   inputs = np.dstack(inputs_list).transpose([0, 2, 1])  # batch x time x depth
 
   # No memory swap
-  with tf.Session(config=config, graph=tf.Graph()) as sess:
-    inputs_t = tf.Variable(inputs, trainable=False).value()
+  with session.Session(config=config, graph=ops_lib.Graph()) as sess:
+    inputs_t = variables_lib.Variable(inputs, trainable=False).value()
     ops = _dynamic_rnn_swap_memory_benchmark(
         inputs_t, sequence_length, swap_memory=False)
-    tf.global_variables_initializer().run()
+    variables_lib.global_variables_initializer().run()
     no_swap = _timer(sess, ops)
 
   # Memory swap
-  with tf.Session(config=config, graph=tf.Graph()) as sess:
-    inputs_t = tf.Variable(inputs, trainable=False).value()
+  with session.Session(config=config, graph=ops_lib.Graph()) as sess:
+    inputs_t = variables_lib.Variable(inputs, trainable=False).value()
     ops = _dynamic_rnn_swap_memory_benchmark(
         inputs_t, sequence_length, swap_memory=True)
-    tf.global_variables_initializer().run()
+    variables_lib.global_variables_initializer().run()
     swap = _timer(sess, ops)
 
   print("%d \t %d \t %d \t %f \t %f \t %f" %
-        (batch_size, max_time, num_units, no_swap, swap, swap/no_swap))
+        (batch_size, max_time, num_units, no_swap, swap, swap / no_swap))
   return no_swap, swap
 
 
-def rnn_long_sequence_benchmark(batch_size, seqlen, num_units,
-                                dynamic, swap_memory):
-  config = tf.ConfigProto()
+def rnn_long_sequence_benchmark(batch_size, seqlen, num_units, dynamic,
+                                swap_memory):
+  config = config_pb2.ConfigProto()
   config.allow_soft_placement = True
 
   # Set up sequence lengths
@@ -1442,42 +1617,49 @@ def rnn_long_sequence_benchmark(batch_size, seqlen, num_units,
   sequence_length = [seqlen for _ in range(batch_size)]
   inputs_list = [
       np.random.randn(batch_size, num_units).astype(np.float32)
-      for _ in range(seqlen)]
+      for _ in range(seqlen)
+  ]
   inputs = np.dstack(inputs_list).transpose([0, 2, 1])  # batch x time x depth
 
   for _ in range(5):
     if dynamic:
-      with tf.Session(config=config, graph=tf.Graph()) as sess:
-        inputs_t = tf.Variable(inputs, trainable=False).value()
+      with session.Session(config=config, graph=ops_lib.Graph()) as sess:
+        inputs_t = variables_lib.Variable(inputs, trainable=False).value()
         ops = _dynamic_rnn_swap_memory_benchmark(
             inputs_t, sequence_length, swap_memory=swap_memory)
-        tf.global_variables_initializer().run()
+        variables_lib.global_variables_initializer().run()
         elapsed = _timer(sess, ops)
     else:
-      with tf.Session(config=config, graph=tf.Graph()) as sess:
+      with session.Session(config=config, graph=ops_lib.Graph()) as sess:
         inputs_list_t = [
-            tf.Variable(x, trainable=False).value() for x in inputs_list]
-        ops = _static_vs_dynamic_rnn_benchmark_static(
-            inputs_list_t, sequence_length)
-        tf.global_variables_initializer().run()
+            variables_lib.Variable(
+                x, trainable=False).value() for x in inputs_list
+        ]
+        ops = _static_vs_dynamic_rnn_benchmark_static(inputs_list_t,
+                                                      sequence_length)
+        variables_lib.global_variables_initializer().run()
         elapsed = _timer(sess, ops)
 
-    print("%d \t %d \t %d \t %s \t %f \t %f" %
-          (batch_size, seqlen, num_units, dynamic, elapsed,
-           elapsed/seqlen))
+    print("%d \t %d \t %d \t %s \t %f \t %f" % (batch_size, seqlen, num_units,
+                                                dynamic, elapsed,
+                                                elapsed / seqlen))
 
 
-class BenchmarkRNN(tf.test.Benchmark):
+class BenchmarkRNN(test.Benchmark):
 
   def benchmarkGraphCreationStaticVsDynamicLSTM(self):
     print("Graph Creation: Static Unroll vs. Dynamic Unroll LSTM")
     print("max_t \t dt(static) \t dt(dynamic) \t dt(dynamic)/dt(static)")
     for max_time in (1, 25, 50):
       s_dt, d_dt = graph_creation_static_vs_dynamic_rnn_benchmark(max_time)
-      self.report_benchmark(name="graph_creation_time_static_T%02d" % max_time,
-                            iters=5, wall_time=s_dt)
-      self.report_benchmark(name="graph_creation_time_dynamic_T%02d" % max_time,
-                            iters=5, wall_time=d_dt)
+      self.report_benchmark(
+          name="graph_creation_time_static_T%02d" % max_time,
+          iters=5,
+          wall_time=s_dt)
+      self.report_benchmark(
+          name="graph_creation_time_dynamic_T%02d" % max_time,
+          iters=5,
+          wall_time=d_dt)
 
   def benchmarkStaticUnrollVsDynamicFlowLSTM(self):
     print("Calculation: Static Unroll with Dynamic Flow LSTM "
@@ -1488,16 +1670,18 @@ class BenchmarkRNN(tf.test.Benchmark):
       for max_time in (50,):
         for num_units in (512, 256, 128):
           for use_gpu in (False, True):
-            s_dt, d_dt = static_vs_dynamic_rnn_benchmark(
-                batch_size, max_time, num_units, use_gpu)
+            s_dt, d_dt = static_vs_dynamic_rnn_benchmark(batch_size, max_time,
+                                                         num_units, use_gpu)
             self.report_benchmark(
-                name="static_unroll_time_T%02d_B%03d_N%03d_gpu_%s"
-                % (max_time, batch_size, num_units, use_gpu),
-                iters=20, wall_time=s_dt)
+                name="static_unroll_time_T%02d_B%03d_N%03d_gpu_%s" %
+                (max_time, batch_size, num_units, use_gpu),
+                iters=20,
+                wall_time=s_dt)
             self.report_benchmark(
-                name="dynamic_unroll_time_T%02d_B%03d_N%03d_gpu_%s"
-                % (max_time, batch_size, num_units, use_gpu),
-                iters=20, wall_time=d_dt)
+                name="dynamic_unroll_time_T%02d_B%03d_N%03d_gpu_%s" %
+                (max_time, batch_size, num_units, use_gpu),
+                iters=20,
+                wall_time=d_dt)
 
   def benchmarkDynamicLSTMNoMemorySwapVsMemorySwap(self):
     print("Calculation: Dynamic LSTM No Memory Swap vs. Memory Swap")
@@ -1505,16 +1689,18 @@ class BenchmarkRNN(tf.test.Benchmark):
     for batch_size in (256, 512):
       for max_time in (100,):
         for num_units in (512, 256, 128):
-          no_swap, swap = dynamic_rnn_swap_memory_benchmark(
-              batch_size, max_time, num_units)
+          no_swap, swap = dynamic_rnn_swap_memory_benchmark(batch_size,
+                                                            max_time, num_units)
           self.report_benchmark(
-              name="dynamic_lstm_no_memory_swap_T%02d_B%03d_N%03d"
-              % (max_time, batch_size, num_units),
-              iters=20, wall_time=no_swap)
+              name="dynamic_lstm_no_memory_swap_T%02d_B%03d_N%03d" %
+              (max_time, batch_size, num_units),
+              iters=20,
+              wall_time=no_swap)
           self.report_benchmark(
-              name="dynamic_lstm_with_memory_swap_T%02d_B%03d_N%03d"
-              % (max_time, batch_size, num_units),
-              iters=20, wall_time=swap)
+              name="dynamic_lstm_with_memory_swap_T%02d_B%03d_N%03d" %
+              (max_time, batch_size, num_units),
+              iters=20,
+              wall_time=swap)
 
   def benchmarkStaticUnrollHalfSequenceLengthVsHalfUnroll(self):
     print("Calculation: Static Unroll with Halved Sequence Length "
@@ -1525,37 +1711,49 @@ class BenchmarkRNN(tf.test.Benchmark):
       for max_time in (50,):
         for num_units in (256,):
           for use_gpu in (False, True):
-            s_dt, d_dt = half_seq_len_vs_unroll_half_rnn_benchmark(
-                batch_size, max_time, num_units, use_gpu)
+            s_dt, d_dt = half_seq_len_vs_unroll_half_rnn_benchmark(batch_size,
+                                                                   max_time,
+                                                                   num_units,
+                                                                   use_gpu)
             self.report_benchmark(
-                name="half_seq_len_time_T%02d_B%03d_N%03d_gpu_%s"
-                % (max_time, batch_size, num_units, use_gpu),
-                iters=20, wall_time=s_dt)
+                name="half_seq_len_time_T%02d_B%03d_N%03d_gpu_%s" %
+                (max_time, batch_size, num_units, use_gpu),
+                iters=20,
+                wall_time=s_dt)
             self.report_benchmark(
-                name="unroll_half_time_T%02d_B%03d_N%03d_gpu_%s"
-                % (max_time, batch_size, num_units, use_gpu),
-                iters=20, wall_time=d_dt)
+                name="unroll_half_time_T%02d_B%03d_N%03d_gpu_%s" %
+                (max_time, batch_size, num_units, use_gpu),
+                iters=20,
+                wall_time=d_dt)
 
   def benchmarkStaticUnrollStateConcatVsStateTuple(self):
     print("Calculation: Static Unroll with Concatenated State "
           "vs. Tuple State")
     print("batch \t time \t units \t gpu \t dt(concat_state) "
           "\t dt(tuple_state) \t dt(concat_state)/dt(tuple_state)")
-    for batch_size in (16, 128,):
+    for batch_size in (
+        16,
+        128,):
       for max_time in (50,):
-        for num_units in (16, 128,):
+        for num_units in (
+            16,
+            128,):
           for use_gpu in (False, True):
-            c_dt, t_dt = concat_state_vs_tuple_state_rnn_benchmark(
-                batch_size, max_time, num_units, use_gpu)
+            c_dt, t_dt = concat_state_vs_tuple_state_rnn_benchmark(batch_size,
+                                                                   max_time,
+                                                                   num_units,
+                                                                   use_gpu)
             self.report_benchmark(
-                name="concat_state_time_T%02d_B%03d_N%03d_gpu_%s"
-                % (max_time, batch_size, num_units, use_gpu),
-                iters=20, wall_time=c_dt)
+                name="concat_state_time_T%02d_B%03d_N%03d_gpu_%s" %
+                (max_time, batch_size, num_units, use_gpu),
+                iters=20,
+                wall_time=c_dt)
             self.report_benchmark(
-                name="tuple_state_time_T%02d_B%03d_N%03d_gpu_%s"
-                % (max_time, batch_size, num_units, use_gpu),
-                iters=20, wall_time=t_dt)
+                name="tuple_state_time_T%02d_B%03d_N%03d_gpu_%s" %
+                (max_time, batch_size, num_units, use_gpu),
+                iters=20,
+                wall_time=t_dt)
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

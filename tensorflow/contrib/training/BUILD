@@ -24,10 +24,27 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:clip_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:errors",
         "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:logging_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:string_ops",
+        "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -113,6 +130,7 @@ py_test(
         ":training_py",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform",
     ],
 )
 

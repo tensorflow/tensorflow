@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Functional tests for 3d convolutional operations."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -20,10 +21,16 @@ from __future__ import print_function
 import itertools
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging
 
 
-class BetaincTest(tf.test.TestCase):
+class BetaincTest(test.TestCase):
   use_gpu = False
 
   def _testBetaInc(self, dtype):
@@ -36,24 +43,23 @@ class BetaincTest(tf.test.TestCase):
       b_s = np.abs(np.random.randn(10, 10) * 30).astype(np_dt)  # in (0, infty)
       x_s = np.random.rand(10, 10).astype(np_dt)  # in (0, 1)
       with self.test_session(use_gpu=self.use_gpu):
-        tf_a_s = tf.constant(a_s, dtype=dtype)
-        tf_b_s = tf.constant(b_s, dtype=dtype)
-        tf_x_s = tf.constant(x_s, dtype=dtype)
-        tf_out = tf.betainc(tf_a_s, tf_b_s, tf_x_s).eval()
+        tf_a_s = constant_op.constant(a_s, dtype=dtype)
+        tf_b_s = constant_op.constant(b_s, dtype=dtype)
+        tf_x_s = constant_op.constant(x_s, dtype=dtype)
+        tf_out = math_ops.betainc(tf_a_s, tf_b_s, tf_x_s).eval()
       scipy_out = special.betainc(a_s, b_s, x_s).astype(np_dt)
 
       # the scipy version of betainc uses a double-only implementation.
       # TODO(ebrevdo): identify reasons for (sometime) precision loss
       # with doubles
-      tol = 1e-4 if dtype == tf.float32 else 5e-5
+      tol = 1e-4 if dtype == dtypes.float32 else 5e-5
       self.assertAllCloseAccordingToType(scipy_out, tf_out, rtol=tol, atol=tol)
 
       # Test out-of-range values (most should return nan output)
       combinations = list(itertools.product([-1, 0, 0.5, 1.0, 1.5], repeat=3))
-      a_comb, b_comb, x_comb = np.asarray(
-          list(zip(*combinations)), dtype=np_dt)
+      a_comb, b_comb, x_comb = np.asarray(list(zip(*combinations)), dtype=np_dt)
       with self.test_session(use_gpu=self.use_gpu):
-        tf_comb = tf.betainc(a_comb, b_comb, x_comb).eval()
+        tf_comb = math_ops.betainc(a_comb, b_comb, x_comb).eval()
       scipy_comb = special.betainc(a_comb, b_comb, x_comb).astype(np_dt)
       self.assertAllCloseAccordingToType(scipy_comb, tf_comb)
 
@@ -61,43 +67,56 @@ class BetaincTest(tf.test.TestCase):
       with self.test_session(use_gpu=self.use_gpu):
         self.assertAllCloseAccordingToType(
             special.betainc(0.1, b_s, x_s).astype(np_dt),
-            tf.betainc(0.1, b_s, x_s).eval(), rtol=tol, atol=tol)
+            math_ops.betainc(0.1, b_s, x_s).eval(),
+            rtol=tol,
+            atol=tol)
         self.assertAllCloseAccordingToType(
             special.betainc(a_s, 0.1, x_s).astype(np_dt),
-            tf.betainc(a_s, 0.1, x_s).eval(), rtol=tol, atol=tol)
+            math_ops.betainc(a_s, 0.1, x_s).eval(),
+            rtol=tol,
+            atol=tol)
         self.assertAllCloseAccordingToType(
             special.betainc(a_s, b_s, 0.1).astype(np_dt),
-            tf.betainc(a_s, b_s, 0.1).eval(), rtol=tol, atol=tol)
+            math_ops.betainc(a_s, b_s, 0.1).eval(),
+            rtol=tol,
+            atol=tol)
         self.assertAllCloseAccordingToType(
             special.betainc(0.1, b_s, 0.1).astype(np_dt),
-            tf.betainc(0.1, b_s, 0.1).eval(), rtol=tol, atol=tol)
+            math_ops.betainc(0.1, b_s, 0.1).eval(),
+            rtol=tol,
+            atol=tol)
         self.assertAllCloseAccordingToType(
             special.betainc(0.1, 0.1, 0.1).astype(np_dt),
-            tf.betainc(0.1, 0.1, 0.1).eval(), rtol=tol, atol=tol)
+            math_ops.betainc(0.1, 0.1, 0.1).eval(),
+            rtol=tol,
+            atol=tol)
 
       with self.assertRaisesRegexp(ValueError, "must be equal"):
-        tf.betainc(0.5, [0.5], [[0.5]])
+        math_ops.betainc(0.5, [0.5], [[0.5]])
 
       with self.test_session(use_gpu=self.use_gpu):
         with self.assertRaisesOpError("Shapes of .* are inconsistent"):
-          a_p = tf.placeholder(dtype)
-          b_p = tf.placeholder(dtype)
-          x_p = tf.placeholder(dtype)
-          tf.betainc(a_p, b_p, x_p).eval(
-              feed_dict={a_p: 0.5, b_p: [0.5], x_p: [[0.5]]})
+          a_p = array_ops.placeholder(dtype)
+          b_p = array_ops.placeholder(dtype)
+          x_p = array_ops.placeholder(dtype)
+          math_ops.betainc(a_p, b_p, x_p).eval(
+              feed_dict={a_p: 0.5,
+                         b_p: [0.5],
+                         x_p: [[0.5]]})
 
     except ImportError as e:
-      tf.logging.warn("Cannot test special functions: %s" % str(e))
+      tf_logging.warn("Cannot test special functions: %s" % str(e))
 
   def testBetaIncFloat(self):
-    self._testBetaInc(tf.float32)
+    self._testBetaInc(dtypes.float32)
 
   def testBetaIncDouble(self):
-    self._testBetaInc(tf.float64)
+    self._testBetaInc(dtypes.float64)
 
 
 class BetaincTestGPU(BetaincTest):
   use_gpu = True
 
+
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

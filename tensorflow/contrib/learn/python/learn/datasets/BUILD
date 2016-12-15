@@ -22,6 +22,10 @@ py_library(
     ],
     data = [":data_csv"],
     srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform",
+    ],
 )
 
 py_binary(
@@ -54,6 +58,7 @@ py_test(
     srcs = ["base_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":datasets",
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/learn",
         "//tensorflow/python:framework_test_lib",

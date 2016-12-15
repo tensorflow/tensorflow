@@ -12,19 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tensorflow.kernels.bcast_ops."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-
 from tensorflow.python.ops.gen_array_ops import _broadcast_gradient_args
+from tensorflow.python.platform import test
 
 
-class BcastOpsTest(tf.test.TestCase):
+class BcastOpsTest(test.TestCase):
 
   def _GetGradientArgs(self, xs, ys):
     with self.test_session() as sess:
@@ -90,4 +88,4 @@ class BcastOpsTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()
