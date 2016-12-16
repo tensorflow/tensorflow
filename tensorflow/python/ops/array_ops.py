@@ -1144,8 +1144,8 @@ def boolean_mask(tensor, mask, name="boolean_mask"):
     name:  A name for this operation (optional).
 
   Returns:
-    Tensor populated by entries in `tensor` corresponding to `True` values in
-      `mask`.
+    (N-K+1)-dimensional tensor populated by entries in `tensor` corresponding
+    to `True` values in `mask`.
 
   Raises:
     ValueError:  If shapes do not conform.
