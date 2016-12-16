@@ -54,7 +54,7 @@ class SessionBenchmark(tf.test.Benchmark):
           end_time = time.time()
           times.append(end_time - start_time)
     print("%s %d %f" % (name, size, np.median(times)))
-    self.report_benchmark(iters=iters, wall_time=np.median(times),
+    self.report_benchmark(iters=1, wall_time=np.median(times),
                           name=name)
 
   def _benchmarkFetch(self, name, target, size, iters):
@@ -83,7 +83,7 @@ class SessionBenchmark(tf.test.Benchmark):
           end_time = time.time()
           times.append(end_time - start_time)
     print("%s %d %f" % (name, size, np.median(times)))
-    self.report_benchmark(iters=iters, wall_time=np.median(times),
+    self.report_benchmark(iters=1, wall_time=np.median(times),
                           name=name)
 
   def benchmarkGrpcSession(self):
