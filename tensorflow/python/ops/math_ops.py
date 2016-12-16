@@ -1736,7 +1736,10 @@ def matmul(a,
     the product of the corresponding matrices in `a` and `b, e.g. if all
     transpose or adjoint attributes are `False`:
 
-    output[..., :, :] = a[..., :, :] * b[..., :, :] ,
+    `output`[..., i, j] = sum_k (`a`[..., i, k] * `b`[..., k, j]),
+    for all indices i, j.
+
+    Note: This is matrix product, not element-wise product.
 
 
   Raises:
