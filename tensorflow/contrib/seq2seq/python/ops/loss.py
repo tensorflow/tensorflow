@@ -35,10 +35,14 @@ def sequence_loss(logits, targets, weights,
   Args:
     logits: A 3D Tensor of shape
       [batch_size x sequence_length x num_decoder_symbols] and dtype float.
+      The logits correspond to the prediction across all classes at each
+      timestep.
     targets: A 2D Tensor of shape [batch_size x sequence_length] and dtype
-      int.
+      int. The target represents the true class at each timestep.
     weights: A 2D Tensor of shape [batch_size x sequence_length] and dtype
-      float.
+      float. Weights constitutes the weighting of each prediction in the
+      sequence. When using weights as masking set all valid timesteps to 1 and
+      all padded timesteps to 0.
     average_across_timesteps: If set, sum the cost across the sequence
       dimension and divide by the cost by the total label weight across
       timesteps.
