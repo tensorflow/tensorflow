@@ -38,7 +38,7 @@ class FreezeGraphTest(test_util.TensorFlowTestCase):
     # and that then multiplies it by 2.
     with tf.Graph().as_default():
       variable_node = tf.Variable(1.0, name="variable_node")
-      output_node = tf.mul(variable_node, 2.0, name="output_node")
+      output_node = tf.multiply(variable_node, 2.0, name="output_node")
       sess = tf.Session()
       init = tf.global_variables_initializer()
       sess.run(init)

@@ -1257,7 +1257,7 @@ class MetaGraphTest(tf.test.TestCase):
       v0 = tf.Variable(1.0, name="v0")
       control_flow_ops.cond(tf.less(v0, 10),
                             lambda: tf.add(v0, 1),
-                            lambda: tf.sub(v0, 1))
+                            lambda: tf.subtract(v0, 1))
       control_flow_ops.while_loop(lambda i: tf.less(i, 10),
                                   lambda i: tf.add(i, 1),
                                   [v0])

@@ -157,7 +157,7 @@ class DeviceFunctionsTest(tf.test.TestCase):
     with tf.Graph().as_default():
       variable_node = tf.Variable(1.0, name="variable_node")
       _ = tf.Variable(1.0, name="unused_variable_node")
-      output_node = tf.mul(variable_node, 2.0, name="output_node")
+      output_node = tf.multiply(variable_node, 2.0, name="output_node")
       with tf.Session() as sess:
         init = tf.initialize_variables([variable_node])
         sess.run(init)

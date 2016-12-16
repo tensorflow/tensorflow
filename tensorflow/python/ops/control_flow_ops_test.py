@@ -234,7 +234,7 @@ class ContextTest(TensorFlowTestCase):
       x = tf.constant(2)
       y = tf.constant(5)
       control_flow_ops.cond(tf.less(x, y),
-                            lambda: tf.mul(x, 17),
+                            lambda: tf.multiply(x, 17),
                             lambda: tf.add(y, 23))
       for op in sess.graph.get_operations():
         c = op._get_control_flow_context()

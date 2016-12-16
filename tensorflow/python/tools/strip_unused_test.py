@@ -35,8 +35,9 @@ class StripUnusedTest(test_util.TensorFlowTestCase):
     # and that then multiplies it by 2.
     with tf.Graph().as_default():
       constant_node = tf.constant(1.0, name="constant_node")
-      wanted_input_node = tf.sub(constant_node, 3.0, name="wanted_input_node")
-      output_node = tf.mul(wanted_input_node, 2.0, name="output_node")
+      wanted_input_node = tf.subtract(constant_node, 3.0,
+                                      name="wanted_input_node")
+      output_node = tf.multiply(wanted_input_node, 2.0, name="output_node")
       tf.add(output_node, 2.0, name="later_node")
       sess = tf.Session()
       output = sess.run(output_node)

@@ -72,7 +72,7 @@ class CopyOpsTest(tf.test.TestCase):
       x = tf.placeholder("float")
       a = tf.Variable(3.0)
       b = tf.constant(4.0)
-      ax = tf.mul(x, a)
+      ax = tf.multiply(x, a)
       y = tf.add(ax, b)
       #Initialize session
       sess1 = tf.Session()

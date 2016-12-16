@@ -34,7 +34,7 @@ class SubscribeTest(test_util.TensorFlowTestCase):
     c = tf.add(a, b)
     with tf.control_dependencies([c]):
       d = tf.constant(42)
-    n = tf.neg(c)
+    n = tf.negative(c)
 
     shared = []
 
