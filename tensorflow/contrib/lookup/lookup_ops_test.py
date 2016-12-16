@@ -733,23 +733,24 @@ class MutableDenseHashTableOpTest(tf.test.TestCase):
       self.assertAllClose([0, 1.1, -1.5], result)
 
   def testMapInt64ToFloat(self):
-    with self.test_session():
-      keys = tf.constant([11, 12, 13], tf.int64)
-      values = tf.constant([0.0, 1.1, 2.2], tf.float32)
-      default_value = tf.constant(-1.5, tf.float32)
-      table = tf.contrib.lookup.MutableDenseHashTable(
-          tf.int64, tf.float32, default_value=default_value, empty_key=0)
-      self.assertAllEqual(0, table.size().eval())
+    for float_dtype in [tf.float32, tf.float64]:
+      with self.test_session():
+        keys = tf.constant([11, 12, 13], tf.int64)
+        values = tf.constant([0.0, 1.1, 2.2], float_dtype)
+        default_value = tf.constant(-1.5, float_dtype)
+        table = tf.contrib.lookup.MutableDenseHashTable(
+            tf.int64, float_dtype, default_value=default_value, empty_key=0)
+        self.assertAllEqual(0, table.size().eval())
 
-      table.insert(keys, values).run()
-      self.assertAllEqual(3, table.size().eval())
+        table.insert(keys, values).run()
+        self.assertAllEqual(3, table.size().eval())
 
-      input_string = tf.constant([11, 12, 15], tf.int64)
-      output = table.lookup(input_string)
-      self.assertAllEqual([3], output.get_shape())
+        input_string = tf.constant([11, 12, 15], tf.int64)
+        output = table.lookup(input_string)
+        self.assertAllEqual([3], output.get_shape())
 
-      result = output.eval()
-      self.assertAllClose([0, 1.1, -1.5], result)
+        result = output.eval()
+        self.assertAllClose([0, 1.1, -1.5], result)
 
   def testVectorValues(self):
     with self.test_session():
