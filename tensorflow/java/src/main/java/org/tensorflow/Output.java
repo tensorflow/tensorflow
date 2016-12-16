@@ -16,9 +16,9 @@ limitations under the License.
 package org.tensorflow;
 
 /**
- * A symbolic handle to a tensor produced by an {@link Operation}.
+ * A symbolic handle to a Tensor produced by an {@link Operation}.
  *
- * <p>An Output is a symbolic handle to a tensor. The value of the Tensor is computed by executing
+ * <p>An Output is a symbolic handle to a Tensor. The value of the Tensor is computed by executing
  * the {@link Operation} in a {@link Session}.
  */
 public final class Output {
@@ -29,7 +29,7 @@ public final class Output {
     index = idx;
   }
 
-  /** Returns the Operation that will produce the tensor referred to by this Output. */
+  /** Returns the Operation that will produce the Tensor referred to by this Output. */
   public Operation op() {
     return operation;
   }
