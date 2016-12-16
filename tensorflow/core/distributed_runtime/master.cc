@@ -112,6 +112,17 @@ void Master::GC() {
 
 class DeviceFinder {
  public:
+  static Status GetRemoteDevices(
+      const protobuf::RepeatedPtrField<string>& device_filters, MasterEnv* env,
+      std::vector<Device*>* out_remote) {
+    DeviceFinder finder(device_filters, env);
+    finder.Start();
+    TF_RETURN_IF_ERROR(finder.Wait());
+    finder.GetRemoteDevices(env->local_devices, out_remote);
+    return Status::OK();
+  }
+
+ private:
   explicit DeviceFinder(
       const protobuf::RepeatedPtrField<string>& device_filters, MasterEnv* env)
       : env_(env) {
@@ -126,6 +137,20 @@ class DeviceFinder {
     for (const string& filter : device_filters) {
       process_filter(filter);
     }
+    // Enumerates all known workers' target. A target name is a
+    // prefix of a device name. E.g., /job:mnist/replica:0/task:10.
+    std::vector<string> workers;
+    env_->worker_cache->ListWorkers(&workers);
+    if (filters_.empty()) {
+      std::swap(workers, targets_);
+    } else {
+      for (const string& name : workers) {
+        if (MatchFilters(name)) {
+          targets_.push_back(name);
+        }
+      }
+    }
+    seen_targets_.assign(targets_.size(), false);
   }
 
   ~DeviceFinder() {
@@ -133,23 +158,9 @@ class DeviceFinder {
   }
 
   void Start() {
-    // Enumerates all known workers' target. A target name is a
-    // prefix of a device name. E.g., /job:mnist/replica:0/task:10.
-    std::vector<string> workers;
-    env_->worker_cache->ListWorkers(&workers);
-    std::vector<string> targets;
-    if (filters_.empty()) {
-      swap(workers, targets);
-    } else {
-      for (const string& name : workers) {
-        if (MatchFilters(name)) {
-          targets.push_back(name);
-        }
-      }
-    }
     {
       mutex_lock l(mu_);
-      num_pending_ = targets.size();
+      num_pending_ = targets_.size();
       if (num_pending_ == 0) {
         pending_zero_.notify_all();
       }
@@ -157,17 +168,36 @@ class DeviceFinder {
     // Talk to all workers to get the list of available devices.
     using std::placeholders::_1;
     using std::placeholders::_2;
-    for (size_t i = 0; i < targets.size(); ++i) {
-      NewRemoteDevices(env_->env, env_->worker_cache, targets[i],
-                       std::bind(&ME::WhenFound, this, _1, _2));
+    for (size_t i = 0; i < targets_.size(); ++i) {
+      // TODO(mrry): Propagate a timeout here, since `this->WhenFound()` may
+      // never be called.
+      NewRemoteDevices(env_->env, env_->worker_cache, targets_[i],
+                       std::bind(&ME::WhenFound, this, i, _1, _2));
     }
   }
 
-  void Wait() {
+  // Every `kLoggingPeriodMs`, while the DeviceFinder is still waiting
+  // to hear from workers, log a list of the workers who have not
+  // responded.
+  const int32 kLoggingPeriodMs = 10 * 1000;
+
+  Status Wait() {
     mutex_lock l(mu_);
+    // TODO(mrry): Propagate a timeout here, since `num_pending_` may
+    // never become zero.
     while (num_pending_ != 0) {
-      pending_zero_.wait(l);
+      pending_zero_.wait_for(l, std::chrono::milliseconds(kLoggingPeriodMs));
+      if (num_pending_ != 0) {
+        for (int i = 0; i < targets_.size(); ++i) {
+          if (!seen_targets_[i]) {
+            LOG(INFO)
+                << "CreateSession still waiting for response from worker: "
+                << targets_[i];
+          }
+        }
+      }
     }
+    return status_;
   }
 
   // The caller takes the ownership of returned remote devices.
@@ -187,7 +217,6 @@ class DeviceFinder {
     found_.clear();
   }
 
- private:
   typedef DeviceFinder ME;
   const MasterEnv* env_;
   std::vector<DeviceNameUtils::ParsedName> filters_;
@@ -196,11 +225,20 @@ class DeviceFinder {
   int num_pending_ GUARDED_BY(mu_);
   condition_variable pending_zero_;
   std::vector<Device*> found_ GUARDED_BY(mu_);
+  // List of targets to be contacted by this DeviceFinder. The
+  // respective `bool` in `seen_targets_` indicates whether we have
+  // heard from this target or not.
+  std::vector<string> targets_;
+  std::vector<bool> seen_targets_ GUARDED_BY(mu_);
+  Status status_;
 
-  void WhenFound(const Status& s, std::vector<Device*>* devices) {
+  void WhenFound(int target_index, const Status& s,
+                 std::vector<Device*>* devices) {
     mutex_lock l(mu_);
+    seen_targets_[target_index] = true;
     if (!s.ok()) {
       LOG(ERROR) << "Master init: " << s;
+      status_.Update(s);
     } else {
       found_.insert(found_.end(), devices->begin(), devices->end());
       devices->clear();
@@ -244,11 +282,13 @@ void Master::CreateSession(const CreateSessionRequest* req,
     if (status.ok()) {
       // Ping all the workers and build the list of devices that the
       // session will use.
-      DeviceFinder finder(req->config().device_filters(), env_);
-      finder.Start();
-      finder.Wait();
       std::vector<Device*> remote_devices;
-      finder.GetRemoteDevices(env_->local_devices, &remote_devices);
+      status = DeviceFinder::GetRemoteDevices(req->config().device_filters(),
+                                              env_, &remote_devices);
+      if (!status.ok()) {
+        done(status);
+        return;
+      }
       SessionOptions options;
       options.config = req->config();
       MasterSession* session =
@@ -371,19 +411,18 @@ void Master::CloseSession(const CloseSessionRequest* req,
 void Master::ListDevices(const ListDevicesRequest* req,
                          ListDevicesResponse* resp, MyClosure done) {
   SchedClosure([this, req, resp, done]() {
-    DeviceFinder finder({}, env_);
-    finder.Start();
-    finder.Wait();
     std::vector<Device*> remote_devices;
-    finder.GetRemoteDevices(env_->local_devices, &remote_devices);
-    for (Device* dev : env_->local_devices) {
-      *(resp->add_local_device()) = dev->attributes();
+    Status s = DeviceFinder::GetRemoteDevices({}, env_, &remote_devices);
+    if (s.ok()) {
+      for (Device* dev : env_->local_devices) {
+        *(resp->add_local_device()) = dev->attributes();
+      }
+      for (Device* dev : remote_devices) {
+        *(resp->add_remote_device()) = dev->attributes();
+        delete dev;
+      }
     }
-    for (Device* dev : remote_devices) {
-      *(resp->add_remote_device()) = dev->attributes();
-      delete dev;
-    }
-    done(Status::OK());
+    done(s);
   });
 }
 
