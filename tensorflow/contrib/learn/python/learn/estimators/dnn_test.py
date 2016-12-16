@@ -509,7 +509,7 @@ class DNNClassifierTest(tf.test.TestCase):
       labels = tf.to_float(labels)
       predictions = tf.slice(predictions, [0, 1], [-1, 1])
       labels = math_ops.cast(labels, predictions.dtype)
-      return tf.reduce_sum(tf.mul(predictions, labels))
+      return tf.reduce_sum(tf.multiply(predictions, labels))
 
     classifier = tf.contrib.learn.DNNClassifier(
         feature_columns=[tf.contrib.layers.real_valued_column('x')],
@@ -957,7 +957,7 @@ class DNNRegressorTest(tf.test.TestCase):
       return features, labels
 
     def _my_metric_op(predictions, labels):
-      return tf.reduce_sum(tf.mul(predictions, labels))
+      return tf.reduce_sum(tf.multiply(predictions, labels))
 
     regressor = tf.contrib.learn.DNNRegressor(
         feature_columns=[tf.contrib.layers.real_valued_column('x')],
@@ -1011,7 +1011,7 @@ class DNNRegressorTest(tf.test.TestCase):
       return features, labels
 
     def _my_metric_op(predictions, labels):
-      return tf.reduce_sum(tf.mul(predictions, labels))
+      return tf.reduce_sum(tf.multiply(predictions, labels))
 
     regressor = tf.contrib.learn.DNNRegressor(
         feature_columns=[tf.contrib.layers.real_valued_column('x')],
