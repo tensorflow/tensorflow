@@ -28,6 +28,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import nn_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
@@ -1245,6 +1246,20 @@ class PoolingTest(test.TestCase):
               ksize=[1, 21, 20, 1],
               strides=[1, 1, 1, 1],
               padding="VALID")
+
+  def testMaxPoolGradGrad(self):
+    with self.test_session() as sess:
+      input_size = [1, 4, 4, 1]
+      x_init = np.random.RandomState(1).rand(*input_size).astype(np.float32)
+      x = constant_op.constant(x_init)
+      for op in [nn_ops.max_pool, nn_ops.avg_pool]:
+          y = op(x, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='VALID')
+          z = gradients_impl.gradients(y, x)
+          err = gradient_checker.compute_gradient_error(x, input_size,
+                                                        z[0], input_size,
+                                                        x_init_value=x_init)
+          print("max_pool gradient of gradient error = ", err)
+          self.assertLess(err, 1e-4)
 
 
 def GetMaxPoolFwdTest(input_size, filter_size, strides, padding):

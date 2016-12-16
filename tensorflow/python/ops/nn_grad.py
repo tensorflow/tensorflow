@@ -395,6 +395,13 @@ def _AvgPoolGrad(op, grad):
       data_format=op.get_attr("data_format"))
 
 
+@ops.RegisterGradient("AvgPoolGrad")
+def _AvgPoolGradGrad(op, grad):
+  print(op)
+  return (array_ops.zeros(shape = array_ops.shape(op.inputs[0]), dtype = op.inputs[0].dtype),
+          array_ops.ones(shape = array_ops.shape(op.inputs[1]), dtype = op.inputs[1].dtype))
+
+
 @ops.RegisterGradient("MaxPool")
 def _MaxPoolGrad(op, grad):
   return gen_nn_ops._max_pool_grad(op.inputs[0],
@@ -408,9 +415,9 @@ def _MaxPoolGrad(op, grad):
 
 @ops.RegisterGradient("MaxPoolGrad")
 def _MaxPoolGradGrad(op, grad):
-    return (array_ops.zeros(shape = array_ops.shape(op.inputs[0]), dtype = op.inputs[0].dtype),
-            array_ops.zeros(shape = array_ops.shape(op.inputs[1]), dtype = op.inputs[1].dtype),
-            array_ops.ones(shape = array_ops.shape(op.inputs[2]), dtype = op.inputs[2].dtype))
+  return (array_ops.zeros(shape = array_ops.shape(op.inputs[0]), dtype = op.inputs[0].dtype),
+          array_ops.zeros(shape = array_ops.shape(op.inputs[1]), dtype = op.inputs[1].dtype),
+          array_ops.ones(shape = array_ops.shape(op.inputs[2]), dtype = op.inputs[2].dtype))
 
 
 @ops.RegisterGradient("FractionalMaxPool")
