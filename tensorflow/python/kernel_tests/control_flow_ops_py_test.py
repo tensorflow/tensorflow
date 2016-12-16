@@ -83,6 +83,16 @@ def check_consumers(graph):
   return True
 
 
+def all_fetchables():
+  tensor_names = []
+  graph = ops.get_default_graph()
+  for op in graph.get_operations():
+    for t in op.outputs:
+      if graph.is_fetchable(t):
+        tensor_names.append(t.name)
+  return tensor_names
+
+
 def opt_cfg():
   return config_pb2.ConfigProto(
       allow_soft_placement=True,
@@ -300,6 +310,16 @@ class ControlFlowTest(test.TestCase):
     fn2 = lambda: math_ops.sub(values, 1)
     with self.assertRaisesRegexp(TypeError, "must not be a Python bool"):
       _ = control_flow_ops.cond(False, fn1, fn2)
+
+  def testFetchables(self):
+    with self.test_session() as sess:
+      x = array_ops.placeholder(dtypes.float32)
+      control_flow_ops.cond(constant_op.constant(True),
+                            lambda: x + 2,
+                            lambda: x + 0)
+      tensor_names = all_fetchables()
+      for name in tensor_names:
+        sess.run(name, feed_dict={x: 3})
 
   def testCondIndexedSlices(self):
     with self.test_session():

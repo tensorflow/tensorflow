@@ -1597,6 +1597,7 @@ class CondContext(ControlFlowContext):
         self._values.add(result.name)
       with ops.control_dependencies(None):
         result = _SwitchRefOrTensor(result, self._pred)[self._branch]
+      result.op.graph.prevent_fetching(result.op)
       # pylint: disable=protected-access
       result.op._set_control_flow_context(self)
       # pylint: enable=protected-access
