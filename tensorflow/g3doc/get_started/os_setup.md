@@ -674,6 +674,12 @@ sudo cp -P cuda/lib64/libcudnn* /usr/local/cuda/lib64
 sudo chmod a+r /usr/local/cuda/include/cudnn.h /usr/local/cuda/lib64/libcudnn*
 ```
 
+##### Install other dependencies
+
+```bash
+$ sudo apt-get install libcupti-dev
+```
+
 ### Prepare environment for Mac OS X
 
 We recommend using [homebrew](http://brew.sh) to install the bazel dependency,
