@@ -157,7 +157,7 @@ class Normal(distribution.Distribution):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):
-    shape = array_ops.concat(0, ([n], array_ops.shape(self.mean())))
+    shape = array_ops.concat_v2(([n], array_ops.shape(self.mean())), 0)
     sampled = random_ops.random_normal(
         shape=shape, mean=0, stddev=1, dtype=self.mu.dtype, seed=seed)
     return sampled * self.sigma + self.mu

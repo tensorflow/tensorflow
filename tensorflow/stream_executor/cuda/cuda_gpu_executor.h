@@ -76,7 +76,7 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
 
   bool Launch(Stream *stream, const ThreadDim &thread_dims,
               const BlockDim &block_dims, const KernelBase &k,
-              const std::vector<KernelArg> &args) override;
+              const KernelArgsArrayBase &args) override;
 
   void *Allocate(uint64 size) override;
 
@@ -185,9 +185,6 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
   // error occurs at any point while asking the driver for block dim limits, it
   // will be only partially populated as a result, and an error will be logged.
   bool FillBlockDimLimit(BlockDim *block_dim_limit) const;
-
-  KernelArg DeviceMemoryToKernelArg(
-      const DeviceMemoryBase &gpu_mem) const override;
 
   bool SupportsBlas() const override;
 

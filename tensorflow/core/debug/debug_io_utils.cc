@@ -18,6 +18,12 @@ limitations under the License.
 #include <vector>
 
 #include "grpc++/create_channel.h"
+
+#if defined(PLATFORM_WINDOWS)
+// winsock2.h is used in grpc, so Ws2_32.lib is needed
+#pragma comment(lib,"Ws2_32.lib")
+#endif
+
 #include "tensorflow/core/debug/debug_service.grpc.pb.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -92,6 +98,7 @@ const char* const DebugIO::kFileURLScheme = "file://";
 // static
 const char* const DebugIO::kGrpcURLScheme = "grpc://";
 
+// static
 Status DebugIO::PublishDebugTensor(const string& tensor_name,
                                    const string& debug_op, const Tensor& tensor,
                                    const uint64 wall_time_us,
@@ -159,6 +166,38 @@ Status DebugIO::PublishDebugTensor(const string& tensor_name,
   }
 }
 
+// static
+Status DebugIO::PublishGraph(const Graph& graph,
+                             const std::unordered_set<string>& debug_urls) {
+  GraphDef graph_def;
+  graph.ToGraphDef(&graph_def);
+
+  string buf;
+  graph_def.SerializeToString(&buf);
+
+  const int64 now_micros = Env::Default()->NowMicros();
+  Event event;
+  event.set_wall_time(static_cast<double>(now_micros));
+  event.set_graph_def(buf);
+
+  Status status = Status::OK();
+  for (const string& debug_url : debug_urls) {
+    if (debug_url.find(kFileURLScheme) == 0) {
+      const string dump_root_dir = debug_url.substr(strlen(kFileURLScheme));
+      const string file_name = strings::StrCat("_tfdbg_graph_", now_micros);
+
+      status.Update(
+          DebugFileIO::DumpEventProtoToFile(event, dump_root_dir, file_name));
+    } else if (debug_url.find(kGrpcURLScheme) == 0) {
+      DebugGrpcIO::SendEventProtoThroughGrpcStream(
+          event, debug_url.substr(strlen(kGrpcURLScheme)));
+    }
+  }
+
+  return status;
+}
+
+// static
 Status DebugIO::CloseDebugURL(const string& debug_url) {
   if (debug_url.find(DebugIO::kGrpcURLScheme) == 0) {
     return DebugGrpcIO::CloseGrpcStream(
@@ -200,26 +239,22 @@ string DebugFileIO::GetDumpFilePath(const string& dump_root_dir,
 }
 
 // static
-Status DebugFileIO::DumpTensorToEventFile(
-    const string& node_name, const int32 output_slot, const string& debug_op,
-    const Tensor& tensor, const uint64 wall_time_us, const string& file_path) {
+Status DebugFileIO::DumpEventProtoToFile(const Event& event_proto,
+                                         const string& dir_name,
+                                         const string& file_name) {
   Env* env(Env::Default());
 
-  // Create the directory if necessary.
-  string file_dir = io::Dirname(file_path).ToString();
-  Status s = DebugFileIO::RecursiveCreateDir(env, file_dir);
-
+  Status s = RecursiveCreateDir(env, dir_name);
   if (!s.ok()) {
     return Status(error::FAILED_PRECONDITION,
-                  strings::StrCat("Failed to create directory  ", file_dir,
+                  strings::StrCat("Failed to create directory  ", dir_name,
                                   ", due to: ", s.error_message()));
   }
 
-  const string tensor_name = strings::StrCat(node_name, ":", output_slot);
-  Event event = WrapTensorAsEvent(tensor_name, debug_op, tensor, wall_time_us);
+  const string file_path = io::JoinPath(dir_name, file_name);
 
   string event_str;
-  event.SerializeToString(&event_str);
+  event_proto.SerializeToString(&event_str);
 
   std::unique_ptr<WritableFile> f = nullptr;
   TF_CHECK_OK(env->NewWritableFile(file_path, &f));
@@ -227,6 +262,17 @@ Status DebugFileIO::DumpTensorToEventFile(
   TF_CHECK_OK(f->Close());
 
   return Status::OK();
+}
+
+// static
+Status DebugFileIO::DumpTensorToEventFile(
+    const string& node_name, const int32 output_slot, const string& debug_op,
+    const Tensor& tensor, const uint64 wall_time_us, const string& file_path) {
+  const string tensor_name = strings::StrCat(node_name, ":", output_slot);
+  Event event = WrapTensorAsEvent(tensor_name, debug_op, tensor, wall_time_us);
+
+  return DumpEventProtoToFile(event, io::Dirname(file_path).ToString(),
+                              io::Basename(file_path).ToString());
 }
 
 // static
@@ -289,10 +335,8 @@ Status DebugGrpcChannel::Close() {
 
   reader_writer_->WritesDone();
   if (reader_writer_->Finish().ok()) {
-    std::cout << "Finish() returned ok status" << std::endl;  // DEBUG
     return Status::OK();
   } else {
-    std::cout << "Finish() returned non-ok status" << std::endl;  // DEBUG
     return Status(error::FAILED_PRECONDITION,
                   "Failed to close debug GRPC stream.");
   }
@@ -313,6 +357,12 @@ Status DebugGrpcIO::SendTensorThroughGrpcStream(
   // Prepare tensor Event data to be sent.
   Event event = WrapTensorAsEvent(tensor_name, debug_op, tensor, wall_time_us);
 
+  return SendEventProtoThroughGrpcStream(event, server_stream_addr);
+}
+
+// static
+Status DebugGrpcIO::SendEventProtoThroughGrpcStream(
+    const Event& event_proto, const string& server_stream_addr) {
   std::shared_ptr<DebugGrpcChannel> debug_grpc_channel;
   {
     mutex_lock l(streams_mu);
@@ -331,7 +381,7 @@ Status DebugGrpcIO::SendTensorThroughGrpcStream(
     }
   }
 
-  bool write_ok = debug_grpc_channel->WriteEvent(event);
+  bool write_ok = debug_grpc_channel->WriteEvent(event_proto);
   if (!write_ok) {
     return errors::Cancelled(strings::StrCat("Write event to stream URL ",
                                              server_stream_addr, "failed."));

@@ -348,13 +348,17 @@ class VariablesTest(tf.test.TestCase):
           e_init = tf.constant(12)
         e = tf.contrib.framework.variable('e', initializer=e_init)
       self.assertDeviceEqual(a.device, 'cpu:0')
-      self.assertDeviceEqual(a.initial_value.device, 'cpu:0')
+      self.assertEqual(a.initial_value.op.colocation_groups(),
+                       a.op.colocation_groups())
       self.assertDeviceEqual(b.device, 'cpu:1')
-      self.assertDeviceEqual(b.initial_value.device, 'cpu:1')
+      self.assertEqual(b.initial_value.op.colocation_groups(),
+                       b.op.colocation_groups())
       self.assertDeviceEqual(c.device, 'cpu:12')
-      self.assertDeviceEqual(c.initial_value.device, 'cpu:12')
+      self.assertEqual(c.initial_value.op.colocation_groups(),
+                       c.op.colocation_groups())
       self.assertDeviceEqual(d.device, 'cpu:2')
-      self.assertDeviceEqual(d.initial_value.device, 'cpu:2')
+      self.assertEqual(d.initial_value.op.colocation_groups(),
+                       d.op.colocation_groups())
       self.assertDeviceEqual(e.device, 'cpu:3')
       self.assertDeviceEqual(e.initial_value.device, 'cpu:99')
 
@@ -371,13 +375,17 @@ class VariablesTest(tf.test.TestCase):
       # The values below highlight how the replica_device_setter puts initial
       # values on the worker job, and how it merges explicit devices.
       self.assertDeviceEqual(a.device, '/job:ps/task:0/cpu:0')
-      self.assertDeviceEqual(a.initial_value.device, a.device)
+      self.assertEqual(a.initial_value.op.colocation_groups(),
+                       a.op.colocation_groups())
       self.assertDeviceEqual(b.device, '/job:ps/task:1/cpu:0')
-      self.assertDeviceEqual(b.initial_value.device, b.device)
+      self.assertEqual(b.initial_value.op.colocation_groups(),
+                       b.op.colocation_groups())
       self.assertDeviceEqual(c.device, '/job:ps/task:0/cpu:12')
-      self.assertDeviceEqual(c.initial_value.device, c.device)
+      self.assertEqual(c.initial_value.op.colocation_groups(),
+                       c.op.colocation_groups())
       self.assertDeviceEqual(d.device, '/job:ps/task:1/cpu:0')
-      self.assertDeviceEqual(d.initial_value.device, d.device)
+      self.assertEqual(d.initial_value.op.colocation_groups(),
+                       d.op.colocation_groups())
       self.assertDeviceEqual(e.device, '/job:ps/task:0/cpu:0')
       self.assertDeviceEqual(e.initial_value.device, '/job:worker/cpu:99')
 
@@ -397,13 +405,17 @@ class VariablesTest(tf.test.TestCase):
       # The values below highlight how the VariableDeviceChooser puts initial
       # values on the same device as the variable job.
       self.assertDeviceEqual(a.device, '/job:ps/task:0/cpu:0')
-      self.assertDeviceEqual(a.initial_value.device, a.device)
+      self.assertEqual(a.initial_value.op.colocation_groups(),
+                       a.op.colocation_groups())
       self.assertDeviceEqual(b.device, '/job:ps/task:1/cpu:0')
-      self.assertDeviceEqual(b.initial_value.device, b.device)
+      self.assertEqual(b.initial_value.op.colocation_groups(),
+                       b.op.colocation_groups())
       self.assertDeviceEqual(c.device, '/cpu:12')
-      self.assertDeviceEqual(c.initial_value.device, c.device)
+      self.assertEqual(c.initial_value.op.colocation_groups(),
+                       c.op.colocation_groups())
       self.assertDeviceEqual(d.device, '/job:ps/task:0/cpu:0')
-      self.assertDeviceEqual(d.initial_value.device, d.device)
+      self.assertEqual(d.initial_value.op.colocation_groups(),
+                       d.op.colocation_groups())
       self.assertDeviceEqual(e.device, '/job:ps/task:1/cpu:0')
       self.assertDeviceEqual(e.initial_value.device, '/cpu:99')
 
@@ -423,13 +435,17 @@ class VariablesTest(tf.test.TestCase):
       # The values below highlight how the VariableDeviceChooser puts initial
       # values on the same device as the variable job.
       self.assertDeviceEqual(a.device, '/gpu:0')
-      self.assertDeviceEqual(a.initial_value.device, a.device)
+      self.assertEqual(a.initial_value.op.colocation_groups(),
+                       a.op.colocation_groups())
       self.assertDeviceEqual(b.device, '/gpu:0')
-      self.assertDeviceEqual(b.initial_value.device, b.device)
+      self.assertEqual(b.initial_value.op.colocation_groups(),
+                       b.op.colocation_groups())
       self.assertDeviceEqual(c.device, '/cpu:12')
-      self.assertDeviceEqual(c.initial_value.device, c.device)
+      self.assertEqual(c.initial_value.op.colocation_groups(),
+                       c.op.colocation_groups())
       self.assertDeviceEqual(d.device, '/gpu:0')
-      self.assertDeviceEqual(d.initial_value.device, d.device)
+      self.assertEqual(d.initial_value.op.colocation_groups(),
+                       d.op.colocation_groups())
       self.assertDeviceEqual(e.device, '/gpu:0')
       self.assertDeviceEqual(e.initial_value.device, '/cpu:99')
 
@@ -502,9 +518,11 @@ class ModelVariablesTest(tf.test.TestCase):
         a = tf.contrib.framework.model_variable('a', [5])
         b = tf.contrib.framework.model_variable('b', [20])
         self.assertDeviceEqual(a.device, '/cpu:0')
-        self.assertDeviceEqual(a.initial_value.device, '/cpu:0')
+        self.assertEqual(a.initial_value.op.colocation_groups(),
+                         a.op.colocation_groups())
         self.assertDeviceEqual(b.device, '/cpu:1')
-        self.assertDeviceEqual(b.initial_value.device, '/cpu:1')
+        self.assertEqual(b.initial_value.op.colocation_groups(),
+                         b.op.colocation_groups())
 
   def testVariableWithVariableDeviceChooser(self):
 
@@ -515,9 +533,11 @@ class ModelVariablesTest(tf.test.TestCase):
         a = tf.contrib.framework.model_variable('a', [5])
         b = tf.contrib.framework.model_variable('b', [20])
         self.assertDeviceEqual(a.device, 'cpu:0')
-        self.assertDeviceEqual(a.initial_value.device, a.device)
+        self.assertEqual(a.initial_value.op.colocation_groups(),
+                         a.op.colocation_groups())
         self.assertDeviceEqual(b.device, 'cpu:0')
-        self.assertDeviceEqual(b.initial_value.device, b.device)
+        self.assertEqual(a.initial_value.op.colocation_groups(),
+                         a.op.colocation_groups())
 
 
 class GetVariablesCollections(tf.test.TestCase):
@@ -1094,17 +1114,18 @@ class AssignFromCheckpointFnTest(tf.test.TestCase):
       self.assertEqual(init_value0, var0.eval())
       self.assertEqual(init_value1, var1.eval())
 
+
 class ZeroInitializerOpTest(tf.test.TestCase):
 
   def _testZeroInitializer(self, shape, initializer, use_init):
     var = tf.Variable(initializer)
     var_zero = tf.contrib.framework.zero_initializer(var)
     with self.test_session() as sess:
-      with self.assertRaisesOpError("Attempting to use uninitialized value"):
+      with self.assertRaisesOpError('Attempting to use uninitialized value'):
         var.eval()
       if use_init:
         sess.run(var.initializer)
-        with self.assertRaisesOpError("input is already initialized"):
+        with self.assertRaisesOpError('input is already initialized'):
           var_zero.eval()
         self.assertAllClose(np.ones(shape), var.eval())
       else:
@@ -1115,7 +1136,103 @@ class ZeroInitializerOpTest(tf.test.TestCase):
     for dtype in (tf.int32, tf.int64, tf.float32, tf.float64):
       for use_init in (False, True):
         self._testZeroInitializer(
-            [10, 20], tf.ones([10, 20], dtype = dtype), use_init)
+            [10, 20], tf.ones([10, 20], dtype=dtype), use_init)
+
+
+class FilterVariablesTest(tf.test.TestCase):
+
+  def setUp(self):
+    g = tf.Graph()
+    with g.as_default():
+      var_list = []
+      var_list.append(tf.Variable(0, name='conv1/weights'))
+      var_list.append(tf.Variable(0, name='conv1/biases'))
+      var_list.append(tf.Variable(0, name='conv2/weights'))
+      var_list.append(tf.Variable(0, name='conv2/biases'))
+      var_list.append(tf.Variable(0, name='clfs/weights'))
+      var_list.append(tf.Variable(0, name='clfs/biases'))
+      self._var_list = var_list
+
+  def _test_filter_variables(self, expected_var_names, include_patterns=None,
+                             exclude_patterns=None, reg_search=True):
+    filtered_var_list = tf.contrib.framework.filter_variables(
+        self._var_list,
+        include_patterns=include_patterns,
+        exclude_patterns=exclude_patterns,
+        reg_search=reg_search)
+
+    filtered_var_names = [var.op.name for var in filtered_var_list]
+
+    for name in filtered_var_names:
+      self.assertIn(name, expected_var_names)
+    for name in expected_var_names:
+      self.assertIn(name, filtered_var_names)
+    self.assertEqual(len(filtered_var_names), len(expected_var_names))
+
+  def testNoFiltering(self):
+    self._test_filter_variables(
+        expected_var_names=[
+            'conv1/weights',
+            'conv1/biases',
+            'conv2/weights',
+            'conv2/biases',
+            'clfs/weights',
+            'clfs/biases'])
+
+  def testIncludeBiases(self):
+    self._test_filter_variables(
+        expected_var_names=[
+            'conv1/biases',
+            'conv2/biases',
+            'clfs/biases'],
+        include_patterns=['biases'])
+
+  def testExcludeWeights(self):
+    self._test_filter_variables(
+        expected_var_names=[
+            'conv1/biases',
+            'conv2/biases',
+            'clfs/biases'],
+        exclude_patterns=['weights'])
+
+  def testExcludeWeightsAndConv1(self):
+    self._test_filter_variables(
+        expected_var_names=[
+            'conv2/biases',
+            'clfs/biases'],
+        exclude_patterns=['weights', 'conv1'])
+
+  def testTwoIncludePatternsEnsureNoVariablesTwiceInFilteredList(self):
+    self._test_filter_variables(
+        expected_var_names=[
+            'conv1/weights',
+            'conv1/biases',
+            'conv2/weights',
+            'clfs/weights'],
+        include_patterns=['conv1', 'weights'])
+
+  def testIncludeConv1ExcludeBiases(self):
+    self._test_filter_variables(
+        expected_var_names=[
+            'conv1/weights'],
+        include_patterns=['conv1'],
+        exclude_patterns=['biases'])
+
+  def testRegMatchIncludeBiases(self):
+    self._test_filter_variables(
+        expected_var_names=[
+            'conv1/biases',
+            'conv2/biases',
+            'clfs/biases'],
+        include_patterns=['.*biases'],
+        reg_search=False)
+
+  def testRegMatchIncludeBiasesWithIncompleteRegExpHasNoMatches(self):
+    self._test_filter_variables(
+        expected_var_names=[],
+        include_patterns=['biases'],
+        reg_search=False)
+
 
 if __name__ == '__main__':
   tf.test.main()

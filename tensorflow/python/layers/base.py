@@ -24,14 +24,16 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import inspect
 import re
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import numpy as np
 import six
 
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import variables as tf_variables
+from tensorflow.python.ops import variable_scope as vs
 
 
 class _Layer(object):
@@ -44,15 +46,16 @@ class _Layer(object):
   infrastructure functionality.
 
   A layer is a class implementing common neural networks operations, such
-  as convolution, batch norm, etc. These operations require managing weights,
+  as convolution, batch norm, etc. These operations require managing variables,
   losses, and updates, as well as applying TensorFlow ops to input tensors.
 
   Properties:
     trainable: Whether the layer should be trained (boolean).
     name: The name of the layer (string).
-    trainable_weights: List of trainable weights.
-    non_trainable_weights: List of non-trainable weights.
-    weights: List of all weights of this layer, trainable and non-trainable.
+    dtype: Default dtype of the layer (dtypes.float32).
+    trainable_variables: List of trainable variables.
+    non_trainable_variables: List of non-trainable variables.
+    variables: List of all variables of this layer, trainable and non-trainable.
     updates: List of update ops of this layer.
     losses: List of losses added by this layer.
   """
@@ -69,7 +72,7 @@ class _Layer(object):
     # in calls to kwargs.get().
     allowed_kwargs = {
         '_scope',
-        '_reuse_weights',
+        '_reuse',
     }
     for kwarg in kwargs:
       if kwarg not in allowed_kwargs:
@@ -77,33 +80,54 @@ class _Layer(object):
 
     self._trainable = trainable
     self._built = False
-    self._trainable_weights = []
-    self._non_trainable_weights = []
+    self._trainable_variables = []
+    self._non_trainable_variables = []
     self._updates = []
     self._losses = []
-    self._reuse_weights = kwargs.get('_reuse_weights')
-    self._dtype = dtype
+    self._reuse = kwargs.get('_reuse')
+    self.dtype = dtype
 
-    # Determine name.
+    # Determine base name (non-unique).
+    base_name = name
     if not name:
-      prefix = _to_snake_case(self.__class__.__name__)
-      name = ops.get_default_graph().unique_name(prefix, mark_as_used=False)
-    self.name = name
+      base_name = _to_snake_case(self.__class__.__name__)
 
     # Determine variable scope.
     scope = kwargs.get('_scope')
     if scope:
-      self._scope = scope
+      self._scope = next(vs.variable_scope(scope).gen)
     else:
-      self._scope = next(vs.variable_scope(None, default_name=self.name).gen)
+      self._scope = next(vs.variable_scope(None, default_name=base_name).gen)
+
+    # Unique name is borrowed from scope to match variable names.
+    self.name = self._scope.name
+
+  def __setattr__(self, name, value):
+    if hasattr(self, name):
+      # Only allow private attributes to be set more than once, under the
+      # convention that private attributes should only be set from inside
+      # the class.
+      # All attributes meant to be set several times should be set to private.
+      if name[0] != '_':
+        raise AttributeError('Read-only property cannot be set: %s' % name)
+    super(_Layer, self).__setattr__(name, value)
 
   @property
-  def trainable_weights(self):
-    return self._trainable_weights if self.trainable else []
+  def trainable_variables(self):
+    return self._trainable_variables if self.trainable else []
 
   @property
-  def non_trainable_weights(self):
-    return self._non_trainable_weights if self.trainable else self.weights
+  def non_trainable_variables(self):
+    return self._non_trainable_variables if self.trainable else self.variables
+
+  @property
+  def variables(self):
+    """Returns the list of all layer variables/weights.
+
+    Returns:
+      A list of variables.
+    """
+    return self._trainable_variables + self._non_trainable_variables
 
   @property
   def updates(self):
@@ -123,88 +147,109 @@ class _Layer(object):
 
   @property
   def weights(self):
-    """Returns the list of all layer weights, trainable and non-trainable.
+    """Returns the list of all layer variables/weights.
 
     Returns:
       A list of variables.
     """
-    return self._trainable_weights + self._non_trainable_weights
+    return self.variables
 
   def build(self, _):
-    """Creates the weights of the layer.
+    """Creates the variables of the layer.
     """
     self._built = True
 
-  def call(self, inputs):
+  def call(self, inputs, **kwargs):
     """The logic of the layer lives here.
 
     Arguments:
       inputs: input tensor(s).
+     **kwargs: additional keyword arguments.
 
     Returns:
       Output tensor(s).
     """
-    return inputs
+    raise NotImplementedError
 
-  def _add_weight(self, name, shape, dtype=None,
-                  initializer=None, regularizer=None, trainable=True,
-                  variable_getter=vs.get_variable):
-    """Adds a new weight variable to the layer.
+  def _add_variable(self, name, shape, dtype=None,
+                    initializer=None, regularizer=None, trainable=True,
+                    variable_getter=vs.get_variable):
+    """Adds a new variable to the layer.
 
     Arguments:
-      name: weight name.
-      shape: weight shape.
-      dtype: The type of the weight variable. Defaults to `self._dtype`.
+      name: variable name.
+      shape: variable shape.
+      dtype: The type of the variable. Defaults to `self.dtype`.
       initializer: initializer instance (callable).
       regularizer: regularizer instance (callable).
-      trainable: whether the weight should be part of the layer's
-        "trainable_weights" (e.g. weights, biases)
-        or "non_trainable_weights" (e.g. BatchNorm mean, stddev).
+      trainable: whether the variable should be part of the layer's
+        "trainable_variables" (e.g. variables, biases)
+        or "non_trainable_variables" (e.g. BatchNorm mean, stddev).
       variable_getter: The getter to use for TensorFlow variables.
 
     Returns:
       The created variable.
     """
     if dtype is None:
-      dtype = self._dtype
+      dtype = self.dtype
+    existing_variables = set(tf_variables.global_variables())
     variable = variable_getter(name,
                                shape=shape,
                                initializer=initializer,
                                dtype=dtype,
                                trainable=trainable and self.trainable)
+    # TODO(sguada) fix name = variable.op.name
+    if regularizer:
+      if not self._reuse and variable not in existing_variables:
+        # To match the behavior of tf.get_variable(), we only
+        # apply regularization if the variable is newly created.
+        if isinstance(variable, tf_variables.PartitionedVariable):
+          for v in variable:
+            with ops.colocate_with(v.op):
+              with ops.name_scope(name + '/Regularizer'):
+                regularization = regularizer(v)
+            if regularization is not None:
+              self._losses.append(regularization)
+              _add_elements_to_collection(
+                  regularization, ops.GraphKeys.REGULARIZATION_LOSSES)
+        else:
+          with ops.colocate_with(variable.op):
+            with ops.name_scope(name + '/Regularizer'):
+              regularization = regularizer(variable)
+          if regularization is not None:
+            self._losses.append(regularization)
+            _add_elements_to_collection(
+                regularization, ops.GraphKeys.REGULARIZATION_LOSSES)
     if trainable:
-      self._trainable_weights.append(variable)
+      self._trainable_variables.append(variable)
     else:
-      self._non_trainable_weights.append(variable)
-    if regularizer and not self._reuse_weights:
-      with ops.colocate_with(variable.op):
-        with ops.name_scope(name + '/Regularizer'):
-          regularization = regularizer(variable)
-      if regularization is not None:
-        self._losses.append(regularization)
-        _add_elements_to_collection(
-            regularization, ops.GraphKeys.REGULARIZATION_LOSSES)
+      self._non_trainable_variables.append(variable)
     return variable
 
-  def __call__(self, inputs):
+  def __call__(self, inputs, **kwargs):
     """Wraps `call`, applying pre- and post-processing steps.
 
     Arguments:
       inputs: input tensor(s).
+      **kwargs: additional keyword arguments to be passed to `self.call`.
 
     Returns:
       Output tensor(s).
     """
-    # Define a custom to override tf.get_variable when creating layer weights.
+    # Define a custom getter to override tf.get_variable when creating layer
+    # variables. We respect current custom getter, if one is set.
+    current_custom_getter = vs.get_variable_scope().custom_getter
     def variable_getter(getter, name, shape, dtype=None, initializer=None,
                         regularizer=None, trainable=True, **kwargs):
-      return self._add_weight(
+      if current_custom_getter is not None:
+        getter = functools.partial(current_custom_getter, getter)
+      return self._add_variable(
           name, shape, initializer=initializer, regularizer=regularizer,
           dtype=dtype, trainable=trainable,
           variable_getter=functools.partial(getter, **kwargs))
 
     # Build (if necessary) and call the layer, inside a variable scope.
-    with vs.variable_scope(self._scope, reuse=self._reuse_weights,
+    with vs.variable_scope(self._scope, reuse=self._reuse,
                            custom_getter=variable_getter) as scope:
       with ops.name_scope(scope.original_name_scope):
         if not self.built:
@@ -215,7 +260,7 @@ class _Layer(object):
           else:
             self.build(input_shapes)
           self._built = True
-        outputs = self.call(inputs)
+        outputs = self.call(inputs, **kwargs)
 
         # Apply activity regularization.
         # Note that it should be applied every time the layer creates a new
@@ -233,23 +278,29 @@ class _Layer(object):
     _add_elements_to_collection(self.updates, ops.GraphKeys.UPDATE_OPS)
     return outputs
 
-  def apply(self, inputs):
+  def apply(self, inputs, **kwargs):
     """Apply the layer on a input.
 
     This simply wraps `self.__call__`.
 
     Arguments:
-      inputs: input tensor(s).
+      inputs: Input tensor(s).
+      **kwargs: additional keyword arguments to be passed to `self.call`.
 
     Returns:
       Output tensor(s).
     """
-    return self.__call__(inputs)
+    return self.__call__(inputs, **kwargs)
 
 
 def _to_snake_case(name):
-  intermediate = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
-  return re.sub('([a-z0-9])([A-Z])', r'\1_\2', intermediate).lower()
+  intermediate = re.sub('(.)([A-Z][a-z0-9]+)', r'\1_\2', name)
+  insecure = re.sub('([a-z])([A-Z])', r'\1_\2', intermediate).lower()
+  # If the class is private the name starts with "_" which is not secure
+  # for creating scopes. We prefix the name with "private" in this case.
+  if insecure[0] != '_':
+    return insecure
+  return 'private' + insecure
 
 
 def _to_list(x):

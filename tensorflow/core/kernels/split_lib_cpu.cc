@@ -41,6 +41,7 @@ void Split<Eigen::ThreadPoolDevice, T>::operator()(
 
 TF_CALL_ALL_TYPES(DEFINE_CPU_KERNELS)
 DEFINE_CPU_KERNELS(quint8)
+DEFINE_CPU_KERNELS(bfloat16)
 
 }  // namespace functor
 }  // namespace tensorflow

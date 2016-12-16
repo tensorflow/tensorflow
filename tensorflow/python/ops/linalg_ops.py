@@ -122,13 +122,13 @@ def eye(
       diag_size = num_rows
     else:
       diag_size = math_ops.minimum(num_rows, num_columns)
-    diag_shape = array_ops.concat(0, (batch_shape, [diag_size]))
+    diag_shape = array_ops.concat_v2((batch_shape, [diag_size]), 0)
     diag_ones = array_ops.ones(diag_shape, dtype=dtype)
 
     if num_columns is None:
       return array_ops.matrix_diag(diag_ones)
     else:
-      shape = array_ops.concat(0, (batch_shape, [num_rows, num_columns]))
+      shape = array_ops.concat_v2((batch_shape, [num_rows, num_columns]), 0)
       zero_matrix = array_ops.zeros(shape, dtype=dtype)
       return array_ops.matrix_set_diag(zero_matrix, diag_ones)
 

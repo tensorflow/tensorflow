@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import argparse
 import curses
+import tempfile
 
 import numpy as np
 
@@ -26,6 +27,7 @@ from tensorflow.python.debug.cli import curses_ui
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.cli import tensor_format
 from tensorflow.python.framework import test_util
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import googletest
 
 
@@ -1124,6 +1126,65 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertEqual("ERROR: invalid literal for int() with base 10: ''",
                      ui.toasts[2])
     self.assertEqual("ERROR: Empty indices.", ui.toasts[3])
+
+  def testWriteScreenOutputToFileWorks(self):
+    output_path = tempfile.mktemp()
+
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[
+            string_to_codes("babble -n 2>%s\n" % output_path),
+            self._EXIT
+        ])
+
+    ui.register_command_handler("babble", self._babble, "")
+    ui.run_ui()
+
+    self.assertEqual(1, len(ui.unwrapped_outputs))
+
+    with gfile.Open(output_path, "r") as f:
+      self.assertEqual(b"bar\nbar\n", f.read())
+
+    # Clean up output file.
+    gfile.Remove(output_path)
+
+  def testIncompleteRedirectErrors(self):
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[
+            string_to_codes("babble -n 2 >\n"),
+            self._EXIT
+        ])
+
+    ui.register_command_handler("babble", self._babble, "")
+    ui.run_ui()
+
+    self.assertEqual(["ERROR: Redirect file path is empty"], ui.toasts)
+    self.assertEqual(0, len(ui.unwrapped_outputs))
+
+  def testAppendingRedirectErrors(self):
+    output_path = tempfile.mktemp()
+
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[
+            string_to_codes("babble -n 2 >> %s\n" % output_path),
+            self._EXIT
+        ])
+
+    ui.register_command_handler("babble", self._babble, "")
+    ui.run_ui()
+
+    self.assertEqual(1, len(ui.unwrapped_outputs))
+    self.assertEqual(
+        ["Syntax error for command: babble", "For help, do \"help babble\""],
+        ui.unwrapped_outputs[0].lines)
+
+    # Clean up output file.
+    gfile.Remove(output_path)
 
 
 if __name__ == "__main__":

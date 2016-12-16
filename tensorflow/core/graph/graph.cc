@@ -93,6 +93,7 @@ void Node::Initialize(int id, int cost_id, Properties* props) {
   SET_CLASS(NC_HOST_RECV, ts, "_HostRecv", "");
   SET_CLASS(NC_CONSTANT, ts, "Const", "HostConst");
   SET_CLASS(NC_VARIABLE, ts, "Variable", "");
+  SET_CLASS(NC_VARIABLE, ts, "VariableV2", "");
   SET_CLASS(NC_IDENTITY, ts, "Identity", "RefIdentity");
   SET_CLASS(NC_GET_SESSION_HANDLE, ts, "GetSessionHandle", "");
   SET_CLASS(NC_GET_SESSION_TENSOR, ts, "GetSessionTensor", "");

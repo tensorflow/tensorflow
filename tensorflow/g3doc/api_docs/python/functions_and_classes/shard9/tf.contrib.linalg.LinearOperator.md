@@ -7,7 +7,7 @@ Subclasses of `LinearOperator` provide a access to common methods on a
 * Operators that take advantage of special structure, while providing a
   consistent API to users.
 
-### Subclassing
+#### Subclassing
 
 To enable a public method, subclasses should implement the leading-underscore
 version of the method.  The argument signature should be identical except for
@@ -15,7 +15,7 @@ the omission of `name="..."`.  For example, to enable
 `apply(x, adjoint=False, name="apply")` a subclass should implement
 `_apply(x, adjoint=False)`.
 
-### Performance contract
+#### Performance contract
 
 Subclasses should implement a method only if it can be done with a reasonable
 performance increase over generic dense operations, either in time, parallel
@@ -27,7 +27,7 @@ Class docstrings should contain an explanation of computational complexity.
 Since this is a high-performance library, attention should be paid to detail,
 and explanations can include constants as well as Big-O notation.
 
-### Shape compatibility
+#### Shape compatibility
 
 `LinearOperator` sub classes should operate on a [batch] matrix with
 compatible shape.  Class docstrings should define what is meant by compatible
@@ -49,7 +49,7 @@ operator.shape = [B1,...,Bb] + [M, N],  b >= 0,
 rhs.shape =   [B1,...,Bb] + [M, R]
 ```
 
-### Example docstring for subclasses.
+#### Example docstring for subclasses.
 
 This operator acts like a (batch) matrix `A` with shape
 `[B1,...,Bb, M, N]` for some `b >= 0`.  The first `b` indices index a
@@ -76,14 +76,27 @@ operator.apply(x)
 ==> Shape [2, 4, 5] Tensor
 ```
 
-### Shape compatibility
+#### Shape compatibility
 
 This operator acts on batch matrices with compatible shape.
 FILL IN WHAT IS MEANT BY COMPATIBLE SHAPE
 
-### Performance
+#### Performance
 
 FILL THIS IN
+
+#### Matrix property hints
+
+This `LinearOperator` is initialized with boolean flags of the form `is_X`,
+for `X = non_singular, self_adjoint, positive_definite`.
+These have the following meaning
+* If `is_X == True`, callers should expect the operator to have the
+  property `X`.  This is a promise that should be fulfilled, but is *not* a
+  runtime assert.  For example, finite floating point precision may result
+  in these promises being violated.
+* If `is_X == False`, callers should expect the operator to not have `X`.
+* If `is_X == None` (the default), callers should have no expectation either
+  way.
 - - -
 
 #### `tf.contrib.linalg.LinearOperator.__init__(dtype, graph_parents=None, is_non_singular=None, is_self_adjoint=None, is_positive_definite=None, name=None)` {#LinearOperator.__init__}
@@ -92,16 +105,6 @@ Initialize the `LinearOperator`.
 
 **This is a private method for subclass use.**
 **Subclasses should copy-paste this `__init__` documentation.**
-
-For `X = non_singular, self_adjoint` etc...
-`is_X` is a Python `bool` initialization argument with the following meaning
-* If `is_X == True`, callers should expect the operator to have the
-  attribute `X`.  This is a promise that should be fulfilled, but is *not* a
-  runtime assert.  Issues, such as floating point error, could mean the
-  operator violates this promise.
-* If `is_X == False`, callers should expect the operator to not have `X`.
-* If `is_X == None` (the default), callers should have no expectation either
-  way.
 
 ##### Args:
 
@@ -113,13 +116,34 @@ For `X = non_singular, self_adjoint` etc...
 *  <b>`is_non_singular`</b>: Expect that this operator is non-singular.
 *  <b>`is_self_adjoint`</b>: Expect that this operator is equal to its hermitian
     transpose.  If `dtype` is real, this is equivalent to being symmetric.
-*  <b>`is_positive_definite`</b>: Expect that this operator is positive definite.
-*  <b>`name`</b>: A name for this `LinearOperator`. Default: subclass name.
+*  <b>`is_positive_definite`</b>: Expect that this operator is positive definite,
+    meaning the real part of all eigenvalues is positive.  We do not require
+    the operator to be self-adjoint to be positive-definite.  See:
+*  <b>`https`</b>: //en.wikipedia.org/wiki/Positive-definite_matrix\
+        #Extension_for_non_symmetric_matrices
+*  <b>`name`</b>: A name for this `LinearOperator`.
 
 ##### Raises:
 
 
 *  <b>`ValueError`</b>: if any member of graph_parents is `None` or not a `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.linalg.LinearOperator.add_to_tensor(x, name='add_to_tensor')` {#LinearOperator.add_to_tensor}
+
+Add matrix represented by this operator to `x`.  Equivalent to `A + x`.
+
+##### Args:
+
+
+*  <b>`x`</b>: `Tensor` with same `dtype` and shape broadcastable to `self.shape`.
+*  <b>`name`</b>: A name to give this `Op`.
+
+##### Returns:
+
+  A `Tensor` with broadcast shape and same `dtype` as `self`.
 
 
 - - -
@@ -153,6 +177,25 @@ Returns an `Op` that asserts this operator is non singular.
 #### `tf.contrib.linalg.LinearOperator.assert_positive_definite(name='assert_positive_definite')` {#LinearOperator.assert_positive_definite}
 
 Returns an `Op` that asserts this operator is positive definite.
+
+Here, positive definite means the real part of all eigenvalues is positive.
+We do not require the operator to be self-adjoint.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name to give this `Op`.
+
+##### Returns:
+
+  An `Op` that asserts this operator is positive definite.
+
+
+- - -
+
+#### `tf.contrib.linalg.LinearOperator.assert_self_adjoint(name='assert_self_adjoint')` {#LinearOperator.assert_self_adjoint}
+
+Returns an `Op` that asserts this operator is self-adjoint.
 
 
 - - -
@@ -217,8 +260,7 @@ If this operator acts like the batch matrix `A` with
 
 ##### Returns:
 
-  Python integer if vector space dimension can be determined statically,
-    otherwise `None`.
+  `Dimension` object.
 
 
 - - -
@@ -311,8 +353,7 @@ If this operator acts like the batch matrix `A` with
 
 ##### Returns:
 
-  Python integer if vector space dimension can be determined statically,
-    otherwise `None`.
+  `Dimension` object.
 
 
 - - -

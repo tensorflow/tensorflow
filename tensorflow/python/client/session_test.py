@@ -254,6 +254,18 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertEqual(None, res['b'])
       self.assertEqual(44.0, res['c'])
 
+  def testFetchOrderedDict(self):
+    with session.Session() as sess:
+      a = constant_op.constant(42.0)
+      b = control_flow_ops.no_op()  # An op, not a tensor.
+      c = constant_op.constant(44.0)
+      res = sess.run(collections.OrderedDict([(3, a), (2, b), (1, c)]))
+      self.assertTrue(isinstance(res, collections.OrderedDict))
+      self.assertEqual([3, 2, 1], list(res.keys()))
+      self.assertEqual(42.0, res[3])
+      self.assertEqual(None, res[2])
+      self.assertEqual(44.0, res[1])
+
   def testFetchNestingEmptyOneLevel(self):
     with session.Session() as sess:
       a_val = 11.0
@@ -481,7 +493,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       sp_out = s.run(sp)
       self.assertAllEqual(sp_out.indices, indices)
       self.assertAllEqual(sp_out.values, values)
-      self.assertAllEqual(sp_out.shape, shape)
+      self.assertAllEqual(sp_out.dense_shape, shape)
       # Tuple fetch, use as tuple
       indices_out, values_out, shape_out = s.run(sp)
       self.assertAllEqual(indices_out, indices)
@@ -496,7 +508,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       sp_out, = s.run([sp])
       self.assertAllEqual(sp_out.indices, indices)
       self.assertAllEqual(sp_out.values, values)
-      self.assertAllEqual(sp_out.shape, shape)
+      self.assertAllEqual(sp_out.dense_shape, shape)
       # Dict fetch (single value), use as tuple
       indices_out, values_out, shape_out = s.run({'sp': sp})['sp']
       self.assertAllEqual(indices_out, indices)
@@ -511,7 +523,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       sp_out = s.run({'sp': sp})['sp']
       self.assertAllEqual(sp_out.indices, indices)
       self.assertAllEqual(sp_out.values, values)
-      self.assertAllEqual(sp_out.shape, shape)
+      self.assertAllEqual(sp_out.dense_shape, shape)
       # Nested list fetch use as tuple
       sp_out = s.run([[[sp]], sp])
       indices_out, values_out, shape_out = sp_out[0][0][0]
@@ -526,10 +538,10 @@ class SessionTest(test_util.TensorFlowTestCase):
       sp_out = s.run([[[sp]], sp])
       self.assertAllEqual(sp_out[0][0][0].indices, indices)
       self.assertAllEqual(sp_out[0][0][0].values, values)
-      self.assertAllEqual(sp_out[0][0][0].shape, shape)
+      self.assertAllEqual(sp_out[0][0][0].dense_shape, shape)
       self.assertAllEqual(sp_out[1].indices, indices)
       self.assertAllEqual(sp_out[1].values, values)
-      self.assertAllEqual(sp_out[1].shape, shape)
+      self.assertAllEqual(sp_out[1].dense_shape, shape)
 
   def testFeedSparseTensor(self):
     with session.Session() as s:
@@ -542,7 +554,7 @@ class SessionTest(test_util.TensorFlowTestCase):
           array_ops.placeholder(dtype=np.int64, shape=(3,)),)
       sp_indices = array_ops.identity(sp.indices)
       sp_values = array_ops.identity(sp.values)
-      sp_shape = array_ops.identity(sp.shape)
+      sp_shape = array_ops.identity(sp.dense_shape)
       sp2 = sparse_tensor.SparseTensor(sp_indices, sp_values, sp_shape)
       # Feed with tuple
       indices_out, values_out, shape_out = s.run(
@@ -554,7 +566,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       sp_out = s.run(sp, {sp: (indices, values, shape)})
       self.assertAllEqual(sp_out.indices, indices)
       self.assertAllEqual(sp_out.values, values)
-      self.assertAllEqual(sp_out.shape, shape)
+      self.assertAllEqual(sp_out.dense_shape, shape)
       # Feed with SparseTensorValue
       indices_out, values_out, shape_out = s.run(
           [sp_indices, sp_values, sp_shape],
@@ -567,13 +579,13 @@ class SessionTest(test_util.TensorFlowTestCase):
           sp2, {sp: sparse_tensor.SparseTensorValue(indices, values, shape)})
       self.assertAllEqual(sp2_out.indices, indices)
       self.assertAllEqual(sp2_out.values, values)
-      self.assertAllEqual(sp2_out.shape, shape)
+      self.assertAllEqual(sp2_out.dense_shape, shape)
       # Feed SparseTensorValue and fetch sp directly.
       sp_out = s.run(
           sp, {sp: sparse_tensor.SparseTensorValue(indices, values, shape)})
       self.assertAllEqual(sp_out.indices, indices)
       self.assertAllEqual(sp_out.values, values)
-      self.assertAllEqual(sp_out.shape, shape)
+      self.assertAllEqual(sp_out.dense_shape, shape)
 
   def testFeedSparsePlaceholder(self):
     with session.Session() as s:
@@ -583,7 +595,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       sp = array_ops.sparse_placeholder(dtype=np.float32, name='placeholder1')
       sp_indices = array_ops.identity(sp.indices)
       sp_values = array_ops.identity(sp.values)
-      sp_shape = array_ops.identity(sp.shape)
+      sp_shape = array_ops.identity(sp.dense_shape)
       sp2 = sparse_tensor.SparseTensor(sp_indices, sp_values, sp_shape)
       # Feed with tuple
       indices_out, values_out, shape_out = s.run(
@@ -603,7 +615,7 @@ class SessionTest(test_util.TensorFlowTestCase):
           sp2, {sp: sparse_tensor.SparseTensorValue(indices, values, shape)})
       self.assertAllEqual(sp2_out.indices, indices)
       self.assertAllEqual(sp2_out.values, values)
-      self.assertAllEqual(sp2_out.shape, shape)
+      self.assertAllEqual(sp2_out.dense_shape, shape)
 
   def testFeedSparsePlaceholderPartialShape(self):
     with session.Session() as s:
@@ -614,7 +626,7 @@ class SessionTest(test_util.TensorFlowTestCase):
           shape=[None, 9, 2], dtype=np.float32, name='placeholder1')
       sp_indices = array_ops.identity(sp.indices)
       sp_values = array_ops.identity(sp.values)
-      sp_shape = array_ops.identity(sp.shape)
+      sp_shape = array_ops.identity(sp.dense_shape)
       sp2 = sparse_tensor.SparseTensor(sp_indices, sp_values, sp_shape)
       # Feed with tuple
       indices_out, values_out, shape_out = s.run(
@@ -634,7 +646,7 @@ class SessionTest(test_util.TensorFlowTestCase):
           sp2, {sp: sparse_tensor.SparseTensorValue(indices, values, shape)})
       self.assertAllEqual(sp2_out.indices, indices)
       self.assertAllEqual(sp2_out.values, values)
-      self.assertAllEqual(sp2_out.shape, shape)
+      self.assertAllEqual(sp2_out.dense_shape, shape)
 
   def testFeedSparsePlaceholderConstantShape(self):
     with session.Session() as s:
@@ -644,11 +656,11 @@ class SessionTest(test_util.TensorFlowTestCase):
       sp = array_ops.sparse_placeholder(dtype=np.float32,
                                         shape=shape,
                                         name='placeholder1')
-      self.assertAllEqual(sp.shape.eval(session=s), shape)
-      self.assertAllEqual(tensor_util.constant_value(sp.shape), shape)
+      self.assertAllEqual(sp.dense_shape.eval(session=s), shape)
+      self.assertAllEqual(tensor_util.constant_value(sp.dense_shape), shape)
       sp_indices = array_ops.identity(sp.indices)
       sp_values = array_ops.identity(sp.values)
-      sp_shape = array_ops.identity(sp.shape)
+      sp_shape = array_ops.identity(sp.dense_shape)
       # Feed with tuple
       indices_out, values_out, shape_out = s.run(
           [sp_indices, sp_values, sp_shape], {sp: (indices, values)})

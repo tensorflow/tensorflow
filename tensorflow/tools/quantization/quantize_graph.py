@@ -258,6 +258,9 @@ def quantize_weight_eightbit(input_node, quantization_mode):
       input_node.attr["value"].tensor)
   min_value = np.min(float_tensor.flatten())
   max_value = np.max(float_tensor.flatten())
+  # Make sure that the range includes zero.
+  if min_value > 0.0:
+    min_value = 0.0
   # min_value == max_value is a tricky case. It can occur for general
   # tensors, and of course for scalars. The quantized ops cannot deal
   # with this case, so we set max_value to something else.

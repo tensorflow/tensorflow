@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package tensorflow;
+option cc_enable_arenas = true;
+option java_outer_classname = "DebugProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
+
+// EXPERIMENTAL. Option for watching a node.
+message DebugTensorWatch {
+  // Name of the node to watch.
+  string node_name = 1;
+
+  // Output slot to watch.
+  // The semantics of output_slot == -1 is that the node is only watched for
+  // completion, but not for any output tensors. See NodeCompletionCallback
+  // in debug_gateway.h.
+  // TODO(cais): Implement this semantics.
+  int32 output_slot = 2;
+
+  // Name(s) of the debugging op(s).
+  // One or more than one probes on a tensor.
+  // e.g., {"DebugIdentity", "DebugNanCount"}
+  repeated string debug_ops = 3;
+
+  // URL(s) for debug targets(s).
+  //   E.g., "file:///foo/tfdbg_dump", "grpc://localhost:11011"
+  // Each debug op listed in debug_ops will publish its output tensor (debug
+  // signal) to all URLs in debug_urls.
+  repeated string debug_urls = 4;
+}
+
+// EXPERIMENTAL. Options for initializing DebuggerState.
+message DebugOptions {
+  // Debugging options
+  repeated DebugTensorWatch debug_tensor_watch_opts = 4;
+}

@@ -22,6 +22,7 @@ from __future__ import print_function
 import functools
 import itertools
 import json
+import os
 import tempfile
 
 import numpy as np
@@ -33,6 +34,11 @@ from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import model_fn
+from tensorflow.contrib.learn.python.learn.utils import input_fn_utils
+from tensorflow.python.framework import ops
+from tensorflow.python.saved_model import loader
+from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.util import compat
 
 
 _BOSTON_INPUT_DIM = 13
@@ -45,6 +51,17 @@ def boston_input_fn(num_epochs=None):
       tf.reshape(tf.constant(boston.data), [-1, _BOSTON_INPUT_DIM]),
       num_epochs=num_epochs)
   labels = tf.reshape(tf.constant(boston.target), [-1, 1])
+  return features, labels
+
+
+def boston_input_fn_with_queue(num_epochs=None):
+  features, labels = boston_input_fn(num_epochs=num_epochs)
+
+  # Create a minimal queue runner.
+  fake_queue = tf.FIFOQueue(30, tf.int32)
+  queue_runner = tf.train.QueueRunner(fake_queue, [tf.constant(0)])
+  tf.train.add_queue_runner(queue_runner)
+
   return features, labels
 
 
@@ -70,8 +87,8 @@ def boston_eval_fn():
   features = tf.reshape(
       tf.constant(boston.data), [n_examples, _BOSTON_INPUT_DIM])
   labels = tf.reshape(tf.constant(boston.target), [n_examples, 1])
-  return tf.concat(0, [features, features]), tf.concat(0, [labels, labels])
-
+  return tf.concat_v2([features, features], 0), tf.concat_v2([labels, labels],
+                                                             0)
 
 def extract(data, key):
   if isinstance(data, dict):
@@ -105,6 +122,8 @@ def linear_model_fn(features, labels, mode):
       tf.contrib.learn.ModeKeys.TRAIN,
       tf.contrib.learn.ModeKeys.EVAL,
       tf.contrib.learn.ModeKeys.INFER)
+  if isinstance(features, dict):
+    (_, features), = features.items()
   prediction, loss = (
       tf.contrib.learn.models.linear_regression_zero_init(features, labels)
   )
@@ -144,6 +163,45 @@ def logistic_model_no_mode_fn(features, labels):
       learning_rate=0.1)
   return {'class': tf.argmax(prediction, 1), 'prob': prediction}, loss, train_op
 
+VOCAB_FILE_CONTENT = 'emerson\nlake\npalmer\n'
+EXTRA_FILE_CONTENT = 'kermit\npiggy\nralph\n'
+
+
+def _build_estimator_for_export_tests(tmpdir):
+  def _input_fn():
+    iris = tf.contrib.learn.datasets.load_iris()
+    return {
+        'feature': tf.constant(iris.data, dtype=tf.float32)
+    }, tf.constant(iris.target, shape=[150], dtype=tf.int32)
+
+  feature_columns = [tf.contrib.layers.real_valued_column('feature',
+                                                          dimension=4)]
+
+  est = tf.contrib.learn.LinearRegressor(feature_columns)
+  est.fit(input_fn=_input_fn, steps=20)
+
+  feature_spec = tf.contrib.layers.create_feature_spec_for_parsing(
+      feature_columns)
+  export_input_fn = input_fn_utils.build_parsing_serving_input_fn(feature_spec)
+
+  # hack in an op that uses an asset, in order to test asset export.
+  # this is not actually valid, of course.
+  def export_input_fn_with_asset():
+    features, labels, inputs = export_input_fn()
+
+    vocab_file_name = os.path.join(tmpdir, 'my_vocab_file')
+    vocab_file = tf.gfile.GFile(vocab_file_name, mode='w')
+    vocab_file.write(VOCAB_FILE_CONTENT)
+    vocab_file.close()
+    hashtable = tf.contrib.lookup.HashTable(
+        tf.contrib.lookup.TextFileStringTableInitializer(vocab_file_name), 'x')
+    features['bogus_lookup'] = hashtable.lookup(
+        tf.to_int64(features['feature']))
+
+    return input_fn_utils.InputFnOps(features, labels, inputs)
+
+  return est, export_input_fn_with_asset
+
 
 class CheckCallsMonitor(tf.contrib.learn.monitors.BaseMonitor):
 
@@ -171,6 +229,21 @@ class CheckCallsMonitor(tf.contrib.learn.monitors.BaseMonitor):
 
 
 class EstimatorTest(tf.test.TestCase):
+
+  def testModelFnArgs(self):
+    expected_param = {'some_param': 'some_value'}
+    expected_config = tf.contrib.learn.RunConfig()
+    expected_config.i_am_test = True
+    def _argument_checker(features, labels, mode, params, config):
+      _, _ = features, labels
+      self.assertEqual(tf.contrib.learn.ModeKeys.TRAIN, mode)
+      self.assertEqual(expected_param, params)
+      self.assertTrue(config.i_am_test)
+      return tf.constant(0.), tf.constant(0.), tf.constant(0.)
+    est = tf.contrib.learn.Estimator(model_fn=_argument_checker,
+                                     params=expected_param,
+                                     config=expected_config)
+    est.fit(input_fn=boston_input_fn, steps=1)
 
   def testInvalidModelFn_no_train_op(self):
     def _invalid_model_fn(features, labels):
@@ -530,6 +603,25 @@ class EstimatorTest(tf.test.TestCase):
     output = list(est.predict(input_fn=input_fn))
     self.assertEqual(len(output), boston.target.shape[0])
 
+  def testPredictInputFnWithQueue(self):
+    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
+    boston = tf.contrib.learn.datasets.load_boston()
+    est.fit(input_fn=boston_input_fn, steps=1)
+    input_fn = functools.partial(boston_input_fn_with_queue, num_epochs=2)
+    output = list(est.predict(input_fn=input_fn))
+    self.assertEqual(len(output), boston.target.shape[0]*2)
+
+  def testPredictConstInputFn(self):
+    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
+    boston = tf.contrib.learn.datasets.load_boston()
+    est.fit(input_fn=boston_input_fn, steps=1)
+    def input_fn():
+      features = tf.reshape(tf.constant(boston.data), [-1, _BOSTON_INPUT_DIM])
+      labels = tf.reshape(tf.constant(boston.target), [-1, 1])
+      return features, labels
+    output = list(est.predict(input_fn=input_fn))
+    self.assertEqual(len(output), boston.target.shape[0])
+
   def testWithModelFnOps(self):
     """Test for model_fn that returns `ModelFnOps`."""
     est = tf.contrib.learn.Estimator(model_fn=linear_model_fn_with_model_fn_ops)
@@ -584,6 +676,76 @@ class EstimatorTest(tf.test.TestCase):
       actual = est.export('/path/to')
 
     self.assertEquals(expected, actual)
+
+  def test_export_savedmodel(self):
+    tmpdir = tempfile.mkdtemp()
+    est, export_input_fn = _build_estimator_for_export_tests(tmpdir)
+
+    extra_file_name = os.path.join(compat.as_bytes(tmpdir),
+                                   compat.as_bytes('my_extra_file'))
+    extra_file = tf.gfile.GFile(extra_file_name, mode='w')
+    extra_file.write(EXTRA_FILE_CONTENT)
+    extra_file.close()
+    assets_extra = {'some/sub/directory/my_extra_file': extra_file_name}
+
+    export_dir_base = os.path.join(compat.as_bytes(tmpdir),
+                                   compat.as_bytes('export'))
+    export_dir = est.export_savedmodel(export_dir_base, export_input_fn,
+                                       assets_extra=assets_extra)
+
+    self.assertTrue(tf.gfile.Exists(export_dir_base))
+    self.assertTrue(tf.gfile.Exists(export_dir))
+    self.assertTrue(tf.gfile.Exists(
+        os.path.join(compat.as_bytes(export_dir),
+                     compat.as_bytes('saved_model.pb'))))
+    self.assertTrue(tf.gfile.Exists(
+        os.path.join(compat.as_bytes(export_dir),
+                     compat.as_bytes('variables'))))
+    self.assertTrue(tf.gfile.Exists(
+        os.path.join(compat.as_bytes(export_dir),
+                     compat.as_bytes('variables/variables.index'))))
+    self.assertTrue(tf.gfile.Exists(os.path.join(
+        compat.as_bytes(export_dir),
+        compat.as_bytes('variables/variables.data-00000-of-00001'))))
+
+    self.assertTrue(tf.gfile.Exists(
+        os.path.join(compat.as_bytes(export_dir), compat.as_bytes('assets'))))
+    self.assertTrue(tf.gfile.Exists(
+        os.path.join(compat.as_bytes(export_dir),
+                     compat.as_bytes('assets/my_vocab_file'))))
+    self.assertEqual(
+        compat.as_bytes(VOCAB_FILE_CONTENT),
+        compat.as_bytes(tf.gfile.GFile(
+            os.path.join(compat.as_bytes(export_dir),
+                         compat.as_bytes('assets/my_vocab_file'))).read()))
+
+    expected_extra_path = os.path.join(
+        compat.as_bytes(export_dir),
+        compat.as_bytes('assets.extra/some/sub/directory/my_extra_file'))
+    self.assertTrue(tf.gfile.Exists(
+        os.path.join(compat.as_bytes(export_dir),
+                     compat.as_bytes('assets.extra'))))
+    self.assertTrue(tf.gfile.Exists(expected_extra_path))
+    self.assertEqual(
+        compat.as_bytes(EXTRA_FILE_CONTENT),
+        compat.as_bytes(tf.gfile.GFile(expected_extra_path).read()))
+
+    expected_vocab_file = os.path.join(compat.as_bytes(tmpdir),
+                                       compat.as_bytes('my_vocab_file'))
+    # Restore, to validate that the export was well-formed.
+    with tf.Graph().as_default() as graph:
+      with tf.Session(graph=graph) as sess:
+        loader.load(sess, [tag_constants.SERVING], export_dir)
+        assets = [x.eval()
+                  for x in graph.get_collection(ops.GraphKeys.ASSET_FILEPATHS)]
+        self.assertItemsEqual([expected_vocab_file], assets)
+        graph_ops = [x.name for x in graph.get_operations()]
+        self.assertTrue('input_example_tensor' in graph_ops)
+        self.assertTrue('ParseExample/ParseExample' in graph_ops)
+        self.assertTrue('linear/linear/feature/matmul' in graph_ops)
+
+    # cleanup
+    tf.gfile.DeleteRecursively(tmpdir)
 
 
 class InferRealValuedColumnsTest(tf.test.TestCase):

@@ -152,7 +152,7 @@ def bucket(tensors,
   with ops.name_scope(name, "bucket", tensor_list) as name:
     tensor_list = _validate_bucket(tensor_list)
     (tensor_list, sparse_info) = _store_sparse_tensors(
-        tensor_list, enqueue_many=False)
+        tensor_list, enqueue_many=False, keep_input=constant_op.constant(True))
 
     # Round-trip batch_size to a tensor, and possibly back
     batch_size = ops.convert_to_tensor(

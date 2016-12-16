@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tensorflow.ops.data_flow_ops.Queue."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -24,23 +24,31 @@ import time
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
-import tensorflow as tf
+
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes as dtypes_lib
+from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging
 
 
-class RandomShuffleQueueTest(tf.test.TestCase):
+class RandomShuffleQueueTest(test.TestCase):
 
   def setUp(self):
     # Useful for debugging when a test times out.
     super(RandomShuffleQueueTest, self).setUp()
-    tf.logging.error("Starting: %s", self._testMethodName)
+    tf_logging.error("Starting: %s", self._testMethodName)
 
   def tearDown(self):
     super(RandomShuffleQueueTest, self).tearDown()
-    tf.logging.error("Finished: %s", self._testMethodName)
+    tf_logging.error("Finished: %s", self._testMethodName)
 
   def testEnqueue(self):
     with self.test_session():
-      q = tf.RandomShuffleQueue(10, 5, tf.float32)
+      q = data_flow_ops.RandomShuffleQueue(10, 5, dtypes_lib.float32)
       enqueue_op = q.enqueue((10.0,))
       self.assertAllEqual(0, q.size().eval())
       enqueue_op.run()
@@ -48,8 +56,8 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testEnqueueWithShape(self):
     with self.test_session():
-      q = tf.RandomShuffleQueue(
-          10, 5, tf.float32, shapes=tf.TensorShape([3, 2]))
+      q = data_flow_ops.RandomShuffleQueue(
+          10, 5, dtypes_lib.float32, shapes=tensor_shape.TensorShape([3, 2]))
       enqueue_correct_op = q.enqueue(([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],))
       enqueue_correct_op.run()
       self.assertAllEqual(1, q.size().eval())
@@ -58,21 +66,20 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testEnqueueManyWithShape(self):
     with self.test_session():
-      q = tf.RandomShuffleQueue(
-          10, 5, [tf.int32, tf.int32],
-          shapes=[(), (2,)])
+      q = data_flow_ops.RandomShuffleQueue(
+          10, 5, [dtypes_lib.int32, dtypes_lib.int32], shapes=[(), (2,)])
       q.enqueue_many([[1, 2, 3, 4], [[1, 1], [2, 2], [3, 3], [4, 4]]]).run()
       self.assertAllEqual(4, q.size().eval())
 
-      q2 = tf.RandomShuffleQueue(10, 5, tf.int32, shapes=tf.TensorShape([3]))
+      q2 = data_flow_ops.RandomShuffleQueue(
+          10, 5, dtypes_lib.int32, shapes=tensor_shape.TensorShape([3]))
       q2.enqueue(([1, 2, 3],))
       q2.enqueue_many(([[1, 2, 3]],))
 
   def testScalarShapes(self):
     with self.test_session() as sess:
-      q = tf.RandomShuffleQueue(
-          10, 0, [tf.int32, tf.int32],
-          shapes=[(), (1,)])
+      q = data_flow_ops.RandomShuffleQueue(
+          10, 0, [dtypes_lib.int32, dtypes_lib.int32], shapes=[(), (1,)])
       q.enqueue_many([[1, 2, 3, 4], [[5], [6], [7], [8]]]).run()
       q.enqueue([9, [10]]).run()
       dequeue_t = q.dequeue()
@@ -88,7 +95,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testParallelEnqueue(self):
     with self.test_session() as sess:
-      q = tf.RandomShuffleQueue(10, 0, tf.float32)
+      q = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
       enqueue_ops = [q.enqueue((x,)) for x in elems]
       dequeued_t = q.dequeue()
@@ -96,8 +103,11 @@ class RandomShuffleQueueTest(tf.test.TestCase):
       # Run one producer thread for each element in elems.
       def enqueue(enqueue_op):
         sess.run(enqueue_op)
-      threads = [self.checkedThread(target=enqueue, args=(e,))
-                 for e in enqueue_ops]
+
+      threads = [
+          self.checkedThread(
+              target=enqueue, args=(e,)) for e in enqueue_ops
+      ]
       for thread in threads:
         thread.start()
       for thread in threads:
@@ -111,7 +121,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testParallelDequeue(self):
     with self.test_session() as sess:
-      q = tf.RandomShuffleQueue(10, 0, tf.float32)
+      q = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
       enqueue_ops = [q.enqueue((x,)) for x in elems]
       dequeued_t = q.dequeue()
@@ -125,6 +135,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
       def dequeue():
         results.append(sess.run(dequeued_t))
+
       threads = [self.checkedThread(target=dequeue) for _ in enqueue_ops]
       for thread in threads:
         thread.start()
@@ -134,7 +145,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testDequeue(self):
     with self.test_session():
-      q = tf.RandomShuffleQueue(10, 0, tf.float32)
+      q = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0]
       enqueue_ops = [q.enqueue((x,)) for x in elems]
       dequeued_t = q.dequeue()
@@ -147,7 +158,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testEnqueueAndBlockingDequeue(self):
     with self.test_session() as sess:
-      q = tf.RandomShuffleQueue(3, 0, tf.float32)
+      q = data_flow_ops.RandomShuffleQueue(3, 0, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0]
       enqueue_ops = [q.enqueue((x,)) for x in elems]
       dequeued_t = q.dequeue()
@@ -176,8 +187,8 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testMultiEnqueueAndDequeue(self):
     with self.test_session() as sess:
-      q = tf.RandomShuffleQueue(
-          10, 0, (tf.int32, tf.float32))
+      q = data_flow_ops.RandomShuffleQueue(
+          10, 0, (dtypes_lib.int32, dtypes_lib.float32))
       elems = [(5, 10.0), (10, 20.0), (15, 30.0)]
       enqueue_ops = [q.enqueue((x, y)) for x, y in elems]
       dequeued_t = q.dequeue()
@@ -193,12 +204,12 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testQueueSizeEmpty(self):
     with self.test_session():
-      q = tf.RandomShuffleQueue(10, 5, tf.float32)
+      q = data_flow_ops.RandomShuffleQueue(10, 5, dtypes_lib.float32)
       self.assertEqual(0, q.size().eval())
 
   def testQueueSizeAfterEnqueueAndDequeue(self):
     with self.test_session():
-      q = tf.RandomShuffleQueue(10, 0, tf.float32)
+      q = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32)
       enqueue_op = q.enqueue((10.0,))
       dequeued_t = q.dequeue()
       size = q.size()
@@ -211,7 +222,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testEnqueueMany(self):
     with self.test_session():
-      q = tf.RandomShuffleQueue(10, 0, tf.float32)
+      q = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
       dequeued_t = q.dequeue()
@@ -225,9 +236,9 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testEmptyEnqueueMany(self):
     with self.test_session():
-      q = tf.RandomShuffleQueue(10, 5, tf.float32)
-      empty_t = tf.constant([], dtype=tf.float32,
-                                     shape=[0, 2, 3])
+      q = data_flow_ops.RandomShuffleQueue(10, 5, dtypes_lib.float32)
+      empty_t = constant_op.constant(
+          [], dtype=dtypes_lib.float32, shape=[0, 2, 3])
       enqueue_op = q.enqueue_many((empty_t,))
       size_t = q.size()
 
@@ -237,7 +248,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testEmptyDequeueMany(self):
     with self.test_session():
-      q = tf.RandomShuffleQueue(10, 0, tf.float32, shapes=())
+      q = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32, shapes=())
       enqueue_op = q.enqueue((10.0,))
       dequeued_t = q.dequeue_many(0)
 
@@ -247,7 +258,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testEmptyDequeueUpTo(self):
     with self.test_session():
-      q = tf.RandomShuffleQueue(10, 0, tf.float32, shapes=())
+      q = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32, shapes=())
       enqueue_op = q.enqueue((10.0,))
       dequeued_t = q.dequeue_up_to(0)
 
@@ -257,9 +268,9 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testEmptyDequeueManyWithNoShape(self):
     with self.test_session():
-      q = tf.RandomShuffleQueue(10, 0, tf.float32)
-      enqueue_op = q.enqueue(
-          (tf.constant([10.0, 20.0], shape=(1, 2)),))
+      q = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32)
+      enqueue_op = q.enqueue((constant_op.constant(
+          [10.0, 20.0], shape=(1, 2)),))
       dequeued_t = q.dequeue_many(0)
 
       # Expect the operation to fail due to the shape not being constrained.
@@ -278,9 +289,9 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testEmptyDequeueUpToWithNoShape(self):
     with self.test_session():
-      q = tf.RandomShuffleQueue(10, 0, tf.float32)
-      enqueue_op = q.enqueue(
-          (tf.constant([10.0, 20.0], shape=(1, 2)),))
+      q = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32)
+      enqueue_op = q.enqueue((constant_op.constant(
+          [10.0, 20.0], shape=(1, 2)),))
       dequeued_t = q.dequeue_up_to(0)
 
       # Expect the operation to fail due to the shape not being constrained.
@@ -299,8 +310,8 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testMultiEnqueueMany(self):
     with self.test_session() as sess:
-      q = tf.RandomShuffleQueue(
-          10, 0, (tf.float32, tf.int32))
+      q = data_flow_ops.RandomShuffleQueue(
+          10, 0, (dtypes_lib.float32, dtypes_lib.int32))
       float_elems = [10.0, 20.0, 30.0, 40.0]
       int_elems = [[1, 2], [3, 4], [5, 6], [7, 8]]
       enqueue_op = q.enqueue_many((float_elems, int_elems))
@@ -318,7 +329,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testDequeueMany(self):
     with self.test_session():
-      q = tf.RandomShuffleQueue(10, 0, tf.float32, ((),))
+      q = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
       enqueue_op = q.enqueue_many((elems,))
       dequeued_t = q.dequeue_many(5)
@@ -331,7 +342,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testDequeueUpToNoBlocking(self):
     with self.test_session():
-      q = tf.RandomShuffleQueue(10, 0, tf.float32, ((),))
+      q = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
       enqueue_op = q.enqueue_many((elems,))
       dequeued_t = q.dequeue_up_to(5)
@@ -344,13 +355,13 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testMultiDequeueMany(self):
     with self.test_session() as sess:
-      q = tf.RandomShuffleQueue(
-          10, 0, (tf.float32, tf.int32),
-          shapes=((), (2,)))
+      q = data_flow_ops.RandomShuffleQueue(
+          10, 0, (dtypes_lib.float32, dtypes_lib.int32), shapes=((), (2,)))
       float_elems = [
-          10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
-      int_elems = [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10],
-                   [11, 12], [13, 14], [15, 16], [17, 18], [19, 20]]
+          10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0
+      ]
+      int_elems = [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14],
+                   [15, 16], [17, 18], [19, 20]]
       enqueue_op = q.enqueue_many((float_elems, int_elems))
       dequeued_t = q.dequeue_many(4)
       dequeued_single_t = q.dequeue()
@@ -378,13 +389,13 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testMultiDequeueUpToNoBlocking(self):
     with self.test_session() as sess:
-      q = tf.RandomShuffleQueue(
-          10, 0, (tf.float32, tf.int32),
-          shapes=((), (2,)))
+      q = data_flow_ops.RandomShuffleQueue(
+          10, 0, (dtypes_lib.float32, dtypes_lib.int32), shapes=((), (2,)))
       float_elems = [
-          10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
-      int_elems = [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10],
-                   [11, 12], [13, 14], [15, 16], [17, 18], [19, 20]]
+          10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0
+      ]
+      int_elems = [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14],
+                   [15, 16], [17, 18], [19, 20]]
       enqueue_op = q.enqueue_many((float_elems, int_elems))
       dequeued_t = q.dequeue_up_to(4)
       dequeued_single_t = q.dequeue()
@@ -413,8 +424,8 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testHighDimension(self):
     with self.test_session():
-      q = tf.RandomShuffleQueue(
-          10, 0, tf.int32, ((4, 4, 4, 4)))
+      q = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.int32, (
+          (4, 4, 4, 4)))
       elems = np.array([[[[[x] * 4] * 4] * 4] * 4 for x in range(10)], np.int32)
       enqueue_op = q.enqueue_many((elems,))
       dequeued_t = q.dequeue_many(10)
@@ -424,7 +435,8 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testParallelEnqueueMany(self):
     with self.test_session() as sess:
-      q = tf.RandomShuffleQueue(1000, 0, tf.float32, shapes=())
+      q = data_flow_ops.RandomShuffleQueue(
+          1000, 0, dtypes_lib.float32, shapes=())
       elems = [10.0 * x for x in range(100)]
       enqueue_op = q.enqueue_many((elems,))
       dequeued_t = q.dequeue_many(1000)
@@ -432,6 +444,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
       # Enqueue 100 items in parallel on 10 threads.
       def enqueue():
         sess.run(enqueue_op)
+
       threads = [self.checkedThread(target=enqueue) for _ in range(10)]
       for thread in threads:
         thread.start()
@@ -442,7 +455,8 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testParallelDequeueMany(self):
     with self.test_session() as sess:
-      q = tf.RandomShuffleQueue(1000, 0, tf.float32, shapes=())
+      q = data_flow_ops.RandomShuffleQueue(
+          1000, 0, dtypes_lib.float32, shapes=())
       elems = [10.0 * x for x in range(1000)]
       enqueue_op = q.enqueue_many((elems,))
       dequeued_t = q.dequeue_many(100)
@@ -454,6 +468,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
       def dequeue():
         dequeued_elems.extend(sess.run(dequeued_t))
+
       threads = [self.checkedThread(target=dequeue) for _ in range(10)]
       for thread in threads:
         thread.start()
@@ -463,7 +478,8 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testParallelDequeueUpTo(self):
     with self.test_session() as sess:
-      q = tf.RandomShuffleQueue(1000, 0, tf.float32, shapes=())
+      q = data_flow_ops.RandomShuffleQueue(
+          1000, 0, dtypes_lib.float32, shapes=())
       elems = [10.0 * x for x in range(1000)]
       enqueue_op = q.enqueue_many((elems,))
       dequeued_t = q.dequeue_up_to(100)
@@ -475,6 +491,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
       def dequeue():
         dequeued_elems.extend(sess.run(dequeued_t))
+
       threads = [self.checkedThread(target=dequeue) for _ in range(10)]
       for thread in threads:
         thread.start()
@@ -486,7 +503,8 @@ class RandomShuffleQueueTest(tf.test.TestCase):
     with self.test_session() as sess:
       dequeue_sizes = [random.randint(50, 150) for _ in xrange(10)]
       total_elements = sum(dequeue_sizes)
-      q = tf.RandomShuffleQueue(total_elements, 0, tf.float32, shapes=())
+      q = data_flow_ops.RandomShuffleQueue(
+          total_elements, 0, dtypes_lib.float32, shapes=())
 
       elems = [10.0 * x for x in xrange(total_elements)]
       enqueue_op = q.enqueue_many((elems,))
@@ -499,6 +517,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
       def dequeue(dequeue_op):
         dequeued_elems.extend(sess.run(dequeue_op))
+
       threads = []
       for dequeue_op in dequeue_ops:
         threads.append(self.checkedThread(target=dequeue, args=(dequeue_op,)))
@@ -510,7 +529,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testBlockingDequeueMany(self):
     with self.test_session() as sess:
-      q = tf.RandomShuffleQueue(10, 0, tf.float32, ((),))
+      q = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
       dequeued_t = q.dequeue_many(4)
@@ -537,7 +556,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testBlockingDequeueUpTo(self):
     with self.test_session() as sess:
-      q = tf.RandomShuffleQueue(10, 0, tf.float32, ((),))
+      q = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
       dequeued_t = q.dequeue_up_to(4)
@@ -566,14 +585,14 @@ class RandomShuffleQueueTest(tf.test.TestCase):
     with self.test_session():
       # Define a first queue that contains integer counts.
       dequeue_counts = [random.randint(1, 10) for _ in range(100)]
-      count_q = tf.RandomShuffleQueue(100, 0, tf.int32)
+      count_q = data_flow_ops.RandomShuffleQueue(100, 0, dtypes_lib.int32)
       enqueue_counts_op = count_q.enqueue_many((dequeue_counts,))
       total_count = sum(dequeue_counts)
 
       # Define a second queue that contains total_count elements.
       elems = [random.randint(0, 100) for _ in range(total_count)]
-      q = tf.RandomShuffleQueue(
-          total_count, 0, tf.int32, ((),))
+      q = data_flow_ops.RandomShuffleQueue(total_count, 0, dtypes_lib.int32, (
+          (),))
       enqueue_elems_op = q.enqueue_many((elems,))
 
       # Define a subgraph that first dequeues a count, then DequeuesMany
@@ -592,14 +611,14 @@ class RandomShuffleQueueTest(tf.test.TestCase):
     with self.test_session():
       # Define a first queue that contains integer counts.
       dequeue_counts = [random.randint(1, 10) for _ in range(100)]
-      count_q = tf.RandomShuffleQueue(100, 0, tf.int32)
+      count_q = data_flow_ops.RandomShuffleQueue(100, 0, dtypes_lib.int32)
       enqueue_counts_op = count_q.enqueue_many((dequeue_counts,))
       total_count = sum(dequeue_counts)
 
       # Define a second queue that contains total_count elements.
       elems = [random.randint(0, 100) for _ in range(total_count)]
-      q = tf.RandomShuffleQueue(
-          total_count, 0, tf.int32, ((),))
+      q = data_flow_ops.RandomShuffleQueue(total_count, 0, dtypes_lib.int32, (
+          (),))
       enqueue_elems_op = q.enqueue_many((elems,))
 
       # Define a subgraph that first dequeues a count, then DequeuesUpTo
@@ -616,7 +635,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testDequeueFromClosedQueue(self):
     with self.test_session():
-      q = tf.RandomShuffleQueue(10, 2, tf.float32)
+      q = data_flow_ops.RandomShuffleQueue(10, 2, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
       close_op = q.close()
@@ -629,13 +648,13 @@ class RandomShuffleQueueTest(tf.test.TestCase):
       self.assertItemsEqual(expected, results)
 
       # Expect the operation to fail due to the queue being closed.
-      with self.assertRaisesRegexp(tf.errors.OutOfRangeError,
+      with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
                                    "is closed and has insufficient"):
         dequeued_t.eval()
 
   def testBlockingDequeueFromClosedQueue(self):
     with self.test_session() as sess:
-      q = tf.RandomShuffleQueue(10, 2, tf.float32)
+      q = data_flow_ops.RandomShuffleQueue(10, 2, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
       close_op = q.close()
@@ -644,12 +663,13 @@ class RandomShuffleQueueTest(tf.test.TestCase):
       enqueue_op.run()
 
       results = []
+
       def dequeue():
         for _ in elems:
           results.append(sess.run(dequeued_t))
         self.assertItemsEqual(elems, results)
         # Expect the operation to fail due to the queue being closed.
-        with self.assertRaisesRegexp(tf.errors.OutOfRangeError,
+        with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
                                      "is closed and has insufficient"):
           sess.run(dequeued_t)
 
@@ -667,14 +687,15 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testBlockingDequeueFromClosedEmptyQueue(self):
     with self.test_session() as sess:
-      q = tf.RandomShuffleQueue(10, 0, tf.float32)
+      q = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32)
       close_op = q.close()
       dequeued_t = q.dequeue()
 
       finished = []  # Needs to be a mutable type
+
       def dequeue():
         # Expect the operation to fail due to the queue being closed.
-        with self.assertRaisesRegexp(tf.errors.OutOfRangeError,
+        with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
                                      "is closed and has insufficient"):
           sess.run(dequeued_t)
         finished.append(True)
@@ -691,7 +712,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testBlockingDequeueManyFromClosedQueue(self):
     with self.test_session() as sess:
-      q = tf.RandomShuffleQueue(10, 0, tf.float32, ((),))
+      q = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
       close_op = q.close()
@@ -700,11 +721,12 @@ class RandomShuffleQueueTest(tf.test.TestCase):
       enqueue_op.run()
 
       progress = []  # Must be mutable
+
       def dequeue():
         self.assertItemsEqual(elems, sess.run(dequeued_t))
         progress.append(1)
         # Expect the operation to fail due to the queue being closed.
-        with self.assertRaisesRegexp(tf.errors.OutOfRangeError,
+        with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
                                      "is closed and has insufficient"):
           sess.run(dequeued_t)
         progress.append(2)
@@ -716,7 +738,8 @@ class RandomShuffleQueueTest(tf.test.TestCase):
       # TODO(mrry): Figure out how to do this without sleeping.
       for _ in range(100):
         time.sleep(0.01)
-        if len(progress) == 1: break
+        if len(progress) == 1:
+          break
       self.assertEqual(len(progress), 1)
       time.sleep(0.01)
       close_op.run()
@@ -725,7 +748,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testBlockingDequeueUpToFromClosedQueueReturnsRemainder(self):
     with self.test_session() as sess:
-      q = tf.RandomShuffleQueue(10, 0, tf.float32, ((),))
+      q = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
       close_op = q.close()
@@ -734,6 +757,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
       enqueue_op.run()
 
       results = []
+
       def dequeue():
         results.extend(sess.run(dequeued_t))
         self.assertEquals(3, len(results))
@@ -751,8 +775,11 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testBlockingDequeueUpToSmallerThanMinAfterDequeue(self):
     with self.test_session() as sess:
-      q = tf.RandomShuffleQueue(capacity=10, min_after_dequeue=2,
-                                dtypes=tf.float32, shapes=((),))
+      q = data_flow_ops.RandomShuffleQueue(
+          capacity=10,
+          min_after_dequeue=2,
+          dtypes=dtypes_lib.float32,
+          shapes=((),))
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
       close_op = q.close()
@@ -761,6 +788,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
       enqueue_op.run()
 
       results = []
+
       def dequeue():
         results.extend(sess.run(dequeued_t))
         self.assertEquals(3, len(results))
@@ -780,7 +808,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testBlockingDequeueManyFromClosedQueueWithElementsRemaining(self):
     with self.test_session() as sess:
-      q = tf.RandomShuffleQueue(10, 0, tf.float32, ((),))
+      q = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
       close_op = q.close()
@@ -790,11 +818,12 @@ class RandomShuffleQueueTest(tf.test.TestCase):
       enqueue_op.run()
 
       results = []
+
       def dequeue():
         results.extend(sess.run(dequeued_t))
         self.assertEqual(len(results), 3)
         # Expect the operation to fail due to the queue being closed.
-        with self.assertRaisesRegexp(tf.errors.OutOfRangeError,
+        with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
                                      "is closed and has insufficient"):
           sess.run(dequeued_t)
         # While the last dequeue failed, we want to insure that it returns
@@ -813,13 +842,13 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testBlockingDequeueManyFromClosedEmptyQueue(self):
     with self.test_session() as sess:
-      q = tf.RandomShuffleQueue(10, 5, tf.float32, ((),))
+      q = data_flow_ops.RandomShuffleQueue(10, 5, dtypes_lib.float32, ((),))
       close_op = q.close()
       dequeued_t = q.dequeue_many(4)
 
       def dequeue():
         # Expect the operation to fail due to the queue being closed.
-        with self.assertRaisesRegexp(tf.errors.OutOfRangeError,
+        with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
                                      "is closed and has insufficient"):
           sess.run(dequeued_t)
 
@@ -833,13 +862,13 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testBlockingDequeueUpToFromClosedEmptyQueue(self):
     with self.test_session() as sess:
-      q = tf.RandomShuffleQueue(10, 5, tf.float32, ((),))
+      q = data_flow_ops.RandomShuffleQueue(10, 5, dtypes_lib.float32, ((),))
       close_op = q.close()
       dequeued_t = q.dequeue_up_to(4)
 
       def dequeue():
         # Expect the operation to fail due to the queue being closed.
-        with self.assertRaisesRegexp(tf.errors.OutOfRangeError,
+        with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
                                      "is closed and has insufficient"):
           sess.run(dequeued_t)
 
@@ -853,7 +882,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testEnqueueToClosedQueue(self):
     with self.test_session():
-      q = tf.RandomShuffleQueue(10, 4, tf.float32)
+      q = data_flow_ops.RandomShuffleQueue(10, 4, dtypes_lib.float32)
       enqueue_op = q.enqueue((10.0,))
       close_op = q.close()
 
@@ -861,12 +890,12 @@ class RandomShuffleQueueTest(tf.test.TestCase):
       close_op.run()
 
       # Expect the operation to fail due to the queue being closed.
-      with self.assertRaisesRegexp(tf.errors.CancelledError, "is closed"):
+      with self.assertRaisesRegexp(errors_impl.CancelledError, "is closed"):
         enqueue_op.run()
 
   def testEnqueueManyToClosedQueue(self):
     with self.test_session():
-      q = tf.RandomShuffleQueue(10, 5, tf.float32, ((),))
+      q = data_flow_ops.RandomShuffleQueue(10, 5, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
       close_op = q.close()
@@ -875,12 +904,12 @@ class RandomShuffleQueueTest(tf.test.TestCase):
       close_op.run()
 
       # Expect the operation to fail due to the queue being closed.
-      with self.assertRaisesRegexp(tf.errors.CancelledError, "is closed"):
+      with self.assertRaisesRegexp(errors_impl.CancelledError, "is closed"):
         enqueue_op.run()
 
   def testBlockingEnqueueToFullQueue(self):
     with self.test_session() as sess:
-      q = tf.RandomShuffleQueue(4, 0, tf.float32, ((),))
+      q = data_flow_ops.RandomShuffleQueue(4, 0, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
       blocking_enqueue_op = q.enqueue((50.0,))
@@ -890,6 +919,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
       def blocking_enqueue():
         sess.run(blocking_enqueue_op)
+
       thread = self.checkedThread(target=blocking_enqueue)
       thread.start()
       # The dequeue ops should run after the blocking_enqueue_op has blocked.
@@ -907,7 +937,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testBlockingEnqueueManyToFullQueue(self):
     with self.test_session() as sess:
-      q = tf.RandomShuffleQueue(4, 0, tf.float32, ((),))
+      q = data_flow_ops.RandomShuffleQueue(4, 0, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
       blocking_enqueue_op = q.enqueue_many(([50.0, 60.0],))
@@ -917,6 +947,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
       def blocking_enqueue():
         sess.run(blocking_enqueue_op)
+
       thread = self.checkedThread(target=blocking_enqueue)
       thread.start()
       # The dequeue ops should run after the blocking_enqueue_op has blocked.
@@ -939,7 +970,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testBlockingEnqueueToClosedQueue(self):
     with self.test_session() as sess:
-      q = tf.RandomShuffleQueue(4, 0, tf.float32, ((),))
+      q = data_flow_ops.RandomShuffleQueue(4, 0, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
       blocking_enqueue_op = q.enqueue((50.0,))
@@ -954,8 +985,9 @@ class RandomShuffleQueueTest(tf.test.TestCase):
         sess.run(blocking_enqueue_op)
 
         # Expect the operation to fail due to the queue being closed.
-        with self.assertRaisesRegexp(tf.errors.CancelledError, "closed"):
+        with self.assertRaisesRegexp(errors_impl.CancelledError, "closed"):
           sess.run(blocking_enqueue_op)
+
       thread1 = self.checkedThread(target=blocking_enqueue)
       thread1.start()
 
@@ -965,6 +997,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
       def blocking_close():
         sess.run(close_op)
+
       thread2 = self.checkedThread(target=blocking_close)
       thread2.start()
 
@@ -982,7 +1015,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testBlockingEnqueueManyToClosedQueue(self):
     with self.test_session() as sess:
-      q = tf.RandomShuffleQueue(4, 0, tf.float32, ((),))
+      q = data_flow_ops.RandomShuffleQueue(4, 0, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0]
       enqueue_op = q.enqueue_many((elems,))
       blocking_enqueue_op = q.enqueue_many(([50.0, 60.0],))
@@ -997,8 +1030,9 @@ class RandomShuffleQueueTest(tf.test.TestCase):
         sess.run(blocking_enqueue_op)
         # At this point the close operation will become unblocked, so the
         # next enqueue will fail.
-        with self.assertRaisesRegexp(tf.errors.CancelledError, "closed"):
+        with self.assertRaisesRegexp(errors_impl.CancelledError, "closed"):
           sess.run(blocking_enqueue_op)
+
       thread1 = self.checkedThread(target=blocking_enqueue)
       thread1.start()
       # The close_op should run after the blocking_enqueue_op has blocked.
@@ -1010,6 +1044,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
       def blocking_close():
         sess.run(close_op)
+
       thread2 = self.checkedThread(target=blocking_close)
       thread2.start()
 
@@ -1026,15 +1061,19 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testSharedQueueSameSession(self):
     with self.test_session():
-      q1 = tf.RandomShuffleQueue(
-          1, 0, tf.float32, ((),), shared_name="shared_queue")
+      q1 = data_flow_ops.RandomShuffleQueue(
+          1, 0, dtypes_lib.float32, ((),), shared_name="shared_queue")
       q1.enqueue((10.0,)).run()
 
       # TensorFlow TestCase adds a default graph seed (=87654321). We check if
       # the seed computed from the default graph seed is reproduced.
       seed = 887634792
-      q2 = tf.RandomShuffleQueue(
-          1, 0, tf.float32, ((),), shared_name="shared_queue", seed=seed)
+      q2 = data_flow_ops.RandomShuffleQueue(
+          1,
+          0,
+          dtypes_lib.float32, ((),),
+          shared_name="shared_queue",
+          seed=seed)
 
       q1_size_t = q1.size()
       q2_size_t = q2.size()
@@ -1059,16 +1098,20 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testSharedQueueSameSessionGraphSeedNone(self):
     with self.test_session():
-      q1 = tf.RandomShuffleQueue(
-          1, 0, tf.float32, ((),), shared_name="shared_queue", seed=98765432)
+      q1 = data_flow_ops.RandomShuffleQueue(
+          1,
+          0,
+          dtypes_lib.float32, ((),),
+          shared_name="shared_queue",
+          seed=98765432)
       q1.enqueue((10.0,)).run()
 
       # If both graph and op seeds are not provided, the default value must be
       # used, and in case a shared queue is already created, the second queue op
       # must accept any previous seed value.
-      tf.set_random_seed(None)
-      q2 = tf.RandomShuffleQueue(
-          1, 0, tf.float32, ((),), shared_name="shared_queue")
+      random_seed.set_random_seed(None)
+      q2 = data_flow_ops.RandomShuffleQueue(
+          1, 0, dtypes_lib.float32, ((),), shared_name="shared_queue")
 
       q1_size_t = q1.size()
       q2_size_t = q2.size()
@@ -1078,66 +1121,66 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testIncompatibleSharedQueueErrors(self):
     with self.test_session():
-      q_a_1 = tf.RandomShuffleQueue(
-          10, 5, tf.float32, shared_name="q_a")
-      q_a_2 = tf.RandomShuffleQueue(
-          15, 5, tf.float32, shared_name="q_a")
+      q_a_1 = data_flow_ops.RandomShuffleQueue(
+          10, 5, dtypes_lib.float32, shared_name="q_a")
+      q_a_2 = data_flow_ops.RandomShuffleQueue(
+          15, 5, dtypes_lib.float32, shared_name="q_a")
       q_a_1.queue_ref.eval()
       with self.assertRaisesOpError("capacity"):
         q_a_2.queue_ref.eval()
 
-      q_b_1 = tf.RandomShuffleQueue(
-          10, 0, tf.float32, shared_name="q_b")
-      q_b_2 = tf.RandomShuffleQueue(
-          10, 5, tf.float32, shared_name="q_b")
+      q_b_1 = data_flow_ops.RandomShuffleQueue(
+          10, 0, dtypes_lib.float32, shared_name="q_b")
+      q_b_2 = data_flow_ops.RandomShuffleQueue(
+          10, 5, dtypes_lib.float32, shared_name="q_b")
       q_b_1.queue_ref.eval()
       with self.assertRaisesOpError("min_after_dequeue"):
         q_b_2.queue_ref.eval()
 
-      q_c_1 = tf.RandomShuffleQueue(
-          10, 5, tf.float32, shared_name="q_c")
-      q_c_2 = tf.RandomShuffleQueue(
-          10, 5, tf.int32, shared_name="q_c")
+      q_c_1 = data_flow_ops.RandomShuffleQueue(
+          10, 5, dtypes_lib.float32, shared_name="q_c")
+      q_c_2 = data_flow_ops.RandomShuffleQueue(
+          10, 5, dtypes_lib.int32, shared_name="q_c")
       q_c_1.queue_ref.eval()
       with self.assertRaisesOpError("component types"):
         q_c_2.queue_ref.eval()
 
-      q_d_1 = tf.RandomShuffleQueue(
-          10, 5, tf.float32, shared_name="q_d")
-      q_d_2 = tf.RandomShuffleQueue(
-          10, 5, tf.float32, shapes=[(1, 1, 2, 3)], shared_name="q_d")
+      q_d_1 = data_flow_ops.RandomShuffleQueue(
+          10, 5, dtypes_lib.float32, shared_name="q_d")
+      q_d_2 = data_flow_ops.RandomShuffleQueue(
+          10, 5, dtypes_lib.float32, shapes=[(1, 1, 2, 3)], shared_name="q_d")
       q_d_1.queue_ref.eval()
       with self.assertRaisesOpError("component shapes"):
         q_d_2.queue_ref.eval()
 
-      q_e_1 = tf.RandomShuffleQueue(
-          10, 5, tf.float32, shapes=[(1, 1, 2, 3)], shared_name="q_e")
-      q_e_2 = tf.RandomShuffleQueue(
-          10, 5, tf.float32, shared_name="q_e")
+      q_e_1 = data_flow_ops.RandomShuffleQueue(
+          10, 5, dtypes_lib.float32, shapes=[(1, 1, 2, 3)], shared_name="q_e")
+      q_e_2 = data_flow_ops.RandomShuffleQueue(
+          10, 5, dtypes_lib.float32, shared_name="q_e")
       q_e_1.queue_ref.eval()
       with self.assertRaisesOpError("component shapes"):
         q_e_2.queue_ref.eval()
 
-      q_f_1 = tf.RandomShuffleQueue(
-          10, 5, tf.float32, shapes=[(1, 1, 2, 3)], shared_name="q_f")
-      q_f_2 = tf.RandomShuffleQueue(
-          10, 5, tf.float32, shapes=[(1, 1, 2, 4)], shared_name="q_f")
+      q_f_1 = data_flow_ops.RandomShuffleQueue(
+          10, 5, dtypes_lib.float32, shapes=[(1, 1, 2, 3)], shared_name="q_f")
+      q_f_2 = data_flow_ops.RandomShuffleQueue(
+          10, 5, dtypes_lib.float32, shapes=[(1, 1, 2, 4)], shared_name="q_f")
       q_f_1.queue_ref.eval()
       with self.assertRaisesOpError("component shapes"):
         q_f_2.queue_ref.eval()
 
-      q_g_1 = tf.RandomShuffleQueue(
-          10, 5, tf.float32, shared_name="q_g")
-      q_g_2 = tf.RandomShuffleQueue(
-          10, 5, (tf.float32, tf.int32), shared_name="q_g")
+      q_g_1 = data_flow_ops.RandomShuffleQueue(
+          10, 5, dtypes_lib.float32, shared_name="q_g")
+      q_g_2 = data_flow_ops.RandomShuffleQueue(
+          10, 5, (dtypes_lib.float32, dtypes_lib.int32), shared_name="q_g")
       q_g_1.queue_ref.eval()
       with self.assertRaisesOpError("component types"):
         q_g_2.queue_ref.eval()
 
-      q_h_1 = tf.RandomShuffleQueue(
-          10, 5, tf.float32, seed=12, shared_name="q_h")
-      q_h_2 = tf.RandomShuffleQueue(
-          10, 5, tf.float32, seed=21, shared_name="q_h")
+      q_h_1 = data_flow_ops.RandomShuffleQueue(
+          10, 5, dtypes_lib.float32, seed=12, shared_name="q_h")
+      q_h_2 = data_flow_ops.RandomShuffleQueue(
+          10, 5, dtypes_lib.float32, seed=21, shared_name="q_h")
       q_h_1.queue_ref.eval()
       with self.assertRaisesOpError("random seeds"):
         q_h_2.queue_ref.eval()
@@ -1148,19 +1191,19 @@ class RandomShuffleQueueTest(tf.test.TestCase):
       qlist = list()
       for _ in xrange(num_queues):
         qlist.append(
-            tf.RandomShuffleQueue(10, 0, tf.float32))
+            data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32))
       # Enqueue/Dequeue into a dynamically selected queue
       for _ in xrange(20):
         index = np.random.randint(num_queues)
-        q = tf.RandomShuffleQueue.from_list(index, qlist)
+        q = data_flow_ops.RandomShuffleQueue.from_list(index, qlist)
         q.enqueue((10.,)).run()
         self.assertEqual(q.dequeue().eval(), 10.0)
 
   def testSelectQueueOutOfRange(self):
     with self.test_session():
-      q1 = tf.RandomShuffleQueue(10, 0, tf.float32)
-      q2 = tf.RandomShuffleQueue(15, 0, tf.float32)
-      enq_q = tf.RandomShuffleQueue.from_list(3, [q1, q2])
+      q1 = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32)
+      q2 = data_flow_ops.RandomShuffleQueue(15, 0, dtypes_lib.float32)
+      enq_q = data_flow_ops.RandomShuffleQueue.from_list(3, [q1, q2])
       with self.assertRaisesOpError("Index must be in the range"):
         enq_q.dequeue().eval()
 
@@ -1186,26 +1229,29 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testResetOfBlockingOperation(self):
     with self.test_session() as sess:
-      q_empty = tf.RandomShuffleQueue(
-          5, 0, tf.float32, ((),))
+      q_empty = data_flow_ops.RandomShuffleQueue(5, 0, dtypes_lib.float32, (
+          (),))
       dequeue_op = q_empty.dequeue()
       dequeue_many_op = q_empty.dequeue_many(1)
       dequeue_up_to_op = q_empty.dequeue_up_to(1)
 
-      q_full = tf.RandomShuffleQueue(5, 0, tf.float32, ((),))
+      q_full = data_flow_ops.RandomShuffleQueue(5, 0, dtypes_lib.float32, ((),))
       sess.run(q_full.enqueue_many(([1.0, 2.0, 3.0, 4.0, 5.0],)))
       enqueue_op = q_full.enqueue((6.0,))
       enqueue_many_op = q_full.enqueue_many(([6.0],))
 
       threads = [
-          self.checkedThread(self._blockingDequeue, args=(sess, dequeue_op)),
-          self.checkedThread(self._blockingDequeueMany, args=(sess,
-                                                              dequeue_many_op)),
-          self.checkedThread(self._blockingDequeueUpTo,
-                             args=(sess, dequeue_up_to_op)),
-          self.checkedThread(self._blockingEnqueue, args=(sess, enqueue_op)),
-          self.checkedThread(self._blockingEnqueueMany, args=(sess,
-                                                              enqueue_many_op))]
+          self.checkedThread(
+              self._blockingDequeue, args=(sess, dequeue_op)),
+          self.checkedThread(
+              self._blockingDequeueMany, args=(sess, dequeue_many_op)),
+          self.checkedThread(
+              self._blockingDequeueUpTo, args=(sess, dequeue_up_to_op)),
+          self.checkedThread(
+              self._blockingEnqueue, args=(sess, enqueue_op)),
+          self.checkedThread(
+              self._blockingEnqueueMany, args=(sess, enqueue_many_op))
+      ]
       for t in threads:
         t.start()
       time.sleep(0.1)
@@ -1217,10 +1263,10 @@ class RandomShuffleQueueTest(tf.test.TestCase):
     with self.test_session():
       # Specify seeds to make the test deterministic
       # (https://en.wikipedia.org/wiki/Taxicab_number).
-      q1 = tf.RandomShuffleQueue(10, 5, tf.int32,
-                                            ((),), seed=1729)
-      q2 = tf.RandomShuffleQueue(10, 5, tf.int32,
-                                            ((),), seed=87539319)
+      q1 = data_flow_ops.RandomShuffleQueue(
+          10, 5, dtypes_lib.int32, ((),), seed=1729)
+      q2 = data_flow_ops.RandomShuffleQueue(
+          10, 5, dtypes_lib.int32, ((),), seed=87539319)
       enq1 = q1.enqueue_many(([1, 2, 3, 4, 5],))
       enq2 = q2.enqueue_many(([1, 2, 3, 4, 5],))
       deq1 = q1.dequeue_many(5)
@@ -1251,8 +1297,10 @@ class RandomShuffleQueueTest(tf.test.TestCase):
     with self.test_session():
       # Specify seeds to make the test deterministic
       # (https://en.wikipedia.org/wiki/Taxicab_number).
-      q1 = tf.RandomShuffleQueue(10, 5, tf.int32, ((),), seed=1729)
-      q2 = tf.RandomShuffleQueue(10, 5, tf.int32, ((),), seed=87539319)
+      q1 = data_flow_ops.RandomShuffleQueue(
+          10, 5, dtypes_lib.int32, ((),), seed=1729)
+      q2 = data_flow_ops.RandomShuffleQueue(
+          10, 5, dtypes_lib.int32, ((),), seed=87539319)
       enq1 = q1.enqueue_many(([1, 2, 3, 4, 5],))
       enq2 = q2.enqueue_many(([1, 2, 3, 4, 5],))
       deq1 = q1.dequeue_up_to(5)
@@ -1283,10 +1331,10 @@ class RandomShuffleQueueTest(tf.test.TestCase):
     with self.test_session():
       # Specify seeds to make the test deterministic
       # (https://en.wikipedia.org/wiki/Taxicab_number).
-      q1 = tf.RandomShuffleQueue(10, 5, tf.int32,
-                                            ((),), seed=1729)
-      q2 = tf.RandomShuffleQueue(10, 5, tf.int32,
-                                            ((),), seed=87539319)
+      q1 = data_flow_ops.RandomShuffleQueue(
+          10, 5, dtypes_lib.int32, ((),), seed=1729)
+      q2 = data_flow_ops.RandomShuffleQueue(
+          10, 5, dtypes_lib.int32, ((),), seed=87539319)
       enq1 = q1.enqueue_many(([1, 2, 3, 4, 5],))
       enq2 = q2.enqueue_many(([1, 2, 3, 4, 5],))
       deq1 = q1.dequeue()
@@ -1317,19 +1365,20 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testBigEnqueueMany(self):
     with self.test_session() as sess:
-      q = tf.RandomShuffleQueue(
-          5, 0, tf.int32, ((),))
+      q = data_flow_ops.RandomShuffleQueue(5, 0, dtypes_lib.int32, ((),))
       elem = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
       enq = q.enqueue_many((elem,))
       deq = q.dequeue()
       size_op = q.size()
 
       enq_done = []
+
       def blocking_enqueue():
         enq_done.append(False)
         # This will fill the queue and then block until enough dequeues happen.
         sess.run(enq)
         enq_done.append(True)
+
       thread = self.checkedThread(target=blocking_enqueue)
       thread.start()
 
@@ -1361,15 +1410,17 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
   def testBigDequeueMany(self):
     with self.test_session() as sess:
-      q = tf.RandomShuffleQueue(2, 0, tf.int32, ((),))
+      q = data_flow_ops.RandomShuffleQueue(2, 0, dtypes_lib.int32, ((),))
       elem = np.arange(4, dtype=np.int32)
       enq_list = [q.enqueue((e,)) for e in elem]
       deq = q.dequeue_many(4)
 
       results = []
+
       def blocking_dequeue():
         # Will only complete after 4 enqueues complete.
         results.extend(sess.run(deq))
+
       thread = self.checkedThread(target=blocking_dequeue)
       thread.start()
       # The dequeue should start and then block.
@@ -1385,4 +1436,4 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

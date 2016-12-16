@@ -924,9 +924,9 @@ class ExportMonitor(EveryN):
         `None`).
       input_feature_key: String key into the features dict returned by
         `input_fn` that corresponds to the raw `Example` strings `Tensor` that
-        the exported model will take as input. Can only be `None` if you're
-        using a custom `signature_fn` that does not use the first arg
-        (examples).
+        the exported model will take as input. Should be `None` if and only if
+        you're passing in a `signature_fn` that does not use the first arg
+        (`Tensor` of `Example` strings).
       exports_to_keep: int, number of exports to keep.
       signature_fn: Function that returns a default signature and a named
         signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s

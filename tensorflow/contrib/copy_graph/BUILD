@@ -15,6 +15,11 @@ py_library(
         "python/util/copy_elements.py",
     ],
     srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:session",
+        "//tensorflow/python:variables",
+    ],
 )
 
 py_test(
@@ -24,6 +29,7 @@ py_test(
     deps = [
         ":copy_graph_py",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],

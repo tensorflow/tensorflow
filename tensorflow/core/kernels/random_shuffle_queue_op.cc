@@ -459,10 +459,10 @@ Status RandomShuffleQueue::MatchesNodeDef(const NodeDef& node_def) {
 // backed by RandomShuffleQueue) that persists across different graph
 // executions, and sessions. Running this op produces a single-element
 // tensor of handles to Queues in the corresponding device.
-class RandomShuffleQueueOp : public QueueOp {
+class RandomShuffleQueueOp : public TypedQueueOp {
  public:
   explicit RandomShuffleQueueOp(OpKernelConstruction* context)
-      : QueueOp(context) {
+      : TypedQueueOp(context) {
     OP_REQUIRES_OK(context,
                    context->GetAttr("min_after_dequeue", &min_after_dequeue_));
     OP_REQUIRES(context, min_after_dequeue_ >= 0,
@@ -478,23 +478,15 @@ class RandomShuffleQueueOp : public QueueOp {
     OP_REQUIRES_OK(context, context->GetAttr("shapes", &component_shapes_));
   }
 
- protected:
-  CreatorCallback GetCreator() const override {
-    return [this](QueueInterface** ret) {
-      auto* q = new RandomShuffleQueue(capacity_, min_after_dequeue_, seed_,
-                                       seed2_, component_types_,
-                                       component_shapes_, cinfo_.name());
-      Status s = q->Initialize();
-      if (s.ok()) {
-        *ret = q;
-      } else {
-        q->Unref();
-      }
-      return s;
-    };
+ private:
+  Status CreateResource(QueueInterface** ret) override
+      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    RandomShuffleQueue* queue = new RandomShuffleQueue(
+        capacity_, min_after_dequeue_, seed_, seed2_, component_types_,
+        component_shapes_, cinfo_.name());
+    return CreateTypedQueue(queue, ret);
   }
 
- private:
   int32 min_after_dequeue_;
   int64 seed_;
   int64 seed2_;

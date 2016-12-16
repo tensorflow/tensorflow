@@ -58,24 +58,40 @@ py_binary(
         "//tensorflow/contrib/tensor_forest:all_files",
         "//tensorflow/contrib/tensor_forest/hybrid:all_files",
         "//tensorflow/examples/tutorials/mnist:package",
-        "//tensorflow/models/embedding:package",
-        "//tensorflow/models/image/alexnet:all_files",
-        "//tensorflow/models/image/cifar10:all_files",
-        "//tensorflow/models/image/imagenet:all_files",
-        "//tensorflow/models/rnn:package",
-        "//tensorflow/models/rnn/ptb:package",
-        "//tensorflow/models/rnn/translate:package",
         "//tensorflow/python:util_example_parser_configuration",
         "//tensorflow/python/debug:all_files",
         "//tensorflow/python/saved_model:all_files",
         "//tensorflow/python/tools:all_files",
         # The following two targets have an issue when archiving them into
         # the python zip, exclude them for now.
-        # "//tensorflow/models/image/mnist:convolutional",
         # "//tensorflow/tensorboard",
     ],
     srcs_version = "PY2AND3",
     deps = ["//tensorflow:tensorflow_py"],
+)
+
+filegroup(
+    name = "licenses",
+    data = [
+        "//third_party/eigen3:LICENSE",
+        "//third_party/hadoop:LICENSE.txt",
+        "@boringssl//:LICENSE",
+        "@com_googlesource_code_re2//:LICENSE",
+        "@eigen_archive//:COPYING.MPL2",
+        "@farmhash_archive//:COPYING",
+        "@gemmlowp//:LICENSE",
+        "@gif_archive//:COPYING",
+        "@grpc//:LICENSE",
+        "@highwayhash//:LICENSE",
+        "@jpeg//:LICENSE.md",
+        "@libxsmm_archive//:LICENSE",
+        "@local_config_sycl//sycl:LICENSE.text",
+        "@nanopb_git//:LICENSE.txt",
+        "@png_archive//:LICENSE",
+        "@protobuf//:LICENSE",
+        "@six_archive//:LICENSE",
+        "@zlib_archive//:zlib.h",
+    ],
 )
 
 sh_binary(
@@ -84,6 +100,7 @@ sh_binary(
     data = select({
         "//tensorflow:windows": [":simple_console_for_windows"],
         "//conditions:default": [
+            ":licenses",
             "MANIFEST.in",
             "README",
             "setup.py",
@@ -100,14 +117,6 @@ sh_binary(
             "//tensorflow/contrib/tensor_forest:all_files",
             "//tensorflow/contrib/tensor_forest/hybrid:all_files",
             "//tensorflow/examples/tutorials/mnist:package",
-            "//tensorflow/models/embedding:package",
-            "//tensorflow/models/image/alexnet:all_files",
-            "//tensorflow/models/image/cifar10:all_files",
-            "//tensorflow/models/image/imagenet:all_files",
-            "//tensorflow/models/image/mnist:convolutional",
-            "//tensorflow/models/rnn:package",
-            "//tensorflow/models/rnn/ptb:package",
-            "//tensorflow/models/rnn/translate:package",
             "//tensorflow/python:util_example_parser_configuration",
             "//tensorflow/python/debug:all_files",
             "//tensorflow/python/saved_model:all_files",

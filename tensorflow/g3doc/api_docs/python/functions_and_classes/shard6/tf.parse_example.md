@@ -7,17 +7,26 @@ protos given in `serialized`.
 
 `example_names` may contain descriptive names for the corresponding serialized
 protos. These may be useful for debugging purposes, but they have no effect on
-the output. If not `None`, `example_names` must be the same length as `serialized`.
+the output. If not `None`, `example_names` must be the same length as
+`serialized`.
 
 This op parses serialized examples into a dictionary mapping keys to `Tensor`
-and `SparseTensor` objects. `features` is a dict from keys to `VarLenFeature`
-and `FixedLenFeature` objects. Each `VarLenFeature` is mapped to a
-`SparseTensor`, and each `FixedLenFeature` is mapped to a `Tensor`.
+and `SparseTensor` objects. `features` is a dict from keys to `VarLenFeature`,
+`SparseFeature`, and `FixedLenFeature` objects. Each `VarLenFeature`
+and `SparseFeature` is mapped to a `SparseTensor`, and each
+`FixedLenFeature` is mapped to a `Tensor`.
 
 Each `VarLenFeature` maps to a `SparseTensor` of the specified type
 representing a ragged matrix. Its indices are `[batch, index]` where `batch`
 is the batch entry the value is from in `serialized`, and `index` is the
 value's index in the list of values associated with that feature and example.
+
+Each `SparseFeature` maps to a `SparseTensor` of the specified type
+representing a sparse matrix of shape
+`(serialized.size(), SparseFeature.size)`. Its indices are `[batch, index]`
+where `batch` is the batch entry the value is from in `serialized`, and
+`index` is the value's index is given by the values in the
+`SparseFeature.index_key` feature column.
 
 Each `FixedLenFeature` `df` maps to a `Tensor` of the specified type (or
 `tf.float32` if not specified) and shape `(serialized.size(),) + df.shape`.
@@ -47,7 +56,7 @@ then the output will look like:
 ```
 {"ft": SparseTensor(indices=[[0, 0], [0, 1], [2, 0]],
                     values=[1.0, 2.0, 3.0],
-                    shape=(3, 2)) }
+                    dense_shape=(3, 2)) }
 ```
 
 Given two `Example` input protos in `serialized`:
@@ -84,15 +93,15 @@ Then the output is a dictionary:
   "kw": SparseTensor(
       indices=[[0, 0], [0, 1], [1, 0]],
       values=["knit", "big", "emmy"]
-      shape=[2, 2]),
+      dense_shape=[2, 2]),
   "dank": SparseTensor(
       indices=[[1, 0]],
       values=[42],
-      shape=[2, 1]),
+      dense_shape=[2, 1]),
   "gps": SparseTensor(
       indices=[],
       values=[],
-      shape=[2, 0]),
+      dense_shape=[2, 0]),
 }
 ```
 
@@ -130,13 +139,48 @@ And the expected output is:
 }
 ```
 
+Given two `Example` input protos in `serialized`:
+
+```
+[
+  features {
+    feature { key: "val" value { float_list { value: [ 0.5, -1.0 ] } } }
+    feature { key: "ix" value { int64_list { value: [ 3, 20 ] } } }
+  },
+  features {
+    feature { key: "val" value { float_list { value: [ 0.0 ] } } }
+    feature { key: "ix" value { int64_list { value: [ 42 ] } } }
+  }
+]
+```
+
+And arguments
+
+```
+example_names: ["input0", "input1"],
+features: {
+    "sparse": SparseFeature("ix", "val", tf.float32, 100),
+}
+```
+
+Then the output is a dictionary:
+
+```python
+{
+  "sparse": SparseTensor(
+      indices=[[0, 3], [0, 20], [1, 42]],
+      values=[0.5, -1.0, 0.0]
+      dense_shape=[2, 100]),
+}
+```
+
 ##### Args:
 
 
 *  <b>`serialized`</b>: A vector (1-D Tensor) of strings, a batch of binary
     serialized `Example` protos.
-*  <b>`features`</b>: A `dict` mapping feature keys to `FixedLenFeature` or
-    `VarLenFeature` values.
+*  <b>`features`</b>: A `dict` mapping feature keys to `FixedLenFeature`,
+    `VarLenFeature`, and `SparseFeature` values.
 *  <b>`name`</b>: A name for this operation (optional).
 *  <b>`example_names`</b>: A vector (1-D Tensor) of strings (optional), the names of
     the serialized protos in the batch.

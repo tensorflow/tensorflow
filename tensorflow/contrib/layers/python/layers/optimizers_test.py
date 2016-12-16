@@ -195,7 +195,7 @@ class OptimizersTest(tf.test.TestCase):
       self.assertAlmostEqual(var_value, 9.8916, 4)
       self.assertEqual(global_step_value, 1)
       var_count = 0
-      for var in tf.all_variables():
+      for var in tf.global_variables():
         if var.name.startswith("OptimizeLoss/AdaptiveMaxNorm"):
           var_count += 1
       self.assertEqual(2, var_count)
@@ -366,7 +366,7 @@ class AdaptiveClipping(tf.test.TestCase):
           decay=0.5)(grads_and_vars)
 
       var_dict = {}
-      for var in tf.all_variables():
+      for var in tf.global_variables():
         if var.name.startswith("AdaptiveMaxNorm"):
           var_dict[var.name.split(":")[0]] = var
       self.assertEqual(2, len(var_dict))

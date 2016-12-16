@@ -33,8 +33,7 @@
 #
 
 # List of all tutorial tests to run, separated by spaces
-TUT_TESTS="mnist_softmax mnist_with_summaries cifar10_train "\
-"word2vec_test word2vec_optimized_test ptb_word_lm translate_test"
+TUT_TESTS="mnist_softmax mnist_with_summaries word2vec estimator_abalone"
 
 if [[ -z "${TUT_TESTS_BLACKLIST}" ]]; then
   TF_BUILD_TUT_TEST_BLACKLIST=""
@@ -109,6 +108,7 @@ if [[ ! -d "${TF_INSTALL_PATH}/examples/tutorials/mnist" ]]; then
 "${TF_INSTALL_PATH}/examples/tutorials/mnist"
 fi
 
+
 # -----------------------------------------------------------
 # mnist_softmax
 test_mnist_softmax() {
@@ -180,7 +180,7 @@ test_cifar10_train() {
   fi
 
   run_in_directory "${TEST_DIR}" "${LOG_FILE}" \
-    tensorflow/models/image/cifar10/cifar10_train.py \
+    ${TF_MODELS_DIR}/tutorials/image/cifar10/cifar10_train.py \
     --data_dir="${TUT_TEST_DATA_DIR}/cifar10" --max_steps=50 \
     --train_dir="${TUT_TEST_ROOT}/cifar10_train"
 
@@ -204,21 +204,21 @@ test_cifar10_train() {
 
 # -----------------------------------------------------------
 # word2vec_test
-test_word2vec_test() {
+test_word2vec() {
   LOG_FILE=$1
 
   run_in_directory "${TEST_DIR}" "${LOG_FILE}" \
-    tensorflow/models/embedding/word2vec_test.py
+    tensorflow/examples/tutorials/word2vec/word2vec_basic.py
 }
 
 
 # -----------------------------------------------------------
-# word2vec_optimized_test
-test_word2vec_optimized_test() {
+# Estimator: abalone
+test_estimator_abalone() {
   LOG_FILE=$1
 
   run_in_directory "${TEST_DIR}" "${LOG_FILE}" \
-    tensorflow/models/embedding/word2vec_optimized_test.py
+    "tensorflow/examples/tutorials/estimators/abalone.py"
 }
 
 
@@ -251,7 +251,7 @@ test_ptb_word_lm() {
   fi
 
   run_in_directory "${TEST_DIR}" "${LOG_FILE}" \
-    tensorflow/models/rnn/ptb/ptb_word_lm.py \
+    "${TF_MODELS_DIR}/tutorials/rnn/ptb/ptb_word_lm.py" \
     --data_path="${DATA_DIR}/simple-examples/data" --model test
 
   if [[ $? != 0 ]]; then
@@ -282,7 +282,7 @@ test_translate_test() {
   LOG_FILE=$1
 
   run_in_directory "${TEST_DIR}" "${LOG_FILE}" \
-    tensorflow/models/rnn/translate/translate.py --self_test=True
+    "${TF_MODELS_DIR}/tutorials/rnn/translate/translate.py" --self_test=True
 }
 
 

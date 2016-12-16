@@ -231,6 +231,20 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.Categorical.is_scalar_batch` {#Categorical.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.is_scalar_event` {#Categorical.is_scalar_event}
+
+Indicates that `event_shape==[]`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Categorical.log_cdf(value, name='log_cdf', **condition_kwargs)` {#Categorical.log_cdf}
 
 Log cumulative distribution function.

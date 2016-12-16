@@ -329,6 +329,20 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.Distribution.is_scalar_batch` {#Distribution.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Distribution.is_scalar_event` {#Distribution.is_scalar_event}
+
+Indicates that `event_shape==[]`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Distribution.log_cdf(value, name='log_cdf', **condition_kwargs)` {#Distribution.log_cdf}
 
 Log cumulative distribution function.
@@ -961,6 +975,20 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.Binomial.is_scalar_batch` {#Binomial.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.is_scalar_event` {#Binomial.is_scalar_event}
+
+Indicates that `event_shape==[]`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Binomial.log_cdf(value, name='log_cdf', **condition_kwargs)` {#Binomial.log_cdf}
 
 Log cumulative distribution function.
@@ -1586,6 +1614,20 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.Bernoulli.is_scalar_batch` {#Bernoulli.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.is_scalar_event` {#Bernoulli.is_scalar_event}
+
+Indicates that `event_shape==[]`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Bernoulli.log_cdf(value, name='log_cdf', **condition_kwargs)` {#Bernoulli.log_cdf}
 
 Log cumulative distribution function.
@@ -2150,6 +2192,20 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.BernoulliWithSigmoidP.is_reparameterized` {#BernoulliWithSigmoidP.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.BernoulliWithSigmoidP.is_scalar_batch` {#BernoulliWithSigmoidP.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.BernoulliWithSigmoidP.is_scalar_event` {#BernoulliWithSigmoidP.is_scalar_event}
+
+Indicates that `event_shape==[]`.
 
 
 - - -
@@ -2832,6 +2888,20 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.Beta.is_scalar_batch` {#Beta.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.is_scalar_event` {#Beta.is_scalar_event}
+
+Indicates that `event_shape==[]`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Beta.log_cdf(value, name='log_cdf', **condition_kwargs)` {#Beta.log_cdf}
 
 Log cumulative distribution function.
@@ -3415,6 +3485,20 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.BetaWithSoftplusAB.is_reparameterized` {#BetaWithSoftplusAB.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.BetaWithSoftplusAB.is_scalar_batch` {#BetaWithSoftplusAB.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.BetaWithSoftplusAB.is_scalar_event` {#BetaWithSoftplusAB.is_scalar_event}
+
+Indicates that `event_shape==[]`.
 
 
 - - -
@@ -4045,6 +4129,20 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.Categorical.is_scalar_batch` {#Categorical.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.is_scalar_event` {#Categorical.is_scalar_event}
+
+Indicates that `event_shape==[]`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Categorical.log_cdf(value, name='log_cdf', **condition_kwargs)` {#Categorical.log_cdf}
 
 Log cumulative distribution function.
@@ -4665,6 +4763,20 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.Chi2.is_scalar_batch` {#Chi2.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2.is_scalar_event` {#Chi2.is_scalar_event}
+
+Indicates that `event_shape==[]`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Chi2.log_cdf(value, name='log_cdf', **condition_kwargs)` {#Chi2.log_cdf}
 
 Log cumulative distribution function.
@@ -5247,6 +5359,20 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.Chi2WithAbsDf.is_reparameterized` {#Chi2WithAbsDf.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2WithAbsDf.is_scalar_batch` {#Chi2WithAbsDf.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2WithAbsDf.is_scalar_event` {#Chi2WithAbsDf.is_scalar_event}
+
+Indicates that `event_shape==[]`.
 
 
 - - -
@@ -5852,6 +5978,20 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.Exponential.is_scalar_batch` {#Exponential.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Exponential.is_scalar_event` {#Exponential.is_scalar_event}
+
+Indicates that `event_shape==[]`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Exponential.lam` {#Exponential.lam}
 
 
@@ -6434,6 +6574,20 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.ExponentialWithSoftplusLam.is_reparameterized` {#ExponentialWithSoftplusLam.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.ExponentialWithSoftplusLam.is_scalar_batch` {#ExponentialWithSoftplusLam.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExponentialWithSoftplusLam.is_scalar_event` {#ExponentialWithSoftplusLam.is_scalar_event}
+
+Indicates that `event_shape==[]`.
 
 
 - - -
@@ -7073,6 +7227,20 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.Gamma.is_scalar_batch` {#Gamma.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Gamma.is_scalar_event` {#Gamma.is_scalar_event}
+
+Indicates that `event_shape==[]`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Gamma.log_cdf(value, name='log_cdf', **condition_kwargs)` {#Gamma.log_cdf}
 
 Log cumulative distribution function.
@@ -7648,6 +7816,20 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.is_reparameterized` {#GammaWithSoftplusAlphaBeta.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.is_scalar_batch` {#GammaWithSoftplusAlphaBeta.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.is_scalar_event` {#GammaWithSoftplusAlphaBeta.is_scalar_event}
+
+Indicates that `event_shape==[]`.
 
 
 - - -
@@ -8276,6 +8458,20 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.InverseGamma.is_scalar_batch` {#InverseGamma.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.InverseGamma.is_scalar_event` {#InverseGamma.is_scalar_event}
+
+Indicates that `event_shape==[]`.
+
+
+- - -
+
 #### `tf.contrib.distributions.InverseGamma.log_cdf(value, name='log_cdf', **condition_kwargs)` {#InverseGamma.log_cdf}
 
 Log cumulative distribution function.
@@ -8861,6 +9057,20 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.is_reparameterized` {#InverseGammaWithSoftplusAlphaBeta.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.is_scalar_batch` {#InverseGammaWithSoftplusAlphaBeta.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.is_scalar_event` {#InverseGammaWithSoftplusAlphaBeta.is_scalar_event}
+
+Indicates that `event_shape==[]`.
 
 
 - - -
@@ -9462,6 +9672,20 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.Laplace.is_scalar_batch` {#Laplace.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Laplace.is_scalar_event` {#Laplace.is_scalar_event}
+
+Indicates that `event_shape==[]`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Laplace.loc` {#Laplace.loc}
 
 Distribution parameter for the location.
@@ -10015,6 +10239,20 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.LaplaceWithSoftplusScale.is_reparameterized` {#LaplaceWithSoftplusScale.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.LaplaceWithSoftplusScale.is_scalar_batch` {#LaplaceWithSoftplusScale.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.LaplaceWithSoftplusScale.is_scalar_event` {#LaplaceWithSoftplusScale.is_scalar_event}
+
+Indicates that `event_shape==[]`.
 
 
 - - -
@@ -10640,6 +10878,20 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.Normal.is_scalar_batch` {#Normal.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Normal.is_scalar_event` {#Normal.is_scalar_event}
+
+Indicates that `event_shape==[]`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Normal.log_cdf(value, name='log_cdf', **condition_kwargs)` {#Normal.log_cdf}
 
 Log cumulative distribution function.
@@ -11193,6 +11445,20 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.NormalWithSoftplusSigma.is_reparameterized` {#NormalWithSoftplusSigma.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.NormalWithSoftplusSigma.is_scalar_batch` {#NormalWithSoftplusSigma.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.NormalWithSoftplusSigma.is_scalar_event` {#NormalWithSoftplusSigma.is_scalar_event}
+
+Indicates that `event_shape==[]`.
 
 
 - - -
@@ -11774,6 +12040,20 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.Poisson.is_reparameterized` {#Poisson.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.Poisson.is_scalar_batch` {#Poisson.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Poisson.is_scalar_event` {#Poisson.is_scalar_event}
+
+Indicates that `event_shape==[]`.
 
 
 - - -
@@ -12427,6 +12707,20 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.StudentT.is_scalar_batch` {#StudentT.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentT.is_scalar_event` {#StudentT.is_scalar_event}
+
+Indicates that `event_shape==[]`.
+
+
+- - -
+
 #### `tf.contrib.distributions.StudentT.log_cdf(value, name='log_cdf', **condition_kwargs)` {#StudentT.log_cdf}
 
 Log cumulative distribution function.
@@ -13003,6 +13297,20 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.is_reparameterized` {#StudentTWithAbsDfSoftplusSigma.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.is_scalar_batch` {#StudentTWithAbsDfSoftplusSigma.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.is_scalar_event` {#StudentTWithAbsDfSoftplusSigma.is_scalar_event}
+
+Indicates that `event_shape==[]`.
 
 
 - - -
@@ -13636,6 +13944,20 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.Uniform.is_scalar_batch` {#Uniform.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Uniform.is_scalar_event` {#Uniform.is_scalar_event}
+
+Indicates that `event_shape==[]`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Uniform.log_cdf(value, name='log_cdf', **condition_kwargs)` {#Uniform.log_cdf}
 
 Log cumulative distribution function.
@@ -14256,6 +14578,20 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.MultivariateNormalDiag.is_reparameterized` {#MultivariateNormalDiag.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.is_scalar_batch` {#MultivariateNormalDiag.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.is_scalar_event` {#MultivariateNormalDiag.is_scalar_event}
+
+Indicates that `event_shape==[]`.
 
 
 - - -
@@ -14920,6 +15256,20 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.MultivariateNormalFull.is_reparameterized` {#MultivariateNormalFull.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.is_scalar_batch` {#MultivariateNormalFull.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.is_scalar_event` {#MultivariateNormalFull.is_scalar_event}
+
+Indicates that `event_shape==[]`.
 
 
 - - -
@@ -15593,6 +15943,20 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.MultivariateNormalCholesky.is_reparameterized` {#MultivariateNormalCholesky.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.is_scalar_batch` {#MultivariateNormalCholesky.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.is_scalar_event` {#MultivariateNormalCholesky.is_scalar_event}
+
+Indicates that `event_shape==[]`.
 
 
 - - -
@@ -16296,6 +16660,20 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.is_scalar_batch` {#MultivariateNormalDiagPlusVDVT.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.is_scalar_event` {#MultivariateNormalDiagPlusVDVT.is_scalar_event}
+
+Indicates that `event_shape==[]`.
+
+
+- - -
+
 #### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.log_cdf(value, name='log_cdf', **condition_kwargs)` {#MultivariateNormalDiagPlusVDVT.log_cdf}
 
 Log cumulative distribution function.
@@ -16895,6 +17273,20 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.is_reparameterized` {#MultivariateNormalDiagWithSoftplusStDev.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.is_scalar_batch` {#MultivariateNormalDiagWithSoftplusStDev.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.is_scalar_event` {#MultivariateNormalDiagWithSoftplusStDev.is_scalar_event}
+
+Indicates that `event_shape==[]`.
 
 
 - - -
@@ -17606,6 +17998,20 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.Dirichlet.is_scalar_batch` {#Dirichlet.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.is_scalar_event` {#Dirichlet.is_scalar_event}
+
+Indicates that `event_shape==[]`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Dirichlet.log_cdf(value, name='log_cdf', **condition_kwargs)` {#Dirichlet.log_cdf}
 
 Log cumulative distribution function.
@@ -18281,6 +18687,20 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.DirichletMultinomial.is_reparameterized` {#DirichletMultinomial.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.DirichletMultinomial.is_scalar_batch` {#DirichletMultinomial.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.DirichletMultinomial.is_scalar_event` {#DirichletMultinomial.is_scalar_event}
+
+Indicates that `event_shape==[]`.
 
 
 - - -
@@ -18975,6 +19395,20 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.Multinomial.is_reparameterized` {#Multinomial.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.Multinomial.is_scalar_batch` {#Multinomial.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Multinomial.is_scalar_event` {#Multinomial.is_scalar_event}
+
+Indicates that `event_shape==[]`.
 
 
 - - -
@@ -19675,6 +20109,20 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.WishartCholesky.is_scalar_batch` {#WishartCholesky.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.WishartCholesky.is_scalar_event` {#WishartCholesky.is_scalar_event}
+
+Indicates that `event_shape==[]`.
+
+
+- - -
+
 #### `tf.contrib.distributions.WishartCholesky.log_cdf(value, name='log_cdf', **condition_kwargs)` {#WishartCholesky.log_cdf}
 
 Log cumulative distribution function.
@@ -20342,6 +20790,20 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.WishartFull.is_scalar_batch` {#WishartFull.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.WishartFull.is_scalar_event` {#WishartFull.is_scalar_event}
+
+Indicates that `event_shape==[]`.
+
+
+- - -
+
 #### `tf.contrib.distributions.WishartFull.log_cdf(value, name='log_cdf', **condition_kwargs)` {#WishartFull.log_cdf}
 
 Log cumulative distribution function.
@@ -20815,14 +21277,18 @@ A `Bijector` is expected to implement the following functions:
 - `inverse_log_det_jacobian`.
 The semantics of these functions are outlined in the `Bijector` documentation.
 
-Shapes, type, and reparameterization are taken from the base distribution.
+We now describe how a `TransformedDistribution` alters the input/outputs of a
+`Distribution` associated with a random variable (rv) `X`.
 
-Write `P(Y=y)` for cumulative density function of random variable (rv) `Y` and
-`p` for its derivative wrt to `Y`.  Assume that `Y=g(X)` where `g` is
-continuous and `X=g^{-1}(Y)`. Write `J` for the Jacobian (of some function).
+Write `cdf(Y=y)` for an absolutely continuous cumulative distribution function
+of random variable `Y`; write the probability density function `pdf(Y=y) :=
+d^k / (dy_1,...,dy_k) cdf(Y=y)` for its derivative wrt to `Y` evaluated at
+`y`.  Assume that `Y = g(X)` where `g` is a deterministic diffeomorphism,
+i.e., a non-random, continuous, differentiable, and invertible function.
+Write the inverse of `g` as `X = g^{-1}(Y)` and `(J o g)(x)` for the Jacobian
+of `g` evaluated at `x`.
 
-A `TransformedDistribution` alters the input/outputs of a `Distribution`
-associated with rv `X` in the following ways:
+A `TransformedDistribution` implements the following operations:
 
   * `sample`:
 
@@ -20843,14 +21309,15 @@ associated with rv `X` in the following ways:
     Mathematically:
 
     ```none
-    (log o p o g^{-1})(y) + (log o det o J o g^{-1})(y)
+    (log o pdf)(Y=y) = (log o pdf o g^{-1})(y) +
+                         (log o abs o det o J o g^{-1})(y)
     ```
 
     Programmatically:
 
     ```python
-    return (bijector.inverse_log_det_jacobian(x) +
-            distribution.log_prob(bijector.inverse(x))
+    return (distribution.log_prob(bijector.inverse(x)) +
+            bijector.inverse_log_det_jacobian(x))
     ```
 
   * `log_cdf`:
@@ -20858,13 +21325,13 @@ associated with rv `X` in the following ways:
     Mathematically:
 
     ```none
-    (log o P o g^{-1})(y)
+    (log o cdf)(Y=y) = (log o cdf o g^{-1})(y)
     ```
 
     Programmatically:
 
     ```python
-    return distribution.log_prob(bijector.inverse(x))
+    return distribution.log_cdf(bijector.inverse(x))
     ```
 
   * and similarly for: `cdf`, `prob`, `log_survival_function`,
@@ -20891,7 +21358,7 @@ log_normal = ds.TransformedDistribution(
     forward_fn=tf.exp,
     inverse_fn=tf.log,
     inverse_log_det_jacobian_fn=(
-      lambda y: -tf.reduce_sum(tf.log(x), reduction_indices=-1)),
+      lambda y: -tf.reduce_sum(tf.log(y), reduction_indices=-1)),
   name="LogNormalTransformedDistribution")
 ```
 
@@ -20904,20 +21371,51 @@ normal = ds.TransformedDistribution(
   bijector=ds.bijector.ScaleAndShift(loc=mu, scale=sigma, event_ndims=0),
   name="NormalTransformedDistribution")
 ```
+
+A `TransformedDistribution`'s batch- and event-shape are implied by the base
+distribution unless explicitly overridden by `batch_shape` or `event_shape`
+arguments.  Specifying an overriding `batch_shape` (`event_shape`) is
+permitted only if the base distribution has scalar batch-shape (event-shape).
+The bijector is applied to the distribution as if the distribution possessed
+the overridden shape(s). The following example demonstrates how to construct a
+multivariate Normal as a `TransformedDistribution`.
+
+```python
+bs = tf.contrib.distributions.bijector
+ds = tf.contrib.distributions
+# We will create two MVNs with batch_shape = event_shape = 2.
+mean = [[-1., 0],      # batch:0
+        [0., 1]]       # batch:1
+chol_cov = [[[1., 0],
+             [0, 1]],  # batch:0
+            [[1, 0],
+             [2, 2]]]  # batch:1
+mvn1 = ds.TransformedDistribution(
+    distribution=ds.Normal(mu=0., sigma=1.),
+    bijector=bs.Affine(shift=mean, tril=chol_cov),
+    batch_shape=[2],  # Valid because base_distribution.batch_shape == [].
+    event_shape=[2])  # Valid because base_distribution.event_shape == [].
+mvn2 = ds.MultivariateNormalCholesky(mu=mean, chol=chol_cov)
+# mvn1.log_prob(x) == mvn2.log_prob(x)
+```
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.__init__(distribution, bijector, validate_args=False, name=None)` {#TransformedDistribution.__init__}
+#### `tf.contrib.distributions.TransformedDistribution.__init__(distribution, bijector=None, batch_shape=None, event_shape=None, validate_args=False, name=None)` {#TransformedDistribution.__init__}
 
 Construct a Transformed Distribution.
 
 ##### Args:
 
 
-*  <b>`distribution`</b>: The base distribution class to transform. Typically an
+*  <b>`distribution`</b>: The base distribution instance to transform. Typically an
     instance of `Distribution`.
 *  <b>`bijector`</b>: The object responsible for calculating the transformation.
-    Typically an instance of `Bijector`.
-*  <b>`validate_args`</b>: Python boolean.  Whether to validate input with asserts.
+    Typically an instance of `Bijector`. `None` means `Identity()`.
+*  <b>`batch_shape`</b>: `integer` vector `Tensor` which overrides `distribution`
+    `batch_shape`; valid only if `distribution.is_scalar_batch`.
+*  <b>`event_shape`</b>: `integer` vector `Tensor` which overrides `distribution`
+    `event_shape`; valid only if `distribution.is_scalar_event`.
+*  <b>`validate_args`</b>: Python Boolean.  Whether to validate input with asserts.
     If `validate_args` is `False`, and the inputs are invalid,
     correct behavior is not guaranteed.
 *  <b>`name`</b>: The name for the distribution. Default:
@@ -20987,10 +21485,10 @@ cdf(x) := P[X <= x]
 
 Additional documentation from `TransformedDistribution`:
 
-##### <b>`condition_kwargs`</b>:
+##### `condition_kwargs`:
 
-*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
-*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
+*  `bijector_kwargs`: Python dictionary of arg names/values forwarded to the bijector.
+*  `distribution_kwargs`: Python dictionary of arg names/values forwarded to the distribution.
 
 ##### Args:
 
@@ -21111,6 +21609,20 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.TransformedDistribution.is_scalar_batch` {#TransformedDistribution.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.TransformedDistribution.is_scalar_event` {#TransformedDistribution.is_scalar_event}
+
+Indicates that `event_shape==[]`.
+
+
+- - -
+
 #### `tf.contrib.distributions.TransformedDistribution.log_cdf(value, name='log_cdf', **condition_kwargs)` {#TransformedDistribution.log_cdf}
 
 Log cumulative distribution function.
@@ -21128,10 +21640,10 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 Additional documentation from `TransformedDistribution`:
 
-##### <b>`condition_kwargs`</b>:
+##### `condition_kwargs`:
 
-*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
-*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
+*  `bijector_kwargs`: Python dictionary of arg names/values forwarded to the bijector.
+*  `distribution_kwargs`: Python dictionary of arg names/values forwarded to the distribution.
 
 ##### Args:
 
@@ -21206,16 +21718,16 @@ Log probability density/mass function (depending on `is_continuous`).
 
 Additional documentation from `TransformedDistribution`:
 
-Implements `(log o p o g^{-1})(y) + (log o det o J o g^{-1})(y)`,
+Implements `(log o p o g^{-1})(y) + (log o abs o det o J o g^{-1})(y)`,
       where `g^{-1}` is the inverse of `transform`.
 
       Also raises a `ValueError` if `inverse` was not provided to the
       distribution and `y` was not returned from `sample`.
 
-##### <b>`condition_kwargs`</b>:
+##### `condition_kwargs`:
 
-*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
-*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
+*  `bijector_kwargs`: Python dictionary of arg names/values forwarded to the bijector.
+*  `distribution_kwargs`: Python dictionary of arg names/values forwarded to the distribution.
 
 ##### Args:
 
@@ -21251,10 +21763,10 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 Additional documentation from `TransformedDistribution`:
 
-##### <b>`condition_kwargs`</b>:
+##### `condition_kwargs`:
 
-*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
-*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
+*  `bijector_kwargs`: Python dictionary of arg names/values forwarded to the bijector.
+*  `distribution_kwargs`: Python dictionary of arg names/values forwarded to the distribution.
 
 ##### Args:
 
@@ -21404,10 +21916,10 @@ Implements `p(g^{-1}(y)) det|J(g^{-1}(y))|`, where `g^{-1}` is the
       Also raises a `ValueError` if `inverse` was not provided to the
       distribution and `y` was not returned from `sample`.
 
-##### <b>`condition_kwargs`</b>:
+##### `condition_kwargs`:
 
-*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
-*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
+*  `bijector_kwargs`: Python dictionary of arg names/values forwarded to the bijector.
+*  `distribution_kwargs`: Python dictionary of arg names/values forwarded to the distribution.
 
 ##### Args:
 
@@ -21458,10 +21970,10 @@ Additional documentation from `TransformedDistribution`:
 Samples from the base distribution and then passes through
       the bijector's forward transform.
 
-##### <b>`condition_kwargs`</b>:
+##### `condition_kwargs`:
 
-*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
-*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
+*  `bijector_kwargs`: Python dictionary of arg names/values forwarded to the bijector.
+*  `distribution_kwargs`: Python dictionary of arg names/values forwarded to the distribution.
 
 ##### Args:
 
@@ -21507,10 +22019,10 @@ survival_function(x) = P[X > x]
 
 Additional documentation from `TransformedDistribution`:
 
-##### <b>`condition_kwargs`</b>:
+##### `condition_kwargs`:
 
-*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
-*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
+*  `bijector_kwargs`: Python dictionary of arg names/values forwarded to the bijector.
+*  `distribution_kwargs`: Python dictionary of arg names/values forwarded to the distribution.
 
 ##### Args:
 
@@ -21817,6 +22329,20 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.QuantizedDistribution.is_reparameterized` {#QuantizedDistribution.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.QuantizedDistribution.is_scalar_batch` {#QuantizedDistribution.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.QuantizedDistribution.is_scalar_event` {#QuantizedDistribution.is_scalar_event}
+
+Indicates that `event_shape==[]`.
 
 
 - - -
@@ -22560,6 +23086,20 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.Mixture.is_reparameterized` {#Mixture.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.Mixture.is_scalar_batch` {#Mixture.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Mixture.is_scalar_event` {#Mixture.is_scalar_event}
+
+Indicates that `event_shape==[]`.
 
 
 - - -

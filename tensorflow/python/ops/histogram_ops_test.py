@@ -122,7 +122,7 @@ class HistogramFixedWidthTest(tf.test.TestCase):
                                       nbins=3,
                                       dtype=tf.int64)
 
-      hist_accum = tf.Variable(tf.zeros_initializer([3], dtype=tf.int64))
+      hist_accum = tf.Variable(tf.zeros_initializer()([3], dtype=tf.int64))
       hist_accum = hist_accum.assign_add(hist)
 
       tf.global_variables_initializer().run()

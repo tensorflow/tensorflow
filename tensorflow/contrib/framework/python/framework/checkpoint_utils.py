@@ -155,7 +155,7 @@ def init_from_checkpoint(checkpoint_dir, assignment_map):
       object with variable from the checkpoint.
     `'scope_variable_name': list(variable)` - will initialize list of
       partitioned variables with variable from the checkpoint.
-    `'scope_name/': '/'` - will load all variables in current `scope_name` from
+    `'/': 'scope_name/'` - will load all variables in current `scope_name` from
       checkpoint's root (e.g. no scope).
 
   Supports loading into partitioned variables, which are represented as

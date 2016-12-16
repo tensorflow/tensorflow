@@ -53,8 +53,8 @@ FLAGS = flags.FLAGS
 
 
 # Constants: Data download URLs
-TRAIN_DATA_URL = "https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data"
-TEST_DATA_URL = "https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.test"
+TRAIN_DATA_URL = "http://mlr.cs.umass.edu/ml/machine-learning-databases/adult/adult.data"
+TEST_DATA_URL = "http://mlr.cs.umass.edu/ml/machine-learning-databases/adult/adult.test"
 
 
 # Define features for the model
@@ -217,11 +217,12 @@ class CensusDataSource(object):
                        for k in self.continuous_columns}
     # Creates a dictionary mapping from each categorical feature column name (k)
     # to the values of that column stored in a tf.SparseTensor.
-    categorical_cols = {k: tf.SparseTensor(
-        indices=[[i, 0] for i in range(df[k].size)],
-        values=df[k].values,
-        shape=[df[k].size, 1])
-                        for k in self.categorical_columns}
+    categorical_cols = {
+        k: tf.SparseTensor(
+            indices=[[i, 0] for i in range(df[k].size)],
+            values=df[k].values,
+            dense_shape=[df[k].size, 1])
+        for k in self.categorical_columns}
     # Merges the two dictionaries into one.
     feature_cols = dict(continuous_cols.items() + categorical_cols.items())
     # Converts the label column into a constant Tensor.

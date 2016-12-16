@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {DataSet} from './data';
 import {BoundingBox, CollisionGrid} from './label';
 import {CameraType, RenderContext} from './renderContext';
 import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
@@ -52,10 +51,12 @@ export class ScatterPlotVisualizerCanvasLabels implements
     if ((rc.labels == null) || (rc.labels.pointIndices.length === 0)) {
       return;
     }
+    if (this.worldSpacePointPositions == null) {
+      return;
+    }
 
     const lrc = rc.labels;
     const sceneIs3D: boolean = (rc.cameraType === CameraType.Perspective);
-
     const labelHeight = parseInt(this.gc.font, 10);
     const dpr = window.devicePixelRatio;
 
@@ -87,9 +88,11 @@ export class ScatterPlotVisualizerCanvasLabels implements
 
     const n = Math.min(MAX_LABELS_ON_SCREEN, lrc.pointIndices.length);
     for (let i = 0; i < n; ++i) {
-      const index = lrc.pointIndices[i];
-      const point =
-          util.vector3FromPackedArray(this.worldSpacePointPositions, index);
+      let point: THREE.Vector3;
+      {
+        const pi = lrc.pointIndices[i];
+        point = util.vector3FromPackedArray(this.worldSpacePointPositions, pi);
+      }
 
       // discard points that are behind the camera
       camToPoint.copy(camPos).sub(point);
@@ -112,7 +115,7 @@ export class ScatterPlotVisualizerCanvasLabels implements
       };
 
       if (grid.insert(textBoundingBox, true)) {
-        const text = lrc.labelAccessor(index);
+        const text = lrc.labelStrings[i];
         const fontSize = lrc.defaultFontSize * lrc.scaleFactors[i] * dpr;
         this.gc.font = fontSize + 'px roboto';
 
@@ -160,7 +163,7 @@ export class ScatterPlotVisualizerCanvasLabels implements
     this.gc = null;
   }
 
-  onPointPositionsChanged(newPositions: Float32Array, dataSet: DataSet) {
+  onPointPositionsChanged(newPositions: Float32Array) {
     this.worldSpacePointPositions = newPositions;
     this.removeAllLabels();
   }

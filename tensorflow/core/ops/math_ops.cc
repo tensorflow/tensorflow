@@ -1268,17 +1268,18 @@ Status ArgOpShape(shape_inference::InferenceContext* c) {
     dimension_val = dim_t->scalar<int64>()();
   }
 
-  if (dimension_val < 0 || dimension_val >= input_rank) {
+  int64 axis = dimension_val < 0 ? dimension_val + input_rank : dimension_val;
+  if (axis < 0 || axis >= input_rank) {
     return errors::InvalidArgument("Dimension (", dimension_val,
-                                   ") must be in the range [0, ", input_rank,
-                                   "), where ", input_rank, " is the ",
-                                   "number of dimensions in the input.");
+                                   ") must be in the range [", -input_rank, 
+                                   ", ", input_rank, "), where ", input_rank, 
+                                   " is the number of dimensions in the input.");
   }
 
   // Return the input shape without the dimension being reduced.
   std::vector<DimensionHandle> dims;
   for (int i = 0; i < input_rank; ++i) {
-    if (dimension_val != i) {
+    if (axis != i) {
       dims.emplace_back(c->Dim(input_shape, i));
     }
   }
@@ -2245,6 +2246,7 @@ REGISTER_OP("QuantizedMatMul")
     .Attr("Toutput: quantizedtype = DT_QINT32")
     .Attr("transpose_a: bool = false")
     .Attr("transpose_b: bool = false")
+    .Attr("Tactivation: quantizedtype = DT_QUINT8")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::MatMulShape(c));
       ShapeHandle unused;
@@ -2275,6 +2277,8 @@ min_b: The float value that the lowest quantized `b` value represents.
 max_b: The float value that the highest quantized `b` value represents.
 min_out: The float value that the lowest quantized output value represents.
 max_out: The float value that the highest quantized output value represents.
+Tactivation: The type of output produced by activation function
+    following this operation.
 
 )doc");
 

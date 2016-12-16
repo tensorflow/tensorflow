@@ -420,12 +420,12 @@ class SparseCrossOpTest(tf.test.TestCase):
     self.assertEquals(0, sp.indices.size)
     self.assertEquals(0, sp.values.size)
     # TODO(zakaria): check if we can ignore the first dim of the shape.
-    self.assertEquals(0, sp.shape[1])
+    self.assertEquals(0, sp.dense_shape[1])
 
   def _assert_sparse_tensor_equals(self, sp1, sp2):
     self.assertAllEqual(sp1.indices.eval(), sp2.indices)
     self.assertAllEqual(sp1.values.eval(), sp2.values)
-    self.assertAllEqual(sp1.shape.eval(), sp2.shape)
+    self.assertAllEqual(sp1.dense_shape.eval(), sp2.dense_shape)
 
   def _sparse_tensor(self, data, batch_size=-1):
     """Generates a SparseTensor.

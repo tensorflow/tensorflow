@@ -23,8 +23,13 @@ function bazel_clean_and_fetch() {
   # TODO(pcloudy): Re-enable it after bazel clean --expunge is fixed.
   if ! is_windows; then
     bazel clean --expunge
+    # TODO(https://github.com/bazelbuild/bazel/issues/2220) Remove the nested `bazel query`.
+    bazel fetch $(bazel query "//tensorflow/... -//tensorflow/examples/android/...")
+  else
+    # TODO(pcloudy): Also filter out //tensorflow/examples/android/... on Windows after
+    # https://github.com/bazelbuild/bazel/issues/2248 is fixed.
+    bazel fetch //tensorflow/...
   fi
-  bazel fetch //tensorflow/...
 }
 
 ## Set up python-related environment settings
@@ -79,10 +84,10 @@ if [ "$TF_NEED_GCP" == "1" ]; then
   fi
 
   # Update Bazel build configuration.
-  perl -pi -e "s,WITH_GCP_SUPPORT = (False|True),WITH_GCP_SUPPORT = True,s" tensorflow/core/platform/default/build_config.bzl
+  sed -i -e "s/WITH_GCP_SUPPORT = False/WITH_GCP_SUPPORT = True/" tensorflow/core/platform/default/build_config.bzl
 else
   # Update Bazel build configuration.
-  perl -pi -e "s,WITH_GCP_SUPPORT = (False|True),WITH_GCP_SUPPORT = False,s" tensorflow/core/platform/default/build_config.bzl
+  sed -i -e "s/WITH_GCP_SUPPORT = True/WITH_GCP_SUPPORT = False/" tensorflow/core/platform/default/build_config.bzl
 fi
 
 while [ "$TF_NEED_HDFS" == "" ]; do
@@ -101,10 +106,10 @@ done
 
 if [ "$TF_NEED_HDFS" == "1" ]; then
   # Update Bazel build configuration.
-  perl -pi -e "s,WITH_HDFS_SUPPORT = (False|True),WITH_HDFS_SUPPORT = True,s" tensorflow/core/platform/default/build_config.bzl
+  sed -i -e "s/WITH_HDFS_SUPPORT = False/WITH_HDFS_SUPPORT = True/" tensorflow/core/platform/default/build_config.bzl
 else
   # Update Bazel build configuration.
-  perl -pi -e "s,WITH_HDFS_SUPPORT = (False|True),WITH_HDFS_SUPPORT = False,s" tensorflow/core/platform/default/build_config.bzl
+  sed -i -e "s/WITH_HDFS_SUPPORT = True/WITH_HDFS_SUPPORT = False/" tensorflow/core/platform/default/build_config.bzl
 fi
 
 # Invoke python_config and set up symlinks to python includes
@@ -435,7 +440,7 @@ while true; do
   # Point to ComputeCpp root
   if [ -z "$COMPUTECPP_TOOLKIT_PATH" ]; then
     default_computecpp_toolkit_path=/usr/local/computecpp
-    read -p "Please specify the location where ComputeCpp $TF_OPENCL_VERSION is installed. Refer to README.md for more details. [Default is $default_computecpp_toolkit_path]: " COMPUTECPP_TOOLKIT_PATH
+    read -p "Please specify the location where ComputeCpp for SYCL $TF_OPENCL_VERSION is installed. [Default is $default_computecpp_toolkit_path]: " COMPUTECPP_TOOLKIT_PATH
     fromuser="1"
     if [ -z "$COMPUTECPP_TOOLKIT_PATH" ]; then
       COMPUTECPP_TOOLKIT_PATH=$default_computecpp_toolkit_path

@@ -56,7 +56,7 @@ Example usage:
 batch_size = 32
 num_unroll = 20
 lstm_size = 8
-cell = tf.nn.rnn_cell.BasicLSTMCell(num_units=lstm_size)
+cell = tf.contrib.rnn.BasicLSTMCell(num_units=lstm_size)
 initial_state_values = tf.zeros(cell.state_size, dtype=tf.float32)
 
 raw_data = get_single_input_from_input_reader()
@@ -75,10 +75,10 @@ batch = stateful_reader.next_batch
 inputs = batch.sequences["input"]
 context_label = batch.context["label"]
 
-inputs_by_time = tf.split(1, num_unroll, inputs)
+inputs_by_time = tf.split(value=inputs, num_or_size_splits=num_unroll, axis=1)
 assert len(inputs_by_time) == num_unroll
 
-lstm_output, _ = tf.nn.state_saving_rnn(
+lstm_output, _ = tf.contrib.rnn.static_state_saving_rnn(
   cell,
   inputs_by_time,
   state_saver=batch,

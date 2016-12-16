@@ -128,7 +128,7 @@ class PackOp : public OpKernel {
       Name("Pack").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
       PackOp<CPUDevice, type>)
 
-TF_CALL_ALL_TYPES(REGISTER_PACK);
+TF_CALL_POD_STRING_TYPES(REGISTER_PACK);
 TF_CALL_QUANTIZED_TYPES(REGISTER_PACK);
 TF_CALL_bfloat16(REGISTER_PACK);
 

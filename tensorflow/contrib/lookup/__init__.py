@@ -15,9 +15,14 @@
 """Ops for lookup operations.
 
 @@string_to_index
+@@string_to_index_table_from_file
+@@string_to_index_table_from_tensor
 @@index_to_string
+@@index_to_string_table_from_file
+@@index_to_string_table_from_tensor
 @@LookupInterface
 @@InitializableLookupTableBase
+@@IdTableWithHashBuckets
 @@HashTable
 @@MutableHashTable
 @@TableInitializerBase

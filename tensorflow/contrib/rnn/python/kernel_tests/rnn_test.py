@@ -46,10 +46,10 @@ class StackBidirectionalRNNTest(tf.test.TestCase):
     initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=self._seed)
     sequence_length = tf.placeholder(tf.int64) if use_sequence_length else None
 
-    self.cells_fw = [tf.nn.rnn_cell.LSTMCell(
+    self.cells_fw = [tf.contrib.rnn.LSTMCell(
         num_units, input_size, initializer=initializer, state_is_tuple=False)
                      for num_units in self.layers]
-    self.cells_bw = [tf.nn.rnn_cell.LSTMCell(
+    self.cells_bw = [tf.contrib.rnn.LSTMCell(
         num_units, input_size, initializer=initializer, state_is_tuple=False)
                      for num_units in self.layers]
 
@@ -208,10 +208,10 @@ class StackBidirectionalRNNTest(tf.test.TestCase):
     initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=self._seed)
     sequence_length = tf.placeholder(tf.int64)
 
-    self.cells_fw = [tf.nn.rnn_cell.LSTMCell(
+    self.cells_fw = [tf.contrib.rnn.LSTMCell(
         num_units, input_size, initializer=initializer, state_is_tuple=False)
                      for num_units in self.layers]
-    self.cells_bw = [tf.nn.rnn_cell.LSTMCell(
+    self.cells_bw = [tf.contrib.rnn.LSTMCell(
         num_units, input_size, initializer=initializer, state_is_tuple=False)
                      for num_units in self.layers]
 
@@ -382,7 +382,7 @@ class StackBidirectionalRNNTest(tf.test.TestCase):
 
       # check that all the variables names starts with the proper scope.
       tf.global_variables_initializer()
-      all_vars = tf.all_variables()
+      all_vars = tf.global_variables()
       prefix = prefix or "stack_bidirectional_rnn"
       scope_vars = [v for v in all_vars if v.name.startswith(prefix + "/")]
       tf.logging.info("StackRNN with scope: %s (%s)"

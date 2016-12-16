@@ -178,6 +178,11 @@ Node* GetSessionTensor(Graph* g, Node* in);
 // given in "tensors".
 Node* Concat(Graph* g, Node* concat_dim, gtl::ArraySlice<Node*> tensors);
 
+// Adds a ConcatV2 node in "g". The last input is "concat_dim", the
+// dimension to concatenate on, and the tensors to concatenate are
+// given in "tensors".
+Node* ConcatV2(Graph* g, gtl::ArraySlice<Node*> tensors, Node* concat_dim);
+
 // Add a Relu node in "g".
 Node* Relu(Graph* g, Node* in);
 

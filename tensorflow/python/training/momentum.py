@@ -40,6 +40,10 @@ class MomentumOptimizer(optimizer.Optimizer):
       use_locking: If `True` use locks for update operations.
       name: Optional name prefix for the operations created when applying
         gradients.  Defaults to "Momentum".
+      use_nesterov: If `True` use Nesterov Momentum.
+        See [Sutskever et. al., 2013](
+        http://jmlr.org/proceedings/papers/v28/sutskever13.pdf)
+
     """
     super(MomentumOptimizer, self).__init__(use_locking, name)
     self._learning_rate = learning_rate

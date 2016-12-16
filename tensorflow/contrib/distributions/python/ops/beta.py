@@ -252,7 +252,7 @@ class Beta(distribution.Distribution):
     mode = (self.a - 1.)/ (self.a_b_sum - 2.)
     if self.allow_nan_stats:
       nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
-      return math_ops.select(
+      return array_ops.where(
           math_ops.logical_and(
               math_ops.greater(self.a, 1.),
               math_ops.greater(self.b, 1.)),

@@ -4,6 +4,8 @@
 
 licenses(["notice"])
 
+exports_files(["LICENSE.TXT"])
+
 load(
     "@//third_party/llvm:llvm.bzl",
     "gentbl",
@@ -12,6 +14,8 @@ load(
     "llvm_target_cmake_vars",
     "cmake_var_string",
 )
+
+package(default_visibility = ["@//tensorflow/compiler/xla:internal"])
 
 llvm_host_triple = "x86_64-unknown-linux_gnu"
 
@@ -26,6 +30,7 @@ llvm_targets = [
 llvm_target_asm_parsers = [
     "AArch64",
     "ARM",
+    "NVPTX",
     "PowerPC",
     "X86",
 ]
@@ -277,6 +282,7 @@ cc_binary(
         "lib/Target/X86/Disassembler/X86DisassemblerDecoderCommon.h",
     ],
     linkopts = [
+        "-lm",
         "-ldl",
         "-lpthread",
     ],
@@ -297,6 +303,7 @@ cc_binary(
     ]),
     linkopts = [
         "-ldl",
+        "-lm",
         "-lpthread",
     ],
     stamp = 0,
@@ -1334,6 +1341,28 @@ cc_library(
 )
 
 cc_library(
+    name = "objc_arc",
+    srcs = glob([
+        "lib/Transforms/ObjCARC/*.c",
+        "lib/Transforms/ObjCARC/*.cpp",
+        "lib/Transforms/ObjCARC/*.inc",
+        "lib/Transforms/ObjCARC/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/Transforms/ObjCARC/*.h",
+        "include/llvm/Transforms/ObjCARC/*.def",
+        "include/llvm/Transforms/ObjCARC/*.inc",
+    ]),
+    deps = [
+        ":analysis",
+        ":config",
+        ":core",
+        ":support",
+        ":transform_utils",
+    ],
+)
+
+cc_library(
     name = "orc_jit",
     srcs = glob([
         "lib/ExecutionEngine/Orc/*.c",
@@ -1637,6 +1666,7 @@ cc_library(
     deps = [
         ":config",
         ":demangle",
+        "@zlib_archive//:zlib",
     ],
 )
 

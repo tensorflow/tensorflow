@@ -38,9 +38,10 @@ namespace tensorflow {
 // backed by PriorityQueue) that persists across different graph
 // executions, and sessions. Running this op produces a single-element
 // tensor of handles to Queues in the corresponding device.
-class PriorityQueueOp : public QueueOp {
+class PriorityQueueOp : public TypedQueueOp {
  public:
-  explicit PriorityQueueOp(OpKernelConstruction* context) : QueueOp(context) {
+  explicit PriorityQueueOp(OpKernelConstruction* context)
+      : TypedQueueOp(context) {
     OP_REQUIRES_OK(context, context->GetAttr("shapes", &component_shapes_));
     component_types_.insert(component_types_.begin(), DT_INT64);
     if (!component_shapes_.empty()) {
@@ -48,19 +49,12 @@ class PriorityQueueOp : public QueueOp {
     }
   }
 
- protected:
-  CreatorCallback GetCreator() const override {
-    return [this](QueueInterface** ret) {
-      PriorityQueue* queue = new PriorityQueue(
-          capacity_, component_types_, component_shapes_, cinfo_.name());
-      Status s = queue->Initialize();
-      if (s.ok()) {
-        *ret = queue;
-      } else {
-        queue->Unref();
-      }
-      return s;
-    };
+ private:
+  Status CreateResource(QueueInterface** ret) override
+      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    PriorityQueue* queue = new PriorityQueue(capacity_, component_types_,
+                                             component_shapes_, cinfo_.name());
+    return CreateTypedQueue(queue, ret);
   }
 
   std::vector<TensorShape> component_shapes_;

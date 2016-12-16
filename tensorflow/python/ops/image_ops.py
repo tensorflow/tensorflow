@@ -36,6 +36,8 @@ to be stripped from the image and re-attached using slicing ops.
 @@decode_png
 @@encode_png
 
+@@decode_image
+
 ## Resizing
 
 The resizing Ops accept input images as tensors of several types.  They always

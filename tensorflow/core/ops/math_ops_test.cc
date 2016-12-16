@@ -450,11 +450,15 @@ TEST(MathOpsTest, ArgOps_ShapeFn) {
   // Dimension value out of bounds
   dimension = test::AsScalar(10);
   op.input_tensors[1] = &dimension;
-  INFER_ERROR("must be in the range [0, 3)", op, "[2,3,4];[]");
+  INFER_ERROR("must be in the range [-3, 3)", op, "[2,3,4];[]");
 
   dimension = test::AsScalar(-10);
   op.input_tensors[1] = &dimension;
-  INFER_ERROR("must be in the range [0, 3)", op, "[2,3,4];[]");
+  INFER_ERROR("must be in the range [-3, 3)", op, "[2,3,4];[]");
+
+  dimension = test::AsScalar(-1);
+  op.input_tensors[1] = &dimension;
+  INFER_OK(op, "[2,3,4];[]", "[d0_0,d0_1]");
 }
 
 TEST(MathOpsTest, Betainc_ShapeFn) {

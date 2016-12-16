@@ -698,6 +698,18 @@ def train(train_op,
             tf_variables.local_variables_initializer(),
             data_flow_ops.initialize_all_tables())
 
+      if sync_optimizer is not None and isinstance(
+          sync_optimizer, sync_replicas_optimizer.SyncReplicasOptimizer):
+        with ops.control_dependencies([local_init_op] if local_init_op is
+                                      not None else []):
+          if is_chief:
+            local_init_op = sync_optimizer.chief_init_op
+          else:
+            local_init_op = sync_optimizer.local_step_init_op
+        ready_for_local_init_op = sync_optimizer.ready_for_local_init_op
+      else:
+        ready_for_local_init_op = None
+
     if summary_op == _USE_DEFAULT:
       summary_op = summary.merge_all()
 
@@ -708,16 +720,12 @@ def train(train_op,
 
     if is_chief and sync_optimizer is not None:
       if not isinstance(sync_optimizer,
-                        (sync_replicas_optimizer.SyncReplicasOptimizer,
-                         sync_replicas_optimizer.SyncReplicasOptimizerV2)):
+                        (sync_replicas_optimizer.SyncReplicasOptimizer)):
         raise ValueError(
-            '`sync_optimizer` must be a tf.train.SyncReplicasOptimizer or '
-            'tf.train.SyncReplicasOptimizerV2.')
+            '`sync_optimizer` must be a tf.train.SyncReplicasOptimizer.')
 
       # Need to create these BEFORE the supervisor finalizes the graph:
-      with ops.control_dependencies([init_op]):
-        init_tokens_op = sync_optimizer.get_init_tokens_op()
-      init_op = init_tokens_op
+      init_tokens_op = sync_optimizer.get_init_tokens_op()
       chief_queue_runner = sync_optimizer.get_chief_queue_runner()
       if isinstance(sync_optimizer,
                     sync_replicas_optimizer.SyncReplicasOptimizer):
@@ -746,6 +754,7 @@ def train(train_op,
       init_op=init_op,
       init_feed_dict=init_feed_dict,
       local_init_op=local_init_op,
+      ready_for_local_init_op=ready_for_local_init_op,
       ready_op=ready_op,
       summary_op=summary_op,
       summary_writer=summary_writer,
@@ -776,6 +785,7 @@ def train(train_op,
         logging.info('Starting Queues.')
         if is_chief and sync_optimizer is not None:
           sv.start_queue_runners(sess, [chief_queue_runner])
+          sess.run(init_tokens_op)
         try:
           while not sv.should_stop():
             total_loss, should_stop = train_step_fn(

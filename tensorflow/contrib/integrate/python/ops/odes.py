@@ -367,15 +367,15 @@ def _dopri5(func,
         (solution, history, rk_state, 1),
         name='interpolate_loop')
 
-    y = solution.pack(name=scope)
+    y = solution.stack(name=scope)
     y.set_shape(t.get_shape().concatenate(y0.get_shape()))
     if not full_output:
       return y
     else:
-      integrate_points = history.integrate_points.pack()
+      integrate_points = history.integrate_points.stack()
       info_dict = {'num_func_evals': 6 * array_ops.size(integrate_points) + 1,
                    'integrate_points': integrate_points,
-                   'error_ratio': history.error_ratio.pack()}
+                   'error_ratio': history.error_ratio.stack()}
       return (y, info_dict)
 
 

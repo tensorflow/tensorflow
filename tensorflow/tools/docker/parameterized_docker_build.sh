@@ -31,9 +31,8 @@
 #
 #   TF_DOCKER_BUILD_CENTRAL_PIP
 #     (Optional)
-#     If set to any non-0 and non-empty value, will attempt to use the PIP file
-#     located on the central repo, instead of locally built pip files.
-#     This option takes effect only for non-devel builds.
+#     If set to a non-empty string, will use it as the URL from which the
+#     pip wheel file will be downloaded (instead of building the pip locally).
 #
 #   TF_DOCKER_BUILD_IMAGE_NAME:
 #     (Optional)
@@ -81,7 +80,6 @@ mark_check_failed() {
 
 TF_DOCKER_BUILD_TYPE=$(to_lower ${TF_DOCKER_BUILD_TYPE})
 TF_DOCKER_BUILD_IS_DEVEL=$(to_lower ${TF_DOCKER_BUILD_IS_DEVEL})
-TF_DOCKER_BUILD_CENTRAL_PIP=$(to_lower ${TF_DOCKER_BUILD_CENTRAL_PIP})
 TF_DOCKER_BUILD_PYTHON_VERSION=$(to_lower ${TF_DOCKER_BUILD_PYTHON_VERSION:-PYTHON2})
 TF_DOCKER_BUILD_OPTIONS=$(to_lower ${TF_DOCKER_BUILD_OPTIONS:-OPT})
 
@@ -144,6 +142,15 @@ else
 "${TF_DOCKER_BUILD_TYPE}"
 fi
 
+if [[ "${TF_DOCKER_BUILD_PYTHON_VERSION}" == "python2" ]]; then
+  :
+elif [[ "${TF_DOCKER_BUILD_PYTHON_VERSION}" == "python3" ]]; then
+  FINAL_TAG="${FINAL_TAG}-py3"
+else
+  die "Unrecognized value in TF_DOCKER_BUILD_PYTHON_VERSION: "\
+"${TF_DOCKER_BUILD_PYTHON_VERSION}"
+fi
+
 # Verify that the original Dockerfile exists
 ORIG_DOCKERFILE="${SCRIPT_DIR}/${ORIG_DOCKERFILE}"
 if [[ ! -f "${ORIG_DOCKERFILE}" ]]; then
@@ -156,21 +163,6 @@ echo "FINAL_TAG: ${FINAL_TAG}"
 echo "Original Dockerfile: ${ORIG_DOCKERFILE}"
 echo ""
 
-
-DO_PIP_BUILD=0
-if [[ ${TF_DOCKER_BUILD_IS_DEVEL} == "yes" ]]; then
-  # Devel builds has pip build instructions in the Dockerfile
-  :
-else
-  if [[ ! -z ${TF_DOCKER_BUILD_CENTRAL_PIP} ]] &&
-     [[ ${TF_DOCKER_BUILD_CENTRAL_PIP} != "0" ]]; then
-    :
-  else
-    DO_PIP_BUILD=1
-  fi
-fi
-
-
 # Create tmp directory for Docker build
 TMP_DIR=$(mktemp -d)
 echo ""
@@ -179,66 +171,95 @@ echo "Docker build will occur in temporary directory: ${TMP_DIR}"
 # Copy all files to tmp directory for Docker build
 cp -r ${SCRIPT_DIR}/* "${TMP_DIR}/"
 
-
-if [[ "${DO_PIP_BUILD}" == "1" ]]; then
+if [[ "${TF_DOCKER_BUILD_IS_DEVEL}" == "no" ]]; then
   DOCKERFILE="${TMP_DIR}/Dockerfile"
 
-  # Perform local build of the required PIP whl file
-  export TF_BUILD_CONTAINER_TYPE=${TF_DOCKER_BUILD_TYPE}
-  export TF_BUILD_PYTHON_VERSION=${TF_DOCKER_BUILD_PYTHON_VERSION}
-  export TF_BUILD_OPTIONS=${TF_DOCKER_BUILD_OPTIONS}
-  export TF_BUILD_IS_PIP="PIP"
+  if [[ -z "${TF_DOCKER_BUILD_CENTRAL_PIP}" ]]; then
+    # Perform local build of the required PIP whl file
+    export TF_BUILD_CONTAINER_TYPE=${TF_DOCKER_BUILD_TYPE}
+    export TF_BUILD_PYTHON_VERSION=${TF_DOCKER_BUILD_PYTHON_VERSION}
+    export TF_BUILD_OPTIONS=${TF_DOCKER_BUILD_OPTIONS}
+    export TF_BUILD_IS_PIP="PIP"
 
-  if [[ "${TF_DOCKER_BUILD_TYPE}" == "gpu" ]]; then
-    export TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS=\
-"${TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS} -e TF_CUDA_COMPUTE_CAPABILITIES=3.0,3.5,5.2"
-  fi
+    if [[ "${TF_DOCKER_BUILD_TYPE}" == "gpu" ]]; then
+      export TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS=\
+  "${TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS} -e TF_CUDA_COMPUTE_CAPABILITIES=3.0,3.5,5.2"
+    fi
 
-  pushd "${SCRIPT_DIR}/../../../"
-  rm -rf pip_test/whl &&
-  tensorflow/tools/ci_build/ci_parameterized_build.sh
-  PIP_BUILD_EXIT_CODE=$?
-  popd
+    pushd "${SCRIPT_DIR}/../../../"
+    rm -rf pip_test/whl &&
+    tensorflow/tools/ci_build/ci_parameterized_build.sh
+    PIP_BUILD_EXIT_CODE=$?
+    popd
 
-  # Was the pip build successful?
-  if [[ ${PIP_BUILD_EXIT_CODE} != "0" ]]; then
-    die "FAIL: Failed to build pip file locally"
-  fi
+    # Was the pip build successful?
+    if [[ ${PIP_BUILD_EXIT_CODE} != "0" ]]; then
+      die "FAIL: Failed to build pip file locally"
+    fi
 
-  PIP_WHL=$(ls pip_test/whl/*.whl | head -1)
-  if [[ -z "${PIP_WHL}" ]]; then
-    die "ERROR: Cannot locate the locally-built pip whl file"
-  fi
-  echo "Locally-built PIP whl file is at: ${PIP_WHL}"
+    PIP_WHL=$(ls pip_test/whl/*.whl | head -1)
+    if [[ -z "${PIP_WHL}" ]]; then
+      die "ERROR: Cannot locate the locally-built pip whl file"
+    fi
+    echo "Locally-built PIP whl file is at: ${PIP_WHL}"
 
-  # Copy the pip file to tmp directory
-  cp "${PIP_WHL}" "${TMP_DIR}/" || \
-      die "ERROR: Failed to copy wheel file: ${PIP_WHL}"
+    # Copy the pip file to tmp directory
+    cp "${PIP_WHL}" "${TMP_DIR}/" || \
+        die "ERROR: Failed to copy wheel file: ${PIP_WHL}"
 
-  # Use string replacement to put the correct file name into the Dockerfile
-  PIP_WHL=$(basename "${PIP_WHL}")
+    # Use string replacement to put the correct file name into the Dockerfile
+    PIP_WHL=$(basename "${PIP_WHL}")
 
-  # Modify the non-devel Dockerfile to point to the correct pip whl file
-  # location
-  sed -e "/# --- DO NOT EDIT OR DELETE BETWEEN THE LINES --- #/,"\
+    # Modify the non-devel Dockerfile to point to the correct pip whl file
+    # location
+    sed -e "/# --- DO NOT EDIT OR DELETE BETWEEN THE LINES --- #/,"\
 "/# --- ~ DO NOT EDIT OR DELETE BETWEEN THE LINES --- #/c"\
 "COPY ${PIP_WHL} /\n"\
 "RUN pip --no-cache-dir install /${PIP_WHL}" "${ORIG_DOCKERFILE}" \
     > "${DOCKERFILE}"
+  else
+    echo "Downloading pip wheel from: ${TF_DOCKER_BUILD_CENTRAL_PIP}"
+    echo
+
+    # Modify the non-devel Dockerfile to point to the correct pip whl URL.
+    sed -e "/# --- DO NOT EDIT OR DELETE BETWEEN THE LINES --- #/,"\
+"/# --- ~ DO NOT EDIT OR DELETE BETWEEN THE LINES --- #/c"\
+"RUN pip --no-cache-dir install ${TF_DOCKER_BUILD_CENTRAL_PIP}" "${ORIG_DOCKERFILE}" \
+    > "${DOCKERFILE}"
+  fi
 
   echo "Modified Dockerfile at: ${DOCKERFILE}"
-else
-  if [[ "${TF_DOCKER_BUILD_IS_DEVEL}" == "yes" ]]; then
-    DOCKERFILE="${TMP_DIR}/Dockerfile"
+  echo
 
-    # Modify the devel Dockerfile to specify the git branch
-    sed -r "s/([\s]*git checkout )(.*)/\1${TF_DOCKER_BUILD_DEVEL_BRANCH}/g" \
-        "${ORIG_DOCKERFILE}" > "${DOCKERFILE}"
-  else
-    DOCKERFILE="${TMP_DIR}/"$(basename "${ORIG_DOCKERFILE}")
+  # Modify python/pip version if necessary.
+  if [[ "${TF_DOCKER_BUILD_PYTHON_VERSION}" == "python3" ]]; then
+    sed -i -e 's/python /python3 /g' "${DOCKERFILE}" && \
+        sed -i -e 's/python-dev/python3-dev/g' "${DOCKERFILE}" && \
+        sed -i -e 's/pip /pip3 /g' "${DOCKERFILE}" && \
+        sed -i -e 's^# RUN ln -s /usr/bin/python3 /usr/bin/python#^RUN ln -s /usr/bin/python3 /usr/bin/python^' "${DOCKERFILE}" && \
+        echo "Modified Dockerfile for python version "\
+"${TF_DOCKER_BUILD_PYTHON_VERSION} at: ${DOCKERFILE}" || \
+        die "FAILED to modify ${DOCKERFILE} for python3"
+  fi
+else
+  DOCKERFILE="${TMP_DIR}/Dockerfile"
+
+  # Modify the devel Dockerfile to specify the git branch
+  sed -r "s/([\s]*git checkout )(.*)/\1${TF_DOCKER_BUILD_DEVEL_BRANCH}/g" \
+      "${ORIG_DOCKERFILE}" > "${DOCKERFILE}"
+
+  # Modify python/pip version if necessary.
+  if [[ "${TF_DOCKER_BUILD_PYTHON_VERSION}" == "python3" ]]; then
+    sed -i -e 's/python-dev/python-dev python3-dev/g' "${DOCKERFILE}" && \
+        sed -i -e 's/python /python3 /g' "${DOCKERFILE}" && \
+        sed -i -e 's^/tmp/pip^/tmp/pip3^g' "${DOCKERFILE}" && \
+        sed -i -e 's/pip /pip3 /g' "${DOCKERFILE}" && \
+        sed -i -e 's/ENV CI_BUILD_PYTHON python/ENV CI_BUILD_PYTHON python3/g' "${DOCKERFILE}" && \
+        sed -i -e 's^# RUN ln -s /usr/bin/python3 /usr/bin/python#^RUN ln -s /usr/bin/python3 /usr/bin/python^' "${DOCKERFILE}" && \
+        echo "Modified Dockerfile further for python version ${TF_DOCKER_BUILD_PYTHON_VERSION} at: ${DOCKERFILE}" || \
+        die "FAILED to modify ${DOCKERFILE} for python3"
   fi
 fi
-
 
 # Perform docker build
 # Intermediate image name with tag
@@ -305,15 +326,6 @@ if [[ "${TF_DOCKER_BUILD_IS_DEVEL}" == "no" ]]; then
   # Stop the running docker container
   sleep 1
   "${DOCKER_BINARY}" stop --time=0 ${CONTAINER_ID}
-
-else
-  "${DOCKER_BINARY}" run --rm -p ${CONTAINER_PORT}:${CONTAINER_PORT} \
-      -v ${TMP_DIR}/notebooks:/root/notebooks "${IMG}" \
-      bash -c \
-      "cd /tensorflow; tensorflow/tools/ci_build/builds/test_tutorials.sh"
-  if [[ $? != "0" ]]; then
-    CHECK_FAILED=1
-  fi
 
 fi
 

@@ -208,7 +208,7 @@ class Gamma(distribution.Distribution):
     mode = (self.alpha - 1.) / self.beta
     if self.allow_nan_stats:
       nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
-      return math_ops.select(
+      return array_ops.where(
           self.alpha >= 1.,
           mode,
           array_ops.fill(self.batch_shape(), nan, name="nan"))

@@ -49,6 +49,10 @@ const float SubtleMustCopyUnlessStringOrFloat(const float value) {
   return value;
 }
 
+const double SubtleMustCopyUnlessStringOrFloat(const double value) {
+  return value;
+}
+
 }  // namespace
 
 // Lookup table that wraps an unordered_map, where the key and value data type
@@ -390,8 +394,9 @@ class MutableDenseHashTable final : public LookupInterface {
 
     OP_REQUIRES_OK(ctx,
                    GetNodeAttr(kernel->def(), "value_shape", &value_shape_));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(value_shape_) ||
-                         TensorShapeUtils::IsVector(value_shape_),
+    OP_REQUIRES(ctx,
+                TensorShapeUtils::IsScalar(value_shape_) ||
+                    TensorShapeUtils::IsVector(value_shape_),
                 errors::InvalidArgument(
                     "Empty value must be a scalar or a vector, got shape ",
                     value_shape_.DebugString()));
@@ -399,8 +404,9 @@ class MutableDenseHashTable final : public LookupInterface {
     const Tensor* empty_key_input;
     OP_REQUIRES_OK(ctx, ctx->input("empty_key", &empty_key_input));
     key_shape_ = empty_key_input->shape();
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(key_shape_) ||
-                         TensorShapeUtils::IsVector(key_shape_),
+    OP_REQUIRES(ctx,
+                TensorShapeUtils::IsScalar(key_shape_) ||
+                    TensorShapeUtils::IsVector(key_shape_),
                 errors::InvalidArgument(
                     "Empty key must be a scalar or a vector, got shape ",
                     key_shape_.DebugString()));
@@ -850,8 +856,12 @@ REGISTER_KERNEL_BUILDER(Name("LookupTableImport").Device(DEVICE_CPU),
       LookupTableOp<lookup::HashTable<key_dtype, value_dtype>, key_dtype, \
                     value_dtype>)
 
+REGISTER_KERNEL(string, double);
+REGISTER_KERNEL(string, float);
+REGISTER_KERNEL(string, int32);
 REGISTER_KERNEL(string, int64);
 REGISTER_KERNEL(int64, string);
+REGISTER_KERNEL(string, string);
 
 #undef REGISTER_KERNEL
 

@@ -19,12 +19,14 @@ from __future__ import division
 from __future__ import print_function
 
 import inspect
+import re
 import tempfile
 
 from tensorflow.contrib import layers
 from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework import list_variables
 from tensorflow.contrib.framework import load_variable
+from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import estimator
@@ -166,6 +168,11 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
     if not self._estimator.config.is_chief:
       self._chief_hook = None
 
+  @property
+  def model_dir(self):
+    """See trainable.Evaluable."""
+    return self._estimator.model_dir
+
   def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
           monitors=None, max_steps=None):
     """See trainable.Trainable."""
@@ -179,11 +186,13 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
 
   # pylint: disable=protected-access
   def evaluate(self, x=None, y=None, input_fn=None, feed_fn=None,
-               batch_size=None, steps=None, metrics=None, name=None):
+               batch_size=None, steps=None, metrics=None, name=None,
+               checkpoint_path=None):
     """See evaluable.Evaluable."""
     return self._estimator.evaluate(x=x, y=y, input_fn=input_fn,
                                     feed_fn=feed_fn, batch_size=batch_size,
-                                    steps=steps, metrics=metrics, name=name)
+                                    steps=steps, metrics=metrics, name=name,
+                                    checkpoint_path=checkpoint_path)
 
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
@@ -234,6 +243,22 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
                                   input_fn=input_fn or default_input_fn,
                                   default_batch_size=default_batch_size,
                                   exports_to_keep=exports_to_keep)
+
+  @experimental
+  def export_savedmodel(self,
+                        export_dir_base,
+                        input_fn,
+                        default_output_alternative_key=None,
+                        assets_extra=None,
+                        as_text=False,
+                        exports_to_keep=None):
+    return self._estimator.export_savedmodel(
+        export_dir_base,
+        input_fn,
+        default_output_alternative_key=default_output_alternative_key,
+        assets_extra=assets_extra,
+        as_text=as_text,
+        exports_to_keep=exports_to_keep)
 
   @property
   def weights_(self):

@@ -27,10 +27,15 @@ class Evaluable(object):
   """
   __metaclass__ = abc.ABCMeta
 
+  @abc.abstractproperty
+  def model_dir(self):
+    """Returns a path in which the eval process will look for checkpoints."""
+    raise NotImplementedError
+
   @abc.abstractmethod
   def evaluate(
       self, x=None, y=None, input_fn=None, feed_fn=None, batch_size=None,
-      steps=None, metrics=None, name=None):
+      steps=None, metrics=None, name=None, checkpoint_path=None):
     """Evaluates given model with provided evaluation data.
 
     Stop conditions - we evaluate on the given input data until one of the
@@ -83,6 +88,8 @@ class Evaluable(object):
         `../../../metrics/python/ops/metrics_ops.py`.
       name: Name of the evaluation if user needs to run multiple evaluations on
         different data sets, such as on training data vs test data.
+      checkpoint_path: Path of a specific checkpoint to evaluate. If `None`, the
+        latest checkpoint in `model_dir` is used.
 
     Returns:
       Returns `dict` with evaluation results.

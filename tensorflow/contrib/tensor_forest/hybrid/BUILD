@@ -82,6 +82,13 @@ py_library(
         "python/ops/_training_ops.so",
     ],
     srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+    ],
 )
 
 py_library(
@@ -100,6 +107,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/tensor_forest:tensor_forest_py",
     ],
 )
 
@@ -114,6 +122,9 @@ py_test(
         ":fully_connected_layer",
         ":hybrid_layer",
         ":hybrid_model",
+        "//tensorflow/contrib/tensor_forest:tensor_forest_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
     ],
 )
 
@@ -125,6 +136,12 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/tensor_forest:tensor_forest_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -137,6 +154,8 @@ py_library(
     deps = [
         ":hybrid_layer",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
     ],
 )
 
@@ -161,6 +180,7 @@ py_test(
     deps = [
         ":ops_lib",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/tensor_forest:tensor_forest_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
@@ -177,6 +197,10 @@ py_library(
         ":ops_lib",
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/tensor_forest:tensor_forest_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:variable_scope",
     ],
 )
 
@@ -190,6 +214,10 @@ py_test(
         ":decisions_to_data_layer",
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/tensor_forest:tensor_forest_py",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:variable_scope",
     ],
 )
 
@@ -206,6 +234,7 @@ py_library(
         ":ops_lib",
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/tensor_forest:tensor_forest_py",
+        "//tensorflow/python:training",
     ],
 )
 
@@ -222,6 +251,8 @@ py_library(
         ":ops_lib",
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/tensor_forest:tensor_forest_py",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:training",
     ],
 )
 
@@ -234,6 +265,10 @@ py_test(
         ":decisions_to_data_then_nn",
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/tensor_forest:tensor_forest_py",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:variable_scope",
     ],
 )
 
@@ -250,6 +285,7 @@ py_library(
         ":ops_lib",
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/tensor_forest:tensor_forest_py",
+        "//tensorflow/python:training",
     ],
 )
 
@@ -262,6 +298,10 @@ py_test(
         ":k_feature_decisions_to_data_then_nn",
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/tensor_forest:tensor_forest_py",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:variable_scope",
     ],
 )
 
@@ -278,6 +318,7 @@ py_library(
         ":ops_lib",
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/tensor_forest:tensor_forest_py",
+        "//tensorflow/python:training",
     ],
 )
 
@@ -290,6 +331,10 @@ py_test(
         ":forest_to_data_then_nn",
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/tensor_forest:tensor_forest_py",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:variable_scope",
     ],
 )
 
@@ -305,6 +350,7 @@ py_library(
         ":ops_lib",
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/tensor_forest:tensor_forest_py",
+        "//tensorflow/python:training",
     ],
 )
 
@@ -322,6 +368,7 @@ py_library(
         ":ops_lib",
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/tensor_forest:tensor_forest_py",
+        "//tensorflow/python:training",
     ],
 )
 

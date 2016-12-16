@@ -41,7 +41,7 @@ def add_debug_tensor_watch(run_options,
         string with only one element.
   """
 
-  watch_opts = run_options.debug_tensor_watch_opts
+  watch_opts = run_options.debug_options.debug_tensor_watch_opts
 
   watch = watch_opts.add()
   watch.node_name = node_name
