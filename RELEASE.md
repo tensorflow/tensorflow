@@ -14,6 +14,10 @@
   `tf.reverse(a, [0, 2])`. `tf.reverse_v2()` will remain until 1.0 final.
 * `tf.mul`, `tf.sub` and `tf.neg` are deprecated in favor of `tf.multiply`,
   `tf.subtract` and `tf.negative`.
+* `tf.pack` and `tf.unpack` are deprecated in favor of `tf.stack` and
+  `tf.unstack`.
+* `TensorArray.pack` and `TensorArray.unpack` are getting deprecated in favor of
+  `TensorArray.stack` and `TensorArray.unstack`.
 * The following Python functions have had their arguments changed to use `axis`
   when referring to specific dimensions. We have kept the old keyword arguments
   for compatibility currently, but we will be removing them well before the
