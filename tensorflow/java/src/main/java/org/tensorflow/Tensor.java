@@ -118,14 +118,14 @@ public final class Tensor implements AutoCloseable {
    * Returns the <a href="https://www.tensorflow.org/resources/dims_types.html#shape">shape</a> of
    * the Tensor, i.e., the sizes of each dimension.
    *
-   * @return an array where the i-th element is the size of the i-th dimension of the tensor.
+   * @return an array where the i-th element is the size of the i-th dimension of the Tensor.
    */
   public long[] shape() {
     return shapeCopy;
   }
 
   /**
-   * Returns the value in a scalar {@link DataType#FLOAT} tensor.
+   * Returns the value in a scalar {@link DataType#FLOAT} Tensor.
    *
    * @throws IllegalArgumentException if the Tensor does not represent a float scalar.
    */
@@ -134,7 +134,7 @@ public final class Tensor implements AutoCloseable {
   }
 
   /**
-   * Returns the value in a scalar {@link DataType#DOUBLE} tensor.
+   * Returns the value in a scalar {@link DataType#DOUBLE} Tensor.
    *
    * @throws IllegalArgumentException if the Tensor does not represent a double scalar.
    */
@@ -143,7 +143,7 @@ public final class Tensor implements AutoCloseable {
   }
 
   /**
-   * Returns the value in a scalar {@link DataType#INT32} tensor.
+   * Returns the value in a scalar {@link DataType#INT32} Tensor.
    *
    * @throws IllegalArgumentException if the Tensor does not represent a int scalar.
    */
@@ -152,7 +152,7 @@ public final class Tensor implements AutoCloseable {
   }
 
   /**
-   * Returns the value in a scalar {@link DataType#INT64} tensor.
+   * Returns the value in a scalar {@link DataType#INT64} Tensor.
    *
    * @throws IllegalArgumentException if the Tensor does not represent a long scalar.
    */
@@ -161,7 +161,7 @@ public final class Tensor implements AutoCloseable {
   }
 
   /**
-   * Returns the value in a scalar {@link DataType#BOOL} tensor.
+   * Returns the value in a scalar {@link DataType#BOOL} Tensor.
    *
    * @throws IllegalArgumentException if the Tensor does not represent a boolean scalar.
    */
@@ -170,7 +170,7 @@ public final class Tensor implements AutoCloseable {
   }
 
   /**
-   * Returns the value in a scalar {@link DataType#STRING} tensor.
+   * Returns the value in a scalar {@link DataType#STRING} Tensor.
    *
    * @throws IllegalArgumentException if the Tensor does not represent a boolean scalar.
    */
@@ -179,12 +179,12 @@ public final class Tensor implements AutoCloseable {
   }
 
   /**
-   * Copies the contents of the tensor to {@code dst} and returns {@code dst}.
+   * Copies the contents of the Tensor to {@code dst} and returns {@code dst}.
    *
-   * <p>For non-scalar tensors, this method copies the contents of the underlying tensor to a Java
-   * array. For scalar tensors, use one of {@link #floatValue()}, {@link #doubleValue()}, {@link
+   * <p>For non-scalar Tensors, this method copies the contents of the underlying Tensor to a Java
+   * array. For scalar Tensors, use one of {@link #floatValue()}, {@link #doubleValue()}, {@link
    * #intValue()}, {@link #longValue()} or {@link #booleanValue()} instead. The type and shape of
-   * {@code dst} must be compatible with the tensor. For example:
+   * {@code dst} must be compatible with the Tensor. For example:
    *
    * <pre>{@code
    * int matrix[2][2] = {{1,2},{3,4}};
@@ -199,8 +199,8 @@ public final class Tensor implements AutoCloseable {
    * }
    * }</pre>
    *
-   * @throws IllegalArgumentException if the tensor is a scalar or if {@code dst} is not compatible
-   *     with the tensor (for example, mismatched data types or shapes).
+   * @throws IllegalArgumentException if the Tensor is a scalar or if {@code dst} is not compatible
+   *     with the Tensor (for example, mismatched data types or shapes).
    */
   public <T> T copyTo(T dst) {
     throwExceptionIfTypeIsIncompatible(dst);
