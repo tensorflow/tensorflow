@@ -148,10 +148,7 @@ Status GrpcSession::AddOnlineWorker(const string &job_id,const string &task_inde
   req.set_job_id(job_id);
   req.set_task_index(task_index);
   req.set_addr(addr);
-
-  master_->AddOnlineWorker(&call_options,&req,&resp);
-
-  return  Status::OK();
+  return master_->AddOnlineWorker(&call_options,&req,&resp);
 }
 
 Status GrpcSession::Extend(const GraphDef& graph) {
