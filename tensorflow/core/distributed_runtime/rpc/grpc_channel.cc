@@ -163,6 +163,8 @@ class MultiGrpcChannelCache : public CachingGrpcChannelCache {
     return cache->TranslateTask(target);
   }
 
+
+    //Add online worker to train a   distributed training tasks.  this func add a grpcchannel to MultiGrpcChannelCache
   Status  AddOnlineWorker(const string &job_id,const string &name_prefix,const string &addr) override {
       mutex_lock l(mu_);  // could use reader lock
       GrpcChannelCache* cache = gtl::FindPtrOrNull(target_caches_, name_prefix);
@@ -262,13 +264,13 @@ class SparseGrpcChannelCache : public CachingGrpcChannelCache {
     return iter->second;
   }
 
+    // in SparseGrpcChannelCache ,add worker to hos_ports
+   Status  AddOnlineWorker(const string &job_id,const string &name_prefix,const string &addr) override {
+       int id=host_ports_.size();
+       host_ports_.insert(std::map<int, string>::value_type(id,string(addr)));
 
-Status  AddOnlineWorker(const string &job_id,const string &name_prefix,const string &addr) override {
-    int id=host_ports_.size();
-    host_ports_.insert(std::map<int, string>::value_type(id,string(addr)));
-
-    return Status::OK();
-}
+       return Status::OK();
+   }
 
 
 

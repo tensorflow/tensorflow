@@ -806,7 +806,7 @@ Status DirectSession::RecvOutputs(const std::vector<string>& output_names,
 
 
 
-
+//Addonline Only be used for distributed training tasks,so do not anything
 Status DirectSession::AddOnlineWorker(const string &job_id, const string &task_index, const string &addr)  {
   return Status::OK();
 }

@@ -46,6 +46,8 @@ WorkerCacheInterface {
   // ownership, not a cache lookup.
   virtual WorkerInterface* CreateWorker(const string& target) = 0;
 
+
+  //Add online worker to train a   distributed training tasks.
   virtual Status AddOnlineWorker(const string &jobId,const string& taskIndex,const string& addr)=0;
   // Release a worker previously returned by this->CreateWorker(target).
   //

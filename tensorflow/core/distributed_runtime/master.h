@@ -60,6 +60,7 @@ class Master {
 
   void Reset(const ResetRequest* req, ResetResponse* resp, MyClosure done);
 
+    //add online worker in ps server master threads
   void AddOnlineWorker(const AddOnlineWorkerRequest *req,const AddOnlineWorkerResponse *resp,MyClosure done);
 
  private:

@@ -381,7 +381,7 @@ void Master::ListDevices(const ListDevicesRequest* req,
 }
 
 
-
+//add online worker in ps server master threads
 void Master::AddOnlineWorker(const AddOnlineWorkerRequest* req, const AddOnlineWorkerResponse* resp, MyClosure done) {
       SchedClosure([this, req, resp, done]() {
           Status ret=env_->worker_cache->AddOnlineWorker(req->job_id(),req->task_index(),req->addr());

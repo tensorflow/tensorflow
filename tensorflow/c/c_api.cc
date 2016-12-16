@@ -321,7 +321,7 @@ void TF_CloseDeprecatedSession(TF_DeprecatedSession* s, TF_Status* status) {
   status->status = s->session->Close();
 }
 
-
+// add online worker on c api,it must be called from session.py
 void TF_AddOnlineWorkerDeprecatedSession(TF_DeprecatedSession* s, TF_Status* status,const char *job_id,const char *task_index,const char *addr){
     status->status=s->session->AddOnlineWorker(std::string(job_id),std::string(task_index),std::string(addr));
 }
