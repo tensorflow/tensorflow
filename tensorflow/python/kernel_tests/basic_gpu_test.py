@@ -85,7 +85,10 @@ class MathBuiltinUnaryTest(tf.test.TestCase):
     self.assertAllClose(np_out, tf_out)
 
   def _inv(self, x):
-    return 1.0 / x
+    with np.errstate(divide='ignore', invalid='ignore'):
+        c = np.true_divide( 1, x )
+        c[ ~ np.isfinite( c )] = 0  # -inf inf NaN
+    return c
 
   def _rsqrt(self, x):
     return self._inv(np.sqrt(x))
