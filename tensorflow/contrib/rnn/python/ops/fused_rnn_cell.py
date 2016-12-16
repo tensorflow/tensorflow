@@ -112,10 +112,10 @@ class FusedRNNCellAdaptor(FusedRNNCell):
           scope=scope)
       if is_list:
         # Convert outputs back to list
-        outputs = array_ops.unpack(outputs)
+        outputs = array_ops.unstack(outputs)
     else:  # non-dynamic rnn
       if not is_list:
-        inputs = array_ops.unpack(inputs)
+        inputs = array_ops.unstack(inputs)
       outputs, state = contrib_rnn.static_rnn(self._cell,
                                               inputs,
                                               initial_state=initial_state,

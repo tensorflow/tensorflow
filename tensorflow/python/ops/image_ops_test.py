@@ -56,7 +56,7 @@ class RGBToHSVTest(test_util.TensorFlowTestCase):
         batch0 = constant_op.constant(inp)
         batch1 = image_ops.rgb_to_hsv(batch0)
         batch2 = image_ops.hsv_to_rgb(batch1)
-        split0 = array_ops.unpack(batch0)
+        split0 = array_ops.unstack(batch0)
         split1 = list(map(image_ops.rgb_to_hsv, split0))
         split2 = list(map(image_ops.hsv_to_rgb, split1))
         join1 = array_ops.stack(split1)

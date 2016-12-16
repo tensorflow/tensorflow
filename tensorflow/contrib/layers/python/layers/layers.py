@@ -2110,7 +2110,7 @@ def legacy_fully_connected(x,
       y = nn.bias_add(y, b)
 
     if len(dims) > 2:
-      out_shape = array_ops.unpack(array_ops.shape(x))
+      out_shape = array_ops.unstack(array_ops.shape(x))
       out_shape[-1] = num_output_units
 
       y = array_ops.reshape(y, array_ops.stack(out_shape))
