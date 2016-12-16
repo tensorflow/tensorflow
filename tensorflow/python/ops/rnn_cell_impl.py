@@ -819,7 +819,7 @@ class _SlimRNNCell(RNNCell):
     return output, state
 
 
-def _linear(args, output_size, bias, bias_start=0.0, scope=None):
+def _linear(args, output_size, bias, bias_start=0.0):
   """Linear map: sum_i(args[i] * W[i]), where W[i] is a variable.
 
   Args:
@@ -827,7 +827,6 @@ def _linear(args, output_size, bias, bias_start=0.0, scope=None):
     output_size: int, second dimension of W[i].
     bias: boolean, whether to add a bias term or not.
     bias_start: starting value to initialize the bias; 0 by default.
-    scope: (optional) Variable scope to create parameters in.
 
   Returns:
     A 2D Tensor with shape [batch x output_size] equal to
@@ -856,7 +855,7 @@ def _linear(args, output_size, bias, bias_start=0.0, scope=None):
   dtype = [a.dtype for a in args][0]
 
   # Now the computation.
-  scope = scope or vs.get_variable_scope()
+  scope = vs.get_variable_scope()
   with vs.variable_scope(scope) as outer_scope:
     weights = vs.get_variable(
         "weights", [total_arg_size, output_size], dtype=dtype)
