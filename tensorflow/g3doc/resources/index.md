@@ -3,12 +3,17 @@
 ## TensorFlow WhitePapers
 
 Additional details about the TensorFlow programming model and the underlying
-implementation can be found in our white paper:
+implementation can be found in this paper:
+
+* [TensorFlow: A System for Large-Scale Machine Learning](https://www.usenix.org/conference/osdi16/technical-sessions/presentation/abadi)
+
+An earlier white paper version can be found here:
 
 * [TensorFlow: Large-scale machine learning on heterogeneous systems](http://download.tensorflow.org/paper/whitepaper2015.pdf)
 
-
-A white paper is also available for [TF.Learn](https://www.tensorflow.org/tutorials/tflearn/):
+A white paper about
+[contrib.learn](https://www.tensorflow.org/tutorials/tflearn/) is also
+available:
 
 * [TF.Learn: TensorFlow's High-level Module for Distributed Machine Learning](https://arxiv.org/abs/1612.04251)
 
