@@ -54,6 +54,15 @@ to get the ip of the new virtual machine. To switch from default virtual machine
     
 Note that `docker-machine env tensorflow` outputs some environment variables such like `DOCKER_HOST`. Then your docker client is now connected to the docker host in virtual machine `tensorflow`
 
+* **Troubleshooting : I'm getting a TLS connection error.**
+
+If you get an error about the TLS connection of your docker, run the command below to confirm the problem.
+
+	docker-machine ip tensorflow
+
+Then if it is the case use the instructions on this page to solve the issue:
+[here](https://docs.docker.com/toolbox/faqs/troubleshoot/)
+
 
 Notes for anyone needing to build their own containers (mostly instructors)
 ===========================================================================
