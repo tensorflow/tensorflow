@@ -368,8 +368,10 @@
   * [`gather`](../../api_docs/python/tensor_array_ops.md#gather)
   * [`pack`](../../api_docs/python/tensor_array_ops.md#pack)
   * [`split`](../../api_docs/python/tensor_array_ops.md#split)
+  * [`stack`](../../api_docs/python/tensor_array_ops.md#stack)
   * [`TensorArray`](../../api_docs/python/tensor_array_ops.md#TensorArray)
   * [`unpack`](../../api_docs/python/tensor_array_ops.md#unpack)
+  * [`unstack`](../../api_docs/python/tensor_array_ops.md#unstack)
 
 * **[Tensor Handle Operations](../../api_docs/python/session_ops.md)**:
   * [`delete_session_tensor`](../../api_docs/python/session_ops.md#delete_session_tensor)
