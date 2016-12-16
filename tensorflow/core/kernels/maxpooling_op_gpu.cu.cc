@@ -199,6 +199,51 @@ __global__ void MaxPoolBackward(const int nthreads, const dtype* top_diff,
   }
 }
 
+template <typename dtype>
+__global__ void MaxPoolGradBackwardNoMaskNHWC(
+    const int nthreads, const dtype* bottom_data, const int pooled_height,
+    const int pooled_width, const int channels, const int height,
+    const int width, const int kernel_h, const int kernel_w,
+    const int stride_h, const int stride_w, const int pad_t, const int pad_l,
+    const dtype* top_diff, dtype* bottom_diff) {
+  CUDA_1D_KERNEL_LOOP(index, nthreads) {
+    // First find out the index to the maximum, since we have no mask.
+    int n = index;
+    int c = n % channels;
+    n /= channels;
+    int wstart = (n % pooled_width) * stride_w - pad_l;
+    n /= pooled_width;
+    int hstart = (n % pooled_height) * stride_h - pad_t;
+    n /= pooled_height;
+    int hend = min(hstart + kernel_h, height);
+    int wend = min(wstart + kernel_w, width);
+    hstart = max(hstart, 0);
+    wstart = max(wstart, 0);
+    dtype maxval = Eigen::NumTraits<dtype>::lowest();
+    int maxidx = -1;
+    const dtype* bottom_data_n = bottom_data + n * height * width * channels;
+    for (int h = hstart; h < hend; ++h) {
+      for (int w = wstart; w < wend; ++w) {
+        int idx = (h * width + w) * channels + c;
+        if (bottom_data_n[idx] > maxval) {
+          maxidx = idx;
+          maxval = bottom_data_n[idx];
+        }
+      }
+    }
+    bottom_diff[index] = maxval;
+  }
+}
+
+template <typename dtype>
+__global__ void MaxPoolGradBackward(const int nthreads, const dtype* top_diff,
+                                    const int64* mask, const int top_offset,
+                                    const int bottom_offset, dtype* bottom_diff) {
+  CUDA_1D_KERNEL_LOOP(index, nthreads) {
+    CudaAtomicAdd(bottom_diff + index, top_diff[mask[index]]);
+  }
+}
+
 #undef CUDA_1D_KERNEL_LOOP
 }  // namespace
 
@@ -308,6 +353,76 @@ bool MaxPoolBackwardWithArgmax(const int output_size, const int input_size,
   MaxPoolBackward<<<(output_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
                     kThreadsPerBlock, 0, d.stream()>>>(
       output_size, top_diff, mask, top_offset, bottom_offset, bottom_diff);
+  return d.ok();
+}
+
+bool MaxPoolGradBackwardNoMask(const float* bottom_data, const int batch,
+                               const int pooled_height, const int pooled_width,
+                               const int channels, const int height,
+                               const int width, const int kernel_h,
+                               const int kernel_w, const int stride_h,
+                               const int stride_w, const int pad_t, const int pad_l,
+                               const float* top_diff, float* bottom_diff,
+                               const Eigen::GpuDevice& d) {
+  const int kThreadsPerBlock = 1024;
+  const int bottom_size = batch * channels * pooled_height * pooled_width;
+  const int top_size = batch * channels * height * width;
+
+  MaxPoolGradBackwardNoMaskNHWC<<<(top_size + kThreadsPerBlock - 1) /
+                                  kThreadsPerBlock,
+                                  kThreadsPerBlock, 0, d.stream()>>>(
+      top_size, bottom_data, height, width, channels, pooled_height,
+      pooled_width, kernel_h, kernel_w, stride_h, stride_w, pad_t, pad_l,
+      top_diff, bottom_diff);
+  return d.ok();
+}
+
+bool MaxPoolGradBackwardNoMask(const Eigen::half* bottom_data, const int batch,
+                               const int pooled_height, const int pooled_width,
+                               const int channels, const int height,
+                               const int width, const int kernel_h,
+                               const int kernel_w, const int stride_h,
+                               const int stride_w, const int pad_t, const int pad_l,
+                               const Eigen::half* top_diff, Eigen::half* bottom_diff,
+                               const Eigen::GpuDevice& d) {
+  const int kThreadsPerBlock = 1024;
+  const int bottom_size = batch * channels * pooled_height * pooled_width;
+  const int top_size = batch * channels * height * width;
+
+  MaxPoolGradBackwardNoMaskNHWC<<<(top_size + kThreadsPerBlock - 1) /
+                                  kThreadsPerBlock,
+                                  kThreadsPerBlock, 0, d.stream()>>>(
+      top_size, bottom_data, height, width, channels, pooled_height,
+      pooled_width, kernel_h, kernel_w, stride_h, stride_w, pad_t, pad_l,
+      top_diff, bottom_diff);
+  return d.ok();
+}
+
+bool MaxPoolGradBackwardWithArgmax(const int output_size, const int input_size,
+                                   const float* top_diff, const int64* mask,
+                                   const int top_offset, const int bottom_offset,
+                                   float* bottom_diff,
+                                   const Eigen::GpuDevice& d) {
+  const int kThreadsPerBlock = 1024;
+  SetZero<<<(output_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
+    kThreadsPerBlock, 0, d.stream()>>>(output_size, bottom_diff);
+  MaxPoolGradBackward<<<(output_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
+    kThreadsPerBlock, 0, d.stream()>>>(
+                                        output_size, top_diff, mask, top_offset, bottom_offset, bottom_diff);
+  return d.ok();
+}
+
+bool MaxPoolGradBackwardWithArgmax(const int output_size, const int input_size,
+                                   const Eigen::half* top_diff, const int64* mask,
+                                   const int top_offset, const int bottom_offset,
+                                   Eigen::half* bottom_diff,
+                                   const Eigen::GpuDevice& d) {
+  const int kThreadsPerBlock = 1024;
+  SetZero<<<(output_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
+    kThreadsPerBlock, 0, d.stream()>>>(output_size, bottom_diff);
+  MaxPoolGradBackward<<<(output_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
+    kThreadsPerBlock, 0, d.stream()>>>(
+                                       output_size, top_diff, mask, top_offset, bottom_offset, bottom_diff);
   return d.ok();
 }
 

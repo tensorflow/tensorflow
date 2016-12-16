@@ -73,6 +73,35 @@ bool MaxPoolBackwardNoMask(const Eigen::half* bottom_data, const int batch,
                            const Eigen::half* top_diff, Eigen::half* bottom_diff,
                            const Eigen::GpuDevice& d);
 
+bool MaxPoolGradBackwardWithArgmax(const int output_size, const int input_size,
+                                   const float* top_diff, const int64* mask,
+                                   const int top_offset, const int bottom_offset,
+                                   float* bottom_diff, const Eigen::GpuDevice& d);
+
+bool MaxPoolGradBackwardWithArgmax(const int output_size, const int input_size,
+                                   const Eigen::half* top_diff, const int64* mask,
+                                   const int top_offset, const int bottom_offset,
+                                   Eigen::half* bottom_diff,
+                                   const Eigen::GpuDevice& d);
+
+bool MaxPoolGradBackwardNoMask(const float* bottom_data, const int batch,
+                               const int height, const int width,
+                               const int channels, const int pooled_height,
+                               const int pooled_width, const int kernel_h,
+                               const int kernel_w, const int stride_h,
+                               const int stride_w, const int pad_t, const int pad_l,
+                               const float* top_diff, float* bottom_diff,
+                               const Eigen::GpuDevice& d);
+
+bool MaxPoolGradBackwardNoMask(const Eigen::half* bottom_data, const int batch,
+                               const int height, const int width,
+                               const int channels, const int pooled_height,
+                               const int pooled_width, const int kernel_h,
+                               const int kernel_w, const int stride_h,
+                               const int stride_w, const int pad_t, const int pad_l,
+                               const Eigen::half* top_diff, Eigen::half* bottom_diff,
+                               const Eigen::GpuDevice& d);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_MAXPOOLING_OP_GPU_H_

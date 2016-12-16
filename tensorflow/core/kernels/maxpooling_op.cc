@@ -412,6 +412,181 @@ REGISTER_KERNEL_BUILDER(
 
 #endif  // GOOGLE_CUDA
 
+// The operation to compute gradient of MaxPool gradients.
+// It takes three inputs:
+//   - The original input tensor
+//   - The original output tensor
+//   - Backprop tensor for output gradients
+// It produces one output: backprop tensor for output gradient.
+template <class Device, class T>
+class MaxPoolingGradGradOp : public OpKernel {
+ public:
+  explicit MaxPoolingGradGradOp(OpKernelConstruction* context) : OpKernel(context) {
+    string data_format;
+    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+    OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
+                errors::InvalidArgument("Invalid data format"));
+    OP_REQUIRES(
+                context, data_format_ == FORMAT_NHWC,
+                errors::InvalidArgument("Default MaxPoolinGradOp only supports NHWC ",
+                                        "on device type ",
+                                        DeviceTypeString(context->device_type())));
+    OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
+    OP_REQUIRES(context, ksize_.size() == 4,
+                errors::InvalidArgument("Sliding window ksize field must "
+                                        "specify 4 dimensions"));
+    OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
+    OP_REQUIRES(context, stride_.size() == 4,
+                errors::InvalidArgument("Sliding window strides field must "
+                                        "specify 4 dimensions"));
+    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
+                errors::Unimplemented(
+                    "Pooling is not yet supported on the batch dimension."));
+    OP_REQUIRES(
+        context, ksize_[3] == 1 && stride_[3] == 1,
+        errors::Unimplemented(
+            "MaxPoolingGradGrad is not yet supported on the depth dimension."));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& tensor_in = context->input(0);
+    const Tensor& tensor_out = context->input(1);
+    const Tensor& out_grad_backprop = context->input(2);
+
+    // For maxpooling, tensor_in should have 4 dimensions.
+    OP_REQUIRES(context, tensor_in.dims() == 4,
+                errors::InvalidArgument("tensor_in must be 4-dimensional"));
+    OP_REQUIRES(context, tensor_out.dims() == 4,
+                errors::InvalidArgument("tensor_out must be 4-dimensional"));
+    // For maxpooling, out_grad_backprop should have 4 dimensions.
+    OP_REQUIRES(context, out_grad_backprop.dims() == 4,
+                errors::InvalidArgument("out_grad_backprop must be 4-dimensional"));
+
+    const TensorShape& output_shape = tensor_out.shape();
+
+    Tensor tensor_out_dup;
+    OP_REQUIRES_OK(context,
+                   context->allocate_temp(DataTypeToEnum<T>::v(),
+                                          output_shape, &tensor_out_dup));
+    Tensor tensor_out_arg_max;
+    OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<int64>::v(),
+                                                   output_shape,
+                                                   &tensor_out_arg_max));
+
+    PoolParameters params{context,  ksize_,      stride_,
+                          padding_, FORMAT_NHWC, tensor_in.shape()};
+    if (!context->status().ok()) {
+      return;
+    }
+
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
+
+    SpatialMaxPoolWithArgMaxHelper<CPUDevice, T>(
+        context, &tensor_out_dup, &tensor_out_arg_max, output, tensor_in,
+        out_grad_backprop, params, padding_);
+  }
+
+ private:
+  std::vector<int32> ksize_;
+  std::vector<int32> stride_;
+  Padding padding_;
+  TensorFormat data_format_;
+};
+
+REGISTER_KERNEL_BUILDER(
+    Name("MaxPoolGradGrad").Device(DEVICE_CPU).TypeConstraint<float>("T"),
+    MaxPoolingGradGradOp<CPUDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("MaxPoolGradGrad").Device(DEVICE_CPU).TypeConstraint<Eigen::half>("T"),
+    MaxPoolingGradGradOp<CPUDevice, Eigen::half>);
+
+#ifdef GOOGLE_CUDA
+
+template <class T>
+class MaxPoolingGradGradOp<Eigen::GpuDevice, T> : public OpKernel {
+ public:
+  typedef Eigen::GpuDevice Device;
+
+  explicit MaxPoolingGradGradOp(OpKernelConstruction* context) : OpKernel(context) {
+    string data_format;
+    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+    OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
+                errors::InvalidArgument("Invalid data format"));
+    OP_REQUIRES(
+                context, data_format_ == FORMAT_NHWC,
+                errors::InvalidArgument("Default MaxPoolinGradOp only supports NHWC ",
+                                        "on device type ",
+                                        DeviceTypeString(context->device_type())));
+    OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
+    OP_REQUIRES(context, ksize_.size() == 4,
+                errors::InvalidArgument("Sliding window ksize field must "
+                                        "specify 4 dimensions"));
+    OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
+    OP_REQUIRES(context, stride_.size() == 4,
+                errors::InvalidArgument("Sliding window strides field must "
+                                        "specify 4 dimensions"));
+    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    const int32 ksize_n = GetTensorDim(ksize_, data_format_, 'N');
+    const int32 stride_n = GetTensorDim(stride_, data_format_, 'N');
+    OP_REQUIRES(context, ksize_n == 1 && stride_n == 1,
+                errors::Unimplemented(
+                    "Pooling is not yet supported on the batch dimension."));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& tensor_in = context->input(0);
+    const Tensor& tensor_out = context->input(1);
+    const Tensor& out_grad_backprop = context->input(2);
+
+    // For maxpooling, tensor_in should have 4 dimensions.
+    OP_REQUIRES(context, tensor_in.dims() == 4,
+                errors::InvalidArgument("tensor_in must be 4-dimensional 4"));
+    OP_REQUIRES(context, tensor_out.dims() == 4,
+                errors::InvalidArgument("tensor_out must be 4-dimensional"));
+    // For maxpooling, out_grad_backprop should have 4 dimensions.
+    OP_REQUIRES(context, out_grad_backprop.dims() == 4,
+                errors::InvalidArgument("out_grad_backprop must be 4-dimensional"));
+
+    TensorShape input_shape = tensor_in.shape();
+    TensorShape output_shape = tensor_out.shape();
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(0, output_shape, &output));
+    if (!context->status().ok()) {
+      return;
+    }
+
+    PoolParameters params{context, ksize_, stride_,
+                          padding_, data_format_, input_shape};
+
+    MaxPoolGradBackwardNoMask(
+      tensor_in.flat<T>().data(), params.tensor_in_batch,
+      params.out_height, params.out_width, params.depth,
+      params.tensor_in_rows, params.tensor_in_cols, params.window_rows,
+      params.window_cols, params.row_stride, params.col_stride, params.pad_rows,
+      params.pad_cols, out_grad_backprop.flat<T>().data(),
+      output->flat<T>().data(), context->eigen_device<Eigen::GpuDevice>());
+  }
+
+ private:
+  std::vector<int32> ksize_;
+  std::vector<int32> stride_;
+  Padding padding_;
+  TensorFormat data_format_;
+  bool use_dnn_;
+};
+
+REGISTER_KERNEL_BUILDER(
+    Name("MaxPoolGradGrad").Device(DEVICE_GPU).TypeConstraint<float>("T"),
+    MaxPoolingGradGradOp<Eigen::GpuDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("MaxPoolGradGrad").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
+    MaxPoolingGradGradOp<Eigen::GpuDevice, Eigen::half>);
+
+#endif  // GOOGLE_CUDA
+
 template <typename Device, typename T>
 struct LaunchMaxPoolingNoMask;
 
@@ -565,6 +740,55 @@ class MaxPoolingGradWithArgmaxOp : public OpKernel {
   Padding padding_;
 };
 
+template <typename Device, typename T>
+struct LaunchMaxPoolingGradGradWithArgmax;
+
+template <typename Device, typename T>
+class MaxPoolingGradGradWithArgmaxOp : public OpKernel {
+ public:
+  explicit MaxPoolingGradGradWithArgmaxOp(OpKernelConstruction* context)
+      : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
+    OP_REQUIRES(context, ksize_.size() == 4,
+                errors::InvalidArgument("Sliding window ksize field must "
+                                        "specify 4 dimensions"));
+    OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
+    OP_REQUIRES(context, stride_.size() == 4,
+                errors::InvalidArgument("Sliding window stride field must "
+                                        "specify 4 dimensions"));
+    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
+                errors::Unimplemented(
+                    "Pooling is not yet supported on the batch dimension."));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& tensor_in = context->input(0);
+    const Tensor& grad_in = context->input(1);
+    const Tensor& argmax = context->input(2);
+
+    PoolParameters params{context,  ksize_,      stride_,
+                          padding_, FORMAT_NHWC, tensor_in.shape()};
+    if (!context->status().ok()) {
+      return;
+    }
+
+    TensorShape out_shape({params.tensor_in_batch, params.out_height,
+                           params.out_width, params.depth});
+
+    Tensor* grad_out = nullptr;
+    OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &grad_out));
+
+    LaunchMaxPoolingGradGradWithArgmax<Device, T>::launch(context, params, grad_in,
+                                                          argmax, grad_out);
+  }
+
+ private:
+  std::vector<int32> ksize_;
+  std::vector<int32> stride_;
+  Padding padding_;
+};
+
 #if GOOGLE_CUDA
 template <typename T>
 class MaxPoolingNoMaskOp<GPUDevice, T> : public OpKernel {
@@ -699,7 +923,7 @@ struct LaunchMaxPoolingGradWithArgmax<Eigen::GpuDevice, T> {
         bottom_offset, grad_out->flat<T>().data(), context->eigen_gpu_device());
     if (!status) {
       context->SetStatus(
-          errors::Internal("Failed launching MaxPoolForwardWithArgmax"));
+          errors::Internal("Failed launching MaxPoolBackwardWithArgmax"));
     }
   }
 };
@@ -716,6 +940,42 @@ REGISTER_KERNEL_BUILDER(
         .TypeConstraint<Eigen::half>("T")
         .TypeConstraint<int64>("Targmax"),
     MaxPoolingGradWithArgmaxOp<Eigen::GpuDevice, Eigen::half>);
+
+template <typename T>
+struct LaunchMaxPoolingGradGradWithArgmax<Eigen::GpuDevice, T> {
+  static void launch(OpKernelContext* context, const PoolParameters& params,
+                     const Tensor& grad_in, const Tensor& argmax,
+                     Tensor* grad_out) {
+    const int input_size = params.tensor_in_batch * params.tensor_in_rows *
+                           params.tensor_in_cols * params.depth;
+    const int output_size = params.tensor_in_batch * params.out_height *
+                            params.out_width * params.depth;
+    const int top_offset = params.tensor_in_rows * params.tensor_in_cols * params.depth;
+    const int bottom_offset =
+        params.out_width * params.out_height * params.depth;
+    bool status = MaxPoolGradBackwardWithArgmax(
+        output_size, input_size, grad_in.flat<T>().data(),
+        reinterpret_cast<const int64*>(argmax.flat<int64>().data()), top_offset,
+        bottom_offset, grad_out->flat<T>().data(), context->eigen_gpu_device());
+    if (!status) {
+      context->SetStatus(
+          errors::Internal("Failed launching MaxPoolGradBackwardWithArgmax"));
+    }
+  }
+};
+
+REGISTER_KERNEL_BUILDER(
+    Name("MaxPoolGradGradWithArgmax")
+        .Device(DEVICE_GPU)
+        .TypeConstraint<float>("T")
+        .TypeConstraint<int64>("Targmax"),
+    MaxPoolingGradGradWithArgmaxOp<Eigen::GpuDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("MaxPoolGradGradWithArgmax")
+        .Device(DEVICE_GPU)
+        .TypeConstraint<Eigen::half>("T")
+        .TypeConstraint<int64>("Targmax"),
+    MaxPoolingGradGradWithArgmaxOp<Eigen::GpuDevice, Eigen::half>);
 
 #endif  // GOOGLE_CUDA
 
