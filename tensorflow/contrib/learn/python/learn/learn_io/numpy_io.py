@@ -93,13 +93,12 @@ def numpy_input_fn(x,
     if y is not None:
       x[unique_target_key] = y
 
-    if len(set(v.shape for v in x.values())) != 1:
+    if len(set(v.shape[0] for v in x.values())) != 1:
       shape_dict_of_x = {k: x[k].shape for k in x.keys()}
       shape_of_y = None if y is None else y.shape
-      raise ValueError('Shape of x and y are mismatch, this will lead to '
-                       'missing values. Please make sure each value in x have '
-                       'the same shape as y.\n'
-                       'Shape for x: {}\n'
+      raise ValueError('Length of tensors in x and y is mismatched. All '
+                       'elementson x and y must have the same length.\n'
+                       'Shapes in x: {}\n'
                        'Shape for y: {}\n'.format(shape_dict_of_x, shape_of_y))
 
     # Ensure the order of iteration is consistent.
