@@ -64,7 +64,6 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
                     SimpleGraphExecutionState* execution_state, bool is_partial)
       : session_handle_(handle),
         client_graph_(std::move(cg)),
-        bopts_(bopts),
         session_opts_(session_opts),
         is_partial_(is_partial) {
     VLOG(1) << "Created ReffedClientGraph for node with "
@@ -220,8 +219,6 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
  private:
   const string session_handle_;
   const std::unique_ptr<SimpleClientGraph> client_graph_;
-  std::unordered_set<const Node*> nodes_needing_input_mapping_;
-  BuildGraphOptions bopts_;
   const SessionOptions session_opts_;
   const bool is_partial_;
   std::unordered_map<StringPiece, Node*, StringPiece::Hasher> name_to_node_;
