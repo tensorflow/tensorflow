@@ -1112,6 +1112,17 @@ Step #1 might already solve the problem, however if it still persists, execute s
 This issue occurs with new Anaconda installations when `pip` tries to remove `easy-install.pth`. 
 This file is not included in Anaconda packages, which causes the `pip` installation to fail.
 
+#### Cupti_wrapper.cc: Could not find cuptiActivityRegisterCallbacksin libcupti DSO
+
+If, when running a TensorFlow Python script, you encounter the following error:
+```
+c:\tf_jenkins\home\workspace\nightly-win\device\gpu\os\windows\tensorflow\core\platform\default\gpu\cupti_wrapper.cc:59] Check failed: ::tensorflow::Status::OK() == (::tensorflow::Env::Default()->GetSymbolFromLibrary( GetDsoHandle(), kName, &f  )) (OK vs. Not found: cuptiActivityRegisterCallbacks not found)could not find cuptiActivityRegisterCallbacksin libcupti DSO
+```
+
+Add `<path-to-cuda-folder>\NVIDIA GPU Computing Toolkit\CUDA\v8.0\extras\CUPTI\libx64` to your `PATH`.
+
+This issue occurs because on CUDA 8.0 the location of the file `cupti64_80.dll` is not on `PATH` by default.
+
 
 ### Linux issues
 
