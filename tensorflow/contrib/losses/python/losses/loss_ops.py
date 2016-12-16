@@ -368,7 +368,7 @@ def softmax_cross_entropy(
     scope: the scope for the operations performed in computing the loss.
 
   Returns:
-    A scalar `Tensor` representing the loss value.
+    A scalar `Tensor` representing the mean loss value.
 
   Raises:
     ValueError: If the shape of `logits` doesn't match that of `onehot_labels`
@@ -410,7 +410,7 @@ def sparse_softmax_cross_entropy(logits, labels, weights=1.0, scope=None):
     scope: the scope for the operations performed in computing the loss.
 
   Returns:
-    A scalar `Tensor` representing the loss value.
+    A scalar `Tensor` representing the mean loss value.
 
   Raises:
     ValueError: If the shapes of `logits`, `labels`, and `weights` are
