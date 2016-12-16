@@ -400,7 +400,8 @@ def evaluate_once(
       restoring variables. Note that `scaffold.init_fn` is used by the function
       to restore the checkpoint. If you supply a custom init_fn, then it must
       also take care of restoring the model from its checkpoint.
-    eval_ops: A operation which is run until the session is requested to stop,
+    eval_ops: A single `Tensor`, a list of `Tensors` or a dictionary of names
+      to `Tensors`, which is run until the session is requested to stop,
       commonly done by a `tf.contrib.training.StopAfterNEvalsHook`.
     feed_dict: The feed dictionary to use when executing the `eval_ops`.
     final_ops: A single `Tensor`, a list of `Tensors` or a dictionary of names
@@ -510,7 +511,8 @@ def evaluate_repeatedly(
       restoring variables. Note that `scaffold.init_fn` is used by the function
       to restore the checkpoint. If you supply a custom init_fn, then it must
       also take care of restoring the model from its checkpoint.
-    eval_ops: A operation which is run until the session is requested to stop,
+    eval_ops: A single `Tensor`, a list of `Tensors` or a dictionary of names
+      to `Tensors`, which is run until the session is requested to stop,
       commonly done by a `tf.contrib.training.StopAfterNEvalsHook`.
     feed_dict: The feed dictionary to use when executing the `eval_ops`.
     final_ops: A single `Tensor`, a list of `Tensors` or a dictionary of names
