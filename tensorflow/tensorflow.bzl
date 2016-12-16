@@ -133,6 +133,7 @@ def tf_copts():
                   "-std=c++11",
                   "-DTF_LEAN_BINARY",
                   "-O2",
+                  "-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK",
               ],
               "//tensorflow:darwin": [],
               "//tensorflow:windows": [
