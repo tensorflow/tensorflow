@@ -68,7 +68,7 @@ py_library(
 py_test(
     name = "input_pipeline_ops_test",
     size = "small",
-    srcs = ["python/kernel_tests/input_pipeline_ops_test.py"],
+    srcs = ["python/ops/input_pipeline_ops_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":input_pipeline_py",
