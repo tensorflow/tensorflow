@@ -413,7 +413,7 @@ def softmax_cross_entropy(
     weight: Deprecated alias for `weights`.
 
   Returns:
-    A scalar `Tensor` representing the loss value.
+    A scalar `Tensor` representing the mean loss value.
 
   Raises:
     ValueError: If the shape of `logits` doesn't match that of `onehot_labels`
