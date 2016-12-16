@@ -30,6 +30,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import resources
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import coordinator
@@ -768,6 +769,8 @@ class _RecoverableSession(_WrappedSession):
                               options=options,
                               run_metadata=run_metadata)
       except errors.AbortedError:
+        logging.info('An AbortedError was raised. Closing the current session. '
+                     'A new session will be created on the next session.run().')
         self.close()
         self._sess = None
 
