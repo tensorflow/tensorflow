@@ -15,12 +15,12 @@
 # ==============================================================================
 
 PROTOBUF_VERSION="3.1.0"
-DIR=/workspace/protobuf
+DIR=${PWD}/protobuf
 
 set -ex
 
-mkdir -p $DIR
-cd $DIR
+mkdir -p ${DIR}
+cd ${DIR}
 curl -SsL -O https://github.com/google/protobuf/archive/v${PROTOBUF_VERSION}.tar.gz
 tar xzf v${PROTOBUF_VERSION}.tar.gz
 cd $DIR/protobuf-${PROTOBUF_VERSION}
