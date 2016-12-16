@@ -491,6 +491,19 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.cond(constant_op.constant(False), true_fn, false_fn)
       self.assertAllEqual([2.0], r.eval())
 
+  def testCondWithControl(self):
+    with self.test_session() as sess:
+      control_holder = array_ops.placeholder(dtypes.float32, shape=())
+      a = constant_op.constant(3)
+      def true_branch():
+        with ops.control_dependencies([control_holder]):
+          _ = a + 1
+        return a + 2
+      r = control_flow_ops.cond(constant_op.constant(True),
+                                true_branch,
+                                lambda: constant_op.constant(1))
+      self.assertEqual(5, r.eval())
+
   def testUninitializedRefIdentity(self):
     with self.test_session() as sess:
       v = gen_state_ops._variable(

@@ -1621,19 +1621,11 @@ class CondContext(ControlFlowContext):
     else:
       for index in range(len(op.inputs)):
         x = op.inputs[index]
-        if x.name not in self._values:
-          self._values.add(x.name)
-          # Add this value to the parent contexts up to the context that
-          # creates this value.
-          real_x = x
-          if self._outer_context:
-            real_x = self._outer_context.AddValue(x)
-            self._values.add(real_x.name)
-          real_x = _SwitchRefOrTensor(real_x, self._pred)[self._branch]
-          self._external_values[x.name] = real_x
-        x = self._external_values.get(x.name)
-        if x is not None:
-          op._update_input(index, x)
+        real_x = self.AddValue(x)
+        if real_x != x:
+          # pylint: disable=protected-access
+          op._update_input(index, real_x)
+          # pylint: enable=protected-access
       for x in op.outputs:
         self._values.add(x.name)
     if self._outer_context or not IsLoopExit(op):
@@ -2060,9 +2052,8 @@ class WhileContext(ControlFlowContext):
     else:
       for index in range(len(op.inputs)):
         x = op.inputs[index]
-        self.AddValue(x)
-        real_x = self._external_values.get(x.name)
-        if real_x is not None:
+        real_x = self.AddValue(x)
+        if real_x != x:
           op._update_input(index, real_x)
       # Remove any external control dependency on this op.
       self._RemoveExternalControlEdges(op)
@@ -2161,8 +2152,8 @@ class WhileContext(ControlFlowContext):
     merge_count = merge([enter_count, enter_count])[0]
     self._pivot_for_pred = merge_count
 
-    cond = math_ops.greater_equal(merge_count, one)
-    self._pivot = loop_cond(cond, name="b_count")
+    pred = math_ops.greater_equal(merge_count, one)
+    self._pivot = loop_cond(pred, name="b_count")
     switch_count = switch(merge_count, self._pivot)
 
     index = math_ops.sub(switch_count[1], one)
