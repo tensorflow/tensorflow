@@ -19,6 +19,7 @@ from __future__ import print_function
 
 from tensorflow.contrib.framework.python.framework import tensor_util
 
+from tensorflow.contrib.metrics.python.ops import gen_set_ops
 from tensorflow.contrib.util import loader
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -56,7 +57,7 @@ def set_size(a, validate_indices=True):
   if a.values.dtype.base_dtype not in _VALID_DTYPES:
     raise TypeError("Invalid dtype %s." % a.values.dtype)
   # pylint: disable=protected-access
-  return _set_ops.set_size(a.indices, a.values, a.shape, validate_indices)
+  return gen_set_ops.set_size(a.indices, a.values, a.shape, validate_indices)
 
 ops.NotDifferentiable("SetSize")
 
@@ -100,17 +101,17 @@ def _set_operation(a, b, set_operation, validate_indices=True):
   # pylint: disable=protected-access
   if isinstance(a, sparse_tensor.SparseTensor):
     if isinstance(b, sparse_tensor.SparseTensor):
-      indices, values, shape = _set_ops.sparse_to_sparse_set_operation(
+      indices, values, shape = gen_set_ops.sparse_to_sparse_set_operation(
           a.indices, a.values, a.shape, b.indices, b.values, b.shape,
           set_operation, validate_indices)
     else:
       raise ValueError("Sparse,Dense is not supported, but Dense,Sparse is. "
                        "Please flip the order of your inputs.")
   elif isinstance(b, sparse_tensor.SparseTensor):
-    indices, values, shape = _set_ops.dense_to_sparse_set_operation(
+    indices, values, shape = gen_set_ops.dense_to_sparse_set_operation(
         a, b.indices, b.values, b.shape, set_operation, validate_indices)
   else:
-    indices, values, shape = _set_ops.dense_to_dense_set_operation(
+    indices, values, shape = gen_set_ops.dense_to_dense_set_operation(
         a, b, set_operation, validate_indices)
   # pylint: enable=protected-access
   return sparse_tensor.SparseTensor(indices, values, shape)

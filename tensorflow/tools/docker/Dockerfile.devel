@@ -89,10 +89,12 @@ WORKDIR /tensorflow
 # more difficult to experiment with local changes. Instead, just add
 # the built directory to the path.
 
+ENV CI_BUILD_PYTHON python
+
 RUN tensorflow/tools/ci_build/builds/configured CPU \
     bazel build -c opt tensorflow/tools/pip_package:build_pip_package && \
     bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/pip && \
-    pip install --upgrade /tmp/pip/tensorflow-*.whl && \
+    pip --no-cache-dir install --upgrade /tmp/pip/tensorflow-*.whl && \
     rm -rf /tmp/pip && \
     rm -rf /root/.cache
 # Clean up pip wheel and Bazel cache when done.
