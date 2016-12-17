@@ -95,8 +95,8 @@ class MathBuiltinUnaryTest(test.TestCase):
 
   def _inv(self, x):
     with np.errstate(divide='ignore', invalid='ignore'):
-        c = np.true_divide( 1, x )
-        c[ ~ np.isfinite( c )] = 0  # -inf inf NaN
+      c = np.true_divide( 1, x )
+      c[ ~ np.isfinite( c )] = 0  # -inf inf NaN
     return c
 
   def _rsqrt(self, x):
