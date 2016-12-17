@@ -84,8 +84,8 @@ void LogMessage::GenerateLogMessage() {
 
 namespace {
 
-int64 MinLogLevel() {
-  const char* tf_env_var_val = getenv("TF_CPP_MIN_LOG_LEVEL");
+// Parse log level (int64) from environment variable (char*)
+int64 LogLevelStrToInt(const char* tf_env_var_val) {
   if (tf_env_var_val == nullptr) {
     return 0;
   }
@@ -109,6 +109,16 @@ int64 MinLogLevel() {
   }
 }
 
+int64 MinLogLevel() {
+  const char* tf_env_var_val = getenv("TF_CPP_MIN_LOG_LEVEL");
+  return LogLevelStrToInt(tf_env_var_val);
+}
+
+int64 MinVLogLevel() {
+  const char* tf_env_var_val = getenv("TF_CPP_MIN_VLOG_LEVEL");
+  return LogLevelStrToInt(tf_env_var_val);
+}
+
 }  // namespace
 
 LogMessage::~LogMessage() {
@@ -116,6 +126,8 @@ LogMessage::~LogMessage() {
   static int64 min_log_level = MinLogLevel();
   if (TF_PREDICT_TRUE(severity_ >= min_log_level)) GenerateLogMessage();
 }
+
+int LogMessage::min_lvl_ = MinVLogLevel();
 
 LogMessageFatal::LogMessageFatal(const char* file, int line)
     : LogMessage(file, line, FATAL) {}
