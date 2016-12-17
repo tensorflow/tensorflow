@@ -306,11 +306,12 @@ class SyncReplicasOptimizerV2(optimizer.Optimizer):
 
       # Create token queue.
       with ops.device(global_step.device), ops.name_scope(""):
-        sync_token_queue = (
-            data_flow_ops.FIFOQueue(-1,
-                                    global_step.dtype.base_dtype,
-                                    shapes=(),
-                                    shared_name="sync_token_q"))
+        with ops.container("sync-tokens"):
+          sync_token_queue = (
+              data_flow_ops.FIFOQueue(-1,
+                                      global_step.dtype.base_dtype,
+                                      shapes=(),
+                                      shared_name="sync_token_q"))
         self._sync_token_queue = sync_token_queue
 
         # dummy_queue is passed to the queue runner. Don't use the real queues
