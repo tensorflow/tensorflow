@@ -34,6 +34,9 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 #if GOOGLE_CUDA
 typedef Eigen::GpuDevice GPUDevice;
 #endif  // GOOGLE_CUDA
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif // TENSORFLOW_USE_SYCL
 
 // --------------------------------------------------------------------------
 template <typename Device, typename T>
@@ -155,5 +158,27 @@ REGISTER_KERNEL_BUILDER(Name("Pack")
                         PackOp<CPUDevice, int32>);
 
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+
+#define REGISTER_SYCL(type)                                       \
+  REGISTER_KERNEL_BUILDER(                                        \
+      Name("Pack").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
+      PackOp<SYCLDevice, type>)
+
+REGISTER_SYCL(float);
+#undef REGISTER_SYCL
+
+// A special GPU kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
+REGISTER_KERNEL_BUILDER(Name("Pack")
+                            .Device(DEVICE_SYCL)
+                            .HostMemory("values")
+                            .HostMemory("output")
+                            .TypeConstraint<int32>("T"),
+                        PackOp<CPUDevice, int32>);
+
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow
