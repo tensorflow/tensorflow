@@ -133,7 +133,7 @@ class SessionOpsTest(tf.test.TestCase):
       self.assertEqual(500, sess.run(y, feed_dict={f: h.handle}))
 
       # Feed another tensor handle.
-      with tf.device("/gpu:0"):
+      with tf.device(tf.test.gpu_device_name()):
         a = tf.constant(10)
         h = tf.get_session_handle(a)
         h = sess.run(h)
@@ -164,7 +164,7 @@ class SessionOpsTest(tf.test.TestCase):
 
   def testMultiDevices(self):
     with self.test_session() as sess:
-      with tf.device("/gpu:0"):
+      with tf.device(tf.test.gpu_device_name()):
         a = tf.constant(1.0)
         a_handle = sess.run(tf.get_session_handle(a))
       with tf.device("/cpu:0"):
@@ -189,7 +189,7 @@ class SessionOpsTest(tf.test.TestCase):
         x_handle = sess.run(tf.get_session_handle(one))
 
       # addition lives on GPU
-      with tf.device("/gpu:0"):
+      with tf.device(tf.test.gpu_device_name()):
         add_h1, add_t1 = tf.get_session_tensor(one_handle.handle, tf.float32)
         add_h2, add_t2 = tf.get_session_tensor(x_handle.handle, tf.float32)
         add_op = tf.add(add_t1, add_t2)
