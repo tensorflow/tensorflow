@@ -13,12 +13,17 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tensorflow.ops.tf.norm."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import constant_op
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import linalg_ops
+from tensorflow.python.platform import test as test_lib
 
 
 def _AddTest(test, test_name, fn):
@@ -28,24 +33,24 @@ def _AddTest(test, test_name, fn):
   setattr(test, test_name, fn)
 
 
-class NormOpTest(tf.test.TestCase):
+class NormOpTest(test_lib.TestCase):
 
   def testBadOrder(self):
     matrix = [[0., 1.], [2., 3.]]
     for order_ in "foo", -7, -1.1, 0:
       with self.assertRaisesRegexp(ValueError,
                                    "'order' must be a supported vector norm"):
-        tf.norm(matrix, order="fro")
+        linalg_ops.norm(matrix, order="fro")
 
     for order_ in "foo", -7, -1.1, 0:
       with self.assertRaisesRegexp(ValueError,
                                    "'order' must be a supported vector norm"):
-        tf.norm(matrix, order=order_, axis=-1)
+        linalg_ops.norm(matrix, order=order_, axis=-1)
 
     for order_ in 1.1, 2:
       with self.assertRaisesRegexp(ValueError,
                                    "'order' must be a supported matrix norm"):
-        tf.norm(matrix, order=order_, axis=[-2, -1])
+        linalg_ops.norm(matrix, order=order_, axis=[-2, -1])
 
   def testInvalidAxis(self):
     matrix = [[0., 1.], [2., 3.]]
@@ -53,7 +58,7 @@ class NormOpTest(tf.test.TestCase):
       error_prefix = ("'axis' must be None, an integer, or a tuple of 2 unique "
                       "integers")
       with self.assertRaisesRegexp(ValueError, error_prefix):
-        tf.norm(matrix, axis=axis_)
+        linalg_ops.norm(matrix, axis=axis_)
 
 
 def _GetNormOpTest(dtype_, shape_, order_, axis_, keep_dims_,
@@ -64,13 +69,13 @@ def _GetNormOpTest(dtype_, shape_, order_, axis_, keep_dims_,
         matrix, ord=order_, axis=axis_, keepdims=keep_dims_)
     with self.test_session(use_gpu=True) as sess:
       if use_static_shape_:
-        tf_matrix = tf.constant(matrix)
-        tf_norm = tf.norm(
+        tf_matrix = constant_op.constant(matrix)
+        tf_norm = linalg_ops.norm(
             tf_matrix, order=order_, axis=axis_, keep_dims=keep_dims_)
         tf_norm_val = sess.run(tf_norm)
       else:
-        tf_matrix = tf.placeholder(dtype_)
-        tf_norm = tf.norm(
+        tf_matrix = array_ops.placeholder(dtype_)
+        tf_norm = linalg_ops.norm(
             tf_matrix, order=order_, axis=axis_, keep_dims=keep_dims_)
         tf_norm_val = sess.run(tf_norm, feed_dict={tf_matrix: matrix})
     self.assertAllClose(np_norm, tf_norm_val)
@@ -111,4 +116,4 @@ if __name__ == "__main__":
                            _GetNormOpTest(dtype, shape, order, axis, keep_dims,
                                           use_static_shape))
 
-  tf.test.main()
+  test_lib.main()

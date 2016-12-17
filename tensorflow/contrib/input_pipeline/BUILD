@@ -58,9 +58,11 @@ py_library(
     deps = [
         ":input_pipeline_ops",
         "//tensorflow/contrib/util:util_py",
+        "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:state_ops",
         "//tensorflow/python:variable_scope",
     ],
 )

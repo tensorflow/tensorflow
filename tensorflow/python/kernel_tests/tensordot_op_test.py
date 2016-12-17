@@ -13,12 +13,18 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tensorflow.ops.math_ops.matmul."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test as test_lib
 
 _MAXDIM = 5
 
@@ -30,7 +36,7 @@ def _add_test(test, test_name, fn):
   setattr(test, test_name, fn)
 
 
-class TensordotTest(tf.test.TestCase):
+class TensordotTest(test_lib.TestCase):
 
   def test_invalid_shape(self):
     a = [[1, 2], [3, 4]]
@@ -39,15 +45,15 @@ class TensordotTest(tf.test.TestCase):
     b_axes = [0]
     # Invalid static shapes.
     with self.assertRaises(ValueError):
-      tf.tensordot(a, b, (a_axes, b_axes))
+      math_ops.tensordot(a, b, (a_axes, b_axes))
     # Invalid dynamic shapes.
     with self.test_session() as sess:
-      with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
+      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    "Matrix size-incompatible"):
-        a_ph = tf.placeholder(tf.float32)
-        b_ph = tf.placeholder(tf.float32)
-        axes_ph = tf.placeholder(tf.int32)
-        output = tf.tensordot(a_ph, b_ph, axes_ph)
+        a_ph = array_ops.placeholder(dtypes.float32)
+        b_ph = array_ops.placeholder(dtypes.float32)
+        axes_ph = array_ops.placeholder(dtypes.int32)
+        output = math_ops.tensordot(a_ph, b_ph, axes_ph)
         _ = sess.run([output],
                      feed_dict={a_ph: a,
                                 b_ph: b,
@@ -59,20 +65,20 @@ class TensordotTest(tf.test.TestCase):
     # Invalid static axes.
     for axes_value in -1, 0, [1], [[1]], [[1], [0, 1]]:
       with self.assertRaises(ValueError):
-        tf.tensordot(a, b, axes_value)
+        math_ops.tensordot(a, b, axes_value)
 
     with self.assertRaises(IndexError):
-      tf.tensordot(a, b, [[0], [7]])
+      math_ops.tensordot(a, b, [[0], [7]])
 
     # Invalid dynamic axes.
-    a_ph = tf.placeholder(tf.float32)
-    b_ph = tf.placeholder(tf.float32)
-    axes_ph = tf.placeholder(tf.int32)
-    output = tf.tensordot(a_ph, b_ph, axes_ph)
+    a_ph = array_ops.placeholder(dtypes.float32)
+    b_ph = array_ops.placeholder(dtypes.float32)
+    axes_ph = array_ops.placeholder(dtypes.int32)
+    output = math_ops.tensordot(a_ph, b_ph, axes_ph)
     # Note: We don't support scalar Tensor values for axes.
-    for axes_value in 1, [1], [0,1], [[1]], [[0,1]], [[0], [7]]:
+    for axes_value in 1, [1], [0, 1], [[1]], [[0, 1]], [[0], [7]]:
       with self.test_session() as sess:
-        with self.assertRaises(tf.errors.InvalidArgumentError):
+        with self.assertRaises(errors_impl.InvalidArgumentError):
           _ = sess.run([output],
                        feed_dict={a_ph: a,
                                   b_ph: b,
@@ -81,20 +87,20 @@ class TensordotTest(tf.test.TestCase):
   def test_no_partial_shape_inference(self):
     # If one of the shapes is only partially defined, the output shape is
     # unknown.
-    a = tf.placeholder(tf.float32)
-    b = tf.placeholder(tf.float32)
+    a = array_ops.placeholder(dtypes.float32)
+    b = array_ops.placeholder(dtypes.float32)
     axes = ([1], [0])
-    output = tf.tensordot(a, b, axes)
+    output = math_ops.tensordot(a, b, axes)
     self.assertEqual(output.get_shape().ndims, None)
     a.set_shape([None, 2])
     b.set_shape([2, 3])
-    output = tf.tensordot(a, b, axes)
+    output = math_ops.tensordot(a, b, axes)
     self.assertEqual(output.get_shape().ndims, None)
-    a = tf.placeholder(tf.float32)
-    b = tf.placeholder(tf.float32)
+    a = array_ops.placeholder(dtypes.float32)
+    b = array_ops.placeholder(dtypes.float32)
     a.set_shape([2, 2])
     b.set_shape([2, None])
-    output = tf.tensordot(a, b, axes)
+    output = math_ops.tensordot(a, b, axes)
     self.assertEqual(output.get_shape().ndims, None)
 
 
@@ -135,16 +141,16 @@ def _get_tensordot_tests(dtype_, rank_a_, rank_b_, num_dims_, dynamic_shape_):
       np_ans = np.tensordot(a_np, b_np, axes=(a_dims_np, b_dims_np))
       with self.test_session(use_gpu=True) as sess:
         if dynamic_shape_:
-          a = tf.placeholder(dtype_)
-          b = tf.placeholder(dtype_)
-          axes = tf.placeholder(tf.int32)
-          c = tf.tensordot(a, b, axes)
+          a = array_ops.placeholder(dtype_)
+          b = array_ops.placeholder(dtype_)
+          axes = array_ops.placeholder(dtypes.int32)
+          c = math_ops.tensordot(a, b, axes)
           tf_ans = sess.run(
               c, feed_dict={a: a_np,
                             b: b_np,
                             axes: (a_dims_np, b_dims_np)})
         else:
-          tf_ans = tf.tensordot(a_np, b_np, (a_dims_np, b_dims_np)).eval()
+          tf_ans = math_ops.tensordot(a_np, b_np, (a_dims_np, b_dims_np)).eval()
       self.assertAllClose(tf_ans, np_ans, rtol=tol, atol=tol)
       self.assertAllEqual(tf_ans.shape, np_ans.shape)
 
@@ -168,7 +174,7 @@ def _get_tensordot_tests(dtype_, rank_a_, rank_b_, num_dims_, dynamic_shape_):
     for axes in all_axes:
       np_ans = np.tensordot(a_np, b_np, axes=axes)
       with self.test_session(use_gpu=True):
-        tf_ans = tf.tensordot(a_np, b_np, axes=axes).eval()
+        tf_ans = math_ops.tensordot(a_np, b_np, axes=axes).eval()
       self.assertAllClose(tf_ans, np_ans, rtol=tol, atol=tol)
       self.assertAllEqual(tf_ans.shape, np_ans.shape)
 
@@ -187,4 +193,4 @@ if __name__ == "__main__":
                                             rank_a, rank_b, num_dims,
                                             dynamic_shape)
               _add_test(TensordotTest, name, testcase)
-  tf.test.main()
+  test_lib.main()

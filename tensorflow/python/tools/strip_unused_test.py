@@ -13,15 +13,23 @@
 # limitations under the License.
 # ==============================================================================
 """Tests the node stripping tool."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import os
 
-import tensorflow as tf
-
+from tensorflow.core.framework import graph_pb2
+from tensorflow.python.client import session
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import graph_io
+from tensorflow.python.framework import importer
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
 from tensorflow.python.tools import strip_unused_lib
 
 
@@ -33,16 +41,17 @@ class StripUnusedTest(test_util.TensorFlowTestCase):
 
     # We'll create an input graph that has a single constant containing 1.0,
     # and that then multiplies it by 2.
-    with tf.Graph().as_default():
-      constant_node = tf.constant(1.0, name="constant_node")
-      wanted_input_node = tf.subtract(constant_node, 3.0,
-                                      name="wanted_input_node")
-      output_node = tf.multiply(wanted_input_node, 2.0, name="output_node")
-      tf.add(output_node, 2.0, name="later_node")
-      sess = tf.Session()
+    with ops.Graph().as_default():
+      constant_node = constant_op.constant(1.0, name="constant_node")
+      wanted_input_node = math_ops.sub(
+          constant_node, 3.0, name="wanted_input_node")
+      output_node = math_ops.multiply(
+          wanted_input_node, 2.0, name="output_node")
+      math_ops.add(output_node, 2.0, name="later_node")
+      sess = session.Session()
       output = sess.run(output_node)
       self.assertNear(-4.0, output, 0.00001)
-      tf.train.write_graph(sess.graph, self.get_temp_dir(), input_graph_name)
+      graph_io.write_graph(sess.graph, self.get_temp_dir(), input_graph_name)
 
     # We save out the graph to disk, and then call the const conversion
     # routine.
@@ -57,15 +66,15 @@ class StripUnusedTest(test_util.TensorFlowTestCase):
                                              output_graph_path, output_binary,
                                              input_node_names,
                                              output_node_names,
-                                             tf.float32.as_datatype_enum)
+                                             dtypes.float32.as_datatype_enum)
 
     # Now we make sure the variable is now a constant, and that the graph still
     # produces the expected result.
-    with tf.Graph().as_default():
-      output_graph_def = tf.GraphDef()
+    with ops.Graph().as_default():
+      output_graph_def = graph_pb2.GraphDef()
       with open(output_graph_path, "rb") as f:
         output_graph_def.ParseFromString(f.read())
-        _ = tf.import_graph_def(output_graph_def, name="")
+        _ = importer.import_graph_def(output_graph_def, name="")
 
       self.assertEqual(3, len(output_graph_def.node))
       for node in output_graph_def.node:
@@ -74,11 +83,12 @@ class StripUnusedTest(test_util.TensorFlowTestCase):
         if node.name == input_node_names:
           self.assertTrue("shape" in node.attr)
 
-      with tf.Session() as sess:
+      with session.Session() as sess:
         input_node = sess.graph.get_tensor_by_name("wanted_input_node:0")
         output_node = sess.graph.get_tensor_by_name("output_node:0")
         output = sess.run(output_node, feed_dict={input_node: [10.0]})
         self.assertNear(20.0, output, 0.00001)
 
+
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()
