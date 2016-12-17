@@ -2727,6 +2727,7 @@ py_library(
         exclude = ["**/*test*"],
     ),
     srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
     deps = [
         ":client",
         ":errors",
