@@ -1316,8 +1316,6 @@ class ControlFlowTest(test.TestCase):
         # Forward and backward graphs contain gpu in Square/Square_grad devices
         self.assertTrue(gpu_dev_name in dev)
       else:
-        print ("DEV = " + str(dev))
-        print ("GPU DEV = " + str(gpu_dev_name))
         self.assertFalse(gpu_dev_name in dev)
     self.assertAllClose(1024.0, sess.run(r))
 
