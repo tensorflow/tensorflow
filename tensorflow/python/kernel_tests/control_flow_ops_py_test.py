@@ -1291,12 +1291,13 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(45, rx.eval())
 
   def _testWhileGrad_ColocateGradients(self, colocate):
+    gpu_dev_name = test.gpu_device_name() if test.is_gpu_available() else "gpu:0"
     with self.test_session(graph=ops.Graph()) as sess:
       v = constant_op.constant(2.0, name="v")
       c = lambda v: math_ops.less(v, 100.0)
 
       def b(x):
-        with ops.device(ops.test.gpu_device_name()):
+        with ops.device(gpu_dev_name):
           return math_ops.square(x)
 
       loop = control_flow_ops.while_loop(c, b, [v], parallel_iterations=1)
@@ -1310,12 +1311,14 @@ class ControlFlowTest(test.TestCase):
     for (name, dev) in r_devices:
       if not colocate and name.endswith("Square"):
         # Only forward graph contain gpu in Square device
-        self.assertTrue(tf.test.gpu_device_name() in dev)
+        self.assertTrue(gpu_dev_name in dev)
       elif colocate and "Square" in name:
         # Forward and backward graphs contain gpu in Square/Square_grad devices
-        self.assertTrue(tf.test.gpu_device_name() in dev)
+        self.assertTrue(gpu_dev_name in dev)
       else:
-        self.assertFalse(tf.test.gpu_device_name() in dev)
+        print ("DEV = " + str(dev))
+        print ("GPU DEV = " + str(gpu_dev_name))
+        self.assertFalse(gpu_dev_name in dev)
     self.assertAllClose(1024.0, sess.run(r))
 
   def testWhileGrad_ColocateGradients(self):
