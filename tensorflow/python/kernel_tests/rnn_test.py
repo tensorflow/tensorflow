@@ -1099,7 +1099,7 @@ class TensorArrayOnCorrectDeviceTest(tf.test.TestCase):
       return  # Test requires access to a GPU
 
     run_metadata = self._execute_rnn_on(
-        rnn_device="/cpu:0", cell_device="/gpu:0")
+        rnn_device="/cpu:0", cell_device=test.gpu_device_name())
     step_stats = run_metadata.step_stats
     ix = 0 if "gpu" in step_stats.dev_stats[0].device else 1
     gpu_stats = step_stats.dev_stats[ix].node_stats
@@ -1122,7 +1122,7 @@ class TensorArrayOnCorrectDeviceTest(tf.test.TestCase):
       return  # Test requires access to a GPU
 
     run_metadata = self._execute_rnn_on(
-        rnn_device="/cpu:0", cell_device="/cpu:0", input_device="/gpu:0")
+        rnn_device="/cpu:0", cell_device="/cpu:0", input_device=test.gpu_device_name())
     step_stats = run_metadata.step_stats
     ix = 0 if "gpu" in step_stats.dev_stats[0].device else 1
     gpu_stats = step_stats.dev_stats[ix].node_stats
@@ -1138,7 +1138,7 @@ class TensorArrayOnCorrectDeviceTest(tf.test.TestCase):
     if not tf.test.is_gpu_available():
       return  # Test requires access to a GPU
 
-    run_metadata = self._execute_rnn_on(input_device="/gpu:0")
+    run_metadata = self._execute_rnn_on(input_device=test.gpu_device_name())
     step_stats = run_metadata.step_stats
     ix = 0 if "gpu" in step_stats.dev_stats[0].device else 1
     gpu_stats = step_stats.dev_stats[ix].node_stats
