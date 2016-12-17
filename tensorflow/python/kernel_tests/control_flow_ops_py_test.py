@@ -242,7 +242,7 @@ class ControlFlowTest(test.TestCase):
       enter_one = control_flow_ops.enter(one, "foo", True)
       enter_n = control_flow_ops.enter(n, "foo", True)
 
-      with ops.device(tf.test.gpu_device_name()):
+      with ops.device(test.gpu_device_name()):
         merge_i = control_flow_ops.merge([enter_i, enter_i])[0]
 
       less_op = math_ops.less(merge_i, enter_n)
@@ -276,7 +276,7 @@ class ControlFlowTest(test.TestCase):
 
       add_i = math_ops.add(switch_i[1], enter_one)
 
-      with ops.device(tf.test.gpu_device_name()):
+      with ops.device(test.gpu_device_name()):
         next_i = control_flow_ops.next_iteration(add_i)
       merge_i.op._update_input(1, next_i)
 
@@ -519,7 +519,7 @@ class ControlFlowTest(test.TestCase):
   def testCondRecvIdentity(self):
     # Make sure the switch identity is not removed by optimization.
     with session.Session(config=opt_cfg()) as sess:
-      with ops.device(tf.test.gpu_device_name()):
+      with ops.device(test.gpu_device_name()):
         pred = constant_op.constant(True)
 
       def fn1():
@@ -1291,12 +1291,13 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(45, rx.eval())
 
   def _testWhileGrad_ColocateGradients(self, colocate):
+    gpu_dev_name = test.gpu_device_name() if test.is_gpu_available() else "gpu:0"
     with self.test_session(graph=ops.Graph()) as sess:
       v = constant_op.constant(2.0, name="v")
       c = lambda v: math_ops.less(v, 100.0)
 
       def b(x):
-        with ops.device(tf.test.gpu_device_name()):
+        with ops.device(gpu_dev_name):
           return math_ops.square(x)
 
       loop = control_flow_ops.while_loop(c, b, [v], parallel_iterations=1)
@@ -1310,12 +1311,14 @@ class ControlFlowTest(test.TestCase):
     for (name, dev) in r_devices:
       if not colocate and name.endswith("Square"):
         # Only forward graph contain gpu in Square device
-        self.assertTrue(tf.test.gpu_device_name() in dev)
+        self.assertTrue(gpu_dev_name in dev)
       elif colocate and "Square" in name:
         # Forward and backward graphs contain gpu in Square/Square_grad devices
-        self.assertTrue(tf.test.gpu_device_name() in dev)
+        self.assertTrue(gpu_dev_name in dev)
       else:
-        self.assertFalse(tf.test.gpu_device_name() in dev)
+        print ("DEV = " + str(dev))
+        print ("GPU DEV = " + str(gpu_dev_name))
+        self.assertFalse(gpu_dev_name in dev)
     self.assertAllClose(1024.0, sess.run(r))
 
   def testWhileGrad_ColocateGradients(self):
@@ -2494,7 +2497,7 @@ class AssertTest(test.TestCase):
 
   def testGuardedAssertDoesNotCopyWhenTrue(self):
     with self.test_session(use_gpu=True) as sess:
-      with ops.device(tf.test.gpu_device_name()):
+      with ops.device(test.gpu_device_name()):
         value = constant_op.constant(1.0)
       with ops.device("/cpu:0"):
         true = constant_op.constant(True)
