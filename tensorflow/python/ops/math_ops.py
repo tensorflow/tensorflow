@@ -125,6 +125,7 @@ TensorFlow provides several operations that you can use to add complex number
 functions to your graph.
 
 @@complex
+@@complex_abs
 @@conj
 @@imag
 @@real
@@ -291,8 +292,8 @@ def abs(x, name=None):
   \\\\(y = |x|\\\\).
 
   Args:
-    x: A `Tensor` or `SparseTensor` of type `float16`, `float32`, `float64`,
-      `complex64`, `complex128`, `int32`, `int64`,
+    x: A `Tensor` or `SparseTensor` of type `float32`, `float64`, `int32`, or
+      `int64`.
     name: A name for the operation (optional).
 
   Returns:
@@ -436,6 +437,31 @@ def erf(x, name=None):
           indices=x.indices, values=x_erf, dense_shape=x.dense_shape)
     else:
       return gen_math_ops.erf(x, name=name)
+
+
+def complex_abs(x, name=None):
+  r"""Computes the complex absolute value of a tensor.
+
+  Given a tensor `x` of complex numbers, this operation returns a tensor of type
+  `float32` or `float64` that is the absolute value of each element in `x`. All
+  elements in `x` must be complex numbers of the form \\(a + bj\\). The
+  absolute value is computed as \\( \sqrt{a^2 + b^2}\\).
+
+  For example:
+
+  ```
+  # tensor 'x' is [[-2.25 + 4.75j], [-3.25 + 5.75j]]
+  tf.complex_abs(x) ==> [5.25594902, 6.60492229]
+  ```
+
+  Args:
+    x: A `Tensor` of type `complex64` or `complex128`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `float32` or `float64`.
+  """
+  return gen_math_ops._complex_abs(x, Tout=x.dtype.real_dtype, name=name)
 
 
 def scalar_mul(scalar, x):

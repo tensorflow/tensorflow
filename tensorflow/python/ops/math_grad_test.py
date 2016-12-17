@@ -77,7 +77,10 @@ class AbsOpTest(test.TestCase):
               shape, bias=bias), dtype=dtype)
 
     with self.test_session(use_gpu=True):
-      output = math_ops.abs(value)
+      if dtype in (dtypes.complex64, dtypes.complex128):
+        output = math_ops.complex_abs(value)
+      else:
+        output = math_ops.abs(value)
       error = gradient_checker.compute_gradient_error(
           value, shape, output, output.get_shape().as_list())
     self.assertLess(error, max_error)
