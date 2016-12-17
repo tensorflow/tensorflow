@@ -72,10 +72,7 @@ class AbsOpTest(tf.test.TestCase):
                                    dtype=dtype)
 
     with self.test_session(use_gpu=True):
-      if dtype in (tf.complex64, tf.complex128):
-        output = tf.complex_abs(value)
-      else:
-        output = tf.abs(value)
+      output = tf.abs(value)
       error = tf.test.compute_gradient_error(
           value, shape, output, output.get_shape().as_list())
     self.assertLess(error, max_error)

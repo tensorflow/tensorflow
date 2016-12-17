@@ -53,7 +53,8 @@
   made `tf.sparse_split` require keyword arguments.
 * Deprecated `tf.concat` operator. Please switch to use `tf.concat_v2` for now.
   In the Beta release, we will update `tf.concat` to match argument order of
-  `tf.concat_v2.
+  `tf.concat_v2`.
+ * `tf.complex_abs` has been removed. `tf.abs` should be used instead.
 
 # Release 0.12.0
 
