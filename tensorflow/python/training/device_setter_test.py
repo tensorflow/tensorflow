@@ -26,6 +26,19 @@ class DeviceSetterTest(tf.test.TestCase):
       "ps": ["ps0:2222", "ps1:2222"],
       "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]})
 
+  def testCPUOverride(self):
+    with tf.device(tf.train.replica_device_setter(cluster=self._cluster_spec)):
+      with tf.device("/cpu:0"):
+        v = tf.Variable([1, 2])
+      w = tf.Variable([2, 1])
+      with tf.device("/cpu:0"):
+        a = v + w
+      self.assertDeviceEqual("/job:ps/task:0/cpu:0", v.device)
+      self.assertDeviceEqual("/job:ps/task:0/cpu:0", v.initializer.device)
+      self.assertDeviceEqual("/job:ps/task:1", w.device)
+      self.assertDeviceEqual("/job:ps/task:1", w.initializer.device)
+      self.assertDeviceEqual("/job:worker/cpu:0", a.device)
+
   def testPS2TasksWithClusterSpecClass(self):
     with tf.device(tf.train.replica_device_setter(cluster=self._cluster_spec)):
       v = tf.Variable([1, 2])

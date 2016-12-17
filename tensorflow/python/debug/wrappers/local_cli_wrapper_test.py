@@ -21,12 +21,17 @@ import os
 import shutil
 import tempfile
 
-import tensorflow as tf
-
 from tensorflow.python.client import session
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.wrappers import local_cli_wrapper
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
 
@@ -38,10 +43,7 @@ class LocalCLIDebuggerWrapperSessionForTest(
   Inserts observer variables for assertions.
   """
 
-  def __init__(self,
-               command_args_sequence,
-               sess,
-               dump_root=None):
+  def __init__(self, command_args_sequence, sess, dump_root=None):
     """Constructor of the for-test subclass.
 
     Args:
@@ -94,23 +96,23 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
   def setUp(self):
     self._tmp_dir = tempfile.mktemp()
 
-    self.v = tf.Variable(10.0, name="v")
-    self.delta = tf.constant(1.0, name="delta")
-    self.inc_v = tf.assign_add(self.v, self.delta, name="inc_v")
+    self.v = variables.Variable(10.0, name="v")
+    self.delta = constant_op.constant(1.0, name="delta")
+    self.inc_v = state_ops.assign_add(self.v, self.delta, name="inc_v")
 
-    self.ph = tf.placeholder(tf.float32, name="ph")
-    self.xph = tf.transpose(self.ph, name="xph")
-    self.m = tf.constant(
-        [[0.0, 1.0, 2.0], [-4.0, -1.0, 0.0]], dtype=tf.float32, name="m")
-    self.y = tf.matmul(self.m, self.xph, name="y")
+    self.ph = array_ops.placeholder(dtypes.float32, name="ph")
+    self.xph = array_ops.transpose(self.ph, name="xph")
+    self.m = constant_op.constant(
+        [[0.0, 1.0, 2.0], [-4.0, -1.0, 0.0]], dtype=dtypes.float32, name="m")
+    self.y = math_ops.matmul(self.m, self.xph, name="y")
 
-    self.sess = tf.Session()
+    self.sess = session.Session()
 
     # Initialize variable.
     self.sess.run(self.v.initializer)
 
   def tearDown(self):
-    tf.reset_default_graph()
+    ops.reset_default_graph()
     if os.path.isdir(self._tmp_dir):
       shutil.rmtree(self._tmp_dir)
 
@@ -141,8 +143,7 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     file_path = os.path.join(self._tmp_dir, "foo")
     open(file_path, "a").close()  # Create the file
     self.assertTrue(os.path.isfile(file_path))
-    with self.assertRaisesRegexp(
-        ValueError, "dump_root path points to a file"):
+    with self.assertRaisesRegexp(ValueError, "dump_root path points to a file"):
       local_cli_wrapper.LocalCLIDebugWrapperSession(
           session.Session(), dump_root=file_path, log_usage=False)
 
@@ -173,9 +174,7 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
   def testRunsUnderNonDebugMode(self):
     # Test command sequence: run -n; run -n; run -n;
     wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
-        [["-n"], ["-n"], ["-n"]],
-        self.sess,
-        dump_root=self._tmp_dir)
+        [["-n"], ["-n"], ["-n"]], self.sess, dump_root=self._tmp_dir)
 
     # run three times.
     wrapped_sess.run(self.inc_v)
@@ -192,9 +191,7 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     # Test command sequence: run -n; run -n; run; run;
     # Do two NON_DEBUG_RUNs, followed by DEBUG_RUNs.
     wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
-        [["-n"], ["-n"], [], []],
-        self.sess,
-        dump_root=self._tmp_dir)
+        [["-n"], ["-n"], [], []], self.sess, dump_root=self._tmp_dir)
 
     # run three times.
     wrapped_sess.run(self.inc_v)
@@ -249,9 +246,7 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
   def testRunMixingDebugModeAndMultpleTimes(self):
     # Test command sequence: run -n; run -t 2; run; run;
     wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
-        [["-n"], ["-t", "2"], [], []],
-        self.sess,
-        dump_root=self._tmp_dir)
+        [["-n"], ["-t", "2"], [], []], self.sess, dump_root=self._tmp_dir)
 
     # run four times.
     wrapped_sess.run(self.inc_v)
@@ -288,13 +283,14 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     #   run -f greater_than_twelve; run -f greater_than_twelve; run;
     wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
         [["-f", "v_greater_than_twelve"], ["-f", "v_greater_than_twelve"], []],
-        self.sess, dump_root=self._tmp_dir)
+        self.sess,
+        dump_root=self._tmp_dir)
 
     def v_greater_than_twelve(datum, tensor):
       return datum.node_name == "v" and tensor > 12.0
 
-    wrapped_sess.add_tensor_filter(
-        "v_greater_than_twelve", v_greater_than_twelve)
+    wrapped_sess.add_tensor_filter("v_greater_than_twelve",
+                                   v_greater_than_twelve)
 
     # run five times.
     wrapped_sess.run(self.inc_v)

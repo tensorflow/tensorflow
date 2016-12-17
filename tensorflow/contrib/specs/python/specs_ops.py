@@ -60,7 +60,7 @@ class Conc(specs_lib.Composable):
 
   def funcall(self, x):
     outputs = [f.funcall(x) for f in self.funs]
-    return tf.concat(self.dim, outputs)
+    return tf.concat_v2(outputs, self.dim)
 
 
 External = specs_lib.External
@@ -235,11 +235,3 @@ class Shared(specs_lib.Composable):
     else:
       with tf.variable_scope(self.scope, values=[x], reuse=True):
         return self.subnet.funcall(x)
-
-# AutoFunction bindings of some existing modules
-
-TF = specs_lib.AutoFunction(tf)
-NN = specs_lib.AutoFunction(tf.nn)
-SL = specs_lib.AutoFunction(slim)
-
-# pylint: enable=invalid-name

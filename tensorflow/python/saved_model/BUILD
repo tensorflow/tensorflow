@@ -2,10 +2,7 @@
 # TensorFlow SavedModel.
 
 package(
-    default_visibility = [
-        "//tensorflow/contrib/learn:__subpackages__",
-        "//tensorflow/python/saved_model:__subpackages__",
-    ],
+    default_visibility = ["//visibility:public"],
 )
 
 licenses(["notice"])  # Apache 2.0
@@ -40,9 +37,11 @@ py_library(
         ":constants",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -53,8 +52,10 @@ py_library(
     deps = [
         ":constants",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:training",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -65,6 +66,7 @@ py_library(
     deps = [
         ":constants",
         "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
     ],
 )
@@ -75,18 +77,26 @@ py_test(
     srcs = [
         "saved_model_test.py",
     ],
+    data = [
+        "//tensorflow/cc/saved_model:saved_model_half_plus_two",
+    ],
     srcs_version = "PY2AND3",
+    tags = ["manual"],
     visibility = ["//visibility:private"],
     deps = [
         ":builder",
+        ":constants",
         ":loader",
         ":main_op",
+        ":signature_def_utils",
         ":tag_constants",
         ":utils",
         "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:errors",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
@@ -99,6 +109,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:framework_for_generated_wrappers",
     ],
 )
 
@@ -136,7 +147,9 @@ py_test(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:private"],
     deps = [
+        ":signature_constants",
         ":signature_def_utils",
+        ":utils",
         "//tensorflow:tensorflow_py",
     ],
 )

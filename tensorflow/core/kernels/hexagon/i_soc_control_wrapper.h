@@ -32,7 +32,7 @@ class ISocControlWrapper {
 
   // Return version of SOC controller library.
   // This function is mainly for a debug purpose to verify SOC controller.
-  virtual int GetVersion() const = 0;
+  virtual int GetVersion() = 0;
 
   // Initialize SOC. This function should be called before
   // starting graph transfer.
@@ -56,7 +56,7 @@ class ISocControlWrapper {
 
   // Read output node's outputs on SOC
   virtual bool ReadOutputNode(string node_name,
-                              std::vector<ByteArray> *outputs) const = 0;
+                              std::vector<ByteArray> *outputs) = 0;
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(ISocControlWrapper);

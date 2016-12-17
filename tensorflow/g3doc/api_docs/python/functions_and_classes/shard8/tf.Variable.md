@@ -51,7 +51,7 @@ with tf.Session() as sess:
 ```
 
 The most common initialization pattern is to use the convenience function
-`global_variable_initializers()` to add an Op to the graph that initializes
+`global_variables_initializer()` to add an Op to the graph that initializes
 all the variables. You then run that Op after launching the graph.
 
 ```python
@@ -305,7 +305,7 @@ more information on launching a graph and on sessions.
 
 ```python
 v = tf.Variable([1, 2])
-init = tf.global_variable_initializers()
+init = tf.global_variables_initializer()
 
 with tf.Session() as sess:
     sess.run(init)
@@ -1050,6 +1050,47 @@ the variable.
 ##### Returns:
 
   A `Tensor`.
+
+
+- - -
+
+#### `tf.Variable.load(value, session=None)` {#Variable.load}
+
+Load new value into this variable
+
+Writes new value to variable's memory. Doesn't add ops to the graph.
+
+This convenience method requires a session where the graph containing this
+variable has been launched. If no session is passed, the default session is
+used.  See the [Session class](../../api_docs/python/client.md#Session) for
+more information on launching a graph and on sessions.
+
+```python
+v = tf.Variable([1, 2])
+init = tf.global_variables_initializer()
+
+with tf.Session() as sess:
+    sess.run(init)
+    # Usage passing the session explicitly.
+    v.load([2, 3], sess)
+    print(v.eval(sess)) # prints [2 3]
+    # Usage with the default session.  The 'with' block
+    # above makes 'sess' the default session.
+    v.load([3, 4], sess)
+    print(v.eval()) # prints [3 4]
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: New variable value
+*  <b>`session`</b>: The session to use to evaluate this variable. If
+      none, the default session is used.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: Session is not passed and no default session
 
 
 - - -

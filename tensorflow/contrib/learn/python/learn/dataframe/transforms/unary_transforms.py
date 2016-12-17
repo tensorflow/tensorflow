@@ -86,7 +86,7 @@ def register_unary_op(registered_name, operation, ignore_dtype=None):
     if isinstance(input_tensor, sparse_tensor.SparseTensor):
       result = sparse_tensor.SparseTensor(input_tensor.indices,
                                           operation(input_tensor.values),
-                                          input_tensor.shape)
+                                          input_tensor.dense_shape)
     else:
       result = operation(input_tensor)
     # pylint: disable=not-callable

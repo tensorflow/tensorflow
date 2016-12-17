@@ -154,6 +154,13 @@ Same meaning as `inverse_event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.bijector.Exp.graph_parents` {#Exp.graph_parents}
+
+Returns this `Bijector`'s graph_parents as a Python list.
+
+
+- - -
+
 #### `tf.contrib.distributions.bijector.Exp.inverse(y, name='inverse', **condition_kwargs)` {#Exp.inverse}
 
 Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
@@ -277,13 +284,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.Exp.name` {#Exp.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Exp.parameters` {#Exp.parameters}
-
-Returns this `Bijector`'s parameters as a name/value dictionary.
 
 
 - - -

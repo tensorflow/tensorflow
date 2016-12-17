@@ -284,6 +284,20 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.DirichletMultinomial.is_scalar_batch` {#DirichletMultinomial.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.DirichletMultinomial.is_scalar_event` {#DirichletMultinomial.is_scalar_event}
+
+Indicates that `event_shape==[]`.
+
+
+- - -
+
 #### `tf.contrib.distributions.DirichletMultinomial.log_cdf(value, name='log_cdf', **condition_kwargs)` {#DirichletMultinomial.log_cdf}
 
 Log cumulative distribution function.

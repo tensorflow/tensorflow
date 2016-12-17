@@ -32,7 +32,25 @@ from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.lib.io import file_io
 
 
-def load_session_bundle_from_path(export_dir, target="", config=None):
+def maybe_session_bundle_dir(export_dir):
+  """Checks if the model path contains session bundle model.
+
+  Args:
+    export_dir: string path to model checkpoint, for example 'model/00000123'
+
+  Returns:
+    true if path contains session bundle model files, ie META_GRAPH_DEF_FILENAME
+  """
+
+  meta_graph_filename = os.path.join(export_dir,
+                                     constants.META_GRAPH_DEF_FILENAME)
+  return file_io.file_exists(meta_graph_filename)
+
+
+def load_session_bundle_from_path(export_dir,
+                                  target="",
+                                  config=None,
+                                  meta_graph_def=None):
   """Load session bundle from the given path.
 
   The function reads input from the export_dir, constructs the graph data to the
@@ -43,6 +61,8 @@ def load_session_bundle_from_path(export_dir, target="", config=None):
     target: The execution engine to connect to. See target in tf.Session()
     config: A ConfigProto proto with configuration options. See config in
     tf.Session()
+    meta_graph_def: optional object of type MetaGraphDef. If this object is
+    present, then it is used instead of parsing MetaGraphDef from export_dir.
 
   Returns:
     session: a tensorflow session created from the variable files.
@@ -52,11 +72,16 @@ def load_session_bundle_from_path(export_dir, target="", config=None):
     RuntimeError: if the required files are missing or contain unrecognizable
     fields, i.e. the exported model is invalid.
   """
-  meta_graph_filename = os.path.join(export_dir,
-                                     constants.META_GRAPH_DEF_FILENAME)
-  if not file_io.file_exists(meta_graph_filename):
-    raise RuntimeError("Expected meta graph file missing %s" %
-                       meta_graph_filename)
+  if not meta_graph_def:
+    meta_graph_filename = os.path.join(export_dir,
+                                       constants.META_GRAPH_DEF_FILENAME)
+    if not file_io.file_exists(meta_graph_filename):
+      raise RuntimeError("Expected meta graph file missing %s" %
+                         meta_graph_filename)
+    # Reads meta graph file.
+    meta_graph_def = meta_graph_pb2.MetaGraphDef()
+    meta_graph_def.ParseFromString(
+        file_io.read_file_to_string(meta_graph_filename))
 
   variables_filename = ""
   variables_filename_list = []
@@ -96,11 +121,6 @@ def load_session_bundle_from_path(export_dir, target="", config=None):
     restore_files = constants.VARIABLES_FILENAME_PATTERN
 
   assets_dir = os.path.join(export_dir, constants.ASSETS_DIRECTORY)
-
-  # Reads meta graph file.
-  meta_graph_def = meta_graph_pb2.MetaGraphDef()
-  meta_graph_def.ParseFromString(file_io.read_file_to_string(
-      meta_graph_filename))
 
   collection_def = meta_graph_def.collection_def
   graph_def = tf.GraphDef()

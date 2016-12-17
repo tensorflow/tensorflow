@@ -66,7 +66,7 @@ with tf.Session() as sess:
 ```
 
 The most common initialization pattern is to use the convenience function
-`global_variable_initializers()` to add an Op to the graph that initializes
+`global_variables_initializer()` to add an Op to the graph that initializes
 all the variables. You then run that Op after launching the graph.
 
 ```python
@@ -320,7 +320,7 @@ more information on launching a graph and on sessions.
 
 ```python
 v = tf.Variable([1, 2])
-init = tf.global_variable_initializers()
+init = tf.global_variables_initializer()
 
 with tf.Session() as sess:
     sess.run(init)
@@ -1065,6 +1065,47 @@ the variable.
 ##### Returns:
 
   A `Tensor`.
+
+
+- - -
+
+#### `tf.Variable.load(value, session=None)` {#Variable.load}
+
+Load new value into this variable
+
+Writes new value to variable's memory. Doesn't add ops to the graph.
+
+This convenience method requires a session where the graph containing this
+variable has been launched. If no session is passed, the default session is
+used.  See the [Session class](../../api_docs/python/client.md#Session) for
+more information on launching a graph and on sessions.
+
+```python
+v = tf.Variable([1, 2])
+init = tf.global_variables_initializer()
+
+with tf.Session() as sess:
+    sess.run(init)
+    # Usage passing the session explicitly.
+    v.load([2, 3], sess)
+    print(v.eval(sess)) # prints [2 3]
+    # Usage with the default session.  The 'with' block
+    # above makes 'sess' the default session.
+    v.load([3, 4], sess)
+    print(v.eval()) # prints [3 4]
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: New variable value
+*  <b>`session`</b>: The session to use to evaluate this variable. If
+      none, the default session is used.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: Session is not passed and no default session
 
 
 - - -
@@ -2255,7 +2296,7 @@ have the following properties:
    that are intended to be locals can be created by specifying
    `tf.Variable(..., trainable=false)`.
 * The function may use variable scopes and other templates internally to
-    create and reuse variables, but it shouldn't use `tf.all_variables` to
+    create and reuse variables, but it shouldn't use `tf.global_variables` to
     capture variables that are defined outside of the scope of the function.
 * Internal scopes and variable names should not depend on any arguments that
     are not supplied to `make_template`. In general you will get a ValueError
@@ -2568,14 +2609,14 @@ numerically computed: for a linear layer it's 1.0, relu: ~1.43, tanh: ~1.15.
 
 - - -
 
-### `tf.zeros_initializer(shape, dtype=tf.float32, partition_info=None)` {#zeros_initializer}
+### `tf.zeros_initializer(dtype=tf.float32)` {#zeros_initializer}
 
-An adaptor for zeros() to match the Initializer spec.
+Returns an initializer that generates tensors initialized to 0.
 
 
 - - -
 
-### `tf.ones_initializer(dtype=tf.float32, partition_info=None)` {#ones_initializer}
+### `tf.ones_initializer(dtype=tf.float32)` {#ones_initializer}
 
 An adaptor for ones() to match the Initializer spec.
 
@@ -2739,7 +2780,7 @@ This operation outputs `ref` after the update is done.
 This makes it easier to chain operations that need to use the reset value.
 
 If values in `ref` is to be updated more than once, because there are
-duplicate entires in `indices`, the order at which the updates happen
+duplicate entries in `indices`, the order at which the updates happen
 for each value is undefined.
 
 Requires `updates.shape = indices.shape + ref.shape[1:]`.
@@ -3444,7 +3485,7 @@ device assignments have not changed.
 
 See `tf.global_variables`. (deprecated)
 
-THIS FUNCTION IS DEPRECATED. It will be removed after 2016-03-02.
+THIS FUNCTION IS DEPRECATED. It will be removed after 2017-03-02.
 Instructions for updating:
 Please use tf.global_variables instead.
 

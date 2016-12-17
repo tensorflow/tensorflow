@@ -137,7 +137,7 @@ class BoundingBox(ItemHandler):
       side = array_ops.expand_dims(keys_to_tensors[key].values, 0)
       sides.append(side)
 
-    bounding_box = array_ops.concat(0, sides)
+    bounding_box = array_ops.concat_v2(sides, 0)
     return array_ops.transpose(bounding_box)
 
 
@@ -192,7 +192,7 @@ class Tensor(ItemHandler):
         if isinstance(shape_dim, sparse_tensor.SparseTensor):
           shape_dim = sparse_ops.sparse_tensor_to_dense(shape_dim)
         shape_dims.append(shape_dim)
-      shape = array_ops.reshape(array_ops.pack(shape_dims), [-1])
+      shape = array_ops.reshape(array_ops.stack(shape_dims), [-1])
     if isinstance(tensor, sparse_tensor.SparseTensor):
       if shape is not None:
         tensor = sparse_ops.sparse_reshape(tensor, shape)
@@ -246,14 +246,14 @@ class SparseTensor(ItemHandler):
     elif self._shape:
       shape = self._shape
     else:
-      shape = indices.shape
+      shape = indices.dense_shape
     indices_shape = array_ops.shape(indices.indices)
     rank = indices_shape[1]
     ids = math_ops.to_int64(indices.values)
     indices_columns_to_preserve = array_ops.slice(
-        indices.indices, [0, 0], array_ops.pack([-1, rank - 1]))
-    new_indices = array_ops.concat(1, [indices_columns_to_preserve,
-                                       array_ops.reshape(ids, [-1, 1])])
+        indices.indices, [0, 0], array_ops.stack([-1, rank - 1]))
+    new_indices = array_ops.concat_v2(
+        [indices_columns_to_preserve, array_ops.reshape(ids, [-1, 1])], 1)
 
     tensor = sparse_tensor.SparseTensor(new_indices, values.values, shape)
     if self._densify:

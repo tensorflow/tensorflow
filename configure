@@ -23,8 +23,13 @@ function bazel_clean_and_fetch() {
   # TODO(pcloudy): Re-enable it after bazel clean --expunge is fixed.
   if ! is_windows; then
     bazel clean --expunge
+    # TODO(https://github.com/bazelbuild/bazel/issues/2220) Remove the nested `bazel query`.
+    bazel fetch $(bazel query "//tensorflow/... -//tensorflow/examples/android/...")
+  else
+    # TODO(pcloudy): Also filter out //tensorflow/examples/android/... on Windows after
+    # https://github.com/bazelbuild/bazel/issues/2248 is fixed.
+    bazel fetch //tensorflow/...
   fi
-  bazel fetch //tensorflow/...
 }
 
 ## Set up python-related environment settings

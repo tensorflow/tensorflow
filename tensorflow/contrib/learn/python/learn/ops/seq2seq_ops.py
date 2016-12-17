@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib import rnn
 from tensorflow.contrib.learn.python.learn.ops import array_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -143,6 +144,7 @@ def rnn_seq2seq(encoder_inputs,
     List of tensors for outputs and states for trianing and sampling sub-graphs.
   """
   with vs.variable_scope(scope or "rnn_seq2seq"):
-    _, last_enc_state = nn.rnn(encoder_cell, encoder_inputs, dtype=dtype)
+    _, last_enc_state = rnn.static_rnn(
+        encoder_cell, encoder_inputs, dtype=dtype)
     return rnn_decoder(decoder_inputs, last_enc_state, decoder_cell or
                        encoder_cell)

@@ -2,7 +2,7 @@
 
 Concatenates tensors along one dimension. (deprecated)
 
-THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-13.
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-14.
 Instructions for updating:
 This op will be removed after the deprecation date. Please switch to tf.concat_v2().
 

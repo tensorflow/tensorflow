@@ -202,7 +202,7 @@ class DirichletMultinomial(distribution.Distribution):
     return self.alpha_sum.get_shape()
 
   def _event_shape(self):
-    return array_ops.reverse(array_ops.shape(self.alpha), [True])[0]
+    return array_ops.reverse_v2(array_ops.shape(self.alpha), [0])[0]
 
   def _get_event_shape(self):
     # Event shape depends only on alpha, not "n".

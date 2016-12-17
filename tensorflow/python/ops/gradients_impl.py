@@ -770,8 +770,8 @@ def _AggregatedGrads(grads, op, loop_state, aggregation_method=None):
         # Form IndexedSlices out of the concatenated values and
         # indices.
         out_grads[i] = ops.IndexedSlices(
-            array_ops.concat(0, [x.values for x in out_grad]),
-            array_ops.concat(0, [x.indices for x in out_grad]),
+            array_ops.concat_v2([x.values for x in out_grad], 0),
+            array_ops.concat_v2([x.indices for x in out_grad], 0),
             out_grad[0].dense_shape)
     else:
       out_grads[i] = []
@@ -891,5 +891,5 @@ def hessians(ys, xs, name="hessians", colocate_gradients_with_ops=False,
       # Compute the partial derivatives with respect to each element of the list
       _hess = [gradients(_gradient, x, **kwargs)[0] for _gradient in _gradients]
       # Pack the list into a matrix and add to the list of hessians
-      hessians.append(array_ops.pack(_hess, name=name))
+      hessians.append(array_ops.stack(_hess, name=name))
   return hessians

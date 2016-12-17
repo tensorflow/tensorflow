@@ -12,41 +12,49 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tensorflow.ops.tf.cast."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
 
 
-class CastOpTest(tf.test.TestCase):
+class CastOpTest(test.TestCase):
 
   def _toDataType(self, dtype):
     """Returns TensorFlow data type for numpy type."""
     if dtype == np.float32:
-      return tf.float32
+      return dtypes.float32
     elif dtype == np.float64:
-      return tf.float64
+      return dtypes.float64
     elif dtype == np.int32:
-      return tf.int32
+      return dtypes.int32
     elif dtype == np.int64:
-      return tf.int64
+      return dtypes.int64
     elif dtype == np.bool:
-      return tf.bool
+      return dtypes.bool
     elif dtype == np.complex64:
-      return tf.complex64
+      return dtypes.complex64
     elif dtype == np.complex128:
-      return tf.complex128
+      return dtypes.complex128
     else:
       return None
 
   def _cast(self, x, dtype, use_gpu=False):
     with self.test_session(use_gpu=use_gpu):
-      val = tf.constant(x, self._toDataType(np.array([x]).dtype))
-      return tf.cast(val, self._toDataType(dtype), name="cast").eval()
+      val = constant_op.constant(x, self._toDataType(np.array([x]).dtype))
+      return math_ops.cast(val, self._toDataType(dtype), name="cast").eval()
 
   def _test(self, x, dtype, use_gpu=False):
     """Tests cast(x) to dtype behaves the same as numpy.astype."""
@@ -57,11 +65,14 @@ class CastOpTest(tf.test.TestCase):
   def _testTypes(self, x, use_gpu=False):
     """Tests cast(x) to different tf."""
     if use_gpu:
-      type_list = [np.float32, np.float64, np.int64,
-                   np.complex64, np.complex128]
+      type_list = [
+          np.float32, np.float64, np.int64, np.complex64, np.complex128
+      ]
     else:
-      type_list = [np.float32, np.float64, np.int32,
-                   np.int64, np.complex64, np.complex128]
+      type_list = [
+          np.float32, np.float64, np.int32, np.int64, np.complex64,
+          np.complex128
+      ]
     for from_type in type_list:
       for to_type in type_list:
         self._test(x.astype(from_type), to_type, use_gpu)
@@ -84,17 +95,20 @@ class CastOpTest(tf.test.TestCase):
   def testSmallValues(self):
     f4 = np.finfo(np.float32)
     f8 = np.finfo(np.float64)
-    self._testAll(np.array([0, -1, 1, -f4.resolution, f4.resolution,
-                            f8.resolution, -f8.resolution]))
+    self._testAll(
+        np.array([
+            0, -1, 1, -f4.resolution, f4.resolution, f8.resolution,
+            -f8.resolution
+        ]))
 
   def testBfloat16(self):
     a = np.random.uniform(-100, 100, 100).astype(np.float32)
     with self.test_session(use_gpu=False):
-      b = tf.cast(tf.cast(a, tf.bfloat16), tf.float32)
-      self.assertAllClose(a, b.eval(), rtol=1/128.)
+      b = math_ops.cast(math_ops.cast(a, dtypes.bfloat16), dtypes.float32)
+      self.assertAllClose(a, b.eval(), rtol=1 / 128.)
     with self.test_session(use_gpu=True):
-      b = tf.cast(tf.cast(a, tf.bfloat16), tf.float32)
-      self.assertAllClose(a, b.eval(), rtol=1/128.)
+      b = math_ops.cast(math_ops.cast(a, dtypes.bfloat16), dtypes.float32)
+      self.assertAllClose(a, b.eval(), rtol=1 / 128.)
 
   def testRandom(self):
     self._testAll(np.random.normal(0, 10, 210).reshape([2, 3, 5, 7]))
@@ -104,8 +118,9 @@ class CastOpTest(tf.test.TestCase):
   # integer values in somewhat unexpected ways. And they behave
   # differently on CPU and GPU.
   def _compare(self, x, dst_dtype, expected, use_gpu=False):
-    np.testing.assert_equal(self._cast(x, dst_dtype, use_gpu=use_gpu),
-                            dst_dtype(expected))
+    np.testing.assert_equal(
+        self._cast(
+            x, dst_dtype, use_gpu=use_gpu), dst_dtype(expected))
 
   def testIntToFloatBoundary(self):
     i4 = np.iinfo(np.int32)
@@ -148,40 +163,39 @@ class CastOpTest(tf.test.TestCase):
   def _OpError(self, x, dtype, err):
     with self.test_session():
       with self.assertRaisesOpError(err):
-        tf.cast(x, dtype).eval()
+        math_ops.cast(x, dtype).eval()
 
   def testNotImplemented(self):
-    self._OpError(np.arange(0, 10), tf.string,
-                  "Cast.*int64.*string.*")
+    self._OpError(np.arange(0, 10), dtypes.string, "Cast.*int64.*string.*")
 
   def testCastToTypeOfVariable(self):
     with self.test_session() as sess:
-      x = tf.Variable(5, dtype=tf.float32)
-      y = tf.Variable(True, dtype=tf.bool)
-      cast = tf.cast(y, x.dtype)
-      tf.global_variables_initializer().run()
+      x = variables.Variable(5, dtype=dtypes.float32)
+      y = variables.Variable(True, dtype=dtypes.bool)
+      cast = math_ops.cast(y, x.dtype)
+      variables.global_variables_initializer().run()
       self.assertEqual(1.0, sess.run(cast))
 
   def testGradients(self):
-    t = [tf.float32, tf.float64, tf.complex64, tf.complex128]
+    t = [dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
     for src_t in t:
       for dst_t in t:
         with self.test_session():
-          x = tf.constant(1.0, src_t)
-          z = tf.identity(x)
-          y = tf.cast(z, dst_t)
-          err = tf.test.compute_gradient_error(x, [], y, [])
+          x = constant_op.constant(1.0, src_t)
+          z = array_ops.identity(x)
+          y = math_ops.cast(z, dst_t)
+          err = gradient_checker.compute_gradient_error(x, [], y, [])
           self.assertLess(err, 1e-3)
 
 
-class SparseTensorCastTest(tf.test.TestCase):
+class SparseTensorCastTest(test.TestCase):
 
   def testCast(self):
-    indices = tf.constant([[0], [1], [2]], tf.int64)
-    values = tf.constant(np.array([1, 2, 3], np.int64))
-    shape = tf.constant([3], tf.int64)
-    st = tf.SparseTensor(indices, values, shape)
-    st_cast = tf.cast(st, tf.float32)
+    indices = constant_op.constant([[0], [1], [2]], dtypes.int64)
+    values = constant_op.constant(np.array([1, 2, 3], np.int64))
+    shape = constant_op.constant([3], dtypes.int64)
+    st = sparse_tensor.SparseTensor(indices, values, shape)
+    st_cast = math_ops.cast(st, dtypes.float32)
     with self.test_session():
       self.assertAllEqual(st_cast.indices.eval(), [[0], [1], [2]])
       self.assertAllEqual(st_cast.values.eval(),
@@ -189,18 +203,18 @@ class SparseTensorCastTest(tf.test.TestCase):
       self.assertAllEqual(st_cast.dense_shape.eval(), [3])
 
 
-class SaturateCastTest(tf.test.TestCase):
+class SaturateCastTest(test.TestCase):
 
   def testSaturate(self):
-    in_types = tf.float32,
-    out_types = tf.int8, tf.uint8, tf.int16, tf.float32
+    in_types = dtypes.float32,
+    out_types = dtypes.int8, dtypes.uint8, dtypes.int16, dtypes.float32
     with self.test_session() as sess:
       for in_type in in_types:
         for out_type in out_types:
           lo, hi = in_type.min, in_type.max
-          x = tf.constant([lo, lo + 1, lo // 2, hi // 2, hi - 1, hi],
-                          dtype=in_type)
-          y = tf.saturate_cast(x, dtype=out_type)
+          x = constant_op.constant(
+              [lo, lo + 1, lo // 2, hi // 2, hi - 1, hi], dtype=in_type)
+          y = math_ops.saturate_cast(x, dtype=out_type)
           self.assertEqual(y.dtype, out_type)
           x, y = sess.run([x, y])
           correct = np.maximum(out_type.min, np.minimum(out_type.max, x))
@@ -208,4 +222,4 @@ class SaturateCastTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

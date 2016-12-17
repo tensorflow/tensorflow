@@ -48,7 +48,13 @@ from tensorflow.python.ops import variable_scope
 def _create_slot_var(primary, val, scope):
   """Helper function for creating a slot variable."""
 
+  # TODO(lukaszkaiser): Consider allowing partitioners to be set in the current
+  # scope.
+  current_partitioner = variable_scope.get_variable_scope().partitioner
+  variable_scope.get_variable_scope().set_partitioner(None)
   slot = variable_scope.get_variable(scope, initializer=val, trainable=False)
+  variable_scope.get_variable_scope().set_partitioner(current_partitioner)
+
   # pylint: disable=protected-access
   if isinstance(primary, variables.Variable) and primary._save_slice_info:
     # Primary is a partitioned variable, so we need to also indicate that

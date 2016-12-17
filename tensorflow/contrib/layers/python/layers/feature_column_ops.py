@@ -181,7 +181,7 @@ def _input_from_feature_columns(columns_to_tensors,
           except ValueError as e:
             raise ValueError('Error creating input layer for column: {}.\n'
                              '{}, {}'.format(column.name, e, ee))
-    return array_ops.concat(output_rank - 1, output_tensors)
+    return array_ops.concat_v2(output_tensors, output_rank - 1)
 
 
 def input_from_feature_columns(columns_to_tensors,
@@ -379,7 +379,7 @@ def _create_joint_embedding_lookup(columns_to_tensors,
         name='weights',
         shape=[prev_size, num_outputs],
         dtype=dtypes.float32,
-        initializer=init_ops.zeros_initializer,
+        initializer=init_ops.zeros_initializer(),
         trainable=trainable,
         collections=weight_collections)
     if isinstance(variable, variables.Variable):
@@ -456,7 +456,7 @@ def joint_weighted_sum_from_feature_columns(columns_to_tensors,
     bias = contrib_variables.model_variable(
         'bias_weight',
         shape=[num_outputs],
-        initializer=init_ops.zeros_initializer,
+        initializer=init_ops.zeros_initializer(),
         trainable=trainable,
         collections=_add_variable_collection(weight_collections))
     _log_variable(bias)
@@ -545,12 +545,14 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
             values=columns_to_tensors.values()):
           tensor = column._to_dense_tensor(transformed_tensor)
           tensor = fc._reshape_real_valued_tensor(tensor, 2, column.name)
-          variable = [contrib_variables.model_variable(
-              name='weight',
-              shape=[tensor.get_shape()[1], num_outputs],
-              initializer=init_ops.zeros_initializer,
-              trainable=trainable,
-              collections=weight_collections)]
+          variable = [
+              contrib_variables.model_variable(
+                  name='weight',
+                  shape=[tensor.get_shape()[1], num_outputs],
+                  initializer=init_ops.zeros_initializer(),
+                  trainable=trainable,
+                  collections=weight_collections)
+          ]
           predictions = math_ops.matmul(tensor, variable[0], name='matmul')
       except ValueError as ee:
         raise ValueError('Error creating weighted sum for column: {}.\n'
@@ -564,7 +566,7 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
     bias = contrib_variables.model_variable(
         'bias_weight',
         shape=[num_outputs],
-        initializer=init_ops.zeros_initializer,
+        initializer=init_ops.zeros_initializer(),
         trainable=trainable,
         collections=_add_variable_collection(weight_collections))
     _log_variable(bias)

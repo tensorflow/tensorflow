@@ -152,12 +152,12 @@ def confusion_matrix(labels, predictions, num_classes=None, dtype=dtypes.int32,
       predictions.get_shape().assert_is_compatible_with(weights.get_shape())
       weights = math_ops.cast(weights, dtype)
 
-    shape = array_ops.pack([num_classes, num_classes])
-    indices = array_ops.transpose(array_ops.pack([predictions, labels]))
+    shape = array_ops.stack([num_classes, num_classes])
+    indices = array_ops.transpose(array_ops.stack([predictions, labels]))
     values = (array_ops.ones_like(predictions, dtype)
               if weights is None else weights)
     cm_sparse = sparse_tensor.SparseTensor(
-        indices=indices, values=values, shape=math_ops.to_int64(shape))
+        indices=indices, values=values, dense_shape=math_ops.to_int64(shape))
     zero_matrix = array_ops.zeros(math_ops.to_int32(shape), dtype)
 
     return sparse_ops.sparse_add(zero_matrix, cm_sparse)

@@ -31,11 +31,11 @@ namespace internal {
 namespace {
 
 constexpr char kSessionBundlePath[] =
-    "session_bundle/example/half_plus_two/00000123";
+    "session_bundle/testdata/half_plus_two/00000123";
 constexpr char kSessionBundleMetaGraphFilename[] = "export.meta";
 constexpr char kSessionBundleVariablesFilename[] = "export-00000-of-00001";
 constexpr char kSavedModelBundlePath[] =
-    "python/saved_model/example/saved_model_half_plus_two/00000123";
+    "cc/saved_model/testdata/half_plus_two/00000123";
 
 string MakeSerializedExample(float x) {
   tensorflow::Example example;
@@ -115,8 +115,8 @@ TEST(BundleShimTest, AddOutputToSignatureDef) {
 // Checks that no signature defs are added if the default signature is missing.
 TEST(BundleShimTest, DefaultSignatureMissing) {
   MetaGraphDef meta_graph_def;
-  Signatures signatures;
-  ConvertDefaultSignatureToSignatureDef(signatures, &meta_graph_def);
+  // Signatures signatures;
+  ConvertSignaturesToSignatureDefs(&meta_graph_def);
   EXPECT_EQ(0, meta_graph_def.signature_def_size());
 }
 
@@ -130,7 +130,7 @@ TEST(BundleShimTest, DefaultSignatureEmpty) {
       .mutable_any_list()
       ->add_value()
       ->PackFrom(signatures);
-  ConvertDefaultSignatureToSignatureDef(signatures, &meta_graph_def);
+  ConvertSignaturesToSignatureDefs(&meta_graph_def);
   EXPECT_EQ(0, meta_graph_def.signature_def_size());
 }
 
@@ -146,7 +146,7 @@ TEST(BundleShimTest, DefaultSignatureRegression) {
       .mutable_any_list()
       ->add_value()
       ->PackFrom(signatures);
-  ConvertDefaultSignatureToSignatureDef(signatures, &meta_graph_def);
+  ConvertSignaturesToSignatureDefs(&meta_graph_def);
   EXPECT_EQ(1, meta_graph_def.signature_def_size());
   const auto actual_signature_def =
       meta_graph_def.signature_def().find(kDefaultServingSignatureDefKey);
@@ -174,7 +174,7 @@ TEST(BundleShimTest, DefaultSignatureClassification) {
       .mutable_any_list()
       ->add_value()
       ->PackFrom(signatures);
-  ConvertDefaultSignatureToSignatureDef(signatures, &meta_graph_def);
+  ConvertSignaturesToSignatureDefs(&meta_graph_def);
   EXPECT_EQ(1, meta_graph_def.signature_def_size());
   const auto actual_signature_def =
       meta_graph_def.signature_def().find(kDefaultServingSignatureDefKey);
@@ -209,11 +209,11 @@ TEST(BundleShimTest, DefaultSignatureGeneric) {
       .mutable_any_list()
       ->add_value()
       ->PackFrom(signatures);
+  ConvertSignaturesToSignatureDefs(&meta_graph_def);
   EXPECT_EQ(0, meta_graph_def.signature_def_size());
 }
 
-// Checks that a named signature of type other than generic is not up converted.
-TEST(BundleShimTest, NamedSignatureWrongType) {
+TEST(BundleShimTest, NamedRegressionSignatures) {
   Signatures signatures;
 
   RegressionSignature* inputs_regression_signature =
@@ -231,12 +231,37 @@ TEST(BundleShimTest, NamedSignatureWrongType) {
       .mutable_any_list()
       ->add_value()
       ->PackFrom(signatures);
-  ConvertNamedSignaturesToSignatureDef(signatures, &meta_graph_def);
-  EXPECT_EQ(0, meta_graph_def.signature_def_size());
+  ConvertSignaturesToSignatureDefs(&meta_graph_def);
+  EXPECT_EQ(2, meta_graph_def.signature_def_size());
 }
 
-// Checks the signature def created when the named signatures have `inputs` and
-// `outputs`.
+TEST(BundleShimTest, NamedClassificationSignatures) {
+  Signatures signatures;
+
+  ClassificationSignature* foo_classification_signature =
+      (*signatures.mutable_named_signatures())["foo"]
+          .mutable_classification_signature();
+  foo_classification_signature->mutable_input()->set_tensor_name("foo-input");
+  foo_classification_signature->mutable_classes()->set_tensor_name(
+      "foo-classes");
+
+  ClassificationSignature* bar_classification_signature =
+      (*signatures.mutable_named_signatures())["bar"]
+          .mutable_classification_signature();
+  bar_classification_signature->mutable_input()->set_tensor_name("bar-input");
+  bar_classification_signature->mutable_scores()->set_tensor_name("bar-scores");
+
+  MetaGraphDef meta_graph_def;
+  (*meta_graph_def.mutable_collection_def())[kSignaturesKey]
+      .mutable_any_list()
+      ->add_value()
+      ->PackFrom(signatures);
+  ConvertSignaturesToSignatureDefs(&meta_graph_def);
+  EXPECT_EQ(2, meta_graph_def.signature_def_size());
+}
+
+// Checks the Predict SignatureDef created when the named signatures have
+// `inputs` and `outputs`.
 TEST(BundleShimTest, NamedSignatureGenericInputsAndOutputs) {
   TensorBinding input_binding;
   input_binding.set_tensor_name("foo-input");
@@ -261,7 +286,7 @@ TEST(BundleShimTest, NamedSignatureGenericInputsAndOutputs) {
       .mutable_any_list()
       ->add_value()
       ->PackFrom(signatures);
-  ConvertNamedSignaturesToSignatureDef(signatures, &meta_graph_def);
+  ConvertSignaturesToSignatureDefs(&meta_graph_def);
   EXPECT_EQ(1, meta_graph_def.signature_def_size());
   const auto actual_signature_def =
       meta_graph_def.signature_def().find(kDefaultServingSignatureDefKey);
@@ -279,8 +304,8 @@ TEST(BundleShimTest, NamedSignatureGenericInputsAndOutputs) {
   EXPECT_EQ(kPredictMethodName, actual_signature_def->second.method_name());
 }
 
-// Checks that a signature def is only added if the named signatures have
-// `inputs` and `outputs`.
+// Checks that a signature def is not added if the named signatures is generic
+// but does not have `inputs` and `outputs`.
 TEST(BundleShimTest, NamedSignatureGenericNoInputsOrOutputs) {
   TensorBinding input_binding;
   input_binding.set_tensor_name("foo-input");
@@ -300,7 +325,7 @@ TEST(BundleShimTest, NamedSignatureGenericNoInputsOrOutputs) {
       .mutable_any_list()
       ->add_value()
       ->PackFrom(signatures);
-  ConvertNamedSignaturesToSignatureDef(signatures, &meta_graph_def);
+  ConvertSignaturesToSignatureDefs(&meta_graph_def);
   EXPECT_EQ(0, meta_graph_def.signature_def_size());
 }
 
@@ -321,8 +346,79 @@ TEST(BundleShimTest, NamedSignatureGenericOnlyInput) {
       .mutable_any_list()
       ->add_value()
       ->PackFrom(signatures);
-  ConvertNamedSignaturesToSignatureDef(signatures, &meta_graph_def);
+  ConvertSignaturesToSignatureDefs(&meta_graph_def);
   EXPECT_EQ(0, meta_graph_def.signature_def_size());
+}
+
+// Tests up-conversion of Signatures to SignatureDefs when both `default` and
+// `named` signatures are present.
+TEST(BundleShimTest, DefaultAndNamedSignatureWithPredict) {
+  Signatures signatures;
+
+  // Build a generic signature corresponding to `inputs` and add it to the
+  // Signatures to up-convert.
+  TensorBinding input_binding;
+  input_binding.set_tensor_name("foo-input");
+  GenericSignature* input_generic_signature =
+      (*signatures.mutable_named_signatures())[kPredictInputs]
+          .mutable_generic_signature();
+  input_generic_signature->mutable_map()->insert({"foo-input", input_binding});
+
+  // Build a generic signature corresponding to `outputs` and add it to the
+  // Signatures to up-convert.
+  TensorBinding output_binding;
+  output_binding.set_tensor_name("foo-output");
+  GenericSignature* output_generic_signature =
+      (*signatures.mutable_named_signatures())[kPredictOutputs]
+          .mutable_generic_signature();
+  output_generic_signature->mutable_map()->insert(
+      {"foo-output", output_binding});
+
+  // Build a regression signature and set it as the default signature.
+  RegressionSignature* inputs_regression_signature =
+      (*signatures.mutable_default_signature()).mutable_regression_signature();
+  inputs_regression_signature->mutable_input()->set_tensor_name("bar-input");
+
+  // Up-convert the available signatures to SignatureDefs.
+  MetaGraphDef meta_graph_def;
+  (*meta_graph_def.mutable_collection_def())[kSignaturesKey]
+      .mutable_any_list()
+      ->add_value()
+      ->PackFrom(signatures);
+  ConvertSignaturesToSignatureDefs(&meta_graph_def);
+  EXPECT_EQ(2, meta_graph_def.signature_def_size());
+
+  // Verify that the default regression signature is converted to a
+  // SignatureDef that corresponds to the kDefaultServingSignatureDefKey.
+  const auto actual_signature_def_regress =
+      meta_graph_def.signature_def().find(kDefaultServingSignatureDefKey);
+  ASSERT_FALSE(actual_signature_def_regress ==
+               meta_graph_def.signature_def().end());
+  ASSERT_FALSE(
+      actual_signature_def_regress->second.inputs().find(kRegressInputs) ==
+      actual_signature_def_regress->second.inputs().end());
+
+  // Verify that the `Predict` SignatureDef is created under a different key.
+  const auto actual_signature_def_predict = meta_graph_def.signature_def().find(
+      strings::StrCat(kDefaultServingSignatureDefKey, "_from_named"));
+  ASSERT_FALSE(actual_signature_def_predict ==
+               meta_graph_def.signature_def().end());
+  ASSERT_FALSE(
+      actual_signature_def_predict->second.inputs().find("foo-input") ==
+      actual_signature_def_predict->second.inputs().end());
+  EXPECT_EQ("foo-input",
+            actual_signature_def_predict->second.inputs()
+                .find("foo-input")
+                ->second.name());
+  ASSERT_FALSE(
+      actual_signature_def_predict->second.outputs().find("foo-output") ==
+      actual_signature_def_predict->second.outputs().end());
+  EXPECT_EQ("foo-output",
+            actual_signature_def_predict->second.outputs()
+                .find("foo-output")
+                ->second.name());
+  EXPECT_EQ(kPredictMethodName,
+            actual_signature_def_predict->second.method_name());
 }
 
 // Checks a basic up conversion for half plus two for SessionBundle.

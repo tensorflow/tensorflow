@@ -26,6 +26,7 @@ import six
 from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib.framework import get_graph_from_inputs
 
+from tensorflow.python.training import session_run_hook
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -50,14 +51,15 @@ class ModeKeys(object):
 class ModelFnOps(collections.namedtuple(
     'ModelFnOps',
     ['predictions', 'loss', 'train_op', 'eval_metric_ops', 'signature_fn',
-     'output_alternatives'])):
+     'output_alternatives', 'training_chief_hooks', 'training_hooks'])):
   """Ops returned from a model_fn."""
 
   # TODO(soergel): remove signature_fn once sessionbundle export is deprecated.
 
   def __new__(cls, mode, predictions=None, loss=None, train_op=None,
               eval_metric_ops=None, signature_fn=None,
-              output_alternatives=None):
+              output_alternatives=None, training_chief_hooks=None,
+              training_hooks=None):
     """Creates a validated `ModelFnOps` instance.
 
     For a multi-headed model, the predictions dict here will contain the outputs
@@ -93,6 +95,10 @@ class ModelFnOps(collections.namedtuple(
         `tensor_name` is a symbolic name for an output Tensor possibly but not
         necessarily taken from `PredictionKey`, and `Tensor` is the
         corresponding output Tensor itself.
+      training_chief_hooks: A list of `SessionRunHook` objects that will be
+        run on the chief worker during training.
+      training_hooks: A list of `SessionRunHook` objects that will be run on
+        all workers during training.
 
     Returns:
       A validated `ModelFnOps` object.
@@ -144,11 +150,23 @@ class ModelFnOps(collections.namedtuple(
       if not isinstance(eval_metric_ops, dict):
         raise ValueError('eval_metric_ops must be a dict.')
 
-    # validate signature_fn
+    # Validate signature_fn
     if signature_fn:
       if not callable(signature_fn):
         raise ValueError('signature_fn is not callable.')
 
+    # Validate hooks
+    if training_chief_hooks is None:
+      training_chief_hooks = []
+    if training_hooks is None:
+      training_hooks = []
+    for hook in training_hooks + training_chief_hooks:
+      if not isinstance(hook, session_run_hook.SessionRunHook):
+        raise TypeError('All hooks returned from model_fn must be '
+                        'SessionRunHook instances, got instance of %s: %s' %
+                        (type(hook), hook))
+
     return super(ModelFnOps, cls).__new__(cls, predictions, loss, train_op,
                                           eval_metric_ops, signature_fn,
-                                          output_alternatives)
+                                          output_alternatives,
+                                          training_chief_hooks, training_hooks)

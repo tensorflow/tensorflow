@@ -66,7 +66,7 @@ fi
 if [[ "${USE_HEXAGON}" == "true" ]]; then
     HEXAGON_PARENT_DIR=$(cd ../hexagon && pwd)
     HEXAGON_LIBS="${HEXAGON_PARENT_DIR}/libs"
-    HEXAGON_INCLUDE="${HEXAGON_PARENT_DIR}/include"
+    HEXAGON_INCLUDE=$(cd tensorflow/core/platform/hexagon && pwd)
 fi
 
 if [[ -z "${BUILD_TARGET}" ]]; then

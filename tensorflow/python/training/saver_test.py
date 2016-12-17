@@ -717,9 +717,9 @@ class SaveRestoreShardedTest(tf.test.TestCase):
         if partitioner:
           return new_vs[0].as_tensor().eval()
         elif slices and slices[0] != 1:
-          return tf.concat(0, new_vs).eval()
+          return tf.concat_v2(new_vs, 0).eval()
         elif slices and slices[1] != 1:
-          return tf.concat(1, new_vs).eval()
+          return tf.concat_v2(new_vs, 1).eval()
         else:  # Non-sliced.
           return new_vs[0].eval()
 
@@ -1540,7 +1540,7 @@ class MetaGraphTest(tf.test.TestCase):
       batch_size = tf.size(labels)
       labels = tf.expand_dims(labels, 1)
       indices = tf.expand_dims(tf.range(0, batch_size), 1)
-      concated = tf.concat(1, [indices, labels])
+      concated = tf.concat_v2([indices, labels], 1)
       onehot_labels = tf.sparse_to_dense(concated,
                                          tf.stack([batch_size, 10]), 1.0, 0.0)
       logits = tf.get_collection("logits")[0]

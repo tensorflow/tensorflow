@@ -330,8 +330,8 @@ class BaseEstimator(
 
     # Features and labels TensorSignature objects.
     # TODO(wicke): Rename these to something more descriptive
-    self._features_info = {}
-    self._labels_info = {}
+    self._features_info = None
+    self._labels_info = None
 
     self._graph = None
 
@@ -641,29 +641,28 @@ class BaseEstimator(
     return tensor_signature.create_example_parser_from_signatures(
         self._features_info, examples_batch)
 
-  def _check_inputs(self, features, labels, mode):
-    if mode in self._features_info:
-      logging.debug('Given features for mode %s: %s, required signatures: %s.',
-                    mode, str(features), str(self._features_info[mode]))
-
-      if not tensor_signature.tensors_compatible(features, self._features_info[mode]):
-        raise ValueError('Features for mode %s are incompatible with given information. '
+  def _check_inputs(self, features, labels):
+    if self._features_info is not None:
+      logging.debug('Given features: %s, required signatures: %s.',
+                    str(features), str(self._features_info))
+      if not tensor_signature.tensors_compatible(features, self._features_info):
+        raise ValueError('Features are incompatible with given information. '
                          'Given features: %s, required signatures: %s.' %
-                         (mode, str(features), str(self._features_info[mode])))
+                         (str(features), str(self._features_info)))
     else:
-      self._features_info[mode] = tensor_signature.create_signatures(features)
-      logging.debug('Setting feature info for mode %s to %s.', mode, str(self._features_info[mode]))
+      self._features_info = tensor_signature.create_signatures(features)
+      logging.debug('Setting feature info to %s.', str(self._features_info))
     if labels is not None:
-      if mode in self._labels_info:
+      if self._labels_info is not None:
         logging.debug('Given labels: %s, required signatures: %s.',
                       str(labels), str(self._labels_info))
-        if not tensor_signature.tensors_compatible(labels, self._labels_info[mode]):
-          raise ValueError('Labels for mode %s are incompatible with given information. '
+        if not tensor_signature.tensors_compatible(labels, self._labels_info):
+          raise ValueError('Labels are incompatible with given information. '
                            'Given labels: %s, required signatures: %s.' %
-                           (mode, str(labels), str(self._labels_info[mode])))
+                           (str(labels), str(self._labels_info)))
       else:
-        self._labels_info[mode] = tensor_signature.create_signatures(labels)
-        logging.debug('Setting labels info for mode %s to %s', mode, str(self._labels_info[mode]))
+        self._labels_info = tensor_signature.create_signatures(labels)
+        logging.debug('Setting labels info to %s', str(self._labels_info))
 
   def _train_model(self,
                    input_fn,
@@ -700,7 +699,8 @@ class BaseEstimator(
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step = contrib_framework.create_global_step(g)
       features, labels = input_fn()
-      self._check_inputs(features, labels, model_fn_lib.ModeKeys.TRAIN)
+      self._check_inputs(features, labels)
+
       # The default return type of _get_train_ops is ModelFnOps. But there are
       # some subclasses of tf.contrib.learn.Estimator which override this
       # method and use the legacy signature, namely _get_train_ops returns a
@@ -711,14 +711,19 @@ class BaseEstimator(
       if isinstance(train_ops, model_fn_lib.ModelFnOps):  # Default signature
         train_op = train_ops.train_op
         loss_op = train_ops.loss
+        if self.config.is_chief:
+          hooks = train_ops.training_chief_hooks + train_ops.training_hooks
+        else:
+          hooks = train_ops.training_hooks
       else:  # Legacy signature
         if len(train_ops) != 2:
           raise ValueError('Expected a tuple of train_op and loss, got {}'.
                            format(train_ops))
         train_op = train_ops[0]
         loss_op = train_ops[1]
+        hooks = []
 
-      hooks = monitor_lib.replace_monitors_with_hooks(monitors, self)
+      hooks += monitor_lib.replace_monitors_with_hooks(monitors, self)
 
       ops.add_to_collection(ops.GraphKeys.LOSSES, loss_op)
       return graph_actions._monitored_train(  # pylint: disable=protected-access
@@ -795,7 +800,8 @@ class BaseEstimator(
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step = contrib_framework.create_global_step(g)
       features, labels = input_fn()
-      self._check_inputs(features, labels, model_fn_lib.ModeKeys.EVAL)
+      self._check_inputs(features, labels)
+
       # The default return type of _get_eval_ops is ModelFnOps. But there are
       # some subclasses of tf.contrib.learn.Estimator which override this
       # method and use the legacy signature, namely _get_eval_ops returns an
@@ -828,25 +834,6 @@ class BaseEstimator(
     if isinstance(result, (list, tuple)):
       return result[0]
     return result
-
-  def _set_infer_mode_feature_signature(self, features):
-    for mode in list(self._features_info.keys()):
-      if tensor_signature.tensors_compatible(features, self._features_info[mode]):
-        self._features_info[model_fn_lib.ModeKeys.INFER] = self._features_info[mode]
-        self._labels_info[model_fn_lib.ModeKeys.INFER] = self._labels_info[mode]
-        break
-
-    if model_fn_lib.ModeKeys.INFER not in self._features_info:
-      logging.warning('Features for mode %s are incompatible with neither train mode nor eval mode.'
-                      ' Given features: %s' % (model_fn_lib.ModeKeys.INFER, str(features)))
-      for mode in list(self._features_info.keys()):
-        logging.warning('Whereas %s mode signatures: %s' % (mode, str(self._features_info[mode])))
-      self._check_inputs(features, None, model_fn_lib.ModeKeys.INFER)
-      if model_fn_lib.ModeKeys.TRAIN in self._labels_info:
-        logging.warning('Setting labels info for mode infer equal to that of labels info for train mode')
-        self._labels_info[model_fn_lib.ModeKeys.INFER] = self._labels_info[model_fn_lib.ModeKeys.TRAIN]
-      else:
-        self._labels_info[model_fn_lib.ModeKeys.INFER] = {}
 
   def _infer_model(
       self, input_fn, feed_fn=None, outputs=None, as_iterable=True):
@@ -983,9 +970,12 @@ class Estimator(BaseEstimator):
                  `labels=None`.
           * `mode` specifies if this training, evaluation or
                  prediction. See `ModeKeys`.
-          * `params` is a `dict` of hyperparameters. Will receive what
+          * `params` is a `dict` of hyperparameters.  Will receive what
                  is passed to Estimator in `params` parameter. This allows
                  to configure Estimators from hyper parameter tuning.
+          * `config` is a Configuration object. Will receive what is passed to
+                 Estimator in `config` parameter. This allows updating things in
+                 your model_fn based on configuration such as num_ps_replicas.
 
         * Returns:
           `ModelFnOps`
@@ -1003,6 +993,8 @@ class Estimator(BaseEstimator):
           * `(features, labels) -> (predictions, loss, train_op)`
           * `(features, labels, mode) -> (predictions, loss, train_op)`
           * `(features, labels, mode, params) -> (predictions, loss, train_op)`
+          * `(features, labels, mode, params, config) ->
+             (predictions, loss, train_op)`
 
       model_dir: Directory to save model parameters, graph and etc. This can
         also be used to load checkpoints from the directory into a estimator to
@@ -1053,14 +1045,14 @@ class Estimator(BaseEstimator):
     """
     features, labels = self._feature_engineering_fn(features, labels)
     model_fn_args = _get_arguments(self._model_fn)
+    kwargs = {}
     if 'mode' in model_fn_args:
-      if 'params' in model_fn_args:
-        model_fn_results = self._model_fn(features, labels, mode=mode,
-                                          params=self.params)
-      else:
-        model_fn_results = self._model_fn(features, labels, mode=mode)
-    else:
-      model_fn_results = self._model_fn(features, labels)
+      kwargs['mode'] = mode
+    if 'params' in model_fn_args:
+      kwargs['params'] = self.params
+    if 'config' in model_fn_args:
+      kwargs['config'] = self.config
+    model_fn_results = self._model_fn(features, labels, **kwargs)
 
     if isinstance(model_fn_results, model_fn_lib.ModelFnOps):
       return model_fn_results
@@ -1142,10 +1134,8 @@ class Estimator(BaseEstimator):
     Returns:
       `ModelFnOps` object.
     """
-
-    self._set_infer_mode_feature_signature(features)
     labels = tensor_signature.create_placeholders_from_signatures(
-        self._labels_info[model_fn_lib.ModeKeys.INFER])
+        self._labels_info)
     return self._call_model_fn(features, labels, model_fn_lib.ModeKeys.INFER)
 
   @experimental
@@ -1249,7 +1239,7 @@ class Estimator(BaseEstimator):
       return export_dir
 
 
-# For time of deprecation x,y from Estimator allow direct access
+# For time of deprecation x,y from Estimator allow direct access.
 # pylint: disable=protected-access
 class SKCompat(sklearn.BaseEstimator):
   """Scikit learn wrapper for TensorFlow Learn Estimator."""

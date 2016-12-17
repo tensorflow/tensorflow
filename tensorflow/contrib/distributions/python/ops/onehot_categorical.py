@@ -186,7 +186,7 @@ class _OneHotCategorical(distribution.Distribution):
     return self.logits.get_shape().with_rank_at_least(1)[-1:]
 
   def _sample_n(self, n, seed=None):
-    sample_shape = array_ops.concat(0, ([n], array_ops.shape(self.logits)))
+    sample_shape = array_ops.concat_v2(([n], array_ops.shape(self.logits)), 0)
     logits = self.logits
     if logits.get_shape().ndims == 2:
       logits_2d = logits
@@ -256,7 +256,7 @@ def _kl_categorical_categorical(a, b, name=None):
   """
   with ops.name_scope(
       name, "kl_categorical_categorical", [a.logits, b.logits]):
-      # sum(p*ln(p/q))
+    # sum(p*ln(p/q))
     return math_ops.reduce_sum(
         nn_ops.softmax(a.logits)*(nn_ops.log_softmax(a.logits)
             - nn_ops.log_softmax(b.logits)), reduction_indices=[-1])

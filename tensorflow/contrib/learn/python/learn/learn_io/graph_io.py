@@ -611,7 +611,8 @@ def queue_parsed_features(parsed_features,
       tensor = parsed_features[key]
       if isinstance(tensor, sparse_tensor.SparseTensor):
         tensors_mapping.append((key, True))
-        tensors_to_enqueue.extend([tensor.indices, tensor.values, tensor.shape])
+        tensors_to_enqueue.extend([
+            tensor.indices, tensor.values, tensor.dense_shape])
       else:
         tensors_mapping.append((key, False))
         tensors_to_enqueue.append(tensor)

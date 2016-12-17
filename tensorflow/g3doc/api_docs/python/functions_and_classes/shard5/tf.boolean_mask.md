@@ -5,7 +5,7 @@ Apply boolean mask to tensor.  Numpy equivalent is `tensor[mask]`.
 ```python
 # 1-D example
 tensor = [0, 1, 2, 3]
-mask = [True, False, True, False]
+mask = np.array([True, False, True, False])
 boolean_mask(tensor, mask) ==> [0, 2]
 ```
 
@@ -37,7 +37,7 @@ where `(i1,...,iK)` is the ith `True` entry of `mask` (row-major order).
 ```python
 # 2-D example
 tensor = [[1, 2], [3, 4], [5, 6]]
-mask = [True, False, True]
+mask = np.array([True, False, True])
 boolean_mask(tensor, mask) ==> [[1, 2], [5, 6]]
 ```
 

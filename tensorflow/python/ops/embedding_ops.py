@@ -137,7 +137,7 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None,
               with ops.colocate_with(params[p]):
                 dim_0_sizes.append(array_ops.shape(params[p])[0])
           num_total_ids = math_ops.reduce_sum(
-              math_ops.cast(array_ops.pack(dim_0_sizes), flat_ids.dtype))
+              math_ops.cast(array_ops.stack(dim_0_sizes), flat_ids.dtype))
         ids_per_partition = num_total_ids // np
         extras = num_total_ids % np
 
@@ -180,15 +180,19 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None,
       for p in params[1:]:
         element_shape = element_shape.merge_with(p.get_shape()[1:])
       if element_shape.is_fully_defined():
-        ret = array_ops.reshape(ret, array_ops.concat(0, [
-            array_ops.shape(ids), element_shape]))
+        ret = array_ops.reshape(ret,
+                                array_ops.concat_v2(
+                                    [array_ops.shape(ids), element_shape], 0))
       else:
         # It's important that we compute params[0].shape on the right device
         # to avoid data motion.
         with ops.colocate_with(params[0]):
           params_shape = array_ops.shape(params[0])
-        ret = array_ops.reshape(ret, array_ops.concat(0, [
-            array_ops.shape(ids), array_ops.slice(params_shape, [1], [-1])]))
+        ret = array_ops.reshape(ret,
+                                array_ops.concat_v2([
+                                    array_ops.shape(ids),
+                                    array_ops.slice(params_shape, [1], [-1])
+                                ], 0))
       # output shape = ids.shape + params[*].shape[1:]
       # Normally the reshape is sufficient, but setting shape explicitly
       # teaches shape inference that params[1:].get_shape() matters.
@@ -317,8 +321,8 @@ def embedding_lookup_sparse(params, sp_ids, sp_weights,
       # Reshape weights to allow broadcast
       ones = array_ops.fill(
           array_ops.expand_dims(array_ops.rank(embeddings) - 1, 0), 1)
-      bcast_weights_shape = array_ops.concat(0, [
-          array_ops.shape(weights), ones])
+      bcast_weights_shape = array_ops.concat_v2(
+          [array_ops.shape(weights), ones], 0)
 
       orig_weights_shape = weights.get_shape()
       weights = array_ops.reshape(weights, bcast_weights_shape)

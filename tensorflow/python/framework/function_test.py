@@ -54,6 +54,23 @@ class FunctionTest(tf.test.TestCase):
       with tf.Session() as sess:
         self.assertAllEqual([5.0], sess.run(call))
 
+  def testDefineFunctionDuplicateOutputs(self):
+
+    @function.Defun(tf.float32, func_name="Duplicate")
+    def Duplicate(a):
+      b = a + 1.0
+      return b, b
+
+    g = tf.Graph()
+    with g.as_default():
+      Duplicate([3.0])
+      func_sig = g.as_graph_def().library.function[0].signature
+      # The names given to both outputs should be different
+      # even though the same tensor is emitted to both.
+      out_names = [a.name for a in func_sig.output_arg]
+      self.assertEqual(2, len(out_names))
+      self.assertNotEqual(out_names[0], out_names[1])
+
   def testGradientFunc(self):
 
     @function.Defun(tf.float32, func_name="XSquarePlusOneFn")
@@ -566,7 +583,40 @@ class FunctionTest(tf.test.TestCase):
     def Foo(x, y, z):
       return tf.tanh(tf.matmul(x, y) + z)
 
-    self.assertEqual("Foo_e0cb6030", Foo.instantiate([tf.float32] * 3).name)
+    self.assertEqual("Foo_d643acf7", Foo.instantiate([tf.float32] * 3).name)
+
+  def testSignatureHash(self):
+    # Foo.Inner and Bar.Inner have identical function body but have
+    # different signatures. They should be treated as two different functions.
+
+    @function.Defun()
+    def Foo(x):
+
+      @function.Defun()
+      def Inner(x):
+        return x + 10.
+
+      return Inner(x)
+
+    @function.Defun()
+    def Bar(x):
+
+      @function.Defun()
+      def Inner(x, unused_y, unused_z):
+        return x + 10.
+
+      return Inner(x, 2., 3.)
+
+    g = tf.Graph()
+    with g.as_default():
+      x = tf.constant(10.0)
+      y = Foo(x)
+      z = Bar(x)
+
+    with self.test_session(graph=g) as sess:
+      v0, v1 = sess.run([y, z])
+      self.assertAllEqual(v0, 20.)
+      self.assertAllEqual(v1, 20.)
 
 
 class FunctionOverloadTest(tf.test.TestCase):
@@ -637,8 +687,9 @@ class UnrollLSTMTest(tf.test.TestCase):
   # Helper to construct a LSTM cell graph.
   @classmethod
   def LSTMCell(cls, x, mprev, cprev, weights):
-    xm = tf.concat(1, [x, mprev])
-    i_i, i_g, f_g, o_g = tf.split(1, 4, tf.matmul(xm, weights))
+    xm = tf.concat_v2([x, mprev], 1)
+    i_i, i_g, f_g, o_g = tf.split(
+        value=tf.matmul(xm, weights), num_or_size_splits=4, axis=1)
     new_c = tf.sigmoid(f_g) * cprev + tf.sigmoid(i_g) * tf.tanh(i_i)
     new_c = tf.clip_by_value(new_c, -50.0, 50.0)
     new_m = tf.sigmoid(o_g) * tf.tanh(new_c)
@@ -836,7 +887,7 @@ class VariableHoistingTest(tf.test.TestCase):
     def _Model(x):
       w = tf.get_variable(
           "w", (64, 64), initializer=tf.random_uniform_initializer(seed=312))
-      b = tf.get_variable("b", (64), initializer=tf.zeros_initializer),
+      b = tf.get_variable("b", (64), initializer=tf.zeros_initializer()),
       return tf.sigmoid(tf.matmul(x, w) + b)
 
     @function.Defun()

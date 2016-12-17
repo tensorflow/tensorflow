@@ -22,7 +22,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tfprof {
-class Options;
+struct Options;
 // ***This API is only for swig. Don't user it directory!***
 //
 // Interface defined for Python API swig. Calls the tfprof core API.

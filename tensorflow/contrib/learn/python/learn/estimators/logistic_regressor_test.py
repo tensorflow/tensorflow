@@ -36,7 +36,7 @@ def _logistic_regression_model_fn(features, labels):
   logits = tf.contrib.layers.linear(
       features,
       1,
-      weights_initializer=tf.zeros_initializer,
+      weights_initializer=tf.zeros_initializer(),
       # Intentionally uses really awful initial values so that
       # AUC/precision/recall/etc will change meaningfully even on a toy dataset.
       biases_initializer=tf.constant_initializer(-10.0))

@@ -46,7 +46,7 @@ class PrettyPrintOpsTest(tf.test.TestCase):
     a = a.write(0, 0)
     a = tf.contrib.framework.print_op(a)
     with self.test_session():
-      self.assertAllEqual(a.pack().eval(), tf.constant([0, 1]).eval())
+      self.assertAllEqual(a.stack().eval(), tf.constant([0, 1]).eval())
 
   def testPrintVariable(self):
     a = tf.Variable(1.0)

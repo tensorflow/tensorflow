@@ -31,6 +31,7 @@
   * [`register_tensor_conversion_function`](../../api_docs/python/framework.md#register_tensor_conversion_function)
   * [`RegisterGradient`](../../api_docs/python/framework.md#RegisterGradient)
   * [`reset_default_graph`](../../api_docs/python/framework.md#reset_default_graph)
+  * [`shape`](../../api_docs/python/framework.md#shape)
   * [`Tensor`](../../api_docs/python/framework.md#Tensor)
   * [`TensorShape`](../../api_docs/python/framework.md#TensorShape)
 
@@ -175,7 +176,6 @@
   * [`space_to_batch_nd`](../../api_docs/python/array_ops.md#space_to_batch_nd)
   * [`space_to_depth`](../../api_docs/python/array_ops.md#space_to_depth)
   * [`split`](../../api_docs/python/array_ops.md#split)
-  * [`split_v`](../../api_docs/python/array_ops.md#split_v)
   * [`squeeze`](../../api_docs/python/array_ops.md#squeeze)
   * [`stack`](../../api_docs/python/array_ops.md#stack)
   * [`strided_slice`](../../api_docs/python/array_ops.md#strided_slice)
@@ -347,7 +347,6 @@
   * [`no_op`](../../api_docs/python/control_flow_ops.md#no_op)
   * [`not_equal`](../../api_docs/python/control_flow_ops.md#not_equal)
   * [`Print`](../../api_docs/python/control_flow_ops.md#Print)
-  * [`select`](../../api_docs/python/control_flow_ops.md#select)
   * [`tuple`](../../api_docs/python/control_flow_ops.md#tuple)
   * [`verify_tensor_all_finite`](../../api_docs/python/control_flow_ops.md#verify_tensor_all_finite)
   * [`where`](../../api_docs/python/control_flow_ops.md#where)
@@ -383,6 +382,7 @@
   * [`crop_and_resize`](../../api_docs/python/image.md#crop_and_resize)
   * [`crop_to_bounding_box`](../../api_docs/python/image.md#crop_to_bounding_box)
   * [`decode_gif`](../../api_docs/python/image.md#decode_gif)
+  * [`decode_image`](../../api_docs/python/image.md#decode_image)
   * [`decode_jpeg`](../../api_docs/python/image.md#decode_jpeg)
   * [`decode_png`](../../api_docs/python/image.md#decode_png)
   * [`draw_bounding_boxes`](../../api_docs/python/image.md#draw_bounding_boxes)
@@ -653,6 +653,7 @@
   * [`SessionRunContext`](../../api_docs/python/train.md#SessionRunContext)
   * [`SessionRunHook`](../../api_docs/python/train.md#SessionRunHook)
   * [`SessionRunValues`](../../api_docs/python/train.md#SessionRunValues)
+  * [`SingularMonitoredSession`](../../api_docs/python/train.md#SingularMonitoredSession)
   * [`start_queue_runners`](../../api_docs/python/train.md#start_queue_runners)
   * [`StepCounterHook`](../../api_docs/python/train.md#StepCounterHook)
   * [`stop_gradient`](../../api_docs/python/train.md#stop_gradient)
@@ -776,6 +777,8 @@
   * [`WishartFull`](../../api_docs/python/contrib.distributions.md#WishartFull)
 
 * **[Random variable transformations (contrib)](../../api_docs/python/contrib.distributions.bijector.md)**:
+  * [`Affine`](../../api_docs/python/contrib.distributions.bijector.md#Affine)
+  * [`AffineLinearOperator`](../../api_docs/python/contrib.distributions.bijector.md#AffineLinearOperator)
   * [`Bijector`](../../api_docs/python/contrib.distributions.bijector.md#Bijector)
   * [`Chain`](../../api_docs/python/contrib.distributions.bijector.md#Chain)
   * [`CholeskyOuterProduct`](../../api_docs/python/contrib.distributions.bijector.md#CholeskyOuterProduct)
@@ -784,7 +787,6 @@
   * [`Inline`](../../api_docs/python/contrib.distributions.bijector.md#Inline)
   * [`Invert`](../../api_docs/python/contrib.distributions.bijector.md#Invert)
   * [`PowerTransform`](../../api_docs/python/contrib.distributions.bijector.md#PowerTransform)
-  * [`ScaleAndShift`](../../api_docs/python/contrib.distributions.bijector.md#ScaleAndShift)
   * [`SigmoidCentered`](../../api_docs/python/contrib.distributions.bijector.md#SigmoidCentered)
   * [`SoftmaxCentered`](../../api_docs/python/contrib.distributions.bijector.md#SoftmaxCentered)
   * [`Softplus`](../../api_docs/python/contrib.distributions.bijector.md#Softplus)
@@ -1018,7 +1020,9 @@
 
 * **[Linear Algebra (contrib)](../../api_docs/python/contrib.linalg.md)**:
   * [`LinearOperator`](../../api_docs/python/contrib.linalg.md#LinearOperator)
+  * [`LinearOperatorComposition`](../../api_docs/python/contrib.linalg.md#LinearOperatorComposition)
   * [`LinearOperatorDiag`](../../api_docs/python/contrib.linalg.md#LinearOperatorDiag)
+  * [`LinearOperatorMatrix`](../../api_docs/python/contrib.linalg.md#LinearOperatorMatrix)
   * [`LinearOperatorTriL`](../../api_docs/python/contrib.linalg.md#LinearOperatorTriL)
 
 * **[Losses (contrib)](../../api_docs/python/contrib.losses.md)**:
@@ -1036,6 +1040,12 @@
   * [`sigmoid_cross_entropy`](../../api_docs/python/contrib.losses.md#sigmoid_cross_entropy)
   * [`softmax_cross_entropy`](../../api_docs/python/contrib.losses.md#softmax_cross_entropy)
   * [`sparse_softmax_cross_entropy`](../../api_docs/python/contrib.losses.md#sparse_softmax_cross_entropy)
+
+* **[Optimization (contrib)](../../api_docs/python/contrib.opt.md)**:
+  * [`ExternalOptimizerInterface`](../../api_docs/python/contrib.opt.md#ExternalOptimizerInterface)
+  * [`MovingAverageOptimizer`](../../api_docs/python/contrib.opt.md#MovingAverageOptimizer)
+  * [`ScipyOptimizerInterface`](../../api_docs/python/contrib.opt.md#ScipyOptimizerInterface)
+  * [`VariableClippingOptimizer`](../../api_docs/python/contrib.opt.md#VariableClippingOptimizer)
 
 * **[RNN and Cells (contrib)](../../api_docs/python/contrib.rnn.md)**:
   * [`AttentionCellWrapper`](../../api_docs/python/contrib.rnn.md#AttentionCellWrapper)

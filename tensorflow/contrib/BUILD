@@ -25,6 +25,7 @@ py_library(
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/graph_editor:graph_editor_py",
         "//tensorflow/contrib/grid_rnn:grid_rnn_py",
+        "//tensorflow/contrib/image:image_py",
         "//tensorflow/contrib/input_pipeline:input_pipeline_py",
         "//tensorflow/contrib/integrate:integrate_py",
         "//tensorflow/contrib/labeled_tensor",

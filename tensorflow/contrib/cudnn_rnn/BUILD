@@ -51,6 +51,14 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":cudnn_rnn_ops",
+        "//tensorflow/contrib/util:util_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:training",
     ],
 )
 
@@ -61,8 +69,10 @@ cuda_py_test(
     additional_deps = [
         ":cudnn_rnn_py",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:variables",
     ],
     tags = [
         "manual",

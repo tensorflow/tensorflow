@@ -31,6 +31,21 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/contrib/util:util_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:clip_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:rnn",
+        "//tensorflow/python:rnn_cell",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
+    ],
 )
 
 cuda_py_tests(
@@ -51,6 +66,7 @@ cuda_py_tests(
     srcs = ["python/kernel_tests/core_rnn_cell_test.py"],
     additional_deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:rnn_cell",
     ],
 )
 
@@ -72,6 +88,7 @@ cuda_py_tests(
     srcs = ["python/kernel_tests/core_rnn_test.py"],
     additional_deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:util",
     ],
     shard_count = 10,
 )
@@ -147,6 +164,7 @@ cuda_py_tests(
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:variable_scope",
     ],
 )
 

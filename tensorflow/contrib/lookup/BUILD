@@ -14,6 +14,17 @@ py_library(
         "lookup_ops.py",
     ],
     srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:data_flow_ops_gen",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:string_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:util",
+    ],
 )
 
 py_test(

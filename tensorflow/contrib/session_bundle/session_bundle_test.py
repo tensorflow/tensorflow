@@ -30,6 +30,10 @@ from tensorflow.core.example.example_pb2 import Example
 from tensorflow.python.framework import graph_util
 from tensorflow.python.util import compat
 
+SAVED_MODEL_PATH = (
+    "python/saved_model/example/saved_model_half_plus_two/00000123")
+SESSION_BUNDLE_PATH = "contrib/session_bundle/testdata/half_plus_two/00000123"
+
 
 def _make_serialized_example(x):
   example = Example()
@@ -64,9 +68,16 @@ class SessionBundleLoadTest(tf.test.TestCase):
     self.assertEqual(y[0][2], 3)
     self.assertEqual(y[0][3], 3.5)
 
+  def testMaybeSessionBundleDir(self):
+    base_path = tf.test.test_src_dir_path(SESSION_BUNDLE_PATH)
+    self.assertTrue(session_bundle.maybe_session_bundle_dir(base_path))
+    base_path = tf.test.test_src_dir_path(SAVED_MODEL_PATH)
+    self.assertFalse(session_bundle.maybe_session_bundle_dir(base_path))
+    base_path = "complete_garbage"
+    self.assertFalse(session_bundle.maybe_session_bundle_dir(base_path))
+
   def testBasic(self):
-    base_path = tf.test.test_src_dir_path(
-        "contrib/session_bundle/example/half_plus_two/00000123")
+    base_path = tf.test.test_src_dir_path(SESSION_BUNDLE_PATH)
     tf.reset_default_graph()
     sess, meta_graph_def = session_bundle.load_session_bundle_from_path(
         base_path, target="", config=tf.ConfigProto(device_count={"CPU": 2}))
@@ -101,7 +112,7 @@ class SessionBundleLoadTest(tf.test.TestCase):
 
   def testVarCheckpointV2(self):
     base_path = tf.test.test_src_dir_path(
-        "contrib/session_bundle/example/half_plus_two_ckpt_v2/00000123")
+        "contrib/session_bundle/testdata/half_plus_two_ckpt_v2/00000123")
     tf.reset_default_graph()
     sess, meta_graph_def = session_bundle.load_session_bundle_from_path(
         base_path, target="", config=tf.ConfigProto(device_count={"CPU": 2}))

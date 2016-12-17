@@ -35,10 +35,6 @@ class AbsoluteDifferenceLossTest(tf.test.TestCase):
       with self.assertRaises(ValueError):
         tf.contrib.losses.absolute_difference(
             self._predictions, self._predictions, weights=None)
-      # TODO(b/32171727): Remove when deprecated `weight` is removed.
-      with self.assertRaises(ValueError):
-        tf.contrib.losses.absolute_difference(
-            self._predictions, self._predictions, weight=None)
 
   def testAllCorrectNoLossWeight(self):
     loss = tf.contrib.losses.absolute_difference(
@@ -58,29 +54,6 @@ class AbsoluteDifferenceLossTest(tf.test.TestCase):
         self._predictions, self._labels, weights)
     with self.test_session():
       self.assertAlmostEqual(5.5 * weights, loss.eval(), 3)
-
-  # TODO(b/32171727): Remove when deprecated args are removed.
-  def testDeprecatedArgs(self):
-    w = 2.3
-    weighted_loss_tensors = (
-        tf.contrib.losses.absolute_difference(
-            self._predictions, self._labels, w),
-        tf.contrib.losses.absolute_difference(
-            self._predictions, self._labels, weights=w),
-        tf.contrib.losses.absolute_difference(
-            self._predictions, self._labels, weight=w),
-        tf.contrib.losses.absolute_difference(
-            self._predictions, labels=self._labels, weights=w),
-        tf.contrib.losses.absolute_difference(
-            self._predictions, labels=self._labels, weight=w),
-        tf.contrib.losses.absolute_difference(
-            self._predictions, targets=self._labels, weights=w),
-        tf.contrib.losses.absolute_difference(
-            self._predictions, targets=self._labels, weight=w),
-    )
-    with self.test_session():
-      for weighted_loss_tensor in weighted_loss_tensors:
-        self.assertAlmostEqual(5.5 * w, weighted_loss_tensor.eval(), 3)
 
   def testNonZeroLossWithScalarTensorWeight(self):
     weights = 2.3
@@ -137,9 +110,6 @@ class SoftmaxCrossEntropyLossTest(tf.test.TestCase):
     with self.test_session():
       with self.assertRaises(ValueError):
         tf.contrib.losses.softmax_cross_entropy(logits, labels, weights=None)
-      # TODO(b/32171727): Remove when deprecated `weight` is removed.
-      with self.assertRaises(ValueError):
-        tf.contrib.losses.softmax_cross_entropy(logits, labels, weight=None)
 
   def testAllCorrect(self):
     with self.test_session():
@@ -177,27 +147,6 @@ class SoftmaxCrossEntropyLossTest(tf.test.TestCase):
     with self.test_session():
       loss = tf.contrib.losses.softmax_cross_entropy(logits, labels, weights)
       self.assertAlmostEqual(weights * 10.0, loss.eval(), 3)
-
-  # TODO(b/32171727): Remove when deprecated args are removed.
-  def testDeprecatedArgs(self):
-    logits = tf.constant([[10.0, 0.0, 0.0],
-                          [0.0, 10.0, 0.0],
-                          [0.0, 0.0, 10.0]])
-    labels = tf.constant([[0, 0, 1],
-                          [1, 0, 0],
-                          [0, 1, 0]])
-    w = 2.3
-    with self.test_session():
-      loss_tensors = (
-          tf.contrib.losses.softmax_cross_entropy(logits, labels, w),
-          tf.contrib.losses.softmax_cross_entropy(logits, labels, weights=w),
-          tf.contrib.losses.softmax_cross_entropy(logits, labels, weight=w),
-          tf.contrib.losses.softmax_cross_entropy(
-              logits, onehot_labels=labels, weights=w),
-          tf.contrib.losses.softmax_cross_entropy(
-              logits, onehot_labels=labels, weight=w))
-      for loss_tensor in loss_tensors:
-        self.assertAlmostEqual(w * 10.0, loss_tensor.eval(), 3)
 
   def testNonZeroLossWithScalarTensorWeight(self):
     logits = tf.constant([[10.0, 0.0, 0.0],
@@ -263,10 +212,6 @@ class SoftmaxCrossEntropyLossTest(tf.test.TestCase):
       with self.assertRaises(ValueError):
         tf.contrib.losses.softmax_cross_entropy(
             logits, labels, weights=weights).eval()
-      # TODO(b/32171727): Remove when deprecated `weight` is removed.
-      with self.assertRaises(ValueError):
-        tf.contrib.losses.softmax_cross_entropy(
-            logits, labels, weight=weights).eval()
 
   def testSoftmaxLabelSmoothing(self):
     with self.test_session():
@@ -301,10 +246,6 @@ class SparseSoftmaxCrossEntropyLossTest(tf.test.TestCase):
       with self.assertRaises(ValueError):
         tf.contrib.losses.sparse_softmax_cross_entropy(
             logits, labels, weights=None)
-      # TODO(b/32171727): Remove when deprecated `weight` is removed.
-      with self.assertRaises(ValueError):
-        tf.contrib.losses.sparse_softmax_cross_entropy(
-            logits, labels, weight=None)
 
   def testAllCorrectInt32Labels(self):
     with self.test_session():
@@ -380,28 +321,6 @@ class SparseSoftmaxCrossEntropyLossTest(tf.test.TestCase):
           logits, labels, weights)
       self.assertAlmostEqual(weights * 10.0, loss.eval(), 3)
 
-  # TODO(b/32171727): Remove when deprecated args are removed.
-  def testDeprecatedArgs(self):
-    logits = tf.constant([[10.0, 0.0, 0.0],
-                          [0.0, 10.0, 0.0],
-                          [0.0, 0.0, 10.0]])
-    labels = tf.constant([[2], [0], [1]])
-    w = 2.3
-    with self.test_session():
-      loss_tensors = (
-          tf.contrib.losses.sparse_softmax_cross_entropy(
-              logits, labels, w),
-          tf.contrib.losses.sparse_softmax_cross_entropy(
-              logits, labels, weights=w),
-          tf.contrib.losses.sparse_softmax_cross_entropy(
-              logits, labels, weight=w),
-          tf.contrib.losses.sparse_softmax_cross_entropy(
-              logits, labels=labels, weights=w),
-          tf.contrib.losses.sparse_softmax_cross_entropy(
-              logits, labels=labels, weight=w))
-      for loss_tensor in loss_tensors:
-        self.assertAlmostEqual(w * 10.0, loss_tensor.eval(), 3)
-
   def testNonZeroLossWithScalarTensorWeight(self):
     logits = tf.constant([[10.0, 0.0, 0.0],
                           [0.0, 10.0, 0.0],
@@ -470,10 +389,6 @@ class SparseSoftmaxCrossEntropyLossTest(tf.test.TestCase):
       with self.assertRaises(ValueError):
         tf.contrib.losses.sparse_softmax_cross_entropy(
             logits, labels, weights=weights).eval()
-      # TODO(b/32171727): Remove when deprecated `weight` is removed.
-      with self.assertRaises(ValueError):
-        tf.contrib.losses.sparse_softmax_cross_entropy(
-            logits, labels, weight=weights).eval()
 
   def testInconsistentWeightSizeRaisesException(self):
     """The weight tensor has incorrect number of elements."""
@@ -487,10 +402,6 @@ class SparseSoftmaxCrossEntropyLossTest(tf.test.TestCase):
       with self.assertRaises(ValueError):
         tf.contrib.losses.sparse_softmax_cross_entropy(
             logits, labels, weights=weights).eval()
-      # TODO(b/32171727): Remove when deprecated `weight` is removed.
-      with self.assertRaises(ValueError):
-        tf.contrib.losses.sparse_softmax_cross_entropy(
-            logits, labels, weight=weights).eval()
 
   def testInconsistentLabelSizeRaisesException(self):
     """The label tensor has incorrect number of elements."""
@@ -504,10 +415,6 @@ class SparseSoftmaxCrossEntropyLossTest(tf.test.TestCase):
       with self.assertRaises(ValueError):
         tf.contrib.losses.sparse_softmax_cross_entropy(
             logits, labels, weights=weights).eval()
-      # TODO(b/32171727): Remove when deprecated `weight` is removed.
-      with self.assertRaises(ValueError):
-        tf.contrib.losses.sparse_softmax_cross_entropy(
-            logits, labels, weight=weights).eval()
 
   def testInconsistentWeightShapeRaisesException(self):
     """The weight tensor has incorrect shape."""
@@ -522,10 +429,6 @@ class SparseSoftmaxCrossEntropyLossTest(tf.test.TestCase):
       with self.assertRaises(ValueError):
         tf.contrib.losses.sparse_softmax_cross_entropy(
             logits, labels, weights=weights).eval()
-      # TODO(b/32171727): Remove when deprecated `weight` is removed.
-      with self.assertRaises(ValueError):
-        tf.contrib.losses.sparse_softmax_cross_entropy(
-            logits, labels, weight=weights).eval()
 
   def testInconsistentLabelShapeRaisesException(self):
     """The label tensor has incorrect shape."""
@@ -540,10 +443,6 @@ class SparseSoftmaxCrossEntropyLossTest(tf.test.TestCase):
       with self.assertRaises(tf.errors.InvalidArgumentError):
         tf.contrib.losses.sparse_softmax_cross_entropy(
             logits, labels, weights=weights).eval()
-      # TODO(b/32171727): Remove when deprecated `weight` is removed.
-      with self.assertRaises(tf.errors.InvalidArgumentError):
-        tf.contrib.losses.sparse_softmax_cross_entropy(
-            logits, labels, weight=weights).eval()
 
 
 class SigmoidCrossEntropyLossTest(tf.test.TestCase):
@@ -687,9 +586,6 @@ class LogLossTest(tf.test.TestCase):
     with self.test_session():
       with self.assertRaises(ValueError):
         tf.contrib.losses.log_loss(self._labels, self._labels, weights=None)
-      # TODO(b/32171727): Remove when deprecated `weight` is removed.
-      with self.assertRaises(ValueError):
-        tf.contrib.losses.log_loss(self._labels, self._labels, weight=None)
 
   def testAllCorrectNoLossWeight(self):
     loss = tf.contrib.losses.log_loss(self._labels, self._labels)
@@ -716,26 +612,6 @@ class LogLossTest(tf.test.TestCase):
     with self.test_session():
       self.assertAlmostEqual(weights * -np.sum(self._expected_losses) / 6.0,
                              loss.eval(), 3)
-
-  # TODO(b/32171727): Remove when deprecated args are removed.
-  def testDeprecatedArgs(self):
-    w = 2.3
-    loss_tensors = (
-        tf.contrib.losses.log_loss(self._predictions, self._labels, w),
-        tf.contrib.losses.log_loss(self._predictions, self._labels, weights=w),
-        tf.contrib.losses.log_loss(self._predictions, self._labels, weight=w),
-        tf.contrib.losses.log_loss(
-            self._predictions, labels=self._labels, weights=w),
-        tf.contrib.losses.log_loss(
-            self._predictions, labels=self._labels, weight=w),
-        tf.contrib.losses.log_loss(
-            self._predictions, targets=self._labels, weights=w),
-        tf.contrib.losses.log_loss(
-            self._predictions, targets=self._labels, weight=w))
-    with self.test_session():
-      for loss_tensor in loss_tensors:
-        self.assertAlmostEqual(
-            w * -np.sum(self._expected_losses) / 6.0, loss_tensor.eval(), 3)
 
   def testNonZeroLossWithScalarTensorWeight(self):
     weights = 2.3
@@ -908,9 +784,6 @@ class MeanSquaredErrorTest(tf.test.TestCase):
       with self.assertRaises(ValueError):
         tf.contrib.losses.mean_squared_error(
             self._predictions, self._predictions, weights=None)
-        # TODO(b/32171727): Remove when deprecated `weight` is removed.
-        tf.contrib.losses.mean_squared_error(
-            self._predictions, self._predictions, weight=None)
 
   def testAllCorrectNoLossWeight(self):
     loss = tf.contrib.losses.mean_squared_error(
@@ -937,28 +810,6 @@ class MeanSquaredErrorTest(tf.test.TestCase):
         self._predictions, self._labels, tf.constant(weights))
     with self.test_session():
       self.assertAlmostEqual(49.5 * weights, loss.eval(), 3)
-
-  # TODO(b/32171727): Remove when deprecated args are removed.
-  def testDeprecatedArgs(self):
-    w = 2.3
-    loss_tensors = (
-        tf.contrib.losses.mean_squared_error(
-            self._predictions, self._labels, tf.constant(w)),
-        tf.contrib.losses.mean_squared_error(
-            self._predictions, self._labels, weights=tf.constant(w)),
-        tf.contrib.losses.mean_squared_error(
-            self._predictions, self._labels, weight=tf.constant(w)),
-        tf.contrib.losses.mean_squared_error(
-            self._predictions, labels=self._labels, weights=tf.constant(w)),
-        tf.contrib.losses.mean_squared_error(
-            self._predictions, labels=self._labels, weight=tf.constant(w)),
-        tf.contrib.losses.mean_squared_error(
-            self._predictions, targets=self._labels, weights=tf.constant(w)),
-        tf.contrib.losses.mean_squared_error(
-            self._predictions, targets=self._labels, weight=tf.constant(w)))
-    with self.test_session():
-      for loss_tensor in loss_tensors:
-        self.assertAlmostEqual(49.5 * w, loss_tensor.eval(), 3)
 
   def testNonZeroLossWithOneDimBatchSpecificWeights(self):
     weights = tf.constant([1.2, 3.4], shape=[2,])
@@ -1025,12 +876,6 @@ class MeanPairwiseSquaresErrorTest(tf.test.TestCase):
             predictions=tf.constant(self._labels),
             labels=tf.constant(self._labels),
             weights=None)
-      # TODO(b/32171727): Remove when deprecated `weight` is removed.
-      with self.assertRaises(ValueError):
-        tf.contrib.losses.mean_pairwise_squared_error(
-            predictions=tf.constant(self._labels),
-            labels=tf.constant(self._labels),
-            weight=None)
 
   def testAllCorrectNoLossWeight(self):
     loss = tf.contrib.losses.mean_pairwise_squared_error(
@@ -1116,34 +961,6 @@ class MeanPairwiseSquaresErrorTest(tf.test.TestCase):
       })
       self.assertAlmostEqual(weights * np.sum(self._expected_losses), loss, 3)
 
-  # TODO(b/32171727): Remove when deprecated args are removed.
-  def testDeprecatedArgs(self):
-    w = 2.3
-    tf_predictions = tf.placeholder(tf.float32, shape=self._predictions.shape)
-    tf_labels = tf.placeholder(tf.float32, shape=self._labels.shape)
-    loss_tensors = (
-        tf.contrib.losses.mean_pairwise_squared_error(
-            tf_predictions, tf_labels, tf.constant(w)),
-        tf.contrib.losses.mean_pairwise_squared_error(
-            tf_predictions, tf_labels, weights=tf.constant(w)),
-        tf.contrib.losses.mean_pairwise_squared_error(
-            tf_predictions, tf_labels, weight=tf.constant(w)),
-        tf.contrib.losses.mean_pairwise_squared_error(
-            tf_predictions, labels=tf_labels, weights=tf.constant(w)),
-        tf.contrib.losses.mean_pairwise_squared_error(
-            tf_predictions, labels=tf_labels, weight=tf.constant(w)),
-        tf.contrib.losses.mean_pairwise_squared_error(
-            tf_predictions, targets=tf_labels, weights=tf.constant(w)),
-        tf.contrib.losses.mean_pairwise_squared_error(
-            tf_predictions, targets=tf_labels, weight=tf.constant(w)))
-    with self.test_session() as sess:
-      for loss_tensor in loss_tensors:
-        loss = sess.run(loss_tensor, feed_dict={
-            tf_predictions: self._predictions,
-            tf_labels: self._labels,
-        })
-        self.assertAlmostEqual(w * np.sum(self._expected_losses), loss, 3)
-
   def testNonZeroLossWithOneDimBatchSpecificWeights(self):
     weights = np.asarray([2.0, 1.0]).reshape((2, 1))
     expected_losses = np.multiply(weights, self._expected_losses)
@@ -1217,13 +1034,6 @@ class CosineDistanceLossTest(tf.test.TestCase):
             labels=tf.constant(self._labels),
             dim=2,
             weights=None)
-      # TODO(b/32171727): Remove when deprecated `weight` is removed.
-      with self.assertRaises(ValueError):
-        tf.contrib.losses.cosine_distance(
-            predictions=tf.constant(self._labels),
-            labels=tf.constant(self._labels),
-            dim=2,
-            weight=None)
 
   def testAllCorrectNoWeights(self):
     loss = tf.contrib.losses.cosine_distance(
@@ -1317,23 +1127,6 @@ class CosineDistanceLossTest(tf.test.TestCase):
 
 
 class ComputeWeightedLossTest(tf.test.TestCase):
-
-  # TODO(b/32171727): Remove when deprecated `weight` is removed.
-  def testDeprecatedArgs(self):
-    losses = (1.2, 0.4, -1.0, -1.1)
-    expected_loss = -0.5 / 4
-    weights = 2.0
-    expected_weighted_loss = weights * expected_loss
-    with self.test_session():
-      loss_tensor = tf.contrib.losses.compute_weighted_loss(losses)
-      self.assertAllClose(expected_loss, loss_tensor.eval(), atol=1e-3)
-      weighted_loss_tensors = (
-          tf.contrib.losses.compute_weighted_loss(losses, weights),
-          tf.contrib.losses.compute_weighted_loss(losses, weights=weights),
-          tf.contrib.losses.compute_weighted_loss(losses, weight=weights))
-      for weighted_loss_tensor in weighted_loss_tensors:
-        self.assertAllClose(
-            expected_weighted_loss, weighted_loss_tensor.eval(), atol=1e-3)
 
   def testHingeLoss(self):
     logits = tf.constant([1.2, 0.4, -1.0, -1.1])

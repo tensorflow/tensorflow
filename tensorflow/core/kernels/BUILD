@@ -1272,6 +1272,7 @@ tf_kernel_library(
 )
 
 tf_cc_tests(
+    name = "dynamic_op_test",
     size = "small",
     srcs = [
         "dynamic_partition_op_test.cc",
@@ -1556,6 +1557,7 @@ tf_kernel_library(
 )
 
 tf_cc_tests(
+    name = "eigen_test",
     size = "small",
     srcs = [
         "eigen_activations_test.cc",
@@ -1577,6 +1579,7 @@ tf_cc_tests(
 )
 
 tf_cc_tests(
+    name = "basic_ops_benchmark_test",
     size = "small",
     srcs = [
         "basic_ops_benchmark_test.cc",
@@ -1594,6 +1597,7 @@ tf_cc_tests(
 )
 
 tf_cc_tests(
+    name = "bonus_tests",
     srcs = [
         "adjust_contrast_op_test.cc",
         "colorspace_op_test.cc",
@@ -1735,6 +1739,7 @@ tf_kernel_library(
 )
 
 tf_cc_tests(
+    name = "bonus2_tests",
     size = "small",
     srcs = [
         "merge_v2_checkpoints_op_test.cc",
@@ -1913,6 +1918,7 @@ tf_kernel_library(
 )
 
 tf_cc_tests(
+    name = "bonus3_tests",
     size = "small",
     srcs = [
         "logging_ops_test.cc",
@@ -2100,6 +2106,7 @@ tf_cc_test(
 )
 
 tf_cc_tests(
+    name = "sparse_tests",
     size = "small",
     srcs = [
         "sparse_add_op_test.cc",
@@ -2919,6 +2926,7 @@ tf_kernel_library(
 )
 
 tf_cuda_cc_tests(
+    name = "sparse2_tests",
     size = "small",
     srcs = [
         "sparse_tensor_dense_matmul_op_test.cc",
@@ -3242,6 +3250,17 @@ tf_cuda_cc_test(
     ],
 )
 
+tf_kernel_library(
+    name = "word2vec_kernels",
+    prefix = "word2vec_kernels",
+    deps = [
+        "//tensorflow/core",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
 # Android libraries -----------------------------------------------------------
 
 # Changes to the Android srcs here should be replicated in
@@ -3404,6 +3423,7 @@ filegroup(
         "control_flow_ops.h",
         "conv_2d.h",
         "conv_ops.h",
+        "depthtospace_op.h",
         "depthwise_conv_op.h",
         "fake_quant_ops_functor.h",
         "gemm_functors.h",
@@ -3473,6 +3493,7 @@ filegroup(
         "cwise_op_rsqrt.cc",
         "cwise_op_select.cc",
         "cwise_op_sigmoid.cc",
+        "cwise_op_sign.cc",
         "cwise_op_sqrt.cc",
         "cwise_op_square.cc",
         "cwise_op_squared_difference.cc",
@@ -3500,6 +3521,7 @@ filegroup(
     name = "android_extended_ops_group2",
     srcs = [
         "ctc_decoder_ops.cc",
+        "depthtospace_op.cc",
         "dynamic_stitch_op.cc",
         "in_topk_op.cc",
         "logging_ops.cc",
@@ -3571,6 +3593,7 @@ filegroup(
         "quantized_bias_add_op.cc",
         "quantized_concat_op.cc",
         "quantized_conv_ops.cc",
+        "quantized_instance_norm.cc",
         "quantized_matmul_op.cc",
         "quantized_pooling_ops.cc",
         "quantized_reshape_op.cc",
@@ -3674,6 +3697,7 @@ tf_kernel_library(
         "quantized_bias_add_op.cc",
         "quantized_concat_op.cc",
         "quantized_conv_ops.cc",
+        "quantized_instance_norm.cc",
         "quantized_matmul_op.cc",
         "quantized_pooling_ops.cc",
         "quantized_reshape_op.cc",
@@ -3943,6 +3967,51 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//third_party/eigen3",
+    ],
+)
+
+# Android-only test for quantized instance norm.
+cc_binary(
+    name = "quantized_instance_norm_test_android_only",
+    testonly = 1,
+    srcs = ["quantized_instance_norm_test.cc"],
+    linkopts = select({
+        "//tensorflow:android": [
+            "-pie",
+        ],
+        "//conditions:default": [],
+    }),
+    linkstatic = 1,
+    tags = [
+        "manual",
+        "notap",
+    ],
+    deps = [
+        ":android_tensorflow_kernels",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/core:android_tensorflow_test_lib",
+    ],
+)
+
+tf_cc_test(
+    name = "quantized_instance_norm_test",
+    size = "small",
+    srcs = ["quantized_instance_norm_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":quantized_ops",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:direct_session",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 

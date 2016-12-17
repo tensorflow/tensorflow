@@ -9546,6 +9546,37 @@ op {
   allows_uninitialized_input: true
 }
 op {
+  name: "DebugNumericSummary"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type: DT_DOUBLE
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "tensor_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "debug_urls"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+  }
+  allows_uninitialized_input: true
+}
+op {
   name: "DecodeBase64"
   input_arg {
     name: "input"
@@ -9657,6 +9688,59 @@ op {
     type: "float"
     default_value {
       f: 1
+    }
+  }
+}
+op {
+  name: "DecodeJpeg"
+  input_arg {
+    name: "contents"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "image"
+    type: DT_UINT8
+  }
+  attr {
+    name: "channels"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "ratio"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  attr {
+    name: "fancy_upscaling"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "try_recover_truncated"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "acceptable_fraction"
+    type: "float"
+    default_value {
+      f: 1
+    }
+  }
+  attr {
+    name: "dct_method"
+    type: "string"
+    default_value {
+      s: ""
     }
   }
 }
@@ -18584,6 +18668,43 @@ op {
   is_stateful: true
 }
 op {
+  name: "NegTrain"
+  input_arg {
+    name: "w_in"
+    type: DT_FLOAT
+    is_ref: true
+  }
+  input_arg {
+    name: "w_out"
+    type: DT_FLOAT
+    is_ref: true
+  }
+  input_arg {
+    name: "examples"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "labels"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "lr"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "vocab_count"
+    type: "list(int)"
+  }
+  attr {
+    name: "num_negative_samples"
+    type: "int"
+  }
+  deprecation {
+    version: 19
+  }
+  is_stateful: true
+}
+op {
   name: "NextIteration"
   input_arg {
     name: "data"
@@ -19767,6 +19888,21 @@ op {
   }
 }
 op {
+  name: "PreventGradient"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}
+op {
   name: "Print"
   input_arg {
     name: "input"
@@ -20868,6 +21004,81 @@ op {
   }
 }
 op {
+  name: "QuantizedInstanceNorm"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "x_min"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "x_max"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y_min"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "y_max"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "output_range_given"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "given_y_min"
+    type: "float"
+    default_value {
+      f: 0
+    }
+  }
+  attr {
+    name: "given_y_max"
+    type: "float"
+    default_value {
+      f: 0
+    }
+  }
+  attr {
+    name: "variance_epsilon"
+    type: "float"
+    default_value {
+      f: 1e-05
+    }
+  }
+  attr {
+    name: "min_separation"
+    type: "float"
+    default_value {
+      f: 0.001
+    }
+  }
+}
+op {
   name: "QuantizedMatMul"
   input_arg {
     name: "a"
@@ -20959,6 +21170,117 @@ op {
     type: "bool"
     default_value {
       b: false
+    }
+  }
+}
+op {
+  name: "QuantizedMatMul"
+  input_arg {
+    name: "a"
+    type_attr: "T1"
+  }
+  input_arg {
+    name: "b"
+    type_attr: "T2"
+  }
+  input_arg {
+    name: "min_a"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_a"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "min_b"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_b"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "out"
+    type_attr: "Toutput"
+  }
+  output_arg {
+    name: "min_out"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "max_out"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T1"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "T2"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "Toutput"
+    type: "type"
+    default_value {
+      type: DT_QINT32
+    }
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "transpose_a"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "transpose_b"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "Tactivation"
+    type: "type"
+    default_value {
+      type: DT_QUINT8
+    }
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
     }
   }
 }
@@ -27111,6 +27433,70 @@ op {
     default_value {
       f: 0.001
     }
+  }
+  is_stateful: true
+}
+op {
+  name: "Skipgram"
+  output_arg {
+    name: "vocab_word"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "vocab_freq"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "words_per_epoch"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "current_epoch"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "total_words_processed"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "examples"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "labels"
+    type: DT_INT32
+  }
+  attr {
+    name: "filename"
+    type: "string"
+  }
+  attr {
+    name: "batch_size"
+    type: "int"
+  }
+  attr {
+    name: "window_size"
+    type: "int"
+    default_value {
+      i: 5
+    }
+  }
+  attr {
+    name: "min_count"
+    type: "int"
+    default_value {
+      i: 5
+    }
+  }
+  attr {
+    name: "subsample"
+    type: "float"
+    default_value {
+      f: 0.001
+    }
+  }
+  deprecation {
+    version: 19
   }
   is_stateful: true
 }

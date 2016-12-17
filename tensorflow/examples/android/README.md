@@ -96,5 +96,5 @@ errors may not be obvious if the app halts immediately, so if you installed
 with bazel and the app doesn't come up, then the easiest thing to do is try
 installing with adb.
 
-Once the app is installed it will be named "TensorFlow Demo" and have the orange
-TensorFlow logo as its icon.
+Once the app is installed it can be started via the "TF Classify" and
+"TF Detect" and icons, which have the orange TensorFlow logo as their icon.

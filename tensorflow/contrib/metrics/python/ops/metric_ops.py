@@ -620,7 +620,7 @@ def _streaming_confusion_matrix_at_thresholds(
     num_predictions = array_ops.shape(predictions_2d)[0]
   thresh_tiled = array_ops.tile(
       array_ops.expand_dims(array_ops.constant(thresholds), [1]),
-      array_ops.pack([1, num_predictions]))
+      array_ops.stack([1, num_predictions]))
 
   # Tile the predictions after thresholding them across different thresholds.
   pred_is_pos = math_ops.greater(
@@ -1353,20 +1353,15 @@ def streaming_sparse_precision_at_top_k(top_k_predictions,
   default_name = _at_k_name('precision', class_id=class_id)
   with ops.name_scope(
       name, default_name,
-      (top_k_predictions, labels, weights)) as scope:
-    rank = array_ops.rank(top_k_predictions)
-    check_rank_op = control_flow_ops.Assert(
-        math_ops.greater_equal(rank, 2),
-        ['top_k_predictions must have rank 2 or higher, e.g. [batch_size, k].'])
-    with ops.control_dependencies([check_rank_op]):
-      return _streaming_sparse_precision_at_k(
-          top_k_idx=top_k_predictions,
-          labels=labels,
-          class_id=class_id,
-          weights=weights,
-          metrics_collections=metrics_collections,
-          updates_collections=updates_collections,
-          name=scope)
+      (top_k_predictions, labels, weights)) as name_scope:
+    return _streaming_sparse_precision_at_k(
+        top_k_idx=top_k_predictions,
+        labels=labels,
+        class_id=class_id,
+        weights=weights,
+        metrics_collections=metrics_collections,
+        updates_collections=updates_collections,
+        name=name_scope)
 
 
 def num_relevant(labels, k):
@@ -1438,13 +1433,12 @@ def expand_and_tile(tensor, multiple, dim=0, name=None):
             array_ops.size(tensor.dense_shape) + dim, [1])
       else:
         expand_dims = [dim]
-      expanded_shape = array_ops.concat(
-          0, (array_ops.strided_slice(
-                  tensor.dense_shape, [0], expand_dims),
-              [1],
-              array_ops.strided_slice(
-                  tensor.dense_shape, expand_dims, [-1], end_mask=1 << 0)),
-          name='expanded_shape')
+      expanded_shape = array_ops.concat_v2(
+          (array_ops.strided_slice(tensor.dense_shape, [0], expand_dims),
+           [1],
+           array_ops.strided_slice(
+               tensor.dense_shape, expand_dims, [-1], end_mask=1 << 0)),
+          0, name='expanded_shape')
       expanded = sparse_ops.sparse_reshape(
           tensor, shape=expanded_shape, name='expand')
       if multiple == 1:
@@ -1458,8 +1452,8 @@ def expand_and_tile(tensor, multiple, dim=0, name=None):
     if multiple == 1:
       return expanded
     ones = array_ops.ones_like(array_ops.shape(tensor))
-    tile_multiples = array_ops.concat(
-        0, (ones[:dim], (multiple,), ones[dim:]), name='multiples')
+    tile_multiples = array_ops.concat_v2(
+        (ones[:dim], (multiple,), ones[dim:]), 0, name='multiples')
     return array_ops.tile(expanded, tile_multiples, name=scope)
 
 
@@ -2377,8 +2371,8 @@ def streaming_mean_cosine_distance(predictions, labels, dim, weights=None,
     name: An optional variable_scope name.
 
   Returns:
-    mean_distance: A `Tensor` representing the current mean, the value of `total`
-      divided by `count`.
+    mean_distance: A `Tensor` representing the current mean, the value of
+      `total` divided by `count`.
     update_op: An operation that increments the `total` and `count` variables
       appropriately.
 
@@ -2611,7 +2605,7 @@ def streaming_concat(values,
 
     def reallocate():
       next_size = _next_array_size(new_size)
-      next_shape = array_ops.pack([next_size] + fixed_shape)
+      next_shape = array_ops.stack([next_size] + fixed_shape)
       new_value = array_ops.zeros(next_shape, dtype=values.dtype)
       old_value = array.value()
       assign_op = state_ops.assign(array, new_value, validate_shape=False)

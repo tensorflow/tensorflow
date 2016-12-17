@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import json
 import os
-
+from tensorflow.contrib.framework import deprecated
 from tensorflow.python import ConfigProto
 from tensorflow.python import GPUOptions
 from tensorflow.python.training.server_lib import ClusterSpec
@@ -236,21 +236,98 @@ class RunConfig(ClusterConfig):
 
     gpu_options = GPUOptions(
         per_process_gpu_memory_fraction=gpu_memory_fraction)
-    self.tf_config = ConfigProto(
+    self._tf_config = ConfigProto(
         log_device_placement=log_device_placement,
         inter_op_parallelism_threads=num_cores,
         intra_op_parallelism_threads=num_cores,
         gpu_options=gpu_options)
 
-    self.tf_random_seed = tf_random_seed
-    self.save_summary_steps = save_summary_steps
-    self.save_checkpoints_secs = save_checkpoints_secs
-    self.save_checkpoints_steps = save_checkpoints_steps
+    self._tf_random_seed = tf_random_seed
+    self._save_summary_steps = save_summary_steps
+    self._save_checkpoints_secs = save_checkpoints_secs
+    self._save_checkpoints_steps = save_checkpoints_steps
 
     # TODO(weiho): Remove these after ModelFn refactoring, when users can
     # create Scaffold and Saver in their model_fn to set these.
-    self.keep_checkpoint_max = keep_checkpoint_max
-    self.keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours
+    self._keep_checkpoint_max = keep_checkpoint_max
+    self._keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours
+
+  @property
+  def tf_config(self):
+    return self._tf_config
+
+  @tf_config.setter
+  @deprecated(
+      '2017-01-08',
+      'RunConfig will be made immutable, please pass all args to constructor.')
+  def tf_config(self, value):
+    self._tf_config = value
+
+  @property
+  def tf_random_seed(self):
+    return self._tf_random_seed
+
+  @tf_random_seed.setter
+  @deprecated(
+      '2017-01-08',
+      'RunConfig will be made immutable, please pass all args to constructor.')
+  def tf_random_seed(self, value):
+    self._tf_random_seed = value
+
+  @property
+  def save_summary_steps(self):
+    return self._save_summary_steps
+
+  @save_summary_steps.setter
+  @deprecated(
+      '2017-01-08',
+      'RunConfig will be made immutable, please pass all args to constructor.')
+  def save_summary_steps(self, value):
+    self._save_summary_steps = value
+
+  @property
+  def save_checkpoints_secs(self):
+    return self._save_checkpoints_secs
+
+  @save_checkpoints_secs.setter
+  @deprecated(
+      '2017-01-08',
+      'RunConfig will be made immutable, please pass all args to constructor.')
+  def save_checkpoints_secs(self, value):
+    self._save_checkpoints_secs = value
+
+  @property
+  def save_checkpoints_steps(self):
+    return self._save_checkpoints_steps
+
+  @save_checkpoints_steps.setter
+  @deprecated(
+      '2017-01-08',
+      'RunConfig will be made immutable, please pass all args to constructor.')
+  def save_checkpoints_steps(self, value):
+    self._save_checkpoints_steps = value
+
+  @property
+  def keep_checkpoint_max(self):
+    return self._keep_checkpoint_max
+
+  @keep_checkpoint_max.setter
+  @deprecated(
+      '2017-01-08',
+      'RunConfig will be made immutable, please pass all args to constructor.')
+  def keep_checkpoint_max(self, value):
+    self._keep_checkpoint_max = value
+
+  @property
+  def keep_checkpoint_every_n_hours(self):
+    return self._keep_checkpoint_every_n_hours
+
+  @keep_checkpoint_every_n_hours.setter
+  @deprecated(
+      '2017-01-08',
+      'RunConfig will be made immutable, please pass all args to constructor.')
+  def keep_checkpoint_every_n_hours(self, value):
+    self._keep_checkpoint_every_n_hours = value
 
 
 def _count_ps(cluster_spec):

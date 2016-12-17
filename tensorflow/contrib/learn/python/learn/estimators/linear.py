@@ -82,7 +82,7 @@ def _add_bias_column(feature_columns, columns_to_tensors, bias_variable,
   columns_to_variables[bias_column] = [bias_variable]
 
 
-def _linear_model_fn(features, labels, mode, params):
+def _linear_model_fn(features, labels, mode, params, config=None):
   """A model_fn for linear models that use a gradient-based optimizer.
 
   Args:
@@ -105,6 +105,7 @@ def _linear_model_fn(features, labels, mode, params):
         single (possibly partitioned) variable. It's more efficient, but it's
         incompatible with SDCAOptimizer, and requires all feature columns are
         sparse and use the 'sum' combiner.
+    config: `RunConfig` object to configure the runtime settings.
 
   Returns:
     A `ModelFnOps` instance.
@@ -116,7 +117,7 @@ def _linear_model_fn(features, labels, mode, params):
   feature_columns = params["feature_columns"]
   optimizer = params["optimizer"]
   gradient_clip_norm = params.get("gradient_clip_norm", None)
-  num_ps_replicas = params.get("num_ps_replicas", 0)
+  num_ps_replicas = config.num_ps_replicas if config else 0
   joint_weights = params.get("joint_weights", False)
 
   if not isinstance(features, dict):
@@ -378,7 +379,7 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
     """
     # TODO(zoy): Give an unsupported error if enable_centered_bias is
     #    requested for SDCA once its default changes to False.
-    self._feature_columns = feature_columns
+    self._feature_columns = tuple(feature_columns or [])
     assert self._feature_columns
     self._optimizer = _get_default_optimizer(feature_columns)
     if optimizer:
@@ -417,7 +418,6 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
       model_fn = _linear_model_fn
       params.update({
           "gradient_clip_norm": gradient_clip_norm,
-          "num_ps_replicas": config.num_ps_replicas if config else 0,
           "joint_weights": _joint_weight,
       })
 
@@ -658,7 +658,7 @@ class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
     Returns:
       A `LinearRegressor` estimator.
     """
-    self._feature_columns = feature_columns
+    self._feature_columns = tuple(feature_columns or [])
     assert self._feature_columns
     if optimizer:
       self._optimizer = _get_optimizer(optimizer)
@@ -698,7 +698,6 @@ class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
       model_fn = _linear_model_fn
       params.update({
           "gradient_clip_norm": gradient_clip_norm,
-          "num_ps_replicas": config.num_ps_replicas if config else 0,
           "joint_weights": _joint_weights,
       })
 

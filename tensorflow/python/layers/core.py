@@ -28,15 +28,14 @@ import numpy as np
 
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope as vs
-from tensorflow.python.ops import control_flow_ops
 
 from tensorflow.python.layers import base
+from tensorflow.python.layers import utils
 
 
 class Dense(base._Layer):  # pylint: disable=protected-access
@@ -84,7 +83,7 @@ class Dense(base._Layer):  # pylint: disable=protected-access
                activation=None,
                use_bias=True,
                weights_initializer=None,
-               bias_initializer=init_ops.zeros_initializer,
+               bias_initializer=init_ops.zeros_initializer(),
                weights_regularizer=None,
                bias_regularizer=None,
                activity_regularizer=None,
@@ -125,7 +124,7 @@ class Dense(base._Layer):  # pylint: disable=protected-access
                                   shape=[self.units,],
                                   initializer=self.bias_initializer,
                                   regularizer=self.bias_regularizer,
-                                  dtype=self._dtype,
+                                  dtype=self.dtype,
                                   trainable=True)
     else:
       self.bias = None
@@ -138,7 +137,7 @@ class Dense(base._Layer):  # pylint: disable=protected-access
       # Reshape the input to 2D.
       output_shape_tensors = array_ops.unpack(array_ops.shape(inputs))
       output_shape_tensors[-1] = self.units
-      output_shape_tensor = array_ops.pack(output_shape_tensors)
+      output_shape_tensor = array_ops.stack(output_shape_tensors)
       inputs = array_ops.reshape(inputs, [-1, input_dim])
 
     outputs = standard_ops.matmul(inputs, self.w)
@@ -160,7 +159,7 @@ def dense(
     activation=None,
     use_bias=True,
     weights_initializer=None,
-    bias_initializer=init_ops.zeros_initializer,
+    bias_initializer=init_ops.zeros_initializer(),
     weights_regularizer=None,
     bias_regularizer=None,
     activity_regularizer=None,
@@ -247,20 +246,13 @@ class Dropout(base._Layer):  # pylint: disable=protected-access
     self.seed = seed
 
   def call(self, inputs, training=False):
-    if isinstance(training, bool):
-      training_bool = training
-    else:
-      training_bool = tensor_util.constant_value(training)
-    if training_bool is False:
-      return array_ops.identity(inputs)
-    dropped_inputs = nn.dropout(inputs, 1  - self.rate,
-                                noise_shape=self.noise_shape,
-                                seed=self.seed)
-    if training_bool is True:
-      return dropped_inputs
-    return control_flow_ops.cond(training,
-                                 lambda: dropped_inputs,
-                                 lambda: inputs)
+    def dropped_inputs():
+      return nn.dropout(inputs, 1  - self.rate,
+                        noise_shape=self.noise_shape,
+                        seed=self.seed)
+    return utils.smart_cond(training,
+                            dropped_inputs,
+                            lambda: array_ops.identity(inputs))
 
 
 def dropout(inputs,

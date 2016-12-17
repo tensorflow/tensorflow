@@ -125,7 +125,7 @@ class Laplace(distribution.Distribution):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):
-    shape = array_ops.concat(0, ([n], self.batch_shape()))
+    shape = array_ops.concat_v2(([n], self.batch_shape()), 0)
     # Sample uniformly-at-random from the open-interval (-1, 1).
     uniform_samples = random_ops.random_uniform(
         shape=shape,

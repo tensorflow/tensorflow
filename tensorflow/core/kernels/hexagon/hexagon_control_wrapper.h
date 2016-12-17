@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_HEXAGON_CONTROL_WRAPPER_H_
 #define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_HEXAGON_CONTROL_WRAPPER_H_
 
+#include <vector>
+
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/hexagon/graph_transferer.h"
 #include "tensorflow/core/kernels/hexagon/i_soc_control_wrapper.h"
@@ -31,17 +33,26 @@ namespace tensorflow {
 class HexagonControlWrapper final : public ISocControlWrapper {
  public:
   HexagonControlWrapper() = default;
-  int GetVersion() const final;
+  int GetVersion() final;
   bool Init() final;
   bool Finalize() final;
   bool SetupGraph(const GraphTransferer &graph_transferer) final;
   bool ExecuteGraph() final;
   bool TeardownGraph() final;
   bool FillInputNode(string node_name, const ByteArray bytes) final;
-  bool ReadOutputNode(string node_name,
-                      std::vector<ByteArray> *outputs) const final;
+  bool ReadOutputNode(string node_name, std::vector<ByteArray> *outputs) final;
 
  private:
+  // CAVEAT: Need offset as HVX library reserves some ids
+  static constexpr int NODE_ID_OFFSET = 0x10000;
+
+  // Dummy float array for input node.
+  // TODO(satok): Use actual data passed by FillInputNode and remove
+  std::vector<float> dummy_input_float_;
+  // Dummy byte array for cosnt node.
+  // TODO(satok): Remove
+  std::unordered_map<int, std::vector<uint8>> dummy_const_data_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(HexagonControlWrapper);
 };
 

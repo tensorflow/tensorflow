@@ -1,6 +1,10 @@
-### `tf.pack(values, axis=0, name='pack')` {#pack}
+### `tf.pack(*args, **kwargs)` {#pack}
 
-Packs a list of rank-`R` tensors into one rank-`(R+1)` tensor.
+Packs a list of rank-`R` tensors into one rank-`(R+1)` tensor. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-14.
+Instructions for updating:
+This op will be removed after the deprecation date. Please switch to tf.stack().
 
 Packs the list of tensors in `values` into a tensor with rank one higher than
 each tensor in `values`, by packing them along the `axis` dimension.

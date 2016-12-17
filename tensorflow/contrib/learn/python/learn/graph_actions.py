@@ -33,7 +33,6 @@ from tensorflow.contrib.framework.python.ops import ops as contrib_ops
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.learn.python.learn import monitors as monitors_lib
 from tensorflow.core.framework import summary_pb2
-from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -249,8 +248,7 @@ def _monitored_train(graph,
 
     def make_saver():
       return tf_saver.Saver(
-          sharded=True, max_to_keep=keep_checkpoint_max, defer_build=True,
-          write_version=saver_pb2.SaverDef.V1)
+          sharded=True, max_to_keep=keep_checkpoint_max, defer_build=True)
 
     scaffold = monitored_session.Scaffold(
         init_op=init_op,

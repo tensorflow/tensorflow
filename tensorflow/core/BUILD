@@ -5,7 +5,7 @@
 # Public targets:
 #
 # ":protos_all" - exports all core TensorFlow protos
-#     ":protos_all_py_pb2" - py_proto_library version (Google-internal)
+#     ":protos_all_py" - py_proto_library version (Google-internal)
 # ":lib" - exports the public non-test headers for:
 #     platform/: Platform-specific code and external dependencies
 #     lib/: Low-level libraries that are not TensorFlow-specific
@@ -135,6 +135,7 @@ CORE_PROTO_SRCS = [
     "framework/versions.proto",
     "lib/core/error_codes.proto",
     "protobuf/config.proto",
+    "protobuf/debug.proto",
     "protobuf/tensor_bundle.proto",
     "protobuf/saver.proto",
     "util/memmapped_file_system.proto",
@@ -322,6 +323,7 @@ tf_cuda_library(
         "framework/reader_op_kernel.h",
         "framework/register_types.h",
         "framework/resource_mgr.h",
+        "framework/resource_op_kernel.h",
         "framework/selective_registration.h",
         "framework/session_state.h",
         "framework/shape_inference.h",
@@ -439,6 +441,15 @@ cc_library(
 )
 
 cc_library(
+    name = "word2vec_ops",
+    srcs = ["ops/word2vec_ops.cc"],
+    linkstatic = 1,
+    visibility = ["//tensorflow:internal"],
+    deps = ["//tensorflow/core:framework"],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "ops",
     visibility = ["//visibility:public"],
     deps = [
@@ -467,7 +478,7 @@ cc_library(
         ":string_ops_op_lib",
         ":training_ops_op_lib",
         ":user_ops_op_lib",
-        "//tensorflow/models/embedding:word2vec_ops",
+        ":word2vec_ops",
     ],
     alwayslink = 1,
 )
@@ -589,7 +600,7 @@ cc_library(
         "//tensorflow/core/kernels:state",
         "//tensorflow/core/kernels:string",
         "//tensorflow/core/kernels:training_ops",
-        "//tensorflow/models/embedding:word2vec_kernels",
+        "//tensorflow/core/kernels:word2vec_kernels",
     ] + if_not_windows([
         "//tensorflow/core/kernels:fact_op",
         "//tensorflow/core/kernels:array_not_windows",
@@ -768,7 +779,6 @@ cc_library(
     srcs = if_android(["//tensorflow/core:android_srcs"]),
     copts = tf_copts() + [
         "-Os",
-        "-DNOTFDBG",
     ],
     linkopts = ["-lz"],
     tags = [
@@ -795,7 +805,7 @@ cc_library(
         "//tensorflow/core/kernels:android_core_ops",
         "//tensorflow/core/kernels:android_extended_ops",
     ]),
-    copts = tf_copts() + ["-Os"] + ["-std=c++11"] + ["-DNOTFDBG"],
+    copts = tf_copts() + ["-Os"] + ["-std=c++11"],
     visibility = ["//visibility:public"],
     deps = [
         ":protos_cc",
@@ -828,7 +838,7 @@ cc_library(
 cc_library(
     name = "android_tensorflow_lib",
     srcs = if_android([":android_op_registrations_and_gradients"]),
-    copts = tf_copts() + ["-DNOTFDBG"],
+    copts = tf_copts(),
     tags = [
         "manual",
         "notap",
@@ -853,7 +863,6 @@ cc_library(
     copts = tf_copts() + [
         "-Os",
         "-DSUPPORT_SELECTIVE_REGISTRATION",
-        "-DNOTFDBG",
     ],
     tags = [
         "manual",
@@ -1102,7 +1111,6 @@ cc_library(
         "platform/demangle.h",
         "platform/denormal.h",
         "platform/host_info.h",
-        "platform/monitoring.h",
         "platform/platform.h",
         "platform/protobuf_internal.h",
         "platform/tensor_coding.h",
@@ -1312,6 +1320,7 @@ tf_cuda_library(
     hdrs = glob(
         [
             "common_runtime/*.h",
+            "framework/versions.h",
             "graph/**/*.h",
         ],
         exclude = [
@@ -1367,7 +1376,6 @@ tf_cuda_library(
         ":lib_internal",
         ":proto_text",
         ":protos_all_cc",
-        "//tensorflow/core/debug:debug_graph_utils",
     ],
     alwayslink = 1,
 )
@@ -1539,8 +1547,8 @@ cc_library(
     alwayslink = 1,
 )
 
-# Low level library tests
 tf_cc_tests(
+    name = "low_level_library_tests",
     size = "small",
     srcs = [
         "lib/core/arena_test.cc",
@@ -1613,7 +1621,8 @@ tf_cc_tests(
     ],
 )
 
-tf_cc_tests(
+tf_cc_test(
+    name = "platform_env_test",
     size = "small",
     srcs = ["platform/env_test.cc"],
     deps = [
@@ -1627,7 +1636,8 @@ tf_cc_tests(
     ],
 )
 
-tf_cc_tests(
+tf_cc_test(
+    name = "platform_file_system_test",
     size = "small",
     srcs = ["platform/file_system_test.cc"],
     deps = [
@@ -1678,8 +1688,8 @@ cc_test(
     ],
 )
 
-# higher level tests
 tf_cc_tests(
+    name = "higher_level_tests",
     size = "small",
     srcs = [
         "common_runtime/device_set_test.cc",
@@ -1707,6 +1717,7 @@ tf_cc_tests(
         "framework/partial_tensor_shape_test.cc",
         # "framework/rendezvous_test.cc",  # flaky b/30476344
         "framework/resource_mgr_test.cc",
+        "framework/resource_op_kernel_test.cc",
         "framework/shape_inference_test.cc",
         "framework/shape_inference_testutil_test.cc",
         "framework/tensor_shape_test.cc",
@@ -1774,8 +1785,8 @@ tf_cc_tests(
     ],
 )
 
-# GPU-related tests
 tf_cc_tests_gpu(
+    name = "gpu_related_tests",
     size = "small",
     srcs = glob(["user_ops/**/*_test.cc"]) + [
         "common_runtime/gpu/gpu_bfc_allocator_test.cc",
@@ -1934,6 +1945,46 @@ tf_cc_test(
         "//tensorflow/core/kernels:session_ops",
         "//tensorflow/core/kernels:variable_ops",
         "//third_party/eigen3",
+    ],
+)
+
+# This is identical to :common_runtime_direct_session_test with the addition of
+# a dependency on alwayslink target //third_party/tensorflow/core/debug, which
+# enables support for TensorFlow Debugger (tfdbg).
+tf_cc_test(
+    name = "common_runtime_direct_session_with_debug_test",
+    size = "small",
+    srcs = ["common_runtime/direct_session_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//third_party/eigen3",
+        "//tensorflow/cc:cc_ops",
+        # Link with support for TensorFlow Debugger (tfdbg).
+        "//tensorflow/core/debug",
+        "//tensorflow/core/kernels:control_flow_ops",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:dense_update_ops",
+        "//tensorflow/core/kernels:fifo_queue_op",
+        "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/kernels:identity_op",
+        "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels:ops_util",
+        "//tensorflow/core/kernels:queue_ops",
+        "//tensorflow/core/kernels:session_ops",
+        "//tensorflow/core/kernels:variable_ops",
     ],
 )
 
@@ -2182,6 +2233,7 @@ tf_cc_test(
 )
 
 tf_cc_tests(
+    name = "ops_tests",
     size = "small",
     srcs = [
         "ops/array_ops_test.cc",

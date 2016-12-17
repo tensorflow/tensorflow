@@ -232,7 +232,7 @@ class Mixture(distribution.Distribution):
           cat_lp + d_lp
           for (cat_lp, d_lp) in zip(cat_log_probs, distribution_log_probs)
       ]
-      concat_log_probs = array_ops.pack(final_log_probs, 0)
+      concat_log_probs = array_ops.stack(final_log_probs, 0)
       log_sum_exp = math_ops.reduce_logsumexp(concat_log_probs, [0])
       return log_sum_exp
 
@@ -330,7 +330,7 @@ class Mixture(distribution.Distribution):
             partitioned_batch_indices[c])
         samples_class_c = array_ops.reshape(
             samples_class_c,
-            array_ops.concat(0, ([n_class * batch_size], event_shape)))
+            array_ops.concat_v2(([n_class * batch_size], event_shape), 0))
         samples_class_c = array_ops.gather(
             samples_class_c, lookup_partitioned_batch_indices,
             name="samples_class_c_gather")
@@ -341,8 +341,8 @@ class Mixture(distribution.Distribution):
           indices=partitioned_samples_indices, data=samples_class)
       # Reshape back to proper sample, batch, and event shape.
       ret = array_ops.reshape(lhs_flat_ret,
-                              array_ops.concat(0, (samples_shape,
-                                                   self.event_shape())))
+                              array_ops.concat_v2((samples_shape,
+                                                   self.event_shape()), 0))
       ret.set_shape(
           tensor_shape.TensorShape(static_samples_shape).concatenate(
               self.get_event_shape()))

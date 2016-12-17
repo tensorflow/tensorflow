@@ -25,7 +25,7 @@ import os
 import time
 
 from tensorflow.contrib.framework import deprecated
-from tensorflow.contrib.framework import deprecated_arg_values
+from tensorflow.contrib.framework import deprecated_args
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import export_strategy
 from tensorflow.contrib.learn.python.learn import monitors
@@ -50,7 +50,7 @@ class Experiment(object):
 
   # TODO(ispir): remove delay_workers_by_global_step and make global step based
   # waiting as only behaviour.
-  @deprecated_arg_values(
+  @deprecated_args(
       "2016-10-23",
       "local_eval_frequency is deprecated as local_run will be renamed to "
       "train_and_evaluate. Use min_eval_frequency and call train_and_evaluate "
@@ -59,7 +59,7 @@ class Experiment(object):
       "available. In contrast, the default for local_eval_frequency is None, "
       "resulting in evaluation occurring only after training has completed. "
       "min_eval_frequency is ignored when calling the deprecated local_run.",
-      local_eval_frequency=None)
+      "local_eval_frequency")
   def __init__(self,
                estimator,
                train_input_fn,

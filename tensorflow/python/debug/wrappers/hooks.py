@@ -86,7 +86,7 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook,
     self.on_run_end(on_run_end_request)
 
   def _decorate_options_for_debug(self, options, graph):
-    """Modify RunOptions.debug_tensor_watch_opts for debugging.
+    """Modify RunOptions.debug_options.debug_tensor_watch_opts for debugging.
 
     Args:
       options: (config_pb2.RunOptions) The RunOptions instance to be modified.

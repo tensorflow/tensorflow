@@ -171,6 +171,20 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.is_scalar_batch` {#MultivariateNormalDiagWithSoftplusStDev.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.is_scalar_event` {#MultivariateNormalDiagWithSoftplusStDev.is_scalar_event}
+
+Indicates that `event_shape==[]`.
+
+
+- - -
+
 #### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.log_cdf(value, name='log_cdf', **condition_kwargs)` {#MultivariateNormalDiagWithSoftplusStDev.log_cdf}
 
 Log cumulative distribution function.

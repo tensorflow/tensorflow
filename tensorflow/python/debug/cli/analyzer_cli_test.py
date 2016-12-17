@@ -992,7 +992,7 @@ class AnalyzerCLIWhileLoopTest(test_util.TensorFlowTestCase):
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
       debug_url = "file://%s" % cls._dump_root
 
-      watch_opts = run_options.debug_tensor_watch_opts
+      watch_opts = run_options.debug_options.debug_tensor_watch_opts
 
       # Add debug tensor watch for "while/Identity".
       watch = watch_opts.add()

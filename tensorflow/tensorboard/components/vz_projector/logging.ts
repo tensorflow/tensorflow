@@ -85,8 +85,8 @@ export function setModalMessage(
   return id;
 }
 
-export function setErrorMessage(errMsg: string) {
-  setModalMessage(errMsg, null, 'Error', true);
+export function setErrorMessage(errMsg: string, task?: string) {
+  setModalMessage(errMsg, null, 'Error ' + (task != null ? task : ''), true);
 }
 
 /**

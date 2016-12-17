@@ -65,11 +65,17 @@ def make_example_dict(example_protos, example_weights):
   sparse_features = [
       SparseFeatureColumn(
           tf.reshape(
-              tf.split(1, 2, parsed['age_indices'].indices)[0], [-1]),
+              tf.split(
+                  value=parsed['age_indices'].indices,
+                  num_or_size_splits=2,
+                  axis=1)[0], [-1]),
           tf.reshape(parsed['age_indices'].values, [-1]),
           tf.reshape(parsed['age_values'].values, [-1])), SparseFeatureColumn(
               tf.reshape(
-                  tf.split(1, 2, parsed['gender_indices'].indices)[0], [-1]),
+                  tf.split(
+                      value=parsed['gender_indices'].indices,
+                      num_or_size_splits=2,
+                      axis=1)[0], [-1]),
               tf.reshape(parsed['gender_indices'].values, [-1]),
               tf.reshape(parsed['gender_values'].values, [-1]))
   ]

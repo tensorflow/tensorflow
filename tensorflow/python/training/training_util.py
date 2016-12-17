@@ -21,6 +21,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 
@@ -95,7 +96,9 @@ def assert_global_step(global_step_tensor):
     global_step_tensor: `Tensor` to test.
   """
   if not (isinstance(global_step_tensor, variables.Variable) or
-          isinstance(global_step_tensor, ops.Tensor)):
+          isinstance(global_step_tensor, ops.Tensor) or
+          isinstance(global_step_tensor,
+                     resource_variable_ops.ResourceVariable)):
     raise TypeError(
         'Existing "global_step" must be a Variable or Tensor: %s.' %
         global_step_tensor)

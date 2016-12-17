@@ -2811,6 +2811,7 @@ equation by
 
 Many common operations can be expressed in this way.  For example:
 
+```python
 # Matrix multiplication
 >>> einsum('ij,jk->ik', m0, m1)  # output[i,k] = sum_j m0[i,j] * m1[j, k]
 
@@ -2825,6 +2826,7 @@ Many common operations can be expressed in this way.  For example:
 
 # Batch matrix multiplication
 >>> einsum('aij,ajk->aik', s, t)  # out[a,i,k] = sum_j s[a,i,j] * t[a, j, k]
+```
 
 This function behaves like `numpy.einsum`, but does not support:
 * Ellipses (subscripts like `ij...,jk...->ik...`)
@@ -3320,9 +3322,8 @@ Returns the index with the smallest value across axes of a tensor.
 
 *  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
 *  <b>`axis`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
-    int32, -rank(input) <= axis < rank(input).  Describes which axis
-    of the input Tensor to reduce across. Negative axis are interpreted as 
-    counting from the end of the array. For vectors, use axis = 0.
+    int32, 0 <= axis < rank(input).  Describes which axis
+    of the input Tensor to reduce across. For vectors, use axis = 0.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -3341,9 +3342,8 @@ Returns the index with the largest value across axes of a tensor.
 
 *  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
 *  <b>`axis`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
-    int32, -rank(input) <= axis < rank(input).  Describes which axis
-    of the input Tensor to reduce across. Negative axis are interpreted as 
-    counting from the end of the array. For vectors, use axis = 0.
+    int32, 0 <= axis < rank(input).  Describes which axis
+    of the input Tensor to reduce across. For vectors, use axis = 0.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:

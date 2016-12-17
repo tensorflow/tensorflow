@@ -100,17 +100,28 @@ export class Projector extends ProjectorPolymer implements
   private pageViewLogging: boolean;
 
   ready() {
+    this.dom = d3.select(this);
+    logging.setDomContainer(this);
+
     this.analyticsLogger =
         new AnalyticsLogger(this.pageViewLogging, this.eventLogging);
     this.analyticsLogger.logPageView('embeddings');
+
+    if (!util.hasWebGLSupport()) {
+      this.analyticsLogger.logWebGLDisabled();
+      logging.setErrorMessage(
+          'Your browser or device does not have WebGL enabled. Please enable ' +
+          'hardware acceleration, or use a browser that supports WebGL.');
+      return;
+    }
+
     this.selectionChangedListeners = [];
     this.hoverListeners = [];
     this.projectionChangedListeners = [];
     this.distanceMetricChangedListeners = [];
     this.selectedPointIndices = [];
     this.neighborsOfFirstPoint = [];
-    this.dom = d3.select(this);
-    logging.setDomContainer(this);
+
     this.dataPanel = this.$['data-panel'] as DataPanel;
     this.inspectorPanel = this.$['inspector-panel'] as InspectorPanel;
     this.inspectorPanel.initialize(this, this as ProjectorEventContext);
@@ -160,7 +171,10 @@ export class Projector extends ProjectorPolymer implements
         spriteAndMetadata.pointsInfo = pointsInfo;
         spriteAndMetadata.stats = stats;
       }
-      ds.mergeMetadata(spriteAndMetadata);
+      let metadataMergeSucceeded = ds.mergeMetadata(spriteAndMetadata);
+      if (!metadataMergeSucceeded) {
+        return;
+      }
     }
     if (this.projectorScatterPlotAdapter != null) {
       if (ds == null) {
@@ -505,6 +519,7 @@ export class Projector extends ProjectorPolymer implements
     state.filteredPoints = this.dataSetFilterIndices;
     this.projectorScatterPlotAdapter.populateBookmarkFromUI(state);
     state.selectedColorOptionName = this.dataPanel.selectedColorOptionName;
+    state.forceCategoricalColoring = this.dataPanel.forceCategoricalColoring;
     state.selectedLabelOption = this.selectedLabelOption;
     this.projectionsPanel.populateBookmarkFromUI(state);
     return state;
@@ -536,6 +551,8 @@ export class Projector extends ProjectorPolymer implements
     this.projectionsPanel.restoreUIFromBookmark(state);
     this.inspectorPanel.restoreUIFromBookmark(state);
     this.dataPanel.selectedColorOptionName = state.selectedColorOptionName;
+    this.dataPanel.setForceCategoricalColoring(
+        !!state.forceCategoricalColoring);
     this.selectedLabelOption = state.selectedLabelOption;
     this.projectorScatterPlotAdapter.restoreUIFromBookmark(state);
     {

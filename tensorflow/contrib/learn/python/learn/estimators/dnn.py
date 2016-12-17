@@ -68,7 +68,7 @@ def _add_hidden_layer_summary(value, tag):
   summary.histogram("%s_activation" % tag, value)
 
 
-def _dnn_model_fn(features, labels, mode, params):
+def _dnn_model_fn(features, labels, mode, params, config=None):
   """Deep Neural Net model_fn.
 
   Args:
@@ -92,10 +92,10 @@ def _dnn_model_fn(features, labels, mode, params):
           coordinate.
       * gradient_clip_norm: A float > 0. If provided, gradients are
           clipped to their global norm with this clipping ratio.
-      * num_ps_replicas: The number of parameter server replicas.
       * embedding_lr_multipliers: Optional. A dictionary from
         `EmbeddingColumn` to a `float` multiplier. Multiplier will be used to
         multiply with learning rate for the embedding variables.
+    config: `RunConfig` object to configure the runtime settings.
 
   Returns:
     predictions: A dict of `Tensor` objects.
@@ -109,7 +109,7 @@ def _dnn_model_fn(features, labels, mode, params):
   activation_fn = params.get("activation_fn")
   dropout = params.get("dropout")
   gradient_clip_norm = params.get("gradient_clip_norm")
-  num_ps_replicas = params.get("num_ps_replicas", 0)
+  num_ps_replicas = config.num_ps_replicas if config else 0
   embedding_lr_multipliers = params.get("embedding_lr_multipliers", {})
 
   features = _get_feature_dict(features)
@@ -295,9 +295,8 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
       ValueError: If `n_classes` < 2.
     """
     self._hidden_units = hidden_units
-    self._feature_columns = feature_columns
+    self._feature_columns = tuple(feature_columns or [])
     self._enable_centered_bias = enable_centered_bias
-
     self._estimator = estimator.Estimator(
         model_fn=_dnn_model_fn,
         model_dir=model_dir,
@@ -308,22 +307,13 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
                     n_classes,
                     weight_column_name=weight_column_name,
                     enable_centered_bias=enable_centered_bias),
-            "hidden_units":
-                hidden_units,
-            "feature_columns":
-                feature_columns,
-            "optimizer":
-                optimizer,
-            "activation_fn":
-                activation_fn,
-            "dropout":
-                dropout,
-            "gradient_clip_norm":
-                gradient_clip_norm,
-            "num_ps_replicas":
-                config.num_ps_replicas if config else 0,
-            "embedding_lr_multipliers":
-                embedding_lr_multipliers,
+            "hidden_units": hidden_units,
+            "feature_columns": self._feature_columns,
+            "optimizer": optimizer,
+            "activation_fn": activation_fn,
+            "dropout": dropout,
+            "gradient_clip_norm": gradient_clip_norm,
+            "embedding_lr_multipliers": embedding_lr_multipliers,
         },
         feature_engineering_fn=feature_engineering_fn)
 
@@ -618,8 +608,7 @@ class DNNRegressor(evaluable.Evaluable, trainable.Trainable):
     Returns:
       A `DNNRegressor` estimator.
     """
-    self._feature_columns = feature_columns
-
+    self._feature_columns = tuple(feature_columns or [])
     self._estimator = estimator.Estimator(
         model_fn=_dnn_model_fn,
         model_dir=model_dir,
@@ -630,12 +619,11 @@ class DNNRegressor(evaluable.Evaluable, trainable.Trainable):
                 weight_column_name=weight_column_name,
                 enable_centered_bias=enable_centered_bias),
             "hidden_units": hidden_units,
-            "feature_columns": feature_columns,
+            "feature_columns": self._feature_columns,
             "optimizer": optimizer,
             "activation_fn": activation_fn,
             "dropout": dropout,
             "gradient_clip_norm": gradient_clip_norm,
-            "num_ps_replicas": config.num_ps_replicas if config else 0,
             "embedding_lr_multipliers": embedding_lr_multipliers,
         },
         feature_engineering_fn=feature_engineering_fn)
