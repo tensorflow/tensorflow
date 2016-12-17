@@ -56,6 +56,7 @@ import tensorflow.python.ops.tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.util import nest
+from tensorflow.python.platform import test
 
 
 class Plus1RNNCell(rnn_cell_impl.RNNCell):
@@ -1225,7 +1226,7 @@ class TensorArrayOnCorrectDeviceTest(test.TestCase):
       return  # Test requires access to a GPU
 
     run_metadata = self._execute_rnn_on(
-        rnn_device="/cpu:0", cell_device=test.gpu_device_name())
+        rnn_device="/cpu:0", cell_device=tf.test.gpu_device_name())
     step_stats = run_metadata.step_stats
     ix = 0 if "gpu" in step_stats.dev_stats[0].device else 1
     gpu_stats = step_stats.dev_stats[ix].node_stats
@@ -1249,7 +1250,7 @@ class TensorArrayOnCorrectDeviceTest(test.TestCase):
       return  # Test requires access to a GPU
 
     run_metadata = self._execute_rnn_on(
-        rnn_device="/cpu:0", cell_device="/cpu:0", input_device=test.gpu_device_name())
+        rnn_device="/cpu:0", cell_device="/cpu:0", input_device=tf.test.gpu_device_name())
     step_stats = run_metadata.step_stats
     ix = 0 if "gpu" in step_stats.dev_stats[0].device else 1
     gpu_stats = step_stats.dev_stats[ix].node_stats
@@ -1266,7 +1267,7 @@ class TensorArrayOnCorrectDeviceTest(test.TestCase):
     if not test.is_gpu_available():
       return  # Test requires access to a GPU
 
-    run_metadata = self._execute_rnn_on(input_device=test.gpu_device_name())
+    run_metadata = self._execute_rnn_on(input_device=tf.test.gpu_device_name())
     step_stats = run_metadata.step_stats
     ix = 0 if "gpu" in step_stats.dev_stats[0].device else 1
     gpu_stats = step_stats.dev_stats[ix].node_stats

@@ -48,6 +48,7 @@ methods.  We will document these methods soon.
 @@get_temp_dir
 @@is_built_with_cuda
 @@is_gpu_available
+@@gpu_device_name
 
 ## Gradient checking
 
@@ -141,7 +142,7 @@ def gpu_device_name():
   """Returns the name of a GPU device if available or the empty string."""
   for x in _device_lib.list_local_devices():
     if x.device_type == 'GPU' or x.device_type == 'SYCL':
-      return x.name()
+      return x.name
   return ''
 
 
