@@ -98,10 +98,10 @@ class StudentTTest(tf.test.TestCase):
 
       expected_log_cdf = stats.t.logcdf(t, df_v, loc=mu_v, scale=sigma_v)
       expected_cdf = stats.t.cdf(t, df_v, loc=mu_v, scale=sigma_v)
-      self.assertAllClose(expected_log_cdf, log_cdf_values)
-      self.assertAllClose(np.log(expected_cdf), log_cdf_values)
-      self.assertAllClose(expected_cdf, cdf_values)
-      self.assertAllClose(np.exp(expected_log_cdf), cdf_values)
+      self.assertAllClose(expected_log_cdf, log_cdf_values, atol=0., rtol=1e-5)
+      self.assertAllClose(np.log(expected_cdf), log_cdf_values, atol=0., rtol=1e-5)
+      self.assertAllClose(expected_cdf, cdf_values, atol=0., rtol=1e-5)
+      self.assertAllClose(np.exp(expected_log_cdf), cdf_values, atol=0., rtol=1e-5)
 
   def testStudentEntropy(self):
     df_v = np.array([[2., 3., 7.]])  # 1x3
