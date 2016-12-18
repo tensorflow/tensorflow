@@ -172,6 +172,7 @@ void SYCLDeviceContext::CopyDeviceTensorToCPU(const Tensor *device_tensor,
       assert(false && "unsupported type");
     }
   }
+  device->eigen_sycl_device()->synchronize();
   done(Status::OK());
 }
 
