@@ -22,6 +22,7 @@ import math
 import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import distribution
+from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
 from tensorflow.python.framework import common_shapes
@@ -36,7 +37,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import special_math_ops
-
+from tensorflow import select, less
 
 class StudentT(distribution.Distribution):
   """Student's t distribution with degree-of-freedom parameter df.
@@ -212,9 +213,13 @@ class StudentT(distribution.Distribution):
             math_ops.pow(1. + math_ops.square(y) / self.df, -(0.5 + half_df)))
 
   def _cdf(self, x):
-    y = (x - self.mu) / self.sigma
-    beta_y = self.df / (math_ops.square(y) + self.df)
-    return 1. - 0.5 * math_ops.betainc(0.5 * self.df, 0.5, beta_y)
+    # we use the same notation here as in wikipedia for the
+    t = (x - self.mu)/self.sigma
+    x_t = self.df / (math_ops.square(t) + self.df)
+    # The cdf is defined differently for positive and negative t
+    positive_cdf = 1. - 0.5 * math_ops.betainc(0.5 * self.df, 0.5, x_t)
+    negative_cdf = 0.5 * math_ops.betainc(0.5 * self.df, 0.5, x_t)
+    return select(less(t, 0), negative_cdf, positive_cdf)
 
   def _entropy(self):
     u = array_ops.expand_dims(self.df * self._ones(), -1)
