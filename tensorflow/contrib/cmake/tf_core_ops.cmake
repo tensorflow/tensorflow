@@ -9,7 +9,6 @@ set(tf_op_lib_names
     "io_ops"
     "linalg_ops"
     "logging_ops"
-    "losses"
     "math_ops"
     "nn_ops"
     "no_op"
