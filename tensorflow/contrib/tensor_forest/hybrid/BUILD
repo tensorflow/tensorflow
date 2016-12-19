@@ -164,6 +164,7 @@ py_test(
     size = "small",
     srcs = ["python/kernel_tests/routing_function_op_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["manual"],
     deps = [
         ":ops_lib",
         "//tensorflow:tensorflow_py",
@@ -177,6 +178,7 @@ py_test(
     size = "small",
     srcs = ["python/kernel_tests/k_feature_routing_function_op_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["manual"],
     deps = [
         ":ops_lib",
         "//tensorflow:tensorflow_py",
