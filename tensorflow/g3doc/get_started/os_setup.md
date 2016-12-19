@@ -154,14 +154,14 @@ Both distributions include pip. To install the CPU-only version of
 TensorFlow, enter the following command at a command prompt:
 
 ```bat
-C:\> pip install --upgrade https://storage.googleapis.com/tensorflow/windows/cpu/tensorflow-0.12.0rc1-cp35-cp35m-win_amd64.whl
+C:\> pip install --upgrade https://storage.googleapis.com/tensorflow/windows/cpu/tensorflow-0.12.0rc0-cp35-cp35m-win_amd64.whl
 ```
 
 To install the GPU version of TensorFlow, enter the following command
 at a command prompt:
 
 ```bat
-C:\> pip install --upgrade https://storage.googleapis.com/tensorflow/windows/gpu/tensorflow_gpu-0.12.0rc1-cp35-cp35m-win_amd64.whl
+C:\> pip install --upgrade https://storage.googleapis.com/tensorflow/windows/gpu/tensorflow_gpu-0.12.0rc0-cp35-cp35m-win_amd64.whl
 ```
 
 You can now [test your installation](#test-the-tensorflow-installation).
