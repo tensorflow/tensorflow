@@ -2463,6 +2463,7 @@ py_test(
         ":platform_test",
         ":session",
         ":state_ops",
+        ":training",
         ":util",
         ":variables",
     ],

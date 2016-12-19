@@ -1314,9 +1314,9 @@ Status MasterSession::DoPartialRun(CallOptions* opts, const RunStepRequest* req,
             LOG(ERROR) << "Cleanup partition error: " << s;
           }
           rcg->Unref();
-          mutex_lock l(mu_);
-          partial_runs_.erase(prun_handle);
         });
+    mutex_lock l(mu_);
+    partial_runs_.erase(prun_handle);
   }
   return s;
 }
