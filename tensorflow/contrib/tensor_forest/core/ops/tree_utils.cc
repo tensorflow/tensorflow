@@ -289,15 +289,19 @@ bool BestSplitDominatesClassificationBootstrap(const Tensor& total_counts,
     p = p * 2;
   }
 
+  int worst_g1 = 0;
   for (int i = 0; i < bootstrap_samples; i++) {
     int g1 = BootstrapGini(n1, 2 * num_classes, ds1, rand);
-    int g2 = BootstrapGini(n2, 2 * num_classes, ds2, rand);
-    if (g2 <= g1) {
-      return false;
-    }
+    worst_g1 = std::max(worst_g1, g1);
   }
 
-  return true;
+  int best_g2 = 99;
+  for (int i = 0; i < bootstrap_samples; i++) {
+    int g2 = BootstrapGini(n2, 2 * num_classes, ds2, rand);
+    best_g2 = std::min(best_g2, g2);
+  }
+
+  return worst_g1 < best_g2;
 }
 
 bool BestSplitDominatesClassificationHoeffding(const Tensor& total_counts,
