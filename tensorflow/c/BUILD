@@ -25,6 +25,7 @@ tf_cuda_library(
     hdrs = ["c_api.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/cc/saved_model:loader",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -62,7 +63,10 @@ tf_cc_test(
     name = "c_api_test",
     size = "small",
     srcs = ["c_api_test.cc"],
-    data = [":test_op.so"],
+    data = [
+        ":test_op.so",
+        "//tensorflow/cc/saved_model:saved_model_half_plus_two",
+    ],
     linkopts = select({
         "//tensorflow:darwin": ["-headerpad_max_install_names"],
         "//conditions:default": [],
@@ -70,6 +74,9 @@ tf_cc_test(
     linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":c_api",
+        "//tensorflow/cc/saved_model:signature_constants",
+        "//tensorflow/cc/saved_model:tag_constants",
+        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:direct_session",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
