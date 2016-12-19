@@ -380,14 +380,14 @@ class SaverTest(tf.test.TestCase):
       return
     save_path = os.path.join(self.get_temp_dir(), "gpu")
     with tf.Session("", graph=tf.Graph()) as sess:
-      with sess.graph.device("/gpu:0"):
+      with sess.graph.device(test.get_device_name()):
         v0_1 = tf.Variable(123.45)
       save = tf.train.Saver({"v0": v0_1})
       tf.global_variables_initializer().run()
       save.save(sess, save_path)
 
     with tf.Session("", graph=tf.Graph()) as sess:
-      with sess.graph.device("/gpu:0"):
+      with sess.graph.device(test.gpu_device_name()):
         v0_2 = tf.Variable(543.21)
       save = tf.train.Saver({"v0": v0_2})
       tf.global_variables_initializer().run()
