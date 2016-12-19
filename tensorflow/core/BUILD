@@ -219,6 +219,7 @@ cc_library(
         "lib/hash/crc32c.h",
         "lib/histogram/histogram.h",
         "lib/io/buffered_inputstream.h",
+        "lib/io/compression.h",
         "lib/io/inputstream_interface.h",
         "lib/io/path.h",
         "lib/io/proto_encode_helper.h",
