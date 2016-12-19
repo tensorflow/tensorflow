@@ -42,6 +42,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import gfile
+from tensorflow.python.platform import test
 from tensorflow.python.training import saver as saver_module
 from tensorflow.python.util import compat
 
@@ -376,7 +377,7 @@ class SaverTest(tf.test.TestCase):
       save.restore(sess, save_path)
 
   def testGPU(self):
-    if not tf.test.is_gpu_available():
+    if not test.is_gpu_available():
       return
     save_path = os.path.join(self.get_temp_dir(), "gpu")
     with tf.Session("", graph=tf.Graph()) as sess:
