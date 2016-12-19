@@ -27,7 +27,7 @@ REGISTER3(BinaryOp, CPU, "FloorDiv", functor::floor_div_real, float,
                           Name("FloorDiv")                            \
                           .Device(DEVICE_SYCL)                        \
                           .TypeConstraint<TYPE>("T"),                 \
-                          BinaryOp<SYCLDevice, functor::floor_div<TYPE>>);
+                          BinaryOp<SYCLDevice, functor::floor_div_real<TYPE>>);
 REGISTER_SYCL_KERNEL(float)
 #undef REGISTER_SYCL_KERNEL
 #endif // TENSORFLOW_USE_SYCL
