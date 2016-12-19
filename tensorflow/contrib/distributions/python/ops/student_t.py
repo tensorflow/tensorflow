@@ -37,7 +37,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import special_math_ops
-from tensorflow import select, less
 
 class StudentT(distribution.Distribution):
   """Student's t distribution with degree-of-freedom parameter df.
