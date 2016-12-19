@@ -175,11 +175,9 @@ def _zero_debias(unbiased_var, value, decay):
       with ops.control_dependencies(None):
         biased_initializer = init_ops.zeros_initializer(
             dtype=unbiased_var.dtype)(unbiased_var.get_shape())
-        local_step_initializer = init_ops.ones_initializer()
+        local_step_initializer = init_ops.zeros_initializer()
       biased_var = variable_scope.get_variable(
           "biased", initializer=biased_initializer, trainable=False)
-      # Initializing the local_step to `0` would cause problems with the
-      # debiasing equation, so we instead initialize to `1`.
       local_step = variable_scope.get_variable(
           "local_step",
           shape=[],

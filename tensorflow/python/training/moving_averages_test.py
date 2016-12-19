@@ -55,7 +55,7 @@ class MovingAveragesTest(test.TestCase):
       self.assertAllClose([0.0, 0.0], var.eval())
       assign.op.run()
       self.assertAllClose([
-          1.0 * (1.0 - 0.25) / (1 - 0.25**2), 2.0 * (1.0 - 0.25) / (1 - 0.25**2)
+          1.0 * (1.0 - 0.25) / (1 - 0.25), 2.0 * (1.0 - 0.25) / (1 - 0.25)
       ], var.eval())
 
   def testWeightedMovingAverage(self):
@@ -96,7 +96,7 @@ class ExponentialMovingAverageTest(test.TestCase):
 
     def _Scale(dk, steps):
       if ema._zero_debias:
-        return 1 - dk**(steps + 1)
+        return 1 - dk**steps
       else:
         return 1
 
