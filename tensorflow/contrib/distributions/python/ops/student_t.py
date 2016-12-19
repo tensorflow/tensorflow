@@ -21,6 +21,8 @@ from __future__ import print_function
 import math
 import numpy as np
 
+import tensorflow as tf
+
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import distribution_util
@@ -37,6 +39,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import special_math_ops
+
 
 class StudentT(distribution.Distribution):
   """Student's t distribution with degree-of-freedom parameter df.
@@ -218,7 +221,7 @@ class StudentT(distribution.Distribution):
     # The cdf is defined differently for positive and negative t
     positive_cdf = 1. - 0.5 * math_ops.betainc(0.5 * self.df, 0.5, x_t)
     negative_cdf = 0.5 * math_ops.betainc(0.5 * self.df, 0.5, x_t)
-    return select(less(t, 0), negative_cdf, positive_cdf)
+    return tf.select(tf.less(t, 0), negative_cdf, positive_cdf)
 
   def _entropy(self):
     u = array_ops.expand_dims(self.df * self._ones(), -1)
