@@ -2012,7 +2012,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "scatter_ops_test",
-    size = "large",  # NOTE: This is not run.
+    size = "large",  # NOTE: This is not run by default.
     srcs = ["scatter_ops_test.py"],
     additional_deps = [
         "//tensorflow/python:client_testlib",
@@ -2115,7 +2115,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "large_concat_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["large_concat_op_test.py"],
     additional_deps = [
         "//tensorflow/python:array_ops",
