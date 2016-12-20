@@ -94,11 +94,11 @@ def _is_graph_file(file_name):
   return file_name.startswith("_tfdbg_graph_")
 
 
-def _get_node_name(element_name):
+def get_node_name(element_name):
   return element_name.split(":")[0] if ":" in element_name else element_name
 
 
-def _get_output_slot(element_name):
+def get_output_slot(element_name):
   """Get the output slot number from the name of a graph element.
 
   If element_name is a node name without output slot at the end, 0 will be
@@ -656,7 +656,7 @@ class DebugDumpDir(object):
     for node in self._node_inputs:
       inputs = self._node_inputs[node]
       for inp in inputs:
-        inp = _get_node_name(inp)
+        inp = get_node_name(inp)
         if inp not in self._node_recipients:
           self._node_recipients[inp] = []
         self._node_recipients[inp].append(node)
@@ -699,8 +699,8 @@ class DebugDumpDir(object):
       pending_inputs[node] = []
       inputs = self._node_inputs[node]
       for inp in inputs:
-        inp_node = _get_node_name(inp)
-        inp_output_slot = _get_output_slot(inp)
+        inp_node = get_node_name(inp)
+        inp_output_slot = get_output_slot(inp)
         if (inp_node in self._debug_watches and
             inp_output_slot in self._debug_watches[inp_node] and
             (inp_node, inp_output_slot) not in pending_inputs[node]):
@@ -849,7 +849,7 @@ class DebugDumpDir(object):
       Args:
         node: Name of the node, as a str.
       """
-      node = _get_node_name(node)
+      node = get_node_name(node)
 
       # Stop the tracing at a Merge op, as it is generally impossible to infer
       # outside the runtime which input to the Merge op is alive.
