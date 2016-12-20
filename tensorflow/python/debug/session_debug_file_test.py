@@ -41,7 +41,7 @@ class SessionDebugTest(session_debug_testlib.SessionDebugTestBase):
     else:
       return os.path.join(self._dump_root, "run_%d" % run_number)
 
-  def testDifferentWatchesOnDifferentRuns(self):
+  def testAllowsDifferentWatchesOnDifferentRuns(self):
     """Test watching different tensors on different runs of the same graph."""
 
     with session.Session() as sess:

@@ -24,7 +24,6 @@ import numpy as np
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -164,11 +163,15 @@ class StudentT(distribution.Distribution):
     return self._sigma
 
   def _batch_shape(self):
-    return array_ops.shape(self.df + self.mu + self.sigma)
+    return array_ops.broadcast_dynamic_shape(
+        array_ops.shape(self.df),
+        array_ops.broadcast_dynamic_shape(
+            array_ops.shape(self.mu),
+            array_ops.shape(self.sigma)))
 
   def _get_batch_shape(self):
-    return common_shapes.broadcast_shape(
-        common_shapes.broadcast_shape(
+    return array_ops.broadcast_static_shape(
+        array_ops.broadcast_static_shape(
             self.df.get_shape(),
             self.mu.get_shape()),
         self.sigma.get_shape())
@@ -283,6 +286,8 @@ class StudentT(distribution.Distribution):
     return array_ops.identity(self.mu)
 
   def _ones(self):
+    if self.get_batch_shape().is_fully_defined():
+      return array_ops.ones(self.get_batch_shape(), dtype=self.dtype)
     return array_ops.ones(self.batch_shape(), dtype=self.dtype)
 
 

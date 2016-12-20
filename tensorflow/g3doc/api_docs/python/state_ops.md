@@ -411,10 +411,6 @@ containing the absolute value of each element in `x`. For example, if x is
 an input element and y is an output element, this operation computes
 \\(y = |x|\\).
 
-See [`tf.complex_abs()`](#tf_complex_abs) to compute the absolute value of a
-complex
-number.
-
 ##### Args:
 
 

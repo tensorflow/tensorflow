@@ -1260,6 +1260,40 @@ class ComputeWeightedLossTest(test.TestCase):
             np.mean(weights1x1x4 * self._raw_losses) * shape[0] * shape[1],
             weighted_loss.eval())
 
+  def test3x2x1Weight(self):
+    with ops.Graph().as_default():
+      self.assertEqual(0, len(loss_ops.get_losses()))
+      weights3x2x1 = (
+          ((17.0,), (3.0,)),
+          ((5.0,), (31.0,)),
+          ((2.0,), (7.0,)),
+      )
+      weighted_loss = loss_ops.compute_weighted_loss(
+          self._raw_losses, weights=weights3x2x1)
+      self.assertEqual(1, len(loss_ops.get_losses()))
+      with self.test_session():
+        self.assertAllClose(
+            np.mean(weights3x2x1 * self._raw_losses),
+            weighted_loss.eval())
+
+  # TODO(b/33556118): Bug: this should be averaged across all dimensions, not
+  # summed across dim 1.
+  def test3x1x4Weight(self):
+    with ops.Graph().as_default():
+      self.assertEqual(0, len(loss_ops.get_losses()))
+      weights3x1x4 = (
+          ((17.0, 13.0, 2.0, 5.0),),
+          ((5.0, 31.0, 17.0, 5.0),),
+          ((7.0, 3.0, 11.0, 5.0),),
+      )
+      weighted_loss = loss_ops.compute_weighted_loss(
+          self._raw_losses, weights=weights3x1x4)
+      self.assertEqual(1, len(loss_ops.get_losses()))
+      with self.test_session():
+        self.assertAllClose(
+            np.mean(weights3x1x4 * self._raw_losses) * self._shape[1],
+            weighted_loss.eval())
+
   # TODO(b/33556118): Bug: this should be averaged across all dimensions, not
   # summed across dim 0.
   def test1x2x4Weight(self):

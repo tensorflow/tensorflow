@@ -88,10 +88,8 @@ Status SYCLDevice::MakeTensorFromProto(const TensorProto &tensor_proto,
     *tensor = parsed;
   } else {
     Tensor copy(GetAllocator(alloc_attrs), parsed.dtype(), parsed.shape());
-    device_context_->CopyCPUTensorToDevice(&parsed, this, &copy,
-                                           [&status](const Status &s) {
-                                             status = s;
-                                           });
+    device_context_->CopyCPUTensorToDevice(
+        &parsed, this, &copy, [&status](const Status &s) { status = s; });
     *tensor = copy;
   }
   return status;
@@ -115,7 +113,6 @@ Status SYCLDevice::Sync() {
   return Status::OK();
 }
 
+}  // namespace tensorflow
 
-} // namespace tensorflow
-
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL

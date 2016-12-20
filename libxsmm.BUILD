@@ -2,6 +2,7 @@
 #    LIBXSMM: Library for small matrix-matrix multiplications targeting Intel Architecture (x86).
 
 licenses(["notice"])  # BSD 3-clause
+
 exports_files(["LICENSE"])
 
 # Arguments to ./scripts/libxsmm_interface.py, see that file for detailed description.

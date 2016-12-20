@@ -830,6 +830,25 @@ typedef struct TF_Session TF_Session;
 extern TF_Session* TF_NewSession(TF_Graph* graph, const TF_SessionOptions* opts,
                                  TF_Status* status);
 
+// This function creates a new TF_Session (which is created on success) using
+// `session_options`, and then initializes state (restoring tensors and other
+// assets) using `run_options`.
+//
+// Any NULL and non-NULL value combinations for (`run_options, `meta_graph_def`)
+// are valid.
+//
+// - `export_dir` must be set to the path of the exported SavedModel.
+// - `tags` must include the set of tags used to identify one MetaGraphDef in
+//    the SavedModel.
+// - `graph` must be a graph newly allocated with TF_NewGraph().
+//
+// If successful, populates `graph` with the contents of the Graph and
+// `meta_graph_def` with the MetaGraphDef of the loaded model.
+TF_Session* TF_LoadSessionFromSavedModel(
+    const TF_SessionOptions* session_options, const TF_Buffer* run_options,
+    const char* export_dir, const char* const* tags, int tags_len,
+    TF_Graph* graph, TF_Buffer* meta_graph_def, TF_Status* status);
+
 // Close a session.
 //
 // Contacts any other processes associated with the session, if applicable.

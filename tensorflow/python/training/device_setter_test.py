@@ -13,25 +13,32 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for device function for replicated training."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
+from tensorflow.python.training import device_setter
+from tensorflow.python.training import server_lib
 
 
-class DeviceSetterTest(tf.test.TestCase):
+class DeviceSetterTest(test.TestCase):
 
-  _cluster_spec = tf.train.ClusterSpec({
+  _cluster_spec = server_lib.ClusterSpec({
       "ps": ["ps0:2222", "ps1:2222"],
-      "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]})
+      "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]
+  })
 
   def testCPUOverride(self):
-    with tf.device(tf.train.replica_device_setter(cluster=self._cluster_spec)):
-      with tf.device("/cpu:0"):
-        v = tf.Variable([1, 2])
-      w = tf.Variable([2, 1])
-      with tf.device("/cpu:0"):
+    with ops.device(
+        device_setter.replica_device_setter(cluster=self._cluster_spec)):
+      with ops.device("/cpu:0"):
+        v = variables.Variable([1, 2])
+      w = variables.Variable([2, 1])
+      with ops.device("/cpu:0"):
         a = v + w
       self.assertDeviceEqual("/job:ps/task:0/cpu:0", v.device)
       self.assertDeviceEqual("/job:ps/task:0/cpu:0", v.initializer.device)
@@ -40,9 +47,10 @@ class DeviceSetterTest(tf.test.TestCase):
       self.assertDeviceEqual("/job:worker/cpu:0", a.device)
 
   def testPS2TasksWithClusterSpecClass(self):
-    with tf.device(tf.train.replica_device_setter(cluster=self._cluster_spec)):
-      v = tf.Variable([1, 2])
-      w = tf.Variable([2, 1])
+    with ops.device(
+        device_setter.replica_device_setter(cluster=self._cluster_spec)):
+      v = variables.Variable([1, 2])
+      w = variables.Variable([2, 1])
       a = v + w
       self.assertDeviceEqual("/job:ps/task:0", v.device)
       self.assertDeviceEqual("/job:ps/task:0", v.initializer.device)
@@ -51,10 +59,11 @@ class DeviceSetterTest(tf.test.TestCase):
       self.assertDeviceEqual("/job:worker", a.device)
 
   def testPS2TasksWithClusterSpecDict(self):
-    with tf.device(tf.train.replica_device_setter(
-        cluster=self._cluster_spec.as_dict())):
-      v = tf.Variable([1, 2])
-      w = tf.Variable([2, 1])
+    with ops.device(
+        device_setter.replica_device_setter(cluster=self._cluster_spec.as_dict(
+        ))):
+      v = variables.Variable([1, 2])
+      w = variables.Variable([2, 1])
       a = v + w
       self.assertDeviceEqual("/job:ps/task:0", v.device)
       self.assertDeviceEqual("/job:ps/task:0", v.initializer.device)
@@ -63,10 +72,11 @@ class DeviceSetterTest(tf.test.TestCase):
       self.assertDeviceEqual("/job:worker", a.device)
 
   def testPS2TasksWithClusterDef(self):
-    with tf.device(tf.train.replica_device_setter(
-        cluster=self._cluster_spec.as_cluster_def())):
-      v = tf.Variable([1, 2])
-      w = tf.Variable([2, 1])
+    with ops.device(
+        device_setter.replica_device_setter(
+            cluster=self._cluster_spec.as_cluster_def())):
+      v = variables.Variable([1, 2])
+      w = variables.Variable([2, 1])
       a = v + w
       self.assertDeviceEqual("/job:ps/task:0", v.device)
       self.assertDeviceEqual("/job:ps/task:0", v.initializer.device)
@@ -75,15 +85,18 @@ class DeviceSetterTest(tf.test.TestCase):
       self.assertDeviceEqual("/job:worker", a.device)
 
   def testPS2TasksWithDevice(self):
-    cluster_spec = tf.train.ClusterSpec({
+    cluster_spec = server_lib.ClusterSpec({
         "sun": ["sun0:2222", "sun1:2222", "sun2:2222"],
-        "moon": ["moon0:2222", "moon1:2222"]})
+        "moon": ["moon0:2222", "moon1:2222"]
+    })
 
-    with tf.device(tf.train.replica_device_setter(
-        ps_device="/job:moon", worker_device="/job:sun",
-        cluster=cluster_spec.as_cluster_def())):
-      v = tf.Variable([1, 2])
-      w = tf.Variable([2, 1])
+    with ops.device(
+        device_setter.replica_device_setter(
+            ps_device="/job:moon",
+            worker_device="/job:sun",
+            cluster=cluster_spec.as_cluster_def())):
+      v = variables.Variable([1, 2])
+      w = variables.Variable([2, 1])
       a = v + w
       self.assertDeviceEqual("/job:moon/task:0", v.device)
       self.assertDeviceEqual("/job:moon/task:0", v.initializer.device)
@@ -92,15 +105,18 @@ class DeviceSetterTest(tf.test.TestCase):
       self.assertDeviceEqual("/job:sun", a.device)
 
   def testPS2TasksWithCPUConstraint(self):
-    cluster_spec = tf.train.ClusterSpec({
+    cluster_spec = server_lib.ClusterSpec({
         "sun": ["sun0:2222", "sun1:2222", "sun2:2222"],
-        "moon": ["moon0:2222", "moon1:2222"]})
+        "moon": ["moon0:2222", "moon1:2222"]
+    })
 
-    with tf.device(tf.train.replica_device_setter(
-        ps_device="/job:moon/cpu:0", worker_device="/job:sun",
-        cluster=cluster_spec.as_cluster_def())):
-      v = tf.Variable([1, 2])
-      w = tf.Variable([2, 1])
+    with ops.device(
+        device_setter.replica_device_setter(
+            ps_device="/job:moon/cpu:0",
+            worker_device="/job:sun",
+            cluster=cluster_spec.as_cluster_def())):
+      v = variables.Variable([1, 2])
+      w = variables.Variable([2, 1])
       a = v + w
       self.assertDeviceEqual("/job:moon/task:0/cpu:0", v.device)
       self.assertDeviceEqual("/job:moon/task:0/cpu:0", v.initializer.device)
@@ -110,4 +126,4 @@ class DeviceSetterTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

@@ -47,6 +47,7 @@ from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
@@ -80,6 +81,16 @@ def check_consumers(graph):
     if len(k.consumers()) != v:
       return False
   return True
+
+
+def all_fetchables():
+  tensor_names = []
+  graph = ops.get_default_graph()
+  for op in graph.get_operations():
+    for t in op.outputs:
+      if graph.is_fetchable(t):
+        tensor_names.append(t.name)
+  return tensor_names
 
 
 def opt_cfg():
@@ -300,6 +311,16 @@ class ControlFlowTest(test.TestCase):
     with self.assertRaisesRegexp(TypeError, "must not be a Python bool"):
       _ = control_flow_ops.cond(False, fn1, fn2)
 
+  def testFetchables(self):
+    with self.test_session() as sess:
+      x = array_ops.placeholder(dtypes.float32)
+      control_flow_ops.cond(constant_op.constant(True),
+                            lambda: x + 2,
+                            lambda: x + 0)
+      tensor_names = all_fetchables()
+      for name in tensor_names:
+        sess.run(name, feed_dict={x: 3})
+
   def testCondIndexedSlices(self):
     with self.test_session():
       values = constant_op.constant(10)
@@ -332,6 +353,18 @@ class ControlFlowTest(test.TestCase):
       self.assertAllEqual([3.0, 5.0], r.values.eval())
       self.assertAllEqual([[1], [4]], r.indices.eval())
       self.assertAllEqual(r.values.get_shape(), (2,))
+
+  def testCondResource(self):
+    with self.test_session():
+      rv = resource_variable_ops.ResourceVariable(True)
+      variables.global_variables_initializer().run()
+      t = ops.convert_to_tensor(1.0)
+      def case():
+        assign = resource_variable_ops.assign_variable_op(
+            rv.handle, False)
+        with ops.control_dependencies([assign]):
+          return array_ops.identity(t)
+      self.assertEqual(1.0, control_flow_ops.cond(rv, case, lambda: t).eval())
 
   def testCondIndexedSlicesDifferentTypes(self):
     with self.test_session():
@@ -477,6 +510,19 @@ class ControlFlowTest(test.TestCase):
       false_fn = lambda: constant_op.constant([2.0])
       r = control_flow_ops.cond(constant_op.constant(False), true_fn, false_fn)
       self.assertAllEqual([2.0], r.eval())
+
+  def testCondWithControl(self):
+    with self.test_session() as sess:
+      control_holder = array_ops.placeholder(dtypes.float32, shape=())
+      a = constant_op.constant(3)
+      def true_branch():
+        with ops.control_dependencies([control_holder]):
+          _ = a + 1
+        return a + 2
+      r = control_flow_ops.cond(constant_op.constant(True),
+                                true_branch,
+                                lambda: constant_op.constant(1))
+      self.assertEqual(5, r.eval())
 
   def testUninitializedRefIdentity(self):
     with self.test_session() as sess:
@@ -1404,6 +1450,27 @@ class ControlFlowTest(test.TestCase):
     self._testWhileGrad_Mul(use_gpu=False, p_iters=10)
     self._testWhileGrad_Mul(use_gpu=True, p_iters=1)
     self._testWhileGrad_Mul(use_gpu=True, p_iters=10)
+
+  def _testNestedWhileCondWhileGrad(self, use_gpu):
+    with self.test_session(use_gpu=use_gpu):
+      v = constant_op.constant(1.0)
+      def inner_loop(s):
+        z = constant_op.constant(0)
+        c = lambda i, x: math_ops.less(i, 4)
+        b = lambda i, x: [math_ops.add(i, 1), math_ops.mul(x, 2.0)]
+        return control_flow_ops.while_loop(c, b, [z, s])
+      c = lambda x: math_ops.less(x, 128.0)
+      def b(x):
+        return control_flow_ops.cond(constant_op.constant(True),
+                                     lambda: math_ops.square(inner_loop(x)[1]),
+                                     lambda: math_ops.mul(x, 2.0))
+      r = control_flow_ops.while_loop(c, b, [v])
+      r = gradients_impl.gradients(r, v)[0]
+      self.assertAllClose(512.0, r.eval())
+
+  def testNestedWhileCondWhileGrad(self):
+    self._testNestedWhileCondWhileGrad(use_gpu=False)
+    self._testNestedWhileCondWhileGrad(use_gpu=True)
 
   def testWhileGrad_Variable(self):
     with self.test_session():
