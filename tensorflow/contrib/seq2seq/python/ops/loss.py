@@ -74,7 +74,7 @@ def sequence_loss_by_example(logits, targets, weights,
       batch_size = logits_shape[0]
       emb_dim = logits_shape[-1]
       #need reshape because unlike sparse_softmax_cross_entropy_with_logits, 
-      #tf.nn.sampled_softmax_loss now only accept [batch_size, dim] as logtis input
+      #tf.nn.sampled_softmax_loss now only accept 2d [batch_size, dim] as logits input
       logits = array_ops.reshape(logits, [-1, emb_dim])
       targets = array_ops.reshape(targets, [-1, 1])
       #croosents [batch_size * num_steps]
