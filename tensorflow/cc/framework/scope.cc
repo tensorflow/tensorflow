@@ -29,7 +29,8 @@ Scope::Scope(Graph* graph, Status* status, Scope::NameMap* name_map,
       status_(status),
       name_map_(name_map),
       refiner_(refiner),
-      scope_used_(nullptr) {}
+      scope_used_(nullptr),
+      colocation_constraints_() {}
 
 Scope Scope::NewRootScope() {
   Graph* graph = new Graph(OpRegistry::Global());

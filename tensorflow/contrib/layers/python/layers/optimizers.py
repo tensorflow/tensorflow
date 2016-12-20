@@ -295,8 +295,11 @@ def _adaptive_max_norm(norm, std_factor, decay, global_step, epsilon, name):
 
     def moving_average(name, value, decay):
       moving_average_variable = vs.get_variable(
-          name, shape=value.get_shape(), dtype=value.dtype,
-          initializer=init_ops.zeros_initializer, trainable=False)
+          name,
+          shape=value.get_shape(),
+          dtype=value.dtype,
+          initializer=init_ops.zeros_initializer(),
+          trainable=False)
       return moving_averages.assign_moving_average(
           moving_average_variable, value, decay, zero_debias=False)
 
@@ -360,7 +363,7 @@ def adaptive_clipping_fn(std_factor=2.,
       summary.scalar("global_norm/adaptive_max_gradient_norm", max_norm)
 
     # factor will be 1. if norm is smaller than max_norm
-    factor = math_ops.select(norm < max_norm,
+    factor = array_ops.where(norm < max_norm,
                              array_ops.ones_like(norm),
                              math_ops.exp(log_mean) / norm)
 

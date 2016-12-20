@@ -100,6 +100,11 @@ Status RunBenchmark(const std::vector<InputLayerInfo>& inputs,
         int_tensor = int_tensor.constant(0.0);
         break;
       }
+      case DT_UINT8: {
+        auto int_tensor = input_tensor.flat<uint8>();
+        int_tensor = int_tensor.constant(0.0);
+        break;
+      }
       default:
         LOG(FATAL) << "Unsupported input type: " << input.data_type;
     }

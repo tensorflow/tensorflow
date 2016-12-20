@@ -62,7 +62,7 @@ class GRUBlockCellTest(tf.test.TestCase):
 
       # Output from the basic GRU cell implementation.
       with tf.variable_scope("basic", initializer=initializer):
-        output = tf.nn.rnn_cell.GRUCell(cell_size)(x, h)
+        output = tf.contrib.rnn.GRUCell(cell_size)(x, h)
         sess.run([tf.global_variables_initializer()])
         basic_res = sess.run([output], {x: x_value, h: h_value})
 
@@ -112,7 +112,7 @@ class GRUBlockCellTest(tf.test.TestCase):
 
       # Output from the basic GRU cell implementation.
       with tf.variable_scope("basic", initializer=initializer):
-        cell = tf.nn.rnn_cell.GRUCell(cell_size)
+        cell = tf.contrib.rnn.GRUCell(cell_size)
         outputs_dynamic, state_dynamic = tf.nn.dynamic_rnn(
             cell,
             inputs=concat_x,
@@ -158,7 +158,7 @@ class GRUBlockCellTest(tf.test.TestCase):
         output = gru_ops.GRUBlockCell(cell_size)(x, h)
         sess.run([tf.global_variables_initializer()])
 
-        all_variables = tf.all_variables()[0:4]
+        all_variables = tf.global_variables()[0:4]
         [w_ru, b_ru, w_c, b_c] = all_variables
 
         d_new_h_wrt_x = tf.gradients([output], x)
@@ -175,10 +175,10 @@ class GRUBlockCellTest(tf.test.TestCase):
 
       # Gradients from the basic GRU cell implementation.
       with tf.variable_scope("basic", initializer=initializer):
-        output = tf.nn.rnn_cell.GRUCell(cell_size)(x, h)
+        output = tf.contrib.rnn.GRUCell(cell_size)(x, h)
         sess.run([tf.global_variables_initializer()])
 
-        all_variables = tf.all_variables()[4:8]
+        all_variables = tf.global_variables()[4:8]
         [w_ru, b_ru, w_c, b_c] = all_variables
 
         d_new_h_wrt_x = tf.gradients([output], x)
@@ -239,7 +239,7 @@ class GRUBlockCellTest(tf.test.TestCase):
 
       # Gradients from the basic GRU cell implementation.
       with tf.variable_scope("basic", initializer=initializer):
-        cell = tf.nn.rnn_cell.GRUCell(cell_size)
+        cell = tf.contrib.rnn.GRUCell(cell_size)
 
         outputs_dynamic, _ = tf.nn.dynamic_rnn(
             cell,
@@ -281,7 +281,7 @@ class GRUBlockCellTest(tf.test.TestCase):
 
       sess.run([tf.global_variables_initializer()])
 
-      all_variables = tf.all_variables()
+      all_variables = tf.global_variables()
 
       [w_ru, b_ru, w_c, b_c] = all_variables[:4]
 
@@ -358,7 +358,7 @@ def training_gru_block_vs_gru_cell(batch_size,
 
       # Output from the basic GRU cell implementation.
       with tf.variable_scope("basic", initializer=initializer):
-        cell = tf.nn.rnn_cell.GRUCell(cell_size)
+        cell = tf.contrib.rnn.GRUCell(cell_size)
 
         outputs_dynamic, _ = tf.nn.dynamic_rnn(
             cell,
@@ -427,7 +427,7 @@ def inference_gru_block_vs_gru_cell(batch_size,
 
       # Output from the basic GRU cell implementation.
       with tf.variable_scope("basic", initializer=initializer):
-        cell = tf.nn.rnn_cell.GRUCell(cell_size)
+        cell = tf.contrib.rnn.GRUCell(cell_size)
         outputs_dynamic, _ = tf.nn.dynamic_rnn(
             cell,
             inputs=concat_x,
@@ -474,7 +474,7 @@ def single_bprop_step_gru_block_vs_gru_cell(batch_size,
 
       # Output from the basic GRU cell implementation.
       with tf.variable_scope("basic", initializer=initializer):
-        output = tf.nn.rnn_cell.GRUCell(cell_size)(tf.identity(x),
+        output = tf.contrib.rnn.GRUCell(cell_size)(tf.identity(x),
                                                    tf.identity(h))
         sess.run([tf.global_variables_initializer()])
         grad_output_wrt_input = tf.gradients([output], h)

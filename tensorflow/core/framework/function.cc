@@ -169,7 +169,7 @@ typedef std::unordered_map<string, NameInfoItem> NameInfoIndex;
 Status AddArgName(NameInfoIndex* name_info, const string& arg,
                   const NameInfoItem& item) {
   if (!name_info->insert({arg, item}).second) {
-    return errors::InvalidArgument("Duplicated arg name.");
+    return errors::InvalidArgument("Duplicated arg name: ", arg);
   }
   return Status::OK();
 }
@@ -206,7 +206,7 @@ Status BuildInputArgIndex(const OpDef::ArgDef& arg_def,
 Status AddRetName(NameInfoIndex* name_info, const string& ret,
                   const NameInfoItem& item) {
   if (!name_info->insert({ret, item}).second) {
-    return errors::InvalidArgument("Duplicated ret name.");
+    return errors::InvalidArgument("Duplicated ret name: ", ret);
   }
   return Status::OK();
 }
@@ -741,6 +741,8 @@ Status InstantiateFunction(const FunctionDef& fdef,
                            const InstantiateAttrValueMap& attr_values,
                            GetFunctionSignature get_function,
                            InstantiationResult* result) {
+  VLOG(3) << "Instantiation Function: " << Print(fdef);
+
   const OpDef& sig = fdef.signature();
   GraphDef* gdef = &result->gdef;
   gdef->Clear();

@@ -408,7 +408,7 @@ class GridRNNCellTest(tf.test.TestCase):
               tf.float32, shape=(batch_size, input_size))
       ]
 
-      outputs, state = tf.nn.rnn(cell, inputs, dtype=tf.float32)
+      outputs, state = tf.contrib.rnn.static_rnn(cell, inputs, dtype=tf.float32)
 
     self.assertEqual(len(outputs), len(inputs))
     self.assertEqual(state.get_shape(), (batch_size, 8))
@@ -441,7 +441,7 @@ class GridRNNCellTest(tf.test.TestCase):
               tf.float32, shape=(batch_size, input_size))
       ]
 
-      outputs, state = tf.nn.rnn(cell, inputs, dtype=tf.float32)
+      outputs, state = tf.contrib.rnn.static_rnn(cell, inputs, dtype=tf.float32)
 
     self.assertEqual(len(outputs), len(inputs))
     self.assertEqual(state.get_shape(), (batch_size, 4))
@@ -474,7 +474,7 @@ class GridRNNCellTest(tf.test.TestCase):
               tf.float32, shape=(batch_size, input_size))
       ]
 
-      outputs, state = tf.nn.rnn(cell, inputs, dtype=tf.float32)
+      outputs, state = tf.contrib.rnn.static_rnn(cell, inputs, dtype=tf.float32)
 
     self.assertEqual(len(outputs), len(inputs))
     self.assertEqual(state.get_shape(), (batch_size, 8))
@@ -505,7 +505,7 @@ class GridRNNCellTest(tf.test.TestCase):
       inputs = ([tf.placeholder(tf.float32, shape=(batch_size, input_size))]
                 + (max_length - 1) * [tf.zeros([batch_size, input_size])])
 
-      outputs, state = tf.nn.rnn(cell, inputs, dtype=tf.float32)
+      outputs, state = tf.contrib.rnn.static_rnn(cell, inputs, dtype=tf.float32)
 
     self.assertEqual(len(outputs), len(inputs))
     self.assertEqual(state.get_shape(), (batch_size, 4))

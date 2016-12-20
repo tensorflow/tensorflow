@@ -192,7 +192,7 @@ class SwitchTestCase(TensorFlowTestCase):
 
         _, outputs = tf.while_loop(Cond, Body, [initial_i, initial_outputs])
 
-        outputs = tf.reduce_sum(outputs.pack())
+        outputs = tf.reduce_sum(outputs.stack())
         r = tf.gradients([outputs], [inputs])[0]
         grad_wr_inputs = ops.convert_to_tensor(r)
         o, grad = sess.run([outputs, grad_wr_inputs],
@@ -218,7 +218,7 @@ class SwitchTestCase(TensorFlowTestCase):
 
         _, outputs = tf.while_loop(Cond, Body, [initial_i, initial_outputs])
 
-        outputs = tf.reduce_sum(outputs.pack())
+        outputs = tf.reduce_sum(outputs.stack())
         r = tf.gradients([outputs], [inputs])[0]
         grad_wr_inputs = ops.convert_to_tensor(r)
         o, grad = sess.run([outputs, grad_wr_inputs],

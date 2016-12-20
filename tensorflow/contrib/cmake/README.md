@@ -13,11 +13,35 @@ Linux.
 Current Status
 --------------
 
+CMake can be used to build TensorFlow on Windows. See the [getting started documentation](https://www.tensorflow.org/get_started/os_setup.html#pip-installation-on-windows)
+for instructions on how to install a pre-built TensorFlow package on Windows.
+
+### Current known limitations
+* It is not possible to load a custom Op library.
+* GCS and HDFS file systems are not supported.
+* The following Ops are not currently implemented:
+ - Dequantize
+ - QuantizeAndDequantize
+ - QuantizedAvgPool
+ - QuantizedBatchNomWithGlobalNormalization
+ - QuantizedBiasAdd 
+ - QuantizedConcat
+ - QuantizedConv2D
+ - QuantizedMatmul
+ - QuantizedMaxPoo
+ - QuantizeDownAndShrinkRange
+ - QuantizedRelu
+ - QuantizedRelu6
+ - QuantizedReshape
+ - QuantizeV2
+ - RequantizationRange
+ - Requantize
+
+## Building with CMake
+
 The CMake files in this directory can build the core TensorFlow runtime, an
 example C++ binary, and a PIP package containing the runtime and Python
 bindings.
-
-Note: Windows support is in an **alpha** state, and we welcome your feedback.
 
 ### Pre-requisites
 
@@ -46,6 +70,8 @@ Note: Windows support is in an **alpha** state, and we welcome your feedback.
   - [swigwin-3.0.10](http://www.swig.org/download.html)
   - [NVidia CUDA Toolkit 8.0] (https://developer.nvidia.com/cuda-downloads)
   - [NVidia CUDNN 5.1] (https://developer.nvidia.com/cudnn)
+  - [CMake 3.6](https://cmake.org/files/v3.6/cmake-3.6.3-win64-x64.msi)
+  
 * Ubuntu 14.04
   - Makefile generator
   - Docker 1.9.1 (for automated testing)

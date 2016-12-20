@@ -239,6 +239,8 @@ TEST(Split, Basic) {
   EXPECT_EQ(str_util::Join(str_util::Split("a,b,c", ','), "|"), "a|b|c");
   EXPECT_EQ(str_util::Join(str_util::Split("a,,,b,,c,", ','), "|"),
             "a|||b||c|");
+  EXPECT_EQ(str_util::Join(str_util::Split("a!,!b,!c,", ",!"), "|"),
+            "a|||b||c|");
   EXPECT_EQ(str_util::Join(
                 str_util::Split("a,,,b,,c,", ',', str_util::SkipEmpty()), "|"),
             "a|b|c");
@@ -246,6 +248,10 @@ TEST(Split, Basic) {
       str_util::Join(
           str_util::Split("a,  ,b,,c,", ',', str_util::SkipWhitespace()), "|"),
       "a|b|c");
+  EXPECT_EQ(str_util::Join(str_util::Split("a.  !b,;c,", ".,;!",
+                                           str_util::SkipWhitespace()),
+                           "|"),
+            "a|b|c");
 }
 
 TEST(SplitAndParseAsInts, Int32) {

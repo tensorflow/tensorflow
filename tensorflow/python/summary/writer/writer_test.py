@@ -83,7 +83,7 @@ class SummaryWriterTestCase(tf.test.TestCase):
 
   def testAddingSummaryGraphAndRunMetadata(self):
     test_dir = self._CleanTestDir("basics")
-    sw = tf.train.SummaryWriter(test_dir)
+    sw = tf.summary.FileWriter(test_dir)
 
     sw.add_session_log(tf.SessionLog(status=SessionLog.START), 1)
     sw.add_summary(
@@ -154,7 +154,7 @@ class SummaryWriterTestCase(tf.test.TestCase):
     test_dir = self._CleanTestDir("basics_named_graph")
     with tf.Graph().as_default() as g:
       tf.constant([12], name="douze")
-    sw = tf.train.SummaryWriter(test_dir, graph=g)
+    sw = tf.summary.FileWriter(test_dir, graph=g)
     sw.close()
     self._assertEventsWithGraph(test_dir, g, True)
 
@@ -162,7 +162,7 @@ class SummaryWriterTestCase(tf.test.TestCase):
     test_dir = self._CleanTestDir("basics_positional_graph")
     with tf.Graph().as_default() as g:
       tf.constant([12], name="douze")
-    sw = tf.train.SummaryWriter(test_dir, g)
+    sw = tf.summary.FileWriter(test_dir, g)
     sw.close()
     self._assertEventsWithGraph(test_dir, g, True)
 
@@ -171,7 +171,7 @@ class SummaryWriterTestCase(tf.test.TestCase):
     with tf.Graph().as_default() as g:
       tf.constant([12], name="douze")
     gd = g.as_graph_def()
-    sw = tf.train.SummaryWriter(test_dir, graph_def=gd)
+    sw = tf.summary.FileWriter(test_dir, graph_def=gd)
     sw.close()
     self._assertEventsWithGraph(test_dir, g, False)
 
@@ -180,7 +180,7 @@ class SummaryWriterTestCase(tf.test.TestCase):
     with tf.Graph().as_default() as g:
       tf.constant([12], name="douze")
     gd = g.as_graph_def()
-    sw = tf.train.SummaryWriter(test_dir, gd)
+    sw = tf.summary.FileWriter(test_dir, gd)
     sw.close()
     self._assertEventsWithGraph(test_dir, g, False)
 
@@ -190,18 +190,18 @@ class SummaryWriterTestCase(tf.test.TestCase):
       with tf.Graph().as_default() as g:
         tf.constant([12], name="douze")
       gd = g.as_graph_def()
-      sw = tf.train.SummaryWriter(test_dir, graph=g, graph_def=gd)
+      sw = tf.summary.FileWriter(test_dir, graph=g, graph_def=gd)
       sw.close()
 
   def testNeitherGraphNorGraphDef(self):
     with self.assertRaises(TypeError):
       test_dir = self._CleanTestDir("basics_string_instead_of_graph")
-      sw = tf.train.SummaryWriter(test_dir, "string instead of graph object")
+      sw = tf.summary.FileWriter(test_dir, "string instead of graph object")
       sw.close()
 
   def testCloseAndReopen(self):
     test_dir = self._CleanTestDir("close_and_reopen")
-    sw = tf.train.SummaryWriter(test_dir)
+    sw = tf.summary.FileWriter(test_dir)
     sw.add_session_log(tf.SessionLog(status=SessionLog.START), 1)
     sw.close()
     # Sleep at least one second to make sure we get a new event file name.
@@ -247,7 +247,7 @@ class SummaryWriterTestCase(tf.test.TestCase):
   # protocol buffers correctly.
   def testAddingSummariesFromSessionRunCalls(self):
     test_dir = self._CleanTestDir("global_step")
-    sw = tf.train.SummaryWriter(test_dir)
+    sw = tf.summary.FileWriter(test_dir)
     with self.test_session():
       i = tf.constant(1, dtype=tf.int32, shape=[])
       l = tf.constant(2, dtype=tf.int64, shape=[])
@@ -314,9 +314,9 @@ class SummaryWriterCacheTest(tf.test.TestCase):
     with tf.Graph().as_default():
       dir1 = self._test_dir("test_cache_1")
       dir2 = self._test_dir("test_cache_2")
-      sw1 = tf.train.SummaryWriterCache.get(dir1)
-      sw2 = tf.train.SummaryWriterCache.get(dir2)
-      sw3 = tf.train.SummaryWriterCache.get(dir1)
+      sw1 = tf.summary.FileWriterCache.get(dir1)
+      sw2 = tf.summary.FileWriterCache.get(dir2)
+      sw3 = tf.summary.FileWriterCache.get(dir1)
       self.assertEqual(sw1, sw3)
       self.assertFalse(sw1 == sw2)
       sw1.close()
@@ -331,9 +331,9 @@ class SummaryWriterCacheTest(tf.test.TestCase):
   def test_clear(self):
     with tf.Graph().as_default():
       dir1 = self._test_dir("test_clear")
-      sw1 = tf.train.SummaryWriterCache.get(dir1)
-      tf.train.SummaryWriterCache.clear()
-      sw2 = tf.train.SummaryWriterCache.get(dir1)
+      sw1 = tf.summary.FileWriterCache.get(dir1)
+      tf.summary.FileWriterCache.clear()
+      sw2 = tf.summary.FileWriterCache.get(dir1)
       self.assertFalse(sw1 == sw2)
 
 

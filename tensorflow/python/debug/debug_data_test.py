@@ -129,6 +129,28 @@ class HasNanOrInfTest(test_util.TensorFlowTestCase):
     a = None
     self.assertFalse(debug_data.has_inf_or_nan(self._dummy_datum, a))
 
+  def testDTypeComplexWorks(self):
+    a = np.array([1j, 3j, 3j, 7j], dtype=np.complex128)
+    self.assertFalse(debug_data.has_inf_or_nan(self._dummy_datum, a))
+
+    b = np.array([1j, 3j, 3j, 7j, np.nan], dtype=np.complex256)
+    self.assertTrue(debug_data.has_inf_or_nan(self._dummy_datum, b))
+
+  def testDTypeIntegerWorks(self):
+    a = np.array([1, 3, 3, 7], dtype=np.int16)
+    self.assertFalse(debug_data.has_inf_or_nan(self._dummy_datum, a))
+
+  def testDTypeStringGivesFalse(self):
+    """isnan and isinf are not applicable to strings."""
+
+    a = np.array(["s", "p", "a", "m"])
+    self.assertFalse(debug_data.has_inf_or_nan(self._dummy_datum, a))
+
+  def testDTypeObjectGivesFalse(self):
+    dt = np.dtype([("spam", np.str_, 16), ("eggs", np.float64, (2,))])
+    a = np.array([("spam", (8.0, 7.0)), ("eggs", (6.0, 5.0))], dtype=dt)
+    self.assertFalse(debug_data.has_inf_or_nan(self._dummy_datum, a))
+
 
 class DebugTensorDatumTest(test_util.TensorFlowTestCase):
 

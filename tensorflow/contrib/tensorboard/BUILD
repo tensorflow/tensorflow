@@ -30,7 +30,10 @@ py_library(
     name = "plugins",
     srcs = ["plugins/__init__.py"],
     srcs_version = "PY2AND3",
-    deps = [":projector"],
+    deps = [
+        ":projector",
+        ":trace",
+    ],
 )
 
 # API methods and protos in `tf.contrib.tensorboard.plugins.projector` package.
@@ -51,6 +54,31 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":projector",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+# API methods and protos in `tf.contrib.tensorboard.plugins.trace` package.
+py_library(
+    name = "trace",
+    srcs = glob(
+        ["plugins/trace/**/*.py"],
+        exclude = ["**/*test*"],
+    ),
+    srcs_version = "PY2AND3",
+    deps = [
+        ":protos_all_py",
+        "//tensorflow/python:lib",
+    ],
+)
+
+py_test(
+    name = "trace_test",
+    size = "small",
+    srcs = ["plugins/trace/trace_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":trace",
         "//tensorflow:tensorflow_py",
     ],
 )

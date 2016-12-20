@@ -222,9 +222,10 @@ Let N be the size of source (typically N will be the batch size). Split each
 element of `input` based on `delimiter` and return a `SparseTensor`
 containing the splitted tokens. Empty tokens are ignored.
 
-`delimiter` can be empty or a single-byte character. If `delimiter` is an empty
- string, each element of `input` is split into individual single-byte character
- strings, including splitting of UTF-8 multibyte sequences.
+`delimiter` can be empty, or a string of split characters. If `delimiter` is an
+ empty string, each element of `input` is split into individual single-byte
+ character strings, including splitting of UTF-8 multibyte sequences. Otherwise
+ every character of `delimiter` is a potential split point.
 
 For example:
   N = 2, input[0] is 'hello world' and input[1] is 'a b c', then the output
@@ -239,7 +240,7 @@ For example:
   values = ['hello', 'world', 'a', 'b', 'c']
 
 input: 1-D. Strings to split.
-delimiter: 0-D. Delimiter character, or empty string.
+delimiter: 0-D. Delimiter characters (bytes), or empty string.
 indices: A dense matrix of int64 representing the indices of the sparse tensor.
 values: A vector of strings corresponding to the splited values.
 shape: a length-2 vector of int64 representing the shape of the sparse

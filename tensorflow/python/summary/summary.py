@@ -17,6 +17,7 @@
 
 ### Class for writing Summaries
 @@FileWriter
+@@FileWriterCache
 
 ### Summary Ops
 @@tensor_summary
@@ -56,9 +57,10 @@ from tensorflow.python.ops import gen_logging_ops as _gen_logging_ops
 from tensorflow.python.ops.summary_ops import tensor_summary
 # pylint: enable=unused-import
 from tensorflow.python.platform import tf_logging as _logging
-# exports FileWriter
+# exports FileWriter, FileWriterCache
 # pylint: disable=unused-import
 from tensorflow.python.summary.writer.writer import FileWriter
+from tensorflow.python.summary.writer.writer_cache import FileWriterCache
 # pylint: enable=unused-import
 from tensorflow.python.util import compat as _compat
 from tensorflow.python.util.all_util import remove_undocumented
@@ -271,7 +273,7 @@ def merge(inputs, collections=None, name=None):
     inputs: A list of `string` `Tensor` objects containing serialized `Summary`
       protocol buffers.
     collections: Optional list of graph collections keys. The new summary op is
-      added to these collections. Defaults to `[GraphKeys.SUMMARIES]`.
+      added to these collections. Defaults to `[]`.
     name: A name for the operation (optional).
 
   Returns:

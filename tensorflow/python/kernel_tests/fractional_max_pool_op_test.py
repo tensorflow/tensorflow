@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for fractional max pool operation."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -21,12 +21,16 @@ from __future__ import print_function
 import math
 
 import numpy as np
-import tensorflow as tf
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import gen_nn_ops
+from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import nn_ops
+import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
+from tensorflow.python.platform import test
 
 
-class FractionalMaxPoolTest(tf.test.TestCase):
+class FractionalMaxPoolTest(test.TestCase):
 
   # Random number generate with seed.
   _PRNG = np.random.RandomState(341261)
@@ -52,9 +56,8 @@ class FractionalMaxPoolTest(tf.test.TestCase):
       row_start = row_seq[i]
       row_end = row_seq[i + 1] + 1 if overlapping else row_seq[i + 1]
       row_end = min(row_end, row_max)
-      output_image = np.vstack((output_image,
-                                np.amax(input_matrix[row_start:row_end, :],
-                                        axis=0)))  # axis 0 is along row
+      output_image = np.vstack((output_image, np.amax(
+          input_matrix[row_start:row_end, :], axis=0)))  # axis 0 is along row
     # remove the sentinel row
     return output_image[1:, :]
 
@@ -123,13 +126,14 @@ class FractionalMaxPoolTest(tf.test.TestCase):
       None
     """
     with self.test_session() as sess:
-      p, r, c = tf.nn.fractional_max_pool(input_tensor,
-                                          pooling_ratio,
-                                          pseudo_random,
-                                          overlapping,
-                                          deterministic=True,
-                                          seed=self._SEED,
-                                          seed2=self._SEED2)
+      p, r, c = nn_ops.fractional_max_pool(
+          input_tensor,
+          pooling_ratio,
+          pseudo_random,
+          overlapping,
+          deterministic=True,
+          seed=self._SEED,
+          seed2=self._SEED2)
       actual, row_seq, col_seq = sess.run([p, r, c])
       expected = self._GetExpectedFractionalMaxPoolResult(input_tensor, row_seq,
                                                           col_seq, overlapping)
@@ -155,13 +159,14 @@ class FractionalMaxPoolTest(tf.test.TestCase):
       rand_mat = self._PRNG.randint(10, size=tensor_shape)
       pooling_ratio = [1, math.sqrt(2), math.sqrt(2), 1]
       with self.test_session() as sess:
-        p, r, c = tf.nn.fractional_max_pool(rand_mat,
-                                            pooling_ratio,
-                                            pseudo_random,
-                                            overlapping,
-                                            deterministic=True,
-                                            seed=self._SEED,
-                                            seed2=self._SEED2)
+        p, r, c = nn_ops.fractional_max_pool(
+            rand_mat,
+            pooling_ratio,
+            pseudo_random,
+            overlapping,
+            deterministic=True,
+            seed=self._SEED,
+            seed2=self._SEED2)
         tensor_output, row_seq, col_seq = sess.run([p, r, c])
         expected_result = self._GetExpectedFractionalMaxPoolResult(rand_mat,
                                                                    row_seq,
@@ -277,7 +282,7 @@ class FractionalMaxPoolTest(tf.test.TestCase):
                                           overlapping)
 
 
-class FractionalMaxPoolGradTest(tf.test.TestCase):
+class FractionalMaxPoolGradTest(test.TestCase):
   """Tests for FractionalMaxPoolGrad.
 
   Two types of tests for FractionalMaxPoolGrad.
@@ -339,13 +344,13 @@ class FractionalMaxPoolGradTest(tf.test.TestCase):
           for num_channels in [1, 2]:
             input_shape = (num_batches, num_rows, num_cols, num_channels)
             with self.test_session() as _:
-              input_tensor = tf.constant(self._GenerateUniqueRandomInputTensor(
-                  input_shape))
+              input_tensor = constant_op.constant(
+                  self._GenerateUniqueRandomInputTensor(input_shape))
               window_size = [1, row_window_size, col_window_size, 1]
               stride_size = [1, row_window_size, col_window_size, 1]
               padding = "VALID"
-              output_tensor = tf.nn.max_pool(input_tensor, window_size,
-                                             stride_size, padding)
+              output_tensor = nn_ops.max_pool(input_tensor, window_size,
+                                              stride_size, padding)
               output_data = output_tensor.eval()
               output_backprop = self._PRNG.randint(100, size=output_data.shape)
               input_backprop_tensor = gen_nn_ops._max_pool_grad(input_tensor,
@@ -377,13 +382,13 @@ class FractionalMaxPoolGradTest(tf.test.TestCase):
           for num_channels in [1, 2]:
             input_shape = (num_batches, num_rows, num_cols, num_channels)
             with self.test_session() as _:
-              input_tensor = tf.constant(self._GenerateUniqueRandomInputTensor(
-                  input_shape))
+              input_tensor = constant_op.constant(
+                  self._GenerateUniqueRandomInputTensor(input_shape))
               window_size = [1, row_window_size, col_window_size, 1]
               stride_size = [1, row_window_size - 1, col_window_size - 1, 1]
               padding = "VALID"
-              output_tensor = tf.nn.max_pool(input_tensor, window_size,
-                                             stride_size, padding)
+              output_tensor = nn_ops.max_pool(input_tensor, window_size,
+                                              stride_size, padding)
               output_data = output_tensor.eval()
               output_backprop = self._PRNG.randint(100, size=output_data.shape)
               input_backprop_tensor = gen_nn_ops._max_pool_grad(input_tensor,
@@ -418,8 +423,8 @@ class FractionalMaxPoolGradTest(tf.test.TestCase):
     for pseudo_random in True, False:
       for overlapping in True, False:
         with self.test_session() as _:
-          input_tensor = tf.constant(input_data, shape=input_shape)
-          output_tensor, unused_a, unused_b = tf.nn.fractional_max_pool(
+          input_tensor = constant_op.constant(input_data, shape=input_shape)
+          output_tensor, unused_a, unused_b = nn_ops.fractional_max_pool(
               input_tensor,
               pooling_ratio,
               pseudo_random=pseudo_random,
@@ -431,7 +436,7 @@ class FractionalMaxPoolGradTest(tf.test.TestCase):
           output_shape = output_data.shape
           # error_margin and delta setting is similar to max_pool_grad.
           error_margin = 1e-3
-          gradient_error = tf.test.compute_gradient_error(
+          gradient_error = gradient_checker.compute_gradient_error(
               input_tensor,
               input_shape,
               output_tensor,
@@ -453,8 +458,8 @@ class FractionalMaxPoolGradTest(tf.test.TestCase):
             # Add some randomness to make input_data not so 'integer'
             input_data += self._PRNG.random_sample(input_shape)
             with self.test_session() as _:
-              input_tensor = tf.constant(input_data, shape=input_shape)
-              output_tensor, unused_a, unused_b = tf.nn.fractional_max_pool(
+              input_tensor = constant_op.constant(input_data, shape=input_shape)
+              output_tensor, unused_a, unused_b = nn_ops.fractional_max_pool(
                   input_tensor,
                   pooling_ratio,
                   pseudo_random=pseudo_random,
@@ -466,7 +471,7 @@ class FractionalMaxPoolGradTest(tf.test.TestCase):
               output_shape = output_data.shape
               # error_margin and delta setting is similar to max_pool_grad.
               error_margin = 1e-3
-              gradient_error = tf.test.compute_gradient_error(
+              gradient_error = gradient_checker.compute_gradient_error(
                   input_tensor,
                   input_shape,
                   output_tensor,
@@ -486,8 +491,8 @@ class FractionalMaxPoolGradTest(tf.test.TestCase):
     pseudo_random = False
 
     with self.test_session() as _:
-      input_tensor = tf.constant(input_data, shape=input_shape)
-      output_tensor, unused_a, unused_b = tf.nn.fractional_max_pool(
+      input_tensor = constant_op.constant(input_data, shape=input_shape)
+      output_tensor, unused_a, unused_b = nn_ops.fractional_max_pool(
           input_tensor,
           pooling_ratio,
           pseudo_random=pseudo_random,
@@ -497,7 +502,7 @@ class FractionalMaxPoolGradTest(tf.test.TestCase):
           seed2=self._SEED2)
       # error_margin and delta setting is similar to max_pool_grad.
       error_margin = 1e-3
-      gradient_error = tf.test.compute_gradient_error(
+      gradient_error = gradient_checker.compute_gradient_error(
           input_tensor,
           input_shape,
           output_tensor,
@@ -551,10 +556,10 @@ class FractionalMaxPoolGradTest(tf.test.TestCase):
         input_size)  # pyformat: disable
     with self.test_session() as _:
       # Test when overlapping is False
-      input_tensor = tf.constant(input_data, shape=input_size)
-      output_tensor = tf.constant(output_data_not_overlapping,
-                                  shape=output_size)
-      grad = tf.constant(output_backprop, shape=output_size)
+      input_tensor = constant_op.constant(input_data, shape=input_size)
+      output_tensor = constant_op.constant(
+          output_data_not_overlapping, shape=output_size)
+      grad = constant_op.constant(output_backprop, shape=output_size)
       r = gen_nn_ops._fractional_max_pool_grad(
           input_tensor,
           output_tensor,
@@ -568,7 +573,8 @@ class FractionalMaxPoolGradTest(tf.test.TestCase):
       self.assertAllClose(expected_input_backprop_not_overlapping,
                           input_backprop_not_overlapping)
       # Test when overlapping is True
-      output_tensor = tf.constant(output_data_overlapping, shape=output_size)
+      output_tensor = constant_op.constant(
+          output_data_overlapping, shape=output_size)
       r = gen_nn_ops._fractional_max_pool_grad(
           input_tensor, output_tensor, grad, row_seq, col_seq, overlapping=True)
       input_backprop_overlapping = r.eval()
@@ -579,4 +585,4 @@ class FractionalMaxPoolGradTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

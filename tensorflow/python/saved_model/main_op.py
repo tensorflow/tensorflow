@@ -42,7 +42,6 @@ def main_op():
   init_tables = tf_data_flow_ops.initialize_all_tables()
   return tf.group(init, init_local, init_tables)
 
-
 def main_op_with_restore(restore_op_name):
   """Returns a main op to init variables, tables and restore the graph.
 
@@ -56,7 +55,6 @@ def main_op_with_restore(restore_op_name):
   Returns:
     The set of ops to be run as part of the main op upon the load operation.
   """
-  simple_main_op = main_op()
-  with ops.control_dependency([simple_main_op]):
-    restore = restore_op_name
-  return tf.group(restore)
+  with ops.control_dependencies([main_op()]):
+    main_op_with_restore = tf.group(restore_op_name)
+  return main_op_with_restore

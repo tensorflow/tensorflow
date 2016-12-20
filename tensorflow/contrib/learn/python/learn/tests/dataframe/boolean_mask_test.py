@@ -71,7 +71,7 @@ class BooleanMaskTestCase(tf.test.TestCase):
 
     np.testing.assert_array_equal(expected_indices, actual.indices)
     np.testing.assert_array_equal(expected_values, actual.values)
-    np.testing.assert_array_equal(shape, actual.shape)
+    np.testing.assert_array_equal(shape, actual.dense_shape)
 
 if __name__ == "__main__":
   tf.test.main()

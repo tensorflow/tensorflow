@@ -41,7 +41,7 @@ the graph from the session in which you launched it:
 # Launch the graph in a session.
 sess = tf.Session()
 # Create a summary writer, add the 'graph' to the event file.
-writer = tf.train.SummaryWriter(<some-directory>, sess.graph)
+writer = tf.summary.FileWriter(<some-directory>, sess.graph)
 ```
 
 The other arguments to the constructor control the asynchronous writes to
@@ -199,6 +199,37 @@ Can be called after `close()` to add more events in the same directory.
 The events will go into a new events file.
 
 Does nothing if the EventFileWriter was not closed.
+
+
+
+- - -
+
+### `class tf.summary.FileWriterCache` {#FileWriterCache}
+
+Cache for file writers.
+
+This class caches file writers, one per directory.
+- - -
+
+#### `tf.summary.FileWriterCache.clear()` {#FileWriterCache.clear}
+
+Clear cached summary writers. Currently only used for unit tests.
+
+
+- - -
+
+#### `tf.summary.FileWriterCache.get(logdir)` {#FileWriterCache.get}
+
+Returns the FileWriter for the specified directory.
+
+##### Args:
+
+
+*  <b>`logdir`</b>: str, name of the directory.
+
+##### Returns:
+
+  A `FileWriter`.
 
 
 
@@ -393,7 +424,7 @@ in the summaries to merge use the same tag.
 *  <b>`inputs`</b>: A list of `string` `Tensor` objects containing serialized `Summary`
     protocol buffers.
 *  <b>`collections`</b>: Optional list of graph collections keys. The new summary op is
-    added to these collections. Defaults to `[GraphKeys.SUMMARIES]`.
+    added to these collections. Defaults to `[]`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -456,9 +487,246 @@ metadata is stored in its NodeDef. This method retrieves the description.
 
 - - -
 
+#### `tf.summary.SummaryDescription.ByteSize()` {#SummaryDescription.ByteSize}
+
+
+
+
+- - -
+
+#### `tf.summary.SummaryDescription.Clear()` {#SummaryDescription.Clear}
+
+
+
+
+- - -
+
+#### `tf.summary.SummaryDescription.ClearExtension(extension_handle)` {#SummaryDescription.ClearExtension}
+
+
+
+
+- - -
+
+#### `tf.summary.SummaryDescription.ClearField(field_name)` {#SummaryDescription.ClearField}
+
+
+
+
+- - -
+
+#### `tf.summary.SummaryDescription.CopyFrom(other_msg)` {#SummaryDescription.CopyFrom}
+
+Copies the content of the specified message into the current message.
+
+The method clears the current message and then merges the specified
+message using MergeFrom.
+
+##### Args:
+
+
+*  <b>`other_msg`</b>: Message to copy into the current one.
+
+
+- - -
+
+#### `tf.summary.SummaryDescription.DiscardUnknownFields()` {#SummaryDescription.DiscardUnknownFields}
+
+
+
+
+- - -
+
+#### `tf.summary.SummaryDescription.FindInitializationErrors()` {#SummaryDescription.FindInitializationErrors}
+
+Finds required fields which are not initialized.
+
+##### Returns:
+
+  A list of strings.  Each string is a path to an uninitialized field from
+  the top-level message, e.g. "foo.bar[5].baz".
+
+
+- - -
+
+#### `tf.summary.SummaryDescription.FromString(s)` {#SummaryDescription.FromString}
+
+
+
+
+- - -
+
+#### `tf.summary.SummaryDescription.HasExtension(extension_handle)` {#SummaryDescription.HasExtension}
+
+
+
+
+- - -
+
+#### `tf.summary.SummaryDescription.HasField(field_name)` {#SummaryDescription.HasField}
+
+
+
+
+- - -
+
+#### `tf.summary.SummaryDescription.IsInitialized(errors=None)` {#SummaryDescription.IsInitialized}
+
+Checks if all required fields of a message are set.
+
+##### Args:
+
+
+*  <b>`errors`</b>: A list which, if provided, will be populated with the field
+           paths of all missing required fields.
+
+##### Returns:
+
+  True iff the specified message has all required fields set.
+
+
+- - -
+
+#### `tf.summary.SummaryDescription.ListFields()` {#SummaryDescription.ListFields}
+
+
+
+
+- - -
+
+#### `tf.summary.SummaryDescription.MergeFrom(msg)` {#SummaryDescription.MergeFrom}
+
+
+
+
+- - -
+
+#### `tf.summary.SummaryDescription.MergeFromString(serialized)` {#SummaryDescription.MergeFromString}
+
+
+
+
+- - -
+
+#### `tf.summary.SummaryDescription.ParseFromString(serialized)` {#SummaryDescription.ParseFromString}
+
+Parse serialized protocol buffer data into this message.
+
+Like MergeFromString(), except we clear the object first and
+do not return the value that MergeFromString returns.
+
+
+- - -
+
+#### `tf.summary.SummaryDescription.RegisterExtension(extension_handle)` {#SummaryDescription.RegisterExtension}
+
+
+
+
+- - -
+
+#### `tf.summary.SummaryDescription.SerializePartialToString()` {#SummaryDescription.SerializePartialToString}
+
+
+
+
+- - -
+
+#### `tf.summary.SummaryDescription.SerializeToString()` {#SummaryDescription.SerializeToString}
+
+
+
+
+- - -
+
+#### `tf.summary.SummaryDescription.SetInParent()` {#SummaryDescription.SetInParent}
+
+Sets the _cached_byte_size_dirty bit to true,
+and propagates this to our listener iff this was a state change.
+
+
+- - -
+
+#### `tf.summary.SummaryDescription.WhichOneof(oneof_name)` {#SummaryDescription.WhichOneof}
+
+Returns the name of the currently set field inside a oneof, or None.
+
+
+- - -
+
+#### `tf.summary.SummaryDescription.__deepcopy__(memo=None)` {#SummaryDescription.__deepcopy__}
+
+
+
+
+- - -
+
+#### `tf.summary.SummaryDescription.__eq__(other)` {#SummaryDescription.__eq__}
+
+
+
+
+- - -
+
 #### `tf.summary.SummaryDescription.__getstate__()` {#SummaryDescription.__getstate__}
 
 Support the pickle protocol.
+
+
+- - -
+
+#### `tf.summary.SummaryDescription.__hash__()` {#SummaryDescription.__hash__}
+
+
+
+
+- - -
+
+#### `tf.summary.SummaryDescription.__init__(**kwargs)` {#SummaryDescription.__init__}
+
+
+
+
+- - -
+
+#### `tf.summary.SummaryDescription.__ne__(other_msg)` {#SummaryDescription.__ne__}
+
+
+
+
+- - -
+
+#### `tf.summary.SummaryDescription.__repr__()` {#SummaryDescription.__repr__}
+
+
+
+
+- - -
+
+#### `tf.summary.SummaryDescription.__setstate__(state)` {#SummaryDescription.__setstate__}
+
+Support the pickle protocol.
+
+
+- - -
+
+#### `tf.summary.SummaryDescription.__str__()` {#SummaryDescription.__str__}
+
+
+
+
+- - -
+
+#### `tf.summary.SummaryDescription.__unicode__()` {#SummaryDescription.__unicode__}
+
+
+
+
+- - -
+
+#### `tf.summary.SummaryDescription.type_hint` {#SummaryDescription.type_hint}
+
+Magic attribute generated for "type_hint" proto field.
 
 
 
@@ -469,9 +737,253 @@ Support the pickle protocol.
 
 - - -
 
+#### `tf.summary.TaggedRunMetadata.ByteSize()` {#TaggedRunMetadata.ByteSize}
+
+
+
+
+- - -
+
+#### `tf.summary.TaggedRunMetadata.Clear()` {#TaggedRunMetadata.Clear}
+
+
+
+
+- - -
+
+#### `tf.summary.TaggedRunMetadata.ClearExtension(extension_handle)` {#TaggedRunMetadata.ClearExtension}
+
+
+
+
+- - -
+
+#### `tf.summary.TaggedRunMetadata.ClearField(field_name)` {#TaggedRunMetadata.ClearField}
+
+
+
+
+- - -
+
+#### `tf.summary.TaggedRunMetadata.CopyFrom(other_msg)` {#TaggedRunMetadata.CopyFrom}
+
+Copies the content of the specified message into the current message.
+
+The method clears the current message and then merges the specified
+message using MergeFrom.
+
+##### Args:
+
+
+*  <b>`other_msg`</b>: Message to copy into the current one.
+
+
+- - -
+
+#### `tf.summary.TaggedRunMetadata.DiscardUnknownFields()` {#TaggedRunMetadata.DiscardUnknownFields}
+
+
+
+
+- - -
+
+#### `tf.summary.TaggedRunMetadata.FindInitializationErrors()` {#TaggedRunMetadata.FindInitializationErrors}
+
+Finds required fields which are not initialized.
+
+##### Returns:
+
+  A list of strings.  Each string is a path to an uninitialized field from
+  the top-level message, e.g. "foo.bar[5].baz".
+
+
+- - -
+
+#### `tf.summary.TaggedRunMetadata.FromString(s)` {#TaggedRunMetadata.FromString}
+
+
+
+
+- - -
+
+#### `tf.summary.TaggedRunMetadata.HasExtension(extension_handle)` {#TaggedRunMetadata.HasExtension}
+
+
+
+
+- - -
+
+#### `tf.summary.TaggedRunMetadata.HasField(field_name)` {#TaggedRunMetadata.HasField}
+
+
+
+
+- - -
+
+#### `tf.summary.TaggedRunMetadata.IsInitialized(errors=None)` {#TaggedRunMetadata.IsInitialized}
+
+Checks if all required fields of a message are set.
+
+##### Args:
+
+
+*  <b>`errors`</b>: A list which, if provided, will be populated with the field
+           paths of all missing required fields.
+
+##### Returns:
+
+  True iff the specified message has all required fields set.
+
+
+- - -
+
+#### `tf.summary.TaggedRunMetadata.ListFields()` {#TaggedRunMetadata.ListFields}
+
+
+
+
+- - -
+
+#### `tf.summary.TaggedRunMetadata.MergeFrom(msg)` {#TaggedRunMetadata.MergeFrom}
+
+
+
+
+- - -
+
+#### `tf.summary.TaggedRunMetadata.MergeFromString(serialized)` {#TaggedRunMetadata.MergeFromString}
+
+
+
+
+- - -
+
+#### `tf.summary.TaggedRunMetadata.ParseFromString(serialized)` {#TaggedRunMetadata.ParseFromString}
+
+Parse serialized protocol buffer data into this message.
+
+Like MergeFromString(), except we clear the object first and
+do not return the value that MergeFromString returns.
+
+
+- - -
+
+#### `tf.summary.TaggedRunMetadata.RegisterExtension(extension_handle)` {#TaggedRunMetadata.RegisterExtension}
+
+
+
+
+- - -
+
+#### `tf.summary.TaggedRunMetadata.SerializePartialToString()` {#TaggedRunMetadata.SerializePartialToString}
+
+
+
+
+- - -
+
+#### `tf.summary.TaggedRunMetadata.SerializeToString()` {#TaggedRunMetadata.SerializeToString}
+
+
+
+
+- - -
+
+#### `tf.summary.TaggedRunMetadata.SetInParent()` {#TaggedRunMetadata.SetInParent}
+
+Sets the _cached_byte_size_dirty bit to true,
+and propagates this to our listener iff this was a state change.
+
+
+- - -
+
+#### `tf.summary.TaggedRunMetadata.WhichOneof(oneof_name)` {#TaggedRunMetadata.WhichOneof}
+
+Returns the name of the currently set field inside a oneof, or None.
+
+
+- - -
+
+#### `tf.summary.TaggedRunMetadata.__deepcopy__(memo=None)` {#TaggedRunMetadata.__deepcopy__}
+
+
+
+
+- - -
+
+#### `tf.summary.TaggedRunMetadata.__eq__(other)` {#TaggedRunMetadata.__eq__}
+
+
+
+
+- - -
+
 #### `tf.summary.TaggedRunMetadata.__getstate__()` {#TaggedRunMetadata.__getstate__}
 
 Support the pickle protocol.
+
+
+- - -
+
+#### `tf.summary.TaggedRunMetadata.__hash__()` {#TaggedRunMetadata.__hash__}
+
+
+
+
+- - -
+
+#### `tf.summary.TaggedRunMetadata.__init__(**kwargs)` {#TaggedRunMetadata.__init__}
+
+
+
+
+- - -
+
+#### `tf.summary.TaggedRunMetadata.__ne__(other_msg)` {#TaggedRunMetadata.__ne__}
+
+
+
+
+- - -
+
+#### `tf.summary.TaggedRunMetadata.__repr__()` {#TaggedRunMetadata.__repr__}
+
+
+
+
+- - -
+
+#### `tf.summary.TaggedRunMetadata.__setstate__(state)` {#TaggedRunMetadata.__setstate__}
+
+Support the pickle protocol.
+
+
+- - -
+
+#### `tf.summary.TaggedRunMetadata.__str__()` {#TaggedRunMetadata.__str__}
+
+
+
+
+- - -
+
+#### `tf.summary.TaggedRunMetadata.__unicode__()` {#TaggedRunMetadata.__unicode__}
+
+
+
+
+- - -
+
+#### `tf.summary.TaggedRunMetadata.run_metadata` {#TaggedRunMetadata.run_metadata}
+
+Magic attribute generated for "run_metadata" proto field.
+
+
+- - -
+
+#### `tf.summary.TaggedRunMetadata.tag` {#TaggedRunMetadata.tag}
+
+Magic attribute generated for "tag" proto field.
 
 
 

@@ -279,32 +279,6 @@ class WithShapeTest(tf.test.TestCase):
             ValueError, tensor_2x2.eval, {tensor_partial_shape: [42.0]})
 
 
-class ConvertToTensorOrSparseTensorTest(tf.test.TestCase):
-
-  def test_convert_dense(self):
-    with self.test_session():
-      value = [42, 43]
-      from_value = tf.contrib.framework.convert_to_tensor_or_sparse_tensor(
-          value)
-      self.assertAllEqual(value, from_value.eval())
-
-  def test_convert_sparse(self):
-    with self.test_session():
-      indices = [[0, 1], [1, 0]]
-      values = [42, 43]
-      shape = [2, 2]
-      sparse_tensor_value = tf.SparseTensorValue(indices, values, shape)
-      sparse_tensor = tf.SparseTensor.from_value(sparse_tensor_value)
-      from_value = tf.contrib.framework.convert_to_tensor_or_sparse_tensor(
-          sparse_tensor_value).eval()
-      from_tensor = tf.contrib.framework.convert_to_tensor_or_sparse_tensor(
-          sparse_tensor).eval()
-      for convertee in [from_value, from_tensor]:
-        self.assertAllEqual(sparse_tensor_value.indices, convertee.indices)
-        self.assertAllEqual(sparse_tensor_value.values, convertee.values)
-        self.assertAllEqual(sparse_tensor_value.shape, convertee.shape)
-
-
 class RemoveSqueezableDimensionsTest(tf.test.TestCase):
 
   def testRemoveSqueezableDimensions(self):

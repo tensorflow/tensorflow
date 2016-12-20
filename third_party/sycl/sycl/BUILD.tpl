@@ -7,6 +7,8 @@ load("platform", "readlink_command")
 
 package(default_visibility = ["//visibility:public"])
 
+exports_files(["LICENSE.text"])
+
 config_setting(
     name = "using_sycl",
     values = {

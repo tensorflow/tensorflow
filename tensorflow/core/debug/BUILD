@@ -36,7 +36,22 @@ tf_proto_library_cc(
     has_services = 1,
     cc_api_version = 2,
     cc_grpc_version = 1,
-    cc_libs = ["//tensorflow/core:protos_all_cc"],
+    protodeps = ["//tensorflow/core:protos_all"],
+)
+
+# Depending on this target causes a concrete DebuggerState implementation
+# to be registered at initialization time.  For details, please see
+# core/common_runtime/debugger_state_interface.h.
+cc_library(
+    name = "debug",
+    srcs = ["debug.cc"],
+    copts = tf_copts(),
+    linkstatic = 1,
+    deps = [
+        ":debug_graph_utils",
+        "//tensorflow/core:core_cpu_internal",
+    ],
+    alwayslink = 1,
 )
 
 tf_cuda_library(
@@ -46,6 +61,7 @@ tf_cuda_library(
     copts = tf_copts(),
     linkstatic = 1,
     deps = [
+        ":debug",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:direct_session_internal",
         "//tensorflow/core:framework",
@@ -136,6 +152,7 @@ tf_cc_test_gpu(
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["nomac"],
     deps = [
+        ":debug",
         ":debug_gateway_internal",
         ":debug_graph_utils",
         "//tensorflow/cc:cc_ops",

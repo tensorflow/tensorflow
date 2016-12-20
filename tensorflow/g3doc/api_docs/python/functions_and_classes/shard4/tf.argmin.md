@@ -1,6 +1,6 @@
 ### `tf.argmin(input, axis=None, name=None, dimension=None)` {#argmin}
 
-Returns the index with the smallest value across axiss of a tensor.
+Returns the index with the smallest value across axes of a tensor.
 
 ##### Args:
 

@@ -166,7 +166,7 @@ to find it:
 ```python
 embedding.sprite.image_path = PATH_TO_SPRITE_IMAGE
 # Specify the width and height of a single thumbnail.
-embedding.single_image_dim.extend([w, h])
+embedding.sprite.single_image_dim.extend([w, h])
 ```
 
 ## Interaction

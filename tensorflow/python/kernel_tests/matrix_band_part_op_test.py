@@ -18,10 +18,14 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import constant_op
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradient_checker
+from tensorflow.python.platform import test
 
 
-class MatrixBandPartTest(tf.test.TestCase):
+class MatrixBandPartTest(test.TestCase):
   pass  # Filled in below
 
 
@@ -40,13 +44,13 @@ def _GetMatrixBandPartTest(dtype_, batch_shape_, shape_):
             band_np = np.tril(band_np, upper)
           if batch_shape is not ():
             band_np = np.tile(band_np, batch_shape + (1, 1))
-          band = tf.matrix_band_part(batch_mat, lower, upper)
+          band = array_ops.matrix_band_part(batch_mat, lower, upper)
           self.assertAllEqual(band_np, band.eval())
 
   return Test
 
 
-class MatrixBandPartGradTest(tf.test.TestCase):
+class MatrixBandPartGradTest(test.TestCase):
   pass  # Filled in below
 
 
@@ -54,13 +58,13 @@ def _GetMatrixBandPartGradTest(dtype_, batch_shape_, shape_):
 
   def Test(self):
     shape = batch_shape_ + shape_
-    x = tf.constant(np.random.rand(*shape), dtype=dtype_)
+    x = constant_op.constant(np.random.rand(*shape), dtype=dtype_)
     with self.test_session(use_gpu=True):
       for lower in -1, 0, 1, shape_[-2] - 1:
         for upper in -1, 0, 1, shape_[-1] - 1:
-          y = tf.matrix_band_part(x, lower, upper)
-          error = tf.test.compute_gradient_error(x, x.get_shape().as_list(), y,
-                                                 y.get_shape().as_list())
+          y = array_ops.matrix_band_part(x, lower, upper)
+          error = gradient_checker.compute_gradient_error(
+              x, x.get_shape().as_list(), y, y.get_shape().as_list())
           self.assertLess(error, 1e-4)
 
   return Test
@@ -79,4 +83,4 @@ if __name__ == '__main__':
             setattr(MatrixBandPartGradTest, 'testMatrixBandPartGrad_' + name,
                     _GetMatrixBandPartGradTest(dtype, batch_shape, shape))
 
-  tf.test.main()
+  test.main()

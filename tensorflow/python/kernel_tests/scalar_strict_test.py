@@ -12,20 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for scalar strictness and scalar leniency."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
 
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_io_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import sparse_ops
+import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import control_imports
+from tensorflow.python.platform import test
 
 
-class ScalarStrictTest(tf.test.TestCase):
+class ScalarStrictTest(test.TestCase):
 
   def check(self, op, args, error, correct=None):
     # Within Google, the switch to scalar strict occurred at version 6.
@@ -42,14 +48,14 @@ class ScalarStrictTest(tf.test.TestCase):
       if isinstance(args, tuple):
         return [placeholders(x, feed) for x in args]
       else:
-        x = tf.convert_to_tensor(args).eval()
-        fake = tf.placeholder(np.asarray(x).dtype)
+        x = ops.convert_to_tensor(args).eval()
+        fake = array_ops.placeholder(np.asarray(x).dtype)
         feed[fake] = x
         return fake
 
     # Test various GraphDef versions
     for version in strict + lenient:
-      with tf.Graph().as_default() as g:
+      with ops.Graph().as_default() as g:
         g.graph_def_versions.producer = version
         with self.test_session(graph=g) as sess:
           feed = {}
@@ -64,72 +70,61 @@ class ScalarStrictTest(tf.test.TestCase):
               self.assertAllEqual(r, correct)
 
   def testConcat(self):
-    self.check(tf.concat, ([0], ([2], [3], [7])),
-               'concat_dim tensor should be a scalar integer', [2, 3, 7])
+    self.check(array_ops.concat, ([0], ([2], [3], [7])),
+               'axis tensor should be a scalar integer', [2, 3, 7])
     for data in (2, 3, 7), (2, [3], 7), (2, 3, [7]):
-      self.check(tf.concat, (0, data),
+      self.check(array_ops.concat, (0, data),
                  r'Expected \w+ dimensions in the range \[0, 0\)', [2, 3, 7])
     for data in ([2], 3, 7), ([2], [3], 7):
-      self.check(tf.concat, (0, data),
+      self.check(array_ops.concat, (0, data),
                  r'Ranks of all input tensors should match', [2, 3, 7])
 
   def testFill(self):
-    self.check(tf.fill, (2, 3), 'dims must be a vector', [3, 3])
-    self.check(tf.fill, ([2], [3]), 'value must be a scalar', [3, 3])
+    self.check(array_ops.fill, (2, 3), 'dims must be a vector', [3, 3])
+    self.check(array_ops.fill, ([2], [3]), 'value must be a scalar', [3, 3])
 
   def testPad(self):
-    self.check(tf.pad, (7, [[1, 2]]),
+    self.check(array_ops.pad, (7, [[1, 2]]),
                'The first dimension of paddings must be the rank of inputs',
                [0, 7, 0, 0])
 
   def testRandom(self):
-    self.check(tf.random_uniform, (3,), 'shape must be a vector')
+    self.check(random_ops.random_uniform, (3,), 'shape must be a vector')
 
   def testReshape(self):
-    self.check(tf.reshape, (7, 1), 'sizes input must be 1-D', [7])
+    self.check(array_ops.reshape, (7, 1), 'sizes input must be 1-D', [7])
 
   def testShardedFilename(self):
     self.check(gen_io_ops._sharded_filename, ('foo', 4, [100]),
                'must be a scalar', b'foo-00004-of-00100')
 
   def testShardedFilespec(self):
-    self.check(gen_io_ops._sharded_filespec, ('foo', [100]),
-               'must be a scalar', b'foo-?????-of-00100')
+    self.check(gen_io_ops._sharded_filespec, ('foo', [100]), 'must be a scalar',
+               b'foo-?????-of-00100')
 
   def testUnsortedSegmentSum(self):
-    self.check(tf.unsorted_segment_sum, (7, 1, [4]),
+    self.check(math_ops.unsorted_segment_sum, (7, 1, [4]),
                'num_segments should be a scalar', [0, 7, 0, 0])
 
   def testRange(self):
-    self.check(tf.range, ([0], 3, 2), 'start must be a scalar', [0, 2])
-    self.check(tf.range, (0, [3], 2), 'limit must be a scalar', [0, 2])
-    self.check(tf.range, (0, 3, [2]), 'delta must be a scalar', [0, 2])
+    self.check(math_ops.range, ([0], 3, 2), 'start must be a scalar', [0, 2])
+    self.check(math_ops.range, (0, [3], 2), 'limit must be a scalar', [0, 2])
+    self.check(math_ops.range, (0, 3, [2]), 'delta must be a scalar', [0, 2])
 
   def testSlice(self):
     data = np.arange(10)
     error = 'Expected begin and size arguments to be 1-D tensors'
-    self.check(tf.slice, (data, 2, 3), error, [2, 3, 4])
-    self.check(tf.slice, (data, [2], 3), error, [2, 3, 4])
-    self.check(tf.slice, (data, 2, [3]), error, [2, 3, 4])
+    self.check(array_ops.slice, (data, 2, 3), error, [2, 3, 4])
+    self.check(array_ops.slice, (data, [2], 3), error, [2, 3, 4])
+    self.check(array_ops.slice, (data, 2, [3]), error, [2, 3, 4])
 
   def testSparseToDense(self):
-    self.check(tf.sparse_to_dense, (1, 4, 7),
+    self.check(sparse_ops.sparse_to_dense, (1, 4, 7),
                'output_shape should be a vector', [0, 7, 0, 0])
 
-  def testImageSummary(self):
-    image = np.zeros((2, 2, 2, 3), dtype=np.uint8)
-    self.check(tf.image_summary, (['img'], image), 'Tags must be a scalar')
-
-  def testScalarSummary(self):
-    self.check(tf.scalar_summary, (['a'], 7), 'not the same shape')
-    self.check(tf.scalar_summary, ('a', [7]), 'not the same shape')
-
-  def testHistogramSummary(self):
-    self.check(tf.histogram_summary, (['a'], 7), 'tags must be scalar')
-
   def testTile(self):
-    self.check(tf.tile, ([7], 2), 'Expected multiples to be 1-D', [7, 7])
+    self.check(array_ops.tile, ([7], 2), 'Expected multiples to be 1-D', [7, 7])
 
 
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

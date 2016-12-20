@@ -15,6 +15,7 @@ Pack
 Pad
 Placeholder
 RefIdentity
+Reverse
 SpaceToBatch
 Split
 SplitV
@@ -184,12 +185,16 @@ BatchIFFT2D
 BatchIFFT3D
 Complex
 Conj
+FloorDiv
+FloorMod
 Max
 Mean
 Min
 Pow
 Prod
 Range
+RealDiv
+Select
 SparseMatMul
 Sum
 MatMul
@@ -201,6 +206,8 @@ InvGrad
 ReciprocalGrad
 SqrtGrad
 RsqrtGrad
+TruncateDiv
+TruncateMod
 
 # nn_ops
 AvgPoolGrad  # "*Grad" accessible through nn_grad instead of nn_ops.
@@ -253,6 +260,7 @@ SdcaShrinkL1
 
 # state_ops
 Variable
+VariableV2
 TemporaryVariable
 DestroyTemporaryVariable
 
@@ -282,3 +290,7 @@ Fact
 
 # training_ops
 # (None)
+
+# word2vec deprecated ops
+NegTrain
+Skipgram

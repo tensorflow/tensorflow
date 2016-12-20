@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import tensorflow as tf
 
-from tensorflow.contrib.tensor_forest.python.ops import topn_ops
+from tensorflow.contrib.tensor_forest.python.ops import tensor_forest_ops
 
 
 class TopN(object):
@@ -45,7 +45,6 @@ class TopN(object):
 
   def __init__(self, max_id, shortlist_size=100, name_prefix=''):
     """Creates a new TopN."""
-    self.ops = topn_ops.Load()
     self.shortlist_size = shortlist_size
     # id_to_score contains all the scores we are tracking.
     self.id_to_score = tf.get_variable(
@@ -87,7 +86,7 @@ class TopN(object):
       def shortlist_insert():
         larger_ids = tf.boolean_mask(tf.to_int64(ids), larger_scores)
         larger_score_values = tf.boolean_mask(scores, larger_scores)
-        shortlist_ids, new_ids, new_scores = self.ops.top_n_insert(
+        shortlist_ids, new_ids, new_scores = tensor_forest_ops.top_n_insert(
             self.sl_ids, self.sl_scores, larger_ids, larger_score_values)
         u1 = tf.scatter_update(self.sl_ids, shortlist_ids, new_ids)
         u2 = tf.scatter_update(self.sl_scores, shortlist_ids, new_scores)
@@ -110,12 +109,13 @@ class TopN(object):
               ids, dtype=tf.float32) * tf.float32.min)
       # We assume that removed ids are almost always in the shortlist,
       # so it makes no sense to hide the Op behind a tf.cond
-      shortlist_ids_to_remove, new_length = self.ops.top_n_remove(self.sl_ids,
-                                                                  ids)
+      shortlist_ids_to_remove, new_length = tensor_forest_ops.top_n_remove(
+          self.sl_ids, ids)
       u1 = tf.scatter_update(
-          self.sl_ids, tf.concat(0, [[0], shortlist_ids_to_remove]),
-          tf.concat(0, [new_length,
-                        tf.ones_like(shortlist_ids_to_remove) * -1]))
+          self.sl_ids,
+          tf.concat_v2([[0], shortlist_ids_to_remove], 0),
+          tf.concat_v2([new_length, tf.ones_like(shortlist_ids_to_remove) * -1],
+                       0))
       u2 = tf.scatter_update(
           self.sl_scores,
           shortlist_ids_to_remove,
@@ -133,9 +133,9 @@ class TopN(object):
       new_length = tf.reduce_sum(
           tf.to_int32(tf.greater(new_scores, tf.float32.min)))
       u1 = self.sl_ids.assign(
-          tf.to_int64(tf.concat(0, [[new_length], new_ids])))
+          tf.to_int64(tf.concat_v2([[new_length], new_ids], 0)))
       u2 = self.sl_scores.assign(
-          tf.concat(0, [[smallest_new_score], new_scores]))
+          tf.concat_v2([[smallest_new_score], new_scores], 0))
       self.last_ops = [u1, u2]
       return tf.group(u1, u2)
 

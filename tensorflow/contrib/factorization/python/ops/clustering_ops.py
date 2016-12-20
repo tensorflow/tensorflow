@@ -253,8 +253,8 @@ class KMeans(object):
     cluster_centers = tf.Variable(clusters_init,
                                   name='clusters',
                                   validate_shape=False)
-    cluster_counts = (tf.Variable(tf.zeros([self._num_clusters],
-                                           dtype=tf.int64))
+    cluster_counts = (tf.Variable(tf.ones([self._num_clusters],
+                                          dtype=tf.int64))
                       if self._use_mini_batch else None)
     return cluster_centers, cluster_counts
 
@@ -350,10 +350,12 @@ class KMeans(object):
             num_unique_cluster_idx)
         # Shape to enable broadcasting count_updates and learning_rate to inp.
         # It extends the shape with 1's to match the rank of inp.
-        broadcast_shape = tf.concat(
-            0,
-            [tf.reshape(num_unique_cluster_idx, [1]),
-             tf.ones(tf.reshape(tf.rank(inp) - 1, [1]), dtype=tf.int32)])
+        broadcast_shape = tf.concat_v2(
+            [
+                tf.reshape(num_unique_cluster_idx, [1]), tf.ones(
+                    tf.reshape(tf.rank(inp) - 1, [1]), dtype=tf.int32)
+            ],
+            0)
         # Subtract k * x, see comment above.
         cluster_center_updates -= tf.cast(
             tf.reshape(count_updates, broadcast_shape),

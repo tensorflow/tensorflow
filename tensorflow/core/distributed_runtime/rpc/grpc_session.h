@@ -97,7 +97,7 @@ class GrpcSession : public Session {
 
  protected:
   // Takes ownership of `*master`.
-  void SetRemoteMaster(MasterInterface* master);
+  void SetRemoteMaster(std::unique_ptr<MasterInterface> master);
 
  private:
   SessionOptions options_;

@@ -169,7 +169,7 @@ class SVMTest(tf.test.TestCase):
           'country': tf.SparseTensor(
               values=['IT', 'US', 'GB'],
               indices=[[0, 0], [1, 0], [2, 0]],
-              shape=[3, 1]),
+              dense_shape=[3, 1]),
       }, tf.constant([[0], [1], [1]])
 
     price = tf.contrib.layers.real_valued_column('price')
@@ -220,7 +220,7 @@ class SVMTest(tf.test.TestCase):
           'country': tf.SparseTensor(
               values=['IT', 'US', 'GB'],
               indices=[[0, 0], [1, 3], [2, 1]],
-              shape=[3, 5]),
+              dense_shape=[3, 5]),
           'weights': tf.constant([[3.0], [1.0], [1.0]])
       }, tf.constant([[1], [0], [1]])
 

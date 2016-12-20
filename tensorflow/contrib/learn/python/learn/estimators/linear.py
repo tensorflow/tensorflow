@@ -27,6 +27,7 @@ import six
 from tensorflow.contrib import layers
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
+from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import monitors as monitor_lib
@@ -81,7 +82,7 @@ def _add_bias_column(feature_columns, columns_to_tensors, bias_variable,
   columns_to_variables[bias_column] = [bias_variable]
 
 
-def _linear_model_fn(features, labels, mode, params):
+def _linear_model_fn(features, labels, mode, params, config=None):
   """A model_fn for linear models that use a gradient-based optimizer.
 
   Args:
@@ -104,6 +105,7 @@ def _linear_model_fn(features, labels, mode, params):
         single (possibly partitioned) variable. It's more efficient, but it's
         incompatible with SDCAOptimizer, and requires all feature columns are
         sparse and use the 'sum' combiner.
+    config: `RunConfig` object to configure the runtime settings.
 
   Returns:
     A `ModelFnOps` instance.
@@ -115,7 +117,7 @@ def _linear_model_fn(features, labels, mode, params):
   feature_columns = params["feature_columns"]
   optimizer = params["optimizer"]
   gradient_clip_norm = params.get("gradient_clip_norm", None)
-  num_ps_replicas = params.get("num_ps_replicas", 0)
+  num_ps_replicas = config.num_ps_replicas if config else 0
   joint_weights = params.get("joint_weights", False)
 
   if not isinstance(features, dict):
@@ -377,7 +379,7 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
     """
     # TODO(zoy): Give an unsupported error if enable_centered_bias is
     #    requested for SDCA once its default changes to False.
-    self._feature_columns = feature_columns
+    self._feature_columns = tuple(feature_columns or [])
     assert self._feature_columns
     self._optimizer = _get_default_optimizer(feature_columns)
     if optimizer:
@@ -416,7 +418,6 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
       model_fn = _linear_model_fn
       params.update({
           "gradient_clip_norm": gradient_clip_norm,
-          "num_ps_replicas": config.num_ps_replicas if config else 0,
           "joint_weights": _joint_weight,
       })
 
@@ -450,11 +451,13 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
     return self
 
   def evaluate(self, x=None, y=None, input_fn=None, feed_fn=None,
-               batch_size=None, steps=None, metrics=None, name=None):
+               batch_size=None, steps=None, metrics=None, name=None,
+               checkpoint_path=None):
     """See evaluable.Evaluable. Note: Labels must be integer class indices."""
     return self._estimator.evaluate(x=x, y=y, input_fn=input_fn,
                                     feed_fn=feed_fn, batch_size=batch_size,
-                                    steps=steps, metrics=metrics, name=name)
+                                    steps=steps, metrics=metrics, name=name,
+                                    checkpoint_path=checkpoint_path)
 
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
@@ -517,6 +520,22 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
                       export.classification_signature_fn_with_prob),
         prediction_key=prediction_key.PredictionKey.PROBABILITIES,
         default_batch_size=default_batch_size,
+        exports_to_keep=exports_to_keep)
+
+  @experimental
+  def export_savedmodel(self,
+                        export_dir_base,
+                        input_fn,
+                        default_output_alternative_key=None,
+                        assets_extra=None,
+                        as_text=False,
+                        exports_to_keep=None):
+    return self._estimator.export_savedmodel(
+        export_dir_base,
+        input_fn,
+        default_output_alternative_key=default_output_alternative_key,
+        assets_extra=assets_extra,
+        as_text=as_text,
         exports_to_keep=exports_to_keep)
 
   @property
@@ -639,7 +658,7 @@ class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
     Returns:
       A `LinearRegressor` estimator.
     """
-    self._feature_columns = feature_columns
+    self._feature_columns = tuple(feature_columns or [])
     assert self._feature_columns
     if optimizer:
       self._optimizer = _get_optimizer(optimizer)
@@ -679,7 +698,6 @@ class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
       model_fn = _linear_model_fn
       params.update({
           "gradient_clip_norm": gradient_clip_norm,
-          "num_ps_replicas": config.num_ps_replicas if config else 0,
           "joint_weights": _joint_weights,
       })
 
@@ -710,11 +728,13 @@ class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
     return self
 
   def evaluate(self, x=None, y=None, input_fn=None, feed_fn=None,
-               batch_size=None, steps=None, metrics=None, name=None):
+               batch_size=None, steps=None, metrics=None, name=None,
+               checkpoint_path=None):
     """See evaluable.Evaluable."""
     return self._estimator.evaluate(x=x, y=y, input_fn=input_fn,
                                     feed_fn=feed_fn, batch_size=batch_size,
-                                    steps=steps, metrics=metrics, name=name)
+                                    steps=steps, metrics=metrics, name=name,
+                                    checkpoint_path=checkpoint_path)
 
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
@@ -759,6 +779,22 @@ class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
         signature_fn=(signature_fn or export.regression_signature_fn),
         prediction_key=prediction_key.PredictionKey.SCORES,
         default_batch_size=default_batch_size,
+        exports_to_keep=exports_to_keep)
+
+  @experimental
+  def export_savedmodel(self,
+                        export_dir_base,
+                        input_fn,
+                        default_output_alternative_key=None,
+                        assets_extra=None,
+                        as_text=False,
+                        exports_to_keep=None):
+    return self._estimator.export_savedmodel(
+        export_dir_base,
+        input_fn,
+        default_output_alternative_key=default_output_alternative_key,
+        assets_extra=assets_extra,
+        as_text=as_text,
         exports_to_keep=exports_to_keep)
 
   @property

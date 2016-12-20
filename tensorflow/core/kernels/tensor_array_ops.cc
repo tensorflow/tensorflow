@@ -45,6 +45,8 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 #endif  // GOOGLE_CUDA
 
+// clang-format on
+
 namespace tensorflow {
 
 Status GetHandle(OpKernelContext* ctx, string* container, string* ta_handle) {
@@ -72,9 +74,10 @@ Status GetTensorArray(OpKernelContext* ctx, TensorArray** tensor_array) {
   string container;
   string ta_handle;
   TF_RETURN_IF_ERROR(GetHandle(ctx, &container, &ta_handle));
-  ResourceMgr* rm = ctx->step_resource_manager();
-  if (rm == nullptr) return errors::Internal("No per-step resource manager.");
-  TF_RETURN_IF_ERROR(rm->Lookup(container, ta_handle, tensor_array));
+  ResourceMgr* rm = ctx->resource_manager();
+  if (rm == nullptr) return errors::Internal("No resource manager.");
+  TF_RETURN_IF_ERROR(rm->Lookup(ctx->step_container()->name(),
+                                container + ta_handle, tensor_array));
   return Status::OK();
 }
 
@@ -104,10 +107,9 @@ class TensorArrayCreationOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->allocate_temp(
                             tensorflow::DT_STRING, tensorflow::TensorShape({2}),
                             &tensor_array_output_handle, alloc_attr));
-    // Store the handle in a container of the per-step RM.
-    ResourceMgr* rm = ctx->step_resource_manager();
-    OP_REQUIRES(ctx, rm != nullptr,
-                errors::Internal("No per-step resource manager."));
+    // Store the handle in a per-step container of the RM.
+    ResourceMgr* rm = ctx->resource_manager();
+    OP_REQUIRES(ctx, rm != nullptr, errors::Internal("No resource manager."));
 
     TensorArray* output_tensor_array;
     OP_REQUIRES_OK(ctx, CreateTensorArray(ctx, rm, &tensor_array_output_handle,
@@ -134,6 +136,7 @@ class TensorArrayOp : public TensorArrayCreationOp {
   explicit TensorArrayOp(OpKernelConstruction* context)
       : TensorArrayCreationOp(context) {
     OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_));
+    OP_REQUIRES_OK(context, context->GetAttr("element_shape", &element_shape_));
     OP_REQUIRES_OK(context, context->GetAttr("dynamic_size", &dynamic_size_));
     OP_REQUIRES_OK(context,
                    context->GetAttr("clear_after_read", &clear_after_read_));
@@ -163,12 +166,13 @@ class TensorArrayOp : public TensorArrayCreationOp {
     handle(1) = unique_tensor_array_name;
 
     TensorArray* tensor_array = new TensorArray(
-        dtype_, *tensor_array_output_handle, size, dynamic_size_,
-        false /* multiple_writes_aggregate */, false /* is_grad */,
-        -1 /* marked_size */, clear_after_read_);
+        dtype_, *tensor_array_output_handle, size, element_shape_,
+        dynamic_size_, false /* multiple_writes_aggregate */,
+        false /* is_grad */, -1 /* marked_size */, clear_after_read_);
 
-    TF_RETURN_IF_ERROR(
-        rm->Create(handle(0), unique_tensor_array_name, tensor_array));
+    TF_RETURN_IF_ERROR(rm->Create(
+        ctx->step_container()->name(),
+        strings::StrCat(handle(0), unique_tensor_array_name), tensor_array));
 
     *output_tensor_array = tensor_array;
 
@@ -177,6 +181,7 @@ class TensorArrayOp : public TensorArrayCreationOp {
 
  private:
   DataType dtype_;
+  PartialTensorShape element_shape_;
   bool dynamic_size_;
   bool clear_after_read_;
   string tensor_array_name_;  // The name used to create the TensorArray.
@@ -185,7 +190,8 @@ class TensorArrayOp : public TensorArrayCreationOp {
 };
 
 REGISTER_KERNEL_BUILDER(Name("TensorArray").Device(DEVICE_CPU), TensorArrayOp);
-REGISTER_KERNEL_BUILDER(Name("TensorArrayV2").Device(DEVICE_CPU), TensorArrayOp);
+REGISTER_KERNEL_BUILDER(Name("TensorArrayV2").Device(DEVICE_CPU),
+                        TensorArrayOp);
 
 #if GOOGLE_CUDA
 
@@ -195,8 +201,8 @@ REGISTER_KERNEL_BUILDER(Name("TensorArrayV2").Device(DEVICE_CPU), TensorArrayOp)
                               .TypeConstraint<type>("dtype") \
                               .HostMemory("size")            \
                               .HostMemory("handle"),         \
-                          TensorArrayOp); \
-  REGISTER_KERNEL_BUILDER(Name("TensorArrayV2")                \
+                          TensorArrayOp);                    \
+  REGISTER_KERNEL_BUILDER(Name("TensorArrayV2")              \
                               .Device(DEVICE_GPU)            \
                               .TypeConstraint<type>("dtype") \
                               .HostMemory("size")            \
@@ -236,7 +242,9 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
     output_handle(1) = strings::StrCat(tensor_array_name, "@", source_);
 
     TensorArray* tensor_array;
-    TF_RETURN_IF_ERROR(rm->Lookup(container, tensor_array_name, &tensor_array));
+    TF_RETURN_IF_ERROR(rm->Lookup(ctx->step_container()->name(),
+                                  strings::StrCat(container, tensor_array_name),
+                                  &tensor_array));
     core::ScopedUnref unref(tensor_array);
 
     // Once gradients are being calculated, the forward TensorArray
@@ -260,15 +268,17 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
                     tensor_array_output_handle](TensorArray** ret) -> Status {
       *ret = new TensorArray(
           tensor_array->ElemType(), *tensor_array_output_handle, array_size,
-          false /* dynamic_size */, true /* multiple_writes_aggregate */,
-          true /* is_grad */, marked_size /* marked_size */,
-          true /* close_after_read */);
+          tensor_array->ElemShape(), false /* dynamic_size */,
+          true /* multiple_writes_aggregate */, true /* is_grad */,
+          marked_size /* marked_size */, true /* close_after_read */);
       TF_RETURN_IF_ERROR((*ret)->CopyShapesFrom(tensor_array));
       return Status::OK();
     };
 
     Status s = rm->LookupOrCreate<TensorArray>(
-        output_handle(0), output_handle(1), output_tensor_array, creator);
+        ctx->step_container()->name(),
+        strings::StrCat(output_handle(0), output_handle(1)),
+        output_tensor_array, creator);
     (*output_tensor_array)->Unref();
 
     return s;
@@ -337,11 +347,11 @@ class TensorArrayWriteOp : public OpKernel {
   }
 };
 
-#define REGISTER_WRITE(type)                                                 \
-  REGISTER_KERNEL_BUILDER(                                                   \
-      Name("TensorArrayWrite").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
-      TensorArrayWriteOp<CPUDevice, type>);\
-  REGISTER_KERNEL_BUILDER(                                                   \
+#define REGISTER_WRITE(type)                                                   \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("TensorArrayWrite").Device(DEVICE_CPU).TypeConstraint<type>("T"),   \
+      TensorArrayWriteOp<CPUDevice, type>);                                    \
+  REGISTER_KERNEL_BUILDER(                                                     \
       Name("TensorArrayWriteV2").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
       TensorArrayWriteOp<CPUDevice, type>);
 
@@ -351,18 +361,18 @@ TF_CALL_ALL_TYPES(REGISTER_WRITE);
 
 #if GOOGLE_CUDA
 
-#define REGISTER_GPU(type)                               \
-  REGISTER_KERNEL_BUILDER(Name("TensorArrayWrite")       \
-                              .Device(DEVICE_GPU)        \
-                              .TypeConstraint<type>("T") \
-                              .HostMemory("handle")      \
-                              .HostMemory("index"),      \
+#define REGISTER_GPU(type)                                      \
+  REGISTER_KERNEL_BUILDER(Name("TensorArrayWrite")              \
+                              .Device(DEVICE_GPU)               \
+                              .TypeConstraint<type>("T")        \
+                              .HostMemory("handle")             \
+                              .HostMemory("index"),             \
                           TensorArrayWriteOp<GPUDevice, type>); \
-  REGISTER_KERNEL_BUILDER(Name("TensorArrayWriteV2")       \
-                              .Device(DEVICE_GPU)        \
-                              .TypeConstraint<type>("T") \
-                              .HostMemory("handle")      \
-                              .HostMemory("index"),      \
+  REGISTER_KERNEL_BUILDER(Name("TensorArrayWriteV2")            \
+                              .Device(DEVICE_GPU)               \
+                              .TypeConstraint<type>("T")        \
+                              .HostMemory("handle")             \
+                              .HostMemory("index"),             \
                           TensorArrayWriteOp<GPUDevice, type>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
@@ -412,14 +422,14 @@ class TensorArrayReadOp : public OpKernel {
   DataType dtype_;
 };
 
-#define REGISTER_READ(type)                                   \
-  REGISTER_KERNEL_BUILDER(Name("TensorArrayRead")             \
-                              .Device(DEVICE_CPU)             \
-                              .TypeConstraint<type>("dtype"), \
+#define REGISTER_READ(type)                                    \
+  REGISTER_KERNEL_BUILDER(Name("TensorArrayRead")              \
+                              .Device(DEVICE_CPU)              \
+                              .TypeConstraint<type>("dtype"),  \
                           TensorArrayReadOp<CPUDevice, type>); \
-  REGISTER_KERNEL_BUILDER(Name("TensorArrayReadV2")             \
-                              .Device(DEVICE_CPU)             \
-                              .TypeConstraint<type>("dtype"), \
+  REGISTER_KERNEL_BUILDER(Name("TensorArrayReadV2")            \
+                              .Device(DEVICE_CPU)              \
+                              .TypeConstraint<type>("dtype"),  \
                           TensorArrayReadOp<CPUDevice, type>);
 
 TF_CALL_ALL_TYPES(REGISTER_READ)
@@ -428,18 +438,18 @@ TF_CALL_ALL_TYPES(REGISTER_READ)
 
 #if GOOGLE_CUDA
 
-#define REGISTER_GPU(type)                                   \
-  REGISTER_KERNEL_BUILDER(Name("TensorArrayRead")            \
-                              .Device(DEVICE_GPU)            \
-                              .TypeConstraint<type>("dtype") \
-                              .HostMemory("handle")          \
-                              .HostMemory("index"),          \
+#define REGISTER_GPU(type)                                     \
+  REGISTER_KERNEL_BUILDER(Name("TensorArrayRead")              \
+                              .Device(DEVICE_GPU)              \
+                              .TypeConstraint<type>("dtype")   \
+                              .HostMemory("handle")            \
+                              .HostMemory("index"),            \
                           TensorArrayReadOp<GPUDevice, type>); \
   REGISTER_KERNEL_BUILDER(Name("TensorArrayReadV2")            \
-                              .Device(DEVICE_GPU)            \
-                              .TypeConstraint<type>("dtype") \
-                              .HostMemory("handle")          \
-                              .HostMemory("index"),          \
+                              .Device(DEVICE_GPU)              \
+                              .TypeConstraint<type>("dtype")   \
+                              .HostMemory("handle")            \
+                              .HostMemory("index"),            \
                           TensorArrayReadOp<GPUDevice, type>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
@@ -476,6 +486,10 @@ class TensorArrayPackOrGatherOp : public OpKernel {
         errors::InvalidArgument(
             "TensorArray dtype is ", DataTypeString(tensor_array->ElemType()),
             " but Op requested dtype ", DataTypeString(dtype_), "."));
+
+    // Ensure new element shape is compatible with the one stored in the
+    // TensorArray.
+    OP_REQUIRES_OK(ctx, tensor_array->SetElemShape(element_shape_));
 
     int32 num_indices;
     std::vector<PersistentTensor> values;
@@ -570,24 +584,24 @@ class TensorArrayPackOrGatherOp : public OpKernel {
   PartialTensorShape element_shape_;
 };
 
-#define REGISTER_GATHER_AND_PACK(type)                                     \
-  REGISTER_KERNEL_BUILDER(                                                 \
-      Name("TensorArrayPack")                                              \
-          .Device(DEVICE_CPU)                                              \
-          .TypeConstraint<type>("dtype"),                                  \
-      TensorArrayPackOrGatherOp<CPUDevice, type, true /* LEGACY_PACK */>); \
-  REGISTER_KERNEL_BUILDER(                                                 \
-      Name("TensorArrayGather")                                            \
-          .Device(DEVICE_CPU)                                              \
-          .TypeConstraint<type>("dtype"),                                  \
+#define REGISTER_GATHER_AND_PACK(type)                                      \
+  REGISTER_KERNEL_BUILDER(                                                  \
+      Name("TensorArrayPack")                                               \
+          .Device(DEVICE_CPU)                                               \
+          .TypeConstraint<type>("dtype"),                                   \
+      TensorArrayPackOrGatherOp<CPUDevice, type, true /* LEGACY_PACK */>);  \
+  REGISTER_KERNEL_BUILDER(                                                  \
+      Name("TensorArrayGather")                                             \
+          .Device(DEVICE_CPU)                                               \
+          .TypeConstraint<type>("dtype"),                                   \
       TensorArrayPackOrGatherOp<CPUDevice, type, false /* LEGACY_PACK */>); \
-  REGISTER_KERNEL_BUILDER(                                                 \
-      Name("TensorArrayGatherV2")                                            \
-          .Device(DEVICE_CPU)                                              \
-          .TypeConstraint<type>("dtype"),                                  \
+  REGISTER_KERNEL_BUILDER(                                                  \
+      Name("TensorArrayGatherV2")                                           \
+          .Device(DEVICE_CPU)                                               \
+          .TypeConstraint<type>("dtype"),                                   \
       TensorArrayPackOrGatherOp<CPUDevice, type, false /* LEGACY_PACK */>);
 
-TF_CALL_ALL_TYPES(REGISTER_GATHER_AND_PACK);
+TF_CALL_POD_STRING_TYPES(REGISTER_GATHER_AND_PACK);
 REGISTER_GATHER_AND_PACK(quint8);
 REGISTER_GATHER_AND_PACK(qint8);
 REGISTER_GATHER_AND_PACK(qint32);
@@ -597,26 +611,26 @@ REGISTER_GATHER_AND_PACK(bfloat16);
 
 #if GOOGLE_CUDA
 
-#define REGISTER_GPU(type)                                                 \
-  REGISTER_KERNEL_BUILDER(                                                 \
-      Name("TensorArrayPack")                                              \
-          .Device(DEVICE_GPU)                                              \
-          .TypeConstraint<type>("dtype")                                   \
-          .HostMemory("handle"),                                           \
-      TensorArrayPackOrGatherOp<GPUDevice, type, true /* LEGACY_PACK */>); \
-  REGISTER_KERNEL_BUILDER(                                                 \
-      Name("TensorArrayGather")                                            \
-          .Device(DEVICE_GPU)                                              \
-          .TypeConstraint<type>("dtype")                                   \
-          .HostMemory("indices")                                           \
-          .HostMemory("handle"),                                           \
+#define REGISTER_GPU(type)                                                  \
+  REGISTER_KERNEL_BUILDER(                                                  \
+      Name("TensorArrayPack")                                               \
+          .Device(DEVICE_GPU)                                               \
+          .TypeConstraint<type>("dtype")                                    \
+          .HostMemory("handle"),                                            \
+      TensorArrayPackOrGatherOp<GPUDevice, type, true /* LEGACY_PACK */>);  \
+  REGISTER_KERNEL_BUILDER(                                                  \
+      Name("TensorArrayGather")                                             \
+          .Device(DEVICE_GPU)                                               \
+          .TypeConstraint<type>("dtype")                                    \
+          .HostMemory("indices")                                            \
+          .HostMemory("handle"),                                            \
       TensorArrayPackOrGatherOp<GPUDevice, type, false /* LEGACY_PACK */>); \
-  REGISTER_KERNEL_BUILDER(                                                 \
-      Name("TensorArrayGatherV2")                                            \
-          .Device(DEVICE_GPU)                                              \
-          .TypeConstraint<type>("dtype")                                   \
-          .HostMemory("indices")                                           \
-          .HostMemory("handle"),                                           \
+  REGISTER_KERNEL_BUILDER(                                                  \
+      Name("TensorArrayGatherV2")                                           \
+          .Device(DEVICE_GPU)                                               \
+          .TypeConstraint<type>("dtype")                                    \
+          .HostMemory("indices")                                            \
+          .HostMemory("handle"),                                            \
       TensorArrayPackOrGatherOp<GPUDevice, type, false /* LEGACY_PACK */>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
@@ -782,21 +796,21 @@ class TensorArrayConcatOp : public OpKernel {
   PartialTensorShape element_shape_except0_;
 };
 
-#define REGISTER_CONCAT(type)                                \
-  REGISTER_KERNEL_BUILDER(Name("TensorArrayConcat")          \
-                              .Device(DEVICE_CPU)            \
-                              .TypeConstraint<type>("dtype") \
-                              .HostMemory("lengths")         \
-                              .HostMemory("handle"),         \
+#define REGISTER_CONCAT(type)                                    \
+  REGISTER_KERNEL_BUILDER(Name("TensorArrayConcat")              \
+                              .Device(DEVICE_CPU)                \
+                              .TypeConstraint<type>("dtype")     \
+                              .HostMemory("lengths")             \
+                              .HostMemory("handle"),             \
                           TensorArrayConcatOp<CPUDevice, type>); \
-  REGISTER_KERNEL_BUILDER(Name("TensorArrayConcatV2")          \
-                              .Device(DEVICE_CPU)            \
-                              .TypeConstraint<type>("dtype") \
-                              .HostMemory("lengths")         \
-                              .HostMemory("handle"),         \
+  REGISTER_KERNEL_BUILDER(Name("TensorArrayConcatV2")            \
+                              .Device(DEVICE_CPU)                \
+                              .TypeConstraint<type>("dtype")     \
+                              .HostMemory("lengths")             \
+                              .HostMemory("handle"),             \
                           TensorArrayConcatOp<CPUDevice, type>)
 
-TF_CALL_ALL_TYPES(REGISTER_CONCAT);
+TF_CALL_POD_STRING_TYPES(REGISTER_CONCAT);
 REGISTER_CONCAT(quint8);
 REGISTER_CONCAT(qint8);
 REGISTER_CONCAT(qint32);
@@ -806,18 +820,18 @@ REGISTER_CONCAT(bfloat16);
 
 #if GOOGLE_CUDA
 
-#define REGISTER_GPU(type)                                   \
-  REGISTER_KERNEL_BUILDER(Name("TensorArrayConcat")          \
-                              .Device(DEVICE_GPU)            \
-                              .TypeConstraint<type>("dtype") \
-                              .HostMemory("lengths")         \
-                              .HostMemory("handle"),         \
+#define REGISTER_GPU(type)                                       \
+  REGISTER_KERNEL_BUILDER(Name("TensorArrayConcat")              \
+                              .Device(DEVICE_GPU)                \
+                              .TypeConstraint<type>("dtype")     \
+                              .HostMemory("lengths")             \
+                              .HostMemory("handle"),             \
                           TensorArrayConcatOp<GPUDevice, type>); \
-  REGISTER_KERNEL_BUILDER(Name("TensorArrayConcatV2")          \
-                              .Device(DEVICE_GPU)            \
-                              .TypeConstraint<type>("dtype") \
-                              .HostMemory("lengths")         \
-                              .HostMemory("handle"),         \
+  REGISTER_KERNEL_BUILDER(Name("TensorArrayConcatV2")            \
+                              .Device(DEVICE_GPU)                \
+                              .TypeConstraint<type>("dtype")     \
+                              .HostMemory("lengths")             \
+                              .HostMemory("handle"),             \
                           TensorArrayConcatOp<GPUDevice, type>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
@@ -979,9 +993,11 @@ class TensorArrayUnpackOrScatterOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("TensorArrayScatter").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
       TensorArrayUnpackOrScatterOp<CPUDevice, type,                            \
-                                   false /* LEGACY_UNPACK */>); \
+                                   false /* LEGACY_UNPACK */>);                \
   REGISTER_KERNEL_BUILDER(                                                     \
-      Name("TensorArrayScatterV2").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
+      Name("TensorArrayScatterV2")                                             \
+          .Device(DEVICE_CPU)                                                  \
+          .TypeConstraint<type>("T"),                                          \
       TensorArrayUnpackOrScatterOp<CPUDevice, type,                            \
                                    false /* LEGACY_UNPACK */>);
 
@@ -990,29 +1006,29 @@ TF_CALL_ALL_TYPES(REGISTER_SCATTER_AND_UNPACK);
 
 #if GOOGLE_CUDA
 
-#define REGISTER_GPU(type)                                     \
-  REGISTER_KERNEL_BUILDER(                                     \
-      Name("TensorArrayUnpack")                                \
-          .Device(DEVICE_GPU)                                  \
-          .TypeConstraint<type>("T")                           \
-          .HostMemory("handle"),                               \
-      TensorArrayUnpackOrScatterOp<GPUDevice, type,            \
-                                   true /* LEGACY_UNPACK */>); \
-  REGISTER_KERNEL_BUILDER(                                     \
-      Name("TensorArrayScatter")                               \
-          .Device(DEVICE_GPU)                                  \
-          .TypeConstraint<type>("T")                           \
-          .HostMemory("indices")                               \
-          .HostMemory("handle"),                               \
-      TensorArrayUnpackOrScatterOp<GPUDevice, type,            \
+#define REGISTER_GPU(type)                                      \
+  REGISTER_KERNEL_BUILDER(                                      \
+      Name("TensorArrayUnpack")                                 \
+          .Device(DEVICE_GPU)                                   \
+          .TypeConstraint<type>("T")                            \
+          .HostMemory("handle"),                                \
+      TensorArrayUnpackOrScatterOp<GPUDevice, type,             \
+                                   true /* LEGACY_UNPACK */>);  \
+  REGISTER_KERNEL_BUILDER(                                      \
+      Name("TensorArrayScatter")                                \
+          .Device(DEVICE_GPU)                                   \
+          .TypeConstraint<type>("T")                            \
+          .HostMemory("indices")                                \
+          .HostMemory("handle"),                                \
+      TensorArrayUnpackOrScatterOp<GPUDevice, type,             \
                                    false /* LEGACY_UNPACK */>); \
-  REGISTER_KERNEL_BUILDER(                                     \
+  REGISTER_KERNEL_BUILDER(                                      \
       Name("TensorArrayScatterV2")                              \
-          .Device(DEVICE_GPU)                                  \
-          .TypeConstraint<type>("T")                           \
-          .HostMemory("indices")                               \
-          .HostMemory("handle"),                               \
-      TensorArrayUnpackOrScatterOp<GPUDevice, type,            \
+          .Device(DEVICE_GPU)                                   \
+          .TypeConstraint<type>("T")                            \
+          .HostMemory("indices")                                \
+          .HostMemory("handle"),                                \
+      TensorArrayUnpackOrScatterOp<GPUDevice, type,             \
                                    false /* LEGACY_UNPACK */>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
@@ -1144,11 +1160,11 @@ class TensorArraySplitOp : public OpKernel {
   }
 };
 
-#define REGISTER_SPLIT(type)                                                 \
-  REGISTER_KERNEL_BUILDER(                                                   \
-      Name("TensorArraySplit").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
-      TensorArraySplitOp<CPUDevice, type>); \
-  REGISTER_KERNEL_BUILDER(                                                   \
+#define REGISTER_SPLIT(type)                                                   \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("TensorArraySplit").Device(DEVICE_CPU).TypeConstraint<type>("T"),   \
+      TensorArraySplitOp<CPUDevice, type>);                                    \
+  REGISTER_KERNEL_BUILDER(                                                     \
       Name("TensorArraySplitV2").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
       TensorArraySplitOp<CPUDevice, type>);
 
@@ -1157,18 +1173,18 @@ TF_CALL_ALL_TYPES(REGISTER_SPLIT);
 
 #if GOOGLE_CUDA
 
-#define REGISTER_GPU(type)                               \
-  REGISTER_KERNEL_BUILDER(Name("TensorArraySplit")       \
-                              .Device(DEVICE_GPU)        \
-                              .TypeConstraint<type>("T") \
-                              .HostMemory("lengths")     \
-                              .HostMemory("handle"),     \
+#define REGISTER_GPU(type)                                      \
+  REGISTER_KERNEL_BUILDER(Name("TensorArraySplit")              \
+                              .Device(DEVICE_GPU)               \
+                              .TypeConstraint<type>("T")        \
+                              .HostMemory("lengths")            \
+                              .HostMemory("handle"),            \
                           TensorArraySplitOp<GPUDevice, type>); \
-  REGISTER_KERNEL_BUILDER(Name("TensorArraySplitV2")       \
-                              .Device(DEVICE_GPU)        \
-                              .TypeConstraint<type>("T") \
-                              .HostMemory("lengths")     \
-                              .HostMemory("handle"),     \
+  REGISTER_KERNEL_BUILDER(Name("TensorArraySplitV2")            \
+                              .Device(DEVICE_GPU)               \
+                              .TypeConstraint<type>("T")        \
+                              .HostMemory("lengths")            \
+                              .HostMemory("handle"),            \
                           TensorArraySplitOp<GPUDevice, type>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);

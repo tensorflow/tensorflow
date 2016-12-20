@@ -45,6 +45,8 @@ licenses(["notice"])  # 3-clause BSD
 
 package(default_visibility = ["//visibility:public"])
 
+exports_files(["LICENSE"])
+
 genrule(
     name = "pb_h",
     outs = ["third_party/nanopb/pb.h"],
@@ -1559,6 +1561,7 @@ cc_library(
     "include/grpc++/impl/codegen/create_auth_context.h",
     "include/grpc++/impl/codegen/grpc_library.h",
     "include/grpc++/impl/codegen/method_handler_impl.h",
+    "include/grpc++/impl/codegen/proto_utils.h",
     "include/grpc++/impl/codegen/rpc_method.h",
     "include/grpc++/impl/codegen/rpc_service_method.h",
     "include/grpc++/impl/codegen/security/auth_context.h",
@@ -1764,10 +1767,12 @@ cc_library(
     "include/grpc++/impl/codegen/completion_queue.h",
     "include/grpc++/impl/codegen/completion_queue_tag.h",
     "include/grpc++/impl/codegen/config.h",
+    "include/grpc++/impl/codegen/config_protobuf.h",        
     "include/grpc++/impl/codegen/core_codegen_interface.h",
     "include/grpc++/impl/codegen/create_auth_context.h",
     "include/grpc++/impl/codegen/grpc_library.h",
     "include/grpc++/impl/codegen/method_handler_impl.h",
+    "include/grpc++/impl/codegen/proto_utils.h",
     "include/grpc++/impl/codegen/rpc_method.h",
     "include/grpc++/impl/codegen/rpc_service_method.h",
     "include/grpc++/impl/codegen/security/auth_context.h",

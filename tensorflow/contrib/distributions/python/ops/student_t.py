@@ -168,10 +168,10 @@ class StudentT(distribution.Distribution):
 
   def _get_batch_shape(self):
     return common_shapes.broadcast_shape(
-        self.sigma.get_shape(),
         common_shapes.broadcast_shape(
             self.df.get_shape(),
-            self.mu.get_shape()))
+            self.mu.get_shape()),
+        self.sigma.get_shape())
 
   def _event_shape(self):
     return constant_op.constant([], dtype=math_ops.int32)
@@ -180,15 +180,18 @@ class StudentT(distribution.Distribution):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):
-    # The sampling method comes from the well known fact that if X ~ Normal(0,
-    # 1), and Z ~ Chi2(df), then X / sqrt(Z / df) ~ StudentT(df).
-    shape = array_ops.concat(0, ([n], self.batch_shape()))
+    # The sampling method comes from the fact that if:
+    #   X ~ Normal(0, 1)
+    #   Z ~ Chi2(df)
+    #   Y = X / sqrt(Z / df)
+    # then:
+    #   Y ~ StudentT(df).
+    shape = array_ops.concat_v2([[n], self.batch_shape()], 0)
     normal_sample = random_ops.random_normal(
         shape, dtype=self.dtype, seed=seed)
-    half = constant_op.constant(0.5, self.dtype)
     df = self.df * array_ops.ones(self.batch_shape(), dtype=self.dtype)
     gamma_sample = random_ops.random_gamma(
-        [n,], half * df, beta=half, dtype=self.dtype,
+        [n], 0.5 * df, beta=0.5, dtype=self.dtype,
         seed=distribution_util.gen_new_seed(seed, salt="student_t"))
     samples = normal_sample / math_ops.sqrt(gamma_sample / df)
     return samples * self.sigma + self.mu
@@ -214,7 +217,7 @@ class StudentT(distribution.Distribution):
   def _entropy(self):
     u = array_ops.expand_dims(self.df * self._ones(), -1)
     v = array_ops.expand_dims(self._ones(), -1)
-    beta_arg = array_ops.concat(len(u.get_shape()) - 1, [u, v]) / 2
+    beta_arg = array_ops.concat_v2([u, v], len(u.get_shape()) - 1) / 2
     half_df = 0.5 * self.df
     return ((0.5 + half_df) * (math_ops.digamma(0.5 + half_df) -
                                math_ops.digamma(half_df)) +
@@ -230,7 +233,7 @@ class StudentT(distribution.Distribution):
     mean = self.mu * self._ones()
     if self.allow_nan_stats:
       nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
-      return math_ops.select(
+      return array_ops.where(
           math_ops.greater(self.df, self._ones()), mean,
           array_ops.fill(self.batch_shape(), nan, name="nan"))
     else:
@@ -255,14 +258,14 @@ class StudentT(distribution.Distribution):
            math_ops.square(self.sigma) * self.df / (self.df - 2))
     # When 1 < df <= 2, variance is infinite.
     inf = np.array(np.inf, dtype=self.dtype.as_numpy_dtype())
-    result_where_defined = math_ops.select(
+    result_where_defined = array_ops.where(
         math_ops.greater(self.df, array_ops.fill(self.batch_shape(), 2.)),
         var,
         array_ops.fill(self.batch_shape(), inf, name="inf"))
 
     if self.allow_nan_stats:
       nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
-      return math_ops.select(
+      return array_ops.where(
           math_ops.greater(self.df, self._ones()),
           result_where_defined,
           array_ops.fill(self.batch_shape(), nan, name="nan"))

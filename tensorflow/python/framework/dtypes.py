@@ -59,6 +59,7 @@ class DType(object):
   @@name
   @@base_dtype
   @@real_dtype
+  @@is_bool
   @@is_floating
   @@is_complex
   @@is_integer
@@ -140,6 +141,11 @@ class DType(object):
   def as_datatype_enum(self):
     """Returns a `types_pb2.DataType` enum value based on this `DType`."""
     return self._type_enum
+
+  @property
+  def is_bool(self):
+    """Returns whether this is a boolean data type"""
+    return self.base_dtype == bool
 
   @property
   def is_integer(self):

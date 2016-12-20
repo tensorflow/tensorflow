@@ -80,11 +80,11 @@ class QuantizeV2Op : public OpKernel {
     // overall range from the maximum, so that the value can be easily
     // represented when we promote the quantized value to a higher
     // intermediate bit depth, since that's a common requirement.
-    min_range = input_min_range;
+    min_range = std::min(0.0f, input_min_range);
     const float epsilon = std::max(1.0f, std::max(fabsf(input_min_range),
                                                   fabsf(input_max_range))) /
                           100.0f;
-    max_range = std::max(input_max_range, input_min_range + epsilon);
+    max_range = std::max(input_max_range, min_range + epsilon);
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input.shape(), &output));

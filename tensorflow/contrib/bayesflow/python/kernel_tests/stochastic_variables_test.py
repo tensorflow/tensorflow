@@ -42,8 +42,8 @@ class StochasticVariablesTest(tf.test.TestCase):
 
     self.assertEqual(
         {"stochastic_variables/sv_mu", "stochastic_variables/sv_sigma"},
-        set([v.op.name for v in tf.all_variables()]))
-    self.assertEqual(set(tf.trainable_variables()), set(tf.all_variables()))
+        set([v.op.name for v in tf.global_variables()]))
+    self.assertEqual(set(tf.trainable_variables()), set(tf.global_variables()))
 
     v = tf.convert_to_tensor(v)
     self.assertEqual(list(shape), v.get_shape().as_list())
@@ -64,7 +64,7 @@ class StochasticVariablesTest(tf.test.TestCase):
             })):
       v = tf.get_variable("sv")
 
-    for var in tf.all_variables():
+    for var in tf.global_variables():
       if "mu" in var.name:
         mu_var = var
       if "sigma" in var.name:
@@ -96,7 +96,7 @@ class StochasticVariablesTest(tf.test.TestCase):
             })):
       v = tf.get_variable("sv", shape)
 
-    for var in tf.all_variables():
+    for var in tf.global_variables():
       if "mu" in var.name:
         mu_var = var
       if "sigma" in var.name:

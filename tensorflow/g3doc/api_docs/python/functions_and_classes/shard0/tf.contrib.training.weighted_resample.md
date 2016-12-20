@@ -1,4 +1,4 @@
-### `tf.contrib.training.weighted_resample(inputs, weights, overall_rate, scope=None, mean_decay=0.999, warmup=10, seed=None)` {#weighted_resample}
+### `tf.contrib.training.weighted_resample(inputs, weights, overall_rate, scope=None, mean_decay=0.999, seed=None)` {#weighted_resample}
 
 Performs an approximate weighted resampling of `inputs`.
 
@@ -15,9 +15,6 @@ rate of selection across all inputs (and many invocations!) is
 *  <b>`overall_rate`</b>: Desired overall rate of resampling.
 *  <b>`scope`</b>: Scope to use for the op.
 *  <b>`mean_decay`</b>: How quickly to decay the running estimate of the mean weight.
-*  <b>`warmup`</b>: Until the resulting tensor has been evaluated `warmup`
-    times, the resampling menthod uses the true mean over all calls
-    as its weight estimate, rather than a decayed mean.
 *  <b>`seed`</b>: Random seed.
 
 ##### Returns:

@@ -625,7 +625,7 @@ class TrainTest(tf.test.TestCase):
       tf.set_random_seed(2)
       train_op = self.create_train_op()
 
-      model_variables = tf.all_variables()
+      model_variables = tf.global_variables()
       model_path = os.path.join(logdir1, 'model.ckpt-300')
 
       init_op = tf.global_variables_initializer()
@@ -674,7 +674,7 @@ class TrainTest(tf.test.TestCase):
       tf.set_random_seed(2)
       train_op = self.create_train_op()
 
-      model_variables = tf.all_variables()
+      model_variables = tf.global_variables()
       model_path = os.path.join(logdir1, 'model.ckpt-300')
       saver = tf.train.Saver(model_variables)
       def RestoreFn(sess):

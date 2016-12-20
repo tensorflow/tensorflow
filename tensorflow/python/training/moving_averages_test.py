@@ -89,6 +89,11 @@ def _Repeat(value, dim):
 class ExponentialMovingAverageTest(tf.test.TestCase):
 
   def _CheckDecay(self, ema, actual_decay, dim):
+    def _Scale(dk, steps):
+      if ema._zero_debias:
+        return 1 - dk ** (steps + 1)
+      else:
+        return 1
     tens = _Repeat(10.0, dim)
     thirties = _Repeat(30.0, dim)
     var0 = tf.Variable(tens, name="v0")
@@ -133,7 +138,7 @@ class ExponentialMovingAverageTest(tf.test.TestCase):
     self.assertAllClose(expected, avg0.eval())
     expected = _Repeat(30.0 * dk + 30.0 * (1 - dk), dim)
     self.assertAllClose(expected, avg1.eval())
-    expected = _Repeat(0.0 * dk + (10.0 + 30.0) * (1 - dk) / (1 - dk ** 2), dim)
+    expected = _Repeat(0.0 * dk + (10.0 + 30.0) * (1 - dk) / _Scale(dk, 1), dim)
     self.assertAllClose(expected, avg2.eval())
 
     # Again, update the averages and check.
@@ -145,7 +150,7 @@ class ExponentialMovingAverageTest(tf.test.TestCase):
                        dim)
     self.assertAllClose(expected, avg1.eval())
     expected = _Repeat(((0.0 * dk + (10.0 + 30.0) * (1 - dk)) * dk +
-                        (10.0 + 30.0) * (1 - dk)) / (1 - dk ** 3),
+                        (10.0 + 30.0) * (1 - dk)) / _Scale(dk, 2),
                        dim)
     self.assertAllClose(expected, avg2.eval())
 
@@ -154,9 +159,19 @@ class ExponentialMovingAverageTest(tf.test.TestCase):
       ema = tf.train.ExponentialMovingAverage(0.25)
       self._CheckDecay(ema, actual_decay=0.25, dim=1)
 
+  def testAverageVariablesNoNumUpdates_Scalar_Debias(self):
+    with self.test_session():
+      ema = tf.train.ExponentialMovingAverage(0.25, zero_debias=True)
+      self._CheckDecay(ema, actual_decay=0.25, dim=1)
+
   def testAverageVariablesNoNumUpdates_Vector(self):
     with self.test_session():
       ema = tf.train.ExponentialMovingAverage(0.25)
+      self._CheckDecay(ema, actual_decay=0.25, dim=5)
+
+  def testAverageVariablesNoNumUpdates_Vector_Debias(self):
+    with self.test_session():
+      ema = tf.train.ExponentialMovingAverage(0.25, zero_debias=True)
       self._CheckDecay(ema, actual_decay=0.25, dim=5)
 
   def testAverageVariablesNumUpdates_Scalar(self):
@@ -165,10 +180,24 @@ class ExponentialMovingAverageTest(tf.test.TestCase):
       ema = tf.train.ExponentialMovingAverage(0.25, num_updates=1)
       self._CheckDecay(ema, actual_decay=0.181818, dim=1)
 
+  def testAverageVariablesNumUpdates_Scalar_Debias(self):
+    with self.test_session():
+      # With num_updates 1, the decay applied is 0.1818
+      ema = tf.train.ExponentialMovingAverage(
+          0.25, num_updates=1, zero_debias=True)
+      self._CheckDecay(ema, actual_decay=0.181818, dim=1)
+
   def testAverageVariablesNumUpdates_Vector(self):
     with self.test_session():
       # With num_updates 1, the decay applied is 0.1818
       ema = tf.train.ExponentialMovingAverage(0.25, num_updates=1)
+      self._CheckDecay(ema, actual_decay=0.181818, dim=5)
+
+  def testAverageVariablesNumUpdates_Vector_Debias(self):
+    with self.test_session():
+      # With num_updates 1, the decay applied is 0.1818
+      ema = tf.train.ExponentialMovingAverage(
+          0.25, num_updates=1, zero_debias=True)
       self._CheckDecay(ema, actual_decay=0.181818, dim=5)
 
   def testAverageVariablesWithControlDeps(self):
@@ -195,14 +224,15 @@ class ExponentialMovingAverageTest(tf.test.TestCase):
       self.assertEqual(1, sess.run(v0))
       self.assertEqual([17.5], sess.run(v1_avg))
 
-  def testAverageVariablesNames(self):
+  def averageVariablesNamesHelper(self, zero_debias):
     with self.test_session():
       v0 = tf.Variable(10.0, name="v0")
       v1 = tf.Variable(30.0, name="v1")
       # Add a non-trainable variable.
       v2 = tf.Variable(20.0, name="v2", trainable=False)
       tensor2 = v0 + v1
-      ema = tf.train.ExponentialMovingAverage(0.25, name="foo")
+      ema = tf.train.ExponentialMovingAverage(
+          0.25, zero_debias=zero_debias, name="foo")
       self.assertEqual("v0/foo", ema.average_name(v0))
       self.assertEqual("v1/foo", ema.average_name(v1))
       self.assertEqual("add/foo", ema.average_name(tensor2))
@@ -212,21 +242,30 @@ class ExponentialMovingAverageTest(tf.test.TestCase):
       # {v0/foo : v0,
       #  v1/foo : v1,
       #  add/foo : add/foo,
-      #  add/foo/biased: add/foo/biased,
-      #  add/foo/local_step: add/foo/local_step,
       #  v2 : v2}
+      expected_names = [ema.average_name(v0),
+                        ema.average_name(v1),
+                        ema.average_name(tensor2),
+                        v2.op.name]
+      if zero_debias:
+        # vars_to_restore should also contain the following:
+        #  {add/foo/biased: add/foo/biased,
+        #  add/foo/local_step: add/foo/local_step}
+        expected_names += [ema.average_name(tensor2) + "/biased",
+                           ema.average_name(tensor2) + "/local_step"]
       self.assertEqual(sorted(vars_to_restore.keys()),
-                       sorted([ema.average_name(v0),
-                               ema.average_name(v1),
-                               ema.average_name(tensor2),
-                               ema.average_name(tensor2) + "/biased",
-                               ema.average_name(tensor2) + "/local_step",
-                               v2.op.name]))
+                       sorted(expected_names))
       self.assertEqual(ema.average_name(v0), ema.average(v0).op.name)
       self.assertEqual(ema.average_name(v1), ema.average(v1).op.name)
       self.assertEqual(ema.average_name(tensor2), ema.average(tensor2).op.name)
 
-  def testAverageVariablesNamesRespectScope(self):
+  def testAverageVariablesNames(self):
+    self.averageVariablesNamesHelper(zero_debias=True)
+
+  def testAverageVariablesNamesNoDebias(self):
+    self.averageVariablesNamesHelper(zero_debias=False)
+
+  def averageVariablesNamesRespectScopeHelper(self, zero_debias):
     # See discussion on #2740.
     with self.test_session():
       with tf.variable_scope("scope1"):
@@ -236,7 +275,8 @@ class ExponentialMovingAverageTest(tf.test.TestCase):
         v2 = tf.Variable(20.0, name="v2", trainable=False)
         tensor2 = v0 + v1
       with tf.variable_scope("scope2"):
-        ema = tf.train.ExponentialMovingAverage(0.25, name="foo")
+        ema = tf.train.ExponentialMovingAverage(
+            0.25, zero_debias=zero_debias, name="foo")
         self.assertEqual("scope2/scope1/v0/foo", ema.average_name(v0))
         self.assertEqual("scope2/scope1/v1/foo", ema.average_name(v1))
         self.assertEqual("scope2/scope1/add/foo", ema.average_name(tensor2))
@@ -246,21 +286,31 @@ class ExponentialMovingAverageTest(tf.test.TestCase):
         # {scope2/scope1/v0/foo : v0,
         #  scope2/scope1/v1/foo : v1,
         #  scope2/scope1/add/foo : add/foo,
-        #  scope2/scope2/scope1/add/foo/biased: add/foo/biased,
-        #  scope2/scope2/scope1/add/foo/local_step: add/foo/local_step,
         #  scope1/v2 : v2}
-        sc = "scope2/"
+        expected_names = [ema.average_name(v0),
+                          ema.average_name(v1),
+                          ema.average_name(tensor2),
+                          v2.op.name]
+        if zero_debias:
+          # vars_to_restore should also contain the following:
+          # {scope2/scope2/scope1/add/foo/biased: add/foo/biased,
+          #  scope2/scope2/scope1/add/foo/local_step: add/foo/local_step}
+          sc = "scope2/"
+          expected_names += [sc + ema.average_name(tensor2) + "/biased",
+                             sc + ema.average_name(tensor2) + "/local_step"]
+
         self.assertEqual(sorted(vars_to_restore.keys()),
-                         sorted([ema.average_name(v0),
-                                 ema.average_name(v1),
-                                 ema.average_name(tensor2),
-                                 sc + ema.average_name(tensor2) + "/biased",
-                                 sc + ema.average_name(tensor2) + "/local_step",
-                                 v2.op.name]))
+                         sorted(expected_names))
         self.assertEqual(ema.average_name(v0), ema.average(v0).op.name)
         self.assertEqual(ema.average_name(v1), ema.average(v1).op.name)
         self.assertEqual(ema.average_name(tensor2),
                          ema.average(tensor2).op.name)
+
+  def testAverageVariablesNamesRespectScope(self):
+    self.averageVariablesNamesRespectScopeHelper(zero_debias=True)
+
+  def testAverageVariablesNamesRespectScopeNoDebias(self):
+    self.averageVariablesNamesRespectScopeHelper(zero_debias=False)
 
   def testSubsetAverageVariablesNames(self):
     with self.test_session():

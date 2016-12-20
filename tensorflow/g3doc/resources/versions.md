@@ -3,7 +3,7 @@
 ## Semantic Versioning 2.0
 
 Once we reach version 1.0, TensorFlow will follow Semantic Versioning 2.0
-(semver). For details, see <http://semver.org>.  Each release version of
+([semver](http://semver.org)) for its public API. Each release version of
 TensorFlow has the form `MAJOR.MINOR.PATCH`.  Changes to the each number have
 the following meaning:
 
@@ -32,10 +32,11 @@ the restrictions of semver).
 
 ## Public API
 
-Only the public API of TensorFlow is backwards compatible across minor and patch
-versions.  The public API consists of
+Only the C, C++, and Python public APIs of TensorFlow are backwards compatible
+across minor and patch versions.  The public APIs consist of
 
-* The documented [C++ and Python APIs](../api_docs).
+* The documented [Python](../api_docs/python), [C++](../api_docs/cc) and
+  the [C](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/c/c_api.h) APIs.
 
 * The following protocol buffer files:
   [`attr_value`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/attr_value.proto),
@@ -51,13 +52,20 @@ versions.  The public API consists of
 
 The public C++ API is exposed through the header files in
 [`tensorflow/core/public`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core/public).
+
 The public Python API is unfortunately **not** everything available through the
 tensorflow python module and its submodules, since we do not yet use `__all__`
 everywhere ([#421](https://github.com/tensorflow/tensorflow/issues/421)).
- Please refer to the documentation to determine whether a given Python feature
+Please refer to the documentation to determine whether a given Python feature
 is part of the public API. For now, the protocol buffers are defined in
 [`tensorflow/core/framework/*.proto`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core/framework)
 ([#484](https://github.com/tensorflow/tensorflow/issues/484)).
+
+> The [Java](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/java)
+> ([#5](https://github.com/tensorflow/tensorflow/issues/5)) and
+> [Go](https://godoc.org/github.com/tensorflow/tensorflow/tensorflow/go) APIs
+> are experimental and are **not** covered by the versioning scheme at this time.
+> They are not guaranteed to backward compatible between releases.
 
 
 ## Details That Are Not Public
@@ -139,7 +147,7 @@ the versions to account for changes, see [TensorFlow Data
 Versioning](data_versions.md).
 
 
-## C++ API Compatibility
+## C++ ABI Compatibility
 
 Only patch releases will be binary compatible at the C++ level.  That is, minor
 releases are backwards compatible in terms of behavior but may require a

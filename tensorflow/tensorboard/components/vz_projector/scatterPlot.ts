@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {DataSet} from './data';
 import {ProjectorEventContext} from './projectorEventContext';
 import {CameraType, LabelRenderParams, RenderContext} from './renderContext';
 import {BoundingBox, ScatterPlotRectangleSelector} from './scatterPlotRectangleSelector';
@@ -73,7 +72,6 @@ export class CameraDef {
  * array of visualizers and dispatches application events to them.
  */
 export class ScatterPlot {
-  private dataSet: DataSet;
   private projectorEventContext: ProjectorEventContext;
 
   private containerNode: HTMLElement;
@@ -104,7 +102,6 @@ export class ScatterPlot {
   private pointColors: Float32Array;
   private pointScaleFactors: Float32Array;
   private labels: LabelRenderParams;
-
   private traceColors: {[trace: number]: Float32Array};
   private traceOpacities: Float32Array;
   private traceWidths: Float32Array;
@@ -123,8 +120,8 @@ export class ScatterPlot {
     this.getLayoutValues();
 
     this.scene = new THREE.Scene();
-    this.renderer =
-        new THREE.WebGLRenderer({alpha: true, premultipliedAlpha: false});
+    this.renderer = new THREE.WebGLRenderer(
+        {alpha: true, premultipliedAlpha: false, antialias: false});
     this.renderer.setClearColor(BACKGROUND_COLOR, 1);
     this.containerNode.appendChild(this.renderer.domElement);
     this.light = new THREE.PointLight(0xFFECBF, 1, 0);
@@ -337,9 +334,6 @@ export class ScatterPlot {
    * hoverlisteners (usually called from embedding.ts)
    */
   private onMouseMove(e: MouseEvent) {
-    if (!this.dataSet) {
-      return;
-    }
     this.isDragSequence = this.mouseIsDown;
     // Depending if we're selecting or just navigating, handle accordingly.
     if (this.selecting && this.mouseIsDown) {
@@ -390,6 +384,10 @@ export class ScatterPlot {
    */
   private getPointIndicesFromPickingTexture(boundingBox: BoundingBox):
       number[] {
+    if (this.worldSpacePointPositions == null) {
+      return null;
+    }
+    const pointCount = this.worldSpacePointPositions.length / 3;
     const dpr = window.devicePixelRatio || 1;
     const x = Math.floor(boundingBox.x * dpr);
     const y = Math.floor(boundingBox.y * dpr);
@@ -411,7 +409,7 @@ export class ScatterPlot {
     for (let i = 0; i < width * height; i++) {
       const id = (pixelBuffer[i * 4] << 16) | (pixelBuffer[i * 4 + 1] << 8) |
           pixelBuffer[i * 4 + 2];
-      if (id !== 0xffffff && (id < this.dataSet.points.length)) {
+      if (id !== 0xffffff && (id < pointCount)) {
         pointIndicesSelection[id] = 1;
       }
     }
@@ -436,12 +434,10 @@ export class ScatterPlot {
       this.nearestPoint = null;
       return;
     }
-
-    let boundingBox:
+    const boundingBox:
         BoundingBox = {x: e.offsetX, y: e.offsetY, width: 1, height: 1};
-
-    let pointIndices = this.getPointIndicesFromPickingTexture(boundingBox);
-    this.nearestPoint = pointIndices[0];
+    const pointIndices = this.getPointIndicesFromPickingTexture(boundingBox);
+    this.nearestPoint = (pointIndices != null) ? pointIndices[0] : null;
   }
 
   private getLayoutValues(): Point2D {
@@ -560,10 +556,7 @@ export class ScatterPlot {
       visualizer.setScene(this.scene);
     }
     visualizer.onResize(this.width, this.height);
-    if (this.dataSet) {
-      visualizer.onPointPositionsChanged(
-          this.worldSpacePointPositions, this.dataSet);
-    }
+    visualizer.onPointPositionsChanged(this.worldSpacePointPositions);
     this.visualizers.push(visualizer);
   }
 
@@ -574,19 +567,13 @@ export class ScatterPlot {
   }
 
   /** Update scatter plot with a new array of packed xyz point positions. */
-  setPointPositions(dataSet: DataSet, worldSpacePointPositions: Float32Array) {
-    this.dataSet = dataSet;
+  setPointPositions(worldSpacePointPositions: Float32Array) {
     this.worldSpacePointPositions = worldSpacePointPositions;
-    this.visualizers.forEach(v => {
-      v.onPointPositionsChanged(worldSpacePointPositions, this.dataSet);
-    });
+    this.visualizers.forEach(
+        v => v.onPointPositionsChanged(worldSpacePointPositions));
   }
 
   render() {
-    if (this.dataSet == null) {
-      return;
-    }
-
     {
       const lightPos = this.camera.position.clone();
       lightPos.x += 1;
@@ -598,9 +585,12 @@ export class ScatterPlot {
         CameraType.Perspective :
         CameraType.Orthographic;
 
-    const cameraSpacePointExtents: [number, number] = util.getNearFarPoints(
-        this.worldSpacePointPositions, this.camera.position,
-        this.orbitCameraControls.target);
+    let cameraSpacePointExtents: [number, number] = [0, 0];
+    if (this.worldSpacePointPositions != null) {
+      cameraSpacePointExtents = util.getNearFarPoints(
+          this.worldSpacePointPositions, this.camera.position,
+          this.orbitCameraControls.target);
+    }
 
     const rc = new RenderContext(
         this.camera, cameraType, this.orbitCameraControls.target, this.width,
@@ -612,9 +602,7 @@ export class ScatterPlot {
     // with colors that are actually point ids, so that sampling the texture at
     // the mouse's current x,y coordinates will reveal the data point that the
     // mouse is over.
-    this.visualizers.forEach(v => {
-      v.onPickingRender(rc);
-    });
+    this.visualizers.forEach(v => v.onPickingRender(rc));
 
     {
       const axes = this.remove3dAxisFromScene();
@@ -625,9 +613,7 @@ export class ScatterPlot {
     }
 
     // Render second pass to color buffer, to be displayed on the canvas.
-    this.visualizers.forEach(v => {
-      v.onRender(rc);
-    });
+    this.visualizers.forEach(v => v.onRender(rc));
 
     this.renderer.render(this.scene, this.camera);
   }
@@ -723,9 +709,7 @@ export class ScatterPlot {
       this.pickingTexture.texture.minFilter = THREE.LinearFilter;
     }
 
-    this.visualizers.forEach(v => {
-      v.onResize(newW, newH);
-    });
+    this.visualizers.forEach(v => v.onResize(newW, newH));
 
     if (render) {
       this.render();

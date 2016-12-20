@@ -14,9 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #define EIGEN_USE_THREADS
-#if TENSORFLOW_USE_SYCL
-#define EIGEN_USE_SYCL
-#endif
 
 #include "tensorflow/core/kernels/dense_update_ops.h"
 #include "tensorflow/core/framework/op_kernel.h"

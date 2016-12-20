@@ -119,7 +119,7 @@ builder.save()
 The SavedModel loader is implemented in C++ and Python.
 
 #### Python
-The Python version of the SavedModel [loader](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/builder.py)
+The Python version of the SavedModel [loader](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/loader.py)
 provides load and restore capability for a SavedModel. The `load` operation
 requires the session in which to restore the graph definition and variables, the
 tags used to identify the meta graph def to load and the location of the

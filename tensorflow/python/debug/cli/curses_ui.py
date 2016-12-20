@@ -44,6 +44,7 @@ class CursesUI(object):
   REGEX_SEARCH_PREFIX = "/"
   TENSOR_INDICES_NAVIGATION_PREFIX = "@"
   ERROR_MESSAGE_PREFIX = "ERROR: "
+  INFO_MESSAGE_PREFIX = "INFO: "
 
   # Possible Enter keys. 343 is curses key code for the num-pad Enter key when
   # num lock is off.
@@ -62,6 +63,7 @@ class CursesUI(object):
       "green": curses.COLOR_GREEN,
       "yellow": curses.COLOR_YELLOW,
       "blue": curses.COLOR_BLUE,
+      "cyan": curses.COLOR_CYAN,
       "magenta": curses.COLOR_MAGENTA,
       "black": curses.COLOR_BLACK,
   }
@@ -74,9 +76,16 @@ class CursesUI(object):
   _SEARCH_HIGHLIGHT_FONT_ATTR = "black_on_white"
   _ARRAY_INDICES_COLOR_PAIR = "black_on_white"
   _ERROR_TOAST_COLOR_PAIR = "red_on_white"
+  _INFO_TOAST_COLOR_PAIR = "blue_on_white"
   _STATUS_BAR_COLOR_PAIR = "black_on_white"
 
-  def __init__(self):
+  def __init__(self, on_ui_exit=None):
+    """Constructor of CursesUI.
+
+    Args:
+      on_ui_exit: (Callable) Callback invoked when the UI exits.
+    """
+
     self._screen_init()
     self._screen_refresh_size()
     # TODO(cais): Error out if the size of the screen is too small.
@@ -125,6 +134,9 @@ class CursesUI(object):
 
     # Register signal handler for SIGINT.
     signal.signal(signal.SIGINT, self._interrupt_handler)
+
+    # Configurable callbacks.
+    self._on_ui_exit = on_ui_exit
 
   def _init_layout(self):
     """Initialize the layout of UI components.
@@ -271,6 +283,9 @@ class CursesUI(object):
 
     # CLI main loop.
     exit_token = self._ui_loop()
+
+    if self._on_ui_exit:
+      self._on_ui_exit()
 
     self._screen_terminate()
 
@@ -463,7 +478,11 @@ class CursesUI(object):
 
       return
 
-    prefix, args = self._parse_command(command)
+    try:
+      prefix, args, output_file_path = self._parse_command(command)
+    except SyntaxError as e:
+      self._error_toast(str(e))
+      return
 
     if not prefix:
       # Empty command: take no action. Should not exit.
@@ -490,6 +509,13 @@ class CursesUI(object):
       return exit_token
 
     self._display_output(screen_output)
+    if output_file_path:
+      try:
+        screen_output.write_to_file(output_file_path)
+        self._info_toast("Wrote output to %s" % output_file_path)
+      except Exception:  # pylint: disable=broad-except
+        self._error_toast("Failed to write output to %s" % output_file_path)
+
     self._command_pointer = 0
     self._pending_command = ""
 
@@ -503,13 +529,18 @@ class CursesUI(object):
       prefix: (str) The command prefix.
       args: (list of str) The command arguments (i.e., not including the
         prefix).
+      output_file_path: (str or None) The path to save the screen output
+        to (if any).
     """
     command = command.strip()
     if not command:
-      return "", []
+      return "", [], None
 
     command_items = command_parser.parse_command(command)
-    return command_items[0], command_items[1:]
+    command_items, output_file_path = command_parser.extract_output_file_path(
+        command_items)
+
+    return command_items[0], command_items[1:], output_file_path
 
   def _screen_gather_textbox_str(self):
     """Gather the text string in the command text box.
@@ -1031,7 +1062,8 @@ class CursesUI(object):
     # Examine whether the index information is available for the specified line
     # number.
     pointer = self._output_pad_row + line_index
-    if pointer in self._curr_wrapped_output.annotations:
+    if (pointer in self._curr_wrapped_output.annotations and
+        "i0" in self._curr_wrapped_output.annotations[pointer]):
       indices = self._curr_wrapped_output.annotations[pointer]["i0"]
 
       array_indices_str = self._format_indices(indices)
@@ -1172,6 +1204,16 @@ class CursesUI(object):
 
     self._toast(
         self.ERROR_MESSAGE_PREFIX + message, color=self._ERROR_TOAST_COLOR_PAIR)
+
+  def _info_toast(self, message):
+    """Display a one-line informational message on screen.
+
+    Args:
+      message: The informational message.
+    """
+
+    self._toast(
+        self.INFO_MESSAGE_PREFIX + message, color=self._INFO_TOAST_COLOR_PAIR)
 
   def _interrupt_handler(self, signal_num, frame):
     _ = signal_num  # Unused.

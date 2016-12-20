@@ -30,10 +30,11 @@ tensor. The returned tensor has shape `shape(ids) + shape(params)[1:]`.
 ##### Args:
 
 
-*  <b>`params`</b>: A list of tensors with the same type and which can be concatenated
-    along dimension 0. Alternatively, a `PartitionedVariable`, created by
-    partitioning along dimension 0.  Each element must be appropriately sized
-    for the given `partition_strategy`.
+*  <b>`params`</b>: A single tensor representing the complete embedding tensor,
+    or a list of P tensors all of same shape except for the first dimension,
+    representing sharded embedding tensors.  Alternatively, a
+    `PartitionedVariable`, created by partitioning along dimension 0. Each
+    element must be appropriately sized for the given `partition_strategy`.
 *  <b>`ids`</b>: A `Tensor` with type `int32` or `int64` containing the ids to be looked
     up in `params`.
 *  <b>`partition_strategy`</b>: A string specifying the partitioning strategy, relevant

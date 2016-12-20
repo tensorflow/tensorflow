@@ -343,8 +343,16 @@ class GrpcWorkerService : public AsyncServiceInterface {
     {
       mutex_lock l(mu_);
       token = cancellation_manager_->get_cancellation_token();
-      cancellation_manager_->RegisterCallback(token,
-                                              [cm]() { cm->StartCancel(); });
+      bool already_cancelled = !cancellation_manager_->RegisterCallback(
+          token, [cm]() { cm->StartCancel(); });
+      if (already_cancelled) {
+        call->ClearCancelCallback();
+        delete cm;
+        delete collector;
+        delete out;
+        call->SendResponse(ToGrpcStatus(errors::Aborted("Call was aborted")));
+        return;
+      }
     }
     CostGraphDef* cost_graph = call->response.mutable_cost_graph();
     env_->graph_mgr->ExecuteAsync(
@@ -369,7 +377,7 @@ class GrpcWorkerService : public AsyncServiceInterface {
               recv->set_key(key);
               // TODO(zhifengc): Deal with gpu -> cpu copy.
               TensorProto* proto = recv->mutable_val();
-              val.AsProtoField(proto);
+              val.AsProtoTensorContent(proto);
             }
           }
           delete collector;

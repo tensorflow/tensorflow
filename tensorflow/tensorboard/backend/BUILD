@@ -37,7 +37,7 @@ py_library(
     srcs = ["process_graph.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = [],
+    deps = ["//tensorflow/python:util"],
 )
 
 py_library(
@@ -60,6 +60,7 @@ py_test(
     deps = [
         ":server",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:platform",
         "//tensorflow/python:summary",
     ],
 )
