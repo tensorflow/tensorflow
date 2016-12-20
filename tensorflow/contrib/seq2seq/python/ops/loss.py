@@ -38,8 +38,8 @@ from tensorflow.python.util import nest
 
 
 __all__ = ["seq2seq_loss",
-					 "sequence_loss_by_example",
-					 "sequence_loss"]
+           "sequence_loss_by_example",
+           "sequence_loss"]
 
 
 def seq2seq_loss(*args, **kwargs):
