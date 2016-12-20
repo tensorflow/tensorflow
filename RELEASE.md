@@ -54,6 +54,9 @@
 * Deprecated `tf.concat` operator. Please switch to use `tf.concat_v2` for now.
   In the Beta release, we will update `tf.concat` to match argument order of
   `tf.concat_v2.
+* tf.image.decode_jpeg by default uses the faster DCT method, sacrificing
+  a little fidelity for improved speed. One can revert to the old
+  behavior by specifying the attribute dct_method='INTEGER_ACCURATE'.
 
 # Release 0.12.0
 

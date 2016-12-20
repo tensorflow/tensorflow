@@ -1953,7 +1953,7 @@ class JpegTest(test_util.TensorFlowTestCase):
       jpeg0, image0, image1 = sess.run([jpeg0, image0, image1])
       self.assertEqual(len(jpeg0), 3771)
       self.assertEqual(image0.shape, (256, 128, 3))
-      self.assertLess(self.averageError(image0, image1), 0.8)
+      self.assertLess(self.averageError(image0, image1), 1.4)
 
   def testCmyk(self):
     # Confirm that CMYK reads in as RGB
@@ -2015,6 +2015,19 @@ class JpegTest(test_util.TensorFlowTestCase):
       # Smooth ramps compress well (input size is 153600)
       self.assertGreaterEqual(len(jpeg0), 5000)
       self.assertLessEqual(len(jpeg0), 6000)
+
+  def testDefaultDCTMethodIsIntegerFast(self):
+    with self.test_session(use_gpu=True) as sess:
+      # Compare decoding with both dct_option=INTEGER_FAST and
+      # default.  They should be the same.
+      image0 = constant_op.constant(_SimpleColorRamp())
+      jpeg0 = image_ops.encode_jpeg(image0)
+      image1 = image_ops.decode_jpeg(jpeg0, dct_method='INTEGER_FAST')
+      image2 = image_ops.decode_jpeg(jpeg0)
+      image1, image2 = sess.run([image1, image2])
+
+      # The images should be the same.
+      self.assertAllClose(image1, image2)
 
   def testShape(self):
     with self.test_session(use_gpu=True) as sess:
