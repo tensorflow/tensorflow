@@ -44,17 +44,27 @@ void SYCLDevice::RegisterDevice() {
 SYCLDevice::~SYCLDevice() {
   device_context_->Unref();
   sycl_allocator_->EnterLameDuckMode();
-  delete sycl_device_;
-  delete sycl_queue_;
+  if (sycl_device_) {
+    sycl_device_->synchronize();
+    delete sycl_device_;
+  }
+  if (sycl_queue_) {
+    delete sycl_queue_;
+  }
   live_devices.erase(this);
 }
 
 void SYCLDevice::EnterLameDuckMode() {
   sycl_allocator_->EnterLameDuckMode();
-  delete sycl_device_;
-  sycl_device_ = nullptr;
-  delete sycl_queue_;
-  sycl_queue_ = nullptr;
+  if (sycl_device_) {
+    sycl_device_->synchronize();
+    delete sycl_device_;
+    sycl_device_ = nullptr;
+  }
+  if (sycl_queue_) {
+    delete sycl_queue_;
+    sycl_queue_ = nullptr;
+  }
 }
 
 void SYCLDevice::Compute(OpKernel *op_kernel, OpKernelContext *context) {
