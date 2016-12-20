@@ -284,8 +284,9 @@ def mean(values, weights=None, metrics_collections=None,
     else:
       num_values = math_ops.to_float(array_ops.size(values))
 
-    total_compute_op = state_ops.assign_add(total, math_ops.reduce_sum(values))
-    count_compute_op = state_ops.assign_add(count, num_values)
+    with ops.control_dependencies([values]):
+      total_compute_op = state_ops.assign_add(total, math_ops.reduce_sum(values))
+      count_compute_op = state_ops.assign_add(count, num_values)
 
     mean_t = _safe_div(total, count, 'value')
     with ops.control_dependencies([total_compute_op, count_compute_op]):
@@ -980,8 +981,9 @@ def mean_tensor(values, weights=None, metrics_collections=None,
       values = math_ops.multiply(values, weights)
       num_values = math_ops.multiply(num_values, weights)
 
-    total_compute_op = state_ops.assign_add(total, values)
-    count_compute_op = state_ops.assign_add(count, num_values)
+    with ops.control_dependencies([values]):
+      total_compute_op = state_ops.assign_add(total, values)
+      count_compute_op = state_ops.assign_add(count, num_values)
 
     def compute_mean(total, count, name):
       non_zero_count = math_ops.maximum(count,
