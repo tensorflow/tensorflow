@@ -64,7 +64,7 @@ class AssignOpTest(test.TestCase):
       ones_t = array_ops.fill([1024, 1024], float(1))
       p = variables.Variable(array_ops.zeros([1024, 1024]))
       assigns = [
-          state_ops.assign(p, math_ops.mul(ones_t, float(i)), False)
+          state_ops.assign(p, math_ops.multiply(ones_t, float(i)), False)
           for i in range(1, 21)
       ]
       variables.global_variables_initializer().run()

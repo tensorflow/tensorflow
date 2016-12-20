@@ -2157,7 +2157,7 @@ class WhileContext(ControlFlowContext):
     self._pivot = loop_cond(pred, name="b_count")
     switch_count = switch(merge_count, self._pivot)
 
-    index = math_ops.sub(switch_count[1], one)
+    index = math_ops.subtract(switch_count[1], one)
     self._pivot_for_body = index
     next_count = _NextIteration(index)
     merge_count.op._update_input(1, next_count)

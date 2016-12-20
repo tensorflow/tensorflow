@@ -754,7 +754,7 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
       y = control_flow_ops.with_dependencies(
           [x], y, name="control_deps/ctrl_dep_y")
 
-      z = math_ops.mul(x, y, name="control_deps/z")
+      z = math_ops.multiply(x, y, name="control_deps/z")
 
       z = control_flow_ops.with_dependencies(
           [x, y], z, name="control_deps/ctrl_dep_z")

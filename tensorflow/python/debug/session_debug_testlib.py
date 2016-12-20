@@ -360,15 +360,15 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       v = variables.Variable(v_init, name=v_name)
 
       # Expected output: [0.0, 3.0]
-      w = math_ops.sub(u, v, name=w_name)
+      w = math_ops.subtract(u, v, name=w_name)
 
       # Expected output: [inf, 1.3333]
       x = math_ops.div(u, w, name=x_name)
 
       # Expected output: [nan, 4.0]
-      y = math_ops.mul(w, x, name=y_name)
+      y = math_ops.multiply(w, x, name=y_name)
 
-      z = math_ops.mul(y, y, name=z_name)
+      z = math_ops.multiply(y, y, name=z_name)
 
       u.initializer.run()
       v.initializer.run()
@@ -720,7 +720,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       v_init = constant_op.constant(20.0)
       v = variables.Variable(v_init, name="gdo/v")
 
-      w = math_ops.mul(u, v, name="gdo/w")
+      w = math_ops.multiply(u, v, name="gdo/w")
       # gdo stands for GradientDescentOptimizer.
 
       train_op = tf.train.GradientDescentOptimizer(learning_rate=0.1).minimize(

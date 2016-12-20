@@ -1328,7 +1328,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     b = array_ops.placeholder(dtypes.float32, shape=[])
     c = array_ops.placeholder(dtypes.float32, shape=[])
     r1 = math_ops.add(a, b)
-    r2 = math_ops.mul(r1, c)
+    r2 = math_ops.multiply(r1, c)
 
     h = sess.partial_run_setup([r1, r2], [a, b, c])
     res = sess.partial_run(h, r1, feed_dict={a: 1, b: 2})
@@ -1350,7 +1350,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     b = array_ops.placeholder(dtypes.float32, shape=[])
     c = array_ops.placeholder(dtypes.float32, shape=[])
     r1 = math_ops.add(a, b)
-    r2 = math_ops.mul(r1, c)
+    r2 = math_ops.multiply(r1, c)
 
     h = sess.partial_run_setup([r1, r2], [a, b, c])
     res = sess.partial_run(h, r1, feed_dict={a: 1, b: 2})
@@ -1361,7 +1361,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     b = array_ops.placeholder(dtypes.float32, shape=[])
     c = array_ops.placeholder(dtypes.float32, shape=[])
     r1 = math_ops.add(a, b)
-    r2 = math_ops.mul(r1, c)
+    r2 = math_ops.multiply(r1, c)
 
     h1 = sess.partial_run_setup([r1], [a, b, c])
     h2 = sess.partial_run_setup([r1, r2], [a, b, c])
@@ -1380,7 +1380,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     a = constant_op.constant(2.0, dtypes.float32)
     for i in xrange(steps):
       inputs.append(array_ops.placeholder(dtypes.float32, shape=[]))
-      a = math_ops.mul(a, inputs[i])
+      a = math_ops.multiply(a, inputs[i])
       outputs.append(a)
 
     h = sess.partial_run_setup(outputs, inputs)
@@ -1528,7 +1528,7 @@ class SessionTest(test_util.TensorFlowTestCase):
         a = array_ops.placeholder(dtypes.float32, shape=[])
         b = math_ops.add(a, a)
         c = array_ops.identity(b)
-        d = math_ops.mul(c, c)
+        d = math_ops.multiply(c, c)
       for step in xrange(120):
         run_metadata = config_pb2.RunMetadata()
         sess.run(d, feed_dict={a: 1.0},

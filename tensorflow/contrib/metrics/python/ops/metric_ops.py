@@ -134,7 +134,7 @@ def _count_condition(values, weights=None, metrics_collections=None,
   values = math_ops.to_float(values)
   if weights is not None:
     weights = math_ops.to_float(weights)
-    values = math_ops.mul(values, weights)
+    values = math_ops.multiply(values, weights)
 
   value_tensor = array_ops.identity(count)
   update_op = state_ops.assign_add(count, math_ops.reduce_sum(values))
@@ -318,7 +318,7 @@ def _broadcast_weights(weights, values):
       values_shape.is_fully_defined() and
       weights_shape.is_compatible_with(values_shape)):
     return weights
-  return math_ops.mul(
+  return math_ops.multiply(
       weights, array_ops.ones_like(values), name='broadcast_weights')
 
 
@@ -1542,7 +1542,7 @@ def sparse_average_precision_at_k(predictions, labels, k):
     precision_per_k = math_ops.div(
         math_ops.to_double(tp_per_k), math_ops.to_double(retrieved_per_k),
         name='precision_per_k')
-    relevant_precision_per_k = math_ops.mul(
+    relevant_precision_per_k = math_ops.multiply(
         precision_per_k, math_ops.to_double(relevant_per_k),
         name='relevant_precision_per_k')
 
@@ -1710,7 +1710,7 @@ def _sparse_true_positive_at_k(predictions_idx,
     tp = math_ops.to_double(tp)
     if weights is not None:
       weights = math_ops.to_double(weights)
-      tp = math_ops.mul(tp, weights)
+      tp = math_ops.multiply(tp, weights)
     return tp
 
 
@@ -1798,7 +1798,7 @@ def _sparse_false_positive_at_k(predictions_idx,
     fp = math_ops.to_double(fp)
     if weights is not None:
       weights = math_ops.to_double(weights)
-      fp = math_ops.mul(fp, weights)
+      fp = math_ops.multiply(fp, weights)
     return fp
 
 
@@ -1887,7 +1887,7 @@ def _sparse_false_negative_at_k(predictions_idx,
     fn = math_ops.to_double(fn)
     if weights is not None:
       weights = math_ops.to_double(weights)
-      fn = math_ops.mul(fn, weights)
+      fn = math_ops.multiply(fn, weights)
     return fn
 
 
@@ -2329,11 +2329,12 @@ def streaming_pearson_correlation(predictions,
 
     pearson_r = _safe_div(
         cov,
-        math_ops.mul(math_ops.sqrt(var_predictions), math_ops.sqrt(var_labels)),
+        math_ops.multiply(math_ops.sqrt(var_predictions),
+                          math_ops.sqrt(var_labels)),
         'pearson_r')
     with ops.control_dependencies(
         [update_cov, update_var_predictions, update_var_labels]):
-      update_op = _safe_div(update_cov, math_ops.mul(
+      update_op = _safe_div(update_cov, math_ops.multiply(
           math_ops.sqrt(update_var_predictions),
           math_ops.sqrt(update_var_labels)), 'update_op')
 
@@ -2393,7 +2394,7 @@ def streaming_mean_cosine_distance(predictions, labels, dim, weights=None,
   predictions, labels, weights = _remove_squeezable_dimensions(
       predictions, labels, weights)
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
-  radial_diffs = math_ops.mul(predictions, labels)
+  radial_diffs = math_ops.multiply(predictions, labels)
   radial_diffs = math_ops.reduce_sum(radial_diffs,
                                      reduction_indices=[dim,],
                                      keep_dims=True)
@@ -2401,8 +2402,8 @@ def streaming_mean_cosine_distance(predictions, labels, dim, weights=None,
                                             None,
                                             None,
                                             name or 'mean_cosine_distance')
-  mean_distance = math_ops.sub(1.0, mean_distance)
-  update_op = math_ops.sub(1.0, update_op)
+  mean_distance = math_ops.subtract(1.0, mean_distance)
+  update_op = math_ops.subtract(1.0, update_op)
 
   if metrics_collections:
     ops.add_to_collections(metrics_collections, mean_distance)

@@ -215,7 +215,7 @@ def _broadcast_weights(weights, values):
       values_shape.is_fully_defined() and
       weights_shape.is_compatible_with(values_shape)):
     return weights
-  return math_ops.mul(
+  return math_ops.multiply(
       weights, array_ops.ones_like(values), name='broadcast_weights')
 
 
@@ -302,7 +302,7 @@ def mean(values, weights=None, metrics_collections=None,
 
     if weights is not None:
       weights = math_ops.to_float(weights)
-      values = math_ops.mul(values, weights)
+      values = math_ops.multiply(values, weights)
       num_values = math_ops.reduce_sum(_broadcast_weights(weights, values))
     else:
       num_values = math_ops.to_float(array_ops.size(values))
@@ -595,7 +595,7 @@ def auc(labels, predictions, weights=None, num_thresholds=200,
         prec = math_ops.div(tp + epsilon, tp + fp + epsilon)
         x = rec
         y = prec
-      return math_ops.reduce_sum(math_ops.mul(
+      return math_ops.reduce_sum(math_ops.multiply(
           x[:num_thresholds - 1] - x[1:],
           (y[:num_thresholds - 1] + y[1:]) / 2.), name=name)
 
@@ -712,7 +712,7 @@ def mean_cosine_distance(labels, predictions, dim, weights=None,
   labels, predictions, weights = _remove_squeezable_dimensions(
       labels, predictions, weights)
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
-  radial_diffs = math_ops.mul(predictions, labels)
+  radial_diffs = math_ops.multiply(predictions, labels)
   radial_diffs = math_ops.reduce_sum(radial_diffs,
                                      reduction_indices=[dim,],
                                      keep_dims=True)
@@ -720,8 +720,8 @@ def mean_cosine_distance(labels, predictions, dim, weights=None,
                                   None,
                                   None,
                                   name or 'mean_cosine_distance')
-  mean_distance = math_ops.sub(1.0, mean_distance)
-  update_op = math_ops.sub(1.0, update_op)
+  mean_distance = math_ops.subtract(1.0, mean_distance)
+  update_op = math_ops.subtract(1.0, update_op)
 
   if metrics_collections:
     ops.add_to_collections(metrics_collections, mean_distance)
@@ -1000,8 +1000,8 @@ def mean_tensor(values, weights=None, metrics_collections=None,
     num_values = array_ops.ones_like(values)
     if weights is not None:
       weights = math_ops.to_float(weights)
-      values = math_ops.mul(values, weights)
-      num_values = math_ops.mul(num_values, weights)
+      values = math_ops.multiply(values, weights)
+      num_values = math_ops.multiply(num_values, weights)
 
     total_compute_op = state_ops.assign_add(total, values)
     count_compute_op = state_ops.assign_add(count, num_values)
@@ -1101,7 +1101,7 @@ def _count_condition(values, weights=None, metrics_collections=None,
   values = math_ops.to_float(values)
   if weights is not None:
     weights = math_ops.to_float(weights)
-    values = math_ops.mul(values, weights)
+    values = math_ops.multiply(values, weights)
 
   value_tensor = array_ops.identity(count)
   update_op = state_ops.assign_add(count, math_ops.reduce_sum(values))
@@ -1562,7 +1562,7 @@ def _sparse_true_positive_at_k(labels,
     tp = math_ops.to_double(tp)
     if weights is not None:
       weights = math_ops.to_double(weights)
-      tp = math_ops.mul(tp, weights)
+      tp = math_ops.multiply(tp, weights)
     return tp
 
 
@@ -1650,7 +1650,7 @@ def _sparse_false_negative_at_k(labels,
     fn = math_ops.to_double(fn)
     if weights is not None:
       weights = math_ops.to_double(weights)
-      fn = math_ops.mul(fn, weights)
+      fn = math_ops.multiply(fn, weights)
     return fn
 
 
@@ -2185,7 +2185,7 @@ def _sparse_average_precision_at_k(labels, predictions, k):
     precision_per_k = math_ops.div(
         math_ops.to_double(tp_per_k), math_ops.to_double(retrieved_per_k),
         name='precision_per_k')
-    relevant_precision_per_k = math_ops.mul(
+    relevant_precision_per_k = math_ops.multiply(
         precision_per_k, math_ops.to_double(relevant_per_k),
         name='relevant_precision_per_k')
 
@@ -2259,7 +2259,7 @@ def sparse_average_precision_at_k(labels,
         predictions=predictions, labels=labels, k=k)
     if weights is not None:
       weights = math_ops.to_double(weights)
-      average_precision = math_ops.mul(average_precision, weights)
+      average_precision = math_ops.multiply(average_precision, weights)
 
     # Create accumulation variables and update ops for max average precision and
     # total average precision.
@@ -2275,7 +2275,7 @@ def sparse_average_precision_at_k(labels,
             array_ops.size(average_precision, name='batch_max'))
       else:
         # TODO(ptucker): More efficient way to broadcast?
-        broadcast_weights = math_ops.mul(
+        broadcast_weights = math_ops.multiply(
             weights, array_ops.ones_like(average_precision),
             name='broadcast_weights')
         batch_max = math_ops.reduce_sum(broadcast_weights, name='batch_max')
@@ -2334,7 +2334,7 @@ def _sparse_false_positive_at_k(labels,
     fp = math_ops.to_double(fp)
     if weights is not None:
       weights = math_ops.to_double(weights)
-      fp = math_ops.mul(fp, weights)
+      fp = math_ops.multiply(fp, weights)
     return fp
 
 

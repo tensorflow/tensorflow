@@ -436,11 +436,11 @@ class RandomForestGraphs(object):
   # pylint: disable=unused-argument
   def training_loss(self, features, labels, data_spec=None,
                     name='training_loss'):
-    return math_ops.neg(self.average_size(), name=name)
+    return math_ops.negative(self.average_size(), name=name)
 
   # pylint: disable=unused-argument
   def validation_loss(self, features, labels):
-    return math_ops.neg(self.average_size())
+    return math_ops.negative(self.average_size())
 
   def average_impurity(self):
     """Constructs a TF graph for evaluating the leaf impurity of a forest.
@@ -832,8 +832,8 @@ class RandomTreeGraphs(object):
     # Calculate values to put into scatter update for total counts.
     total_cleared = array_ops.tile(
         array_ops.expand_dims(
-            math_ops.neg(array_ops.ones_like(accumulators_cleared,
-                                             dtype=dtypes.float32)), 1),
+            math_ops.negative(array_ops.ones_like(accumulators_cleared,
+                                                  dtype=dtypes.float32)), 1),
         [1, self.params.num_output_columns])
     total_reset = array_ops.tile(
         array_ops.expand_dims(
@@ -852,7 +852,7 @@ class RandomTreeGraphs(object):
     # Calculate values to put into scatter update for candidate splits.
     split_features_updates = array_ops.tile(
         array_ops.expand_dims(
-            math_ops.neg(array_ops.ones_like(
+            math_ops.negative(array_ops.ones_like(
                 cleared_and_allocated_accumulators)), 1),
         [1, self.params.num_splits_to_consider])
     updates.append(state_ops.scatter_update(

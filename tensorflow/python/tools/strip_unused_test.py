@@ -43,9 +43,9 @@ class StripUnusedTest(test_util.TensorFlowTestCase):
     # and that then multiplies it by 2.
     with ops.Graph().as_default():
       constant_node = constant_op.constant(1.0, name="constant_node")
-      wanted_input_node = math_ops.sub(constant_node,
-                                       3.0,
-                                       name="wanted_input_node")
+      wanted_input_node = math_ops.subtract(constant_node,
+                                            3.0,
+                                            name="wanted_input_node")
       output_node = math_ops.multiply(
           wanted_input_node, 2.0, name="output_node")
       math_ops.add(output_node, 2.0, name="later_node")
@@ -98,8 +98,8 @@ class StripUnusedTest(test_util.TensorFlowTestCase):
     with ops.Graph().as_default():
       constant_node1 = constant_op.constant(1.0, name="constant_node1")
       constant_node2 = constant_op.constant(2.0, name="constant_node2")
-      input_node1 = math_ops.sub(constant_node1, 3.0, name="input_node1")
-      input_node2 = math_ops.sub(constant_node2, 5.0, name="input_node2")
+      input_node1 = math_ops.subtract(constant_node1, 3.0, name="input_node1")
+      input_node2 = math_ops.subtract(constant_node2, 5.0, name="input_node2")
       output_node = math_ops.multiply(
           input_node1, input_node2, name="output_node")
       math_ops.add(output_node, 2.0, name="later_node")
