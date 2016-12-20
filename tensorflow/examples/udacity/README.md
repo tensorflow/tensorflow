@@ -56,7 +56,7 @@ Note that `docker-machine env tensorflow` outputs some environment variables suc
 
 * **I'm getting the error - docker: Cannot connect to the Docker daemon. Is the docker daemon running on this host? - when I run 'docker run'.**
 
-This is a permissions issue, and a popular answer is provided for Linux and Max OSX [here](http://stackoverflow.com/questions/21871479/docker-cant-connect-to-docker-daemon) on StackOverflow. Googling the error message does not turn up this result, so it is included here.
+This is a permissions issue, and a popular answer is provided for Linux and Max OSX [here](http://stackoverflow.com/questions/21871479/docker-cant-connect-to-docker-daemon) on StackOverflow.
 
 Notes for anyone needing to build their own containers (mostly instructors)
 ===========================================================================
