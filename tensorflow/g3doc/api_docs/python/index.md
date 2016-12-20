@@ -208,7 +208,6 @@
   * [`cholesky`](../../api_docs/python/math_ops.md#cholesky)
   * [`cholesky_solve`](../../api_docs/python/math_ops.md#cholesky_solve)
   * [`complex`](../../api_docs/python/math_ops.md#complex)
-  * [`complex_abs`](../../api_docs/python/math_ops.md#complex_abs)
   * [`conj`](../../api_docs/python/math_ops.md#conj)
   * [`cos`](../../api_docs/python/math_ops.md#cos)
   * [`count_nonzero`](../../api_docs/python/math_ops.md#count_nonzero)
