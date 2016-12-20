@@ -103,7 +103,7 @@ class Seq2SeqTest(tf.test.TestCase):
                 scope=scope))
 
         # Run model
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         decoder_outputs_train_res, decoder_state_train_res = sess.run(
             [decoder_outputs_train, decoder_state_train])
         decoder_outputs_inference_res, decoder_state_inference_res = sess.run(

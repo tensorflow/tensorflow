@@ -14,7 +14,7 @@
 # =============================================================================
 
 # pylint: disable=unused-import,g-bad-import-order
-"""Contains the core layers: FullyConnected, [Flatten, Dropout].
+"""Contains the core layers: Dense, Dropout.
 
 Also contains their functional aliases.
 """
@@ -28,22 +28,18 @@ import numpy as np
 
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope as vs
-from tensorflow.python.ops import control_flow_ops
 
 from tensorflow.python.layers import base
+from tensorflow.python.layers import utils
 
 
-class FullyConnected(base._Layer):  # pylint: disable=protected-access
-  """Fully-connected layer class.
-
-  WARNING: Do not use this class unless you know what you are doing:
-  the API is subject to future changes.
+class Dense(base._Layer):  # pylint: disable=protected-access
+  """Densely-connected layer class.
 
   This layer implements the operation `outputs = activation(inputs.w + b)`
   Where `activation` is the activation function passed as the `activation`
@@ -87,15 +83,14 @@ class FullyConnected(base._Layer):  # pylint: disable=protected-access
                activation=None,
                use_bias=True,
                weights_initializer=None,
-               bias_initializer=init_ops.zeros_initializer,
+               bias_initializer=init_ops.zeros_initializer(),
                weights_regularizer=None,
                bias_regularizer=None,
                activity_regularizer=None,
                trainable=True,
                name=None,
                **kwargs):
-    super(FullyConnected, self).__init__(trainable=trainable, name=name,
-                                         **kwargs)
+    super(Dense, self).__init__(trainable=trainable, name=name, **kwargs)
     self.units = units
     self.activation = activation
     self.use_bias = use_bias
@@ -108,11 +103,11 @@ class FullyConnected(base._Layer):  # pylint: disable=protected-access
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
     if input_shape.ndims is None:
-      raise ValueError('Inputs to `FullyConnected` should have known rank.')
+      raise ValueError('Inputs to `Dense` should have known rank.')
     if len(input_shape) < 2:
-      raise ValueError('Inputs to `FullyConnected` should have rank >= 2.')
+      raise ValueError('Inputs to `Dense` should have rank >= 2.')
     if input_shape[-1].value is None:
-      raise ValueError('The last dimension of the inputs to `FullyConnected` '
+      raise ValueError('The last dimension of the inputs to `Dense` '
                        'should be defined. Found `None`.')
     # Note that we set `trainable=True` because this is a trainable
     # weight of the layer. If the layer is not trainable
@@ -122,14 +117,14 @@ class FullyConnected(base._Layer):  # pylint: disable=protected-access
                              shape=[input_shape[-1].value, self.units],
                              initializer=self.weights_initializer,
                              regularizer=self.weights_regularizer,
-                             dtype=self._dtype,
+                             dtype=self.dtype,
                              trainable=True)
     if self.use_bias:
-      self.bias = vs.get_variable('biases',
+      self.bias = vs.get_variable('bias',
                                   shape=[self.units,],
                                   initializer=self.bias_initializer,
                                   regularizer=self.bias_regularizer,
-                                  dtype=self._dtype,
+                                  dtype=self.dtype,
                                   trainable=True)
     else:
       self.bias = None
@@ -142,7 +137,7 @@ class FullyConnected(base._Layer):  # pylint: disable=protected-access
       # Reshape the input to 2D.
       output_shape_tensors = array_ops.unpack(array_ops.shape(inputs))
       output_shape_tensors[-1] = self.units
-      output_shape_tensor = array_ops.pack(output_shape_tensors)
+      output_shape_tensor = array_ops.stack(output_shape_tensors)
       inputs = array_ops.reshape(inputs, [-1, input_dim])
 
     outputs = standard_ops.matmul(inputs, self.w)
@@ -159,19 +154,19 @@ class FullyConnected(base._Layer):  # pylint: disable=protected-access
     return outputs
 
 
-def fully_connected(
+def dense(
     inputs, units,
     activation=None,
     use_bias=True,
     weights_initializer=None,
-    bias_initializer=init_ops.zeros_initializer,
+    bias_initializer=init_ops.zeros_initializer(),
     weights_regularizer=None,
     bias_regularizer=None,
     activity_regularizer=None,
     trainable=True,
     name=None,
     reuse=False):
-  """Functional interface for the fully connected layer.
+  """Functional interface for the densely-connected layer.
 
   This layer implements the operation `outputs = activation(inputs.w + b)`
   Where `activation` is the activation function passed as the `activation`
@@ -201,19 +196,19 @@ def fully_connected(
   Returns:
     Output tensor.
   """
-  layer = FullyConnected(units,
-                         activation=activation,
-                         use_bias=use_bias,
-                         weights_initializer=weights_initializer,
-                         bias_initializer=bias_initializer,
-                         weights_regularizer=weights_regularizer,
-                         bias_regularizer=bias_regularizer,
-                         activity_regularizer=activity_regularizer,
-                         trainable=trainable,
-                         name=name,
-                         dtype=inputs.dtype.base_dtype,
-                         _scope=name,
-                         _reuse_weights=reuse)
+  layer = Dense(units,
+                activation=activation,
+                use_bias=use_bias,
+                weights_initializer=weights_initializer,
+                bias_initializer=bias_initializer,
+                weights_regularizer=weights_regularizer,
+                bias_regularizer=bias_regularizer,
+                activity_regularizer=activity_regularizer,
+                trainable=trainable,
+                name=name,
+                dtype=inputs.dtype.base_dtype,
+                _scope=name,
+                _reuse=reuse)
   return layer.apply(inputs)
 
 
@@ -251,20 +246,13 @@ class Dropout(base._Layer):  # pylint: disable=protected-access
     self.seed = seed
 
   def call(self, inputs, training=False):
-    if isinstance(training, bool):
-      training_bool = training
-    else:
-      training_bool = tensor_util.constant_value(training)
-    if training_bool is False:
-      return array_ops.identity(inputs)
-    dropped_inputs = nn.dropout(inputs, 1  - self.rate,
-                                noise_shape=self.noise_shape,
-                                seed=self.seed)
-    if training_bool is True:
-      return dropped_inputs
-    return control_flow_ops.cond(training,
-                                 lambda: dropped_inputs,
-                                 lambda: inputs)
+    def dropped_inputs():
+      return nn.dropout(inputs, 1  - self.rate,
+                        noise_shape=self.noise_shape,
+                        seed=self.seed)
+    return utils.smart_cond(training,
+                            dropped_inputs,
+                            lambda: array_ops.identity(inputs))
 
 
 def dropout(inputs,
@@ -303,3 +291,9 @@ def dropout(inputs,
   """
   layer = Dropout(rate, noise_shape=noise_shape, seed=seed, name=name)
   return layer.apply(inputs, training=training)
+
+
+# Aliases
+
+FullyConnected = Dense
+fully_connected = dense

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 # Add projects here, they will show up under tf.contrib.
 from tensorflow.contrib import bayesflow
+from tensorflow.contrib import compiler
 from tensorflow.contrib import copy_graph
 from tensorflow.contrib import crf
 from tensorflow.contrib import cudnn_rnn
@@ -29,10 +30,13 @@ from tensorflow.contrib import factorization
 from tensorflow.contrib import framework
 from tensorflow.contrib import graph_editor
 from tensorflow.contrib import grid_rnn
+from tensorflow.contrib import image
+from tensorflow.contrib import input_pipeline
 from tensorflow.contrib import integrate
 from tensorflow.contrib import labeled_tensor
 from tensorflow.contrib import layers
 from tensorflow.contrib import learn
+from tensorflow.contrib import legacy_seq2seq
 from tensorflow.contrib import linalg
 from tensorflow.contrib import linear_optimizer
 from tensorflow.contrib import lookup

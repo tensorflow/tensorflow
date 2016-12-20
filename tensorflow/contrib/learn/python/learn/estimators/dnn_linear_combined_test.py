@@ -63,7 +63,7 @@ class EmbeddingMultiplierTest(tf.test.TestCase):
             tf.SparseTensor(
                 values=['en', 'fr', 'zh'],
                 indices=[[0, 0], [1, 0], [2, 0]],
-                shape=[3, 1]),
+                dense_shape=[3, 1]),
     }
     labels = tf.constant([[0], [0], [0]], dtype=tf.int32)
     with self.assertRaisesRegexp(
@@ -94,12 +94,12 @@ class EmbeddingMultiplierTest(tf.test.TestCase):
             tf.SparseTensor(
                 values=['en', 'fr', 'zh'],
                 indices=[[0, 0], [1, 0], [2, 0]],
-                shape=[3, 1]),
+                dense_shape=[3, 1]),
         'wire':
             tf.SparseTensor(
                 values=['omar', 'stringer', 'marlo'],
                 indices=[[0, 0], [1, 0], [2, 0]],
-                shape=[3, 1]),
+                dense_shape=[3, 1]),
     }
     labels = tf.constant([[0], [0], [0]], dtype=tf.int32)
     model_ops = dnn_linear_combined._dnn_linear_combined_model_fn(
@@ -178,7 +178,7 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
       features['dummy_sparse_column'] = tf.SparseTensor(
           values=['en', 'fr', 'zh'],
           indices=[[0, 0], [0, 1], [60, 0]],
-          shape=[len(iris.target), 2])
+          dense_shape=[len(iris.target), 2])
       labels = tf.reshape(tf.constant(iris.target, dtype=tf.int32), [-1, 1])
       return features, labels
 
@@ -200,6 +200,7 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
 
     classifier.fit(input_fn=_input_fn, steps=100)
     scores = classifier.evaluate(input_fn=_input_fn, steps=100)
+    _assert_metrics_in_range(('accuracy', 'auc'), scores)
 
   def testTrainWithPartitionedVariables(self):
     """Tests training with partitioned variables."""
@@ -207,7 +208,7 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
       features = {
           'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
                                       indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+                                      dense_shape=[3, 2])
       }
       labels = tf.constant([[1], [0], [0]])
       return features, labels
@@ -566,7 +567,7 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
           'age': tf.constant([1]),
           'language': tf.SparseTensor(values=['english'],
                                       indices=[[0, 0]],
-                                      shape=[1, 1])
+                                      dense_shape=[1, 1])
       }, tf.constant([[1]])
 
     language = tf.contrib.layers.sparse_column_with_hash_bucket('language', 100)
@@ -636,7 +637,7 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
           'age': tf.constant([1]),
           'language': tf.SparseTensor(values=['english'],
                                       indices=[[0, 0]],
-                                      shape=[1, 1])
+                                      dense_shape=[1, 1])
       }, tf.constant([[1]])
 
     language = tf.contrib.layers.sparse_column_with_hash_bucket('language', 100)
@@ -664,7 +665,7 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
       return {
           'language': tf.SparseTensor(values=['english'],
                                       indices=[[0, 0]],
-                                      shape=[1, 1])
+                                      dense_shape=[1, 1])
       }, tf.constant([[1]])
 
     language = tf.contrib.layers.sparse_column_with_hash_bucket('language', 99)
@@ -859,7 +860,7 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
                                        num_epochs=num_epochs),
           'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
                                       indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+                                      dense_shape=[3, 2])
       }
       return features, tf.constant(labels, dtype=tf.float32)
 
@@ -893,7 +894,7 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
                                        num_epochs=num_epochs),
           'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
                                       indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+                                      dense_shape=[3, 2])
       }
       return features, tf.constant(labels, dtype=tf.float32)
 
@@ -943,7 +944,7 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
         steps=1,
         metrics={
             'my_error': tf.contrib.metrics.streaming_mean_squared_error,
-            'my_metric': _my_metric_op
+            ('my_metric', 'scores'): _my_metric_op
         })
     self.assertIn('loss', set(scores.keys()))
     self.assertIn('my_error', set(scores.keys()))
@@ -954,13 +955,72 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
         _sklearn.mean_squared_error(np.array([1, 0, 0, 0]), predictions),
         scores['my_error'])
 
-    # Tests that when the key is a tuple, an error is raised.
+    # Tests the case that the 2nd element of the key is not "scores".
     with self.assertRaises(KeyError):
       regressor.evaluate(
           input_fn=_input_fn,
           steps=1,
           metrics={('my_error', 'predictions'
                    ): tf.contrib.metrics.streaming_mean_squared_error})
+
+    # Tests the case where the tuple of the key doesn't have 2 elements.
+    with self.assertRaises(ValueError):
+      regressor.evaluate(
+          input_fn=_input_fn,
+          steps=1,
+          metrics={
+              ('bad_length_name', 'scores', 'bad_length'):
+                  tf.contrib.metrics.streaming_mean_squared_error
+          })
+
+  def testCustomMetricsWithMetricSpec(self):
+    """Tests custom evaluation metrics."""
+    def _input_fn(num_epochs=None):
+      # Create 4 rows, one of them (y = x), three of them (y=Not(x))
+      labels = tf.constant([[1.], [0.], [0.], [0.]])
+      features = {'x': tf.train.limit_epochs(
+          tf.ones(shape=[4, 1], dtype=tf.float32), num_epochs=num_epochs)}
+      return features, labels
+
+    def _my_metric_op(predictions, labels):
+      return tf.reduce_sum(tf.mul(predictions, labels))
+
+    regressor = tf.contrib.learn.DNNLinearCombinedRegressor(
+        linear_feature_columns=[tf.contrib.layers.real_valued_column('x')],
+        dnn_feature_columns=[tf.contrib.layers.real_valued_column('x')],
+        dnn_hidden_units=[3, 3],
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
+
+    regressor.fit(input_fn=_input_fn, steps=5)
+    scores = regressor.evaluate(
+        input_fn=_input_fn,
+        steps=1,
+        metrics={
+            'my_error': MetricSpec(
+                metric_fn=tf.contrib.metrics.streaming_mean_squared_error,
+                prediction_key='scores'),
+            'my_metric': MetricSpec(
+                metric_fn=_my_metric_op,
+                prediction_key='scores')
+        })
+    self.assertIn('loss', set(scores.keys()))
+    self.assertIn('my_error', set(scores.keys()))
+    self.assertIn('my_metric', set(scores.keys()))
+    predict_input_fn = functools.partial(_input_fn, num_epochs=1)
+    predictions = np.array(list(regressor.predict(input_fn=predict_input_fn)))
+    self.assertAlmostEqual(
+        _sklearn.mean_squared_error(np.array([1, 0, 0, 0]), predictions),
+        scores['my_error'])
+
+    # Tests the case where the prediction_key is not "scores".
+    with self.assertRaisesRegexp(KeyError, 'bad_type'):
+      regressor.evaluate(
+          input_fn=_input_fn,
+          steps=1,
+          metrics={
+              'bad_name': MetricSpec(
+                  metric_fn=tf.contrib.metrics.streaming_auc,
+                  prediction_key='bad_type')})
 
   def testExport(self):
     """Tests export model for servo."""
@@ -971,7 +1031,7 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
                                        num_epochs=num_epochs),
           'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
                                       indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+                                      dense_shape=[3, 2])
       }
       return features, tf.constant(labels, dtype=tf.float32)
 
@@ -1036,7 +1096,7 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
                                        num_epochs=num_epochs),
           'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
                                       indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+                                      dense_shape=[3, 2])
       }
       return features, tf.constant([1., 0., 0.2], dtype=tf.float32)
 
@@ -1083,7 +1143,7 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
                                        num_epochs=num_epochs),
           'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
                                       indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+                                      dense_shape=[3, 2])
       }
       return features, tf.constant([1., 0., 0.2], dtype=tf.float32)
 
@@ -1116,7 +1176,7 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
                                        num_epochs=num_epochs),
           'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
                                       indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+                                      dense_shape=[3, 2])
       }
       return features, tf.constant([1., 0., 0.2], dtype=tf.float32)
 
@@ -1143,7 +1203,7 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
                                        num_epochs=num_epochs),
           'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
                                       indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+                                      dense_shape=[3, 2])
       }
       return features, tf.constant([1., 0., 0.2], dtype=tf.float32)
 
@@ -1198,7 +1258,7 @@ class FeatureEngineeringFunctionTest(tf.test.TestCase):
     # predictions = y
     prediction_with_fe_fn = next(
         estimator_with_fe_fn.predict(input_fn=input_fn, as_iterable=True))
-    self.assertAlmostEqual(1000., prediction_with_fe_fn, delta=1.0)
+    self.assertAlmostEqual(1000., prediction_with_fe_fn, delta=10.0)
     prediction_without_fe_fn = next(
         estimator_without_fe_fn.predict(input_fn=input_fn, as_iterable=True))
     self.assertAlmostEqual(100., prediction_without_fe_fn, delta=1.0)

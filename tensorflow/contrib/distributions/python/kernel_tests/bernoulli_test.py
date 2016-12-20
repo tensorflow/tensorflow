@@ -127,6 +127,17 @@ class BernoulliTest(tf.test.TestCase):
         self.assertAllClose(dist.pmf(x).eval(), expected_pmf)
         self.assertAllClose(dist.log_pmf(x).eval(), np.log(expected_pmf))
 
+  def testPmfCorrectBroadcastDynamicShape(self):
+    with self.test_session():
+      p = tf.placeholder(dtype=tf.float32)
+      dist = tf.contrib.distributions.Bernoulli(p=p)
+      event1 = [1, 0, 1]
+      event2 = [[1, 0, 1]]
+      self.assertAllClose(dist.pmf(event1).eval({p: [0.2, 0.3, 0.4]}),
+                          [0.2, 0.7, 0.4])
+      self.assertAllClose(dist.pmf(event2).eval({p: [0.2, 0.3, 0.4]}),
+                          [[0.2, 0.7, 0.4]])
+
   def testPmfWithP(self):
     p = [[0.2, 0.4], [0.3, 0.6]]
     self._testPmf(p=p)

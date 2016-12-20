@@ -426,7 +426,7 @@ class BatchTest(tf.test.TestCase):
       sparse_counter = tf.SparseTensor(
           indices=tf.reshape(tf.stack([zero64, zero64 + 1]), [2, 1]),
           values=tf.cast(tf.stack([counter, -counter]), tf.float32),
-          shape=[2])
+          dense_shape=[2])
       if use_dict:
         batched = tf.train.batch(
             {"c": counter, "s": sparse_counter, "S": "string"},
@@ -452,7 +452,7 @@ class BatchTest(tf.test.TestCase):
         expected = np.arange(2 * i * batch_size, 2 * (i + 1) * batch_size) // 2
         expected *= ([1, -1] * batch_size)  # mult by [1, -1, 1, -1, ...]
         self.assertAllEqual(results[1].values, expected)
-        self.assertAllEqual(results[1].shape, [batch_size, 2])
+        self.assertAllEqual(results[1].dense_shape, [batch_size, 2])
         self.assertAllEqual(results[2], [b"string"] * batch_size)
 
       # Reached the limit.
@@ -507,7 +507,7 @@ class BatchTest(tf.test.TestCase):
       sparse_counter = tf.SparseTensor(
           indices=tf.reshape(zero64, [1, 1]),
           values=tf.stack([tf.cast(counter, tf.float32)]),
-          shape=[1])
+          dense_shape=[1])
       pre_batched = tf.train.batch(
           [counter, sparse_counter, "string"], batch_size=2)
       batched = tf.train.batch(pre_batched, enqueue_many=True,
@@ -525,7 +525,7 @@ class BatchTest(tf.test.TestCase):
             np.vstack((np.arange(batch_size), np.zeros(batch_size))).T)
         self.assertAllEqual(
             results[1].values, np.arange(i * batch_size, (i + 1) * batch_size))
-        self.assertAllEqual(results[1].shape, [batch_size, 1])
+        self.assertAllEqual(results[1].dense_shape, [batch_size, 1])
         self.assertAllEqual(results[2], [b"string"] * batch_size)
 
       # Reached the limit.
@@ -545,7 +545,7 @@ class BatchTest(tf.test.TestCase):
       sparse_counter = tf.SparseTensor(
           indices=tf.reshape(zero64, [1, 1]),
           values=tf.stack([tf.cast(counter, tf.float32)]),
-          shape=[1])
+          dense_shape=[1])
       batched = tf.train.batch(
           [counter, sparse_counter, "string"],
           batch_size=batch_size, num_threads=4)
@@ -562,7 +562,7 @@ class BatchTest(tf.test.TestCase):
         self.assertAllEqual(
             results[1].indices,
             np.vstack((np.arange(batch_size), np.zeros(batch_size))).T)
-        self.assertAllEqual(results[1].shape, [batch_size, 1])
+        self.assertAllEqual(results[1].dense_shape, [batch_size, 1])
         all_counts.extend(results[0])
         self.assertAllEqual(results[2], [b"string"] * batch_size)
       self.assertItemsEqual(all_counts, range(num_batches * batch_size))
@@ -584,7 +584,7 @@ class BatchTest(tf.test.TestCase):
       sparse_counter = tf.SparseTensor(
           indices=tf.reshape(tf.stack([zero64, zero64 + 1]), [2, 1]),
           values=tf.cast(tf.stack([counter, -counter]), tf.float32),
-          shape=[2])
+          dense_shape=[2])
       batched = tf.train.batch(
           [counter, sparse_counter, "string"], batch_size=batch_size,
           allow_smaller_final_batch=True)
@@ -604,7 +604,7 @@ class BatchTest(tf.test.TestCase):
         expected = np.arange(2 * i * batch_size, 2 * (i + 1) * batch_size) // 2
         expected *= ([1, -1] * batch_size)  # mult by [1, -1, 1, -1, ...]
         self.assertAllEqual(results[1].values, expected)
-        self.assertAllEqual(results[1].shape, [batch_size, 2])
+        self.assertAllEqual(results[1].dense_shape, [batch_size, 2])
         self.assertAllEqual(results[2], [b"string"] * batch_size)
 
       # Reached the final batch with extra_elements.
@@ -616,7 +616,7 @@ class BatchTest(tf.test.TestCase):
           results[1].indices,
           np.vstack((np.arange(2 * extra_elements) // 2,  # 0, 0, 1, 1, ...
                      [0, 1] * extra_elements)).T)
-      self.assertAllEqual(results[1].shape, [extra_elements, 2])
+      self.assertAllEqual(results[1].dense_shape, [extra_elements, 2])
       self.assertAllEqual(results[2], [b"string"] * extra_elements)
 
       # Reached the limit.
@@ -637,7 +637,7 @@ class BatchTest(tf.test.TestCase):
       sparse_counter = tf.SparseTensor(
           indices=tf.reshape(zero64, [1, 1]),
           values=tf.stack([tf.cast(counter, tf.float32)]),
-          shape=[1])
+          dense_shape=[1])
       batched = tf.train.batch(
           [counter, sparse_counter, "string"],
           batch_size=batch_size, num_threads=4, allow_smaller_final_batch=True)
@@ -654,7 +654,7 @@ class BatchTest(tf.test.TestCase):
         self.assertAllEqual(
             results[1].indices,
             np.vstack((np.arange(batch_size), np.zeros(batch_size))).T)
-        self.assertAllEqual(results[1].shape, [batch_size, 1])
+        self.assertAllEqual(results[1].dense_shape, [batch_size, 1])
         all_counts.extend(results[0])
         self.assertAllEqual(results[2], [b"string"] * batch_size)
 
@@ -666,7 +666,7 @@ class BatchTest(tf.test.TestCase):
       self.assertAllEqual(
           results[1].indices,
           np.vstack((np.arange(extra_elements), np.zeros(extra_elements))).T)
-      self.assertAllEqual(results[1].shape, [extra_elements, 1])
+      self.assertAllEqual(results[1].dense_shape, [extra_elements, 1])
       all_counts.extend(results[0])
       self.assertAllEqual(results[2], [b"string"] * extra_elements)
       self.assertItemsEqual(all_counts,
@@ -700,38 +700,115 @@ class BatchTest(tf.test.TestCase):
         tf.train.batch([x], batch_size=2)
 
   def testBatchedSparseTensorInferredShape(self):
-    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], shape=[1])
-    self.assertAllEqual((1,), sparse.shape.get_shape().as_list())
+    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], dense_shape=[1])
+    self.assertAllEqual((1,), sparse.dense_shape.get_shape().as_list())
     batched = tf.train.batch([sparse], batch_size=2)
-    self.assertAllEqual((2,), batched.shape.get_shape().as_list())
+    self.assertAllEqual((2,), batched.dense_shape.get_shape().as_list())
 
   def testBatchedSparseTensorInferredShapeEnqueueMany(self):
-    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], shape=[1])
-    self.assertAllEqual((1,), sparse.shape.get_shape().as_list())
+    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], dense_shape=[1])
+    self.assertAllEqual((1,), sparse.dense_shape.get_shape().as_list())
     batched = tf.train.batch([sparse], batch_size=2, enqueue_many=True)
-    self.assertAllEqual((1,), batched.shape.get_shape().as_list())
+    self.assertAllEqual((1,), batched.dense_shape.get_shape().as_list())
 
   def testBatchedSparseTensorInferredShapeUnknownRank(self):
     sparse = tf.SparseTensor(
         indices=tf.placeholder(tf.int64),
         values=tf.placeholder(tf.float32),
-        shape=tf.placeholder(tf.int64))
-    self.assertIs(None, sparse.shape.get_shape().num_elements())
+        dense_shape=tf.placeholder(tf.int64))
+    self.assertIs(None, sparse.dense_shape.get_shape().num_elements())
     batched = tf.train.batch([sparse], batch_size=2)
-    self.assertIs(None, batched.shape.get_shape().num_elements())
+    self.assertIs(None, batched.dense_shape.get_shape().num_elements())
 
   def testBatchedSparseTensorInferredShapeUnknownRankEnqueueMany(self):
     sparse = tf.SparseTensor(
         indices=tf.placeholder(tf.int64),
         values=tf.placeholder(tf.float32),
-        shape=tf.placeholder(tf.int64))
-    self.assertIs(None, sparse.shape.get_shape().num_elements())
+        dense_shape=tf.placeholder(tf.int64))
+    self.assertIs(None, sparse.dense_shape.get_shape().num_elements())
     batched = tf.train.batch([sparse], batch_size=2, enqueue_many=True)
-    self.assertIs(None, batched.shape.get_shape().num_elements())
+    self.assertIs(None, batched.dense_shape.get_shape().num_elements())
 
   def testSingleElementDict(self):
     x = tf.train.batch({"c": [12, 12]}, batch_size=8)
     self.assertAllEqual((8, 2), x["c"].get_shape().as_list())
+
+  def _testKeepInputHelper(self, num_threads, enqueue_many):
+    with self.test_session() as sess:
+      batch_size = 5
+      num_batches = 4
+      examples = tf.Variable(0)
+      counter = examples.count_up_to(num_batches * batch_size * 2)
+      sparse_counter = tf.SparseTensor(
+          indices=tf.zeros([1, 1], dtype=tf.int64),
+          values=tf.stack([tf.cast(counter, tf.float32)]),
+          dense_shape=[1])
+      to_batch = [counter, sparse_counter, "string"]
+      if enqueue_many:
+        to_batch = tf.train.batch(to_batch, 1)
+      keep_input = tf.squeeze(tf.equal(0, tf.mod(to_batch[0], 2)))
+      batched = tf.train.maybe_batch(
+          to_batch, keep_input, batch_size, num_threads=num_threads,
+          enqueue_many=enqueue_many)
+      tf.initialize_all_variables().run()
+      tf.initialize_local_variables().run()
+      threads = tf.train.start_queue_runners()
+
+      for _ in range(num_batches):
+        results = sess.run(batched)
+        self.assertAllEqual([0] * batch_size, np.mod(results[0], 2))
+        self.assertAllEqual([0] * batch_size, np.mod(results[1].values, 2))
+        self.assertAllEqual([b"string"] * batch_size, results[2])
+
+      # Reached the limit.
+      with self.assertRaises(tf.errors.OutOfRangeError):
+        sess.run(batched)
+      for thread in threads:
+        thread.join()
+
+  def testSingleThreadKeepInput(self):
+    self._testKeepInputHelper(1, False)
+
+  def testSingleThreadKeepInputEnqueueMany(self):
+    self._testKeepInputHelper(1, True)
+
+  def testMultipleThreadKeepInput(self):
+    self._testKeepInputHelper(5, False)
+
+  def testMultipleThreadKeepInputEnqueueMany(self):
+    self._testKeepInputHelper(5, True)
+
+  def testMaybeBatchedSparseTensorInferredShape(self):
+    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], dense_shape=[1])
+    self.assertAllEqual((1,), sparse.dense_shape.get_shape().as_list())
+    batched = tf.train.maybe_batch([sparse], keep_input=True, batch_size=2)
+    self.assertAllEqual((2,), batched.dense_shape.get_shape().as_list())
+
+  def testMaybeBatchedSparseTensorInferredShapeEnqueueMany(self):
+    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], dense_shape=[1])
+    self.assertAllEqual((1,), sparse.dense_shape.get_shape().as_list())
+    batched = tf.train.maybe_batch(
+        [sparse], keep_input=True, batch_size=2, enqueue_many=True)
+    self.assertAllEqual((1,), batched.dense_shape.get_shape().as_list())
+
+  def testMaybeBatchedSparseTensorInferredShapeUnknownRank(self):
+    sparse = tf.SparseTensor(
+        indices=tf.placeholder(tf.int64),
+        values=tf.placeholder(tf.float32),
+        dense_shape=tf.placeholder(tf.int64))
+    self.assertIs(None, sparse.dense_shape.get_shape().num_elements())
+    batched = tf.train.maybe_batch([sparse], keep_input=True, batch_size=2)
+    self.assertIs(None, batched.dense_shape.get_shape().num_elements())
+
+  def testMaybeBatchedSparseTensorInferredShapeUnknownRankEnqueueMany(self):
+    sparse = tf.SparseTensor(
+        indices=tf.placeholder(tf.int64),
+        values=tf.placeholder(tf.float32),
+        dense_shape=tf.placeholder(tf.int64))
+    self.assertIs(None, sparse.dense_shape.get_shape().num_elements())
+    batched = tf.train.maybe_batch(
+        [sparse], keep_input=True, batch_size=2, enqueue_many=True)
+    self.assertIs(None, batched.dense_shape.get_shape().num_elements())
 
 
 class BatchJoinTest(tf.test.TestCase):
@@ -746,7 +823,7 @@ class BatchJoinTest(tf.test.TestCase):
       sparse_counter = tf.SparseTensor(
           indices=tf.reshape(zero64, [1, 1]),
           values=tf.stack([tf.cast(counter, tf.float32)]),
-          shape=[1])
+          dense_shape=[1])
 
       # The second generates (99, "b") 90 times and then stops.
       num_b = 90
@@ -755,7 +832,7 @@ class BatchJoinTest(tf.test.TestCase):
       sparse_ninety_nine = tf.SparseTensor(
           indices=tf.reshape(zero64, [1, 1]),
           values=tf.stack([tf.cast(ninety_nine, tf.float32)]),
-          shape=[1])
+          dense_shape=[1])
 
       # These get joined together and grouped into batches of 5.
       batch_size = 5
@@ -779,7 +856,8 @@ class BatchJoinTest(tf.test.TestCase):
           (None, 2), batched_fetch[1].indices.get_shape().as_list())
       self.assertAllEqual(
           (None,), batched_fetch[1].values.get_shape().as_list())
-      self.assertAllEqual((2,), batched_fetch[1].shape.get_shape().as_list())
+      self.assertAllEqual(
+          (2,), batched_fetch[1].dense_shape.get_shape().as_list())
       self.assertAllEqual((batch_size,), batched_fetch[2].get_shape().as_list())
 
       tf.global_variables_initializer().run()
@@ -800,7 +878,7 @@ class BatchJoinTest(tf.test.TestCase):
         self.assertAllEqual(
             results[1].indices,
             np.vstack((np.arange(batch_size), np.zeros(batch_size))).T)
-        self.assertAllEqual(results[1].shape, [batch_size, 1])
+        self.assertAllEqual(results[1].dense_shape, [batch_size, 1])
         which_a = [i for i, s in enumerate(results[2]) if s == b"a"]
         which_b = [i for i, s in enumerate(results[2]) if s == b"b"]
         self.assertEqual(len(which_a) + len(which_b), batch_size)
@@ -918,7 +996,7 @@ class BatchJoinTest(tf.test.TestCase):
       sparse_counter = tf.SparseTensor(
           indices=tf.reshape(zero64, [1, 1]),
           values=tf.stack([tf.cast(counter, tf.float32)]),
-          shape=[1])
+          dense_shape=[1])
 
       # The second generates (99, "b") 90 times and then stops.
       num_b = 90 + extra_elements
@@ -927,7 +1005,7 @@ class BatchJoinTest(tf.test.TestCase):
       sparse_ninety_nine = tf.SparseTensor(
           indices=tf.reshape(zero64, [1, 1]),
           values=tf.stack([tf.cast(ninety_nine, tf.float32)]),
-          shape=[1])
+          dense_shape=[1])
 
       # These get joined together and grouped into batches of 5.
       batch_size = 5
@@ -942,7 +1020,7 @@ class BatchJoinTest(tf.test.TestCase):
       self.assertAllEqual((None,), batched[0].get_shape().as_list())
       self.assertAllEqual((None, 2), batched[1].indices.get_shape().as_list())
       self.assertAllEqual((None,), batched[1].values.get_shape().as_list())
-      self.assertAllEqual((2,), batched[1].shape.get_shape().as_list())
+      self.assertAllEqual((2,), batched[1].dense_shape.get_shape().as_list())
       self.assertAllEqual((None,), batched[2].get_shape().as_list())
 
       tf.global_variables_initializer().run()
@@ -963,7 +1041,7 @@ class BatchJoinTest(tf.test.TestCase):
         self.assertAllEqual(
             results[1].indices,
             np.vstack((np.arange(batch_size), np.zeros(batch_size))).T)
-        self.assertAllEqual(results[1].shape, [batch_size, 1])
+        self.assertAllEqual(results[1].dense_shape, [batch_size, 1])
         which_a = [i for i, s in enumerate(results[2]) if s == b"a"]
         which_b = [i for i, s in enumerate(results[2]) if s == b"b"]
         self.assertEqual(len(which_a) + len(which_b), batch_size)
@@ -983,7 +1061,7 @@ class BatchJoinTest(tf.test.TestCase):
           results[1].indices,
           np.vstack((np.arange(2 * extra_elements),
                      np.zeros(2 * extra_elements))).T)
-      self.assertAllEqual(results[1].shape, [2 * extra_elements, 1])
+      self.assertAllEqual(results[1].dense_shape, [2 * extra_elements, 1])
       which_a = [i for i, s in enumerate(results[2]) if s == b"a"]
       which_b = [i for i, s in enumerate(results[2]) if s == b"b"]
       self.assertEqual(len(which_a) + len(which_b), 2 * extra_elements)
@@ -1125,6 +1203,85 @@ class BatchJoinTest(tf.test.TestCase):
     x = tf.train.batch_join([{"c": [12, 12]}], batch_size=8)
     self.assertAllEqual((8, 2), x["c"].get_shape().as_list())
 
+  def _testKeepInputHelper(self, num_threads, enqueue_many):
+    with self.test_session() as sess:
+      batch_size = 5
+      num_batches = 4
+      examples = tf.Variable(0)
+      counter = examples.count_up_to(num_batches * batch_size * 2)
+      sparse_counter = tf.SparseTensor(
+          indices=tf.zeros([1, 1], dtype=tf.int64),
+          values=tf.stack([tf.cast(counter, tf.float32)]),
+          dense_shape=[1])
+      to_batch = [counter, sparse_counter, "string"]
+      if enqueue_many:
+        to_batch = tf.train.batch(to_batch, 1)
+      keep_input = tf.squeeze(tf.equal(0, tf.mod(to_batch[0], 2)))
+      batched = tf.train.maybe_batch_join(
+          [to_batch] * num_threads, keep_input, batch_size,
+          enqueue_many=enqueue_many)
+      tf.initialize_all_variables().run()
+      tf.initialize_local_variables().run()
+      threads = tf.train.start_queue_runners()
+
+      for _ in range(num_batches):
+        results = sess.run(batched)
+        self.assertAllEqual([0] * batch_size, np.mod(results[0], 2),)
+        self.assertAllEqual([0] * batch_size, np.mod(results[1].values, 2),)
+        self.assertAllEqual([b"string"] * batch_size, results[2])
+
+      # Reached the limit.
+      with self.assertRaises(tf.errors.OutOfRangeError):
+        sess.run(batched)
+      for thread in threads:
+        thread.join()
+
+  def testSingleThreadKeepInput(self):
+    self._testKeepInputHelper(1, False)
+
+  def testSingleThreadKeepInputEnqueueMany(self):
+    self._testKeepInputHelper(1, True)
+
+  def testMultipleThreadKeepInput(self):
+    self._testKeepInputHelper(5, False)
+
+  def testMultipleThreadKeepInputEnqueueMany(self):
+    self._testKeepInputHelper(5, True)
+
+  def testMaybeBatchedSparseTensorInferredShape(self):
+    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], dense_shape=[1])
+    self.assertAllEqual((1,), sparse.dense_shape.get_shape().as_list())
+    batched = tf.train.maybe_batch_join(
+        [[sparse]], keep_input=True, batch_size=2)
+    self.assertAllEqual((2,), batched.dense_shape.get_shape().as_list())
+
+  def testMaybeBatchedSparseTensorInferredShapeEnqueueMany(self):
+    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], dense_shape=[1])
+    self.assertAllEqual((1,), sparse.dense_shape.get_shape().as_list())
+    batched = tf.train.maybe_batch_join(
+        [[sparse]], keep_input=True, batch_size=2, enqueue_many=True)
+    self.assertAllEqual((1,), batched.dense_shape.get_shape().as_list())
+
+  def testMaybeBatchedSparseTensorInferredShapeUnknownRank(self):
+    sparse = tf.SparseTensor(
+        indices=tf.placeholder(tf.int64),
+        values=tf.placeholder(tf.float32),
+        dense_shape=tf.placeholder(tf.int64))
+    self.assertIs(None, sparse.dense_shape.get_shape().num_elements())
+    batched = tf.train.maybe_batch_join(
+        [[sparse]], keep_input=True, batch_size=2)
+    self.assertIs(None, batched.dense_shape.get_shape().num_elements())
+
+  def testMaybeBatchedSparseTensorInferredShapeUnknownRankEnqueueMany(self):
+    sparse = tf.SparseTensor(
+        indices=tf.placeholder(tf.int64),
+        values=tf.placeholder(tf.float32),
+        dense_shape=tf.placeholder(tf.int64))
+    self.assertIs(None, sparse.dense_shape.get_shape().num_elements())
+    batched = tf.train.maybe_batch_join(
+        [[sparse]], keep_input=True, batch_size=2, enqueue_many=True)
+    self.assertIs(None, batched.dense_shape.get_shape().num_elements())
+
 
 class ShuffleBatchTest(tf.test.TestCase):
 
@@ -1138,7 +1295,7 @@ class ShuffleBatchTest(tf.test.TestCase):
       sparse_counter = tf.SparseTensor(
           indices=tf.reshape(zero64, [1, 1]),
           values=tf.stack([tf.cast(counter, tf.float32)]),
-          shape=[1])
+          dense_shape=[1])
       if use_dict:
         batched = tf.train.shuffle_batch(
             {"c": counter, "s": sparse_counter, "S": "string"},
@@ -1164,7 +1321,7 @@ class ShuffleBatchTest(tf.test.TestCase):
             results[1].indices,
             np.vstack((np.arange(batch_size), np.zeros(batch_size))).T)
         self.assertAllEqual(results[0], results[1].values)
-        self.assertAllEqual(results[1].shape, [batch_size, 1])
+        self.assertAllEqual(results[1].dense_shape, [batch_size, 1])
         self.assertAllEqual(results[2], [b"string"] * batch_size)
       # Results scrambled, but include all the expected numbers.
       deltas = [all_counts[i + 1] - all_counts[i]
@@ -1196,7 +1353,7 @@ class ShuffleBatchTest(tf.test.TestCase):
       sparse_counter = tf.SparseTensor(
           indices=tf.reshape(zero64, [1, 1]),
           values=tf.stack([tf.cast(counter, tf.float32)]),
-          shape=[1])
+          dense_shape=[1])
       batched = tf.train.shuffle_batch(
           [counter, sparse_counter, "string"],
           batch_size=batch_size, capacity=32,
@@ -1216,12 +1373,12 @@ class ShuffleBatchTest(tf.test.TestCase):
             results[1].indices,
             np.vstack((np.arange(batch_size), np.zeros(batch_size))).T)
         self.assertAllEqual(results[0], results[1].values)
-        self.assertAllEqual(results[1].shape, [batch_size, 1])
+        self.assertAllEqual(results[1].dense_shape, [batch_size, 1])
         self.assertAllEqual(results[2], [b"string"] * batch_size)
 
       # Reached the final batch with extra elements.
       results = sess.run(batched)
-      self.assertAllEqual(results[1].shape, [extra_elements, 1])
+      self.assertAllEqual(results[1].dense_shape, [extra_elements, 1])
       self.assertAllEqual(results[2], [b"string"] * extra_elements)
       all_counts.extend(results[0])
 
@@ -1247,7 +1404,7 @@ class ShuffleBatchTest(tf.test.TestCase):
       sparse_counter = tf.SparseTensor(
           indices=tf.reshape(zero64, [1, 1]),
           values=tf.stack([tf.cast(counter, tf.float32)]),
-          shape=[1])
+          dense_shape=[1])
       batched = tf.train.shuffle_batch(
           [counter, sparse_counter, "string"],
           batch_size=batch_size, capacity=32,
@@ -1266,7 +1423,7 @@ class ShuffleBatchTest(tf.test.TestCase):
             results[1].indices,
             np.vstack((np.arange(batch_size), np.zeros(batch_size))).T)
         self.assertAllEqual(results[0], results[1].values)
-        self.assertAllEqual(results[1].shape, [batch_size, 1])
+        self.assertAllEqual(results[1].dense_shape, [batch_size, 1])
         self.assertAllEqual(results[2], [b"string"] * batch_size)
       # Results scrambled, but include all the expected numbers.
       deltas = [all_counts[i + 1] - all_counts[i]
@@ -1292,7 +1449,7 @@ class ShuffleBatchTest(tf.test.TestCase):
       sparse_counter = tf.SparseTensor(
           indices=tf.reshape(zero64, [1, 1]),
           values=tf.stack([tf.cast(counter, tf.float32)]),
-          shape=[1])
+          dense_shape=[1])
       batched = tf.train.shuffle_batch(
           [counter, sparse_counter, "string"],
           batch_size=batch_size, capacity=32,
@@ -1312,13 +1469,13 @@ class ShuffleBatchTest(tf.test.TestCase):
             results[1].indices,
             np.vstack((np.arange(batch_size), np.zeros(batch_size))).T)
         self.assertAllEqual(results[0], results[1].values)
-        self.assertAllEqual(results[1].shape, [batch_size, 1])
+        self.assertAllEqual(results[1].dense_shape, [batch_size, 1])
         self.assertAllEqual(results[2], [b"string"] * batch_size)
 
       # Reached the final batch with extra elements.
       results = sess.run(batched)
       self.assertAllEqual(results[0].shape, [extra_elements])
-      self.assertAllEqual(results[1].shape, [extra_elements, 1])
+      self.assertAllEqual(results[1].dense_shape, [extra_elements, 1])
       self.assertAllEqual(results[2], [b"string"] * extra_elements)
       all_counts.extend(results[0])
 
@@ -1351,6 +1508,83 @@ class ShuffleBatchTest(tf.test.TestCase):
           "s: 'SHARED_NAME_XYZ'",
           batched[0].op.inputs[0].op.node_def.attr["shared_name"])
 
+  def _testKeepInputHelper(self, num_threads, enqueue_many):
+    with self.test_session() as sess:
+      batch_size = 5
+      num_batches = 4
+      examples = tf.Variable(0)
+      counter = examples.count_up_to(num_batches * batch_size * 2)
+      sparse_counter = tf.SparseTensor(
+          indices=tf.zeros([1, 1], dtype=tf.int64),
+          values=tf.stack([tf.cast(counter, tf.float32)]),
+          dense_shape=[1])
+      to_batch = [counter, sparse_counter, "string"]
+      if enqueue_many:
+        to_batch = tf.train.batch(to_batch, 1)
+      keep_input = tf.squeeze(tf.equal(0, tf.mod(to_batch[0], 2)))
+      batched = tf.train.maybe_shuffle_batch(
+          to_batch, batch_size, 10, 1, keep_input, num_threads=num_threads,
+          enqueue_many=enqueue_many)
+      tf.initialize_all_variables().run()
+      tf.initialize_local_variables().run()
+      threads = tf.train.start_queue_runners()
+
+      for _ in range(num_batches):
+        results = sess.run(batched)
+        self.assertAllEqual([0] * batch_size, np.mod(results[0], 2))
+        self.assertAllEqual([0] * batch_size, np.mod(results[1].values, 2))
+        self.assertAllEqual([b"string"] * batch_size, results[2])
+
+      # Reached the limit.
+      with self.assertRaises(tf.errors.OutOfRangeError):
+        sess.run(batched)
+      for thread in threads:
+        thread.join()
+
+  def testSingleThreadKeepInput(self):
+    self._testKeepInputHelper(1, False)
+
+  def testSingleThreadKeepInputEnqueueMany(self):
+    self._testKeepInputHelper(1, True)
+
+  def testMultipleThreadKeepInput(self):
+    self._testKeepInputHelper(5, False)
+
+  def testMultipleThreadKeepInputEnqueueMany(self):
+    self._testKeepInputHelper(5, True)
+
+  def testMaybeBatchedSparseTensorInferredShape(self):
+    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], dense_shape=[1])
+    self.assertAllEqual((1,), sparse.dense_shape.get_shape().as_list())
+    batched = tf.train.maybe_shuffle_batch([sparse], 2, 10, 1, True)
+    self.assertAllEqual((2,), batched.dense_shape.get_shape().as_list())
+
+  def testMaybeBatchedSparseTensorInferredShapeEnqueueMany(self):
+    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], dense_shape=[1])
+    self.assertAllEqual((1,), sparse.dense_shape.get_shape().as_list())
+    batched = tf.train.maybe_shuffle_batch(
+        [sparse], 2, 10, 1, True, enqueue_many=True)
+    self.assertAllEqual((1,), batched.dense_shape.get_shape().as_list())
+
+  def testMaybeBatchedSparseTensorInferredShapeUnknownRank(self):
+    sparse = tf.SparseTensor(
+        indices=tf.placeholder(tf.int64),
+        values=tf.placeholder(tf.float32),
+        dense_shape=tf.placeholder(tf.int64))
+    self.assertIs(None, sparse.dense_shape.get_shape().num_elements())
+    batched = tf.train.maybe_shuffle_batch([sparse], 2, 10, 1, True)
+    self.assertIs(None, batched.dense_shape.get_shape().num_elements())
+
+  def testMaybeBatchedSparseTensorInferredShapeUnknownRankEnqueueMany(self):
+    sparse = tf.SparseTensor(
+        indices=tf.placeholder(tf.int64),
+        values=tf.placeholder(tf.float32),
+        dense_shape=tf.placeholder(tf.int64))
+    self.assertIs(None, sparse.dense_shape.get_shape().num_elements())
+    batched = tf.train.maybe_shuffle_batch(
+        [sparse], 2, 10, 1, True, enqueue_many=True)
+    self.assertIs(None, batched.dense_shape.get_shape().num_elements())
+
 
 class ShuffleBatchJoinTest(tf.test.TestCase):
 
@@ -1364,7 +1598,7 @@ class ShuffleBatchJoinTest(tf.test.TestCase):
       sparse_counter = tf.SparseTensor(
           indices=tf.reshape(zero64, [1, 1]),
           values=tf.stack([tf.cast(counter, tf.float32)]),
-          shape=[1])
+          dense_shape=[1])
 
       # The second generates (99, "b") 35 times and then stops.
       num_b = 35
@@ -1373,7 +1607,7 @@ class ShuffleBatchJoinTest(tf.test.TestCase):
       sparse_ninety_nine = tf.SparseTensor(
           indices=tf.reshape(zero64, [1, 1]),
           values=tf.stack([tf.cast(ninety_nine, tf.float32)]),
-          shape=[1])
+          dense_shape=[1])
 
       # These get joined together and grouped into batches of 5.
       batch_size = 5
@@ -1399,7 +1633,8 @@ class ShuffleBatchJoinTest(tf.test.TestCase):
           (None, 2), batched_fetch[1].indices.get_shape().as_list())
       self.assertAllEqual(
           (None,), batched_fetch[1].values.get_shape().as_list())
-      self.assertAllEqual((2,), batched_fetch[1].shape.get_shape().as_list())
+      self.assertAllEqual(
+          (2,), batched_fetch[1].dense_shape.get_shape().as_list())
       self.assertAllEqual((batch_size,), batched_fetch[2].get_shape().as_list())
 
       tf.global_variables_initializer().run()
@@ -1420,7 +1655,7 @@ class ShuffleBatchJoinTest(tf.test.TestCase):
         self.assertAllEqual(
             results[1].indices,
             np.vstack((np.arange(batch_size), np.zeros(batch_size))).T)
-        self.assertAllEqual(results[1].shape, [batch_size, 1])
+        self.assertAllEqual(results[1].dense_shape, [batch_size, 1])
         which_a = [i for i, s in enumerate(results[2]) if s == b"a"]
         which_b = [i for i, s in enumerate(results[2]) if s == b"b"]
         self.assertEqual(len(which_a) + len(which_b), batch_size)
@@ -1463,7 +1698,7 @@ class ShuffleBatchJoinTest(tf.test.TestCase):
       sparse_counter = tf.SparseTensor(
           indices=tf.reshape(zero64, [1, 1]),
           values=tf.stack([tf.cast(counter, tf.float32)]),
-          shape=[1])
+          dense_shape=[1])
 
       # The second generates (99, "b") 37 times and then stops.
       num_b = 35 + extra_elements
@@ -1472,7 +1707,7 @@ class ShuffleBatchJoinTest(tf.test.TestCase):
       sparse_ninety_nine = tf.SparseTensor(
           indices=tf.reshape(zero64, [1, 1]),
           values=tf.stack([tf.cast(ninety_nine, tf.float32)]),
-          shape=[1])
+          dense_shape=[1])
 
       # These get joined together and grouped into batches of 5.
       batch_size = 5
@@ -1487,7 +1722,7 @@ class ShuffleBatchJoinTest(tf.test.TestCase):
       self.assertAllEqual((None,), batched[0].get_shape().as_list())
       self.assertAllEqual((None, 2), batched[1].indices.get_shape().as_list())
       self.assertAllEqual((None,), batched[1].values.get_shape().as_list())
-      self.assertAllEqual((2,), batched[1].shape.get_shape().as_list())
+      self.assertAllEqual((2,), batched[1].dense_shape.get_shape().as_list())
       self.assertAllEqual((None,), batched[2].get_shape().as_list())
 
       tf.global_variables_initializer().run()
@@ -1508,7 +1743,7 @@ class ShuffleBatchJoinTest(tf.test.TestCase):
         self.assertAllEqual(
             results[1].indices,
             np.vstack((np.arange(batch_size), np.zeros(batch_size))).T)
-        self.assertAllEqual(results[1].shape, [batch_size, 1])
+        self.assertAllEqual(results[1].dense_shape, [batch_size, 1])
         which_a = [i for i, s in enumerate(results[2]) if s == b"a"]
         which_b = [i for i, s in enumerate(results[2]) if s == b"b"]
         self.assertEqual(len(which_a) + len(which_b), batch_size)
@@ -1521,7 +1756,7 @@ class ShuffleBatchJoinTest(tf.test.TestCase):
       # Reached end with 2 * extra_elements left
       results = sess.run(batched)
       self.assertEqual(len(results[0]), 2 * extra_elements)
-      self.assertAllEqual(results[1].shape, [2 * extra_elements, 1])
+      self.assertAllEqual(results[1].dense_shape, [2 * extra_elements, 1])
       self.assertEqual(len(results[2]), 2 * extra_elements)
       self.assertAllEqual(results[0], results[1].values)
       self.assertAllEqual(
@@ -1580,6 +1815,83 @@ class ShuffleBatchJoinTest(tf.test.TestCase):
       self.assertProtoEquals(
           "s: 'SHARED_NAME_XYZ'",
           batched[0].op.inputs[0].op.node_def.attr["shared_name"])
+
+  def _testKeepInputHelper(self, num_threads, enqueue_many):
+    with self.test_session() as sess:
+      batch_size = 5
+      num_batches = 4
+      examples = tf.Variable(0)
+      counter = examples.count_up_to(num_batches * batch_size * 2)
+      sparse_counter = tf.SparseTensor(
+          indices=tf.zeros([1, 1], dtype=tf.int64),
+          values=tf.stack([tf.cast(counter, tf.float32)]),
+          dense_shape=[1])
+      to_batch = [counter, sparse_counter, "string"]
+      if enqueue_many:
+        to_batch = tf.train.batch(to_batch, 1)
+      keep_input = tf.squeeze(tf.equal(0, tf.mod(to_batch[0], 2)))
+      batched = tf.train.maybe_shuffle_batch_join(
+          [to_batch] * num_threads, batch_size, 10, 1, keep_input,
+          enqueue_many=enqueue_many)
+      tf.initialize_all_variables().run()
+      tf.initialize_local_variables().run()
+      threads = tf.train.start_queue_runners()
+
+      for _ in range(num_batches):
+        results = sess.run(batched)
+        self.assertAllEqual([0] * batch_size, np.mod(results[0], 2))
+        self.assertAllEqual([0] * batch_size, np.mod(results[1].values, 2))
+        self.assertAllEqual([b"string"] * batch_size, results[2])
+
+      # Reached the limit.
+      with self.assertRaises(tf.errors.OutOfRangeError):
+        sess.run(batched)
+      for thread in threads:
+        thread.join()
+
+  def testSingleThreadKeepInput(self):
+    self._testKeepInputHelper(1, False)
+
+  def testSingleThreadKeepInputEnqueueMany(self):
+    self._testKeepInputHelper(1, True)
+
+  def testMultipleThreadKeepInput(self):
+    self._testKeepInputHelper(5, False)
+
+  def testMultipleThreadKeepInputEnqueueMany(self):
+    self._testKeepInputHelper(5, True)
+
+  def testMaybeBatchedSparseTensorInferredShape(self):
+    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], dense_shape=[1])
+    self.assertAllEqual((1,), sparse.dense_shape.get_shape().as_list())
+    batched = tf.train.maybe_shuffle_batch_join([[sparse]], 2, 10, 1, True)
+    self.assertAllEqual((2,), batched.dense_shape.get_shape().as_list())
+
+  def testMaybeBatchedSparseTensorInferredShapeEnqueueMany(self):
+    sparse = tf.SparseTensor(indices=[[0]], values=[1.0], dense_shape=[1])
+    self.assertAllEqual((1,), sparse.dense_shape.get_shape().as_list())
+    batched = tf.train.maybe_shuffle_batch_join(
+        [[sparse]], 2, 10, 1, True, enqueue_many=True)
+    self.assertAllEqual((1,), batched.dense_shape.get_shape().as_list())
+
+  def testMaybeBatchedSparseTensorInferredShapeUnknownRank(self):
+    sparse = tf.SparseTensor(
+        indices=tf.placeholder(tf.int64),
+        values=tf.placeholder(tf.float32),
+        dense_shape=tf.placeholder(tf.int64))
+    self.assertIs(None, sparse.dense_shape.get_shape().num_elements())
+    batched = tf.train.maybe_shuffle_batch_join([[sparse]], 2, 10, 1, True)
+    self.assertIs(None, batched.dense_shape.get_shape().num_elements())
+
+  def testMaybeBatchedSparseTensorInferredShapeUnknownRankEnqueueMany(self):
+    sparse = tf.SparseTensor(
+        indices=tf.placeholder(tf.int64),
+        values=tf.placeholder(tf.float32),
+        dense_shape=tf.placeholder(tf.int64))
+    self.assertIs(None, sparse.dense_shape.get_shape().num_elements())
+    batched = tf.train.maybe_shuffle_batch_join(
+        [[sparse]], 2, 10, 1, True, enqueue_many=True)
+    self.assertIs(None, batched.dense_shape.get_shape().num_elements())
 
 
 if __name__ == "__main__":

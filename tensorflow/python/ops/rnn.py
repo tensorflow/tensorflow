@@ -191,7 +191,7 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
         # convert int to TensorShape if necessary
         size = _state_size_with_prefix(output_size, prefix=[batch_size])
         output = array_ops.zeros(
-            array_ops.pack(size), _infer_state_dtype(dtype, state))
+            array_ops.stack(size), _infer_state_dtype(dtype, state))
         shape = _state_size_with_prefix(
             output_size, prefix=[fixed_batch_size.value])
         output.set_shape(tensor_shape.TensorShape(shape))
@@ -305,6 +305,15 @@ def state_saving_rnn(cell, inputs, state_saver, state_name,
   return (outputs, state)
 
 
+def _on_device(fn, device):
+  """Build the subgraph defined by lambda `fn` on `device` if it's not None."""
+  if device:
+    with ops.device(device):
+      return fn()
+  else:
+    return fn()
+
+
 # pylint: disable=unused-argument
 def _rnn_step(
     time, sequence_length, min_sequence_length, max_sequence_length,
@@ -366,7 +375,9 @@ def _rnn_step(
 
   def _copy_one_through(output, new_output):
     copy_cond = (time >= sequence_length)
-    return array_ops.where(copy_cond, output, new_output)
+    return _on_device(
+        lambda: array_ops.where(copy_cond, output, new_output),
+        device=new_output.op.device)
 
   def _copy_some_through(flat_new_output, flat_new_state):
     # Use broadcasting select to determine which values should get
@@ -460,7 +471,7 @@ def _reverse_seq(input_seq, lengths):
       input_.set_shape(input_shape)
 
     # Join into (time, batch_size, depth)
-    s_joined = array_ops.pack(sequence)
+    s_joined = array_ops.stack(sequence)
 
     # TODO(schuster, ebrevdo): Remove cast when reverse_sequence takes int32
     if lengths is not None:
@@ -469,7 +480,7 @@ def _reverse_seq(input_seq, lengths):
     # Reverse along dimension 0
     s_reversed = array_ops.reverse_sequence(s_joined, lengths, 0, 1)
     # Split again into list
-    result = array_ops.unpack(s_reversed)
+    result = array_ops.unstack(s_reversed)
     for r, flat_result in zip(result, flat_results):
       r.set_shape(input_shape)
       flat_result.append(r)
@@ -550,8 +561,9 @@ def bidirectional_rnn(cell_fw, cell_bw, inputs,
   flat_output_fw = nest.flatten(output_fw)
   flat_output_bw = nest.flatten(output_bw)
 
-  flat_outputs = tuple(array_ops.concat(1, [fw, bw])
-                       for fw, bw in zip(flat_output_fw, flat_output_bw))
+  flat_outputs = tuple(
+      array_ops.concat_v2([fw, bw], 1)
+      for fw, bw in zip(flat_output_fw, flat_output_bw))
 
   outputs = nest.pack_sequence_as(structure=output_fw,
                                   flat_sequence=flat_outputs)
@@ -632,7 +644,7 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
         It returns a tuple instead of a single concatenated `Tensor`, unlike
         in the `bidirectional_rnn`. If the concatenated one is preferred,
         the forward and backward outputs can be concatenated as
-        `tf.concat(2, outputs)`.
+        `tf.concat_v2(outputs, 2)`.
       output_states: A tuple (output_state_fw, output_state_bw) containing
         the forward and the backward final states of bidirectional rnn.
 
@@ -823,7 +835,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
 
     def _assert_has_shape(x, shape):
       x_shape = array_ops.shape(x)
-      packed_shape = array_ops.pack(shape)
+      packed_shape = array_ops.stack(shape)
       return control_flow_ops.Assert(
           math_ops.reduce_all(math_ops.equal(x_shape, packed_shape)),
           ["Expected shape for Tensor %s is " % x.name,
@@ -935,7 +947,7 @@ def _dynamic_rnn_loop(cell,
   def _create_zero_arrays(size):
     size = _state_size_with_prefix(size, prefix=[batch_size])
     return array_ops.zeros(
-        array_ops.pack(size), _infer_state_dtype(dtype, state))
+        array_ops.stack(size), _infer_state_dtype(dtype, state))
 
   flat_zero_output = tuple(_create_zero_arrays(output)
                            for output in flat_output_size)
@@ -962,7 +974,7 @@ def _dynamic_rnn_loop(cell,
   input_ta = tuple(_create_ta("input_%d" % i, flat_input[0].dtype)
                    for i in range(len(flat_input)))
 
-  input_ta = tuple(ta.unpack(input_)
+  input_ta = tuple(ta.unstack(input_)
                    for ta, input_ in zip(input_ta, flat_input))
 
   def _time_step(time, output_ta_t, state):
@@ -1015,7 +1027,7 @@ def _dynamic_rnn_loop(cell,
       swap_memory=swap_memory)
 
   # Unpack final output if not using output tuples.
-  final_outputs = tuple(ta.pack() for ta in output_final_ta)
+  final_outputs = tuple(ta.stack() for ta in output_final_ta)
 
   # Restore some shape information
   for output, output_size in zip(final_outputs, flat_output_size):
@@ -1080,9 +1092,9 @@ def raw_rnn(cell, loop_fn,
                           dtype=tf.float32)
   sequence_length = tf.placeholder(shape=(batch_size,), dtype=tf.int32)
   inputs_ta = tf.TensorArray(dtype=tf.float32, size=max_time)
-  inputs_ta = inputs_ta.unpack(inputs)
+  inputs_ta = inputs_ta.unstack(inputs)
 
-  cell = tf.nn.rnn_cell.LSTMCell(num_units)
+  cell = tf.contrib.rnn.LSTMCell(num_units)
 
   def loop_fn(time, cell_output, cell_state, loop_state):
     emit_output = cell_output  # == None for time == 0
@@ -1101,7 +1113,7 @@ def raw_rnn(cell, loop_fn,
             emit_output, next_loop_state)
 
   outputs_ta, final_state, _ = raw_rnn(cell, loop_fn)
-  outputs = outputs_ta.pack()
+  outputs = outputs_ta.stack()
   ```
 
   Args:
@@ -1296,11 +1308,17 @@ def raw_rnn(cell, loop_fn,
       loop_state = loop_state if next_loop_state is None else next_loop_state
 
       def _copy_some_through(current, candidate):
+        """Copy some tensors through via array_ops.where."""
         current_flat = nest.flatten(current)
         candidate_flat = nest.flatten(candidate)
+        # pylint: disable=g-long-lambda,cell-var-from-loop
         result_flat = [
-            array_ops.where(elements_finished, current_i, candidate_i)
+            _on_device(
+                lambda: array_ops.where(
+                    elements_finished, current_i, candidate_i),
+                device=candidate_i.op.device)
             for (current_i, candidate_i) in zip(current_flat, candidate_flat)]
+        # pylint: enable=g-long-lambda,cell-var-from-loop
         return nest.pack_sequence_as(
             structure=current, flat_sequence=result_flat)
 

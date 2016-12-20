@@ -4,6 +4,8 @@
 
 licenses(["notice"])
 
+exports_files(["LICENSE.TXT"])
+
 load(
     "@//third_party/llvm:llvm.bzl",
     "gentbl",
@@ -280,6 +282,7 @@ cc_binary(
         "lib/Target/X86/Disassembler/X86DisassemblerDecoderCommon.h",
     ],
     linkopts = [
+        "-lm",
         "-ldl",
         "-lpthread",
     ],
@@ -300,6 +303,7 @@ cc_binary(
     ]),
     linkopts = [
         "-ldl",
+        "-lm",
         "-lpthread",
     ],
     stamp = 0,
@@ -1662,6 +1666,7 @@ cc_library(
     deps = [
         ":config",
         ":demangle",
+        "@zlib_archive//:zlib",
     ],
 )
 

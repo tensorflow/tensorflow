@@ -19,16 +19,13 @@ from __future__ import print_function
 
 import tensorflow as tf
 
-from tensorflow.contrib.tensor_forest.python.ops import training_ops
+from tensorflow.contrib.tensor_forest.python.ops import tensor_forest_ops
 
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
 
 
 class ScatterAddNdimTest(test_util.TensorFlowTestCase):
-
-  def setUp(self):
-    self.ops = training_ops.Load()
 
   def test1dim(self):
     input_data = tf.Variable([1., 2., 3., 4., 5., 6.,
@@ -38,7 +35,7 @@ class ScatterAddNdimTest(test_util.TensorFlowTestCase):
 
     with self.test_session():
       tf.global_variables_initializer().run()
-      self.ops.scatter_add_ndim(input_data, indices, updates).run()
+      tensor_forest_ops.scatter_add_ndim(input_data, indices, updates).run()
       self.assertAllEqual([1., 102., 3., 4., 5., 6.,
                            7., 8., 9., 10., 211., 12.], input_data.eval())
 
@@ -50,7 +47,7 @@ class ScatterAddNdimTest(test_util.TensorFlowTestCase):
 
     with self.test_session():
       tf.global_variables_initializer().run()
-      self.ops.scatter_add_ndim(input_data, indices, updates).run()
+      tensor_forest_ops.scatter_add_ndim(input_data, indices, updates).run()
       self.assertAllEqual([[[1., 102., 3.], [4., 5., 6.]],
                            [[7., 8., 9.], [10., 11., 212.]]], input_data.eval())
 
@@ -62,7 +59,7 @@ class ScatterAddNdimTest(test_util.TensorFlowTestCase):
 
     with self.test_session():
       tf.global_variables_initializer().run()
-      self.ops.scatter_add_ndim(input_data, indices, updates).run()
+      tensor_forest_ops.scatter_add_ndim(input_data, indices, updates).run()
       self.assertAllEqual(init_val, input_data.eval())
 
   def testBadInput(self):
@@ -74,7 +71,7 @@ class ScatterAddNdimTest(test_util.TensorFlowTestCase):
       tf.global_variables_initializer().run()
       with self.assertRaisesOpError(
           'Number of updates should be same as number of indices.'):
-        self.ops.scatter_add_ndim(input_data, indices, updates).run()
+        tensor_forest_ops.scatter_add_ndim(input_data, indices, updates).run()
         self.assertAllEqual(init_val, input_data.eval())
 
   def testIncompleteIndices(self):
@@ -85,7 +82,7 @@ class ScatterAddNdimTest(test_util.TensorFlowTestCase):
 
     with self.test_session():
       tf.global_variables_initializer().run()
-      self.ops.scatter_add_ndim(input_data, indices, updates).run()
+      tensor_forest_ops.scatter_add_ndim(input_data, indices, updates).run()
       self.assertAllEqual([[[101., 202., 303.], [4., 5., 6.]],
                            [[7., 8., 9.], [410., 511., 612.]]],
                           input_data.eval())

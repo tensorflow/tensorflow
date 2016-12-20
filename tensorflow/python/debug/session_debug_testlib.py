@@ -133,73 +133,6 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       self.assertGreaterEqual(
           dump.get_rel_timestamps("%s/read" % v_name, 0, "DebugIdentity")[0], 0)
 
-  def testDifferentWatchesOnDifferentRuns(self):
-    """Test watching different tensors on different runs of the same graph."""
-
-    with session.Session() as sess:
-      u_init_val = np.array([[5.0, 3.0], [-1.0, 0.0]])
-      v_init_val = np.array([[2.0], [-1.0]])
-
-      # Use node names with overlapping namespace (i.e., parent directory) to
-      # test concurrent, non-racing directory creation.
-      u_name = "diff_Watch/u"
-      v_name = "diff_Watch/v"
-
-      u_init = constant_op.constant(u_init_val, shape=[2, 2])
-      u = variables.Variable(u_init, name=u_name)
-      v_init = constant_op.constant(v_init_val, shape=[2, 1])
-      v = variables.Variable(v_init, name=v_name)
-
-      w = math_ops.matmul(u, v, name="diff_Watch/matmul")
-
-      u.initializer.run()
-      v.initializer.run()
-
-      for i in xrange(2):
-        run_options = config_pb2.RunOptions(output_partition_graphs=True)
-
-        run_dump_root = self._debug_dump_dir(run_number=i)
-        debug_urls = self._debug_urls(run_number=i)
-
-        if i == 0:
-          # First debug run: Add debug tensor watch for u.
-          debug_utils.add_debug_tensor_watch(
-              run_options, "%s/read" % u_name, 0, debug_urls=debug_urls)
-        else:
-          # Second debug run: Add debug tensor watch for v.
-          debug_utils.add_debug_tensor_watch(
-              run_options, "%s/read" % v_name, 0, debug_urls=debug_urls)
-
-        run_metadata = config_pb2.RunMetadata()
-
-        # Invoke Session.run().
-        sess.run(w, options=run_options, run_metadata=run_metadata)
-
-        self.assertEqual(self._expected_partition_graph_count,
-                         len(run_metadata.partition_graphs))
-
-        dump = debug_data.DebugDumpDir(
-            run_dump_root, partition_graphs=run_metadata.partition_graphs)
-        self.assertTrue(dump.loaded_partition_graphs())
-
-        # Each run should have generated only one dumped tensor, not two.
-        self.assertEqual(1, dump.size)
-
-        if i == 0:
-          self.assertAllClose([u_init_val],
-                              dump.get_tensors("%s/read" % u_name, 0,
-                                               "DebugIdentity"))
-          self.assertGreaterEqual(
-              dump.get_rel_timestamps("%s/read" % u_name, 0,
-                                      "DebugIdentity")[0], 0)
-        else:
-          self.assertAllClose([v_init_val],
-                              dump.get_tensors("%s/read" % v_name, 0,
-                                               "DebugIdentity"))
-          self.assertGreaterEqual(
-              dump.get_rel_timestamps("%s/read" % v_name, 0,
-                                      "DebugIdentity")[0], 0)
-
   def testDumpStringTensorsToFileSystem(self):
     with session.Session() as sess:
       str1_init_val = np.array(b"abc")
@@ -607,46 +540,6 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
                                    "does not exist in partition graphs"):
         dump.node_op_type(u_name + "foo")
 
-      # Now load the dump again, without the parition graphs, so we can check
-      # the errors raised for no partition graphs loaded.
-      dump = debug_data.DebugDumpDir(self._dump_root, validate=False)
-
-      with self.assertRaisesRegexp(RuntimeError,
-                                   "No partition graphs have been loaded"):
-        dump.partition_graphs()
-      self.assertFalse(dump.loaded_partition_graphs())
-
-      with self.assertRaisesRegexp(
-          RuntimeError, "Node inputs are not loaded from partition graphs yet"):
-        dump.node_inputs(u_name)
-
-      with self.assertRaisesRegexp(RuntimeError,
-                                   "No partition graphs have been loaded"):
-        dump.nodes()
-
-      with self.assertRaisesRegexp(
-          RuntimeError,
-          "Node recipients are not loaded from partition graphs yet"):
-        dump.node_recipients(u_name)
-
-      with self.assertRaisesRegexp(
-          RuntimeError, "Node inputs are not loaded from partition graphs yet"):
-        dump.transitive_inputs(u_name)
-
-      with self.assertRaisesRegexp(
-          RuntimeError, "Devices are not loaded from partition graphs yet"):
-        dump.devices()
-
-      with self.assertRaisesRegexp(
-          RuntimeError,
-          "Node devices are not loaded from partition graphs yet"):
-        dump.node_device(u_name)
-
-      with self.assertRaisesRegexp(
-          RuntimeError,
-          "Node op types are not loaded from partition graphs yet"):
-        dump.node_op_type(u_name)
-
   def testDumpCausalityCheck(self):
     with session.Session() as sess:
       u_name = "testDumpCausalityCheck/u"
@@ -893,7 +786,11 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
                  feed_dict={ph: np.array([[-3.0], [0.0]])})
 
       dump = debug_data.DebugDumpDir(self._dump_root)
-      self.assertFalse(dump.loaded_partition_graphs())
+
+      # Despite the fact that the run() call errored out and partition_graphs
+      # are not available via run_metadata, the partition graphs should still
+      # have been loaded from the dump directory.
+      self.assertTrue(dump.loaded_partition_graphs())
 
       m_dumps = dump.watch_key_to_data("mismatch/m:0:DebugIdentity")
       self.assertEqual(1, len(m_dumps))
@@ -902,6 +799,72 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       x_dumps = dump.watch_key_to_data("mismatch/x:0:DebugIdentity")
       self.assertEqual(1, len(x_dumps))
       self.assertAllClose(np.array([[-3.0, 0.0]]), x_dumps[0].get_tensor())
+
+  def testDebugNumericSummaryOnInitializedTensorGivesCorrectResult(self):
+    with session.Session() as sess:
+      a = variables.Variable(
+          [
+              np.nan, np.nan, 0.0, 0.0, 0.0, -1.0, -3.0, 3.0, 7.0, -np.inf,
+              -np.inf, np.inf, np.inf, np.inf, np.inf, np.inf, np.nan, np.nan
+          ],
+          dtype=np.float32,
+          name="numeric_summary/a")
+      b = variables.Variable(
+          [0.0] * 18, dtype=np.float32, name="numeric_summary/b")
+      c = math_ops.add(a, b, name="numeric_summary/c")
+
+      sess.run(variables.global_variables_initializer())
+
+      run_metadata = config_pb2.RunMetadata()
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          run_options,
+          sess.graph,
+          debug_ops=["DebugNumericSummary"],
+          debug_urls=self._debug_urls())
+
+      sess.run(c, options=run_options, run_metadata=run_metadata)
+
+      dump = debug_data.DebugDumpDir(
+          self._dump_root, partition_graphs=run_metadata.partition_graphs)
+      self.assertTrue(dump.loaded_partition_graphs())
+
+      self.assertAllClose([[
+          1.0, 18.0, 2.0, 2.0, 3.0, 2.0, 5.0, 4.0, -3.0, 7.0, 0.85714286,
+          8.97959184
+      ]], dump.get_tensors("numeric_summary/a/read", 0, "DebugNumericSummary"))
+
+  def testDebugNumericSummaryOnUninitializedTensorGivesCorrectResult(self):
+    with session.Session() as sess:
+      a = variables.Variable(
+          [42], dtype=np.float32, name="numeric_summary_uninit/a")
+
+      run_metadata = config_pb2.RunMetadata()
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          run_options,
+          sess.graph,
+          debug_ops=["DebugNumericSummary"],
+          debug_urls=self._debug_urls())
+
+      sess.run(a.initializer, options=run_options, run_metadata=run_metadata)
+
+      dump = debug_data.DebugDumpDir(
+          self._dump_root, partition_graphs=run_metadata.partition_graphs)
+      self.assertTrue(dump.loaded_partition_graphs())
+
+      # DebugNumericSummary output should reflect the uninitialized state of
+      # the watched tensor.
+      numeric_summary = dump.get_tensors(
+          "numeric_summary_uninit/a", 0, "DebugNumericSummary")[0]
+      self.assertAllClose(
+          [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], numeric_summary[0:8])
+      self.assertTrue(np.isinf(numeric_summary[8]))
+      self.assertGreater(numeric_summary[8], 0.0)
+      self.assertTrue(np.isinf(numeric_summary[9]))
+      self.assertLess(numeric_summary[9], 0.0)
+      self.assertTrue(np.isnan(numeric_summary[10]))
+      self.assertTrue(np.isnan(numeric_summary[11]))
 
 
 if __name__ == "__main__":

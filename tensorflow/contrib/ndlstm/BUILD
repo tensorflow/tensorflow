@@ -43,6 +43,7 @@ tf_py_test(
     additional_deps = [
         ":ndlstm",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
     ],
 )
 
@@ -52,6 +53,7 @@ tf_py_test(
     additional_deps = [
         ":ndlstm",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
         # "//tensorflow:tensorflow_py:tensorflow_google",
     ],
 )

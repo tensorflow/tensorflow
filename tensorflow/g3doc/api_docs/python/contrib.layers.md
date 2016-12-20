@@ -335,7 +335,7 @@ Flattens the input while maintaining the batch_size.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if inputs.shape is wrong.
+*  <b>`ValueError`</b>: if inputs.dense_shape is wrong.
 
 
 - - -
@@ -609,6 +609,9 @@ to produce the end result.
 *  <b>`stride`</b>: a list of length 2: [stride_height, stride_width], specifying the
     depthwise convolution stride. Can be an int if both strides are the same.
 *  <b>`padding`</b>: one of 'VALID' or 'SAME'.
+*  <b>`rate`</b>: a list of length 2: [rate_height, rate_width], specifying the dilation
+    rates for a'trous convolution. Can be an int if both rates are the same.
+    If any value is larger than one, then both stride values need to be one.
 *  <b>`activation_fn`</b>: activation function, set to None to skip it and maintain
     a linear activation.
 *  <b>`normalizer_fn`</b>: normalization function to use instead of `biases`. If
@@ -1507,21 +1510,26 @@ Creates a `_RealValuedColumn` for dense numeric data.
 
 *  <b>`column_name`</b>: A string defining real valued column name.
 *  <b>`dimension`</b>: An integer specifying dimension of the real valued column.
-    The default is 1. The Tensor representing the _RealValuedColumn
-    will have the shape of [batch_size, dimension].
+    The default is 1. When dimension is not None, the Tensor representing
+    the _RealValuedColumn will have the shape of [batch_size, dimension].
+    A None dimension means the feature column should be treat as variable
+    length and will be parsed as a `SparseTensor`.
 *  <b>`default_value`</b>: A single value compatible with dtype or a list of values
     compatible with dtype which the column takes on during tf.Example parsing
-    if data is missing. If None, then tf.parse_example will fail if an example
-    does not contain this column. If a single value is provided, the same
-    value will be applied as the default value for every dimension. If a
-    list of values is provided, the length of the list should be equal to the
-    value of `dimension`.
+    if data is missing. When dimension is not None, a default value of None
+    will cause tf.parse_example to fail if an example does not contain this
+    column. If a single value is provided, the same value will be applied as
+    the default value for every dimension. If a list of values is provided,
+    the length of the list should be equal to the value of `dimension`.
+    Only scalar default value is supported in case dimension is not specified.
 *  <b>`dtype`</b>: defines the type of values. Default value is tf.float32. Must be a
     non-quantized, real integer or floating point type.
 *  <b>`normalizer`</b>: If not None, a function that can be used to normalize the value
     of the real valued column after default_value is applied for parsing.
     Normalizer function takes the input tensor as its argument, and returns
-    the output tensor. (e.g. lambda x: (x - 3.0) / 4.2).
+    the output tensor. (e.g. lambda x: (x - 3.0) / 4.2). Note that for
+    variable length columns, the normalizer should expect an input_tensor of
+    type `SparseTensor`.
 
 ##### Returns:
 
@@ -1711,7 +1719,7 @@ Example:
       is a SparseTensor.
    Following are assumed to be true:
      * sparse_tensor.indices = weights_tensor.indices
-     * sparse_tensor.shape = weights_tensor.shape
+     * sparse_tensor.dense_shape = weights_tensor.dense_shape
 
 ##### Args:
 

@@ -17,23 +17,54 @@ from __future__ import division
 from __future__ import print_function
 
 import json
-import time
+import os
+import tempfile
+import threading
 
 import tensorflow as tf
 
 from tensorflow.contrib.learn.python.learn import run_config
+from tensorflow.contrib.learn.python.learn.utils import saved_model_export_utils
+from tensorflow.python.util import compat
 from tensorflow.python.util.all_util import reveal_undocumented
 
 patch = tf.test.mock.patch
 
 
+class SheepCounter(object):
+  """To be patched in for time.sleep, in order to capture how long was slept."""
+
+  def __init__(self):
+    self._total_time = 0
+    self._sleeptimes = []
+
+  def __call__(self, t):
+    self._total_time += t
+    self._sleeptimes += [t]
+
+  @property
+  def total_time(self):
+    return self._total_time
+
+  @property
+  def sleep_times(self):
+    return self._sleeptimes
+
+
 class TestEstimator(tf.contrib.learn.Evaluable, tf.contrib.learn.Trainable):
 
-  def __init__(self, config=None):
+  def __init__(self, config=None, max_evals=5):
     self.eval_count = 0
     self.fit_count = 0
+    self._max_evals = max_evals
+    self.export_count = 0
     self.monitors = []
     self._config = config or run_config.RunConfig()
+    self._model_dir = tempfile.mkdtemp()
+
+  @property
+  def model_dir(self):
+    return self._model_dir
 
   @property
   def config(self):
@@ -42,17 +73,33 @@ class TestEstimator(tf.contrib.learn.Evaluable, tf.contrib.learn.Trainable):
   def evaluate(self, **kwargs):
     tf.logging.info('evaluate called with args: %s' % kwargs)
     self.eval_count += 1
-    if self.eval_count > 5:
-      tf.logging.info('Ran 6 evals. Done.')
+    if self.eval_count > self._max_evals:
+      tf.logging.info('Ran %d evals. Done.' % self.eval_count)
       raise StopIteration()
     return [(key, kwargs[key]) for key in sorted(kwargs.keys())]
 
+  def fake_checkpoint(self):
+    save_path = os.path.join(self.model_dir, 'model.ckpt')
+    with tf.Session() as sess:
+      var = tf.Variable(1.0, name='var0')
+      save = tf.train.Saver({var.op.name: var})
+      var.initializer.run()
+      save.save(sess, save_path, global_step=0)
+
   def fit(self, **kwargs):
+    self.fake_checkpoint()
     tf.logging.info('fit called with args: %s' % kwargs)
     self.fit_count += 1
     if 'monitors' in kwargs:
       self.monitors = kwargs['monitors']
     return [(key, kwargs[key]) for key in sorted(kwargs.keys())]
+
+  def export_savedmodel(self, export_dir_base, export_input_fn, **kwargs):
+    tf.logging.info('export_savedmodel called with args: %s, %s, %s'
+                    % (export_dir_base, export_input_fn, kwargs))
+    self.export_count += 1
+    return os.path.join(compat.as_bytes(export_dir_base),
+                        compat.as_bytes('bogus_timestamp'))
 
 
 class ExperimentTest(tf.test.TestCase):
@@ -86,10 +133,9 @@ class ExperimentTest(tf.test.TestCase):
     ex = tf.contrib.learn.Experiment(
         est, train_input_fn='train_input', eval_input_fn='eval_input')
     for delay in [0, 1, 3]:
-      start = time.time()
-      ex.train(delay_secs=delay)
-      duration = time.time() - start
-      self.assertAlmostEqual(duration, delay, delta=0.5)
+      with patch('time.sleep', SheepCounter()) as sheep:
+        ex.train(delay_secs=delay)
+        self.assertAlmostEqual(delay, sheep.total_time, delta=0.1)
 
   def test_train_default_delay(self):
     for task_id in [0, 1, 3]:
@@ -100,10 +146,9 @@ class ExperimentTest(tf.test.TestCase):
       ex = tf.contrib.learn.Experiment(
           est, train_input_fn='train_input', eval_input_fn='eval_input')
 
-      start = time.time()
-      ex.train()
-      duration = time.time() - start
-      self.assertAlmostEqual(duration, task_id * 5, delta=0.5)
+      with patch('time.sleep', SheepCounter()) as sheep:
+        ex.train()
+        self.assertAlmostEqual(task_id * 5, sheep.total_time, delta=0.1)
 
   @tf.test.mock.patch('tensorflow.python.training.server_lib.Server')  # pylint: disable=line-too-long
   def test_train_starts_server(self, mock_server):
@@ -127,9 +172,10 @@ class ExperimentTest(tf.test.TestCase):
     # Act.
     # We want to make sure we discount the time it takes to start the server
     # in our accounting of the delay, so we set a small delay here.
-    start = time.time()
-    ex.train(delay_secs=1)
-    duration = time.time() - start
+    with patch('time.sleep', SheepCounter()) as sheep:
+      ex.train(delay_secs=1)
+      # Ensure that the delay takes into account the time to start the server.
+      self.assertAlmostEqual(1, sheep.total_time, delta=0.1)
 
     # Assert.
     expected_config_proto = tf.ConfigProto()
@@ -143,9 +189,6 @@ class ExperimentTest(tf.test.TestCase):
         config=expected_config_proto,
         start=False)
     mock_server.assert_has_calls([tf.test.mock.call().start()])
-
-    # Ensure that the delay takes into account the time to start the server.
-    self.assertAlmostEqual(duration, 1.0, delta=0.5)
 
   @tf.test.mock.patch('tensorflow.python.training.server_lib.Server')  # pylint: disable=line-too-long
   def test_train_server_does_not_start_without_cluster_spec(self, mock_server):
@@ -195,6 +238,7 @@ class ExperimentTest(tf.test.TestCase):
 
   def test_evaluate(self):
     est = TestEstimator()
+    est.fake_checkpoint()
     ex = tf.contrib.learn.Experiment(
         est,
         train_input_fn='train_input',
@@ -208,18 +252,18 @@ class ExperimentTest(tf.test.TestCase):
 
   def test_evaluate_delay(self):
     est = TestEstimator()
+    est.fake_checkpoint()
     ex = tf.contrib.learn.Experiment(
         est, train_input_fn='train_input', eval_input_fn='eval_input')
 
     for delay in [0, 1, 3]:
-      start = time.time()
-      ex.evaluate(delay_secs=delay)
-      duration = time.time() - start
-      tf.logging.info('eval duration (expected %f): %f', delay, duration)
-      self.assertAlmostEqual(duration, delay, delta=0.5)
+      with patch('time.sleep', SheepCounter()) as sheep:
+        ex.evaluate(delay_secs=delay)
+      self.assertAlmostEqual(delay, sheep.total_time, delta=0.1)
 
   def test_continuous_eval(self):
     est = TestEstimator()
+    est.fake_checkpoint()
     ex = tf.contrib.learn.Experiment(
         est,
         train_input_fn='train_input',
@@ -227,13 +271,15 @@ class ExperimentTest(tf.test.TestCase):
         eval_metrics='eval_metrics',
         eval_delay_secs=0,
         continuous_eval_throttle_secs=0)
-    self.assertRaises(StopIteration, ex.continuous_eval)
+    self.assertRaises(StopIteration, ex.continuous_eval,
+                      evaluate_checkpoint_only_once=False)
     self.assertEquals(6, est.eval_count)
     self.assertEquals(0, est.fit_count)
 
   def test_continuous_eval_throttle_delay(self):
     for delay in [0, 1, 2]:
       est = TestEstimator()
+      est.fake_checkpoint()
       ex = tf.contrib.learn.Experiment(
           est,
           train_input_fn='train_input',
@@ -241,12 +287,10 @@ class ExperimentTest(tf.test.TestCase):
           eval_metrics='eval_metrics',
           continuous_eval_throttle_secs=delay,
           eval_delay_secs=0)
-      start = time.time()
-      self.assertRaises(StopIteration, ex.continuous_eval)
-      duration = time.time() - start
-      expected = 5 * delay
-      tf.logging.info('eval duration (expected %f): %f', expected, duration)
-      self.assertAlmostEqual(duration, expected, delta=0.5)
+      with patch('time.sleep', SheepCounter()) as sheep:
+        self.assertRaises(StopIteration, ex.continuous_eval,
+                          evaluate_checkpoint_only_once=False)
+        self.assertAlmostEqual(5 * delay, sheep.total_time, delta=0.1)
 
   def test_run_local(self):
     est = TestEstimator()
@@ -268,16 +312,20 @@ class ExperimentTest(tf.test.TestCase):
 
   def test_train_and_evaluate(self):
     est = TestEstimator()
+    export_strategy = saved_model_export_utils.make_export_strategy(
+        est, 'export_input')
     ex = tf.contrib.learn.Experiment(
         est,
         train_input_fn='train_input',
         eval_input_fn='eval_input',
         eval_metrics='eval_metrics',
         train_steps=100,
-        eval_steps=100)
+        eval_steps=100,
+        export_strategies=export_strategy)
     ex.train_and_evaluate()
     self.assertEquals(1, est.fit_count)
     self.assertEquals(1, est.eval_count)
+    self.assertEquals(1, est.export_count)
     self.assertEquals(1, len(est.monitors))
     self.assertTrue(
         isinstance(est.monitors[0],
@@ -327,6 +375,37 @@ class ExperimentTest(tf.test.TestCase):
     self.assertEquals(1, est.fit_count)
     self.assertEquals(1, est.eval_count)
 
+  def test_continuous_eval_evaluates_checkpoint_once(self):
+    # Temporarily disabled until we figure out the threading story on Jenkins.
+    return
+    # pylint: disable=unreachable
+
+    # The TestEstimator will raise StopIteration the second time evaluate is
+    # called.
+    ex = tf.contrib.learn.Experiment(
+        TestEstimator(max_evals=1),
+        train_input_fn='train_input',
+        eval_input_fn='eval_input')
+
+    # This should not happen if the logic restricting evaluation of the same
+    # checkpoint works. We do need some checkpoint though, otherwise Experiment
+    # will never evaluate.
+    ex.estimator.fake_checkpoint()
+
+    # Start a separate thread with continuous eval
+    thread = threading.Thread(
+        target=lambda: ex.continuous_eval(delay_secs=0, throttle_delay_secs=0))
+    thread.start()
+
+    # The thread will die if it evaluates twice, and we should never evaluate
+    # twice since we don't write another checkpoint. Since we did not enable
+    # throttling, if it hasn't died after two seconds, we're good.
+    thread.join(2)
+    self.assertTrue(thread.is_alive())
+
+    # But we should have evaluated once.
+    count = ex.estimator.eval_count
+    self.assertEquals(1, count)
 
 if __name__ == '__main__':
   tf.test.main()

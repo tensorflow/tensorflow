@@ -114,6 +114,7 @@ struct GraphInfo {
   MemoryTypeMap input_types;
   MemoryTypeMap output_types;
   std::vector<ControlFlowInfo> cf_info;
+  std::vector<int32> num_outgoing_control_edges;
 };
 
 DataType EdgeType(const Edge* e) {
@@ -539,11 +540,12 @@ Status AddControlLoop(const PartitionOptions& opts, Graph* g, const Node* src,
 // Build memory and device type info for every node in the graph.
 // TODO(yuanbyu): It might be simpler if we convert MemoryType to
 // DeviceType for the inputs/outputs of each node.
-Status BuildMemoryDeviceInfo(const Graph& g, GraphInfo* info) {
+Status BuildGraphInfo(const Graph& g, GraphInfo* info) {
+  info->device_types.resize(g.num_node_ids(), DEVICE_CPU);
+  info->num_outgoing_control_edges.resize(g.num_node_ids());
+
   MemoryTypeVector input_memory_types;
   MemoryTypeVector output_memory_types;
-
-  info->device_types.resize(g.num_node_ids(), DEVICE_CPU);
   for (const Node* node : g.nodes()) {
     if (!node->IsOp()) continue;  // Skip Sink/Source nodes.
 
@@ -566,6 +568,14 @@ Status BuildMemoryDeviceInfo(const Graph& g, GraphInfo* info) {
     for (size_t i = 0; i < output_memory_types.size(); ++i) {
       info->output_types[{node_id, i}] = output_memory_types[i];
     }
+
+    int32 num_control_edges = 0;
+    for (const Edge* edge : node->out_edges()) {
+      if (edge->IsControlEdge()) {
+        ++num_control_edges;
+      }
+    }
+    info->num_outgoing_control_edges[node_id] = num_control_edges;
   }
   return Status::OK();
 }
@@ -841,7 +851,7 @@ Status Partition(const PartitionOptions& opts, Graph* g,
 
   // At this point, all the graph mutations have been done. Build memory
   // and device type info for every node and edge in the graph.
-  status = BuildMemoryDeviceInfo(*g, &g_info);
+  status = BuildGraphInfo(*g, &g_info);
   if (!status.ok()) return status;
 
   string dstp;
@@ -968,14 +978,20 @@ Status Partition(const PartitionOptions& opts, Graph* g,
 
       NodeDefBuilder::NodeOut send_from;
       if (edge->IsControlEdge()) {
-        // This handles the dedup case when multiple control edges going from
-        // one partition to a single destination in another partition.
         DupControlKey key{dst->id(), src_graph};
-        auto iter = dup_control.find(key);
-        if (iter != dup_control.end()) {
-          // This could cause start_time(src) > start_time(iter->second).
-          AddInput(iter->second, src->name(), Graph::kControlSlot);
-          continue;
+        int32 num_control_edges = g_info.num_outgoing_control_edges[src->id()];
+        if (num_control_edges == 1) {
+          // Handle dedup of multiple control edges going from one partition
+          // to a single destination in another partition.
+          // Note: We require that src has only one outgoing control edge.
+          // This is to avoid non-equivalent changes to the graph when
+          // combinded with dedup of single-source-multi-destination.
+          auto iter = dup_control.find(key);
+          if (iter != dup_control.end()) {
+            // Note: This may cause start_time(src) > start_time(iter->second).
+            AddInput(iter->second, src->name(), Graph::kControlSlot);
+            continue;
+          }
         }
 
         // Insert a dummy const node that will generate a tiny
@@ -991,7 +1007,9 @@ Status Partition(const PartitionOptions& opts, Graph* g,
         }
         AddInput(dummy, src->name(), Graph::kControlSlot);
         send_from.Reset(dummy->name(), 0, DT_FLOAT);
-        dup_control[key] = dummy;
+        if (num_control_edges == 1) {
+          dup_control[key] = dummy;
+        }
       } else {
         send_from.Reset(src->name(), edge->src_output(), EdgeType(edge));
       }

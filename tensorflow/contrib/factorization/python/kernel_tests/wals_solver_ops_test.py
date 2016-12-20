@@ -54,7 +54,7 @@ class WalsSolverOpsTest(tf.test.TestCase):
       ] = tf.contrib.factorization.wals_compute_partial_lhs_and_rhs(
           self._column_factors, self._column_weights, self._unobserved_weights,
           self._row_weights, sparse_block.indices, sparse_block.values,
-          sparse_block.shape[0], False)
+          sparse_block.dense_shape[0], False)
       self.assertAllClose(lhs_tensor.eval(), [
           [
               [0.014800, 0.017000, 0.019200],

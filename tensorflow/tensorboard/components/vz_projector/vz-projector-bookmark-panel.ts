@@ -70,20 +70,23 @@ export class BookmarkPanel extends BookmarkPanelPolymer {
       // Get any bookmarks that may come when the projector starts up.
       dataProvider.getBookmarks(run, tensorInfo.tensorName, bookmarks => {
         this.addStates(bookmarks);
+        this._expandMore();
       });
+    } else {
+      this._expandLess();
     }
   }
 
   /** Handles a click on show bookmarks tray button. */
   _expandMore() {
-    this.$.panel.toggle();
+    this.$.panel.show();
     this.dom.select('#expand-more').style('display', 'none');
     this.dom.select('#expand-less').style('display', '');
   }
 
   /** Handles a click on hide bookmarks tray button. */
   _expandLess() {
-    this.$.panel.toggle();
+    this.$.panel.hide();
     this.dom.select('#expand-more').style('display', '');
     this.dom.select('#expand-less').style('display', 'none');
   }

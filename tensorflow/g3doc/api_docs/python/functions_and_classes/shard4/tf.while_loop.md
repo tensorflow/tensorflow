@@ -35,7 +35,7 @@ a) If a loop variable is a SparseTensor, the shape invariant must be
 TensorShape([r]) where r is the rank of the dense tensor represented
 by the sparse tensor. It means the shapes of the three tensors of the
 SparseTensor are ([None], [None, r], [r]). NOTE: The shape invariant here
-is the shape of the SparseTensor.shape property. It must be the shape of
+is the shape of the SparseTensor.dense_shape property. It must be the shape of
 a vector.
 
 b) If a loop variable is an IndexedSlices, the shape invariant must be
@@ -109,7 +109,7 @@ Example using shape_invariants:
   i0 = tf.constant(0)
   m0 = tf.ones([2, 2])
   c = lambda i, m: i < 10
-  b = lambda i, m: [i+1, tf.concat(0, [m, m])]
+  b = lambda i, m: [i+1, tf.concat_v2(0, [m, m])]
   tf.while_loop(
       c, b, loop_vars=[i0, m0],
       shape_invariants=[i0.get_shape(), tensor_shape.TensorShape([None, 2])])

@@ -12,10 +12,65 @@ java_library(
     visibility = ["//visibility:public"],
 )
 
+java_library(
+    name = "testutil",
+    testonly = 1,
+    srcs = ["src/test/java/org/tensorflow/TestUtil.java"],
+    deps = [":tensorflow"],
+)
+
+java_test(
+    name = "GraphTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/GraphTest.java"],
+    test_class = "org.tensorflow.GraphTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "//external:junit",
+    ],
+)
+
+java_test(
+    name = "OperationBuilderTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/OperationBuilderTest.java"],
+    test_class = "org.tensorflow.OperationBuilderTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "//external:junit",
+    ],
+)
+
+java_test(
+    name = "SessionTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/SessionTest.java"],
+    test_class = "org.tensorflow.SessionTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "//external:junit",
+    ],
+)
+
 java_test(
     name = "TensorFlowTest",
+    size = "small",
     srcs = ["src/test/java/org/tensorflow/TensorFlowTest.java"],
     test_class = "org.tensorflow.TensorFlowTest",
+    deps = [
+        ":tensorflow",
+        "//external:junit",
+    ],
+)
+
+java_test(
+    name = "TensorTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/TensorTest.java"],
+    test_class = "org.tensorflow.TensorTest",
     deps = [
         ":tensorflow",
         "//external:junit",

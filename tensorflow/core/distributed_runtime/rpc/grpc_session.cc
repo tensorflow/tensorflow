@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/session_factory.h"
 #include "tensorflow/core/distributed_runtime/call_options.h"
+#include "tensorflow/core/distributed_runtime/local_master.h"
 #include "tensorflow/core/distributed_runtime/master_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_remote_master.h"
@@ -43,9 +44,18 @@ const size_t kSchemePrefixLength = strlen(kSchemePrefix);
 Status GrpcSession::Create(const SessionOptions& options,
                            std::unique_ptr<GrpcSession>* out_session) {
   std::unique_ptr<GrpcSession> ret(new GrpcSession(options));
-  SharedGrpcChannelPtr master_channel =
-      NewHostPortGrpcChannel(options.target.substr(kSchemePrefixLength));
-  ret->SetRemoteMaster(NewGrpcMaster(master_channel));
+  std::unique_ptr<MasterInterface> master;
+  // For testing, we enable the client to disable the use of the local
+  // master registry, so that the RPC stack is exercised.
+  if (!options.config.rpc_options().use_rpc_for_inprocess_master()) {
+    master = LocalMaster::Lookup(options.target);
+  }
+  if (!master) {
+    SharedGrpcChannelPtr master_channel =
+        NewHostPortGrpcChannel(options.target.substr(kSchemePrefixLength));
+    master.reset(NewGrpcMaster(master_channel));
+  }
+  ret->SetRemoteMaster(std::move(master));
   *out_session = std::move(ret);
   return Status::OK();
 }
@@ -291,8 +301,8 @@ std::vector<DeviceAttributes> GrpcSession::ListDevices() {
   return devices;
 }
 
-void GrpcSession::SetRemoteMaster(MasterInterface* master) {
-  master_.reset(master);
+void GrpcSession::SetRemoteMaster(std::unique_ptr<MasterInterface> master) {
+  master_ = std::move(master);
 }
 
 // Static method.

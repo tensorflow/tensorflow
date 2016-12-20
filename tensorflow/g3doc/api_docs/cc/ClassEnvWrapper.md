@@ -50,7 +50,7 @@ Returns true if the path matches the given pattern. The wildcards allowed in pat
 
 #### `uint64 tensorflow::EnvWrapper::NowMicros() override` {#uint64_tensorflow_EnvWrapper_NowMicros}
 
-Returns the number of micro-seconds since some fixed point in time. Only useful for computing deltas of time.
+Returns the number of micro-seconds since the Unix epoch.
 
 
 

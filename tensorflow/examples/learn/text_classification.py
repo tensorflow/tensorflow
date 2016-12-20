@@ -63,11 +63,11 @@ def rnn_model(features, target):
   word_list = tf.unstack(word_vectors, axis=1)
 
   # Create a Gated Recurrent Unit cell with hidden size of EMBEDDING_SIZE.
-  cell = tf.nn.rnn_cell.GRUCell(EMBEDDING_SIZE)
+  cell = tf.contrib.rnn.GRUCell(EMBEDDING_SIZE)
 
   # Create an unrolled Recurrent Neural Networks to length of
   # MAX_DOCUMENT_LENGTH and passes word_list as inputs for each unit.
-  _, encoding = tf.nn.rnn(cell, word_list, dtype=tf.float32)
+  _, encoding = tf.contrib.rnn.static_rnn(cell, word_list, dtype=tf.float32)
 
   # Given encoding of RNN, take encoding of last step (e.g hidden size of the
   # neural network of last step) and pass it as features for logistic

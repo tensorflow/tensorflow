@@ -261,6 +261,89 @@ class LogCombinationsTest(tf.test.TestCase):
       self.assertEqual([2, 2], log_binom.get_shape())
 
 
+class DynamicShapeTest(tf.test.TestCase):
+
+  def testSameDynamicShape(self):
+    with self.test_session():
+      scalar = tf.constant(2.0)
+      scalar1 = tf.placeholder(dtype=tf.float32)
+
+      vector = [0.3, 0.4, 0.5]
+      vector1 = tf.placeholder(dtype=tf.float32, shape=[None])
+      vector2 = tf.placeholder(dtype=tf.float32, shape=[None])
+
+      multidimensional = [[0.3, 0.4], [0.2, 0.6]]
+      multidimensional1 = tf.placeholder(dtype=tf.float32, shape=[None, None])
+      multidimensional2 = tf.placeholder(dtype=tf.float32, shape=[None, None])
+
+      # Scalar
+      self.assertTrue(distribution_util.same_dynamic_shape(
+          scalar, scalar1).eval({
+              scalar1: 2.0}))
+
+      # Vector
+
+      self.assertTrue(distribution_util.same_dynamic_shape(
+          vector, vector1).eval({
+              vector1: [2.0, 3.0, 4.0]}))
+      self.assertTrue(distribution_util.same_dynamic_shape(
+          vector1, vector2).eval({
+              vector1: [2.0, 3.0, 4.0],
+              vector2: [2.0, 3.5, 6.0]}))
+
+      # Multidimensional
+      self.assertTrue(distribution_util.same_dynamic_shape(
+          multidimensional, multidimensional1).eval({
+              multidimensional1: [[2.0, 3.0], [3.0, 4.0]]}))
+      self.assertTrue(distribution_util.same_dynamic_shape(
+          multidimensional1, multidimensional2).eval({
+              multidimensional1: [[2.0, 3.0], [3.0, 4.0]],
+              multidimensional2: [[1.0, 3.5], [6.3, 2.3]]}))
+
+
+      # Scalar, X
+      self.assertFalse(distribution_util.same_dynamic_shape(
+          scalar, vector1).eval({
+              vector1: [2.0, 3.0, 4.0]}))
+      self.assertFalse(distribution_util.same_dynamic_shape(
+          scalar1, vector1).eval({
+              scalar1: 2.0,
+              vector1: [2.0, 3.0, 4.0]}))
+      self.assertFalse(distribution_util.same_dynamic_shape(
+          scalar, multidimensional1).eval({
+              multidimensional1: [[2.0, 3.0], [3.0, 4.0]]}))
+      self.assertFalse(distribution_util.same_dynamic_shape(
+          scalar1, multidimensional1).eval({
+              scalar1: 2.0,
+              multidimensional1: [[2.0, 3.0], [3.0, 4.0]]}))
+
+      # Vector, X
+      self.assertFalse(distribution_util.same_dynamic_shape(
+          vector, vector1).eval({
+              vector1: [2.0, 3.0]}))
+      self.assertFalse(distribution_util.same_dynamic_shape(
+          vector1, vector2).eval({
+              vector1: [2.0, 3.0, 4.0],
+              vector2: [6.0]}))
+      self.assertFalse(distribution_util.same_dynamic_shape(
+          vector, multidimensional1).eval({
+              multidimensional1: [[2.0, 3.0], [3.0, 4.0]]}))
+      self.assertFalse(distribution_util.same_dynamic_shape(
+          vector1, multidimensional1).eval({
+              vector1: [2.0, 3.0, 4.0],
+              multidimensional1: [[2.0, 3.0], [3.0, 4.0]]}))
+
+      # Multidimensional, X
+      self.assertFalse(distribution_util.same_dynamic_shape(
+          multidimensional, multidimensional1).eval({
+              multidimensional1: [[1.0, 3.5, 5.0], [6.3, 2.3, 7.1]]}))
+      self.assertFalse(distribution_util.same_dynamic_shape(
+          multidimensional1, multidimensional2).eval({
+              multidimensional1: [[2.0, 3.0], [3.0, 4.0]],
+              multidimensional2: [[1.0, 3.5, 5.0], [6.3, 2.3, 7.1]]}))
+
+
+
 class RotateTransposeTest(tf.test.TestCase):
 
   def _np_rotate_transpose(self, x, shift):

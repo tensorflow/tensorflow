@@ -24,6 +24,8 @@ import traceback
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.platform import gfile
+
 HELP_INDENT = "  "
 
 EXPLICIT_USER_EXIT = "explicit_user_exit"
@@ -187,6 +189,23 @@ class RichTextLines(object):
         self._annotations[orig_num_lines + key] = (other.annotations[key])
       else:
         self._annotations[key] = other.annotations[key]
+
+  # TODO(cais): Add method append of the signature:
+  #   def append_line(line, line_font_attr_segs)
+  # and refactor usage in stepper_cli.py.
+
+  def write_to_file(self, file_path):
+    """Write the object itself to file, in a plain format.
+
+    The font_attr_segs and annotations are ignored.
+
+    Args:
+      file_path: (str) path of the file to write to.
+    """
+
+    with gfile.Open(file_path, "w") as f:
+      for line in self._lines:
+        f.write(line + "\n")
 
 
 def regex_find(orig_screen_output, regex, font_attr):

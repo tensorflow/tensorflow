@@ -196,6 +196,20 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.ExponentialWithSoftplusLam.is_scalar_batch` {#ExponentialWithSoftplusLam.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExponentialWithSoftplusLam.is_scalar_event` {#ExponentialWithSoftplusLam.is_scalar_event}
+
+Indicates that `event_shape==[]`.
+
+
+- - -
+
 #### `tf.contrib.distributions.ExponentialWithSoftplusLam.lam` {#ExponentialWithSoftplusLam.lam}
 
 

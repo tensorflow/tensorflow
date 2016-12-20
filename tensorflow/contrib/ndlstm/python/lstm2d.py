@@ -85,7 +85,7 @@ def horizontal_lstm(images, num_filters_out, scope=None):
           lstm1d.ndlstm_base(sequence,
                              num_filters_out - num_filters_out // 2,
                              reverse=1))
-    output_sequence = tf.concat(2, [hidden_sequence_lr, hidden_sequence_rl])
+    output_sequence = tf.concat_v2([hidden_sequence_lr, hidden_sequence_rl], 2)
     output = sequence_to_images(output_sequence, batch_size)
     return output
 

@@ -24,10 +24,9 @@ import numpy as np
 import tensorflow as tf
 
 from tensorflow.contrib.learn.python.learn.estimators import dynamic_rnn_estimator
-from tensorflow.python.ops import rnn_cell
 
 
-class IdentityRNNCell(tf.nn.rnn_cell.RNNCell):
+class IdentityRNNCell(tf.contrib.rnn.RNNCell):
 
   def __init__(self, state_size, output_size):
     self._state_size = state_size
@@ -42,7 +41,7 @@ class IdentityRNNCell(tf.nn.rnn_cell.RNNCell):
     return self._output_size
 
   def __call__(self, inputs, state):
-    return tf.identity(inputs), tf.identity(state)
+    return tf.identity(inputs), tf.ones([tf.shape(inputs)[0], self.state_size])
 
 
 class MockTargetColumn(object):
@@ -87,7 +86,7 @@ class DynamicRnnEstimatorTest(tf.test.TestCase):
 
   def setUp(self):
     super(DynamicRnnEstimatorTest, self).setUp()
-    self.rnn_cell = rnn_cell.BasicRNNCell(self.NUM_RNN_CELL_UNITS)
+    self.rnn_cell = tf.contrib.rnn.BasicRNNCell(self.NUM_RNN_CELL_UNITS)
     self.mock_target_column = MockTargetColumn(
         num_label_columns=self.NUM_LABEL_COLUMNS)
 
@@ -110,7 +109,7 @@ class DynamicRnnEstimatorTest(tf.test.TestCase):
         'location': tf.SparseTensor(
             indices=[[0, 0], [1, 0], [2, 0]],
             values=['west_side', 'west_side', 'nyc'],
-            shape=[3, 1]),
+            dense_shape=[3, 1]),
         'wire_cast': tf.SparseTensor(
             indices=[[0, 0, 0], [0, 1, 0],
                      [1, 0, 0], [1, 1, 0], [1, 1, 1],
@@ -118,7 +117,7 @@ class DynamicRnnEstimatorTest(tf.test.TestCase):
             values=[b'marlo', b'stringer',
                     b'omar', b'stringer', b'marlo',
                     b'marlo'],
-            shape=[3, 2, 2]),
+            dense_shape=[3, 2, 2]),
         'measurements': tf.random_uniform([3, 2, 2], seed=4711)}
 
   def GetClassificationTargetsOrNone(self, mode):
@@ -330,6 +329,185 @@ class DynamicRnnEstimatorTest(tf.test.TestCase):
         use_deprecated_input_fn=False,
         input_feature_key=input_feature_key)
 
+  def testStateTupleDictConversion(self):
+    """Test `state_tuple_to_dict` and `dict_to_state_tuple`."""
+    cell_sizes = [5, 3, 7]
+    # A MultiRNNCell of LSTMCells is both a common choice and an interesting
+    # test case, because it has two levels of nesting, with an inner class that
+    # is not a plain tuple.
+    cell = tf.contrib.rnn.MultiRNNCell(
+        [tf.contrib.rnn.LSTMCell(i) for i in cell_sizes])
+    state_dict = {dynamic_rnn_estimator._get_state_name(i):
+                  tf.expand_dims(tf.range(cell_size), 0)
+                  for i, cell_size in enumerate([5, 5, 3, 3, 7, 7])}
+    expected_state = (
+        tf.contrib.rnn.LSTMStateTuple(np.reshape(np.arange(5), [1, -1]),
+                                      np.reshape(np.arange(5), [1, -1])),
+        tf.contrib.rnn.LSTMStateTuple(np.reshape(np.arange(3), [1, -1]),
+                                      np.reshape(np.arange(3), [1, -1])),
+        tf.contrib.rnn.LSTMStateTuple(np.reshape(np.arange(7), [1, -1]),
+                                      np.reshape(np.arange(7), [1, -1])))
+    actual_state = dynamic_rnn_estimator.dict_to_state_tuple(state_dict, cell)
+    flattened_state = dynamic_rnn_estimator.state_tuple_to_dict(actual_state)
+
+    with self.test_session() as sess:
+      (state_dict_val,
+       actual_state_val,
+       flattened_state_val) = sess.run([state_dict,
+                                        actual_state,
+                                        flattened_state])
+
+    def _recursive_assert_equal(x, y):
+      self.assertEqual(type(x), type(y))
+      if isinstance(x, (list, tuple)):
+        self.assertEqual(len(x), len(y))
+        for i, _ in enumerate(x):
+          _recursive_assert_equal(x[i], y[i])
+      elif isinstance(x, np.ndarray):
+        np.testing.assert_array_equal(x, y)
+      else:
+        self.fail('Unexpected type: {}'.format(type(x)))
+    for k in state_dict_val.keys():
+      np.testing.assert_array_almost_equal(
+          state_dict_val[k],
+          flattened_state_val[k],
+          err_msg='Wrong value for state component {}.'.format(k))
+    _recursive_assert_equal(expected_state,
+                            actual_state_val)
+
+  def testMultiRNNState(self):
+    """Test that state flattening/reconstruction works for `MultiRNNCell`."""
+    batch_size = 11
+    sequence_length = 16
+    train_steps = 5
+    cell_sizes = [4, 8, 7]
+    learning_rate = 0.1
+
+    def get_shift_input_fn(batch_size, sequence_length, seed=None):
+      def input_fn():
+        random_sequence = tf.random_uniform(
+            [batch_size, sequence_length + 1], 0, 2, dtype=tf.int32, seed=seed)
+        labels = tf.slice(
+            random_sequence, [0, 0], [batch_size, sequence_length])
+        inputs = tf.expand_dims(
+            tf.to_float(tf.slice(
+                random_sequence, [0, 1], [batch_size, sequence_length])), 2)
+        input_dict = {
+            dynamic_rnn_estimator._get_state_name(i): tf.random_uniform(
+                [batch_size, cell_size], seed=((i + 1) * seed))
+            for i, cell_size in enumerate([4, 4, 8, 8, 7, 7])}
+        input_dict['inputs'] = inputs
+        return input_dict, labels
+      return input_fn
+
+    seq_columns = [tf.contrib.layers.real_valued_column(
+        'inputs', dimension=1)]
+    config = tf.contrib.learn.RunConfig(tf_random_seed=21212)
+    cell = tf.contrib.rnn.MultiRNNCell(
+        [tf.contrib.rnn.BasicLSTMCell(size) for size in cell_sizes])
+    sequence_estimator = dynamic_rnn_estimator.multi_value_rnn_classifier(
+        num_classes=2,
+        num_units=None,
+        sequence_feature_columns=seq_columns,
+        cell_type=cell,
+        learning_rate=learning_rate,
+        config=config,
+        predict_probabilities=True)
+
+    train_input_fn = get_shift_input_fn(batch_size, sequence_length, seed=12321)
+    eval_input_fn = get_shift_input_fn(batch_size, sequence_length, seed=32123)
+
+    sequence_estimator.fit(input_fn=train_input_fn, steps=train_steps)
+
+    prediction_dict = sequence_estimator.predict(
+        input_fn=eval_input_fn, as_iterable=False)
+    for i, state_size in enumerate([4, 4, 8, 8, 7, 7]):
+      state_piece = prediction_dict[dynamic_rnn_estimator._get_state_name(i)]
+      self.assertListEqual(list(state_piece.shape), [batch_size, state_size])
+
+  def testMultipleRuns(self):
+    """Tests resuming training by feeding state."""
+    cell_sizes = [4, 7]
+    batch_size = 11
+    learning_rate = 0.1
+    train_sequence_length = 21
+    train_steps = 121
+    prediction_steps = [3, 2, 5, 11, 6]
+
+    def get_input_fn(
+        batch_size, sequence_length, state_dict, starting_step=0):
+      def input_fn():
+        sequence = tf.constant(
+            [[(starting_step + i + j) % 2 for j in range(sequence_length + 1)]
+             for i in range(batch_size)], dtype=tf.int32)
+        labels = tf.slice(
+            sequence, [0, 0], [batch_size, sequence_length])
+        inputs = tf.expand_dims(
+            tf.to_float(tf.slice(
+                sequence, [0, 1], [batch_size, sequence_length])), 2)
+        input_dict = state_dict
+        input_dict['inputs'] = inputs
+        return input_dict, labels
+      return input_fn
+
+    seq_columns = [tf.contrib.layers.real_valued_column(
+        'inputs', dimension=1)]
+    config = tf.contrib.learn.RunConfig(tf_random_seed=21212)
+    cell = tf.contrib.rnn.MultiRNNCell(
+        [tf.contrib.rnn.BasicLSTMCell(size) for size in cell_sizes])
+
+    model_dir = tempfile.mkdtemp()
+    sequence_estimator = dynamic_rnn_estimator.multi_value_rnn_classifier(
+        num_classes=2,
+        num_units=None,
+        sequence_feature_columns=seq_columns,
+        cell_type=cell,
+        learning_rate=learning_rate,
+        config=config,
+        model_dir=model_dir)
+
+    train_input_fn = get_input_fn(
+        batch_size, train_sequence_length, state_dict={})
+
+    sequence_estimator.fit(input_fn=train_input_fn, steps=train_steps)
+
+    def incremental_predict(estimator, increments):
+      """Run `estimator.predict` for `i` steps for `i` in `increments`."""
+      step = 0
+      incremental_state_dict = {}
+      for increment in increments:
+        input_fn = get_input_fn(
+            batch_size,
+            increment,
+            state_dict=incremental_state_dict,
+            starting_step=step)
+        prediction_dict = estimator.predict(
+            input_fn=input_fn, as_iterable=False)
+        step += increment
+        incremental_state_dict = {
+            k: v
+            for (k, v) in prediction_dict.items()
+            if k.startswith(dynamic_rnn_estimator.RNNKeys.STATE_PREFIX)
+        }
+      return prediction_dict
+
+    pred_all_at_once = incremental_predict(
+        sequence_estimator, [sum(prediction_steps)])
+    pred_step_by_step = incremental_predict(
+        sequence_estimator, prediction_steps)
+
+    # Check that the last `prediction_steps[-1]` steps give the same
+    # predictions.
+    np.testing.assert_array_equal(
+        pred_all_at_once['predictions'][:, -1 * prediction_steps[-1]:],
+        pred_step_by_step['predictions'],
+        err_msg='Mismatch on last {} predictions.'.format(prediction_steps[-1]))
+    # Check that final states are identical.
+    for k, v in pred_all_at_once.items():
+      if k.startswith(dynamic_rnn_estimator.RNNKeys.STATE_PREFIX):
+        np.testing.assert_array_equal(
+            v, pred_step_by_step[k], err_msg='Mismatch on state {}.'.format(k))
+
 
 # TODO(jamieas): move all tests below to a benchmark test.
 class DynamicRNNEstimatorLearningTest(tf.test.TestCase):
@@ -441,7 +619,7 @@ class DynamicRNNEstimatorLearningTest(tf.test.TestCase):
         sorted(list(prediction_dict.keys())),
         sorted([dynamic_rnn_estimator.RNNKeys.PREDICTIONS_KEY,
                 dynamic_rnn_estimator.RNNKeys.PROBABILITIES_KEY,
-                dynamic_rnn_estimator.RNNKeys.FINAL_STATE_KEY]))
+                dynamic_rnn_estimator._get_state_name(0)]))
     predictions = prediction_dict[dynamic_rnn_estimator.RNNKeys.PREDICTIONS_KEY]
     probabilities = prediction_dict[
         dynamic_rnn_estimator.RNNKeys.PROBABILITIES_KEY]
@@ -563,7 +741,8 @@ class DynamicRNNEstimatorLearningTest(tf.test.TestCase):
         sorted(list(prediction_dict.keys())),
         sorted([dynamic_rnn_estimator.RNNKeys.PREDICTIONS_KEY,
                 dynamic_rnn_estimator.RNNKeys.PROBABILITIES_KEY,
-                dynamic_rnn_estimator.RNNKeys.FINAL_STATE_KEY]))
+                dynamic_rnn_estimator._get_state_name(0),
+                dynamic_rnn_estimator._get_state_name(1)]))
     predictions = prediction_dict[dynamic_rnn_estimator.RNNKeys.PREDICTIONS_KEY]
     probabilities = prediction_dict[
         dynamic_rnn_estimator.RNNKeys.PROBABILITIES_KEY]

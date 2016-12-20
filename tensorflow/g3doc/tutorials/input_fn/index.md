@@ -222,6 +222,9 @@ logging verbosity](../monitors/index.md#enabling-logging-with-tensorflow) to
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+import itertools
+
 import pandas as pd
 import tensorflow as tf
 
@@ -301,8 +304,6 @@ which means the function can process any of the `DataFrame`s you've imported:
 To train the neural network regressor, run `fit` with the `training_set` passed
 to the `input_fn` as follows:
 
-<!-- TODO(skleinfeld): Decide on the best step value to use here for pedagogical purposes -->
-
 ```python
 regressor.fit(input_fn=lambda: input_fn(training_set), steps=5000)
 ```
@@ -355,7 +356,9 @@ Finally, you can use the model to predict median house values for the
 
 ```python
 y = regressor.predict(input_fn=lambda: input_fn(prediction_set))
-print ("Predictions: {}".format(str(y)))
+# .predict() returns an iterator; convert to a list and print predictions
+predictions = list(itertools.islice(y, 6))
+print ("Predictions: {}".format(str(predictions)))
 ```
 
 Your results should contain six house-value predictions in thousands of dollars,

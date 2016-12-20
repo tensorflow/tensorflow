@@ -27,10 +27,14 @@ from tensorflow.python.lib.io import file_io
 from tensorflow.python.saved_model import builder as saved_model_builder
 from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import loader
+from tensorflow.python.saved_model import main_op
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.util import compat
 
+
+SAVED_MODEL_PATH = (
+    "cc/saved_model/testdata/half_plus_two/00000123")
 
 def tearDownModule():
   file_io.delete_recursively(tf.test.get_temp_dir())
@@ -70,6 +74,16 @@ class SavedModelTest(tf.test.TestCase):
                      compat.as_text(actual_asset_contents))
     self.assertEqual(expected_asset_file_name, asset.filename)
     self.assertEqual(expected_asset_tensor_name, asset.tensor_info.name)
+
+
+  def testMaybeSavedModelDir(self):
+    base_path = tf.test.test_src_dir_path("/python/saved_model")
+    self.assertFalse(loader.maybe_saved_model_directory(base_path))
+    base_path = tf.test.test_src_dir_path(SAVED_MODEL_PATH)
+    self.assertTrue(loader.maybe_saved_model_directory(base_path))
+    base_path = "complete_garbage"
+    self.assertFalse(loader.maybe_saved_model_directory(base_path))
+
 
   def testSequence(self):
     export_dir = os.path.join(tf.test.get_temp_dir(), "test_sequence")
@@ -396,6 +410,41 @@ class SavedModelTest(tf.test.TestCase):
           compat.as_bytes(constants.ASSETS_DIRECTORY),
           compat.as_bytes("ignored.txt"))
       self.assertFalse(file_io.file_exists(ignored_asset_path))
+
+  def testCustomMainOp(self):
+    export_dir = os.path.join(tf.test.get_temp_dir(), "test_main_op")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    with self.test_session(graph=tf.Graph()) as sess:
+      # Add `v1` and `v2` variables to the graph.
+      v1 = tf.Variable(1, name="v1")
+      tf.add_to_collection("v", v1)
+      v2 = tf.Variable(2, name="v2")
+      tf.add_to_collection("v", v2)
+
+      # Initialize another variable `v3` to 42.
+      v3 = tf.Variable(42, name="v3")
+      tf.add_to_collection("v", v3)
+
+      # Set up an assignment op to be run as part of the main_op.
+      with tf.control_dependencies([main_op.main_op()]):
+        add_v1_v2 = tf.add(v1._ref(), v2._ref())
+        custom_main_op = tf.group(tf.assign(v3, add_v1_v2))
+
+      sess.run(custom_main_op)
+      builder.add_meta_graph_and_variables(
+          sess, ["foo"], main_op=custom_main_op)
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    with self.test_session(graph=tf.Graph()) as sess:
+      loader.load(sess, ["foo"], export_dir)
+      self.assertEqual(1, tf.get_collection("v")[0].eval())
+      self.assertEqual(2, tf.get_collection("v")[1].eval())
+      # Evaluates to the sum of the first two variables and assigned as part of
+      # the main_op, following a restore.
+      self.assertEqual(3, tf.get_collection("v")[2].eval())
 
   def testLegacyInitOp(self):
     export_dir = os.path.join(tf.test.get_temp_dir(), "test_legacy_init_op")

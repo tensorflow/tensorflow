@@ -38,18 +38,45 @@ class SparseTensorTest(test_util.TensorFlowTestCase):
             sparse_tensor.SparseTensor(indices, values, shape))]:
       self.assertEqual(sp.indices.dtype, dtypes.int64)
       self.assertEqual(sp.values.dtype, dtypes.string)
-      self.assertEqual(sp.shape.dtype, dtypes.int64)
+      self.assertEqual(sp.dense_shape.dtype, dtypes.int64)
       self.assertEqual(sp.get_shape(), (4, 5))
 
       with self.test_session() as sess:
         value = sp.eval()
         self.assertAllEqual(indices, value.indices)
         self.assertAllEqual(values, value.values)
-        self.assertAllEqual(shape, value.shape)
+        self.assertAllEqual(shape, value.dense_shape)
         sess_run_value = sess.run(sp)
         self.assertAllEqual(sess_run_value.indices, value.indices)
         self.assertAllEqual(sess_run_value.values, value.values)
-        self.assertAllEqual(sess_run_value.shape, value.shape)
+        self.assertAllEqual(sess_run_value.dense_shape, value.dense_shape)
+
+
+class ConvertToTensorOrSparseTensorTest(test_util.TensorFlowTestCase):
+
+  def test_convert_dense(self):
+    with self.test_session():
+      value = [42, 43]
+      from_value = sparse_tensor.convert_to_tensor_or_sparse_tensor(
+          value)
+      self.assertAllEqual(value, from_value.eval())
+
+  def test_convert_sparse(self):
+    with self.test_session():
+      indices = [[0, 1], [1, 0]]
+      values = [42, 43]
+      shape = [2, 2]
+      sparse_tensor_value = sparse_tensor.SparseTensorValue(
+          indices, values, shape)
+      st = sparse_tensor.SparseTensor.from_value(sparse_tensor_value)
+      from_value = sparse_tensor.convert_to_tensor_or_sparse_tensor(
+          sparse_tensor_value).eval()
+      from_tensor = sparse_tensor.convert_to_tensor_or_sparse_tensor(st).eval()
+      for convertee in [from_value, from_tensor]:
+        self.assertAllEqual(sparse_tensor_value.indices, convertee.indices)
+        self.assertAllEqual(sparse_tensor_value.values, convertee.values)
+        self.assertAllEqual(
+            sparse_tensor_value.dense_shape, convertee.dense_shape)
 
 
 if __name__ == "__main__":

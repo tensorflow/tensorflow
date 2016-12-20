@@ -140,16 +140,17 @@ class RNNCell(object):
       state_size_flat = nest.flatten(state_size)
       zeros_flat = [
           array_ops.zeros(
-              array_ops.pack(_state_size_with_prefix(s, prefix=[batch_size])),
-              dtype=dtype)
-          for s in state_size_flat]
+              array_ops.stack(_state_size_with_prefix(
+                  s, prefix=[batch_size])),
+              dtype=dtype) for s in state_size_flat
+      ]
       for s, z in zip(state_size_flat, zeros_flat):
         z.set_shape(_state_size_with_prefix(s, prefix=[None]))
       zeros = nest.pack_sequence_as(structure=state_size,
                                     flat_sequence=zeros_flat)
     else:
       zeros_size = _state_size_with_prefix(state_size, prefix=[batch_size])
-      zeros = array_ops.zeros(array_ops.pack(zeros_size), dtype=dtype)
+      zeros = array_ops.zeros(array_ops.stack(zeros_size), dtype=dtype)
       zeros.set_shape(_state_size_with_prefix(state_size, prefix=[None]))
 
     return zeros
@@ -203,8 +204,10 @@ class GRUCell(RNNCell):
       with vs.variable_scope("gates"):  # Reset gate and update gate.
         # We start with bias of 1.0 to not reset and not update.
         r, u = array_ops.split(
-            1, 2, _linear([inputs, state], 2 * self._num_units, True, 1.0,
-                          scope=scope))
+            value=_linear(
+                [inputs, state], 2 * self._num_units, True, 1.0, scope=scope),
+            num_or_size_splits=2,
+            axis=1)
         r, u = sigmoid(r), sigmoid(u)
       with vs.variable_scope("candidate"):
         c = self._activation(_linear([inputs, r * state],
@@ -288,11 +291,11 @@ class BasicLSTMCell(RNNCell):
       if self._state_is_tuple:
         c, h = state
       else:
-        c, h = array_ops.split(1, 2, state)
+        c, h = array_ops.split(value=state, num_or_size_splits=2, axis=1)
       concat = _linear([inputs, h], 4 * self._num_units, True, scope=scope)
 
       # i = input_gate, j = new_input, f = forget_gate, o = output_gate
-      i, j, f, o = array_ops.split(1, 4, concat)
+      i, j, f, o = array_ops.split(value=concat, num_or_size_splits=4, axis=1)
 
       new_c = (c * sigmoid(f + self._forget_bias) + sigmoid(i) *
                self._activation(j))
@@ -301,7 +304,7 @@ class BasicLSTMCell(RNNCell):
       if self._state_is_tuple:
         new_state = LSTMStateTuple(new_c, new_h)
       else:
-        new_state = array_ops.concat(1, [new_c, new_h])
+        new_state = array_ops.concat_v2([new_c, new_h], 1)
       return new_h, new_state
 
 
@@ -449,7 +452,8 @@ class LSTMCell(RNNCell):
       # i = input_gate, j = new_input, f = forget_gate, o = output_gate
       lstm_matrix = _linear([inputs, m_prev], 4 * self._num_units, bias=True,
                             scope=scope)
-      i, j, f, o = array_ops.split(1, 4, lstm_matrix)
+      i, j, f, o = array_ops.split(
+          value=lstm_matrix, num_or_size_splits=4, axis=1)
 
       # Diagonal connections
       if self._use_peepholes:
@@ -493,8 +497,8 @@ class LSTMCell(RNNCell):
           m = clip_ops.clip_by_value(m, -self._proj_clip, self._proj_clip)
           # pylint: enable=invalid-unary-operand-type
 
-    new_state = (LSTMStateTuple(c, m) if self._state_is_tuple
-                 else array_ops.concat(1, [c, m]))
+    new_state = (LSTMStateTuple(c, m) if self._state_is_tuple else
+                 array_ops.concat_v2([c, m], 1))
     return m, new_state
 
 
@@ -766,8 +770,8 @@ class MultiRNNCell(RNNCell):
             cur_state_pos += cell.state_size
           cur_inp, new_state = cell(cur_inp, cur_state)
           new_states.append(new_state)
-    new_states = (tuple(new_states) if self._state_is_tuple
-                  else array_ops.concat(1, new_states))
+    new_states = (tuple(new_states) if self._state_is_tuple else
+                  array_ops.concat_v2(new_states, 1))
     return cur_inp, new_states
 
 
@@ -846,7 +850,7 @@ def _linear(args, output_size, bias, bias_start=0.0, scope=None):
       raise ValueError("linear is expecting 2D arguments: %s" % shapes)
     if shape[1].value is None:
       raise ValueError("linear expects shape[1] to be provided for shape %s, "
-                       "but saw %d" % (shape, shape[1]))
+                       "but saw %s" % (shape, shape[1]))
     else:
       total_arg_size += shape[1].value
 
@@ -860,7 +864,7 @@ def _linear(args, output_size, bias, bias_start=0.0, scope=None):
     if len(args) == 1:
       res = math_ops.matmul(args[0], weights)
     else:
-      res = math_ops.matmul(array_ops.concat(1, args), weights)
+      res = math_ops.matmul(array_ops.concat_v2(args, 1), weights)
     if not bias:
       return res
     with vs.variable_scope(outer_scope) as inner_scope:

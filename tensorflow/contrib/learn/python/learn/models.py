@@ -28,7 +28,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops as array_ops_
 from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import nn
 from tensorflow.python.ops import variable_scope as vs
 
 
@@ -251,9 +250,9 @@ def bidirectional_rnn(cell_fw,
     ValueError: If inputs is None or an empty list.
   """
 
-  if not isinstance(cell_fw, nn.rnn_cell.RNNCell):
+  if not isinstance(cell_fw, contrib_rnn.RNNCell):
     raise TypeError('cell_fw must be an instance of RNNCell')
-  if not isinstance(cell_bw, nn.rnn_cell.RNNCell):
+  if not isinstance(cell_bw, contrib_rnn.RNNCell):
     raise TypeError('cell_bw must be an instance of RNNCell')
   if not isinstance(inputs, list):
     raise TypeError('inputs must be a list')
@@ -263,13 +262,14 @@ def bidirectional_rnn(cell_fw,
   name = scope or 'BiRNN'
   # Forward direction
   with vs.variable_scope(name + '_FW'):
-    output_fw, state_fw = nn.rnn(cell_fw, inputs, initial_state_fw, dtype,
-                                 sequence_length)
+    output_fw, state_fw = contrib_rnn.static_rnn(
+        cell_fw, inputs, initial_state_fw, dtype, sequence_length)
 
   # Backward direction
   with vs.variable_scope(name + '_BW'):
-    tmp, state_bw = nn.rnn(cell_bw, _reverse_seq(inputs, sequence_length),
-                           initial_state_bw, dtype, sequence_length)
+    tmp, state_bw = contrib_rnn.static_rnn(
+        cell_bw, _reverse_seq(inputs, sequence_length),
+        initial_state_bw, dtype, sequence_length)
   output_bw = _reverse_seq(tmp, sequence_length)
   # Concat each of the forward/backward outputs
   outputs = [array_ops_.concat(1, [fw, bw])
@@ -317,12 +317,12 @@ def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn, bidirectional,
     """RNN estimator with target predictor function on top."""
     x = input_op_fn(x)
     if cell_type == 'rnn':
-      cell_fn = nn.rnn_cell.BasicRNNCell
+      cell_fn = contrib_rnn.BasicRNNCell
     elif cell_type == 'gru':
-      cell_fn = nn.rnn_cell.GRUCell
+      cell_fn = contrib_rnn.GRUCell
     elif cell_type == 'lstm':
       cell_fn = functools.partial(
-          nn.rnn_cell.BasicLSTMCell, state_is_tuple=False)
+          contrib_rnn.BasicLSTMCell, state_is_tuple=False)
     else:
       raise ValueError('cell_type {} is not supported. '.format(cell_type))
     # TODO(ipolosukhin): state_is_tuple=False is deprecated
@@ -338,10 +338,10 @@ def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn, bidirectional,
         bw_cell = contrib_rnn.AttentionCellWrapper(
             bw_cell, attn_length=attn_length, attn_size=attn_size,
             attn_vec_size=attn_vec_size, state_is_tuple=False)
-      rnn_fw_cell = nn.rnn_cell.MultiRNNCell([fw_cell] * num_layers,
+      rnn_fw_cell = contrib_rnn.MultiRNNCell([fw_cell] * num_layers,
                                              state_is_tuple=False)
       # backward direction cell
-      rnn_bw_cell = nn.rnn_cell.MultiRNNCell([bw_cell] * num_layers,
+      rnn_bw_cell = contrib_rnn.MultiRNNCell([bw_cell] * num_layers,
                                              state_is_tuple=False)
       # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
       _, encoding = bidirectional_rnn(rnn_fw_cell,
@@ -357,13 +357,13 @@ def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn, bidirectional,
         rnn_cell = contrib_rnn.AttentionCellWrapper(
             rnn_cell, attn_length=attn_length, attn_size=attn_size,
             attn_vec_size=attn_vec_size, state_is_tuple=False)
-      cell = nn.rnn_cell.MultiRNNCell([rnn_cell] * num_layers,
+      cell = contrib_rnn.MultiRNNCell([rnn_cell] * num_layers,
                                       state_is_tuple=False)
-      _, encoding = nn.rnn(cell,
-                           x,
-                           dtype=dtypes.float32,
-                           sequence_length=sequence_length,
-                           initial_state=initial_state)
+      _, encoding = contrib_rnn.static_rnn(cell,
+                                           x,
+                                           dtype=dtypes.float32,
+                                           sequence_length=sequence_length,
+                                           initial_state=initial_state)
     return target_predictor_fn(encoding, y)
 
   return rnn_estimator

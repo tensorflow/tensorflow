@@ -36,8 +36,10 @@ void SYCLAllocator::DeallocateRaw(void *ptr) {
 }
 
 void SYCLAllocator::EnterLameDuckMode() {
-  device_->deallocate_all();
-  device_ = nullptr;
+  if (device_) {
+    device_->deallocate_all();
+    device_ = nullptr;
+  }
 }
 
 } // namespace tensorflow

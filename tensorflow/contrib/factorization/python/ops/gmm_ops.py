@@ -320,11 +320,12 @@ class GmmAlgorithm(object):
                   tf.squeeze(shard, [0]), transpose_a=True), 1)
     self._w_mul_x.append(w_mul_x)
     # Partial covariances.
-    x = tf.concat(0, [shard for _ in range(self._num_classes)])
+    x = tf.concat_v2([shard for _ in range(self._num_classes)], 0)
     x_trans = tf.transpose(x, perm=[0, 2, 1])
-    x_mul_w = tf.concat(0, [
+    x_mul_w = tf.concat_v2([
         tf.expand_dims(x_trans[k, :, :] * self._w[shard_id][:, k], 0)
-        for k in range(self._num_classes)])
+        for k in range(self._num_classes)
+    ], 0)
     self._w_mul_x2.append(tf.matmul(x_mul_w, x))
 
   def _define_maximization_operation(self, num_batches):
@@ -365,7 +366,7 @@ class GmmAlgorithm(object):
             new_covs.append(tf.expand_dims(new_cov, 0))
           elif self._covariance_type == DIAG_COVARIANCE:
             new_covs.append(tf.expand_dims(tf.diag_part(new_cov), 0))
-        new_covs = tf.concat(0, new_covs)
+        new_covs = tf.concat_v2(new_covs, 0)
         if 'c' in self._params:
           # Train operations don't need to take care of the means
           # because covariances already depend on it.
@@ -397,15 +398,15 @@ class GmmAlgorithm(object):
                     diff, perm=[0, 2, 1]))))
       self._all_scores.append(
           tf.reshape(
-              tf.concat(1, all_scores),
+              tf.concat_v2(all_scores, 1),
               tf.stack([self._num_examples, self._num_classes])))
 
     # Distance to the associated class.
-    self._all_scores = tf.concat(0, self._all_scores)
-    assignments = tf.concat(0, self.assignments())
+    self._all_scores = tf.concat_v2(self._all_scores, 0)
+    assignments = tf.concat_v2(self.assignments(), 0)
     rows = tf.to_int64(tf.range(0, self._num_examples))
-    indices = tf.concat(1, [tf.expand_dims(rows, 1),
-                            tf.expand_dims(assignments, 1)])
+    indices = tf.concat_v2(
+        [tf.expand_dims(rows, 1), tf.expand_dims(assignments, 1)], 1)
     self._scores = tf.gather_nd(self._all_scores, indices)
 
   def _define_loglikelihood_operation(self):

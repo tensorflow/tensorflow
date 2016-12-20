@@ -214,8 +214,8 @@ class InterpolationTest(tf.test.TestCase):
     coeffs = odes._interp_fit(
         f(0.0), f(10.0), f(5.0), f_prime(0.0), f_prime(10.0), 10.0)
     times = np.linspace(0, 10, dtype=np.float32)
-    y_fit = tf.pack([odes._interp_evaluate(coeffs, 0.0, 10.0, t)
-                     for t in times])
+    y_fit = tf.stack(
+        [odes._interp_evaluate(coeffs, 0.0, 10.0, t) for t in times])
     y_expected = f(times)
     with self.test_session() as sess:
       y_actual = sess.run(y_fit)

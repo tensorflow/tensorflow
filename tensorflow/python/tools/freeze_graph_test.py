@@ -76,6 +76,7 @@ class FreezeGraphTest(test_util.TensorFlowTestCase):
 
       self.assertEqual(4, len(output_graph_def.node))
       for node in output_graph_def.node:
+        self.assertNotEqual("VariableV2", node.op)
         self.assertNotEqual("Variable", node.op)
 
       with tf.Session() as sess:

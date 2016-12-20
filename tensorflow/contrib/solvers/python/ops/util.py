@@ -38,8 +38,6 @@ def create_operator(matrix):
   return linear_operator(
       shape=shape,
       dtype=matrix.dtype,
-      # TODO(rmlarsen): We are only using batch_matmul here because matmul
-      # only has transpose and not adjoint.
       apply=lambda v: tf.matmul(matrix, v, adjoint_a=False),
       apply_adjoint=lambda v: tf.matmul(matrix, v, adjoint_a=True))
 

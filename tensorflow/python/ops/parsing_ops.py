@@ -291,7 +291,7 @@ def parse_example(serialized, features, name=None, example_names=None):
   ```
   {"ft": SparseTensor(indices=[[0, 0], [0, 1], [2, 0]],
                       values=[1.0, 2.0, 3.0],
-                      shape=(3, 2)) }
+                      dense_shape=(3, 2)) }
   ```
 
   Given two `Example` input protos in `serialized`:
@@ -328,15 +328,15 @@ def parse_example(serialized, features, name=None, example_names=None):
     "kw": SparseTensor(
         indices=[[0, 0], [0, 1], [1, 0]],
         values=["knit", "big", "emmy"]
-        shape=[2, 2]),
+        dense_shape=[2, 2]),
     "dank": SparseTensor(
         indices=[[1, 0]],
         values=[42],
-        shape=[2, 1]),
+        dense_shape=[2, 1]),
     "gps": SparseTensor(
         indices=[],
         values=[],
-        shape=[2, 0]),
+        dense_shape=[2, 0]),
   }
   ```
 
@@ -405,7 +405,7 @@ def parse_example(serialized, features, name=None, example_names=None):
     "sparse": SparseTensor(
         indices=[[0, 3], [0, 20], [1, 42]],
         values=[0.5, -1.0, 0.0]
-        shape=[2, 100]),
+        dense_shape=[2, 100]),
   }
   ```
 
@@ -667,7 +667,7 @@ def _parse_single_example_raw(serialized,
             array_ops.slice(outputs[s].indices,
                             [0, 1], [-1, -1], name="Slice_Indices_%s" % s_name),
             outputs[s].values,
-            array_ops.slice(outputs[s].shape,
+            array_ops.slice(outputs[s].dense_shape,
                             [1], [-1], name="Squeeze_Shape_%s" % s_name))
     return outputs
 
@@ -705,7 +705,7 @@ def parse_single_sequence_example(
   `sequence_features` contains `VarLenFeature` and `FixedLenSequenceFeature`
   objects. Each `VarLenFeature` is mapped to a `SparseTensor`, and each
   `FixedLenSequenceFeature` is mapped to a `Tensor`, each of the specified type.
-  The shape will be `(T,) + df.shape` for `FixedLenSequenceFeature` `df`, where
+  The shape will be `(T,) + df.dense_shape` for `FixedLenSequenceFeature` `df`, where
   `T` is the length of the associated `FeatureList` in the `SequenceExample`.
   For instance, `FixedLenSequenceFeature([])` yields a scalar 1-D `Tensor` of
   static shape `[None]` and dynamic shape `[T]`, while

@@ -23,6 +23,7 @@ from __future__ import print_function
 import os
 import sys
 
+import six
 import tensorflow as tf
 from tensorflow.python.framework import ops
 from tensorflow.tools.tfprof import tfprof_log_pb2
@@ -124,7 +125,7 @@ def _merge_default_with_oplog(graph, op_log=None, run_meta=None):
     all_ops = dict()
     for entry in op_log.log_entries:
       all_ops[entry.name] = entry
-    for op_name, entry in logged_ops.iteritems():
+    for op_name, entry in six.iteritems(logged_ops):
       if op_name in all_ops:
         all_ops[op_name].types.extend(entry.types)
         if entry.float_ops > 0 and all_ops[op_name].float_ops == 0:

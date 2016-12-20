@@ -72,10 +72,11 @@ limitations under the License.
 // 16. Deprecate tensor_array (v1) ops in favor of v2 (10nov2016).
 // 17. Deprecate inv (11nov2016).
 // 17. Expose reverse_v2 (10nov2016)
+// 18. Add VariableV2 (30nov2016)
 
 #define TF_GRAPH_DEF_VERSION_MIN_PRODUCER 0
 #define TF_GRAPH_DEF_VERSION_MIN_CONSUMER 0
-#define TF_GRAPH_DEF_VERSION 17
+#define TF_GRAPH_DEF_VERSION 19
 
 // Checkpoint compatibility versions (the versions field in SavedSliceMeta).
 //

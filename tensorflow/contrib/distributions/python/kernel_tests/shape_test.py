@@ -220,6 +220,8 @@ class DistributionShapeTest(tf.test.TestCase):
           ([3], _empty_shape, [2]),
           sess.run(shaper.get_shape(y), feed_dict=feed_dict))
 
+  # TODO(jvdillon): Delete this test once we make expand_batch_dim=False
+  # the unalterable default.
   def testDistributionShapeMakeBatchReadyStatic(self):
     with self.test_session() as sess:
       x = self._random_sample((1, 2, 3))
@@ -268,6 +270,59 @@ class DistributionShapeTest(tf.test.TestCase):
       self.assertAllEqual(x_value, sess.run(should_be_x_value,
                                             feed_dict=feed_dict))
 
+  def testDistributionShapeMakeBatchReadyStaticNoExpand(self):
+    with self.test_session() as sess:
+      x = self._random_sample((1, 2, 3))
+      shaper = _DistributionShape(batch_ndims=1, event_ndims=1)
+      y, sample_shape = shaper.make_batch_of_event_sample_matrices(
+          x, expand_batch_dim=False)
+      self.assertAllEqual(np.transpose(x, axes=(1, 2, 0)), y.eval())
+      self.assertAllEqual((1,), sample_shape.eval())
+      should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
+          y, sample_shape, expand_batch_dim=False)
+      self.assertAllEqual(x, should_be_x_value.eval())
+
+      shaper = _DistributionShape(batch_ndims=1, event_ndims=1)
+      x = tf.placeholder(tf.float32)
+      x_value = self._random_sample((3, 4, 2), dtype=x.dtype)
+      feed_dict = {x: x_value}
+      y, sample_shape = shaper.make_batch_of_event_sample_matrices(
+          x, expand_batch_dim=False)
+      self.assertAllEqual(
+          (3,),
+          sess.run(sample_shape, feed_dict=feed_dict))
+      self.assertAllClose(
+          np.transpose(np.reshape(x_value, (-1, 4, 2)), (1, 2, 0)),
+          sess.run(y, feed_dict=feed_dict),
+          rtol=1e-3)
+      should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
+          y, sample_shape, expand_batch_dim=False)
+      self.assertAllEqual(x_value, sess.run(should_be_x_value,
+                                            feed_dict=feed_dict))
+
+      shaper = _DistributionShape(batch_ndims=0, event_ndims=0)
+      x = tf.placeholder(tf.float32)
+      x_value = np.ones([3], dtype=x.dtype.as_numpy_dtype())
+      feed_dict = {x: x_value}
+      y, sample_shape = shaper.make_batch_of_event_sample_matrices(
+          x, expand_batch_dim=False)
+      self.assertAllEqual(
+          [3],
+          sess.run(sample_shape, feed_dict=feed_dict))
+      # The following check shows we don't need to manually set_shape in the
+      # ShapeUtil.
+      self.assertAllEqual([1, None],
+                          y.get_shape().ndims and y.get_shape().as_list())
+      self.assertAllEqual(
+          np.ones([1, 3], dtype=x.dtype.as_numpy_dtype()),
+          sess.run(y, feed_dict=feed_dict))
+      should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
+          y, sample_shape, expand_batch_dim=False)
+      self.assertAllEqual(x_value, sess.run(should_be_x_value,
+                                            feed_dict=feed_dict))
+
+  # TODO(jvdillon): Delete this test once we make expand_batch_dim=False
+  # the unalterable default.
   def testDistributionShapeMakeBatchReadyDynamic(self):
     with self.test_session() as sess:
       shaper = _DistributionShape(batch_ndims=1, event_ndims=1)
@@ -355,6 +410,102 @@ class DistributionShapeTest(tf.test.TestCase):
           sess.run(y, feed_dict=feed_dict))
       should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
           y, sample_shape)
+      self.assertAllEqual(x_value, sess.run(should_be_x_value,
+                                            feed_dict=feed_dict))
+
+  def testDistributionShapeMakeBatchReadyDynamicNoExpand(self):
+    with self.test_session() as sess:
+      shaper = _DistributionShape(batch_ndims=1, event_ndims=1)
+      x = tf.placeholder(tf.float32, shape=(1, 2, 3))
+      x_value = self._random_sample(x.get_shape().as_list(), dtype=x.dtype)
+      y, sample_shape = sess.run(
+          shaper.make_batch_of_event_sample_matrices(
+              x, expand_batch_dim=False),
+          feed_dict={x: x_value})
+      self.assertAllEqual(np.transpose(x_value, (1, 2, 0)), y)
+      self.assertAllEqual((1,), sample_shape)
+
+      feed_dict = {x: x_value}
+      y, sample_shape = shaper.make_batch_of_event_sample_matrices(
+          x, expand_batch_dim=False)
+      self.assertAllEqual(
+          (1,),
+          sess.run(sample_shape, feed_dict=feed_dict))
+      self.assertAllEqual(
+          np.transpose(x_value, (1, 2, 0)),
+          sess.run(y, feed_dict=feed_dict))
+      should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
+          y, sample_shape, expand_batch_dim=False)
+      self.assertAllEqual(x_value, sess.run(should_be_x_value,
+                                            feed_dict=feed_dict))
+
+      batch_ndims = tf.placeholder(tf.int32)
+      event_ndims = tf.placeholder(tf.int32)
+      shaper = _DistributionShape(batch_ndims=batch_ndims,
+                                  event_ndims=event_ndims)
+
+      # batch_ndims = 1, event_ndims = 1.
+      x = tf.placeholder(tf.float32)
+      x_value = np.ones((3, 4, 2), dtype=x.dtype.as_numpy_dtype())
+      feed_dict = {x: x_value, batch_ndims: 1, event_ndims: 1}
+      y, sample_shape = shaper.make_batch_of_event_sample_matrices(
+          x, expand_batch_dim=False)
+      self.assertAllEqual(
+          [3],
+          sess.run(sample_shape, feed_dict=feed_dict))
+      self.assertAllEqual(
+          np.ones([4, 2, 3], dtype=x.dtype.as_numpy_dtype()),
+          sess.run(y, feed_dict=feed_dict))
+      should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
+          y, sample_shape, expand_batch_dim=False)
+      self.assertAllEqual(x_value, sess.run(should_be_x_value,
+                                            feed_dict=feed_dict))
+
+      # batch_ndims = 0, event_ndims = 0.
+      x_value = np.ones((3,), dtype=x.dtype.as_numpy_dtype())
+      feed_dict = {x: x_value, batch_ndims: 0, event_ndims: 0}
+      y, sample_shape = shaper.make_batch_of_event_sample_matrices(
+          x, expand_batch_dim=False)
+      self.assertAllEqual(
+          [3],
+          sess.run(sample_shape, feed_dict=feed_dict))
+      self.assertAllEqual(
+          np.ones([1, 3], dtype=x.dtype.as_numpy_dtype()),
+          sess.run(y, feed_dict=feed_dict))
+      should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
+          y, sample_shape, expand_batch_dim=False)
+      self.assertAllEqual(x_value, sess.run(should_be_x_value,
+                                            feed_dict=feed_dict))
+
+      # batch_ndims = 0, event_ndims = 1.
+      x_value = np.ones([2], dtype=x.dtype.as_numpy_dtype())
+      feed_dict = {x: x_value, batch_ndims: 0, event_ndims: 1}
+      y, sample_shape = shaper.make_batch_of_event_sample_matrices(
+          x, expand_batch_dim=False)
+      self.assertAllEqual(
+          [],
+          sess.run(sample_shape, feed_dict=feed_dict))
+      self.assertAllEqual(
+          np.ones([2, 1], dtype=x.dtype.as_numpy_dtype()),
+          sess.run(y, feed_dict=feed_dict))
+      should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
+          y, sample_shape, expand_batch_dim=False)
+      self.assertAllEqual(x_value, sess.run(should_be_x_value,
+                                            feed_dict=feed_dict))
+
+      # batch_ndims = 1, event_ndims = 0.
+      x_value = np.ones((1, 2), dtype=x.dtype.as_numpy_dtype())
+      feed_dict = {x: x_value, batch_ndims: 1, event_ndims: 0}
+      y, sample_shape = shaper.make_batch_of_event_sample_matrices(
+          x, expand_batch_dim=False)
+      self.assertAllEqual(
+          (1,),
+          sess.run(sample_shape, feed_dict=feed_dict))
+      self.assertAllEqual(
+          np.ones((2, 1, 1), dtype=x.dtype.as_numpy_dtype()),
+          sess.run(y, feed_dict=feed_dict))
+      should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
+          y, sample_shape, expand_batch_dim=False)
       self.assertAllEqual(x_value, sess.run(should_be_x_value,
                                             feed_dict=feed_dict))
 

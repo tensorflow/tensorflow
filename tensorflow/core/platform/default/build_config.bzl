@@ -148,6 +148,15 @@ def tf_additional_stream_executor_srcs():
 def tf_additional_cupti_wrapper_deps():
   return ["//tensorflow/core/platform/default/gpu:cupti_wrapper"]
 
+def tf_additional_libdevice_data():
+  return ["@local_config_cuda//cuda:libdevice_root"]
+
+def tf_additional_libdevice_deps():
+  return []
+
+def tf_additional_libdevice_srcs():
+  return ["platform/default/cuda_libdevice_path.cc"]
+
 def tf_additional_test_deps():
   return []
 
@@ -173,3 +182,6 @@ def tf_additional_lib_deps():
   if WITH_HDFS_SUPPORT:
     deps.append("//tensorflow/core/platform/hadoop:hadoop_file_system")
   return deps
+
+def tf_additional_plugin_deps():
+  return []

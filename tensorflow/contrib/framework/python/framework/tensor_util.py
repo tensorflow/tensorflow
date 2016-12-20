@@ -39,6 +39,10 @@ __all__ = [
     'with_same_shape']
 
 
+convert_to_tensor_or_sparse_tensor = (
+    sparse_tensor.convert_to_tensor_or_sparse_tensor)
+
+
 def _assert_same_base_type(items, expected_type=None):
   r"""Asserts all items are of the same base type.
 
@@ -361,33 +365,3 @@ def with_shape(expected_shape, tensor):
         tensor.name, expected_shape, actual_shape))
 
   return tensor
-
-
-def convert_to_tensor_or_sparse_tensor(value, dtype=None, name=None):
-  """Converts value to a `SparseTensor` or `Tensor`.
-
-  Args:
-    value: A `SparseTensor`, `SparseTensorValue`, or an object whose type has a
-      registered `Tensor` conversion function.
-    dtype: Optional element type for the returned tensor. If missing, the
-      type is inferred from the type of `value`.
-    name: Optional name to use if a new `Tensor` is created.
-
-  Returns:
-    A `SparseTensor` or `Tensor` based on `value`.
-
-  Raises:
-    RuntimeError: If result type is incompatible with `dtype`.
-  """
-  if dtype is not None:
-    dtype = dtypes.as_dtype(dtype)
-  if isinstance(value, sparse_tensor.SparseTensorValue):
-    value = sparse_tensor.SparseTensor.from_value(value)
-  if isinstance(value, sparse_tensor.SparseTensor):
-    if dtype and not dtype.is_compatible_with(value.dtype):
-      raise RuntimeError(
-          'Sparse dtype: requested = %s, actual = %s' % (
-              dtype.name, value.dtype.name))
-    return value
-  return ops.internal_convert_to_tensor(
-      value, dtype=dtype, name=name)

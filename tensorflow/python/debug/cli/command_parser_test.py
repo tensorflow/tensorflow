@@ -96,6 +96,53 @@ class ParseCommandTest(test_util.TensorFlowTestCase):
                      command_parser.parse_command(command))
 
 
+class ExtractOutputFilePathTest(test_util.TensorFlowTestCase):
+
+  def testNoOutputFilePathIsReflected(self):
+    args, output_path = command_parser.extract_output_file_path(["pt", "a:0"])
+    self.assertEqual(["pt", "a:0"], args)
+    self.assertIsNone(output_path)
+
+  def testHasOutputFilePathInOneArgsIsReflected(self):
+    args, output_path = command_parser.extract_output_file_path(
+        ["pt", "a:0", ">/tmp/foo.txt"])
+    self.assertEqual(["pt", "a:0"], args)
+    self.assertEqual(output_path, "/tmp/foo.txt")
+
+  def testHasOutputFilePathInTwoArgsIsReflected(self):
+    args, output_path = command_parser.extract_output_file_path(
+        ["pt", "a:0", ">", "/tmp/foo.txt"])
+    self.assertEqual(["pt", "a:0"], args)
+    self.assertEqual(output_path, "/tmp/foo.txt")
+
+  def testHasGreaterThanSignButNoFileNameCausesSyntaxError(self):
+    with self.assertRaisesRegexp(SyntaxError, "Redirect file path is empty"):
+      command_parser.extract_output_file_path(
+          ["pt", "a:0", ">"])
+
+  def testOutputPathMergedWithLastArgIsHandledCorrectly(self):
+    args, output_path = command_parser.extract_output_file_path(
+        ["pt", "a:0>/tmp/foo.txt"])
+    self.assertEqual(["pt", "a:0"], args)
+    self.assertEqual(output_path, "/tmp/foo.txt")
+
+  def testOutputPathInLastArgGreaterThanInSecondLastIsHandledCorrectly(self):
+    args, output_path = command_parser.extract_output_file_path(
+        ["pt", "a:0>", "/tmp/foo.txt"])
+    self.assertEqual(["pt", "a:0"], args)
+    self.assertEqual(output_path, "/tmp/foo.txt")
+
+  def testOneArgumentIsHandledCorrectly(self):
+    args, output_path = command_parser.extract_output_file_path(["lt"])
+    self.assertEqual(["lt"], args)
+    self.assertIsNone(output_path)
+
+  def testEmptyArgumentIsHandledCorrectly(self):
+    args, output_path = command_parser.extract_output_file_path([])
+    self.assertEqual([], args)
+    self.assertIsNone(output_path)
+
+
 class ParseTensorNameTest(test_util.TensorFlowTestCase):
 
   def testParseTensorNameWithoutSlicing(self):

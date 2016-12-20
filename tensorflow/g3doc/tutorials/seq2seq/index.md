@@ -8,14 +8,10 @@ some input and generate a meaningful response? For example, could we train
 a neural network to translate from English to French? It turns out that
 the answer is *yes*.
 
-This tutorial will show you how to build and train such a system end-to-end.
-We are assuming you have already installed via the pip package, have cloned the
-tensorflow git repository, and are in the root of the git tree.
-
-You can then start by running the translate program:
+This tutorial will show you how to build and train such a system end-to-end. Clone the [TensorFlow models repo](https://github.com/tensorflow/models) from GitHub. You can then start by running the translate program:
 
 ```
-cd tensorflow/models/rnn/translate
+cd models/tutorials/rnn/translate
 python translate.py --data_dir [your_data_directory]
 ```
 

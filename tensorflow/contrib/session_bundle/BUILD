@@ -31,6 +31,57 @@ filegroup(
     ),
 )
 
+# TODO(b/32673259): add a test to continuously validate these files.
+filegroup(
+    name = "session_bundle_half_plus_two",
+    srcs = glob([
+        "testdata/half_plus_two/**",
+        "testdata/half_plus_two_ckpt_v2/**",
+    ]),
+)
+
+py_library(
+    name = "bundle_shim_py",
+    srcs = ["bundle_shim.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":constants",
+        ":manifest_proto_py",
+        ":session_bundle_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:framework",
+        "//tensorflow/python/saved_model:constants",
+        "//tensorflow/python/saved_model:loader",
+        "//tensorflow/python/saved_model:signature_constants",
+    ],
+)
+
+py_test(
+    name = "bundle_shim_py_test",
+    size = "small",
+    srcs = [
+        "bundle_shim_test.py",
+    ],
+    data = [
+        ":session_bundle_half_plus_two",
+        "//tensorflow/cc/saved_model:saved_model_half_plus_two",
+    ],
+    main = "bundle_shim_test.py",
+    srcs_version = "PY2AND3",
+    tags = ["manual"],
+    deps = [
+        ":bundle_shim_py",
+        ":constants",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:util",
+        "//tensorflow/python/saved_model:constants",
+        "//tensorflow/python/saved_model:signature_constants",
+        "//tensorflow/python/saved_model:tag_constants",
+    ],
+)
+
 py_library(
     name = "constants",
     srcs = ["constants.py"],
@@ -46,6 +97,10 @@ py_library(
         ":gc",
         ":manifest_proto_py",
         "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:training",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -63,6 +118,7 @@ py_test(
         ":gc",
         ":manifest_proto_py",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:platform",
     ],
 )
 
@@ -72,6 +128,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:framework",
+        "//tensorflow/python:platform",
     ],
 )
 
@@ -85,6 +142,8 @@ py_test(
     deps = [
         ":gc",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform",
     ],
 )
 
@@ -141,10 +200,11 @@ cc_test(
     size = "small",
     srcs = ["session_bundle_test.cc"],
     data = [
-        "//tensorflow/contrib/session_bundle/example:half_plus_two",
+        ":session_bundle_half_plus_two",
     ],
     # Link in all registered kernels.
     linkstatic = 1,
+    tags = ["manual"],
     visibility = ["//visibility:private"],
     deps = [
         ":session_bundle",
@@ -168,6 +228,7 @@ py_library(
         ":manifest_proto_py",
         "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:lib",
     ],
 )
 
@@ -178,16 +239,19 @@ py_test(
         "session_bundle_test.py",
     ],
     data = [
-        "//tensorflow/contrib/session_bundle/example:half_plus_two",
+        ":session_bundle_half_plus_two",
     ],
     main = "session_bundle_test.py",
     srcs_version = "PY2AND3",
+    tags = ["manual"],
     deps = [
         ":constants",
         ":manifest_proto_py",
         ":session_bundle_py",
         "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -280,11 +344,12 @@ cc_test(
     size = "small",
     srcs = ["bundle_shim_test.cc"],
     data = [
-        "//tensorflow/contrib/session_bundle/example:half_plus_two",
-        "//tensorflow/python/saved_model/example:saved_model_half_plus_two_data",
+        ":session_bundle_half_plus_two",
+        "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     ],
     # Link in all registered kernels.
     linkstatic = 1,
+    tags = ["manual"],
     deps = [
         ":bundle_shim",
         ":test_util",

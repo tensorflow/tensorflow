@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.debug import debug_utils
+from tensorflow.python.debug import stepper
 from tensorflow.python.debug.wrappers import framework
 from tensorflow.python.debug.wrappers import local_cli_wrapper
 from tensorflow.python.training import session_run_hook
@@ -64,22 +65,28 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook,
       self._decorate_options_for_debug(run_args.options,
                                        run_context.session.graph)
     elif self._performed_action == framework.OnRunStartAction.INVOKE_STEPPER:
-      raise NotImplementedError(
-          "OnRunStartAction INVOKE_STEPPER has not been implemented.")
+      # The _finalized property must be set to False so that the NodeStepper
+      # can insert ops for retrieving TensorHandles.
+      # pylint: disable=protected-access
+      run_context.session.graph._finalized = False
+      # pylint: enable=protected-access
+
+      self.invoke_node_stepper(
+          stepper.NodeStepper(run_context.session, run_context.original_args.
+                              fetches, run_context.original_args.feed_dict),
+          restore_variable_values_on_exit=True)
 
     return run_args
 
   def after_run(self, run_context, run_values):
     # Adapt run_context and run_values to OnRunEndRequest and invoke superclass
     # on_run_end()
-    if self._performed_action == framework.OnRunStartAction.DEBUG_RUN:
-      on_run_end_request = framework.OnRunEndRequest(self._performed_action,
-                                                     run_values.run_metadata)
-
-      self.on_run_end(on_run_end_request)
+    on_run_end_request = framework.OnRunEndRequest(self._performed_action,
+                                                   run_values.run_metadata)
+    self.on_run_end(on_run_end_request)
 
   def _decorate_options_for_debug(self, options, graph):
-    """Modify RunOptions.debug_tensor_watch_opts for debugging.
+    """Modify RunOptions.debug_options.debug_tensor_watch_opts for debugging.
 
     Args:
       options: (config_pb2.RunOptions) The RunOptions instance to be modified.

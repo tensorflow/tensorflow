@@ -100,11 +100,11 @@ _REGISTERED_EXPANSIONS = [
     # SparseTensorValues or normal tuples.
     (sparse_tensor.SparseTensor,
      lambda fetch: (
-         [fetch.indices, fetch.values, fetch.shape],
+         [fetch.indices, fetch.values, fetch.dense_shape],
          lambda fetched_vals: sparse_tensor.SparseTensorValue(*fetched_vals)),
      lambda feed, feed_val: list(zip(
-         [feed.indices, feed.values, feed.shape], feed_val)),
-     lambda feed: [feed.indices, feed.values, feed.shape]),
+         [feed.indices, feed.values, feed.dense_shape], feed_val)),
+     lambda feed: [feed.indices, feed.values, feed.dense_shape]),
     # IndexedSlices are fetched as IndexedSlicesValues. They can be fed
     # IndexedSlicesValues or normal tuples.
     (ops.IndexedSlices,

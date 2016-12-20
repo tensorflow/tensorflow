@@ -1254,6 +1254,13 @@ available, or `session` must be specified explicitly.
 
 #### `tf.Tensor.get_shape()` {#Tensor.get_shape}
 
+Alias of Tensor.shape.
+
+
+- - -
+
+#### `tf.Tensor.shape` {#Tensor.shape}
+
 Returns the `TensorShape` that represents the shape of this tensor.
 
 The shape is computed using shape inference functions that are
@@ -1269,12 +1276,12 @@ example:
 ```python
 c = tf.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
 
-print(c.get_shape())
+print(c.shape)
 ==> TensorShape([Dimension(2), Dimension(3)])
 
 d = tf.constant([[1.0, 0.0], [0.0, 1.0], [1.0, 0.0], [0.0, 1.0]])
 
-print(d.get_shape())
+print(d.shape)
 ==> TensorShape([Dimension(4), Dimension(2)])
 
 # Raises a ValueError, because `c` and `d` do not have compatible
@@ -1283,7 +1290,7 @@ e = tf.matmul(c, d)
 
 f = tf.matmul(c, d, transpose_a=True, transpose_b=True)
 
-print(f.get_shape())
+print(f.shape)
 ==> TensorShape([Dimension(3), Dimension(4)])
 ```
 
@@ -1315,12 +1322,12 @@ image = tf.image.decode_png(image_data, channels=3)
 
 # The height and width dimensions of `image` are data dependent, and
 # cannot be computed without executing the op.
-print(image.get_shape())
+print(image.shape)
 ==> TensorShape([Dimension(None), Dimension(None), Dimension(3)])
 
 # We know that each image in this dataset is 28 x 28 pixels.
 image.set_shape([28, 28, 3])
-print(image.get_shape())
+print(image.shape)
 ==> TensorShape([Dimension(28), Dimension(28), Dimension(3)])
 ```
 
@@ -2167,6 +2174,13 @@ Returns the dtype correspond to this dtype's real part.
 
 - - -
 
+#### `tf.DType.is_bool` {#DType.is_bool}
+
+Returns whether this is a boolean data type
+
+
+- - -
+
 #### `tf.DType.is_floating` {#DType.is_floating}
 
 Returns whether this is a (non-quantized, real) floating point type.
@@ -2551,6 +2565,31 @@ unmodified. Otherwise, it is converted to a `Tensor` using
 
 - - -
 
+### `tf.convert_to_tensor_or_sparse_tensor(value, dtype=None, name=None)` {#convert_to_tensor_or_sparse_tensor}
+
+Converts value to a `SparseTensor` or `Tensor`.
+
+##### Args:
+
+
+*  <b>`value`</b>: A `SparseTensor`, `SparseTensorValue`, or an object whose type has a
+    registered `Tensor` conversion function.
+*  <b>`dtype`</b>: Optional element type for the returned tensor. If missing, the
+    type is inferred from the type of `value`.
+*  <b>`name`</b>: Optional name to use if a new `Tensor` is created.
+
+##### Returns:
+
+  A `SparseTensor` or `Tensor` based on `value`.
+
+##### Raises:
+
+
+*  <b>`RuntimeError`</b>: If result type is incompatible with `dtype`.
+
+
+- - -
+
 ### `tf.get_default_graph()` {#get_default_graph}
 
 Returns the default graph for the current thread.
@@ -2795,7 +2834,7 @@ The following standard keys are defined:
   for more details.
 * `SUMMARIES`: the summary `Tensor` objects that have been created in the
   graph. See
-  [`tf.contrib.deprecated.merge_all_summaries()`](../../api_docs/python/train.md#merge_all_summaries)
+  [`tf.summary.merge_all()`](../../api_docs/python/summary.md#merge_all)
   for more details.
 * `QUEUE_RUNNERS`: the `QueueRunner` objects that are used to
   produce input for a computation. See
@@ -2810,17 +2849,6 @@ The following standard keys are defined:
 * `WEIGHTS`: weights inside neural network layers
 * `BIASES`: biases inside neural network layers
 * `ACTIVATIONS`: activations of neural network layers
-- - -
-
-#### `tf.GraphKeys.VARIABLES` {#GraphKeys.VARIABLES}
-
-DEPRECATED FUNCTION
-
-THIS FUNCTION IS DEPRECATED. It will be removed after 2017-03-02.
-Instructions for updating:
-VARIABLES collection name is deprecated, please use GLOBAL_VARIABLES instead
-
-
 
 
 ## Defining new operations

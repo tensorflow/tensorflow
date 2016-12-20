@@ -438,7 +438,7 @@ static bool CopyIfNeeded(TensorProto* in, TensorProto* out) {
   } else {
     Tensor t(in->dtype());
     if (!t.FromProto(cpu_allocator(), *in)) return false;
-    t.AsProtoField(out);
+    t.AsProtoTensorContent(out);
   }
   return true;
 }

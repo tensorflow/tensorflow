@@ -54,6 +54,17 @@ def boston_input_fn(num_epochs=None):
   return features, labels
 
 
+def boston_input_fn_with_queue(num_epochs=None):
+  features, labels = boston_input_fn(num_epochs=num_epochs)
+
+  # Create a minimal queue runner.
+  fake_queue = tf.FIFOQueue(30, tf.int32)
+  queue_runner = tf.train.QueueRunner(fake_queue, [tf.constant(0)])
+  tf.train.add_queue_runner(queue_runner)
+
+  return features, labels
+
+
 def iris_input_fn():
   iris = tf.contrib.learn.datasets.load_iris()
   features = tf.reshape(tf.constant(iris.data), [-1, _IRIS_INPUT_DIM])
@@ -76,8 +87,8 @@ def boston_eval_fn():
   features = tf.reshape(
       tf.constant(boston.data), [n_examples, _BOSTON_INPUT_DIM])
   labels = tf.reshape(tf.constant(boston.target), [n_examples, 1])
-  return tf.concat(0, [features, features]), tf.concat(0, [labels, labels])
-
+  return tf.concat_v2([features, features], 0), tf.concat_v2([labels, labels],
+                                                             0)
 
 def extract(data, key):
   if isinstance(data, dict):
@@ -218,6 +229,21 @@ class CheckCallsMonitor(tf.contrib.learn.monitors.BaseMonitor):
 
 
 class EstimatorTest(tf.test.TestCase):
+
+  def testModelFnArgs(self):
+    expected_param = {'some_param': 'some_value'}
+    expected_config = tf.contrib.learn.RunConfig()
+    expected_config.i_am_test = True
+    def _argument_checker(features, labels, mode, params, config):
+      _, _ = features, labels
+      self.assertEqual(tf.contrib.learn.ModeKeys.TRAIN, mode)
+      self.assertEqual(expected_param, params)
+      self.assertTrue(config.i_am_test)
+      return tf.constant(0.), tf.constant(0.), tf.constant(0.)
+    est = tf.contrib.learn.Estimator(model_fn=_argument_checker,
+                                     params=expected_param,
+                                     config=expected_config)
+    est.fit(input_fn=boston_input_fn, steps=1)
 
   def testInvalidModelFn_no_train_op(self):
     def _invalid_model_fn(features, labels):
@@ -574,6 +600,25 @@ class EstimatorTest(tf.test.TestCase):
     boston = tf.contrib.learn.datasets.load_boston()
     est.fit(input_fn=boston_input_fn, steps=1)
     input_fn = functools.partial(boston_input_fn, num_epochs=1)
+    output = list(est.predict(input_fn=input_fn))
+    self.assertEqual(len(output), boston.target.shape[0])
+
+  def testPredictInputFnWithQueue(self):
+    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
+    boston = tf.contrib.learn.datasets.load_boston()
+    est.fit(input_fn=boston_input_fn, steps=1)
+    input_fn = functools.partial(boston_input_fn_with_queue, num_epochs=2)
+    output = list(est.predict(input_fn=input_fn))
+    self.assertEqual(len(output), boston.target.shape[0]*2)
+
+  def testPredictConstInputFn(self):
+    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
+    boston = tf.contrib.learn.datasets.load_boston()
+    est.fit(input_fn=boston_input_fn, steps=1)
+    def input_fn():
+      features = tf.reshape(tf.constant(boston.data), [-1, _BOSTON_INPUT_DIM])
+      labels = tf.reshape(tf.constant(boston.target), [-1, 1])
+      return features, labels
     output = list(est.predict(input_fn=input_fn))
     self.assertEqual(len(output), boston.target.shape[0])
 

@@ -13,15 +13,21 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tensorflow.ops.tf.BatchMatMul."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import constant_op
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
 
 
-class BatchMatmulOpTest(tf.test.TestCase):
+class BatchMatmulOpTest(test.TestCase):
 
   # Uses numpy to compute batch_matmul(x, y, adjoint_a, adjoint_b).
   def _npBatchMatmul(self, x, y, adjoint_a, adjoint_b):
@@ -79,12 +85,13 @@ class BatchMatmulOpTest(tf.test.TestCase):
     tol = 100 * np.finfo(x.dtype).eps if is_floating else 0
     with self.test_session(use_gpu=is_floating) as sess:
       if static_shape:
-        z0 = tf.matmul(x, y, adjoint_a=adjoint_a, adjoint_b=adjoint_b)
+        z0 = math_ops.matmul(x, y, adjoint_a=adjoint_a, adjoint_b=adjoint_b)
         z0_val = z0.eval()
       else:
-        x_ph = tf.placeholder(x.dtype)
-        y_ph = tf.placeholder(y.dtype)
-        z0 = tf.matmul(x_ph, y_ph, adjoint_a=adjoint_a, adjoint_b=adjoint_b)
+        x_ph = array_ops.placeholder(x.dtype)
+        y_ph = array_ops.placeholder(y.dtype)
+        z0 = math_ops.matmul(
+            x_ph, y_ph, adjoint_a=adjoint_a, adjoint_b=adjoint_b)
         z0_val = sess.run(z0, feed_dict={x_ph: x, y_ph: y})
       z1 = self._npBatchMatmul(x, y, adjoint_a, adjoint_b)
       self.assertAllClose(z0_val, z1, rtol=tol, atol=tol)
@@ -135,7 +142,7 @@ def _GetBatchMatmulOpTest(dtype, adjoint_a, adjoint_b, use_static_shape):
   return Test
 
 
-class BatchMatmulGradientTest(tf.test.TestCase):
+class BatchMatmulGradientTest(test.TestCase):
 
   # loss = sum(batch_matmul(x, y)). Verify dl/dx and dl/dy via the
   # gradient checker.
@@ -147,12 +154,12 @@ class BatchMatmulGradientTest(tf.test.TestCase):
     epsilon = np.finfo(x.dtype).eps
     delta = epsilon**(1.0 / 3.0)
     with self.test_session(use_gpu=True):
-      inx = tf.constant(x)
-      iny = tf.constant(y)
-      z = tf.matmul(inx, iny, adjoint_a, adjoint_b)
-      loss = tf.reduce_sum(z)
+      inx = constant_op.constant(x)
+      iny = constant_op.constant(y)
+      z = math_ops.matmul(inx, iny, adjoint_a, adjoint_b)
+      loss = math_ops.reduce_sum(z)
       ((x_jacob_t, x_jacob_n),
-       (y_jacob_t, y_jacob_n)) = tf.test.compute_gradient(
+       (y_jacob_t, y_jacob_n)) = gradient_checker.compute_gradient(
            [inx, iny], [x.shape, y.shape],
            loss, [1],
            x_init_value=[x, y],
@@ -196,4 +203,4 @@ if __name__ == "__main__":
         if dtype_ is not np.int32:
           setattr(BatchMatmulGradientTest, "testBatchMatmulGradient_" + name,
                   _GetBatchMatmulGradientTest(dtype_, adjoint_a_, adjoint_b_))
-  tf.test.main()
+  test.main()

@@ -279,6 +279,18 @@ class ConvolutionTest(tf.test.TestCase):
       biases = tf.contrib.framework.get_variables_by_name('biases')[0]
       self.assertListEqual(biases.get_shape().as_list(), [64])
 
+  def testFullyConvWithCustomGetter(self):
+    height, width = 7, 9
+    with self.test_session():
+      called = [0]
+      def custom_getter(getter, *args, **kwargs):
+        called[0] += 1
+        return getter(*args, **kwargs)
+      with tf.variable_scope('test', custom_getter=custom_getter):
+        images = tf.random_uniform((5, height, width, 32), seed=1)
+        tf.contrib.layers.convolution2d(images, 64, images.get_shape()[1:3])
+      self.assertEqual(called[0], 2)  # Custom getter called twice.
+
   def testCreateVerticalConv(self):
     height, width = 7, 9
     with self.test_session():
@@ -369,7 +381,7 @@ class ConvolutionTest(tf.test.TestCase):
           tf.contrib.framework.get_variables_by_name('weights')[0])
       wd = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)[0]
       self.assertEqual(wd.op.name,
-                       'Conv/weights/Regularizer/l2_regularizer')
+                       'Conv/kernel/Regularizer/l2_regularizer')
       sess.run(tf.global_variables_initializer())
       self.assertAlmostEqual(sess.run(wd), weight_decay * l2_loss.eval())
 
@@ -520,7 +532,7 @@ class ConvolutionTest(tf.test.TestCase):
       self.assertListEqual(list(eval_output.shape), expected_size_dynamic)
 
   def testDynamicOutputSizeWithRateOneValidPaddingNCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       num_filters = 32
       input_size = [5, 3, 9, 11]
       expected_size = [None, num_filters, None, None]
@@ -612,7 +624,7 @@ class Convolution2dTransposeTests(tf.test.TestCase):
 
   def testOutputSizeWithStrideOneSamePaddingNCHW(self):
     # `NCHW` data fomat is only supported for `GPU` device.
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True) as sess:
         num_filters = 32
         input_size = [5, 3, 10, 12]
@@ -1368,7 +1380,7 @@ class PartialFlattenTest(tf.test.TestCase):
 
       np.testing.assert_array_equal(expected_indices, flattened.indices)
       np.testing.assert_array_equal(expected_values, flattened.values)
-      np.testing.assert_array_equal(expected_shape, flattened.shape)
+      np.testing.assert_array_equal(expected_shape, flattened.dense_shape)
 
   def testIncompleteShape(self):
     """Test `_inner_flatten` shape inference for incomplete shapes."""
@@ -1455,6 +1467,36 @@ class FCTest(tf.test.TestCase):
       self.assertEqual(
           len(tf.contrib.framework.get_variables('fully_connected')), 4)
 
+  def testReuseWithRegularizer(self):
+    height, width = 3, 3
+    regularizer = lambda x: tf.reduce_sum(x) * 1e-3
+    inputs = tf.random_uniform((5, height * width * 3), seed=1)
+
+    tf.contrib.layers.fully_connected(inputs, 32, scope='fc1',
+                                      weights_regularizer=regularizer)
+    self.assertEqual(
+        len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)), 1)
+    self.assertEqual(len(tf.contrib.losses.get_regularization_losses()), 1)
+    tf.contrib.layers.fully_connected(inputs, 32, scope='fc1',
+                                      weights_regularizer=regularizer,
+                                      reuse=True)
+    self.assertEqual(
+        len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)), 1)
+    self.assertEqual(len(tf.contrib.losses.get_regularization_losses()), 1)
+
+    with tf.variable_scope('outer', reuse=False):
+      tf.contrib.layers.fully_connected(inputs, 32,
+                                        weights_regularizer=regularizer)
+      self.assertEqual(
+          len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)), 2)
+      self.assertEqual(len(tf.contrib.losses.get_regularization_losses()), 2)
+    with tf.variable_scope('outer', reuse=True):
+      tf.contrib.layers.fully_connected(inputs, 32,
+                                        weights_regularizer=regularizer)
+      self.assertEqual(
+          len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)), 2)
+      self.assertEqual(len(tf.contrib.losses.get_regularization_losses()), 2)
+
   def testCreateFCWithoutActivation(self):
     height, width = 3, 3
     with self.test_session():
@@ -1472,6 +1514,19 @@ class FCTest(tf.test.TestCase):
       wd = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)[0]
       self.assertEqual(wd.op.name,
                        'fully_connected/weights/Regularizer/l2_regularizer')
+      sess.run(tf.global_variables_initializer())
+      self.assertLess(sess.run(wd), 0.4)
+
+  def testCreateFCWithBD(self):
+    height, width = 3, 3
+    with self.test_session() as sess:
+      inputs = tf.random_uniform((5, height * width * 3), seed=1)
+      bias_decay = tf.contrib.layers.l2_regularizer(0.01)
+      tf.contrib.layers.fully_connected(inputs, 32,
+                                        biases_regularizer=bias_decay)
+      wd = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)[0]
+      self.assertEqual(wd.op.name,
+                       'fully_connected/bias/Regularizer/l2_regularizer')
       sess.run(tf.global_variables_initializer())
       self.assertLess(sess.run(wd), 0.4)
 
@@ -1558,14 +1613,14 @@ class BatchNormTest(tf.test.TestCase):
     with tf.Graph().as_default() as g, self.test_session(g):
       inputs = tf.placeholder(dtype=tf.float32)
       inputs.set_shape(tf.TensorShape((5, 3, 3, None)))
-      with self.assertRaisesRegexp(ValueError, 'undefined channels dimension'):
+      with self.assertRaisesRegexp(ValueError, 'undefined'):
         tf.contrib.layers.batch_norm(inputs, data_format='NHWC')
 
   def testUnknownChannelsDimNCHW(self):
     with tf.Graph().as_default() as g, self.test_session(g):
       inputs = tf.placeholder(dtype=tf.float32)
       inputs.set_shape(tf.TensorShape((5, None, 3, 3)))
-      with self.assertRaisesRegexp(ValueError, 'undefined channels dimension'):
+      with self.assertRaisesRegexp(ValueError, 'undefined'):
         tf.contrib.layers.batch_norm(inputs, data_format='NCHW')
 
   def testWeightedMomentsFused(self):
@@ -1727,7 +1782,7 @@ class BatchNormTest(tf.test.TestCase):
     self._testNoneUpdatesCollections(False, data_format='NCHW')
 
   def testNoneUpdatesCollectionsFusedNCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       self._testNoneUpdatesCollections(True, data_format='NCHW')
 
   def testNoneUpdatesCollectionsFusedNHWC(self):
@@ -1794,7 +1849,7 @@ class BatchNormTest(tf.test.TestCase):
     self._testDelayedUpdateMovingVars(False, data_format='NCHW')
 
   def testDelayedUpdateMovingVarsFusedNCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       self._testDelayedUpdateMovingVars(True, data_format='NCHW')
 
   def testDelayedUpdateMovingVarsFusedNHWC(self):
@@ -1982,7 +2037,7 @@ class BatchNormTest(tf.test.TestCase):
     self._testIsTrainingVariable(False, data_format='NCHW')
 
   def testIsTrainingVariableFusedNCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       self._testIsTrainingVariable(True, data_format='NCHW')
 
   def testIsTrainingVariableFusedNHWC(self):
@@ -2121,7 +2176,7 @@ class BatchNormTest(tf.test.TestCase):
     self._testNoneUpdatesCollectionIsTrainingVariable(False, data_format='NCHW')
 
   def testNoneUpdatesCollectionIsTrainingVariableFusedNCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       self._testNoneUpdatesCollectionIsTrainingVariable(
           True, data_format='NCHW')
 
@@ -2200,7 +2255,7 @@ class BatchNormTest(tf.test.TestCase):
     self._testTrainMovingVars(False, data_format='NCHW')
 
   def testTrainMovingVarsFusedNCHW(self):
-    if tf.test.is_gpu_available():
+    if tf.test.is_gpu_available(cuda_only=True):
       self._testTrainMovingVars(True, data_format='NCHW')
 
   def testTrainMovingVarsFusedNHWC(self):
@@ -2551,6 +2606,23 @@ class SeparableConv2dTest(tf.test.TestCase):
           tf.contrib.framework.get_variables('conv1/pointwise_weights'))
       self.assertTrue(tf.contrib.framework.get_variables('conv1/biases'))
 
+  def testCreateAtrousConvCreatesWeightsAndBiasesVars(self):
+    height, width = 3, 3
+    images = tf.random_uniform((5, height, width, 3), seed=1)
+    with self.test_session():
+      self.assertFalse(
+          tf.contrib.framework.get_variables('conv1/depthwise_weights'))
+      self.assertFalse(
+          tf.contrib.framework.get_variables('conv1/pointwise_weights'))
+      self.assertFalse(tf.contrib.framework.get_variables('conv1/biases'))
+      tf.contrib.layers.separable_conv2d(images, 32, [3, 3], 4, rate=2,
+                                         scope='conv1')
+      self.assertTrue(
+          tf.contrib.framework.get_variables('conv1/depthwise_weights'))
+      self.assertTrue(
+          tf.contrib.framework.get_variables('conv1/pointwise_weights'))
+      self.assertTrue(tf.contrib.framework.get_variables('conv1/biases'))
+
   def testCreateDepthwiseConvCreatesWeightsAndBiasesVars(self):
     height, width = 3, 3
     images = tf.random_uniform((5, height, width, 3), seed=1)
@@ -2591,12 +2663,28 @@ class SeparableConv2dTest(tf.test.TestCase):
           images, 32, [3, 3], 2, padding='VALID')
       self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 32])
 
+  def testCreateAtrousConvValid(self):
+    height, width = 5, 5
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 3), seed=1)
+      output = tf.contrib.layers.separable_conv2d(
+          images, 32, [3, 3], 2, padding='VALID', rate=2)
+      self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 32])
+
   def testCreateDepthwiseConvValid(self):
     height, width = 3, 3
     with self.test_session():
       images = tf.random_uniform((5, height, width, 3), seed=1)
       output = tf.contrib.layers.separable_conv2d(
           images, None, [3, 3], 2, padding='VALID')
+      self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 6])
+
+  def testCreateAtrousDepthwiseConvValid(self):
+    height, width = 5, 5
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 3), seed=1)
+      output = tf.contrib.layers.separable_conv2d(
+          images, None, [3, 3], 2, padding='VALID', rate=2)
       self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 6])
 
   def testCreateConvWithWeightDecay(self):
@@ -2612,13 +2700,13 @@ class SeparableConv2dTest(tf.test.TestCase):
       weight_decay = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)[0]
       self.assertEqual(
           weight_decay.op.name,
-          'SeparableConv2d/depthwise_weights/Regularizer/l2_regularizer')
+          'SeparableConv2d/depthwise_kernel/Regularizer/l2_regularizer')
       sess.run(tf.global_variables_initializer())
       self.assertLessEqual(sess.run(weight_decay), 0.05)
       weight_decay = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)[1]
       self.assertEqual(
           weight_decay.op.name,
-          'SeparableConv2d/pointwise_weights/Regularizer/l2_regularizer')
+          'SeparableConv2d/pointwise_kernel/Regularizer/l2_regularizer')
       self.assertLessEqual(sess.run(weight_decay), 0.05)
 
   def testReuseConvWithWeightDecay(self):

@@ -88,7 +88,7 @@ def one_hot_mask(labels, num_classes, scope=None):
     sparse_labels = tf.to_int32(tf.reshape(labels, [-1, 1]))
     sparse_size, _ = _shape(sparse_labels)
     indices = tf.reshape(tf.range(0, sparse_size, 1), [-1, 1])
-    concated = tf.concat(1, [indices, sparse_labels])
+    concated = tf.concat_v2([indices, sparse_labels], 1)
     dense_result = tf.sparse_to_dense(concated, [sparse_size, num_classes], 1.0,
                                       0.0)
     result = tf.reshape(dense_result, [height, width, num_classes])

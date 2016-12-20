@@ -184,8 +184,8 @@ def lanczos_bidiag(operator,
     i = tf.constant(0, dtype=tf.int32)
     _, ls = tf.while_loop(stopping_criterion, lanczos_bidiag_step, [i, ls])
     return lanzcos_bidiag_state(
-        tf.matrix_transpose(ls.u.pack()),
-        tf.matrix_transpose(ls.v.pack()), ls.alpha.pack(), ls.beta.pack())
+        tf.matrix_transpose(ls.u.stack()),
+        tf.matrix_transpose(ls.v.stack()), ls.alpha.stack(), ls.beta.stack())
 
 
 # TODO(rmlarsen): Implement C++ ops for handling bidiagonal matrices
@@ -228,4 +228,5 @@ def bidiag_matmul(matrix, alpha, beta, adjoint_b=False, name="bidiag_matmul"):
       beta = tf.expand_dims(beta[:-1], 0)
       shape = tf.shape(matrix)
       zero_column = tf.expand_dims(tf.zeros(shape[:1], dtype=matrix.dtype), 1)
-      return matrix * alpha + tf.concat(1, [zero_column, matrix[:, :-1] * beta])
+      return matrix * alpha + tf.concat_v2([zero_column, matrix[:, :-1] * beta],
+                                           1)

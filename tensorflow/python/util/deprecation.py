@@ -57,14 +57,20 @@ def _validate_deprecation_args(date, instructions):
     raise ValueError('Don\'t deprecate things without conversion instructions!')
 
 
-def _call_location(level=2):
+def _call_location():
   """Returns call location given level up from current call."""
-  stack = inspect.stack()
-  # Check that stack has enough elements.
-  if len(stack) > level:
-    location = stack[level]
-    return '%s:%d in %s.' % (location[1], location[2], location[3])
-  return '<unknown>'
+  frame = inspect.currentframe()
+  if frame:
+    # CPython internals are available, use them for performance.
+    # walk back two frames to get to deprecated function caller.
+    frame = frame.f_back
+    frame = frame.f_back
+    return '%s:%d' % (frame.f_code.co_filename, frame.f_lineno)
+  else:
+    # Slow fallback path
+    stack = inspect.stack(0)  # 0 avoids generating unused context
+    entry = stack[2]
+    return '%s:%d' % (entry[1], entry[2])
 
 
 def deprecated(date, instructions):
@@ -303,3 +309,29 @@ def deprecated_arg_values(date, instructions, **deprecated_kwargs):
         func.__doc__, date, instructions)
     return new_func
   return deprecated_wrapper
+
+
+def deprecated_argument_lookup(new_name, new_value, old_name, old_value):
+  """Looks up deprecated argument name and ensures both are not used.
+
+  Args:
+    new_name: new name of argument
+    new_value: value of new argument (or None if not used)
+    old_name: old name of argument
+    old_value: value of old argument (or None if not used)
+  Returns:
+    The effective argument that should be used.
+  Raises:
+    ValueError: if new_value and old_value are both non-null
+  """
+  if old_value is not None:
+    if new_value is not None:
+      raise ValueError("Cannot specify both '%s' and '%s'" %
+                       (old_name, new_name))
+    return old_value
+  return new_value
+
+
+def rewrite_argument_docstring(old_doc, old_argument, new_argument):
+  return old_doc.replace('`%s`' % old_argument, '`%s`' % new_argument).replace(
+      '%s:' % old_argument, '%s:' % new_argument)

@@ -10,15 +10,17 @@ load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 
 tf_cuda_library(
     name = "native",
-    srcs = [
-        "tensorflow.cc",
+    srcs = glob(["*.cc"]) + [
         ":jni.h",
         ":jni_md.h",
     ],
-    hdrs = ["tensorflow.h"],
+    hdrs = glob(["*.h"]),
     includes = ["."],
     deps = [
         "//tensorflow/c:c_api",
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:direct_session",
+        "//tensorflow/core:ops",
     ],
     alwayslink = 1,
 )
