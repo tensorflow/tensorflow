@@ -95,7 +95,7 @@ REGISTER_KERNEL_BUILDER(Name("Shape")
                             .TypeConstraint<int32>("T")
                             .TypeConstraint<int64>("out_type"),
                         ShapeOp<int64>);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 #if GOOGLE_CUDA
 #define REGISTER_GPU_KERNEL(type)                                \
@@ -265,11 +265,11 @@ REGISTER_KERNEL_BUILDER(Name("Rank").Device(DEVICE_CPU).HostMemory("output"),
                         RankOp);
 
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNEL(type)                        \
-  REGISTER_KERNEL_BUILDER(Name("Rank")                    \
-                              .Device(DEVICE_SYCL)        \
-                              .TypeConstraint<type>("T")  \
-                              .HostMemory("output"),      \
+#define REGISTER_SYCL_KERNEL(type)                       \
+  REGISTER_KERNEL_BUILDER(Name("Rank")                   \
+                              .Device(DEVICE_SYCL)       \
+                              .TypeConstraint<type>("T") \
+                              .HostMemory("output"),     \
                           RankOp);
 REGISTER_SYCL_KERNEL(float);
 #undef REGISTER_SYCL_KERNEL
@@ -290,7 +290,7 @@ REGISTER_KERNEL_BUILDER(Name("Rank")
                             .HostMemory("input")
                             .HostMemory("output"),
                         RankOp);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 #if GOOGLE_CUDA
 #define REGISTER_GPU_KERNEL(type)                        \

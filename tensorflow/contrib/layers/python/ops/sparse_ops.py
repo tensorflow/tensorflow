@@ -74,7 +74,7 @@ def dense_to_sparse_tensor(dense_tensor, ignore_value=None):
     if index_dims > 1:
       higher_dims = indices[:, :index_dims - 1]
       shape_multipliers = array_ops.stack(
-          _multiplier_helper(array_ops.unpack(dense_shape)[1:]))
+          _multiplier_helper(array_ops.unstack(dense_shape)[1:]))
       offsets = math_ops.reduce_sum(
           math_ops.mul(higher_dims, shape_multipliers), reduction_indices=[1])
       flat_indices = math_ops.add(flat_indices, offsets)

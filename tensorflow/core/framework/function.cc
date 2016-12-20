@@ -650,7 +650,7 @@ string Print(const FunctionDef& fdef) {
     strings::StrAppend(&out, Print(sig.output_arg(i)));
   }
   strings::StrAppend(&out, ") {\n");
-  if (fdef.node_def_size() > 0) {
+  if (fdef.node_def_size() > 0 || fdef.ret_size() > 0) {
     for (const auto& n : fdef.node_def()) {
       strings::StrAppend(&out, "  ", Print(n), "\n");
     }
@@ -772,7 +772,7 @@ Status InstantiateFunction(const FunctionDef& fdef,
   // Makes a copy of all attrs in fdef and substitutes placeholders.
   // After this step, every attr is bound to a concrete value.
   std::vector<InstantiateAttrValueMap> node_attrs;
-  if (fdef.node_def_size() > 0) {
+  if (fdef.node_def_size() > 0 || fdef.ret_size() > 0) {
     node_attrs.resize(fdef.node_def_size());
     for (int i = 0; i < fdef.node_def_size(); ++i) {
       for (auto attr : fdef.node_def(i).attr()) {

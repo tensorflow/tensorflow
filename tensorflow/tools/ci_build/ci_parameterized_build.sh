@@ -292,6 +292,9 @@ else
     MAVX)
       OPT_FLAG="${OPT_FLAG} -c opt --copt=-mavx"
       ;;
+    MAVXDBG)
+      OPT_FLAG="${OPT_FLAG} -c opt --copt=-g --copt=-mavx"
+      ;;
     MAVX2)
       OPT_FLAG="${OPT_FLAG} -c opt --copt=-mavx2"
       ;;

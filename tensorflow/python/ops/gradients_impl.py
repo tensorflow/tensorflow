@@ -886,7 +886,7 @@ def hessians(ys, xs, name="hessians", colocate_gradients_with_ops=False,
       _gradients = gradients(ys, x, **kwargs)[0]
       # Unpack the gradients into a list so we can take derivatives with
       # respect to each element
-      _gradients = array_ops.unpack(_gradients)
+      _gradients = array_ops.unstack(_gradients)
     with ops.name_scope(name + '_second_derivative'):
       # Compute the partial derivatives with respect to each element of the list
       _hess = [gradients(_gradient, x, **kwargs)[0] for _gradient in _gradients]

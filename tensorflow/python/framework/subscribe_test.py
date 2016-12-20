@@ -12,29 +12,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tf.subscribe."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import subscribe
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import googletest
 
 
 class SubscribeTest(test_util.TensorFlowTestCase):
 
   def testSideEffect(self):
-    a = tf.constant(1)
-    b = tf.constant(1)
-    c = tf.add(a, b)
-    with tf.control_dependencies([c]):
-      d = tf.constant(42)
-    n = tf.neg(c)
+    a = constant_op.constant(1)
+    b = constant_op.constant(1)
+    c = math_ops.add(a, b)
+    with ops.control_dependencies([c]):
+      d = constant_op.constant(42)
+    n = math_ops.negative(c)
 
     shared = []
 
@@ -42,7 +43,8 @@ class SubscribeTest(test_util.TensorFlowTestCase):
       shared.append(t)
       return t
 
-    c = subscribe.subscribe(c, lambda t: tf.py_func(sub, [t], [t.dtype]))
+    c = subscribe.subscribe(c,
+                            lambda t: script_ops.py_func(sub, [t], [t.dtype]))
 
     with self.test_session() as sess:
       c_out = sess.run([c])
@@ -56,10 +58,10 @@ class SubscribeTest(test_util.TensorFlowTestCase):
 
   def testCaching(self):
     """Confirm caching of control output is recacluated between calls."""
-    a = tf.constant(1)
-    b = tf.constant(2)
-    with tf.control_dependencies([a]):
-      c = tf.constant(42)
+    a = constant_op.constant(1)
+    b = constant_op.constant(2)
+    with ops.control_dependencies([a]):
+      c = constant_op.constant(42)
 
     shared = {}
 
@@ -67,14 +69,16 @@ class SubscribeTest(test_util.TensorFlowTestCase):
       shared[t] = shared.get(t, 0) + 1
       return t
 
-    a = subscribe.subscribe(a, lambda t: tf.py_func(sub, [t], [t.dtype]))
+    a = subscribe.subscribe(a,
+                            lambda t: script_ops.py_func(sub, [t], [t.dtype]))
 
-    with tf.control_dependencies([b]):
-      d = tf.constant(11)
+    with ops.control_dependencies([b]):
+      d = constant_op.constant(11)
 
     # If it was using outdated cached control_outputs then
     # evaling would not trigger the new subscription.
-    b = subscribe.subscribe(b, lambda t: tf.py_func(sub, [t], [t.dtype]))
+    b = subscribe.subscribe(b,
+                            lambda t: script_ops.py_func(sub, [t], [t.dtype]))
 
     with self.test_session() as sess:
       c_out = sess.run([c])

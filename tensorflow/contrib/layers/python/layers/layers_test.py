@@ -1668,11 +1668,32 @@ class BatchNormTest(tf.test.TestCase):
     with self.test_session():
       images = tf.random_uniform((5, height, width, 3), seed=1)
       tf.contrib.layers.batch_norm(images, scale=True)
+      self.assertEqual(len(tf.contrib.framework.get_model_variables()), 4)
       moving_mean = tf.contrib.framework.get_variables_by_name('moving_mean')[0]
       moving_variance = tf.contrib.framework.get_variables_by_name(
           'moving_variance')[0]
       self.assertEqual(moving_mean.op.name, 'BatchNorm/moving_mean')
       self.assertEqual(moving_variance.op.name, 'BatchNorm/moving_variance')
+
+  def testMovingAverageVariablesZeroDebias(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 3), seed=1)
+      tf.contrib.layers.batch_norm(images,
+                                   scale=True,
+                                   zero_debias_moving_mean=True)
+      self.assertEqual(len(tf.contrib.framework.get_model_variables()), 6)
+      moving_mean = tf.contrib.framework.get_variables_by_name('moving_mean')[0]
+      moving_variance = tf.contrib.framework.get_variables_by_name(
+          'moving_variance')[0]
+      biased = tf.contrib.framework.get_variables_by_name('biased')[0]
+      local_step = tf.contrib.framework.get_variables_by_name('local_step')[0]
+      self.assertEqual(moving_mean.op.name, 'BatchNorm/moving_mean')
+      self.assertEqual(moving_variance.op.name, 'BatchNorm/moving_variance')
+      self.assertEqual(biased.op.name,
+                       'BatchNorm/BatchNorm/moving_mean/biased')
+      self.assertEqual(local_step.op.name,
+                       'BatchNorm/BatchNorm/moving_mean/local_step')
 
   def testUpdatesCollection(self):
     height, width = 3, 3
@@ -1727,7 +1748,48 @@ class BatchNormTest(tf.test.TestCase):
       self.assertEqual(len(moving_variance), 1)
       self.assertEqual(moving_variance[0].op.name, 'BatchNorm/moving_variance')
 
-  def _testNoneUpdatesCollections(self, fused, data_format='NHWC'):
+  def testZeroDebiasMovingMean(self):
+    height, width = 3, 3
+    batch_size = 10
+    channels = 3
+    np.random.seed(1)
+    image_shape = (batch_size, height, width, channels)
+    axis = (0, 1, 2)
+    image_values = np.random.rand(*image_shape)
+    expected_mean = np.mean(image_values, axis=axis)
+    expected_var = np.var(image_values, axis=axis)
+
+    images = tf.constant(image_values, shape=image_shape, dtype=tf.float32)
+    output = tf.contrib.layers.batch_norm(images,
+                                          decay=0.1,
+                                          updates_collections=None,
+                                          zero_debias_moving_mean=True)
+    moving_mean = tf.contrib.framework.get_variables_by_name(
+        'BatchNorm/moving_mean')[0]
+    moving_variance = tf.contrib.framework.get_variables_by_name(
+        'moving_variance')[0]
+    biased = tf.contrib.framework.get_variables_by_name('biased')[0]
+    local_step = tf.contrib.framework.get_variables_by_name('local_step')[0]
+    with self.test_session() as sess:
+      sess.run(tf.global_variables_initializer())
+      self.assertAllClose(local_step.eval(), 0)
+      self.assertAllClose(moving_mean.eval(), [0]*channels)
+      self.assertAllClose(biased.eval(), [0]*channels)
+      self.assertAllClose(moving_variance.eval(), [1]*channels)
+      for i in range(10):
+        self.assertAllClose(local_step.eval(), i)
+        sess.run([output])
+        # In this case moving_mean == expected_mean after each update
+        self.assertAllClose(moving_mean.eval(), expected_mean)
+
+      # After 10 updates with decay 0.1 moving_mean == expected_mean,
+      # biased == expected_mean and moving_variance == expected_var.
+      self.assertAllClose(moving_mean.eval(), expected_mean)
+      self.assertAllClose(moving_variance.eval(), expected_var)
+      self.assertAllClose(biased.eval(), expected_mean)
+
+  def _testNoneUpdatesCollections(self, fused, data_format='NHWC',
+                                  zero_debias_moving_mean=False):
     height, width = 2, 2
     batch_size = 10
     channels = 3
@@ -1753,7 +1815,8 @@ class BatchNormTest(tf.test.TestCase):
           decay=0.1,
           updates_collections=None,
           fused=fused,
-          data_format=data_format)
+          data_format=data_format,
+          zero_debias_moving_mean=zero_debias_moving_mean)
       # updates_ops are not added to UPDATE_OPS collection.
       self.assertEqual(tf.get_collection(tf.GraphKeys.UPDATE_OPS), [])
       # Initialize all variables
@@ -1768,6 +1831,9 @@ class BatchNormTest(tf.test.TestCase):
       self.assertAllClose(variance, [1] * channels)
       for _ in range(10):
         sess.run([output])
+        if zero_debias_moving_mean:
+          # In this case moving_mean == expected_mean after update
+          self.assertAllClose(moving_mean.eval(), expected_mean)
       mean = moving_mean.eval()
       variance = moving_variance.eval()
       # After 10 updates with decay 0.1 moving_mean == expected_mean and
@@ -1781,6 +1847,14 @@ class BatchNormTest(tf.test.TestCase):
   def testNoneUpdatesCollectionsNCHW(self):
     self._testNoneUpdatesCollections(False, data_format='NCHW')
 
+  def testNoneUpdatesCollectionsNHWCZeroDebias(self):
+    self._testNoneUpdatesCollections(False, data_format='NHWC',
+                                     zero_debias_moving_mean=True)
+
+  def testNoneUpdatesCollectionsNCHWZeroDebias(self):
+    self._testNoneUpdatesCollections(False, data_format='NCHW',
+                                     zero_debias_moving_mean=True)
+
   def testNoneUpdatesCollectionsFusedNCHW(self):
     if tf.test.is_gpu_available(cuda_only=True):
       self._testNoneUpdatesCollections(True, data_format='NCHW')
@@ -1788,7 +1862,19 @@ class BatchNormTest(tf.test.TestCase):
   def testNoneUpdatesCollectionsFusedNHWC(self):
     self._testNoneUpdatesCollections(True, data_format='NHWC')
 
-  def _testDelayedUpdateMovingVars(self, fused, data_format='NHWC'):
+  def testNoneUpdatesCollectionsFusedNCHWZeroDebias(self):
+    if tf.test.is_gpu_available(cuda_only=True):
+      self._testNoneUpdatesCollections(True,
+                                       data_format='NCHW',
+                                       zero_debias_moving_mean=True)
+
+  def testNoneUpdatesCollectionsFusedNHWCZeroDebias(self):
+    self._testNoneUpdatesCollections(True,
+                                     data_format='NHWC',
+                                     zero_debias_moving_mean=True)
+
+  def _testDelayedUpdateMovingVars(self, fused, data_format='NHWC',
+                                   zero_debias_moving_mean=False):
     height, width = 2, 2
     batch_size = 10
     channels = 3
@@ -1810,7 +1896,8 @@ class BatchNormTest(tf.test.TestCase):
             batch_size * height * width, expected_var)
       images = tf.constant(image_values, shape=image_shape, dtype=tf.float32)
       output = tf.contrib.layers.batch_norm(
-          images, decay=0.1, fused=fused, data_format=data_format)
+          images, decay=0.1, fused=fused, data_format=data_format,
+          zero_debias_moving_mean=zero_debias_moving_mean)
       update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
       # updates_ops are added to UPDATE_OPS collection.
       self.assertEqual(len(update_ops), 2)
@@ -1829,6 +1916,10 @@ class BatchNormTest(tf.test.TestCase):
       self.assertAllClose(variance, [1] * channels)
       for _ in range(10):
         sess.run([output])
+        if zero_debias_moving_mean:
+          # In this case moving_mean == expected_mean after update
+          self.assertAllClose(moving_mean.eval(), expected_mean)
+
       mean = moving_mean.eval()
       variance = moving_variance.eval()
       # After 10 updates with decay 0.1 moving_mean == expected_mean and
@@ -1858,7 +1949,7 @@ class BatchNormTest(tf.test.TestCase):
   def testDelayedUpdateMovingVars(self):
     self._testDelayedUpdateMovingVars(False)
 
-  def testEvalMovingVars(self):
+  def _testEvalMovingVars(self, zero_debias_moving_mean=False):
     height, width = 3, 3
     with self.test_session() as sess:
       image_shape = (10, height, width, 3)
@@ -1893,6 +1984,12 @@ class BatchNormTest(tf.test.TestCase):
       self.assertAllClose(mean, expected_mean)
       self.assertAllClose(variance, expected_var)
 
+  def testEvalMovingVars(self):
+    self._testEvalMovingVars()
+
+  def testEvalMovingVarsZeroDebias(self):
+    self._testEvalMovingVars(True)
+
   def testEvalMovingVarsWithPartitioner(self):
     # This test makes sure that the moving-mean and moving-variance logic works
     # when `batch_norm` is called within a variable-scope that has a variable
@@ -1901,7 +1998,7 @@ class BatchNormTest(tf.test.TestCase):
     with tf.variable_scope(tf.get_variable_scope(), partitioner=partitioner):
       self.testEvalMovingVars()
 
-  def _testReuseVars(self, fused):
+  def _testReuseVars(self, fused, zero_debias_moving_mean=False):
     height, width = 3, 3
     batch_size = 10
     channels = 3
@@ -1916,14 +2013,16 @@ class BatchNormTest(tf.test.TestCase):
             batch_size * height * width, expected_var)
       images = tf.constant(image_values, shape=image_shape, dtype=tf.float32)
       output_train = tf.contrib.layers.batch_norm(
-          images, decay=0.1, is_training=True, scope='BN', fused=fused)
+          images, decay=0.1, is_training=True, scope='BN', fused=fused,
+          zero_debias_moving_mean=zero_debias_moving_mean)
       output_eval = tf.contrib.layers.batch_norm(
           images,
           decay=0.1,
           is_training=False,
           scope='BN',
           reuse=True,
-          fused=fused)
+          fused=fused,
+          zero_debias_moving_mean=zero_debias_moving_mean)
       # Initialize all variables
       sess.run(tf.global_variables_initializer())
       moving_mean = tf.contrib.framework.get_variables(
@@ -1964,7 +2063,14 @@ class BatchNormTest(tf.test.TestCase):
   def testReuseVarsFused(self):
     self._testReuseVars(True)
 
-  def _testIsTrainingVariable(self, fused, data_format='NHWC'):
+  def testReuseVarsDefaultZeroDebias(self):
+    self._testReuseVars(False, True)
+
+  def testReuseVarsFusedZeroDebias(self):
+    self._testReuseVars(True, True)
+
+  def _testIsTrainingVariable(self, fused, data_format='NHWC',
+                              zero_debias_moving_mean=False):
     height, width = 2, 2
     batch_size = 10
     channels = 3
@@ -1992,7 +2098,8 @@ class BatchNormTest(tf.test.TestCase):
           decay=0.1,
           is_training=is_training,
           fused=fused,
-          data_format=data_format)
+          data_format=data_format,
+          zero_debias_moving_mean=zero_debias_moving_mean)
       # Initialize all variables
       sess.run(tf.global_variables_initializer())
       moving_mean = tf.contrib.framework.get_variables(
@@ -2036,12 +2143,29 @@ class BatchNormTest(tf.test.TestCase):
   def testIsTrainingVariableNCHW(self):
     self._testIsTrainingVariable(False, data_format='NCHW')
 
+  def testIsTrainingVariableNHWCZeroDebias(self):
+    self._testIsTrainingVariable(False, data_format='NHWC',
+                                 zero_debias_moving_mean=True)
+
+  def testIsTrainingVariableNCHWZeroDebias(self):
+    self._testIsTrainingVariable(False, data_format='NCHW',
+                                 zero_debias_moving_mean=True)
+
   def testIsTrainingVariableFusedNCHW(self):
     if tf.test.is_gpu_available(cuda_only=True):
       self._testIsTrainingVariable(True, data_format='NCHW')
 
   def testIsTrainingVariableFusedNHWC(self):
     self._testIsTrainingVariable(True, data_format='NHWC')
+
+  def testIsTrainingVariableFusedNCHWZeroDebias(self):
+    if tf.test.is_gpu_available(cuda_only=True):
+      self._testIsTrainingVariable(True, data_format='NCHW',
+                                   zero_debias_moving_mean=True)
+
+  def testIsTrainingVariableFusedNHWCZeroDebias(self):
+    self._testIsTrainingVariable(True, data_format='NHWC',
+                                 zero_debias_moving_mean=True)
 
   def testNoUpdatesWhenIsTrainingFalse(self):
     height, width = 3, 3

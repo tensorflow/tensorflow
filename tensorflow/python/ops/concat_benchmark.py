@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Benchmark for split and grad of split."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -21,10 +22,18 @@ import itertools
 import random
 import time
 
-import tensorflow as tf
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.client import session as session_lib
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import flags
+from tensorflow.python.platform import test
 
-FLAGS = tf.app.flags.FLAGS
-tf.app.flags.DEFINE_boolean("use_gpu", True, """Run GPU benchmarks.""")
+FLAGS = flags.FLAGS
+flags.DEFINE_boolean("use_gpu", True, """Run GPU benchmarks.""")
 
 
 def build_graph(device, input_shape, variable, num_inputs, axis, grad):
@@ -41,35 +50,36 @@ def build_graph(device, input_shape, variable, num_inputs, axis, grad):
   Returns:
     An array of tensors to run()
   """
-  with tf.device("/%s:0" % device):
+  with ops.device("/%s:0" % device):
     if not variable:
-      inputs = [tf.zeros(input_shape) for _ in range(num_inputs)]
+      inputs = [array_ops.zeros(input_shape) for _ in range(num_inputs)]
     else:
       if axis == 1:
         inputs = [
-            tf.zeros([
+            array_ops.zeros([
                 input_shape[0],
                 random.randint(max(1, input_shape[1] - 5), input_shape[1] + 5)
             ]) for _ in range(num_inputs)
         ]
       else:
         inputs = [
-            tf.zeros([
+            array_ops.zeros([
                 random.randint(max(1, input_shape[0] - 5), input_shape[0] + 5),
                 input_shape[1]
             ]) for _ in range(num_inputs)
         ]
 
-    outputs = [tf.concat_v2(inputs, axis) for _ in range(100)]
+    outputs = [array_ops.concat_v2(inputs, axis) for _ in range(100)]
     if grad:
-      return tf.group(*list(
-          itertools.chain.from_iterable(
-              [tf.gradients(output, inputs) for output in outputs])))
+      return control_flow_ops.group(*list(
+          itertools.chain.from_iterable([
+              gradients_impl.gradients(output, inputs) for output in outputs
+          ])))
     else:
-      return tf.group(*outputs)
+      return control_flow_ops.group(*outputs)
 
 
-class ConcatBenchmark(tf.test.Benchmark):
+class ConcatBenchmark(test.Benchmark):
   """Benchmark concat."""
 
   def _run_graph(self, device, input_shape, variable, num_inputs, axis, grad,
@@ -88,15 +98,15 @@ class ConcatBenchmark(tf.test.Benchmark):
     Returns:
       The duration of the run in seconds.
     """
-    graph = tf.Graph()
+    graph = ops.Graph()
     with graph.as_default():
       outputs = build_graph(device, input_shape, variable, num_inputs, axis,
                             grad)
-    config = tf.ConfigProto(graph_options=tf.GraphOptions(
-        optimizer_options=tf.OptimizerOptions(
-            opt_level=tf.OptimizerOptions.L0)))
-    with tf.Session(graph=graph, config=config) as session:
-      tf.global_variables_initializer().run()
+    config = config_pb2.ConfigProto(graph_options=config_pb2.GraphOptions(
+        optimizer_options=config_pb2.OptimizerOptions(
+            opt_level=config_pb2.OptimizerOptions.L0)))
+    with session_lib.Session(graph=graph, config=config) as session:
+      variables.global_variables_initializer().run()
       _ = session.run(outputs)  # warm up.
       start_time = time.time()
       for _ in range(num_iters):
@@ -138,4 +148,4 @@ class ConcatBenchmark(tf.test.Benchmark):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

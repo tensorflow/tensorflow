@@ -163,6 +163,47 @@ class GrpcWorkerService : public AsyncServiceInterface {
 
   mutex mu_;
   CancellationManager* cancellation_manager_ GUARDED_BY(mu_);
+  struct PartialRunState {
+    CancellationManager* cancellation_manager;
+    Notification executor_done;
+
+    explicit PartialRunState(CancellationManager* cm)
+        : cancellation_manager(cm) {}
+  };
+  struct PairHash {
+    std::size_t operator()(std::pair<string, int> const& p) const {
+      return Hash64Combine(std::hash<string>()(p.first),
+                           std::hash<int>()(p.second));
+    }
+  };
+  std::unordered_map<std::pair<string, int>, std::unique_ptr<PartialRunState>,
+                     PairHash>
+      partial_runs_ GUARDED_BY(mu_);
+
+  PartialRunState* FindPartialRun(const string& graph_handle, int step_id) {
+    std::pair<string, int> k(graph_handle, step_id);
+    PartialRunState* prun_state = nullptr;
+    mutex_lock l(mu_);
+    auto it = partial_runs_.find(k);
+    if (it != partial_runs_.end()) {
+      prun_state = it->second.get();
+    }
+    return prun_state;
+  }
+
+  void InsertPartialRunLocked(const string& graph_handle, int step_id,
+                              PartialRunState* partial_run_state)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    std::pair<string, int> k(graph_handle, step_id);
+    partial_runs_.emplace(
+        std::make_pair(k, std::unique_ptr<PartialRunState>(partial_run_state)));
+  }
+
+  void RemovePartialRun(const string& graph_handle, int step_id) {
+    std::pair<string, int> k(graph_handle, step_id);
+    mutex_lock l(mu_);
+    partial_runs_.erase(partial_runs_.find(k));
+  }
 
   mutex shutdown_mu_;
   bool is_shutdown_ GUARDED_BY(shutdown_mu_);
@@ -225,7 +266,11 @@ class GrpcWorkerService : public AsyncServiceInterface {
   }
 
   void RunGraphHandler(WorkerCall<RunGraphRequest, RunGraphResponse>* call) {
-    env_->compute_pool->Schedule([this, call]() { DoRunGraph(call); });
+    if (call->request.is_partial()) {
+      env_->compute_pool->Schedule([this, call]() { DoPartialRunGraph(call); });
+    } else {
+      env_->compute_pool->Schedule([this, call]() { DoRunGraph(call); });
+    }
     ENQUEUE_REQUEST(RunGraph, true);
   }
 
@@ -294,10 +339,6 @@ class GrpcWorkerService : public AsyncServiceInterface {
 
   Status PrepareRunGraph(const RunGraphRequest& req, GraphMgr::NamedTensors* in,
                          GraphMgr::NamedTensors* out) {
-    if (req.is_partial()) {
-      return errors::Unimplemented(
-          "Partial run not implemented for GRPC worker service");
-    }
     if (req.send_size() > 0) {
       // TODO(zhifengc): Let the caller decide on which device to
       // allocate the tensor.
@@ -384,6 +425,110 @@ class GrpcWorkerService : public AsyncServiceInterface {
           delete out;
           call->SendResponse(ToGrpcStatus(s));
         });
+  }
+
+  // TODO(suharshs): Add stats collection support to partial run.
+  void DoPartialRunGraph(WorkerCall<RunGraphRequest, RunGraphResponse>* call) {
+    const int64 step_id = call->request.step_id();
+    const string& graph_handle = call->request.graph_handle();
+    TRACEPRINTF("PartialRunGraph: %lld", step_id);
+    GraphMgr::NamedTensors in;
+    GraphMgr::NamedTensors* out = new GraphMgr::NamedTensors;
+    Status s = PrepareRunGraph(call->request, &in, out);
+    auto finish = [this, call, out](const Status& s) {
+      delete out;
+      call->ClearCancelCallback();
+      call->SendResponse(ToGrpcStatus(s));
+    };
+    if (!s.ok()) {
+      finish(s);
+      return;
+    }
+
+    PartialRunState* partial_run_state = FindPartialRun(graph_handle, step_id);
+
+    CancellationManager* cm = nullptr;
+    // If this is a new partial run call we need to create a new cancellation
+    // manager.
+    // Otherwise we use the cancellation manager stored in the found partial
+    // run state.
+    if (partial_run_state == nullptr) {
+      cm = new CancellationManager;
+    } else {
+      cm = partial_run_state->cancellation_manager;
+    }
+
+    // Before we start doing anything, we set the RPC cancellation.
+    call->SetCancelCallback([this, cm, step_id]() {
+      cm->StartCancel();
+      AbortStep(step_id);
+    });
+
+    // If this is a new partial run request, the request will need to start the
+    // executors.
+    if (partial_run_state == nullptr) {
+      CancellationToken token;
+      {
+        mutex_lock l(mu_);
+        // Insert the new partial run into the partial_runs_ map.
+        partial_run_state = new PartialRunState(cm);
+        InsertPartialRunLocked(graph_handle, step_id, partial_run_state);
+        token = cancellation_manager_->get_cancellation_token();
+        cancellation_manager_->RegisterCallback(token,
+                                                [cm]() { cm->StartCancel(); });
+      }
+      env_->graph_mgr->ExecuteAsync(
+          graph_handle, step_id, call->request.exec_opts(),
+          nullptr /* collector */, nullptr /* cost_graph */, cm, in,
+          [this, step_id, graph_handle, token, partial_run_state](Status s) {
+            {
+              mutex_lock l(mu_);
+              cancellation_manager_->DeregisterCallback(token);
+            }
+            partial_run_state->executor_done.Notify();
+            // TODO(suharshs): Propagate the status once we keep state for
+            // each partial run call.
+          });
+    } else {
+      // Send the partial run's new inputs.
+      s = env_->graph_mgr->SendInputs(step_id, in);
+      if (!s.ok()) {
+        finish(s);
+        return;
+      }
+    }
+
+    // Receive the partial run's outputs.
+    s = env_->graph_mgr->RecvOutputs(step_id, out);
+    if (!s.ok()) {
+      finish(s);
+      return;
+    }
+
+    // Construct and return the resp.
+    for (const auto& p : *out) {
+      const string& key = p.first;
+      const Tensor& val = p.second;
+      auto* recv = call->response.add_recv();
+      recv->set_key(key);
+      // TODO(zhifengc): Deal with gpu -> cpu copy.
+      TensorProto* proto = recv->mutable_val();
+      val.AsProtoField(proto);
+    }
+
+    // If this is the last partial run request we must also wait for the entire
+    // graph execution to be completed.
+    if (call->request.is_last_partial_run()) {
+      partial_run_state->executor_done.WaitForNotification();
+      RemovePartialRun(graph_handle, step_id);
+      // Before deleting the cancellation manager on the final call, ensure
+      // that we clear the RPC cancel callback, which has a reference to the
+      // cancellation manager.
+      call->ClearCancelCallback();
+      delete cm;
+    }
+
+    finish(s);
   }
 
   // Helper for RecvTensor. Validates "key" and returns the source

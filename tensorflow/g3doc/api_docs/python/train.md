@@ -4237,8 +4237,8 @@ has two essential differences with the situation in which `begin` is called:
 
 * When this is called, the graph is finalized and ops can no longer be added
     to the graph.
-* This method will be called as a result of recovering a wrapped session,
-    instead of at the beginning of the overall session.
+* This method will also be called as a result of recovering a wrapped
+    session, not only at the beginning of the overall session.
 
 ##### Args:
 
@@ -4363,8 +4363,8 @@ has two essential differences with the situation in which `begin` is called:
 
 * When this is called, the graph is finalized and ops can no longer be added
     to the graph.
-* This method will be called as a result of recovering a wrapped session,
-    instead of at the beginning of the overall session.
+* This method will also be called as a result of recovering a wrapped
+    session, not only at the beginning of the overall session.
 
 ##### Args:
 
@@ -4452,8 +4452,8 @@ has two essential differences with the situation in which `begin` is called:
 
 * When this is called, the graph is finalized and ops can no longer be added
     to the graph.
-* This method will be called as a result of recovering a wrapped session,
-    instead of at the beginning of the overall session.
+* This method will also be called as a result of recovering a wrapped
+    session, not only at the beginning of the overall session.
 
 ##### Args:
 
@@ -4541,8 +4541,8 @@ has two essential differences with the situation in which `begin` is called:
 
 * When this is called, the graph is finalized and ops can no longer be added
     to the graph.
-* This method will be called as a result of recovering a wrapped session,
-    instead of at the beginning of the overall session.
+* This method will also be called as a result of recovering a wrapped
+    session, not only at the beginning of the overall session.
 
 ##### Args:
 
@@ -4609,8 +4609,8 @@ has two essential differences with the situation in which `begin` is called:
 
 * When this is called, the graph is finalized and ops can no longer be added
     to the graph.
-* This method will be called as a result of recovering a wrapped session,
-    instead of at the beginning of the overall session.
+* This method will also be called as a result of recovering a wrapped
+    session, not only at the beginning of the overall session.
 
 ##### Args:
 
@@ -4700,8 +4700,8 @@ has two essential differences with the situation in which `begin` is called:
 
 * When this is called, the graph is finalized and ops can no longer be added
     to the graph.
-* This method will be called as a result of recovering a wrapped session,
-    instead of at the beginning of the overall session.
+* This method will also be called as a result of recovering a wrapped
+    session, not only at the beginning of the overall session.
 
 ##### Args:
 
@@ -4797,8 +4797,8 @@ has two essential differences with the situation in which `begin` is called:
 
 * When this is called, the graph is finalized and ops can no longer be added
     to the graph.
-* This method will be called as a result of recovering a wrapped session,
-    instead of at the beginning of the overall session.
+* This method will also be called as a result of recovering a wrapped
+    session, not only at the beginning of the overall session.
 
 ##### Args:
 
@@ -4868,8 +4868,8 @@ has two essential differences with the situation in which `begin` is called:
 
 * When this is called, the graph is finalized and ops can no longer be added
     to the graph.
-* This method will be called as a result of recovering a wrapped session,
-    instead of at the beginning of the overall session.
+* This method will also be called as a result of recovering a wrapped
+    session, not only at the beginning of the overall session.
 
 ##### Args:
 

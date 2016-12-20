@@ -19,6 +19,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/contrib/input_pipeline:input_pipeline_py",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/learn/python/learn/datasets",
         "//tensorflow/contrib/linear_optimizer:sdca_ops_py",
@@ -31,6 +32,7 @@ py_library(
         "//tensorflow/contrib/tensor_forest:tensor_forest_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
+        "//tensorflow/python:client",
         "//tensorflow/python:clip_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:data_flow_ops",
