@@ -553,6 +553,19 @@ class BaseSession(SessionInterface):
     finally:
       tf_session.TF_DeleteSessionOptions(opts)
 
+
+  def add_onlineworker(self,task_index,addr):
+    """Add a worker join a distributed training tasks.. this func only to becall with ps server target
+    :param task_index:  new worker task_index on this distributed training tasks
+    :param addr: new worker addr
+    :return:
+    """
+    port=int(addr.split(':')[1])
+    with errors.raise_exception_on_not_ok_status() as status:
+      tf_session.TF_AddOnlineWorkerDeprecatedSession(self._session, status,"worker",str(task_index),addr)
+    print(" worker task_index:%d addr:%s has add to ps server:%s"%(task_index,addr,self._target))
+
+
   def close(self):
     """Closes this session.
 

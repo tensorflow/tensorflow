@@ -35,6 +35,7 @@ static const char* grpcMasterService_method_names[] = {
     "/tensorflow.MasterService/CloseSession",
     "/tensorflow.MasterService/ListDevices",
     "/tensorflow.MasterService/Reset",
+    "/tensorflow.MasterService/AddOnlineWorker"
 };
 
 std::unique_ptr<MasterService::Stub> MasterService::NewStub(
@@ -58,7 +59,9 @@ MasterService::Stub::Stub(
       rpcmethod_ListDevices_(grpcMasterService_method_names[4],
                              ::grpc::RpcMethod::NORMAL_RPC, channel),
       rpcmethod_Reset_(grpcMasterService_method_names[5],
-                       ::grpc::RpcMethod::NORMAL_RPC, channel) {}
+                       ::grpc::RpcMethod::NORMAL_RPC, channel),
+      rpcmethod_AddOnlineWorker_(grpcMasterService_method_names[6],
+                       ::grpc::RpcMethod::NORMAL_RPC, channel){}
 
 ::grpc::Status MasterService::Stub::CreateSession(
     ::grpc::ClientContext* context, const CreateSessionRequest& request,
@@ -66,6 +69,8 @@ MasterService::Stub::Stub(
   return ::grpc::BlockingUnaryCall(channel_.get(), rpcmethod_CreateSession_,
                                    context, request, response);
 }
+
+
 
 ::grpc::Status MasterService::Stub::ExtendSession(
     ::grpc::ClientContext* context, const ExtendSessionRequest& request,
@@ -102,8 +107,16 @@ MasterService::Stub::Stub(
                                    request, response);
 }
 
+::grpc::Status MasterService::Stub::AddOnlineWorker(
+     ::grpc::ClientContext* context, const AddOnlineWorkerRequest& request,
+     AddOnlineWorkerResponse* response) {
+   return ::grpc::BlockingUnaryCall(channel_.get(), rpcmethod_AddOnlineWorker_,
+                                       context, request, response);
+}
+
+
 MasterService::AsyncService::AsyncService() {
-  for (int i = 0; i < 6; ++i) {
+  for (int i = 0; i < 7; ++i) {
     AddMethod(new ::grpc::RpcServiceMethod(grpcMasterService_method_names[i],
                                            ::grpc::RpcMethod::NORMAL_RPC,
                                            nullptr));

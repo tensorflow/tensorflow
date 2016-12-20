@@ -76,6 +76,10 @@ class MasterService GRPC_FINAL {
     virtual ::grpc::Status Reset(::grpc::ClientContext* context,
                                  const ResetRequest& request,
                                  ResetResponse* response) = 0;
+
+    virtual  ::grpc::Status AddOnlineWorker(::grpc::ClientContext* context,
+                                     const AddOnlineWorkerRequest& request,
+                                     AddOnlineWorkerResponse* response)=0;
   };
   class Stub GRPC_FINAL : public StubInterface {
    public:
@@ -98,10 +102,14 @@ class MasterService GRPC_FINAL {
     ::grpc::Status Reset(::grpc::ClientContext* context,
                          const ResetRequest& request,
                          ResetResponse* response) GRPC_OVERRIDE;
+    ::grpc::Status AddOnlineWorker(::grpc::ClientContext* context,
+                                 const AddOnlineWorkerRequest& request,
+                                   AddOnlineWorkerResponse* response) GRPC_OVERRIDE;
 
    private:
     std::shared_ptr< ::grpc::ChannelInterface> channel_;
     const ::grpc::RpcMethod rpcmethod_CreateSession_;
+    const ::grpc::RpcMethod rpcmethod_AddOnlineWorker_;
     const ::grpc::RpcMethod rpcmethod_ExtendSession_;
     const ::grpc::RpcMethod rpcmethod_RunStep_;
     const ::grpc::RpcMethod rpcmethod_CloseSession_;
@@ -163,6 +171,15 @@ class MasterService GRPC_FINAL {
         ::grpc::ServerCompletionQueue* notification_cq, void* tag) {
       ::grpc::Service::RequestAsyncUnary(5, context, request, response,
                                          new_call_cq, notification_cq, tag);
+    }
+
+    void RequestAddOnlineWorker(
+              ::grpc::ServerContext* context, AddOnlineWorkerRequest* request,
+              ::grpc::ServerAsyncResponseWriter<AddOnlineWorkerResponse>* response,
+              ::grpc::CompletionQueue* new_call_cq,
+              ::grpc::ServerCompletionQueue* notification_cq, void* tag) {
+        ::grpc::Service::RequestAsyncUnary(6, context, request, response,
+                                           new_call_cq, notification_cq, tag);
     }
   };
 };

@@ -52,6 +52,24 @@ message CreateSessionResponse {
   int64 graph_version = 2;
 }
 
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// AddWorkerOnline  method request/response protos.
+//
+////////////////////////////////////////////////////////////////////////////////
+
+message AddOnlineWorkerRequest{
+  //The Request handle add one worker online
+  string  job_id=2;
+  string  task_index=3;
+  string  addr=4;
+}
+
+message AddOnlineWorkerResponse{
+  string response=1;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 // ExtendSession method request/response protos.

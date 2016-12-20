@@ -293,6 +293,10 @@ void Master::ExtendSession(const ExtendSessionRequest* req,
   });
 }
 
+
+
+
+
 void Master::PartialRunSetup(const PartialRunSetupRequest* req,
                              PartialRunSetupResponse* resp, MyClosure done) {
   mu_.lock();
@@ -360,21 +364,32 @@ void Master::CloseSession(const CloseSessionRequest* req,
 void Master::ListDevices(const ListDevicesRequest* req,
                          ListDevicesResponse* resp, MyClosure done) {
   SchedClosure([this, req, resp, done]() {
-    DeviceFinder finder({}, env_);
-    finder.Start();
-    finder.Wait();
-    std::vector<Device*> remote_devices;
-    finder.GetRemoteDevices(env_->local_devices, &remote_devices);
-    for (Device* dev : env_->local_devices) {
-      *(resp->add_local_device()) = dev->attributes();
-    }
-    for (Device* dev : remote_devices) {
-      *(resp->add_remote_device()) = dev->attributes();
-      delete dev;
-    }
-    done(Status::OK());
+      DeviceFinder finder({}, env_);
+      finder.Start();
+      finder.Wait();
+      std::vector<Device*> remote_devices;
+      finder.GetRemoteDevices(env_->local_devices, &remote_devices);
+      for (Device* dev : env_->local_devices) {
+        *(resp->add_local_device()) = dev->attributes();
+      }
+      for (Device* dev : remote_devices) {
+        *(resp->add_remote_device()) = dev->attributes();
+        delete dev;
+      }
+      done(Status::OK());
   });
 }
+
+
+//add online worker in ps server master threads
+void Master::AddOnlineWorker(const AddOnlineWorkerRequest* req, const AddOnlineWorkerResponse* resp, MyClosure done) {
+      SchedClosure([this, req, resp, done]() {
+          Status ret=env_->worker_cache->AddOnlineWorker(req->job_id(),req->task_index(),req->addr());
+          done(ret);
+      });
+}
+
+
 
 void Master::CleanupWorkers(const ResetRequest& reset) {
   std::vector<string> worker_names;

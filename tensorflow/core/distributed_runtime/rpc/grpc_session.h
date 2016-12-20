@@ -77,6 +77,7 @@ class GrpcSession : public Session {
 
   Status Extend(const GraphDef& graph) override;
   Status Extend(const RunOptions& run_options, const GraphDef& graph) override;
+  Status AddOnlineWorker(const string &job_id,const string &task_index,const string &addr) override;
 
   Status Close() override;
 
@@ -116,6 +117,7 @@ class GrpcSession : public Session {
   // Implementations for all the public interfaces.
   Status CreateImpl(CallOptions* call_options, const GraphDef& graph);
   Status ExtendImpl(CallOptions* call_options, const GraphDef& graph);
+
 
   TF_DISALLOW_COPY_AND_ASSIGN(GrpcSession);
 };

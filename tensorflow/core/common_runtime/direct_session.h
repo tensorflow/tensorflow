@@ -97,6 +97,9 @@ class DirectSession : public Session {
 
   ::tensorflow::Status Close() override;
 
+   //Addonline Only be used for distributed training tasks,so do not anything
+  ::tensorflow::Status AddOnlineWorker(const string &job_id,const string &task_index,const string &addr) override ;
+
   void ExportCostModels(CostModelManager::CostModelMap* cost_models) {
     cost_model_manager_.ExportCostModels(cost_models);
   }

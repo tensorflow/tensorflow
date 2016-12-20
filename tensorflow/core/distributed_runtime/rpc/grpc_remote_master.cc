@@ -43,6 +43,15 @@ class GrpcRemoteMaster : public MasterInterface {
     return FromGrpcStatus(stub_->CreateSession(&ctx, *request, response));
   }
 
+  Status AddOnlineWorker(CallOptions* call_options,
+                         const AddOnlineWorkerRequest* request,
+                         AddOnlineWorkerResponse* response) override {
+      ::grpc::ClientContext ctx;
+      ctx.set_fail_fast(false);
+      SetDeadline(&ctx, call_options->GetTimeout());
+      return FromGrpcStatus(stub_->AddOnlineWorker(&ctx, *request, response));
+    }
+
   Status ExtendSession(CallOptions* call_options,
                        const ExtendSessionRequest* request,
                        ExtendSessionResponse* response) override {

@@ -58,6 +58,10 @@ class MasterInterface {
 
   virtual Status Reset(CallOptions* call_options, const ResetRequest* request,
                        ResetResponse* response) = 0;
+
+  virtual Status  AddOnlineWorker(CallOptions* call_options,
+                             const AddOnlineWorkerRequest* request,
+                              AddOnlineWorkerResponse* response)=0;
 };
 
 }  // namespace tensorflow

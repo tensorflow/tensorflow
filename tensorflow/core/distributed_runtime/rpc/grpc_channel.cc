@@ -166,6 +166,41 @@ class MultiGrpcChannelCache : public CachingGrpcChannelCache {
     return cache->TranslateTask(target);
   }
 
+
+    //Add online worker to train a   distributed training tasks.  this func add a grpcchannel to MultiGrpcChannelCache
+  Status  AddOnlineWorker(const string &job_id,const string &name_prefix,const string &addr) override {
+      mutex_lock l(mu_);  // could use reader lock
+      GrpcChannelCache* cache = gtl::FindPtrOrNull(target_caches_, name_prefix);
+      if (cache!= nullptr){
+        return Status::OK();
+      }
+      for (GrpcChannelCache* c : caches_){
+        if (c->TranslateTask(name_prefix)!=""){
+          return Status::OK();
+        }
+      }
+      for (GrpcChannelCache* c : caches_){
+        if (c->getJobId()==job_id){
+          cache=c;
+          break;
+        }
+      }
+      if(cache == nullptr) {
+        return errors::NotFound("job "+job_id);
+      }
+      if(cache->TranslateTask(name_prefix)==""){
+        cache->AddOnlineWorker(job_id,name_prefix,addr);
+      }
+      return Status::OK();
+
+  }
+
+
+
+  string getJobId() override {
+      return "";
+  }
+
  protected:
   SharedGrpcChannelPtr FindChannelOnce(const string& target) override {
     for (GrpcChannelCache* cache : caches_) {
@@ -232,6 +267,20 @@ class SparseGrpcChannelCache : public CachingGrpcChannelCache {
     return iter->second;
   }
 
+    // in SparseGrpcChannelCache ,add worker to hos_ports
+   Status  AddOnlineWorker(const string &job_id,const string &name_prefix,const string &addr) override {
+       int id=host_ports_.size();
+       host_ports_.insert(std::map<int, string>::value_type(id,string(addr)));
+
+       return Status::OK();
+   }
+
+
+
+string getJobId() override {
+    return job_id_;
+}
+
  protected:
   SharedGrpcChannelPtr FindChannelOnce(const string& target) override {
     const string host_port = TranslateTask(target);
@@ -254,7 +303,7 @@ class SparseGrpcChannelCache : public CachingGrpcChannelCache {
   }
 
   const string job_id_;
-  const std::map<int, string> host_ports_;
+  std::map<int, string> host_ports_;
   const ChannelCreationFunction channel_func_;
   TF_DISALLOW_COPY_AND_ASSIGN(SparseGrpcChannelCache);
 };

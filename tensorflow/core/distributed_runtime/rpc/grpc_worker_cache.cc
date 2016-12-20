@@ -42,6 +42,10 @@ class GrpcWorkerCache : public WorkerCachePartial {
         });
   }
 
+
+
+
+
   // Explicit destructor to control destruction order.
   ~GrpcWorkerCache() override {
     completion_queue_.Shutdown();
@@ -51,6 +55,11 @@ class GrpcWorkerCache : public WorkerCachePartial {
 
   void ListWorkers(std::vector<string>* workers) override {
     channel_cache_->ListWorkers(workers);
+  }
+
+  Status AddOnlineWorker(const string& jobId,const string& taskIndex,const string &addr) override  {
+      string namePrefix =strings::StrCat("/job:", jobId, "/replica:0", "/task:",taskIndex);
+      return channel_cache_->AddOnlineWorker(jobId,namePrefix,addr);
   }
 
   WorkerInterface* CreateWorker(const string& target) override {

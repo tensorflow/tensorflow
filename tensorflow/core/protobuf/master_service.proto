@@ -105,4 +105,6 @@ service MasterService {
 
   // Close all existing sessions.
   rpc Reset(ResetRequest) returns (ResetResponse);
+
+  rpc AddOnlineWorker(AddOnlineWorkerRequest) returns (AddOnlineWorkerResponse);
 }
