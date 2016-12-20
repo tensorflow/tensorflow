@@ -21,6 +21,9 @@ from __future__ import print_function
 import math
 import numpy as np
 
+import tensorflow as tf
+
+from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
@@ -216,6 +219,15 @@ class StudentT(distribution.Distribution):
                          math_ops.lgamma(half_df)) /
             (math_ops.sqrt(self.df) * math.sqrt(math.pi) * self.sigma) *
             math_ops.pow(1. + math_ops.square(y) / self.df, -(0.5 + half_df)))
+
+  def _cdf(self, x):
+    # we use the same notation here as in wikipedia for the
+    t = (x - self.mu)/self.sigma
+    x_t = self.df / (math_ops.square(t) + self.df)
+    # The cdf is defined differently for positive and negative t
+    positive_cdf = 1. - 0.5 * math_ops.betainc(0.5 * self.df, 0.5, x_t)
+    negative_cdf = 0.5 * math_ops.betainc(0.5 * self.df, 0.5, x_t)
+    return tf.where(tf.less(t, 0), negative_cdf, positive_cdf)
 
   def _entropy(self):
     u = array_ops.expand_dims(self.df * self._ones(), -1)
