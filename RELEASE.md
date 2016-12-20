@@ -57,6 +57,8 @@
 * tf.image.decode_jpeg by default uses the faster DCT method, sacrificing
   a little fidelity for improved speed. One can revert to the old
   behavior by specifying the attribute dct_method='INTEGER_ACCURATE'.
+* `tf.complex_abs` has been removed from the Python interface. `tf.abs`
+  supports complex tensors and should be used instead.
 
 # Release 0.12.0
 

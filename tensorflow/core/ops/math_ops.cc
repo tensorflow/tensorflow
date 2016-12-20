@@ -175,13 +175,6 @@ Given a tensor `x` of complex numbers, this operation returns a tensor of type
 `float` or `double` that is the absolute value of each element in `x`. All
 elements in `x` must be complex numbers of the form \\(a + bj\\). The absolute
 value is computed as \\( \sqrt{a^2 + b^2}\\).
-
-For example:
-
-```
-# tensor 'x' is [[-2.25 + 4.75j], [-3.25 + 5.75j]]
-tf.complex_abs(x) ==> [5.25594902, 6.60492229]
-```
 )doc");
 
 // Declares cwise unary operations signature: 't -> 't
