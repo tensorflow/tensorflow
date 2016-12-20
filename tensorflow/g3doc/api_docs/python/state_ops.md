@@ -66,16 +66,16 @@ with tf.Session() as sess:
 ```
 
 The most common initialization pattern is to use the convenience function
-`initialize_all_variables()` to add an Op to the graph that initializes
+`global_variables_initializer()` to add an Op to the graph that initializes
 all the variables. You then run that Op after launching the graph.
 
 ```python
-# Add an Op to initialize all variables.
-init_op = tf.initialize_all_variables()
+# Add an Op to initialize global variables.
+init_op = tf.global_variables_initializer()
 
 # Launch the graph in a session.
 with tf.Session() as sess:
-    # Run the Op that initializes all variables.
+    # Run the Op that initializes global variables.
     sess.run(init_op)
     # ...you can now run any Op that uses variable values...
 ```
@@ -86,8 +86,8 @@ variables are initialized in the right order.
 
 All variables are automatically collected in the graph where they are
 created. By default, the constructor adds the new variable to the graph
-collection `GraphKeys.VARIABLES`. The convenience function
-`all_variables()` returns the contents of that collection.
+collection `GraphKeys.GLOBAL_VARIABLES`. The convenience function
+`global_variables()` returns the contents of that collection.
 
 When building a machine learning model it is often convenient to distinguish
 between variables holding the trainable model parameters and other variables
@@ -104,12 +104,12 @@ Creating a variable.
 
 - - -
 
-#### `tf.Variable.__init__(initial_value=None, trainable=True, collections=None, validate_shape=True, caching_device=None, name=None, variable_def=None, dtype=None)` {#Variable.__init__}
+#### `tf.Variable.__init__(initial_value=None, trainable=True, collections=None, validate_shape=True, caching_device=None, name=None, variable_def=None, dtype=None, expected_shape=None, import_scope=None)` {#Variable.__init__}
 
 Creates a new variable with value `initial_value`.
 
 The new variable is added to the graph collections listed in `collections`,
-which defaults to `[GraphKeys.VARIABLES]`.
+which defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
 
 If `trainable` is `True` the variable is also added to the graph collection
 `GraphKeys.TRAINABLE_VARIABLES`.
@@ -130,7 +130,7 @@ variable to its initial value.
     collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
     the default list of variables to use by the `Optimizer` classes.
 *  <b>`collections`</b>: List of graph collections keys. The new variable is added to
-    these collections. Defaults to `[GraphKeys.VARIABLES]`.
+    these collections. Defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
 *  <b>`validate_shape`</b>: If `False`, allows the variable to be initialized with a
     value of unknown shape. If `True`, the default, the shape of
     `initial_value` must be known.
@@ -147,6 +147,10 @@ variable to its initial value.
 *  <b>`dtype`</b>: If set, initial_value will be converted to the given type.
     If `None`, either the datatype will be kept (if `initial_value` is
     a Tensor), or `convert_to_tensor` will decide.
+*  <b>`expected_shape`</b>: A TensorShape. If set, initial_value is expected
+    to have this shape.
+*  <b>`import_scope`</b>: Optional `string`. Name scope to add to the
+    `Variable.` Only used when initializing from protocol buffer.
 
 ##### Raises:
 
@@ -164,6 +168,10 @@ Returns the value of the initialized variable.
 
 You should use this instead of the variable itself to initialize another
 variable with a value that depends on the value of this variable.
+
+Beware of using initialized_value except during initialization:
+initialized_value causes the Variable's initializer op to be run, so running
+this op resets the variable to the initial value.
 
 ```python
 # Initialize 'v' with a random tensor.
@@ -312,7 +320,7 @@ more information on launching a graph and on sessions.
 
 ```python
 v = tf.Variable([1, 2])
-init = tf.initialize_all_variables()
+init = tf.global_variables_initializer()
 
 with tf.Session() as sess:
     sess.run(init)
@@ -403,7 +411,8 @@ containing the absolute value of each element in `x`. For example, if x is
 an input element and y is an output element, this operation computes
 \\(y = |x|\\).
 
-See [`tf.complex_abs()`](#tf_complex_abs) to compute the absolute value of a complex
+See [`tf.complex_abs()`](#tf_complex_abs) to compute the absolute value of a
+complex
 number.
 
 ##### Args:
@@ -465,28 +474,25 @@ Returns the truth value of x AND y element-wise.
 
 #### `tf.Variable.__div__(a, *args)` {#Variable.__div__}
 
-Returns x / y element-wise.
-
-*NOTE*: `Div` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+Divide two values using Python 2 semantics. Used for Tensor.__div__.
 
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`x`</b>: `Tensor` numerator of real numeric type.
+*  <b>`y`</b>: `Tensor` denominator of real numeric type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  `x / y` returns the quotient of x and y.
 
 
 - - -
 
 #### `tf.Variable.__floordiv__(a, *args)` {#Variable.__floordiv__}
 
-Divides `x / y` elementwise, rounding down for floating point.
+Divides `x / y` elementwise, rounding toward the most negative integer.
 
 The same as `tf.div(x,y)` for integers, but uses `tf.floor(tf.div(x,y))` for
 floating point arguments so that the result is always an integer (though
@@ -560,7 +566,7 @@ For example,
 import tensorflow as tf
 A = tf.Variable([[1,2,3], [4,5,6], [7,8,9]], dtype=tf.float32)
 with tf.Session() as sess:
-  sess.run(tf.initialize_all_variables())
+  sess.run(tf.global_variables_initializer())
   print sess.run(A[:2, :2]) # => [[1,2], [4,5]]
 
   op = A[:2,:2].assign(22. * tf.ones((2, 2)))
@@ -689,9 +695,12 @@ Returns the truth value of (x < y) element-wise.
 
 #### `tf.Variable.__mod__(a, *args)` {#Variable.__mod__}
 
-Returns element-wise remainder of division.
+Returns element-wise remainder of division. When `x < 0` xor `y < 0` is
 
-*NOTE*: `Mod` supports broadcasting. More about broadcasting
+true, this follows Python semantics in that the result here is consistent
+with a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.
+
+*NOTE*: `FloorMod` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
@@ -828,28 +837,25 @@ Returns the truth value of x AND y element-wise.
 
 #### `tf.Variable.__rdiv__(a, *args)` {#Variable.__rdiv__}
 
-Returns x / y element-wise.
-
-*NOTE*: `Div` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+Divide two values using Python 2 semantics. Used for Tensor.__div__.
 
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`x`</b>: `Tensor` numerator of real numeric type.
+*  <b>`y`</b>: `Tensor` denominator of real numeric type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  `x / y` returns the quotient of x and y.
 
 
 - - -
 
 #### `tf.Variable.__rfloordiv__(a, *args)` {#Variable.__rfloordiv__}
 
-Divides `x / y` elementwise, rounding down for floating point.
+Divides `x / y` elementwise, rounding toward the most negative integer.
 
 The same as `tf.div(x,y)` for integers, but uses `tf.floor(tf.div(x,y))` for
 floating point arguments so that the result is always an integer (though
@@ -884,9 +890,12 @@ as well.
 
 #### `tf.Variable.__rmod__(a, *args)` {#Variable.__rmod__}
 
-Returns element-wise remainder of division.
+Returns element-wise remainder of division. When `x < 0` xor `y < 0` is
 
-*NOTE*: `Mod` supports broadcasting. More about broadcasting
+true, this follows Python semantics in that the result here is consistent
+with a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.
+
+*NOTE*: `FloorMod` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
@@ -983,34 +992,7 @@ Returns x - y element-wise.
 
 #### `tf.Variable.__rtruediv__(a, *args)` {#Variable.__rtruediv__}
 
-Divides x / y elementwise, always producing floating point results.
 
-The same as `tf.div` for floating point arguments, but casts integer arguments
-to floating point before dividing so that the result is always floating point.
-This op is generated by normal `x / y` division in Python 3 and in Python 2.7
-with `from __future__ import division`.  If you want integer division that
-rounds down, use `x // y` or `tf.floordiv`.
-
-`x` and `y` must have the same numeric type.  If the inputs are floating
-point, the output will have the same type.  If the inputs are integral, the
-inputs are cast to `float32` for `int8` and `int16` and `float64` for `int32`
-and `int64` (matching the behavior of Numpy).
-
-##### Args:
-
-
-*  <b>`x`</b>: `Tensor` numerator of numeric type.
-*  <b>`y`</b>: `Tensor` denominator of numeric type.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  `x / y` evaluated in floating point.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: If `x` and `y` have different dtypes.
 
 
 - - -
@@ -1018,6 +1000,13 @@ and `int64` (matching the behavior of Numpy).
 #### `tf.Variable.__rxor__(a, *args)` {#Variable.__rxor__}
 
 x ^ y = (x | y) & ~(x & y).
+
+
+- - -
+
+#### `tf.Variable.__str__()` {#Variable.__str__}
+
+
 
 
 - - -
@@ -1045,34 +1034,7 @@ Returns x - y element-wise.
 
 #### `tf.Variable.__truediv__(a, *args)` {#Variable.__truediv__}
 
-Divides x / y elementwise, always producing floating point results.
 
-The same as `tf.div` for floating point arguments, but casts integer arguments
-to floating point before dividing so that the result is always floating point.
-This op is generated by normal `x / y` division in Python 3 and in Python 2.7
-with `from __future__ import division`.  If you want integer division that
-rounds down, use `x // y` or `tf.floordiv`.
-
-`x` and `y` must have the same numeric type.  If the inputs are floating
-point, the output will have the same type.  If the inputs are integral, the
-inputs are cast to `float32` for `int8` and `int16` and `float64` for `int32`
-and `int64` (matching the behavior of Numpy).
-
-##### Args:
-
-
-*  <b>`x`</b>: `Tensor` numerator of numeric type.
-*  <b>`y`</b>: `Tensor` denominator of numeric type.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  `x / y` evaluated in floating point.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: If `x` and `y` have different dtypes.
 
 
 - - -
@@ -1084,7 +1046,7 @@ x ^ y = (x | y) & ~(x & y).
 
 - - -
 
-#### `tf.Variable.from_proto(variable_def)` {#Variable.from_proto}
+#### `tf.Variable.from_proto(variable_def, import_scope=None)` {#Variable.from_proto}
 
 Returns a `Variable` object created from `variable_def`.
 
@@ -1107,32 +1069,86 @@ the variable.
 
 - - -
 
-#### `tf.Variable.ref()` {#Variable.ref}
+#### `tf.Variable.load(value, session=None)` {#Variable.load}
 
-Returns a reference to this variable.
+Load new value into this variable
 
-You usually do not need to call this method as all ops that need a reference
-to the variable call it automatically.
+Writes new value to variable's memory. Doesn't add ops to the graph.
 
-Returns is a `Tensor` which holds a reference to the variable.  You can
-assign a new value to the variable by passing the tensor to an assign op.
-See [`value()`](#Variable.value) if you want to get the value of the
-variable.
+This convenience method requires a session where the graph containing this
+variable has been launched. If no session is passed, the default session is
+used.  See the [Session class](../../api_docs/python/client.md#Session) for
+more information on launching a graph and on sessions.
 
-##### Returns:
+```python
+v = tf.Variable([1, 2])
+init = tf.global_variables_initializer()
 
-  A `Tensor` that is a reference to the variable.
+with tf.Session() as sess:
+    sess.run(init)
+    # Usage passing the session explicitly.
+    v.load([2, 3], sess)
+    print(v.eval(sess)) # prints [2 3]
+    # Usage with the default session.  The 'with' block
+    # above makes 'sess' the default session.
+    v.load([3, 4], sess)
+    print(v.eval()) # prints [3 4]
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: New variable value
+*  <b>`session`</b>: The session to use to evaluate this variable. If
+      none, the default session is used.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: Session is not passed and no default session
 
 
 - - -
 
-#### `tf.Variable.to_proto()` {#Variable.to_proto}
+#### `tf.Variable.read_value()` {#Variable.read_value}
 
-Converts a `Variable` to a `VariableDef` protocol buffer.
+Returns the value of this variable, read in the current context.
+
+Can be different from value() if it's on another device, with control
+dependencies, etc.
 
 ##### Returns:
 
-  A `VariableDef` protocol buffer.
+  A `Tensor` containing the value of the variable.
+
+
+- - -
+
+#### `tf.Variable.set_shape(shape)` {#Variable.set_shape}
+
+Overrides the shape for this variable.
+
+##### Args:
+
+
+*  <b>`shape`</b>: the `TensorShape` representing the overridden shape.
+
+
+- - -
+
+#### `tf.Variable.to_proto(export_scope=None)` {#Variable.to_proto}
+
+Converts a `Variable` to a `VariableDef` protocol buffer.
+
+##### Args:
+
+
+*  <b>`export_scope`</b>: Optional `string`. Name scope to remove.
+
+##### Returns:
+
+  A `VariableDef` protocol buffer, or `None` if the `Variable` is not
+  in the specified name scope.
 
 
 - - -
@@ -1146,8 +1162,6 @@ of the variable call it automatically through a `convert_to_tensor()` call.
 
 Returns a `Tensor` which holds the value of the variable.  You can not
 assign a new value to this tensor as it is not a reference to the variable.
-See [`ref()`](#Variable.ref) if you want to get a reference to the
-variable.
 
 To avoid copies, if the consumer of the returned value is on the same device
 as the variable, this actually returns the live value of the variable, not
@@ -1168,17 +1182,55 @@ collected in the graph.
 
 - - -
 
-### `tf.all_variables()` {#all_variables}
+### `tf.global_variables()` {#global_variables}
 
-Returns all variables that must be saved/restored.
+Returns global variables.
 
-The `Variable()` constructor automatically adds new variables to the graph
-collection `GraphKeys.VARIABLES`. This convenience function returns the
-contents of that collection.
+Global variables are variables that are shared across machines in a
+distributed environment. The `Variable()` constructor or `get_variable()`
+automatically adds new variables to the graph collection
+`GraphKeys.GLOBAL_VARIABLES`.
+This convenience function returns the contents of that collection.
+
+An alternative to global variables are local variables. See
+[`tf.local_variables()`](../../api_docs/python/state_ops.md#local_variables)
 
 ##### Returns:
 
   A list of `Variable` objects.
+
+
+- - -
+
+### `tf.local_variables()` {#local_variables}
+
+Returns local variables.
+
+Local variables - per process variables, usually not saved/restored to
+checkpoint and used for temporary or intermediate values.
+For example, they can be used as counters for metrics computation or
+number of epochs this machine has read data.
+The `local_variable()` automatically adds new variable to
+`GraphKeys.LOCAL_VARIABLES`.
+This convenience function returns the contents of that collection.
+
+An alternative to local variables are global variables. See
+[`tf.global_variables()`](../../api_docs/python/state_ops.md#global_variables)
+
+##### Returns:
+
+  A list of local `Variable` objects.
+
+
+- - -
+
+### `tf.model_variables()` {#model_variables}
+
+Returns all variables in the MODEL_VARIABLES collection.
+
+##### Returns:
+
+  A list of local Variable objects.
 
 
 - - -
@@ -1195,28 +1247,6 @@ contents of that collection.
 ##### Returns:
 
   A list of Variable objects.
-
-
-- - -
-
-### `tf.local_variables()` {#local_variables}
-
-Returns all variables created with collection=[LOCAL_VARIABLES].
-
-##### Returns:
-
-  A list of local Variable objects.
-
-
-- - -
-
-### `tf.model_variables()` {#model_variables}
-
-Returns all variables in the MODEL_VARIABLES collection.
-
-##### Returns:
-
-  A list of local Variable objects.
 
 
 - - -
@@ -1238,20 +1268,33 @@ This convenience function returns the contents of that collection.
 
 - - -
 
-### `tf.initialize_all_variables()` {#initialize_all_variables}
+### `tf.global_variables_initializer()` {#global_variables_initializer}
 
-Returns an Op that initializes all variables.
+Returns an Op that initializes global variables.
 
-This is just a shortcut for `initialize_variables(all_variables())`
+This is just a shortcut for `variable_initializers(global_variables())`
 
 ##### Returns:
 
-  An Op that initializes all variables in the graph.
+  An Op that initializes global variables in the graph.
 
 
 - - -
 
-### `tf.initialize_variables(var_list, name='init')` {#initialize_variables}
+### `tf.local_variables_initializer()` {#local_variables_initializer}
+
+Returns an Op that initializes all local variables.
+
+This is just a shortcut for `variable_initializers(local_variables())`
+
+##### Returns:
+
+  An Op that initializes all local variables in the graph.
+
+
+- - -
+
+### `tf.variables_initializer(var_list, name='init')` {#variables_initializer}
 
 Returns an Op that initializes a list of variables.
 
@@ -1274,19 +1317,6 @@ be run. That Op just has no effect.
 ##### Returns:
 
   An Op that run the initializers of all the specified variables.
-
-
-- - -
-
-### `tf.initialize_local_variables()` {#initialize_local_variables}
-
-Returns an Op that initializes all local variables.
-
-This is just a shortcut for `initialize_variables(local_variables())`
-
-##### Returns:
-
-  An Op that initializes all local variables in the graph.
 
 
 - - -
@@ -1319,7 +1349,7 @@ variables if there are any, or an empty array if there are none.
 
 
 *  <b>`var_list`</b>: List of `Variable` objects to check. Defaults to the
-    value of `all_variables() + local_variables()`
+    value of `global_variables() + local_variables()`
 *  <b>`name`</b>: Optional name of the `Operation`.
 
 ##### Returns:
@@ -1348,7 +1378,7 @@ logged by the C++ runtime. This is expected.
 
 
 *  <b>`var_list`</b>: List of `Variable` objects to check. Defaults to the
-    value of `all_variables().`
+    value of `global_variables().`
 
 ##### Returns:
 
@@ -1522,7 +1552,7 @@ protocol buffer file in the call to `save()`.
 
 - - -
 
-#### `tf.train.Saver.__init__(var_list=None, reshape=False, sharded=False, max_to_keep=5, keep_checkpoint_every_n_hours=10000.0, name=None, restore_sequentially=False, saver_def=None, builder=None, defer_build=False, allow_empty=False, write_version=1)` {#Saver.__init__}
+#### `tf.train.Saver.__init__(var_list=None, reshape=False, sharded=False, max_to_keep=5, keep_checkpoint_every_n_hours=10000.0, name=None, restore_sequentially=False, saver_def=None, builder=None, defer_build=False, allow_empty=False, write_version=2, pad_step_number=False)` {#Saver.__init__}
 
 Creates a `Saver`.
 
@@ -1591,10 +1621,13 @@ checkpoints per device.
     variables in the graph. Otherwise, construct the saver anyway and make
     it a no-op.
 *  <b>`write_version`</b>: controls what format to use when saving checkpoints.  It
-    also affects certain filepath matching logic.  Defaults to V1
-    currently, and will be switched to the more memory-efficient V2 format
-    in the future.  If set to V2, the Saver is still able to restore from
-    old V1 checkpoints.
+    also affects certain filepath matching logic.  The V2 format is the
+    recommended choice: it is much more optimized than V1 in terms of
+    memory required and latency incurred during restore.  Regardless of
+    this flag, the Saver is able to restore from both V2 and V1 checkpoints.
+*  <b>`pad_step_number`</b>: if True, pads the global step number in the checkpoint
+    filepaths to some fixed width (8 by default).  This is turned off by
+    default.
 
 ##### Raises:
 
@@ -1605,7 +1638,7 @@ checkpoints per device.
 
 - - -
 
-#### `tf.train.Saver.save(sess, save_path, global_step=None, latest_filename=None, meta_graph_suffix='meta', write_meta_graph=True)` {#Saver.save}
+#### `tf.train.Saver.save(sess, save_path, global_step=None, latest_filename=None, meta_graph_suffix='meta', write_meta_graph=True, write_state=True)` {#Saver.save}
 
 Saves variables.
 
@@ -1633,6 +1666,8 @@ path can be passed directly to a call to `restore()`.
 *  <b>`meta_graph_suffix`</b>: Suffix for `MetaGraphDef` file. Defaults to 'meta'.
 *  <b>`write_meta_graph`</b>: `Boolean` indicating whether or not to write the meta
     graph file.
+*  <b>`write_state`</b>: `Boolean` indicating whether or not to write the
+    `CheckpointStateProto`.
 
 ##### Returns:
 
@@ -1669,11 +1704,6 @@ The `save_path` argument is typically a value previously returned from a
 
 *  <b>`sess`</b>: A `Session` to use to restore the parameters.
 *  <b>`save_path`</b>: Path where parameters were previously saved.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If the given `save_path` does not point to a file.
 
 
 
@@ -1749,7 +1779,7 @@ Builds saver_def.
 
 - - -
 
-#### `tf.train.Saver.export_meta_graph(filename=None, collection_list=None, as_text=False)` {#Saver.export_meta_graph}
+#### `tf.train.Saver.export_meta_graph(filename=None, collection_list=None, as_text=False, export_scope=None, clear_devices=False)` {#Saver.export_meta_graph}
 
 Writes `MetaGraphDef` to save_path/filename.
 
@@ -1759,6 +1789,9 @@ Writes `MetaGraphDef` to save_path/filename.
 *  <b>`filename`</b>: Optional meta_graph filename including the path.
 *  <b>`collection_list`</b>: List of string keys to collect.
 *  <b>`as_text`</b>: If `True`, writes the meta_graph as an ASCII proto.
+*  <b>`export_scope`</b>: Optional `string`. Name scope to remove.
+*  <b>`clear_devices`</b>: Whether or not to clear the device field for an `Operation`
+    or `Tensor` during export.
 
 ##### Returns:
 
@@ -1767,9 +1800,19 @@ Writes `MetaGraphDef` to save_path/filename.
 
 - - -
 
-#### `tf.train.Saver.from_proto(saver_def)` {#Saver.from_proto}
+#### `tf.train.Saver.from_proto(saver_def, import_scope=None)` {#Saver.from_proto}
 
 Returns a `Saver` object created from `saver_def`.
+
+##### Args:
+
+
+*  <b>`saver_def`</b>: a `SaveDef` protocol buffer.
+*  <b>`import_scope`</b>: Optional `string`. Name scope to use.
+
+##### Returns:
+
+  A `Saver` built from saver_def.
 
 
 - - -
@@ -1793,9 +1836,14 @@ Sets the list of old checkpoint filenames.
 
 - - -
 
-#### `tf.train.Saver.to_proto()` {#Saver.to_proto}
+#### `tf.train.Saver.to_proto(export_scope=None)` {#Saver.to_proto}
 
 Converts this `Saver` to a `SaverDef` protocol buffer.
+
+##### Args:
+
+
+*  <b>`export_scope`</b>: Optional `string`. Name scope to remove.
 
 ##### Returns:
 
@@ -1932,7 +1980,7 @@ Some useful partitioners are available.  See, e.g.,
 *  <b>`trainable`</b>: If `True` also add the variable to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
 *  <b>`collections`</b>: List of graph collections keys to add the Variable to.
-    Defaults to `[GraphKeys.VARIABLES]` (see `tf.Variable`).
+    Defaults to `[GraphKeys.GLOBAL_VARIABLES]` (see `tf.Variable`).
 *  <b>`caching_device`</b>: Optional device string or function describing where the
     Variable should be cached for reading.  Defaults to the Variable's
     device.  If not `None`, caches on another device.  Typical use is to
@@ -2233,7 +2281,7 @@ Returns the current variable scope.
 
 - - -
 
-### `tf.make_template(name_, func_, create_scope_now_=False, unique_name_=None, **kwargs)` {#make_template}
+### `tf.make_template(name_, func_, create_scope_now_=False, unique_name_=None, custom_getter_=None, **kwargs)` {#make_template}
 
 Given an arbitrary function, wrap it so that it does variable sharing.
 
@@ -2248,7 +2296,7 @@ have the following properties:
    that are intended to be locals can be created by specifying
    `tf.Variable(..., trainable=false)`.
 * The function may use variable scopes and other templates internally to
-    create and reuse variables, but it shouldn't use `tf.all_variables` to
+    create and reuse variables, but it shouldn't use `tf.global_variables` to
     capture variables that are defined outside of the scope of the function.
 * Internal scopes and variable names should not depend on any arguments that
     are not supplied to `make_template`. In general you will get a ValueError
@@ -2324,6 +2372,9 @@ reduce the likelihood of collisions with kwargs.
 *  <b>`unique_name_`</b>: When used, it overrides name_ and is not made unique. If a
     template of the same scope/unique_name already exists and reuse is false,
     an error is raised. Defaults to None.
+*  <b>`custom_getter_`</b>: Optional custom getter for variables used in `func_`. See
+    the [`get_variable`](#get_variable) `custom_getter` documentation for
+    more information.
 *  <b>`**kwargs`</b>: Keyword arguments to apply to `func_`.
 
 ##### Returns:
@@ -2427,7 +2478,7 @@ tensor shape, the initializer will raise a `ValueError`.
 
 
 *  <b>`ValueError`</b>: Too many elements provided. Needed at most 6, but received 8
-  ```
+```
 
 
 - - -
@@ -2558,16 +2609,51 @@ numerically computed: for a linear layer it's 1.0, relu: ~1.43, tanh: ~1.15.
 
 - - -
 
-### `tf.zeros_initializer(shape, dtype=tf.float32, partition_info=None)` {#zeros_initializer}
+### `tf.zeros_initializer(dtype=tf.float32)` {#zeros_initializer}
 
-An adaptor for zeros() to match the Initializer spec.
+Returns an initializer that generates tensors initialized to 0.
 
 
 - - -
 
-### `tf.ones_initializer(shape, dtype=tf.float32, partition_info=None)` {#ones_initializer}
+### `tf.ones_initializer(dtype=tf.float32)` {#ones_initializer}
 
 An adaptor for ones() to match the Initializer spec.
+
+
+- - -
+
+### `tf.orthogonal_initializer(gain=1.0, dtype=tf.float32, seed=None)` {#orthogonal_initializer}
+
+Returns an initializer that generates an orthogonal matrix or a reshaped 
+orthogonal matrix.
+
+If the shape of the tensor to initialize is two-dimensional, i is initialized
+with an orthogonal matrix obtained from the singular value decomposition of a
+matrix of uniform random numbers.
+
+If the shape of the tensor to initialize is more than two-dimensional, a matrix
+of shape `(shape[0] * ... * shape[n - 2], shape[n - 1])` is initialized, where
+`n` is the length of the shape vector. The matrix is subsequently reshaped to
+give a tensor of the desired shape.
+
+##### Args:
+
+
+*  <b>`gain`</b>: multiplicative factor to apply to the orthogonal matrix
+*  <b>`dtype`</b>: The type of the output.
+*  <b>`seed`</b>: A Python integer. Used to create random seeds. See
+    [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+    for behavior.
+
+##### Returns:
+
+  An initializer that generates orthogonal tensors
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `dtype` is not a floating point type or if `shape` has fewer than two entries.
 
 
 
@@ -2694,7 +2780,7 @@ This operation outputs `ref` after the update is done.
 This makes it easier to chain operations that need to use the reset value.
 
 If values in `ref` is to be updated more than once, because there are
-duplicate entires in `indices`, the order at which the updates happen
+duplicate entries in `indices`, the order at which the updates happen
 for each value is undefined.
 
 Requires `updates.shape = indices.shape + ref.shape[1:]`.
@@ -2910,6 +2996,197 @@ Requires `updates.shape = indices.shape + ref.shape[1:]`.
 
 - - -
 
+### `tf.scatter_nd_update(ref, indices, updates, use_locking=None, name=None)` {#scatter_nd_update}
+
+Applies sparse `updates` to individual values or slices within a given
+
+variable according to `indices`.
+
+`ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+
+`indices` must be integer tensor, containing indices into `ref`.
+It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+The innermost dimension of `indices` (with length `K`) corresponds to
+indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+dimension of `ref`.
+
+`updates` is `Tensor` of rank `Q-1+P-K` with shape:
+
+```
+[d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+```
+
+For example, say we want to update 4 scattered elements to a rank-1 tensor to
+8 elements. In Python, that update would look like this:
+
+    ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+    indices = tf.constant([[4], [3], [1] ,[7]])
+    updates = tf.constant([9, 10, 11, 12])
+    update = tf.scatter_nd_update(ref, indices, updates)
+    with tf.Session() as sess:
+      print sess.run(update)
+
+The resulting update to ref would look like this:
+
+    [1, 11, 3, 10, 9, 6, 7, 12]
+
+See [tf.scatter_nd](#scatter_nd) for more details about how to make updates to
+slices.
+
+##### Args:
+
+
+*  <b>`ref`</b>: A mutable `Tensor`. A mutable Tensor. Should be from a Variable node.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+    A Tensor. Must be one of the following types: int32, int64.
+    A tensor of indices into ref.
+*  <b>`updates`</b>: A `Tensor`. Must have the same type as `ref`.
+    A Tensor. Must have the same type as ref. A tensor of updated
+    values to add to ref.
+*  <b>`use_locking`</b>: An optional `bool`. Defaults to `True`.
+    An optional bool. Defaults to True. If True, the assignment will
+    be protected by a lock; otherwise the behavior is undefined,
+    but may exhibit less contention.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A mutable `Tensor`. Has the same type as `ref`.
+  Same as ref. Returned as a convenience for operations that want to
+  use the updated values after the update is done.
+
+
+- - -
+
+### `tf.scatter_nd_add(ref, indices, updates, use_locking=None, name=None)` {#scatter_nd_add}
+
+Applies sparse addition between `updates` and individual values or slices
+
+within a given variable according to `indices`.
+
+`ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+
+`indices` must be integer tensor, containing indices into `ref`.
+It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+The innermost dimension of `indices` (with length `K`) corresponds to
+indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+dimension of `ref`.
+
+`updates` is `Tensor` of rank `Q-1+P-K` with shape:
+
+```
+[d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+```
+
+For example, say we want to add 4 scattered elements to a rank-1 tensor to 8
+elements. In Python, that addition would look like this:
+
+    ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+    indices = tf.constant([[4], [3], [1], [7]])
+    updates = tf.constant([9, 10, 11, 12])
+    add = tf.scatter_nd_add(ref, indices, updates)
+    with tf.Session() as sess:
+      print sess.run(add)
+
+The resulting update to ref would look like this:
+
+    [1, 13, 3, 14, 14, 6, 7, 20]
+
+See [tf.scatter_nd](#scatter_nd) for more details about how to make updates to
+slices.
+
+##### Args:
+
+
+*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+    A mutable Tensor. Should be from a Variable node.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+    A Tensor. Must be one of the following types: int32, int64.
+    A tensor of indices into ref.
+*  <b>`updates`</b>: A `Tensor`. Must have the same type as `ref`.
+    A Tensor. Must have the same type as ref. A tensor of updated values
+    to add to ref.
+*  <b>`use_locking`</b>: An optional `bool`. Defaults to `False`.
+    An optional bool. Defaults to True. If True, the assignment will
+    be protected by a lock; otherwise the behavior is undefined,
+    but may exhibit less contention.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A mutable `Tensor`. Has the same type as `ref`.
+  Same as ref. Returned as a convenience for operations that want
+  to use the updated values after the update is done.
+
+
+- - -
+
+### `tf.scatter_nd_sub(ref, indices, updates, use_locking=None, name=None)` {#scatter_nd_sub}
+
+Applies sparse subtraction between `updates` and individual values or slices
+
+within a given variable according to `indices`.
+
+`ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+
+`indices` must be integer tensor, containing indices into `ref`.
+It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+The innermost dimension of `indices` (with length `K`) corresponds to
+indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+dimension of `ref`.
+
+`updates` is `Tensor` of rank `Q-1+P-K` with shape:
+
+```
+[d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+```
+
+For example, say we want to subtract 4 scattered elements from a rank-1 tensor
+with 8 elements. In Python, that subtraction would look like this:
+
+    ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+    indices = tf.constant([[4], [3], [1], [7]])
+    updates = tf.constant([9, 10, 11, 12])
+    sub = tf.scatter_nd_sub(ref, indices, updates)
+    with tf.Session() as sess:
+      print sess.run(sub)
+
+The resulting update to ref would look like this:
+
+    [1, -9, 3, -6, -4, 6, 7, -4]
+
+See [tf.scatter_nd](#scatter_nd) for more details about how to make updates to
+slices.
+
+##### Args:
+
+
+*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+    A mutable Tensor. Should be from a Variable node.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+    A Tensor. Must be one of the following types: int32, int64.
+    A tensor of indices into ref.
+*  <b>`updates`</b>: A `Tensor`. Must have the same type as `ref`.
+    A Tensor. Must have the same type as ref. A tensor of updated values
+    to subtract from ref.
+*  <b>`use_locking`</b>: An optional `bool`. Defaults to `False`.
+    An optional bool. Defaults to True. If True, the assignment will
+    be protected by a lock; otherwise the behavior is undefined,
+    but may exhibit less contention.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A mutable `Tensor`. Has the same type as `ref`.
+  Same as ref. Returned as a convenience for operations that want
+  to use the updated values after the update is done.
+
+
+- - -
+
 ### `tf.sparse_mask(a, mask_indices, name=None)` {#sparse_mask}
 
 Masks elements of `IndexedSlices`.
@@ -3088,7 +3365,7 @@ Returns an Op that initializes all tables of the default graph.
 
 - - -
 
-### `tf.train.export_meta_graph(filename=None, meta_info_def=None, graph_def=None, saver_def=None, collection_list=None, as_text=False)` {#export_meta_graph}
+### `tf.train.export_meta_graph(filename=None, meta_info_def=None, graph_def=None, saver_def=None, collection_list=None, as_text=False, graph=None, export_scope=None, clear_devices=False, **kwargs)` {#export_meta_graph}
 
 Returns `MetaGraphDef` proto. Optionally writes it to filename.
 
@@ -3107,15 +3384,28 @@ a subgraph.
 *  <b>`saver_def`</b>: `SaverDef` protocol buffer.
 *  <b>`collection_list`</b>: List of string keys to collect.
 *  <b>`as_text`</b>: If `True`, writes the `MetaGraphDef` as an ASCII proto.
+*  <b>`graph`</b>: The `Graph` to import into. If `None`, use the default graph.
+*  <b>`export_scope`</b>: Optional `string`. Name scope under which to extract
+    the subgraph. The scope name will be striped from the node definitions
+    for easy import later into new name scopes. If `None`, the whole graph
+    is exported. graph_def and export_scope cannot both be specified.
+*  <b>`clear_devices`</b>: Whether or not to clear the device field for an `Operation`
+    or `Tensor` during export.
+*  <b>`**kwargs`</b>: Optional keyed arguments.
 
 ##### Returns:
 
   A `MetaGraphDef` proto.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: When the `GraphDef` is larger than 2GB.
+
 
 - - -
 
-### `tf.train.import_meta_graph(meta_graph_or_file, clear_devices=False)` {#import_meta_graph}
+### `tf.train.import_meta_graph(meta_graph_or_file, clear_devices=False, import_scope=None, **kwargs)` {#import_meta_graph}
 
 Recreates a Graph saved in a `MetaGraphDef` proto.
 
@@ -3172,8 +3462,11 @@ device assignments have not changed.
 
 *  <b>`meta_graph_or_file`</b>: `MetaGraphDef` protocol buffer or filename (including
     the path) containing a `MetaGraphDef`.
-*  <b>`clear_devices`</b>: Boolean which controls whether to clear device information
-    from graph_def. Default false.
+*  <b>`clear_devices`</b>: Whether or not to clear the device field for an `Operation`
+    or `Tensor` during import.
+*  <b>`import_scope`</b>: Optional `string`. Name scope to add. Only used when
+    initializing from protocol buffer.
+*  <b>`**kwargs`</b>: Optional keyed arguments.
 
 ##### Returns:
 
@@ -3181,5 +3474,52 @@ device assignments have not changed.
 
   A None value is returned if no variables exist in the `MetaGraphDef`
   (i.e., there are no variables to restore).
+
+
+
+# Deprecated functions (removed after 2017-03-02). Please don't use them.
+
+- - -
+
+### `tf.all_variables(*args, **kwargs)` {#all_variables}
+
+See `tf.global_variables`. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2017-03-02.
+Instructions for updating:
+Please use tf.global_variables instead.
+
+
+- - -
+
+### `tf.initialize_all_variables(*args, **kwargs)` {#initialize_all_variables}
+
+See `tf.global_variables_initializer`. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2017-03-02.
+Instructions for updating:
+Use `tf.global_variables_initializer` instead.
+
+
+- - -
+
+### `tf.initialize_local_variables(*args, **kwargs)` {#initialize_local_variables}
+
+See `tf.local_variables_initializer`. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2017-03-02.
+Instructions for updating:
+Use `tf.local_variables_initializer` instead.
+
+
+- - -
+
+### `tf.initialize_variables(*args, **kwargs)` {#initialize_variables}
+
+See `tf.variables_initializer`. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2017-03-02.
+Instructions for updating:
+Use `tf.variables_initializer` instead.
 
 

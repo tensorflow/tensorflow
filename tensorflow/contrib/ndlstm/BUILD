@@ -13,6 +13,7 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 py_library(
     name = "ndlstm",
     srcs = [
+        "__init__.py",
         "python/__init__.py",
         "python/lstm1d.py",
         "python/lstm2d.py",
@@ -42,6 +43,7 @@ tf_py_test(
     additional_deps = [
         ":ndlstm",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
     ],
 )
 
@@ -51,6 +53,7 @@ tf_py_test(
     additional_deps = [
         ":ndlstm",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
         # "//tensorflow:tensorflow_py:tensorflow_google",
     ],
 )

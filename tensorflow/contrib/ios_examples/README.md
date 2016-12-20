@@ -72,7 +72,7 @@ rundown:
    - the root folder of tensorflow,
    - `tensorflow/contrib/makefile/downloads/protobuf/src`
    - `tensorflow/contrib/makefile/downloads`,
-   - `tensorflow/contrib/makefile/downloads/eigen-latest`, and
+   - `tensorflow/contrib/makefile/downloads/eigen`, and
    - `tensorflow/contrib/makefile/gen/proto`.
 
  - In the Linking section, you need to add `-force_load` followed by the path to

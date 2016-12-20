@@ -40,7 +40,9 @@ namespace serving {
 namespace {
 
 // Constants for the export path and file-names.
-const char kExportPath[] = "session_bundle/example/half_plus_two/00000123";
+const char kExportPath[] = "session_bundle/testdata/half_plus_two/00000123";
+const char kExportCheckpointV2Path[] =
+    "session_bundle/testdata/half_plus_two_ckpt_v2/00000123";
 const char kMetaGraphDefFilename[] = "export.meta";
 const char kVariablesFilename[] = "export-00000-of-00001";
 
@@ -252,6 +254,16 @@ TEST(LoadSessionBundleFromPath, BadExportPath) {
   EXPECT_TRUE(msg.find("Not found") != std::string::npos) << msg;
 }
 
+TEST(CheckpointV2Test, LoadSessionBundleFromPath) {
+  const string export_path = test_util::TestSrcDirPath(kExportCheckpointV2Path);
+  BasicTest(export_path);
+}
+
+TEST(CheckpointV2Test, IsPossibleExportDirectory) {
+  const string export_path = test_util::TestSrcDirPath(kExportCheckpointV2Path);
+  EXPECT_TRUE(IsPossibleExportDirectory(export_path));
+}
+
 class SessionBundleTest : public ::testing::Test {
  protected:
   // Copy the half_plus_two graph and apply the twiddler to rewrite the
@@ -295,7 +307,7 @@ TEST_F(SessionBundleTest, UnshardedVariableFile) {
   BasicTest(export_path);
 }
 
-TEST_F(SessionBundleTest, ServingGraph_Empty) {
+TEST_F(SessionBundleTest, ServingGraphEmpty) {
   const string path = SetupExport([](MetaGraphDef* def) {
     (*def->mutable_collection_def())[kGraphKey].clear_any_list();
   });
@@ -306,7 +318,7 @@ TEST_F(SessionBundleTest, ServingGraph_Empty) {
       << status_.error_message();
 }
 
-TEST_F(SessionBundleTest, ServingGraphAny_IncorrectType) {
+TEST_F(SessionBundleTest, ServingGraphAnyIncorrectType) {
   const string path = SetupExport([](MetaGraphDef* def) {
     // Pack an unexpected type in the GraphDef Any.
     (*def->mutable_collection_def())[kGraphKey].clear_any_list();
@@ -322,7 +334,7 @@ TEST_F(SessionBundleTest, ServingGraphAny_IncorrectType) {
       << status_.error_message();
 }
 
-TEST_F(SessionBundleTest, ServingGraphAnyValue_Corrupted) {
+TEST_F(SessionBundleTest, ServingGraphAnyValueCorrupted) {
   const string path = SetupExport([](MetaGraphDef* def) {
     // Pack an unexpected type in the GraphDef Any.
     (*def->mutable_collection_def())[kGraphKey].clear_any_list();
@@ -338,7 +350,7 @@ TEST_F(SessionBundleTest, ServingGraphAnyValue_Corrupted) {
       << status_.error_message();
 }
 
-TEST_F(SessionBundleTest, AssetFileAny_IncorrectType) {
+TEST_F(SessionBundleTest, AssetFileAnyIncorrectType) {
   const string path = SetupExport([](MetaGraphDef* def) {
     // Pack an unexpected type in the AssetFile Any.
     (*def->mutable_collection_def())[kAssetsKey].clear_any_list();
@@ -355,7 +367,7 @@ TEST_F(SessionBundleTest, AssetFileAny_IncorrectType) {
       << status_.error_message();
 }
 
-TEST_F(SessionBundleTest, AssetFileAny_ValueCorrupted) {
+TEST_F(SessionBundleTest, AssetFileAnyValueCorrupted) {
   const string path = SetupExport([](MetaGraphDef* def) {
     // Pack an unexpected type in the AssetFile Any.
     (*def->mutable_collection_def())[kAssetsKey].clear_any_list();
@@ -371,7 +383,7 @@ TEST_F(SessionBundleTest, AssetFileAny_ValueCorrupted) {
       << status_.error_message();
 }
 
-TEST_F(SessionBundleTest, InitOp_TooManyValues) {
+TEST_F(SessionBundleTest, InitOpTooManyValues) {
   const string path = SetupExport([](MetaGraphDef* def) {
     // Pack multiple init ops in to the collection.
     (*def->mutable_collection_def())[kInitOpKey].clear_node_list();

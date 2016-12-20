@@ -16,7 +16,8 @@ large-scale regression and classification problems with sparse input features
 you're interested in learning more about how Wide & Deep Learning works, please
 check out our [research paper](http://arxiv.org/abs/1606.07792).
 
-![Wide & Deep Spectrum of Models](../../images/wide_n_deep.svg "Wide & Deep")
+![Wide & Deep Spectrum of Models]
+(../../images/wide_n_deep.svg "Wide & Deep")
 
 The figure above shows a comparison of a wide model (logistic regression with
 sparse features and transformations), a deep model (feed-forward neural network
@@ -85,7 +86,9 @@ part and the deep part of the model.
 import tensorflow as tf
 
 # Categorical base columns.
-gender = tf.contrib.layers.sparse_column_with_keys(column_name="gender", keys=["female", "male"])
+gender = tf.contrib.layers.sparse_column_with_keys(column_name="gender", keys=["Female", "Male"])
+race = tf.contrib.layers.sparse_column_with_keys(column_name="race", keys=[
+  "Amer-Indian-Eskimo", "Asian-Pac-Islander", "Black", "Other", "White"])
 education = tf.contrib.layers.sparse_column_with_hash_bucket("education", hash_bucket_size=1000)
 relationship = tf.contrib.layers.sparse_column_with_hash_bucket("relationship", hash_bucket_size=100)
 workclass = tf.contrib.layers.sparse_column_with_hash_bucket("workclass", hash_bucket_size=100)
@@ -108,7 +111,7 @@ columns:
 
 ```python
 wide_columns = [
-  gender, native_country, education, occupation, workclass, marital_status, relationship, age_buckets,
+  gender, native_country, education, occupation, workclass, relationship, age_buckets,
   tf.contrib.layers.crossed_column([education, occupation], hash_bucket_size=int(1e4)),
   tf.contrib.layers.crossed_column([native_country, occupation], hash_bucket_size=int(1e4)),
   tf.contrib.layers.crossed_column([age_buckets, education, occupation], hash_bucket_size=int(1e6))]
@@ -152,8 +155,8 @@ The higher the `dimension` of the embedding is, the more degrees of freedom the
 model will have to learn the representations of the features. For simplicity, we
 set the dimension to 8 for all feature columns here. Empirically, a more
 informed decision for the number of dimensions is to start with a value on the
-order of $$k\log_2(n)$$ or $$k\sqrt[4]n$$, where $$n$$ is the number of unique
-features in a feature column and $$k$$ is a small constant (usually smaller than
+order of \\(\log_2(n)\\) or \\(k\sqrt[4]n\\), where \\(n\\) is the number of unique
+features in a feature column and \\(k\\) is a small constant (usually smaller than
 10).
 
 Through dense embeddings, deep models can generalize better and make predictions
@@ -212,8 +215,8 @@ CONTINUOUS_COLUMNS = ["age", "education_num", "capital_gain", "capital_loss",
 # test_file to your own paths.
 train_file = tempfile.NamedTemporaryFile()
 test_file = tempfile.NamedTemporaryFile()
-urllib.urlretrieve("https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data", train_file.name)
-urllib.urlretrieve("https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.test", test_file.name)
+urllib.urlretrieve("http://mlr.cs.umass.edu/ml/machine-learning-databases/adult/adult.data", train_file.name)
+urllib.urlretrieve("http://mlr.cs.umass.edu/ml/machine-learning-databases/adult/adult.test", test_file.name)
 
 # Read the training and test data sets into Pandas dataframe.
 df_train = pd.read_csv(train_file, names=COLUMNS, skipinitialspace=True)

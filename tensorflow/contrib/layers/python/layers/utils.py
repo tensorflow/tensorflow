@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import namedtuple
+from collections import OrderedDict
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -31,6 +32,7 @@ __all__ = ['collect_named_outputs',
            'smart_cond',
            'get_variable_collections',
            'two_element_tuple',
+           'n_positive_integers',
            'last_dimension',
            'first_dimension']
 
@@ -99,15 +101,15 @@ def get_tensor_alias(tensor):
 
 
 def convert_collection_to_dict(collection):
-  """Returns a dict of Tensors using get_tensor_alias as key.
+  """Returns an OrderedDict of Tensors using get_tensor_alias as key.
 
   Args:
     collection: A collection.
 
   Returns:
-    A dictionary of {get_tensor_alias(tensor): tensor}
+    An OrderedDict of {get_tensor_alias(tensor): tensor}
   """
-  return {get_tensor_alias(t): t for t in ops.get_collection(collection)}
+  return OrderedDict((get_tensor_alias(t), t) for t in ops.get_collection(collection))
 
 
 def constant_value(value_or_tensor_or_var, dtype=None):
@@ -277,3 +279,52 @@ def two_element_tuple(int_or_tuple):
       return int_or_tuple[0], int_or_tuple[1]
   raise ValueError('Must be an int, a list with 2 elements or a TensorShape of '
                    'length 2')
+
+
+def n_positive_integers(n, value):
+  """Converts `value` to a sequence of `n` positive integers.
+
+  `value` may be either be a sequence of values convertible to `int`, or a
+  single value convertible to `int`, in which case the resulting integer is
+  duplicated `n` times.  It may also be a TensorShape of rank `n`.
+
+  Args:
+    n: Length of sequence to return.
+    value: Either a single value convertible to a positive `int` or an
+      `n`-element sequence of values convertible to a positive `int`.
+
+  Returns:
+    A tuple of `n` positive integers.
+
+  Raises:
+    TypeError: If `n` is not convertible to an integer.
+    ValueError: If `n` or `value` are invalid.
+  """
+
+  n_orig = n
+  n = int(n)
+  if n < 1 or n != n_orig:
+    raise ValueError('n must be a positive integer')
+
+  try:
+    value = int(value)
+  except (TypeError, ValueError):
+    sequence_len = len(value)
+    if sequence_len != n:
+      raise ValueError(
+          'Expected sequence of %d positive integers, but received %r' %
+          (n, value))
+    try:
+      values = tuple(int(x) for x in value)
+    except:
+      raise ValueError(
+          'Expected sequence of %d positive integers, but received %r' %
+          (n, value))
+    for x in values:
+      if x < 1:
+        raise ValueError('expected positive integer, but received %d' % x)
+    return values
+
+  if value < 1:
+    raise ValueError('expected positive integer, but received %d' % value)
+  return (value,) * n

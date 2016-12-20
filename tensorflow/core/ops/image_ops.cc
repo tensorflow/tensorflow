@@ -318,6 +318,7 @@ REGISTER_OP("DecodeJpeg")
     .Attr("fancy_upscaling: bool = true")
     .Attr("try_recover_truncated: bool = false")
     .Attr("acceptable_fraction: float = 1.0")
+    .Attr("dct_method: string = ''")
     .Output("image: uint8")
     .SetShapeFn(DecodeImageShapeFn)
     .Doc(R"doc(
@@ -347,6 +348,12 @@ fancy_upscaling: If true use a slower but nicer upscaling of the
 try_recover_truncated:  If true try to recover an image from truncated input.
 acceptable_fraction: The minimum required fraction of lines before a truncated
   input is accepted.
+dct_method: string specifying a hint about the algorithm used for
+  decompression.  Defaults to "" which maps to a system-specific
+  default.  Currently valid values are ["INTEGER_FAST",
+  "INTEGER_ACCURATE"].  The hint may be ignored (e.g., the internal
+  jpeg library changes to a version that does not have that specific
+  option.)
 image: 3-D with shape `[height, width, channels]`..
 )doc");
 
@@ -438,6 +445,29 @@ channel and then adjusts each component of each pixel to
 images: Images to adjust.  At least 3-D.
 contrast_factor: A float multiplier for adjusting contrast.
 output: The contrast-adjusted image or images.
+)Doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("AdjustHue")
+    .Input("images: float")
+    .Input("delta: float")
+    .Output("output: float")
+    .SetShapeFn([](InferenceContext* c) {
+      return shape_inference::UnchangedShapeWithRankAtLeast(c, 3);
+    })
+    .Doc(R"Doc(
+Adjust the hue of one or more images.
+
+`images` is a tensor of at least 3 dimensions.  The last dimension is
+interpretted as channels, and must be three.
+
+The input image is considered in the RGB colorspace. Conceptually, the RGB
+colors are first mapped into HSV. A delta is then applied all the hue values,
+and then remapped back to RGB colorspace.
+
+images: Images to adjust.  At least 3-D.
+delta: A float delta to add to the hue.
+output: The hue-adjusted image or images.
 )Doc");
 
 // --------------------------------------------------------------------------

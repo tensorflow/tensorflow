@@ -25,7 +25,6 @@ import re
 
 import six
 
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -1058,94 +1057,9 @@ ops.NotDifferentiable("LookupTableSize")
 ops.NotDifferentiable("HashTable")
 ops.NotDifferentiable("InitializeTable")
 ops.NotDifferentiable("InitializeTableFromTextFile")
+ops.NotDifferentiable("MutableDenseHashTable")
 ops.NotDifferentiable("MutableHashTable")
 ops.NotDifferentiable("MutableHashTableOfTensors")
-
-
-ops.RegisterShape("QueueSize")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Queue")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("FIFOQueue")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("PaddingFIFOQueue")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("RandomShuffleQueue")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("PriorityQueue")(common_shapes.call_cpp_shape_fn)
-
-
-# NOTE(mrry): The following ops use higher-level information in the
-# Queue class to provide shape information.
-ops.RegisterShape("QueueDequeue")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("QueueDequeueMany")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("QueueDequeueUpTo")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("QueueEnqueue")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("QueueEnqueueMany")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("QueueClose")(common_shapes.call_cpp_shape_fn)
-
-ops.RegisterShape("Stack")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("StackPush")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("StackPop")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("StackClose")(common_shapes.call_cpp_shape_fn)
-
-# NOTE(mrry): Uses higher-level information in the Barrier class to
-# provide shape information.
-ops.RegisterShape("BarrierReadySize")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("BarrierIncompleteSize")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Barrier")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("BarrierTakeMany")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("BarrierClose")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("BarrierInsertMany")(common_shapes.call_cpp_shape_fn)
-
-ops.RegisterShape("GetSessionHandle")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("GetSessionTensor")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("DeleteSessionTensor")(common_shapes.call_cpp_shape_fn)
-
-
-@ops.RegisterShape("DynamicPartition")
-def _DynamicPartitionShape(op):
-  """Shape function for data_flow_ops.dynamic_partition."""
-  data_shape = op.inputs[0].get_shape()
-  partitions_shape = op.inputs[1].get_shape()
-  # If we don't know the rank of partitions, we don't know anything
-  mid = partitions_shape.ndims
-  if mid is None:
-    result_shape = tensor_shape.unknown_shape()
-  else:
-    # data_shape must start with partitions_shape
-    partitions_shape.assert_is_compatible_with(data_shape[:mid])
-    # The partition shape is dynamic in the 0th dimension, and matches
-    # data_shape in the remaining dimensions.
-    result_shape = tensor_shape.TensorShape([None]).concatenate(
-        data_shape[mid:])
-  return [result_shape] * op.get_attr("num_partitions")
-
-
-@ops.RegisterShape("DynamicStitch")
-def _DynamicStitchShape(op):
-  """Shape function for data_flow_ops.dynamic_stitch."""
-  num_partitions = op.get_attr("N")
-  indices_shapes = [t.get_shape() for t in op.inputs[0:num_partitions]]
-  data_shapes = [t.get_shape() for t in op.inputs[num_partitions:]]
-  output_shape = tensor_shape.unknown_shape()
-  extra_shape = tensor_shape.TensorShape(None)
-  for indices_shape, data_shape in zip(indices_shapes, data_shapes):
-    indices_ndims = indices_shape.ndims
-    if indices_ndims is not None:
-      # Assert that data_shape starts with indices_shape
-      indices_shape.merge_with(data_shape[:indices_ndims])
-      # The rest belongs to output
-      extra_shape = extra_shape.merge_with(data_shape[indices_ndims:])
-  return [tensor_shape.TensorShape([None]).concatenate(extra_shape)]
-
-
-ops.RegisterShape("LookupTableFind")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("LookupTableInsert")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("LookupTableImport")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("LookupTableSize")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("LookupTableExport")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("HashTable")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MutableHashTable")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MutableHashTableOfTensors")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("InitializeTable")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("InitializeTableFromTextFile")(
-    common_shapes.call_cpp_shape_fn)
 
 
 class ConditionalAccumulatorBase(object):
@@ -1393,9 +1307,10 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
     return gen_data_flow_ops.sparse_accumulator_apply_gradient(
         self._accumulator_ref,
         local_step=local_step,
-        gradient_indices=grad_indices,
+        gradient_indices=math_ops.to_int64(grad_indices),
         gradient_values=grad_values,
-        gradient_shape=[] if grad_shape is None else grad_shape,
+        gradient_shape=math_ops.to_int64([] if grad_shape is None else
+                                         grad_shape),
         has_known_shape=(grad_shape is not None),
         name=name)
 
@@ -1450,16 +1365,3 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
         indices=return_val.indices,
         values=return_val.values,
         dense_shape=return_val.shape)
-
-
-ops.RegisterShape("AccumulatorNumAccumulated")(common_shapes.scalar_shape)
-ops.RegisterShape("AccumulatorSetGlobalStep")(common_shapes.no_outputs)
-
-ops.RegisterShape("ConditionalAccumulator")(common_shapes.scalar_shape)
-
-ops.RegisterShape("AccumulatorApplyGradient")(common_shapes.no_outputs)
-ops.RegisterShape("AccumulatorTakeGradient")(common_shapes.unknown_shape)
-
-ops.RegisterShape("SparseConditionalAccumulator")(common_shapes.scalar_shape)
-ops.RegisterShape("SparseAccumulatorApplyGradient")(common_shapes.no_outputs)
-ops.RegisterShape("SparseAccumulatorTakeGradient")(common_shapes.unknown_shape)

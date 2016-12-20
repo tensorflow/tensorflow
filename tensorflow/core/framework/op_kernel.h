@@ -53,6 +53,7 @@ limitations under the License.
 namespace Eigen {
 struct ThreadPoolDevice;
 struct GpuDevice;
+struct SyclDevice;
 }  // end namespace Eigen
 
 namespace tensorflow {
@@ -131,7 +132,7 @@ class OpKernel {
   // We allow legacy scalars within Google up until GraphDef version 6.
   // TODO(irving): Remove when we can drop support for GraphDef version 5.
   bool allow_legacy_scalars() const {
-#if defined(PLATFORM_GOOGLE)
+#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID)
     return graph_def_version_ < 6;
 #else
     return false;
@@ -510,8 +511,9 @@ class OpKernelContext {
     // Shared resources accessible by this op kernel invocation.
     ResourceMgr* resource_manager = nullptr;
 
-    // Per-step resources accessible by this op kernel invocation.
-    ResourceMgr* step_resource_manager = nullptr;
+    // Per-step resources accessible by this op kernel invocation should be
+    // stored in this container..
+    ScopedStepContainer* step_container = nullptr;
 
     // Mechanism used by this op kernel invocation to communicate with
     // computations running on other devices.
@@ -891,6 +893,11 @@ class OpKernelContext {
   const Eigen::GpuDevice& eigen_gpu_device() const {
     return params_->eigen_gpu_device->device();
   }
+#ifdef TENSORFLOW_USE_SYCL
+  const Eigen::SyclDevice& eigen_sycl_device() const {
+    return *device()->eigen_sycl_device();
+  }
+#endif
   template <typename EigenDeviceType>
   const EigenDeviceType& eigen_device() const;
 
@@ -932,9 +939,9 @@ class OpKernelContext {
   // not be called from Op kernels.
   void retrieve_accessed_tensors(TensorReferenceVector* out_vector);
 
-  // Per-step resource manager for use by white-listed internal ops.
-  ResourceMgr* step_resource_manager() const {
-    return params_->step_resource_manager;
+  // Per-step container for use by white-listed internal ops.
+  ScopedStepContainer* step_container() const {
+    return params_->step_container;
   }
 
   // Helper routines for the OP_REQUIRES macros
@@ -1104,11 +1111,6 @@ void* GlobalKernelRegistry();
 // <kernel_class_name> may be null.
 Status FindKernelDef(DeviceType device_type, const NodeDef& node_def,
                      const KernelDef** def, string* kernel_class_name);
-
-// Treats 'registry_ptr' as a pointer to KernelRegistry. For each kernel 'k'
-// registered with the current library's global kernel registry (obtained by
-// calling GlobalKernelRegistry()), inserts 'k' into registry_ptr.
-extern "C" void RegisterKernels(void* registry_ptr);
 
 // Writes a list of all registered kernels to LOG(INFO), to help users debug
 // missing kernel errors.

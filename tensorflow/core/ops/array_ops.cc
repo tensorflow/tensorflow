@@ -109,6 +109,60 @@ Status PadShapeFn(InferenceContext* c) {
   }
 }
 
+Status SetOutputShapeForReshape(InferenceContext* c) {
+  ShapeHandle in = c->input(0);
+  ShapeHandle out;
+  TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &out));
+
+  if (!c->RankKnown(out)) {
+    // We have no information about the shape of the output.
+    c->set_output(0, out);
+    return Status::OK();
+  }
+  DimensionHandle num_in_elems = c->NumElements(in);
+  if (c->FullyDefined(out)) {
+    DimensionHandle num_out_elems = c->NumElements(out);
+    if (c->ValueKnown(num_in_elems) &&
+        c->Value(num_in_elems) != c->Value(num_out_elems)) {
+      return errors::InvalidArgument(
+          "Cannot reshape a tensor with ", c->DebugString(num_in_elems),
+          " elements to shape ", c->DebugString(out), " (",
+          c->DebugString(num_out_elems), " elements)");
+    }
+    c->set_output(0, out);
+    return Status::OK();
+  }
+
+  if (c->ValueKnown(num_in_elems)) {
+    // We don't know the number of output elements, but we can try to infer
+    // the missing dimension.
+    int32 unknown_idx = -1;
+    bool too_many_unknown = false;
+    DimensionHandle known_elems = c->MakeDim(1);
+    for (int32 i = 0; i < c->Rank(out); ++i) {
+      DimensionHandle dim = c->Dim(out, i);
+      if (!c->ValueKnown(dim)) {
+        if (unknown_idx >= 0) {
+          too_many_unknown = true;
+          break;
+        }
+        unknown_idx = i;
+      } else {
+        TF_RETURN_IF_ERROR(c->Multiply(known_elems, dim, &known_elems));
+      }
+    }
+    if (!too_many_unknown && c->Value(known_elems) != 0) {
+      DimensionHandle inferred_dim;
+      TF_RETURN_IF_ERROR(c->Divide(num_in_elems, c->Value(known_elems),
+                                   true /* evenly_divisible */, &inferred_dim));
+      TF_RETURN_IF_ERROR(c->ReplaceDim(out, unknown_idx, inferred_dim, &out));
+    }
+  }
+
+  c->set_output(0, out);
+  return Status::OK();
+}
+
 }  // namespace
 
 REGISTER_OP("Pack")
@@ -241,7 +295,9 @@ REGISTER_OP("Concat")
     .Output("output: T")
     .Attr("N: int >= 2")
     .Attr("T: type")
-    .SetShapeFn(shape_inference::ConcatShape)
+    .SetShapeFn([](InferenceContext* c) {
+      return shape_inference::ConcatShape(c, c->num_inputs() - 1);
+    })
     .Doc(R"doc(
 Concatenates tensors along one dimension.
 
@@ -249,6 +305,26 @@ concat_dim: 0-D.  The dimension along which to concatenate.  Must be in the
   range [0, rank(values)).
 values: The `N` Tensors to concatenate. Their ranks and types must match,
   and their sizes must match in all dimensions except `concat_dim`.
+output: A `Tensor` with the concatenation of values stacked along the
+  `concat_dim` dimension.  This tensor's shape matches that of `values` except
+  in `concat_dim` where it has the sum of the sizes.
+)doc");
+
+REGISTER_OP("ConcatV2")
+    .Input("values: N * T")
+    .Input("axis: Tidx")
+    .Output("output: T")
+    .Attr("N: int >= 2")
+    .Attr("T: type")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
+    .SetShapeFn(shape_inference::ConcatV2Shape)
+    .Doc(R"doc(
+Concatenates tensors along one dimension.
+
+values: List of `N` Tensors to concatenate. Their ranks and types must match,
+  and their sizes must match in all dimensions except `concat_dim`.
+axis: 0-D.  The dimension along which to concatenate.  Must be in the
+  range [0, rank(values)).
 output: A `Tensor` with the concatenation of values stacked along the
   `concat_dim` dimension.  This tensor's shape matches that of `values` except
   in `concat_dim` where it has the sum of the sizes.
@@ -329,6 +405,76 @@ value: The tensor to split.
 output: They are identically shaped tensors, whose shape matches that of `value`
   except along `split_dim`, where their sizes are
   `values.shape[split_dim] / num_split`.
+)doc");
+
+REGISTER_OP("SplitV")
+    .Input("value: T")
+    .Input("size_splits: Tlen")
+    .Input("split_dim: int32")
+    .Output("output: num_split * T")
+    .Attr("num_split: int >= 1")
+    .Attr("T: type")
+    .Attr("Tlen: {int32, int64} = DT_INT64")
+    .SetShapeFn([](InferenceContext* c) {
+      DimensionHandle split_dimension;
+      TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(2, &split_dimension));
+      int32 num_outputs = c->num_outputs();
+      ShapeHandle input = c->input(0);
+      int32 rank = c->Rank(input);
+      ShapeHandle output_shape;
+      const Tensor* size_splits = c->input_tensor(1);
+      if (rank == InferenceContext::kUnknownRank) {
+        // If the rank of input tensor is unknown, then return unkown shapes.
+        output_shape = c->UnknownShape();
+        for (int i = 0; i < num_outputs; ++i) {
+          c->set_output(i, output_shape);
+        }
+      } else if (rank == 0) {
+        // Throw error if input is a scalar.
+        return errors::InvalidArgument("Can't split scalars");
+      } else if (size_splits == nullptr || !c->ValueKnown(split_dimension)) {
+        // If split dimension or tensor containing the split sizes is unkown,
+        // then return unknown shapes of same rank as input.
+        output_shape = c->UnknownShapeOfRank(rank);
+        for (int i = 0; i < num_outputs; ++i) {
+          c->set_output(i, output_shape);
+        }
+      } else {
+        // Determine the output shape if split dimension and split sizes are known
+        int64 split_dim = c->Value(split_dimension);
+        TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, split_dim + 1, &input));
+        std::vector<int64> data;
+        if (size_splits->dtype() == DT_INT32) {
+          data = AsInt64<int32>(size_splits, size_splits->shape().dim_size(0));
+        } else {
+          data = AsInt64<int64>(size_splits, size_splits->shape().dim_size(0));
+        }
+        if (num_outputs != data.size()) {
+          return errors::InvalidArgument(
+            "Length of size_splits should be equal to num_outputs");
+        }
+        for (int i = 0; i < num_outputs; ++i) {
+          output_shape = c->UnknownShapeOfRank(rank);
+          TF_RETURN_IF_ERROR(
+              c->ReplaceDim(input, split_dim, c->MakeDim(data[i]), &output_shape));
+          c->set_output(i, output_shape);
+        }
+      }
+
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Splits a tensor into `num_split` tensors along one dimension.
+
+value: The tensor to split.
+size_splits: list containing the sizes of each output tensor along the split
+             dimension. Must sum to the dimension of value along split_dim.
+             Can contain one -1 indicating that dimension is to be inferred.
+split_dim: 0-D.  The dimension along which to split.  Must be in the range
+  `[0, rank(value))`.
+output: Tensors whose shape matches that of `value`
+  except along `split_dim`, where their sizes are
+  `size_splits[i]`.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -792,6 +938,82 @@ output: The same shape as `tensor`.
 )Doc");
 
 // --------------------------------------------------------------------------
+REGISTER_OP("ReverseV2")
+    .Input("tensor: T")
+    .Input("axis: Tidx")
+    .Output("output: T")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
+    .Attr(
+        "T: {uint8, int8, int32, int64, bool, half, float, double, complex64, "
+        "complex128}")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle input = c->input(0);
+      ShapeHandle axis;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &axis));
+      // TODO(aselle): if input(0)'s dimension is known we could validate axis
+      if (c->Rank(input) > 8) {
+        return errors::InvalidArgument(
+            "reverse does not work on tensors with more than 8 dimensions");
+      }
+      c->set_output(0, input);
+      return Status::OK();
+    })
+    .Doc(R"Doc(
+Reverses specific dimensions of a tensor.
+
+NOTE `tf.reverse` has now changed behavior in preparation for 1.0.
+`tf.reverse_v2` is currently an alias that will be deprecated before TF 1.0.
+
+Given a `tensor`, and a `int32` tensor `axis` representing the set of
+dimensions of `tensor` to reverse. This operation reverses each dimension
+`i` for which there exists `j` s.t. `axis[j] == i`.
+
+`tensor` can have up to 8 dimensions. The number of dimensions specified
+in `axis` may be 0 or more entries. If an index is specified more than
+once, a InvalidArgument error is raised.
+
+For example:
+
+```prettyprint
+# tensor 't' is [[[[ 0,  1,  2,  3],
+#                  [ 4,  5,  6,  7],
+#                  [ 8,  9, 10, 11]],
+#                 [[12, 13, 14, 15],
+#                  [16, 17, 18, 19],
+#                  [20, 21, 22, 23]]]]
+# tensor 't' shape is [1, 2, 3, 4]
+
+# 'dims' is [3] or 'dims' is -1
+reverse(t, dims) ==> [[[[ 3,  2,  1,  0],
+                        [ 7,  6,  5,  4],
+                        [ 11, 10, 9, 8]],
+                       [[15, 14, 13, 12],
+                        [19, 18, 17, 16],
+                        [23, 22, 21, 20]]]]
+
+# 'dims' is '[1]' (or 'dims' is '[-3]')
+reverse(t, dims) ==> [[[[12, 13, 14, 15],
+                        [16, 17, 18, 19],
+                        [20, 21, 22, 23]
+                       [[ 0,  1,  2,  3],
+                        [ 4,  5,  6,  7],
+                        [ 8,  9, 10, 11]]]]
+
+# 'dims' is '[2]' (or 'dims' is '[-2]')
+reverse(t, dims) ==> [[[[8, 9, 10, 11],
+                        [4, 5, 6, 7],
+                        [0, 1, 2, 3]]
+                       [[20, 21, 22, 23],
+                        [16, 17, 18, 19],
+                        [12, 13, 14, 15]]]]
+```
+
+tensor: Up to 8-D.
+axis: 1-D. The indices of the dimensions to reverse.
+output: The same shape as `tensor`.
+)Doc");
+
+// --------------------------------------------------------------------------
 REGISTER_OP("EditDistance")
     .Input("hypothesis_indices: int64")
     .Input("hypothesis_values: T")
@@ -803,10 +1025,10 @@ REGISTER_OP("EditDistance")
     .Attr("T: type")
     .Output("output: float")
     .SetShapeFn([](InferenceContext* c) {
-      TF_RETURN_IF_ERROR(
-          c->ValidateSparseTensor(c->input(0), c->input(1), c->input(2)));
-      TF_RETURN_IF_ERROR(
-          c->ValidateSparseTensor(c->input(3), c->input(4), c->input(5)));
+      TF_RETURN_IF_ERROR(shape_inference::ValidateSparseTensor(
+          c, c->input(0), c->input(1), c->input(2)));
+      TF_RETURN_IF_ERROR(shape_inference::ValidateSparseTensor(
+          c, c->input(3), c->input(4), c->input(5)));
       const Tensor* hypothesis_shape_t = c->input_tensor(2);
       const Tensor* truth_shape_t = c->input_tensor(5);
       if (hypothesis_shape_t == nullptr || truth_shape_t == nullptr) {
@@ -898,6 +1120,19 @@ REGISTER_OP("Fill")
     .Output("output: T")
     .Attr("T: type")
     .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+
+      const Tensor* t = c->input_tensor(0);
+      if (t != nullptr) {
+        for (int i = 0; i < t->NumElements(); ++i) {
+          if (t->vec<int32>()(i) < 0) {
+            return errors::InvalidArgument("Fill dimensions must be >= 0");
+          }
+        }
+      }
+
       ShapeHandle out;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
       c->set_output(0, out);
@@ -918,6 +1153,10 @@ fill([2, 3], 9) ==> [[9, 9, 9]
 
 dims: 1-D. Represents the shape of the output tensor.
 value: 0-D (scalar). Value to fill the returned tensor.
+
+@compatibility(numpy)
+Equivalent to np.full
+@end_compatibility
 )doc");
 
 // --------------------------------------------------------------------------
@@ -1002,18 +1241,20 @@ REGISTER_OP("GatherNd")
     .Doc(R"doc(
 Gather values or slices from `params` according to `indices`.
 
-`params` is a Tensor of rank `R` and `indices` is a Tensor of rank `M`.
+`params` is a Tensor of rank `P` and `indices` is a Tensor of rank `Q`.
 
 `indices` must be integer tensor, containing indices into `params`.
-It must be shape `[d_0, ..., d_N, R]` where `0 < R <= M`.
+It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
 
-The innermost dimension of `indices` (with length `R`) corresponds to
-indices into elements (if `R = M`) or slices (if `R < M`) along the `N`th
+The innermost dimension of `indices` (with length `K`) corresponds to
+indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
 dimension of `params`.
 
 Produces an output tensor with shape
 
-    [d_0, ..., d_{n-1}, params.shape[R], ..., params.shape[M-1]].
+```
+[d_0, ..., d_{Q-2}, params.shape[K], ..., params.shape[P-1]].
+```
 
 Some examples below.
 
@@ -1092,9 +1333,9 @@ Batched indexing into a 3-tensor:
     output = [['b0', 'b1'], ['d0', 'c1']]
 ```
 
-params: `M-D`.  The tensor from which to gather values.
-indices: `(N+1)-D`.  Index tensor having shape `[d_0, ..., d_N, R]`.
-output: `(N+M-R)-D`.  Values from `params` gathered from indices given by
+params: `P-D`.  The tensor from which to gather values.
+indices: `Q-D`.  Index tensor having shape `[d_0, ..., d_{Q-2}, K]`.
+output: `(P+Q-K-1)-D`.  Values from `params` gathered from indices given by
   `indices`.
 )doc");
 
@@ -1103,7 +1344,12 @@ REGISTER_OP("Identity")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: type")
-    .SetShapeFn(shape_inference::UnchangedShape)
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->input(0));
+      c->set_output_handle_dtype(0, c->input_handle_dtype(0));
+      c->set_output_handle_shape(0, c->input_handle_shape(0));
+      return Status::OK();
+    })
     .Doc(R"Doc(
 Return a tensor with the same shape and contents as the input tensor or value.
 )Doc");
@@ -1149,6 +1395,23 @@ to pretend that the value was a constant. Some examples include:
    example generation process.
 )Doc");
 
+REGISTER_OP("PreventGradient")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"Doc(
+An identity op that triggers an error if a gradient is requested.
+
+When executed in a graph, this op outputs its input tensor as-is.
+
+When building ops to compute gradients, the TensorFlow gradient system
+will return an error when trying to lookup the gradient of this op,
+because no gradient must ever be registered for this function.  This
+op exists to prevent subtle bugs from silently returning unimplemented
+gradients in some corner cases.
+)Doc");
+
 // --------------------------------------------------------------------------
 REGISTER_OP("CheckNumerics")
     .Input("tensor: T")
@@ -1172,59 +1435,7 @@ REGISTER_OP("Reshape")
     .Output("output: T")
     .Attr("T: type")
     .Attr("Tshape: {int32, int64} = DT_INT32")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle in = c->input(0);
-      ShapeHandle out;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &out));
-
-      // If the rank and all dimensions of the input tensor are known, we may
-      // infer missing shape information or perform shape checks.
-      // NumElements conveniently returns kUnknownDim upon missing rank or
-      // dimension information.
-      // Additionally, if the rank of the out shape is unknown we have no shape
-      // information to go off of.
-      DimensionHandle num_in_elems = c->NumElements(in);
-      DimensionHandle num_out_elems = c->NumElements(out);
-      if (!c->ValueKnown(num_in_elems) || !c->RankKnown(out)) {
-        // Do nothing. We have no shape information to infer from so we directly
-        // return out as our shape.
-      } else if (c->ValueKnown(num_out_elems)) {
-        // If we know the number of output elements, we ensure that they
-        // are equal to the number of input elements.
-        if (c->Value(num_in_elems) != c->Value(num_out_elems)) {
-          return errors::InvalidArgument(
-              "Cannot reshape a tensor with ", c->DebugString(num_in_elems),
-              " elements to shape ", c->DebugString(out), " (",
-              c->DebugString(num_out_elems), " elements)");
-        }
-      } else {
-        // If we don't know the number of output elements, we can infer
-        // the missing dimension.
-        int32 unknown_idx = -1;
-        DimensionHandle known_elems = c->MakeDim(1);
-        for (int32 i = 0; i < c->Rank(out); ++i) {
-          DimensionHandle dim = c->Dim(out, i);
-          if (!c->ValueKnown(dim)) {
-            if (unknown_idx >= 0) {
-              return errors::InvalidArgument(
-                  "Cannot infer multiple unknown dimensions in shape ",
-                  c->DebugString(out));
-            }
-            unknown_idx = i;
-          } else {
-            TF_RETURN_IF_ERROR(c->Multiply(known_elems, dim, &known_elems));
-          }
-        }
-        DimensionHandle inferred_dim;
-        TF_RETURN_IF_ERROR(c->Divide(num_in_elems, c->Value(known_elems),
-                                     true /* evenly_divisible */,
-                                     &inferred_dim));
-        TF_RETURN_IF_ERROR(c->ReplaceDim(out, unknown_idx, inferred_dim, &out));
-      }
-
-      c->set_output(0, out);
-      return Status::OK();
-    })
+    .SetShapeFn([](InferenceContext* c) { return SetOutputShapeForReshape(c); })
     .Doc(R"Doc(
 Reshapes a tensor.
 
@@ -1683,46 +1894,24 @@ size(t) ==> 12
 namespace {
 
 template <typename T>
-Status SliceHelper(InferenceContext* c, const Tensor* begin_t,
-                   const Tensor* sizes_t, std::vector<DimensionHandle>* dims) {
-  auto begin_vec = begin_t->vec<T>();
-  auto sizes_vec = sizes_t->vec<T>();
-  for (int i = 0; i < sizes_t->NumElements(); ++i) {
+Status SliceHelper(InferenceContext* c, ShapeHandle begin_value,
+                   const Tensor* sizes_value,
+                   std::vector<DimensionHandle>* dims) {
+  auto sizes_vec = sizes_value->vec<T>();
+  for (int i = 0; i < sizes_value->NumElements(); ++i) {
     DimensionHandle dim = c->Dim(c->input(0), i);
     if (sizes_vec(i) != -1) {
-      if (c->ValueKnown(dim)) {
-        auto dim_val = c->Value(dim);
-        // We validate the contract that:
-        //
-        // 0 <= begin <= begin + size <= dim_val.
-
-        if (begin_vec(i) > dim_val) {
-          return errors::InvalidArgument(
-              "Out of bounds slicing on dimension ", i, " of length ", dim_val,
-              ": begin vector cannot start after end of dimension, but was ",
-              begin_vec(i));
-        }
-
-        if (sizes_vec(i) < 0) {
-          return errors::InvalidArgument(
-              "Out of bounds slicing on dimension ", i, " of length ", dim_val,
-              ": sizes vector cannot be < -1, but was ", sizes_vec(i));
-        }
-
-        auto end = begin_vec(i) + sizes_vec(i);
-        // TODO(vrv): use FastBoundsCheck, once it's moved into a more
-        // universal location.
-        if (end < 0 || end > dim_val) {
-          return errors::InvalidArgument(
-              "Out of bounds slicing on dimension ", i, ": Dimension: ",
-              dim_val, ", begin: ", begin_vec(i), ", size: ", sizes_vec(i));
-        }
+      auto dim_val = c->Value(dim);
+      if (sizes_vec(i) < 0) {
+        return errors::InvalidArgument(
+            "Out of bounds slicing on dimension ", i, " of length ", dim_val,
+            ": sizes vector cannot be < -1, but was ", sizes_vec(i));
       }
 
       dims->emplace_back(c->MakeDim(sizes_vec(i)));
     } else {
       DimensionHandle result;
-      TF_RETURN_IF_ERROR(c->Subtract(dim, begin_vec(i), &result));
+      TF_RETURN_IF_ERROR(c->Subtract(dim, c->Dim(begin_value, i), &result));
       dims->emplace_back(result);
     }
   }
@@ -1755,17 +1944,28 @@ REGISTER_OP("Slice")
         TF_RETURN_IF_ERROR(c->WithRank(input, c->Value(ndims), &input));
       }
 
-      const Tensor* begin_t = c->input_tensor(1);
-      const Tensor* sizes_t = c->input_tensor(2);
+      // NOTE(mrry): Use MakeShapeFromShapeTensor to handle partially-known
+      // values, even though the `begin` value does not represent a shape.
+      ShapeHandle begin_value;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &begin_value));
 
-      if (sizes_t != nullptr && begin_t != nullptr) {
+      // NOTE(mrry): We can't use `MakeShapeFromShapeTensor` for `sizes` because
+      // it might contain -1, which can't be represented (-1 in the ShapeHandle
+      // would mean "unknown".
+      const Tensor* sizes_value = c->input_tensor(2);
+
+      if (sizes_value != nullptr) {
+        TF_RETURN_IF_ERROR(
+            c->WithRank(begin_value, sizes_value->NumElements(), &begin_value));
         std::vector<DimensionHandle> dims;
         // If the begin and sizes tensors are available, then
         // we can be precise about the shape of the output.
-        if (begin_t->dtype() == DT_INT64) {
-          TF_RETURN_IF_ERROR(SliceHelper<int64>(c, begin_t, sizes_t, &dims));
+        if (sizes_value->dtype() == DT_INT64) {
+          TF_RETURN_IF_ERROR(
+              SliceHelper<int64>(c, begin_value, sizes_value, &dims));
         } else {
-          TF_RETURN_IF_ERROR(SliceHelper<int32>(c, begin_t, sizes_t, &dims));
+          TF_RETURN_IF_ERROR(
+              SliceHelper<int32>(c, begin_value, sizes_value, &dims));
         }
 
         c->set_output(0, c->MakeShape(dims));
@@ -1823,12 +2023,11 @@ REGISTER_OP("StridedSlice")
       TF_RETURN_IF_ERROR(c->Merge(begin_shape, strides_shape, &begin_shape));
       DimensionHandle sparse_dims_dim = c->Dim(begin_shape, 0);
 
-      const Tensor* begin_value = c->input_tensor(1);
-      const Tensor* end_value = c->input_tensor(2);
       const Tensor* strides_value = c->input_tensor(3);
-      if (begin_value == nullptr || end_value == nullptr ||
-          strides_value == nullptr || !c->RankKnown(input) ||
-          !c->ValueKnown(sparse_dims_dim)) {
+      // TODO(aselle,allenl): If we had a stride_mask it would be possible to do
+      // more shape inference here (e.g. for x[3, ::T]).
+      if (!c->RankKnown(input) || !c->ValueKnown(sparse_dims_dim) ||
+          strides_value == nullptr) {
         c->set_output(0, c->UnknownShape());
         return Status::OK();
       }
@@ -1848,6 +2047,9 @@ REGISTER_OP("StridedSlice")
       TF_RETURN_IF_ERROR(c->GetAttr("new_axis_mask", &new_axis_mask));
       TF_RETURN_IF_ERROR(c->GetAttr("shrink_axis_mask", &shrink_axis_mask));
 
+      const Tensor* begin_value = c->input_tensor(1);
+      const Tensor* end_value = c->input_tensor(2);
+
       TensorShapeProto processing_shape, final_shape;
       ShapeReadWriteFromTensorShapeProto wrapped_processing_shape(
           &processing_shape);
@@ -1855,7 +2057,7 @@ REGISTER_OP("StridedSlice")
       bool is_identity, is_simple_slice, slice_dim0;
       gtl::InlinedVector<int64, 4> begin, end, strides;
       TF_RETURN_IF_ERROR(ValidateStridedSliceOp(
-          *begin_value, *end_value, *strides_value,
+          begin_value, end_value, *strides_value,
           ShapeReadWriteFromTensorShapeProto(&input_shape_proto), begin_mask,
           end_mask, ellipsis_mask, new_axis_mask, shrink_axis_mask,
           &wrapped_processing_shape, &wrapped_final_shape, &is_identity,
@@ -2064,38 +2266,26 @@ REGISTER_OP("Tile")
     .Attr("T: type")
     .Attr("Tmultiples: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle input;
+      ShapeHandle input = c->input(0);
+      // NOTE(mrry): Represent `multiples` as a `TensorShape` because (i)
+      // it is a vector of non-negative integers, and (ii) doing so allows
+      // us to handle partially-known multiples.
       ShapeHandle multiples;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &multiples));
-      DimensionHandle multiples_dim0 = c->Dim(multiples, 0);
-      if (!c->ValueKnown(multiples_dim0)) {
-        // Length of multiples vector unknown, so output is unknown.
-        //
-        // NOTE: we could potentially merge the input rank with the
-        // multiples length.
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &multiples));
+      if (c->RankKnown(input)) {
+        TF_RETURN_IF_ERROR(c->WithRank(multiples, c->Rank(input), &multiples));
+      }
+
+      if (!c->RankKnown(multiples)) {
         return shape_inference::UnknownShape(c);
       }
 
-      int32 rank = c->Value(multiples_dim0);
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), rank, &input));
-      const Tensor* multiples_t = c->input_tensor(1);
-      if (multiples_t == nullptr) {
-        // If multiples vector isn't available, we only know the
-        // output rank, not the sizes.
-        c->set_output(0, c->UnknownShapeOfRank(rank));
-        return Status::OK();
-      }
-
-      std::vector<int64> data;
-      if (multiples_t->dtype() == DT_INT32) {
-        data = AsInt64<int32>(multiples_t, rank);
-      } else {
-        data = AsInt64<int64>(multiples_t, rank);
-      }
+      int32 rank = c->Rank(multiples);
+      TF_RETURN_IF_ERROR(c->WithRank(input, rank, &input));
       std::vector<DimensionHandle> dims(rank);
       for (int i = 0; i < rank; ++i) {
-        const int64 multiple = data[i];
-        TF_RETURN_IF_ERROR(c->Multiply(c->Dim(input, i), multiple, &dims[i]));
+        TF_RETURN_IF_ERROR(
+            c->Multiply(c->Dim(input, i), c->Dim(multiples, i), &dims[i]));
       }
       c->set_output(0, c->MakeShape(dims));
       return Status::OK();
@@ -2120,6 +2310,7 @@ REGISTER_OP("TileGrad")
     .Output("output: T")
     .Attr("T: type")
     .Deprecated(3, "TileGrad has been replaced with reduce_sum")
+    .SetShapeFn(tensorflow::shape_inference::UnknownShape)
     .Doc(R"doc(
 Returns the gradient of `Tile`.
 
@@ -2379,11 +2570,10 @@ REGISTER_OP("Placeholder")
       PartialTensorShape shape;
       TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
 
-      // Placeholder has a legacy bug where we cannot tell
-      // the difference between a scalar shape attribute and
-      // 'unknown shape'.  So if the shape is a scalar, we return
-      // an unknown shape.
-      if (shape.dims() == 0) {
+      // Placeholder has legacy behavior where we cannot tell the difference
+      // between a scalar shape attribute and 'unknown shape'.  So if the shape
+      // is a scalar, we return an unknown shape.
+      if (shape.dims() <= 0) {
         return shape_inference::UnknownShape(c);
       }
 
@@ -2405,6 +2595,36 @@ output: A placeholder tensor that must be replaced using the feed mechanism.
 dtype: The type of elements in the tensor.
 shape: (Optional) The shape of the tensor. If the shape has 0 dimensions, the
   shape is unconstrained.
+)doc");
+
+// This version fixes an issue with the original version of Placeholder
+// where the empty shape attribute "[]" was used to denote
+// an unknown shape.  This meant that scalars (added later) could
+// not be represented natively.  This new version fixes that
+// limitation.
+REGISTER_OP("PlaceholderV2")
+    .Output("output: dtype")
+    .Attr("dtype: type")
+    .Attr("shape: shape")
+    .SetShapeFn([](InferenceContext* c) {
+      TensorShapeProto shape;
+      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
+      ShapeHandle output;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape, &output));
+      c->set_output(0, output);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+A placeholder op for a value that will be fed into the computation.
+
+N.B. This operation will fail with an error if it is executed. It is
+intended as a way to represent a value that will always be fed, and to
+provide attrs that enable the fed value to be checked at runtime.
+
+output: A placeholder tensor that must be replaced using the feed mechanism.
+dtype: The type of elements in the tensor.
+shape: The shape of the tensor. The shape can be any partially-specified
+   shape.  To be unconstrained, pass in a shape with unknown rank.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -3684,7 +3904,7 @@ strides: 1-D of length 4. How far the centers of two consecutive patches are in
 rates: 1-D of length 4. Must be: `[1, rate_rows, rate_cols, 1]`. This is the
   input stride, specifying how far two consecutive patch samples are in the
   input. Equivalent to extracting patches with
-  `patch_sizes_eff = patch_sizes + (patch_sizes - 1) * (rates - 1), followed by
+  `patch_sizes_eff = patch_sizes + (patch_sizes - 1) * (rates - 1)`, followed by
   subsampling them spatially by a factor of `rates`.
 padding: The type of padding algorithm to use.
 
@@ -3977,7 +4197,7 @@ input_min: If range is given, this is the min of the range.
 input_max: If range is given, this is the max of the range.
 )doc");
 
-// EXPERIMENTAL: tfdb debugger-inserted ops.
+// EXPERIMENTAL: tfdbg debugger-inserted ops.
 REGISTER_OP("Copy")
     .Input("input: T")
     .Output("output: T")
@@ -4052,6 +4272,611 @@ output: An integer output tensor that is the number of NaNs in the input.
 tensor_name: Name of the input tensor.
 debug_urls: List of URLs to debug targets, e.g.,
             file:///foo/tfdbg_dump, grpc:://localhost:11011
+)doc");
+
+REGISTER_OP("DebugNumericSummary")
+    .Input("input: T")
+    .Output("output: double")
+    .Attr("T: type")
+    .Attr("tensor_name: string = ''")
+    .Attr("debug_urls: list(string) = []")
+    .SetAllowsUninitializedInput()
+    .Doc(R"doc(
+Debug Numeric Summary Op.
+
+Provide a basic summary of numeric value types, range and distribution.
+
+input: Input tensor, non-Reference type, float or double.
+output: A double tensor of shape [12], the elements of which are:
+  [0]: is initialized (1.0) or not (0.0).
+  [1]: total number of elements
+  [2]: -inf count
+  [3]: negative element count (excluding -inf)
+  [4]: zero element count
+  [5]: positive element count (excluding +inf)
+  [6]: +inf element count
+  [7]: NaN element count
+Output elements [1:8] are all zero, if the tensor is uninitialized.
+  [8]: minimum of all non-inf and non-NaN elements.
+       If uninitialized or no such element exists: +inf.
+  [9]: maximum of all non-inf and non-NaN elements.
+       If uninitialized or no such element exists: -inf.
+  [10]: mean of all non-inf and non-NaN elements.
+        If uninitialized or no such element exists: NaN.
+  [11]: variance of all non-inf and non-NaN elements.
+        If uninitialized or no such element exists: NaN.
+
+tensor_name: Name of the input tensor.
+debug_urls: List of URLs to debug targets, e.g.,
+            file:///foo/tfdbg_dump, grpc:://localhost:11011
+)doc");
+
+REGISTER_OP("QuantizeV2")
+    .Input("input: float")
+    .Input("min_range: float")
+    .Input("max_range: float")
+    .Output("output: T")
+    .Output("output_min: float")
+    .Output("output_max: float")
+    .Attr("T: quantizedtype")
+    .Attr("mode: {'MIN_COMBINED', 'MIN_FIRST'} = 'MIN_COMBINED'")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Quantize the 'input' tensor of type float to 'output' tensor of type 'T'.
+
+[min_range, max_range] are scalar floats that specify the range for
+the 'input' data. The 'mode' attribute controls exactly which calculations are
+used to convert the float values to their quantized equivalents.
+
+In 'MIN_COMBINED' mode, each value of the tensor will undergo the following:
+
+```
+out[i] = (in[i] - min_range) * range(T) / (max_range - min_range)
+if T == qint8, out[i] -= (range(T) + 1) / 2.0
+```
+here `range(T) = numeric_limits<T>::max() - numeric_limits<T>::min()`
+
+*MIN_COMBINED Mode Example*
+
+Assume the input is type float and has a possible range of [0.0, 6.0] and the
+output type is quint8 ([0, 255]). The min_range and max_range values should be
+specified as 0.0 and 6.0. Quantizing from float to quint8 will multiply each
+value of the input by 255/6 and cast to quint8.
+
+If the output type was qint8 ([-128, 127]), the operation will additionally
+subtract each value by 128 prior to casting, so that the range of values aligns
+with the range of qint8.
+
+If the mode is 'MIN_FIRST', then this approach is used:
+
+```
+number_of_steps = 1 << (# of bits in T)
+range_adjust = number_of_steps / (number_of_steps - 1)
+range = (range_max - range_min) * range_adjust
+range_scale = number_of_steps / range
+quantized = round(input * range_scale) - round(range_min * range_scale) +
+  numeric_limits<T>::min()
+quantized = max(quantized, numeric_limits<T>::min())
+quantized = min(quantized, numeric_limits<T>::max())
+```
+
+The biggest difference between this and MIN_COMBINED is that the minimum range
+is rounded first, before it's subtracted from the rounded value. With
+MIN_COMBINED, a small bias is introduced where repeated iterations of quantizing
+and dequantizing will introduce a larger and larger error.
+
+One thing to watch out for is that the operator may choose to adjust the
+requested minimum and maximum values slightly during the quantization process,
+so you should always use the output ports as the range for further calculations.
+For example, if the requested minimum and maximum values are close to equal,
+they will be separated by a small epsilon value to prevent ill-formed quantized
+buffers from being created. Otherwise, you can end up with buffers where all the
+quantized values map to the same float value, which causes problems for
+operations that have to perform further calculations on them.
+
+min_range: The minimum scalar value possibly produced for the input.
+max_range: The maximum scalar value possibly produced for the input.
+output: The quantized data produced from the float input.
+output_min: The actual minimum scalar value used for the output.
+output_max: The actual maximum scalar value used for the output.
+
+)doc");
+
+REGISTER_OP("Dequantize")
+    .Input("input: T")
+    .Input("min_range: float")
+    .Input("max_range: float")
+    .Output("output: float")
+    .Attr("T: quantizedtype")
+    .Attr("mode: {'MIN_COMBINED', 'MIN_FIRST'} = 'MIN_COMBINED'")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Dequantize the 'input' tensor into a float Tensor.
+
+[min_range, max_range] are scalar floats that specify the range for
+the 'input' data. The 'mode' attribute controls exactly which calculations are
+used to convert the float values to their quantized equivalents.
+
+In 'MIN_COMBINED' mode, each value of the tensor will undergo the following:
+
+```
+if T == qint8, in[i] += (range(T) + 1)/ 2.0
+out[i] = min_range + (in[i]* (max_range - min_range) / range(T))
+```
+here `range(T) = numeric_limits<T>::max() - numeric_limits<T>::min()`
+
+*MIN_COMBINED Mode Example*
+
+If the input comes from a QuantizedRelu6, the output type is
+quint8 (range of 0-255) but the possible range of QuantizedRelu6 is
+0-6.  The min_range and max_range values are therefore 0.0 and 6.0.
+Dequantize on quint8 will take each value, cast to float, and multiply
+by 6 / 255.
+Note that if quantizedtype is qint8, the operation will additionally add
+each value by 128 prior to casting.
+
+If the mode is 'MIN_FIRST', then this approach is used:
+
+```
+number_of_steps = 1 << (# of bits in T)
+range_adjust = number_of_steps / (number_of_steps - 1)
+range = (range_max - range_min) * range_adjust
+range_scale = range / number_of_steps
+const double offset_input = static_cast<double>(input) - lowest_quantized;
+result = range_min + ((input - numeric_limits<T>::min()) * range_scale)
+```
+
+min_range: The minimum scalar value possibly produced for the input.
+max_range: The maximum scalar value possibly produced for the input.
+
+)doc");
+
+REGISTER_OP("QuantizedConcat")
+    .Input("concat_dim: int32")
+    .Input("values: N * T")
+    .Input("input_mins: N * float32")
+    .Input("input_maxes: N * float32")
+    .Output("output: T")
+    .Output("output_min: float")
+    .Output("output_max: float")
+    .Attr("N: int >= 2")
+    .Attr("T: type")
+    .SetShapeFn([](InferenceContext* c) {
+      const int n = (c->num_inputs() - 1) / 3;
+      TF_RETURN_IF_ERROR(shape_inference::ConcatShape(c, n));
+      ShapeHandle unused;
+      for (int i = n + 1; i < c->num_inputs(); ++i) {
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 0, &unused));
+      }
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Concatenates quantized tensors along one dimension.
+
+concat_dim: 0-D.  The dimension along which to concatenate.  Must be in the
+  range [0, rank(values)).
+values: The `N` Tensors to concatenate. Their ranks and types must match,
+  and their sizes must match in all dimensions except `concat_dim`.
+input_mins: The minimum scalar values for each of the input tensors.
+input_maxes: The maximum scalar values for each of the input tensors.
+output_min: The float value that the minimum quantized output value represents.
+output_max: The float value that the maximum quantized output value represents.
+output: A `Tensor` with the concatenation of values stacked along the
+  `concat_dim` dimension.  This tensor's shape matches that of `values` except
+  in `concat_dim` where it has the sum of the sizes.
+)doc");
+
+REGISTER_OP("QuantizedReshape")
+    .Input("tensor: T")
+    .Input("shape: Tshape")
+    .Input("input_min: float")
+    .Input("input_max: float")
+    .Output("output: T")
+    .Output("output_min: float")
+    .Output("output_max: float")
+    .Attr("T: type")
+    .Attr("Tshape: {int32, int64} = DT_INT32")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(SetOutputShapeForReshape(c));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    })
+    .Doc(R"Doc(
+Reshapes a quantized tensor as per the Reshape op.
+```
+
+shape: Defines the shape of the output tensor.
+input_min: The minimum value of the input.
+input_max: The maximum value of the input.
+output_min: This value is copied from input_min.
+output_max: This value is copied from input_max.
+)Doc");
+
+REGISTER_OP("QuantizedInstanceNorm")
+    .Input("x: T")
+    .Input("x_min: float")
+    .Input("x_max: float")
+    .Output("y: T")
+    .Output("y_min: float")
+    .Output("y_max: float")
+    .Attr("T: quantizedtype")
+    .Attr("output_range_given: bool = false")
+    .Attr("given_y_min: float = 0")
+    .Attr("given_y_max: float = 0")
+    .Attr("variance_epsilon: float = 1e-5")
+    .Attr("min_separation: float = 1e-3")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // x should be a rank 4 tensor.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &unused));
+      // Assert x_min and x_max are scalars (rank 0).
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      // y has the same shape as x.
+      TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
+      // y_min and y_max are scalars.
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Quantized Instance normalization.
+
+x: A 4D input Tensor.
+x_min: The value represented by the lowest quantized input.
+x_max: The value represented by the highest quantized input.
+y: A 4D Tensor.
+y_min: The value represented by the lowest quantized output.
+y_max: The value represented by the highest quantized output.
+output_range_given: If True, `given_y_min` and `given_y_min`
+  and `given_y_max` are used as the output range. Otherwise,
+  the implementation computes the output range.
+given_y_min: Output in `y_min` if `output_range_given` is True.
+given_y_max: Output in `y_max` if `output_range_given` is True.
+variance_epsilon: A small float number to avoid dividing by 0.
+min_separation: Minimum value of `y_max - y_min`
+)doc");
+
+namespace {
+
+Status ScatterNdShape(InferenceContext* c) {
+  ShapeHandle indices_shape;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &indices_shape));
+  ShapeHandle updates_shape;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &updates_shape));
+  ShapeHandle output_shape;
+  TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(2, &output_shape));
+
+  if (c->Value(c->NumElements(output_shape)) == 0 &&
+      (c->Value(c->NumElements(indices_shape)) > 0 ||
+       c->Value(c->NumElements(updates_shape)) > 0)) {
+    return errors::InvalidArgument(
+        "Indices and updates specified for empty output shape");
+  }
+
+  if (c->RankKnown(indices_shape) && c->RankKnown(updates_shape)) {
+    const int64 outer_dims = c->Rank(indices_shape) - 1;
+    const DimensionHandle ixdim = c->Dim(indices_shape, -1);
+
+    // We can only do more validation if the last dimension of indices
+    // is a known value.
+    if (c->ValueKnown(ixdim)) {
+      int64 ix = c->Value(ixdim);
+      ShapeHandle unused;
+      ShapeHandle prefix_indices;
+      TF_RETURN_IF_ERROR(
+          c->Subshape(indices_shape, 0, outer_dims, &prefix_indices));
+      ShapeHandle prefix_updates;
+      TF_RETURN_IF_ERROR(
+          c->Subshape(updates_shape, 0, outer_dims, &prefix_updates));
+
+      Status s = c->Merge(prefix_indices, prefix_updates, &unused);
+      if (!s.ok()) {
+        return errors::InvalidArgument(
+            "The outer ", outer_dims, " dimensions of indices.shape=",
+            c->DebugString(indices_shape), " must match the outer ", outer_dims,
+            " dimensions of updates.shape=", c->DebugString(updates_shape),
+            ": ", s.error_message());
+      }
+
+      ShapeHandle suffix_output;
+      TF_RETURN_IF_ERROR(c->Subshape(output_shape, ix, &suffix_output));
+      ShapeHandle suffix_updates;
+      TF_RETURN_IF_ERROR(
+          c->Subshape(updates_shape, outer_dims, &suffix_updates));
+      s = c->Merge(suffix_output, suffix_updates, &unused);
+      if (!s.ok()) {
+        return errors::InvalidArgument(
+            "The inner ", c->Rank(output_shape) - ix,
+            " dimensions of output.shape=", c->DebugString(output_shape),
+            " must match the inner ", c->Rank(updates_shape) - outer_dims,
+            " dimensions of updates.shape=", c->DebugString(updates_shape),
+            ": ", s.error_message());
+      }
+    }
+  }
+
+  c->set_output(0, output_shape);
+  return Status::OK();
+}
+
+}  // namespace
+
+REGISTER_OP("ScatterNd")
+    .Input("indices: Tindices")
+    .Input("updates: T")
+    .Input("shape: Tindices")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("Tindices: {int32, int64}")
+    .SetShapeFn(ScatterNdShape)
+    .Doc(
+        R"doc(Creates a new tensor by applying sparse `updates` to individual
+values or slices within a zero tensor of the given `shape` tensor according to
+indices.  This operator is the inverse of the [tf.gather_nd](#gather_nd)
+operator which extracts values or slices from a given tensor.
+
+TODO(simister): Add a link to Variable.__getitem__ documentation on slice
+syntax.
+
+`shape` is a `TensorShape` with rank `P` and `indices` is a `Tensor` of rank
+`Q`.
+
+`indices` must be integer tensor, containing indices into `shape`.
+It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+The innermost dimension of `indices` (with length `K`) corresponds to
+indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+dimension of `shape`.
+
+`updates` is Tensor of rank `Q-1+P-K` with shape:
+
+```
+[d_0, ..., d_{Q-2}, shape[K], ..., shape[P-1]].
+```
+
+The simplest form of scatter is to insert individual elements in a tensor by
+index. For example, say we want to insert 4 scattered elements in a rank-1
+tensor with 8 elements.
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="../../images/ScatterNd1.png" alt>
+</div>
+
+In Python, this scatter operation would look like this:
+
+    indices = tf.constant([[4], [3], [1], [7]])
+    updates = tf.constant([9, 10, 11, 12])
+    shape = tf.constant([8])
+    scatter = tf.scatter_nd(indices, updates, shape)
+    with tf.Session() as sess:
+      print sess.run(scatter)
+
+The resulting tensor would look like this:
+
+    [0, 11, 0, 10, 9, 0, 0, 12]
+
+We can also, insert entire slices of a higher rank tensor all at once. For
+example, if we wanted to insert two slices in the first dimension of a
+rank-3 tensor with two matrices of new values.
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="../../images/ScatterNd2.png" alt>
+</div>
+
+In Python, this scatter operation would look like this:
+
+    indices = tf.constant([[0], [2]])
+    updates = tf.constant([[[5, 5, 5, 5], [6, 6, 6, 6],
+                            [7, 7, 7, 7], [8, 8, 8, 8]],
+                           [[5, 5, 5, 5], [6, 6, 6, 6],
+                            [7, 7, 7, 7], [8, 8, 8, 8]]])
+    shape = tf.constant([4, 4, 4])
+    scatter = tf.scatter_nd(indices, updates, shape)
+    with tf.Session() as sess:
+      print sess.run(scatter)
+
+The resulting tensor would look like this:
+
+    [[[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],
+     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+     [[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],
+     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]
+
+indices: A Tensor. Must be one of the following types: int32, int64.
+  A tensor of indices into ref.
+updates: A Tensor. Must have the same type as tensor. A tensor of updated values
+  to store in ref.
+shape: A vector. The shape of the resulting tensor.
+output: A new tensor with the given shape and updates applied according
+  to the indices.
+)doc");
+
+REGISTER_OP("FakeQuantWithMinMaxArgs")
+    .Attr("min: float = -6.0")
+    .Attr("max: float = 6.0")
+    .Input("inputs: float")
+    .Output("outputs: float")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Fake-quantize the 'inputs' tensor, type float to 'outputs' tensor of same type.
+
+Attributes [min; max] define the clamping range for the 'inputs' data.  Op
+divides this range into 255 steps (total of 256 values), then replaces each
+'inputs' value with the closest of the quantized step values.
+
+Quantization is called fake since the output is still in floating point.
+)doc");
+
+REGISTER_OP("FakeQuantWithMinMaxArgsGradient")
+    .Attr("min: float = -6.0")
+    .Attr("max: float = 6.0")
+    .Input("gradients: float")
+    .Input("inputs: float")
+    .Output("backprops: float")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Compute gradients for a FakeQuantWithMinMaxArgs operation.
+
+gradients: Backpropagated gradients above the FakeQuantWithMinMaxArgs operation.
+inputs: Values passed as inputs to the FakeQuantWithMinMaxArgs operation.
+backprops: Backpropagated gradients below the FakeQuantWithMinMaxArgs operation:
+  `gradients * (inputs >= min && inputs <= max)`.
+)doc");
+
+REGISTER_OP("FakeQuantWithMinMaxVars")
+    .Input("inputs: float")
+    .Input("min: float")
+    .Input("max: float")
+    .Output("outputs: float")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Fake-quantize the 'inputs' tensor of type float and shape `[b, h, w, d]` via
+global float scalars `min` and `max` to 'outputs' tensor of same shape as
+`inputs`.
+
+[min; max] is the clamping range for the 'inputs' data.  Op divides this range
+into 255 steps (total of 256 values), then replaces each 'inputs' value with the
+closest of the quantized step values.
+
+This operation has a gradient and thus allows for training `min` and `max` values.
+)doc");
+
+REGISTER_OP("FakeQuantWithMinMaxVarsGradient")
+    .Input("gradients: float")
+    .Input("inputs: float")
+    .Input("min: float")
+    .Input("max: float")
+    .Output("backprops_wrt_input: float")
+    .Output("backprop_wrt_min: float")
+    .Output("backprop_wrt_max: float")
+    .SetShapeFn([](InferenceContext* c) {
+      // gradients and inputs are same size.
+      ShapeHandle inputs;
+      TF_RETURN_IF_ERROR(c->Merge(c->input(0), c->input(1), &inputs));
+
+      // min and max are scalars
+      ShapeHandle min_max;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &min_max));
+      TF_RETURN_IF_ERROR(c->Merge(min_max, c->input(3), &min_max));
+
+      c->set_output(0, inputs);
+      c->set_output(1, min_max);
+      c->set_output(2, min_max);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Compute gradients for a FakeQuantWithMinMaxVars operation.
+
+gradients: Backpropagated gradients above the FakeQuantWithMinMaxVars operation.
+inputs: Values passed as inputs to the FakeQuantWithMinMaxVars operation.
+min, max: Quantization interval, scalar floats.
+backprops_wrt_input: Backpropagated gradients w.r.t. inputs:
+  `gradients * (inputs >= min && inputs <= max)`.
+backprop_wrt_min: Backpropagated gradients w.r.t. min parameter:
+  `sum(gradients * (inputs < min))`.
+backprop_wrt_max: Backpropagated gradients w.r.t. max parameter:
+  `sum(gradients * (inputs > max))`.
+)doc");
+
+REGISTER_OP("FakeQuantWithMinMaxVarsPerChannel")
+    .Input("inputs: float")
+    .Input("min: float")
+    .Input("max: float")
+    .Output("outputs: float")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle input, min, max;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &input));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &min));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &max));
+
+      DimensionHandle unused;
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(input, -1), c->Dim(min, 0), &unused));
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(input, -1), c->Dim(max, 0), &unused));
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(min, 0), c->Dim(max, 0), &unused));
+
+      c->set_output(0, input);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Fake-quantize the 'inputs' tensor of type float and one of the shapes: `[d]`,
+`[b, d]` `[b, h, w, d]` via per-channel floats `min` and `max` of shape `[d]`
+to 'outputs' tensor of same shape as `inputs`.
+
+[min; max] is the clamping range for the 'inputs' data in the corresponding
+depth channel.  Op divides this range into 255 steps (total of 256 values), then
+replaces each 'inputs' value with the closest of the quantized step values.
+
+This operation has a gradient and thus allows for training `min` and `max` values.
+)doc");
+
+REGISTER_OP("FakeQuantWithMinMaxVarsPerChannelGradient")
+    .Input("gradients: float")
+    .Input("inputs: float")
+    .Input("min: float")
+    .Input("max: float")
+    .Output("backprops_wrt_input: float")
+    .Output("backprop_wrt_min: float")
+    .Output("backprop_wrt_max: float")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle inputs;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &inputs));
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(inputs, 4, &inputs));
+      TF_RETURN_IF_ERROR(c->Merge(inputs, c->input(1), &inputs));
+
+      ShapeHandle last_dim = c->Vector(c->Dim(inputs, -1));
+
+      ShapeHandle min_max;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &min_max));
+      TF_RETURN_IF_ERROR(c->Merge(min_max, last_dim, &min_max));
+      TF_RETURN_IF_ERROR(c->Merge(c->input(3), min_max, &min_max));
+
+      c->set_output(0, inputs);
+      c->set_output(1, min_max);
+      c->set_output(2, min_max);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Compute gradients for a FakeQuantWithMinMaxVarsPerChannel operation.
+
+gradients: Backpropagated gradients above the FakeQuantWithMinMaxVars operation,
+  shape one of: `[d]`, `[b, d]`,  `[b, h, w, d]`.
+inputs: Values passed as inputs to the FakeQuantWithMinMaxVars operation, shape
+  same as `gradients`.
+min, max: Quantization interval, floats of shape `[d]`.
+backprops_wrt_input: Backpropagated gradients w.r.t. inputs, shape same as
+  `inputs`:
+    `gradients * (inputs >= min && inputs <= max)`.
+backprop_wrt_min: Backpropagated gradients w.r.t. min parameter, shape `[d]`:
+  `sum_per_d(gradients * (inputs < min))`.
+backprop_wrt_max: Backpropagated gradients w.r.t. max parameter, shape `[d]`:
+  `sum_per_d(gradients * (inputs > max))`.
 )doc");
 
 // Deprecated op registrations:

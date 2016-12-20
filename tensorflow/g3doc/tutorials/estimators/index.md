@@ -6,13 +6,13 @@ learning models via its high-level
 offers classes you can instantiate to quickly configure common model types such
 as regressors and classifiers:
 
-*   [`LinearClassifier`](../../api_docs/python/contrib.learn.md#LinearClassifier).
+*   [`LinearClassifier`](../../api_docs/python/contrib.learn.md#LinearClassifier):
     Constructs a linear classification model.
-*   [`LinearRegressor`](../../api_docs/python/contrib.learn.md#LinearRegressor).
+*   [`LinearRegressor`](../../api_docs/python/contrib.learn.md#LinearRegressor):
     Constructs a linear regression model.
-*   [`DNNClassifier`](../../api_docs/python/contrib.learn.md#DNNClassifier).
+*   [`DNNClassifier`](../../api_docs/python/contrib.learn.md#DNNClassifier):
     Construct a neural network classification model.
-*   [`DNNRegressor`](../../api_docs/python/contrib.learn.md#DNNRegressor).
+*   [`DNNRegressor`](../../api_docs/python/contrib.learn.md#DNNRegressor):
     Construct a neural network regressions model.
 
 But what if none of `tf.contrib.learn`'s predefined model types meets your
@@ -22,7 +22,7 @@ different activation functions for each neural network layer. Or maybe you're
 implementing a ranking or recommendation system, and neither a classifier nor a
 regressor is appropriate for generating predictions.
 
-This tutorial covers how to create your own Estimator using the building blocks
+This tutorial covers how to create your own `Estimator` using the building blocks
 provided in `tf.contrib.learn`, which will predict the ages of
 [abalones](https://en.wikipedia.org/wiki/Abalone) based on their physical
 measurements. You'll learn how to do the following:
@@ -88,7 +88,7 @@ contains 7 examples on which to make predictions.
 
 The following sections walk through writing the `Estimator` code step by step;
 the [full, final code is available
-here](https://www.tensorflow.org/code/tensorflow/examples/tutorials/estimators/abalone.py)
+here](https://www.tensorflow.org/code/tensorflow/examples/tutorials/estimators/abalone.py).
 
 ## Loading Abalone CSV Data into TensorFlow Datasets
 
@@ -152,6 +152,8 @@ def maybe_download():
     print("Training data is downloaded to %s" % train_file_name)
 
   if FLAGS.test_data:
+    test_file_name = FLAGS.test_data
+  else:
     test_file = tempfile.NamedTemporaryFile(delete=False)
     urllib.urlretrieve("http://download.tensorflow.org/data/abalone_test.csv", test_file.name)
     test_file_name = test_file.name
@@ -227,19 +229,18 @@ nn = tf.contrib.learn.Estimator(
     model_fn=model_fn, params=model_params)
 ```
 
-*   `model_fn`. A function object that contains all the aforementioned logic to
+*   `model_fn`: A function object that contains all the aforementioned logic to
     support training, evaluation, and prediction. You are responsible for
     implementing that functionality. The next section, [Constructing the
     `model_fn`](#constructing-modelfn) covers creating a model function in
     detail.
 
-*   `params`. An optional dict of hyperparameters (e.g., learning rate, dropout)
+*   `params`: An optional dict of hyperparameters (e.g., learning rate, dropout)
     that will be passed into the `model_fn`.
 
 NOTE: Just like `tf.contrib.learn`'s predefined regressors and classifiers, the
-`Estimator` initializer also accepts the following general configuration
-arguments, all of which are optional: `model_dir`, `config`, and
-`weight_column_name`.
+`Estimator` initializer also accepts the general configuration
+arguments `model_dir` and `config`.
 
 For the abalone age predictor, the model will accept one hyperparameter:
 learning rate. Define `LEARNING_RATE` as a constant at the beginning of your
@@ -281,12 +282,12 @@ def model_fn(features, targets, mode, params):
 
 The `model_fn` must accept three arguments:
 
-*   `features`. A dict containing the features passed to the model via `fit()`,
+*   `features`: A dict containing the features passed to the model via `fit()`,
     `evaluate()`, or `predict()`.
-*   `targets`. A `Tensor` containing the labels passed to the model via `fit()`,
+*   `targets`: A `Tensor` containing the labels passed to the model via `fit()`,
     `evaluate()`, or `predict()`. Will be empty for `predict()` calls, as these
     are the values the model will infer.
-*   `mode`. One of the following
+*   `mode`: One of the following
     [`ModeKeys`](../../api_docs/python/contrib.learn.md#ModeKeys) string values
     indicating the context in which the model_fn was invoked:
     *   `tf.contrib.learn.ModeKeys.TRAIN` The `model_fn` was invoked in training
@@ -380,7 +381,7 @@ tf.contrib.layers provides the following convenience functions for constructing
 fully connected layers:
 
 *   `relu(inputs, num_outputs)`. Create a layer of `num_outputs` nodes fully
-    connected to the previous layer `inputs` with a [ReLu activation
+    connected to the previous layer `inputs` with a [ReLU activation
     function](https://en.wikipedia.org/wiki/Rectifier_\(neural_networks\))
     ([tf.nn.relu](../../api_docs/python/nn.md#relu)):
 
@@ -389,8 +390,8 @@ fully connected layers:
     ```
 
 *   `relu6(inputs, num_outputs)`. Create a layer of `num_outputs` nodes fully
-    connected to the previous layer `hidden_layer` with a ReLu 6 activation
-    function ([tf.nn.relu6](../../api_docs/python/nn.md#relu6))
+    connected to the previous layer `hidden_layer` with a ReLU 6 activation
+    function ([tf.nn.relu6](../../api_docs/python/nn.md#relu6)):
 
     ```python
     second_hidden_layer = tf.contrib.layers.relu6(inputs=hidden_layer, num_outputs=20)
@@ -449,7 +450,7 @@ def model_fn(features, targets, mode, params):
 Here, because you'll be passing the abalone `Datasets` directly to `fit()`,
 `evaluate()`, and `predict()` via `x` and `y` arguments, the input layer is the
 `features` `Tensor` passed to the `model_fn`. The network contains two hidden
-layers, each with 10 nodes and a ReLu activation function. The output layer
+layers, each with 10 nodes and a ReLU activation function. The output layer
 contains no activation function, and is
 [reshaped](../../api_docs/python/array_ops.md#reshape) to a one-dimensional
 tensor to capture the model's predictions, which are stored in

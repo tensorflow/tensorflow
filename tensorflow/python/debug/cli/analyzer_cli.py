@@ -30,8 +30,10 @@ import re
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.debug import debug_data
+from tensorflow.python.debug.cli import cli_shared
+from tensorflow.python.debug.cli import command_parser
+from tensorflow.python.debug.cli import curses_ui
 from tensorflow.python.debug.cli import debugger_cli_common
-from tensorflow.python.debug.cli import tensor_format
 
 
 # String constants for the depth-dependent hanging indent at the beginning
@@ -44,7 +46,7 @@ HANG_SUFFIX = "|- "
 DEPTH_TEMPLATE = "(%d) "
 OP_TYPE_TEMPLATE = "[%s] "
 
-# String consntats for control inputs/outputs, etc.
+# String constants for control inputs/outputs, etc.
 CTRL_LABEL = "(Ctrl) "
 ELLIPSIS = "..."
 
@@ -185,15 +187,36 @@ class DebugAnalyzer(object):
     ap.add_argument(
         "tensor_name",
         type=str,
-        help="Name of the tensor, e.g., hidden1/Wx_plus_b/MatMul:0")
+        help="Name of the tensor, followed by any slicing indices, "
+        "e.g., hidden1/Wx_plus_b/MatMul:0, "
+        "hidden1/Wx_plus_b/MatMul:0[1, :]")
+    ap.add_argument(
+        "-n",
+        "--number",
+        dest="number",
+        type=int,
+        default=-1,
+        help="0-based dump number for the specified tensor. "
+        "Required for tensor with multiple dumps.")
+    ap.add_argument(
+        "-r",
+        "--ranges",
+        dest="ranges",
+        type=str,
+        default="",
+        help="Numerical ranges to highlight tensor elements in. "
+        "Examples: -r 0,1e-8, -r [-0.1,0.1], "
+        "-r \"[[-inf, -0.1], [0.1, inf]]\"")
+
+    ap.add_argument(
+        "-a",
+        "--all",
+        dest="print_all",
+        action="store_true",
+        help="Print the tensor in its entirety, i.e., do not use ellipses.")
     self._arg_parsers["print_tensor"] = ap
 
     # TODO(cais): Implement list_nodes.
-
-  def _error(self, msg):
-    full_msg = "ERROR: " + msg
-    return debugger_cli_common.RichTextLines(
-        [full_msg], font_attr_segs={0: [(0, len(full_msg), "red")]})
 
   def add_tensor_filter(self, filter_name, filter_callable):
     """Add a tensor filter.
@@ -297,7 +320,7 @@ class DebugAnalyzer(object):
       try:
         filter_callable = self.get_tensor_filter(parsed.tensor_filter)
       except ValueError:
-        return self._error(
+        return cli_shared.error(
             "There is no tensor filter named \"%s\"." % parsed.tensor_filter)
 
       data_to_show = self._debug_dump.find(filter_callable)
@@ -360,7 +383,7 @@ class DebugAnalyzer(object):
         parsed.node_name)
 
     if not self._debug_dump.node_exists(node_name):
-      return self._error(
+      return cli_shared.error(
           "There is no node named \"%s\" in the partition graphs" % node_name)
 
     # TODO(cais): Provide UI glossary feature to explain to users what the
@@ -447,21 +470,27 @@ class DebugAnalyzer(object):
       Output text lines as a RichTextLines object.
     """
 
+    parsed = self._arg_parsers["print_tensor"].parse_args(args)
+
     if screen_info and "cols" in screen_info:
       np_printoptions = {"linewidth": screen_info["cols"]}
     else:
       np_printoptions = {}
 
-    parsed = self._arg_parsers["print_tensor"].parse_args(args)
+    # Determine if any range-highlighting is required.
+    highlight_options = cli_shared.parse_ranges_highlight(parsed.ranges)
 
-    node_name, output_slot = debug_data.parse_node_or_tensor_name(
-        parsed.tensor_name)
+    tensor_name, tensor_slicing = (
+        command_parser.parse_tensor_name_with_slicing(parsed.tensor_name))
+
+    node_name, output_slot = debug_data.parse_node_or_tensor_name(tensor_name)
     if output_slot is None:
-      return self._error("\"%s\" is not a valid tensor name" %
-                         parsed.tensor_name)
+      return cli_shared.error("\"%s\" is not a valid tensor name" %
+                              parsed.tensor_name)
 
-    if not self._debug_dump.node_exists(node_name):
-      return self._error(
+    if (self._debug_dump.loaded_partition_graphs() and
+        not self._debug_dump.node_exists(node_name)):
+      return cli_shared.error(
           "Node \"%s\" does not exist in partition graphs" % node_name)
 
     watch_keys = self._debug_dump.debug_watch_keys(node_name)
@@ -476,21 +505,56 @@ class DebugAnalyzer(object):
           matching_data.append(datum)
 
     if not matching_data:
-      return self._error(
+      # No dump for this tensor.
+      return cli_shared.error(
           "Tensor \"%s\" did not generate any dumps." % parsed.tensor_name)
+    elif len(matching_data) == 1:
+      # There is only one dump for this tensor.
+      if parsed.number <= 0:
+        return cli_shared.format_tensor(
+            matching_data[0].get_tensor(),
+            matching_data[0].watch_key,
+            np_printoptions,
+            print_all=parsed.print_all,
+            tensor_slicing=tensor_slicing,
+            highlight_options=highlight_options)
+      else:
+        return cli_shared.error(
+            "Invalid number (%d) for tensor %s, which generated one dump." %
+            (parsed.number, parsed.tensor_name))
+    else:
+      # There are more than one dumps for this tensor.
+      if parsed.number < 0:
+        lines = [
+            "Tensor \"%s\" generated %d dumps:" % (parsed.tensor_name,
+                                                   len(matching_data))
+        ]
 
-    # TODO(cais): In the case of multiple dumps from the same tensor, require
-    #   explicit specification of the DebugOp and the temporal order.
-    if len(matching_data) > 1:
-      return self._error(
-          "print_tensor logic for multiple dumped records has not been "
-          "implemented.")
+        for i, datum in enumerate(matching_data):
+          rel_time = (datum.timestamp - self._debug_dump.t0) / 1000.0
+          lines.append("#%d [%.3f ms] %s" % (i, rel_time, datum.watch_key))
 
-    return tensor_format.format_tensor(
-        matching_data[0].get_tensor(),
-        matching_data[0].watch_key,
-        include_metadata=True,
-        np_printoptions=np_printoptions)
+        lines.append("")
+        lines.append(
+            "Use the -n (--number) flag to specify which dump to print.")
+        lines.append("For example:")
+        lines.append("  print_tensor %s -n 0" % parsed.tensor_name)
+
+        return debugger_cli_common.RichTextLines(lines)
+      elif parsed.number >= len(matching_data):
+        return cli_shared.error(
+            "Specified number (%d) exceeds the number of available dumps "
+            "(%d) for tensor %s" %
+            (parsed.number, len(matching_data), parsed.tensor_name))
+      else:
+        return cli_shared.format_tensor(
+            matching_data[parsed.number].get_tensor(),
+            matching_data[parsed.number].watch_key + " (dump #%d)" %
+            parsed.number,
+            np_printoptions,
+            print_all=parsed.print_all,
+            tensor_slicing=tensor_slicing,
+            highlight_options=highlight_options)
 
   def list_outputs(self, args, screen_info=None):
     """Command handler for inputs.
@@ -567,7 +631,7 @@ class DebugAnalyzer(object):
 
     # Check if node exists.
     if not self._debug_dump.node_exists(node_name):
-      return self._error(
+      return cli_shared.error(
           "There is no node named \"%s\" in the partition graphs" % node_name)
 
     if recursive:
@@ -626,7 +690,7 @@ class DebugAnalyzer(object):
       include_control: Whether control dependencies are to be included as
         inputs (and marked as such).
       show_op_type: Whether op type of the input nodes are to be displayed
-        alongside the the nodes' names.
+        alongside the nodes' names.
     """
 
     # Make a shallow copy of the list because it may be extended later.
@@ -777,3 +841,59 @@ class DebugAnalyzer(object):
     lines.insert(1, "%d dumped tensor(s):" % dump_count)
 
     return lines
+
+
+def create_analyzer_curses_cli(debug_dump, tensor_filters=None):
+  """Create an instance of CursesUI based on a DebugDumpDir object.
+
+  Args:
+    debug_dump: (debug_data.DebugDumpDir) The debug dump to use.
+    tensor_filters: (dict) A dict mapping tensor filter name (str) to tensor
+      filter (Callable).
+
+  Returns:
+    (curses_ui.CursesUI) A curses CLI object with a set of standard analyzer
+      commands and tab-completions registered.
+  """
+
+  analyzer = DebugAnalyzer(debug_dump)
+  if tensor_filters:
+    for tensor_filter_name in tensor_filters:
+      analyzer.add_tensor_filter(
+          tensor_filter_name, tensor_filters[tensor_filter_name])
+
+  cli = curses_ui.CursesUI()
+  cli.register_command_handler(
+      "list_tensors",
+      analyzer.list_tensors,
+      analyzer.get_help("list_tensors"),
+      prefix_aliases=["lt"])
+  cli.register_command_handler(
+      "node_info",
+      analyzer.node_info,
+      analyzer.get_help("node_info"),
+      prefix_aliases=["ni"])
+  cli.register_command_handler(
+      "list_inputs",
+      analyzer.list_inputs,
+      analyzer.get_help("list_inputs"),
+      prefix_aliases=["li"])
+  cli.register_command_handler(
+      "list_outputs",
+      analyzer.list_outputs,
+      analyzer.get_help("list_outputs"),
+      prefix_aliases=["lo"])
+  cli.register_command_handler(
+      "print_tensor",
+      analyzer.print_tensor,
+      analyzer.get_help("print_tensor"),
+      prefix_aliases=["pt"])
+
+  dumped_tensor_names = []
+  for datum in debug_dump.dumped_tensor_data:
+    dumped_tensor_names.append("%s:%d" % (datum.node_name, datum.output_slot))
+
+  # Tab completions for command "print_tensors".
+  cli.register_tab_comp_context(["print_tensor", "pt"], dumped_tensor_names)
+
+  return cli

@@ -7,7 +7,9 @@ and assumes expertise and experience in machine learning.
 
 CIFAR-10 classification is a common benchmark problem in machine learning.  The
 problem is to classify RGB 32x32 pixel images across 10 categories:
-```airplane, automobile, bird, cat, deer, dog, frog, horse, ship, and truck.```
+```
+airplane, automobile, bird, cat, deer, dog, frog, horse, ship, and truck.
+```
 
 For more details refer to the [CIFAR-10 page](http://www.cs.toronto.edu/~kriz/cifar.html)
 and a [Tech Report](http://www.cs.toronto.edu/~kriz/learning-features-2009-TR.pdf)
@@ -81,21 +83,21 @@ for details.  It consists of 1,068,298 learnable parameters and requires about
 ## Code Organization
 
 The code for this tutorial resides in
-[`tensorflow/models/image/cifar10/`](https://www.tensorflow.org/code/tensorflow/models/image/cifar10/).
+[`tensorflow_models/tutorials/image/cifar10/`](https://www.tensorflow.org/code/tensorflow_models/tutorials/image/cifar10/).
 
 File | Purpose
 --- | ---
-[`cifar10_input.py`](https://www.tensorflow.org/code/tensorflow/models/image/cifar10/cifar10_input.py) | Reads the native CIFAR-10 binary file format.
-[`cifar10.py`](https://www.tensorflow.org/code/tensorflow/models/image/cifar10/cifar10.py) | Builds the CIFAR-10 model.
-[`cifar10_train.py`](https://www.tensorflow.org/code/tensorflow/models/image/cifar10/cifar10_train.py) | Trains a CIFAR-10 model on a CPU or GPU.
-[`cifar10_multi_gpu_train.py`](https://www.tensorflow.org/code/tensorflow/models/image/cifar10/cifar10_multi_gpu_train.py) | Trains a CIFAR-10 model on multiple GPUs.
-[`cifar10_eval.py`](https://www.tensorflow.org/code/tensorflow/models/image/cifar10/cifar10_eval.py) | Evaluates the predictive performance of a CIFAR-10 model.
+[`cifar10_input.py`](https://www.tensorflow.org/code/tensorflow_models/tutorials/image/cifar10/cifar10_input.py) | Reads the native CIFAR-10 binary file format.
+[`cifar10.py`](https://www.tensorflow.org/code/tensorflow_models/tutorials/image/cifar10/cifar10.py) | Builds the CIFAR-10 model.
+[`cifar10_train.py`](https://www.tensorflow.org/code/tensorflow_models/tutorials/image/cifar10/cifar10_train.py) | Trains a CIFAR-10 model on a CPU or GPU.
+[`cifar10_multi_gpu_train.py`](https://www.tensorflow.org/code/tensorflow_models/tutorials/image/cifar10/cifar10_multi_gpu_train.py) | Trains a CIFAR-10 model on multiple GPUs.
+[`cifar10_eval.py`](https://www.tensorflow.org/code/tensorflow_models/tutorials/image/cifar10/cifar10_eval.py) | Evaluates the predictive performance of a CIFAR-10 model.
 
 
 ## CIFAR-10 Model
 
 The CIFAR-10 network is largely contained in
-[`cifar10.py`](https://www.tensorflow.org/code/tensorflow/models/image/cifar10/cifar10.py).
+[`cifar10.py`](https://www.tensorflow.org/code/tensorflow_models/tutorials/image/cifar10/cifar10.py).
 The complete training
 graph contains roughly 765 operations. We find that we can make the code most
 reusable by constructing the graph with the following modules:
@@ -122,7 +124,7 @@ The images are processed as follows:
 
 *  They are cropped to 24 x 24 pixels, centrally for evaluation or
    [randomly](../../api_docs/python/constant_op.md#random_crop) for training.
-*  They are [approximately whitened](../../api_docs/python/image.md#per_image_whitening)
+*  They are [approximately whitened](../../api_docs/python/image.md#per_image_standardization)
    to make the model insensitive to dynamic range.
 
 For training, we additionally apply a series of random distortions to
@@ -246,7 +248,7 @@ Filling queue with 20000 CIFAR images before starting to train. This will take a
 ...
 ```
 
-The script reports the total loss every 10 steps as well the speed at which
+The script reports the total loss every 10 steps as well as the speed at which
 the last batch of data was processed. A few comments:
 
 * The first batch of data can be inordinately slow (e.g. several minutes) as the

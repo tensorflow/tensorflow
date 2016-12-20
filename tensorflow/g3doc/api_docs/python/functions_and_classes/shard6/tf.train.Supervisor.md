@@ -174,7 +174,7 @@ Create a `Supervisor`.
     ready to run the local_init_op.
     The model is considered ready if it returns an empty array.  Defaults to
     the tensor returned from
-    `tf.report_uninitialized_variables(tf.all_variables())`. If `None`, the
+    `tf.report_uninitialized_variables(tf.global_variables())`. If `None`, the
     model is not checked for readiness before running local_init_op.
 *  <b>`is_chief`</b>: If True, create a chief supervisor in charge of initializing
     and restoring the model.  If False, create a supervisor that relies
@@ -195,7 +195,7 @@ Create a `Supervisor`.
     The directory will be created if it does not exist.
 *  <b>`summary_op`</b>: An `Operation` that returns a Summary for the event logs.
     Used by chief supervisors if a `logdir` was specified.  Defaults to the
-    operation returned from merge_all_summaries().  If `None`, summaries are
+    operation returned from summary.merge_all().  If `None`, summaries are
     not computed automatically.
 *  <b>`saver`</b>: A Saver object.  Used by chief supervisors if a `logdir` was
     specified.  Defaults to the saved returned by Saver().

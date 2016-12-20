@@ -25,6 +25,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
@@ -50,10 +51,11 @@ class Bernoulli(distribution.Distribution):
       logits: An N-D `Tensor` representing the log-odds
         of a positive event. Each entry in the `Tensor` parametrizes
         an independent Bernoulli distribution where the probability of an event
-        is sigmoid(logits).
+        is sigmoid(logits). Only one of `logits` or `p` should be passed in.
       p: An N-D `Tensor` representing the probability of a positive
           event. Each entry in the `Tensor` parameterizes an independent
-          Bernoulli distribution.
+          Bernoulli distribution. Only one of `logits` or `p` should be passed
+          in.
       dtype: dtype for samples.
       validate_args: `Boolean`, default `False`.  Whether to validate that
         `0 <= p <= 1`. If `validate_args` is `False`, and the inputs are
@@ -67,19 +69,22 @@ class Bernoulli(distribution.Distribution):
     Raises:
       ValueError: If p and logits are passed, or if neither are passed.
     """
+    parameters = locals()
+    parameters.pop("self")
     with ops.name_scope(name) as ns:
       self._logits, self._p = distribution_util.get_logits_and_prob(
           logits=logits, p=p, validate_args=validate_args)
       with ops.name_scope("q"):
         self._q = 1. - self._p
-      super(Bernoulli, self).__init__(
-          dtype=dtype,
-          parameters={"p": self._p, "q": self._q, "logits": self._logits},
-          is_continuous=False,
-          is_reparameterized=False,
-          validate_args=validate_args,
-          allow_nan_stats=allow_nan_stats,
-          name=ns)
+    super(Bernoulli, self).__init__(
+        dtype=dtype,
+        is_continuous=False,
+        is_reparameterized=False,
+        validate_args=validate_args,
+        allow_nan_stats=allow_nan_stats,
+        parameters=parameters,
+        graph_parents=[self._p, self._q, self._logits],
+        name=ns)
 
   @staticmethod
   def _param_shapes(sample_shape):
@@ -87,10 +92,12 @@ class Bernoulli(distribution.Distribution):
 
   @property
   def logits(self):
+    """Log-odds of success."""
     return self._logits
 
   @property
   def p(self):
+    """Probability of success."""
     return self._p
 
   @property
@@ -111,7 +118,7 @@ class Bernoulli(distribution.Distribution):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):
-    new_shape = array_ops.concat(0, ([n], self.batch_shape()))
+    new_shape = array_ops.concat_v2(([n], self.batch_shape()), 0)
     uniform = random_ops.random_uniform(
         new_shape, seed=seed, dtype=self.p.dtype)
     sample = math_ops.less(uniform, self.p)
@@ -125,13 +132,21 @@ class Bernoulli(distribution.Distribution):
     logits = self.logits
     # sigmoid_cross_entropy_with_logits doesn't broadcast shape,
     # so we do this here.
-    # TODO(b/30637701): Check dynamic shape, and don't broadcast if the
-    # dynamic shapes are the same.
-    if (not event.get_shape().is_fully_defined() or
-        not logits.get_shape().is_fully_defined() or
-        event.get_shape() != logits.get_shape()):
-      logits = array_ops.ones_like(event) * logits
-      event = array_ops.ones_like(logits) * event
+
+    broadcast = lambda logits, event: (
+        array_ops.ones_like(event) * logits,
+        array_ops.ones_like(logits) * event)
+
+    # First check static shape.
+    if (event.get_shape().is_fully_defined() and
+        logits.get_shape().is_fully_defined()):
+      if event.get_shape() != logits.get_shape():
+        logits, event = broadcast(logits, event)
+    else:
+      logits, event = control_flow_ops.cond(
+          distribution_util.same_dynamic_shape(logits, event),
+          lambda: (logits, event),
+          lambda: broadcast(logits, event))
     return -nn.sigmoid_cross_entropy_with_logits(logits, event)
 
   def _prob(self, event):
@@ -164,6 +179,8 @@ class BernoulliWithSigmoidP(Bernoulli):
                validate_args=False,
                allow_nan_stats=True,
                name="BernoulliWithSigmoidP"):
+    parameters = locals()
+    parameters.pop("self")
     with ops.name_scope(name) as ns:
       super(BernoulliWithSigmoidP, self).__init__(
           p=nn.sigmoid(p),
@@ -171,6 +188,7 @@ class BernoulliWithSigmoidP(Bernoulli):
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           name=ns)
+    self._parameters = parameters
 
 
 @kullback_leibler.RegisterKL(Bernoulli, Bernoulli)

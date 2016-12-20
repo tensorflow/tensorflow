@@ -57,7 +57,6 @@ initialized with parameters that define the distributions.
 @@MultivariateNormalCholesky
 @@MultivariateNormalDiagPlusVDVT
 @@MultivariateNormalDiagWithSoftplusStDev
-@@matrix_diag_transform
 
 ### Other multivariate distributions
 
@@ -66,6 +65,10 @@ initialized with parameters that define the distributions.
 @@Multinomial
 @@WishartCholesky
 @@WishartFull
+
+### Multivariate Utilities
+
+@@matrix_diag_transform
 
 ## Transformed distributions
 
@@ -86,7 +89,7 @@ representing the posterior or posterior predictive.
 @@normal_conjugates_known_sigma_posterior
 @@normal_conjugates_known_sigma_predictive
 
-## Kullback Leibler Divergence
+## Kullback-Leibler Divergence
 
 @@kl
 @@RegisterKL
@@ -97,6 +100,7 @@ from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import,line-too-long,g-importing-member
 
+from tensorflow.contrib.distributions.python.ops import bijector
 from tensorflow.contrib.distributions.python.ops.bernoulli import *
 from tensorflow.contrib.distributions.python.ops.beta import *
 from tensorflow.contrib.distributions.python.ops.binomial import *
@@ -122,3 +126,5 @@ from tensorflow.contrib.distributions.python.ops.student_t import *
 from tensorflow.contrib.distributions.python.ops.transformed_distribution import *
 from tensorflow.contrib.distributions.python.ops.uniform import *
 from tensorflow.contrib.distributions.python.ops.wishart import *
+
+# pylint: enable=unused-import,wildcard-import,line-too-long,g-importing-member

@@ -50,19 +50,20 @@ def ndlstm_base_unrolled(inputs, noutput, scope=None, reverse=False):
   """
   with tf.variable_scope(scope, "SeqLstmUnrolled", [inputs]):
     length, batch_size, _ = _shape(inputs)
-    lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(noutput, state_is_tuple=False)
+    lstm_cell = tf.contrib.rnn.BasicLSTMCell(noutput, state_is_tuple=False)
     state = tf.zeros([batch_size, lstm_cell.state_size])
     output_u = []
-    inputs_u = tf.unpack(inputs)
+    inputs_u = tf.unstack(inputs)
     if reverse:
       inputs_u = list(reversed(inputs_u))
     for i in xrange(length):
-      with tf.variable_scope(scope, "SeqLstmStep", [inputs_u[i]]):
-        output, state = lstm_cell(inputs_u[i], state)
-        output_u += [output]
+      if i > 0:
+        tf.get_variable_scope().reuse_variables()
+      output, state = lstm_cell(inputs_u[i], state)
+      output_u += [output]
     if reverse:
       output_u = list(reversed(output_u))
-    outputs = tf.pack(output_u)
+    outputs = tf.stack(output_u)
     return outputs
 
 
@@ -85,19 +86,19 @@ def ndlstm_base_dynamic(inputs, noutput, scope=None, reverse=False):
     # TODO(tmb) make batch size, sequence_length dynamic
     # example: sequence_length = tf.shape(inputs)[0]
     _, batch_size, _ = _shape(inputs)
-    lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(noutput, state_is_tuple=False)
+    lstm_cell = tf.contrib.rnn.BasicLSTMCell(noutput, state_is_tuple=False)
     state = tf.zeros([batch_size, lstm_cell.state_size])
     sequence_length = int(inputs.get_shape()[0])
     sequence_lengths = tf.to_int64(tf.fill([batch_size], sequence_length))
     if reverse:
-      inputs = tf.reverse(inputs, [True, False, False])
+      inputs = tf.reverse_v2(inputs, [0])
     outputs, _ = tf.nn.dynamic_rnn(lstm_cell,
                                    inputs,
                                    sequence_lengths,
                                    state,
                                    time_major=True)
     if reverse:
-      outputs = tf.reverse(outputs, [True, False, False])
+      outputs = tf.reverse_v2(outputs, [0])
     return outputs
 
 
@@ -144,14 +145,15 @@ def sequence_to_final(inputs, noutput, scope=None, name=None, reverse=False):
   """
   with tf.variable_scope(scope, "SequenceToFinal", [inputs]):
     length, batch_size, _ = _shape(inputs)
-    lstm = tf.nn.rnn_cell.BasicLSTMCell(noutput, state_is_tuple=False)
+    lstm = tf.contrib.rnn.BasicLSTMCell(noutput, state_is_tuple=False)
     state = tf.zeros([batch_size, lstm.state_size])
-    inputs_u = tf.unpack(inputs)
+    inputs_u = tf.unstack(inputs)
     if reverse:
       inputs_u = list(reversed(inputs_u))
     for i in xrange(length):
-      with tf.variable_scope(scope, "SequenceToFinalStep", [inputs_u[i]]):
-        output, state = lstm(inputs_u[i], state)
+      if i > 0:
+        tf.get_variable_scope().reuse_variables()
+      output, state = lstm(inputs_u[i], state)
     outputs = tf.reshape(output, [batch_size, noutput], name=name)
     return outputs
 
@@ -171,7 +173,7 @@ def sequence_softmax(inputs, noutput, scope=None, name=None, linear_name=None):
 
   """
   length, _, ninputs = _shape(inputs)
-  inputs_u = tf.unpack(inputs)
+  inputs_u = tf.unstack(inputs)
   output_u = []
   with tf.variable_scope(scope, "SequenceSoftmax", [inputs]):
     initial_w = tf.truncated_normal([0 + ninputs, noutput], stddev=0.1)
@@ -185,5 +187,5 @@ def sequence_softmax(inputs, noutput, scope=None, name=None, linear_name=None):
         linear = tf.nn.xw_plus_b(inputs_u[i], w, b, name=linear_name)
         output = tf.nn.softmax(linear)
         output_u += [output]
-    outputs = tf.pack(output_u, name=name)
+    outputs = tf.stack(output_u, name=name)
   return outputs

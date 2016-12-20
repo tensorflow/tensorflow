@@ -17,6 +17,7 @@ cuda_py_tests(
     additional_deps = [
         ":distributions_py",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
@@ -36,7 +37,7 @@ cuda_py_tests(
 
 cuda_py_tests(
     name = "operator_pd_cholesky_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/operator_pd_cholesky_test.py"],
     additional_deps = [
         ":distributions_py",
@@ -60,7 +61,7 @@ cuda_py_tests(
 
 cuda_py_tests(
     name = "operator_pd_full_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/operator_pd_full_test.py"],
     additional_deps = [
         ":distributions_py",
@@ -72,7 +73,7 @@ cuda_py_tests(
 
 cuda_py_tests(
     name = "operator_pd_identity_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/operator_pd_identity_test.py"],
     additional_deps = [
         ":distributions_py",
@@ -100,6 +101,22 @@ py_library(
     name = "distributions_py",
     srcs = ["__init__.py"] + glob(["python/ops/*.py"]),
     srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/contrib/linalg:linalg_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:special_math_ops",
+    ],
 )
 
 cuda_py_tests(
@@ -122,7 +139,6 @@ cuda_py_tests(
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:platform_test",
     ],
-    tags = ["notsan"],  #http://b/31216497
 )
 
 cuda_py_tests(
@@ -143,6 +159,7 @@ cuda_py_tests(
     additional_deps = [
         ":distributions_py",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
@@ -294,6 +311,7 @@ cuda_py_tests(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
+    tags = ["nomsan"],  # disable to avoid false positives from scipy.
 )
 
 cuda_py_tests(
@@ -324,6 +342,7 @@ cuda_py_tests(
     size = "small",
     srcs = ["python/kernel_tests/kullback_leibler_test.py"],
     additional_deps = [
+        ":distributions_py",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:platform_test",
     ],
@@ -349,7 +368,6 @@ cuda_py_tests(
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:platform_test",
     ],
-    tags = ["notsan"],  #http://b/31455709
 )
 
 cuda_py_tests(
@@ -370,6 +388,7 @@ cuda_py_tests(
     additional_deps = [
         ":distributions_py",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
@@ -382,6 +401,7 @@ cuda_py_tests(
     additional_deps = [
         ":distributions_py",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
@@ -389,7 +409,7 @@ cuda_py_tests(
 
 cuda_py_tests(
     name = "bijector_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/bijector_test.py"],
     additional_deps = [
         ":distributions_py",
@@ -397,6 +417,7 @@ cuda_py_tests(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
+    shard_count = 5,
 )
 
 filegroup(

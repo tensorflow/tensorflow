@@ -39,16 +39,17 @@ limitations under the License.
 namespace tensorflow {
 
 // A few string constant used throughout this module.
-static const char* const kArgOp = "_Arg";
-static const char* const kRetOp = "_Retval";
-static const char* const kGradientOp = "SymbolicGradient";
-static const char* const kNodeLabel = "Func";
-static const char* const kFuncAttr = "f";
-// kNoinlineAttr must start with an "_" to avoid collisions with
-// user-specified attrs.
-static const char* const kNoinlineAttr = "_noinline";
-// Old graphs use no "_".
-static const char* const kOldNoinlineAttr = "noinline";
+//
+// TODO(zhifengc): Dedup some of these constants into
+// framework/function.h
+static constexpr const char* const kArgOp = "_Arg";
+static constexpr const char* const kRetOp = "_Retval";
+static constexpr const char* const kGradientOp =
+    FunctionLibraryDefinition::kGradientOp;
+static constexpr const char* const kNodeLabel = "Func";
+static constexpr const char* const kFuncAttr =
+    FunctionLibraryDefinition::kFuncAttr;
+static constexpr const char* const kNoInlineAttr = "_noinline";
 
 // Represents the index-th output of a node.
 struct Endpoint {
@@ -144,7 +145,8 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   FunctionLibraryRuntimeImpl(const DeviceMgr* dmgr, Env* env, Device* device,
                              int graph_def_version,
                              const FunctionLibraryDefinition* lib_def,
-                             const OptimizerOptions& optimizer_options);
+                             const OptimizerOptions& optimizer_options,
+                             CustomKernelCreator custom_kernel_creator);
 
   ~FunctionLibraryRuntimeImpl() override;
 
@@ -168,6 +170,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 
   Device* device() override { return device_; }
   Env* env() override { return env_; }
+  int graph_def_version() override { return graph_def_version_; }
 
   string DebugString(Handle h) override;
 
@@ -180,6 +183,8 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   const int graph_def_version_;
   const FunctionLibraryDefinition* const lib_def_;
   GraphOptimizer optimizer_;
+  const CustomKernelCreator custom_kernel_creator_;
+
   std::function<Status(const string&, const OpDef**)> get_func_sig_;
   std::function<Status(const NodeDef&, OpKernel**)> create_kernel_;
 
@@ -217,13 +222,15 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
     const DeviceMgr* dmgr, Env* env, Device* device, int graph_def_version,
     const FunctionLibraryDefinition* lib_def,
-    const OptimizerOptions& optimizer_options)
+    const OptimizerOptions& optimizer_options,
+    CustomKernelCreator custom_kernel_creator)
     : device_mgr_(dmgr),
       device_(device),
       env_(env),
       graph_def_version_(graph_def_version),
       lib_def_(lib_def),
-      optimizer_(optimizer_options) {
+      optimizer_(optimizer_options),
+      custom_kernel_creator_(std::move(custom_kernel_creator)) {
   get_func_sig_ = [this](const string& op, const OpDef** sig) {
     return lib_def_->LookUpOpDef(op, sig);
   };
@@ -254,7 +261,7 @@ class CallOp : public AsyncOpKernel {
                       done);
     FunctionLibraryRuntime::Options opts;
     opts.step_id = ctx->step_id();
-    opts.step_resource_manager = ctx->step_resource_manager();
+    opts.step_container = ctx->step_container();
     opts.runner = ctx->runner();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());
@@ -292,7 +299,23 @@ const FunctionBody* FunctionLibraryRuntimeImpl::GetFunctionBody(Handle h) {
 
 Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
                                                 OpKernel** kernel) {
+  // If a custom kernel creator is given, try that.
+  Status s;
+  if (custom_kernel_creator_) {
+    std::unique_ptr<OpKernel> ret;
+    s = custom_kernel_creator_(this, ndef, &ret);
+    if (s.ok()) {
+      *kernel = ret.release();
+      return s;
+    } else {
+      VLOG(2) << "Custom creator error: " << s;
+      // Falls through.
+      s = Status::OK();
+    }
+  }
+
   if (lib_def_->Find(ndef.op()) == nullptr) {
+    // A primitive operation. Creates the registered kernel.
     return CreateNonCachedKernel(device_, this, ndef, graph_def_version_,
                                  kernel);
   }
@@ -319,7 +342,6 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
   }
 
   // Constructs a CallOp kernel for running the instantiated function.
-  Status s;
   auto device_type = DeviceType(device_->attributes().device_type());
   OpKernelConstruction construction(
       device_type, device_, device_->GetAllocator(AllocatorAttributes()), &ndef,
@@ -327,7 +349,7 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
       fbody->ret_types, output_memory_types, graph_def_version_, &s);
   *kernel = new CallOp(handle, &construction);
   if (!s.ok()) {
-    delete kernel;
+    delete *kernel;
   }
   return s;
 }
@@ -536,7 +558,7 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   Executor::Args exec_args;
   // Inherit the step_id from the caller.
   exec_args.step_id = opts.step_id;
-  exec_args.step_resource_manager = opts.step_resource_manager;
+  exec_args.step_container = opts.step_container;
   exec_args.call_frame = frame;
   exec_args.cancellation_manager = opts.cancellation_manager;
   exec_args.runner = *opts.runner;
@@ -576,12 +598,51 @@ string FunctionLibraryRuntimeImpl::DebugString(Handle handle) {
   }
 }
 
+namespace {
+
+struct CustomCreatorSingleton {
+  mutex mu;
+  CustomKernelCreator custom_creator = nullptr;
+
+  void Set(CustomKernelCreator cb) {
+    mutex_lock l(mu);
+    custom_creator = cb;
+  }
+
+  CustomKernelCreator Get() {
+    mutex_lock l(mu);
+    return custom_creator;
+  }
+};
+
+CustomCreatorSingleton* GetCustomCreatorSingleton() {
+  static CustomCreatorSingleton* ccs = new CustomCreatorSingleton;
+  return ccs;
+}
+
+}  // end namespace
+
+void RegisterDefaultCustomKernelCreator(CustomKernelCreator cb) {
+  GetCustomCreatorSingleton()->Set(cb);
+}
+
+FunctionLibraryRuntime* NewFunctionLibraryRuntime(
+    const DeviceMgr* dmgr, Env* env, Device* device, int graph_def_version,
+    const FunctionLibraryDefinition* lib_def,
+    const OptimizerOptions& optimizer_options,
+    CustomKernelCreator custom_kernel_creator) {
+  return new FunctionLibraryRuntimeImpl(dmgr, env, device, graph_def_version,
+                                        lib_def, optimizer_options,
+                                        custom_kernel_creator);
+}
+
 FunctionLibraryRuntime* NewFunctionLibraryRuntime(
     const DeviceMgr* dmgr, Env* env, Device* device, int graph_def_version,
     const FunctionLibraryDefinition* lib_def,
     const OptimizerOptions& optimizer_options) {
-  return new FunctionLibraryRuntimeImpl(dmgr, env, device, graph_def_version,
-                                        lib_def, optimizer_options);
+  return NewFunctionLibraryRuntime(dmgr, env, device, graph_def_version,
+                                   lib_def, optimizer_options,
+                                   GetCustomCreatorSingleton()->Get());
 }
 
 bool RemoveDeadNodes(Graph* g) {
@@ -609,6 +670,16 @@ const Edge* GetTheOnlyDataEdge(const EdgeSet& edges) {
     if (IsRefType(e->src()->output_type(e->src_output()))) {
       // Don't touch it if the identity node is effectively de-reffing
       // a ref.
+      return nullptr;
+    }
+    if (IsRecv(e->src()) || IsSwitch(e->src())) {
+      // Don't touch it if the identity is introduced for control flow.
+      // Recv disables all its successors if it receives a dead signal.
+      // When Recv has an outgoing control edge, the current executor
+      // would not disable the destination. The current solution (see
+      // graph_partition.cc) is to add an identity after Recv and change
+      // the control edge to be from this identity node. So the identity
+      // can't be removed.
       return nullptr;
     }
     ret = e;
@@ -886,51 +957,13 @@ static void InlineFunctionBody(Graph* g, Node* caller,
   g->RemoveNode(caller);  // 'caller' is replaced with inlined nodes.
 }
 
-// Given a node's NodeDef, returns false iff the node explicitly
-// specified _noinline. This gives ExpandInlineFunctions a heuristic to
-// decide whether to inline the function.
-// `old` is true for GraphDef versions older than 12, when the
-// `noinline` attr was renamed to `_noinline` to avoid conflicts with
-// user-specified attrs.
-bool ShouldInline(const NodeDef& ndef, bool old) {
-  bool noinline = false;
-  const char* const attr = old ? kOldNoinlineAttr : kNoinlineAttr;
-  if (GetNodeAttr(ndef, attr, &noinline).ok()) {
-    // If the node specifies attribute '_noinline', returns accordingly.
-    return !noinline;
-  }
-  if (ndef.op() != kGradientOp) {
-    // If the op is not SymbolicGradient, we should be free to decide
-    // whether to inline or not.
-    return true;
-  }
-  // If the node is a SymbolicGradient, we use the forward
-  // function's attribute '_noinline' instead.
-  const NameAttrList* forward_func_attrs;
-  Status s =
-      GetNodeAttr(AttrSlice(&ndef.attr()), kFuncAttr, &forward_func_attrs);
-  if (!s.ok()) {
-    // The node def is malformed (missing attribute 'f'), we'll just
-    // continue and the runtime will error out.
-    return false;
-  }
-  s = GetNodeAttr(AttrSlice(&forward_func_attrs->attr()), attr, &noinline);
-  if (!s.ok()) {
-    // The forward function doesn't specify '_noinline' attr, we should
-    // be free to decide.
-    return true;
-  }
-  // Otherwise, make inline decision according to the attr.
-  return !noinline;
-}
-
 bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph) {
   std::vector<std::pair<Node*, const FunctionBody*>> candidates;
-  // Identify old graphs before the 'noinline' attr was renamed '_noinline'.
-  const bool old_inline_attr = graph->versions().producer() < 12;
+  const FunctionLibraryDefinition* fld = lib->GetFunctionLibraryDefinition();
   for (Node* node : graph->nodes()) {
     VLOG(3) << "Expanding " << node->DebugString();
-    if (!ShouldInline(node->def(), old_inline_attr)) {
+    bool noinline;
+    if (fld->GetAttr(node->def(), kNoInlineAttr, &noinline).ok() && noinline) {
       VLOG(3) << "noinline: " << node->DebugString();
       continue;
     }

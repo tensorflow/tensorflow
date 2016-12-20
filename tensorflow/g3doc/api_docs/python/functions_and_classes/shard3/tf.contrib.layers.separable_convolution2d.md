@@ -24,6 +24,9 @@ to produce the end result.
 *  <b>`stride`</b>: a list of length 2: [stride_height, stride_width], specifying the
     depthwise convolution stride. Can be an int if both strides are the same.
 *  <b>`padding`</b>: one of 'VALID' or 'SAME'.
+*  <b>`rate`</b>: a list of length 2: [rate_height, rate_width], specifying the dilation
+    rates for a'trous convolution. Can be an int if both rates are the same.
+    If any value is larger than one, then both stride values need to be one.
 *  <b>`activation_fn`</b>: activation function, set to None to skip it and maintain
     a linear activation.
 *  <b>`normalizer_fn`</b>: normalization function to use instead of `biases`. If

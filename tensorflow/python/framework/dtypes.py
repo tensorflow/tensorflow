@@ -47,6 +47,7 @@ class DType(object):
   * `tf.qint16`: Quantized 16-bit signed integer.
   * `tf.quint16`: Quantized 16-bit unsigned integer.
   * `tf.qint32`: Quantized 32-bit signed integer.
+  * `tf.resource`: Handle to a mutable resource.
 
   In addition, variants of these types with the `_ref` suffix are
   defined for reference-typed tensors.
@@ -58,8 +59,7 @@ class DType(object):
   @@name
   @@base_dtype
   @@real_dtype
-  @@is_ref_dtype
-  @@as_ref
+  @@is_bool
   @@is_floating
   @@is_complex
   @@is_integer
@@ -68,6 +68,8 @@ class DType(object):
 
   @@as_numpy_dtype
   @@as_datatype_enum
+
+  @@limits
   """
 
   def __init__(self, type_enum):
@@ -94,14 +96,14 @@ class DType(object):
     self._type_enum = type_enum
 
   @property
-  def is_ref_dtype(self):
+  def _is_ref_dtype(self):
     """Returns `True` if this `DType` represents a reference type."""
     return self._type_enum > 100
 
   @property
-  def as_ref(self):
+  def _as_ref(self):
     """Returns a reference `DType` based on this `DType`."""
-    if self.is_ref_dtype:
+    if self._is_ref_dtype:
       return self
     else:
       return _INTERN_TABLE[self._type_enum + 100]
@@ -109,7 +111,7 @@ class DType(object):
   @property
   def base_dtype(self):
     """Returns a non-reference `DType` based on this `DType`."""
-    if self.is_ref_dtype:
+    if self._is_ref_dtype:
       return _INTERN_TABLE[self._type_enum - 100]
     else:
       return self
@@ -126,6 +128,11 @@ class DType(object):
       return self
 
   @property
+  def is_numpy_compatible(self):
+    return (self._type_enum != types_pb2.DT_RESOURCE and
+            self._type_enum != types_pb2.DT_RESOURCE_REF)
+
+  @property
   def as_numpy_dtype(self):
     """Returns a `numpy.dtype` based on this `DType`."""
     return _TF_TO_NP[self._type_enum]
@@ -136,15 +143,21 @@ class DType(object):
     return self._type_enum
 
   @property
+  def is_bool(self):
+    """Returns whether this is a boolean data type"""
+    return self.base_dtype == bool
+
+  @property
   def is_integer(self):
     """Returns whether this is a (non-quantized) integer type."""
-    return (not self.is_quantized and
+    return (self.is_numpy_compatible and not self.is_quantized and
             issubclass(self.as_numpy_dtype, np.integer))
 
   @property
   def is_floating(self):
-    """Returns whether this is a (real) floating point type."""
-    return issubclass(self.as_numpy_dtype, np.floating)
+    """Returns whether this is a (non-quantized, real) floating point type."""
+    return self.is_numpy_compatible and issubclass(self.as_numpy_dtype,
+                                                   np.floating)
 
   @property
   def is_complex(self):
@@ -215,6 +228,22 @@ class DType(object):
       except:
         raise TypeError("Cannot find maximum value of %s." % self)
 
+  @property
+  def limits(self, clip_negative=True):
+    """Return intensity limits, i.e. (min, max) tuple, of the dtype.
+    Args:
+      clip_negative : bool, optional
+          If True, clip the negative range (i.e. return 0 for min intensity)
+          even if the image dtype allows negative values.
+    Returns
+      min, max : tuple
+        Lower and upper intensity limits.
+    """
+    min, max = dtype_range[self.as_numpy_dtype]
+    if clip_negative:
+      min = 0
+    return min, max
+
   def is_compatible_with(self, other):
     """Returns True if the `other` DType will be converted to this DType.
 
@@ -244,7 +273,7 @@ class DType(object):
       return False
     try:
       dtype = as_dtype(other).as_datatype_enum
-      return self._type_enum == dtype
+      return self._type_enum == dtype  # pylint: disable=protected-access
     except TypeError:
       return False
 
@@ -270,8 +299,22 @@ class DType(object):
   def size(self):
     return np.dtype(self.as_numpy_dtype).itemsize
 
+# Define data type range of numpy dtype
+dtype_range = {np.bool_: (False, True),
+               np.bool8: (False, True),
+               np.uint8: (0, 255),
+               np.uint16: (0, 65535),
+               np.int8: (-128, 127),
+               np.int16: (-32768, 32767),
+               np.int64: (-2**63, 2**63 - 1),
+               np.uint64: (0, 2**64 - 1),
+               np.int32: (-2**31, 2**31 - 1),
+               np.uint32: (0, 2**32 - 1),
+               np.float32: (-1, 1),
+               np.float64: (-1, 1)}
 
 # Define standard wrappers for the types_pb2.DataType enum.
+resource = DType(types_pb2.DT_RESOURCE)
 float16 = DType(types_pb2.DT_HALF)
 half = float16
 float32 = DType(types_pb2.DT_FLOAT)
@@ -292,6 +335,7 @@ quint8 = DType(types_pb2.DT_QUINT8)
 qint16 = DType(types_pb2.DT_QINT16)
 quint16 = DType(types_pb2.DT_QUINT16)
 qint32 = DType(types_pb2.DT_QINT32)
+resource_ref = DType(types_pb2.DT_RESOURCE_REF)
 bfloat16 = DType(types_pb2.DT_BFLOAT16)
 float16_ref = DType(types_pb2.DT_HALF_REF)
 half_ref = float16_ref
@@ -338,6 +382,7 @@ _INTERN_TABLE = {
     types_pb2.DT_QUINT16: quint16,
     types_pb2.DT_QINT32: qint32,
     types_pb2.DT_BFLOAT16: bfloat16,
+    types_pb2.DT_RESOURCE: resource,
     types_pb2.DT_HALF_REF: float16_ref,
     types_pb2.DT_FLOAT_REF: float32_ref,
     types_pb2.DT_DOUBLE_REF: float64_ref,
@@ -357,6 +402,7 @@ _INTERN_TABLE = {
     types_pb2.DT_QUINT16_REF: quint16_ref,
     types_pb2.DT_QINT32_REF: qint32_ref,
     types_pb2.DT_BFLOAT16_REF: bfloat16_ref,
+    types_pb2.DT_RESOURCE_REF: resource_ref,
 }
 
 
@@ -381,6 +427,7 @@ _TYPE_TO_STRING = {
     types_pb2.DT_QUINT16: "quint16",
     types_pb2.DT_QINT32: "qint32",
     types_pb2.DT_BFLOAT16: "bfloat16",
+    types_pb2.DT_RESOURCE: "resource",
     types_pb2.DT_HALF_REF: "float16_ref",
     types_pb2.DT_FLOAT_REF: "float32_ref",
     types_pb2.DT_DOUBLE_REF: "float64_ref",
@@ -400,6 +447,7 @@ _TYPE_TO_STRING = {
     types_pb2.DT_QUINT16_REF: "quint16_ref",
     types_pb2.DT_QINT32_REF: "qint32_ref",
     types_pb2.DT_BFLOAT16_REF: "bfloat16_ref",
+    types_pb2.DT_RESOURCE_REF: "resource_ref",
 }
 _STRING_TO_TF = {value: _INTERN_TABLE[key]
                  for key, value in _TYPE_TO_STRING.items()}
@@ -534,8 +582,11 @@ def as_dtype(type_value):
       return string
 
   for key, val in _NP_TO_TF:
-    if key == type_value:
-      return val
+    try:
+      if key == type_value:
+        return val
+    except TypeError as e:
+      raise TypeError("Cannot convert {} to a dtype. {}".format(type_value, e))
 
   raise TypeError(
       "Cannot convert value %r to a TensorFlow DType." % type_value)

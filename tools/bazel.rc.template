@@ -1,5 +1,12 @@
 build:cuda --crosstool_top=@local_config_cuda//crosstool:toolchain
 build:cuda --define=using_cuda=true --define=using_cuda_nvcc=true
+build:win-cuda --define=using_cuda=true --define=using_cuda_nvcc=true
+
+build:sycl --crosstool_top=@local_config_sycl//crosstool:toolchain
+build:sycl --define=using_sycl=true
+
+build:sycl_asan --crosstool_top=@local_config_sycl//crosstool:toolchain
+build:sycl_asan --define=using_sycl=true --copt -fno-omit-frame-pointer --copt -fsanitize-coverage=3 --copt -fsanitize=address --copt -DGPR_NO_DIRECT_SYSCALLS --linkopt -fPIC --linkopt -lasan
 
 build --force_python=py$PYTHON_MAJOR_VERSION
 build --host_force_python=py$PYTHON_MAJOR_VERSION

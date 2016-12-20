@@ -27,26 +27,46 @@ from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.python.ops import math_ops
 
 
-def _targets_streaming_mean(unused_predictions, targets):
-  return metrics_lib.streaming_mean(targets)
+def _labels_streaming_mean(unused_predictions, labels):
+  return metrics_lib.streaming_mean(labels)
 
 
-def _predictions_streaming_mean(predictions, unused_targets):
+def _predictions_streaming_mean(predictions, unused_labels):
   return metrics_lib.streaming_mean(predictions)
 
 
 def _make_streaming_with_threshold(streaming_metrics_fn, threshold):
 
-  def _streaming_metrics(predictions, targets):
+  def _streaming_metrics(predictions, labels):
     return streaming_metrics_fn(predictions=math_ops.to_float(
         math_ops.greater_equal(predictions, threshold)),
-                                labels=targets)
+                                labels=labels)
 
   return _streaming_metrics
 
 
 class LogisticRegressor(estimator.Estimator):
   """Logistic regression Estimator for binary classification.
+
+  This class provides a basic Estimator with some additional metrics for custom
+  binary classification models, including AUC, precision/recall and accuracy.
+
+  Example:
+
+  ```python
+    # See tf.contrib.learn.Estimator(...) for details on model_fn structure
+    def my_model_fn(...):
+      pass
+
+    estimator = LogisticRegressor(model_fn=my_model_fn)
+
+    # Input builders
+    def input_fn_train:
+      pass
+
+    estimator.fit(input_fn=input_fn_train)
+    estimator.predict(x=x)
+  ```
   """
 
   def __init__(self, model_fn, thresholds=None, model_dir=None, config=None,
@@ -63,8 +83,8 @@ class LogisticRegressor(estimator.Estimator):
         continue training a previously saved model.
       config: A RunConfig configuration object.
       feature_engineering_fn: Feature engineering function. Takes features and
-                        targets which are the output of `input_fn` and
-                        returns features and targets which will be fed
+                        labels which are the output of `input_fn` and
+                        returns features and labels which will be fed
                         into the model.
     """
     if thresholds is None:
@@ -81,8 +101,8 @@ class LogisticRegressor(estimator.Estimator):
   # Metrics string keys.
   AUC = "auc"
   PREDICTION_MEAN = "labels/prediction_mean"
-  TARGET_MEAN = "labels/actual_target_mean"
-  ACCURACY_BASELINE = "accuracy/baseline_target_mean"
+  TARGET_MEAN = "labels/actual_label_mean"
+  ACCURACY_BASELINE = "accuracy/baseline_label_mean"
   ACCURACY_MEAN = "accuracy/threshold_%f_mean"
   PRECISION_MEAN = "precision/positive_threshold_%f_mean"
   RECALL_MEAN = "recall/positive_threshold_%f_mean"
@@ -103,10 +123,10 @@ class LogisticRegressor(estimator.Estimator):
 
     metrics = {}
     metrics[cls.PREDICTION_MEAN] = _predictions_streaming_mean
-    metrics[cls.TARGET_MEAN] = _targets_streaming_mean
+    metrics[cls.TARGET_MEAN] = _labels_streaming_mean
     # Also include the streaming mean of the label as an accuracy baseline, as
     # a reminder to users.
-    metrics[cls.ACCURACY_BASELINE] = _targets_streaming_mean
+    metrics[cls.ACCURACY_BASELINE] = _labels_streaming_mean
 
     metrics[cls.AUC] = metrics_lib.streaming_auc
 
@@ -130,29 +150,34 @@ class LogisticRegressor(estimator.Estimator):
                batch_size=None,
                steps=None,
                metrics=None,
-               name=None):
+               name=None,
+               checkpoint_path=None):
     """Evaluates given model with provided evaluation data.
 
     See superclass Estimator for more details.
 
     Args:
       x: features.
-      y: targets.
+      y: labels (must be 0 or 1).
       input_fn: Input function.
       feed_fn: Function creating a feed dict every time it is called.
       batch_size: minibatch size to use on the input.
       steps: Number of steps for which to evaluate model.
       metrics: Dict of metric ops to run. If None, the default metrics are used.
       name: Name of the evaluation.
+      checkpoint_path: A specific checkpoint to use. By default, use the latest
+        checkpoint in the `model_dir`.
 
     Returns:
       Returns `dict` with evaluation results.
     """
     metrics = metrics or self.get_default_metrics(thresholds=self._thresholds)
-    return super(LogisticRegressor, self).evaluate(x=x,
-                                                   y=y,
-                                                   input_fn=input_fn,
-                                                   batch_size=batch_size,
-                                                   steps=steps,
-                                                   metrics=metrics,
-                                                   name=name)
+    return super(LogisticRegressor, self).evaluate(
+        x=x,
+        y=y,
+        input_fn=input_fn,
+        batch_size=batch_size,
+        steps=steps,
+        metrics=metrics,
+        name=name,
+        checkpoint_path=checkpoint_path)

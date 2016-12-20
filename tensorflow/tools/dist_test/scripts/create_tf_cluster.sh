@@ -102,6 +102,9 @@ if [[ ${IS_LOCAL_CLUSTER} == "0" ]]; then
   # Activate gcloud service account
   "${GCLOUD_BIN}" auth activate-service-account --key-file "${GCLOUD_KEY_FILE}"
 
+  # See: https://github.com/kubernetes/kubernetes/issues/30617
+  "${GCLOUD_BIN}" config set container/use_client_certificate True
+
   # Set gcloud project
   "${GCLOUD_BIN}" config set project "${GCLOUD_PROJECT}"
 

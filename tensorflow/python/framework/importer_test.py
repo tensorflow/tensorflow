@@ -26,7 +26,35 @@ from google.protobuf import text_format
 
 from tensorflow.core.framework import op_def_pb2
 from tensorflow.python.framework import device
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import op_def_registry
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
+
+
+def _unknown_shape(op):
+  return [tensor_shape.unknown_shape() for _ in op.outputs]
+
+
+# NOTE(cwhipkey): Dummy shape registration for ops used in the tests, since they
+# don't have C++ op registrations on which to attach C++ shape fns.
+ops.RegisterShape("If")(_unknown_shape)
+ops.RegisterShape("Iff")(_unknown_shape)
+ops.RegisterShape("Ii")(_unknown_shape)
+ops.RegisterShape("Iif")(_unknown_shape)
+ops.RegisterShape("Iii")(_unknown_shape)
+ops.RegisterShape("In")(_unknown_shape)
+ops.RegisterShape("Iri")(_unknown_shape)
+ops.RegisterShape("None")(_unknown_shape)
+ops.RegisterShape("Of")(_unknown_shape)
+ops.RegisterShape("Oi")(_unknown_shape)
+ops.RegisterShape("Oif")(_unknown_shape)
+ops.RegisterShape("Oii")(_unknown_shape)
+ops.RegisterShape("OpWithDefaultAttr")(_unknown_shape)
+ops.RegisterShape("OpWithFutureDefaultAttr")(_unknown_shape)
+ops.RegisterShape("Or")(_unknown_shape)
+ops.RegisterShape("Otl")(_unknown_shape)
+ops.RegisterShape("Unary")(_unknown_shape)
 
 
 _op_list = op_def_pb2.OpList()
@@ -113,7 +141,7 @@ text_format.Merge("""
 op_def_registry.register_op_list(_op_list)
 # NOTE(mrry): Dummy shape registrations for ops used in the tests.
 for op_def in _op_list.op:
-  tf.RegisterShape(op_def.name)(None)
+  ops.RegisterShape(op_def.name)(None)
 
 
 class ImportGraphDefTest(tf.test.TestCase):
@@ -308,11 +336,11 @@ class ImportGraphDefTest(tf.test.TestCase):
       self.assertEqual(d.inputs[0], a.outputs[0])
       self.assertEqual(d.inputs[1], b.outputs[0])
 
-      self.assertEqual(a.outputs[0].dtype, tf.int32_ref)
+      self.assertEqual(a.outputs[0].dtype, dtypes.int32_ref)
       self.assertEqual(c._input_dtypes, [tf.int32, tf.int32])
       self.assertEqual(c.outputs, [])
       self.assertEqual(d._input_dtypes,
-                       [tf.int32_ref, tf.int32])
+                       [dtypes.int32_ref, tf.int32])
       self.assertEqual(d.outputs, [])
 
   def testCyclic(self):
@@ -628,7 +656,7 @@ class ImportGraphDefTest(tf.test.TestCase):
   def testWithExtensionAndAttr(self):
     with tf.Graph().as_default() as g:
       c = tf.constant(5.0, dtype=tf.float32, name="c")
-      tf.pack([c, c], name="pack")
+      tf.stack([c, c], name="pack")
     gdef = g.as_graph_def()
 
     with self.test_session():
@@ -690,7 +718,7 @@ class ImportGraphDefTest(tf.test.TestCase):
     # We'll use the following device function to observe ops with two inputs.
     ops_with_two_inputs = []
     def input_counter(op):
-      if any(in_t.dtype.is_ref_dtype for in_t in op.inputs):
+      if any(in_t.dtype._is_ref_dtype for in_t in op.inputs):  # pylint: disable=protected-access
         ops_with_two_inputs.append(op)
       return ""
 

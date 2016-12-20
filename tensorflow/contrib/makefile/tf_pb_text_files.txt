@@ -2,6 +2,7 @@ tensorflow/core/util/saved_tensor_slice.pb_text.cc
 tensorflow/core/util/memmapped_file_system.pb_text.cc
 tensorflow/core/protobuf/saver.pb_text.cc
 tensorflow/core/protobuf/config.pb_text.cc
+tensorflow/core/protobuf/debug.pb_text.cc
 tensorflow/core/protobuf/tensor_bundle.pb_text.cc
 tensorflow/core/lib/core/error_codes.pb_text.cc
 tensorflow/core/framework/versions.pb_text.cc
@@ -12,6 +13,7 @@ tensorflow/core/framework/tensor_description.pb_text.cc
 tensorflow/core/framework/tensor.pb_text.cc
 tensorflow/core/framework/summary.pb_text.cc
 tensorflow/core/framework/step_stats.pb_text.cc
+tensorflow/core/framework/resource_handle.pb_text.cc
 tensorflow/core/framework/op_def.pb_text.cc
 tensorflow/core/framework/node_def.pb_text.cc
 tensorflow/core/framework/log_memory.pb_text.cc

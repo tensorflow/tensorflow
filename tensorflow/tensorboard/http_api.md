@@ -30,8 +30,11 @@ is provided to the summary op (usually as a constant).
 
 ## `data/logdir`
 
-Returns the `logdir` argument (string) with which Tensorboard started up. That
-argument is the full path of the directory that contains events files.
+Returns a JSON object with a key "logdir" that maps to the `logdir` argument
+(string) with which Tensorboard started up. Example:
+`{logdir: '/foo/logdir/argument'}`
+
+The `logdir` argument is the path of the directory that contains events files.
 
 ## `data/runs`
 

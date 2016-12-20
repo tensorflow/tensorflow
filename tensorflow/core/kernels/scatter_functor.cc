@@ -55,4 +55,8 @@ TF_CALL_GPU_NUMBER_TYPES_NO_HALF(DECLARE_GPU_SPECS);
 }  // namespace functor
 }  // namespace tensorflow
 
+#else
+
+#include "tensorflow/core/kernels/scatter_functor.h"
+
 #endif  // GOOGLE_CUDA

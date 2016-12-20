@@ -126,7 +126,7 @@ def get_stochastic_variable(getter,
 
   dist_kwargs = dist_kwargs or {}
   dist_kwargs.update(params)
-  sample = st.StochasticTensor(dist_cls, **dist_kwargs)
+  sample = st.StochasticTensor(dist_cls(**dist_kwargs))
 
   if prior is not None:
     if callable(prior):

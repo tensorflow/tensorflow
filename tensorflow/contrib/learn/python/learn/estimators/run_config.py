@@ -20,60 +20,63 @@ from __future__ import print_function
 
 import json
 import os
-
+from tensorflow.contrib.framework import deprecated
 from tensorflow.python import ConfigProto
 from tensorflow.python import GPUOptions
 from tensorflow.python.training.server_lib import ClusterSpec
 
 
-class RunConfig(object):
-  """This class specifies the specific configurations for the run.
+class Environment(object):
+  # For running general distributed training.
+  CLOUD = 'cloud'
+  # For running Google-internal distributed training.
+  GOOGLE = 'google'
+  # For running on local desktop.
+  LOCAL = 'local'
 
-  If you're a Google-internal user using command line flags with learn_runner.py
-  (for instance, to do distributed training or to use parameter servers), you
-  probably want to use learn_runner.EstimatorConfig instead.
+
+class TaskType(object):
+  MASTER = 'master'
+  PS = 'ps'
+  WORKER = 'worker'
+
+
+class ClusterConfig(object):
+  """This class specifies the configurations for a distributed run.
+
+  If you're using `tf.learn` `Estimators`, you should probably use the subclass
+  RunConfig instead.
   """
 
-  # TODO(wicke): Move options out once functionality is covered by monitors
-  def __init__(self,
-               master=None,
-               task=None,
-               num_ps_replicas=None,
-               num_cores=0,
-               log_device_placement=False,
-               gpu_memory_fraction=1,
-               cluster_spec=None,
-               tf_random_seed=None,
-               save_summary_steps=100,
-               save_checkpoints_secs=600,
-               save_checkpoints_steps=None,
-               keep_checkpoint_max=5,
-               keep_checkpoint_every_n_hours=10000,
-               job_name=None,
-               is_chief=None,
-               evaluation_master=''):
+  def __init__(self, master=None, evaluation_master=None):
     """Constructor.
 
-    If set to None, `master`, `task`, `num_ps_replicas`, `cluster_spec`,
-    `job_name`, and `is_chief` are set based on the TF_CONFIG environment
-    variable, if the pertinent information is present; otherwise, the defaults
-    listed in the Args section apply.
+    Sets the properties `cluster_spec`, `is_chief`, `master` (if `None` in the
+    args), `num_ps_replicas`, `task_id`, and `task_type` based on the
+    `TF_CONFIG` environment variable, if the pertinent information is
+    present. The `TF_CONFIG` environment variable is a JSON object with
+    attributes: `cluster`, `environment`, and `task`.
 
-    The TF_CONFIG environment variable is a JSON object with two relevant
-    attributes: `task` and `cluster_spec`. `cluster_spec` is a JSON serialized
-    version of the Python dict described in server_lib.py. `task` has two
-    attributes: `type` and `index`, where `type` can be any of the task types
-    in the cluster_spec. When TF_CONFIG contains said information, the
+    `cluster` is a JSON serialized version of `ClusterSpec`'s Python dict from
+    `server_lib.py`, mapping task types (usually one of the TaskType enums) to a
+    list of task addresses.
+
+    `environment` specifies the runtime environment for the job (usually one of
+    the `Environment` enums). Defaults to `LOCAL`.
+
+    `task` has two attributes: `type` and `index`, where `type` can be any of
+    the task types in `cluster`. When `TF_CONFIG` contains said information, the
     following properties are set on this class:
 
-      * `job_name` is set to [`task`][`type`]
-      * `task` is set to [`task`][`index`]
-      * `cluster_spec` is parsed from [`cluster`]
-      * 'master' is determined by looking up `job_name` and `task` in the
-        cluster_spec.
-      * `num_ps_replicas` is set by counting the number of nodes listed
-        in the `ps` job of `cluster_spec`.
-      * `is_chief`: true when `job_name` == "master" and `task` == 0.
+    * `task_type` is set to `TF_CONFIG['task']['type']`. Defaults to `None`.
+    * `task_id` is set to `TF_CONFIG['task']['index']`. Defaults to 0.
+    * `cluster_spec` is parsed from `TF_CONFIG['cluster']`. Defaults to {}.
+    * `master` is determined by looking up `task_type` and `task_id` in the
+      `cluster_spec`. Defaults to ''.
+    * `num_ps_replicas` is set by counting the number of nodes listed
+      in the `ps` attribute of `cluster_spec`. Defaults to 0.
+    * `is_chief` is deteremined based on `task_type`, `type_id`, and
+      `environment`.
 
     Example:
     ```
@@ -81,28 +84,137 @@ class RunConfig(object):
                  'worker': ['host3:2222', 'host4:2222', 'host5:2222']}
       os.environ['TF_CONFIG'] = json.dumps({
           {'cluster': cluster,
-           'task': {'type': 'worker', 'index': 1}}})
-      config = RunConfig()
+           'task_id': {'type': 'worker', 'index': 1}}})
+      config = ClusterConfig()
       assert config.master == 'host4:2222'
-      assert config.task == 1
+      assert config.task_id == 1
       assert config.num_ps_replicas == 2
       assert config.cluster_spec == server_lib.ClusterSpec(cluster)
-      assert config.job_name == 'worker'
+      assert config.task_type == 'worker'
       assert not config.is_chief
     ```
 
     Args:
       master: TensorFlow master. Defaults to empty string for local.
-      task: Task id of the replica running the training (default: 0).
-      num_ps_replicas: Number of parameter server tasks to use (default: 0).
+      evaluation_master: The master on which to perform evaluation.
+    """
+    # If not explicitly specified in the constructor and the TF_CONFIG
+    # environment variable is present, load cluster_spec from TF_CONFIG.
+    config = json.loads(os.environ.get('TF_CONFIG') or '{}')
+
+    # Set task_type and task_id if the TF_CONFIG environment variable is
+    # present.  Otherwise, use the respective default (None / 0).
+    task_env = config.get('task', {})
+    self._task_type = task_env.get('type', None)
+    self._task_id = self.get_task_id()
+
+    self._cluster_spec = ClusterSpec(config.get('cluster', {}))
+    self._master = (master if master is not None else
+                    _get_master(self._cluster_spec, self._task_type,
+                                self._task_id) or '')
+    self._num_ps_replicas = _count_ps(self._cluster_spec) or 0
+
+    # Set is_chief.
+    self._environment = config.get('environment', Environment.LOCAL)
+    self._is_chief = None
+    if self._task_type is None:
+      self._is_chief = (self._task_id == 0)
+    elif self._environment == Environment.CLOUD:
+      # When the TF_CONFIG environment variable is set, we can set the
+      # default of is_chief to 0 when task_type is "master" and task_id is 0.
+      self._is_chief = (self._task_type == TaskType.MASTER and
+                        self._task_id == 0)
+    else:
+      # Legacy behavior is that is_chief is None if task_id == 0.
+      self._is_chief = (self._task_type == TaskType.WORKER and
+                        self._task_id == 0)
+
+    self._evaluation_master = evaluation_master or ''
+
+  @property
+  def cluster_spec(self):
+    return self._cluster_spec
+
+  @property
+  def environment(self):
+    return self._environment
+
+  @property
+  def evaluation_master(self):
+    return self._evaluation_master
+
+  @property
+  def is_chief(self):
+    return self._is_chief
+
+  @property
+  def master(self):
+    return self._master
+
+  @property
+  def num_ps_replicas(self):
+    return self._num_ps_replicas
+
+  @property
+  def task_id(self):
+    return self._task_id
+
+  @property
+  def task_type(self):
+    return self._task_type
+
+  @staticmethod
+  def get_task_id():
+    """Returns task index from `TF_CONFIG` environmental variable.
+
+    If you have a ClusterConfig instance, you can just access its task_id
+    property instead of calling this function and re-parsing the environmental
+    variable.
+
+    Returns:
+      `TF_CONFIG['task']['index']`. Defaults to 0.
+    """
+    config = json.loads(os.environ.get('TF_CONFIG') or '{}')
+    task_env = config.get('task', {})
+    task_index = task_env.get('index')
+    return int(task_index) if task_index else 0
+
+
+class RunConfig(ClusterConfig):
+  """This class specifies the configurations for an `Estimator` run.
+
+  If you're a Google-internal user using command line flags with
+  `learn_runner.py` (for instance, to do distributed training or to use
+  parameter servers), you probably want to use `learn_runner.EstimatorConfig`
+  instead.
+  """
+
+  def __init__(self,
+               master=None,
+               num_cores=0,
+               log_device_placement=False,
+               gpu_memory_fraction=1,
+               tf_random_seed=None,
+               save_summary_steps=100,
+               save_checkpoints_secs=600,
+               save_checkpoints_steps=None,
+               keep_checkpoint_max=5,
+               keep_checkpoint_every_n_hours=10000,
+               evaluation_master=''):
+    """Constructor.
+
+    Note that the superclass `ClusterConfig` may set properties like
+    `cluster_spec`, `is_chief`, `master` (if `None` in the args),
+    `num_ps_replicas`, `task_id`, and `task_type` based on the `TF_CONFIG`
+    environment variable. See `ClusterConfig` for more details.
+
+    Args:
+      master: TensorFlow master. Defaults to empty string for local.
       num_cores: Number of cores to be used. If 0, the system picks an
         appropriate number (default: 0).
       log_device_placement: Log the op placement to devices (default: False).
       gpu_memory_fraction: Fraction of GPU memory used by the process on
         each GPU uniformly on the same machine.
-      cluster_spec: a `tf.train.ClusterSpec` object that describes the cluster
-        in the case of distributed computation. If missing, reasonable
-        assumptions are made for the addresses of jobs.
       tf_random_seed: Random seed for TensorFlow initializers.
         Setting this value allows consistency between reruns.
       save_summary_steps: Save summaries every this many steps.
@@ -117,95 +229,105 @@ class RunConfig(object):
       keep_checkpoint_every_n_hours: Number of hours between each checkpoint
         to be saved. The default value of 10,000 hours effectively disables
         the feature.
-      job_name: the type of task, e.g., 'ps', 'worker', etc. The `job_name`
-        must exist in the `cluster_spec.jobs`.
-      is_chief: whether or not this task (as identified by the other parameters)
-        should be the chief task.
       evaluation_master: the master on which to perform evaluation.
-
-    Raises:
-      ValueError: if num_ps_replicas and cluster_spec are set (cluster_spec
-        may come from the TF_CONFIG environment variable).
     """
-    # If not explicitly specified in the constructor and the TF_CONFIG
-    # environment variable is present, load cluster_spec from TF_CONFIG.
-    config = json.loads(os.environ.get('TF_CONFIG') or '{}')
-    if not cluster_spec and 'cluster' in config:
-      cluster_spec = ClusterSpec(config['cluster'])
-    self.cluster_spec = cluster_spec
-
-    # Set job_name and task. If explicitly specified, use those values,
-    # otherwise, if the TF_CONFIG environment variable is present, use that.
-    # Otherwise, use the respective default (None / 0).
-    task_env = config.get('task', {})
-    self._job_name = job_name or task_env.get('type') or None
-    self.task = task if task is not None else task_env.get('index') or 0
-
-    self.master = (master or _get_master(self.cluster_spec, self.job_name,
-                                         self.task) or '')
-
-    if num_ps_replicas is not None and self.cluster_spec:
-      raise ValueError('Cannot specify both num_ps_replicas and cluster_spec. '
-                       'Note: cluster_spec may have been set in the TF_CONFIG '
-                       'environment variable.')
-    self.num_ps_replicas = num_ps_replicas or _count_ps(self.cluster_spec) or 0
-
-    # Set is_chief.
-    self._is_chief = is_chief
-    if self._is_chief is None:
-      if not self._job_name:
-        self._is_chief = (self.task == 0)
-      elif config:
-        # When the TF_CONFIG environment variable is set, we can set the
-        # default of is_chief to 0 when job_name is "master" and task is 0.
-        self._is_chief = (self._job_name == 'master' and self.task == 0)
-      else:
-        # Legacy behavior is that is_chief is None if task == 0.
-        self._is_chief = (self._job_name == 'worker' and self.task == 0)
-
-    # Enforce that is_chief is only applicable to workers or masters
-    # (Cloud ML) with task == 0.
-    if self._is_chief:
-      if self.task != 0:
-        raise ValueError(
-            'Task is %d, but only task 0 may be chief. Please check is_chief '
-            'and task, which may have been set in TF_CONFIG environment '
-            'variable.' % (self.task,))
-      if self._job_name not in (None, 'master', 'worker'):
-        raise ValueError(
-            'job_name is \'%s\', but only masters or workers may be chiefs. '
-            'Please check is_chief and job_name, which may have been set in '
-            'TF_CONFIG environment variable.' % (self._job_name,))
-    elif (self._is_chief is False and self._job_name == 'master' and
-          self.task == 0):
-      raise ValueError(
-          'Master task 0 must be chief. Please check is_chief, job_name, and '
-          'task, which may have been set in TF_CONFIG environment variable.')
-
-    self.evaluation_master = evaluation_master or ''
+    super(RunConfig, self).__init__(
+        master=master, evaluation_master=evaluation_master)
 
     gpu_options = GPUOptions(
         per_process_gpu_memory_fraction=gpu_memory_fraction)
-    self.tf_config = ConfigProto(
+    self._tf_config = ConfigProto(
         log_device_placement=log_device_placement,
         inter_op_parallelism_threads=num_cores,
         intra_op_parallelism_threads=num_cores,
         gpu_options=gpu_options)
 
-    self.tf_random_seed = tf_random_seed
-    self.save_summary_steps = save_summary_steps
-    self.save_checkpoints_secs = save_checkpoints_secs
-    self.save_checkpoints_steps = save_checkpoints_steps
-    self.keep_checkpoint_max = keep_checkpoint_max
-    self.keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours
+    self._tf_random_seed = tf_random_seed
+    self._save_summary_steps = save_summary_steps
+    self._save_checkpoints_secs = save_checkpoints_secs
+    self._save_checkpoints_steps = save_checkpoints_steps
+
+    # TODO(weiho): Remove these after ModelFn refactoring, when users can
+    # create Scaffold and Saver in their model_fn to set these.
+    self._keep_checkpoint_max = keep_checkpoint_max
+    self._keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours
 
   @property
-  def is_chief(self):
-    return self._is_chief
+  def tf_config(self):
+    return self._tf_config
+
+  @tf_config.setter
+  @deprecated(
+      '2017-01-08',
+      'RunConfig will be made immutable, please pass all args to constructor.')
+  def tf_config(self, value):
+    self._tf_config = value
 
   @property
-  def job_name(self):
-    return self._job_name
+  def tf_random_seed(self):
+    return self._tf_random_seed
+
+  @tf_random_seed.setter
+  @deprecated(
+      '2017-01-08',
+      'RunConfig will be made immutable, please pass all args to constructor.')
+  def tf_random_seed(self, value):
+    self._tf_random_seed = value
+
+  @property
+  def save_summary_steps(self):
+    return self._save_summary_steps
+
+  @save_summary_steps.setter
+  @deprecated(
+      '2017-01-08',
+      'RunConfig will be made immutable, please pass all args to constructor.')
+  def save_summary_steps(self, value):
+    self._save_summary_steps = value
+
+  @property
+  def save_checkpoints_secs(self):
+    return self._save_checkpoints_secs
+
+  @save_checkpoints_secs.setter
+  @deprecated(
+      '2017-01-08',
+      'RunConfig will be made immutable, please pass all args to constructor.')
+  def save_checkpoints_secs(self, value):
+    self._save_checkpoints_secs = value
+
+  @property
+  def save_checkpoints_steps(self):
+    return self._save_checkpoints_steps
+
+  @save_checkpoints_steps.setter
+  @deprecated(
+      '2017-01-08',
+      'RunConfig will be made immutable, please pass all args to constructor.')
+  def save_checkpoints_steps(self, value):
+    self._save_checkpoints_steps = value
+
+  @property
+  def keep_checkpoint_max(self):
+    return self._keep_checkpoint_max
+
+  @keep_checkpoint_max.setter
+  @deprecated(
+      '2017-01-08',
+      'RunConfig will be made immutable, please pass all args to constructor.')
+  def keep_checkpoint_max(self, value):
+    self._keep_checkpoint_max = value
+
+  @property
+  def keep_checkpoint_every_n_hours(self):
+    return self._keep_checkpoint_every_n_hours
+
+  @keep_checkpoint_every_n_hours.setter
+  @deprecated(
+      '2017-01-08',
+      'RunConfig will be made immutable, please pass all args to constructor.')
+  def keep_checkpoint_every_n_hours(self, value):
+    self._keep_checkpoint_every_n_hours = value
 
 
 def _count_ps(cluster_spec):
@@ -213,7 +335,7 @@ def _count_ps(cluster_spec):
   return len(cluster_spec.as_dict().get('ps', [])) if cluster_spec else 0
 
 
-def _get_master(cluster_spec, job_name, task_index):
+def _get_master(cluster_spec, task_type, task_id):
   """Returns the appropriate string for the TensorFlow master."""
   if not cluster_spec:
     return ''
@@ -223,25 +345,25 @@ def _get_master(cluster_spec, job_name, task_index):
   if len(jobs) == 1 and len(cluster_spec.job_tasks(jobs[0])) == 1:
     return ''
 
-  # Lookup the master in cluster_spec using job_name and task_index,
+  # Lookup the master in cluster_spec using task_type and task_id,
   # if possible.
-  if job_name:
-    if job_name not in jobs:
+  if task_type:
+    if task_type not in jobs:
       raise ValueError(
-          '%s is not a valid task in the cluster_spec:\n'
+          '%s is not a valid task_type in the cluster_spec:\n'
           '%s\n\n'
           'Note that these values may be coming from the TF_CONFIG environment '
-          'variable.' % (job_name, cluster_spec))
-    addresses = cluster_spec.job_tasks(job_name)
-    if task_index >= len(addresses) or task_index < 0:
+          'variable.' % (task_type, cluster_spec))
+    addresses = cluster_spec.job_tasks(task_type)
+    if task_id >= len(addresses) or task_id < 0:
       raise ValueError(
-          '%d is not a valid task index for task type %s in the '
+          '%d is not a valid task_id for task_type %s in the '
           'cluster_spec:\n'
           '%s\n\n'
           'Note that these value may be coming from the TF_CONFIG environment '
-          'variable.' % (task_index, job_name, cluster_spec))
-    return 'grpc://' + addresses[task_index]
+          'variable.' % (task_id, task_type, cluster_spec))
+    return 'grpc://' + addresses[task_id]
 
-  # For backwards compatibility, we return empty string if job_name was
-  # not set (job_name did not previously exist).
+  # For backwards compatibility, we return empty string if task_type was
+  # not set (task_type did not previously exist).
   return ''

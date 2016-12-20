@@ -388,6 +388,9 @@ class TestOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override { ctx->set_output(0, Tensor()); }
 };
 REGISTER_KERNEL_BUILDER(Name("TestOpWithNoGrad").Device(DEVICE_CPU), TestOp);
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("TestOpWithNoGrad").Device(DEVICE_SYCL), TestOp);
+#endif // TENSORFLOW_USE_SYCL
 
 TEST_F(MathGradTest, Error_Reporting) {
   auto x = test::AsTensor<float>({-3.f});
@@ -417,13 +420,13 @@ TEST_F(MathGradTest, Neg) {
   test::ExpectClose(ans, dx);
 }
 
-TEST_F(MathGradTest, Inv) {
+TEST_F(MathGradTest, Reciprocal) {
   auto x = test::AsTensor<float>({-3.f, -2.f, -1.f, 1.f, 2.f, 3.f},
                                  TensorShape({2, 3}));
   auto g = [](float x) { return -1.f / (x * x); };
   auto dx = test::AsTensor<float>(
       {g(-3.f), g(-2.f), g(-1.f), g(1.f), g(2.f), g(3.f)}, TensorShape({2, 3}));
-  auto ans = SymGrad("Inv", x);
+  auto ans = SymGrad("Reciprocal", x);
   test::ExpectClose(ans, dx);
 }
 
@@ -474,6 +477,16 @@ TEST_F(MathGradTest, Log) {
   auto dx = test::AsTensor<float>(
       {g(.1f), g(1.f), g(2.f), g(3.f), g(4.f), g(10.f)}, TensorShape({2, 3}));
   auto ans = SymGrad("Log", x);
+  test::ExpectClose(ans, dx);
+}
+
+TEST_F(MathGradTest, Log1p) {
+  auto x = test::AsTensor<float>({0.1f, 1.f, 2.f, 3.f, 4.f, 10.f},
+                                 TensorShape({2, 3}));
+  auto g = [](float x) { return 1 / (1 + x); };
+  auto dx = test::AsTensor<float>(
+      {g(.1f), g(1.f), g(2.f), g(3.f), g(4.f), g(10.f)}, TensorShape({2, 3}));
+  auto ans = SymGrad("Log1p", x);
   test::ExpectClose(ans, dx);
 }
 

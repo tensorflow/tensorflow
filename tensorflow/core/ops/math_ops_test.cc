@@ -188,7 +188,10 @@ TEST(MathOpsTest, Select_ShapeFn) {
   ShapeInferenceTestOp op("Select");
   INFER_OK(op, "?;?;?", "in1|in2");
 
+  // scalar case
+  INFER_OK(op, "[];[1];?", "in1");
   INFER_OK(op, "[];?;?", "in1|in2");
+
   INFER_OK(op, "[1];?;?",
            "in1|in2");  // When cond is vector, t/e may not match it.
   INFER_OK(op, "[1,2];?;?", "in1|in2?");
@@ -200,8 +203,8 @@ TEST(MathOpsTest, Select_ShapeFn) {
   INFER_OK(op, "?;[1,2];?", "in1");
   INFER_OK(op, "?;?;[1,2]", "in2");
 
-  INFER_OK(op, "[1];[];?", "in1");
-  INFER_ERROR("Shapes must be equal rank, but are 1 and 0", op, "[];[1];?");
+  INFER_ERROR("Shapes must be equal rank, but are 0 and 1", op, "[1];[];?");
+  INFER_ERROR("Shapes must be equal rank, but are 1 and 2", op, "[];[1];[1,2]");
   INFER_ERROR("Shapes must be equal rank, but are 1 and 2", op, "[1,2];[1];?");
   INFER_OK(op, "[2];[?];[?]", "in1|in2");
 
@@ -213,6 +216,37 @@ TEST(MathOpsTest, Select_ShapeFn) {
   INFER_OK(op, "[2,?,?];[?,?,3];[?,2,?]", "[d0_0,d2_1,d1_2]");
   INFER_ERROR("Dimension 2 in both shapes must be equal, but are 3 and 5", op,
               "[2,?,5];[?,?,3];[?,2,?]");
+
+  // Test that handle shapes were merged.
+  const OpRegistrationData* op_reg_data;
+  TF_ASSERT_OK(OpRegistry::Global()->LookUp(op.name, &op_reg_data));
+  TensorShapeProto i0;
+  i0.add_dim()->set_size(1);
+  i0.add_dim()->set_size(-1);
+  TensorShapeProto i1;
+  i1.add_dim()->set_size(-1);
+  i1.add_dim()->set_size(2);
+
+  ASSERT_TRUE(op_reg_data->shape_inference_fn != nullptr);
+  shape_inference::InferenceContext c(
+      &op.node_def, op_reg_data->op_def,
+      {TensorShapeProto(), TensorShapeProto(), TensorShapeProto()}, {}, {},
+      {TensorShapeProto(), i0, i1}, {});
+  TF_ASSERT_OK(c.construction_status());
+  TF_ASSERT_OK(c.Run(op_reg_data->shape_inference_fn));
+  EXPECT_TRUE(c.FullyDefined(c.output_handle_shape(0)));
+  EXPECT_EQ("[1,2]", c.DebugString(c.output_handle_shape(0)));
+
+  // Expect an error when the shapes can't be merged.
+  TensorShapeProto i2;
+  i1.add_dim()->set_size(2);
+  i1.add_dim()->set_size(2);
+  shape_inference::InferenceContext c2(
+      &op.node_def, op_reg_data->op_def,
+      {TensorShapeProto(), TensorShapeProto(), TensorShapeProto()}, {}, {},
+      {TensorShapeProto(), i0, i2}, {});
+  TF_ASSERT_OK(c.construction_status());
+  EXPECT_FALSE(c2.Run(op_reg_data->shape_inference_fn).ok());
 }
 
 TEST(MathOpsTest, Range_ShapeFn) {
@@ -416,11 +450,15 @@ TEST(MathOpsTest, ArgOps_ShapeFn) {
   // Dimension value out of bounds
   dimension = test::AsScalar(10);
   op.input_tensors[1] = &dimension;
-  INFER_ERROR("must be in the range [0, 3)", op, "[2,3,4];[]");
+  INFER_ERROR("must be in the range [-3, 3)", op, "[2,3,4];[]");
 
   dimension = test::AsScalar(-10);
   op.input_tensors[1] = &dimension;
-  INFER_ERROR("must be in the range [0, 3)", op, "[2,3,4];[]");
+  INFER_ERROR("must be in the range [-3, 3)", op, "[2,3,4];[]");
+
+  dimension = test::AsScalar(-1);
+  op.input_tensors[1] = &dimension;
+  INFER_OK(op, "[2,3,4];[]", "[d0_0,d0_1]");
 }
 
 TEST(MathOpsTest, Betainc_ShapeFn) {
@@ -444,6 +482,30 @@ TEST(MathOpsTest, Betainc_ShapeFn) {
   // Non-scalars must match shape.
   INFER_ERROR("must be equal", op, "[1,2];[];[1,4]");
   INFER_ERROR("must be equal", op, "[1,2];[];[1,2,3]");
+}
+
+TEST(MathOpsTest, Requantize_ShapeFn) {
+  ShapeInferenceTestOp op("Requantize");
+
+  INFER_OK(op, "?;?;?;?;?", "in0;[];[]");
+  INFER_OK(op, "?;[];[];[];[]", "in0;[];[]");
+
+  // Rank checks on input scalars.
+  INFER_ERROR("must be rank 0", op, "?;[1];?;?;?");
+  INFER_ERROR("must be rank 0", op, "?;?;[2];?;?");
+  INFER_ERROR("must be rank 0", op, "?;?;?;[3];?");
+  INFER_ERROR("must be rank 0", op, "?;?;?;?;[4]");
+}
+
+TEST(MathOpstest, RequantizationRange_ShapeFn) {
+  ShapeInferenceTestOp op("RequantizationRange");
+
+  INFER_OK(op, "?;?;?", "[];[]");
+  INFER_OK(op, "?;[];[]", "[];[]");
+
+  // Rank checks on input scalars.
+  INFER_ERROR("must be rank 0", op, "?;[1];?");
+  INFER_ERROR("must be rank 0", op, "?;?;[2]");
 }
 
 }  // end namespace tensorflow

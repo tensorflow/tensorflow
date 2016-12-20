@@ -47,6 +47,13 @@ class FileIoTest(tf.test.TestCase):
     file_contents = file_io.read_file_to_string(file_path)
     self.assertEqual(b"testing", file_contents)
 
+  def testAtomicWriteStringToFile(self):
+    file_path = os.path.join(self._base_dir, "temp_file")
+    file_io.atomic_write_string_to_file(file_path, "testing")
+    self.assertTrue(file_io.file_exists(file_path))
+    file_contents = file_io.read_file_to_string(file_path)
+    self.assertEqual(b"testing", file_contents)
+
   def testAppend(self):
     file_path = os.path.join(self._base_dir, "temp_file")
     with file_io.FileIO(file_path, mode="w") as f:
@@ -58,6 +65,15 @@ class FileIoTest(tf.test.TestCase):
     with file_io.FileIO(file_path, mode="r") as f:
       file_contents = f.read()
       self.assertEqual(b"begin\na1\na2\n", file_contents)
+
+  def testMultipleFiles(self):
+    file_prefix = os.path.join(self._base_dir, "temp_file")
+    for i in range(5000):
+      f = file_io.FileIO(file_prefix + str(i), mode="w+")
+      f.write("testing")
+      f.flush()
+      self.assertEquals(b"testing", f.read())
+      f.close()
 
   def testMultipleWrites(self):
     file_path = os.path.join(self._base_dir, "temp_file")
@@ -358,6 +374,9 @@ class FileIoTest(tf.test.TestCase):
     self.assertEqual(0, f.tell())
     self.assertEqual("testing1\n", f.readline())
 
+    with self.assertRaises(errors.InvalidArgumentError):
+      f.seek(-1)
+
   def testReadingIterator(self):
     file_path = os.path.join(self._base_dir, "temp_file")
     data = ["testing1\n", "testing2\n", "testing3\n", "\n", "testing5"]
@@ -376,6 +395,16 @@ class FileIoTest(tf.test.TestCase):
     f.flush()
     lines = f.readlines()
     self.assertSequenceEqual(lines, data)
+
+  def testEof(self):
+    """Test that reading past EOF does not raise an exception."""
+
+    file_path = os.path.join(self._base_dir, "temp_file")
+    f = file_io.FileIO(file_path, mode="r+")
+    content = b"testing"
+    f.write(content)
+    f.flush()
+    self.assertEqual(content, f.read(len(content)+1))
 
 
 if __name__ == "__main__":

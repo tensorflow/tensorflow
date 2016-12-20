@@ -46,8 +46,8 @@ namespace tensorflow {
 
 class GrpcMasterService : public AsyncServiceInterface {
  public:
-  GrpcMasterService(MasterEnv* env, ::grpc::ServerBuilder* builder)
-      : master_impl_(new Master(env, 0.0)), is_shutdown_(false) {
+  GrpcMasterService(Master* master, ::grpc::ServerBuilder* builder)
+      : master_impl_(master), is_shutdown_(false) {
     builder->RegisterService(&master_service_);
     cq_ = builder->AddCompletionQueue().release();
   }
@@ -55,7 +55,6 @@ class GrpcMasterService : public AsyncServiceInterface {
   ~GrpcMasterService() {
     delete shutdown_alarm_;
     delete cq_;
-    delete master_impl_;
   }
 
   void Shutdown() override {
@@ -127,7 +126,7 @@ class GrpcMasterService : public AsyncServiceInterface {
   }
 
  private:
-  Master* master_impl_;                // Owned.
+  Master* master_impl_;                // Not owned.
   ::grpc::ServerCompletionQueue* cq_;  // Owned.
   grpc::MasterService::AsyncService master_service_;
 
@@ -205,10 +204,9 @@ class GrpcMasterService : public AsyncServiceInterface {
   TF_DISALLOW_COPY_AND_ASSIGN(GrpcMasterService);
 };
 
-AsyncServiceInterface* NewGrpcMasterService(MasterEnv* env,
+AsyncServiceInterface* NewGrpcMasterService(Master* master,
                                             ::grpc::ServerBuilder* builder) {
-  CHECK(!env->local_devices.empty());
-  return new GrpcMasterService(env, builder);
+  return new GrpcMasterService(master, builder);
 }
 
 }  // end namespace tensorflow

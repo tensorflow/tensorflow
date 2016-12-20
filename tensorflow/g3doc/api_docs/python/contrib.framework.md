@@ -37,14 +37,15 @@ be `dtypes.float32` or `dtypes.float64`. If neither `tensors` nor
 
 - - -
 
-### `tf.contrib.framework.assert_scalar_int(tensor)` {#assert_scalar_int}
+### `tf.contrib.framework.assert_scalar_int(tensor, name=None)` {#assert_scalar_int}
 
 Assert `tensor` is 0-D, of type `tf.int32` or `tf.int64`.
 
 ##### Args:
 
 
-*  <b>`tensor`</b>: Tensor to test.
+*  <b>`tensor`</b>: `Tensor` to test.
+*  <b>`name`</b>: Name of the op and of the new `Tensor` if one is created.
 
 ##### Returns:
 
@@ -58,7 +59,7 @@ Assert `tensor` is 0-D, of type `tf.int32` or `tf.int64`.
 
 - - -
 
-### `tf.contrib.framework.convert_to_tensor_or_sparse_tensor(value, dtype=None, name=None, as_ref=False)` {#convert_to_tensor_or_sparse_tensor}
+### `tf.convert_to_tensor_or_sparse_tensor(value, dtype=None, name=None)` {#convert_to_tensor_or_sparse_tensor}
 
 Converts value to a `SparseTensor` or `Tensor`.
 
@@ -70,8 +71,6 @@ Converts value to a `SparseTensor` or `Tensor`.
 *  <b>`dtype`</b>: Optional element type for the returned tensor. If missing, the
     type is inferred from the type of `value`.
 *  <b>`name`</b>: Optional name to use if a new `Tensor` is created.
-*  <b>`as_ref`</b>: True if we want the result as a ref tensor. Only used if a new
-    `Tensor` is created.
 
 ##### Returns:
 
@@ -311,7 +310,7 @@ to the rest of the docstring.
 
 - - -
 
-### `tf.contrib.framework.deprecated_args(date, instructions, *deprecated_arg_names)` {#deprecated_args}
+### `tf.contrib.framework.deprecated_args(date, instructions, *deprecated_arg_names_or_tuples)` {#deprecated_args}
 
 Decorator for marking specific function arguments as deprecated.
 
@@ -335,7 +334,10 @@ prepended to the rest of the docstring.
     ISO 8601 (YYYY-MM-DD).
 *  <b>`instructions`</b>: String. Instructions on how to update code using the
     deprecated function.
-*  <b>`*deprecated_arg_names`</b>: String. The deprecated arguments.
+*  <b>`*deprecated_arg_names_or_tuples`</b>: String. or 2-Tuple(String,
+    [ok_vals]).  The string is the deprecated argument name.
+    Optionally, an ok-value may be provided.  If the user provided
+    argument equals this value, the warning is suppressed.
 
 ##### Returns:
 
@@ -344,8 +346,10 @@ prepended to the rest of the docstring.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If date is not in ISO 8601 format, instructions are empty, or
-    the deprecated arguments are not present in the function signature.
+*  <b>`ValueError`</b>: If date is not in ISO 8601 format, instructions are
+    empty, the deprecated arguments are not present in the function
+    signature, or the second element of a deprecated_tuple is not a
+    list.
 
 
 - - -
@@ -692,7 +696,7 @@ Returns and create (if necessary) the global step variable.
 
 ### `tf.contrib.framework.get_local_variables(scope=None, suffix=None)` {#get_local_variables}
 
-Gets the list of model variables, filtered by scope and/or suffix.
+Gets the list of local variables, filtered by scope and/or suffix.
 
 ##### Args:
 
@@ -812,10 +816,11 @@ Gets the list of variables, filtered by scope and/or suffix.
 ##### Args:
 
 
-*  <b>`scope`</b>: an optional scope for filtering the variables to return.
+*  <b>`scope`</b>: an optional scope for filtering the variables to return. Can be a
+    variable scope or a string.
 *  <b>`suffix`</b>: an optional suffix for filtering the variables to return.
 *  <b>`collection`</b>: in which collection search for. Defaults to
-    `GraphKeys.VARIABLES`.
+    `GraphKeys.GLOBAL_VARIABLES`.
 
 ##### Returns:
 
@@ -859,13 +864,18 @@ Gets an existing model variable with these parameters or creates a new one.
 *  <b>`trainable`</b>: If `True` also add the variable to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
 *  <b>`collections`</b>: A list of collection names to which the Variable will be added.
-    Note that the variable is always also added to the `GraphKeys.VARIABLES`
-    and `GraphKeys.MODEL_VARIABLES` collections.
+    Note that the variable is always also added to the
+    `GraphKeys.GLOBAL_VARIABLES` and `GraphKeys.MODEL_VARIABLES` collections.
 *  <b>`caching_device`</b>: Optional device string or function describing where the
       Variable should be cached for reading.  Defaults to the Variable's
       device.
 *  <b>`device`</b>: Optional device to place the variable. It can be an string or a
     function that is called to get the device for the variable.
+*  <b>`partitioner`</b>: Optional callable that accepts a fully defined `TensorShape`
+    and dtype of the `Variable` to be created, and returns a list of
+    partitions for each axis (currently only one axis can be partitioned).
+*  <b>`custom_getter`</b>: Callable that allows overwriting the internal
+    get_variable method and has to have the same signature.
 
 ##### Returns:
 
@@ -891,12 +901,17 @@ Gets an existing variable with these parameters or creates a new one.
 *  <b>`trainable`</b>: If `True` also add the variable to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
 *  <b>`collections`</b>: A list of collection names to which the Variable will be added.
-    If None it would default to `tf.GraphKeys.VARIABLES`.
+    If None it would default to `tf.GraphKeys.GLOBAL_VARIABLES`.
 *  <b>`caching_device`</b>: Optional device string or function describing where the
       Variable should be cached for reading.  Defaults to the Variable's
       device.
 *  <b>`device`</b>: Optional device to place the variable. It can be an string or a
     function that is called to get the device for the variable.
+*  <b>`partitioner`</b>: Optional callable that accepts a fully defined `TensorShape`
+    and dtype of the `Variable` to be created, and returns a list of
+    partitions for each axis (currently only one axis can be partitioned).
+*  <b>`custom_getter`</b>: Callable that allows overwriting the internal
+    get_variable method and has to have the same signature.
 
 ##### Returns:
 

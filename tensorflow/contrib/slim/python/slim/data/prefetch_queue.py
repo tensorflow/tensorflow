@@ -18,9 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python import summary
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import queue_runner
 
@@ -76,7 +76,6 @@ def prefetch_queue(tensors,
     enqueue_op = queue.enqueue(tensors, name=name)
     queue_runner.add_queue_runner(
         queue_runner.QueueRunner(queue, [enqueue_op]))
-    logging_ops.scalar_summary(
-        "queue/%s/fraction_of_%d_full" % (queue.name, capacity),
-        math_ops.to_float(queue.size()) * (1. / capacity))
+    summary.scalar("queue/%s/fraction_of_%d_full" % (queue.name, capacity),
+                   math_ops.to_float(queue.size()) * (1. / capacity))
     return queue

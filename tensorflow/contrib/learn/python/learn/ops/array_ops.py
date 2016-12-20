@@ -19,25 +19,34 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.framework import deprecated
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops as array_ops_
 from tensorflow.python.ops import math_ops
 
 
-def one_hot_matrix(tensor_in, num_classes, on_value=1.0, off_value=0.0):
+@deprecated('2016-12-01', 'Use `tf.one_hot` instead.')
+def one_hot_matrix(tensor_in, num_classes, on_value=1.0, off_value=0.0,
+                   name=None):
   """Encodes indices from given tensor as one-hot tensor.
 
   TODO(ilblackdragon): Ideally implementation should be
   part of TensorFlow with Eigen-native operation.
 
   Args:
-    tensor_in: Input tensor of shape [N1, N2].
+    tensor_in: Input `Tensor` of shape [N1, N2].
     num_classes: Number of classes to expand index into.
-    on_value: Tensor or float, value to fill-in given index.
-    off_value: Tensor or float, value to fill-in everything else.
+    on_value: `Tensor` or float, value to fill-in given index.
+    off_value: `Tensor` or float, value to fill-in everything else.
+    name: Name of the op.
   Returns:
-    Tensor of shape [N1, N2, num_classes] with 1.0 for each id in original
+    `Tensor` of shape `[N1, N2, num_classes]` with 1.0 for each id in original
     tensor.
   """
-  return array_ops_.one_hot(
-      math_ops.cast(tensor_in, dtypes.int64), num_classes, on_value, off_value)
+  with ops.name_scope(
+      name, 'one_hot_matrix',
+      [tensor_in, num_classes, on_value, off_value]) as name_scope:
+    return array_ops_.one_hot(
+        math_ops.cast(tensor_in, dtypes.int64), num_classes, on_value,
+        off_value, name=name_scope)

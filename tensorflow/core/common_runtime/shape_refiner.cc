@@ -27,6 +27,10 @@ limitations under the License.
 
 namespace tensorflow {
 
+using shape_inference::DimensionHandle;
+using shape_inference::InferenceContext;
+using shape_inference::ShapeHandle;
+
 ShapeRefiner::ShapeRefiner(const OpRegistryInterface* ops)
     : ops_registry_(ops) {}
 
@@ -37,7 +41,9 @@ Status ShapeRefiner::AddNode(const Node* node) {
   // from 'input's InferenceContext, and store into a vector
   // indexed by 'node's input.
   std::vector<Node*> input_nodes(node->num_inputs());
-  std::vector<shape_inference::ShapeHandle> input_shapes(node->num_inputs());
+  std::vector<ShapeHandle> input_shapes(node->num_inputs());
+  std::vector<DataType> input_handle_dtypes(node->num_inputs());
+  std::vector<ShapeHandle> input_handle_shapes(node->num_inputs());
   for (const Edge* e : node->in_edges()) {
     if (e->IsControlEdge()) continue;
 
@@ -49,10 +55,19 @@ Status ShapeRefiner::AddNode(const Node* node) {
           node->name(), "' was not previously added to ShapeRefiner.");
     }
 
-    shape_inference::InferenceContext* c = it->second;
+    InferenceContext* c = it->second;
     DCHECK_GE(e->dst_input(), 0);
     input_nodes[e->dst_input()] = input;
     input_shapes[e->dst_input()] = c->output(e->src_output());
+
+    // Only propagate handle xshape and dtype of edges which are carrying
+    // resource handles.
+    if (e->src()->output_type(e->src_output()) == DT_RESOURCE) {
+      input_handle_dtypes[e->dst_input()] =
+          c->output_handle_dtype(e->src_output());
+      input_handle_shapes[e->dst_input()] =
+          c->output_handle_shape(e->src_output());
+    }
   }
 
   // Get the shape function for this node
@@ -68,12 +83,13 @@ Status ShapeRefiner::AddNode(const Node* node) {
   std::vector<const Tensor*> input_tensors(node->num_inputs());
   std::vector<Tensor> real_tensors(node->num_inputs());
   std::vector<bool> attempted_materialization(node->num_inputs());
+  std::vector<bool> attempted_tensor_as_shape_conversion(node->num_inputs());
+  std::vector<ShapeHandle> input_tensors_as_shapes;
 
   // Create the inference context for this node with the existing input shapes.
-  std::unique_ptr<shape_inference::InferenceContext> c(
-      new shape_inference::InferenceContext(&node->def(), node->op_def(),
-                                            {} /* input_shapes_string */,
-                                            input_shapes, input_tensors));
+  std::unique_ptr<InferenceContext> c(new InferenceContext(
+      &node->def(), node->op_def(), input_shapes, input_tensors,
+      input_tensors_as_shapes, input_handle_shapes, input_handle_dtypes));
   if (!c->construction_status().ok()) {
     return c->construction_status();
   }
@@ -102,56 +118,36 @@ Status ShapeRefiner::AddNode(const Node* node) {
     // subgraph once.
 
     for (int i = 0; i < c->num_inputs(); ++i) {
+      if (!c->requested_input_tensor(i)) {
+        continue;
+      }
       // Check if we have not already filled in the requested input,
       // and if not, try to materialize the tensors.
-      if (c->requested_input_tensor(i) && !attempted_materialization[i]) {
+      if (!attempted_materialization[i]) {
         attempted_materialization[i] = true;
 
-        const Edge* input_edge;
-        TF_RETURN_IF_ERROR(node->input_edge(i, &input_edge));
-
-        bool is_constant_graph = false;
-        Graph subgraph(ops_registry_);
-
-        // We identify the possibly constant subgraph to evaluate by
-        // recursively iterating backwards through the inputs to 'node'
-        // until we either 1) find an already existing input to our subgraph
-        // (filled in `const_inputs`), 2) Discover our graph is not constant,
-        // or 3) Hit a root node.
-        std::vector<std::pair<string, Tensor>> const_inputs;
-        TF_RETURN_IF_ERROR(ExtractConstantSubgraph(
-            input_nodes[i], &subgraph, &is_constant_graph, &const_inputs));
-        if (is_constant_graph) {
-          const string output_tensor_name = strings::StrCat(
-              input_nodes[i]->name(), ":", input_edge->src_output());
-          std::vector<Tensor> outputs;
-          // NOTE; we should pass in a function library runtime if we want
-          // to support constant-expression evaluation on functions.
-          Status s = GraphRunner::Run(&subgraph, nullptr /* function_library */,
-                                      Env::Default(), const_inputs,
-                                      {output_tensor_name}, &outputs);
-
-          // If all kernels in the constant graph are not registered
-          // in the process, GraphRunner::Run may fail, in which case
-          // we cannot propagate constants, so this is best-effort.
-          if (s.ok()) {
-            real_tensors[i] = outputs[0];
-            input_tensors[i] = &real_tensors[i];
-
-            // We have more concrete information about a shape,
-            // so re-run shape inference.
-            rerun_shape_fn = true;
-
-            // We memoize (small) constants evaluated so far, so
-            // ExtractConstantSubgraph can avoid extracting the full
-            // subgraph.  As we build up large graphs, this avoids
-            // repeated computation of the early parts of a constant
-            // graph.
-            if (outputs[0].TotalBytes() <= kMaxTensorSize) {
-              const_tensor_map_[output_tensor_name] = outputs[0];
-            }
-          }
+        Tensor result;
+        bool evaluated = false;
+        TF_RETURN_IF_ERROR(
+            EvaluateConstantTensorForEdge(node, i, &evaluated, &result));
+        if (evaluated) {
+          real_tensors[i] = result;
+          input_tensors[i] = &real_tensors[i];
+          // We have more concrete information about a shape,
+          // so re-run shape inference.
+          rerun_shape_fn = true;
         }
+      }
+      if (c->requested_input_tensor_as_partial_shape(i) &&
+          !attempted_tensor_as_shape_conversion[i]) {
+        attempted_tensor_as_shape_conversion[i] = true;
+        if (i >= input_tensors_as_shapes.size()) {
+          input_tensors_as_shapes.resize(i + 1);
+        }
+        ShapeHandle s;
+        TF_RETURN_IF_ERROR(ConstantPartialShape(c.get(), node, i, &s));
+        input_tensors_as_shapes[i] = s;
+        rerun_shape_fn = true;
       }
     }
 
@@ -159,6 +155,7 @@ Status ShapeRefiner::AddNode(const Node* node) {
       // We have more information about the shapes on this pass,
       // so re-run shape inference.
       c->set_input_tensors(input_tensors);
+      c->set_input_tensors_as_shapes(input_tensors_as_shapes);
       TF_RETURN_IF_ERROR(op_reg_data->shape_inference_fn(c.get()));
     }
   } while (rerun_shape_fn);
@@ -170,7 +167,7 @@ Status ShapeRefiner::AddNode(const Node* node) {
 }
 
 Status ShapeRefiner::SetShape(const Node* node, int output_port,
-                              shape_inference::ShapeHandle shape) {
+                              ShapeHandle shape) {
   auto c = GetContext(node);
   if (c == nullptr) {
     return errors::Internal("Could not find context for ", node->name());
@@ -183,7 +180,7 @@ Status ShapeRefiner::SetShape(const Node* node, int output_port,
   }
 
   // Check compatibility, and merge the shapes.
-  shape_inference::ShapeHandle existing_shape = c->output(output_port);
+  ShapeHandle existing_shape = c->output(output_port);
   TF_RETURN_IF_ERROR(c->Merge(existing_shape, shape, &shape));
   c->set_output(output_port, shape);
 
@@ -194,6 +191,55 @@ Status ShapeRefiner::SetShape(const Node* node, int output_port,
   // TODO(vrv): We might need to keep track of the fact that the
   // existing shape is invalidated, in case we need to propagate
   // this information to remote workers.
+  return Status::OK();
+}
+
+Status ShapeRefiner::EvaluateConstantTensorForEdge(const Node* node,
+                                                   int dst_idx, bool* evaluated,
+                                                   Tensor* result) {
+  *evaluated = false;
+  const Edge* input_edge;
+  TF_RETURN_IF_ERROR(node->input_edge(dst_idx, &input_edge));
+
+  bool is_constant_graph = false;
+  Graph subgraph(ops_registry_);
+
+  // We identify the possibly constant subgraph to evaluate by
+  // recursively iterating backwards through the inputs to 'node'
+  // until we either 1) find an already existing input to our subgraph
+  // (filled in `const_inputs`), 2) Discover our graph is not constant,
+  // or 3) Hit a root node.
+  std::vector<std::pair<string, Tensor>> const_inputs;
+  TF_RETURN_IF_ERROR(ExtractConstantSubgraph(
+      input_edge->src(), &subgraph, &is_constant_graph, &const_inputs));
+  if (!is_constant_graph) {
+    return Status::OK();
+  }
+  const string output_tensor_name =
+      strings::StrCat(input_edge->src()->name(), ":", input_edge->src_output());
+  std::vector<Tensor> outputs;
+  // NOTE; we should pass in a function library runtime if we want
+  // to support constant-expression evaluation on functions.
+  Status s = GraphRunner::Run(&subgraph, nullptr /* function_library */,
+                              Env::Default(), const_inputs,
+                              {output_tensor_name}, &outputs);
+
+  // If all kernels in the constant graph are not registered
+  // in the process, GraphRunner::Run may fail, in which case
+  // we cannot propagate constants, so this is best-effort.
+  if (s.ok()) {
+    *result = outputs[0];
+    *evaluated = true;
+
+    // We memoize (small) constants evaluated so far, so
+    // ExtractConstantSubgraph can avoid extracting the full
+    // subgraph.  As we build up large graphs, this avoids
+    // repeated computation of the early parts of a constant
+    // graph.
+    if (outputs[0].TotalBytes() <= kMaxTensorSize) {
+      const_tensor_map_[output_tensor_name] = outputs[0];
+    }
+  }
   return Status::OK();
 }
 
@@ -306,6 +352,77 @@ Status ShapeRefiner::ExtractConstantSubgraph(
     }
   }
 
+  return Status::OK();
+}
+
+Status ShapeRefiner::ConstantPartialShape(InferenceContext* target_context,
+                                          const Node* node, int dst_idx,
+                                          ShapeHandle* result) {
+  const Edge* input_edge;
+  TF_RETURN_IF_ERROR(node->input_edge(dst_idx, &input_edge));
+
+  InferenceContext* src_context = GetContext(input_edge->src());
+  if (src_context == nullptr) return errors::Internal("Missing src context");
+  ShapeHandle src_shape = src_context->output(input_edge->src_output());
+  TF_RETURN_IF_ERROR(src_context->WithRank(src_shape, 1, &src_shape));
+
+  const string& src_op = input_edge->src()->type_string();
+  if (src_context->Value(src_context->Dim(src_shape, 0)) == 0) {
+    // Source tensor is a vector of length 0, so the shape it
+    // represents is as scalar.
+    *result = target_context->Scalar();
+  } else if (src_op == "Shape") {
+    *result = src_context->input(0);
+  } else if (src_op == "Pack") {
+    std::vector<DimensionHandle> dims;
+    // Pack is concatenating its input scalars to form the shape tensor vector.
+    for (int i = 0; i < src_context->num_inputs(); ++i) {
+      Tensor scalar;
+      bool evaluated = false;
+      TF_RETURN_IF_ERROR(EvaluateConstantTensorForEdge(input_edge->src(), i,
+                                                       &evaluated, &scalar));
+      if (evaluated) {
+        int64 size;
+        if (scalar.dtype() == DT_INT32) {
+          size = scalar.scalar<int32>()();
+        } else if (scalar.dtype() == DT_INT64) {
+          size = scalar.scalar<int64>()();
+        } else {
+          return errors::InvalidArgument("Pack input must be int32 or int64");
+        }
+        dims.push_back(size < 0 ? target_context->UnknownDim()
+                                : target_context->MakeDim(size));
+      } else {
+        dims.push_back(target_context->UnknownDim());
+      }
+    }
+    *result = target_context->MakeShape(dims);
+  } else if (src_op == "Concat") {
+    *result = target_context->Scalar();
+    // Concat is concatenating its input shape vectors.
+    // input 0 is ignored as it is the concat dim and will always be 0.
+    for (int i = 1; i < src_context->num_inputs(); ++i) {
+      ShapeHandle sub_result;
+      TF_RETURN_IF_ERROR(ConstantPartialShape(target_context, input_edge->src(),
+                                              i, &sub_result));
+      if (!target_context->RankKnown(sub_result)) {
+        // Failed to evaluate. Treat the output as completely unknown.
+        // TODO(cwhipkey): we could rely on all inputs being the same size, so
+        // figure that size out and append the right number of unknown dims.
+        *result = target_context->UnknownShape();
+        return Status::OK();
+      }
+      TF_RETURN_IF_ERROR(
+          target_context->Concatenate(*result, sub_result, result));
+    }
+  } else {
+    Tensor t;
+    bool evaluated = false;
+    TF_RETURN_IF_ERROR(
+        EvaluateConstantTensorForEdge(node, dst_idx, &evaluated, &t));
+    TF_RETURN_IF_ERROR(target_context->MakeShapeFromTensor(
+        evaluated ? &t : nullptr, src_shape, result));
+  }
   return Status::OK();
 }
 

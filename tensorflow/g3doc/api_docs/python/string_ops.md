@@ -105,7 +105,7 @@ string tensor.
 
 - - -
 
-### `tf.reduce_join(inputs, reduction_indices, keep_dims=None, separator=None, name=None)` {#reduce_join}
+### `tf.reduce_join(inputs, axis=None, keep_dims=False, separator='', name=None, reduction_indices=None)` {#reduce_join}
 
 Joins a string Tensor across the given dimensions.
 
@@ -113,7 +113,7 @@ Computes the string join across dimensions in the given string Tensor of shape
 `[d_0, d_1, ..., d_n-1]`.  Returns a new Tensor created by joining the input
 strings with the given separator (default: empty string).  Negative indices are
 counted backwards from the end, with `-1` being equivalent to `n - 1`.  Passing
-an empty `reduction_indices` joins all strings in linear index order and outputs
+an empty `axis` joins all strings in linear index order and outputs
 a scalar string.
 
 
@@ -138,9 +138,9 @@ tf.reduce_join(a, []) ==> ["abcd"]
 
 *  <b>`inputs`</b>: A `Tensor` of type `string`.
     The input to be joined.  All reduced indices must have non-zero size.
-*  <b>`reduction_indices`</b>: A `Tensor` of type `int32`.
+*  <b>`axis`</b>: A `Tensor` of type `int32`.
     The dimensions to reduce over.  Dimensions are reduced in the
-    order specified.  Omitting `reduction_indices` is equivalent to passing
+    order specified.  Omitting `axis` is equivalent to passing
     `[n-1, n-2, ..., 0]`.  Negative indices from `-n` to `-1` are supported.
 *  <b>`keep_dims`</b>: An optional `bool`. Defaults to `False`.
     If `True`, retain reduced dimensions with length `1`.
@@ -193,7 +193,9 @@ element of `source` based on `delimiter` and return a `SparseTensor`
 containing the splitted tokens. Empty tokens are ignored.
 
 If `delimiter` is an empty string, each element of the `source` is split
-into individual 1 character strings.
+into individual strings, each containing one byte. (This includes splitting
+multibyte sequences of UTF-8.) If delimiter contains multiple bytes, it is
+treated as a set of delimiters with each considered a potential split point.
 
 For example:
 N = 2, source[0] is 'hello world' and source[1] is 'a b c', then the output
@@ -214,16 +216,111 @@ st.values = ['hello', 'world', 'a', 'b', 'c']
 *  <b>`delimiter`</b>: `0-D` string `Tensor`, the delimiter character, the string should
     be length 0 or 1.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If delimiter is not a string.
+
 ##### Returns:
 
   A `SparseTensor` of rank `2`, the strings split according to the delimiter.
   The first column of the indices corresponds to the row in `source` and the
   second column corresponds to the index of the split component in this row.
 
-##### Raises:
+
+- - -
+
+### `tf.substr(input, pos, len, name=None)` {#substr}
+
+Return substrings from `Tensor` of strings.
+
+For each string in the input `Tensor`, creates a substring starting at index
+`pos` with a total length of `len`.
+
+If `len` defines a substring that would extend beyond the length of the input
+string, then as many characters as possible are used.
+
+If `pos` is negative or specifies a character index larger than any of the input
+strings, then an `InvalidArgumentError` is thrown.
+
+`pos` and `len` must have the same shape, otherwise a `ValueError` is thrown on
+Op creation.
+
+*NOTE*: `Substr` supports broadcasting up to two dimensions. More about
+broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+---
+
+Examples
+
+Using scalar `pos` and `len`:
+
+```
+input = [b'Hello', b'World']
+position = 1
+length = 3
+
+output = [b'ell', b'orl']
+```
+
+Using `pos` and `len` with same shape as `input`:
+
+```
+input = [[b'ten', b'eleven', b'twelve'],
+         [b'thirteen', b'fourteen', b'fifteen'],
+         [b'sixteen', b'seventeen', b'eighteen']]
+position = [[1, 2, 3],
+            [1, 2, 3],
+            [1, 2, 3]]
+length =   [[2, 3, 4],
+            [4, 3, 2],
+            [5, 5, 5]]
+
+output = [[b'en', b'eve', b'lve'],
+          [b'hirt', b'urt', b'te'],
+          [b'ixtee', b'vente', b'hteen']]
+```
+
+Broadcasting `pos` and `len` onto `input`:
+
+```
+input = [[b'ten', b'eleven', b'twelve'],
+         [b'thirteen', b'fourteen', b'fifteen'],
+         [b'sixteen', b'seventeen', b'eighteen'],
+         [b'nineteen', b'twenty', b'twentyone']]
+position = [1, 2, 3]
+length =   [1, 2, 3]
+
+output = [[b'e', b'ev', b'lve'],
+          [b'h', b'ur', b'tee'],
+          [b'i', b've', b'hte'],
+          [b'i', b'en', b'nty']]
+```
+
+Broadcasting `input` onto `pos` and `len`:
+
+```
+input = b'thirteen'
+position = [1, 5, 7]
+length =   [3, 2, 1]
+
+output = [b'hir', b'ee', b'n"]
+```
+
+##### Args:
 
 
-*  <b>`ValueError`</b>: If delimiter is not a character.
+*  <b>`input`</b>: A `Tensor` of type `string`. Tensor of strings
+*  <b>`pos`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+    Scalar defining the position of first character in each substring
+*  <b>`len`</b>: A `Tensor`. Must have the same type as `pos`.
+    Scalar defining the number of characters to include in each substring
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `string`. Tensor of substrings
 
 
 

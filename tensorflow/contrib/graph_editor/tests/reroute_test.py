@@ -42,6 +42,14 @@ class RerouteTest(tf.test.TestCase):
     self.assertTrue(ge.matcher("c0").input_ops("a1", "b1")(self.c0.op))
     self.assertTrue(ge.matcher("c1").input_ops("a0", "b0")(self.c1.op))
 
+  def test_multiswap(self):
+    with self.graph.as_default():
+      a3 = tf.constant(3.0, shape=[2], name="a3")
+    ge.reroute.swap(ge.sgv(a3.op).remap_outputs([0, 0]),
+                    ge.sgv(self.a0.op, self.a1.op))
+    self.assertTrue(ge.matcher("c0").input_ops("a3", "b0")(self.c0.op))
+    self.assertTrue(ge.matcher("c1").input_ops("a3", "b1")(self.c1.op))
+
   def test_reroute(self):
     ge.reroute.reroute_a2b_ts([self.a0, self.b0], [self.a1, self.b1])
     self.assertTrue(ge.matcher("c0").input_ops("a0", "b0")(self.c0.op))

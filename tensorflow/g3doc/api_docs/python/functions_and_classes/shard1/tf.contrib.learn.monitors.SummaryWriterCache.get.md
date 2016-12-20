@@ -1,6 +1,6 @@
 #### `tf.contrib.learn.monitors.SummaryWriterCache.get(logdir)` {#SummaryWriterCache.get}
 
-Returns the SummaryWriter for the specified directory.
+Returns the FileWriter for the specified directory.
 
 ##### Args:
 
@@ -9,5 +9,5 @@ Returns the SummaryWriter for the specified directory.
 
 ##### Returns:
 
-  A `SummaryWriter`.
+  A `FileWriter`.
 

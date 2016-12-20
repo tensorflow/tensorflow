@@ -32,27 +32,26 @@ from tensorflow.contrib.session_bundle import manifest_pb2
 
 def iris_input_fn(num_epochs=None):
   iris = tf.contrib.learn.datasets.load_iris()
-  features = tf.reshape(tf.constant(iris.data), [-1, 4])
-  if num_epochs:
-    features = tf.train.limit_epochs(features, num_epochs=num_epochs)
-  target = tf.reshape(tf.constant(iris.target), [-1])
-  return features, target
+  features = tf.train.limit_epochs(
+      tf.reshape(tf.constant(iris.data), [-1, 4]), num_epochs=num_epochs)
+  labels = tf.reshape(tf.constant(iris.target), [-1])
+  return features, labels
 
 
-def logistic_model_fn(features, target, unused_mode):
-  target = tf.one_hot(target, 3, 1, 0)
+def logistic_model_fn(features, labels, unused_mode):
+  labels = tf.one_hot(labels, 3, 1, 0)
   prediction, loss = tf.contrib.learn.models.logistic_regression_zero_init(
-      features, target)
+      features, labels)
   train_op = tf.contrib.layers.optimize_loss(
       loss, tf.contrib.framework.get_global_step(), optimizer='Adagrad',
       learning_rate=0.1)
   return prediction, loss, train_op
 
 
-def logistic_model_params_fn(features, target, unused_mode, params):
-  target = tf.one_hot(target, 3, 1, 0)
+def logistic_model_params_fn(features, labels, unused_mode, params):
+  labels = tf.one_hot(labels, 3, 1, 0)
   prediction, loss = tf.contrib.learn.models.logistic_regression_zero_init(
-      features, target)
+      features, labels)
   train_op = tf.contrib.layers.optimize_loss(
       loss, tf.contrib.framework.get_global_step(), optimizer='Adagrad',
       learning_rate=params['learning_rate'])
@@ -71,42 +70,22 @@ class ClassifierTest(tf.test.TestCase):
                                       params={'learning_rate': 0.01})
     self._runIrisAll(est)
 
-  def testIrisPredictAsIterable(self):
-    iris = tf.contrib.learn.datasets.load_iris()
-    est = tf.contrib.learn.Classifier(model_fn=logistic_model_fn, n_classes=3)
-    est.fit(iris.data, iris.target, steps=100)
-    scores = est.evaluate(x=iris.data, y=iris.target, name='eval')
-    predictions = list(est.predict(x=iris.data, as_iterable=True))
-    predictions_proba = list(est.predict_proba(x=iris.data, as_iterable=True))
-    self.assertEqual(len(predictions), iris.target.shape[0])
-    self.assertAllEqual(predictions, np.argmax(predictions_proba, axis=1))
-    other_score = _sklearn.accuracy_score(iris.target, predictions)
-    self.assertAllClose(other_score, scores['accuracy'])
-
   def testIrisInputFn(self):
     iris = tf.contrib.learn.datasets.load_iris()
     est = tf.contrib.learn.Classifier(model_fn=logistic_model_fn, n_classes=3)
     est.fit(input_fn=iris_input_fn, steps=100)
     est.evaluate(input_fn=iris_input_fn, steps=1, name='eval')
-    predictions = est.predict(input_fn=iris_input_fn)
-    self.assertEqual(predictions.shape[0], iris.target.shape[0])
-
-  def testIrisPredictInputFnAsIterable(self):
-    iris = tf.contrib.learn.datasets.load_iris()
-    est = tf.contrib.learn.Classifier(model_fn=logistic_model_fn, n_classes=3)
-    est.fit(input_fn=iris_input_fn, steps=100)
-    est.evaluate(input_fn=iris_input_fn, steps=1, name='eval')
     predict_input_fn = functools.partial(iris_input_fn, num_epochs=1)
-    predictions = list(est.predict(input_fn=predict_input_fn, as_iterable=True))
+    predictions = list(est.predict(input_fn=predict_input_fn))
     self.assertEqual(len(predictions), iris.target.shape[0])
 
   def _runIrisAll(self, est):
     iris = tf.contrib.learn.datasets.load_iris()
     est.fit(iris.data, iris.target, steps=100)
     scores = est.evaluate(x=iris.data, y=iris.target, name='eval')
-    predictions = est.predict(x=iris.data)
-    predictions_proba = est.predict_proba(x=iris.data)
-    self.assertEqual(predictions.shape[0], iris.target.shape[0])
+    predictions = list(est.predict(x=iris.data))
+    predictions_proba = list(est.predict_proba(x=iris.data))
+    self.assertEqual(len(predictions), iris.target.shape[0])
     self.assertAllEqual(predictions, np.argmax(predictions_proba, axis=1))
     other_score = _sklearn.accuracy_score(iris.target, predictions)
     self.assertAllClose(other_score, scores['accuracy'])

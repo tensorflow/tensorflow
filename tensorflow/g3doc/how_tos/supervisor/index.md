@@ -130,7 +130,7 @@ For example this code runs the summary op every 100 steps in the training loop:
 ```python
   ...create graph...
   my_train_op = ...
-  my_summary_op = tf.merge_all_summaries()
+  my_summary_op = tf.summary.merge_all()
 
   sv = tf.Supervisor(logdir="/my/training/directory",
                      summary_op=None) # Do not run the summary service
@@ -317,7 +317,7 @@ constructor:
    `tf.GraphKeys.SUMMARY_OP` [graph
    collection](../../api_docs/python/framework#Graph.add_to_collection).  If
    the collection is empty the supervisor creates an op that aggregates all
-   summaries in the graph using `tf.merge_all_summaries()`.
+   summaries in the graph using `tf.summary.merge_all()`.
 
    Passing `None` disables the summary service.
 
@@ -349,7 +349,7 @@ following keyword arguments to the `Supervisor()` constructor:
    If not specified, the supervisor uses the first op in the
    `tf.GraphKeys.INIT_OP` collection.  If the collection is empty, the
    supervisor adds an op to initialize all the variables in the graph by
-   calling `tf.initialize_all_variables()`.
+   calling `tf.global_variables_initializer()`.
 
    Pass `None` to not use an init op.
 
@@ -374,7 +374,7 @@ following keyword arguments to the `Supervisor()` constructor:
  * `ready_op`: Op to check if the model is initialized.
 
    After running the local init op, the init op, and the init function, the
-   supervisor verifies that the model is fully intialized by running the ready
+   supervisor verifies that the model is fully initialized by running the ready
    op.  This is an op that returns an empty string if the model is initialized,
    or a description of what parts of the model are not initialized if not.
 
@@ -404,5 +404,3 @@ Checkpoint recovery is controlled by the following keyword arguments to the
    ready op the first time, to initialize local variables and tables.
 
  * `saver`: (see above).  Saver object used to load the checkpoint.
-
-

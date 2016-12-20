@@ -45,7 +45,7 @@ loss = -elbo
 
 # Minimize the loss
 train_op = tf.train.GradientDescentOptimizer(0.1).minimize(loss)
-tf.initialize_all_variables().run()
+tf.global_variables_initializer().run()
 for step in range(100):
   train_op.run()
 ```
@@ -142,7 +142,7 @@ def elbo_ratio(log_p,
     log_p:  Callable mapping samples from `q` to `Tensors` with
       shape broadcastable to `q.batch_shape`.
       For example, `log_p` works "just like" `q.log_prob`.
-    q:  `tf.contrib.distributions.BaseDistribution`.
+    q:  `tf.contrib.distributions.Distribution`.
     z:  `Tensor` of samples from `q`, produced by `q.sample_n`.
     n:  Integer `Tensor`.  Number of samples to generate if `z` is not provided.
     seed:  Python integer to seed the random number generator.
@@ -192,7 +192,7 @@ def entropy_shannon(p,
   User supplies either `Tensor` of samples `z`, or number of samples to draw `n`
 
   Args:
-    p:  `tf.contrib.distributions.BaseDistribution`
+    p:  `tf.contrib.distributions.Distribution`
     z:  `Tensor` of samples from `p`, produced by `p.sample_n(n)` for some `n`.
     n:  Integer `Tensor`.  Number of samples to generate if `z` is not provided.
     seed:  Python integer to seed the random number generator.
@@ -322,7 +322,7 @@ def renyi_ratio(log_p, q, alpha, z=None, n=None, seed=None, name='renyi_ratio'):
     log_p:  Callable mapping samples from `q` to `Tensors` with
       shape broadcastable to `q.batch_shape`.
       For example, `log_p` works "just like" `q.log_prob`.
-    q: `tf.contrib.distributions.BaseDistribution`.
+    q: `tf.contrib.distributions.Distribution`.
        `float64` `dtype` recommended.
        `log_p` and `q` should be supported on the same set.
     alpha:  `Tensor` with shape `q.batch_shape` and values not equal to 1.

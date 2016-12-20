@@ -40,7 +40,8 @@ class ResampleTest(tf.test.TestCase):
     resampled_back_out = tf.contrib.training.resample_at_rate(
         resampled_in, 1.0/rates, seed=456)
 
-    init = tf.initialize_local_variables()
+    init = tf.group(tf.local_variables_initializer(),
+                    tf.global_variables_initializer())
     with self.test_session() as s:
       s.run(init)  # initialize
 
@@ -81,7 +82,8 @@ class ResampleTest(tf.test.TestCase):
 
     invrates = 1.0/rates
 
-    init = tf.initialize_local_variables()
+    init = tf.group(tf.local_variables_initializer(),
+                    tf.global_variables_initializer())
     expected_sum_op = tf.reduce_sum(vals)
     with self.test_session() as s:
       s.run(init)

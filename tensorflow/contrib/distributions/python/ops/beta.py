@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import distribution_util
+from tensorflow.contrib.distributions.python.ops import kullback_leibler
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -139,6 +140,8 @@ class Beta(distribution.Distribution):
     ```
 
     """
+    parameters = locals()
+    parameters.pop("self")
     with ops.name_scope(name, values=[a, b]) as ns:
       with ops.control_dependencies([
           check_ops.assert_positive(a),
@@ -149,14 +152,15 @@ class Beta(distribution.Distribution):
         contrib_tensor_util.assert_same_float_dtype((self._a, self._b))
         # Used for mean/mode/variance/entropy/sampling computations
         self._a_b_sum = self._a + self._b
-        super(Beta, self).__init__(
-            dtype=self._a_b_sum.dtype,
-            parameters={"a": self._a, "b": self._b, "a_b_sum": self._a_b_sum},
-            validate_args=validate_args,
-            allow_nan_stats=allow_nan_stats,
-            is_continuous=True,
-            is_reparameterized=False,
-            name=ns)
+    super(Beta, self).__init__(
+        dtype=self._a_b_sum.dtype,
+        validate_args=validate_args,
+        allow_nan_stats=allow_nan_stats,
+        is_continuous=True,
+        is_reparameterized=False,
+        parameters=parameters,
+        graph_parents=[self._a, self._b, self._a_b_sum],
+        name=ns)
 
   @staticmethod
   def _param_shapes(sample_shape):
@@ -197,7 +201,8 @@ class Beta(distribution.Distribution):
     gamma1_sample = random_ops.random_gamma(
         [n,], a, dtype=self.dtype, seed=seed)
     gamma2_sample = random_ops.random_gamma(
-        [n,], b, dtype=self.dtype, seed=seed)
+        [n,], b, dtype=self.dtype,
+        seed=distribution_util.gen_new_seed(seed, "beta"))
     beta_sample = gamma1_sample / (gamma1_sample + gamma2_sample)
     return beta_sample
 
@@ -247,7 +252,7 @@ class Beta(distribution.Distribution):
     mode = (self.a - 1.)/ (self.a_b_sum - 2.)
     if self.allow_nan_stats:
       nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
-      return math_ops.select(
+      return array_ops.where(
           math_ops.logical_and(
               math_ops.greater(self.a, 1.),
               math_ops.greater(self.b, 1.)),
@@ -285,6 +290,8 @@ class BetaWithSoftplusAB(Beta):
                validate_args=False,
                allow_nan_stats=True,
                name="BetaWithSoftplusAB"):
+    parameters = locals()
+    parameters.pop("self")
     with ops.name_scope(name, values=[a, b]) as ns:
       super(BetaWithSoftplusAB, self).__init__(
           a=nn.softplus(a),
@@ -292,3 +299,30 @@ class BetaWithSoftplusAB(Beta):
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           name=ns)
+    self._parameters = parameters
+
+
+@kullback_leibler.RegisterKL(Beta, Beta)
+def _kl_beta_beta(d1, d2, name=None):
+  """Calculate the batched KL divergence KL(d1 || d2) with d1 and d2 Beta.
+
+  Args:
+    d1: instance of a Beta distribution object.
+    d2: instance of a Beta distribution object.
+    name: (optional) Name to use for created operations.
+      default is "kl_beta_beta".
+
+  Returns:
+    Batchwise KL(d1 || d2)
+  """
+  inputs = [d1.a, d1.b, d1.a_b_sum, d2.a_b_sum]
+  with ops.name_scope(name, "kl_beta_beta", inputs):
+    # ln(B(a', b') / B(a, b))
+    log_betas = (math_ops.lgamma(d2.a) + math_ops.lgamma(d2.b)
+                - math_ops.lgamma(d2.a_b_sum) + math_ops.lgamma(d1.a_b_sum)
+                - math_ops.lgamma(d1.a) - math_ops.lgamma(d1.b))
+    # (a - a')*psi(a) + (b - b')*psi(b) + (a' - a + b' - b)*psi(a + b)
+    digammas = ((d1.a - d2.a)*math_ops.digamma(d1.a)
+              + (d1.b - d2.b)*math_ops.digamma(d1.b)
+              + (d2.a_b_sum - d1.a_b_sum)*math_ops.digamma(d1.a_b_sum))
+    return log_betas + digammas

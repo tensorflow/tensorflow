@@ -77,20 +77,23 @@ class Laplace(distribution.Distribution):
     Raises:
       TypeError: if `loc` and `scale` are of different dtype.
     """
+    parameters = locals()
+    parameters.pop("self")
     with ops.name_scope(name, values=[loc, scale]) as ns:
       with ops.control_dependencies([check_ops.assert_positive(scale)] if
                                     validate_args else []):
         self._loc = array_ops.identity(loc, name="loc")
         self._scale = array_ops.identity(scale, name="scale")
         contrib_tensor_util.assert_same_float_dtype((self._loc, self._scale))
-        super(Laplace, self).__init__(
-            dtype=self._loc.dtype,
-            parameters={"loc": self._loc, "scale": self._scale},
-            is_continuous=True,
-            is_reparameterized=True,
-            validate_args=validate_args,
-            allow_nan_stats=allow_nan_stats,
-            name=ns)
+      super(Laplace, self).__init__(
+          dtype=self._loc.dtype,
+          is_continuous=True,
+          is_reparameterized=True,
+          validate_args=validate_args,
+          allow_nan_stats=allow_nan_stats,
+          parameters=parameters,
+          graph_parents=[self._loc, self._scale],
+          name=ns)
 
   @staticmethod
   def _param_shapes(sample_shape):
@@ -122,7 +125,7 @@ class Laplace(distribution.Distribution):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):
-    shape = array_ops.concat(0, ([n], self.batch_shape()))
+    shape = array_ops.concat_v2(([n], self.batch_shape()), 0)
     # Sample uniformly-at-random from the open-interval (-1, 1).
     uniform_samples = random_ops.random_uniform(
         shape=shape,
@@ -180,6 +183,8 @@ class LaplaceWithSoftplusScale(Laplace):
                validate_args=False,
                allow_nan_stats=True,
                name="LaplaceWithSoftplusScale"):
+    parameters = locals()
+    parameters.pop("self")
     with ops.name_scope(name, values=[loc, scale]) as ns:
       super(LaplaceWithSoftplusScale, self).__init__(
           loc=loc,
@@ -187,3 +192,4 @@ class LaplaceWithSoftplusScale(Laplace):
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           name=ns)
+    self._parameters = parameters

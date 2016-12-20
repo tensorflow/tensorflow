@@ -31,7 +31,7 @@ to use the `streaming_mean`:
 ```python
 value = ...
 mean_value, update_op = tf.contrib.metrics.streaming_mean(values)
-sess.run(tf.initialize_local_variables())
+sess.run(tf.local_variables_initializer())
 
 for i in range(number_of_batches):
   print('Mean after batch %d: %f' % (i, update_op.eval())
@@ -50,7 +50,7 @@ In the above example, calling streaming_mean creates a pair of state variables
 that will contain (1) the running sum and (2) the count of the number of samples
 in the sum.  Because the streaming metrics use local variables,
 the Initialization stage is performed by running the op returned
-by `tf.initialize_local_variables()`. It sets the sum and count variables to
+by `tf.local_variables_initializer()`. It sets the sum and count variables to
 zero.
 
 Next, Aggregation is performed by examining the current state of `values`
@@ -71,7 +71,7 @@ accuracy, update_op_acc = tf.contrib.metrics.streaming_accuracy(
 error, update_op_error = tf.contrib.metrics.streaming_mean_absolute_error(
     labels, predictions)
 
-sess.run(tf.initialize_local_variables())
+sess.run(tf.local_variables_initializer())
 for batch in range(num_batches):
   sess.run([update_op_acc, update_op_error])
 
@@ -95,17 +95,14 @@ Certain metrics, such as streaming_mean or streaming_accuracy, can be weighted
 via a `weights` argument. The `weights` tensor must be the same size as the
 labels and predictions tensors and results in a weighted average of the metric.
 
-Other metrics, such as streaming_recall, streaming_precision, and streaming_auc,
-are not well defined with regard to weighted samples. However, a binary
-`ignore_mask` argument can be used to ignore certain values at graph executation
-time.
-
 ## Metric `Ops`
 
 @@streaming_accuracy
 @@streaming_mean
 @@streaming_recall
+@@streaming_recall_at_thresholds
 @@streaming_precision
+@@streaming_precision_at_thresholds
 @@streaming_auc
 @@streaming_recall_at_k
 @@streaming_mean_absolute_error
@@ -120,14 +117,22 @@ time.
 @@streaming_sensitivity_at_specificity
 @@streaming_sparse_average_precision_at_k
 @@streaming_sparse_precision_at_k
+@@streaming_sparse_precision_at_top_k
 @@streaming_sparse_recall_at_k
 @@streaming_specificity_at_sensitivity
 @@streaming_concat
+@@streaming_false_negatives
+@@streaming_false_negatives_at_thresholds
+@@streaming_false_positives
+@@streaming_false_positives_at_thresholds
+@@streaming_true_negatives
+@@streaming_true_negatives_at_thresholds
+@@streaming_true_positives
+@@streaming_true_positives_at_thresholds
 
 @@auc_using_histogram
 
 @@accuracy
-@@confusion_matrix
 
 @@aggregate_metrics
 @@aggregate_metric_map
@@ -146,6 +151,7 @@ from __future__ import print_function
 
 # pylint: disable=unused-import,line-too-long,g-importing-member,wildcard-import
 from tensorflow.contrib.metrics.python.metrics import *
+# pylint: enable=wildcard-import
 from tensorflow.contrib.metrics.python.ops.confusion_matrix_ops import confusion_matrix
 from tensorflow.contrib.metrics.python.ops.histogram_ops import auc_using_histogram
 from tensorflow.contrib.metrics.python.ops.metric_ops import aggregate_metric_map
@@ -154,6 +160,10 @@ from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_accuracy
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_auc
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_concat
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_covariance
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_false_negatives
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_false_negatives_at_thresholds
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_false_positives
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_false_positives_at_thresholds
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_mean
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_mean_absolute_error
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_mean_cosine_distance
@@ -172,13 +182,18 @@ from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_root_mean
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_sensitivity_at_specificity
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_sparse_average_precision_at_k
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_sparse_precision_at_k
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_sparse_precision_at_top_k
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_sparse_recall_at_k
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_specificity_at_sensitivity
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_true_negatives
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_true_negatives_at_thresholds
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_true_positives
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_true_positives_at_thresholds
 from tensorflow.contrib.metrics.python.ops.set_ops import set_difference
 from tensorflow.contrib.metrics.python.ops.set_ops import set_intersection
 from tensorflow.contrib.metrics.python.ops.set_ops import set_size
 from tensorflow.contrib.metrics.python.ops.set_ops import set_union
 from tensorflow.python.util.all_util import make_all
-
+# pylint: enable=unused-import,line-too-long
 
 __all__ = make_all(__name__)

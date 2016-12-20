@@ -33,6 +33,7 @@ string tensor.
 ## Splitting
 
 @@string_split
+@@substr
 
 ## Conversion
 
@@ -45,11 +46,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import six
-
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 
 # pylint: disable=unused-import
 from tensorflow.python.ops import gen_string_ops
@@ -57,6 +56,7 @@ from tensorflow.python.ops import gen_string_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_string_ops import *
+from tensorflow.python.util import deprecation
 # pylint: enable=wildcard-import
 
 
@@ -68,7 +68,9 @@ def string_split(source, delimiter=" "):  # pylint: disable=invalid-name
   containing the splitted tokens. Empty tokens are ignored.
 
   If `delimiter` is an empty string, each element of the `source` is split
-  into individual 1 character strings.
+  into individual strings, each containing one byte. (This includes splitting
+  multibyte sequences of UTF-8.) If delimiter contains multiple bytes, it is
+  treated as a set of delimiters with each considered a potential split point.
 
   For example:
   N = 2, source[0] is 'hello world' and source[1] is 'a b c', then the output
@@ -87,16 +89,14 @@ def string_split(source, delimiter=" "):  # pylint: disable=invalid-name
     delimiter: `0-D` string `Tensor`, the delimiter character, the string should
       be length 0 or 1.
 
+  Raises:
+    ValueError: If delimiter is not a string.
+
   Returns:
     A `SparseTensor` of rank `2`, the strings split according to the delimiter.
     The first column of the indices corresponds to the row in `source` and the
     second column corresponds to the index of the split component in this row.
-
-  Raises:
-    ValueError: If delimiter is not a character.
   """
-  if isinstance(delimiter, six.string_types) and len(delimiter) > 1:
-    raise ValueError("delimiter must be a character, got %s" % delimiter)
   delimiter = ops.convert_to_tensor(delimiter, dtype=dtypes.string)
   source = ops.convert_to_tensor(source, dtype=dtypes.string)
 
@@ -107,8 +107,29 @@ def string_split(source, delimiter=" "):  # pylint: disable=invalid-name
   indices.set_shape([None, 2])
   values.set_shape([None])
   shape.set_shape([2])
-  return ops.SparseTensor(indices, values, shape)
+  return sparse_tensor.SparseTensor(indices, values, shape)
 
+
+def reduce_join(inputs, axis=None,
+                keep_dims=False,
+                separator="",
+                name=None,
+                reduction_indices=None):
+  axis = deprecation.deprecated_argument_lookup("axis", axis,
+                                                "reduction_indices",
+                                                reduction_indices)
+  if axis is None:
+    raise ValueError("axis must be specified.")
+  return gen_string_ops.reduce_join(
+      inputs=inputs,
+      reduction_indices=axis,
+      keep_dims=keep_dims,
+      separator=separator,
+      name=name)
+
+
+reduce_join.__doc__ = deprecation.rewrite_argument_docstring(
+    gen_string_ops.reduce_join.__doc__, "reduction_indices", "axis")
 
 ops.NotDifferentiable("StringToHashBucket")
 ops.NotDifferentiable("StringToHashBucketFast")
@@ -119,19 +140,3 @@ ops.NotDifferentiable("StringSplit")
 ops.NotDifferentiable("AsString")
 ops.NotDifferentiable("EncodeBase64")
 ops.NotDifferentiable("DecodeBase64")
-
-ops.RegisterShape("StringToHashBucket")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("StringToHashBucketFast")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("StringToHashBucketStrong")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("AsString")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("EncodeBase64")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("DecodeBase64")(common_shapes.call_cpp_shape_fn)
-
-
-@ops.RegisterShape("ReduceJoin")
-def _ReduceJoinShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
-
-
-ops.RegisterShape("StringJoin")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("StringSplit")(common_shapes.call_cpp_shape_fn)

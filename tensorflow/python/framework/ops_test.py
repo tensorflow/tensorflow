@@ -25,18 +25,44 @@ from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_ops
+from tensorflow.python.framework import test_ops_2
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
 # Import gradients to register _IndexedSlicesToTensor.
 from tensorflow.python.ops import control_flow_ops
-import tensorflow.python.ops.gradients  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resources
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+import tensorflow.python.ops.gradients  # pylint: disable=unused-import
 from tensorflow.python.platform import googletest
 from tensorflow.python.util import compat
+
+ops._set_call_cpp_shape_fn(common_shapes.call_cpp_shape_fn)
+
+
+class ResourceTest(test_util.TensorFlowTestCase):
+
+  def testBuildGraph(self):
+    with self.test_session():
+      pt = test_ops.stub_resource_handle_op(container="a", shared_name="b")
+      test_ops.resource_create_op(pt).run()
+
+  def testInitialize(self):
+    with self.test_session():
+      handle = test_ops.stub_resource_handle_op(container="a", shared_name="b")
+      resources.register_resource(
+          handle=handle,
+          create_op=test_ops.resource_create_op(handle),
+          is_initialized_op=test_ops.resource_initialized_op(handle))
+      self.assertEquals(len(resources.report_uninitialized_resources(
+          resources.shared_resources()).eval()), 1)
+      resources.initialize_resources(resources.shared_resources()).run()
+      self.assertEquals(len(resources.report_uninitialized_resources(
+          resources.shared_resources()).eval()), 0)
 
 
 class TensorTest(test_util.TensorFlowTestCase):
@@ -57,32 +83,6 @@ class TensorTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(TypeError, "not iterable"):
       for _ in t:
         pass
-
-
-class SparseTensorTest(test_util.TensorFlowTestCase):
-
-  def testPythonConstruction(self):
-    indices = [[1, 2], [2, 0], [3, 4]]
-    values = [b"a", b"b", b"c"]
-    shape = [4, 5]
-    sp_value = ops.SparseTensorValue(indices, values, shape)
-    for sp in [
-        ops.SparseTensor(indices, values, shape),
-        ops.SparseTensor.from_value(sp_value),
-        ops.SparseTensor.from_value(ops.SparseTensor(indices, values, shape))]:
-      self.assertEqual(sp.indices.dtype, dtypes.int64)
-      self.assertEqual(sp.values.dtype, dtypes.string)
-      self.assertEqual(sp.shape.dtype, dtypes.int64)
-
-      with self.test_session() as sess:
-        value = sp.eval()
-        self.assertAllEqual(indices, value.indices)
-        self.assertAllEqual(values, value.values)
-        self.assertAllEqual(shape, value.shape)
-        sess_run_value = sess.run(sp)
-        self.assertAllEqual(sess_run_value.indices, value.indices)
-        self.assertAllEqual(sess_run_value.values, value.values)
-        self.assertAllEqual(sess_run_value.shape, value.shape)
 
 
 class IndexedSlicesTest(test_util.TensorFlowTestCase):
@@ -127,20 +127,21 @@ class NodeDefConstructorTest(test_util.TensorFlowTestCase):
     self.assertProtoEquals("op:'foo' name:'bar' device:'/job:j'", nodedef)
 
 
-# NOTE(mrry): Dummy shape registrations for ops used in the tests.
-ops.RegisterShape("a")(None)
-ops.RegisterShape("b")(None)
-ops.RegisterShape("c")(None)
-ops.RegisterShape("add")(None)
-ops.RegisterShape("an_op")(None)
-ops.RegisterShape("const")(None)
-ops.RegisterShape("copy")(None)
-ops.RegisterShape("foo")(None)
-ops.RegisterShape("identity")(None)
-ops.RegisterShape("mul")(None)
-ops.RegisterShape("nonrefop")(None)
-ops.RegisterShape("noop")(None)
-ops.RegisterShape("refop")(None)
+# NOTE(mrry): Dummy shape registrations for ops used in the tests, since they
+# don't have C++ op registrations on which to attach C++ shape fns.
+ops.RegisterShape("a")(common_shapes.unknown_shape)
+ops.RegisterShape("b")(common_shapes.unknown_shape)
+ops.RegisterShape("c")(common_shapes.unknown_shape)
+ops.RegisterShape("add")(common_shapes.unknown_shape)
+ops.RegisterShape("an_op")(common_shapes.unknown_shape)
+ops.RegisterShape("const")(common_shapes.unknown_shape)
+ops.RegisterShape("copy")(common_shapes.unknown_shape)
+ops.RegisterShape("foo")(common_shapes.unknown_shape)
+ops.RegisterShape("identity")(common_shapes.unknown_shape)
+ops.RegisterShape("mul")(common_shapes.unknown_shape)
+ops.RegisterShape("nonrefop")(common_shapes.unknown_shape)
+ops.RegisterShape("noop")(common_shapes.unknown_shape)
+ops.RegisterShape("refop")(common_shapes.unknown_shape)
 
 
 def _apply_op(g, *args, **kwargs):
@@ -269,19 +270,45 @@ class OperationTest(test_util.TensorFlowTestCase):
     with self.assertRaises(ValueError):
       ops.Operation(ops._NodeDef("op", "invalid:0"), g)
 
-  def testShapeFunctionAbsence(self):
-    def _test():
-      pass
-    g = ops.Graph()
-    with self.assertRaises(RuntimeError):
-      g.create_op("shapeless_op", [], [dtypes.float32])
-
   def testNoShapeFunction(self):
     g = ops.Graph()
-    op = ops.Operation(ops._NodeDef("op", "an_op"), g,
-                       output_types = [dtypes.float32])
+    ops.Operation(ops._NodeDef("op", "an_op"), g,
+                  output_types=[dtypes.float32])
     self.assertEqual(tensor_shape.unknown_shape(),
                      _apply_op(g, "an_op", [], [dtypes.float32]).get_shape())
+
+  def testConvertToTensorNestedArray(self):
+    with self.test_session():
+      values = [[2], [3], [5], [7]]
+      tensor = ops.convert_to_tensor(values)
+      self.assertAllEqual((4, 1), tensor.get_shape().as_list())
+      self.assertAllEqual(values, tensor.eval())
+
+  def testConvertToTensorNestedTuple(self):
+    with self.test_session():
+      values = ((2,), (3,), (5,), (7,))
+      tensor = ops.convert_to_tensor(values)
+      self.assertAllEqual((4, 1), tensor.get_shape().as_list())
+      self.assertAllEqual(values, ops.convert_to_tensor(values).eval())
+
+  def testConvertToTensorNestedTensors(self):
+    with self.test_session():
+      values = ((2,), (3,), (5,), (7,))
+      tensor = ops.convert_to_tensor(
+          [constant_op.constant(row) for row in values])
+      self.assertAllEqual((4, 1), tensor.get_shape().as_list())
+      self.assertAllEqual(values, tensor.eval())
+      tensor = ops.convert_to_tensor(
+          [[constant_op.constant(v) for v in row] for row in values])
+      self.assertAllEqual((4, 1), tensor.get_shape().as_list())
+      self.assertAllEqual(values, tensor.eval())
+
+  def testConvertToTensorNestedMix(self):
+    with self.test_session():
+      values = ([2], (3,), [constant_op.constant(5)], constant_op.constant([7]))
+      tensor = ops.convert_to_tensor(values)
+      self.assertAllEqual((4, 1), tensor.get_shape().as_list())
+      self.assertAllEqual(((2,), (3,), (5,), (7,)), tensor.eval())
 
   def testConvertToTensorPreferred(self):
     with self.test_session():
@@ -290,7 +317,7 @@ class OperationTest(test_util.TensorFlowTestCase):
       self.assertEqual(dtypes.float32, tensor.dtype)
 
     with self.test_session():
-      # Convert empty tensor to anything
+      # Convert empty tensor to anything.
       values = []
       tensor = ops.convert_to_tensor(values, preferred_dtype=dtypes.int64)
       self.assertEqual(dtypes.int64, tensor.dtype)
@@ -309,7 +336,7 @@ class OperationTest(test_util.TensorFlowTestCase):
       _ = ops.convert_to_tensor(values, dtype=dtypes.int64)
 
   def testNoConvert(self):
-    # Operation cannot be converted to Tensor
+    # Operation cannot be converted to Tensor.
     op = control_flow_ops.no_op()
     with self.assertRaisesRegexp(TypeError,
                                  r"Can't convert Operation '.*' to Tensor"):
@@ -363,6 +390,10 @@ class CreateOpTest(test_util.TensorFlowTestCase):
     g.finalize()
     with self.assertRaises(RuntimeError):
       g.create_op("const", [], [dtypes.float32], None, name="myop1")
+
+    # Test unfinalize.
+    g._unsafe_unfinalize()
+    g.create_op("const", [], [dtypes.float32], None, name="myop1")
 
 
 class ApplyOpTest(test_util.TensorFlowTestCase):
@@ -915,13 +946,13 @@ def copy_op(x):
 
 
 @ops.RegisterGradient("copy")
-def _CopyGrad(op, x_grad):
+def _CopyGrad(op, x_grad):  # pylint: disable=invalid-name
   _ = op
   return x_grad
 
 
 @ops.RegisterGradient("copy_override")
-def _CopyOverrideGrad(op, x_grad):
+def _CopyOverrideGrad(op, x_grad):  # pylint: disable=invalid-name
   _ = op
   return x_grad
 
@@ -949,7 +980,7 @@ class RegistrationTest(test_util.TensorFlowTestCase):
     with g.gradient_override_map({"copy": "unknown_override"}):
       y = copy_op(x)
     with self.assertRaisesRegexp(LookupError, "unknown_override"):
-      fn = ops.get_gradient_function(y.op)
+      ops.get_gradient_function(y.op)
 
 
 class ComparisonTest(test_util.TensorFlowTestCase):
@@ -1184,7 +1215,7 @@ class OpScopeTest(test_util.TensorFlowTestCase):
     g0 = ops.Graph()
     a = g0.create_op("a", [], [dtypes.float32])
     b = g0.create_op("b", [], [dtypes.float32])
-    sparse = ops.SparseTensor(
+    sparse = sparse_tensor.SparseTensor(
         _apply_op(g0, "const", [], [dtypes.int64]),
         _apply_op(g0, "const", [], [dtypes.float32]),
         _apply_op(g0, "const", [], [dtypes.int64]))
@@ -1359,12 +1390,6 @@ class AsGraphDefTest(test_util.TensorFlowTestCase):
       """, gd)
 
 
-# NOTE(petewarden): Dummy stats registrations for ops used in the tests.
-@ops.RegisterStatistics("a", "weight_parameters")
-def _calc_a_weight_params(unused_graph, unused_node):
-  return ops.OpStats("weight_parameters", 10)
-
-
 @ops.RegisterStatistics("a", "flops")
 def _calc_a_forward_flops(unused_graph, unused_node):
   return ops.OpStats("flops", 20)
@@ -1375,8 +1400,6 @@ class StatisticsTest(test_util.TensorFlowTestCase):
   def testRegisteredNode(self):
     graph = ops.Graph()
     node = ops._NodeDef("a", "an_a")
-    weight_params = ops.get_stats_for_node_def(graph, node, "weight_parameters")
-    self.assertEqual(10, weight_params.value)
     flops = ops.get_stats_for_node_def(graph, node, "flops")
     self.assertEqual(20, flops.value)
     missing_stat = ops.get_stats_for_node_def(graph, node, "missing_stat")
@@ -1389,19 +1412,11 @@ class StatisticsTest(test_util.TensorFlowTestCase):
     self.assertEqual(None, weight_params.value)
 
   def testAccumulateStatistics(self):
-    weight_params_total = ops.OpStats("weight_parameters")
-    self.assertEqual(None, weight_params_total.value)
     flops_total = ops.OpStats("flops")
     self.assertEqual(None, flops_total.value)
-    first_weight_params = ops.OpStats("weight_parameters", 100)
-    weight_params_total += first_weight_params
-    self.assertEqual(100, weight_params_total.value)
     second_flops = ops.OpStats("flops", 3)
     flops_total += second_flops
     self.assertEqual(3, flops_total.value)
-    second_weight_params = ops.OpStats("weight_parameters", 200)
-    weight_params_total += second_weight_params
-    self.assertEqual(300, weight_params_total.value)
 
 
 class ColocationGroupTest(test_util.TensorFlowTestCase):
@@ -1473,6 +1488,25 @@ class ColocationGroupTest(test_util.TensorFlowTestCase):
       with ops.colocate_with(b.op, ignore_existing=True):
         c = constant_op.constant(4.0)
     self.assertEqual(set([b"loc:@b"]), set(c.op.colocation_groups()))
+
+  def testColocateWithReset(self):
+    a = constant_op.constant([2.0], name="a")
+    with ops.colocate_with(a.op):
+      b = constant_op.constant(3.0, name="b")
+      with ops.colocate_with(None, ignore_existing=True):
+        c = constant_op.constant(4.0, name="c")
+    self.assertEqual([b"loc:@a"], b.op.colocation_groups())
+    self.assertEqual([b"loc:@c"], c.op.colocation_groups())
+
+  def testColocateWithInitialNoneThenNested(self):
+    a = constant_op.constant([2.0], name="a")
+    with ops.colocate_with(a.op):
+      with ops.colocate_with(None, ignore_existing=True):
+        b = constant_op.constant(3.0, name="b")
+        with ops.colocate_with(b.op):
+          c = constant_op.constant(4.0, name="c")
+    self.assertEqual([b"loc:@b"], b.op.colocation_groups())
+    self.assertEqual([b"loc:@b"], c.op.colocation_groups())
 
   def testColocateVariables(self):
     a = variables.Variable([2.0], name="a")
@@ -1570,6 +1604,35 @@ class DenseTensorLikeTypeTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(TypeError, "`dtype`"):
       ops.register_dense_tensor_like_type(
           DenseTensorLikeTypeTest.BadClassBadDtype)
+
+
+class NameScopeTest(test_util.TensorFlowTestCase):
+
+  def testStripAndPrependScope(self):
+    strs = ["hidden1/hidden1/weights",       # Same prefix. Should strip.
+            "hidden1///hidden1/weights",     # Extra "/". Should strip.
+            "^hidden1/hidden1/weights",      # Same prefix. Should strip.
+            "loc:@hidden1/hidden1/weights",  # Same prefix. Should strip.
+            "hhidden1/hidden1/weights",  # Different prefix. Should keep.
+            "hidden1"]                   # Not a prefix. Should keep.
+    expected_striped = ["hidden1/weights",
+                        "hidden1/weights",
+                        "^hidden1/weights",
+                        "loc:@hidden1/weights",
+                        "hhidden1/hidden1/weights",
+                        "hidden1"]
+    expected_prepended = ["hidden2/hidden1/weights",
+                          "hidden2/hidden1/weights",
+                          "^hidden2/hidden1/weights",
+                          "loc:@hidden2/hidden1/weights",
+                          "hidden2/hhidden1/hidden1/weights",
+                          "hidden2/hidden1"]
+    name_scope_to_strip = "hidden1"
+    name_scope_to_add = "hidden2"
+    for es, ep, s in zip(expected_striped, expected_prepended, strs):
+      striped = ops.strip_name_scope(s, name_scope_to_strip)
+      self.assertEqual(es, striped)
+      self.assertEqual(ep, ops.prepend_name_scope(striped, name_scope_to_add))
 
 
 if __name__ == "__main__":

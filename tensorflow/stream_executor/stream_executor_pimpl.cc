@@ -394,7 +394,7 @@ rng::RngSupport *StreamExecutor::AsRng() {
 bool StreamExecutor::Launch(Stream *stream, const ThreadDim &thread_dims,
                             const BlockDim &block_dims,
                             const KernelBase &kernel,
-                            const std::vector<KernelArg> &args) {
+                            const KernelArgsArrayBase &args) {
   SubmitTrace(&TraceListener::LaunchSubmit, stream, thread_dims, block_dims,
               kernel, args);
 
@@ -657,11 +657,6 @@ DeviceDescription *StreamExecutor::PopulateDeviceDescription() const {
 
 bool StreamExecutor::DeviceMemoryUsage(int64 *free, int64 *total) const {
   return implementation_->DeviceMemoryUsage(free, total);
-}
-
-KernelArg StreamExecutor::DeviceMemoryToKernelArg(
-    const DeviceMemoryBase &gpu_mem) const {
-  return implementation_->DeviceMemoryToKernelArg(gpu_mem);
 }
 
 void StreamExecutor::EnqueueOnBackgroundThread(std::function<void()> task) {

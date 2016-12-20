@@ -89,7 +89,7 @@ class BernoulliTest(tf.test.TestCase):
   def testDtype(self):
     dist = make_bernoulli([])
     self.assertEqual(dist.dtype, tf.int32)
-    self.assertEqual(dist.dtype, dist.sample_n(5).dtype)
+    self.assertEqual(dist.dtype, dist.sample(5).dtype)
     self.assertEqual(dist.dtype, dist.mode().dtype)
     self.assertEqual(dist.p.dtype, dist.mean().dtype)
     self.assertEqual(dist.p.dtype, dist.variance().dtype)
@@ -100,7 +100,7 @@ class BernoulliTest(tf.test.TestCase):
 
     dist64 = make_bernoulli([], tf.int64)
     self.assertEqual(dist64.dtype, tf.int64)
-    self.assertEqual(dist64.dtype, dist64.sample_n(5).dtype)
+    self.assertEqual(dist64.dtype, dist64.sample(5).dtype)
     self.assertEqual(dist64.dtype, dist64.mode().dtype)
 
   def _testPmf(self, **kwargs):
@@ -126,6 +126,17 @@ class BernoulliTest(tf.test.TestCase):
       for x, expected_pmf in zip(xs, expected_pmfs):
         self.assertAllClose(dist.pmf(x).eval(), expected_pmf)
         self.assertAllClose(dist.log_pmf(x).eval(), np.log(expected_pmf))
+
+  def testPmfCorrectBroadcastDynamicShape(self):
+    with self.test_session():
+      p = tf.placeholder(dtype=tf.float32)
+      dist = tf.contrib.distributions.Bernoulli(p=p)
+      event1 = [1, 0, 1]
+      event2 = [[1, 0, 1]]
+      self.assertAllClose(dist.pmf(event1).eval({p: [0.2, 0.3, 0.4]}),
+                          [0.2, 0.7, 0.4])
+      self.assertAllClose(dist.pmf(event2).eval({p: [0.2, 0.3, 0.4]}),
+                          [[0.2, 0.7, 0.4]])
 
   def testPmfWithP(self):
     p = [[0.2, 0.4], [0.3, 0.6]]
@@ -186,7 +197,7 @@ class BernoulliTest(tf.test.TestCase):
       p = [0.2, 0.6]
       dist = tf.contrib.distributions.Bernoulli(p=p)
       n = 100000
-      samples = dist.sample_n(n)
+      samples = dist.sample(n)
       samples.set_shape([n, 2])
       self.assertEqual(samples.dtype, tf.int32)
       sample_values = samples.eval()
@@ -201,7 +212,7 @@ class BernoulliTest(tf.test.TestCase):
       # owing to mismatched types. b/30940152
       dist = tf.contrib.distributions.Bernoulli(np.log([.2, .4]))
       self.assertAllEqual(
-          (1, 2), dist.sample_n(1, seed=42).get_shape().as_list())
+          (1, 2), dist.sample(1, seed=42).get_shape().as_list())
 
   def testSampleActsLikeSampleN(self):
     with self.test_session() as sess:
@@ -210,12 +221,12 @@ class BernoulliTest(tf.test.TestCase):
       n = 1000
       seed = 42
       self.assertAllEqual(dist.sample(n, seed).eval(),
-                          dist.sample_n(n, seed).eval())
+                          dist.sample(n, seed).eval())
       n = tf.placeholder(tf.int32)
-      sample, sample_n = sess.run([dist.sample(n, seed),
-                                   dist.sample_n(n, seed)],
-                                  feed_dict={n: 1000})
-      self.assertAllEqual(sample, sample_n)
+      sample, sample = sess.run([dist.sample(n, seed),
+                                 dist.sample(n, seed)],
+                                feed_dict={n: 1000})
+      self.assertAllEqual(sample, sample)
 
   def testMean(self):
     with self.test_session():

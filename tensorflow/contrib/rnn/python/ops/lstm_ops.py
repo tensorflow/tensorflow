@@ -20,9 +20,8 @@ from __future__ import print_function
 import abc
 
 from tensorflow.contrib.rnn.python.ops import fused_rnn_cell
-from tensorflow.python.framework import common_shapes
+from tensorflow.contrib.util import loader
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
@@ -32,9 +31,8 @@ from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import resource_loader
 
-_lstm_ops_so = load_library.load_op_library(
+_lstm_ops_so = loader.load_op_library(
     resource_loader.get_path_to_datafile("_lstm_ops.so"))
-assert _lstm_ops_so, "Could not load _lstm_ops.so."
 
 
 # pylint: disable=invalid-name
@@ -208,7 +206,7 @@ def _block_lstm(seq_len_max,
   # pylint: disable=protected-access
   i, cs, f, o, ci, co, h = _lstm_ops_so.block_lstm(
       seq_len_max=seq_len_max,
-      x=array_ops.pack(x),
+      x=array_ops.stack(x),
       cs_prev=cs_prev,
       h_prev=h_prev,
       w=w,
@@ -229,8 +227,6 @@ def _block_lstm(seq_len_max,
 
 
 _lstm_block_cell_grad_outputs = ["cs_prev_grad", "dicfo"]
-
-ops.RegisterShape("LSTMBlockCell")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterGradient("LSTMBlockCell")
@@ -281,7 +277,7 @@ def _LSTMBlockCellGrad(op, *grad):
   h_prev_grad.get_shape().merge_with(h_prev.get_shape())
 
   # Backprop from dicfo to w.
-  xh = array_ops.concat(1, [x, h_prev])
+  xh = array_ops.concat_v2([x, h_prev], 1)
   w_grad = math_ops.matmul(xh, dicfo, transpose_a=True)
   w_grad.get_shape().merge_with(w.get_shape())
 
@@ -291,10 +287,6 @@ def _LSTMBlockCellGrad(op, *grad):
 
   return (x_grad, cs_prev_grad, h_prev_grad, w_grad, wci_grad, wcf_grad,
           wco_grad, b_grad)
-
-
-ops.RegisterShape("LSTMBlockCellGrad")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("BlockLSTM")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterGradient("BlockLSTM")
@@ -332,9 +324,6 @@ def _BlockLSTMGrad(op, *grad):
           wcf_grad, b_grad]
 
 
-ops.RegisterShape("BlockLSTMGrad")(common_shapes.call_cpp_shape_fn)
-
-
 class LSTMBlockCell(rnn_cell.RNNCell):
   """Basic LSTM recurrent network cell.
 
@@ -345,44 +334,31 @@ class LSTMBlockCell(rnn_cell.RNNCell):
 
   Unlike `rnn_cell.LSTMCell`, this is a monolithic op and should be much faster.
   The weight and bias matrixes should be compatible as long as the variable
-  scope matches, and you use `use_compatible_names=True`.
+  scope matches.
   """
 
   def __init__(self,
                num_units,
                forget_bias=1.0,
-               use_peephole=False,
-               use_compatible_names=False):
+               use_peephole=False):
     """Initialize the basic LSTM cell.
 
     Args:
       num_units: int, The number of units in the LSTM cell.
       forget_bias: float, The bias added to forget gates (see above).
       use_peephole: Whether to use peephole connections or not.
-      use_compatible_names: If True, use the same variable naming as
-        rnn_cell.LSTMCell
     """
     self._num_units = num_units
     self._forget_bias = forget_bias
     self._use_peephole = use_peephole
-    if use_compatible_names:
-      self._names = {
-          "W": "W_0",
-          "b": "B",
-          "wci": "W_I_diag",
-          "wco": "W_O_diag",
-          "wcf": "W_F_diag",
-          "scope": "LSTMCell"
-      }
-    else:
-      self._names = {
-          "W": "W",
-          "b": "b",
-          "wci": "wci",
-          "wco": "wco",
-          "wcf": "wcf",
-          "scope": "LSTMBlockCell"
-      }
+    self._names = {
+        "W": "weights",
+        "b": "biases",
+        "wci": "w_i_diag",
+        "wco": "w_o_diag",
+        "wcf": "w_f_diag",
+        "scope": "lstm_cell"
+    }
 
   @property
   def state_size(self):
@@ -396,15 +372,15 @@ class LSTMBlockCell(rnn_cell.RNNCell):
     """Long short-term memory cell (LSTM)."""
     with vs.variable_scope(scope or self._names["scope"]):
       x_shape = x.get_shape().with_rank(2)
-      if not x_shape[1]:
-        raise ValueError("Expecting x_shape[1] to be sets: %s" % str(x_shape))
+      if not x_shape[1].value:
+        raise ValueError("Expecting x_shape[1] to be set: %s" % str(x_shape))
       if len(states_prev) != 2:
         raise ValueError("Expecting states_prev to be a tuple with length 2.")
-      input_size = x_shape[1]
+      input_size = x_shape[1].value
       w = vs.get_variable(self._names["W"], [input_size + self._num_units,
                                              self._num_units * 4])
       b = vs.get_variable(
-          self._names["b"], [w.get_shape().with_rank(2)[1]],
+          self._names["b"], [w.get_shape().with_rank(2)[1].value],
           initializer=init_ops.constant_initializer(0.0))
       if self._use_peephole:
         wci = vs.get_variable(self._names["wci"], [self._num_units])
@@ -501,10 +477,10 @@ class LSTMBlockWrapper(fused_rnn_cell.FusedRNNCell):
     Raises:
       ValueError: in case of shape mismatches
     """
-    with vs.variable_scope(scope or type(self).__name__):
+    with vs.variable_scope(scope or "lstm_block_wrapper"):
       is_list = isinstance(inputs, list)
       if is_list:
-        inputs = array_ops.pack(inputs)
+        inputs = array_ops.stack(inputs)
       inputs_shape = inputs.get_shape().with_rank(3)
       if not inputs_shape[2]:
         raise ValueError("Expecting inputs_shape[2] to be set: %s" %
@@ -522,7 +498,7 @@ class LSTMBlockWrapper(fused_rnn_cell.FusedRNNCell):
           raise ValueError(
               "Either initial_state or dtype needs to be specified")
         z = array_ops.zeros(
-            array_ops.pack([batch_size, self.num_units]), dtype=dtype)
+            array_ops.stack([batch_size, self.num_units]), dtype=dtype)
         initial_state = z, z
       else:
         if len(initial_state) != 2:
@@ -532,7 +508,7 @@ class LSTMBlockWrapper(fused_rnn_cell.FusedRNNCell):
           dtype = initial_state[0].dtype
 
       # create the actual cell
-      if sequence_length:
+      if sequence_length is not None:
         sequence_length = ops.convert_to_tensor(sequence_length)
       initial_cell_state, initial_output = initial_state  # pylint: disable=unpacking-non-sequence
       cell_states, outputs = self._call_cell(inputs, initial_cell_state,
@@ -551,10 +527,10 @@ class LSTMBlockWrapper(fused_rnn_cell.FusedRNNCell):
         # correctly,since we want to access the last valid state at
         # sequence_length - 1, which can even be -1, corresponding to the
         # initial state.
-        mod_cell_states = array_ops.concat(
-            0, [array_ops.expand_dims(initial_cell_state, [0]), cell_states])
-        mod_outputs = array_ops.concat(
-            0, [array_ops.expand_dims(initial_output, [0]), outputs])
+        mod_cell_states = array_ops.concat_v2(
+            [array_ops.expand_dims(initial_cell_state, [0]), cell_states], 0)
+        mod_outputs = array_ops.concat_v2(
+            [array_ops.expand_dims(initial_output, [0]), outputs], 0)
         final_cell_state = self._gather_states(mod_cell_states, sequence_length,
                                                batch_size)
         final_output = self._gather_states(mod_outputs, sequence_length,
@@ -645,15 +621,16 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
       time_len = array_ops.shape(inputs)[0]
     input_size = inputs_shape[2].value
     w = vs.get_variable(
-        "W_0", [input_size + self._num_units, self._num_units * 4], dtype=dtype)
+        "weights",
+        [input_size + self._num_units, self._num_units * 4], dtype=dtype)
     b = vs.get_variable(
-        "B", [w.get_shape().with_rank(2)[1]],
+        "biases", [w.get_shape().with_rank(2)[1]],
         initializer=init_ops.constant_initializer(0.0),
         dtype=dtype)
     if self._use_peephole:
-      wci = vs.get_variable("W_I_diag", [self._num_units], dtype=dtype)
-      wco = vs.get_variable("W_O_diag", [self._num_units], dtype=dtype)
-      wcf = vs.get_variable("W_F_diag", [self._num_units], dtype=dtype)
+      wci = vs.get_variable("w_i_diag", [self._num_units], dtype=dtype)
+      wco = vs.get_variable("w_o_diag", [self._num_units], dtype=dtype)
+      wcf = vs.get_variable("w_f_diag", [self._num_units], dtype=dtype)
     else:
       wci = wco = wcf = array_ops.zeros([self._num_units], dtype=dtype)
 

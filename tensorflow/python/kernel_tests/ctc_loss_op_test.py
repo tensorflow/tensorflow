@@ -12,14 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tensorflow.ctc_ops.ctc_decoder_ops."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.ops import ctc_ops
+from tensorflow.python.ops import gradients_impl
+from tensorflow.python.platform import test
 
 
 def SimpleSparseTensorFrom(x):
@@ -37,27 +43,31 @@ def SimpleSparseTensorFrom(x):
     for time, val in enumerate(batch):
       x_ix.append([batch_i, time])
       x_val.append(val)
-  x_shape = [len(x), np.asarray(x_ix).max(0)[1]+1]
-  x_ix = tf.constant(x_ix, tf.int64)
-  x_val = tf.constant(x_val, tf.int32)
-  x_shape = tf.constant(x_shape, tf.int64)
+  x_shape = [len(x), np.asarray(x_ix).max(0)[1] + 1]
+  x_ix = constant_op.constant(x_ix, dtypes.int64)
+  x_val = constant_op.constant(x_val, dtypes.int32)
+  x_shape = constant_op.constant(x_shape, dtypes.int64)
 
-  return tf.SparseTensor(x_ix, x_val, x_shape)
+  return sparse_tensor.SparseTensor(x_ix, x_val, x_shape)
 
 
-class CTCLossTest(tf.test.TestCase):
+class CTCLossTest(test.TestCase):
 
-  def _testCTCLoss(self, inputs, seq_lens, labels,
-                   loss_truth, grad_truth, expected_err_re=None):
+  def _testCTCLoss(self,
+                   inputs,
+                   seq_lens,
+                   labels,
+                   loss_truth,
+                   grad_truth,
+                   expected_err_re=None):
     self.assertEquals(len(inputs), len(grad_truth))
 
-    inputs_t = tf.constant(inputs)
+    inputs_t = constant_op.constant(inputs)
 
     with self.test_session(use_gpu=False) as sess:
-      loss = tf.nn.ctc_loss(inputs=inputs_t,
-                            labels=labels,
-                            sequence_length=seq_lens)
-      grad = tf.gradients(loss, [inputs_t])[0]
+      loss = ctc_ops.ctc_loss(
+          inputs=inputs_t, labels=labels, sequence_length=seq_lens)
+      grad = gradients_impl.gradients(loss, [inputs_t])[0]
 
       self.assertShapeEqual(loss_truth, loss)
       self.assertShapeEqual(grad_truth, grad)
@@ -176,9 +186,11 @@ class CTCLossTest(tf.test.TestCase):
         dtype=np.float32)
 
     # len max_time_steps array of 2 x depth matrices
-    inputs = [np.vstack([input_log_prob_matrix_0[t, :],
-                         input_log_prob_matrix_1[t, :]])
-              for t in range(5)] + 2 * [np.nan*np.ones((2, depth), np.float32)]
+    inputs = [
+        np.vstack(
+            [input_log_prob_matrix_0[t, :], input_log_prob_matrix_1[t, :]])
+        for t in range(5)
+    ] + 2 * [np.nan * np.ones((2, depth), np.float32)]
 
     # convert inputs into [max_time x batch_size x depth tensor] Tensor
     inputs = np.asarray(inputs, dtype=np.float32)
@@ -193,44 +205,45 @@ class CTCLossTest(tf.test.TestCase):
     loss_truth = np.array([-loss_log_prob_0, -loss_log_prob_1], np.float32)
 
     # output: len max_time_steps array of 2 x depth matrices
-    grad_truth = [np.vstack([gradient_log_prob_0[t, :],
-                             gradient_log_prob_1[t, :]])
-                  for t in range(5)] + 2 * [np.zeros((2, depth), np.float32)]
+    grad_truth = [
+        np.vstack([gradient_log_prob_0[t, :], gradient_log_prob_1[t, :]])
+        for t in range(5)
+    ] + 2 * [np.zeros((2, depth), np.float32)]
 
     # convert grad_truth into [max_time x batch_size x depth] Tensor
     grad_truth = np.asarray(grad_truth, dtype=np.float32)
 
     self._testCTCLoss(inputs, seq_lens, labels, loss_truth, grad_truth)
 
-
   def test_time_major(self):
     """Testing time_major param.
-    
-    testing if transposing and setting time_major=False will result in the same loss
+
+
+    testing if transposing and setting time_major=False will result in the same
+    loss
     """
     # [max_time x batch_size x depth tensor]
     inputs = np.random.randn(2, 2, 3).astype(np.float32)
     labels = SimpleSparseTensorFrom([[0, 1], [1, 0]])
     seq_lens = np.array([2, 2], dtype=np.int32)
 
-
-    inputs_t = tf.constant(inputs)
+    inputs_t = constant_op.constant(inputs)
 
     # Transposing tensor to [batch_size x max_time x depth tensor]
-    inputs_t_transposed = tf.constant(inputs.transpose(1, 0, 2))
-
+    inputs_t_transposed = constant_op.constant(inputs.transpose(1, 0, 2))
 
     with self.test_session(use_gpu=False) as sess:
-      loss = tf.nn.ctc_loss(inputs=inputs_t,
-                            labels=labels,
-                            sequence_length=seq_lens)
-      loss_transposed = tf.nn.ctc_loss(inputs=inputs_t_transposed,
-                            labels=labels,
-                            sequence_length=seq_lens, time_major=False)
+      loss = ctc_ops.ctc_loss(
+          inputs=inputs_t, labels=labels, sequence_length=seq_lens)
+      loss_transposed = ctc_ops.ctc_loss(
+          inputs=inputs_t_transposed,
+          labels=labels,
+          sequence_length=seq_lens,
+          time_major=False)
 
       (tf_loss, tf_loss_transposed) = sess.run([loss, loss_transposed])
       self.assertAllEqual(tf_loss, tf_loss_transposed)
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

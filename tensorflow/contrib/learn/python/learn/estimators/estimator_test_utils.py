@@ -20,6 +20,11 @@ from __future__ import print_function
 
 import inspect
 
+import tensorflow as tf
+
+
+FLAGS = tf.flags.FLAGS
+
 
 def assert_estimator_contract(tester, estimator_class):
   """Asserts whether given estimator satisfies the expected contract.
@@ -42,3 +47,11 @@ def assert_estimator_contract(tester, estimator_class):
   tester.assertTrue('get_variable_value' in attribute_names)
   tester.assertTrue('model_dir' in attribute_names)
   tester.assertTrue('predict' in attribute_names)
+
+
+def assert_in_range(min_value, max_value, key, metrics):
+  actual_value = metrics[key]
+  if actual_value < min_value:
+    raise ValueError('%s: %s < %s.' % (key, actual_value, min_value))
+  if actual_value > max_value:
+    raise ValueError('%s: %s > %s.' % (key, actual_value, max_value))

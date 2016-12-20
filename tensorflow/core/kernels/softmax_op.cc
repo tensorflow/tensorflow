@@ -66,6 +66,9 @@ REGISTER_KERNEL_BUILDER(
     Name("Softmax").Device(DEVICE_GPU).TypeConstraint<float>("T"),
     SoftmaxOp<GPUDevice, float>);
 REGISTER_KERNEL_BUILDER(
+    Name("Softmax").Device(DEVICE_GPU).TypeConstraint<double>("T"),
+    SoftmaxOp<GPUDevice, double>);
+REGISTER_KERNEL_BUILDER(
     Name("LogSoftmax").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
     SoftmaxOp<GPUDevice, Eigen::half>);
 REGISTER_KERNEL_BUILDER(

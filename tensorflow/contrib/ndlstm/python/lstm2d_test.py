@@ -20,8 +20,8 @@ from __future__ import print_function
 
 import numpy as np
 import tensorflow as tf
-from tensorflow.contrib.ndlstm.python import lstm2d
 from tensorflow.python.framework import test_util
+lstm2d = tf.contrib.ndlstm.lstm2d
 
 
 def _rand(*size):
@@ -34,7 +34,7 @@ class Lstm2DTest(test_util.TensorFlowTestCase):
     with self.test_session():
       inputs = tf.constant(_rand(2, 7, 11, 5))
       outputs = lstm2d.images_to_sequence(inputs)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (11, 14, 5))
 
@@ -42,7 +42,7 @@ class Lstm2DTest(test_util.TensorFlowTestCase):
     with self.test_session():
       inputs = tf.constant(_rand(11, 14, 5))
       outputs = lstm2d.sequence_to_images(inputs, 2)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (2, 7, 11, 5))
 
@@ -52,7 +52,7 @@ class Lstm2DTest(test_util.TensorFlowTestCase):
       inputs = tf.constant(_rand(*size))
       sequence = lstm2d.images_to_sequence(inputs)
       outputs = lstm2d.sequence_to_images(sequence, size[0])
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), size)
 
@@ -60,7 +60,7 @@ class Lstm2DTest(test_util.TensorFlowTestCase):
     with self.test_session():
       inputs = tf.constant(_rand(2, 7, 11, 5))
       outputs = lstm2d.separable_lstm(inputs, 8)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (2, 7, 11, 8))
 
@@ -68,7 +68,7 @@ class Lstm2DTest(test_util.TensorFlowTestCase):
     with self.test_session():
       inputs = tf.constant(_rand(2, 7, 11, 5))
       outputs = lstm2d.reduce_to_sequence(inputs, 8)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (2, 11, 8))
 
@@ -76,7 +76,7 @@ class Lstm2DTest(test_util.TensorFlowTestCase):
     with self.test_session():
       inputs = tf.constant(_rand(2, 7, 11, 5))
       outputs = lstm2d.reduce_to_final(inputs, 8, 12)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (2, 8))
 

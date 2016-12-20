@@ -124,7 +124,7 @@ class GmmAlgorithm(object):
     self._dimensions = tf.shape(first_shard)[1]
     self._num_classes = num_classes
     # Small value to guarantee that covariances are invertible.
-    self._min_var = tf.diag(tf.ones(tf.pack([self._dimensions]))) * 1e-3
+    self._min_var = tf.diag(tf.ones(tf.stack([self._dimensions]))) * 1e-3
     self._create_variables(data, initial_means)
     # Operations of partial statistics for the computation of the means.
     self._w_mul_x = []
@@ -256,7 +256,7 @@ class GmmAlgorithm(object):
     x2 = tf.square(diff)
     cov_expanded = tf.expand_dims(1.0 / (self._covs + 1e-3), 2)
     # num_classes X num_examples
-    x2_cov = tf.batch_matmul(x2, cov_expanded)
+    x2_cov = tf.matmul(x2, cov_expanded)
     x2_cov = tf.transpose(tf.squeeze(x2_cov, [2]))
     self._probs[shard_id] = -0.5 * (
         tf.to_float(self._dimensions) * tf.log(2.0 * np.pi) +
@@ -302,7 +302,7 @@ class GmmAlgorithm(object):
     # These are defined for each shard.
     self._w[shard_id] = tf.reshape(
         tf.exp(probs - self._prior_probs[shard_id]),
-        tf.pack([self._num_examples, self._num_classes]))
+        tf.stack([self._num_examples, self._num_classes]))
 
   def _define_partial_maximization_operation(self, shard_id, shard):
     """Computes the partial statistics of the means and covariances.
@@ -320,12 +320,13 @@ class GmmAlgorithm(object):
                   tf.squeeze(shard, [0]), transpose_a=True), 1)
     self._w_mul_x.append(w_mul_x)
     # Partial covariances.
-    x = tf.concat(0, [shard for _ in range(self._num_classes)])
+    x = tf.concat_v2([shard for _ in range(self._num_classes)], 0)
     x_trans = tf.transpose(x, perm=[0, 2, 1])
-    x_mul_w = tf.concat(0, [
+    x_mul_w = tf.concat_v2([
         tf.expand_dims(x_trans[k, :, :] * self._w[shard_id][:, k], 0)
-        for k in range(self._num_classes)])
-    self._w_mul_x2.append(tf.batch_matmul(x_mul_w, x))
+        for k in range(self._num_classes)
+    ], 0)
+    self._w_mul_x2.append(tf.matmul(x_mul_w, x))
 
   def _define_maximization_operation(self, num_batches):
     """Maximization operations."""
@@ -358,14 +359,14 @@ class GmmAlgorithm(object):
         b = tf.add_n(self._w_mul_x2) / (points_in_k_expanded + MEPS)
         new_covs = []
         for k in range(self._num_classes):
-          mean = self._means.ref()[k, :, :]
+          mean = self._means.value()[k, :, :]
           square_mean = tf.matmul(mean, mean, transpose_a=True)
           new_cov = b[k, :, :] - square_mean + self._min_var
           if self._covariance_type == FULL_COVARIANCE:
             new_covs.append(tf.expand_dims(new_cov, 0))
           elif self._covariance_type == DIAG_COVARIANCE:
             new_covs.append(tf.expand_dims(tf.diag_part(new_cov), 0))
-        new_covs = tf.concat(0, new_covs)
+        new_covs = tf.concat_v2(new_covs, 0)
         if 'c' in self._params:
           # Train operations don't need to take care of the means
           # because covariances already depend on it.
@@ -388,23 +389,24 @@ class GmmAlgorithm(object):
           cov = tf.diag(self._covs[c, :])
         inverse = tf.matrix_inverse(cov + self._min_var)
         inv_cov = tf.tile(
-            tf.expand_dims(inverse, 0),
-            tf.pack([self._num_examples, 1, 1]))
+            tf.expand_dims(inverse, 0), tf.stack([self._num_examples, 1, 1]))
         diff = tf.transpose(shard - self._means[c, :, :], perm=[1, 0, 2])
-        m_left = tf.batch_matmul(diff, inv_cov)
-        all_scores.append(tf.sqrt(tf.batch_matmul(
-            m_left, tf.transpose(diff, perm=[0, 2, 1])
-        )))
-      self._all_scores.append(tf.reshape(
-          tf.concat(1, all_scores),
-          tf.pack([self._num_examples, self._num_classes])))
+        m_left = tf.matmul(diff, inv_cov)
+        all_scores.append(
+            tf.sqrt(tf.matmul(
+                m_left, tf.transpose(
+                    diff, perm=[0, 2, 1]))))
+      self._all_scores.append(
+          tf.reshape(
+              tf.concat_v2(all_scores, 1),
+              tf.stack([self._num_examples, self._num_classes])))
 
     # Distance to the associated class.
-    self._all_scores = tf.concat(0, self._all_scores)
-    assignments = tf.concat(0, self.assignments())
+    self._all_scores = tf.concat_v2(self._all_scores, 0)
+    assignments = tf.concat_v2(self.assignments(), 0)
     rows = tf.to_int64(tf.range(0, self._num_examples))
-    indices = tf.concat(1, [tf.expand_dims(rows, 1),
-                            tf.expand_dims(assignments, 1)])
+    indices = tf.concat_v2(
+        [tf.expand_dims(rows, 1), tf.expand_dims(assignments, 1)], 1)
     self._scores = tf.gather_nd(self._all_scores, indices)
 
   def _define_loglikelihood_operation(self):
@@ -412,7 +414,7 @@ class GmmAlgorithm(object):
     self._ll_op = []
     for prior_probs in self._prior_probs:
       self._ll_op.append(tf.reduce_sum(tf.log(prior_probs)))
-    tf.scalar_summary('ll', tf.reduce_sum(self._ll_op))
+    tf.summary.scalar('ll', tf.reduce_sum(self._ll_op))
 
 
 def gmm(inp, initial_clusters, num_clusters, random_seed,

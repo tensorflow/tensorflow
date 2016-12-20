@@ -65,6 +65,8 @@ tf.app.flags.DEFINE_boolean("clear_devices", True,
                             """Whether to remove device specifications.""")
 tf.app.flags.DEFINE_string("initializer_nodes", "", "comma separated list of "
                            "initializer nodes to run before freezing.")
+tf.app.flags.DEFINE_string("variable_names_blacklist", "", "comma separated "
+                           "list of variables to skip converting to constants ")
 
 
 def freeze_graph(input_graph, input_saver, input_binary, input_checkpoint,
@@ -80,7 +82,8 @@ def freeze_graph(input_graph, input_saver, input_binary, input_checkpoint,
     print("Input saver file '" + input_saver + "' does not exist!")
     return -1
 
-  if not tf.gfile.Glob(input_checkpoint):
+  # 'input_checkpoint' may be a prefix if we're using Saver V2 format
+  if not tf.train.checkpoint_exists(input_checkpoint):
     print("Input checkpoint '" + input_checkpoint + "' doesn't exist!")
     return -1
 
@@ -116,8 +119,12 @@ def freeze_graph(input_graph, input_saver, input_binary, input_checkpoint,
       sess.run([restore_op_name], {filename_tensor_name: input_checkpoint})
       if initializer_nodes:
         sess.run(initializer_nodes)
+
+    variable_names_blacklist = (FLAGS.variable_names_blacklist.split(",") if
+                                FLAGS.variable_names_blacklist else None)
     output_graph_def = graph_util.convert_variables_to_constants(
-        sess, input_graph_def, output_node_names.split(","))
+        sess, input_graph_def, output_node_names.split(","),
+        variable_names_blacklist=variable_names_blacklist)
 
   with tf.gfile.GFile(output_graph, "wb") as f:
     f.write(output_graph_def.SerializeToString())

@@ -505,6 +505,101 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     self.assertIn(4, out.annotations)
     self.assertIn(5, out.annotations)
 
+  def testPrintTensorHighlightingRanges(self):
+    out = self._registry.dispatch_command(
+        "print_tensor", ["simple_mul_add/matmul:0", "--ranges", "[-inf, 0.0]"],
+        screen_info={"cols": 80})
+
+    self.assertEqual([
+        "Tensor \"simple_mul_add/matmul:0:DebugIdentity\": "
+        "Highlighted([-inf, 0.0]): 1 of 2 element(s) (50.00%)",
+        "  dtype: float64",
+        "  shape: (2, 1)",
+        "",
+        "array([[ 7.],",
+        "       [-2.]])",
+    ], out.lines)
+
+    self.assertIn("tensor_metadata", out.annotations)
+    self.assertIn(4, out.annotations)
+    self.assertIn(5, out.annotations)
+    self.assertEqual([(8, 11, "bold")], out.font_attr_segs[5])
+
+    out = self._registry.dispatch_command(
+        "print_tensor",
+        ["simple_mul_add/matmul:0", "--ranges", "[[-inf, -5.5], [5.5, inf]]"],
+        screen_info={"cols": 80})
+
+    self.assertEqual([
+        "Tensor \"simple_mul_add/matmul:0:DebugIdentity\": "
+        "Highlighted([[-inf, -5.5], [5.5, inf]]): "
+        "1 of 2 element(s) (50.00%)",
+        "  dtype: float64",
+        "  shape: (2, 1)",
+        "",
+        "array([[ 7.],",
+        "       [-2.]])",
+    ], out.lines)
+
+    self.assertIn("tensor_metadata", out.annotations)
+    self.assertIn(4, out.annotations)
+    self.assertIn(5, out.annotations)
+    self.assertEqual([(9, 11, "bold")], out.font_attr_segs[4])
+    self.assertNotIn(5, out.font_attr_segs)
+
+  def testPrintTensorWithSlicing(self):
+    out = self._registry.dispatch_command(
+        "print_tensor", ["simple_mul_add/matmul:0[1, :]"],
+        screen_info={"cols": 80})
+
+    self.assertEqual([
+        "Tensor \"simple_mul_add/matmul:0:DebugIdentity[1, :]\":",
+        "  dtype: float64", "  shape: (1,)", "", "array([-2.])"
+    ], out.lines)
+
+    self.assertIn("tensor_metadata", out.annotations)
+    self.assertIn(4, out.annotations)
+
+  def testPrintTensorInvalidSlicingString(self):
+    out = self._registry.dispatch_command(
+        "print_tensor", ["simple_mul_add/matmul:0[1, foo()]"],
+        screen_info={"cols": 80})
+
+    self.assertEqual("Error occurred during handling of command: print_tensor "
+                     "simple_mul_add/matmul:0[1, foo()]:", out.lines[0])
+    self.assertEqual("ValueError: Invalid tensor-slicing string.",
+                     out.lines[-2])
+
+  def testPrintTensorValidExplicitNumber(self):
+    out = self._registry.dispatch_command(
+        "print_tensor", ["simple_mul_add/matmul:0", "-n", "0"],
+        screen_info={"cols": 80})
+
+    self.assertEqual([
+        "Tensor \"simple_mul_add/matmul:0:DebugIdentity\":",
+        "  dtype: float64",
+        "  shape: (2, 1)",
+        "",
+        "array([[ 7.],",
+        "       [-2.]])",
+    ], out.lines)
+
+    self.assertIn("tensor_metadata", out.annotations)
+    self.assertIn(4, out.annotations)
+    self.assertIn(5, out.annotations)
+
+  def testPrintTensorInvalidExplicitNumber(self):
+    out = self._registry.dispatch_command(
+        "print_tensor", ["simple_mul_add/matmul:0", "-n", "1"],
+        screen_info={"cols": 80})
+
+    self.assertEqual([
+        "ERROR: Invalid number (1) for tensor simple_mul_add/matmul:0, "
+        "which generated one dump."
+    ], out.lines)
+
+    self.assertNotIn("tensor_metadata", out.annotations)
+
   def testPrintTensorMissingOutputSlot(self):
     out = self._registry.dispatch_command(
         "print_tensor", ["simple_mul_add/matmul"])
@@ -566,6 +661,76 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(ValueError,
                                  "There is no tensor filter named \"bar\""):
       analyzer.get_tensor_filter("bar")
+
+
+class AnalyzerCLIPrintLargeTensorTest(test_util.TensorFlowTestCase):
+
+  @classmethod
+  def setUpClass(cls):
+    cls._dump_root = tempfile.mkdtemp()
+
+    with session.Session() as sess:
+      # 2400 elements should exceed the default threshold (2000).
+      x = constant_op.constant(np.zeros([300, 8]), name="large_tensors/x")
+
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          run_options,
+          sess.graph,
+          debug_ops=["DebugIdentity"],
+          debug_urls="file://%s" % cls._dump_root)
+
+      # Invoke Session.run().
+      run_metadata = config_pb2.RunMetadata()
+      sess.run(x, options=run_options, run_metadata=run_metadata)
+
+    cls._debug_dump = debug_data.DebugDumpDir(
+        cls._dump_root, partition_graphs=run_metadata.partition_graphs)
+
+    # Construct the analyzer.
+    cls._analyzer = analyzer_cli.DebugAnalyzer(cls._debug_dump)
+
+    # Construct the handler registry.
+    cls._registry = debugger_cli_common.CommandHandlerRegistry()
+
+    # Register command handler.
+    cls._registry.register_command_handler(
+        "print_tensor",
+        cls._analyzer.print_tensor,
+        cls._analyzer.get_help("print_tensor"),
+        prefix_aliases=["pt"])
+
+  @classmethod
+  def tearDownClass(cls):
+    # Tear down temporary dump directory.
+    shutil.rmtree(cls._dump_root)
+
+  def testPrintLargeTensorWithoutAllOption(self):
+    out = self._registry.dispatch_command(
+        "print_tensor", ["large_tensors/x:0"], screen_info={"cols": 80})
+
+    # Assert that ellipses are present in the tensor value printout.
+    self.assertIn("...,", out.lines[4])
+
+    # 2100 still exceeds 2000.
+    out = self._registry.dispatch_command(
+        "print_tensor", ["large_tensors/x:0[:, 0:7]"],
+        screen_info={"cols": 80})
+
+    self.assertIn("...,", out.lines[4])
+
+  def testPrintLargeTensorWithAllOption(self):
+    out = self._registry.dispatch_command(
+        "print_tensor", ["large_tensors/x:0", "-a"],
+        screen_info={"cols": 80})
+
+    # Assert that ellipses are not present in the tensor value printout.
+    self.assertNotIn("...,", out.lines[4])
+
+    out = self._registry.dispatch_command(
+        "print_tensor", ["large_tensors/x:0[:, 0:7]", "--all"],
+        screen_info={"cols": 80})
+    self.assertNotIn("...,", out.lines[4])
 
 
 class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
@@ -809,6 +974,95 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
         "", "Legend:", "  (d): recursion depth = d.",
         "  (Ctrl): Control input.",
         "  [Op]: Input node has op type Op."], out.lines)
+
+
+class AnalyzerCLIWhileLoopTest(test_util.TensorFlowTestCase):
+
+  @classmethod
+  def setUpClass(cls):
+    cls._dump_root = tempfile.mkdtemp()
+
+    with session.Session() as sess:
+      loop_var = constant_op.constant(0, name="while_loop_test/loop_var")
+      cond = lambda loop_var: math_ops.less(loop_var, 10)
+      body = lambda loop_var: math_ops.add(loop_var, 1)
+      while_loop = control_flow_ops.while_loop(
+          cond, body, [loop_var], parallel_iterations=1)
+
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_url = "file://%s" % cls._dump_root
+
+      watch_opts = run_options.debug_options.debug_tensor_watch_opts
+
+      # Add debug tensor watch for "while/Identity".
+      watch = watch_opts.add()
+      watch.node_name = "while/Identity"
+      watch.output_slot = 0
+      watch.debug_ops.append("DebugIdentity")
+      watch.debug_urls.append(debug_url)
+
+      # Invoke Session.run().
+      run_metadata = config_pb2.RunMetadata()
+      sess.run(while_loop, options=run_options, run_metadata=run_metadata)
+
+    cls._debug_dump = debug_data.DebugDumpDir(
+        cls._dump_root, partition_graphs=run_metadata.partition_graphs)
+
+    cls._analyzer = analyzer_cli.DebugAnalyzer(cls._debug_dump)
+    cls._registry = debugger_cli_common.CommandHandlerRegistry()
+    cls._registry.register_command_handler(
+        "list_tensors",
+        cls._analyzer.list_tensors,
+        cls._analyzer.get_help("list_tensors"),
+        prefix_aliases=["lt"])
+    cls._registry.register_command_handler(
+        "print_tensor",
+        cls._analyzer.print_tensor,
+        cls._analyzer.get_help("print_tensor"),
+        prefix_aliases=["pt"])
+
+  @classmethod
+  def tearDownClass(cls):
+    # Tear down temporary dump directory.
+    shutil.rmtree(cls._dump_root)
+
+  def testMultipleDumpsPrintTensorNoNumber(self):
+    output = self._registry.dispatch_command("pt", ["while/Identity:0"])
+
+    self.assertEqual("Tensor \"while/Identity:0\" generated 10 dumps:",
+                     output.lines[0])
+
+    for i in xrange(10):
+      self.assertTrue(output.lines[i + 1].startswith("#%d" % i))
+      self.assertTrue(output.lines[i + 1].endswith(
+          " ms] while/Identity:0:DebugIdentity"))
+
+    self.assertEqual(
+        "Use the -n (--number) flag to specify which dump to print.",
+        output.lines[-3])
+    self.assertEqual("For example:", output.lines[-2])
+    self.assertEqual("  print_tensor while/Identity:0 -n 0", output.lines[-1])
+
+  def testMultipleDumpsPrintTensorWithNumber(self):
+    for i in xrange(5):
+      output = self._registry.dispatch_command(
+          "pt", ["while/Identity:0", "-n", "%d" % i])
+
+      self.assertEqual("Tensor \"while/Identity:0:DebugIdentity (dump #%d)\":" %
+                       i, output.lines[0])
+      self.assertEqual("  dtype: int32", output.lines[1])
+      self.assertEqual("  shape: ()", output.lines[2])
+      self.assertEqual("", output.lines[3])
+      self.assertEqual("array(%d, dtype=int32)" % i, output.lines[4])
+
+  def testMultipleDumpsPrintTensorInvalidNumber(self):
+    output = self._registry.dispatch_command("pt",
+                                             ["while/Identity:0", "-n", "10"])
+
+    self.assertEqual([
+        "ERROR: Specified number (10) exceeds the number of available dumps "
+        "(10) for tensor while/Identity:0"
+    ], output.lines)
 
 
 if __name__ == "__main__":

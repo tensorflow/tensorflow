@@ -7,6 +7,8 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 py_library(
     name = "freeze_graph_lib",
     srcs = ["freeze_graph.py"],
@@ -23,6 +25,7 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework",
         "//tensorflow/python:platform",
     ],
 )
@@ -36,41 +39,6 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":freeze_graph",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-    ],
-)
-
-py_library(
-    name = "graph_metrics_lib",
-    srcs = ["graph_metrics.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-py_binary(
-    name = "graph_metrics",
-    srcs = [
-        "graph_metrics.py",
-    ],
-    main = "graph_metrics.py",
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-py_test(
-    name = "graph_metrics_test",
-    size = "small",
-    srcs = [
-        "graph_metrics_test.py",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":graph_metrics_lib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
@@ -93,6 +61,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework",
         "//tensorflow/python:platform",
     ],
 )
@@ -128,7 +97,9 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":strip_unused",
+        ":strip_unused_lib",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework",
         "//tensorflow/python:platform",
     ],
 )
@@ -153,7 +124,10 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":optimize_for_inference_lib",
+        "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_ops_gen",
         "//tensorflow/python:platform_test",
     ],
 )

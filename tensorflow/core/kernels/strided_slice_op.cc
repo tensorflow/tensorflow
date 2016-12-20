@@ -64,7 +64,7 @@ class StridedSliceOp : public OpKernel {
     ShapeReadWriteFromTensorShape wrapped_final_shape(&final_shape);
     OP_REQUIRES_OK(
         context, ValidateStridedSliceOp(
-                     context->input(1), context->input(2), context->input(3),
+                     &context->input(1), &context->input(2), context->input(3),
                      ShapeReadWriteFromTensorShape(&context->input(0).shape()),
                      begin_mask, end_mask, ellipsis_mask, new_axis_mask,
                      shrink_axis_mask, &wrapped_processing_shape,
@@ -75,6 +75,7 @@ class StridedSliceOp : public OpKernel {
 
     // Optimization #1, slice is a no-op plus reshape
     if (is_identity) {
+      VLOG(1) << "Strided slice identity ";
       Tensor tmp;
       CHECK(tmp.CopyFrom(input, final_shape));
       context->set_output(0, tmp);
@@ -82,8 +83,9 @@ class StridedSliceOp : public OpKernel {
     }
 
     // Optimization #2, slice is memory contiguous (only occurs in dim 0)
-    if (slice_dim0 && IsInnerDimsSizeAligned<T>(input.shape())) {
+    if (slice_dim0 && IsDim0SliceAligned<T>(input.shape(), begin[0], end[0])) {
       CHECK_GE(input.dims(), 1);  // Otherwise, is_identity should be true.
+      VLOG(1) << "Strided slice dim 0: " << input.shape().DebugString();
       Tensor tmp;
       CHECK(tmp.CopyFrom(input.Slice(begin[0], end[0]), final_shape));
       context->set_output(0, tmp);
@@ -194,7 +196,7 @@ class StridedSliceGradOp : public OpKernel {
     OP_REQUIRES_OK(
         context,
         ValidateStridedSliceOp(
-            context->input(1), context->input(2), context->input(3),
+            &context->input(1), &context->input(2), context->input(3),
             ShapeReadWriteFromTensorShape(&input_shape), begin_mask, end_mask,
             ellipsis_mask, new_axis_mask, shrink_axis_mask,
             &wrapped_processing_shape, &wrapped_final_shape, &is_identity,
@@ -273,7 +275,7 @@ class StridedSliceAssignOp : public OpKernel {
     OP_REQUIRES_OK(
         context,
         ValidateStridedSliceOp(
-            context->input(1), context->input(2), context->input(3),
+            &context->input(1), &context->input(2), context->input(3),
             ShapeReadWriteFromTensorShape(&old_lhs.shape()), begin_mask,
             end_mask, ellipsis_mask, new_axis_mask, shrink_axis_mask,
             &wrapped_processing_shape, &wrapped_final_shape, &is_identity,
@@ -295,21 +297,16 @@ class StridedSliceAssignOp : public OpKernel {
 
       // 0-dimensional case implies the left and right are exactly the same
       // scalar shape
-      if (processing_shape.dims() == 0) {
-        functor::DenseUpdate<Device, T, ASSIGN> copy;
-        copy(context->eigen_device<Device>(), old_lhs.flat<T>(),
-             input.flat<T>());
-        return;
-      }
 
 // Handle general dimensions
-#define HANDLE_DIM(NDIM)                                                      \
-  if (processing_dims == NDIM) {                                              \
-    HandleStridedSliceAssignCase<Device, T, NDIM>(context, begin, end,        \
-                                                  strides, processing_shape,  \
-                                                  is_simple_slice, &old_lhs); \
-    return;                                                                   \
+#define HANDLE_DIM(NDIM)                                                 \
+  if (processing_dims == NDIM) {                                         \
+    HandleStridedSliceAssignCase<Device, T, NDIM>()(                     \
+        context, begin, end, strides, processing_shape, is_simple_slice, \
+        &old_lhs);                                                       \
+    return;                                                              \
   }
+      HANDLE_DIM(0);
       HANDLE_DIM(1);
       HANDLE_DIM(2);
       HANDLE_DIM(3);
@@ -353,7 +350,7 @@ class StridedSliceAssignOp : public OpKernel {
                               .HostMemory("strides"),          \
                           StridedSliceAssignOp<CPUDevice, type>)
 
-TF_CALL_ALL_TYPES(REGISTER_STRIDED_SLICE);
+TF_CALL_POD_STRING_TYPES(REGISTER_STRIDED_SLICE);
 REGISTER_STRIDED_SLICE(bfloat16);
 
 #undef REGISTER_STRIDED_SLICE
@@ -377,7 +374,15 @@ REGISTER_STRIDED_SLICE(bfloat16);
                               .HostMemory("end")               \
                               .HostMemory("strides")           \
                               .TypeConstraint<int32>("Index"), \
-                          StridedSliceGradOp<GPUDevice, type>)
+                          StridedSliceGradOp<GPUDevice, type>) \
+  REGISTER_KERNEL_BUILDER(Name("StridedSliceAssign")           \
+                              .Device(DEVICE_GPU)              \
+                              .TypeConstraint<type>("T")       \
+                              .HostMemory("begin")             \
+                              .HostMemory("end")               \
+                              .HostMemory("strides")           \
+                              .TypeConstraint<int32>("Index"), \
+                          StridedSliceAssignOp<GPUDevice, type>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 
@@ -394,7 +399,26 @@ REGISTER_KERNEL_BUILDER(Name("StridedSlice")
                             .HostMemory("strides")
                             .HostMemory("output"),
                         StridedSliceOp<CPUDevice, int32>);
-
+REGISTER_KERNEL_BUILDER(Name("StridedSliceGrad")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32>("Index")
+                            .HostMemory("shape")
+                            .HostMemory("begin")
+                            .HostMemory("end")
+                            .HostMemory("strides")
+                            .HostMemory("dy")
+                            .HostMemory("output"),
+                        StridedSliceGradOp<CPUDevice, int32>);
+REGISTER_KERNEL_BUILDER(Name("StridedSliceAssign")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32>("Index")
+                            .HostMemory("ref")
+                            .HostMemory("begin")
+                            .HostMemory("end")
+                            .HostMemory("strides"),
+                        StridedSliceAssignOp<CPUDevice, int32>)
 #undef REGISTER_GPU
 
 #endif  // GOOGLE_CUDA

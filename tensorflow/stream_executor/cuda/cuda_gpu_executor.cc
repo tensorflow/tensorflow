@@ -18,8 +18,12 @@ limitations under the License.
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
 #endif
+#if defined(PLATFORM_WINDOWS)
+#include <windows.h>
+#define PATH_MAX MAX_PATH
+#else
 #include <unistd.h>
-
+#endif
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/stream_executor/cuda/cuda_driver.h"
 #include "tensorflow/stream_executor/cuda/cuda_event.h"
@@ -173,7 +177,7 @@ bool CUDAExecutor::FindOnDiskForComputeCapability(
   // have been migrated.
   string cc_specific = port::StrCat(filename.ToString(), ".cc", cc_major_,
                                     cc_minor_, canonical_suffix.ToString());
-  if (port::FileExists(cc_specific)) {
+  if (port::FileExists(cc_specific).ok()) {
     VLOG(2) << "found compute-capability-specific file, using that: "
             << cc_specific;
     *found_filename = cc_specific;
@@ -182,7 +186,7 @@ bool CUDAExecutor::FindOnDiskForComputeCapability(
 
   VLOG(2) << "could not find compute-capability specific file at: "
           << cc_specific;
-  if (port::FileExists(filename.ToString())) {
+  if (port::FileExists(filename.ToString()).ok()) {
     *found_filename = filename.ToString();
     return true;
   }
@@ -204,7 +208,12 @@ static string GetBinaryDir(bool strip_exe) {
     _NSGetExecutablePath(unresolved_path, &buffer_size);
     CHECK_ERR(realpath(unresolved_path, exe_path) ? 1 : -1);
 #else
-    CHECK_ERR(readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1));
+#if defined(PLATFORM_WINDOWS)
+  HMODULE hModule = GetModuleHandle(NULL);
+  GetModuleFileName(hModule, exe_path, MAX_PATH);
+#else
+  CHECK_ERR(readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1));
+#endif
 #endif
   // Make sure it's null-terminated:
   exe_path[sizeof(exe_path) - 1] = 0;
@@ -340,30 +349,11 @@ bool CUDAExecutor::GetKernelMetadata(CUDAKernel *cuda_kernel,
 
 bool CUDAExecutor::Launch(Stream *stream, const ThreadDim &thread_dims,
                           const BlockDim &block_dims, const KernelBase &kernel,
-                          const std::vector<KernelArg> &args) {
-  CHECK_EQ(kernel.Arity(), args.size());
+                          const KernelArgsArrayBase &args) {
+  CHECK_EQ(kernel.Arity(), args.number_of_arguments());
   CUstream custream = AsCUDAStreamValue(stream);
   const CUDAKernel *cuda_kernel = AsCUDAKernel(&kernel);
   CUfunction cufunc = cuda_kernel->AsCUDAFunctionValue();
-
-  std::vector<void *> addrs;
-  addrs.reserve(args.size());
-  int shmem_bytes = 0;
-  for (size_t i = 0; i < args.size(); i++) {
-    switch (args[i].type) {
-      case KernelArg::kNormal:
-        addrs.push_back(const_cast<void *>(
-            static_cast<const void *>(args[i].data.begin())));
-        break;
-      case KernelArg::kSharedMemory:
-        shmem_bytes += args[i].bytes;
-        break;
-      default:
-        LOG(ERROR) << "Invalid kernel arg type passed (" << args[i].type
-                   << ") for arg " << i;
-        return false;
-    }
-  }
 
   // Only perform/print the occupancy check 1x.
   launched_kernels_mu_.lock();
@@ -380,11 +370,15 @@ bool CUDAExecutor::Launch(Stream *stream, const ThreadDim &thread_dims,
     CUDADriver::FuncSetCacheConfig(cufunc, cuda_kernel->GetCUDACacheConfig());
   }
 
-  if (!CUDADriver::LaunchKernel(
-          GetCudaContext(stream), cufunc, block_dims.x, block_dims.y,
-          block_dims.z, thread_dims.x, thread_dims.y, thread_dims.z,
-          shmem_bytes, custream, addrs.data(), nullptr /* = extra */)) {
-    LOG(ERROR) << "failed to launch CUDA kernel with args: " << args.size()
+  void **kernel_params = const_cast<void **>(args.argument_addresses().data());
+
+  if (!CUDADriver::LaunchKernel(GetCudaContext(stream), cufunc, block_dims.x,
+                                block_dims.y, block_dims.z, thread_dims.x,
+                                thread_dims.y, thread_dims.z,
+                                args.number_of_shared_bytes(), custream,
+                                kernel_params, nullptr /* = extra */)) {
+    LOG(ERROR) << "failed to launch CUDA kernel with args: "
+               << args.number_of_arguments()
                << "; thread dim: " << thread_dims.ToString()
                << "; block dim: " << block_dims.ToString();
     return false;
@@ -840,18 +834,6 @@ bool CUDAExecutor::FillBlockDimLimit(BlockDim *block_dim_limit) const {
   return true;
 }
 
-KernelArg CUDAExecutor::DeviceMemoryToKernelArg(
-    const DeviceMemoryBase &gpu_mem) const {
-  const void* arg = gpu_mem.opaque();
-  const uint8 *arg_ptr = reinterpret_cast<const uint8 *>(&arg);
-
-  KernelArg kernel_arg;
-  kernel_arg.type = KernelArg::kNormal;
-  kernel_arg.data = port::InlinedVector<uint8, 4>(arg_ptr, arg_ptr + sizeof(arg));
-  kernel_arg.bytes = sizeof(arg);
-  return kernel_arg;
-}
-
 bool CUDAExecutor::SupportsBlas() const { return true; }
 
 bool CUDAExecutor::SupportsFft() const { return true; }
@@ -890,6 +872,9 @@ CudaContext* CUDAExecutor::cuda_context() { return context_; }
 static int TryToReadNumaNode(const string &pci_bus_id, int device_ordinal) {
 #if defined(__APPLE__)
   LOG(INFO) << "OS X does not support NUMA - returning NUMA node zero";
+  return 0;
+#elif defined(PLATFORM_WINDOWS)
+  // Windows support for NUMA is not currently implemented. Return node 0.
   return 0;
 #else
   VLOG(2) << "trying to read NUMA node for device ordinal: " << device_ordinal;

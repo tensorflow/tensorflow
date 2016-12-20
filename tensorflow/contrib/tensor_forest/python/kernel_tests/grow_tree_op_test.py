@@ -19,7 +19,7 @@ from __future__ import print_function
 
 import tensorflow as tf
 
-from tensorflow.contrib.tensor_forest.python.ops import training_ops
+from tensorflow.contrib.tensor_forest.python.ops import tensor_forest_ops
 
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
@@ -37,15 +37,14 @@ class GrowTreeTest(test_util.TensorFlowTestCase):
     self.best_splits = [2, 3]
     self.split_features = [[1, 2, 3, 4], [5, 6, 7, 8]]
     self.split_thresholds = [[10., 20., 30., 40.], [50., 60., 70., 80.]]
-    self.ops = training_ops.Load()
 
   def testSimple(self):
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       update_list, tree_updates, threshold_updates, new_eot = (
-          self.ops.grow_tree(self.eot, self.node_map, self.finished,
-                             self.best_splits, self.split_features,
-                             self.split_thresholds))
+          tensor_forest_ops.grow_tree(self.eot, self.node_map, self.finished,
+                                      self.best_splits, self.split_features,
+                                      self.split_thresholds))
 
       self.assertAllEqual([1, 3, 4, 2, 5, 6], update_list.eval())
       self.assertAllEqual(
@@ -57,14 +56,14 @@ class GrowTreeTest(test_util.TensorFlowTestCase):
 
   def testNoRoomToGrow(self):
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       # Even though there's one free node, there needs to be 2 to grow.
       tf.assign(self.eot, [6]).eval()
 
       update_list, tree_updates, threshold_updates, new_eot = (
-          self.ops.grow_tree(self.eot, self.node_map, self.finished,
-                             self.best_splits, self.split_features,
-                             self.split_thresholds))
+          tensor_forest_ops.grow_tree(self.eot, self.node_map, self.finished,
+                                      self.best_splits, self.split_features,
+                                      self.split_thresholds))
 
       self.assertAllEqual([], update_list.eval())
       self.assertEquals((0, 2), tree_updates.eval().shape)
@@ -73,11 +72,12 @@ class GrowTreeTest(test_util.TensorFlowTestCase):
 
   def testNoFinished(self):
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       update_list, tree_updates, threshold_updates, new_eot = (
-          self.ops.grow_tree(self.eot, self.node_map, [], [],
-                             self.split_features, self.split_thresholds))
+          tensor_forest_ops.grow_tree(self.eot, self.node_map, [], [],
+                                      self.split_features,
+                                      self.split_thresholds))
 
       self.assertAllEqual([], update_list.eval())
       self.assertAllEqual((0, 2), tree_updates.eval().shape)
@@ -86,14 +86,13 @@ class GrowTreeTest(test_util.TensorFlowTestCase):
 
   def testBadInput(self):
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       with self.assertRaisesOpError(
           'Number of finished nodes should be the same in finished and '
           'best_splits.'):
-        update_list, _, _, _ = (self.ops.grow_tree(self.eot, self.node_map, [],
-                                                   self.best_splits,
-                                                   self.split_features,
-                                                   self.split_thresholds))
+        update_list, _, _, _ = (tensor_forest_ops.grow_tree(
+            self.eot, self.node_map, [], self.best_splits, self.split_features,
+            self.split_thresholds))
         self.assertAllEqual([], update_list.eval())
 
 

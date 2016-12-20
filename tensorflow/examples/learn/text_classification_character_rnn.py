@@ -28,37 +28,41 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-from sklearn import metrics
-import pandas
+import argparse
+import sys
 
+import numpy as np
+import pandas
+from sklearn import metrics
 import tensorflow as tf
+
 from tensorflow.contrib import learn
 
-FLAGS = tf.app.flags.FLAGS
-tf.app.flags.DEFINE_bool('test_with_fake_data', False,
-                         'Test the example code with fake data.')
+FLAGS = None
 
 MAX_DOCUMENT_LENGTH = 100
 HIDDEN_SIZE = 20
 
 
-def char_rnn_model(x, y):
+def char_rnn_model(features, target):
   """Character level recurrent neural network model to predict classes."""
-  y = tf.one_hot(y, 15, 1, 0)
-  byte_list = learn.ops.one_hot_matrix(x, 256)
-  byte_list = tf.unpack(byte_list, axis=1)
+  target = tf.one_hot(target, 15, 1, 0)
+  byte_list = tf.ont_hot(features, 256, 1, 0)
+  byte_list = tf.unstack(byte_list, axis=1)
 
-  cell = tf.nn.rnn_cell.GRUCell(HIDDEN_SIZE)
-  _, encoding = tf.nn.rnn(cell, byte_list, dtype=tf.float32)
+  cell = tf.contrib.rnn.GRUCell(HIDDEN_SIZE)
+  _, encoding = tf.contrib.rnn.static_rnn(cell, byte_list, dtype=tf.float32)
 
-  prediction, loss = learn.models.logistic_regression(encoding, y)
+  logits = tf.contrib.layers.fully_connected(encoding, 15, activation_fn=None)
+  loss = tf.contrib.losses.softmax_cross_entropy(logits, target)
 
   train_op = tf.contrib.layers.optimize_loss(
       loss, tf.contrib.framework.get_global_step(),
       optimizer='Adam', learning_rate=0.01)
 
-  return {'class': tf.argmax(prediction, 1), 'prob': prediction}, loss, train_op
+  return (
+      {'class': tf.argmax(logits, 1), 'prob': tf.nn.softmax(logits)},
+      loss, train_op)
 
 
 def main(unused_argv):
@@ -87,4 +91,12 @@ def main(unused_argv):
 
 
 if __name__ == '__main__':
-  tf.app.run()
+  parser = argparse.ArgumentParser()
+  parser.add_argument(
+      '--test_with_fake_data',
+      default=False,
+      help='Test the example code with fake data.',
+      action='store_true'
+  )
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

@@ -13,17 +13,22 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Read a file and return its contents."""
+"""## Resource management.
 
+@@get_data_files_path
+@@get_path_to_datafile
+@@load_resource
+@@readahead_file_path
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect
-import os.path
-import sys
+import inspect as _inspect
+import os as _os
+import sys as _sys
 
-from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.all_util import remove_undocumented
 
 
 def load_resource(path):
@@ -39,16 +44,12 @@ def load_resource(path):
     IOError: If the path is not found, or the resource can't be opened.
   """
   tensorflow_root = (
-      os.path.join(
-          os.path.dirname(__file__), os.pardir, os.pardir))
-  path = os.path.join(tensorflow_root, path)
-  path = os.path.abspath(path)
-  try:
-    with open(path, 'rb') as f:
-      return f.read()
-  except IOError as e:
-    logging.warning('IOError %s on path %s', e, path)
-    raise e
+      _os.path.join(
+          _os.path.dirname(__file__), _os.pardir, _os.pardir))
+  path = _os.path.join(tensorflow_root, path)
+  path = _os.path.abspath(path)
+  with open(path, 'rb') as f:
+    return f.read()
 
 
 # pylint: disable=protected-access
@@ -59,7 +60,7 @@ def get_data_files_path():
     The directory where files specified in data attribute of py_test
     and py_binary are stored.
   """
-  return os.path.dirname(inspect.getfile(sys._getframe(1)))
+  return _os.path.dirname(_inspect.getfile(_sys._getframe(1)))
 
 
 def get_path_to_datafile(path):
@@ -77,9 +78,13 @@ def get_path_to_datafile(path):
   Raises:
     IOError: If the path is not found, or the resource can't be opened.
   """
-  data_files_path = os.path.dirname(inspect.getfile(sys._getframe(1)))
-  return os.path.join(data_files_path, path)
+  data_files_path = _os.path.dirname(_inspect.getfile(_sys._getframe(1)))
+  return _os.path.join(data_files_path, path)
+
 
 def readahead_file_path(path, unused_readahead=None):
   """Readahead files not implemented; simply returns given path."""
   return path
+
+_allowed_symbols = []
+remove_undocumented(__name__, _allowed_symbols)

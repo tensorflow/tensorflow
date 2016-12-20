@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for make_template."""
 from __future__ import absolute_import
 from __future__ import division
@@ -20,33 +19,37 @@ from __future__ import print_function
 
 import traceback
 
-import tensorflow as tf
-
+from tensorflow.python.client import session
+from tensorflow.python.framework import random_seed
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import template
+from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
+import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
+from tensorflow.python.platform import test
+from tensorflow.python.training import gradient_descent
 
 
 def var_scoped_function():
-  return tf.get_variable("dummy",
-                         shape=[1],
-                         initializer=tf.zeros_initializer)
+  return variable_scope.get_variable(
+      "dummy", shape=[1], initializer=init_ops.zeros_initializer())
 
 
 def internally_var_scoped_function(scope_name):
-  with tf.variable_scope(scope_name):
-    return tf.get_variable("dummy",
-                           shape=[1],
-                           initializer=tf.zeros_initializer)
+  with variable_scope.variable_scope(scope_name):
+    return variable_scope.get_variable(
+        "dummy", shape=[1], initializer=init_ops.zeros_initializer())
 
 
 def function_with_create(trainable):
   """Creates a variable as a side effect using tf.Variable."""
-  tf.Variable(0, trainable=trainable)
-  return tf.get_variable("dummy",
-                         shape=[1],
-                         initializer=tf.zeros_initializer)
+  variables.Variable(0, trainable=trainable)
+  return variable_scope.get_variable(
+      "dummy", shape=[1], initializer=init_ops.zeros_initializer())
 
 
-class TemplateTest(tf.test.TestCase):
+class TemplateTest(test.TestCase):
 
   def test_end_to_end(self):
     """This test shows a very simple line model with test_loss.
@@ -57,13 +60,13 @@ class TemplateTest(tf.test.TestCase):
     training_input, training_output = ([1., 2., 3., 4.], [2.8, 5.1, 7.2, 8.7])
     test_input, test_output = ([5., 6., 7., 8.], [11, 13, 15, 17])
 
-    tf.set_random_seed(1234)
+    random_seed.set_random_seed(1234)
 
     def test_line(x):
-      m = tf.get_variable("w", shape=[],
-                          initializer=tf.truncated_normal_initializer())
-      b = tf.get_variable("b", shape=[],
-                          initializer=tf.truncated_normal_initializer())
+      m = variable_scope.get_variable(
+          "w", shape=[], initializer=init_ops.truncated_normal_initializer())
+      b = variable_scope.get_variable(
+          "b", shape=[], initializer=init_ops.truncated_normal_initializer())
       return x * m + b
 
     line_template = template.make_template("line", test_line)
@@ -71,14 +74,16 @@ class TemplateTest(tf.test.TestCase):
     train_prediction = line_template(training_input)
     test_prediction = line_template(test_input)
 
-    train_loss = tf.reduce_mean(tf.square(train_prediction - training_output))
-    test_loss = tf.reduce_mean(tf.square(test_prediction - test_output))
+    train_loss = math_ops.reduce_mean(
+        math_ops.square(train_prediction - training_output))
+    test_loss = math_ops.reduce_mean(
+        math_ops.square(test_prediction - test_output))
 
-    optimizer = tf.train.GradientDescentOptimizer(0.1)
+    optimizer = gradient_descent.GradientDescentOptimizer(0.1)
     train_op = optimizer.minimize(train_loss)
 
-    with tf.Session() as sess:
-      sess.run(tf.initialize_all_variables())
+    with session.Session() as sess:
+      sess.run(variables.global_variables_initializer())
       initial_test_loss = sess.run(test_loss)
       sess.run(train_op)
       final_test_loss = sess.run(test_loss)
@@ -117,7 +122,7 @@ class TemplateTest(tf.test.TestCase):
     v1 = tmpl1()
     v2 = tmpl1()
 
-    tf.get_variable_scope().reuse_variables()
+    variable_scope.get_variable_scope().reuse_variables()
     tmpl2 = template.make_template("_", var_scoped_function, unique_name_="s1")
     v3 = tmpl2()
 
@@ -129,12 +134,12 @@ class TemplateTest(tf.test.TestCase):
     tmpl1 = template.make_template("s1", var_scoped_function)
     tmpl2 = template.make_template("s1", var_scoped_function)
 
-    with tf.variable_scope("scope"):
+    with variable_scope.variable_scope("scope"):
       v1 = tmpl1()
       v3 = tmpl2()
 
     # The template contract requires the following to ignore scope2.
-    with tf.variable_scope("scope2"):
+    with variable_scope.variable_scope("scope2"):
       v2 = tmpl1()
     self.assertEqual(v1, v2)
     self.assertNotEqual(v1, v3)
@@ -187,11 +192,13 @@ class TemplateTest(tf.test.TestCase):
     self.assertEqual(tmpl(), tmpl())
 
   def test_internal_variable_reuse(self):
+
     def nested():
-      with tf.variable_scope("nested") as vs:
-        v1 = tf.get_variable("x", initializer=tf.zeros_initializer, shape=[])
-      with tf.variable_scope(vs, reuse=True):
-        v2 = tf.get_variable("x")
+      with variable_scope.variable_scope("nested") as vs:
+        v1 = variable_scope.get_variable(
+            "x", initializer=init_ops.zeros_initializer(), shape=[])
+      with variable_scope.variable_scope(vs, reuse=True):
+        v2 = variable_scope.get_variable("x")
       self.assertEqual(v1, v2)
       return v1
 
@@ -207,6 +214,7 @@ class TemplateTest(tf.test.TestCase):
     self.assertEqual("s1_1/nested/x:0", v3.name)
 
   def test_nested_templates(self):
+
     def nested_template():
       nested1 = template.make_template("nested", var_scoped_function)
       nested2 = template.make_template("nested", var_scoped_function)
@@ -230,12 +238,12 @@ class TemplateTest(tf.test.TestCase):
     # Create templates in scope a then call in scope b. make_template should
     # capture the scope the first time it is called, and make_immediate_template
     # should capture the scope at construction time.
-    with tf.variable_scope("ctor_scope"):
-      tmpl_immed = template.make_template(
-          "a", var_scoped_function, True)  # create scope here
+    with variable_scope.variable_scope("ctor_scope"):
+      tmpl_immed = template.make_template("a", var_scoped_function,
+                                          True)  # create scope here
       tmpl_defer = template.make_template(
           "b", var_scoped_function, False)  # default: create scope at __call__
-    with tf.variable_scope("call_scope"):
+    with variable_scope.variable_scope("call_scope"):
       inner_imm_var = tmpl_immed()
       inner_defer_var = tmpl_defer()
     outer_imm_var = tmpl_immed()
@@ -252,7 +260,7 @@ class TemplateTest(tf.test.TestCase):
     # Ensure that we can access the scope inside the template, because the name
     # of that scope may be different from the name we pass to make_template, due
     # to having been made unique by variable_scope.
-    with tf.variable_scope("foo"):
+    with variable_scope.variable_scope("foo"):
       # Create two templates with the same name, ensure scopes are made unique.
       ta = template.make_template("bar", var_scoped_function, True)
       tb = template.make_template("bar", var_scoped_function, True)
@@ -261,7 +269,7 @@ class TemplateTest(tf.test.TestCase):
     self.assertEqual(ta.var_scope.name, "foo/bar")
     self.assertEqual(tb.var_scope.name, "foo/bar_1")
 
-    with tf.variable_scope("foo_2"):
+    with variable_scope.variable_scope("foo_2"):
       # Create a template which defers scope creation.
       tc = template.make_template("blah", var_scoped_function, False)
 
@@ -272,5 +280,38 @@ class TemplateTest(tf.test.TestCase):
     # Template is called at the top level, so there is no preceding "foo_2".
     self.assertEqual(tc.var_scope.name, "blah")
 
+  def test_custom_getter(self):
+    # Custom getter that maintains call count and forwards to true getter
+    custom_getter_count = [0]
+
+    def custom_getter(getter, name, *args, **kwargs):
+      custom_getter_count[0] += 1
+      return getter(name, *args, **kwargs)
+
+    # Test that custom getter is called both when variables are created and
+    # subsequently accessed
+    tmpl1 = template.make_template(
+        "s1", var_scoped_function, custom_getter_=custom_getter)
+    self.assertEqual(custom_getter_count[0], 0)
+    tmpl1()
+    self.assertEqual(custom_getter_count[0], 1)
+    tmpl1()
+    self.assertEqual(custom_getter_count[0], 2)
+
+    # Test that custom getter is called when the variable scope is created
+    # during construction
+    custom_getter_count[0] = 0
+    tmpl2 = template.make_template(
+        "s2",
+        var_scoped_function,
+        custom_getter_=custom_getter,
+        create_scope_now_=True)
+    self.assertEqual(custom_getter_count[0], 0)
+    tmpl2()
+    self.assertEqual(custom_getter_count[0], 1)
+    tmpl2()
+    self.assertEqual(custom_getter_count[0], 2)
+
+
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

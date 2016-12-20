@@ -43,11 +43,12 @@ import six as _six
 from tensorflow.python.util.all_util import remove_undocumented
 
 
-def as_bytes(bytes_or_text):
+def as_bytes(bytes_or_text, encoding='utf-8'):
   """Converts either bytes or unicode to `bytes`, using utf-8 encoding for text.
 
   Args:
     bytes_or_text: A `bytes`, `str`, or `unicode` object.
+    encoding: A string indicating the charset for encoding unicode.
 
   Returns:
     A `bytes` object.
@@ -56,7 +57,7 @@ def as_bytes(bytes_or_text):
     TypeError: If `bytes_or_text` is not a binary or unicode string.
   """
   if isinstance(bytes_or_text, _six.text_type):
-    return bytes_or_text.encode('utf-8')
+    return bytes_or_text.encode(encoding)
   elif isinstance(bytes_or_text, bytes):
     return bytes_or_text
   else:
@@ -64,11 +65,12 @@ def as_bytes(bytes_or_text):
                     (bytes_or_text,))
 
 
-def as_text(bytes_or_text):
+def as_text(bytes_or_text, encoding='utf-8'):
   """Returns the given argument as a unicode string.
 
   Args:
     bytes_or_text: A `bytes`, `str, or `unicode` object.
+    encoding: A string indicating the charset for decoding unicode.
 
   Returns:
     A `unicode` (Python 2) or `str` (Python 3) object.
@@ -79,7 +81,7 @@ def as_text(bytes_or_text):
   if isinstance(bytes_or_text, _six.text_type):
     return bytes_or_text
   elif isinstance(bytes_or_text, bytes):
-    return bytes_or_text.decode('utf-8')
+    return bytes_or_text.decode(encoding)
   else:
     raise TypeError('Expected binary or unicode string, got %r' % bytes_or_text)
 

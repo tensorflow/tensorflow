@@ -20,45 +20,117 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import json
 import tempfile
 
 import numpy as np
 import tensorflow as tf
 
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn
+from tensorflow.contrib.learn.python.learn.estimators import dnn
+from tensorflow.contrib.learn.python.learn.estimators import dnn_linear_combined
 from tensorflow.contrib.learn.python.learn.estimators import estimator_test_utils
+from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
+from tensorflow.contrib.learn.python.learn.estimators import test_data
 from tensorflow.contrib.learn.python.learn.metric_spec import MetricSpec
 from tensorflow.python.ops import math_ops
 
 
-def _prepare_iris_data_for_logistic_regression():
-  # Converts iris data to a logistic regression problem.
-  iris = tf.contrib.learn.datasets.load_iris()
-  ids = np.where((iris.target == 0) | (iris.target == 1))
-  iris = tf.contrib.learn.datasets.base.Dataset(data=iris.data[ids],
-                                                target=iris.target[ids])
-  return iris
+class EmbeddingMultiplierTest(tf.test.TestCase):
+  """dnn_model_fn tests."""
 
+  def testRaisesNonEmbeddingColumn(self):
+    one_hot_language = tf.contrib.layers.one_hot_column(
+        tf.contrib.layers.sparse_column_with_hash_bucket('language', 10))
 
-def _iris_input_logistic_fn():
-  iris = _prepare_iris_data_for_logistic_regression()
-  return {
-      'feature': tf.constant(iris.data, dtype=tf.float32)
-  }, tf.constant(iris.target, shape=[100, 1], dtype=tf.int32)
+    params = {
+        'feature_columns': [one_hot_language],
+        'head': head_lib._multi_class_head(2),
+        'hidden_units': [1],
+        # Set lr mult to 0. to keep embeddings constant.
+        'embedding_lr_multipliers': {
+            one_hot_language: 0.0
+        },
+    }
+    features = {
+        'language':
+            tf.SparseTensor(
+                values=['en', 'fr', 'zh'],
+                indices=[[0, 0], [1, 0], [2, 0]],
+                dense_shape=[3, 1]),
+    }
+    labels = tf.constant([[0], [0], [0]], dtype=tf.int32)
+    with self.assertRaisesRegexp(
+        ValueError, 'can only be defined for embedding columns'):
+      dnn._dnn_model_fn(features, labels,
+                        tf.contrib.learn.ModeKeys.TRAIN, params)
 
+  def testMultipliesGradient(self):
+    embedding_language = tf.contrib.layers.embedding_column(
+        tf.contrib.layers.sparse_column_with_hash_bucket('language', 10),
+        dimension=1, initializer=tf.constant_initializer(0.1))
+    embedding_wire = tf.contrib.layers.embedding_column(
+        tf.contrib.layers.sparse_column_with_hash_bucket('wire', 10),
+        dimension=1, initializer=tf.constant_initializer(0.1))
 
-def _iris_input_multiclass_fn():
-  iris = tf.contrib.learn.datasets.load_iris()
-  return {
-      'feature': tf.constant(iris.data, dtype=tf.float32)
-  }, tf.constant(iris.target, shape=[150, 1], dtype=tf.int32)
+    params = {
+        'feature_columns': [embedding_language, embedding_wire],
+        'head': head_lib._multi_class_head(2),
+        'hidden_units': [1],
+        # Set lr mult to 0. to keep embeddings constant.
+        'embedding_lr_multipliers': {
+            embedding_language: 0.0
+        },
+    }
+    features = {
+        'language':
+            tf.SparseTensor(
+                values=['en', 'fr', 'zh'],
+                indices=[[0, 0], [1, 0], [2, 0]],
+                dense_shape=[3, 1]),
+        'wire':
+            tf.SparseTensor(
+                values=['omar', 'stringer', 'marlo'],
+                indices=[[0, 0], [1, 0], [2, 0]],
+                dense_shape=[3, 1]),
+    }
+    labels = tf.constant([[0], [0], [0]], dtype=tf.int32)
+    model_ops = dnn._dnn_model_fn(features, labels,
+                                  tf.contrib.learn.ModeKeys.TRAIN, params)
+    with tf.train.MonitoredSession() as sess:
+      language_var = dnn_linear_combined._get_embedding_variable(
+          embedding_language, 'dnn', 'dnn/input_from_feature_columns')
+      wire_var = dnn_linear_combined._get_embedding_variable(
+          embedding_wire, 'dnn', 'dnn/input_from_feature_columns')
+      for _ in range(2):
+        _, language_value, wire_value = sess.run(
+            [model_ops.train_op, language_var, wire_var])
+      initial_value = np.full_like(language_value, 0.1)
+      self.assertTrue(np.all(np.isclose(language_value, initial_value)))
+      self.assertFalse(np.all(np.isclose(wire_value, initial_value)))
 
 
 class DNNClassifierTest(tf.test.TestCase):
 
+  def _assertInRange(self, expected_min, expected_max, actual):
+    self.assertLessEqual(expected_min, actual)
+    self.assertGreaterEqual(expected_max, actual)
+
   def testEstimatorContract(self):
     estimator_test_utils.assert_estimator_contract(
         self, tf.contrib.learn.DNNClassifier)
+
+  def testEmbeddingMultiplier(self):
+    embedding_language = tf.contrib.layers.embedding_column(
+        tf.contrib.layers.sparse_column_with_hash_bucket('language', 10),
+        dimension=1, initializer=tf.constant_initializer(0.1))
+    classifier = tf.contrib.learn.DNNClassifier(
+        feature_columns=[embedding_language],
+        hidden_units=[3, 3],
+        embedding_lr_multipliers={embedding_language: 0.8})
+    self.assertEqual(
+        {embedding_language: 0.8},
+        classifier._estimator.params['embedding_lr_multipliers'])
 
   def testLogisticRegression_MatrixData(self):
     """Tests binary classification using matrix data as input."""
@@ -70,20 +142,71 @@ class DNNClassifierTest(tf.test.TestCase):
         hidden_units=[3, 3],
         config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
-    classifier.fit(input_fn=_iris_input_logistic_fn, steps=100)
-    scores = classifier.evaluate(input_fn=_iris_input_logistic_fn, steps=1)
-    self.assertGreater(scores['accuracy'], 0.9)
-    self.assertLess(scores['loss'], 0.3)
+    input_fn = test_data.iris_input_logistic_fn
+    classifier.fit(input_fn=input_fn, steps=5)
+    scores = classifier.evaluate(input_fn=input_fn, steps=1)
+    self._assertInRange(0.0, 1.0, scores['accuracy'])
+    self.assertIn('loss', scores)
+
+  def testLogisticRegression_MatrixData_Labels1D(self):
+    """Same as the last test, but label shape is [100] instead of [100, 1]."""
+    def _input_fn():
+      iris = test_data.prepare_iris_data_for_logistic_regression()
+      return {
+          'feature': tf.constant(iris.data, dtype=tf.float32)
+      }, tf.constant(iris.target, shape=[100], dtype=tf.int32)
+
+    cont_features = [
+        tf.contrib.layers.real_valued_column('feature', dimension=4)]
+
+    classifier = tf.contrib.learn.DNNClassifier(
+        feature_columns=cont_features,
+        hidden_units=[3, 3],
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
+
+    classifier.fit(input_fn=_input_fn, steps=5)
+    scores = classifier.evaluate(input_fn=_input_fn, steps=1)
+    self.assertIn('loss', scores)
+
+  def testLogisticRegression_NpMatrixData(self):
+    """Tests binary classification using numpy matrix data as input."""
+    iris = test_data.prepare_iris_data_for_logistic_regression()
+    train_x = iris.data
+    train_y = iris.target
+    feature_columns = [tf.contrib.layers.real_valued_column('', dimension=4)]
+    classifier = tf.contrib.learn.DNNClassifier(
+        feature_columns=feature_columns,
+        hidden_units=[3, 3],
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
+
+    classifier.fit(x=train_x, y=train_y, steps=5)
+    scores = classifier.evaluate(x=train_x, y=train_y, steps=1)
+    self._assertInRange(0.0, 1.0, scores['accuracy'])
+
+  def _assertBinaryPredictions(self, expected_len, predictions):
+    self.assertEqual(expected_len, len(predictions))
+    for prediction in predictions:
+      self.assertIn(prediction, (0, 1))
+
+  def _assertProbabilities(
+      self, expected_batch_size, expected_n_classes, probabilities):
+    self.assertEqual(expected_batch_size, len(probabilities))
+    for b in range(expected_batch_size):
+      self.assertEqual(expected_n_classes, len(probabilities[b]))
+      for i in range(expected_n_classes):
+        self._assertInRange(0.0, 1.0, probabilities[b][i])
 
   def testLogisticRegression_TensorData(self):
     """Tests binary classification using tensor data as input."""
     def _input_fn(num_epochs=None):
       features = {
-          'age': tf.train.limit_epochs(tf.constant([[.8], [.2], [.1]]),
-                                       num_epochs=num_epochs),
-          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
-                                      indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+          'age': tf.train.limit_epochs(
+              tf.constant([[.8], [0.2], [.1]]), num_epochs=num_epochs),
+          'language': tf.SparseTensor(
+              values=tf.train.limit_epochs(
+                  ['en', 'fr', 'zh'], num_epochs=num_epochs),
+              indices=[[0, 0], [0, 1], [2, 0]],
+              dense_shape=[3, 2])
       }
       return features, tf.constant([[1], [0], [0]], dtype=tf.int32)
 
@@ -97,31 +220,33 @@ class DNNClassifierTest(tf.test.TestCase):
     classifier = tf.contrib.learn.DNNClassifier(
         n_classes=2,
         feature_columns=feature_columns,
-        hidden_units=[3, 3],
+        hidden_units=[10, 10],
         config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
-    classifier.fit(input_fn=_input_fn, steps=100)
+    classifier.fit(input_fn=_input_fn, steps=50)
 
     scores = classifier.evaluate(input_fn=_input_fn, steps=1)
-    self.assertGreater(scores['accuracy'], 0.9)
-    self.assertLess(scores['loss'], 0.3)
+    self._assertInRange(0.0, 1.0, scores['accuracy'])
+    self.assertIn('loss', scores)
     predict_input_fn = functools.partial(_input_fn, num_epochs=1)
     predictions = list(
         classifier.predict(input_fn=predict_input_fn, as_iterable=True))
-    self.assertListEqual(predictions, [1, 0, 0])
+    self._assertBinaryPredictions(3, predictions)
 
   def testLogisticRegression_FloatLabel(self):
     """Tests binary classification with float labels."""
     def _input_fn_float_label(num_epochs=None):
       features = {
-          'age': tf.train.limit_epochs(tf.constant([[50], [20], [10]]),
-                                       num_epochs=num_epochs),
-          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
-                                      indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+          'age': tf.train.limit_epochs(
+              tf.constant([[50], [20], [10]]), num_epochs=num_epochs),
+          'language': tf.SparseTensor(
+              values=tf.train.limit_epochs(
+                  ['en', 'fr', 'zh'], num_epochs=num_epochs),
+              indices=[[0, 0], [0, 1], [2, 0]],
+              dense_shape=[3, 2])
       }
-      target = tf.constant([[0.8], [0.], [0.2]], dtype=tf.float32)
-      return features, target
+      labels = tf.constant([[0.8], [0.], [0.2]], dtype=tf.float32)
+      return features, labels
 
     language_column = tf.contrib.layers.sparse_column_with_hash_bucket(
         'language', hash_bucket_size=20)
@@ -136,18 +261,15 @@ class DNNClassifierTest(tf.test.TestCase):
         hidden_units=[3, 3],
         config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
-    classifier.fit(input_fn=_input_fn_float_label, steps=1000)
+    classifier.fit(input_fn=_input_fn_float_label, steps=50)
 
     predict_input_fn = functools.partial(_input_fn_float_label, num_epochs=1)
-    predictions_proba = list(
-        classifier.predict_proba(input_fn=predict_input_fn, as_iterable=True))
-    # Prediction probabilities mirror the target column, which proves that the
-    # classifier learns from float input.
-    self.assertAllClose(
-        predictions_proba, [[0.2, 0.8], [1., 0.], [0.8, 0.2]], atol=0.05)
     predictions = list(
         classifier.predict(input_fn=predict_input_fn, as_iterable=True))
-    self.assertListEqual(predictions, [1, 0, 0])
+    self._assertBinaryPredictions(3, predictions)
+    predictions_proba = list(
+        classifier.predict_proba(input_fn=predict_input_fn, as_iterable=True))
+    self._assertProbabilities(3, 2, predictions_proba)
 
   def testMultiClass_MatrixData(self):
     """Tests multi-class classification using matrix data as input."""
@@ -160,11 +282,48 @@ class DNNClassifierTest(tf.test.TestCase):
         hidden_units=[3, 3],
         config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
-    classifier.fit(input_fn=_iris_input_multiclass_fn, steps=200)
-    self.assertTrue('centered_bias_weight' in classifier.get_variable_names())
-    scores = classifier.evaluate(input_fn=_iris_input_multiclass_fn, steps=1)
-    self.assertGreater(scores['accuracy'], 0.8)
-    self.assertLess(scores['loss'], 0.3)
+    input_fn = test_data.iris_input_multiclass_fn
+    classifier.fit(input_fn=input_fn, steps=200)
+    scores = classifier.evaluate(input_fn=input_fn, steps=1)
+    self._assertInRange(0.0, 1.0, scores['accuracy'])
+    self.assertIn('loss', scores)
+
+  def testMultiClass_MatrixData_Labels1D(self):
+    """Same as the last test, but label shape is [150] instead of [150, 1]."""
+    def _input_fn():
+      iris = tf.contrib.learn.datasets.load_iris()
+      return {
+          'feature': tf.constant(iris.data, dtype=tf.float32)
+      }, tf.constant(iris.target, shape=[150], dtype=tf.int32)
+
+    cont_features = [
+        tf.contrib.layers.real_valued_column('feature', dimension=4)]
+
+    classifier = tf.contrib.learn.DNNClassifier(
+        n_classes=3,
+        feature_columns=cont_features,
+        hidden_units=[3, 3],
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
+
+    classifier.fit(input_fn=_input_fn, steps=200)
+    scores = classifier.evaluate(input_fn=_input_fn, steps=1)
+    self._assertInRange(0.0, 1.0, scores['accuracy'])
+
+  def testMultiClass_NpMatrixData(self):
+    """Tests multi-class classification using numpy matrix data as input."""
+    iris = tf.contrib.learn.datasets.load_iris()
+    train_x = iris.data
+    train_y = iris.target
+    feature_columns = [tf.contrib.layers.real_valued_column('', dimension=4)]
+    classifier = tf.contrib.learn.DNNClassifier(
+        n_classes=3,
+        feature_columns=feature_columns,
+        hidden_units=[3, 3],
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
+
+    classifier.fit(x=train_x, y=train_y, steps=200)
+    scores = classifier.evaluate(x=train_x, y=train_y, steps=1)
+    self._assertInRange(0.0, 1.0, scores['accuracy'])
 
   def testLoss(self):
     """Tests loss calculation."""
@@ -172,11 +331,11 @@ class DNNClassifierTest(tf.test.TestCase):
     def _input_fn_train():
       # Create 4 rows, one of them (y = x), three of them (y=Not(x))
       # The logistic prediction should be (y = 0.25).
-      target = tf.constant([[1], [0], [0], [0]])
+      labels = tf.constant([[1], [0], [0], [0]])
       features = {
           'x': tf.ones(shape=[4, 1], dtype=tf.float32),
       }
-      return features, target
+      return features, labels
 
     classifier = tf.contrib.learn.DNNClassifier(
         n_classes=2,
@@ -184,10 +343,9 @@ class DNNClassifierTest(tf.test.TestCase):
         hidden_units=[3, 3],
         config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
-    classifier.fit(input_fn=_input_fn_train, steps=100)
+    classifier.fit(input_fn=_input_fn_train, steps=5)
     scores = classifier.evaluate(input_fn=_input_fn_train, steps=1)
-    # Cross entropy = -0.25*log(0.25)-0.75*log(0.75) = 0.562
-    self.assertAlmostEqual(scores['loss'], 0.562, delta=0.1)
+    self.assertIn('loss', scores)
 
   def testLossWithWeights(self):
     """Tests loss calculation with weights."""
@@ -195,21 +353,21 @@ class DNNClassifierTest(tf.test.TestCase):
     def _input_fn_train():
       # 4 rows with equal weight, one of them (y = x), three of them (y=Not(x))
       # The logistic prediction should be (y = 0.25).
-      target = tf.constant([[1.], [0.], [0.], [0.]])
+      labels = tf.constant([[1.], [0.], [0.], [0.]])
       features = {
           'x': tf.ones(shape=[4, 1], dtype=tf.float32),
           'w': tf.constant([[1.], [1.], [1.], [1.]])
       }
-      return features, target
+      return features, labels
 
     def _input_fn_eval():
       # 4 rows, with different weights.
-      target = tf.constant([[1.], [0.], [0.], [0.]])
+      labels = tf.constant([[1.], [0.], [0.], [0.]])
       features = {
           'x': tf.ones(shape=[4, 1], dtype=tf.float32),
           'w': tf.constant([[7.], [1.], [1.], [1.]])
       }
-      return features, target
+      return features, labels
 
     classifier = tf.contrib.learn.DNNClassifier(
         weight_column_name='w',
@@ -218,10 +376,9 @@ class DNNClassifierTest(tf.test.TestCase):
         hidden_units=[3, 3],
         config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
-    classifier.fit(input_fn=_input_fn_train, steps=100)
+    classifier.fit(input_fn=_input_fn_train, steps=5)
     scores = classifier.evaluate(input_fn=_input_fn_eval, steps=1)
-    # Weighted cross entropy = (-7*log(0.25)-3*log(0.75))/10 = 1.06
-    self.assertAlmostEqual(scores['loss'], 1.06, delta=0.1)
+    self.assertIn('loss', scores)
 
   def testTrainWithWeights(self):
     """Tests training with given weight column."""
@@ -230,43 +387,43 @@ class DNNClassifierTest(tf.test.TestCase):
       # Create 4 rows, one of them (y = x), three of them (y=Not(x))
       # First row has more weight than others. Model should fit (y=x) better
       # than (y=Not(x)) due to the relative higher weight of the first row.
-      target = tf.constant([[1], [0], [0], [0]])
+      labels = tf.constant([[1], [0], [0], [0]])
       features = {
           'x': tf.ones(shape=[4, 1], dtype=tf.float32),
           'w': tf.constant([[100.], [3.], [2.], [2.]])
       }
-      return features, target
+      return features, labels
 
     def _input_fn_eval():
       # Create 4 rows (y = x)
-      target = tf.constant([[1], [1], [1], [1]])
+      labels = tf.constant([[1], [1], [1], [1]])
       features = {
           'x': tf.ones(shape=[4, 1], dtype=tf.float32),
           'w': tf.constant([[1.], [1.], [1.], [1.]])
       }
-      return features, target
+      return features, labels
 
     classifier = tf.contrib.learn.DNNClassifier(
         weight_column_name='w',
         feature_columns=[tf.contrib.layers.real_valued_column('x')],
         hidden_units=[3, 3],
-        config=tf.contrib.learn.RunConfig(tf_random_seed=3))
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
-    classifier.fit(input_fn=_input_fn_train, steps=100)
+    classifier.fit(input_fn=_input_fn_train, steps=5)
     scores = classifier.evaluate(input_fn=_input_fn_eval, steps=1)
-    # The model should learn (y = x) because of the weights, so the accuracy
-    # should be close to 1.
-    self.assertGreater(scores['accuracy'], 0.9)
+    self._assertInRange(0.0, 1.0, scores['accuracy'])
 
   def testPredict_AsIterableFalse(self):
     """Tests predict and predict_prob methods with as_iterable=False."""
     def _input_fn(num_epochs=None):
       features = {
-          'age': tf.train.limit_epochs(tf.constant([[.8], [.2], [.1]]),
-                                       num_epochs=num_epochs),
-          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
-                                      indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+          'age': tf.train.limit_epochs(
+              tf.constant([[.8], [.2], [.1]]), num_epochs=num_epochs),
+          'language': tf.SparseTensor(
+              values=tf.train.limit_epochs(
+                  ['en', 'fr', 'zh'], num_epochs=num_epochs),
+              indices=[[0, 0], [0, 1], [2, 0]],
+              dense_shape=[3, 2])
       }
       return features, tf.constant([[1], [0], [0]], dtype=tf.int32)
 
@@ -276,33 +433,35 @@ class DNNClassifierTest(tf.test.TestCase):
         tf.contrib.layers.embedding_column(sparse_column, dimension=1)
     ]
 
+    n_classes = 3
     classifier = tf.contrib.learn.DNNClassifier(
-        n_classes=3,
+        n_classes=n_classes,
         feature_columns=feature_columns,
-        hidden_units=[3, 3],
-        config=tf.contrib.learn.RunConfig(tf_random_seed=3))
+        hidden_units=[10, 10],
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
     classifier.fit(input_fn=_input_fn, steps=100)
 
     scores = classifier.evaluate(input_fn=_input_fn, steps=1)
-    self.assertGreater(scores['accuracy'], 0.9)
-    self.assertLess(scores['loss'], 0.3)
+    self._assertInRange(0.0, 1.0, scores['accuracy'])
+    self.assertIn('loss', scores)
     predictions = classifier.predict(input_fn=_input_fn, as_iterable=False)
-    self.assertListEqual(list(predictions), [1, 0, 0])
-    predictions = classifier.predict_proba(input_fn=_input_fn,
-                                           as_iterable=False)
-    self.assertAllClose(
-        predictions, [[0., 1., 0.], [1., 0., 0.], [1., 0., 0.]], atol=0.1)
+    self._assertBinaryPredictions(3, predictions)
+    probabilities = classifier.predict_proba(input_fn=_input_fn,
+                                             as_iterable=False)
+    self._assertProbabilities(3, n_classes, probabilities)
 
   def testPredict_AsIterable(self):
     """Tests predict and predict_prob methods with as_iterable=True."""
     def _input_fn(num_epochs=None):
       features = {
-          'age': tf.train.limit_epochs(tf.constant([[.8], [.2], [.1]]),
-                                       num_epochs=num_epochs),
-          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
-                                      indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+          'age': tf.train.limit_epochs(
+              tf.constant([[.8], [.2], [.1]]), num_epochs=num_epochs),
+          'language': tf.SparseTensor(
+              values=tf.train.limit_epochs(
+                  ['en', 'fr', 'zh'], num_epochs=num_epochs),
+              indices=[[0, 0], [0, 1], [2, 0]],
+              dense_shape=[3, 2])
       }
       return features, tf.constant([[1], [0], [0]], dtype=tf.int32)
 
@@ -322,8 +481,8 @@ class DNNClassifierTest(tf.test.TestCase):
     classifier.fit(input_fn=_input_fn, steps=200)
 
     scores = classifier.evaluate(input_fn=_input_fn, steps=1)
-    self.assertGreater(scores['accuracy'], 0.9)
-    self.assertLess(scores['loss'], 0.3)
+    self._assertInRange(0.0, 1.0, scores['accuracy'])
+    self.assertIn('loss', scores)
     predict_input_fn = functools.partial(_input_fn, num_epochs=1)
     predictions = list(
         classifier.predict(input_fn=predict_input_fn, as_iterable=True))
@@ -335,28 +494,32 @@ class DNNClassifierTest(tf.test.TestCase):
 
   def testCustomMetrics(self):
     """Tests custom evaluation metrics."""
-    def _input_fn_train():
+    def _input_fn(num_epochs=None):
       # Create 4 rows, one of them (y = x), three of them (y=Not(x))
-      target = tf.constant([[1], [0], [0], [0]])
-      features = {'x': tf.ones(shape=[4, 1], dtype=tf.float32),}
-      return features, target
+      labels = tf.constant([[1], [0], [0], [0]])
+      features = {
+          'x': tf.train.limit_epochs(
+              tf.ones(shape=[4, 1], dtype=tf.float32), num_epochs=num_epochs),
+      }
+      return features, labels
 
-    def _my_metric_op(predictions, targets):
+    def _my_metric_op(predictions, labels):
       # For the case of binary classification, the 2nd column of "predictions"
       # denotes the model predictions.
+      labels = tf.to_float(labels)
       predictions = tf.slice(predictions, [0, 1], [-1, 1])
-      targets = math_ops.cast(targets, predictions.dtype)
-      return tf.reduce_sum(tf.mul(predictions, targets))
+      labels = math_ops.cast(labels, predictions.dtype)
+      return tf.reduce_sum(tf.mul(predictions, labels))
 
     classifier = tf.contrib.learn.DNNClassifier(
         feature_columns=[tf.contrib.layers.real_valued_column('x')],
         hidden_units=[3, 3],
         config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
-    classifier.fit(input_fn=_input_fn_train, steps=100)
+    classifier.fit(input_fn=_input_fn, steps=5)
     scores = classifier.evaluate(
-        input_fn=_input_fn_train,
-        steps=100,
+        input_fn=_input_fn,
+        steps=5,
         metrics={
             'my_accuracy': MetricSpec(
                 metric_fn=tf.contrib.metrics.streaming_accuracy,
@@ -371,7 +534,8 @@ class DNNClassifierTest(tf.test.TestCase):
     self.assertTrue(
         set(['loss', 'my_accuracy', 'my_precision', 'my_metric'
             ]).issubset(set(scores.keys())))
-    predictions = classifier.predict(input_fn=_input_fn_train)
+    predict_input_fn = functools.partial(_input_fn, num_epochs=1)
+    predictions = np.array(list(classifier.predict(input_fn=predict_input_fn)))
     self.assertEqual(_sklearn.accuracy_score([1, 0, 0, 0], predictions),
                      scores['my_accuracy'])
 
@@ -379,8 +543,8 @@ class DNNClassifierTest(tf.test.TestCase):
     # "probabilities".
     with self.assertRaisesRegexp(KeyError, 'bad_type'):
       classifier.evaluate(
-          input_fn=_input_fn_train,
-          steps=100,
+          input_fn=_input_fn,
+          steps=5,
           metrics={
               'bad_name': MetricSpec(
                   metric_fn=tf.contrib.metrics.streaming_auc,
@@ -390,11 +554,13 @@ class DNNClassifierTest(tf.test.TestCase):
     """Tests that insures you can save and reload a trained model."""
     def _input_fn(num_epochs=None):
       features = {
-          'age': tf.train.limit_epochs(tf.constant([[.8], [.2], [.1]]),
-                                       num_epochs=num_epochs),
-          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
-                                      indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+          'age': tf.train.limit_epochs(
+              tf.constant([[.8], [.2], [.1]]), num_epochs=num_epochs),
+          'language': tf.SparseTensor(
+              values=tf.train.limit_epochs(
+                  ['en', 'fr', 'zh'], num_epochs=num_epochs),
+              indices=[[0, 0], [0, 1], [2, 0]],
+              dense_shape=[3, 2])
       }
       return features, tf.constant([[1], [0], [0]], dtype=tf.int32)
 
@@ -412,8 +578,9 @@ class DNNClassifierTest(tf.test.TestCase):
         hidden_units=[3, 3],
         config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
-    classifier.fit(input_fn=_input_fn, steps=100)
-    predictions1 = classifier.predict(input_fn=_input_fn)
+    classifier.fit(input_fn=_input_fn, steps=5)
+    predict_input_fn = functools.partial(_input_fn, num_epochs=1)
+    predictions1 = classifier.predict(input_fn=predict_input_fn)
     del classifier
 
     classifier2 = tf.contrib.learn.DNNClassifier(
@@ -422,18 +589,20 @@ class DNNClassifierTest(tf.test.TestCase):
         feature_columns=feature_columns,
         hidden_units=[3, 3],
         config=tf.contrib.learn.RunConfig(tf_random_seed=1))
-    predictions2 = classifier2.predict(input_fn=_input_fn)
+    predictions2 = classifier2.predict(input_fn=predict_input_fn)
     self.assertEqual(list(predictions1), list(predictions2))
 
   def testTrainWithPartitionedVariables(self):
     """Tests training with partitioned variables."""
     def _input_fn(num_epochs=None):
       features = {
-          'age': tf.train.limit_epochs(tf.constant([[.8], [.2], [.1]]),
-                                       num_epochs=num_epochs),
-          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
-                                      indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+          'age': tf.train.limit_epochs(
+              tf.constant([[.8], [.2], [.1]]), num_epochs=num_epochs),
+          'language': tf.SparseTensor(
+              values=tf.train.limit_epochs(
+                  ['en', 'fr', 'zh'], num_epochs=num_epochs),
+              indices=[[0, 0], [0, 1], [2, 0]],
+              dense_shape=[3, 2])
       }
       return features, tf.constant([[1], [0], [0]], dtype=tf.int32)
 
@@ -445,21 +614,29 @@ class DNNClassifierTest(tf.test.TestCase):
         tf.contrib.layers.embedding_column(sparse_column, dimension=1)
     ]
 
+    tf_config = {
+        'cluster': {
+            tf.contrib.learn.TaskType.PS: ['fake_ps_0', 'fake_ps_1']
+        }
+    }
+    with tf.test.mock.patch.dict('os.environ',
+                                 {'TF_CONFIG': json.dumps(tf_config)}):
+      config = tf.contrib.learn.RunConfig(tf_random_seed=1)
+      # Because we did not start a distributed cluster, we need to pass an
+      # empty ClusterSpec, otherwise the device_setter will look for
+      # distributed jobs, such as "/job:ps" which are not present.
+      config._cluster_spec = tf.train.ClusterSpec({})
+
     classifier = tf.contrib.learn.DNNClassifier(
         n_classes=3,
         feature_columns=feature_columns,
         hidden_units=[3, 3],
-        # Because we did not start a distributed cluster, we need to pass an
-        # empty ClusterSpec, otherwise the device_setter will look for
-        # distributed jobs, such as "/job:ps" which are not present.
-        config=tf.contrib.learn.RunConfig(
-            num_ps_replicas=2, cluster_spec=tf.train.ClusterSpec({}),
-            tf_random_seed=5))
+        config=config)
 
-    classifier.fit(input_fn=_input_fn, steps=100)
+    classifier.fit(input_fn=_input_fn, steps=5)
     scores = classifier.evaluate(input_fn=_input_fn, steps=1)
-    self.assertGreater(scores['accuracy'], 0.9)
-    self.assertLess(scores['loss'], 0.3)
+    self._assertInRange(0.0, 1.0, scores['accuracy'])
+    self.assertIn('loss', scores)
 
   def testExport(self):
     """Tests export model for servo."""
@@ -469,7 +646,7 @@ class DNNClassifierTest(tf.test.TestCase):
           'age': tf.constant([1]),
           'language': tf.SparseTensor(values=['english'],
                                       indices=[[0, 0]],
-                                      shape=[1, 1])
+                                      dense_shape=[1, 1])
       }, tf.constant([[1]])
 
     language = tf.contrib.layers.sparse_column_with_hash_bucket('language', 100)
@@ -481,10 +658,29 @@ class DNNClassifierTest(tf.test.TestCase):
     classifier = tf.contrib.learn.DNNClassifier(
         feature_columns=feature_columns,
         hidden_units=[3, 3])
-    classifier.fit(input_fn=input_fn, steps=100)
+    classifier.fit(input_fn=input_fn, steps=5)
 
     export_dir = tempfile.mkdtemp()
     classifier.export(export_dir)
+
+  def testEnableCenteredBias(self):
+    """Tests that we can enable centered bias."""
+    cont_features = [
+        tf.contrib.layers.real_valued_column('feature', dimension=4)]
+
+    classifier = tf.contrib.learn.DNNClassifier(
+        n_classes=3,
+        feature_columns=cont_features,
+        hidden_units=[3, 3],
+        enable_centered_bias=True,
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
+
+    input_fn = test_data.iris_input_multiclass_fn
+    classifier.fit(input_fn=input_fn, steps=5)
+    self.assertIn('centered_bias_weight', classifier.get_variable_names())
+    scores = classifier.evaluate(input_fn=input_fn, steps=1)
+    self._assertInRange(0.0, 1.0, scores['accuracy'])
+    self.assertIn('loss', scores)
 
   def testDisableCenteredBias(self):
     """Tests that we can disable centered bias."""
@@ -498,11 +694,12 @@ class DNNClassifierTest(tf.test.TestCase):
         enable_centered_bias=False,
         config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
-    classifier.fit(input_fn=_iris_input_multiclass_fn, steps=200)
-    self.assertFalse('centered_bias_weight' in classifier.get_variable_names())
-    scores = classifier.evaluate(input_fn=_iris_input_multiclass_fn, steps=1)
-    self.assertGreater(scores['accuracy'], 0.8)
-    self.assertLess(scores['loss'], 0.3)
+    input_fn = test_data.iris_input_multiclass_fn
+    classifier.fit(input_fn=input_fn, steps=5)
+    self.assertNotIn('centered_bias_weight', classifier.get_variable_names())
+    scores = classifier.evaluate(input_fn=input_fn, steps=1)
+    self._assertInRange(0.0, 1.0, scores['accuracy'])
+    self.assertIn('loss', scores)
 
 
 class DNNRegressorTest(tf.test.TestCase):
@@ -521,19 +718,57 @@ class DNNRegressorTest(tf.test.TestCase):
         hidden_units=[3, 3],
         config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
-    regressor.fit(input_fn=_iris_input_logistic_fn, steps=200)
-    scores = regressor.evaluate(input_fn=_iris_input_logistic_fn, steps=1)
-    self.assertLess(scores['loss'], 0.3)
+    input_fn = test_data.iris_input_logistic_fn
+    regressor.fit(input_fn=input_fn, steps=200)
+    scores = regressor.evaluate(input_fn=input_fn, steps=1)
+    self.assertIn('loss', scores)
+
+  def testRegression_MatrixData_Labels1D(self):
+    """Same as the last test, but label shape is [100] instead of [100, 1]."""
+    def _input_fn():
+      iris = test_data.prepare_iris_data_for_logistic_regression()
+      return {
+          'feature': tf.constant(iris.data, dtype=tf.float32)
+      }, tf.constant(iris.target, shape=[100], dtype=tf.int32)
+
+    cont_features = [
+        tf.contrib.layers.real_valued_column('feature', dimension=4)]
+
+    regressor = tf.contrib.learn.DNNRegressor(
+        feature_columns=cont_features,
+        hidden_units=[3, 3],
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
+
+    regressor.fit(input_fn=_input_fn, steps=200)
+    scores = regressor.evaluate(input_fn=_input_fn, steps=1)
+    self.assertIn('loss', scores)
+
+  def testRegression_NpMatrixData(self):
+    """Tests binary classification using numpy matrix data as input."""
+    iris = test_data.prepare_iris_data_for_logistic_regression()
+    train_x = iris.data
+    train_y = iris.target
+    feature_columns = [tf.contrib.layers.real_valued_column('', dimension=4)]
+    regressor = tf.contrib.learn.DNNRegressor(
+        feature_columns=feature_columns,
+        hidden_units=[3, 3],
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
+
+    regressor.fit(x=train_x, y=train_y, steps=200)
+    scores = regressor.evaluate(x=train_x, y=train_y, steps=1)
+    self.assertIn('loss', scores)
 
   def testRegression_TensorData(self):
     """Tests regression using tensor data as input."""
     def _input_fn(num_epochs=None):
       features = {
-          'age': tf.train.limit_epochs(tf.constant([[0.8], [0.15], [0.]]),
-                                       num_epochs=num_epochs),
-          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
-                                      indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+          'age': tf.train.limit_epochs(
+              tf.constant([[.8], [.15], [0.]]), num_epochs=num_epochs),
+          'language': tf.SparseTensor(
+              values=tf.train.limit_epochs(
+                  ['en', 'fr', 'zh'], num_epochs=num_epochs),
+              indices=[[0, 0], [0, 1], [2, 0]],
+              dense_shape=[3, 2])
       }
       return features, tf.constant([1., 0., 0.2], dtype=tf.float32)
 
@@ -552,7 +787,7 @@ class DNNRegressorTest(tf.test.TestCase):
     regressor.fit(input_fn=_input_fn, steps=200)
 
     scores = regressor.evaluate(input_fn=_input_fn, steps=1)
-    self.assertLess(scores['loss'], 0.3)
+    self.assertIn('loss', scores)
 
   def testLoss(self):
     """Tests loss calculation."""
@@ -560,21 +795,20 @@ class DNNRegressorTest(tf.test.TestCase):
     def _input_fn_train():
       # Create 4 rows, one of them (y = x), three of them (y=Not(x))
       # The algorithm should learn (y = 0.25).
-      target = tf.constant([[1.], [0.], [0.], [0.]])
+      labels = tf.constant([[1.], [0.], [0.], [0.]])
       features = {
           'x': tf.ones(shape=[4, 1], dtype=tf.float32),
       }
-      return features, target
+      return features, labels
 
     regressor = tf.contrib.learn.DNNRegressor(
         feature_columns=[tf.contrib.layers.real_valued_column('x')],
         hidden_units=[3, 3],
-        config=tf.contrib.learn.RunConfig(tf_random_seed=3))
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
-    regressor.fit(input_fn=_input_fn_train, steps=100)
+    regressor.fit(input_fn=_input_fn_train, steps=5)
     scores = regressor.evaluate(input_fn=_input_fn_train, steps=1)
-    # Average square loss = (0.75^2 + 3*0.25^2) / 4 = 0.1875
-    self.assertAlmostEqual(scores['loss'], 0.1875, delta=0.1)
+    self.assertIn('loss', scores)
 
   def testLossWithWeights(self):
     """Tests loss calculation with weights."""
@@ -582,21 +816,21 @@ class DNNRegressorTest(tf.test.TestCase):
     def _input_fn_train():
       # 4 rows with equal weight, one of them (y = x), three of them (y=Not(x))
       # The algorithm should learn (y = 0.25).
-      target = tf.constant([[1.], [0.], [0.], [0.]])
+      labels = tf.constant([[1.], [0.], [0.], [0.]])
       features = {
           'x': tf.ones(shape=[4, 1], dtype=tf.float32),
           'w': tf.constant([[1.], [1.], [1.], [1.]])
       }
-      return features, target
+      return features, labels
 
     def _input_fn_eval():
       # 4 rows, with different weights.
-      target = tf.constant([[1.], [0.], [0.], [0.]])
+      labels = tf.constant([[1.], [0.], [0.], [0.]])
       features = {
           'x': tf.ones(shape=[4, 1], dtype=tf.float32),
           'w': tf.constant([[7.], [1.], [1.], [1.]])
       }
-      return features, target
+      return features, labels
 
     regressor = tf.contrib.learn.DNNRegressor(
         weight_column_name='w',
@@ -604,10 +838,9 @@ class DNNRegressorTest(tf.test.TestCase):
         hidden_units=[3, 3],
         config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
-    regressor.fit(input_fn=_input_fn_train, steps=100)
+    regressor.fit(input_fn=_input_fn_train, steps=5)
     scores = regressor.evaluate(input_fn=_input_fn_eval, steps=1)
-    # Weighted average square loss = (7*0.75^2 + 3*0.25^2) / 10 = 0.4125
-    self.assertAlmostEqual(scores['loss'], 0.4125, delta=0.1)
+    self.assertIn('loss', scores)
 
   def testTrainWithWeights(self):
     """Tests training with given weight column."""
@@ -616,46 +849,46 @@ class DNNRegressorTest(tf.test.TestCase):
       # Create 4 rows, one of them (y = x), three of them (y=Not(x))
       # First row has more weight than others. Model should fit (y=x) better
       # than (y=Not(x)) due to the relative higher weight of the first row.
-      target = tf.constant([[1.], [0.], [0.], [0.]])
+      labels = tf.constant([[1.], [0.], [0.], [0.]])
       features = {
           'x': tf.ones(shape=[4, 1], dtype=tf.float32),
           'w': tf.constant([[100.], [3.], [2.], [2.]])
       }
-      return features, target
+      return features, labels
 
     def _input_fn_eval():
       # Create 4 rows (y = x)
-      target = tf.constant([[1.], [1.], [1.], [1.]])
+      labels = tf.constant([[1.], [1.], [1.], [1.]])
       features = {
           'x': tf.ones(shape=[4, 1], dtype=tf.float32),
           'w': tf.constant([[1.], [1.], [1.], [1.]])
       }
-      return features, target
+      return features, labels
 
     regressor = tf.contrib.learn.DNNRegressor(
         weight_column_name='w',
         feature_columns=[tf.contrib.layers.real_valued_column('x')],
         hidden_units=[3, 3],
-        config=tf.contrib.learn.RunConfig(tf_random_seed=3))
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
-    regressor.fit(input_fn=_input_fn_train, steps=100)
+    regressor.fit(input_fn=_input_fn_train, steps=5)
     scores = regressor.evaluate(input_fn=_input_fn_eval, steps=1)
-    # The model should learn (y = x) because of the weights, so the loss should
-    # be close to zero.
-    self.assertLess(scores['loss'], 0.2)
+    self.assertIn('loss', scores)
 
   def testPredict_AsIterableFalse(self):
     """Tests predict method with as_iterable=False."""
-    target = [1., 0., 0.2]
+    labels = [1., 0., 0.2]
     def _input_fn(num_epochs=None):
       features = {
-          'age': tf.train.limit_epochs(tf.constant([[0.8], [0.15], [0.]]),
-                                       num_epochs=num_epochs),
-          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
-                                      indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+          'age': tf.train.limit_epochs(
+              tf.constant([[0.8], [0.15], [0.]]), num_epochs=num_epochs),
+          'language': tf.SparseTensor(
+              values=tf.train.limit_epochs(
+                  ['en', 'fr', 'zh'], num_epochs=num_epochs),
+              indices=[[0, 0], [0, 1], [2, 0]],
+              dense_shape=[3, 2])
       }
-      return features, tf.constant(target, dtype=tf.float32)
+      return features, tf.constant(labels, dtype=tf.float32)
 
     sparse_column = tf.contrib.layers.sparse_column_with_hash_bucket(
         'language', hash_bucket_size=20)
@@ -667,27 +900,29 @@ class DNNRegressorTest(tf.test.TestCase):
     regressor = tf.contrib.learn.DNNRegressor(
         feature_columns=feature_columns,
         hidden_units=[3, 3],
-        config=tf.contrib.learn.RunConfig(tf_random_seed=3))
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
     regressor.fit(input_fn=_input_fn, steps=200)
 
     scores = regressor.evaluate(input_fn=_input_fn, steps=1)
-    self.assertLess(scores['loss'], 0.2)
+    self.assertIn('loss', scores)
     predictions = regressor.predict(input_fn=_input_fn, as_iterable=False)
-    self.assertAllClose(predictions, target, atol=0.2)
+    self.assertAllClose(labels, predictions, atol=0.2)
 
   def testPredict_AsIterable(self):
     """Tests predict method with as_iterable=True."""
-    target = [1., 0., 0.2]
+    labels = [1., 0., 0.2]
     def _input_fn(num_epochs=None):
       features = {
-          'age': tf.train.limit_epochs(tf.constant([[0.8], [0.15], [0.]]),
-                                       num_epochs=num_epochs),
-          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
-                                      indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+          'age': tf.train.limit_epochs(
+              tf.constant([[0.8], [0.15], [0.]]), num_epochs=num_epochs),
+          'language': tf.SparseTensor(
+              values=tf.train.limit_epochs(
+                  ['en', 'fr', 'zh'], num_epochs=num_epochs),
+              indices=[[0, 0], [0, 1], [2, 0]],
+              dense_shape=[3, 2])
       }
-      return features, tf.constant(target, dtype=tf.float32)
+      return features, tf.constant(labels, dtype=tf.float32)
 
     sparse_column = tf.contrib.layers.sparse_column_with_hash_bucket(
         'language', hash_bucket_size=20)
@@ -699,66 +934,132 @@ class DNNRegressorTest(tf.test.TestCase):
     regressor = tf.contrib.learn.DNNRegressor(
         feature_columns=feature_columns,
         hidden_units=[3, 3],
-        config=tf.contrib.learn.RunConfig(tf_random_seed=3))
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
     regressor.fit(input_fn=_input_fn, steps=200)
 
     scores = regressor.evaluate(input_fn=_input_fn, steps=1)
-    self.assertLess(scores['loss'], 0.2)
+    self.assertIn('loss', scores)
     predict_input_fn = functools.partial(_input_fn, num_epochs=1)
     predictions = list(
         regressor.predict(input_fn=predict_input_fn, as_iterable=True))
-    self.assertAllClose(predictions, target, atol=0.2)
+    self.assertAllClose(labels, predictions, atol=0.2)
 
   def testCustomMetrics(self):
     """Tests custom evaluation metrics."""
-    def _input_fn_train():
+    def _input_fn(num_epochs=None):
       # Create 4 rows, one of them (y = x), three of them (y=Not(x))
-      target = tf.constant([[1.], [0.], [0.], [0.]])
-      features = {'x': tf.ones(shape=[4, 1], dtype=tf.float32),}
-      return features, target
+      labels = tf.constant([[1.], [0.], [0.], [0.]])
+      features = {
+          'x': tf.train.limit_epochs(
+              tf.ones(shape=[4, 1], dtype=tf.float32), num_epochs=num_epochs),
+      }
+      return features, labels
 
-    def _my_metric_op(predictions, targets):
-      return tf.reduce_sum(tf.mul(predictions, targets))
+    def _my_metric_op(predictions, labels):
+      return tf.reduce_sum(tf.mul(predictions, labels))
 
     regressor = tf.contrib.learn.DNNRegressor(
         feature_columns=[tf.contrib.layers.real_valued_column('x')],
         hidden_units=[3, 3],
         config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
-    regressor.fit(input_fn=_input_fn_train, steps=100)
+    regressor.fit(input_fn=_input_fn, steps=5)
     scores = regressor.evaluate(
-        input_fn=_input_fn_train,
+        input_fn=_input_fn,
         steps=1,
         metrics={
             'my_error': tf.contrib.metrics.streaming_mean_squared_error,
-            'my_metric': _my_metric_op
+            ('my_metric', 'scores'): _my_metric_op
         })
     self.assertIn('loss', set(scores.keys()))
     self.assertIn('my_error', set(scores.keys()))
     self.assertIn('my_metric', set(scores.keys()))
-    predictions = regressor.predict(input_fn=_input_fn_train)
+    predict_input_fn = functools.partial(_input_fn, num_epochs=1)
+    predictions = np.array(list(regressor.predict(input_fn=predict_input_fn)))
     self.assertAlmostEqual(
         _sklearn.mean_squared_error(np.array([1, 0, 0, 0]), predictions),
         scores['my_error'])
 
-    # Tests that when the key is a tuple, an error is raised.
-    with self.assertRaises(TypeError):
+    # Tests the case that the 2nd element of the key is not "scores".
+    with self.assertRaises(KeyError):
       regressor.evaluate(
-          input_fn=_input_fn_train,
+          input_fn=_input_fn,
           steps=1,
-          metrics={('my_error', 'predictions'
-                   ): tf.contrib.metrics.streaming_mean_squared_error})
+          metrics={('my_error', 'predictions'):
+                   tf.contrib.metrics.streaming_mean_squared_error})
+
+    # Tests the case where the tuple of the key doesn't have 2 elements.
+    with self.assertRaises(ValueError):
+      regressor.evaluate(
+          input_fn=_input_fn,
+          steps=1,
+          metrics={
+              ('bad_length_name', 'scores', 'bad_length'):
+                  tf.contrib.metrics.streaming_mean_squared_error
+          })
+
+  def testCustomMetricsWithMetricSpec(self):
+    """Tests custom evaluation metrics that use MetricSpec."""
+    def _input_fn(num_epochs=None):
+      # Create 4 rows, one of them (y = x), three of them (y=Not(x))
+      labels = tf.constant([[1.], [0.], [0.], [0.]])
+      features = {
+          'x': tf.train.limit_epochs(
+              tf.ones(shape=[4, 1], dtype=tf.float32), num_epochs=num_epochs),
+      }
+      return features, labels
+
+    def _my_metric_op(predictions, labels):
+      return tf.reduce_sum(tf.mul(predictions, labels))
+
+    regressor = tf.contrib.learn.DNNRegressor(
+        feature_columns=[tf.contrib.layers.real_valued_column('x')],
+        hidden_units=[3, 3],
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
+
+    regressor.fit(input_fn=_input_fn, steps=5)
+    scores = regressor.evaluate(
+        input_fn=_input_fn,
+        steps=1,
+        metrics={
+            'my_error': MetricSpec(
+                metric_fn=tf.contrib.metrics.streaming_mean_squared_error,
+                prediction_key='scores'),
+            'my_metric': MetricSpec(
+                metric_fn=_my_metric_op,
+                prediction_key='scores')
+        })
+    self.assertIn('loss', set(scores.keys()))
+    self.assertIn('my_error', set(scores.keys()))
+    self.assertIn('my_metric', set(scores.keys()))
+    predict_input_fn = functools.partial(_input_fn, num_epochs=1)
+    predictions = np.array(list(regressor.predict(input_fn=predict_input_fn)))
+    self.assertAlmostEqual(
+        _sklearn.mean_squared_error(np.array([1, 0, 0, 0]), predictions),
+        scores['my_error'])
+
+    # Tests the case where the prediction_key is not "scores".
+    with self.assertRaisesRegexp(KeyError, 'bad_type'):
+      regressor.evaluate(
+          input_fn=_input_fn,
+          steps=1,
+          metrics={
+              'bad_name': MetricSpec(
+                  metric_fn=tf.contrib.metrics.streaming_auc,
+                  prediction_key='bad_type')})
 
   def testTrainSaveLoad(self):
     """Tests that insures you can save and reload a trained model."""
     def _input_fn(num_epochs=None):
       features = {
-          'age': tf.train.limit_epochs(tf.constant([[0.8], [0.15], [0.]]),
-                                       num_epochs=num_epochs),
-          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
-                                      indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+          'age': tf.train.limit_epochs(
+              tf.constant([[0.8], [0.15], [0.]]), num_epochs=num_epochs),
+          'language': tf.SparseTensor(
+              values=tf.train.limit_epochs(
+                  ['en', 'fr', 'zh'], num_epochs=num_epochs),
+              indices=[[0, 0], [0, 1], [2, 0]],
+              dense_shape=[3, 2])
       }
       return features, tf.constant([1., 0., 0.2], dtype=tf.float32)
 
@@ -774,9 +1075,9 @@ class DNNRegressorTest(tf.test.TestCase):
         model_dir=model_dir,
         feature_columns=feature_columns,
         hidden_units=[3, 3],
-        config=tf.contrib.learn.RunConfig(tf_random_seed=3))
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
-    regressor.fit(input_fn=_input_fn, steps=100)
+    regressor.fit(input_fn=_input_fn, steps=5)
     predict_input_fn = functools.partial(_input_fn, num_epochs=1)
     predictions = list(regressor.predict(input_fn=predict_input_fn))
     del regressor
@@ -785,7 +1086,7 @@ class DNNRegressorTest(tf.test.TestCase):
         model_dir=model_dir,
         feature_columns=feature_columns,
         hidden_units=[3, 3],
-        config=tf.contrib.learn.RunConfig(tf_random_seed=3))
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
     predictions2 = list(regressor2.predict(input_fn=predict_input_fn))
     self.assertAllClose(predictions, predictions2)
 
@@ -793,11 +1094,13 @@ class DNNRegressorTest(tf.test.TestCase):
     """Tests training with partitioned variables."""
     def _input_fn(num_epochs=None):
       features = {
-          'age': tf.train.limit_epochs(tf.constant([[0.8], [0.15], [0.]]),
-                                       num_epochs=num_epochs),
-          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
-                                      indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+          'age': tf.train.limit_epochs(
+              tf.constant([[0.8], [0.15], [0.]]), num_epochs=num_epochs),
+          'language': tf.SparseTensor(
+              values=tf.train.limit_epochs(
+                  ['en', 'fr', 'zh'], num_epochs=num_epochs),
+              indices=[[0, 0], [0, 1], [2, 0]],
+              dense_shape=[3, 2])
       }
       return features, tf.constant([1., 0., 0.2], dtype=tf.float32)
 
@@ -810,30 +1113,73 @@ class DNNRegressorTest(tf.test.TestCase):
         tf.contrib.layers.real_valued_column('age')
     ]
 
+    tf_config = {
+        'cluster': {
+            tf.contrib.learn.TaskType.PS: ['fake_ps_0', 'fake_ps_1']
+        }
+    }
+    with tf.test.mock.patch.dict('os.environ',
+                                 {'TF_CONFIG': json.dumps(tf_config)}):
+      config = tf.contrib.learn.RunConfig(tf_random_seed=1)
+      # Because we did not start a distributed cluster, we need to pass an
+      # empty ClusterSpec, otherwise the device_setter will look for
+      # distributed jobs, such as "/job:ps" which are not present.
+      config._cluster_spec = tf.train.ClusterSpec({})
+
     regressor = tf.contrib.learn.DNNRegressor(
         feature_columns=feature_columns,
         hidden_units=[3, 3],
-        # Because we did not start a distributed cluster, we need to pass an
-        # empty ClusterSpec, otherwise the device_setter will look for
-        # distributed jobs, such as "/job:ps" which are not present.
-        config=tf.contrib.learn.RunConfig(
-            num_ps_replicas=2, cluster_spec=tf.train.ClusterSpec({}),
-            tf_random_seed=1))
+        config=config)
 
-    regressor.fit(input_fn=_input_fn, steps=100)
+    regressor.fit(input_fn=_input_fn, steps=5)
 
     scores = regressor.evaluate(input_fn=_input_fn, steps=1)
-    self.assertLess(scores['loss'], 0.3)
+    self.assertIn('loss', scores)
+
+  def testEnableCenteredBias(self):
+    """Tests that we can enable centered bias."""
+    def _input_fn(num_epochs=None):
+      features = {
+          'age': tf.train.limit_epochs(
+              tf.constant([[0.8], [0.15], [0.]]), num_epochs=num_epochs),
+          'language': tf.SparseTensor(
+              values=tf.train.limit_epochs(
+                  ['en', 'fr', 'zh'], num_epochs=num_epochs),
+              indices=[[0, 0], [0, 1], [2, 0]],
+              dense_shape=[3, 2])
+      }
+      return features, tf.constant([1., 0., 0.2], dtype=tf.float32)
+
+    sparse_column = tf.contrib.layers.sparse_column_with_hash_bucket(
+        'language', hash_bucket_size=20)
+    feature_columns = [
+        tf.contrib.layers.embedding_column(sparse_column, dimension=1),
+        tf.contrib.layers.real_valued_column('age')
+    ]
+
+    regressor = tf.contrib.learn.DNNRegressor(
+        feature_columns=feature_columns,
+        hidden_units=[3, 3],
+        enable_centered_bias=True,
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
+
+    regressor.fit(input_fn=_input_fn, steps=5)
+    self.assertIn('centered_bias_weight', regressor.get_variable_names())
+
+    scores = regressor.evaluate(input_fn=_input_fn, steps=1)
+    self.assertIn('loss', scores)
 
   def testDisableCenteredBias(self):
     """Tests that we can disable centered bias."""
     def _input_fn(num_epochs=None):
       features = {
-          'age': tf.train.limit_epochs(tf.constant([[0.8], [0.15], [0.]]),
-                                       num_epochs=num_epochs),
-          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
-                                      indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+          'age': tf.train.limit_epochs(
+              tf.constant([[0.8], [0.15], [0.]]), num_epochs=num_epochs),
+          'language': tf.SparseTensor(
+              values=tf.train.limit_epochs(
+                  ['en', 'fr', 'zh'], num_epochs=num_epochs),
+              indices=[[0, 0], [0, 1], [2, 0]],
+              dense_shape=[3, 2])
       }
       return features, tf.constant([1., 0., 0.2], dtype=tf.float32)
 
@@ -848,19 +1194,20 @@ class DNNRegressorTest(tf.test.TestCase):
         feature_columns=feature_columns,
         hidden_units=[3, 3],
         enable_centered_bias=False,
-        config=tf.contrib.learn.RunConfig(tf_random_seed=3))
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
-    regressor.fit(input_fn=_input_fn, steps=200)
+    regressor.fit(input_fn=_input_fn, steps=5)
+    self.assertNotIn('centered_bias_weight', regressor.get_variable_names())
 
     scores = regressor.evaluate(input_fn=_input_fn, steps=1)
-    self.assertLess(scores['loss'], 0.3)
+    self.assertIn('loss', scores)
 
 
 def boston_input_fn():
   boston = tf.contrib.learn.datasets.load_boston()
   features = tf.cast(tf.reshape(tf.constant(boston.data), [-1, 13]), tf.float32)
-  target = tf.cast(tf.reshape(tf.constant(boston.target), [-1, 1]), tf.float32)
-  return features, target
+  labels = tf.cast(tf.reshape(tf.constant(boston.target), [-1, 1]), tf.float32)
+  return features, labels
 
 
 class FeatureColumnTest(tf.test.TestCase):

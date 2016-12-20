@@ -20,10 +20,14 @@ from __future__ import print_function
 import collections
 import curses
 from curses import textpad
+import signal
+import sys
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.debug.cli import command_parser
 from tensorflow.python.debug.cli import debugger_cli_common
+from tensorflow.python.debug.cli import tensor_format
 
 
 class CursesUI(object):
@@ -38,6 +42,9 @@ class CursesUI(object):
   CLI_TERMINATOR_KEY = 7  # Terminator key for input text box.
   CLI_TAB_KEY = ord("\t")
   REGEX_SEARCH_PREFIX = "/"
+  TENSOR_INDICES_NAVIGATION_PREFIX = "@"
+  ERROR_MESSAGE_PREFIX = "ERROR: "
+  INFO_MESSAGE_PREFIX = "INFO: "
 
   # Possible Enter keys. 343 is curses key code for the num-pad Enter key when
   # num lock is off.
@@ -48,8 +55,37 @@ class CursesUI(object):
   _SCROLL_DOWN = "down"
   _SCROLL_HOME = "home"
   _SCROLL_END = "end"
+  _SCROLL_TO_LINE_INDEX = "scroll_to_line_index"
 
-  def __init__(self):
+  _FOREGROUND_COLORS = {
+      "white": curses.COLOR_WHITE,
+      "red": curses.COLOR_RED,
+      "green": curses.COLOR_GREEN,
+      "yellow": curses.COLOR_YELLOW,
+      "blue": curses.COLOR_BLUE,
+      "cyan": curses.COLOR_CYAN,
+      "magenta": curses.COLOR_MAGENTA,
+      "black": curses.COLOR_BLACK,
+  }
+  _BACKGROUND_COLORS = {
+      "white": curses.COLOR_WHITE,
+      "black": curses.COLOR_BLACK,
+  }
+
+  # Font attribute for search and highlighting.
+  _SEARCH_HIGHLIGHT_FONT_ATTR = "black_on_white"
+  _ARRAY_INDICES_COLOR_PAIR = "black_on_white"
+  _ERROR_TOAST_COLOR_PAIR = "red_on_white"
+  _INFO_TOAST_COLOR_PAIR = "blue_on_white"
+  _STATUS_BAR_COLOR_PAIR = "black_on_white"
+
+  def __init__(self, on_ui_exit=None):
+    """Constructor of CursesUI.
+
+    Args:
+      on_ui_exit: (Callable) Callback invoked when the UI exits.
+    """
+
     self._screen_init()
     self._screen_refresh_size()
     # TODO(cais): Error out if the size of the screen is too small.
@@ -91,12 +127,16 @@ class CursesUI(object):
 
     # State related to screen output.
     self._output_pad = None
+    self._output_pad_row = 0
+    self._output_array_pointer_indices = None
     self._curr_unwrapped_output = None
     self._curr_wrapped_output = None
 
-    # NamedTuple for rectangular locations on screen
-    self.rectangle = collections.namedtuple("rectangle",
-                                            "top left bottom right")
+    # Register signal handler for SIGINT.
+    signal.signal(signal.SIGINT, self._interrupt_handler)
+
+    # Configurable callbacks.
+    self._on_ui_exit = on_ui_exit
 
   def _init_layout(self):
     """Initialize the layout of UI components.
@@ -104,6 +144,10 @@ class CursesUI(object):
     Initialize the location and size of UI components such as command textbox
     and output region according to the terminal size.
     """
+
+    # NamedTuple for rectangular locations on screen
+    self.rectangle = collections.namedtuple("rectangle",
+                                            "top left bottom right")
 
     # Height of command text box
     self._command_textbox_height = 2
@@ -132,8 +176,21 @@ class CursesUI(object):
     # Maximum number of lines the candidates display can have.
     self._candidates_max_lines = int(self._output_num_rows / 2)
 
-    # Font attribute for search and highlighting.
-    self._search_highlight_font_attr = "bw_reversed"
+    self.max_output_lines = 10000
+
+    # Regex search state.
+    self._curr_search_regex = None
+    self._unwrapped_regex_match_lines = []
+
+    # Size of view port on screen, which is always smaller or equal to the
+    # screen size.
+    self._output_pad_screen_height = self._output_num_rows - 1
+    self._output_pad_screen_width = self._max_x - 1
+    self._output_pad_screen_location = self.rectangle(
+        top=self._output_top_row,
+        left=0,
+        bottom=self._output_top_row + self._output_num_rows,
+        right=self._output_pad_screen_width)
 
   def _screen_init(self):
     """Screen initialization.
@@ -147,25 +204,26 @@ class CursesUI(object):
     # Prepare color pairs.
     curses.start_color()
 
-    curses.init_pair(1, curses.COLOR_WHITE, curses.COLOR_BLACK)
-    curses.init_pair(2, curses.COLOR_RED, curses.COLOR_BLACK)
-    curses.init_pair(3, curses.COLOR_GREEN, curses.COLOR_BLACK)
-    curses.init_pair(4, curses.COLOR_YELLOW, curses.COLOR_BLACK)
-    curses.init_pair(5, curses.COLOR_BLUE, curses.COLOR_BLACK)
-    curses.init_pair(6, curses.COLOR_BLACK, curses.COLOR_WHITE)
-
     self._color_pairs = {}
-    self._color_pairs["white"] = curses.color_pair(1)
-    self._color_pairs["red"] = curses.color_pair(2)
-    self._color_pairs["green"] = curses.color_pair(3)
-    self._color_pairs["yellow"] = curses.color_pair(4)
-    self._color_pairs["blue"] = curses.color_pair(5)
+    color_index = 0
 
-    # Black-white reversed
-    self._color_pairs["bw_reversed"] = curses.color_pair(6)
+    for fg_color in self._FOREGROUND_COLORS:
+      for bg_color in self._BACKGROUND_COLORS:
 
-    # A_BOLD is not really a "color". But place it here for convenience.
+        color_index += 1
+        curses.init_pair(color_index, self._FOREGROUND_COLORS[fg_color],
+                         self._BACKGROUND_COLORS[bg_color])
+
+        color_name = fg_color
+        if bg_color != "black":
+          color_name += "_on_" + bg_color
+
+        self._color_pairs[color_name] = curses.color_pair(color_index)
+
+    # A_BOLD or A_BLINK is not really a "color". But place it here for
+    # convenience.
     self._color_pairs["bold"] = curses.A_BOLD
+    self._color_pairs["blink"] = curses.A_BLINK
 
     # Default color pair to use when a specified color pair does not exist.
     self._default_color_pair = self._color_pairs["white"]
@@ -199,6 +257,9 @@ class CursesUI(object):
     curses.echo()
     curses.endwin()
 
+    # Remove SIGINT handler.
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
+
   def run_ui(self, init_command=None, title=None, title_color=None):
     """Run the Curses CLI.
 
@@ -222,6 +283,9 @@ class CursesUI(object):
 
     # CLI main loop.
     exit_token = self._ui_loop()
+
+    if self._on_ui_exit:
+      self._on_ui_exit()
 
     self._screen_terminate()
 
@@ -263,7 +327,7 @@ class CursesUI(object):
     """Set an introductory message to the help output of the command registry.
 
     Args:
-      help_intro: (list of str) Text lines appended to the beginning of the
+      help_intro: (RichTextLines) Rich text lines appended to the beginning of
         the output of the command "help", as introductory information.
     """
 
@@ -378,39 +442,64 @@ class CursesUI(object):
     if command:
       self._command_history_store.add_command(command)
 
-    if (len(command) > len(self.REGEX_SEARCH_PREFIX) and
-        command.startswith(self.REGEX_SEARCH_PREFIX) and
+    if (command.startswith(self.REGEX_SEARCH_PREFIX) and
         self._curr_unwrapped_output):
-      # Regex search and highlighting in screen output.
-      regex = command[len(self.REGEX_SEARCH_PREFIX):]
+      if len(command) > len(self.REGEX_SEARCH_PREFIX):
+        # Command is like "/regex". Perform regex search.
+        regex = command[len(self.REGEX_SEARCH_PREFIX):]
 
-      # TODO(cais): Support scrolling to matches.
-      # TODO(cais): Display warning message on screen if no match.
-      self._display_output(self._curr_unwrapped_output, highlight_regex=regex)
+        self._curr_search_regex = regex
+        self._display_output(self._curr_unwrapped_output, highlight_regex=regex)
+      elif self._unwrapped_regex_match_lines:
+        # Command is "/". Continue scrolling down matching lines.
+        self._display_output(
+            self._curr_unwrapped_output,
+            is_refresh=True,
+            highlight_regex=self._curr_search_regex)
+
       self._command_pointer = 0
       self._pending_command = ""
       return
+    elif command.startswith(self.TENSOR_INDICES_NAVIGATION_PREFIX):
+      indices_str = command[1:].strip()
+      if indices_str:
+        try:
+          indices = command_parser.parse_indices(indices_str)
+          omitted, line_index, _, _ = tensor_format.locate_tensor_element(
+              self._curr_wrapped_output, indices)
 
-    prefix, args = self._parse_command(command)
+          if not omitted:
+            self._scroll_output(
+                self._SCROLL_TO_LINE_INDEX, line_index=line_index)
+        except Exception as e:  # pylint: disable=broad-except
+          self._error_toast(str(e))
+      else:
+        self._error_toast("Empty indices.")
+
+      return
+
+    try:
+      prefix, args, output_file_path = self._parse_command(command)
+    except SyntaxError as e:
+      self._error_toast(str(e))
+      return
 
     if not prefix:
       # Empty command: take no action. Should not exit.
       return
 
     screen_info = {"cols": self._max_x}
+    exit_token = None
     if self._command_handler_registry.is_registered(prefix):
-      screen_output = self._command_handler_registry.dispatch_command(
-          prefix, args, screen_info=screen_info)
-
+      try:
+        screen_output = self._command_handler_registry.dispatch_command(
+            prefix, args, screen_info=screen_info)
+      except debugger_cli_common.CommandLineExit as e:
+        exit_token = e.exit_token
     else:
       screen_output = debugger_cli_common.RichTextLines([
-          "ERROR: Invalid command prefix \"%s\"" % prefix
+          self.ERROR_MESSAGE_PREFIX + "Invalid command prefix \"%s\"" % prefix
       ])
-
-    exit_token = None
-    if debugger_cli_common.EXIT_TOKEN_KEY in screen_output.annotations:
-      exit_token = screen_output.annotations[
-          debugger_cli_common.EXIT_TOKEN_KEY]
 
     # Clear active command history. Until next up/down history navigation
     # occurs, it will stay empty.
@@ -420,6 +509,13 @@ class CursesUI(object):
       return exit_token
 
     self._display_output(screen_output)
+    if output_file_path:
+      try:
+        screen_output.write_to_file(output_file_path)
+        self._info_toast("Wrote output to %s" % output_file_path)
+      except Exception:  # pylint: disable=broad-except
+        self._error_toast("Failed to write output to %s" % output_file_path)
+
     self._command_pointer = 0
     self._pending_command = ""
 
@@ -433,20 +529,18 @@ class CursesUI(object):
       prefix: (str) The command prefix.
       args: (list of str) The command arguments (i.e., not including the
         prefix).
+      output_file_path: (str or None) The path to save the screen output
+        to (if any).
     """
-
-    # TODO(cais): Support parsing of arguments surrounded by pairs of quotes
-    #   and with spaces in them.
-
     command = command.strip()
     if not command:
-      return "", []
+      return "", [], None
 
-    # Split and remove extra spaces.
-    command_items = command.split(" ")
-    command_items = [item for item in command_items if item]
+    command_items = command_parser.parse_command(command)
+    command_items, output_file_path = command_parser.extract_output_file_path(
+        command_items)
 
-    return command_items[0], command_items[1:]
+    return command_items[0], command_items[1:], output_file_path
 
   def _screen_gather_textbox_str(self):
     """Gather the text string in the command text box.
@@ -609,8 +703,63 @@ class CursesUI(object):
 
     return curses.newpad(rows, cols)
 
+  def _screen_display_output(self, output):
+    """Actually render text output on the screen.
+
+    Wraps the lines according to screen width. Pad lines below according to
+    screen height so that the user can scroll the output to a state where
+    the last non-empty line is on the top of the screen. Then renders the
+    lines on the screen.
+
+    Args:
+      output: (RichTextLines) text lines to display on the screen. These lines
+        may have widths exceeding the screen width. This method will take care
+        of the wrapping.
+
+    Returns:
+      (List of int) A list of line indices, in the wrapped output, where there
+        are regex matches.
+    """
+
+    # Wrap the output lines according to screen width.
+    self._curr_wrapped_output, wrapped_line_indices = (
+        debugger_cli_common.wrap_rich_text_lines(output, self._max_x - 1))
+
+    # Append lines to curr_wrapped_output so that the user can scroll to a
+    # state where the last text line is on the top of the output area.
+    self._curr_wrapped_output.lines.extend([""] * (self._output_num_rows - 1))
+
+    # Limit number of lines displayed to avoid curses overflow problems.
+    if self._curr_wrapped_output.num_lines() > self.max_output_lines:
+      self._curr_wrapped_output = self._curr_wrapped_output.slice(
+          0, self.max_output_lines)
+      self._curr_wrapped_output.lines.append("Output cut off at %d lines!" %
+                                             self.max_output_lines)
+      self._curr_wrapped_output.font_attr_segs[self.max_output_lines] = [
+          (0, len(output.lines[-1]), "magenta")
+      ]
+
+    (self._output_pad, self._output_pad_height,
+     self._output_pad_width) = self._display_lines(self._curr_wrapped_output,
+                                                   self._output_num_rows)
+
+    # The indices of lines with regex matches (if any) need to be mapped to
+    # indices of wrapped lines.
+    return [
+        wrapped_line_indices[line]
+        for line in self._unwrapped_regex_match_lines
+    ]
+
   def _display_output(self, output, is_refresh=False, highlight_regex=None):
     """Display text output in a scrollable text pad.
+
+    This method does some preprocessing on the text lines, render them on the
+    screen and scroll to the appropriate line. These are done according to regex
+    highlighting requests (if any), scroll-to-next-match requests (if any),
+    and screen refresh requests (if any).
+
+    TODO(cais): Separate these unrelated request to increase clarity and
+      maintainability.
 
     Args:
       output: A RichTextLines object that is the screen output text.
@@ -620,29 +769,46 @@ class CursesUI(object):
     """
 
     if highlight_regex:
-      output = debugger_cli_common.regex_find(
-          output, highlight_regex, font_attr=self._search_highlight_font_attr)
+      try:
+        output = debugger_cli_common.regex_find(
+            output, highlight_regex, font_attr=self._SEARCH_HIGHLIGHT_FONT_ATTR)
+      except ValueError as e:
+        self._error_toast(str(e))
+        return
+
+      if not is_refresh:
+        # Perform new regex search on the current output.
+        self._unwrapped_regex_match_lines = output.annotations[
+            debugger_cli_common.REGEX_MATCH_LINES_KEY]
+      else:
+        # Continue scrolling down.
+        self._output_pad_row += 1
     else:
       self._curr_unwrapped_output = output
+      self._unwrapped_regex_match_lines = []
 
-    self._curr_wrapped_output = debugger_cli_common.wrap_rich_text_lines(
-        output, self._max_x - 1)
+    # Display output on the screen.
+    wrapped_regex_match_lines = self._screen_display_output(output)
 
-    (self._output_pad, self._output_pad_height,
-     self._output_pad_width) = self._display_lines(self._curr_wrapped_output,
-                                                   self._output_num_rows)
+    # Now that the text lines are displayed on the screen scroll to the
+    # appropriate line according to previous scrolling state and regex search
+    # and highlighting state.
 
-    # Size of view port on screen, which is always smaller or equal to the
-    # screen size.
-    self._output_pad_screen_height = self._output_num_rows - 1
-    self._output_pad_screen_width = self._max_x - 1
-    self._output_pad_screen_location = self.rectangle(
-        top=self._output_top_row,
-        left=0,
-        bottom=self._output_top_row + self._output_num_rows,
-        right=self._output_pad_screen_width)
+    if highlight_regex:
+      next_match_line = -1
+      for match_line in wrapped_regex_match_lines:
+        if match_line >= self._output_pad_row:
+          next_match_line = match_line
+          break
 
-    if is_refresh:
+      if next_match_line >= 0:
+        self._scroll_output(
+            self._SCROLL_TO_LINE_INDEX, line_index=next_match_line)
+      else:
+        # Regex search found no match >= current line number. Display message
+        # stating as such.
+        self._toast("Pattern not found", color=self._ERROR_TOAST_COLOR_PAIR)
+    elif is_refresh:
       self._scroll_output(self._SCROLL_REFRESH)
     else:
       self._output_pad_row = 0
@@ -668,8 +834,6 @@ class CursesUI(object):
       raise ValueError(
           "Output is required to be an instance of RichTextLines, but is not.")
 
-    # TODO(cais): Cut off output with too many lines to prevent overflow issues
-    # in curses.
     self._screen_refresh()
 
     # Number of rows the output area will have.
@@ -752,15 +916,19 @@ class CursesUI(object):
                 screen_location_left, screen_location_bottom,
                 screen_location_right)
 
-  def _scroll_output(self, direction):
+  def _scroll_output(self, direction, line_index=None):
     """Scroll the output pad.
 
     Args:
       direction: _SCROLL_REFRESH, _SCROLL_UP, _SCROLL_DOWN, _SCROLL_HOME or
-        _SCROLL_END
+        _SCROLL_END, _SCROLL_TO_LINE_INDEX
+      line_index: (int) Specifies the zero-based line index to scroll to.
+        Applicable only if direction is _SCROLL_TO_LINE_INDEX.
 
     Raises:
       ValueError: On invalid scroll direction.
+      TypeError: If line_index is not int and direction is
+        _SCROLL_TO_LINE_INDEX.
     """
 
     if not self._output_pad:
@@ -785,6 +953,11 @@ class CursesUI(object):
       # Scroll to bottom
       self._output_pad_row = (
           self._output_pad_height - self._output_pad_screen_height - 1)
+    elif direction == self._SCROLL_TO_LINE_INDEX:
+      if not isinstance(line_index, int):
+        raise TypeError("Invalid line_index type (%s) under mode %s" %
+                        (type(line_index), self._SCROLL_TO_LINE_INDEX))
+      self._output_pad_row = line_index
     else:
       raise ValueError("Unsupported scroll mode: %s" % direction)
 
@@ -797,18 +970,113 @@ class CursesUI(object):
 
     if self._output_pad_height > self._output_pad_screen_height + 1:
       # Display information about the scrolling of tall screen output.
-      self._scroll_info = "--- Scroll: %.2f%% " % (100.0 * (
+      scroll_percentage = 100.0 * (min(
+          1.0,
           float(self._output_pad_row) /
           (self._output_pad_height - self._output_pad_screen_height - 1)))
+      if self._output_pad_row == 0:
+        scroll_directions = " (PgDn)"
+      elif self._output_pad_row >= (
+          self._output_pad_height - self._output_pad_screen_height - 1):
+        scroll_directions = " (PgUp)"
+      else:
+        scroll_directions = " (PgDn/PgUp)"
+      self._scroll_info = "--- Scroll%s: %.2f%% " % (scroll_directions,
+                                                     scroll_percentage)
+
+      self._output_array_pointer_indices = self._show_array_indices()
+
+      # Add array indices information to scroll message.
+      if self._output_array_pointer_indices:
+        if self._output_array_pointer_indices[0]:
+          self._scroll_info += self._format_indices(
+              self._output_array_pointer_indices[0])
+        self._scroll_info += "-"
+        if self._output_array_pointer_indices[-1]:
+          self._scroll_info += self._format_indices(
+              self._output_array_pointer_indices[-1])
+        self._scroll_info += " "
+
       if len(self._scroll_info) < self._max_x:
         self._scroll_info += "-" * (self._max_x - len(self._scroll_info))
       self._screen_draw_text_line(
-          self._output_scroll_row, self._scroll_info, color="green")
+          self._output_scroll_row,
+          self._scroll_info,
+          color=self._STATUS_BAR_COLOR_PAIR)
     else:
       # Screen output is not tall enough to cause scrolling.
       self._scroll_info = "-" * self._max_x
       self._screen_draw_text_line(
-          self._output_scroll_row, self._scroll_info, color="green")
+          self._output_scroll_row,
+          self._scroll_info,
+          color=self._STATUS_BAR_COLOR_PAIR)
+
+  def _format_indices(self, indices):
+    # Remove the spaces to make it compact.
+    return repr(indices).replace(" ", "")
+
+  def _show_array_indices(self):
+    """Show array indices for the lines at the top and bottom of the output.
+
+    For the top line and bottom line of the output display area, show the
+    element indices of the array being displayed.
+
+    Returns:
+      If either the top of the bottom row has any matching array indices,
+      a dict from line index (0 being the top of the display area, -1
+      being the bottom of the display area) to array element indices. For
+      example:
+        {0: [0, 0], -1: [10, 0]}
+      Otherwise, None.
+    """
+
+    indices_top = self._show_array_index_at_line(0)
+
+    bottom_line_index = (self._output_pad_screen_location.bottom -
+                         self._output_pad_screen_location.top - 1)
+    indices_bottom = self._show_array_index_at_line(bottom_line_index)
+
+    if indices_top or indices_bottom:
+      return {0: indices_top, -1: indices_bottom}
+    else:
+      return None
+
+  def _show_array_index_at_line(self, line_index):
+    """Show array indices for the specified line in the display area.
+
+    Uses the line number to array indices map in the annotations field of the
+    RichTextLines object being displayed.
+    If the displayed RichTextLines object does not contain such a mapping,
+    will do nothing.
+
+    Args:
+      line_index: (int) 0-based line index from the top of the display area.
+        For example,if line_index == 0, this method will display the array
+        indices for the line currently at the top of the display area.
+
+    Returns:
+      (list) The array indices at the specified line, if available. None, if
+        not available.
+    """
+
+    # Examine whether the index information is available for the specified line
+    # number.
+    pointer = self._output_pad_row + line_index
+    if (pointer in self._curr_wrapped_output.annotations and
+        "i0" in self._curr_wrapped_output.annotations[pointer]):
+      indices = self._curr_wrapped_output.annotations[pointer]["i0"]
+
+      array_indices_str = self._format_indices(indices)
+      array_indices_info = "@" + array_indices_str
+
+      self._toast(
+          array_indices_info,
+          color=self._ARRAY_INDICES_COLOR_PAIR,
+          line_index=self._output_pad_screen_location.top + line_index)
+
+      return indices
+    else:
+      return None
 
   def _tab_complete(self, command_str):
     """Perform tab completion.
@@ -886,8 +1154,8 @@ class CursesUI(object):
             0: [(len(candidates_prefix), len(candidates_line), "yellow")]
         })
 
-    candidates_output = debugger_cli_common.wrap_rich_text_lines(
-        candidates_output, self._max_x - 1)
+    candidates_output, _ = debugger_cli_common.wrap_rich_text_lines(
+        candidates_output, self._max_x - 2)
 
     # Calculate how many lines the candidate text should occupy. Limit it to
     # a maximum value.
@@ -901,3 +1169,56 @@ class CursesUI(object):
     self._screen_scroll_output_pad(
         pad, 0, 0, self._candidates_top_row, 0,
         self._candidates_top_row + candidates_num_rows - 1, self._max_x - 1)
+
+  def _toast(self, message, color=None, line_index=None):
+    """Display a one-line message on the screen.
+
+    By default, the toast is displayed in the line right above the scroll bar.
+    But the line location can be overridden with the line_index arg.
+
+    Args:
+      message: (str) the message to display.
+      color: (str) optional color attribute for the message.
+      line_index: (int) line index.
+    """
+
+    pad, _, _ = self._display_lines(
+        debugger_cli_common.RichTextLines(
+            message,
+            font_attr_segs={0: [(0, len(message), color or "white")]}),
+        0)
+
+    right_end = min(len(message), self._max_x - 1)
+
+    if line_index is None:
+      line_index = self._output_scroll_row - 1
+    self._screen_scroll_output_pad(pad, 0, 0, line_index, 0, line_index,
+                                   right_end)
+
+  def _error_toast(self, message):
+    """Display a one-line error message on screen.
+
+    Args:
+      message: The error message, without the preceding "ERROR: " substring.
+    """
+
+    self._toast(
+        self.ERROR_MESSAGE_PREFIX + message, color=self._ERROR_TOAST_COLOR_PAIR)
+
+  def _info_toast(self, message):
+    """Display a one-line informational message on screen.
+
+    Args:
+      message: The informational message.
+    """
+
+    self._toast(
+        self.INFO_MESSAGE_PREFIX + message, color=self._INFO_TOAST_COLOR_PAIR)
+
+  def _interrupt_handler(self, signal_num, frame):
+    _ = signal_num  # Unused.
+    _ = frame  # Unused.
+
+    self._screen_terminate()
+    print("\ntfdbg: caught SIGINT; calling sys.exit(1).", file=sys.stderr)
+    sys.exit(1)

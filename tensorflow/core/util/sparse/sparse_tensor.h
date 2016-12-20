@@ -17,8 +17,9 @@ limitations under the License.
 #define TENSORFLOW_UTIL_SPARSE_SPARSE_TENSOR_H_
 
 #include <limits>
-
+#include <numeric>
 #include <vector>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -431,28 +432,22 @@ SparseTensor SparseTensor::Concat(
   Tensor output_ix(DT_INT64, TensorShape({num_entries, dims}));
   Tensor output_vals(DataTypeToEnum<T>::v(), TensorShape({num_entries}));
 
-  auto ix_t = output_ix.matrix<int64>();
-  auto vals_t = output_vals.vec<T>();
+  TTypes<int64>::Matrix ix_t = output_ix.matrix<int64>();
+  typename TTypes<T>::Vec vals_t = output_vals.vec<T>();
 
   Eigen::DenseIndex offset = 0;
   int64 shape_offset = 0;
   for (const SparseTensor& st : tensors) {
-    int st_num_entries = st.num_entries();
-    Eigen::DSizes<Eigen::DenseIndex, 2> ix_start(offset, 0);
-    Eigen::DSizes<Eigen::DenseIndex, 2> ix_size(st_num_entries, dims);
-    Eigen::DSizes<Eigen::DenseIndex, 1> vals_start(offset);
-    Eigen::DSizes<Eigen::DenseIndex, 1> vals_size(st_num_entries);
+    const int st_num_entries = st.num_entries();
 
     // Fill in indices & values.
-    ix_t.slice(ix_start, ix_size) = st.ix_.matrix<int64>();
-    vals_t.slice(vals_start, vals_size) = st.vals_.vec<T>();
+    std::copy_n(&st.vals_.vec<T>()(0), st_num_entries, &vals_t(offset));
 
-    Eigen::DSizes<Eigen::DenseIndex, 2> ix_update_start(offset, primary_dim);
-    Eigen::DSizes<Eigen::DenseIndex, 2> ix_update_size(st_num_entries, 1);
-    // The index associated with the primary dimension gets increased
-    // by the shapes of the previous concatted Tensors.
-    auto update_slice = ix_t.slice(ix_update_start, ix_update_size);
-    update_slice += update_slice.constant(shape_offset);
+    const auto* st_ix = &st.ix_.matrix<int64>()(0, 0);
+    auto* ix_out = &ix_t(offset, 0);
+    for (std::size_t i = 0; i < st_num_entries * dims; ++i) {
+      *ix_out++ = *st_ix++ + ((i % dims == primary_dim) ? shape_offset : 0);
+    }
 
     offset += st_num_entries;
     shape_offset += st.shape().dim_size(primary_dim);

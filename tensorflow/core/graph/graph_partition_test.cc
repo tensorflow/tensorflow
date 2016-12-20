@@ -70,7 +70,6 @@ void Partition(const GraphDef& graph_def,
   popts.get_incarnation = [](const string& name) {
     return (name[0] - 'A') + 100;
   };
-  popts.control_flow_added = false;
   Status s = Partition(popts, &g, partitions);
   CHECK(s.ok()) << s;
 
@@ -372,5 +371,102 @@ TEST_F(GraphPartitionTest, CrossDeviceLoop1) {
   }
 }
 
+TEST_F(GraphPartitionTest, PartitionIncompleteGraph) {
+  NodeDef ndef;
+  Graph g(OpRegistry::Global());
+  // Invalid graph since the Combine node requires an input.
+  bool parsed = protobuf::TextFormat::ParseFromString(
+      R"EOF(
+      name: "N"
+      op: "Combine"
+      )EOF",
+      &ndef);
+  ASSERT_TRUE(parsed);
+  Status status;
+  g.AddNode(ndef, &status);
+  TF_ASSERT_OK(status);
+
+  PartitionOptions popts;
+  popts.node_to_loc = SplitByDevice;
+  popts.new_name = [&g](const string& prefix) { return g.NewName(prefix); };
+  popts.get_incarnation = [](const string&) { return 1; };
+
+  std::unordered_map<string, GraphDef> partitions;
+  status = Partition(popts, &g, &partitions);
+  // Partitioning should fail, but not crash like it did before the
+  // changes that accompanied the addition of this test.
+  EXPECT_EQ(error::INVALID_ARGUMENT, status.code()) << status;
+}
+
+TEST_F(GraphPartitionTest, CrossDevice_MultiControl) {
+  using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
+  auto a1 = Input(in_.WithOpName("A1"));
+  auto a2 = Input(in_.WithOpName("A2"));
+  auto b1 = Input(in_.WithOpName("B1"));
+  Combine(
+      in_.WithOpName("B2").WithControlDependencies(a1).WithControlDependencies(
+          a2),
+      b1, b1);
+
+  Partition(ToGraphDef(), &partitions_);
+  EXPECT_EQ(2, partitions_.size());
+
+  string a = "/job:a/replica:0/task:0/cpu:0";
+  string b = "/job:a/replica:0/task:0/cpu:1";
+  a1 = Input(scope_a_.WithOpName("A1"));
+  a2 = Input(scope_a_.WithOpName("A2"));
+  auto c = Const(scope_a_.WithOpName("A1/_0")
+                     .WithControlDependencies(a1)
+                     .WithControlDependencies(a2),
+                 {});
+  _Send(scope_a_.WithOpName("A1/_1"), c, "edge_3_A1", a, 82, b);
+  ExpectMatchA();
+
+  auto recv =
+      _Recv(scope_b_.WithOpName("A1/_2"), DT_FLOAT, "edge_3_A1", a, 82, b);
+  auto id = Identity(scope_b_.WithOpName("A1/_3"), recv);
+  b1 = Input(scope_b_.WithOpName("B1"));
+  Combine(scope_b_.WithOpName("B2").WithControlDependencies(id), b1, b1);
+  ExpectMatchB();
+}
+
+TEST_F(GraphPartitionTest, CrossDevice_MultiControl_NoCombine) {
+  using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
+  auto a1 = Input(in_.WithOpName("A1"));
+  auto a2 = Input(in_.WithOpName("A2"));
+  auto b1 = Input(in_.WithOpName("B1"));
+  Combine(
+      in_.WithOpName("B2").WithControlDependencies(a1).WithControlDependencies(
+          a2),
+      b1, b1);
+  Combine(in_.WithOpName("B3").WithControlDependencies(a1), b1, b1);
+
+  Partition(ToGraphDef(), &partitions_);
+  EXPECT_EQ(2, partitions_.size());
+
+  string a = "/job:a/replica:0/task:0/cpu:0";
+  string b = "/job:a/replica:0/task:0/cpu:1";
+  a1 = Input(scope_a_.WithOpName("A1"));
+  a2 = Input(scope_a_.WithOpName("A2"));
+  auto c1 = Const(scope_a_.WithOpName("A1/_0").WithControlDependencies(a1), {});
+  _Send(scope_a_.WithOpName("A1/_1"), c1, "edge_3_A1", a, 82, b);
+  auto c2 = Const(scope_a_.WithOpName("A2/_4").WithControlDependencies(a2), {});
+  _Send(scope_a_.WithOpName("A2/_5"), c2, "edge_7_A2", a, 82, b);
+  ExpectMatchA();
+
+  auto recv =
+      _Recv(scope_b_.WithOpName("A1/_2"), DT_FLOAT, "edge_3_A1", a, 82, b);
+  auto id = Identity(scope_b_.WithOpName("A1/_3"), recv);
+  auto recv1 =
+      _Recv(scope_b_.WithOpName("A2/_6"), DT_FLOAT, "edge_7_A2", a, 82, b);
+  auto id1 = Identity(scope_b_.WithOpName("A2/_7"), recv1);
+  b1 = Input(scope_b_.WithOpName("B1"));
+  Combine(scope_b_.WithOpName("B2")
+              .WithControlDependencies(id)
+              .WithControlDependencies(id1),
+          b1, b1);
+  Combine(scope_b_.WithOpName("B3").WithControlDependencies(id), b1, b1);
+  ExpectMatchB();
+}
 }  // namespace
 }  // namespace tensorflow

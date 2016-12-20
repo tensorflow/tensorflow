@@ -77,7 +77,7 @@ class EstimatorUtilsTest(tf.test.TestCase):
                                            "b": 2,
                                            "c": 3,
                                            "d": 4},
-            target_keys=["g"],
+            label_keys=["g"],
             feature_keys=["a", "b", "f"]))
 
     expected_feature_column_a = feature_column.DataFrameColumn(
@@ -97,7 +97,7 @@ class EstimatorUtilsTest(tf.test.TestCase):
                                 expected_feature_column_f]
     self.assertEqual(sorted(expected_feature_columns), sorted(feature_columns))
 
-    base_features, targets = input_fn()
+    base_features, labels = input_fn()
     expected_base_features = {
         "a": mocks.MockTensor("Tensor a", tf.int32),
         "b": mocks.MockSparseTensor("SparseTensor b", tf.int32),
@@ -106,12 +106,12 @@ class EstimatorUtilsTest(tf.test.TestCase):
     }
     self.assertEqual(expected_base_features, base_features)
 
-    expected_targets = mocks.MockTensor("Out iue", tf.int32)
-    self.assertEqual(expected_targets, targets)
+    expected_labels = mocks.MockTensor("Out iue", tf.int32)
+    self.assertEqual(expected_labels, labels)
 
     self.assertEqual(3, len(feature_columns))
 
-  def test_to_feature_columns_and_input_fn_no_targets(self):
+  def test_to_feature_columns_and_input_fn_no_labels(self):
     df = setup_test_df_3layer()
     feature_columns, input_fn = (
         estimator_utils.to_feature_columns_and_input_fn(
@@ -122,7 +122,7 @@ class EstimatorUtilsTest(tf.test.TestCase):
                                            "d": 4},
             feature_keys=["a", "b", "f"]))
 
-    base_features, targets = input_fn()
+    base_features, labels = input_fn()
     expected_base_features = {
         "a": mocks.MockTensor("Tensor a", tf.int32),
         "b": mocks.MockSparseTensor("SparseTensor b", tf.int32),
@@ -131,8 +131,8 @@ class EstimatorUtilsTest(tf.test.TestCase):
     }
     self.assertEqual(expected_base_features, base_features)
 
-    expected_targets = {}
-    self.assertEqual(expected_targets, targets)
+    expected_labels = {}
+    self.assertEqual(expected_labels, labels)
 
     self.assertEqual(3, len(feature_columns))
 
@@ -148,7 +148,7 @@ class EstimatorUtilsTest(tf.test.TestCase):
                                              "b": 2,
                                              "c": 3,
                                              "d": 4},
-              target_keys=["f"],
+              label_keys=["f"],
               feature_keys=["a", "b", "f"]))
 
     self.assertRaises(ValueError, get_not_disjoint)

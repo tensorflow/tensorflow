@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_FRAMEWORK_FUNCTION_H_
 #define TENSORFLOW_FRAMEWORK_FUNCTION_H_
 
-#include <unordered_map>
-
 #include <vector>
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -26,6 +24,8 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/selective_registration.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -35,6 +35,7 @@ namespace tensorflow {
 class CancellationManager;
 class OpKernel;
 class ResourceMgr;
+class ScopedStepContainer;
 
 // FunctionDefHelper::Create is a convenient helper to construct a
 // FunctionDef proto.
@@ -308,6 +309,15 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   Status LookUp(const string& op_type_name,
                 const OpRegistrationData** op_reg_data) const override;
 
+  static constexpr const char* const kGradientOp = "SymbolicGradient";
+  static constexpr const char* const kFuncAttr = "f";
+
+  // Given a node def 'ndef', inspects attributes of the callee
+  // function to derive the attribute 'value' for 'attr'. Returns OK
+  // iff the attribute is given by the function's definition.
+  template <typename T>
+  Status GetAttr(const NodeDef& ndef, const string& attr, T* value) const;
+
   // Returns a proto representation of the state of this function library.
   FunctionDefLibrary ToProto() const;
 
@@ -322,9 +332,13 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   };
 
   const OpRegistryInterface* const default_registry_;
-  std::unordered_map<string, std::unique_ptr<FunctionDefAndOpRegistration>>
+  gtl::FlatMap<string, std::unique_ptr<FunctionDefAndOpRegistration>, HashStr>
       function_defs_;
-  std::unordered_map<string, string> func_grad_;
+  gtl::FlatMap<string, string, HashStr> func_grad_;
+
+  // Helper function for GetAttr. Returns the FunctionDef* to get the
+  // attr from.
+  const FunctionDef* GetAttrImpl(const NodeDef& ndef) const;
 };
 
 // Forward declare. Defined in common_runtime/function.h
@@ -368,8 +382,8 @@ class FunctionLibraryRuntime {
     // The id of the step that is calling this function.
     int64 step_id = 0;
 
-    // Per-step resource manager. Does not take ownership.
-    ResourceMgr* step_resource_manager = nullptr;
+    // Per-step container.
+    ScopedStepContainer* step_container;
 
     std::function<void(std::function<void()>)>* runner = nullptr;
   };
@@ -400,6 +414,9 @@ class FunctionLibraryRuntime {
   // Returns a debug string showing the definition of the function of
   // 'handle'.
   virtual string DebugString(Handle handle) = 0;
+
+  // Returns the graph version number.
+  virtual int graph_def_version() = 0;
 };
 
 // To register a gradient function for a builtin op, one should use
@@ -469,6 +486,18 @@ bool RegisterOp(const string& op, Creator func);
 // nullptr if REGISTER_OP_NO_GRADIENT is used.
 Status GetOpGradientCreator(const string& op, Creator* creator);
 };
+
+// Implementation details.
+
+template <typename T>
+Status FunctionLibraryDefinition::GetAttr(const NodeDef& ndef,
+                                          const string& attr, T* value) const {
+  const FunctionDef* fdef = GetAttrImpl(ndef);
+  if (fdef && GetNodeAttr(AttrSlice(&fdef->attr()), attr, value).ok()) {
+    return Status::OK();
+  }
+  return errors::InvalidArgument("Attr ", attr, " is not defined.");
+}
 
 }  // end namespace tensorflow
 

@@ -19,14 +19,28 @@ from __future__ import print_function
 
 import copy
 import re
+import sre_constants
 import traceback
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.platform import gfile
+
 HELP_INDENT = "  "
 
-EXIT_TOKEN_KEY = "exit_token"
 EXPLICIT_USER_EXIT = "explicit_user_exit"
+REGEX_MATCH_LINES_KEY = "regex_match_lines"
+
+
+class CommandLineExit(Exception):
+
+  def __init__(self, exit_token=None):
+    Exception.__init__(self)
+    self._exit_token = exit_token
+
+  @property
+  def exit_token(self):
+    return self._exit_token
 
 
 class RichTextLines(object):
@@ -39,10 +53,6 @@ class RichTextLines(object):
   This is not to be confused with Rich Text Format (RTF). This class is for text
   lines only.
   """
-
-  # A RichTextLines object can have the following key EXIT_TOKEN_KEY in its
-  # annotations field. The CLI receiving this RichTextLines may use this field
-  # to exit the command loop while returning a proper return value.
 
   def __init__(self, lines, font_attr_segs=None, annotations=None):
     """Constructor of RichTextLines.
@@ -86,10 +96,12 @@ class RichTextLines(object):
     self._font_attr_segs = font_attr_segs
     if not self._font_attr_segs:
       self._font_attr_segs = {}
+      # TODO(cais): Refactor to collections.defaultdict(list) to simplify code.
 
     self._annotations = annotations
     if not self._annotations:
       self._annotations = {}
+      # TODO(cais): Refactor to collections.defaultdict(list) to simplify code.
 
   @property
   def lines(self):
@@ -102,6 +114,98 @@ class RichTextLines(object):
   @property
   def annotations(self):
     return self._annotations
+
+  def num_lines(self):
+    return len(self._lines)
+
+  def slice(self, begin, end):
+    """Slice a RichTextLines object.
+
+    The object itself is not changed. A sliced instance is returned.
+
+    Args:
+      begin: (int) Beginning line index (inclusive). Must be >= 0.
+      end: (int) Ending line index (exclusive). Must be >= 0.
+
+    Returns:
+      (RichTextLines) Sliced output instance of RichTextLines.
+
+    Raises:
+      ValueError: If begin or end is negative.
+    """
+
+    if begin < 0 or end < 0:
+      raise ValueError("Encountered negative index.")
+
+    # Copy lines.
+    lines = self.lines[begin:end]
+
+    # Slice font attribute segments.
+    font_attr_segs = {}
+    for key in self.font_attr_segs:
+      if key >= begin and key < end:
+        font_attr_segs[key - begin] = self.font_attr_segs[key]
+
+    # Slice annotations.
+    annotations = {}
+    for key in self.annotations:
+      if not isinstance(key, int):
+        # Annotations can contain keys that are not line numbers.
+        annotations[key] = self.annotations[key]
+      elif key >= begin and key < end:
+        annotations[key - begin] = self.annotations[key]
+
+    return RichTextLines(
+        lines, font_attr_segs=font_attr_segs, annotations=annotations)
+
+  def extend(self, other):
+    """Extend this instance of RichTextLines with another instance.
+
+    The extension takes effect on the text lines, the font attribute segments,
+    as well as the annotations. The line indices in the font attribute
+    segments and the annotations are adjusted to account for the existing
+    lines. If there are duplicate, non-line-index fields in the annotations,
+    the value from the input argument "other" will override that in this
+    instance.
+
+    Args:
+      other: (RichTextLines) The other RichTextLines instance to be appended at
+        the end of this instance.
+    """
+
+    orig_num_lines = self.num_lines()  # Record original number of lines.
+
+    # Merge the lines.
+    self._lines.extend(other.lines)
+
+    # Merge the font_attr_segs.
+    for line_index in other.font_attr_segs:
+      self._font_attr_segs[orig_num_lines + line_index] = (
+          other.font_attr_segs[line_index])
+
+    # Merge the annotations.
+    for key in other.annotations:
+      if isinstance(key, int):
+        self._annotations[orig_num_lines + key] = (other.annotations[key])
+      else:
+        self._annotations[key] = other.annotations[key]
+
+  # TODO(cais): Add method append of the signature:
+  #   def append_line(line, line_font_attr_segs)
+  # and refactor usage in stepper_cli.py.
+
+  def write_to_file(self, file_path):
+    """Write the object itself to file, in a plain format.
+
+    The font_attr_segs and annotations are ignored.
+
+    Args:
+      file_path: (str) path of the file to write to.
+    """
+
+    with gfile.Open(file_path, "w") as f:
+      for line in self._lines:
+        f.write(line + "\n")
 
 
 def regex_find(orig_screen_output, regex, font_attr):
@@ -122,14 +226,21 @@ def regex_find(orig_screen_output, regex, font_attr):
 
   Returns:
     A modified copy of orig_screen_output.
+
+  Raises:
+    ValueError: If input str regex is not a valid regular expression.
   """
   new_screen_output = RichTextLines(
       orig_screen_output.lines,
       font_attr_segs=copy.deepcopy(orig_screen_output.font_attr_segs),
       annotations=orig_screen_output.annotations)
 
-  re_prog = re.compile(regex)
+  try:
+    re_prog = re.compile(regex)
+  except sre_constants.error:
+    raise ValueError("Invalid regular expression: \"%s\"" % regex)
 
+  regex_match_lines = []
   for i in xrange(len(new_screen_output.lines)):
     line = new_screen_output.lines[i]
     find_it = re_prog.finditer(line)
@@ -145,7 +256,9 @@ def regex_find(orig_screen_output, regex, font_attr):
         new_screen_output.font_attr_segs[i].extend(match_segs)
         new_screen_output.font_attr_segs[i] = sorted(
             new_screen_output.font_attr_segs[i], key=lambda x: x[0])
+      regex_match_lines.append(i)
 
+  new_screen_output.annotations[REGEX_MATCH_LINES_KEY] = regex_match_lines
   return new_screen_output
 
 
@@ -163,11 +276,15 @@ def wrap_rich_text_lines(inp, cols):
     cols: Number of columns, as an int.
 
   Returns:
-    A new instance of RichTextLines, with line lengths limited to cols.
-
+    1) A new instance of RichTextLines, with line lengths limited to cols.
+    2) A list of new (wrapped) line index. For example, if the original input
+      consists of three lines and only the second line is wrapped, and it's
+      wrapped into two lines, this return value will be: [0, 1, 3].
   Raises:
     ValueError: If inputs have invalid types.
   """
+
+  new_line_indices = []
 
   if not isinstance(inp, RichTextLines):
     raise ValueError("Invalid type of input screen_output")
@@ -179,6 +296,8 @@ def wrap_rich_text_lines(inp, cols):
 
   row_counter = 0  # Counter for new row index
   for i in xrange(len(inp.lines)):
+    new_line_indices.append(out.num_lines())
+
     line = inp.lines[i]
 
     if i in inp.annotations:
@@ -233,7 +352,12 @@ def wrap_rich_text_lines(inp, cols):
 
       out.lines.extend(wlines)
 
-  return out
+  # Copy over keys of annotation that are not row indices.
+  for key in inp.annotations:
+    if not isinstance(key, int):
+      out.annotations[key] = inp.annotations[key]
+
+  return out, new_line_indices
 
 
 class CommandHandlerRegistry(object):
@@ -303,7 +427,12 @@ class CommandHandlerRegistry(object):
         where argv is the argument vector (excluding the command prefix) and
           screen_info is a dictionary containing information about the screen,
           such as number of columns, e.g., {"cols": 100}.
-        The callable should return a RichTextLines object.
+        The callable should return:
+          1) a RichTextLines object representing the screen output.
+
+        The callable can also raise an exception of the type CommandLineExit,
+        which if caught by the command-line interface, will lead to its exit.
+        The exception can optionally carry an exit token of arbitrary type.
       help_info: A help string.
       prefix_aliases: Aliases for the command prefix, as a list of str. E.g.,
         shorthands for the command prefix: ["p", "pr"]
@@ -316,9 +445,6 @@ class CommandHandlerRegistry(object):
         4) elements in prefix_aliases clash with existing aliases.
         5) help_info is not a str.
     """
-
-    # TODO(cais): Refactor handler specification so that it returns not only
-    #   a RichTextLine object, but also an exit token.
 
     if not prefix:
       raise ValueError("Empty command prefix")
@@ -373,6 +499,9 @@ class CommandHandlerRegistry(object):
         2) no command handler is registered for the command prefix, or
         3) the handler is found for the prefix, but it fails to return a
           RichTextLines or raise any exception.
+      CommandLineExit:
+        If the command handler raises this type of exception, tihs method will
+        simply pass it along.
     """
     if not prefix:
       raise ValueError("Prefix is empty")
@@ -385,6 +514,8 @@ class CommandHandlerRegistry(object):
     handler = self._handlers[resolved_prefix]
     try:
       output = handler(argv, screen_info=screen_info)
+    except CommandLineExit as e:
+      raise e
     except SystemExit as e:
       # Special case for syntax errors caught by argparse.
       lines = ["Syntax error for command: %s" % prefix,
@@ -433,18 +564,19 @@ class CommandHandlerRegistry(object):
     """
     if not cmd_prefix:
       # Print full help information, in sorted order of the command prefixes.
-      lines = []
+      help_info = RichTextLines([])
       if self._help_intro:
         # If help intro is available, show it at the beginning.
-        lines.extend(self._help_intro)
+        help_info.extend(self._help_intro)
 
       sorted_prefixes = sorted(self._handlers)
       for cmd_prefix in sorted_prefixes:
-        lines.extend(self._get_help_for_command_prefix(cmd_prefix))
+        lines = self._get_help_for_command_prefix(cmd_prefix)
         lines.append("")
         lines.append("")
+        help_info.extend(RichTextLines(lines))
 
-      return RichTextLines(lines)
+      return help_info
     else:
       return RichTextLines(self._get_help_for_command_prefix(cmd_prefix))
 
@@ -452,7 +584,7 @@ class CommandHandlerRegistry(object):
     """Set an introductory message to help output.
 
     Args:
-      help_intro: (list of str) Text lines appended to the beginning of the
+      help_intro: (RichTextLines) Rich text lines appended to the
         beginning of the output of the command "help", as introductory
         information.
     """

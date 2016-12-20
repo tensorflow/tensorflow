@@ -17,16 +17,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-from sklearn import metrics
-import pandas
+import argparse
+import sys
 
+import numpy as np
+import pandas
+from sklearn import metrics
 import tensorflow as tf
+
 from tensorflow.contrib import learn
 
-FLAGS = tf.app.flags.FLAGS
-tf.app.flags.DEFINE_bool('test_with_fake_data', False,
-                         'Test the example code with fake data.')
+FLAGS = None
 
 MAX_DOCUMENT_LENGTH = 100
 EMBEDDING_SIZE = 20
@@ -39,16 +40,15 @@ POOLING_STRIDE = 2
 n_words = 0
 
 
-def cnn_model(x, y):
-  """2 layer Convolutional network to predict from sequence of words
-  to a class."""
+def cnn_model(features, target):
+  """2 layer ConvNet to predict from sequence of words to a class."""
   # Convert indexes of words into embeddings.
   # This creates embeddings matrix of [n_words, EMBEDDING_SIZE] and then
   # maps word indexes of the sequence into [batch_size, sequence_length,
   # EMBEDDING_SIZE].
-  y = tf.one_hot(y, 15, 1, 0)
-  word_vectors = learn.ops.categorical_variable(x, n_classes=n_words,
-      embedding_size=EMBEDDING_SIZE, name='words')
+  target = tf.one_hot(target, 15, 1, 0)
+  word_vectors = tf.contrib.layers.embed_sequence(
+      features, vocab_size=n_words, embed_dim=EMBEDDING_SIZE, scope='words')
   word_vectors = tf.expand_dims(word_vectors, 3)
   with tf.variable_scope('CNN_Layer1'):
     # Apply Convolution filtering on input sequence.
@@ -57,7 +57,8 @@ def cnn_model(x, y):
     # Add a RELU for non linearity.
     conv1 = tf.nn.relu(conv1)
     # Max pooling across output of Convolution+Relu.
-    pool1 = tf.nn.max_pool(conv1, ksize=[1, POOLING_WINDOW, 1, 1],
+    pool1 = tf.nn.max_pool(
+        conv1, ksize=[1, POOLING_WINDOW, 1, 1],
         strides=[1, POOLING_STRIDE, 1, 1], padding='SAME')
     # Transpose matrix so that n_filters from convolution becomes width.
     pool1 = tf.transpose(pool1, [0, 1, 3, 2])
@@ -69,13 +70,16 @@ def cnn_model(x, y):
     pool2 = tf.squeeze(tf.reduce_max(conv2, 1), squeeze_dims=[1])
 
   # Apply regular WX + B and classification.
-  prediction, loss = learn.models.logistic_regression(pool2, y)
+  logits = tf.contrib.layers.fully_connected(pool2, 15, activation_fn=None)
+  loss = tf.contrib.losses.softmax_cross_entropy(logits, target)
 
   train_op = tf.contrib.layers.optimize_loss(
       loss, tf.contrib.framework.get_global_step(),
       optimizer='Adam', learning_rate=0.01)
 
-  return {'class': tf.argmax(prediction, 1), 'prob': prediction}, loss, train_op
+  return (
+      {'class': tf.argmax(logits, 1), 'prob': tf.nn.softmax(logits)},
+      loss, train_op)
 
 
 def main(unused_argv):
@@ -107,4 +111,12 @@ def main(unused_argv):
 
 
 if __name__ == '__main__':
-  tf.app.run()
+  parser = argparse.ArgumentParser()
+  parser.add_argument(
+      '--test_with_fake_data',
+      default=False,
+      help='Test the example code with fake data.',
+      action='store_true'
+  )
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

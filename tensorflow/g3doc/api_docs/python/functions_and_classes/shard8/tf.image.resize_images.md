@@ -8,12 +8,9 @@ the same as `size`.  To avoid distortions see
 
 `method` can be one of:
 
-*   <b>`ResizeMethod.BILINEAR`</b>: [Bilinear interpolation.]
-    (https://en.wikipedia.org/wiki/Bilinear_interpolation)
-*   <b>`ResizeMethod.NEAREST_NEIGHBOR`</b>: [Nearest neighbor interpolation.]
-    (https://en.wikipedia.org/wiki/Nearest-neighbor_interpolation)
-*   <b>`ResizeMethod.BICUBIC`</b>: [Bicubic interpolation.]
-    (https://en.wikipedia.org/wiki/Bicubic_interpolation)
+*   <b>`ResizeMethod.BILINEAR`</b>: [Bilinear interpolation.](https://en.wikipedia.org/wiki/Bilinear_interpolation)
+*   <b>`ResizeMethod.NEAREST_NEIGHBOR`</b>: [Nearest neighbor interpolation.](https://en.wikipedia.org/wiki/Nearest-neighbor_interpolation)
+*   <b>`ResizeMethod.BICUBIC`</b>: [Bicubic interpolation.](https://en.wikipedia.org/wiki/Bicubic_interpolation)
 *   <b>`ResizeMethod.AREA`</b>: Area interpolation.
 
 ##### Args:

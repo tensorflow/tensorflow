@@ -81,7 +81,41 @@ void LogMessage::GenerateLogMessage() {
 }
 #endif
 
-LogMessage::~LogMessage() { GenerateLogMessage(); }
+
+namespace {
+
+int64 MinLogLevel() {
+  const char* tf_env_var_val = getenv("TF_CPP_MIN_LOG_LEVEL");
+  if (tf_env_var_val == nullptr) {
+    return 0;
+  }
+
+  // Ideally we would use env_var / safe_strto64, but it is
+  // hard to use here without pulling in a lot of dependencies,
+  // so we do a poor-man's parsing.
+  string min_log_level(tf_env_var_val);
+  if (min_log_level == "1") {
+    // Maps to WARNING
+    return 1;
+  } else if (min_log_level == "2") {
+    // Maps to ERROR
+    return 2;
+  } else if (min_log_level == "3") {
+    // Maps to FATAL
+    return 3;
+  } else {
+    // Maps to INFO (the default).
+    return 0;
+  }
+}
+
+}  // namespace
+
+LogMessage::~LogMessage() {
+  // Read the min log level once during the first call to logging.
+  static int64 min_log_level = MinLogLevel();
+  if (TF_PREDICT_TRUE(severity_ >= min_log_level)) GenerateLogMessage();
+}
 
 LogMessageFatal::LogMessageFatal(const char* file, int line)
     : LogMessage(file, line, FATAL) {}
@@ -90,6 +124,11 @@ LogMessageFatal::~LogMessageFatal() {
   // ATTRIBUTE_NORETURN).
   GenerateLogMessage();
   abort();
+}
+
+void LogString(const char* fname, int line, int severity,
+               const string& message) {
+  LogMessage(fname, line, severity) << message;
 }
 
 template <>

@@ -16,20 +16,21 @@ else()
       ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgrpc_unsecure.a
       ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgpr.a)
 endif()
-  
+
 ExternalProject_Add(grpc
     PREFIX grpc
-    DEPENDS protobuf
+    DEPENDS protobuf zlib
     GIT_REPOSITORY ${GRPC_URL}
     GIT_TAG ${GRPC_TAG}
     DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
     BUILD_IN_SOURCE 1
-    PATCH_COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/patches/grpc/CMakeLists.txt ${GRPC_BUILD}
+    PATCH_COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/patches/grpc/CMakeLists.txt ${GRPC_BUILD}
     INSTALL_COMMAND ""
     CMAKE_CACHE_ARGS
         -DCMAKE_BUILD_TYPE:STRING=Release
         -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
         -DPROTOBUF_INCLUDE_DIRS:STRING=${PROTOBUF_INCLUDE_DIRS}
-	-DPROTOBUF_LIBRARIES:STRING=${protobuf_STATIC_LIBRARIES}
+        -DPROTOBUF_LIBRARIES:STRING=${protobuf_STATIC_LIBRARIES}
+        -DZLIB_ROOT:STRING=${ZLIB_INSTALL}
 )
 

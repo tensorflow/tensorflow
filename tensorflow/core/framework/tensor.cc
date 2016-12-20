@@ -166,16 +166,11 @@ struct Helper<string> {
   static TensorBuffer* Decode(Allocator* a, const Source& in, int64 n) {
     Buffer<string>* buf = new Buffer<string>(a, n);
     string* strings = buf->template base<string>();
-    if (strings == nullptr) {
+    if (strings == nullptr || !port::DecodeStringList(in, strings, n)) {
       buf->Unref();
       return nullptr;
     }
-    if (port::DecodeStringList(in, strings, n)) {
-      return buf;
-    } else {
-      buf->Unref();
-      return nullptr;
-    }
+    return buf;
   }
 
   // Returns the estimated memory usage of "n" elements of type T
@@ -186,6 +181,39 @@ struct Helper<string> {
     const string* p = in->base<const string>();
     for (int i = 0; i < n; ++i, ++p) tot += p->size();
     return tot;
+  }
+};
+
+template <>
+struct Helper<ResourceHandle> {
+  // Proto message uses RepeatedFieldType to hold repeated T.
+  typedef protobuf::RepeatedPtrField<string> RepeatedFieldType;
+
+  // Encodes "n" elements of type ResourceHandle stored in "in" into destination
+  // "out", which is usually the TensorProto::tensor_content.
+  template <typename Destination>
+  static void Encode(TensorBuffer* in, int64 n, Destination* out) {
+    port::EncodeResourceHandleList(in->base<const ResourceHandle>(), n, out);
+  }
+
+  // Decodes "n" elements of type string from "in" and constructs a
+  // buffer out of it. Returns nullptr if the decoding fails. "in" is
+  // usually the TensorProto::tensor_content.
+  template <typename Source>
+  static TensorBuffer* Decode(Allocator* a, const Source& in, int64 n) {
+    auto* buf = new Buffer<ResourceHandle>(a, n);
+    ResourceHandle* ps = buf->template base<ResourceHandle>();
+    if (ps == nullptr || !port::DecodeResourceHandleList(in, ps, n)) {
+      buf->Unref();
+      return nullptr;
+    }
+    return buf;
+  }
+
+  // Returns the estimated memory usage of "n" elements of type T
+  // stored in buffer "in".
+  static int64 TotalBytes(TensorBuffer* in, int n) {
+    return n * sizeof(ResourceHandle);
   }
 };
 
@@ -237,6 +265,21 @@ struct ProtoHelper<int64> {
   static void Fill(const int64* data, size_t n, TensorProto* proto) {
     protobuf::RepeatedField<protobuf_int64> copy(data, data + n);
     proto->mutable_int64_val()->Swap(&copy);
+  }
+};
+
+template <>
+struct ProtoHelper<ResourceHandle> {
+  static const ResourceHandle* Begin(const TensorProto& proto) {
+    return reinterpret_cast<const ResourceHandle*>(
+        &(*proto.resource_handle_val().begin()));
+  }
+  static size_t NumElements(const TensorProto& proto) {
+    return proto.resource_handle_val().size();
+  }
+  static void Fill(const ResourceHandle* data, size_t n, TensorProto* proto) {
+    protobuf::RepeatedPtrField<ResourceHandle> copy(data, data + n);
+    proto->mutable_resource_handle_val()->Swap(&copy);
   }
 };
 
@@ -356,16 +399,19 @@ TensorBuffer* FromProtoField(Allocator* a, const TensorProto& in, int64 n) {
   }
 
   const int64 in_n = ProtoHelper<T>::NumElements(in);
-  auto begin = ProtoHelper<T>::Begin(in);
-  if (n <= in_n) {
-    std::copy_n(begin, n, data);
-  } else if (in_n > 0) {
-    std::copy_n(begin, in_n, data);
-    const T& last = *(data + in_n - 1);
-    std::fill_n(data + in_n, n - in_n, last);
-  } else {
+  if (in_n <= 0) {
     std::fill_n(data, n, T());
+  } else {
+    auto begin = ProtoHelper<T>::Begin(in);
+    if (n <= in_n) {
+      std::copy_n(begin, n, data);
+    } else {
+      std::copy_n(begin, in_n, data);
+      const T& last = *(data + in_n - 1);
+      std::fill_n(data + in_n, n - in_n, last);
+    }
   }
+
   return buf;
 }
 
@@ -489,34 +535,39 @@ void Tensor::UnsafeCopyFromInternal(const Tensor& other, DataType dtype,
     STMTS;                            \
     break;                            \
   }
-#define CASES(TYPE_ENUM, STMTS)                       \
-  switch (TYPE_ENUM) {                                \
-    CASE(float, SINGLE_ARG(STMTS))                    \
-    CASE(double, SINGLE_ARG(STMTS))                   \
-    CASE(int32, SINGLE_ARG(STMTS))                    \
-    CASE(uint8, SINGLE_ARG(STMTS))                    \
-    CASE(uint16, SINGLE_ARG(STMTS))                   \
-    CASE(int16, SINGLE_ARG(STMTS))                    \
-    CASE(int8, SINGLE_ARG(STMTS))                     \
-    CASE(string, SINGLE_ARG(STMTS))                   \
-    CASE(complex64, SINGLE_ARG(STMTS))                \
-    CASE(complex128, SINGLE_ARG(STMTS))               \
-    CASE(int64, SINGLE_ARG(STMTS))                    \
-    CASE(bool, SINGLE_ARG(STMTS))                     \
-    CASE(qint32, SINGLE_ARG(STMTS))                   \
-    CASE(quint8, SINGLE_ARG(STMTS))                   \
-    CASE(qint8, SINGLE_ARG(STMTS))                    \
-    CASE(quint16, SINGLE_ARG(STMTS))                  \
-    CASE(qint16, SINGLE_ARG(STMTS))                   \
-    CASE(bfloat16, SINGLE_ARG(STMTS))                 \
-    CASE(Eigen::half, SINGLE_ARG(STMTS))              \
-    case DT_INVALID:                                  \
-      LOG(FATAL) << "Type not set";                   \
-      break;                                          \
-    default:                                          \
-      LOG(FATAL) << "Unexpected type: " << TYPE_ENUM; \
-      break;                                          \
+#define CASES_WITH_DEFAULT(TYPE_ENUM, STMTS, INVALID, DEFAULT) \
+  switch (TYPE_ENUM) {                                         \
+    CASE(float, SINGLE_ARG(STMTS))                             \
+    CASE(double, SINGLE_ARG(STMTS))                            \
+    CASE(int32, SINGLE_ARG(STMTS))                             \
+    CASE(uint8, SINGLE_ARG(STMTS))                             \
+    CASE(uint16, SINGLE_ARG(STMTS))                            \
+    CASE(int16, SINGLE_ARG(STMTS))                             \
+    CASE(int8, SINGLE_ARG(STMTS))                              \
+    CASE(string, SINGLE_ARG(STMTS))                            \
+    CASE(complex64, SINGLE_ARG(STMTS))                         \
+    CASE(complex128, SINGLE_ARG(STMTS))                        \
+    CASE(int64, SINGLE_ARG(STMTS))                             \
+    CASE(bool, SINGLE_ARG(STMTS))                              \
+    CASE(qint32, SINGLE_ARG(STMTS))                            \
+    CASE(quint8, SINGLE_ARG(STMTS))                            \
+    CASE(qint8, SINGLE_ARG(STMTS))                             \
+    CASE(quint16, SINGLE_ARG(STMTS))                           \
+    CASE(qint16, SINGLE_ARG(STMTS))                            \
+    CASE(bfloat16, SINGLE_ARG(STMTS))                          \
+    CASE(Eigen::half, SINGLE_ARG(STMTS))                       \
+    CASE(ResourceHandle, SINGLE_ARG(STMTS))                    \
+    case DT_INVALID:                                           \
+      INVALID;                                                 \
+      break;                                                   \
+    default:                                                   \
+      DEFAULT;                                                 \
+      break;                                                   \
   }
+
+#define CASES(TYPE_ENUM, STMTS)                                      \
+  CASES_WITH_DEFAULT(TYPE_ENUM, STMTS, LOG(FATAL) << "Type not set"; \
+                     , LOG(FATAL) << "Unexpected type: " << TYPE_ENUM;)
 
 Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape)
     : shape_(shape), buf_(nullptr) {
@@ -621,13 +672,16 @@ bool Tensor::FromProto(Allocator* a, const TensorProto& proto) {
   TensorShape shape(proto.tensor_shape());
   const int64 N = shape.num_elements();
   if (N > 0 && proto.dtype()) {
+    bool dtype_error = false;
     if (!proto.tensor_content().empty()) {
       const auto& content = proto.tensor_content();
-      CASES(proto.dtype(), p = Helper<T>::Decode(a, content, N));
+      CASES_WITH_DEFAULT(proto.dtype(), p = Helper<T>::Decode(a, content, N),
+                         dtype_error = true, dtype_error = true);
     } else {
-      CASES(proto.dtype(), p = FromProtoField<T>(a, proto, N));
+      CASES_WITH_DEFAULT(proto.dtype(), p = FromProtoField<T>(a, proto, N),
+                         dtype_error = true, dtype_error = true);
     }
-    if (p == nullptr) return false;
+    if (dtype_error || p == nullptr) return false;
   }
   shape_ = shape;
   set_dtype(proto.dtype());
@@ -677,14 +731,57 @@ bool Tensor::CanUseDMA() const {
 #undef CASE
 
 namespace {
+// Print from left dim to right dim recursively.
 template <typename T>
-string SummarizeArray(int64 limit, int64 num_elts, const char* data) {
+void PrintOneDim(int dim_index, gtl::InlinedVector<int64, 4> shape, int64 limit,
+                 int shape_size, T* data, int64* data_index, string* result) {
+  if (*data_index >= limit) return;
+  int64 element_count = shape[dim_index];
+  // We have reached the right-most dimension of the tensor.
+  if (dim_index == shape_size - 1) {
+    for (int64 i = 0; i < element_count; i++) {
+      if (*data_index >= limit) return;
+      if (i > 0) strings::StrAppend(result, " ");
+      strings::StrAppend(result, data[(*data_index)++]);
+    }
+    return;
+  }
+  // Loop every element of one dim.
+  for (int64 i = 0; i < element_count; i++) {
+    bool flag = false;
+    if (*data_index < limit) {
+      strings::StrAppend(result, "[");
+      flag = true;
+    }
+    // As for each element, print the sub-dim.
+    PrintOneDim(dim_index + 1, shape, limit, shape_size, data, data_index,
+                result);
+    if (*data_index < limit || flag) {
+      strings::StrAppend(result, "]");
+      flag = false;
+    }
+  }
+}
+
+template <typename T>
+string SummarizeArray(int64 limit, int64 num_elts,
+                      const TensorShape& tensor_shape, const char* data) {
   string ret;
   const T* array = reinterpret_cast<const T*>(data);
-  for (int64 i = 0; i < limit; ++i) {
-    if (i > 0) strings::StrAppend(&ret, " ");
-    strings::StrAppend(&ret, array[i]);
+
+  const gtl::InlinedVector<int64, 4> shape = tensor_shape.dim_sizes();
+  if (shape.empty()) {
+    for (int64 i = 0; i < limit; ++i) {
+      if (i > 0) strings::StrAppend(&ret, " ");
+      strings::StrAppend(&ret, array[i]);
+    }
+    if (num_elts > limit) strings::StrAppend(&ret, "...");
+    return ret;
   }
+  int64 data_index = 0;
+  const int shape_size = tensor_shape.dims();
+  PrintOneDim(0, shape, limit, shape_size, array, &data_index, &ret);
+
   if (num_elts > limit) strings::StrAppend(&ret, "...");
   return ret;
 }
@@ -700,40 +797,40 @@ string Tensor::SummarizeValue(int64 max_entries) const {
   const char* data = limit > 0 ? tensor_data().data() : nullptr;
   switch (dtype()) {
     case DT_HALF:
-      return SummarizeArray<Eigen::half>(limit, num_elts, data);
+      return SummarizeArray<Eigen::half>(limit, num_elts, shape_, data);
       break;
     case DT_FLOAT:
-      return SummarizeArray<float>(limit, num_elts, data);
+      return SummarizeArray<float>(limit, num_elts, shape_, data);
       break;
     case DT_DOUBLE:
-      return SummarizeArray<double>(limit, num_elts, data);
+      return SummarizeArray<double>(limit, num_elts, shape_, data);
       break;
     case DT_INT32:
-      return SummarizeArray<int32>(limit, num_elts, data);
+      return SummarizeArray<int32>(limit, num_elts, shape_, data);
       break;
     case DT_UINT8:
     case DT_QUINT8:
-      return SummarizeArray<uint8>(limit, num_elts, data);
+      return SummarizeArray<uint8>(limit, num_elts, shape_, data);
       break;
     case DT_UINT16:
     case DT_QUINT16:
-      return SummarizeArray<uint16>(limit, num_elts, data);
+      return SummarizeArray<uint16>(limit, num_elts, shape_, data);
       break;
     case DT_INT16:
     case DT_QINT16:
-      return SummarizeArray<int16>(limit, num_elts, data);
+      return SummarizeArray<int16>(limit, num_elts, shape_, data);
       break;
     case DT_INT8:
     case DT_QINT8:
-      return SummarizeArray<int8>(limit, num_elts, data);
+      return SummarizeArray<int8>(limit, num_elts, shape_, data);
       break;
     case DT_INT64:
-      return SummarizeArray<int64>(limit, num_elts, data);
+      return SummarizeArray<int64>(limit, num_elts, shape_, data);
       break;
     case DT_BOOL:
       // TODO(tucker): Is it better to emit "True False..."?  This
       // will emit "1 0..." which is more compact.
-      return SummarizeArray<bool>(limit, num_elts, data);
+      return SummarizeArray<bool>(limit, num_elts, shape_, data);
       break;
     default: {
       // All irregular cases

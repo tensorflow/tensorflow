@@ -51,12 +51,12 @@ CONTINUOUS_COLUMNS = ["age", "education_num", "capital_gain", "capital_loss",
 
 
 def maybe_download():
-  """May be downloads training data and returns train and test file names."""
+  """Maybe downloads training data and returns train and test file names."""
   if FLAGS.train_data:
     train_file_name = FLAGS.train_data
   else:
     train_file = tempfile.NamedTemporaryFile(delete=False)
-    urllib.request.urlretrieve("https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data", train_file.name)  # pylint: disable=line-too-long
+    urllib.request.urlretrieve("http://mlr.cs.umass.edu/ml/machine-learning-databases/adult/adult.data", train_file.name)  # pylint: disable=line-too-long
     train_file_name = train_file.name
     train_file.close()
     print("Training data is downloaded to %s" % train_file_name)
@@ -65,7 +65,7 @@ def maybe_download():
     test_file_name = FLAGS.test_data
   else:
     test_file = tempfile.NamedTemporaryFile(delete=False)
-    urllib.request.urlretrieve("https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.test", test_file.name)  # pylint: disable=line-too-long
+    urllib.request.urlretrieve("http://mlr.cs.umass.edu/ml/machine-learning-databases/adult/adult.test", test_file.name)  # pylint: disable=line-too-long
     test_file_name = test_file.name
     test_file.close()
     print("Test data is downloaded to %s" % test_file_name)
@@ -151,11 +151,12 @@ def input_fn(df):
   continuous_cols = {k: tf.constant(df[k].values) for k in CONTINUOUS_COLUMNS}
   # Creates a dictionary mapping from each categorical feature column name (k)
   # to the values of that column stored in a tf.SparseTensor.
-  categorical_cols = {k: tf.SparseTensor(
-      indices=[[i, 0] for i in range(df[k].size)],
-      values=df[k].values,
-      shape=[df[k].size, 1])
-                      for k in CATEGORICAL_COLUMNS}
+  categorical_cols = {
+      k: tf.SparseTensor(
+          indices=[[i, 0] for i in range(df[k].size)],
+          values=df[k].values,
+          dense_shape=[df[k].size, 1])
+      for k in CATEGORICAL_COLUMNS}
   # Merges the two dictionaries into one.
   feature_cols = dict(continuous_cols)
   feature_cols.update(categorical_cols)
@@ -179,6 +180,10 @@ def train_and_eval():
       skipinitialspace=True,
       skiprows=1,
       engine="python")
+
+  # remove NaN elements
+  df_train = df_train.dropna(how='any', axis=0)
+  df_test = df_test.dropna(how='any', axis=0)
 
   df_train[LABEL_COLUMN] = (
       df_train["income_bracket"].apply(lambda x: ">50K" in x)).astype(int)

@@ -36,6 +36,20 @@ OpDef MakeOpDefWithLists() {
   return op_reg_data.op_def;
 }
 
+TensorShapeProto S(std::initializer_list<int64> dims) {
+  PartialTensorShape shape(dims);
+  TensorShapeProto ret;
+  shape.AsProto(&ret);
+  return ret;
+}
+
+TensorShapeProto Unknown() {
+  PartialTensorShape shape;
+  TensorShapeProto ret;
+  shape.AsProto(&ret);
+  return ret;
+}
+
 }  // namespace
 
 class ShapeInferenceTest : public ::testing::Test {
@@ -57,7 +71,8 @@ TEST_F(ShapeInferenceTest, InputOutputByName) {
                .Attr("N", 3)
                .Input(FakeInput(DT_FLOAT))
                .Finalize(&def);
-  InferenceContext c(&def, op_def, {"[1,5]", "[2,5]", "[1,3]"}, {});
+  InferenceContext c(&def, op_def, {S({1, 5}), S({2, 5}), S({1, 3})}, {}, {},
+                     {}, {});
 
   EXPECT_EQ("5", c.DebugString(c.NumElements(c.input(0))));
   EXPECT_EQ("10", c.DebugString(c.NumElements(c.input(1))));
@@ -93,7 +108,7 @@ static OpDef MakeOpDef(int num_inputs, int num_outputs) {
 
 TEST_F(ShapeInferenceTest, DimensionOrConstant) {
   NodeDef def;
-  InferenceContext c(&def, MakeOpDef(1, 1), {"?"}, {});
+  InferenceContext c(&def, MakeOpDef(1, 1), {Unknown()}, {}, {}, {}, {});
   EXPECT_EQ(InferenceContext::kUnknownDim,
             c.Value(InferenceContext::kUnknownDim));
   EXPECT_EQ(1, c.Value(1));
@@ -108,7 +123,7 @@ TEST_F(ShapeInferenceTest, Run) {
   NodeDef def;
   def.set_name("foo");
   def.set_op("foo_op");
-  InferenceContext c(&def, MakeOpDef(3, 2), {"[1]"}, {});
+  InferenceContext c(&def, MakeOpDef(3, 2), {S({1})}, {}, {}, {}, {});
 
   {
     auto fn = [](InferenceContext* c) {
@@ -139,7 +154,8 @@ TEST_F(ShapeInferenceTest, Run) {
 
 TEST_F(ShapeInferenceTest, RankAndDimInspection) {
   NodeDef def;
-  InferenceContext c(&def, MakeOpDef(3, 2), {"?", "[1,?,3]", "[]"}, {});
+  InferenceContext c(&def, MakeOpDef(3, 2), {Unknown(), S({1, -1, 3}), S({})},
+                     {}, {}, {}, {});
   EXPECT_EQ(3, c.num_inputs());
   EXPECT_EQ(2, c.num_outputs());
 
@@ -179,7 +195,9 @@ TEST_F(ShapeInferenceTest, RankAndDimInspection) {
 
 TEST_F(ShapeInferenceTest, NumElements) {
   NodeDef def;
-  InferenceContext c(&def, MakeOpDef(3, 2), {"?", "[1,?,3]", "[5,4,3,2]"}, {});
+  InferenceContext c(&def, MakeOpDef(3, 2),
+                     {Unknown(), S({1, -1, 3}), S({5, 4, 3, 2})}, {}, {}, {},
+                     {});
 
   EXPECT_EQ("?", c.DebugString(c.NumElements(c.input(0))));
   EXPECT_EQ("?", c.DebugString(c.NumElements(c.input(1))));
@@ -192,7 +210,8 @@ TEST_F(ShapeInferenceTest, NumElements) {
 
 TEST_F(ShapeInferenceTest, WithRank) {
   NodeDef def;
-  InferenceContext c(&def, MakeOpDef(2, 2), {"?", "[1,?,3]"}, {});
+  InferenceContext c(&def, MakeOpDef(2, 2), {Unknown(), S({1, -1, 3})}, {}, {},
+                     {}, {});
 
   auto in0 = c.input(0);
   auto in1 = c.input(1);
@@ -230,7 +249,8 @@ TEST_F(ShapeInferenceTest, WithRank) {
 
 TEST_F(ShapeInferenceTest, WithRankAtMost) {
   NodeDef def;
-  InferenceContext c(&def, MakeOpDef(2, 2), {"?", "[1,?,3]"}, {});
+  InferenceContext c(&def, MakeOpDef(2, 2), {Unknown(), S({1, -1, 3})}, {}, {},
+                     {}, {});
 
   auto in0 = c.input(0);
   auto in1 = c.input(1);
@@ -268,7 +288,8 @@ TEST_F(ShapeInferenceTest, WithRankAtMost) {
 
 TEST_F(ShapeInferenceTest, WithRankAtLeast) {
   NodeDef def;
-  InferenceContext c(&def, MakeOpDef(2, 2), {"?", "[1,?,3]"}, {});
+  InferenceContext c(&def, MakeOpDef(2, 2), {Unknown(), S({1, -1, 3})}, {}, {},
+                     {}, {});
 
   auto in0 = c.input(0);
   auto in1 = c.input(1);
@@ -306,7 +327,7 @@ TEST_F(ShapeInferenceTest, WithRankAtLeast) {
 
 TEST_F(ShapeInferenceTest, WithValue) {
   NodeDef def;
-  InferenceContext c(&def, MakeOpDef(1, 2), {"[1,?]"}, {});
+  InferenceContext c(&def, MakeOpDef(1, 2), {S({1, -1})}, {}, {}, {}, {});
 
   auto d0 = c.Dim(c.input(0), 0);
   auto d1 = c.Dim(c.input(0), 1);
@@ -347,7 +368,8 @@ TEST_F(ShapeInferenceTest, WithValue) {
 
 TEST_F(ShapeInferenceTest, MergeDim) {
   NodeDef def;
-  InferenceContext c(&def, MakeOpDef(1, 2), {"[2,?,2,1,?]"}, {});
+  InferenceContext c(&def, MakeOpDef(1, 2), {S({2, -1, 2, 1, -1})}, {}, {}, {},
+                     {});
 
   auto d2 = c.Dim(c.input(0), 0);
   auto d_unknown = c.Dim(c.input(0), 1);
@@ -394,7 +416,9 @@ TEST_F(ShapeInferenceTest, MergeDim) {
 TEST_F(ShapeInferenceTest, MergeShape) {
   NodeDef def;
   InferenceContext c(&def, MakeOpDef(7, 2),
-                     {"?", "[1,2]", "[?,2]", "[1,?]", "[1,3]", "?", "[1]"}, {});
+                     {Unknown(), S({1, 2}), S({-1, 2}), S({1, -1}), S({1, 3}),
+                      Unknown(), S({1})},
+                     {}, {}, {}, {});
 
   auto s_unknown = c.input(0);
   auto s_1_2 = c.input(1);
@@ -461,8 +485,11 @@ TEST_F(ShapeInferenceTest, MergeShape) {
 
 TEST_F(ShapeInferenceTest, MergePrefix) {
   NodeDef def;
-  InferenceContext c(&def, MakeOpDef(4, 2), {"?", "[?,2]", "[1,?,3]", "[2,4]"},
-                     {});
+  InferenceContext c(&def, MakeOpDef(4, 2),
+                     {
+                         Unknown(), S({-1, 2}), S({1, -1, 3}), S({2, 4}),
+                     },
+                     {}, {}, {}, {});
 
   auto s_unknown = c.input(0);
   auto s_u_2 = c.input(1);
@@ -514,7 +541,8 @@ TEST_F(ShapeInferenceTest, MergePrefix) {
 
 TEST_F(ShapeInferenceTest, Subshape) {
   NodeDef def;
-  InferenceContext c(&def, MakeOpDef(2, 2), {"[1,2,3,?,5]", "?"}, {});
+  InferenceContext c(&def, MakeOpDef(2, 2), {S({1, 2, 3, -1, 5}), Unknown()},
+                     {}, {}, {}, {});
 
   ShapeHandle unknown = c.input(1);
   ShapeHandle out;
@@ -588,7 +616,8 @@ TEST_F(ShapeInferenceTest, Subshape) {
 
 TEST_F(ShapeInferenceTest, Concatenate) {
   NodeDef def;
-  InferenceContext c(&def, MakeOpDef(3, 2), {"[1,?,3]", "[4,5]", "?"}, {});
+  InferenceContext c(&def, MakeOpDef(3, 2),
+                     {S({1, -1, 3}), S({4, 5}), Unknown()}, {}, {}, {}, {});
 
   auto in0 = c.input(0);
   auto in1 = c.input(1);
@@ -614,7 +643,8 @@ TEST_F(ShapeInferenceTest, Concatenate) {
 
 TEST_F(ShapeInferenceTest, ReplaceDim) {
   NodeDef def;
-  InferenceContext c(&def, MakeOpDef(2, 0), {"[1,2,3]", "?"}, {});
+  InferenceContext c(&def, MakeOpDef(2, 0), {S({1, 2, 3}), Unknown()}, {}, {},
+                     {}, {});
 
   auto in = c.input(0);
   auto unknown = c.input(1);
@@ -645,7 +675,8 @@ TEST_F(ShapeInferenceTest, ReplaceDim) {
 
 TEST_F(ShapeInferenceTest, MakeShape) {
   NodeDef def;
-  InferenceContext c(&def, MakeOpDef(1, 2), {"[1,2,3,?,5]"}, {});
+  InferenceContext c(&def, MakeOpDef(1, 2), {S({1, 2, 3, -1, 5})}, {}, {}, {},
+                     {});
 
   std::vector<DimensionHandle> dims;
   auto in0 = c.input(0);
@@ -669,7 +700,8 @@ TEST_F(ShapeInferenceTest, MakeShape) {
 
 TEST_F(ShapeInferenceTest, UnknownShape) {
   NodeDef def;
-  InferenceContext c(&def, MakeOpDef(0, 2), {}, {});
+  std::vector<ShapeHandle> empty;
+  InferenceContext c(&def, MakeOpDef(0, 2), empty, {}, {}, {}, {});
 
   auto u0 = c.UnknownShape();
   auto u1 = c.UnknownShape();
@@ -680,7 +712,8 @@ TEST_F(ShapeInferenceTest, UnknownShape) {
 
 TEST_F(ShapeInferenceTest, Scalar) {
   NodeDef def;
-  InferenceContext c(&def, MakeOpDef(0, 2), {}, {});
+  std::vector<ShapeHandle> empty;
+  InferenceContext c(&def, MakeOpDef(0, 2), empty, {}, {}, {}, {});
 
   auto s0 = c.Scalar();
   EXPECT_EQ("[]", c.DebugString(s0));
@@ -690,7 +723,8 @@ TEST_F(ShapeInferenceTest, Scalar) {
 
 TEST_F(ShapeInferenceTest, Vector) {
   NodeDef def;
-  InferenceContext c(&def, MakeOpDef(0, 2), {}, {});
+  std::vector<ShapeHandle> empty;
+  InferenceContext c(&def, MakeOpDef(0, 2), empty, {}, {}, {}, {});
 
   auto s0 = c.Vector(1);
   EXPECT_EQ("[1]", c.DebugString(s0));
@@ -705,7 +739,8 @@ TEST_F(ShapeInferenceTest, Vector) {
 
 TEST_F(ShapeInferenceTest, Matrix) {
   NodeDef def;
-  InferenceContext c(&def, MakeOpDef(0, 2), {}, {});
+  std::vector<ShapeHandle> empty;
+  InferenceContext c(&def, MakeOpDef(0, 2), empty, {}, {}, {}, {});
 
   auto s0 = c.Matrix(1, 2);
   EXPECT_EQ("[1,2]", c.DebugString(s0));
@@ -727,7 +762,7 @@ TEST_F(ShapeInferenceTest, Matrix) {
 TEST_F(ShapeInferenceTest, MakeShapeFromShapeTensor) {
   auto create = [&](Tensor* t) {
     NodeDef def;
-    InferenceContext c(&def, MakeOpDef(1, 0), {"?"}, {t});
+    InferenceContext c(&def, MakeOpDef(1, 0), {Unknown()}, {t}, {}, {}, {});
     ShapeHandle out;
     Status s = c.MakeShapeFromShapeTensor(0, &out);
     if (s.ok()) {
@@ -747,6 +782,9 @@ TEST_F(ShapeInferenceTest, MakeShapeFromShapeTensor) {
   t = ::tensorflow::test::AsTensor<int64>({3, 2, 1});
   EXPECT_EQ("[3,2,1]", create(&t));
 
+  t = ::tensorflow::test::AsTensor<int64>({3, -1, 1});
+  EXPECT_EQ("[3,?,1]", create(&t));
+
   t = ::tensorflow::test::AsTensor<int64>({});
   EXPECT_EQ("[]", create(&t));
 
@@ -763,10 +801,21 @@ TEST_F(ShapeInferenceTest, MakeShapeFromShapeTensor) {
   EXPECT_TRUE(StringPiece(create(&t))
                   .contains("Input tensor must be rank 1, but was rank 2"));
 
+  // Test negative values for the dims.
+  t = ::tensorflow::test::AsTensor<int64>({3, -2, 1});
+  EXPECT_TRUE(StringPiece(create(&t))
+                  .contains("Invalid value in tensor used for shape: -2"));
+
+  // Test negative values for the dims.
+  t = ::tensorflow::test::AsTensor<int32>({3, -2, 1});
+  EXPECT_TRUE(StringPiece(create(&t))
+                  .contains("Invalid value in tensor used for shape: -2"));
+
   // Test when the input shape is wrong.
   {
     NodeDef def;
-    InferenceContext c(&def, MakeOpDef(1, 0), {"[1,?]"}, {nullptr});
+    InferenceContext c(&def, MakeOpDef(1, 0), {S({1, -1})}, {nullptr}, {}, {},
+                       {});
     ShapeHandle out;
     EXPECT_EQ("Shape must be rank 1 but is rank 2",
               c.MakeShapeFromShapeTensor(0, &out).error_message());
@@ -775,7 +824,8 @@ TEST_F(ShapeInferenceTest, MakeShapeFromShapeTensor) {
 
 TEST_F(ShapeInferenceTest, MakeShapeFromShapeProto) {
   NodeDef def;
-  InferenceContext c(&def, MakeOpDef(0, 2), {}, {});
+  std::vector<ShapeHandle> empty;
+  InferenceContext c(&def, MakeOpDef(0, 2), empty, {}, {}, {}, {});
   TensorShapeProto proto;
 
   // With a set unknown rank.
@@ -810,7 +860,8 @@ TEST_F(ShapeInferenceTest, MakeShapeFromShapeProto) {
 
 TEST_F(ShapeInferenceTest, MakeDim) {
   NodeDef def;
-  InferenceContext c(&def, MakeOpDef(0, 2), {}, {});
+  std::vector<ShapeHandle> empty;
+  InferenceContext c(&def, MakeOpDef(0, 2), empty, {}, {}, {}, {});
 
   auto d0 = c.MakeDim(1);
   auto d1 = c.MakeDim(1);
@@ -823,7 +874,8 @@ TEST_F(ShapeInferenceTest, MakeDim) {
 
 TEST_F(ShapeInferenceTest, UnknownDim) {
   NodeDef def;
-  InferenceContext c(&def, MakeOpDef(0, 2), {}, {});
+  std::vector<ShapeHandle> empty;
+  InferenceContext c(&def, MakeOpDef(0, 2), empty, {}, {}, {}, {});
 
   auto d0 = c.UnknownDim();
   auto d1 = c.UnknownDim();
@@ -834,7 +886,8 @@ TEST_F(ShapeInferenceTest, UnknownDim) {
 
 TEST_F(ShapeInferenceTest, UnknownShapeOfRank) {
   NodeDef def;
-  InferenceContext c(&def, MakeOpDef(0, 2), {}, {});
+  std::vector<ShapeHandle> empty;
+  InferenceContext c(&def, MakeOpDef(0, 2), empty, {}, {}, {}, {});
 
   auto unknown_shape_of_rank_3 = c.UnknownShapeOfRank(3);
   EXPECT_EQ("[?,?,?]", c.DebugString(unknown_shape_of_rank_3));
@@ -847,7 +900,8 @@ TEST_F(ShapeInferenceTest, InputTensors) {
   const Tensor t1 = tensorflow::test::AsTensor<float>({10});
   const Tensor t2 = tensorflow::test::AsTensor<float>({20, 30});
   NodeDef def;
-  InferenceContext c(&def, MakeOpDef(3, 2), {"[1]", "[2]", "[3]"}, {&t1, &t2});
+  InferenceContext c(&def, MakeOpDef(3, 2), {S({1}), S({2}), S({3})},
+                     {&t1, &t2}, {}, {}, {});
 
   EXPECT_TRUE(c.input_tensor(0) == &t1);
   EXPECT_TRUE(c.input_tensor(1) == &t2);
@@ -858,7 +912,8 @@ TEST_F(ShapeInferenceTest, MakeDimForScalarInput) {
   Tensor t1 = tensorflow::test::AsScalar<int32>(20);
   Tensor t2 = tensorflow::test::AsScalar<int32>(-1);
   NodeDef def;
-  InferenceContext c(&def, MakeOpDef(2, 2), {"[]", "[]"}, {&t1, &t2});
+  InferenceContext c(&def, MakeOpDef(2, 2), {S({}), S({})}, {&t1, &t2}, {}, {},
+                     {});
 
   DimensionHandle d;
   EXPECT_TRUE(c.MakeDimForScalarInput(0, &d).ok());
@@ -888,7 +943,8 @@ TEST_F(ShapeInferenceTest, GetAttr) {
             .Finalize(&def)
             .ok());
 
-  InferenceContext c(&def, op_reg_data.op_def, {}, {});
+  std::vector<ShapeHandle> empty;
+  InferenceContext c(&def, op_reg_data.op_def, empty, {}, {}, {}, {});
   string value;
   EXPECT_TRUE(c.GetAttr("foo", &value).ok());
   EXPECT_EQ("bar", value);
@@ -896,11 +952,15 @@ TEST_F(ShapeInferenceTest, GetAttr) {
 
 TEST_F(ShapeInferenceTest, Divide) {
   NodeDef def;
-  InferenceContext c(&def, MakeOpDef(1, 2), {"[6,?]"}, {});
+  InferenceContext c(&def, MakeOpDef(1, 2), {S({6, -1, 1, 2, 0})}, {}, {}, {},
+                     {});
 
   auto s = c.input(0);
   auto d_6 = c.Dim(s, 0);
   auto d_unknown = c.Dim(s, 1);
+  auto d_1 = c.Dim(s, 2);
+  auto d_2 = c.Dim(s, 3);
+  auto d_0 = c.Dim(s, 4);
   bool evenly_divisible = true;
 
   // Dividing unknown by non-1 gives new unknown.
@@ -914,8 +974,14 @@ TEST_F(ShapeInferenceTest, Divide) {
   EXPECT_TRUE(SameHandle(out, d_unknown));
   EXPECT_TRUE(c.Divide(d_6, 1, evenly_divisible, &out).ok());
   EXPECT_TRUE(SameHandle(out, d_6));
+  EXPECT_TRUE(c.Divide(d_unknown, d_1, evenly_divisible, &out).ok());
+  EXPECT_TRUE(SameHandle(out, d_unknown));
+  EXPECT_TRUE(c.Divide(d_6, d_1, evenly_divisible, &out).ok());
+  EXPECT_TRUE(SameHandle(out, d_6));
 
   EXPECT_TRUE(c.Divide(d_6, 2, evenly_divisible, &out).ok());
+  EXPECT_EQ("3", c.DebugString(out));
+  EXPECT_TRUE(c.Divide(d_6, d_2, evenly_divisible, &out).ok());
   EXPECT_EQ("3", c.DebugString(out));
 
   EXPECT_TRUE(
@@ -924,6 +990,9 @@ TEST_F(ShapeInferenceTest, Divide) {
 
   EXPECT_TRUE(
       StringPiece(c.Divide(d_6, 0, evenly_divisible, &out).error_message())
+          .contains("Divisor must be positive but is 0"));
+  EXPECT_TRUE(
+      StringPiece(c.Divide(d_6, d_0, evenly_divisible, &out).error_message())
           .contains("Divisor must be positive but is 0"));
 
   EXPECT_TRUE(
@@ -946,7 +1015,7 @@ TEST_F(ShapeInferenceTest, Divide) {
 
 TEST_F(ShapeInferenceTest, Add) {
   NodeDef def;
-  InferenceContext c(&def, MakeOpDef(1, 2), {"[6,?,0]"}, {});
+  InferenceContext c(&def, MakeOpDef(1, 2), {S({6, -1, 0})}, {}, {}, {}, {});
 
   auto s = c.input(0);
   auto d_6 = c.Dim(s, 0);
@@ -997,7 +1066,7 @@ TEST_F(ShapeInferenceTest, Add) {
 
 TEST_F(ShapeInferenceTest, Subtract) {
   NodeDef def;
-  InferenceContext c(&def, MakeOpDef(1, 2), {"[6,?,0,5]"}, {});
+  InferenceContext c(&def, MakeOpDef(1, 2), {S({6, -1, 0, 5})}, {}, {}, {}, {});
 
   auto s = c.input(0);
   auto d_6 = c.Dim(s, 0);
@@ -1046,7 +1115,7 @@ TEST_F(ShapeInferenceTest, Subtract) {
 
 TEST_F(ShapeInferenceTest, Multiply) {
   NodeDef def;
-  InferenceContext c(&def, MakeOpDef(1, 2), {"[6,?,0,1]"}, {});
+  InferenceContext c(&def, MakeOpDef(1, 2), {S({6, -1, 0, 1})}, {}, {}, {}, {});
 
   auto s = c.input(0);
   auto d_6 = c.Dim(s, 0);
@@ -1098,7 +1167,8 @@ TEST_F(ShapeInferenceTest, Multiply) {
 
 TEST_F(ShapeInferenceTest, FullyDefined) {
   NodeDef def;
-  InferenceContext c(&def, MakeOpDef(0, 2), {}, {});
+  std::vector<ShapeHandle> empty;
+  InferenceContext c(&def, MakeOpDef(0, 2), empty, {}, {}, {}, {});
 
   // No rank or missing dimension information should return false.
   EXPECT_FALSE(c.FullyDefined(c.UnknownShape()));
@@ -1111,7 +1181,7 @@ TEST_F(ShapeInferenceTest, FullyDefined) {
 
 TEST_F(ShapeInferenceTest, Min) {
   NodeDef def;
-  InferenceContext c(&def, MakeOpDef(1, 2), {"[1,2,?,0]"}, {});
+  InferenceContext c(&def, MakeOpDef(1, 2), {S({1, 2, -1, 0})}, {}, {}, {}, {});
 
   auto s = c.input(0);
   auto d_1 = c.Dim(s, 0);
@@ -1159,7 +1229,7 @@ TEST_F(ShapeInferenceTest, Min) {
 
 TEST_F(ShapeInferenceTest, Max) {
   NodeDef def;
-  InferenceContext c(&def, MakeOpDef(1, 2), {"[1,2,?]"}, {});
+  InferenceContext c(&def, MakeOpDef(1, 2), {S({1, 2, -1})}, {}, {}, {}, {});
 
   auto s = c.input(0);
   auto d_1 = c.Dim(s, 0);
@@ -1192,129 +1262,6 @@ TEST_F(ShapeInferenceTest, Max) {
   EXPECT_TRUE(SameHandle(d_2, out));
   EXPECT_TRUE(c.Max(d_2, d_2, &out).ok());
   EXPECT_TRUE(SameHandle(d_2, out));
-}
-
-TEST_F(ShapeInferenceTest, ValidateSparseTensor_UnknownShapes) {
-  NodeDef def;
-  InferenceContext c(&def, MakeOpDef(3, 1), {"?", "?", "?"}, {});
-  EXPECT_EQ(3, c.num_inputs());
-  EXPECT_EQ(1, c.num_outputs());
-
-  auto indices = c.input(0);
-  auto values = c.input(1);
-  auto shape = c.input(2);
-  TF_EXPECT_OK(c.ValidateSparseTensor(indices, values, shape));
-}
-
-TEST_F(ShapeInferenceTest, ValidateSparseTensor_UnknownDims) {
-  NodeDef def;
-  InferenceContext c(&def, MakeOpDef(3, 1), {"[?,?]", "[?]", "[?]"}, {});
-  EXPECT_EQ(3, c.num_inputs());
-  EXPECT_EQ(1, c.num_outputs());
-
-  auto indices = c.input(0);
-  auto values = c.input(1);
-  auto shape = c.input(2);
-  TF_EXPECT_OK(c.ValidateSparseTensor(indices, values, shape));
-}
-
-TEST_F(ShapeInferenceTest, ValidateSparseTensor_InvalidIndicesRank) {
-  NodeDef def;
-  InferenceContext c(&def, MakeOpDef(3, 1), {"[?]", "[?]", "[?]"}, {});
-  EXPECT_EQ(3, c.num_inputs());
-  EXPECT_EQ(1, c.num_outputs());
-
-  auto indices = c.input(0);
-  auto values = c.input(1);
-  auto shape = c.input(2);
-  EXPECT_EQ(error::INVALID_ARGUMENT,
-            c.ValidateSparseTensor(indices, values, shape).code());
-}
-
-TEST_F(ShapeInferenceTest, ValidateSparseTensor_InvalidNumElements) {
-  NodeDef def;
-  InferenceContext c(&def, MakeOpDef(3, 1), {"[5,3]", "[4]", "[3]"}, {});
-  EXPECT_EQ(3, c.num_inputs());
-  EXPECT_EQ(1, c.num_outputs());
-
-  auto indices = c.input(0);
-  auto values = c.input(1);
-  auto shape = c.input(2);
-  EXPECT_EQ(error::INVALID_ARGUMENT,
-            c.ValidateSparseTensor(indices, values, shape).code());
-}
-
-TEST_F(ShapeInferenceTest, ValidateSparseTensor_InvalidRank) {
-  NodeDef def;
-  InferenceContext c(&def, MakeOpDef(3, 1), {"[5,3]", "[5]", "[4]"}, {});
-  EXPECT_EQ(3, c.num_inputs());
-  EXPECT_EQ(1, c.num_outputs());
-
-  auto indices = c.input(0);
-  auto values = c.input(1);
-  auto shape = c.input(2);
-  EXPECT_EQ(error::INVALID_ARGUMENT,
-            c.ValidateSparseTensor(indices, values, shape).code());
-}
-
-TEST_F(ShapeInferenceTest, ValidateSparseTensor_UnknownNumIndexElements) {
-  NodeDef def;
-  InferenceContext c(&def, MakeOpDef(3, 1), {"[?,3]", "[5]", "[3]"}, {});
-  EXPECT_EQ(3, c.num_inputs());
-  EXPECT_EQ(1, c.num_outputs());
-
-  auto indices = c.input(0);
-  auto values = c.input(1);
-  auto shape = c.input(2);
-  TF_EXPECT_OK(c.ValidateSparseTensor(indices, values, shape));
-}
-
-TEST_F(ShapeInferenceTest, ValidateSparseTensor_UnknownNumValueElements) {
-  NodeDef def;
-  InferenceContext c(&def, MakeOpDef(3, 1), {"[5,3]", "[?]", "[3]"}, {});
-  EXPECT_EQ(3, c.num_inputs());
-  EXPECT_EQ(1, c.num_outputs());
-
-  auto indices = c.input(0);
-  auto values = c.input(1);
-  auto shape = c.input(2);
-  TF_EXPECT_OK(c.ValidateSparseTensor(indices, values, shape));
-}
-
-TEST_F(ShapeInferenceTest, ValidateSparseTensor_UnknownIndexRank) {
-  NodeDef def;
-  InferenceContext c(&def, MakeOpDef(3, 1), {"[5,?]", "[5]", "[3]"}, {});
-  EXPECT_EQ(3, c.num_inputs());
-  EXPECT_EQ(1, c.num_outputs());
-
-  auto indices = c.input(0);
-  auto values = c.input(1);
-  auto shape = c.input(2);
-  TF_EXPECT_OK(c.ValidateSparseTensor(indices, values, shape));
-}
-
-TEST_F(ShapeInferenceTest, ValidateSparseTensor_UnknownShapeRank) {
-  NodeDef def;
-  InferenceContext c(&def, MakeOpDef(3, 1), {"[5,3]", "[5]", "[?]"}, {});
-  EXPECT_EQ(3, c.num_inputs());
-  EXPECT_EQ(1, c.num_outputs());
-
-  auto indices = c.input(0);
-  auto values = c.input(1);
-  auto shape = c.input(2);
-  TF_EXPECT_OK(c.ValidateSparseTensor(indices, values, shape));
-}
-
-TEST_F(ShapeInferenceTest, ValidateSparseTensor) {
-  NodeDef def;
-  InferenceContext c(&def, MakeOpDef(3, 1), {"[5,3]", "[5]", "[3]"}, {});
-  EXPECT_EQ(3, c.num_inputs());
-  EXPECT_EQ(1, c.num_outputs());
-
-  auto indices = c.input(0);
-  auto values = c.input(1);
-  auto shape = c.input(2);
-  TF_EXPECT_OK(c.ValidateSparseTensor(indices, values, shape));
 }
 
 }  // namespace shape_inference

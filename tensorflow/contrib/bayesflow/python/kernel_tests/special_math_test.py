@@ -173,7 +173,7 @@ class NdtrGradientTest(tf.test.TestCase):
       x = tf.Variable([-100., 0., 100.], dtype=dtype)
       output = (sm.log_ndtr(x) if self._use_log else sm.ndtr(x))
       grad_output = tf.gradients(output, x)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.assert_all_true(np.isfinite(output.eval()))
       self.assert_all_true(np.isfinite(grad_output[0].eval()))
 

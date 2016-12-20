@@ -16,13 +16,64 @@ limitations under the License.
 #include "tensorflow/core/debug/debug_graph_utils.h"
 
 #include "tensorflow/core/common_runtime/memory_types.h"
+#include "tensorflow/core/debug/debug_io_utils.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/protobuf/debug.pb.h"
 
 namespace tensorflow {
+
+DebuggerState::DebuggerState(const DebugOptions& debug_options)
+    : watches(debug_options.debug_tensor_watch_opts()), debug_urls_() {
+  for (const DebugTensorWatch& watch : watches) {
+    for (const string& url : watch.debug_urls()) {
+      debug_urls_.insert(url);
+    }
+  }
+}
+
+DebuggerState::~DebuggerState() {
+  for (const string& debug_url : debug_urls_) {
+    DebugIO::CloseDebugURL(debug_url);
+  }
+}
+
+const string DebuggerState::SummarizeDebugTensorWatches() {
+  std::ostringstream oss;
+
+  for (const DebugTensorWatch& watch : watches) {
+    string tensor_name =
+        strings::StrCat(watch.node_name(), ":", watch.output_slot());
+    oss << tensor_name << "|";
+
+    for (const string& debug_op : watch.debug_ops()) {
+      oss << debug_op << ",";
+    }
+
+    oss << "@";
+    for (const string& debug_url : watch.debug_urls()) {
+      oss << debug_url << ",";
+    }
+
+    oss << ";";
+  }
+
+  return oss.str();
+}
+
+Status DebuggerState::DecorateGraphForDebug(Graph* graph, Device* device) {
+  Status status;
+
+  status.Update(DebugNodeInserter::InsertNodes(watches, graph, device));
+  if (status.ok()) {
+    status.Update(DebugIO::PublishGraph(*graph, debug_urls_));
+  }
+
+  return status;
+}
 
 // static
 Status DebugNodeInserter::InsertNodes(
@@ -73,66 +124,57 @@ Status DebugNodeInserter::InsertNodes(
   }
 
   DeviceType device_type = DeviceType{device->device_type()};
-  // 1. Record existing edges in the graph.
-  std::vector<const Edge*> existing_edges;
-  for (const Edge* edge : graph->edges()) {
-    existing_edges.push_back(edge);
-  }
 
-  // A map from tensor names to edges to be removed
-  std::unordered_map<string, std::vector<const Edge*>> edges_to_remove;
-  // A map from tensor names to newly added debug nodes (maybe more than one
-  // for a given tensor).
-  std::unordered_map<string, std::vector<Node*>> added_debug_nodes;
-  std::unordered_map<string, Node*> added_copy_nodes;
+  // Keep track of all edges to be removed.
+  std::vector<const Edge*> edges_to_remove;
 
-  // 2. Iterate through the edges, look for edges that match the tensor watch
-  // list.
-  for (const Edge* edge : existing_edges) {
-    Node* src_node = edge->src();
-    Node* dst_node = edge->dst();
-
-    if (edge->IsControlEdge()) {
-      continue;
+  for (Node* src_node : graph->nodes()) {
+    // Make a map from output slot to outgoing edges from the slot.
+    std::unordered_map<int, std::vector<const Edge*>> output_slot_to_edges;
+    for (const Edge* edge : src_node->out_edges()) {
+      const int src_output = edge->src_output();
+      if (output_slot_to_edges.find(src_output) == output_slot_to_edges.end()) {
+        output_slot_to_edges[src_output] = {edge};
+      } else {
+        output_slot_to_edges[src_output].push_back(edge);
+      }
     }
 
-    const bool is_ref = IsRefType(dst_node->input_type(edge->dst_input()));
-    MemoryType memory_type;
-    MemoryTypeForOutput(device_type, graph, src_node, edge->src_output(),
-                        &memory_type);
-
-    const string tensor_name =
-        strings::StrCat(src_node->name(), ":", edge->src_output());
-    if (tensor_watches.find(tensor_name) == tensor_watches.end()) {
-      // Add debug nodes only for edges with matching source node and source
-      // output slot.
-      continue;
-    }
-
-    if (added_copy_nodes.find(tensor_name) == added_copy_nodes.end()) {
-      // It is the first time an edge with this source tensor is encountered:
-      // we will:
-      //   1) Mark this edge as to be removed, iff the destination node has
-      //      non-Ref input
-      //   2) Create a Copy node
-      //   3) Add a new edge, from the source tensor to the Copy node
-      //   4) Add a new edge, from the Copy node to the destination node, iff
-      //      the destination node has non-Ref input
-      //   5) Create all the requested debug nodes and their edges to the Copy
-      //      node.
-      if (!is_ref) {
-        std::vector<const Edge*> node_edges_to_remove;
-        node_edges_to_remove.push_back(edge);
-        edges_to_remove[tensor_name] = node_edges_to_remove;
+    // Iterate through all output slots of the node.
+    for (int src_output_slot = 0; src_output_slot < src_node->num_outputs();
+         ++src_output_slot) {
+      const string tensor_name =
+          strings::StrCat(src_node->name(), ":", src_output_slot);
+      if (tensor_watches.find(tensor_name) == tensor_watches.end()) {
+        // Add debug nodes only for edges with matching source node and source
+        // output slot.
+        continue;
       }
 
-      const DataType src_dt = src_node->output_type(edge->src_output());
+      // Now we have encountered a watched tensor. We will:
+      //   1) Mark this edge as to be removed, iff this is a non-Reference
+      //      tensor
+      //   2) Create a Copy node for the tensor
+      //   3) Add a new edge, from the source tensor to the Copy node
+      //   4) Add a new edge, from the Copy node to the destination node, iff
+      //      this is a non-Reference tensor.
+      //   5) Create all the requested debug nodes and their edges to the Copy
+      //      node.
+      //   6) Add control edges from the debug nodes to the destination nodes
+      //      to ensure that the tensors values exported by the debug nodes
+      //      to the debug URLs reflect the values before the execution of
+      //      the destination nodes.
 
-      // Create the copy node.
+      const DataType src_dt = src_node->output_type(src_output_slot);
+      MemoryType memory_type;
+      MemoryTypeForOutput(device_type, graph, src_node, src_output_slot,
+                          &memory_type);
+
+      // Create the copy node for the watched tensor.
       Node* copy_node;
       Status copy_s = CreateCopyNode(
           graph, device_type, memory_type == HOST_MEMORY, src_node->name(),
-          edge->src_output(), src_dt, tensor_name, &copy_node);
+          src_output_slot, src_dt, tensor_name, &copy_node);
       if (!copy_s.ok()) {
         return Status(
             error::FAILED_PRECONDITION,
@@ -140,20 +182,11 @@ Status DebugNodeInserter::InsertNodes(
                             tensor_name, ", due to: ", copy_s.error_message()));
       }
 
-      // Record the added copy node for later use.
-      added_copy_nodes[tensor_name] = copy_node;
-
       // Add edge from watched tensor to the copy node.
-      graph->AddEdge(src_node, edge->src_output(), copy_node, 0);
-
-      // Add  edge from the copy node to the destination node, iff the
-      // destination node has non-Ref input.
-      if (!is_ref) {
-        graph->AddEdge(copy_node, 0, dst_node, edge->dst_input());
-      }
+      graph->AddEdge(src_node, src_output_slot, copy_node, 0);
 
       // Create all requested debug nodes and their edges to the Copy node.
-      std::vector<Node*> node_added_debug_nodes;
+      std::vector<Node*> debug_nodes;
       for (size_t i = 0; i < tensor_watches[tensor_name].size(); ++i) {
         const string& debug_op_name = tensor_watches[tensor_name][i];
 
@@ -169,47 +202,37 @@ Status DebugNodeInserter::InsertNodes(
                               debug_s.error_message()));
         }
 
-        node_added_debug_nodes.push_back(debug_node);
-
         // Create edges from the Copy node to the debug node.
         graph->AddEdge(copy_node, 0, debug_node, 0);
+
+        debug_nodes.push_back(debug_node);
+      }
+
+      // Is the output a reference?
+      const bool is_ref = IsRefType(src_node->output_type(src_output_slot));
+
+      // Iterate through all outgoing edges attached to the slot.
+      for (const Edge* edge : output_slot_to_edges[src_output_slot]) {
+        // Mark the edge for removal.
+        if (!is_ref) {
+          edges_to_remove.push_back(edge);
+          graph->AddEdge(copy_node, 0, edge->dst(), edge->dst_input());
+        }
 
         // Add control edges from the debug nodes to the destination node
         // to ensure that the debug nodes are executed before the destination
         // node.
-        graph->AddEdge(debug_node, Graph::kControlSlot, dst_node,
-                       Graph::kControlSlot);
-      }
-      added_debug_nodes[tensor_name] = node_added_debug_nodes;
-    } else {
-      // It is not the first time an edge with this source is encountered.
-      // We will do the following iff the destination node has non-Ref input
-      //   1) Mark the edge for removal
-      //   2) Create an edge from the copy node to the destination node
-      // Iff the destination has Ref-input, the edge will not change.
-      // Regardless of whether the destination has Ref-inpt, we will
-      //   3) Add control edges from the already-created debug node(s) for the
-      //      watched tensor to the destination node.
-      if (!is_ref) {
-        edges_to_remove[tensor_name].push_back(edge);
-        graph->AddEdge(added_copy_nodes[tensor_name], 0, dst_node,
-                       edge->dst_input());
-      }
-
-      for (Node* debug_node : added_debug_nodes[tensor_name]) {
-        graph->AddEdge(debug_node, Graph::kControlSlot, dst_node,
-                       Graph::kControlSlot);
+        for (Node* debug_node : debug_nodes) {
+          graph->AddEdge(debug_node, Graph::kControlSlot, edge->dst(),
+                         Graph::kControlSlot);
+        }
       }
     }
   }
 
   // Remove all edges marked for removal.
-  for (auto it : edges_to_remove) {
-    std::vector<const Edge*> edges = it.second;
-
-    for (const Edge* edge : edges) {
-      graph->RemoveEdge(edge);
-    }
+  for (const Edge* edge : edges_to_remove) {
+    graph->RemoveEdge(edge);
   }
 
   return Status::OK();

@@ -60,7 +60,7 @@ class AUCUsingHistogramTest(tf.test.TestCase):
       score_range = [0, 1.]
       auc, update_op = tf.contrib.metrics.auc_using_histogram(labels, scores,
                                                               score_range)
-      tf.initialize_local_variables().run()
+      tf.local_variables_initializer().run()
       update_op.run()
       self.assertTrue(np.isnan(auc.eval()))
 
@@ -153,7 +153,7 @@ class AUCUsingHistogramTest(tf.test.TestCase):
                                                               scores,
                                                               score_range,
                                                               nbins=nbins)
-      tf.initialize_local_variables().run()
+      tf.local_variables_initializer().run()
       # Updates, then extract auc.
       for _ in range(num_updates):
         labels_a, scores_a = synthetic_data(desired_auc, score_range,

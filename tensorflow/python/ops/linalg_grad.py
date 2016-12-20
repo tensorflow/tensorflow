@@ -38,9 +38,9 @@ from tensorflow.python.ops import math_ops
 def _MatrixInverseGrad(op, grad):
   """Gradient for MatrixInverse."""
   ainv = op.outputs[0]
-  return -math_ops.batch_matmul(
-      ainv, math_ops.batch_matmul(
-          grad, ainv, adj_y=True), adj_x=True)
+  return -math_ops.matmul(
+      ainv, math_ops.matmul(
+          grad, ainv, adjoint_b=True), adjoint_a=True)
 
 
 @ops.RegisterGradient("MatrixDeterminant")
@@ -50,7 +50,7 @@ def _MatrixDeterminantGrad(op, grad):
   c = op.outputs[0]
   a_adj_inv = linalg_ops.matrix_inverse(a, adjoint=True)
   multipliers = array_ops.reshape(
-      grad * c, array_ops.concat(0, [array_ops.shape(c), [1, 1]]))
+      grad * c, array_ops.concat_v2([array_ops.shape(c), [1, 1]], 0))
   return multipliers * a_adj_inv
 
 
@@ -68,10 +68,95 @@ def _MatrixSolveGrad(op, grad):
   c = op.outputs[0]
   grad_b = linalg_ops.matrix_solve(a, grad, adjoint=not adjoint_a)
   if adjoint_a:
-    grad_a = -math_ops.batch_matmul(c, grad_b, adj_y=True)
+    grad_a = -math_ops.matmul(c, grad_b, adjoint_b=True)
   else:
-    grad_a = -math_ops.batch_matmul(grad_b, c, adj_y=True)
+    grad_a = -math_ops.matmul(grad_b, c, adjoint_b=True)
   return (grad_a, grad_b)
+
+
+@ops.RegisterGradient("MatrixSolveLs")
+def _MatrixSolveLsGrad(op, grad):
+  """Gradients for MatrixSolveLs."""
+
+  # TODO(rmlarsen): The implementation could be more efficient:
+  #   a) Output the Cholesky factorization from forward op instead of
+  #      recomputing it here.
+  #   b) Implement a symmetric rank-k update op instead of computing
+  #      x*z + transpose(x*z). This pattern occurs other places in TensorFlow.
+
+  def _overdetermined(op, grad):
+    """Gradients for the overdetermined case of MatrixSolveLs.
+
+    This is the backprop for the solution to the normal equations of the first
+    kind:
+       X = F(A, B) = (A^T * A + lambda * I)^{-1} * A^T * B
+    which solve the least squares problem
+       min ||A * X - B||_F^2 + lambda ||X||_F^2.
+    """
+    a = op.inputs[0]
+    b = op.inputs[1]
+    l2_regularizer = math_ops.cast(op.inputs[2], a.dtype.base_dtype)
+    x = op.outputs[0]
+    a_shape = array_ops.shape(a)
+    batch_shape = a_shape[:-2]
+    n = a_shape[-1]
+
+    identity = linalg_ops.eye(n, batch_shape=batch_shape, dtype=a.dtype)
+    gramian = math_ops.matmul(a, a, adjoint_a=True) + l2_regularizer * identity
+    chol = linalg_ops.cholesky(gramian)
+    # Temporary z = (A^T * A + lambda * I)^{-1} * grad.
+    z = linalg_ops.cholesky_solve(chol, grad)
+    xzt = math_ops.matmul(x, z, adjoint_b=True)
+    zx_sym = xzt + array_ops.matrix_transpose(xzt)
+    grad_a = -math_ops.matmul(a, zx_sym) + math_ops.matmul(b, z, adjoint_b=True)
+    grad_b = math_ops.matmul(a, z)
+    return (grad_a, grad_b, None)
+
+  def _underdetermined(op, grad):
+    """Gradients for the underdetermined case of MatrixSolveLs.
+
+    This is the backprop for the solution to the normal equations of the second
+    kind:
+      X = F(A, B) = A * (A*A^T + lambda*I)^{-1} * B
+    that (for lambda=0) solve the least squares problem
+      min ||X||_F subject to A*X = B.
+    """
+    a = op.inputs[0]
+    b = op.inputs[1]
+    l2_regularizer = math_ops.cast(op.inputs[2], a.dtype.base_dtype)
+    a_shape = array_ops.shape(a)
+    batch_shape = a_shape[:-2]
+    m = a_shape[-2]
+
+    identity = linalg_ops.eye(m, batch_shape=batch_shape, dtype=a.dtype)
+    gramian = math_ops.matmul(a, a, adjoint_b=True) + l2_regularizer * identity
+    chol = linalg_ops.cholesky(gramian)
+    grad_b = linalg_ops.cholesky_solve(chol, math_ops.matmul(a, grad))
+    # Temporary tmp = (A * A^T + lambda * I)^{-1} * B.
+    tmp = linalg_ops.cholesky_solve(chol, b)
+    a1 = math_ops.matmul(tmp, a, adjoint_a=True)
+    a1 = -math_ops.matmul(grad_b, a1)
+    a2 = grad - math_ops.matmul(a, grad_b, adjoint_a=True)
+    a2 = math_ops.matmul(tmp, a2, adjoint_b=True)
+    grad_a = a1 + a2
+    return (grad_a, grad_b, None)
+
+  fast = op.get_attr("fast")
+  if fast is False:
+    raise ValueError("Gradient not defined for fast=False")
+  matrix_shape = op.inputs[0].get_shape()[-2:]
+  if matrix_shape.is_fully_defined():
+    if matrix_shape[-2] >= matrix_shape[-1]:
+      return _overdetermined(op, grad)
+    else:
+      return _underdetermined(op, grad)
+  else:
+    # We have to defer determining the shape to runtime and use
+    # conditional execution of the appropriate graph.
+    matrix_shape = array_ops.shape(op.inputs[0])[-2:]
+    return control_flow_ops.cond(matrix_shape[-2] >= matrix_shape[-1],
+                                 lambda: _overdetermined(op, grad),
+                                 lambda: _underdetermined(op, grad))
 
 
 @ops.RegisterGradient("MatrixTriangularSolve")
@@ -84,9 +169,9 @@ def _MatrixTriangularSolveGrad(op, grad):
   grad_b = linalg_ops.matrix_triangular_solve(
       a, grad, lower=lower_a, adjoint=not adjoint_a)
   if adjoint_a:
-    grad_a = -math_ops.batch_matmul(c, grad_b, adj_y=True)
+    grad_a = -math_ops.matmul(c, grad_b, adjoint_b=True)
   else:
-    grad_a = -math_ops.batch_matmul(grad_b, c, adj_y=True)
+    grad_a = -math_ops.matmul(grad_b, c, adjoint_b=True)
   if lower_a:
     grad_a = array_ops.matrix_band_part(grad_a, -1, 0)
   else:
@@ -110,25 +195,24 @@ def _SelfAdjointEigV2Grad(op, grad_e, grad_v):
       # degenerate eigenvalues, the corresponding eigenvectors are only defined
       # up to arbitrary rotation in a (k-dimensional) subspace.
       f = array_ops.matrix_set_diag(
-          math_ops.inv(
+          math_ops.reciprocal(
               array_ops.expand_dims(e, -2) - array_ops.expand_dims(e, -1)),
           array_ops.zeros_like(e))
-      grad_a = math_ops.batch_matmul(
+      grad_a = math_ops.matmul(
           v,
-          math_ops.batch_matmul(
-              array_ops.matrix_diag(grad_e) + f * math_ops.batch_matmul(
-                  v, grad_v, adj_x=True),
+          math_ops.matmul(
+              array_ops.matrix_diag(grad_e) + f * math_ops.matmul(
+                  v, grad_v, adjoint_a=True),
               v,
-              adj_y=True))
+              adjoint_b=True))
     else:
-      grad_a = math_ops.batch_matmul(
-          v,
-          math_ops.batch_matmul(
-              array_ops.matrix_diag(grad_e), v, adj_y=True))
+      grad_a = math_ops.matmul(
+          v, math_ops.matmul(
+              array_ops.matrix_diag(grad_e), v, adjoint_b=True))
     # The forward op only depends on the lower triangular part of a, so here we
     # symmetrize and take the lower triangle
     grad_a = array_ops.matrix_band_part(
         grad_a + array_ops.matrix_transpose(grad_a), -1, 0)
-    grad_a = array_ops.matrix_set_diag(grad_a, 0.5 *
-                                       array_ops.matrix_diag_part(grad_a))
+    grad_a = array_ops.matrix_set_diag(grad_a,
+                                       0.5 * array_ops.matrix_diag_part(grad_a))
     return grad_a

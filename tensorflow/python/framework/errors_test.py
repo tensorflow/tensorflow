@@ -47,7 +47,8 @@ class ErrorsTest(tf.test.TestCase):
         ]:
       # pylint: disable=protected-access
       self.assertTrue(isinstance(
-          tf.errors._make_specific_exception(None, None, None, error_code),
+          tf.errors._impl._make_specific_exception(
+              None, None, None, error_code),
           exc_type))
       # pylint: enable=protected-access
 
@@ -60,7 +61,8 @@ class ErrorsTest(tf.test.TestCase):
       # pylint: enable=line-too-long
       with warnings.catch_warnings(record=True) as w:
         # pylint: disable=protected-access
-        exc = tf.errors._make_specific_exception(None, None, None, error_code)
+        exc = tf.errors._impl._make_specific_exception(
+            None, None, None, error_code)
         # pylint: enable=protected-access
       self.assertEqual(0, len(w))  # No warning is raised.
       self.assertTrue(isinstance(exc, tf.OpError))
@@ -69,7 +71,7 @@ class ErrorsTest(tf.test.TestCase):
   def testUnknownErrorCodeCausesWarning(self):
     with warnings.catch_warnings(record=True) as w:
       # pylint: disable=protected-access
-      exc = tf.errors._make_specific_exception(None, None, None, 37)
+      exc = tf.errors._impl._make_specific_exception(None, None, None, 37)
       # pylint: enable=protected-access
     self.assertEqual(1, len(w))
     self.assertTrue("Unknown error code: 37" in str(w[0].message))

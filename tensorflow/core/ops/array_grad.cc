@@ -136,7 +136,8 @@ Status UnpackGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("Unpack", UnpackGrad);
 
-Status ConcatGrad(const AttrSlice& attrs, FunctionDef* g) {
+Status ConcatGradHelper(const AttrSlice& attrs, FunctionDef* g,
+                        bool dim_is_last_arg) {
   int N;
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "N", &N));
   DataType T;
@@ -186,21 +187,45 @@ Status ConcatGrad(const AttrSlice& attrs, FunctionDef* g) {
                      {"dy", offset_i[i], shape_i[i]},
                      {{"T", "$T"}, {"Index", DT_INT32}}});
   }
-  // clang-format off
-  *g = FDH::Define(
-      // Arg defs
-      {"dim: int32", "x: N*T", "dy: T"},
-      // Ret val defs
-      {"d_dim: int32", "dx: N*T"},
-      // Attr defs
-      {"T: type", "N: int"},
-      // Nodes
-      nodes);
-  // clang-format on
+  if (dim_is_last_arg) {
+    // clang-format off
+    *g = FDH::Define(
+        // Arg defs
+        {"x: N*T", "dim: int32", "dy: T"},
+        // Ret val defs
+        {"dx: N*T", "d_dim: int32"},
+        // Attr defs
+        {"T: type", "N: int"},
+        // Nodes
+        nodes);
+    // clang-format on
+  } else {
+    // clang-format off
+    *g = FDH::Define(
+        // Arg defs
+        {"dim: int32", "x: N*T", "dy: T"},
+        // Ret val defs
+        {"d_dim: int32", "dx: N*T"},
+        // Attr defs
+        {"T: type", "N: int"},
+        // Nodes
+        nodes);
+    // clang-format on
+  }
   VLOG(1) << "ConcatGrad " << DebugString(*g);
   return Status::OK();
 }
+
+Status ConcatGrad(const AttrSlice& attrs, FunctionDef* g) {
+  return ConcatGradHelper(attrs, g, false);
+}
+
+Status ConcatGradV2(const AttrSlice& attrs, FunctionDef* g) {
+  return ConcatGradHelper(attrs, g, true);
+}
+
 REGISTER_OP_GRADIENT("Concat", ConcatGrad);
+REGISTER_OP_GRADIENT("ConcatV2", ConcatGradV2);
 
 Status SplitGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
@@ -327,6 +352,30 @@ Status ReverseGrad(const AttrSlice& attrs, FunctionDef* g) {
   return Status::OK();
 }
 REGISTER_OP_GRADIENT("Reverse", ReverseGrad);
+
+Status ReverseV2Grad(const AttrSlice& attrs, FunctionDef* g) {
+  DataType itype;
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "Tidx", &itype));
+  if (itype != DT_INT32) {
+    return errors::Unimplemented(
+        "ReverseV2Grad for int64 index are not supported.");
+  }
+  *g = FDH::Define(
+      // Arg defs
+      {"x: T", "d: int32", "dy: T"},
+      // Ret val defs
+      {"dx: T", "dd: int32"},
+      // Attr defs
+      {"T: type", "Tidx: {int32, int64}"},
+      // Nodes
+      {
+          {{"dx"}, "ReverseV2", {"dy", "d"}, {{"T", "$T"}}},
+          {{"dd"}, "ZerosLike", {"d"}, {{"T", "$Tidx"}}},
+      });
+  VLOG(1) << "ReverseGrad " << DebugString(*g);
+  return Status::OK();
+}
+REGISTER_OP_GRADIENT("ReverseV2", ReverseV2Grad);
 
 Status SliceGrad(const AttrSlice& attrs, FunctionDef* g) {
   DataType itype;

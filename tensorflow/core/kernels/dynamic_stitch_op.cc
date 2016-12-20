@@ -162,8 +162,22 @@ class DynamicStitchOp : public OpKernel {
                               .HostMemory("indices"),    \
                           DynamicStitchOp<type>)
 
-TF_CALL_ALL_TYPES(REGISTER_DYNAMIC_STITCH);
+TF_CALL_POD_STRING_TYPES(REGISTER_DYNAMIC_STITCH);
 #undef REGISTER_DYNAMIC_STITCH
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_DYNAMIC_STITCH_SYCL(type)               \
+  REGISTER_KERNEL_BUILDER(Name("DynamicStitch")          \
+                              .Device(DEVICE_SYCL)       \
+                              .TypeConstraint<type>("T") \
+                              .HostMemory("indices")     \
+                              .HostMemory("data")        \
+                              .HostMemory("merged"),     \
+                          DynamicStitchOp<type>)
+
+TF_CALL_ALL_TYPES(REGISTER_DYNAMIC_STITCH_SYCL);
+#undef REGISTER_DYNAMIC_STITCH_SYCL
+#endif // TENSORFLOW_USE_SYCL
 
 #if GOOGLE_CUDA
 #define REGISTER_DYNAMIC_STITCH_GPU(type)                \
@@ -175,7 +189,7 @@ TF_CALL_ALL_TYPES(REGISTER_DYNAMIC_STITCH);
                               .HostMemory("merged"),     \
                           DynamicStitchOp<type>)
 
-TF_CALL_ALL_TYPES(REGISTER_DYNAMIC_STITCH_GPU);
+TF_CALL_POD_STRING_TYPES(REGISTER_DYNAMIC_STITCH_GPU);
 #undef REGISTER_DYNAMIC_STITCH_GPU
 
 #endif  // GOOGLE_CUDA

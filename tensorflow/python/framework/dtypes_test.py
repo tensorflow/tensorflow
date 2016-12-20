@@ -27,6 +27,12 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
 
 
+def _is_numeric_dtype_enum(datatype_enum):
+  return (datatype_enum != types_pb2.DT_INVALID and
+          datatype_enum != types_pb2.DT_RESOURCE and
+          datatype_enum != types_pb2.DT_RESOURCE_REF)
+
+
 class TypesTest(test_util.TensorFlowTestCase):
 
   def testAllTypesConstructible(self):
@@ -45,7 +51,7 @@ class TypesTest(test_util.TensorFlowTestCase):
 
   def testAllTypesConvertibleToNumpyDtype(self):
     for datatype_enum in types_pb2.DataType.values():
-      if datatype_enum == types_pb2.DT_INVALID:
+      if not _is_numeric_dtype_enum(datatype_enum):
         continue
       dtype = tf.as_dtype(datatype_enum)
       numpy_dtype = dtype.as_numpy_dtype
@@ -102,21 +108,21 @@ class TypesTest(test_util.TensorFlowTestCase):
     self.assertIs(tf.quint8, tf.as_dtype("quint8"))
     self.assertIs(tf.qint32, tf.as_dtype("qint32"))
     self.assertIs(tf.bfloat16, tf.as_dtype("bfloat16"))
-    self.assertIs(tf.float32_ref, tf.as_dtype("float32_ref"))
-    self.assertIs(tf.float64_ref, tf.as_dtype("float64_ref"))
-    self.assertIs(tf.int32_ref, tf.as_dtype("int32_ref"))
-    self.assertIs(tf.uint8_ref, tf.as_dtype("uint8_ref"))
-    self.assertIs(tf.int16_ref, tf.as_dtype("int16_ref"))
-    self.assertIs(tf.int8_ref, tf.as_dtype("int8_ref"))
-    self.assertIs(tf.string_ref, tf.as_dtype("string_ref"))
-    self.assertIs(tf.complex64_ref, tf.as_dtype("complex64_ref"))
-    self.assertIs(tf.complex128_ref, tf.as_dtype("complex128_ref"))
-    self.assertIs(tf.int64_ref, tf.as_dtype("int64_ref"))
-    self.assertIs(tf.bool_ref, tf.as_dtype("bool_ref"))
-    self.assertIs(tf.qint8_ref, tf.as_dtype("qint8_ref"))
-    self.assertIs(tf.quint8_ref, tf.as_dtype("quint8_ref"))
-    self.assertIs(tf.qint32_ref, tf.as_dtype("qint32_ref"))
-    self.assertIs(tf.bfloat16_ref, tf.as_dtype("bfloat16_ref"))
+    self.assertIs(dtypes.float32_ref, tf.as_dtype("float32_ref"))
+    self.assertIs(dtypes.float64_ref, tf.as_dtype("float64_ref"))
+    self.assertIs(dtypes.int32_ref, tf.as_dtype("int32_ref"))
+    self.assertIs(dtypes.uint8_ref, tf.as_dtype("uint8_ref"))
+    self.assertIs(dtypes.int16_ref, tf.as_dtype("int16_ref"))
+    self.assertIs(dtypes.int8_ref, tf.as_dtype("int8_ref"))
+    self.assertIs(dtypes.string_ref, tf.as_dtype("string_ref"))
+    self.assertIs(dtypes.complex64_ref, tf.as_dtype("complex64_ref"))
+    self.assertIs(dtypes.complex128_ref, tf.as_dtype("complex128_ref"))
+    self.assertIs(dtypes.int64_ref, tf.as_dtype("int64_ref"))
+    self.assertIs(dtypes.bool_ref, tf.as_dtype("bool_ref"))
+    self.assertIs(dtypes.qint8_ref, tf.as_dtype("qint8_ref"))
+    self.assertIs(dtypes.quint8_ref, tf.as_dtype("quint8_ref"))
+    self.assertIs(dtypes.qint32_ref, tf.as_dtype("qint32_ref"))
+    self.assertIs(dtypes.bfloat16_ref, tf.as_dtype("bfloat16_ref"))
     with self.assertRaises(TypeError):
       tf.as_dtype("not_a_type")
 
@@ -144,6 +150,7 @@ class TypesTest(test_util.TensorFlowTestCase):
     self.assertEqual(tf.as_dtype("double").is_integer, False)
     self.assertEqual(tf.as_dtype("string").is_integer, False)
     self.assertEqual(tf.as_dtype("bool").is_integer, False)
+    self.assertEqual(tf.as_dtype("bfloat16").is_integer, False)
 
   def testIsFloating(self):
     self.assertEqual(tf.as_dtype("int8").is_floating, False)
@@ -158,6 +165,7 @@ class TypesTest(test_util.TensorFlowTestCase):
     self.assertEqual(tf.as_dtype("float64").is_floating, True)
     self.assertEqual(tf.as_dtype("string").is_floating, False)
     self.assertEqual(tf.as_dtype("bool").is_floating, False)
+    self.assertEqual(tf.as_dtype("bfloat16").is_integer, False)
 
   def testIsComplex(self):
     self.assertEqual(tf.as_dtype("int8").is_complex, False)
@@ -172,6 +180,7 @@ class TypesTest(test_util.TensorFlowTestCase):
     self.assertEqual(tf.as_dtype("float64").is_complex, False)
     self.assertEqual(tf.as_dtype("string").is_complex, False)
     self.assertEqual(tf.as_dtype("bool").is_complex, False)
+    self.assertEqual(tf.as_dtype("bfloat16").is_integer, False)
 
   def testIsUnsigned(self):
     self.assertEqual(tf.as_dtype("int8").is_unsigned, False)
@@ -186,11 +195,12 @@ class TypesTest(test_util.TensorFlowTestCase):
     self.assertEqual(tf.as_dtype("string").is_unsigned, False)
     self.assertEqual(tf.as_dtype("complex64").is_unsigned, False)
     self.assertEqual(tf.as_dtype("complex128").is_unsigned, False)
+    self.assertEqual(tf.as_dtype("bfloat16").is_integer, False)
 
   def testMinMax(self):
     # make sure min/max evaluates for all data types that have min/max
     for datatype_enum in types_pb2.DataType.values():
-      if datatype_enum == types_pb2.DT_INVALID:
+      if not _is_numeric_dtype_enum(datatype_enum):
         continue
       dtype = tf.as_dtype(datatype_enum)
       numpy_dtype = dtype.as_numpy_dtype
@@ -241,6 +251,8 @@ class TypesTest(test_util.TensorFlowTestCase):
 
   def testRepr(self):
     for enum, name in dtypes._TYPE_TO_STRING.items():
+      if enum > 100:
+        continue
       dtype = tf.DType(enum)
       self.assertEquals(repr(dtype), 'tf.' + name)
       dtype2 = eval(repr(dtype))

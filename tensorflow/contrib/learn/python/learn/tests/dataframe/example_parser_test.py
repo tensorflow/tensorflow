@@ -102,7 +102,8 @@ class ExampleParserTestCase(tf.test.TestCase):
 
     with self.test_session() as sess:
       string_feature, int_feature = sess.run(output_tensors)
-      np.testing.assert_array_equal(string_feature.shape, np.array([2, 2]))
+      np.testing.assert_array_equal(
+          string_feature.dense_shape, np.array([2, 2]))
       np.testing.assert_array_equal(int_feature.shape, np.array([2, 3]))
       np.testing.assert_array_equal(self.expected_string_values,
                                     string_feature.values)
@@ -121,7 +122,8 @@ class ExampleParserTestCase(tf.test.TestCase):
 
     with self.test_session() as sess:
       int_feature, string_feature = sess.run(output_tensors)
-      np.testing.assert_array_equal(string_feature.shape, np.array([2, 2]))
+      np.testing.assert_array_equal(
+          string_feature.dense_shape, np.array([2, 2]))
       np.testing.assert_array_equal(int_feature.shape, np.array([2, 3]))
       np.testing.assert_array_equal(self.expected_string_values,
                                     string_feature.values)

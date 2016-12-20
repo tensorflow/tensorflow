@@ -19,17 +19,22 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
-import sys
+import hashlib
+import math
 import numpy as np
 
+from tensorflow.contrib import framework as contrib_framework
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 
 
 def assert_close(
@@ -100,6 +105,36 @@ def assert_symmetric(matrix):
       [check_ops.assert_equal(matrix, matrix_t)], matrix)
 
 
+def same_dynamic_shape(a, b):
+  """Returns whether a and b have the same dynamic shape.
+
+  Args:
+    a: `Tensor`
+    b: `Tensor`
+
+  Returns:
+    `Boolean` `Tensor` representing if both tensors have the same shape.
+  """
+  a = ops.convert_to_tensor(a, name="a")
+  b = ops.convert_to_tensor(b, name="b")
+
+  # One of the shapes isn't fully defined, so we need to use the dynamic
+  # shape.
+  return control_flow_ops.cond(
+      math_ops.equal(array_ops.rank(a), array_ops.rank(b)),
+      # Here we can't just do math_ops.equal(a.shape, b.shape), since
+      # static shape inference may break the equality comparison between
+      # shape(a) and shape(b) in math_ops.equal.
+      lambda: math_ops.reduce_all(math_ops.equal(
+          array_ops.concat_v2((
+              array_ops.shape(a),
+              array_ops.shape(b)), 0),
+          array_ops.concat_v2((
+              array_ops.shape(b),
+              array_ops.shape(a)), 0))),
+      lambda: constant_op.constant(False))
+
+
 def get_logits_and_prob(
     logits=None, p=None,
     multidimensional=False, validate_args=False, name="GetLogitsAndProb"):
@@ -108,11 +143,14 @@ def get_logits_and_prob(
   Args:
     logits: Numeric `Tensor` representing log-odds.
     p: Numeric `Tensor` representing probabilities.
-    multidimensional: Given `p` a [N1, N2, ... k] dimensional tensor,
-      whether the last dimension represents the probability between k classes.
-      This will additionally assert that the values in the last dimension
-      sum to one. If `False`, will instead assert that each value is in
-      `[0, 1]`.
+    multidimensional: `Boolean`, default `False`.
+      If `True`, represents whether the last dimension of `logits` or `p`,
+      a [N1, N2, ... k] dimensional tensor, represent the
+      logits / probability between k classes. For `p`, this will
+      additionally assert that the values in the last dimension sum to one.
+
+      If `False`, this will instead assert that each value of `p` is in
+      `[0, 1]`, and will do nothing to `logits`.
     validate_args: `Boolean`, default `False`.  Whether to assert `0 <= p <= 1`
       if multidimensional is `False`, otherwise that the last dimension of `p`
       sums to one.
@@ -134,7 +172,10 @@ def get_logits_and_prob(
     elif p is None:
       logits = array_ops.identity(logits, name="logits")
       with ops.name_scope("p"):
-        p = math_ops.sigmoid(logits)
+        if multidimensional:
+          p = nn.softmax(logits)
+        else:
+          p = math_ops.sigmoid(logits)
     elif logits is None:
       with ops.name_scope("p"):
         p = array_ops.identity(p)
@@ -150,7 +191,17 @@ def get_logits_and_prob(
                 p, one, message="p has components greater than 1.")]
           p = control_flow_ops.with_dependencies(dependencies, p)
       with ops.name_scope("logits"):
-        logits = math_ops.log(p) - math_ops.log(1. - p)
+        if multidimensional:
+          # Here we don't compute the multidimensional case, in a manner
+          # consistent with respect to the unidimensional case. We do so
+          # following the TF convention. Typically, you might expect to see
+          # logits = log(p) - log(gather(p, pivot)). A side-effect of being
+          # consistent with the TF approach is that the unidimensional case
+          # implicitly handles the second dimension but the multidimensional
+          # case explicitly keeps the pivot dimension.
+          logits = math_ops.log(p)
+        else:
+          logits = math_ops.log(p) - math_ops.log(1. - p)
     return (logits, p)
 
 
@@ -180,8 +231,8 @@ def log_combinations(n, counts, name="log_combinations"):
   # The sum should be along the last dimension of counts.  This is the
   # "distribution" dimension. Here n a priori represents the sum of counts.
   with ops.name_scope(name, values=[n, counts]):
-    n = array_ops.identity(n, name="n")
-    counts = array_ops.identity(counts, name="counts")
+    n = ops.convert_to_tensor(n, name="n")
+    counts = ops.convert_to_tensor(counts, name="counts")
     total_permutations = math_ops.lgamma(n + 1)
     counts_factorial = math_ops.lgamma(counts + 1)
     redundant_permutations = math_ops.reduce_sum(counts_factorial,
@@ -315,12 +366,12 @@ def rotate_transpose(x, shift, name="rotate_transpose"):
       # Finally, we transform shift by modulo length so it can be specified
       # independently from the array upon which it operates (like python).
       ndims = array_ops.rank(x)
-      shift = math_ops.select(math_ops.less(shift, 0),
+      shift = array_ops.where(math_ops.less(shift, 0),
                               math_ops.mod(-shift, ndims),
                               ndims - math_ops.mod(shift, ndims))
       first = math_ops.range(0, shift)
       last = math_ops.range(shift, ndims)
-      perm = array_ops.concat(0, (last, first))
+      perm = array_ops.concat_v2((last, first), 0)
       return array_ops.transpose(x, perm=perm)
 
 
@@ -359,7 +410,7 @@ def pick_vector(cond,
     TypeError: if `cond` is not a constant and
       `true_vector.dtype != false_vector.dtype`
   """
-  with ops.op_scope((cond, true_vector, false_vector), name):
+  with ops.name_scope(name, values=(cond, true_vector, false_vector)):
     cond = ops.convert_to_tensor(cond, name="cond")
     if cond.dtype != dtypes.bool:
       raise TypeError("%s.dtype=%s which is not %s" %
@@ -375,40 +426,200 @@ def pick_vector(cond,
           % (true_vector.name, true_vector.dtype,
              false_vector.name, false_vector.dtype))
     n = array_ops.shape(true_vector)[0]
-    return array_ops.slice(array_ops.concat(0, (true_vector, false_vector)),
-                           [math_ops.select(cond, 0, n)],
-                           [math_ops.select(cond, n, -1)])
+    return array_ops.slice(
+        array_ops.concat_v2((true_vector, false_vector), 0),
+        [array_ops.where(cond, 0, n)], [array_ops.where(cond, n, -1)])
 
 
-def override_docstring_if_empty(fn, doc_str):
-  """Override the `doc_str` argument to `fn.__doc__`.
+def gen_new_seed(seed, salt):
+  """Generate a new seed, from the given seed and salt."""
+  if seed is None:
+    return None
+  string = (str(seed) + salt).encode("utf-8")
+  return int(hashlib.md5(string).hexdigest()[:8], 16) & 0x7FFFFFFF
 
-  This function is primarily needed because Python 3 changes how docstrings are
-  programmatically set.
+
+def fill_lower_triangular(x, validate_args=False, name="fill_lower_triangular"):
+  """Creates a (batch of) lower triangular matrix from a vector of inputs.
+
+  If `x.get_shape()` is `[b1, b2, ..., bK, d]` then the output shape is `[b1,
+  b2, ..., bK, n, n]` where `n` is such that `d = n(n+1)/2`, i.e.,
+  `n = int(0.5 * (math.sqrt(1. + 8. * d) - 1.))`.
+
+  Although the non-batch complexity is O(n^2), large constants and sub-optimal
+  vectorization means the complexity of this function is 5x slower than zeroing
+  out the upper triangular, i.e., `tf.matrix_band_part(X, -1, 0)`.  This
+  function becomes competitive only when several matmul/cholesky/etc ops can be
+  ellided in constructing the input.  Example: wiring a fully connected layer as
+  a covariance matrix; this function reduces the final layer by 2x and possibly
+  reduces the network arch complexity considerably.  In most cases it is better
+  to simply build a full matrix and zero out the upper triangular elements,
+  e.g., `tril = tf.matrix_band_part(full, -1, 0)`, rather than directly
+  construct a lower triangular.
+
+  Example:
+
+  ```python
+  fill_lower_triangular([1, 2, 3, 4, 5, 6])
+  # Returns: [[1, 0, 0],
+  #           [2, 3, 0],
+  #           [4, 5, 6]]
+  ```
+
+  For comparison, a pure numpy version of this function can be found in
+  `distribution_util_test.py`, function `_fill_lower_triangular`.
 
   Args:
-    fn: Class function.
-    doc_str: String
+    x: `Tensor` representing lower triangular elements.
+    validate_args: `Boolean`, default `False`.  Whether to ensure the shape of
+      `x` can be mapped to a lower triangular matrix (controls non-static checks
+      only).
+    name: `String`. The name to give this op.
+
+  Returns:
+    tril: `Tensor` with lower triangular elements filled from `x`.
+
+  Raises:
+    ValueError: if shape if `x` has static shape which cannot be mapped to a
+      lower triangular matrix.
   """
-  if sys.version_info.major < 3:
-    if fn.__func__.__doc__ is None:
-      fn.__func__.__doc__ = doc_str
-  else:
-    if fn.__doc__ is None:
-      fn.__doc__ = doc_str
+  # TODO(jvdillon): Replace this code with dedicated op when it exists.
+  with ops.name_scope(name, values=(x,)):
+    x = ops.convert_to_tensor(x, name="x")
+    if (x.get_shape().ndims is not None and
+        x.get_shape()[-1].value is not None):
+      d = x.get_shape()[-1].value
+      # d = n(n+1)/2 implies n is:
+      n = int(0.5 * (math.sqrt(1. + 8. * d) - 1.))
+      d_inferred = n * (n + 1) /2
+      if d != d_inferred:
+        raise ValueError("Input cannot be mapped to a lower triangular; "
+                         "n*(n+1)/2 = %d != %d" % (d_inferred, d))
+      final_shape = x.get_shape()[:-1].concatenate(
+          tensor_shape.TensorShape([n, n]))
+    else:
+      d = math_ops.cast(array_ops.shape(x)[-1], dtype=dtypes.float32)
+      # d = n(n+1)/2 implies n is:
+      n = math_ops.cast(0.5 * (dtypes.sqrt(1. + 8. * d) - 1.),
+                        dtype=dtypes.int32)
+      if validate_args:
+        is_valid_input_shape = check_ops.assert_equal(
+            n * (n + 1) / 2, d,
+            message="Input cannot be mapped to a lower triangular.")
+        n = control_flow_ops.with_dependencies([is_valid_input_shape], n)
+      final_shape = x.get_shape()[:-1].concatenate(
+          tensor_shape.TensorShape([None, None]))
+
+    def tril_ids(n):
+      """Internal helper to create vector of linear indices into y."""
+      # Build the ids statically; chose 512 because it implies 1MiB.
+      if not contrib_framework.is_tensor(n) and n <= 512:
+        ids = np.arange(n**2, dtype=np.int32)
+        rows = (ids / n).astype(np.int32)  # Implicit floor.
+        # We need to stop incrementing the index when we encounter
+        # upper-triangular elements.  The idea here is to compute the
+        # lower-right number of zeros then by "symmetry" subtract this from the
+        # total number of zeros, n(n-1)/2.
+        # Then we note that: n(n-1)/2 - (n-r)*(n-r-1)/2 = r(2n-r-1)/2
+        offset = (rows * (2 * n - rows - 1) / 2).astype(np.int32)
+        # We could also zero out when (rows < cols) == (rows < ids-n*rows).
+        # mask = (ids <= (n + 1) * rows).astype(np.int32)
+      else:
+        ids = math_ops.range(n**2)
+        rows = math_ops.cast(ids / n, dtype=dtypes.int32)
+        offset = math_ops.cast(rows * (2 * n - rows - 1) / 2,
+                               dtype=dtypes.int32)
+      return ids - offset
+
+    # Special-case non-batch case.
+    if x.get_shape().ndims == 1:
+      y = array_ops.gather(x, array_ops.reshape(tril_ids(n), [n, n]))
+      y = array_ops.matrix_band_part(y, -1, 0)
+      y.set_shape(y.get_shape().merge_with(final_shape))
+      return y
+
+    # Make ids for each batch dim.
+    if (x.get_shape().ndims is not None and
+        x.get_shape()[:-1].is_fully_defined()):
+      batch_shape = np.asarray(x.get_shape()[:-1].as_list(), dtype=np.int32)
+      m = np.prod(batch_shape).astype(np.int32)
+    else:
+      batch_shape = array_ops.shape(x)[:-1]
+      m = array_ops.reduce_prod(array_ops.shape(x)[:-1])
+    batch_ids = math_ops.range(m)
+
+    # Assemble the tril_ids into batch,tril_id pairs.
+    idx = array_ops.stack([
+        array_ops.tile(array_ops.expand_dims(batch_ids, 1), [1, n * n]),
+        array_ops.tile(array_ops.expand_dims(tril_ids(n), 0), [m, 1])
+    ])
+    idx = array_ops.transpose(idx, [1, 2, 0])
+
+    # Gather up, reshape, and return.
+    y = array_ops.reshape(x, [-1, d])
+    y = array_ops.gather_nd(y, idx)
+    y = array_ops.reshape(y, array_ops.concat_v2([batch_shape, [n, n]], 0))
+    y = array_ops.matrix_band_part(y, -1, 0)
+    y.set_shape(y.get_shape().merge_with(final_shape))
+    return y
 
 
 class AppendDocstring(object):
+  """Helper class to promote private subclass docstring to public counterpart.
 
-  def __init__(self, string):
-    self._string = string
+  Example:
+
+  ```python
+  class TransformedDistribution(Distribution):
+    @distribution_util.AppendDocstring(
+      additional_note="A special note!",
+      condition_kwargs_dict={"foo": "An extra arg."})
+    def _prob(self, y, foo=None):
+      pass
+  ```
+
+  In this case, the `AppendDocstring` decorator appends the `additional_note` to
+  the docstring of `prob` (not `_prob`) and adds a new `condition_kwargs`
+  section with each dictionary item as a bullet-point.
+
+  For a more detailed example, see `TransformedDistribution`.
+  """
+
+  def __init__(self, additional_note="", condition_kwargs_dict=None):
+    """Initializes the AppendDocstring object.
+
+    Args:
+      additional_note: Python string added as additional docstring to public
+        version of function.
+      condition_kwargs_dict: Python string/string dictionary representing
+        specific kwargs expanded from the **condition_kwargs input.
+
+    Raises:
+      ValueError: if condition_kwargs_dict.key contains whitespace.
+      ValueError: if condition_kwargs_dict.value contains newlines.
+    """
+    self._additional_note = additional_note
+    if condition_kwargs_dict:
+      bullets = []
+      for key in sorted(condition_kwargs_dict.keys()):
+        value = condition_kwargs_dict[key]
+        if any(x.isspace() for x in key):
+          raise ValueError(
+              "Parameter name \"%s\" contains whitespace." % key)
+        value = value.lstrip()
+        if "\n" in value:
+          raise ValueError(
+              "Parameter description for \"%s\" contains newlines." % key)
+        bullets.append("*  `%s`: %s" % (key, value))
+      self._additional_note += ("\n\n##### `condition_kwargs`:\n\n" +
+                                "\n".join(bullets))
 
   def __call__(self, fn):
     @functools.wraps(fn)
     def _fn(*args, **kwargs):
       return fn(*args, **kwargs)
     if _fn.__doc__ is None:
-      _fn.__doc__ = self._string
+      _fn.__doc__ = self._additional_note
     else:
-      _fn.__doc__ += "\n%s" % self._string
+      _fn.__doc__ += "\n%s" % self._additional_note
     return _fn

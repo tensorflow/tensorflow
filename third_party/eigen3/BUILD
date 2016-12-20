@@ -9,6 +9,8 @@ licenses([
     "notice",  # Portions BSD
 ])
 
+exports_files(["LICENSE"])
+
 cc_library(
     name = "eigen3",
     hdrs = glob(["unsupported/Eigen/CXX11/src/FixedPoint/*.h"]) + [
@@ -23,5 +25,8 @@ cc_library(
         "unsupported/Eigen/CXX11/FixedPoint",
     ],
     visibility = ["//visibility:public"],
-    deps = ["@eigen_archive//:eigen"],
+    deps = [
+        "@eigen_archive//:eigen",
+        "@local_config_sycl//sycl:sycl",
+    ],
 )

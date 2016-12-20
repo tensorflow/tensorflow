@@ -37,7 +37,7 @@ class GridRNNCellTest(tf.test.TestCase):
         self.assertEqual(g.get_shape(), (1, 2))
         self.assertEqual(s.get_shape(), (1, 8))
 
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run(
             [g, s], {x: np.array([[1., 1., 1.]]),
                      m: np.array([[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]])})
@@ -75,7 +75,7 @@ class GridRNNCellTest(tf.test.TestCase):
         self.assertEqual(g.get_shape(), (1, 2))
         self.assertEqual(s.get_shape(), (1, 8))
 
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run(
             [g, s], {x: np.array([[1., 1., 1.]]),
                      m: np.array([[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]])})
@@ -107,7 +107,7 @@ class GridRNNCellTest(tf.test.TestCase):
         self.assertEqual(g.get_shape(), (1, 2))
         self.assertEqual(s.get_shape(), (1, 4))
 
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run([g, s], {x: np.array([[1., 1., 1.]]),
                                 m: np.array([[0.1, 0.2, 0.3, 0.4]])})
         self.assertEqual(res[0].shape, (1, 2))
@@ -131,7 +131,7 @@ class GridRNNCellTest(tf.test.TestCase):
         self.assertEqual(g.get_shape(), (1, 2))
         self.assertEqual(s.get_shape(), (1, 8))
 
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run(
             [g, s], {x: np.array([[1., 1., 1.]]),
                      m: np.array([[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]])})
@@ -155,7 +155,7 @@ class GridRNNCellTest(tf.test.TestCase):
         self.assertEqual(g.get_shape(), (1, 2))
         self.assertEqual(s.get_shape(), (1, 8))
 
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run(
             [g, s], {x: np.array([[1., 1., 1.]]),
                      m: np.array([[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]])})
@@ -179,7 +179,7 @@ class GridRNNCellTest(tf.test.TestCase):
         self.assertEqual(g.get_shape(), (1, 2))
         self.assertEqual(s.get_shape(), (1, 4))
 
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run([g, s], {x: np.array([[1., 1., 1.]]),
                                 m: np.array([[0.1, 0.2, 0.3, 0.4]])})
         self.assertEqual(res[0].shape, (1, 2))
@@ -203,7 +203,7 @@ class GridRNNCellTest(tf.test.TestCase):
         self.assertEqual(g.get_shape(), (2, 2))
         self.assertEqual(s.get_shape(), (2, 4))
 
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run(
             [g, s], {x: np.array([[1., 1.], [2., 2.]]),
                      m: np.array([[0.1, 0.1, 0.1, 0.1], [0.2, 0.2, 0.2, 0.2]])})
@@ -227,7 +227,7 @@ class GridRNNCellTest(tf.test.TestCase):
         self.assertEqual(g.get_shape(), (2, 2))
         self.assertEqual(s.get_shape(), (2, 4))
 
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run(
             [g, s], {x: np.array([[1., 1.], [2., 2.]]),
                      m: np.array([[0.1, 0.1, 0.1, 0.1], [0.2, 0.2, 0.2, 0.2]])})
@@ -252,7 +252,7 @@ class GridRNNCellTest(tf.test.TestCase):
         self.assertEqual(g.get_shape(), (1, 2))
         self.assertEqual(s.get_shape(), (1, 2))
 
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run([g, s], {x: np.array([[1., 1.]]),
                                 m: np.array([[0.1, 0.1]])})
         self.assertEqual(res[0].shape, (1, 2))
@@ -276,7 +276,7 @@ class GridRNNCellTest(tf.test.TestCase):
         self.assertEqual(g.get_shape(), (1, 2))
         self.assertEqual(s.get_shape(), (1, 4))
 
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run([g, s], {x: np.array([[1., 1., 1.]]),
                                 m: np.array([[0.1, 0.2, 0.3, 0.4]])})
         self.assertEqual(res[0].shape, (1, 2))
@@ -292,7 +292,7 @@ class GridRNNCellTest(tf.test.TestCase):
         self.assertEqual(g2.get_shape(), (1, 2))
         self.assertEqual(s2.get_shape(), (1, 4))
 
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run([g2, s2], {m: res[1]})
         self.assertEqual(res[0].shape, (1, 2))
         self.assertEqual(res[1].shape, (1, 4))
@@ -304,7 +304,7 @@ class GridRNNCellTest(tf.test.TestCase):
         self.assertEqual(g3.get_shape(), (1, 2))
         self.assertEqual(s3.get_shape(), (1, 4))
 
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run([g3, s3], {m: res[1]})
         self.assertEqual(res[0].shape, (1, 2))
         self.assertEqual(res[1].shape, (1, 4))
@@ -327,7 +327,7 @@ class GridRNNCellTest(tf.test.TestCase):
         self.assertEqual(g.get_shape(), (1, 2))
         self.assertEqual(s.get_shape(), (1, 12))
 
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run([g, s], {x: np.array([[1., 1., 1.]]),
                                 m: np.array([[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7,
                                               0.8, -0.1, -0.2, -0.3, -0.4]])})
@@ -361,7 +361,7 @@ class GridRNNCellTest(tf.test.TestCase):
         self.assertEqual(g.get_shape(), (3, 2))
         self.assertEqual(s.get_shape(), (0, 0))
 
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run([g, s], {x: np.array([[1., -1.], [-2, 1], [2, -1]])})
         self.assertEqual(res[0].shape, (3, 2))
         self.assertEqual(res[1].shape, (0, 0))
@@ -385,7 +385,7 @@ class GridRNNCellTest(tf.test.TestCase):
         self.assertEqual(g.get_shape(), (0, 0))
         self.assertEqual(s.get_shape(), (1, 4))
 
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run([g, s], {x: np.array([[1., 1.]]),
                                 m: np.array([[0.1, 0.1, 0.1, 0.1]])})
         self.assertEqual(res[0].shape, (0, 0))
@@ -408,7 +408,7 @@ class GridRNNCellTest(tf.test.TestCase):
               tf.float32, shape=(batch_size, input_size))
       ]
 
-      outputs, state = tf.nn.rnn(cell, inputs, dtype=tf.float32)
+      outputs, state = tf.contrib.rnn.static_rnn(cell, inputs, dtype=tf.float32)
 
     self.assertEqual(len(outputs), len(inputs))
     self.assertEqual(state.get_shape(), (batch_size, 8))
@@ -419,7 +419,7 @@ class GridRNNCellTest(tf.test.TestCase):
       self.assertEqual(out.dtype, inp.dtype)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       input_value = np.ones((batch_size, input_size))
       values = sess.run(outputs + [state], feed_dict={inputs[0]: input_value})
@@ -441,7 +441,7 @@ class GridRNNCellTest(tf.test.TestCase):
               tf.float32, shape=(batch_size, input_size))
       ]
 
-      outputs, state = tf.nn.rnn(cell, inputs, dtype=tf.float32)
+      outputs, state = tf.contrib.rnn.static_rnn(cell, inputs, dtype=tf.float32)
 
     self.assertEqual(len(outputs), len(inputs))
     self.assertEqual(state.get_shape(), (batch_size, 4))
@@ -452,7 +452,7 @@ class GridRNNCellTest(tf.test.TestCase):
       self.assertEqual(out.dtype, inp.dtype)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       input_value = np.ones((batch_size, input_size))
       values = sess.run(outputs + [state], feed_dict={inputs[0]: input_value})
@@ -474,7 +474,7 @@ class GridRNNCellTest(tf.test.TestCase):
               tf.float32, shape=(batch_size, input_size))
       ]
 
-      outputs, state = tf.nn.rnn(cell, inputs, dtype=tf.float32)
+      outputs, state = tf.contrib.rnn.static_rnn(cell, inputs, dtype=tf.float32)
 
     self.assertEqual(len(outputs), len(inputs))
     self.assertEqual(state.get_shape(), (batch_size, 8))
@@ -485,7 +485,7 @@ class GridRNNCellTest(tf.test.TestCase):
       self.assertEqual(out.dtype, inp.dtype)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       input_value = np.ones((batch_size, input_size))
       values = sess.run(outputs + [state], feed_dict={inputs[0]: input_value})
@@ -505,7 +505,7 @@ class GridRNNCellTest(tf.test.TestCase):
       inputs = ([tf.placeholder(tf.float32, shape=(batch_size, input_size))]
                 + (max_length - 1) * [tf.zeros([batch_size, input_size])])
 
-      outputs, state = tf.nn.rnn(cell, inputs, dtype=tf.float32)
+      outputs, state = tf.contrib.rnn.static_rnn(cell, inputs, dtype=tf.float32)
 
     self.assertEqual(len(outputs), len(inputs))
     self.assertEqual(state.get_shape(), (batch_size, 4))
@@ -515,7 +515,7 @@ class GridRNNCellTest(tf.test.TestCase):
       self.assertEqual(out.dtype, inp.dtype)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       input_value = np.ones((batch_size, input_size))
       values = sess.run(outputs + [state], feed_dict={inputs[0]: input_value})

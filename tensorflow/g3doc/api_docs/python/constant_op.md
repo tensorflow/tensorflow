@@ -155,6 +155,11 @@ fill([2, 3], 9) ==> [[9, 9, 9]
 *  <b>`dims`</b>: A `Tensor` of type `int32`.
     1-D. Represents the shape of the output tensor.
 *  <b>`value`</b>: A `Tensor`. 0-D (scalar). Value to fill the returned tensor.
+
+    @compatibility(numpy)
+    Equivalent to np.full
+    @end_compatibility
+
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -165,7 +170,7 @@ fill([2, 3], 9) ==> [[9, 9, 9]
 
 - - -
 
-### `tf.constant(value, dtype=None, shape=None, name='Const')` {#constant}
+### `tf.constant(value, dtype=None, shape=None, name='Const', verify_shape=False)` {#constant}
 
 Creates a constant tensor.
 
@@ -210,6 +215,9 @@ Creates a constant tensor.
 
 
 *  <b>`name`</b>: Optional name for the tensor.
+
+
+*  <b>`verify_shape`</b>: Boolean that enables verification of a shape of values.
 
 ##### Returns:
 
@@ -302,6 +310,10 @@ tf.range(limit) ==> [0, 1, 2, 3, 4]
 
   An 1-D `Tensor` of type `dtype`.
 
+@compatibility(numpy)
+Equivalent to np.arange
+@end_compatibility
+
 
 
 ## Random Tensors
@@ -353,7 +365,7 @@ the [Variables How To](../../how_tos/variables/index.md).
 # Use random uniform values in [0, 1) as the initializer for a variable of shape
 # [2, 3]. The default type is float32.
 var = tf.Variable(tf.random_uniform([2, 3]), name="var")
-init = tf.initialize_all_variables()
+init = tf.global_variables_initializer()
 
 sess = tf.Session()
 sess.run(init)
@@ -615,8 +627,8 @@ Example:
 ##### Returns:
 
 
-*  <b>`samples`</b>: a `Tensor` of shape `tf.concat(shape, tf.shape(alpha + beta))` with
-    values of type `dtype`.
+*  <b>`samples`</b>: a `Tensor` of shape `tf.concat_v2(shape, tf.shape(alpha + beta))`
+    with values of type `dtype`.
 
 
 - - -
@@ -697,7 +709,7 @@ tf.set_random_seed(1234)
 a = tf.random_uniform([1])
 b = tf.random_normal([1])
 
-# Repeatedly running this block with the same graph will generate different
+# Repeatedly running this block with the same graph will generate the same
 # sequences of 'a' and 'b'.
 print("Session 1")
 with tf.Session() as sess1:

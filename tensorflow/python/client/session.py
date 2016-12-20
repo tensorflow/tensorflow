@@ -28,6 +28,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow as tf_session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import session_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
@@ -97,13 +98,13 @@ def _get_feeds_for_indexed_slices(feed, feed_val):
 _REGISTERED_EXPANSIONS = [
     # SparseTensors are fetched as SparseTensorValues. They can be fed
     # SparseTensorValues or normal tuples.
-    (ops.SparseTensor,
+    (sparse_tensor.SparseTensor,
      lambda fetch: (
-         [fetch.indices, fetch.values, fetch.shape],
-         lambda fetched_vals: ops.SparseTensorValue(*fetched_vals)),
+         [fetch.indices, fetch.values, fetch.dense_shape],
+         lambda fetched_vals: sparse_tensor.SparseTensorValue(*fetched_vals)),
      lambda feed, feed_val: list(zip(
-         [feed.indices, feed.values, feed.shape], feed_val)),
-     lambda feed: [feed.indices, feed.values, feed.shape]),
+         [feed.indices, feed.values, feed.dense_shape], feed_val)),
+     lambda feed: [feed.indices, feed.values, feed.dense_shape]),
     # IndexedSlices are fetched as IndexedSlicesValues. They can be fed
     # IndexedSlicesValues or normal tuples.
     (ops.IndexedSlices,
@@ -113,13 +114,61 @@ _REGISTERED_EXPANSIONS = [
          _get_indexed_slices_value_from_fetches),
      _get_feeds_for_indexed_slices,
      lambda feed: [feed.values, feed.indices] if feed.dense_shape is None
-                  else [feed.values, feed.indices, feed.dense_shape]),
+     else [feed.values, feed.indices, feed.dense_shape]),
     # The default catches all other types and performs no expansions.
     (object,
      lambda fetch: ([fetch], lambda fetched_vals: fetched_vals[0]),
      lambda feed, feed_val: [(feed, feed_val)],
      lambda feed: [feed])]
 # pylint: enable=g-long-lambda
+
+def register_session_run_conversion_functions(tensor_type, fetch_function,
+    feed_function=None, feed_function_for_partial_run=None):
+  """Register fetch and feed conversion functions for `tf.Session.run()`.
+
+  This function registers a triple of conversion functions for fetching and/or
+  feeding values of user-defined types in a call to tf.Session.run().
+
+  An example
+
+  ```python
+     class SquaredTensor(object):
+       def __init__(self, tensor):
+         self.sq = tf.square(tensor)
+     #you can define conversion functions as follows:
+     fetch_function = lambda squared_tensor:([squared_tensor.sq],
+                                             lambda val: val[0])
+     feed_function = lambda feed, feed_val: [(feed.sq, feed_val)]
+     feed_function_for_partial_run = lambda feed: [feed.sq]
+     #then after invoking this register function, you can use as follows:
+     session.run(squared_tensor1,
+                 feed_dict = {squared_tensor2 : some_numpy_array})
+  ```
+
+  Args:
+    tensor_type: The type for which you want to register a conversion function.
+    fetch_function: A callable that takes an object of type `tensor_type` and
+      returns a tuple, where the first element is a list of `tf.Tensor` objects,
+      and the second element is a callable that takes a list of ndarrays and
+      returns an object of some value type that corresponds to `tensor_type`.
+      fetch_function describes how to expand fetch into its component Tensors
+      and how to contract the fetched results back into a single return value.
+    feed_function: A callable that takes feed_key and feed_value as input, and
+      returns a list of tuples (feed_tensor, feed_val), feed_key must have type
+      `tensor_type`, and feed_tensor must have type `tf.Tensor`. Each feed
+      function describes how to unpack a single fed value and map it to feeds
+      of one or more tensors and their corresponding values.
+    feed_function_for_partial_run: A callable for specifying tensor values to
+      feed when setting up a partial run, which takes a `tensor_type` type
+      object as input, and returns a list of Tensors.
+  """
+  for conversion_function in _REGISTERED_EXPANSIONS:
+    if issubclass(conversion_function[0], tensor_type):
+      raise ValueError(
+          '%s has already been registered so ignore it.', tensor_type)
+      return
+  _REGISTERED_EXPANSIONS.insert(0,
+    (tensor_type, fetch_function, feed_function, feed_function_for_partial_run))
 
 
 class _FetchMapper(object):
@@ -315,6 +364,7 @@ class _DictFetchMapper(_FetchMapper):
     Args:
       fetches: Dict of fetches.
     """
+    self._fetch_type = type(fetches)
     self._keys = fetches.keys()
     self._mappers = [_FetchMapper.for_fetch(fetch)
                      for fetch in fetches.values()]
@@ -324,7 +374,7 @@ class _DictFetchMapper(_FetchMapper):
     return self._unique_fetches
 
   def build_results(self, values):
-    results = {}
+    results = self._fetch_type()
     for k, m, vi in zip(self._keys, self._mappers, self._value_indices):
       results[k] = m.build_results([values[j] for j in vi])
     return results
@@ -499,7 +549,7 @@ class BaseSession(SessionInterface):
     opts = tf_session.TF_NewSessionOptions(target=self._target, config=config)
     try:
       with errors.raise_exception_on_not_ok_status() as status:
-        self._session = tf_session.TF_NewSession(opts, status)
+        self._session = tf_session.TF_NewDeprecatedSession(opts, status)
     finally:
       tf_session.TF_DeleteSessionOptions(opts)
 
@@ -516,7 +566,7 @@ class BaseSession(SessionInterface):
       if self._opened and not self._closed:
         self._closed = True
         with errors.raise_exception_on_not_ok_status() as status:
-          tf_session.TF_CloseSession(self._session, status)
+          tf_session.TF_CloseDeprecatedSession(self._session, status)
 
   def __del__(self):
     # cleanly ignore all exceptions
@@ -527,7 +577,7 @@ class BaseSession(SessionInterface):
     if self._session is not None:
       try:
         status = tf_session.TF_NewStatus()
-        tf_session.TF_DeleteSession(self._session, status)
+        tf_session.TF_DeleteDeprecatedSession(self._session, status)
       finally:
         tf_session.TF_DeleteStatus(status)
       self._session = None
@@ -612,8 +662,8 @@ class BaseSession(SessionInterface):
     `feed_dict` for the corresponding input values.
 
     The `fetches` argument may be a single graph element, or an arbitrarily
-    nested list, tuple, namedtuple, or dict containing graph elements at its
-    leaves.  A graph element can be one of the following types:
+    nested list, tuple, namedtuple, dict, or OrderedDict containing graph
+    elements at its leaves.  A graph element can be one of the following types:
 
     * An [`Operation`](../../api_docs/python/framework.md#Operation).
       The corresponding fetched value will be `None`.
@@ -1088,8 +1138,7 @@ class Session(BaseSession):
     sess.run(...)
   ```
 
-  The [`ConfigProto`]
-  (https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto)
+  The [`ConfigProto`](https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto)
   protocol buffer exposes various configuration options for a
   session. For example, to create a session that uses soft constraints
   for device placement, and log the resulting placement decisions,
@@ -1127,8 +1176,8 @@ class Session(BaseSession):
 
     Args:
       target: (Optional.) The execution engine to connect to.
-        Defaults to using an in-process engine. See [Distributed Tensorflow]
-        (https://www.tensorflow.org/how_tos/distributed/index.html)
+        Defaults to using an in-process engine. See
+        [Distributed Tensorflow](https://www.tensorflow.org/how_tos/distributed/index.html)
         for more examples.
       graph: (Optional.) The `Graph` to be launched (described above).
       config: (Optional.) A [`ConfigProto`](https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto)

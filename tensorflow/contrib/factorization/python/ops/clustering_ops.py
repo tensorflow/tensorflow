@@ -26,14 +26,13 @@ from tensorflow.contrib.factorization.python.ops import gen_clustering_ops
 # pylint: disable=wildcard-import
 from tensorflow.contrib.factorization.python.ops.gen_clustering_ops import *
 # pylint: enable=wildcard-import
+from tensorflow.contrib.util import loader
 from tensorflow.python.framework import ops
-from tensorflow.python.framework.load_library import load_op_library
 from tensorflow.python.ops.embedding_ops import embedding_lookup
 from tensorflow.python.platform import resource_loader
 
-_clustering_ops = load_op_library(resource_loader.get_path_to_datafile(
-    '_clustering_ops.so'))
-assert _clustering_ops, 'Could not load _clustering_ops.so'
+_clustering_ops = loader.load_op_library(
+    resource_loader.get_path_to_datafile('_clustering_ops.so'))
 
 # Euclidean distance between vectors U and V is defined as ||U - V||_F which is
 # the square root of the sum of the absolute squares of the elements difference.
@@ -254,8 +253,8 @@ class KMeans(object):
     cluster_centers = tf.Variable(clusters_init,
                                   name='clusters',
                                   validate_shape=False)
-    cluster_counts = (tf.Variable(tf.zeros([self._num_clusters],
-                                           dtype=tf.int64))
+    cluster_counts = (tf.Variable(tf.ones([self._num_clusters],
+                                          dtype=tf.int64))
                       if self._use_mini_batch else None)
     return cluster_centers, cluster_counts
 
@@ -351,15 +350,18 @@ class KMeans(object):
             num_unique_cluster_idx)
         # Shape to enable broadcasting count_updates and learning_rate to inp.
         # It extends the shape with 1's to match the rank of inp.
-        broadcast_shape = tf.concat(
-            0,
-            [tf.reshape(num_unique_cluster_idx, [1]),
-             tf.ones(tf.reshape(tf.rank(inp) - 1, [1]), dtype=tf.int32)])
+        broadcast_shape = tf.concat_v2(
+            [
+                tf.reshape(num_unique_cluster_idx, [1]), tf.ones(
+                    tf.reshape(tf.rank(inp) - 1, [1]), dtype=tf.int32)
+            ],
+            0)
         # Subtract k * x, see comment above.
         cluster_center_updates -= tf.cast(
             tf.reshape(count_updates, broadcast_shape),
             inp.dtype) * old_cluster_centers
-        learning_rate = tf.inv(tf.cast(old_counts + count_updates, inp.dtype))
+        learning_rate = tf.reciprocal(tf.cast(old_counts + count_updates,
+                                              inp.dtype))
         learning_rate = tf.reshape(learning_rate, broadcast_shape)
         # scale by 1 / (n + k), see comment above.
         cluster_center_updates *= learning_rate

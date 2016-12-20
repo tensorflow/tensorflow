@@ -27,21 +27,21 @@ def _iris_data_input_fn():
   iris = tf.contrib.learn.datasets.load_iris()
   ids = np.where((iris.target == 0) | (iris.target == 1))
   features = tf.constant(iris.data[ids], dtype=tf.float32)
-  targets = tf.constant(iris.target[ids], dtype=tf.float32)
-  targets = tf.reshape(targets, targets.get_shape().concatenate(1))
-  return features, targets
+  labels = tf.constant(iris.target[ids], dtype=tf.float32)
+  labels = tf.reshape(labels, labels.get_shape().concatenate(1))
+  return features, labels
 
 
-def _logistic_regression_model_fn(features, targets):
+def _logistic_regression_model_fn(features, labels):
   logits = tf.contrib.layers.linear(
       features,
       1,
-      weights_initializer=tf.zeros_initializer,
+      weights_initializer=tf.zeros_initializer(),
       # Intentionally uses really awful initial values so that
       # AUC/precision/recall/etc will change meaningfully even on a toy dataset.
       biases_initializer=tf.constant_initializer(-10.0))
   predictions = tf.sigmoid(logits)
-  loss = tf.contrib.losses.sigmoid_cross_entropy(logits, targets)
+  loss = tf.contrib.losses.sigmoid_cross_entropy(logits, labels)
   train_op = tf.contrib.layers.optimize_loss(
       loss,
       tf.contrib.framework.get_global_step(),
@@ -96,7 +96,7 @@ class LogisticRegressorTest(tf.test.TestCase):
         0.5,
         eval_metrics[tf.contrib.learn.LogisticRegressor.PREDICTION_MEAN],
         err=1e-2)
-    # Target mean and baseline both remain the same at 0.5.
+    # Label mean and baseline both remain the same at 0.5.
     self.assertNear(
         0.5,
         eval_metrics[tf.contrib.learn.LogisticRegressor.TARGET_MEAN],

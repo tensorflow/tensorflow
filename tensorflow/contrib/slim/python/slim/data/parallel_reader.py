@@ -18,11 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python import summary
 from tensorflow.python.framework import dtypes as tf_dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import io_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.training import input as tf_input
@@ -170,7 +170,8 @@ def parallel_read(data_sources,
                   shuffle=True,
                   dtypes=None,
                   capacity=256,
-                  min_after_dequeue=128):
+                  min_after_dequeue=128,
+                  seed=None):
   """Reads multiple records in parallel from data_sources using n readers.
 
   It uses a ParallelReader to read from multiple files in  parallel using
@@ -199,6 +200,7 @@ def parallel_read(data_sources,
     capacity: integer, capacity of the common_queue.
     min_after_dequeue: integer, minimum number of records in the common_queue
       after dequeue. Needed for a good shuffle.
+    seed: A seed for RandomShuffleQueue.
 
   Returns:
     key, value: a tuple of keys and values from the data_source.
@@ -212,14 +214,14 @@ def parallel_read(data_sources,
       common_queue = data_flow_ops.RandomShuffleQueue(
           capacity=capacity,
           min_after_dequeue=min_after_dequeue,
-          dtypes=dtypes)
+          dtypes=dtypes,
+          seed=seed)
     else:
       common_queue = data_flow_ops.FIFOQueue(capacity=capacity, dtypes=dtypes)
 
-    logging_ops.scalar_summary('queue/%s/fraction_of_%d_full' %
-                               (common_queue.name, capacity),
-                               math_ops.to_float(common_queue.size()) *
-                               (1. / capacity))
+    summary.scalar('queue/%s/fraction_of_%d_full' %
+                   (common_queue.name, capacity),
+                   math_ops.to_float(common_queue.size()) * (1. / capacity))
 
     return ParallelReader(reader_class,
                           common_queue,
@@ -275,5 +277,5 @@ def get_data_files(data_sources):
     else:
       data_files = [data_sources]
   if not data_files:
-    raise ValueError('No data files found in %s', data_sources)
+    raise ValueError('No data files found in %s' % (data_sources,))
   return data_files

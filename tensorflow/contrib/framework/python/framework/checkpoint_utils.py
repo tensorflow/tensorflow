@@ -21,7 +21,7 @@ from __future__ import print_function
 
 import six
 
-from tensorflow.python.ops import gen_io_ops
+from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables
@@ -116,13 +116,8 @@ def _set_checkpoint_initializer(variable, file_pattern, tensor_name, slice_spec,
     name: Name of the operation.
   """
   base_type = variable.dtype.base_dtype
-  restore_op = gen_io_ops._restore_slice(
-      file_pattern,
-      tensor_name,
-      slice_spec,
-      base_type,
-      preferred_shard=-1,
-      name=name)
+  restore_op = io_ops.restore_v2(
+      file_pattern, [tensor_name], [slice_spec], [base_type], name=name)[0]
   variable._initializer_op = state_ops.assign(variable, restore_op)
 
 
@@ -160,7 +155,7 @@ def init_from_checkpoint(checkpoint_dir, assignment_map):
       object with variable from the checkpoint.
     `'scope_variable_name': list(variable)` - will initialize list of
       partitioned variables with variable from the checkpoint.
-    `'scope_name/': '/'` - will load all variables in current `scope_name` from
+    `'/': 'scope_name/'` - will load all variables in current `scope_name` from
       checkpoint's root (e.g. no scope).
 
   Supports loading into partitioned variables, which are represented as

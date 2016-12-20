@@ -36,9 +36,11 @@ class OperatorPDIdentityTest(operator_test_util.OperatorPDDerivedClassTest):
     diag_shape = batch_shape + [k]
     matrix_shape = batch_shape + [k, k]
     diag = tf.ones(diag_shape, dtype=dtype)
-    identity_matrix = tf.matrix_diag(diag)
-    operator = operator_pd_identity.OperatorPDIdentity(matrix_shape, dtype)
-    return operator, identity_matrix.eval()
+    scale = tf.constant(2.0, dtype=dtype)
+    scaled_identity_matrix = scale * tf.matrix_diag(diag)
+    operator = operator_pd_identity.OperatorPDIdentity(
+        matrix_shape, dtype, scale=scale)
+    return operator, scaled_identity_matrix.eval()
 
   def testBadDtypeArgsRaise(self):
     dtype = np.float32

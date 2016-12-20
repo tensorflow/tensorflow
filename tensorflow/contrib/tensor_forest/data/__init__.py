@@ -17,5 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import,wildcard-import
+# pylint: disable=unused-import
 from tensorflow.contrib.tensor_forest.data import data_ops
+# pylint: enable=unused-import

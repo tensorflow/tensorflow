@@ -23,7 +23,31 @@ to be stripped from the image and re-attached using slicing ops.
 
 - - -
 
-### `tf.image.decode_jpeg(contents, channels=None, ratio=None, fancy_upscaling=None, try_recover_truncated=None, acceptable_fraction=None, name=None)` {#decode_jpeg}
+### `tf.image.decode_gif(contents, name=None)` {#decode_gif}
+
+Decode the first frame of a GIF-encoded image to a uint8 tensor.
+
+GIF with frame or transparency compression are not supported
+convert animated GIF from compressed to uncompressed by:
+
+convert $src.gif -coalesce $dst.gif
+
+##### Args:
+
+
+*  <b>`contents`</b>: A `Tensor` of type `string`. 0-D.  The GIF-encoded image.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `uint8`.
+  4-D with shape `[num_frames, height, width, 3]`. RGB order
+
+
+
+- - -
+
+### `tf.image.decode_jpeg(contents, channels=None, ratio=None, fancy_upscaling=None, try_recover_truncated=None, acceptable_fraction=None, dct_method=None, name=None)` {#decode_jpeg}
 
 Decode a JPEG-encoded image to a uint8 tensor.
 
@@ -58,6 +82,13 @@ downscaling the image later.
 *  <b>`acceptable_fraction`</b>: An optional `float`. Defaults to `1`.
     The minimum required fraction of lines before a truncated
     input is accepted.
+*  <b>`dct_method`</b>: An optional `string`. Defaults to `""`.
+    string specifying a hint about the algorithm used for
+    decompression.  Defaults to "" which maps to a system-specific
+    default.  Currently valid values are ["INTEGER_FAST",
+    "INTEGER_ACCURATE"].  The hint may be ignored (e.g., the internal
+    jpeg library changes to a version that does not have that specific
+    option.)
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -185,6 +216,36 @@ the smallest output, but is slower.
 
 
 
+- - -
+
+### `tf.image.decode_image(contents, channels=None, name=None)` {#decode_image}
+
+Convenience function for `decode_gif`, `decode_jpeg`, and `decode_png`.
+Detects whether an image is a GIF, JPEG, or PNG, and performs the appropriate
+operation to convert the input bytes `string` into a `Tensor` of type `uint8`.
+
+Note: `decode_gif` returns a 4-D array `[num_frames, height, width, 3]`, as
+opposed to `decode_jpeg` and `decode_png`, which return 3-D arrays
+`[height, width, num_channels]`. Make sure to take this into account when
+constructing your graph if you are intermixing GIF files with JPEG and/or PNG
+files.
+
+##### Args:
+
+
+*  <b>`contents`</b>: 0-D `string`. The encoded image bytes.
+*  <b>`channels`</b>: An optional `int`. Defaults to `0`. Number of color channels for
+    the decoded image.
+*  <b>`name`</b>: A name for the operation (optional)
+
+##### Returns:
+
+  `Tensor` with type `uint8` with shape `[height, width, num_channels]` for
+    JPEG and PNG images and shape `[num_frames, height, width, 3]` for GIF
+    images.
+
+
+
 ## Resizing
 
 The resizing Ops accept input images as tensors of several types.  They always
@@ -219,12 +280,9 @@ the same as `size`.  To avoid distortions see
 
 `method` can be one of:
 
-*   <b>`ResizeMethod.BILINEAR`</b>: [Bilinear interpolation.]
-    (https://en.wikipedia.org/wiki/Bilinear_interpolation)
-*   <b>`ResizeMethod.NEAREST_NEIGHBOR`</b>: [Nearest neighbor interpolation.]
-    (https://en.wikipedia.org/wiki/Nearest-neighbor_interpolation)
-*   <b>`ResizeMethod.BICUBIC`</b>: [Bicubic interpolation.]
-    (https://en.wikipedia.org/wiki/Bicubic_interpolation)
+*   <b>`ResizeMethod.BILINEAR`</b>: [Bilinear interpolation.](https://en.wikipedia.org/wiki/Bilinear_interpolation)
+*   <b>`ResizeMethod.NEAREST_NEIGHBOR`</b>: [Nearest neighbor interpolation.](https://en.wikipedia.org/wiki/Nearest-neighbor_interpolation)
+*   <b>`ResizeMethod.BICUBIC`</b>: [Bicubic interpolation.](https://en.wikipedia.org/wiki/Bicubic_interpolation)
 *   <b>`ResizeMethod.AREA`</b>: Area interpolation.
 
 ##### Args:
@@ -359,7 +417,6 @@ Resize `images` to `size` using nearest neighbor interpolation.
 
   A `Tensor`. Has the same type as `images`. 4-D with shape
   `[batch, new_height, new_width, channels]`.
-
 
 
 
@@ -1122,6 +1179,38 @@ picked in the interval `[-max_delta, max_delta]`.
 
 - - -
 
+### `tf.image.adjust_gamma(image, gamma=1, gain=1)` {#adjust_gamma}
+
+Performs Gamma Correction on the input image.
+  Also known as Power Law Transform. This function transforms the
+  input image pixelwise according to the equation Out = In**gamma
+  after scaling each pixel to the range 0 to 1.
+
+##### Args:
+
+  image : A Tensor.
+  gamma : A scalar. Non negative real number.
+  gain  : A scalar. The constant multiplier.
+
+##### Returns:
+
+  A Tensor. Gamma corrected output image.
+
+##### Notes:
+
+  For gamma greater than 1, the histogram will shift towards left and
+  the output image will be darker than the input image.
+  For gamma less than 1, the histogram will shift towards right and
+  the output image will be brighter than the input image.
+
+##### References:
+
+  [1] http://en.wikipedia.org/wiki/Gamma_correction
+
+
+
+- - -
+
 ### `tf.image.adjust_saturation(image, saturation_factor, name=None)` {#adjust_saturation}
 
 Adjust saturation of an RGB image.
@@ -1181,7 +1270,7 @@ picked in the interval `[lower, upper]`.
 
 - - -
 
-### `tf.image.per_image_whitening(image)` {#per_image_whitening}
+### `tf.image.per_image_standardization(image)` {#per_image_standardization}
 
 Linearly scales `image` to have zero mean and unit norm.
 
@@ -1192,11 +1281,6 @@ of all values in image, and
 `stddev` is the standard deviation of all values in `image`. It is capped
 away from zero to protect against division by 0 when handling uniform images.
 
-Note that this implementation is limited:
-
-*  It only whitens based on the statistics of an individual image.
-*  It does not take into account the covariance structure.
-
 ##### Args:
 
 
@@ -1204,7 +1288,7 @@ Note that this implementation is limited:
 
 ##### Returns:
 
-  The whitened image with same shape as `image`.
+  The standardized image with same shape as `image`.
 
 ##### Raises:
 

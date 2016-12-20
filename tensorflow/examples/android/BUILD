@@ -5,7 +5,11 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "tf_copts")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_copts",
+    "tf_opts_nortti_if_android",
+)
 
 exports_files(["LICENSE"])
 
@@ -16,7 +20,7 @@ cc_binary(
     srcs = glob([
         "jni/**/*.cc",
         "jni/**/*.h",
-    ]) + [],
+    ]),
     copts = tf_copts(),
     linkopts = [
         "-landroid",
@@ -25,7 +29,6 @@ cc_binary(
         "-lm",
         "-z defs",
         "-s",
-        "-Wl,--icf=all",  # Identical Code Folding
         "-Wl,--version-script",  # This line must be directly followed by LINKER_SCRIPT.
         LINKER_SCRIPT,
     ],
@@ -36,6 +39,7 @@ cc_binary(
         "notap",
     ],
     deps = [
+        ":demo_proto_lib_cc",
         "//tensorflow/contrib/android:android_tensorflow_inference_jni",
         "//tensorflow/core:android_tensorflow_lib",
         LINKER_SCRIPT,
@@ -55,11 +59,15 @@ android_binary(
     name = "tensorflow_demo",
     srcs = glob([
         "src/**/*.java",
-    ]) + [
-        "//tensorflow/contrib/android:android_tensorflow_inference_java_srcs",
+    ]),
+    # Package assets from assets dir as well as all model targets. Remove undesired models
+    # (and corresponding Activities in source) to reduce APK size.
+    assets = [
+        "//tensorflow/examples/android/assets:asset_files",
+        "@inception5h//:model_files",
+        "@mobile_multibox//:model_files",
     ],
-    assets = glob(["assets/**"]),
-    assets_dir = "assets",
+    assets_dir = "",
     custom_package = "org.tensorflow.demo",
     inline_constants = 1,
     manifest = "AndroidManifest.xml",
@@ -70,6 +78,7 @@ android_binary(
     ],
     deps = [
         ":tensorflow_native_libs",
+        "//tensorflow/contrib/android:android_tensorflow_inference_java",
     ],
 )
 
@@ -108,3 +117,20 @@ filegroup(
 )
 
 exports_files(["AndroidManifest.xml"])
+
+load(
+    "//tensorflow/core:platform/default/build_config.bzl",
+    "tf_proto_library",
+)
+
+tf_proto_library(
+    name = "demo_proto_lib",
+    srcs = glob(
+        ["**/*.proto"],
+    ),
+    cc_api_version = 2,
+    visibility = ["//visibility:public"],
+)
+
+# -----------------------------------------------------------------------------
+# Google-internal targets go here (must be at the end).

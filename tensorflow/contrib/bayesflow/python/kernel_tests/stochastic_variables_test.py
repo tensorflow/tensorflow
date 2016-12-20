@@ -42,13 +42,13 @@ class StochasticVariablesTest(tf.test.TestCase):
 
     self.assertEqual(
         {"stochastic_variables/sv_mu", "stochastic_variables/sv_sigma"},
-        set([v.op.name for v in tf.all_variables()]))
-    self.assertEqual(set(tf.trainable_variables()), set(tf.all_variables()))
+        set([v.op.name for v in tf.global_variables()]))
+    self.assertEqual(set(tf.trainable_variables()), set(tf.global_variables()))
 
     v = tf.convert_to_tensor(v)
     self.assertEqual(list(shape), v.get_shape().as_list())
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       self.assertEqual(shape, sess.run(v).shape)
 
   def testStochasticVariablesWithConstantInitializer(self):
@@ -64,7 +64,7 @@ class StochasticVariablesTest(tf.test.TestCase):
             })):
       v = tf.get_variable("sv")
 
-    for var in tf.all_variables():
+    for var in tf.global_variables():
       if "mu" in var.name:
         mu_var = var
       if "sigma" in var.name:
@@ -72,7 +72,7 @@ class StochasticVariablesTest(tf.test.TestCase):
 
     v = tf.convert_to_tensor(v)
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       self.assertAllEqual(np.ones(shape) * 4., sess.run(mu_var))
       self.assertAllEqual(np.ones(shape) * 2., sess.run(sigma_var))
       self.assertEqual(shape, sess.run(v).shape)
@@ -96,7 +96,7 @@ class StochasticVariablesTest(tf.test.TestCase):
             })):
       v = tf.get_variable("sv", shape)
 
-    for var in tf.all_variables():
+    for var in tf.global_variables():
       if "mu" in var.name:
         mu_var = var
       if "sigma" in var.name:
@@ -104,7 +104,7 @@ class StochasticVariablesTest(tf.test.TestCase):
 
     v = tf.convert_to_tensor(v)
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       self.assertAllEqual(np.ones(shape) * 4., sess.run(mu_var))
       self.assertAllEqual(np.ones(shape) * 2., sess.run(sigma_var))
       self.assertEqual(shape, sess.run(v).shape)
@@ -126,7 +126,7 @@ class StochasticVariablesTest(tf.test.TestCase):
     elbo = vi.elbo(y, keep_batch_dim=False)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       sess.run(elbo)
 
   def testStochasticVariablesWithCallablePriorInitializer(self):
@@ -148,7 +148,7 @@ class StochasticVariablesTest(tf.test.TestCase):
     elbo = vi.elbo(y, keep_batch_dim=False)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       sess.run(elbo)
 
 

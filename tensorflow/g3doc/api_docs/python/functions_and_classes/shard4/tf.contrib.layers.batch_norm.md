@@ -18,15 +18,20 @@ they need to be added as a dependency to the `train_op`, example:
     updates = tf.group(*update_ops)
     total_loss = control_flow_ops.with_dependencies([updates], total_loss)
 
-One can set update_collections=None to force the updates in place, but that
+One can set updates_collections=None to force the updates in place, but that
 can have speed penalty, specially in distributed settings.
 
 ##### Args:
 
 
 *  <b>`inputs`</b>: a tensor with 2 or more dimensions, where the first dimension has
-    `batch_size`. The normalization is over all but the last dimension.
-*  <b>`decay`</b>: decay for the moving average.
+    `batch_size`. The normalization is over all but the last dimension if
+    `data_format` is `NHWC` and the second dimension if `data_format` is
+    `NCHW`.
+*  <b>`decay`</b>: decay for the moving average. Reasonable values for `decay` are close
+    to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc. Lower
+    `decay` value (recommend trying `decay`=0.9) if model experiences reasonably
+    good training performance but poor validation and/or test performance.
 *  <b>`center`</b>: If True, subtract `beta`. If False, `beta` is ignored.
 *  <b>`scale`</b>: If True, multiply by `gamma`. If False, `gamma` is
     not used. When the next layer is linear (also e.g. `nn.relu`), this can be
@@ -34,6 +39,8 @@ can have speed penalty, specially in distributed settings.
 *  <b>`epsilon`</b>: small float added to variance to avoid dividing by zero.
 *  <b>`activation_fn`</b>: activation function, default set to None to skip it and
     maintain a linear activation.
+*  <b>`param_initializers`</b>: optional initializers for beta, gamma, moving mean and
+    moving variance.
 *  <b>`updates_collections`</b>: collections to collect the update ops for computation.
     The updates_ops need to be executed with the train_op.
     If None, a control dependency would be added to make sure the updates are
@@ -54,6 +61,8 @@ can have speed penalty, specially in distributed settings.
     then the batch normalization uses weighted mean and
     variance. (This can be used to correct for bias in training
     example selection.)
+*  <b>`fused`</b>: Use nn.fused_batch_norm if True, nn.batch_normalization otherwise.
+*  <b>`data_format`</b>: A string. `NHWC` (default) and `NCHW` are supported.
 *  <b>`scope`</b>: Optional scope for `variable_scope`.
 
 ##### Returns:
@@ -63,5 +72,8 @@ can have speed penalty, specially in distributed settings.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if rank or last dimension of `inputs` is undefined.
+*  <b>`ValueError`</b>: if `batch_weights` is not None and `fused` is True.
+*  <b>`ValueError`</b>: if `data_format` is neither `NHWC` nor `NCHW`.
+*  <b>`ValueError`</b>: if the rank of `inputs` is undefined.
+*  <b>`ValueError`</b>: if rank or channels dimension of `inputs` is undefined.
 

@@ -27,7 +27,7 @@ from tensorflow.python.tools import freeze_graph
 
 class FreezeGraphTest(test_util.TensorFlowTestCase):
 
-  def testFreezeGraph(self):
+  def _testFreezeGraph(self, saver_write_version):
 
     checkpoint_prefix = os.path.join(self.get_temp_dir(), "saved_checkpoint")
     checkpoint_state_name = "checkpoint_state"
@@ -40,13 +40,13 @@ class FreezeGraphTest(test_util.TensorFlowTestCase):
       variable_node = tf.Variable(1.0, name="variable_node")
       output_node = tf.mul(variable_node, 2.0, name="output_node")
       sess = tf.Session()
-      init = tf.initialize_all_variables()
+      init = tf.global_variables_initializer()
       sess.run(init)
       output = sess.run(output_node)
       self.assertNear(2.0, output, 0.00001)
-      saver = tf.train.Saver()
-      saver.save(sess, checkpoint_prefix, global_step=0,
-                 latest_filename=checkpoint_state_name)
+      saver = tf.train.Saver(write_version=saver_write_version)
+      checkpoint_path = saver.save(sess, checkpoint_prefix, global_step=0,
+                                   latest_filename=checkpoint_state_name)
       tf.train.write_graph(sess.graph, self.get_temp_dir(), input_graph_name)
 
     # We save out the graph to disk, and then call the const conversion
@@ -54,7 +54,6 @@ class FreezeGraphTest(test_util.TensorFlowTestCase):
     input_graph_path = os.path.join(self.get_temp_dir(), input_graph_name)
     input_saver_def_path = ""
     input_binary = False
-    input_checkpoint_path = checkpoint_prefix + "-0"
     output_node_names = "output_node"
     restore_op_name = "save/restore_all"
     filename_tensor_name = "save/Const:0"
@@ -62,7 +61,7 @@ class FreezeGraphTest(test_util.TensorFlowTestCase):
     clear_devices = False
 
     freeze_graph.freeze_graph(input_graph_path, input_saver_def_path,
-                              input_binary, input_checkpoint_path,
+                              input_binary, checkpoint_path,
                               output_node_names, restore_op_name,
                               filename_tensor_name, output_graph_path,
                               clear_devices, "")
@@ -77,12 +76,19 @@ class FreezeGraphTest(test_util.TensorFlowTestCase):
 
       self.assertEqual(4, len(output_graph_def.node))
       for node in output_graph_def.node:
+        self.assertNotEqual("VariableV2", node.op)
         self.assertNotEqual("Variable", node.op)
 
       with tf.Session() as sess:
         output_node = sess.graph.get_tensor_by_name("output_node:0")
         output = sess.run(output_node)
         self.assertNear(2.0, output, 0.00001)
+
+  def testFreezeGraphV1(self):
+    self._testFreezeGraph(tf.train.SaverDef.V1)
+
+  def testFreezeGraphV2(self):
+    self._testFreezeGraph(tf.train.SaverDef.V2)
 
 if __name__ == "__main__":
   tf.test.main()

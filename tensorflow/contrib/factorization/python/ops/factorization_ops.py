@@ -27,14 +27,14 @@ import tensorflow as tf
 
 # pylint: disable=wildcard-import,undefined-variable
 from tensorflow.contrib.factorization.python.ops.gen_factorization_ops import *
+# pylint: enable=wildcard-import
+from tensorflow.contrib.util import loader
 from tensorflow.python.framework import ops
-from tensorflow.python.framework.load_library import load_op_library
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.platform import resource_loader
 
-_factorization_ops = load_op_library(resource_loader.get_path_to_datafile(
-    "_factorization_ops.so"))
-assert _factorization_ops, "Could not load _factorization_ops.so"
+_factorization_ops = loader.load_op_library(
+    resource_loader.get_path_to_datafile("_factorization_ops.so"))
 
 
 class WALSModel(object):
@@ -268,7 +268,7 @@ class WALSModel(object):
     if self._row_weights is not None:
       assert self._col_weights is not None
       all_vars.extend(self._row_weights + self._col_weights)
-    return tf.initialize_variables(all_vars)
+    return tf.variables_initializer(all_vars)
 
   @classmethod
   def _shard_sizes(cls, dims, num_shards):
@@ -572,9 +572,8 @@ class WALSModel(object):
         extras = size % num_shards
         assignments = tf.maximum(ids // (ids_per_shard + 1),
                                  (ids - extras) // ids_per_shard)
-        new_ids = tf.select(assignments < extras,
-                            ids % (ids_per_shard + 1),
-                            (ids - extras) % ids_per_shard)
+        new_ids = tf.where(assignments < extras, ids % (ids_per_shard + 1),
+                           (ids - extras) % ids_per_shard)
         return assignments, new_ids
     return func
 
@@ -638,17 +637,83 @@ class WALSModel(object):
     return self._process_input_helper(False, sp_input=sp_input,
                                       transpose_input=transpose_input)
 
+  def project_row_factors(self, sp_input=None, transpose_input=False,
+                          projection_weights=None):
+    """Projects the row factors.
+
+    This computes the row embedding u_i for an observed row a_i by solving
+    one iteration of the update equations.
+
+    Args:
+      sp_input: A SparseTensor representing a set of rows. Please note that the
+        column indices of this SparseTensor must match the model column feature
+        indexing while the row indices are ignored. The returned results will be
+        in the same ordering as the input rows.
+      transpose_input: If true, the input will be logically transposed and the
+        rows corresponding to the transposed input are projected.
+      projection_weights: The row weights to be used for the projection. If None
+        then 1.0 is used. This can be either a scaler or a rank-1 tensor with
+        the number of elements matching the number of rows to be projected.
+        Note that the column weights will be determined by the underlying WALS
+        model.
+
+    Returns:
+      Projected row factors.
+    """
+    if projection_weights is None:
+      projection_weights = 1
+    return self._process_input_helper(True, sp_input=sp_input,
+                                      transpose_input=transpose_input,
+                                      row_weights=projection_weights)[0]
+
+  def project_col_factors(self, sp_input=None, transpose_input=False,
+                          projection_weights=None):
+    """Projects the column factors.
+
+    This computes the column embedding v_j for an observed column a_j by solving
+    one iteration of the update equations.
+
+    Args:
+      sp_input: A SparseTensor representing a set of columns. Please note that
+        the row indices of this SparseTensor must match the model row feature
+        indexing while the column indices are ignored. The returned results will
+        be in the same ordering as the input columns.
+      transpose_input: If true, the input will be logically transposed and the
+        columns corresponding to the transposed input are projected.
+      projection_weights: The column weights to be used for the projection. If
+        None then 1.0 is used. This can be either a scaler or a rank-1 tensor
+        with the number of elements matching the number of columns to be
+        projected. Note that the row weights will be determined by the
+        underlying WALS model.
+
+    Returns:
+      Projected column factors.
+    """
+    if projection_weights is None:
+      projection_weights = 1
+    return self._process_input_helper(False, sp_input=sp_input,
+                                      transpose_input=transpose_input,
+                                      row_weights=projection_weights)[0]
+
   def _process_input_helper(self, update_row_factors,
-                            sp_input=None, transpose_input=False):
+                            sp_input=None, transpose_input=False,
+                            row_weights=None):
     """Creates the graph for processing a sparse slice of input.
 
     Args:
-      update_row_factors: if True, update the row_factors, else update the
-        column factors.
-      sp_input: Please refer to comments for update_row_factors and
-        update_col_factors.
-      transpose_input: If true, the input is logically transposed and then the
+      update_row_factors: if True, update or project the row_factors, else
+        update or project the column factors.
+      sp_input: Please refer to comments for update_row_factors,
+        update_col_factors, project_row_factors, and project_col_factors for
+        restrictions.
+      transpose_input: If True, the input is logically transposed and then the
         corresponding rows/columns of the transposed input are updated.
+      row_weights: If not None, this is the row/column weights to be used for
+        the update or projection. If None, use the corresponding weights from
+        the model. Note that the feature (column/row) weights will be
+        determined by the model. When not None, it can either be a scalar or
+        a rank-1 tensor with the same number of elements as the number of rows
+        of columns to be updated/projected.
 
     Returns:
       A tuple consisting of the following two elements:
@@ -656,7 +721,7 @@ class WALSModel(object):
       update_op: An op that assigns the newly computed values to the row/column
         factors.
     """
-    assert isinstance(sp_input, ops.SparseTensor)
+    assert isinstance(sp_input, tf.SparseTensor)
 
     if update_row_factors:
       left = self._row_factors
@@ -681,7 +746,8 @@ class WALSModel(object):
     # We use tf.unique to achieve this reindexing. Note that this is done so
     # that the downstream kernel can assume that the input is "dense" along the
     # row dimension.
-    row_ids, col_ids = tf.split(1, 2, sp_input.indices)
+    row_ids, col_ids = tf.split(
+        value=sp_input.indices, num_or_size_splits=2, axis=1)
     update_row_indices, all_row_ids = tf.unique(row_ids[:, 0])
     update_col_indices, all_col_ids = tf.unique(col_ids[:, 0])
     col_ids = tf.expand_dims(tf.cast(all_col_ids, tf.int64), 1)
@@ -700,11 +766,12 @@ class WALSModel(object):
     col_shape = [num_rows]
     right = embedding_ops.embedding_lookup(right_factors, gather_indices,
                                            partition_strategy='div')
-    new_sp_indices = tf.concat(1, [row_ids, col_ids])
-    new_sp_shape = (tf.concat(0, [row_shape, col_shape]) if transpose_input
-                    else tf.concat(0, [col_shape, row_shape]))
+    new_sp_indices = tf.concat_v2([row_ids, col_ids], 1)
+    new_sp_shape = (tf.concat_v2([row_shape, col_shape], 0) if transpose_input
+                    else tf.concat_v2([col_shape, row_shape], 0))
     new_sp_input = tf.SparseTensor(indices=new_sp_indices,
-                                   values=sp_input.values, shape=new_sp_shape)
+                                   values=sp_input.values,
+                                   dense_shape=new_sp_shape)
 
     # Compute lhs and rhs of the normal equations
     total_lhs = (self._unobserved_weight * gramian)
@@ -721,10 +788,20 @@ class WALSModel(object):
       new_left_values = tf.transpose(tf.matrix_solve(total_lhs,
                                                      tf.transpose(total_rhs)))
     else:
-      # TODO(yifanchen): Add special handling for single shard without using
-      # embedding_lookup and perform benchmarks for those cases.
-      row_weights_slice = embedding_ops.embedding_lookup(
-          row_wt, update_indices, partition_strategy='div')
+      if row_weights is None:
+        # TODO(yifanchen): Add special handling for single shard without using
+        # embedding_lookup and perform benchmarks for those cases. Same for
+        # col_weights lookup below.
+        row_weights_slice = embedding_ops.embedding_lookup(
+            row_wt, update_indices, partition_strategy='div')
+      else:
+        with ops.control_dependencies(
+            [tf.assert_less_equal(tf.rank(row_weights), 1)]):
+          row_weights_slice = tf.cond(tf.equal(tf.rank(row_weights), 0),
+                                      lambda: (tf.ones([tf.shape(
+                                          update_indices)[0]]) * row_weights),
+                                      lambda: tf.cast(row_weights, tf.float32))
+
       col_weights = embedding_ops.embedding_lookup(
           col_wt, gather_indices, partition_strategy='div')
       partial_lhs, total_rhs = wals_compute_partial_lhs_and_rhs(
@@ -741,8 +818,7 @@ class WALSModel(object):
       total_rhs = tf.expand_dims(total_rhs, -1)
       new_left_values = tf.squeeze(tf.matrix_solve(total_lhs, total_rhs), [2])
 
-    return (new_left_values,
-            self.scatter_update(left,
-                                update_indices,
-                                new_left_values,
-                                sharding_func))
+    return (new_left_values, self.scatter_update(left,
+                                                 update_indices,
+                                                 new_left_values,
+                                                 sharding_func))

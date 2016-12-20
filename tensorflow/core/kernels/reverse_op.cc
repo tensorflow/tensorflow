@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -31,6 +32,19 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+
+template <typename Device, typename T, int NDIMS>
+void HandleReverseCase(OpKernelContext* context,
+                       typename TTypes<bool, 1>::ConstTensor dims,
+                       Tensor* result) {
+  typename Eigen::array<bool, NDIMS> axes_di;
+  for (int i = 0; i < NDIMS; i++) {
+    axes_di[i] = dims(i);
+  }
+  functor::Reverse<Device, T, NDIMS>()(context->eigen_device<Device>(),
+                                       context->input(0).tensor<T, NDIMS>(),
+                                       axes_di, result->tensor<T, NDIMS>());
+}
 
 template <typename Device, typename T>
 class ReverseOp : public OpKernel {
@@ -67,11 +81,9 @@ class ReverseOp : public OpKernel {
       OP_REQUIRES_OK(context,
                      context->allocate_output(0, input.shape(), &output));
 
-#define HANDLE_REVERSE(NDIMS)                                      \
-  case NDIMS:                                                      \
-    functor::Reverse<Device, T, NDIMS>()(                          \
-        context->eigen_device<Device>(), input.tensor<T, NDIMS>(), \
-        dims.vec<bool>(), output->tensor<T, NDIMS>());             \
+#define HANDLE_REVERSE(NDIMS)                                               \
+  case NDIMS:                                                               \
+    HandleReverseCase<Device, T, NDIMS>(context, dims.vec<bool>(), output); \
     return;
 
       switch (input_dims) {
@@ -90,15 +102,97 @@ class ReverseOp : public OpKernel {
   }
 };
 
-#define REGISTER_KERNEL(T)                            \
-  REGISTER_KERNEL_BUILDER(Name("Reverse")             \
-                              .Device(DEVICE_CPU)     \
-                              .TypeConstraint<T>("T") \
-                              .HostMemory("dims"),    \
-                          ReverseOp<CPUDevice, T>)
+template <typename Device, typename T, int NDIMS>
+void HandleReverseV2Case(OpKernelContext* context,
+                         const gtl::ArraySlice<bool>& axes, Tensor* result) {
+  typename Eigen::array<bool, NDIMS> axes_di;
+  for (int i = 0; i < NDIMS; i++) {
+    axes_di[i] = axes[i];
+  }
+  functor::Reverse<Device, T, NDIMS>()(context->eigen_device<Device>(),
+                                       context->input(0).tensor<T, NDIMS>(),
+                                       axes_di, result->tensor<T, NDIMS>());
+}
 
-TF_CALL_POD_TYPES(REGISTER_KERNEL);
-#undef REGISTER_KERNEL
+template <typename Device, typename T>
+class ReverseV2Op : public OpKernel {
+ public:
+  explicit ReverseV2Op(OpKernelConstruction* context) : OpKernel(context) {}
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& input = context->input(0);
+    const Tensor& sparse_dims = context->input(1);
+
+    if (TensorShapeUtils::IsScalar(input.shape())) {
+      Tensor* output = nullptr;
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(0, input.shape(), &output));
+      output->scalar<T>() = input.scalar<T>();
+    } else {
+      const int input_dims = input.dims();
+      const TensorShape& sparse_dims_shape = sparse_dims.shape();
+      const auto& axes_sparse_flat = sparse_dims.flat<int32>();
+
+      OP_REQUIRES(context, TensorShapeUtils::IsVector(sparse_dims_shape),
+                  errors::InvalidArgument("'dims' must be 1-dimension, not ",
+                                          sparse_dims.dims()));
+      gtl::InlinedVector<bool, 8> axes_dense(input_dims, false);
+      for (int dummy = 0; dummy < axes_sparse_flat.size(); dummy++) {
+        int32 axis = internal::SubtleMustCopy<int32>(axes_sparse_flat(dummy));
+        int32 canonical_axis = axis < 0 ? input_dims + axis : axis;
+        OP_REQUIRES(context, canonical_axis >= 0 && canonical_axis < input_dims,
+                    errors::InvalidArgument("'axis'[", dummy, "] = ", axis,
+                                            " is out of valid range [", 0, ", ",
+                                            input_dims - 1));
+        OP_REQUIRES(context, !axes_dense[canonical_axis],
+                    errors::InvalidArgument("axis ", canonical_axis,
+                                            " specified more than once."));
+        axes_dense[canonical_axis] = true;
+      }
+
+      OP_REQUIRES(context, input_dims <= 8,
+                  errors::Unimplemented(
+                      "reverse is not implemented for tensors of rank > 8."));
+
+      Tensor* output = nullptr;
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(0, input.shape(), &output));
+
+#define HANDLE_REVERSE(NDIMS)                                           \
+  case NDIMS:                                                           \
+    HandleReverseV2Case<Device, T, NDIMS>(context, axes_dense, output); \
+    return;
+
+      switch (input_dims) {
+        HANDLE_REVERSE(0);
+        HANDLE_REVERSE(1);
+        HANDLE_REVERSE(2);
+        HANDLE_REVERSE(3);
+        HANDLE_REVERSE(4);
+        HANDLE_REVERSE(5);
+        HANDLE_REVERSE(6);
+        HANDLE_REVERSE(7);
+        HANDLE_REVERSE(8);
+      }
+#undef HANDLE_REVERSE
+    }
+  }
+};
+
+#define REGISTER_KERNELS(T)                                  \
+  REGISTER_KERNEL_BUILDER(Name("Reverse")                    \
+                              .Device(DEVICE_CPU)            \
+                              .TypeConstraint<T>("T")        \
+                              .HostMemory("dims"),           \
+                          ReverseOp<CPUDevice, T>)           \
+  REGISTER_KERNEL_BUILDER(Name("ReverseV2")                  \
+                              .Device(DEVICE_CPU)            \
+                              .TypeConstraint<T>("T")        \
+                              .TypeConstraint<int32>("Tidx") \
+                              .HostMemory("axis"),           \
+                          ReverseV2Op<CPUDevice, T>)
+TF_CALL_POD_TYPES(REGISTER_KERNELS);
+#undef REGISTER_KERNELS
 
 #if GOOGLE_CUDA
 
@@ -109,7 +203,7 @@ namespace functor {
   template <>                                                         \
   void Reverse<GPUDevice, T, DIM>::operator()(                        \
       const GPUDevice& d, typename TTypes<T, DIM>::ConstTensor input, \
-      typename TTypes<bool, 1>::ConstTensor dims,                     \
+      const Eigen::array<bool, DIM>& reverse_dims,                    \
       typename TTypes<T, DIM>::Tensor output);                        \
   extern template struct Reverse<GPUDevice, T, DIM>;
 #define DECLARE_GPU_SPEC(T)  \
@@ -136,21 +230,27 @@ TF_CALL_complex128(DECLARE_GPU_SPEC);
 }  // namespace functor
 
 // Registration of the GPU implementations.
-#define REGISTER_GPU_KERNEL(T)                        \
-  REGISTER_KERNEL_BUILDER(Name("Reverse")             \
-                              .Device(DEVICE_GPU)     \
-                              .TypeConstraint<T>("T") \
-                              .HostMemory("dims"),    \
-                          ReverseOp<GPUDevice, T>)
-TF_CALL_uint8(REGISTER_GPU_KERNEL);
-TF_CALL_int8(REGISTER_GPU_KERNEL);
+#define REGISTER_GPU_KERNELS(T)                              \
+  REGISTER_KERNEL_BUILDER(Name("Reverse")                    \
+                              .Device(DEVICE_GPU)            \
+                              .TypeConstraint<T>("T")        \
+                              .HostMemory("dims"),           \
+                          ReverseOp<GPUDevice, T>)           \
+  REGISTER_KERNEL_BUILDER(Name("ReverseV2")                  \
+                              .Device(DEVICE_GPU)            \
+                              .TypeConstraint<T>("T")        \
+                              .TypeConstraint<int32>("Tidx") \
+                              .HostMemory("axis"),           \
+                          ReverseV2Op<GPUDevice, T>)
+TF_CALL_uint8(REGISTER_GPU_KERNELS);
+TF_CALL_int8(REGISTER_GPU_KERNELS);
 // TODO decide whether we want to enable the bool kernel.
-// TF_CALL_bool(REGISTER_GPU_KERNEL);
-TF_CALL_half(REGISTER_GPU_KERNEL);
-TF_CALL_float(REGISTER_GPU_KERNEL);
-TF_CALL_double(REGISTER_GPU_KERNEL);
-TF_CALL_complex64(REGISTER_GPU_KERNEL);
-TF_CALL_complex128(REGISTER_GPU_KERNEL);
+// TF_CALL_bool(REGISTER_GPU_KERNELS);
+TF_CALL_half(REGISTER_GPU_KERNELS);
+TF_CALL_float(REGISTER_GPU_KERNELS);
+TF_CALL_double(REGISTER_GPU_KERNELS);
+TF_CALL_complex64(REGISTER_GPU_KERNELS);
+TF_CALL_complex128(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNEL
 
 // A special GPU kernel for int32.
@@ -163,7 +263,14 @@ REGISTER_KERNEL_BUILDER(Name("Reverse")
                             .HostMemory("dims")
                             .HostMemory("output"),
                         ReverseOp<CPUDevice, int32>);
-
+REGISTER_KERNEL_BUILDER(Name("ReverseV2")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32>("Tidx")
+                            .HostMemory("tensor")
+                            .HostMemory("axis")
+                            .HostMemory("output"),
+                        ReverseV2Op<CPUDevice, int32>);
 #endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow

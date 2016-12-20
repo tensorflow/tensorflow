@@ -16,7 +16,7 @@ logged by the C++ runtime. This is expected.
 
 
 *  <b>`var_list`</b>: List of `Variable` objects to check. Defaults to the
-    value of `all_variables().`
+    value of `global_variables().`
 
 ##### Returns:
 

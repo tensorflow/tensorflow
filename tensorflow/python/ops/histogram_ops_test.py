@@ -122,10 +122,10 @@ class HistogramFixedWidthTest(tf.test.TestCase):
                                       nbins=3,
                                       dtype=tf.int64)
 
-      hist_accum = tf.Variable(tf.zeros_initializer([3], dtype=tf.int64))
+      hist_accum = tf.Variable(tf.zeros_initializer()([3], dtype=tf.int64))
       hist_accum = hist_accum.assign_add(hist)
 
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       for _ in range(100):
         # Map the rv: U[0, 1] --> U[value_range[0], value_range[1]].

@@ -17,7 +17,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-from scipy import stats
+from scipy import stats, special
 import tensorflow as tf
 
 
@@ -228,7 +228,7 @@ class BetaTest(tf.test.TestCase):
       b = 2.
       beta = tf.contrib.distributions.Beta(a, b)
       n = tf.constant(100000)
-      samples = beta.sample_n(n)
+      samples = beta.sample(n)
       sample_values = samples.eval()
       self.assertEqual(sample_values.shape, (100000,))
       self.assertFalse(np.any(sample_values < 0.0))
@@ -245,13 +245,30 @@ class BetaTest(tf.test.TestCase):
                           stats.beta.var(a, b),
                           atol=1e-1)
 
+  # Test that sampling with the same seed twice gives the same results.
+  def testBetaSampleMultipleTimes(self):
+    with self.test_session():
+      a_val = 1.
+      b_val = 2.
+      n_val = 100
+
+      tf.set_random_seed(654321)
+      beta1 = tf.contrib.distributions.Beta(a=a_val, b=b_val, name="beta1")
+      samples1 = beta1.sample(n_val, seed=123456).eval()
+
+      tf.set_random_seed(654321)
+      beta2 = tf.contrib.distributions.Beta(a=a_val, b=b_val, name="beta2")
+      samples2 = beta2.sample(n_val, seed=123456).eval()
+
+      self.assertAllClose(samples1, samples2)
+
   def testBetaSampleMultidimensional(self):
     with self.test_session():
       a = np.random.rand(3, 2, 2).astype(np.float32)
       b = np.random.rand(3, 2, 2).astype(np.float32)
       beta = tf.contrib.distributions.Beta(a, b)
       n = tf.constant(100000)
-      samples = beta.sample_n(n)
+      samples = beta.sample(n)
       sample_values = samples.eval()
       self.assertEqual(sample_values.shape, (100000, 3, 2, 2))
       self.assertFalse(np.any(sample_values < 0.0))
@@ -290,6 +307,40 @@ class BetaTest(tf.test.TestCase):
       dist = tf.contrib.distributions.BetaWithSoftplusAB(a, b)
       self.assertAllClose(tf.nn.softplus(a).eval(), dist.a.eval())
       self.assertAllClose(tf.nn.softplus(b).eval(), dist.b.eval())
+
+  def testBetaBetaKL(self):
+    with self.test_session() as sess:
+      for shape in [(10,), (4,5)]:
+        a1 = 6.0*np.random.random(size=shape) + 1e-4
+        b1 = 6.0*np.random.random(size=shape) + 1e-4 
+        a2 = 6.0*np.random.random(size=shape) + 1e-4
+        b2 = 6.0*np.random.random(size=shape) + 1e-4 
+        # Take inverse softplus of values to test BetaWithSoftplusAB
+        a1_sp = np.log(np.exp(a1) - 1.0)
+        b1_sp = np.log(np.exp(b1) - 1.0)
+        a2_sp = np.log(np.exp(a2) - 1.0)
+        b2_sp = np.log(np.exp(b2) - 1.0)
+
+        d1 = tf.contrib.distributions.Beta(a=a1, b=b1)
+        d2 = tf.contrib.distributions.Beta(a=a2, b=b2)
+        d1_sp = tf.contrib.distributions.BetaWithSoftplusAB(a=a1_sp, b=b1_sp)
+        d2_sp = tf.contrib.distributions.BetaWithSoftplusAB(a=a2_sp, b=b2_sp)
+
+        kl_expected = (special.betaln(a2, b2) - special.betaln(a1, b1)
+                     + (a1 - a2)*special.digamma(a1)
+                     + (b1 - b2)*special.digamma(b1)
+                     + (a2 - a1 + b2 - b1)*special.digamma(a1 + b1))
+
+        for dist1 in [d1, d1_sp]:
+          for dist2 in [d2, d2_sp]:
+            kl = tf.contrib.distributions.kl(dist1, dist2)
+            kl_val = sess.run(kl)
+            self.assertEqual(kl.get_shape(), shape)
+            self.assertAllClose(kl_val, kl_expected)
+        
+        # Make sure KL(d1||d1) is 0
+        kl_same = sess.run(tf.contrib.distributions.kl(d1, d1))
+        self.assertAllClose(kl_same, np.zeros_like(kl_expected))
 
 
 if __name__ == "__main__":

@@ -111,7 +111,7 @@ class MultivariateNormalDiagTest(tf.test.TestCase):
     diag = [1.0, 2.0]
     with self.test_session():
       dist = distributions.MultivariateNormalDiag(mu, diag)
-      samps = dist.sample_n(1000, seed=0).eval()
+      samps = dist.sample(1000, seed=0).eval()
       cov_mat = tf.matrix_diag(diag).eval()**2
 
       self.assertAllClose(mu, samps.mean(axis=0), atol=0.1)
@@ -122,7 +122,7 @@ class MultivariateNormalDiagTest(tf.test.TestCase):
     diag = [-1.0, -2.0]
     with self.test_session():
       dist = distributions.MultivariateNormalDiagWithSoftplusStDev(mu, diag)
-      samps = dist.sample_n(1000, seed=0).eval()
+      samps = dist.sample(1000, seed=0).eval()
       cov_mat = tf.matrix_diag(tf.nn.softplus(diag)).eval()**2
 
       self.assertAllClose(mu, samps.mean(axis=0), atol=0.1)
@@ -177,7 +177,7 @@ class MultivariateNormalDiagPlusVDVTTest(tf.test.TestCase):
     with self.test_session():
       dist = distributions.MultivariateNormalDiagPlusVDVT(mu, diag_large, v)
 
-      samps = dist.sample_n(1000, seed=0).eval()
+      samps = dist.sample(1000, seed=0).eval()
       cov_mat = dist.sigma.eval()
 
       self.assertAllClose(mu, samps.mean(axis=0), atol=0.1)
@@ -193,7 +193,7 @@ class MultivariateNormalCholeskyTest(tf.test.TestCase):
     mat = self._rng.rand(*shape)
     chol = distributions.matrix_diag_transform(mat, transform=tf.nn.softplus)
     chol = tf.matrix_band_part(chol, -1, 0)
-    sigma = tf.batch_matmul(chol, chol, adj_y=True)
+    sigma = tf.matmul(chol, chol, adjoint_b=True)
     return chol.eval(), sigma.eval()
 
   def testNonmatchingMuSigmaFailsStatic(self):
@@ -318,7 +318,7 @@ class MultivariateNormalCholeskyTest(tf.test.TestCase):
 
       n = tf.constant(100000)
       mvn = distributions.MultivariateNormalCholesky(mu, chol)
-      samples = mvn.sample_n(n, seed=137)
+      samples = mvn.sample(n, seed=137)
       sample_values = samples.eval()
       self.assertEqual(samples.get_shape(), (100000, 2))
       self.assertAllClose(sample_values.mean(axis=0), mu, atol=1e-2)
@@ -355,7 +355,7 @@ class MultivariateNormalCholeskyTest(tf.test.TestCase):
 
       mvn = distributions.MultivariateNormalCholesky(mu, chol)
       n = tf.constant(100000)
-      samples = mvn.sample_n(n, seed=137)
+      samples = mvn.sample(n, seed=137)
       sample_values = samples.eval()
 
       self.assertEqual(samples.get_shape(), (100000, 3, 5, 2))
@@ -391,7 +391,7 @@ class MultivariateNormalFullTest(tf.test.TestCase):
     # This ensures sigma is positive def.
     mat_shape = batch_shape + event_shape + event_shape
     mat = self._rng.randn(*mat_shape)
-    sigma = tf.batch_matmul(mat, mat, adj_y=True).eval()
+    sigma = tf.matmul(mat, mat, adjoint_b=True).eval()
 
     mu_shape = batch_shape + event_shape
     mu = self._rng.randn(*mu_shape)

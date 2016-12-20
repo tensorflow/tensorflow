@@ -55,7 +55,7 @@ Log E_q[ f(Z) p(Z) / q(Z) ]
 C := Max[ Log[f(Z)] + Log[p(Z)] - Log[q(Z)] ].
 ```
 
-The maximum value of the exponentiated term will be 0.0, and the the expectation
+The maximum value of the exponentiated term will be 0.0, and the expectation
 can be evaluated in a stable manner.
 
 ## Ops
@@ -115,7 +115,7 @@ def expectation_importance_sampler(f,
       shape broadcastable to `q.batch_shape`.
       For example, `log_p` works "just like" `sampling_dist_q.log_prob`.
     sampling_dist_q:  The sampling distribution.
-      `tf.contrib.distributions.BaseDistribution`.
+      `tf.contrib.distributions.Distribution`.
       `float64` `dtype` recommended.
       `log_p` and `q` should be supported on the same set.
     z:  `Tensor` of samples from `q`, produced by `q.sample_n`.
@@ -192,7 +192,7 @@ def expectation_importance_sampler_logspace(
       shape broadcastable to `q.batch_shape`.
       For example, `log_p` works "just like" `q.log_prob`.
     sampling_dist_q:  The sampling distribution.
-      `tf.contrib.distributions.BaseDistribution`.
+      `tf.contrib.distributions.Distribution`.
       `float64` `dtype` recommended.
       `log_p` and `q` should be supported on the same set.
     z:  `Tensor` of samples from `q`, produced by `q.sample_n`.
@@ -253,7 +253,7 @@ def expectation(f, p, z=None, n=None, seed=None, name='expectation'):
 
   Args:
     f: Callable mapping samples from `p` to `Tensors`.
-    p:  `tf.contrib.distributions.BaseDistribution`.
+    p:  `tf.contrib.distributions.Distribution`.
     z:  `Tensor` of samples from `p`, produced by `p.sample_n`.
     n:  Integer `Tensor`.  Number of samples to generate if `z` is not provided.
     seed:  Python integer to seed the random number generator.

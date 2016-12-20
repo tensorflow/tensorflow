@@ -8,6 +8,7 @@ tensorflow/core/protobuf/queue_runner.pb.cc
 tensorflow/core/protobuf/named_tensor.pb.cc
 tensorflow/core/protobuf/meta_graph.pb.cc
 tensorflow/core/protobuf/config.pb.cc
+tensorflow/core/protobuf/debug.pb.cc
 tensorflow/core/lib/core/error_codes.pb.cc
 tensorflow/core/framework/versions.pb.cc
 tensorflow/core/framework/variable.pb.cc
@@ -18,6 +19,7 @@ tensorflow/core/framework/tensor_description.pb.cc
 tensorflow/core/framework/tensor.pb.cc
 tensorflow/core/framework/summary.pb.cc
 tensorflow/core/framework/step_stats.pb.cc
+tensorflow/core/framework/resource_handle.pb.cc
 tensorflow/core/framework/op_def.pb.cc
 tensorflow/core/framework/node_def.pb.cc
 tensorflow/core/framework/log_memory.pb.cc

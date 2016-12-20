@@ -59,7 +59,7 @@ batch_size = 32
 num_unroll = 20
 num_enqueue_threads = 3
 lstm_size = 8
-cell = tf.nn.rnn_cell.BasicLSTMCell(num_units=lstm_size)
+cell = tf.contrib.rnn.BasicLSTMCell(num_units=lstm_size)
 
 key, sequences, context = my_parser(raw_data)
 initial_state_values = tf.zeros((state_size,), dtype=tf.float32)
@@ -77,10 +77,10 @@ batch = tf.batch_sequences_with_states(
 inputs = batch.sequences["input"]
 context_label = batch.context["label"]
 
-inputs_by_time = tf.split(1, num_unroll, inputs)
+inputs_by_time = tf.split(value=inputs, num_or_size_splits=num_unroll, axis=1)
 assert len(inputs_by_time) == num_unroll
 
-lstm_output, _ = tf.nn.state_saving_rnn(
+lstm_output, _ = tf.contrib.rnn.static_state_saving_rnn(
   cell,
   inputs_by_time,
   state_saver=batch,
@@ -506,7 +506,7 @@ Example usage:
 batch_size = 32
 num_unroll = 20
 lstm_size = 8
-cell = tf.nn.rnn_cell.BasicLSTMCell(num_units=lstm_size)
+cell = tf.contrib.rnn.BasicLSTMCell(num_units=lstm_size)
 initial_state_values = tf.zeros(cell.state_size, dtype=tf.float32)
 
 raw_data = get_single_input_from_input_reader()
@@ -525,10 +525,10 @@ batch = stateful_reader.next_batch
 inputs = batch.sequences["input"]
 context_label = batch.context["label"]
 
-inputs_by_time = tf.split(1, num_unroll, inputs)
+inputs_by_time = tf.split(value=inputs, num_or_size_splits=num_unroll, axis=1)
 assert len(inputs_by_time) == num_unroll
 
-lstm_output, _ = tf.nn.state_saving_rnn(
+lstm_output, _ = tf.contrib.rnn.static_state_saving_rnn(
   cell,
   inputs_by_time,
   state_saver=batch,
@@ -724,18 +724,79 @@ It should be run in a separate thread via e.g. a `QueueRunner`.
 ## Online data resampling
 
 To resample data with replacement on a per-example basis, use
-['resample_at_rate'](#resample_at_rate), providing the desired rate
-for each example. If you wish to specify relative rates, rather than
-absolute ones, use ['weighted_resample'](#weighted_resample) (which
-also returns the actual resampling rate used for each output example).
+['rejection_sample'](#rejection_sample) or
+['resample_at_rate'](#resample_at_rate). For `rejection_sample`, provide
+a boolean Tensor describing whether to accept or reject. Resulting batch sizes
+are always the same. For `resample_at_rate`, provide the desired rate for each
+example. Resulting batch sizes may vary. If you wish to specify relative
+rates, rather than absolute ones, use ['weighted_resample'](#weighted_resample)
+(which also returns the actual resampling rate used for each output example).
 
-Use ['stratified_sample'](#stratified_sample) or
-['stratified_sample_unknown_dist'](#stratified_sample_unknown_dist) to
-resample without replacement from the data to achieve a desired mix of
-class proportions that the Tensorflow graph sees. For instance, if you
-have a binary classification dataset that is 99.9% class 1, a common
-approach is to resample from the data so that the data is more
-balanced.
+Use ['stratified_sample'](#stratified_sample) to resample without replacement
+from the data to achieve a desired mix of class proportions that the Tensorflow
+graph sees. For instance, if you have a binary classification dataset that is
+99.9% class 1, a common approach is to resample from the data so that the data
+is more balanced.
+
+- - -
+
+### `tf.contrib.training.rejection_sample(tensors, accept_prob_fn, batch_size, queue_threads=1, enqueue_many=False, prebatch_capacity=16, prebatch_threads=1, runtime_checks=False, name=None)` {#rejection_sample}
+
+Stochastically creates batches by rejection sampling.
+
+Each list of non-batched tensors is evaluated by `accept_prob_fn`, to produce
+a scalar tensor between 0 and 1. This tensor corresponds to the probability of
+being accepted. When `batch_size` tensor groups have been accepted, the batch
+queue will return a mini-batch.
+
+##### Args:
+
+
+*  <b>`tensors`</b>: List of tensors for data. All tensors are either one item or a
+      batch, according to enqueue_many.
+*  <b>`accept_prob_fn`</b>: A python lambda that takes a non-batch tensor from each
+      item in `tensors`, and produces a scalar tensor.
+*  <b>`batch_size`</b>: Size of batch to be returned.
+*  <b>`queue_threads`</b>: The number of threads for the queue that will hold the final
+    batch.
+*  <b>`enqueue_many`</b>: Bool. If true, interpret input tensors as having a batch
+      dimension.
+*  <b>`prebatch_capacity`</b>: Capacity for the large queue that is used to convert
+    batched tensors to single examples.
+*  <b>`prebatch_threads`</b>: Number of threads for the large queue that is used to
+    convert batched tensors to single examples.
+*  <b>`runtime_checks`</b>: Bool. If true, insert runtime checks on the output of
+      `accept_prob_fn`. Using `True` might have a performance impact.
+*  <b>`name`</b>: Optional prefix for ops created by this function.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: enqueue_many is True and labels doesn't have a batch
+      dimension, or if enqueue_many is False and labels isn't a scalar.
+*  <b>`ValueError`</b>: enqueue_many is True, and batch dimension on data and labels
+      don't match.
+*  <b>`ValueError`</b>: if a zero initial probability class has a nonzero target
+      probability.
+
+##### Returns:
+
+  A list of tensors of the same length as `tensors`, with batch dimension
+  `batch_size`.
+
+##### Example:
+
+  # Get tensor for a single data and label example.
+  data, label = data_provider.Get(['data', 'label'])
+
+  # Get stratified batch according to data tensor.
+  accept_prob_fn = lambda x: (tf.tanh(x[0]) + 1) / 2
+  data_batch = tf.contrib.training.rejection_sample(
+      [data, label], accept_prob_fn, 16)
+
+  # Run batch through network.
+  ...
+
 
 - - -
 
@@ -784,9 +845,7 @@ Stochastically creates batches based on per-class probabilities.
 
 This method discards examples. Internally, it creates one queue to amortize
 the cost of disk reads, and one queue to hold the properly-proportioned
-batch. See `stratified_sample_unknown_dist` for a function that performs
-stratified sampling with one queue per class and doesn't require knowing the
-class data-distribution ahead of time.
+batch.
 
 ##### Args:
 
@@ -841,68 +900,7 @@ class data-distribution ahead of time.
 
 - - -
 
-### `tf.contrib.training.stratified_sample_unknown_dist(tensors, labels, probs, batch_size, enqueue_many=False, queue_capacity=16, threads_per_queue=1, name=None)` {#stratified_sample_unknown_dist}
-
-Stochastically creates batches based on per-class probabilities.
-
-**NOTICE** This sampler can be significantly slower than `stratified_sample`
-due to each thread discarding all examples not in its assigned class.
-
-This uses a number of threads proportional to the number of classes. See
-`stratified_sample` for an implementation that discards fewer examples and
-uses a fixed number of threads. This function's only advantage over
-`stratified_sample` is that the class data-distribution doesn't need to be
-known ahead of time.
-
-##### Args:
-
-
-*  <b>`tensors`</b>: List of tensors for data. All tensors are either one item or a
-      batch, according to enqueue_many.
-*  <b>`labels`</b>: Tensor for label of data. Label is a single integer or a batch,
-      depending on enqueue_many. It is not a one-hot vector.
-*  <b>`probs`</b>: Target class probabilities. An object whose type has a registered
-      Tensor conversion function.
-*  <b>`batch_size`</b>: Size of batch to be returned.
-*  <b>`enqueue_many`</b>: Bool. If true, interpret input tensors as having a batch
-      dimension.
-*  <b>`queue_capacity`</b>: Capacity of each per-class queue.
-*  <b>`threads_per_queue`</b>: Number of threads for each per-class queue.
-*  <b>`name`</b>: Optional prefix for ops created by this function.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: enqueue_many is True and labels doesn't have a batch
-      dimension, or if enqueue_many is False and labels isn't a scalar.
-*  <b>`ValueError`</b>: enqueue_many is True, and batch dimension of data and labels
-      don't match.
-*  <b>`ValueError`</b>: if probs don't sum to one.
-*  <b>`TFAssertion`</b>: if labels aren't integers in [0, num classes).
-
-##### Returns:
-
-  (data_batch, label_batch), where data_batch is a list of tensors of the same
-      length as `tensors`
-
-##### Example:
-
-  # Get tensor for a single data and label example.
-  data, label = data_provider.Get(['data', 'label'])
-
-  # Get stratified batch according to per-class probabilities.
-  init_probs = [1.0/NUM_CLASSES for _ in range(NUM_CLASSES)]
-  [data_batch], labels = (
-      tf.contrib.training.stratified_sample_unknown_dist(
-          [data], label, init_probs, 16))
-
-  # Run batch through network.
-  ...
-
-
-- - -
-
-### `tf.contrib.training.weighted_resample(inputs, weights, overall_rate, scope=None, mean_decay=0.999, warmup=10, seed=None)` {#weighted_resample}
+### `tf.contrib.training.weighted_resample(inputs, weights, overall_rate, scope=None, mean_decay=0.999, seed=None)` {#weighted_resample}
 
 Performs an approximate weighted resampling of `inputs`.
 
@@ -919,9 +917,6 @@ rate of selection across all inputs (and many invocations!) is
 *  <b>`overall_rate`</b>: Desired overall rate of resampling.
 *  <b>`scope`</b>: Scope to use for the op.
 *  <b>`mean_decay`</b>: How quickly to decay the running estimate of the mean weight.
-*  <b>`warmup`</b>: Until the resulting tensor has been evaluated `warmup`
-    times, the resampling menthod uses the true mean over all calls
-    as its weight estimate, rather than a decayed mean.
 *  <b>`seed`</b>: Random seed.
 
 ##### Returns:

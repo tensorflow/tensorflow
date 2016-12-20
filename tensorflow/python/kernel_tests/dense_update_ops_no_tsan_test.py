@@ -12,33 +12,43 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for state updating ops that may have benign race conditions."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
 
 
-class AssignOpTest(tf.test.TestCase):
+class AssignOpTest(test.TestCase):
 
   # NOTE(mrry): We exclude thess tests from the TSAN TAP target, because they
   #   contain benign and deliberate data races when multiple threads update
   #   the same parameters without a lock.
   def testParallelUpdateWithoutLocking(self):
     with self.test_session() as sess:
-      ones_t = tf.fill([1024, 1024], 1.0)
-      p = tf.Variable(tf.zeros([1024, 1024]))
-      adds = [tf.assign_add(p, ones_t, use_locking=False)
-              for _ in range(20)]
-      tf.initialize_all_variables().run()
+      ones_t = array_ops.fill([1024, 1024], 1.0)
+      p = variables.Variable(array_ops.zeros([1024, 1024]))
+      adds = [
+          state_ops.assign_add(
+              p, ones_t, use_locking=False) for _ in range(20)
+      ]
+      variables.global_variables_initializer().run()
 
       def run_add(add_op):
         sess.run(add_op)
-      threads = [self.checkedThread(target=run_add, args=(add_op,))
-                 for add_op in adds]
+
+      threads = [
+          self.checkedThread(
+              target=run_add, args=(add_op,)) for add_op in adds
+      ]
       for t in threads:
         t.start()
       for t in threads:
@@ -51,16 +61,21 @@ class AssignOpTest(tf.test.TestCase):
 
   def testParallelAssignWithoutLocking(self):
     with self.test_session() as sess:
-      ones_t = tf.fill([1024, 1024], float(1))
-      p = tf.Variable(tf.zeros([1024, 1024]))
-      assigns = [tf.assign(p, tf.mul(ones_t, float(i)), False)
-                 for i in range(1, 21)]
-      tf.initialize_all_variables().run()
+      ones_t = array_ops.fill([1024, 1024], float(1))
+      p = variables.Variable(array_ops.zeros([1024, 1024]))
+      assigns = [
+          state_ops.assign(p, math_ops.mul(ones_t, float(i)), False)
+          for i in range(1, 21)
+      ]
+      variables.global_variables_initializer().run()
 
       def run_assign(assign_op):
         sess.run(assign_op)
-      threads = [self.checkedThread(target=run_assign, args=(assign_op,))
-                 for assign_op in assigns]
+
+      threads = [
+          self.checkedThread(
+              target=run_assign, args=(assign_op,)) for assign_op in assigns
+      ]
       for t in threads:
         t.start()
       for t in threads:
@@ -74,4 +89,4 @@ class AssignOpTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

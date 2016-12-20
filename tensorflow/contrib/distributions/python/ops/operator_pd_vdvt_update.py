@@ -145,9 +145,9 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
       else:
         v_shape = array_ops.shape(v)
         v_rank = array_ops.rank(v)
-        v_batch_shape = array_ops.slice(v_shape, [0], [v_rank - 2])
+        v_batch_shape = array_ops.strided_slice(v_shape, [0], [v_rank - 2])
         r = array_ops.gather(v_shape, v_rank - 1)  # Last dim of v
-        id_shape = array_ops.concat(0, (v_batch_shape, [r, r]))
+        id_shape = array_ops.concat_v2((v_batch_shape, [r, r]), 0)
       return operator_pd_identity.OperatorPDIdentity(
           id_shape, v.dtype, verify_pd=self._verify_pd)
 
@@ -223,23 +223,30 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
         r_d = array_ops.rank(diag)
 
       # Check tensor rank.
-      checks.append(check_ops.assert_rank(v, r_op))
+      checks.append(check_ops.assert_rank(
+          v, r_op, message="v is not the same rank as operator."))
       if diag is not None:
-        checks.append(check_ops.assert_rank(diag, r_op - 1))
+        checks.append(check_ops.assert_rank(
+            diag, r_op - 1, message="diag is not the same rank as operator."))
 
       # Check batch shape
       checks.append(check_ops.assert_equal(
-          operator.batch_shape(), array_ops.slice(s_v, [0], [r_v - 2])))
+          operator.batch_shape(), array_ops.strided_slice(s_v, [0], [r_v - 2]),
+          message="v does not have same batch shape as operator."))
       if diag is not None:
         checks.append(check_ops.assert_equal(
-            operator.batch_shape(), array_ops.slice(s_d, [0], [r_d - 1])))
+            operator.batch_shape(), array_ops.strided_slice(
+                s_d, [0], [r_d - 1]),
+            message="diag does not have same batch shape as operator."))
 
       # Check event shape
       checks.append(check_ops.assert_equal(
-          operator.vector_space_dimension(), array_ops.gather(s_v, r_v - 2)))
+          operator.vector_space_dimension(), array_ops.gather(s_v, r_v - 2),
+          message="v does not have same event shape as operator."))
       if diag is not None:
         checks.append(check_ops.assert_equal(
-            array_ops.gather(s_v, r_v - 1), array_ops.gather(s_d, r_d - 1)))
+            array_ops.gather(s_v, r_v - 1), array_ops.gather(s_d, r_d - 1),
+            message="diag does not have same event shape as v."))
 
       v = control_flow_ops.with_dependencies(checks, v)
       if diag is not None:
@@ -299,30 +306,31 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
     #                = det(C) * det(D) * det(M)
     #
     # Here we compute the Cholesky factor of "C", then pass the result on.
-    diag_chol_c = array_ops.matrix_diag_part(
-        self._chol_capacitance(batch_mode=False))
-    return self._sqrt_log_det_core(diag_chol_c)
+    abs_diag_chol_c = math_ops.abs(array_ops.matrix_diag_part(
+        self._chol_capacitance(batch_mode=False)))
+    return self._sqrt_log_det_core(abs_diag_chol_c)
 
   def _batch_sqrt_log_det(self):
     # Here we compute the Cholesky factor of "C", then pass the result on.
-    diag_chol_c = array_ops.matrix_diag_part(
-        self._chol_capacitance(batch_mode=True))
-    return self._sqrt_log_det_core(diag_chol_c)
+    abs_diag_chol_c = math_ops.abs(array_ops.matrix_diag_part(
+        self._chol_capacitance(batch_mode=True)))
+    return self._sqrt_log_det_core(abs_diag_chol_c)
 
   def _chol_capacitance(self, batch_mode):
     """Cholesky factorization of the capacitance term."""
     # Cholesky factor for (D^{-1} + V^T M^{-1} V), which is sometimes
     # known as the "capacitance" matrix.
+    # We can do a Cholesky decomposition, since a priori M is a
+    # positive-definite Hermitian matrix, which causes the "capacitance" to
+    # also be positive-definite Hermitian, and thus have a Cholesky
+    # decomposition.
 
     # self._operator will use batch if need be. Automatically.  We cannot force
     # that here.
     # M^{-1} V
     minv_v = self._operator.solve(self._v)
     # V^T M^{-1} V
-    if batch_mode:
-      vt_minv_v = math_ops.batch_matmul(self._v, minv_v, adj_x=True)
-    else:
-      vt_minv_v = math_ops.matmul(self._v, minv_v, transpose_a=True)
+    vt_minv_v = math_ops.matmul(self._v, minv_v, adjoint_a=True)
 
     # D^{-1} + V^T M^{-1} V
     capacitance = self._diag_inv_operator.add_to_tensor(vt_minv_v)
@@ -338,7 +346,7 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
     #                = det(C) * det(D) * det(M)
     # Multiply by 2 here because this is the log-det of the Cholesky factor of C
     log_det_c = 2 * math_ops.reduce_sum(
-        math_ops.log(diag_chol_c),
+        math_ops.log(math_ops.abs(diag_chol_c)),
         reduction_indices=[-1])
     # Add together to get Log[det(M + VDV^T)], the Log-det of the updated square
     # root.
@@ -360,14 +368,14 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
     v = self._v
     m = self._operator
     d = self._diag_operator
-    # The operators call the appropriate matmul/batch_matmul automatically.  We
-    # cannot override.
-    # batch_matmul is defined as:  x * y, so adj_x and adj_y are the ways to
-    # transpose the left and right.
+    # The operators call the appropriate matmul/batch_matmul automatically.
+    # We cannot override.
+    # batch_matmul is defined as:  x * y, so adjoint_a and adjoint_b are the
+    # ways to transpose the left and right.
     mx = m.matmul(x, transpose_x=transpose_x)
-    vt_x = math_ops.batch_matmul(v, x, adj_x=True, adj_y=transpose_x)
+    vt_x = math_ops.matmul(v, x, adjoint_a=True, adjoint_b=transpose_x)
     d_vt_x = d.matmul(vt_x)
-    v_d_vt_x = math_ops.batch_matmul(v, d_vt_x)
+    v_d_vt_x = math_ops.matmul(v, d_vt_x)
 
     return mx + v_d_vt_x
 
@@ -444,11 +452,11 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
     # M^{-1} rhs
     minv_rhs = m.solve(rhs)
     # V^T M^{-1} rhs
-    vt_minv_rhs = math_ops.batch_matmul(v, minv_rhs, adj_x=True)
+    vt_minv_rhs = math_ops.matmul(v, minv_rhs, adjoint_a=True)
     # C^{-1} V^T M^{-1} rhs
     cinv_vt_minv_rhs = linalg_ops.cholesky_solve(cchol, vt_minv_rhs)
     # V C^{-1} V^T M^{-1} rhs
-    v_cinv_vt_minv_rhs = math_ops.batch_matmul(v, cinv_vt_minv_rhs)
+    v_cinv_vt_minv_rhs = math_ops.matmul(v, cinv_vt_minv_rhs)
     # M^{-1} V C^{-1} V^T M^{-1} rhs
     minv_v_cinv_vt_minv_rhs = m.solve(v_cinv_vt_minv_rhs)
 
@@ -457,7 +465,7 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
 
   def _to_dense(self):
     sqrt = self.sqrt_to_dense()
-    return math_ops.batch_matmul(sqrt, sqrt, adj_y=True)
+    return math_ops.matmul(sqrt, sqrt, adjoint_b=True)
 
   def _sqrt_to_dense(self):
     v = self._v
@@ -467,6 +475,6 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
     d_vt = d.matmul(v, transpose_x=True)
     # Batch op won't be efficient for singletons.  Currently we don't break
     # to_dense into batch/singleton methods.
-    v_d_vt = math_ops.batch_matmul(v, d_vt)
+    v_d_vt = math_ops.matmul(v, d_vt)
     m_plus_v_d_vt = m.to_dense() + v_d_vt
     return m_plus_v_d_vt

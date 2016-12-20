@@ -135,7 +135,7 @@ uses a file format where each record is represented using a fixed number of
 bytes: 1 byte for the label followed by 3072 bytes of image data. Once you have
 a uint8 tensor, standard operations can slice out each piece and reformat as
 needed. For CIFAR-10, you can see how to do the reading and decoding in
-[`tensorflow/models/image/cifar10/cifar10_input.py`](https://www.tensorflow.org/code/tensorflow/models/image/cifar10/cifar10_input.py)
+[`tensorflow_models/tutorials/image/cifar10/cifar10_input.py`](https://www.tensorflow.org/code/tensorflow_models/tutorials/image/cifar10/cifar10_input.py)
 and described in
 [this tutorial](../../tutorials/deep_cnn/index.md#prepare-the-data).
 
@@ -172,7 +172,7 @@ You can then do any preprocessing of these examples you want. This would be any
 processing that doesn't depend on trainable parameters. Examples include
 normalization of your data, picking a random slice, adding noise or distortions,
 etc.  See
-[`tensorflow/models/image/cifar10/cifar10_input.py`](https://www.tensorflow.org/code/tensorflow/models/image/cifar10/cifar10_input.py)
+[`tensorflow_models/tutorials/image/cifar10/cifar10_input.py`](https://www.tensorflow.org/code/tensorflow_models/tutorials/image/cifar10/cifar10_input.py)
 for an example.
 
 ### Batching
@@ -269,7 +269,7 @@ recommended code pattern combining these is:
 
 ```python
 # Create the graph, etc.
-init_op = tf.initialize_all_variables()
+init_op = tf.global_variables_initializer()
 
 # Create a session for running operations in the Graph.
 sess = tf.Session()
@@ -443,7 +443,7 @@ with tf.Session() as sess:
 Setting `trainable=False` keeps the variable out of the
 `GraphKeys.TRAINABLE_VARIABLES` collection in the graph, so we won't try and
 update it when training.  Setting `collections=[]` keeps the variable out of the
-`GraphKeys.VARIABLES` collection used for saving and restoring checkpoints.
+`GraphKeys.GLOBAL_VARIABLES` collection used for saving and restoring checkpoints.
 
 Either way,
 [`tf.train.slice_input_producer function`](../../api_docs/python/io_ops.md#slice_input_producer)

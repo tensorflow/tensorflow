@@ -9,7 +9,9 @@ second variable called 'biases' is added to the result of the operation.
 ##### Args:
 
 
-*  <b>`inputs`</b>: a tensor of size [batch_size, height, width, channels].
+*  <b>`inputs`</b>: A 4-D `Tensor` of type `float` and shape
+    `[batch, height, width, in_channels]` for `NHWC` data format or
+    `[batch, in_channels, height, width]` for `NCHW` data format.
 *  <b>`num_outputs`</b>: integer, the number of output filters.
 *  <b>`kernel_size`</b>: a list of length 2 holding the [kernel_height, kernel_width] of
     of the filters. Can be an int if both values are the same.
@@ -17,6 +19,7 @@ second variable called 'biases' is added to the result of the operation.
     Can be an int if both strides are the same.  Note that presently
     both strides must have the same value.
 *  <b>`padding`</b>: one of 'VALID' or 'SAME'.
+*  <b>`data_format`</b>: A string. `NHWC` (default) and `NCHW` are supported.
 *  <b>`activation_fn`</b>: activation function, set to None to skip it and maintain
     a linear activation.
 *  <b>`normalizer_fn`</b>: normalization function to use instead of `biases`. If
@@ -44,4 +47,6 @@ second variable called 'biases' is added to the result of the operation.
 
 
 *  <b>`ValueError`</b>: if 'kernel_size' is not a list of length 2.
+*  <b>`ValueError`</b>: if `data_format` is neither `NHWC` nor `NCHW`.
+*  <b>`ValueError`</b>: if `C` dimension of `inputs` is None.
 

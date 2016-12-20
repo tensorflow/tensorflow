@@ -54,6 +54,23 @@ class FunctionTest(tf.test.TestCase):
       with tf.Session() as sess:
         self.assertAllEqual([5.0], sess.run(call))
 
+  def testDefineFunctionDuplicateOutputs(self):
+
+    @function.Defun(tf.float32, func_name="Duplicate")
+    def Duplicate(a):
+      b = a + 1.0
+      return b, b
+
+    g = tf.Graph()
+    with g.as_default():
+      Duplicate([3.0])
+      func_sig = g.as_graph_def().library.function[0].signature
+      # The names given to both outputs should be different
+      # even though the same tensor is emitted to both.
+      out_names = [a.name for a in func_sig.output_arg]
+      self.assertEqual(2, len(out_names))
+      self.assertNotEqual(out_names[0], out_names[1])
+
   def testGradientFunc(self):
 
     @function.Defun(tf.float32, func_name="XSquarePlusOneFn")
@@ -166,6 +183,32 @@ class FunctionTest(tf.test.TestCase):
       self.assertEqual(x.get_shape(), dx.get_shape())
       self.assertEqual(y.get_shape(), dy.get_shape())
 
+  def testSymGradAttr(self):
+
+    @function.Defun(noinline=True)
+    def Foo(x):
+      return x * 2
+
+    self.assertTrue(
+        Foo.instantiate([tf.float32]).definition.attr["_noinline"].b)
+
+    g = tf.Graph()
+    with g.as_default():
+      x = tf.constant(3.0)
+      y = Foo(x)
+      dx, = tf.gradients(y, [x])
+
+    cfg = tf.ConfigProto(graph_options=tf.GraphOptions(
+        optimizer_options=tf.OptimizerOptions(
+            opt_level=tf.OptimizerOptions.L0,
+            do_common_subexpression_elimination=True,
+            do_function_inlining=True,
+            do_constant_folding=True)))
+
+    with self.test_session(graph=g, config=cfg):
+      self.assertAllClose(y.eval(), 6.)
+      self.assertAllClose(dx.eval(), 2.)
+
   def testZNoDepOnY(self):
 
     @function.Defun(tf.float32, tf.float32)
@@ -267,7 +310,7 @@ class FunctionTest(tf.test.TestCase):
       z = Foo(v)
 
     with self.test_session(graph=g):
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.assertAllEqual(z.eval(), 101.)
 
   def testDefineErrors(self):
@@ -459,9 +502,9 @@ class FunctionTest(tf.test.TestCase):
       self.assertAllClose(vals[2], vals[3])
 
   def testDeclareTypeMistake(self):
-    foo = function.Declare("Foo", [tf.float32], [tf.float32])
+    foo = function.Declare("Foo", [("x", tf.float32)], [("y", tf.float32)])
 
-    @function.Defun(tf.float32, func_name="Foo")
+    @function.Defun(tf.float32, func_name="Foo", out_names=["y"])
     def Foo(x):
       return x * x + 1
 
@@ -515,7 +558,7 @@ class FunctionTest(tf.test.TestCase):
       y = Foo(tf.constant([[10.]]))
 
     with self.test_session(graph=g):
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       self.assertAllEqual(y.eval(), [[12.0]])
 
   def testCaptureControls(self):
@@ -533,6 +576,47 @@ class FunctionTest(tf.test.TestCase):
       with self.assertRaisesRegexp(ValueError, "not an element of this graph."):
         # NOTE: We still do not support capturing control deps.
         _ = Foo(x)
+
+  def testStableName(self):
+
+    @function.Defun()
+    def Foo(x, y, z):
+      return tf.tanh(tf.matmul(x, y) + z)
+
+    self.assertEqual("Foo_d643acf7", Foo.instantiate([tf.float32] * 3).name)
+
+  def testSignatureHash(self):
+    # Foo.Inner and Bar.Inner have identical function body but have
+    # different signatures. They should be treated as two different functions.
+
+    @function.Defun()
+    def Foo(x):
+
+      @function.Defun()
+      def Inner(x):
+        return x + 10.
+
+      return Inner(x)
+
+    @function.Defun()
+    def Bar(x):
+
+      @function.Defun()
+      def Inner(x, unused_y, unused_z):
+        return x + 10.
+
+      return Inner(x, 2., 3.)
+
+    g = tf.Graph()
+    with g.as_default():
+      x = tf.constant(10.0)
+      y = Foo(x)
+      z = Bar(x)
+
+    with self.test_session(graph=g) as sess:
+      v0, v1 = sess.run([y, z])
+      self.assertAllEqual(v0, 20.)
+      self.assertAllEqual(v1, 20.)
 
 
 class FunctionOverloadTest(tf.test.TestCase):
@@ -603,8 +687,9 @@ class UnrollLSTMTest(tf.test.TestCase):
   # Helper to construct a LSTM cell graph.
   @classmethod
   def LSTMCell(cls, x, mprev, cprev, weights):
-    xm = tf.concat(1, [x, mprev])
-    i_i, i_g, f_g, o_g = tf.split(1, 4, tf.matmul(xm, weights))
+    xm = tf.concat_v2([x, mprev], 1)
+    i_i, i_g, f_g, o_g = tf.split(
+        value=tf.matmul(xm, weights), num_or_size_splits=4, axis=1)
     new_c = tf.sigmoid(f_g) * cprev + tf.sigmoid(i_g) * tf.tanh(i_i)
     new_c = tf.clip_by_value(new_c, -50.0, 50.0)
     new_m = tf.sigmoid(o_g) * tf.tanh(new_c)
@@ -613,7 +698,7 @@ class UnrollLSTMTest(tf.test.TestCase):
   def _BuildForward(self, weights, inp, mode="cell"):
 
     def Loop(cell, w, i):
-      x = tf.unpack(i, self.NUM_UNROLL)
+      x = tf.unstack(i, self.NUM_UNROLL)
       m = tf.zeros_like(x[0])
       c = tf.zeros_like(x[0])
       for i in range(self.NUM_UNROLL):
@@ -651,7 +736,7 @@ class UnrollLSTMTest(tf.test.TestCase):
 
       @function.Defun(tf.float32, tf.float32)
       def LSTMLoop10(weights, inp):
-        x = tf.unpack(inp, self.NUM_UNROLL)
+        x = tf.unstack(inp, self.NUM_UNROLL)
         m = tf.zeros_like(x[0])
         c = tf.zeros_like(x[0])
         assert self.NUM_UNROLL % 10 == 0
@@ -673,9 +758,8 @@ class UnrollLSTMTest(tf.test.TestCase):
         m = self._BuildForward(weights, inp, mode)
       gdef = g.as_graph_def()
       finish = time.time()
-      tf.logging.info("time: %f txt size: %d gdef bin size: %d",
-                      finish - start, len(str(gdef)),
-                      len(gdef.SerializeToString()))
+      tf.logging.info("time: %f txt size: %d gdef bin size: %d", finish - start,
+                      len(str(gdef)), len(gdef.SerializeToString()))
       with g.as_default(), tf.Session(config=cfg) as sess:
         return sess.run(m)
 
@@ -703,9 +787,8 @@ class UnrollLSTMTest(tf.test.TestCase):
         dw = tf.gradients([loss], [weights])
       gdef = g.as_graph_def()
       finish = time.time()
-      tf.logging.info("time: %f txt size: %d gdef bin size: %d",
-                      finish - start, len(str(gdef)),
-                      len(gdef.SerializeToString()))
+      tf.logging.info("time: %f txt size: %d gdef bin size: %d", finish - start,
+                      len(str(gdef)), len(gdef.SerializeToString()))
       with g.as_default(), tf.Session(config=cfg) as sess:
         return sess.run(dw)
 
@@ -732,7 +815,6 @@ class FunctionInlineControlTest(tf.test.TestCase):
             do_constant_folding=True)))
     for noinline in [False, True]:
 
-      # pylint: disable=unexpected-keyword-arg
       @function.Defun(dtype, noinline=noinline)
       def Cell(v):
         # If v is a vector [n, 1], x is a big square matrix.
@@ -746,6 +828,8 @@ class FunctionInlineControlTest(tf.test.TestCase):
           x = Cell(x)
         return tf.reduce_sum(x, [0, 1])
 
+      self.assertEqual(noinline, Cell.definition.attr["_noinline"].b)
+
       g = tf.Graph()
       with g.as_default():
         x = tf.placeholder(dtype)
@@ -754,11 +838,24 @@ class FunctionInlineControlTest(tf.test.TestCase):
 
       np.random.seed(321)
       inp = np.random.uniform(-1, 1, [16, 1]).astype(np.float32)
+      run_metadata = tf.RunMetadata()
       with tf.Session(graph=g, config=cfg) as sess:
-        ans = sess.run([y, dx], {x: inp})
+        ans = sess.run(
+            [y, dx], {x: inp},
+            run_metadata=run_metadata,
+            options=tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE))
         print(ans[0], np.sum(ans[1]))
         self.assertAllClose(ans[0], 255.971, rtol=1e-3)
         self.assertAllClose(np.sum(ans[1]), 13.0408, rtol=1e-3)
+
+      def MetadataHasCell(run_metadata):
+        for dev_stats in run_metadata.step_stats.dev_stats:
+          for node_stats in dev_stats.node_stats:
+            if "Cell" in node_stats.timeline_label:
+              return True
+        return False
+
+      self.assertEqual(MetadataHasCell(run_metadata), noinline)
 
 
 @function.Defun(*[tf.float32] * 3)
@@ -781,6 +878,67 @@ class ModuleFunctionTest(tf.test.TestCase):
       with tf.Session() as sess:
         self.assertAllEqual([[1]], sess.run(y))
         self.assertAllEqual([[5]], sess.run(z))
+
+
+class VariableHoistingTest(tf.test.TestCase):
+
+  def _testSimpleModel(self, use_forward_func):
+
+    def _Model(x):
+      w = tf.get_variable(
+          "w", (64, 64), initializer=tf.random_uniform_initializer(seed=312))
+      b = tf.get_variable("b", (64), initializer=tf.zeros_initializer()),
+      return tf.sigmoid(tf.matmul(x, w) + b)
+
+    @function.Defun()
+    def Model(x):
+      return _Model(x)
+
+    cvars = []
+
+    @function.Defun()
+    def Grad(x, y0):
+      if use_forward_func:
+        y = Model(x)
+      else:
+        y = _Model(x)
+      loss = tf.reduce_mean(tf.reduce_sum(y0 * tf.log(y), 1), 0)
+      arg_w, arg_b = function.get_extra_args()
+      self.assertEqual(arg_w.get_shape(), tf.TensorShape([64, 64]))
+      self.assertEqual(arg_b.get_shape(), tf.TensorShape([64]))
+      dw, db = tf.gradients(loss, [arg_w, arg_b])
+      cvars.extend(function.get_extra_vars())
+      return loss, dw, db
+
+    g = tf.Graph()
+    with g.as_default():
+      x = tf.random_normal([64, 64], seed=100)
+      y0 = tf.random_normal([64, 64], seed=200)
+      with tf.variable_scope("Foo"):
+        loss, dw, db = Grad(x, y0)
+
+    self.assertEqual(2, len(cvars))
+    w, b = cvars[:2]
+    self.assertEqual("Foo/w", w.op.name)
+    self.assertEqual("Foo/b", b.op.name)
+
+    with self.test_session(graph=g) as sess:
+      sess.run(tf.global_variables_initializer())
+      w, b, x, y0, loss, dw, db = sess.run([w, b, x, y0, loss, dw, db])
+
+    self.assertAllEqual(w.shape, (64, 64))
+    self.assertAllClose(np.sum(w), 2050.44)
+    self.assertAllEqual(b.shape, (64,))
+    self.assertAllClose(np.sum(b), 0.0)
+    self.assertAllClose(loss, -2.27, rtol=1e-2)
+    self.assertAllEqual(dw.shape, (64, 64))
+    self.assertAllClose(np.sum(dw), -1.04, rtol=1e-2)
+    self.assertAllEqual(db.shape, (64,))
+    self.assertAllClose(np.sum(db), 0.509, rtol=1e-2)
+
+  def testBasic(self):
+    self._testSimpleModel(True)
+    self._testSimpleModel(False)
 
 
 if __name__ == "__main__":

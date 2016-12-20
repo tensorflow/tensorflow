@@ -16,10 +16,11 @@ limitations under the License.
 #include "tensorflow/contrib/session_bundle/bundle_shim.h"
 
 #include "tensorflow/cc/saved_model/loader.h"
-#include "tensorflow/contrib/session_bundle/bundle_shim_constants.h"
+#include "tensorflow/cc/saved_model/signature_constants.h"
 #include "tensorflow/contrib/session_bundle/manifest.pb.h"
 #include "tensorflow/contrib/session_bundle/session_bundle.h"
 #include "tensorflow/contrib/session_bundle/signature.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
@@ -28,70 +29,56 @@ limitations under the License.
 
 namespace tensorflow {
 namespace serving {
-namespace internal {
+namespace {
+///////////////////////////////////////////////////////////////////////////////
+// Helper functions to check Signature type.
 
-void AddInputToSignatureDef(const string& tensor_name, const string& map_key,
-                            SignatureDef* signature_def) {
-  TensorInfo tensor_info;
-  tensor_info.set_name(tensor_name);
-  (*signature_def->mutable_inputs())[map_key] = tensor_info;
+bool IsClassificationSignature(const Signature& signature) {
+  return signature.type_case() == Signature::kClassificationSignature;
 }
 
-void AddOutputToSignatureDef(const string& tensor_name, const string& map_key,
-                             SignatureDef* signature_def) {
-  TensorInfo tensor_info;
-  tensor_info.set_name(tensor_name);
-  (*signature_def->mutable_outputs())[map_key] = tensor_info;
+bool IsRegressionSignature(const Signature& signature) {
+  return signature.type_case() == Signature::kRegressionSignature;
 }
 
-// The default signature, if classification or regression, is translated to a
-// SignatureDef. TensorInfo messages used in the SignatureDefs are thinly
-// populated with name only.
-Status ConvertDefaultSignatureToSignatureDef(const Signatures& signatures,
-                                             MetaGraphDef* meta_graph_def) {
-  const Signature& default_signature = signatures.default_signature();
-  // Check if regression signature.
-  if (default_signature.type_case() == Signature::kRegressionSignature) {
-    const RegressionSignature& regression_signature =
-        default_signature.regression_signature();
-    SignatureDef signature_def;
-    signature_def.set_method_name(kRegressMethodName);
-    AddInputToSignatureDef(regression_signature.input().tensor_name(),
-                           kSignatureInputs, &signature_def);
-    AddOutputToSignatureDef(regression_signature.output().tensor_name(),
-                            kSignatureOutputs, &signature_def);
-    (*meta_graph_def->mutable_signature_def())[kDefaultSignatureDefKey] =
-        signature_def;
-    return Status::OK();
-  } else if (default_signature.type_case() ==
-             Signature::kClassificationSignature) {
-    const ClassificationSignature& classification_signature =
-        default_signature.classification_signature();
-    SignatureDef signature_def;
-    signature_def.set_method_name(kClassifyMethodName);
-    AddInputToSignatureDef(classification_signature.input().tensor_name(),
-                           kSignatureInputs, &signature_def);
-    AddOutputToSignatureDef(classification_signature.classes().tensor_name(),
-                            kClassifyOutputClasses, &signature_def);
-    AddOutputToSignatureDef(classification_signature.scores().tensor_name(),
-                            kClassifyOutputScores, &signature_def);
-    (*meta_graph_def->mutable_signature_def())[kDefaultSignatureDefKey] =
-        signature_def;
-    return Status::OK();
-  }
-  return Status(error::Code::UNIMPLEMENTED,
-                "Only classification and regression default signatures are "
-                "supported for up conversion.");
+///////////////////////////////////////////////////////////////////////////////
+// Helper functions to build `Classification`, `Regression` and `Predict`
+// SignatureDefs.
+
+SignatureDef BuildRegressionSignatureDef(
+    const RegressionSignature& regression_signature) {
+  SignatureDef signature_def;
+  signature_def.set_method_name(kRegressMethodName);
+  internal::AddInputToSignatureDef(regression_signature.input().tensor_name(),
+                                   kRegressInputs, &signature_def);
+  internal::AddOutputToSignatureDef(regression_signature.output().tensor_name(),
+                                    kRegressOutputs, &signature_def);
+  return signature_def;
 }
 
-Status ConvertNamedSignaturesToSignatureDef(const Signatures& signatures,
-                                            MetaGraphDef* meta_graph_def) {
+SignatureDef BuildClassificationSignatureDef(
+    const ClassificationSignature& classification_signature) {
+  SignatureDef signature_def;
+  signature_def.set_method_name(kClassifyMethodName);
+  internal::AddInputToSignatureDef(
+      classification_signature.input().tensor_name(), kClassifyInputs,
+      &signature_def);
+  internal::AddOutputToSignatureDef(
+      classification_signature.classes().tensor_name(), kClassifyOutputClasses,
+      &signature_def);
+  internal::AddOutputToSignatureDef(
+      classification_signature.scores().tensor_name(), kClassifyOutputScores,
+      &signature_def);
+  return signature_def;
+}
+
+Status MaybeBuildPredictSignatureDef(MetaGraphDef* meta_graph_def) {
   Signature input_signature, output_signature;
   // Ensure that named signatures corresponding to `inputs` and `outputs` keys
   // exist.
-  if (!GetNamedSignature(kSignatureInputs, *meta_graph_def, &input_signature)
+  if (!GetNamedSignature(kPredictInputs, *meta_graph_def, &input_signature)
            .ok() ||
-      !GetNamedSignature(kSignatureOutputs, *meta_graph_def, &output_signature)
+      !GetNamedSignature(kPredictOutputs, *meta_graph_def, &output_signature)
            .ok()) {
     return Status(error::Code::INVALID_ARGUMENT,
                   "Named signatures can only be up-converted if entries "
@@ -104,52 +91,31 @@ Status ConvertNamedSignaturesToSignatureDef(const Signatures& signatures,
                   "Named signatures corresponding to `inputs` and `outputs` "
                   "can only be up-converted if they are GenericSignatures.");
   }
-
   SignatureDef signature_def;
   signature_def.set_method_name(kPredictMethodName);
   // Add map entries from the `inputs` generic signature to the input map in the
   // signature def.
   for (const auto& map_entry : input_signature.generic_signature().map()) {
-    AddInputToSignatureDef(map_entry.second.tensor_name(), map_entry.first,
-                           &signature_def);
+    internal::AddInputToSignatureDef(map_entry.second.tensor_name(),
+                                     map_entry.first, &signature_def);
   }
   // Add map entries from the `outputs` generic signature to the output map in
-  // the
-  // signature def.
+  // the signature def.
   for (const auto& map_entry : output_signature.generic_signature().map()) {
-    AddOutputToSignatureDef(map_entry.second.tensor_name(), map_entry.first,
-                            &signature_def);
+    internal::AddOutputToSignatureDef(map_entry.second.tensor_name(),
+                                      map_entry.first, &signature_def);
   }
-  // Add the `default` key to the signature def map of the meta graph def and
-  // map it to the constructed signature def.
-  (*meta_graph_def->mutable_signature_def())[kDefaultSignatureDefKey] =
-      signature_def;
+  // Add the constructed signature def to the signature def map of the meta
+  // graph def. Use the default key if it isn't already in use.
+  const bool already_has_default_signature =
+      meta_graph_def->signature_def().find(kDefaultServingSignatureDefKey) !=
+      meta_graph_def->signature_def().end();
+  const string signature_def_key =
+      already_has_default_signature
+          ? strings::StrCat(kDefaultServingSignatureDefKey, "_from_named")
+          : kDefaultServingSignatureDefKey;
+  (*meta_graph_def->mutable_signature_def())[signature_def_key] = signature_def;
   return Status::OK();
-}
-
-Status ConvertSignaturesToSignatureDef(MetaGraphDef* meta_graph_def) {
-  Signatures signatures;
-  GetSignatures(*meta_graph_def, &signatures);
-  if (signatures.has_default_signature()) {
-    return ConvertDefaultSignatureToSignatureDef(signatures, meta_graph_def);
-  } else if (!signatures.named_signatures().empty()) {
-    return ConvertNamedSignaturesToSignatureDef(signatures, meta_graph_def);
-  }
-  return Status::OK();
-}
-
-// Converts a SessionBundle to a SavedModelBundle.
-Status ConvertSessionBundleToSavedModelBundle(
-    SessionBundle& session_bundle, SavedModelBundle* saved_model_bundle) {
-  // Transfer ownership of the session from old to new.
-  saved_model_bundle->session = std::move(session_bundle.session);
-
-  // Copy the meta graph def from the SessionBundle to the SavedModelBundle.
-  saved_model_bundle->meta_graph_def.CopyFrom(session_bundle.meta_graph_def);
-
-  // Convert signatures from session-bundle to signature-defs in
-  // saved-model-bundle.
-  return ConvertSignaturesToSignatureDef(&saved_model_bundle->meta_graph_def);
 }
 
 Status LoadSavedModelFromLegacySessionBundlePath(
@@ -167,14 +133,164 @@ Status LoadSavedModelFromLegacySessionBundlePath(
 
   // Build the session-bundle.
   SessionBundle session_bundle;
-  LoadSessionBundleFromPathUsingRunOptions(
-      session_options, run_options, session_bundle_export_dir, &session_bundle);
+  TF_RETURN_IF_ERROR(LoadSessionBundleFromPathUsingRunOptions(
+      session_options, run_options, session_bundle_export_dir,
+      &session_bundle));
 
   // Convert the session-bundle to a saved-model-bundle.
   return internal::ConvertSessionBundleToSavedModelBundle(session_bundle,
                                                           saved_model_bundle);
 }
 
+///////////////////////////////////////////////////////////////////////////////
+// Helper functions to convert `Default` and `Named` signatures to
+// SignatureDefs.
+
+// Up-conversion of default signatures is supported for classification and
+// regression.
+Status ConvertDefaultSignatureToSignatureDef(const Signatures& signatures,
+                                             MetaGraphDef* meta_graph_def) {
+  if (!signatures.has_default_signature()) {
+    return Status::OK();
+  }
+  const bool already_has_default_signature =
+      meta_graph_def->signature_def().find(kDefaultServingSignatureDefKey) !=
+      meta_graph_def->signature_def().end();
+  if (already_has_default_signature) {
+    return Status(error::Code::ALREADY_EXISTS,
+                  strings::StrCat(
+                      "Default signature cannot be up-converted since ",
+                      kDefaultServingSignatureDefKey, " key already exists."));
+  }
+  const Signature& signature = signatures.default_signature();
+  if (IsRegressionSignature(signature)) {
+    (*meta_graph_def->mutable_signature_def())[kDefaultServingSignatureDefKey] =
+        BuildRegressionSignatureDef(signature.regression_signature());
+  } else if (IsClassificationSignature(signature)) {
+    (*meta_graph_def->mutable_signature_def())[kDefaultServingSignatureDefKey] =
+        BuildClassificationSignatureDef(signature.classification_signature());
+  } else {
+    LOG(WARNING) << "Default signature up-conversion to SignatureDef is only "
+                    "supported for `Classification` and `Regression`. Could "
+                    "not up-convert signature: "
+                 << signature.DebugString();
+  }
+  return Status::OK();
+}
+
+Status ConvertNamedSignaturesToSignatureDef(const Signatures& signatures,
+                                            MetaGraphDef* meta_graph_def) {
+  if (signatures.named_signatures().empty()) {
+    return Status::OK();
+  }
+  // Check for a Predict signature for up-conversion.
+  Status predict_signature_def_status =
+      MaybeBuildPredictSignatureDef(meta_graph_def);
+  for (const auto& it_named_signature : signatures.named_signatures()) {
+    const string key = it_named_signature.first;
+    // If a Predict SignatureDef was successfully constructed, skip the entries
+    // corresponding to `inputs` and `outputs`.
+    if (predict_signature_def_status.ok()) {
+      if (key == kPredictInputs || key == kPredictOutputs) {
+        continue;
+      }
+    }
+    SignatureDef signature_def;
+    const Signature signature = it_named_signature.second;
+    if (IsRegressionSignature(signature)) {
+      (*meta_graph_def->mutable_signature_def())[key] =
+          BuildRegressionSignatureDef(signature.regression_signature());
+    } else if (IsClassificationSignature(signature)) {
+      (*meta_graph_def->mutable_signature_def())[key] = signature_def;
+      BuildClassificationSignatureDef(signature.classification_signature());
+    } else {
+      LOG(WARNING)
+          << "Named signature up-conversion to SignatureDef is only supported "
+             "for `Classification`, `Regression` or if two `GenericSignatures` "
+             "signatures  called `inputs` and `outputs` exist, corresponding "
+             "to the `Prediction` API. Could not up-convert signature: "
+          << signature.DebugString();
+    }
+  }
+  return Status::OK();
+}
+
+}  // namespace
+
+namespace internal {
+///////////////////////////////////////////////////////////////////////////////
+// Helper functions to populate SignatureDef fields.
+
+// Adds an entry to the `inputs` map of the supplied SignatureDef.
+void AddInputToSignatureDef(const string& tensor_name, const string& map_key,
+                            SignatureDef* signature_def) {
+  if (tensor_name.empty()) {
+    return;
+  }
+  // TensorInfo messages used in the SignatureDefs are thinly populated with
+  // name only.
+  TensorInfo tensor_info;
+  tensor_info.set_name(tensor_name);
+  (*signature_def->mutable_inputs())[map_key] = tensor_info;
+}
+
+// Adds an entry to the `outputs` map of the supplied SignatureDef.
+void AddOutputToSignatureDef(const string& tensor_name, const string& map_key,
+                             SignatureDef* signature_def) {
+  if (tensor_name.empty()) {
+    return;
+  }
+  // TensorInfo messages used in the SignatureDefs are thinly populated with
+  // name only.
+  TensorInfo tensor_info;
+  tensor_info.set_name(tensor_name);
+  (*signature_def->mutable_outputs())[map_key] = tensor_info;
+}
+
+// Converts SessionBundle signatures to SavedModel signature-defs.
+Status ConvertSignaturesToSignatureDefs(MetaGraphDef* meta_graph_def) {
+  Signatures signatures;
+  GetSignatures(*meta_graph_def, &signatures);
+  TF_RETURN_IF_ERROR(
+      ConvertDefaultSignatureToSignatureDef(signatures, meta_graph_def));
+  TF_RETURN_IF_ERROR(
+      ConvertNamedSignaturesToSignatureDef(signatures, meta_graph_def));
+  return Status::OK();
+}
+
+// Converts a SessionBundle to a SavedModelBundle.
+Status ConvertSessionBundleToSavedModelBundle(
+    SessionBundle& session_bundle, SavedModelBundle* saved_model_bundle) {
+  // Transfer ownership of the session from old to new.
+  saved_model_bundle->session = std::move(session_bundle.session);
+
+  // Copy the meta graph def from the SessionBundle to the SavedModelBundle.
+  saved_model_bundle->meta_graph_def.CopyFrom(session_bundle.meta_graph_def);
+
+  // Convert signatures from session-bundle to signature-defs in
+  // saved-model-bundle.
+  return internal::ConvertSignaturesToSignatureDefs(
+      &saved_model_bundle->meta_graph_def);
+}
+
 }  // namespace internal
+
+Status LoadSessionBundleOrSavedModelBundle(
+    const SessionOptions& session_options, const RunOptions& run_options,
+    const string& export_dir,
+    const std::unordered_set<string>& saved_model_tags,
+    SavedModelBundle* saved_model_bundle) {
+  if (MaybeSavedModelDirectory(export_dir)) {
+    return LoadSavedModel(session_options, run_options, export_dir,
+                          saved_model_tags, saved_model_bundle);
+  } else if (IsPossibleExportDirectory(export_dir)) {
+    return LoadSavedModelFromLegacySessionBundlePath(
+        session_options, run_options, export_dir, saved_model_bundle);
+  }
+  return Status(error::Code::NOT_FOUND,
+                "Session bundle or SavedModel bundle not found at specified "
+                "export location");
+}
+
 }  // namespace serving
 }  // namespace tensorflow

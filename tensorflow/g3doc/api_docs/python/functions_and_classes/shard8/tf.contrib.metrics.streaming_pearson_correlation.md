@@ -36,7 +36,7 @@ https://wikipedia.org/wiki/Weighted_arithmetic_mean#Weighted_sample_variance
 ##### Returns:
 
 
-*  <b>`pearson_r`</b>: A tensor representing the current Pearson product-moment
+*  <b>`pearson_r`</b>: A `Tensor` representing the current Pearson product-moment
     correlation coefficient, the value of
     `cov(predictions, labels) / sqrt(var(predictions) * var(labels))`.
 *  <b>`update_op`</b>: An operation that updates the underlying variables appropriately.

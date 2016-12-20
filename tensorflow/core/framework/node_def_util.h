@@ -66,6 +66,14 @@ void AddNodeAttr(StringPiece name, std::initializer_list<T> value,
       AttrValueMap::value_type(name.ToString(), attr_value));
 }
 
+// Adds an attr to an attr value map.
+template <class T>
+void AddAttr(StringPiece name, T&& value, AttrValueMap* map) {
+  AttrValue attr_value;
+  SetAttrValue(value, &attr_value);
+  map->insert(AttrValueMap::value_type(name.ToString(), attr_value));
+}
+
 class AttrSlice {
  public:
   AttrSlice(const NodeDef& node_def);  // NOLINT(runtime/explicit)

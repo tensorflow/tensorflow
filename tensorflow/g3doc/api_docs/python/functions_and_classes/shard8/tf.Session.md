@@ -67,8 +67,8 @@ the session constructor.
 
 
 *  <b>`target`</b>: (Optional.) The execution engine to connect to.
-    Defaults to using an in-process engine. See [Distributed Tensorflow]
-    (https://www.tensorflow.org/how_tos/distributed/index.html)
+    Defaults to using an in-process engine. See
+    [Distributed Tensorflow](https://www.tensorflow.org/how_tos/distributed/index.html)
     for more examples.
 *  <b>`graph`</b>: (Optional.) The `Graph` to be launched (described above).
 *  <b>`config`</b>: (Optional.) A [`ConfigProto`](https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto)
@@ -87,8 +87,8 @@ and evaluate every `Tensor` in `fetches`, substituting the values in
 `feed_dict` for the corresponding input values.
 
 The `fetches` argument may be a single graph element, or an arbitrarily
-nested list, tuple, namedtuple, or dict containing graph elements at its
-leaves.  A graph element can be one of the following types:
+nested list, tuple, namedtuple, dict, or OrderedDict containing graph
+elements at its leaves.  A graph element can be one of the following types:
 
 * An [`Operation`](../../api_docs/python/framework.md#Operation).
   The corresponding fetched value will be `None`.

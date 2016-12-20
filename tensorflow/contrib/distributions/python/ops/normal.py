@@ -109,20 +109,23 @@ class Normal(distribution.Distribution):
     Raises:
       TypeError: if mu and sigma are different dtypes.
     """
+    parameters = locals()
+    parameters.pop("self")
     with ops.name_scope(name, values=[mu, sigma]) as ns:
       with ops.control_dependencies([check_ops.assert_positive(sigma)] if
                                     validate_args else []):
         self._mu = array_ops.identity(mu, name="mu")
         self._sigma = array_ops.identity(sigma, name="sigma")
         contrib_tensor_util.assert_same_float_dtype((self._mu, self._sigma))
-        super(Normal, self).__init__(
-            dtype=self._sigma.dtype,
-            parameters={"mu": self._mu, "sigma": self._sigma},
-            is_continuous=True,
-            is_reparameterized=True,
-            validate_args=validate_args,
-            allow_nan_stats=allow_nan_stats,
-            name=ns)
+    super(Normal, self).__init__(
+        dtype=self._sigma.dtype,
+        is_continuous=True,
+        is_reparameterized=True,
+        validate_args=validate_args,
+        allow_nan_stats=allow_nan_stats,
+        parameters=parameters,
+        graph_parents=[self._mu, self._sigma],
+        name=ns)
 
   @staticmethod
   def _param_shapes(sample_shape):
@@ -154,7 +157,7 @@ class Normal(distribution.Distribution):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):
-    shape = array_ops.concat(0, ([n], array_ops.shape(self.mean())))
+    shape = array_ops.concat_v2(([n], array_ops.shape(self.mean())), 0)
     sampled = random_ops.random_normal(
         shape=shape, mean=0, stddev=1, dtype=self.mu.dtype, seed=seed)
     return sampled * self.sigma + self.mu
@@ -210,13 +213,16 @@ class NormalWithSoftplusSigma(Normal):
                validate_args=False,
                allow_nan_stats=True,
                name="NormalWithSoftplusSigma"):
-    with ops.name_scope(name, values=[mu, sigma]) as ns:
+    parameters = locals()
+    parameters.pop("self")
+    with ops.name_scope(name, values=[sigma]) as ns:
       super(NormalWithSoftplusSigma, self).__init__(
           mu=mu,
           sigma=nn.softplus(sigma),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           name=ns)
+    self._parameters = parameters
 
 
 @kullback_leibler.RegisterKL(Normal, Normal)

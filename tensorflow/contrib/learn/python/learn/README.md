@@ -107,19 +107,18 @@ import tensorflow.contrib.learn.python.learn as learn
 
 iris = datasets.load_iris()
 
-def my_model(features, target):
-  """DNN with three hidden layers, and dropout of 0.1 probability."""
-  # Convert the target to a one-hot tensor of shape (length of features, 3) and
+def my_model(features, labels):
+  """DNN with three hidden layers."""
+  # Convert the labels to a one-hot tensor of shape (length of features, 3) and
   # with a on-value of 1 for each one-hot vector of length 3.
-  target = tf.one_hot(target, 3, 1, 0)
+  labels = tf.one_hot(labels, 3, 1, 0)
 
-  # Create three fully connected layers respectively of size 10, 20, and 10 with
-  # each layer having a dropout probability of 0.1.
+  # Create three fully connected layers respectively of size 10, 20, and 10.
   features = layers.stack(features, layers.fully_connected, [10, 20, 10])
 
   # Create two tensors respectively for prediction and loss.
   prediction, loss = (
-      tf.contrib.learn.models.logistic_regression(features, target)
+      tf.contrib.learn.models.logistic_regression(features, labels)
   )
 
   # Create a tensor for training op.

@@ -1,6 +1,10 @@
-### `tf.concat(concat_dim, values, name='concat')` {#concat}
+### `tf.concat(*args, **kwargs)` {#concat}
 
-Concatenates tensors along one dimension.
+Concatenates tensors along one dimension. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-14.
+Instructions for updating:
+This op will be removed after the deprecation date. Please switch to tf.concat_v2().
 
 Concatenates the list of tensors `values` along dimension `concat_dim`.  If
 `values[i].shape = [D0, D1, ... Dconcat_dim(i), ...Dn]`, the concatenated

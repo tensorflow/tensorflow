@@ -154,6 +154,8 @@ class DirichletMultinomial(distribution.Distribution):
     ```
 
     """
+    parameters = locals()
+    parameters.pop("self")
     with ops.name_scope(name, values=[n, alpha]) as ns:
       # Broadcasting works because:
       # * The broadcasting convention is to prepend dimensions of size [1], and
@@ -168,16 +170,15 @@ class DirichletMultinomial(distribution.Distribution):
       self._n = self._assert_valid_n(n, validate_args)
       self._alpha_sum = math_ops.reduce_sum(
           self._alpha, reduction_indices=[-1], keep_dims=False)
-      super(DirichletMultinomial, self).__init__(
-          dtype=self._alpha.dtype,
-          parameters={"alpha": self._alpha,
-                      "alpha_sum": self._alpha_sum,
-                      "n": self._n},
-          is_continuous=False,
-          is_reparameterized=False,
-          validate_args=validate_args,
-          allow_nan_stats=allow_nan_stats,
-          name=ns)
+    super(DirichletMultinomial, self).__init__(
+        dtype=self._alpha.dtype,
+        is_continuous=False,
+        is_reparameterized=False,
+        validate_args=validate_args,
+        allow_nan_stats=allow_nan_stats,
+        parameters=parameters,
+        graph_parents=[self._alpha, self._n, self._alpha_sum],
+        name=ns)
 
   @property
   def n(self):
@@ -201,7 +202,7 @@ class DirichletMultinomial(distribution.Distribution):
     return self.alpha_sum.get_shape()
 
   def _event_shape(self):
-    return array_ops.reverse(array_ops.shape(self.alpha), [True])[0]
+    return array_ops.reverse_v2(array_ops.shape(self.alpha), [0])[0]
 
   def _get_event_shape(self):
     # Event shape depends only on alpha, not "n".
@@ -244,7 +245,7 @@ class DirichletMultinomial(distribution.Distribution):
   def _variance(self):
     alpha_sum = array_ops.expand_dims(self.alpha_sum, -1)
     normalized_alpha = self.alpha / alpha_sum
-    variance = -math_ops.batch_matmul(
+    variance = -math_ops.matmul(
         array_ops.expand_dims(normalized_alpha, -1),
         array_ops.expand_dims(normalized_alpha, -2))
     variance = array_ops.matrix_set_diag(variance, normalized_alpha *

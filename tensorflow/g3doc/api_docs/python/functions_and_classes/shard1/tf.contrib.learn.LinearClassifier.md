@@ -6,21 +6,18 @@ classes. When number of possible classes is 2, this is binary classification.
 Example:
 
 ```python
-education = sparse_column_with_hash_bucket(column_name="education",
-                                           hash_bucket_size=1000)
-occupation = sparse_column_with_hash_bucket(column_name="occupation",
-                                            hash_bucket_size=1000)
+sparse_column_a = sparse_column_with_hash_bucket(...)
+sparse_column_b = sparse_column_with_hash_bucket(...)
 
-education_x_occupation = crossed_column(columns=[education, occupation],
-                                        hash_bucket_size=10000)
+sparse_feature_a_x_sparse_feature_b = crossed_column(...)
 
 # Estimator using the default optimizer.
 estimator = LinearClassifier(
-    feature_columns=[occupation, education_x_occupation])
+    feature_columns=[sparse_column_a, sparse_feature_a_x_sparse_feature_b])
 
 # Or estimator using the FTRL optimizer with regularization.
 estimator = LinearClassifier(
-    feature_columns=[occupation, education_x_occupation],
+    feature_columns=[sparse_column_a, sparse_feature_a_x_sparse_feature_b],
     optimizer=tf.train.FtrlOptimizer(
       learning_rate=0.1,
       l1_regularization_strength=0.001
@@ -28,7 +25,7 @@ estimator = LinearClassifier(
 
 # Or estimator using the SDCAOptimizer.
 estimator = LinearClassifier(
-   feature_columns=[occupation, education_x_occupation],
+   feature_columns=[sparse_column_a, sparse_feature_a_x_sparse_feature_b],
    optimizer=tf.contrib.linear_optimizer.SDCAOptimizer(
      example_id_column='example_id',
      num_loss_partitions=...,
@@ -36,13 +33,13 @@ estimator = LinearClassifier(
    ))
 
 # Input builders
-def input_fn_train: # returns x, y
+def input_fn_train: # returns x, y (where y represents label's class index).
   ...
-def input_fn_eval: # returns x, y
+def input_fn_eval: # returns x, y (where y represents label's class index).
   ...
 estimator.fit(input_fn=input_fn_train)
 estimator.evaluate(input_fn=input_fn_eval)
-estimator.predict(x=x)
+estimator.predict(x=x) # returns predicted labels (i.e. label's class index).
 ```
 
 Input of `fit` and `evaluate` should have following features,
@@ -60,7 +57,7 @@ Input of `fit` and `evaluate` should have following features,
     whose `value` is a `Tensor`.
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.__init__(feature_columns, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=None, _joint_weight=False, config=None, feature_engineering_fn=None)` {#LinearClassifier.__init__}
+#### `tf.contrib.learn.LinearClassifier.__init__(feature_columns, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=False, _joint_weight=False, config=None, feature_engineering_fn=None)` {#LinearClassifier.__init__}
 
 Construct a `LinearClassifier` estimator object.
 
@@ -73,7 +70,10 @@ Construct a `LinearClassifier` estimator object.
 *  <b>`model_dir`</b>: Directory to save model parameters, graph and etc. This can
     also be used to load checkpoints from the directory into a estimator
     to continue training a previously saved model.
-*  <b>`n_classes`</b>: number of target classes. Default is binary classification.
+*  <b>`n_classes`</b>: number of label classes. Default is binary classification.
+    Note that class labels are integers representing the class index (i.e.
+    values from 0 to n_classes-1). For arbitrary label values (e.g. string
+    labels), convert to class indices first.
 *  <b>`weight_column_name`</b>: A string defining feature column name representing
     weights. It is used to down weight or boost examples during training. It
     will be multiplied by the loss of the example.
@@ -93,8 +93,8 @@ Construct a `LinearClassifier` estimator object.
 
 *  <b>`config`</b>: `RunConfig` object to configure the runtime settings.
 *  <b>`feature_engineering_fn`</b>: Feature engineering function. Takes features and
-                    targets which are the output of `input_fn` and
-                    returns features and targets which will be fed
+                    labels which are the output of `input_fn` and
+                    returns features and labels which will be fed
                     into the model.
 
 ##### Returns:
@@ -127,9 +127,9 @@ This method will be removed after the deprecation date. To inspect variables, us
 
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None)` {#LinearClassifier.evaluate}
+#### `tf.contrib.learn.LinearClassifier.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None)` {#LinearClassifier.evaluate}
 
-See evaluable.Evaluable.
+See evaluable.Evaluable. Note: Labels must be integer class indices.
 
 
 - - -
@@ -141,9 +141,18 @@ See BaseEstimator.export.
 
 - - -
 
+#### `tf.contrib.learn.LinearClassifier.export_savedmodel(*args, **kwargs)` {#LinearClassifier.export_savedmodel}
+
+EXPERIMENTAL FUNCTION
+
+THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and without warning.
+
+
+- - -
+
 #### `tf.contrib.learn.LinearClassifier.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None, max_steps=None)` {#LinearClassifier.fit}
 
-See trainable.Trainable.
+See trainable.Trainable. Note: Labels must be integer class indices.
 
 
 - - -
@@ -176,16 +185,28 @@ See trainable.Trainable.
 
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.predict(x=None, input_fn=None, batch_size=None, as_iterable=False)` {#LinearClassifier.predict}
+#### `tf.contrib.learn.LinearClassifier.predict(*args, **kwargs)` {#LinearClassifier.predict}
 
-Runs inference to determine the predicted class.
+Runs inference to determine the predicted class (i.e. class index). (deprecated arguments)
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
+Instructions for updating:
+The default behavior of predict() is changing. The default value for
+as_iterable will change to True, and then the flag will be removed
+altogether. The behavior of this flag is described below.
 
 
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.predict_proba(x=None, input_fn=None, batch_size=None, outputs=None, as_iterable=False)` {#LinearClassifier.predict_proba}
+#### `tf.contrib.learn.LinearClassifier.predict_proba(*args, **kwargs)` {#LinearClassifier.predict_proba}
 
-Runs inference to determine the class probability predictions.
+Runs inference to determine the class probability predictions. (deprecated arguments)
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
+Instructions for updating:
+The default behavior of predict() is changing. The default value for
+as_iterable will change to True, and then the flag will be removed
+altogether. The behavior of this flag is described below.
 
 
 - - -

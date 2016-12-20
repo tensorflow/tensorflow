@@ -22,7 +22,9 @@ It is assumed that the pooling is done per image but not in batch or channels.
 ##### Args:
 
 
-*  <b>`inputs`</b>: A `Tensor` of size [batch_size, height, width, channels].
+*  <b>`inputs`</b>: A 4-D tensor of shape `[batch_size, height, width, channels]` if
+    `data_format` is `NHWC`, and `[batch_size, channels, height, width]` if
+    `data_format` is `NCHW`.
 *  <b>`kernel_size`</b>: A list of length 2: [kernel_height, kernel_width] of the
     pooling kernel over which the op is computed. Can be an int if both
     values are the same.
@@ -30,12 +32,18 @@ It is assumed that the pooling is done per image but not in batch or channels.
     Can be an int if both strides are the same. Note that presently
     both strides must have the same value.
 *  <b>`padding`</b>: The padding method, either 'VALID' or 'SAME'.
+*  <b>`data_format`</b>: A string. `NHWC` (default) and `NCHW` are supported.
 *  <b>`outputs_collections`</b>: The collections to which the outputs are added.
 *  <b>`scope`</b>: Optional scope for name_scope.
 
 ##### Returns:
 
   A `Tensor` representing the results of the pooling operation.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `data_format` is neither `NHWC` nor `NCHW`.
 
 
 - - -
@@ -60,15 +68,20 @@ they need to be added as a dependency to the `train_op`, example:
     updates = tf.group(*update_ops)
     total_loss = control_flow_ops.with_dependencies([updates], total_loss)
 
-One can set update_collections=None to force the updates in place, but that
+One can set updates_collections=None to force the updates in place, but that
 can have speed penalty, specially in distributed settings.
 
 ##### Args:
 
 
 *  <b>`inputs`</b>: a tensor with 2 or more dimensions, where the first dimension has
-    `batch_size`. The normalization is over all but the last dimension.
-*  <b>`decay`</b>: decay for the moving average.
+    `batch_size`. The normalization is over all but the last dimension if
+    `data_format` is `NHWC` and the second dimension if `data_format` is
+    `NCHW`.
+*  <b>`decay`</b>: decay for the moving average. Reasonable values for `decay` are close
+    to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc. Lower
+    `decay` value (recommend trying `decay`=0.9) if model experiences reasonably
+    good training performance but poor validation and/or test performance.
 *  <b>`center`</b>: If True, subtract `beta`. If False, `beta` is ignored.
 *  <b>`scale`</b>: If True, multiply by `gamma`. If False, `gamma` is
     not used. When the next layer is linear (also e.g. `nn.relu`), this can be
@@ -76,6 +89,8 @@ can have speed penalty, specially in distributed settings.
 *  <b>`epsilon`</b>: small float added to variance to avoid dividing by zero.
 *  <b>`activation_fn`</b>: activation function, default set to None to skip it and
     maintain a linear activation.
+*  <b>`param_initializers`</b>: optional initializers for beta, gamma, moving mean and
+    moving variance.
 *  <b>`updates_collections`</b>: collections to collect the update ops for computation.
     The updates_ops need to be executed with the train_op.
     If None, a control dependency would be added to make sure the updates are
@@ -96,6 +111,8 @@ can have speed penalty, specially in distributed settings.
     then the batch normalization uses weighted mean and
     variance. (This can be used to correct for bias in training
     example selection.)
+*  <b>`fused`</b>: Use nn.fused_batch_norm if True, nn.batch_normalization otherwise.
+*  <b>`data_format`</b>: A string. `NHWC` (default) and `NCHW` are supported.
 *  <b>`scope`</b>: Optional scope for `variable_scope`.
 
 ##### Returns:
@@ -105,40 +122,59 @@ can have speed penalty, specially in distributed settings.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if rank or last dimension of `inputs` is undefined.
+*  <b>`ValueError`</b>: if `batch_weights` is not None and `fused` is True.
+*  <b>`ValueError`</b>: if `data_format` is neither `NHWC` nor `NCHW`.
+*  <b>`ValueError`</b>: if the rank of `inputs` is undefined.
+*  <b>`ValueError`</b>: if rank or channels dimension of `inputs` is undefined.
 
 
 - - -
 
 ### `tf.contrib.layers.convolution2d(*args, **kwargs)` {#convolution2d}
 
-Adds a 2D convolution followed by an optional batch_norm layer.
+Adds an N-D convolution followed by an optional batch_norm layer.
 
-`convolution2d` creates a variable called `weights`, representing the
-convolutional kernel, that is convolved with the `inputs` to produce a
-`Tensor` of activations. If a `normalizer_fn` is provided (such as
-`batch_norm`), it is then applied. Otherwise, if `normalizer_fn` is
-None and a `biases_initializer` is provided then a `biases` variable would be
-created and added the activations. Finally, if `activation_fn` is not `None`,
-it is applied to the activations as well.
+It is required that 1 <= N <= 3.
 
-Performs a'trous convolution with input stride equal to rate if rate is
-greater than one.
+`convolution` creates a variable called `weights`, representing the
+convolutional kernel, that is convolved (actually cross-correlated) with the
+`inputs` to produce a `Tensor` of activations. If a `normalizer_fn` is
+provided (such as `batch_norm`), it is then applied. Otherwise, if
+`normalizer_fn` is None and a `biases_initializer` is provided then a `biases`
+variable would be created and added the activations. Finally, if
+`activation_fn` is not `None`, it is applied to the activations as well.
+
+Performs a'trous convolution with input stride/dilation rate equal to `rate`
+if a value > 1 for any dimension of `rate` is specified.  In this case
+`stride` values != 1 are not supported.
 
 ##### Args:
 
 
-*  <b>`inputs`</b>: a 4-D tensor  `[batch_size, height, width, channels]`.
+*  <b>`inputs`</b>: a Tensor of rank N+2 of shape
+    `[batch_size] + input_spatial_shape + [in_channels]` if data_format does
+    not start with "NC" (default), or
+    `[batch_size, in_channels] + input_spatial_shape` if data_format starts
+    with "NC".
 *  <b>`num_outputs`</b>: integer, the number of output filters.
-*  <b>`kernel_size`</b>: a list of length 2 `[kernel_height, kernel_width]` of
-    of the filters. Can be an int if both values are the same.
-*  <b>`stride`</b>: a list of length 2 `[stride_height, stride_width]`.
-    Can be an int if both strides are the same. Note that presently
-    both strides must have the same value.
-*  <b>`padding`</b>: one of `VALID` or `SAME`.
-*  <b>`rate`</b>: integer. If less than or equal to 1, a standard convolution is used.
-    If greater than 1, than the a'trous convolution is applied and `stride`
-    must be set to 1.
+*  <b>`kernel_size`</b>: a sequence of N positive integers specifying the spatial
+    dimensions of of the filters.  Can be a single integer to specify the same
+    value for all spatial dimensions.
+*  <b>`stride`</b>: a sequence of N positive integers specifying the stride at which to
+    compute output.  Can be a single integer to specify the same value for all
+    spatial dimensions.  Specifying any `stride` value != 1 is incompatible
+    with specifying any `rate` value != 1.
+*  <b>`padding`</b>: one of `"VALID"` or `"SAME"`.
+*  <b>`data_format`</b>: A string or None.  Specifies whether the channel dimension of
+    the `input` and output is the last dimension (default, or if `data_format`
+    does not start with "NC"), or the second dimension (if `data_format`
+    starts with "NC").  For N=1, the valid values are "NWC" (default) and
+    "NCW".  For N=2, the valid values are "NHWC" (default) and "NCHW".  For
+    N=3, currently the only valid value is "NDHWC".
+*  <b>`rate`</b>: a sequence of N positive integers specifying the dilation rate to use
+    for a'trous convolution.  Can be a single integer to specify the same
+    value for all spatial dimensions.  Specifying any `rate` value != 1 is
+    incompatible with specifying any `stride` value != 1.
 *  <b>`activation_fn`</b>: activation function, set to None to skip it and maintain
     a linear activation.
 *  <b>`normalizer_fn`</b>: normalization function to use instead of `biases`. If
@@ -166,7 +202,8 @@ greater than one.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if both 'rate' and `stride` are larger than one.
+*  <b>`ValueError`</b>: if `data_format` is invalid.
+*  <b>`ValueError`</b>: both 'rate' and `stride` are not uniformly 1.
 
 
 - - -
@@ -234,7 +271,9 @@ second variable called 'biases' is added to the result of the operation.
 ##### Args:
 
 
-*  <b>`inputs`</b>: a tensor of size [batch_size, height, width, channels].
+*  <b>`inputs`</b>: A 4-D `Tensor` of type `float` and shape
+    `[batch, height, width, in_channels]` for `NHWC` data format or
+    `[batch, in_channels, height, width]` for `NCHW` data format.
 *  <b>`num_outputs`</b>: integer, the number of output filters.
 *  <b>`kernel_size`</b>: a list of length 2 holding the [kernel_height, kernel_width] of
     of the filters. Can be an int if both values are the same.
@@ -242,6 +281,7 @@ second variable called 'biases' is added to the result of the operation.
     Can be an int if both strides are the same.  Note that presently
     both strides must have the same value.
 *  <b>`padding`</b>: one of 'VALID' or 'SAME'.
+*  <b>`data_format`</b>: A string. `NHWC` (default) and `NCHW` are supported.
 *  <b>`activation_fn`</b>: activation function, set to None to skip it and maintain
     a linear activation.
 *  <b>`normalizer_fn`</b>: normalization function to use instead of `biases`. If
@@ -269,6 +309,8 @@ second variable called 'biases' is added to the result of the operation.
 
 
 *  <b>`ValueError`</b>: if 'kernel_size' is not a list of length 2.
+*  <b>`ValueError`</b>: if `data_format` is neither `NHWC` nor `NCHW`.
+*  <b>`ValueError`</b>: if `C` dimension of `inputs` is None.
 
 
 - - -
@@ -293,7 +335,7 @@ Flattens the input while maintaining the batch_size.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if inputs.shape is wrong.
+*  <b>`ValueError`</b>: if inputs.dense_shape is wrong.
 
 
 - - -
@@ -341,7 +383,7 @@ prior to the initial matrix multiply by `weights`.
 
 ##### Returns:
 
-   the tensor variable representing the result of the series of operations.
+   The tensor variable representing the result of the series of operations.
 
 ##### Raises:
 
@@ -378,7 +420,7 @@ Can be used as a normalizer function for conv2d and fully_connected.
 *  <b>`outputs_collections`</b>: collections to add the outputs.
 *  <b>`trainable`</b>: If `True` also add variables to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-*  <b>`scope`</b>: Optional scope for `variable_op_scope`.
+*  <b>`scope`</b>: Optional scope for `variable_scope`.
 
 ##### Returns:
 
@@ -401,7 +443,9 @@ It is assumed that the pooling is done per image but not in batch or channels.
 ##### Args:
 
 
-*  <b>`inputs`</b>: A `Tensor` of size [batch_size, height, width, channels].
+*  <b>`inputs`</b>: A 4-D tensor of shape `[batch_size, height, width, channels]` if
+    `data_format` is `NHWC`, and `[batch_size, channels, height, width]` if
+    `data_format` is `NCHW`.
 *  <b>`kernel_size`</b>: A list of length 2: [kernel_height, kernel_width] of the
     pooling kernel over which the op is computed. Can be an int if both
     values are the same.
@@ -409,6 +453,7 @@ It is assumed that the pooling is done per image but not in batch or channels.
     Can be an int if both strides are the same. Note that presently
     both strides must have the same value.
 *  <b>`padding`</b>: The padding method, either 'VALID' or 'SAME'.
+*  <b>`data_format`</b>: A string. `NHWC` (default) and `NCHW` are supported.
 *  <b>`outputs_collections`</b>: The collections to which the outputs are added.
 *  <b>`scope`</b>: Optional scope for name_scope.
 
@@ -419,6 +464,7 @@ It is assumed that the pooling is done per image but not in batch or channels.
 ##### Raises:
 
 
+*  <b>`ValueError`</b>: if `data_format` is neither `NHWC` nor `NCHW`.
 *  <b>`ValueError`</b>: If 'kernel_size' is not a 2-D list
 
 
@@ -484,7 +530,7 @@ layers are called with `scope='stack'`.
 
 - - -
 
-### `tf.contrib.layers.safe_embedding_lookup_sparse(embedding_weights, sparse_ids, sparse_weights=None, combiner=None, default_id=None, name=None, partition_strategy='div')` {#safe_embedding_lookup_sparse}
+### `tf.contrib.layers.safe_embedding_lookup_sparse(embedding_weights, sparse_ids, sparse_weights=None, combiner=None, default_id=None, name=None, partition_strategy='div', max_norm=None)` {#safe_embedding_lookup_sparse}
 
 Lookup embedding results, accounting for invalid IDs and empty features.
 
@@ -521,6 +567,8 @@ along the last dimension.
 *  <b>`name`</b>: A name for this operation (optional).
 *  <b>`partition_strategy`</b>: A string specifying the partitioning strategy.
       Currently `"div"` and `"mod"` are supported. Default is `"div"`.
+*  <b>`max_norm`</b>: If not None, all embeddings are l2-normalized to max_norm before
+      combining.
 
 
 ##### Returns:
@@ -561,6 +609,9 @@ to produce the end result.
 *  <b>`stride`</b>: a list of length 2: [stride_height, stride_width], specifying the
     depthwise convolution stride. Can be an int if both strides are the same.
 *  <b>`padding`</b>: one of 'VALID' or 'SAME'.
+*  <b>`rate`</b>: a list of length 2: [rate_height, rate_width], specifying the dilation
+    rates for a'trous convolution. Can be an int if both rates are the same.
+    If any value is larger than one, then both stride values need to be one.
 *  <b>`activation_fn`</b>: activation function, set to None to skip it and maintain
     a linear activation.
 *  <b>`normalizer_fn`</b>: normalization function to use instead of `biases`. If
@@ -583,48 +634,6 @@ to produce the end result.
 ##### Returns:
 
   A `Tensor` representing the output of the operation.
-
-
-- - -
-
-### `tf.contrib.layers.stack(inputs, layer, stack_args, **kwargs)` {#stack}
-
-Builds a stack of layers by applying layer repeatedly using stack_args.
-
-`stack` allows you to repeatedly apply the same operation with different
-arguments `stack_args[i]`. For each application of the layer, `stack` creates
-a new scope appended with an increasing number. For example:
-
-```python
-  y = stack(x, fully_connected, [32, 64, 128], scope='fc')
-  # It is equivalent to:
-
-  x = fully_connected(x, 32, scope='fc/fc_1')
-  x = fully_connected(x, 64, scope='fc/fc_2')
-  y = fully_connected(x, 128, scope='fc/fc_3')
-```
-
-If the `scope` argument is not given in `kwargs`, it is set to
-`layer.__name__`, or `layer.func.__name__` (for `functools.partial`
-objects). If neither `__name__` nor `func.__name__` is available, the
-layers are called with `scope='stack'`.
-
-##### Args:
-
-
-*  <b>`inputs`</b>: A `Tensor` suitable for layer.
-*  <b>`layer`</b>: A layer with arguments `(inputs, *args, **kwargs)`
-*  <b>`stack_args`</b>: A list/tuple of parameters for each call of layer.
-*  <b>`**kwargs`</b>: Extra kwargs for the layer.
-
-##### Returns:
-
-  a `Tensor` result of applying the stacked layers.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: if the op is unknown or wrong.
 
 
 - - -
@@ -656,6 +665,9 @@ Note that the rank of `input` must be known.
 
 Aliases for fully_connected which set a default activation function are
 available: `relu`, `relu6` and `linear`.
+
+`stack` operation is also available. It builds a stack of layers by applying
+a layer repeatedly.
 
 ## Regularizers
 
@@ -917,9 +929,14 @@ Various ways of passing optimizers, include:
 ##### Args:
 
 
-*  <b>`loss`</b>: Tensor, 0 dimensional.
-*  <b>`global_step`</b>: Tensor, step counter for each update.
-*  <b>`learning_rate`</b>: float or Tensor, magnitude of update per each training step.
+*  <b>`loss`</b>: Scalar `Tensor`.
+*  <b>`global_step`</b>: Scalar int `Tensor`, step counter for each update. If not
+               supplied, it will be fetched from the default graph (see
+               `tf.contrib.framework.get_global_step` for details). If it's
+               not been created, no step will be incremented with each weight
+               update. `learning_rate_decay_fn` requires `global_step`.
+*  <b>`learning_rate`</b>: float or `Tensor`, magnitude of update per each training
+                 step. Can be `None`.
 *  <b>`optimizer`</b>: string, class or optimizer instance, used as trainer.
              string should be name of optimizer, like 'SGD',
                'Adam', 'Adagrad'. Full list in OPTIMIZER_CLS_NAMES constant.
@@ -933,12 +950,17 @@ Various ways of passing optimizers, include:
 *  <b>`gradient_multipliers`</b>: dict of variables or variable names to floats.
                         If present, gradients for specified
                         variables will be multiplied by given constant.
-*  <b>`clip_gradients`</b>: float or `None`, clips gradients by this value.
+*  <b>`clip_gradients`</b>: float, callable or `None`. If float, is provided, a global
+    clipping is applied to prevent the norm of the gradient to exceed this
+    value. Alternatively, a callable can be provided e.g.: adaptive_clipping.
+    This callable takes a `list` of `(gradients, variables)` `tuple`s and
+    returns the same thing with the gradients modified.
 *  <b>`learning_rate_decay_fn`</b>: function, takes `learning_rate` and `global_step`
                           `Tensor`s, returns `Tensor`.
                           Can be used to implement any learning rate decay
                           functions.
                           For example: `tf.train.exponential_decay`.
+                          Ignored if `learning_rate` is not supplied.
 *  <b>`update_ops`</b>: list of update `Operation`s to execute at each step. If `None`,
               uses elements of UPDATE_OPS collection. The order of execution
               between `update_ops` and `loss` is non-deterministic.
@@ -958,7 +980,14 @@ Various ways of passing optimizers, include:
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if optimizer is wrong type.
+*  <b>`ValueError`</b>: if:
+      * `loss` is an invalid type or shape.
+      * `global_step` is an invalid type or shape.
+      * `learning_rate` is an invalid type or value.
+      * `optimizer` is wrong type.
+      * `clip_gradients` is not float or callable.
+      * `learning_rate` and `learning_rate_decay_fn` are supplied, but no
+        `global_step` is available.
 
 
 
@@ -1030,5 +1059,741 @@ of `summarize_collection` to `VARIABLES`, `WEIGHTS` and `BIASES`, respectively.
 ### `tf.contrib.layers.summarize_activations(name_filter=None, summarizer=summarize_activation)` {#summarize_activations}
 
 Summarize activations, using `summarize_activation` to summarize.
+
+
+
+## Feature columns
+
+Feature columns provide a mechanism to map data to a model.
+
+- - -
+
+### `tf.contrib.layers.bucketized_column(source_column, boundaries)` {#bucketized_column}
+
+Creates a _BucketizedColumn for discretizing dense input.
+
+##### Args:
+
+
+*  <b>`source_column`</b>: A _RealValuedColumn defining dense column.
+*  <b>`boundaries`</b>: A list of floats specifying the boundaries. It has to be sorted.
+
+##### Returns:
+
+  A _BucketizedColumn.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if 'boundaries' is empty or not sorted.
+
+
+- - -
+
+### `tf.contrib.layers.check_feature_columns(feature_columns)` {#check_feature_columns}
+
+Checks the validity of the set of FeatureColumns.
+
+##### Args:
+
+
+*  <b>`feature_columns`</b>: A set of instances or subclasses of FeatureColumn.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If there are duplicate feature column keys.
+
+
+- - -
+
+### `tf.contrib.layers.create_feature_spec_for_parsing(feature_columns)` {#create_feature_spec_for_parsing}
+
+Helper that prepares features config from input feature_columns.
+
+The returned feature config can be used as arg 'features' in tf.parse_example.
+
+Typical usage example:
+
+```python
+# Define features and transformations
+feature_a = sparse_column_with_vocabulary_file(...)
+feature_b = real_valued_column(...)
+feature_c_bucketized = bucketized_column(real_valued_column("feature_c"), ...)
+feature_a_x_feature_c = crossed_column(
+  columns=[feature_a, feature_c_bucketized], ...)
+
+feature_columns = set(
+  [feature_b, feature_c_bucketized, feature_a_x_feature_c])
+batch_examples = tf.parse_example(
+    serialized=serialized_examples,
+    features=create_feature_spec_for_parsing(feature_columns))
+```
+
+For the above example, create_feature_spec_for_parsing would return the dict:
+{
+  "feature_a": parsing_ops.VarLenFeature(tf.string),
+  "feature_b": parsing_ops.FixedLenFeature([1], dtype=tf.float32),
+  "feature_c": parsing_ops.FixedLenFeature([1], dtype=tf.float32)
+}
+
+##### Args:
+
+
+*  <b>`feature_columns`</b>: An iterable containing all the feature columns. All items
+    should be instances of classes derived from _FeatureColumn, unless
+    feature_columns is a dict -- in which case, this should be true of all
+    values in the dict.
+
+##### Returns:
+
+  A dict mapping feature keys to FixedLenFeature or VarLenFeature values.
+
+
+- - -
+
+### `tf.contrib.layers.crossed_column(columns, hash_bucket_size, combiner=None, ckpt_to_load_from=None, tensor_name_in_ckpt=None, hash_key=None)` {#crossed_column}
+
+Creates a _CrossedColumn for performing feature crosses.
+
+##### Args:
+
+
+*  <b>`columns`</b>: An iterable of _FeatureColumn. Items can be an instance of
+    _SparseColumn, _CrossedColumn, or _BucketizedColumn.
+*  <b>`hash_bucket_size`</b>: An int that is > 1. The number of buckets.
+*  <b>`combiner`</b>: A combiner string, supports sum, mean, sqrtn.
+*  <b>`ckpt_to_load_from`</b>: (Optional). String representing checkpoint name/pattern
+    to restore the column weights. Required if `tensor_name_in_ckpt` is not
+    None.
+*  <b>`tensor_name_in_ckpt`</b>: (Optional). Name of the `Tensor` in the provided
+    checkpoint from which to restore the column weights. Required if
+    `ckpt_to_load_from` is not None.
+*  <b>`hash_key`</b>: Specify the hash_key that will be used by the `FingerprintCat64`
+    function to combine the crosses fingerprints on SparseFeatureCrossOp
+    (optional).
+
+##### Returns:
+
+  A _CrossedColumn.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if any item in columns is not an instance of _SparseColumn,
+    _CrossedColumn, or _BucketizedColumn, or
+    hash_bucket_size is not an int.
+*  <b>`ValueError`</b>: if hash_bucket_size is not > 1 or
+    len(columns) is not > 1.
+
+
+- - -
+
+### `tf.contrib.layers.embedding_column(sparse_id_column, dimension, combiner=None, initializer=None, ckpt_to_load_from=None, tensor_name_in_ckpt=None, max_norm=None)` {#embedding_column}
+
+Creates an `_EmbeddingColumn` for feeding sparse data into a DNN.
+
+##### Args:
+
+
+*  <b>`sparse_id_column`</b>: A `_SparseColumn` which is created by for example
+    `sparse_column_with_*` or crossed_column functions. Note that `combiner`
+    defined in `sparse_id_column` is ignored.
+*  <b>`dimension`</b>: An integer specifying dimension of the embedding.
+*  <b>`combiner`</b>: A string specifying how to reduce if there are multiple entries
+    in a single row. Currently "mean", "sqrtn" and "sum" are supported. Each
+    of this can be considered an example level normalization on the column:
+      * "sum": do not normalize
+      * "mean": do l1 normalization
+      * "sqrtn": do l2 normalization
+    For more information: `tf.embedding_lookup_sparse`.
+*  <b>`initializer`</b>: A variable initializer function to be used in embedding
+    variable initialization. If not specified, defaults to
+    `tf.truncated_normal_initializer` with mean 0.0 and standard deviation
+    1/sqrt(sparse_id_column.length).
+*  <b>`ckpt_to_load_from`</b>: (Optional). String representing checkpoint name/pattern
+    to restore the column weights. Required if `tensor_name_in_ckpt` is not
+    None.
+*  <b>`tensor_name_in_ckpt`</b>: (Optional). Name of the `Tensor` in the provided
+    checkpoint from which to restore the column weights. Required if
+    `ckpt_to_load_from` is not None.
+*  <b>`max_norm`</b>: (Optional). If not None, embedding values are l2-normalized to
+    the value of max_norm.
+
+##### Returns:
+
+  An `_EmbeddingColumn`.
+
+
+- - -
+
+### `tf.contrib.layers.scattered_embedding_column(column_name, size, dimension, hash_key, combiner=None, initializer=None)` {#scattered_embedding_column}
+
+Creates an embedding column of a sparse feature using parameter hashing.
+
+The i-th embedding component of a value v is found by retrieving an
+embedding weight whose index is a fingerprint of the pair (v,i).
+
+An embedding column with sparse_column_with_hash_bucket such as
+  embedding_column(
+      sparse_column_with_hash_bucket(column_name, bucket_size),
+      dimension)
+
+could be replaced by
+  scattered_embedding_column(
+      column_name, size=bucket_size * dimension, dimension=dimension,
+      hash_key=tf.contrib.layers.SPARSE_FEATURE_CROSS_DEFAULT_HASH_KEY)
+
+for the same number of embedding parameters and hopefully reduced impact of
+collisions with a cost of slowing down training.
+
+##### Args:
+
+
+*  <b>`column_name`</b>: A string defining sparse column name.
+*  <b>`size`</b>: An integer specifying the number of parameters in the embedding layer.
+*  <b>`dimension`</b>: An integer specifying dimension of the embedding.
+*  <b>`hash_key`</b>: Specify the hash_key that will be used by the `FingerprintCat64`
+    function to combine the crosses fingerprints on SparseFeatureCrossOp.
+*  <b>`combiner`</b>: A string specifying how to reduce if there are multiple entries
+    in a single row. Currently "mean", "sqrtn" and "sum" are supported. Each
+    of this can be thought as example level normalizations on the column:
+      * "sum": do not normalize features in the column
+      * "mean": do l1 normalization on features in the column
+      * "sqrtn": do l2 normalization on features in the column
+    For more information: `tf.embedding_lookup_sparse`.
+*  <b>`initializer`</b>: A variable initializer function to be used in embedding
+    variable initialization. If not specified, defaults to
+    `tf.truncated_normal_initializer` with mean 0 and standard deviation 0.1.
+
+##### Returns:
+
+  A _ScatteredEmbeddingColumn.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if dimension or size is not a positive integer; or if combiner
+    is not supported.
+
+
+- - -
+
+### `tf.contrib.layers.input_from_feature_columns(columns_to_tensors, feature_columns, weight_collections=None, trainable=True, scope=None)` {#input_from_feature_columns}
+
+A tf.contrib.layer style input layer builder based on FeatureColumns.
+
+Generally a single example in training data is described with feature columns.
+At the first layer of the model, this column oriented data should be converted
+to a single tensor. Each feature column needs a different kind of operation
+during this conversion. For example sparse features need a totally different
+handling than continuous features.
+
+Example:
+
+```python
+  # Building model for training
+  columns_to_tensor = tf.parse_example(...)
+  first_layer = input_from_feature_columns(
+      columns_to_tensors=columns_to_tensor,
+      feature_columns=feature_columns)
+  second_layer = fully_connected(inputs=first_layer, ...)
+  ...
+```
+
+where feature_columns can be defined as follows:
+
+```python
+  sparse_feature = sparse_column_with_hash_bucket(
+      column_name="sparse_col", ...)
+  sparse_feature_emb = embedding_column(sparse_id_column=sparse_feature, ...)
+  real_valued_feature = real_valued_column(...)
+  real_valued_buckets = bucketized_column(
+      source_column=real_valued_feature, ...)
+
+  feature_columns=[sparse_feature_emb, real_valued_buckets]
+```
+
+##### Args:
+
+
+*  <b>`columns_to_tensors`</b>: A mapping from feature column to tensors. 'string' key
+    means a base feature (not-transformed). It can have FeatureColumn as a
+    key too. That means that FeatureColumn is already transformed by input
+    pipeline. For example, `inflow` may have handled transformations.
+*  <b>`feature_columns`</b>: A set containing all the feature columns. All items in the
+    set should be instances of classes derived by FeatureColumn.
+*  <b>`weight_collections`</b>: List of graph collections to which weights are added.
+*  <b>`trainable`</b>: If `True` also add variables to the graph collection
+    `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+*  <b>`scope`</b>: Optional scope for variable_scope.
+
+##### Returns:
+
+  A Tensor which can be consumed by hidden layers in the neural network.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if FeatureColumn cannot be consumed by a neural network.
+
+
+- - -
+
+### `tf.contrib.layers.joint_weighted_sum_from_feature_columns(columns_to_tensors, feature_columns, num_outputs, weight_collections=None, trainable=True, scope=None)` {#joint_weighted_sum_from_feature_columns}
+
+A restricted linear prediction builder based on FeatureColumns.
+
+As long as all feature columns are unweighted sparse columns this computes the
+prediction of a linear model which stores all weights in a single variable.
+
+##### Args:
+
+
+*  <b>`columns_to_tensors`</b>: A mapping from feature column to tensors. 'string' key
+    means a base feature (not-transformed). It can have FeatureColumn as a
+    key too. That means that FeatureColumn is already transformed by input
+    pipeline. For example, `inflow` may have handled transformations.
+*  <b>`feature_columns`</b>: A set containing all the feature columns. All items in the
+    set should be instances of classes derived from FeatureColumn.
+*  <b>`num_outputs`</b>: An integer specifying number of outputs. Default value is 1.
+*  <b>`weight_collections`</b>: List of graph collections to which weights are added.
+*  <b>`trainable`</b>: If `True` also add variables to the graph collection
+    `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+*  <b>`scope`</b>: Optional scope for variable_scope.
+
+##### Returns:
+
+  A tuple containing:
+
+    * A Tensor which represents predictions of a linear model.
+    * A list of Variables storing the weights.
+    * A Variable which is used for bias.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if FeatureColumn cannot be used for linear predictions.
+
+
+- - -
+
+### `tf.contrib.layers.make_place_holder_tensors_for_base_features(feature_columns)` {#make_place_holder_tensors_for_base_features}
+
+Returns placeholder tensors for inference.
+
+##### Args:
+
+
+*  <b>`feature_columns`</b>: An iterable containing all the feature columns. All items
+    should be instances of classes derived from _FeatureColumn.
+
+##### Returns:
+
+  A dict mapping feature keys to SparseTensors (sparse columns) or
+  placeholder Tensors (dense columns).
+
+
+- - -
+
+### `tf.contrib.layers.one_hot_column(sparse_id_column)` {#one_hot_column}
+
+Creates an `_OneHotColumn` for a one-hot or multi-hot repr in a DNN.
+
+##### Args:
+
+
+*  <b>`sparse_id_column`</b>: A _SparseColumn which is created by
+      `sparse_column_with_*`
+      or crossed_column functions. Note that `combiner` defined in
+      `sparse_id_column` is ignored.
+
+##### Returns:
+
+  An _OneHotColumn.
+
+
+- - -
+
+### `tf.contrib.layers.parse_feature_columns_from_examples(serialized, feature_columns, name=None, example_names=None)` {#parse_feature_columns_from_examples}
+
+Parses tf.Examples to extract tensors for given feature_columns.
+
+This is a wrapper of 'tf.parse_example'.
+
+Example:
+
+```python
+columns_to_tensor = parse_feature_columns_from_examples(
+    serialized=my_data,
+    feature_columns=my_features)
+
+# Where my_features are:
+# Define features and transformations
+sparse_feature_a = sparse_column_with_keys(
+    column_name="sparse_feature_a", keys=["AB", "CD", ...])
+
+embedding_feature_a = embedding_column(
+    sparse_id_column=sparse_feature_a, dimension=3, combiner="sum")
+
+sparse_feature_b = sparse_column_with_hash_bucket(
+    column_name="sparse_feature_b", hash_bucket_size=1000)
+
+embedding_feature_b = embedding_column(
+    sparse_id_column=sparse_feature_b, dimension=16, combiner="sum")
+
+crossed_feature_a_x_b = crossed_column(
+    columns=[sparse_feature_a, sparse_feature_b], hash_bucket_size=10000)
+
+real_feature = real_valued_column("real_feature")
+real_feature_buckets = bucketized_column(
+    source_column=real_feature, boundaries=[...])
+
+my_features = [embedding_feature_b, real_feature_buckets, embedding_feature_a]
+```
+
+##### Args:
+
+
+*  <b>`serialized`</b>: A vector (1-D Tensor) of strings, a batch of binary
+    serialized `Example` protos.
+*  <b>`feature_columns`</b>: An iterable containing all the feature columns. All items
+    should be instances of classes derived from _FeatureColumn.
+*  <b>`name`</b>: A name for this operation (optional).
+*  <b>`example_names`</b>: A vector (1-D Tensor) of strings (optional), the names of
+    the serialized protos in the batch.
+
+##### Returns:
+
+  A `dict` mapping FeatureColumn to `Tensor` and `SparseTensor` values.
+
+
+- - -
+
+### `tf.contrib.layers.parse_feature_columns_from_sequence_examples(serialized, context_feature_columns, sequence_feature_columns, name=None, example_name=None)` {#parse_feature_columns_from_sequence_examples}
+
+Parses tf.SequenceExamples to extract tensors for given `FeatureColumn`s.
+
+##### Args:
+
+
+*  <b>`serialized`</b>: A scalar (0-D Tensor) of type string, a single serialized
+    `SequenceExample` proto.
+*  <b>`context_feature_columns`</b>: An iterable containing the feature columns for
+    context features. All items should be instances of classes derived from
+    `_FeatureColumn`. Can be `None`.
+*  <b>`sequence_feature_columns`</b>: An iterable containing the feature columns for
+    sequence features. All items should be instances of classes derived from
+    `_FeatureColumn`. Can be `None`.
+*  <b>`name`</b>: A name for this operation (optional).
+*  <b>`example_name`</b>: A scalar (0-D Tensor) of type string (optional), the names of
+    the serialized proto.
+
+##### Returns:
+
+  A tuple consisting of:
+
+*  <b>`context_features`</b>: a dict mapping `FeatureColumns` from
+    `context_feature_columns` to their parsed `Tensors`/`SparseTensor`s.
+*  <b>`sequence_features`</b>: a dict mapping `FeatureColumns` from
+    `sequence_feature_columns` to their parsed `Tensors`/`SparseTensor`s.
+
+
+- - -
+
+### `tf.contrib.layers.real_valued_column(column_name, dimension=1, default_value=None, dtype=tf.float32, normalizer=None)` {#real_valued_column}
+
+Creates a `_RealValuedColumn` for dense numeric data.
+
+##### Args:
+
+
+*  <b>`column_name`</b>: A string defining real valued column name.
+*  <b>`dimension`</b>: An integer specifying dimension of the real valued column.
+    The default is 1. When dimension is not None, the Tensor representing
+    the _RealValuedColumn will have the shape of [batch_size, dimension].
+    A None dimension means the feature column should be treat as variable
+    length and will be parsed as a `SparseTensor`.
+*  <b>`default_value`</b>: A single value compatible with dtype or a list of values
+    compatible with dtype which the column takes on during tf.Example parsing
+    if data is missing. When dimension is not None, a default value of None
+    will cause tf.parse_example to fail if an example does not contain this
+    column. If a single value is provided, the same value will be applied as
+    the default value for every dimension. If a list of values is provided,
+    the length of the list should be equal to the value of `dimension`.
+    Only scalar default value is supported in case dimension is not specified.
+*  <b>`dtype`</b>: defines the type of values. Default value is tf.float32. Must be a
+    non-quantized, real integer or floating point type.
+*  <b>`normalizer`</b>: If not None, a function that can be used to normalize the value
+    of the real valued column after default_value is applied for parsing.
+    Normalizer function takes the input tensor as its argument, and returns
+    the output tensor. (e.g. lambda x: (x - 3.0) / 4.2). Note that for
+    variable length columns, the normalizer should expect an input_tensor of
+    type `SparseTensor`.
+
+##### Returns:
+
+  A _RealValuedColumn.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if dimension is not an int
+*  <b>`ValueError`</b>: if dimension is not a positive integer
+*  <b>`TypeError`</b>: if default_value is a list but its length is not equal to the
+    value of `dimension`.
+*  <b>`TypeError`</b>: if default_value is not compatible with dtype.
+*  <b>`ValueError`</b>: if dtype is not convertable to tf.float32.
+
+
+- - -
+
+### `tf.contrib.layers.shared_embedding_columns(sparse_id_columns, dimension, combiner=None, shared_embedding_name=None, initializer=None, ckpt_to_load_from=None, tensor_name_in_ckpt=None, max_norm=None)` {#shared_embedding_columns}
+
+Creates a list of `_EmbeddingColumn` sharing the same embedding.
+
+##### Args:
+
+
+*  <b>`sparse_id_columns`</b>: An iterable of `_SparseColumn`, such as those created by
+    `sparse_column_with_*` or crossed_column functions. Note that `combiner`
+    defined in each sparse_id_column is ignored.
+*  <b>`dimension`</b>: An integer specifying dimension of the embedding.
+*  <b>`combiner`</b>: A string specifying how to reduce if there are multiple entries
+    in a single row. Currently "mean", "sqrtn" and "sum" are supported. Each
+    of this can be considered an example level normalization on the column:
+      * "sum": do not normalize
+      * "mean": do l1 normalization
+      * "sqrtn": do l2 normalization
+    For more information: `tf.embedding_lookup_sparse`.
+*  <b>`shared_embedding_name`</b>: (Optional). A string specifying the name of shared
+    embedding weights. This will be needed if you want to reference the shared
+    embedding separately from the generated `_EmbeddingColumn`.
+*  <b>`initializer`</b>: A variable initializer function to be used in embedding
+    variable initialization. If not specified, defaults to
+    `tf.truncated_normal_initializer` with mean 0.0 and standard deviation
+    1/sqrt(sparse_id_columns[0].length).
+*  <b>`ckpt_to_load_from`</b>: (Optional). String representing checkpoint name/pattern
+    to restore the column weights. Required if `tensor_name_in_ckpt` is not
+    None.
+*  <b>`tensor_name_in_ckpt`</b>: (Optional). Name of the `Tensor` in the provided
+    checkpoint from which to restore the column weights. Required if
+    `ckpt_to_load_from` is not None.
+*  <b>`max_norm`</b>: (Optional). If not None, embedding values are l2-normalized to
+    the value of max_norm.
+
+##### Returns:
+
+  A tuple of `_EmbeddingColumn` with shared embedding space.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if sparse_id_columns is empty, or its elements are not
+    compatible with each other.
+*  <b>`TypeError`</b>: if `sparse_id_columns` is not a sequence or is a string. If at
+    least one element of `sparse_id_columns` is not a `SparseTensor`.
+
+
+- - -
+
+### `tf.contrib.layers.sparse_column_with_hash_bucket(column_name, hash_bucket_size, combiner=None, dtype=tf.string)` {#sparse_column_with_hash_bucket}
+
+Creates a _SparseColumn with hashed bucket configuration.
+
+Use this when your sparse features are in string or integer format, but you
+don't have a vocab file that maps each value to an integer ID.
+output_id = Hash(input_feature_string) % bucket_size
+
+##### Args:
+
+
+*  <b>`column_name`</b>: A string defining sparse column name.
+*  <b>`hash_bucket_size`</b>: An int that is > 1. The number of buckets.
+*  <b>`combiner`</b>: A string specifying how to reduce if the sparse column is
+    multivalent. Currently "mean", "sqrtn" and "sum" are supported, with
+    "sum" the default:
+      * "sum": do not normalize features in the column
+      * "mean": do l1 normalization on features in the column
+      * "sqrtn": do l2 normalization on features in the column
+    For more information: `tf.embedding_lookup_sparse`.
+*  <b>`dtype`</b>: The type of features. Only string and integer types are supported.
+
+##### Returns:
+
+  A _SparseColumn with hashed bucket configuration
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: hash_bucket_size is not greater than 2.
+*  <b>`ValueError`</b>: dtype is neither string nor integer.
+
+
+- - -
+
+### `tf.contrib.layers.sparse_column_with_integerized_feature(column_name, bucket_size, combiner=None, dtype=tf.int64)` {#sparse_column_with_integerized_feature}
+
+Creates an integerized _SparseColumn.
+
+Use this when your features are already pre-integerized into int64 IDs.
+output_id = input_feature
+
+##### Args:
+
+
+*  <b>`column_name`</b>: A string defining sparse column name.
+*  <b>`bucket_size`</b>: An int that is > 1. The number of buckets. It should be bigger
+    than maximum feature. In other words features in this column should be an
+    int64 in range [0, bucket_size)
+*  <b>`combiner`</b>: A string specifying how to reduce if the sparse column is
+    multivalent. Currently "mean", "sqrtn" and "sum" are supported, with
+    "sum" the default:
+      * "sum": do not normalize features in the column
+      * "mean": do l1 normalization on features in the column
+      * "sqrtn": do l2 normalization on features in the column
+    For more information: `tf.embedding_lookup_sparse`.
+*  <b>`dtype`</b>: Type of features. It should be an integer type. Default value is
+    dtypes.int64.
+
+##### Returns:
+
+  An integerized _SparseColumn definition.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: bucket_size is not greater than 1.
+*  <b>`ValueError`</b>: dtype is not integer.
+
+
+- - -
+
+### `tf.contrib.layers.sparse_column_with_keys(column_name, keys, default_value=-1, combiner=None)` {#sparse_column_with_keys}
+
+Creates a _SparseColumn with keys.
+
+Look up logic is as follows:
+lookup_id = index_of_feature_in_keys if feature in keys else default_value
+
+##### Args:
+
+
+*  <b>`column_name`</b>: A string defining sparse column name.
+*  <b>`keys`</b>: a string list defining vocabulary.
+*  <b>`default_value`</b>: The value to use for out-of-vocabulary feature values.
+    Default is -1.
+*  <b>`combiner`</b>: A string specifying how to reduce if the sparse column is
+    multivalent. Currently "mean", "sqrtn" and "sum" are supported, with
+    "sum" the default:
+      * "sum": do not normalize features in the column
+      * "mean": do l1 normalization on features in the column
+      * "sqrtn": do l2 normalization on features in the column
+    For more information: `tf.embedding_lookup_sparse`.
+
+##### Returns:
+
+  A _SparseColumnKeys with keys configuration.
+
+
+- - -
+
+### `tf.contrib.layers.weighted_sparse_column(sparse_id_column, weight_column_name, dtype=tf.float32)` {#weighted_sparse_column}
+
+Creates a _SparseColumn by combining sparse_id_column with a weight column.
+
+Example:
+
+  ```python
+  sparse_feature = sparse_column_with_hash_bucket(column_name="sparse_col",
+                                                  hash_bucket_size=1000)
+  weighted_feature = weighted_sparse_column(sparse_id_column=sparse_feature,
+                                            weight_column_name="weights_col")
+  ```
+
+  This configuration assumes that input dictionary of model contains the
+  following two items:
+    * (key="sparse_col", value=sparse_tensor) where sparse_tensor is
+      a SparseTensor.
+    * (key="weights_col", value=weights_tensor) where weights_tensor
+      is a SparseTensor.
+   Following are assumed to be true:
+     * sparse_tensor.indices = weights_tensor.indices
+     * sparse_tensor.dense_shape = weights_tensor.dense_shape
+
+##### Args:
+
+
+*  <b>`sparse_id_column`</b>: A `_SparseColumn` which is created by
+    `sparse_column_with_*` functions.
+*  <b>`weight_column_name`</b>: A string defining a sparse column name which represents
+    weight or value of the corresponding sparse id feature.
+*  <b>`dtype`</b>: Type of weights, such as `tf.float32`
+
+##### Returns:
+
+  A _WeightedSparseColumn composed of two sparse features: one represents id,
+  the other represents weight (value) of the id feature in that example.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if dtype is not convertible to float.
+
+
+- - -
+
+### `tf.contrib.layers.weighted_sum_from_feature_columns(columns_to_tensors, feature_columns, num_outputs, weight_collections=None, trainable=True, scope=None)` {#weighted_sum_from_feature_columns}
+
+A tf.contrib.layer style linear prediction builder based on FeatureColumns.
+
+Generally a single example in training data is described with feature columns.
+This function generates weighted sum for each num_outputs. Weighted sum refers
+to logits in classification problems. It refers to prediction itself for
+linear regression problems.
+
+Example:
+
+  ```
+  # Building model for training
+  feature_columns = (
+      real_valued_column("my_feature1"),
+      ...
+  )
+  columns_to_tensor = tf.parse_example(...)
+  logits = weighted_sum_from_feature_columns(
+      columns_to_tensors=columns_to_tensor,
+      feature_columns=feature_columns,
+      num_outputs=1)
+  loss = tf.nn.sigmoid_cross_entropy_with_logits(logits, labels)
+  ```
+
+##### Args:
+
+
+*  <b>`columns_to_tensors`</b>: A mapping from feature column to tensors. 'string' key
+    means a base feature (not-transformed). It can have FeatureColumn as a
+    key too. That means that FeatureColumn is already transformed by input
+    pipeline. For example, `inflow` may have handled transformations.
+*  <b>`feature_columns`</b>: A set containing all the feature columns. All items in the
+    set should be instances of classes derived from FeatureColumn.
+*  <b>`num_outputs`</b>: An integer specifying number of outputs. Default value is 1.
+*  <b>`weight_collections`</b>: List of graph collections to which weights are added.
+*  <b>`trainable`</b>: If `True` also add variables to the graph collection
+    `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+*  <b>`scope`</b>: Optional scope for variable_scope.
+
+##### Returns:
+
+  A tuple containing:
+
+    * A Tensor which represents predictions of a linear model.
+    * A dictionary which maps feature_column to corresponding Variable.
+    * A Variable which is used for bias.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if FeatureColumn cannot be used for linear predictions.
 
 

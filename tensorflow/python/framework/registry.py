@@ -67,6 +67,14 @@ class Registry(object):
     stack = traceback.extract_stack()
     self._registry[name] = {_TYPE_TAG: candidate, _LOCATION_TAG: stack[2]}
 
+  def list(self):
+    """Lists registered items.
+
+    Returns:
+      A list of names of registered objects.
+    """
+    return self._registry.keys()
+
   def lookup(self, name):
     """Looks up "name".
 

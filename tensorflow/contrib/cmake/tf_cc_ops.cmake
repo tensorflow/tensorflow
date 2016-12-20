@@ -84,3 +84,36 @@ add_library(tf_cc_ops OBJECT
     "${tensorflow_source_dir}/tensorflow/cc/ops/const_op.cc"
     "${tensorflow_source_dir}/tensorflow/cc/ops/standard_ops.h"
 )
+
+########################################################
+# tf_cc library
+########################################################
+file(GLOB_RECURSE tf_cc_srcs
+    "${tensorflow_source_dir}/tensorflow/cc/client/*.h"
+    "${tensorflow_source_dir}/tensorflow/cc/client/*.cc"
+    "${tensorflow_source_dir}/tensorflow/cc/gradients/*.h"
+    "${tensorflow_source_dir}/tensorflow/cc/gradients/*.cc"
+    "${tensorflow_source_dir}/tensorflow/cc/saved_model/*.h"
+    "${tensorflow_source_dir}/tensorflow/cc/saved_model/*.cc"
+    "${tensorflow_source_dir}/tensorflow/cc/training/*.h"
+    "${tensorflow_source_dir}/tensorflow/cc/training/*.cc"
+)
+
+set(tf_cc_srcs
+    ${tf_cc_srcs}
+    "${tensorflow_source_dir}/tensorflow/cc/framework/grad_op_registry.h"
+    "${tensorflow_source_dir}/tensorflow/cc/framework/grad_op_registry.cc"
+    "${tensorflow_source_dir}/tensorflow/cc/framework/gradient_checker.h"
+    "${tensorflow_source_dir}/tensorflow/cc/framework/gradient_checker.cc"
+    "${tensorflow_source_dir}/tensorflow/cc/framework/gradients.h"
+    "${tensorflow_source_dir}/tensorflow/cc/framework/gradients.cc"
+)
+
+file(GLOB_RECURSE tf_cc_test_srcs
+    "${tensorflow_source_dir}/tensorflow/cc/*test*.cc"
+)
+
+list(REMOVE_ITEM tf_cc_srcs ${tf_cc_test_srcs})
+
+add_library(tf_cc OBJECT ${tf_cc_srcs})
+add_dependencies(tf_cc tf_cc_framework tf_cc_ops)

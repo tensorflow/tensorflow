@@ -67,6 +67,17 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
 #if GOOGLE_CUDA
+namespace functor {
+#define DECLARE_GPU_SPEC(T)                                                 \
+  template <>                                                               \
+  void TensorSetZero<GPUDevice, T>::operator()(const GPUDevice& d,          \
+                                               typename TTypes<T>::Flat t); \
+  extern template struct TensorSetZero<GPUDevice, T>;
+
+TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
+#undef DECLARE_GPU_SPEC
+}  // namespace functor
+
 #define REGISTER_GPU_KERNELS(T) REGISTER_KERNELS(GPU, T);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS

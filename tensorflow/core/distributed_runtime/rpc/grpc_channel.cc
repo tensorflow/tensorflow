@@ -48,6 +48,9 @@ SharedGrpcChannelPtr NewHostPortGrpcChannel(const string& target) {
   // TODO(mrry): Implement secure channels.
   ::grpc::ChannelArguments args;
   args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, std::numeric_limits<int32>::max());
+  // NOTE(mrry): Some versions of gRPC use a 20-second minimum backoff
+  // on connection failure, which makes our tests time out.
+  args.SetInt("grpc.testing.fixed_reconnect_backoff_ms", 1000);
   return ::grpc::CreateCustomChannel(
       target, ::grpc::InsecureChannelCredentials(), args);
 }
@@ -69,7 +72,7 @@ Status ValidateHostPortPair(const string& host_port) {
 Status GrpcChannelSpec::AddHostPortsJob(const string& job_id,
                                         const std::vector<string>& host_ports) {
   std::map<int, string> host_ports_map;
-  for (int i = 0; i < host_ports.size(); ++i) {
+  for (size_t i = 0; i < host_ports.size(); ++i) {
     host_ports_map[i] = host_ports[i];
   }
   return AddHostPortsJob(job_id, host_ports_map);

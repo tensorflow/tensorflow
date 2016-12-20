@@ -17,13 +17,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import os
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.core.framework import graph_pb2
 from tensorflow.core.util import event_pb2
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.platform import gfile
 
 
 def load_tensor_from_event_file(event_file_path):
@@ -39,8 +42,9 @@ def load_tensor_from_event_file(event_file_path):
     The tensor value loaded from the event file. For uninitialized tensors,
     return None.
   """
+
   event = event_pb2.Event()
-  with open(event_file_path, "rb") as f:
+  with gfile.Open(event_file_path, "rb") as f:
     event.ParseFromString(f.read())
 
     if (event.summary.value[0].tensor.tensor_content or
@@ -52,6 +56,14 @@ def load_tensor_from_event_file(event_file_path):
       tensor_value = None
 
   return tensor_value
+
+
+def _load_graph_def_from_event_file(event_file_path):
+  event = event_pb2.Event()
+  with gfile.Open(event_file_path, "rb") as f:
+    event.ParseFromString(f.read())
+
+  return graph_pb2.GraphDef.FromString(event.graph_def)
 
 
 def parse_node_or_tensor_name(name):
@@ -78,7 +90,11 @@ def parse_node_or_tensor_name(name):
     return name, None
 
 
-def get_tensor_name(node_name, output_slot):
+def _is_graph_file(file_name):
+  return file_name.startswith("_tfdbg_graph_")
+
+
+def _get_tensor_name(node_name, output_slot):
   """Get tensor name given node name and output slot index.
 
   Args:
@@ -92,7 +108,7 @@ def get_tensor_name(node_name, output_slot):
   return "%s:%d" % (node_name, output_slot)
 
 
-def get_tensor_watch_key(node_name, output_slot, debug_op):
+def _get_tensor_watch_key(node_name, output_slot, debug_op):
   """Get the string representation of a debug watch on a tensor.
 
   Args:
@@ -106,14 +122,14 @@ def get_tensor_watch_key(node_name, output_slot, debug_op):
     A string representing the debug watch on the tensor (i.e., the "watch
         key").
   """
-  return "%s:%s" % (get_tensor_name(node_name, output_slot), debug_op)
+  return "%s:%s" % (_get_tensor_name(node_name, output_slot), debug_op)
 
 
-def is_copy_node(node_name):
+def _is_copy_node(node_name):
   """Determine whether a node name is that of a debug Copy node.
 
   Such nodes are inserted by TensorFlow core upon request in
-  RunOptions.debug_tensor_watch_opts.
+  RunOptions.debug_options.debug_tensor_watch_opts.
 
   Args:
     node_name: Name of the node.
@@ -125,11 +141,11 @@ def is_copy_node(node_name):
   return node_name.startswith("__copy_")
 
 
-def is_debug_node(node_name):
+def _is_debug_node(node_name):
   """Determine whether a node name is that of a debug node.
 
   Such nodes are inserted by TensorFlow core upon request in
-  RunOptions.debug_tensor_watch_opts.
+  RunOptions.debug_options.debug_tensor_watch_opts.
 
   Args:
     node_name: Name of the node.
@@ -140,7 +156,7 @@ def is_debug_node(node_name):
   return node_name.startswith("__dbg_")
 
 
-def parse_debug_node_name(node_name):
+def _parse_debug_node_name(node_name):
   """Parse the name of a debug node.
 
   Args:
@@ -198,12 +214,16 @@ def has_inf_or_nan(datum, tensor):
     (bool) True if and only if tensor consists of any nan or inf values.
   """
 
-  _ = datum  # Datum metadata is unused in this predicte.
+  _ = datum  # Datum metadata is unused in this predicate.
   if tensor is None:
     # Uninitialized tensor doesn't have bad numerical values.
     return False
-  else:
+  elif (np.issubdtype(tensor.dtype, np.float) or
+        np.issubdtype(tensor.dtype, np.complex) or
+        np.issubdtype(tensor.dtype, np.integer)):
     return np.any(np.isnan(tensor)) or np.any(np.isinf(tensor))
+  else:
+    return False
 
 
 class DebugTensorDatum(object):
@@ -282,7 +302,7 @@ class DebugTensorDatum(object):
 
   @property
   def tensor_name(self):
-    return get_tensor_name(self.node_name, self.output_slot)
+    return _get_tensor_name(self.node_name, self.output_slot)
 
   @property
   def watch_key(self):
@@ -291,7 +311,8 @@ class DebugTensorDatum(object):
     Returns:
       A watch key, in the form of <tensor_name>:<debug_op>.
     """
-    return get_tensor_watch_key(self.node_name, self.output_slot, self.debug_op)
+    return _get_tensor_watch_key(self.node_name, self.output_slot,
+                                 self.debug_op)
 
   @property
   def file_path(self):
@@ -322,22 +343,43 @@ class DebugDumpDir(object):
          that do not conform to the canonical dump file naming pattern.
     """
 
-    if not os.path.isdir(dump_root):
+    if not gfile.IsDirectory(dump_root):
       raise IOError("Dump root directory %s does not exist" % dump_root)
 
     self._dump_root = dump_root
     self._dump_tensor_data = []
+    dump_graph_file_paths = []
 
-    for root, _, files in os.walk(self._dump_root):
+    # A map from node name to debug watches.
+    # The key is the watched node name.
+    # The value is a dictionary.
+    #   Of this dictionary, the key is the watched_output_slot.
+    #   The value is a set of debug ops watching this output slot.
+    self._debug_watches = collections.defaultdict(
+        lambda: collections.defaultdict(set))
+
+    for root, _, files in gfile.Walk(self._dump_root):
       for f in files:
+        if _is_graph_file(f):
+          dump_graph_file_paths.append(os.path.join(self._dump_root, root, f))
+          continue
+
         if f.count("_") < 3:
           raise ValueError(
               "Dump file path does not conform to the naming pattern: %s" % f)
 
         debug_dump_rel_path = os.path.join(
             os.path.relpath(root, self._dump_root), f)
-        self._dump_tensor_data.append(
-            DebugTensorDatum(self._dump_root, debug_dump_rel_path))
+        datum = DebugTensorDatum(self._dump_root, debug_dump_rel_path)
+        self._dump_tensor_data.append(datum)
+
+        # Attempt to load the debug watches from the tensor dump files first,
+        # before loading the full set of debug watches from the partition
+        # graphs as done further below.
+        # This is necessary because sometimes the partition graphs may not be
+        # available, e.g., when the run errors out.
+        self._debug_watches[datum.node_name][datum.output_slot].add(
+            datum.debug_op)
 
     # Sort the data by ascending timestamp.
     # This sorting order reflects the order in which the TensorFlow
@@ -383,13 +425,20 @@ class DebugDumpDir(object):
     self._devices = None
     self._node_devices = None
     self._node_op_types = None
-    self._debug_watches = None
 
     # Check the dump data against partition executor graphs.
     if partition_graphs:
       self._load_partition_graphs(partition_graphs)
+    elif dump_graph_file_paths:
+      # In case partition graphs are not available from arguments, load them
+      # from the dump directory.
+      dump_graph_defs = [
+          _load_graph_def_from_event_file(dump_file_path)
+          for dump_file_path in dump_graph_file_paths
+      ]
+      self._load_partition_graphs(dump_graph_defs)
 
-    if (partition_graphs is not None) and validate:
+    if (self._partition_graphs is not None) and validate:
       self._validate_dump_with_graphs()
 
   @property
@@ -448,13 +497,6 @@ class DebugDumpDir(object):
     # A map from node name to control recipients of the node.
     self._node_ctrl_recipients = {}
 
-    # A map from node name to debug watches.
-    # The key is the watched node name.
-    # The value is a dictionary.
-    #   Of this dictionary, the key is the watched_output_slot.
-    #   The value is a list of debug ops watching this output slot.
-    self._debug_watches = {}
-
     # A map from node name to devices (as indices to self._devices)
     self._devices = []
     self._node_devices = {}
@@ -467,24 +509,15 @@ class DebugDumpDir(object):
 
     for pg in self._partition_graphs:
       for node in pg.node:
-        if is_debug_node(node.name):
+        if _is_debug_node(node.name):
           # This is a debug node. Parse the node name and retrieve the
           # information about debug watches on tensors. But do not include
           # the node in the graph.
           (watched_node_name, watched_output_slot, _,
-           debug_op) = parse_debug_node_name(node.name)
+           debug_op) = _parse_debug_node_name(node.name)
 
-          if watched_node_name not in self._debug_watches:
-            self._debug_watches[
-                watched_node_name] = {watched_output_slot: [debug_op]}
-          else:
-            if watched_output_slot not in self._debug_watches[
-                watched_node_name]:
-              self._debug_watches[watched_node_name][
-                  watched_output_slot] = [debug_op]
-            else:
-              self._debug_watches[watched_node_name][watched_node_name].append(
-                  debug_op)
+          self._debug_watches[watched_node_name][watched_output_slot].add(
+              debug_op)
 
           continue
 
@@ -507,7 +540,7 @@ class DebugDumpDir(object):
         self._node_op_types[node.name] = node.op
 
         for inp in node.input:
-          if is_copy_node(inp) and node.op == "_Send":
+          if _is_copy_node(inp) and node.op == "_Send":
             copy_send_nodes.append(node.name)
 
           if inp.startswith("^"):
@@ -524,14 +557,14 @@ class DebugDumpDir(object):
       if node in copy_send_nodes:
         continue
 
-      if is_copy_node(node):
+      if _is_copy_node(node):
         copy_nodes.append(node)
 
       inputs = self._node_inputs[node]
 
       for i in xrange(len(inputs)):
         inp = inputs[i]
-        if is_copy_node(inp):
+        if _is_copy_node(inp):
           # Find the input to the Copy node, which should be the original
           # input to the node.
           orig_inp = self._node_inputs[inp][0]
@@ -556,7 +589,7 @@ class DebugDumpDir(object):
       ctrl_inputs = self._node_ctrl_inputs[node]
       debug_op_inputs = []
       for ctrl_inp in ctrl_inputs:
-        if is_debug_node(ctrl_inp):
+        if _is_debug_node(ctrl_inp):
           debug_op_inputs.append(ctrl_inp)
       for debug_op_inp in debug_op_inputs:
         ctrl_inputs.remove(debug_op_inp)
@@ -635,6 +668,10 @@ class DebugDumpDir(object):
             del recipient_pending_inputs[:]
           else:
             del recipient_pending_inputs[recipient_pending_inputs.index(node)]
+
+  def loaded_partition_graphs(self):
+    """Test whether partition graphs have been loaded."""
+    return self._partition_graphs is not None
 
   def partition_graphs(self):
     """Get the partition graphs.
@@ -922,7 +959,7 @@ class DebugDumpDir(object):
       debug_ops = self._debug_watches[node_name][watched_slot]
       for debug_op in debug_ops:
         watch_keys.append(
-            get_tensor_watch_key(node_name, watched_slot, debug_op))
+            _get_tensor_watch_key(node_name, watched_slot, debug_op))
 
     return watch_keys
 
@@ -987,7 +1024,7 @@ class DebugDumpDir(object):
       ValueError: If the tensor does not exist in the debub dump data.
     """
 
-    watch_key = get_tensor_watch_key(node_name, output_slot, debug_op)
+    watch_key = _get_tensor_watch_key(node_name, output_slot, debug_op)
     if watch_key not in self._watch_key_to_datum:
       raise ValueError("Watch key \"%s\" does not exist in the debug dump" %
                        watch_key)
@@ -1012,7 +1049,7 @@ class DebugDumpDir(object):
       ValueError: If the tensor does not exist in the debub dump data.
     """
 
-    watch_key = get_tensor_watch_key(node_name, output_slot, debug_op)
+    watch_key = _get_tensor_watch_key(node_name, output_slot, debug_op)
     if watch_key not in self._watch_key_to_datum:
       raise ValueError("Watch key \"%s\" does not exist in the debug dump" %
                        watch_key)
@@ -1039,7 +1076,7 @@ class DebugDumpDir(object):
       ValueError: If the tensor does not exist in the debub dump data.
     """
 
-    watch_key = get_tensor_watch_key(node_name, output_slot, debug_op)
+    watch_key = _get_tensor_watch_key(node_name, output_slot, debug_op)
     if watch_key not in self._watch_key_to_datum:
       raise ValueError("Watch key \"%s\" does not exist in the debug dump" %
                        watch_key)

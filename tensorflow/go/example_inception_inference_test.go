@@ -15,20 +15,26 @@
 package tensorflow_test
 
 import (
+	"archive/zip"
 	"bufio"
+	"flag"
 	"fmt"
-	"image"
-	_ "image/jpeg"
+	"io"
 	"io/ioutil"
 	"log"
+	"net/http"
 	"os"
+	"path/filepath"
 
+	"github.com/tensorflow/tensorflow/tensorflow/go/op"
 	tf "github.com/tensorflow/tensorflow/tensorflow/go"
 )
 
 func Example() {
 	// An example for using the TensorFlow Go API for image recognition
 	// using a pre-trained inception model (http://arxiv.org/abs/1512.00567).
+	//
+	// Sample usage: <program> -dir=/tmp/modeldir -image=/path/to/some/jpeg
 	//
 	// The pre-trained model takes input in the form of a 4-dimensional
 	// tensor with shape [ BATCH_SIZE, IMAGE_HEIGHT, IMAGE_WIDTH, 3 ],
@@ -48,24 +54,27 @@ func Example() {
 	// This example:
 	// - Loads the serialized representation of the pre-trained model into a Graph
 	// - Creates a Session to execute operations on the Graph
-	// - Converts an image file to a Tensor to provide as input for Graph execution
-	// - Exectues the graph and prints out the label with the highest probability
-	const (
-		// Path to a pre-trained inception model.
-		// The two files are extracted from a zip archive as so:
-		/*
-		   curl -L https://storage.googleapis.com/download.tensorflow.org/models/inception5h.zip -o /tmp/inception5h.zip
-		   unzip /tmp/inception5h.zip -d /tmp
-		*/
-		modelFile  = "/tmp/tensorflow_inception_graph.pb"
-		labelsFile = "/tmp/imagenet_comp_graph_label_strings.txt"
-
-		// Image file to "recognize".
-		testImageFilename = "/tmp/test.jpg"
-	)
-
+	// - Converts an image file to a Tensor to provide as input to a Session run
+	// - Executes the Session and prints out the label with the highest probability
+	//
+	// To convert an image file to a Tensor suitable for input to the Inception model,
+	// this example:
+	// - Constructs another TensorFlow graph to normalize the image into a
+	//   form suitable for the model (for example, resizing the image)
+	// - Creates an executes a Session to obtain a Tensor in this normalized form.
+	modeldir := flag.String("dir", "", "Directory containing the trained model files. The directory will be created and the model downloaded into it if necessary")
+	imagefile := flag.String("image", "", "Path of a JPEG-image to extract labels for")
+	flag.Parse()
+	if *modeldir == "" || *imagefile == "" {
+		flag.Usage()
+		return
+	}
 	// Load the serialized GraphDef from a file.
-	model, err := ioutil.ReadFile(modelFile)
+	modelfile, labelsfile, err := modelFiles(*modeldir)
+	if err != nil {
+		log.Fatal(err)
+	}
+	model, err := ioutil.ReadFile(modelfile)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -83,11 +92,11 @@ func Example() {
 	}
 	defer session.Close()
 
-	// Run inference on testImageFilename.
+	// Run inference on *imageFile.
 	// For multiple images, session.Run() can be called in a loop (and
-	// concurrently). Furthermore, images can be batched together since the
-	// model accepts batches of image data as input.
-	tensor, err := makeTensorFromImageForInception(testImageFilename)
+	// concurrently). Alternatively, images can be batched since the model
+	// accepts batches of image data as input.
+	tensor, err := makeTensorFromImage(*imagefile)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -106,7 +115,7 @@ func Example() {
 	// labels for each image in the "batch". The batch size was 1.
 	// Find the most probably label index.
 	probabilities := output[0].Value().([][]float32)[0]
-	printBestLabel(probabilities, labelsFile)
+	printBestLabel(probabilities, labelsfile)
 }
 
 func printBestLabel(probabilities []float32, labelsFile string) {
@@ -116,8 +125,8 @@ func printBestLabel(probabilities []float32, labelsFile string) {
 			bestIdx = i
 		}
 	}
-	// Found a best match, now read the string from the labelsFile where
-	// there is one line per label.
+	// Found the best match. Read the string from labelsFile, which
+	// contains one line per label.
 	file, err := os.Open(labelsFile)
 	if err != nil {
 		log.Fatal(err)
@@ -134,52 +143,147 @@ func printBestLabel(probabilities []float32, labelsFile string) {
 	fmt.Printf("BEST MATCH: (%2.0f%% likely) %s\n", probabilities[bestIdx]*100.0, labels[bestIdx])
 }
 
-// Given an image stored in filename, returns a Tensor which is suitable for
-// providing the image data to the pre-defined model.
-func makeTensorFromImageForInception(filename string) (*tf.Tensor, error) {
+// Convert the image in filename to a Tensor suitable as input to the Inception model.
+func makeTensorFromImage(filename string) (*tf.Tensor, error) {
+	bytes, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+	// DecodeJpeg uses a scalar String-valued tensor as input.
+	tensor, err := tf.NewTensor(string(bytes))
+	if err != nil {
+		return nil, err
+	}
+	// Construct a graph to normalize the image
+	graph, input, output, err := constructGraphToNormalizeImage()
+	if err != nil {
+		return nil, err
+	}
+	// Execute that graph to normalize this one image
+	session, err := tf.NewSession(graph, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer session.Close()
+	normalized, err := session.Run(
+		map[tf.Output]*tf.Tensor{input: tensor},
+		[]tf.Output{output},
+		nil)
+	if err != nil {
+		return nil, err
+	}
+	return normalized[0], nil
+}
+
+// The inception model takes as input the image described by a Tensor in a very
+// specific normalized format (a particular image size, shape of the input tensor,
+// normalized pixel values etc.).
+//
+// This function constructs a graph of TensorFlow operations which takes as
+// input a JPEG-encoded string and returns a tensor suitable as input to the
+// inception model.
+func constructGraphToNormalizeImage() (graph *tf.Graph, input, output tf.Output, err error) {
+	// Some constants specific to the pre-trained model at:
+	// https://storage.googleapis.com/download.tensorflow.org/models/inception5h.zip
+	//
+	// - The model was trained after with images scaled to 224x224 pixels.
+	// - The colors, represented as R, G, B in 1-byte each were converted to
+	//   float using (value - Mean)/Scale.
 	const (
-		// Some constants specific to the pre-trained model at:
-		// https://storage.googleapis.com/download.tensorflow.org/models/inception5h.zip
-		//
-		// - The model was trained after with images scaled to 224x224 pixels.
-		// - The colors, represented as R, G, B in 1-byte each were converted to
-		//   float using (value - Mean)/Std.
-		//
-		// If using a different pre-trained model, the values will have to be adjusted.
-		H, W = 224, 224
-		Mean = 117
-		Std  = float32(1)
+		H, W  = 224, 224
+		Mean  = float32(117)
+		Scale = float32(1)
 	)
-	file, err := os.Open(filename)
-	if err != nil {
-		return nil, err
+	// - input is a String-Tensor, where the string the JPEG-encoded image.
+	// - The inception model takes a 4D tensor of shape
+	//   [BatchSize, Height, Width, Colors=3], where each pixel is
+	//   represented as a triplet of floats
+	// - Apply normalization on each pixel and use ExpandDims to make
+	//   this single image be a "batch" of size 1 for ResizeBilinear.
+	s := op.NewScope()
+	input = op.Placeholder(s, tf.String)
+	output = op.Div(s,
+		op.Sub(s,
+			op.ResizeBilinear(s,
+				op.ExpandDims(s,
+					op.Cast(s,
+						op.DecodeJpeg(s, input, op.DecodeJpegChannels(3)), tf.Float),
+					op.Const(s.SubScope("make_batch"), int32(0))),
+				op.Const(s.SubScope("size"), []int32{H, W})),
+			op.Const(s.SubScope("mean"), Mean)),
+		op.Const(s.SubScope("scale"), Scale))
+	graph, err = s.Finalize()
+	return graph, input, output, err
+}
+
+func modelFiles(dir string) (modelfile, labelsfile string, err error) {
+	const URL = "https://storage.googleapis.com/download.tensorflow.org/models/inception5h.zip"
+	var (
+		model   = filepath.Join(dir, "tensorflow_inception_graph.pb")
+		labels  = filepath.Join(dir, "imagenet_comp_graph_label_strings.txt")
+		zipfile = filepath.Join(dir, "inception5h.zip")
+	)
+	if filesExist(model, labels) == nil {
+		return model, labels, nil
 	}
-	defer file.Close()
-	img, _, err := image.Decode(file)
-	if err != nil {
-		return nil, err
+	log.Println("Did not find model in", dir, "downloading from", URL)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", "", err
 	}
-	sz := img.Bounds().Size()
-	if sz.X != W || sz.Y != H {
-		return nil, fmt.Errorf("input image is required to be %dx%d pixels, was %dx%d", W, H, sz.X, sz.Y)
+	if err := download(URL, zipfile); err != nil {
+		return "", "", fmt.Errorf("failed to download %v - %v", URL, err)
 	}
-	// 4-dimensional input:
-	// - 1st dimension: Batch size (the model takes a batch of images as
-	//                  input, here the "batch size" is 1)
-	// - 2nd dimension: Rows of the image
-	// - 3rd dimension: Columns of the row
-	// - 4th dimension: Colors of the pixel as (B, G, R)
-	// Thus, the shape is [1, 224, 224, 3]
-	var ret [1][H][W][3]float32
-	for y := 0; y < H; y++ {
-		for x := 0; x < W; x++ {
-			px := x + img.Bounds().Min.X
-			py := y + img.Bounds().Min.Y
-			r, g, b, _ := img.At(px, py).RGBA()
-			ret[0][y][x][0] = float32((int(b>>8) - Mean)) / Std
-			ret[0][y][x][1] = float32((int(g>>8) - Mean)) / Std
-			ret[0][y][x][2] = float32((int(r>>8) - Mean)) / Std
+	if err := unzip(dir, zipfile); err != nil {
+		return "", "", fmt.Errorf("failed to extract contents from model archive: %v", err)
+	}
+	os.Remove(zipfile)
+	return model, labels, filesExist(model, labels)
+}
+
+func filesExist(files ...string) error {
+	for _, f := range files {
+		if _, err := os.Stat(f); err != nil {
+			return fmt.Errorf("unable to stat %s: %v", f, err)
 		}
 	}
-	return tf.NewTensor(ret)
+	return nil
+}
+
+func download(URL, filename string) error {
+	resp, err := http.Get(URL)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	file, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	_, err = io.Copy(file, resp.Body)
+	return err
+}
+
+func unzip(dir, zipfile string) error {
+	r, err := zip.OpenReader(zipfile)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+	for _, f := range r.File {
+		src, err := f.Open()
+		if err != nil {
+			return err
+		}
+		log.Println("Extracting", f.Name)
+		dst, err := os.OpenFile(filepath.Join(dir, f.Name), os.O_WRONLY|os.O_CREATE, 0644)
+		if err != nil {
+			return err
+		}
+		if _, err := io.Copy(dst, src); err != nil {
+			return err
+		}
+		dst.Close()
+	}
+	return nil
 }

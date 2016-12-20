@@ -83,6 +83,13 @@ if [[ "${CONTAINER_TYPE}" == "cmake" ]]; then
   CI_COMMAND_PREFIX=""
 fi
 
+# Use nvidia-docker if the container is GPU.
+if [[ "${CONTAINER_TYPE}" == "gpu" ]]; then
+  DOCKER_BINARY="nvidia-docker"
+else
+  DOCKER_BINARY="docker"
+fi
+
 # Helper function to traverse directories up until given file is found.
 function upsearch () {
   test / == "$PWD" && return || \
@@ -95,17 +102,9 @@ function upsearch () {
 WORKSPACE="${WORKSPACE:-$(upsearch WORKSPACE)}"
 BUILD_TAG="${BUILD_TAG:-tf_ci}"
 
-
 # Add extra params for cuda devices and libraries for GPU container.
-if [ "${CONTAINER_TYPE}" == "gpu" ]; then
-  devices=$(\ls /dev/nvidia* | xargs -I{} echo '--device {}:{}')
-  libs=$(\ls /usr/lib/x86_64-linux-gnu/libcuda.* | xargs -I{} echo '-v {}:{}')
-  GPU_EXTRA_PARAMS="${devices} ${libs}"
-
-  # GPU pip tests-on-install should avoid using concurrent jobs due to GPU
-  # resource contention
-  GPU_EXTRA_PARAMS="${GPU_EXTRA_PARAMS} -e TF_BUILD_SERIAL_INSTALL_TESTS=1"
-else
+# And clear them if we are not building for GPU.
+if [ "${CONTAINER_TYPE}" != "gpu" ]; then
   GPU_EXTRA_PARAMS=""
 fi
 
@@ -146,12 +145,12 @@ mkdir -p ${WORKSPACE}/bazel-ci_build-cache
 # By default we cleanup - remove the container once it finish running (--rm)
 # and share the PID namespace (--pid=host) so the process inside does not have
 # pid 1 and SIGKILL is propagated to the process inside (jenkins can kill it).
-docker run --rm --pid=host \
+${DOCKER_BINARY} run --rm --pid=host \
     -v ${WORKSPACE}/bazel-ci_build-cache:${WORKSPACE}/bazel-ci_build-cache \
     -e "CI_BUILD_HOME=${WORKSPACE}/bazel-ci_build-cache" \
-    -e "CI_BUILD_USER=$(id -u --name)" \
+    -e "CI_BUILD_USER=$(id -u -n)" \
     -e "CI_BUILD_UID=$(id -u)" \
-    -e "CI_BUILD_GROUP=$(id -g --name)" \
+    -e "CI_BUILD_GROUP=$(id -g -n)" \
     -e "CI_BUILD_GID=$(id -g)" \
     -e "CI_TENSORFLOW_SUBMODULE_PATH=${CI_TENSORFLOW_SUBMODULE_PATH}" \
     -v ${WORKSPACE}:/workspace \

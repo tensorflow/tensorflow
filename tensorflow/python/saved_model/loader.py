@@ -26,9 +26,8 @@ load and the location of the SavedModel.
 Upon a load, the subset of variables and assets supplied as part of the specific
 meta graph def, will be restored into the supplied session. The values of the
 variables though will correspond to the saved values from the first meta graph
-added to the SavedModel using `add_graph_and_variables(...)` in `builder.py`.
-
-TODO(sukritiramesh): Add support for a single init or main op to run upon load.
+added to the SavedModel using `add_meta_graph_and_variables(...)` in
+`builder.py`.
 
 Typical usage:
 ```python
@@ -37,15 +36,16 @@ builder = saved_model_builder.SavedModelBuilder(export_dir)
 
 with tf.Session(graph=tf.Graph()) as sess:
   ...
-  builder.add_graph_and_variables(sess,
-                                  ["foo-tag"],
-                                  signature_def_map=foo_signatures,
-                                  asset_collection=foo_assets)
+  builder.add_meta_graph_and_variables(sess,
+                                       ["foo-tag"],
+                                       signature_def_map=foo_signatures,
+                                       assets_collection=foo_assets)
 ...
 
 with tf.Session(graph=tf.Graph()) as sess:
   ...
-  builder.add_graph(["bar-tag", "baz-tag"])
+  builder.add_meta_graph(["bar-tag", "baz-tag"],
+                         assets_collection=bar_baz_assets)
 ...
 
 builder.save()
@@ -62,8 +62,10 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import tensorflow as tf
 
 from google.protobuf import text_format
+from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.saved_model import constants
@@ -116,6 +118,104 @@ def _parse_saved_model(export_dir):
   return saved_model
 
 
+def _get_asset_tensors(export_dir, meta_graph_def_to_load):
+  """Gets the asset tensors, if defined in the meta graph def to load.
+
+  Args:
+    export_dir: Directory where the SavedModel is located.
+    meta_graph_def_to_load: The meta graph def from the SavedModel to be loaded.
+
+  Returns:
+    A dictionary of asset tensors, keyed by the name of the asset tensor. The
+    value in the map corresponds to the absolute path of the asset file.
+  """
+  # Collection-def that may contain the assets key.
+  collection_def = meta_graph_def_to_load.collection_def
+
+  asset_tensor_dict = {}
+  if constants.ASSETS_KEY in collection_def:
+    # Location of the assets for SavedModel.
+    assets_directory = os.path.join(
+        compat.as_bytes(export_dir),
+        compat.as_bytes(constants.ASSETS_DIRECTORY))
+    assets_any_proto = collection_def[constants.ASSETS_KEY].any_list.value
+    # Process each asset and add it to the asset tensor dictionary.
+    for asset_any_proto in assets_any_proto:
+      asset_proto = meta_graph_pb2.AssetFileDef()
+      asset_any_proto.Unpack(asset_proto)
+      asset_tensor_dict[asset_proto.tensor_info.name] = os.path.join(
+          compat.as_bytes(assets_directory),
+          compat.as_bytes(asset_proto.filename))
+  return asset_tensor_dict
+
+
+def _get_main_op_tensor(meta_graph_def_to_load):
+  """Gets the main op tensor, if one exists.
+
+  Args:
+    meta_graph_def_to_load: The meta graph def from the SavedModel to be loaded.
+
+  Returns:
+    The main op tensor, if it exists and `None` otherwise.
+
+  Raises:
+    RuntimeError: If the collection def corresponding to the main op key has
+        other than exactly one tensor.
+  """
+  collection_def = meta_graph_def_to_load.collection_def
+  main_op_tensor = None
+  if constants.MAIN_OP_KEY in collection_def:
+    main_ops = collection_def[constants.MAIN_OP_KEY].node_list.value
+    if len(main_ops) != 1:
+      raise RuntimeError("Expected exactly one SavedModel main op.")
+    main_op_tensor = tf.get_collection(constants.MAIN_OP_KEY)[0]
+  return main_op_tensor
+
+
+def _get_legacy_init_op_tensor(meta_graph_def_to_load):
+  """Gets the legacy init op tensor, if one exists.
+
+  Args:
+    meta_graph_def_to_load: The meta graph def from the SavedModel to be loaded.
+
+  Returns:
+    The legacy init op tensor, if it exists and `None` otherwise.
+
+  Raises:
+    RuntimeError: If the collection def corresponding to the legacy init op key
+        has other than exactly one tensor.
+  """
+  collection_def = meta_graph_def_to_load.collection_def
+  legacy_init_op_tensor = None
+  if constants.LEGACY_INIT_OP_KEY in collection_def:
+    legacy_init_ops = collection_def[
+        constants.LEGACY_INIT_OP_KEY].node_list.value
+    if len(legacy_init_ops) != 1:
+      raise RuntimeError("Expected exactly one legacy serving init op.")
+    legacy_init_op_tensor = tf.get_collection(constants.LEGACY_INIT_OP_KEY)[0]
+  return legacy_init_op_tensor
+
+
+def maybe_saved_model_directory(export_dir):
+  """Checks whether the provided export directory could contain a SavedModel.
+
+  Note that the method does not load any data by itself. If the method returns
+  `false`, the export directory definitely does not contain a SavedModel. If the
+  method returns `true`, the export directory may contain a SavedModel but
+  provides no guarantee that it can be loaded.
+
+  Args:
+    export_dir: Absolute string path to possible export location. For example,
+                '/my/foo/model'.
+
+  Returns:
+    True if the export directory contains SavedModel files, False otherwise.
+  """
+  txt_path = os.path.join(export_dir, constants.SAVED_MODEL_FILENAME_PBTXT)
+  pb_path = os.path.join(export_dir, constants.SAVED_MODEL_FILENAME_PB)
+  return (file_io.file_exists(txt_path) or file_io.file_exists(pb_path))
+
+
 def load(sess, tags, export_dir):
   """Loads the model from a SavedModel as specified by tags.
 
@@ -128,7 +228,7 @@ def load(sess, tags, export_dir):
         to be loaded are located.
 
   Returns:
-    The `MetaGraphDef` protocol buffer loaloadded in the provided session. This
+    The `MetaGraphDef` protocol buffer loaded in the provided session. This
     can be used to further extract signature-defs, collection-defs, etc.
 
   Raises:
@@ -154,10 +254,22 @@ def load(sess, tags, export_dir):
   variables_path = os.path.join(
       compat.as_bytes(export_dir),
       compat.as_bytes(constants.VARIABLES_DIRECTORY),
-      compat.as_bytes(constants.VARIABLES_FILENAME_SHARDED))
+      compat.as_bytes(constants.VARIABLES_FILENAME))
 
   # Restore the variables using the built saver in the provided session.
   saver.restore(sess, variables_path)
 
-  # Return the meta graph def that was loaded into the session.
+  # Get asset tensors, if any.
+  asset_tensors_dictionary = _get_asset_tensors(export_dir,
+                                                meta_graph_def_to_load)
+
+  main_op_tensor = _get_main_op_tensor(meta_graph_def_to_load)
+  if main_op_tensor is not None:
+    sess.run(fetches=[main_op_tensor], feed_dict=asset_tensors_dictionary)
+  else:
+    legacy_init_op_tensor = _get_legacy_init_op_tensor(meta_graph_def_to_load)
+    if legacy_init_op_tensor is not None:
+      sess.run(fetches=[legacy_init_op_tensor],
+               feed_dict=asset_tensors_dictionary)
+
   return meta_graph_def_to_load

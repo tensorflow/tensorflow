@@ -28,6 +28,9 @@ import time
 import tensorflow as tf
 
 from tensorflow.contrib import testing
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import debug_pb2
+from tensorflow.python.framework import ops
 from tensorflow.python.training import monitored_session
 
 
@@ -41,6 +44,7 @@ class ScaffoldTest(tf.test.TestCase):
       self.assertEqual(None, scaffold.init_feed_dict)
       self.assertEqual(None, scaffold.init_fn)
       self.assertEqual(None, scaffold.ready_op)
+      self.assertEqual(None, scaffold.ready_for_local_init_op)
       self.assertEqual(None, scaffold.local_init_op)
       self.assertEqual(None, scaffold.saver)
 
@@ -48,17 +52,25 @@ class ScaffoldTest(tf.test.TestCase):
     with tf.Graph().as_default():
       scaffold = tf.train.Scaffold()
       tf.Variable(1, name='my_var')
+      tf.Variable(2, name='my_local_var',
+                  collections=[ops.GraphKeys.LOCAL_VARIABLES])
       scaffold.finalize()
       self.assertTrue(isinstance(scaffold.init_op, tf.Operation))
       self.assertEqual(None, scaffold.init_feed_dict)
       self.assertEqual(None, scaffold.init_fn)
       self.assertTrue(isinstance(scaffold.ready_op, tf.Tensor))
+      self.assertTrue(isinstance(scaffold.ready_for_local_init_op, tf.Tensor))
       self.assertTrue(isinstance(scaffold.local_init_op, tf.Operation))
       self.assertTrue(isinstance(scaffold.saver, tf.train.Saver))
       with self.test_session() as sess:
-        self.assertTrue(b'my_var' in sess.run(scaffold.ready_op))
-        sess.run([scaffold.init_op, scaffold.local_init_op])
-        self.assertEquals(0, len(sess.run(scaffold.ready_op)))
+        self.assertItemsEqual([b'my_var', b'my_local_var'],
+                              sess.run(scaffold.ready_op))
+        self.assertItemsEqual([b'my_var'],
+                              sess.run(scaffold.ready_for_local_init_op))
+        sess.run(scaffold.init_op)
+        self.assertEqual(0, len(sess.run(scaffold.ready_for_local_init_op)))
+        sess.run(scaffold.local_init_op)
+        self.assertEqual(0, len(sess.run(scaffold.ready_op)))
 
   def test_defaults_no_variables(self):
     with tf.Graph().as_default():
@@ -69,6 +81,7 @@ class ScaffoldTest(tf.test.TestCase):
       self.assertEqual(None, scaffold.init_feed_dict)
       self.assertEqual(None, scaffold.init_fn)
       self.assertTrue(isinstance(scaffold.ready_op, tf.Tensor))
+      self.assertTrue(isinstance(scaffold.ready_for_local_init_op, tf.Tensor))
       self.assertTrue(isinstance(scaffold.local_init_op, tf.Operation))
       self.assertTrue(isinstance(scaffold.saver, tf.train.Saver))
 
@@ -81,6 +94,8 @@ class ScaffoldTest(tf.test.TestCase):
       scaffold2.finalize()
       self.assertEqual(scaffold1.init_op, scaffold2.init_op)
       self.assertEqual(scaffold1.ready_op, scaffold2.ready_op)
+      self.assertEqual(scaffold1.ready_for_local_init_op,
+                       scaffold2.ready_for_local_init_op)
       self.assertEqual(scaffold1.local_init_op, scaffold2.local_init_op)
       self.assertEqual(scaffold1.saver, scaffold2.saver)
 
@@ -101,14 +116,16 @@ class ScaffoldTest(tf.test.TestCase):
           init_feed_dict=3,
           init_fn=lambda scaffold, sess: 4,
           ready_op=5,
-          local_init_op=6,
+          ready_for_local_init_op=6,
+          local_init_op=7,
           saver=saver)
       scaffold.finalize()
       self.assertEqual(2, scaffold.init_op)
       self.assertEqual(3, scaffold.init_feed_dict)
       self.assertTrue(callable(scaffold.init_fn))
       self.assertEqual(5, scaffold.ready_op)
-      self.assertEqual(6, scaffold.local_init_op)
+      self.assertEqual(6, scaffold.ready_for_local_init_op)
+      self.assertEqual(7, scaffold.local_init_op)
       self.assertEqual(saver, scaffold.saver)
 
   def test_graph_is_finalized(self):
@@ -139,6 +156,36 @@ def _test_dir(temp_dir, test_name):
   return test_dir
 
 
+class FakeHook(tf.train.SessionRunHook):
+
+  def __init__(self):
+    self.should_stop = False
+    self.request = None
+    self.call_counter = Counter()
+    self.last_run_context = None
+    self.last_run_values = None
+
+  def begin(self):
+    self.call_counter['begin'] += 1
+
+  def after_create_session(self, session):  # pylint: disable=unused-argument
+    self.call_counter['after_create_session'] += 1
+
+  def before_run(self, run_context):
+    self.call_counter['before_run'] += 1
+    self.last_run_context = run_context
+    return self.request
+
+  def after_run(self, run_context, run_values):
+    self.call_counter['after_run'] += 1
+    self.last_run_values = run_values
+    if self.should_stop:
+      run_context.request_stop()
+
+  def end(self, session):
+    self.call_counter['end'] += 1
+
+
 class MonitoredTrainingSessionTest(tf.test.TestCase):
   """Tests MonitoredTrainingSession."""
 
@@ -161,16 +208,38 @@ class MonitoredTrainingSessionTest(tf.test.TestCase):
     logdir = _test_dir(self.get_temp_dir(), 'test_summaries')
     with tf.Graph().as_default():
       gstep = tf.contrib.framework.get_or_create_global_step()
-      do_step = tf.assign_add(gstep, 1)
-      tf.scalar_summary('my_summary_tag', gstep * 2)
+      new_gstep = tf.assign_add(gstep, 1)
+      tf.summary.scalar('my_summary_tag', new_gstep * 2)
       with tf.train.MonitoredTrainingSession(
           is_chief=True, checkpoint_dir=logdir) as session:
         for _ in range(101):  # 100 is default summary writing steps
-          session.run(do_step)
+          session.run(new_gstep)
     summaries = testing.latest_summaries(logdir)
     tags = [s.summary.value[0].tag for s in summaries]
     self.assertIn('my_summary_tag', tags)
     self.assertIn('global_step/sec', tags)
+
+  def test_custom_saving(self):
+    logdir = _test_dir(self.get_temp_dir(), 'test_saving_restoring_checkpoint')
+    fake_hook = FakeHook()
+    with tf.Graph().as_default():
+      gstep = tf.contrib.framework.get_or_create_global_step()
+      do_step = tf.assign_add(gstep, 1)
+      with tf.train.MonitoredTrainingSession(
+          is_chief=True,
+          checkpoint_dir=logdir,
+          chief_only_hooks=[fake_hook],
+          save_checkpoint_secs=0) as session:
+        self.assertEqual(0, session.run(gstep))
+        self.assertEqual(1, session.run(do_step))
+        self.assertEqual(2, session.run(do_step))
+
+      # Check whether custom hook called or not
+      self.assertEqual(1, fake_hook.call_counter['begin'])
+      # A restart will not find the checkpoint, since we didn't save.
+      with tf.train.MonitoredTrainingSession(
+          is_chief=True, checkpoint_dir=logdir) as session:
+        self.assertEqual(0, session.run(gstep))
 
 
 class StopAtNSession(monitored_session._WrappedSession):
@@ -440,35 +509,15 @@ class FakeSession(monitored_session._WrappedSession):
     return monitored_session._WrappedSession.run(self, fetches)
 
 
-class FakeHook(tf.train.SessionRunHook):
-
-  def __init__(self):
-    self.should_stop = False
-    self.request = None
-    self.call_counter = Counter()
-    self.last_run_context = None
-    self.last_run_values = None
-
-  def before_run(self, run_context):
-    self.call_counter['before_run'] += 1
-    self.last_run_context = run_context
-    return self.request
-
-  def after_run(self, run_context, run_values):
-    self.call_counter['after_run'] += 1
-    self.last_run_values = run_values
-    if self.should_stop:
-      run_context.request_stop()
-
-
 class HookedSessionTest(tf.test.TestCase):
+  """Tests of _HookedSession."""
 
   def testRunPassesAllArguments(self):
     with tf.Graph().as_default(), tf.Session() as sess:
       mock_run = FakeSession(sess)
       mon_sess = monitored_session._HookedSession(sess=mock_run, hooks=[])
       a_tensor = tf.constant([0], name='a_tensor')
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       output = mon_sess.run(fetches=a_tensor,
                             feed_dict='a_feed',
                             options='an_option',
@@ -487,15 +536,21 @@ class HookedSessionTest(tf.test.TestCase):
       mon_sess = monitored_session._HookedSession(
           sess=sess, hooks=[mock_hook, mock_hook2])
       a_tensor = tf.constant([0], name='a_tensor')
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       mon_sess.run(a_tensor)
 
       for hook in [mock_hook, mock_hook2]:
         self.assertEqual(
-            hook.last_run_values, tf.train.SessionRunValues(results=None))
+            hook.last_run_values,
+            tf.train.SessionRunValues(
+                results=None,
+                options=config_pb2.RunOptions(),
+                run_metadata=config_pb2.RunMetadata()))
         self.assertEqual(hook.last_run_context.original_args,
                          tf.train.SessionRunArgs(a_tensor))
         self.assertEqual(hook.last_run_context.session, sess)
+        self.assertEqual(hook.call_counter['begin'], 0)
+        self.assertEqual(hook.call_counter['after_create_session'], 0)
         self.assertEqual(hook.call_counter['before_run'], 1)
         self.assertEqual(hook.call_counter['after_run'], 1)
 
@@ -506,7 +561,7 @@ class HookedSessionTest(tf.test.TestCase):
       mon_sess = monitored_session._HookedSession(
           sess=sess, hooks=[mock_hook, mock_hook2])
       tf.constant([0], name='a_tensor')
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       mon_sess.run(fetches='a_tensor')
       self.assertFalse(mon_sess.should_stop())
@@ -526,7 +581,7 @@ class HookedSessionTest(tf.test.TestCase):
       third_tensor = tf.constant([10], name='third_tensor')
       mock_hook.request = tf.train.SessionRunArgs([another_tensor])
       mock_hook2.request = tf.train.SessionRunArgs([third_tensor])
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       output = mon_sess.run(fetches=a_tensor)
       self.assertEqual(output, [0])
@@ -550,7 +605,7 @@ class HookedSessionTest(tf.test.TestCase):
           None, feed_dict={
               b_tensor: [10]
           })
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       self.assertEqual(mon_sess.run(fetches=add_tensor), [15])
 
@@ -572,7 +627,7 @@ class HookedSessionTest(tf.test.TestCase):
           None, feed_dict={
               b_tensor: [10]
           })
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       feed_dict = {c_tensor: [20]}
       self.assertEqual(
@@ -597,7 +652,7 @@ class HookedSessionTest(tf.test.TestCase):
           None, feed_dict={
               a_tensor: [10]
           })
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       with self.assertRaisesRegexp(RuntimeError, 'Same tensor is fed'):
         mon_sess.run(fetches=add_tensor)
@@ -619,7 +674,7 @@ class HookedSessionTest(tf.test.TestCase):
           None, feed_dict={
               b_tensor: [10]
           })
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
 
       with self.assertRaisesRegexp(RuntimeError, 'Same tensor is fed'):
         mon_sess.run(fetches=add_tensor, feed_dict={b_tensor: [10]})
@@ -640,6 +695,33 @@ class RaiseOnceAtCountN(tf.train.SessionRunHook):
       self.raised = True
       raise self.ex
     return None
+
+
+class RunOptionsMetadataHook(tf.train.SessionRunHook):
+  """A hook that observes & optionally modifies RunOptions and RunMetadata."""
+
+  def __init__(self, trace_level, timeout_in_ms, output_partition_graphs,
+               debug_tensor_watch):
+    self._trace_level = trace_level
+    self._timeout_in_ms = timeout_in_ms
+    self._output_partition_graphs = output_partition_graphs
+    self._debug_tensor_watch = debug_tensor_watch
+
+    self.run_options_list = []
+    self.run_metadata_list = []
+
+  def before_run(self, run_context):
+    options = config_pb2.RunOptions(
+        trace_level=self._trace_level,
+        timeout_in_ms=self._timeout_in_ms,
+        output_partition_graphs=self._output_partition_graphs)
+    options.debug_options.debug_tensor_watch_opts.extend(
+        [self._debug_tensor_watch])
+    return tf.train.SessionRunArgs(None, None, options=options)
+
+  def after_run(self, run_context, run_values):
+    self.run_options_list.append(run_values.options)
+    self.run_metadata_list.append(run_values.run_metadata)
 
 
 class MonitoredSessionTest(tf.test.TestCase):
@@ -931,10 +1013,206 @@ class MonitoredSessionTest(tf.test.TestCase):
       self.assertTrue(session._is_closed())
 
   def test_graph(self):
-    g = tf.Graph()
-    with g.as_default():
-      session = tf.train.MonitoredSession()
-      self.assertEqual(g, session.graph)
+    with tf.Graph().as_default() as g:
+      with tf.train.MonitoredSession() as session:
+        self.assertEqual(g, session.graph)
+
+  def test_graph_finalized_during_run_unfinalized_after_exit(self):
+    with tf.Graph().as_default() as g:
+      a_var = tf.Variable(0)
+      with tf.train.MonitoredSession() as session:
+        self.assertEqual(0, session.run(a_var))
+        self.assertTrue(g.finalized)
+      self.assertFalse(g.finalized)
+
+  def test_keep_finalized_graph_as_finalized(self):
+    with tf.Graph().as_default() as g:
+      a_var = tf.Variable(0)
+      tf.train.Scaffold().finalize()
+      with tf.train.MonitoredSession() as session:
+        self.assertEqual(0, session.run(a_var))
+        self.assertTrue(g.finalized)
+      self.assertTrue(g.finalized)
+
+  def test_merge_run_options_from_hooks(self):
+    """Test for rewriting RunOptions and observing RunMetadata with hooks."""
+
+    with tf.Graph().as_default():
+      my_const = tf.constant(42, name='my_const')
+      _ = tf.constant(24, name='my_const_2')
+
+      watch_a = debug_pb2.DebugTensorWatch(
+          node_name='my_const',
+          output_slot=0,
+          debug_ops=['DebugIdentity'],
+          debug_urls=[])
+      hook_a = RunOptionsMetadataHook(2, 30000, False, watch_a)
+      watch_b = debug_pb2.DebugTensorWatch(
+          node_name='my_const_2',
+          output_slot=0,
+          debug_ops=['DebugIdentity'],
+          debug_urls=[])
+      hook_b = RunOptionsMetadataHook(3, 60000, True, watch_b)
+      with tf.train.MonitoredSession(hooks=[hook_a, hook_b]) as session:
+        self.assertEqual(42, session.run(my_const))
+
+        # trace_level=3 should have overridden trace_level=2;
+        # timeout_in_ms=60000 should have overridden 30000;
+        # output_partition_graphs=True should have overridden False.
+        # The two debug tensor watches should have been merged.
+        self.assertEqual(
+            [
+                config_pb2.RunOptions(
+                    trace_level=3,
+                    timeout_in_ms=60000,
+                    output_partition_graphs=True,
+                    debug_options=debug_pb2.DebugOptions(
+                        debug_tensor_watch_opts=[watch_a, watch_b]))
+            ],
+            hook_b.run_options_list)
+        self.assertEqual(1, len(hook_b.run_metadata_list))
+        self.assertTrue(
+            isinstance(hook_b.run_metadata_list[0], config_pb2.RunMetadata))
+        self.assertGreater(len(hook_b.run_metadata_list[0].partition_graphs), 0)
+
+  def test_merge_caller_and_hook_run_options(self):
+    """Test that RunOptions from caller and hooks can be merged properly."""
+
+    with tf.Graph().as_default():
+      my_const = tf.constant(42, name='my_const')
+      _ = tf.constant(24, name='my_const_2')
+
+      hook_watch = debug_pb2.DebugTensorWatch(
+          node_name='my_const_2',
+          output_slot=0,
+          debug_ops=['DebugIdentity'],
+          debug_urls=[])
+      hook = RunOptionsMetadataHook(2, 60000, False, hook_watch)
+      with tf.train.MonitoredSession(hooks=[hook]) as session:
+        caller_watch = debug_pb2.DebugTensorWatch(
+            node_name='my_const',
+            output_slot=0,
+            debug_ops=['DebugIdentity'],
+            debug_urls=[])
+        caller_options = config_pb2.RunOptions(
+            trace_level=3, timeout_in_ms=30000, output_partition_graphs=True)
+        caller_options.debug_options.debug_tensor_watch_opts.extend(
+            [caller_watch])
+        self.assertEqual(42, session.run(my_const, options=caller_options))
+
+        # trace_level=3 from the caller should override 2 from the hook.
+        # timeout_in_ms=60000 from the hook should override from the caller.
+        # output_partition_graph=True from the caller should override False
+        # from the hook.
+        # The two debug watches from the caller and the hook should be merged,
+        # in that order.
+        self.assertEqual(
+            [
+                config_pb2.RunOptions(
+                    trace_level=3,
+                    timeout_in_ms=60000,
+                    output_partition_graphs=True,
+                    debug_options=debug_pb2.DebugOptions(
+                        debug_tensor_watch_opts=[caller_watch, hook_watch]))
+            ],
+            hook.run_options_list)
+        self.assertEqual(1, len(hook.run_metadata_list))
+        self.assertTrue(
+            isinstance(hook.run_metadata_list[0], config_pb2.RunMetadata))
+        self.assertGreater(len(hook.run_metadata_list[0].partition_graphs), 0)
+
+
+class SingularMonitoredSessionTest(tf.test.TestCase):
+  """Tests SingularMonitoredSession."""
+
+  def test_handles_initialization(self):
+    with tf.Graph().as_default():
+      a_var = tf.Variable(0)
+      with tf.train.SingularMonitoredSession() as session:
+        # If it's not initialized, following statement raises an error.
+        self.assertEqual(0, session.run(a_var))
+
+  def test_do_not_handle_aborted_error(self):
+    with tf.Graph().as_default():
+      gstep = tf.contrib.framework.get_or_create_global_step()
+
+      class _RaiseAbortedHook(tf.train.SessionRunHook):
+
+        def before_run(self, run_context):
+          raise tf.errors.AbortedError(None, None, 'Abort')
+
+      with tf.train.SingularMonitoredSession(
+          hooks=[_RaiseAbortedHook()]) as session:
+        with self.assertRaises(tf.errors.AbortedError):
+          self.assertEqual(0, session.run(gstep))
+
+      with self.assertRaises(tf.errors.AbortedError):
+        with tf.train.SingularMonitoredSession(
+            hooks=[_RaiseAbortedHook()]) as session:
+          self.assertEqual(0, session.run(gstep))
+
+  def test_exit_cleanly_on_out_of_range_exception(self):
+    # Tests that we stop cleanly when OutOfRange is raised.
+    with tf.Graph().as_default():
+      gstep = tf.contrib.framework.get_or_create_global_step()
+      do_step = tf.assign_add(gstep, 1)
+      hook = RaiseOnceAtCountN(2, tf.errors.OutOfRangeError(None, None, 'EOI'))
+      session = tf.train.SingularMonitoredSession(hooks=[hook])
+      # session should cleanly exit from the context.
+      with session:
+        self.assertEqual(0, session.run(gstep))
+        self.assertFalse(session.should_stop())
+        # Here at step 1, the hook triggers and raises OutOfRange. The
+        # session should go into should_stop() mode. It should raise the
+        # exception. So next step should not be executed.
+        session.run(do_step)
+        self.assertTrue(False)
+      self.assertTrue(session.should_stop())
+
+  def test_regular_exception_reported_to_coord_pass_through_run(self):
+    # Tests that regular exceptions reported to the coordinator from a thread
+    # passes through a "run()" call within a "with MonitoredSession" block and
+    # set the session in stop mode.
+    with tf.Graph().as_default():
+      gstep = tf.contrib.framework.get_or_create_global_step()
+      session = tf.train.SingularMonitoredSession()
+      run_performed_without_error = False
+      with self.assertRaisesRegexp(RuntimeError, 'a thread wants to stop'):
+        with session:
+          self.assertEqual(0, session.run(gstep))
+          # Report an exception through the coordinator.
+          try:
+            raise RuntimeError('a thread wants to stop')
+          except RuntimeError as e:
+            session._coordinated_creator.coord.request_stop(e)
+          # Call run() which should perform normally.
+          self.assertEqual(0, session.run(gstep))
+          run_performed_without_error = True
+      self.assertTrue(run_performed_without_error)
+
+  def test_stop_cleanly_when_no_exception_in_with_body(self):
+    # Tests that regular exceptions pass through
+    with tf.Graph().as_default():
+      gstep = tf.contrib.framework.get_or_create_global_step()
+      do_step = tf.assign_add(gstep, 1)
+      session = tf.train.SingularMonitoredSession()
+      with session:
+        self.assertEqual(1, session.run(do_step))
+        self.assertEqual(2, session.run(do_step))
+        self.assertFalse(session.should_stop())
+      # Should have closed.
+      self.assertTrue(session.should_stop())
+      self.assertEqual(None, session.raw_session())
+
+  def test_graph(self):
+    with tf.Graph().as_default() as g:
+      with tf.train.SingularMonitoredSession() as session:
+        self.assertEqual(g, session.graph)
+
+  def test_raw_session(self):
+    with tf.Graph().as_default():
+      with tf.train.SingularMonitoredSession() as session:
+        self.assertTrue(isinstance(session.raw_session(), tf.Session))
 
 
 if __name__ == '__main__':

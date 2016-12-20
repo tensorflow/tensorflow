@@ -17,71 +17,79 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import six
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
+from google.protobuf import json_format
+from tensorflow.core.framework import summary_pb2
 from tensorflow.core.framework import types_pb2
 
 
 class ScalarSummaryTest(tf.test.TestCase):
 
-  def testDtypeErrors(self):
-    def _TryMakingScalarSummary(dtype):
-      base = dtype.base_dtype
-      if base == tf.bool:
-        v = False
-      elif base == tf.string:
-        v = ''
-      elif base.is_complex:
-        v = complex(0, 0)
-      else:
-        v = base.min
-      c = tf.constant(v, dtype)
-      return tf.summary.scalar('name', c)
+  def testScalarSummary(self):
+    with self.test_session() as s:
+      i = tf.constant(3)
+      with tf.name_scope('outer'):
+        im = tf.summary.scalar('inner', i)
+      summary_str = s.run(im)
+    summary = tf.summary.Summary()
+    summary.ParseFromString(summary_str)
+    values = summary.value
+    self.assertEqual(len(values), 1)
+    self.assertEqual(values[0].tag, 'outer/inner')
+    self.assertEqual(values[0].simple_value, 3.0)
 
-    for datatype_enum in types_pb2.DataType.values():
-      if datatype_enum == types_pb2.DT_INVALID:
-        continue
-      dtype = tf.as_dtype(datatype_enum)
-      if dtype.is_quantized:
-        # Quantized ops are funky, and not expected to work.
-        continue
-      if dtype.is_integer or dtype.is_floating:
-        _TryMakingScalarSummary(dtype)
-        # No exception should be thrown
-      else:
-        with self.assertRaises(ValueError):
-          _TryMakingScalarSummary(dtype)
+  def testSummarizingVariable(self):
+    with self.test_session() as s:
+      c = tf.constant(42.0)
+      v = tf.Variable(c)
+      ss = tf.summary.scalar('summary', v)
+      init = tf.global_variables_initializer()
+      s.run(init)
+      summ_str = s.run(ss)
+    summary = tf.summary.Summary()
+    summary.ParseFromString(summ_str)
+    self.assertEqual(len(summary.value), 1)
+    value = summary.value[0]
+    self.assertEqual(value.tag, 'summary')
+    self.assertEqual(value.simple_value, 42.0)
 
-  def testShapeErrors(self):
-    c1 = tf.constant(0)
-    c2 = tf.zeros(5)
-    c3 = tf.zeros(5, 5)
+  def testImageSummary(self):
+    with self.test_session() as s:
+      i = tf.ones((5, 4, 4, 3))
+      with tf.name_scope('outer'):
+        im = tf.summary.image('inner', i, max_outputs=3)
+      summary_str = s.run(im)
+    summary = tf.summary.Summary()
+    summary.ParseFromString(summary_str)
+    values = summary.value
+    self.assertEqual(len(values), 3)
+    tags = sorted(v.tag for v in values)
+    expected = sorted('outer/inner/image/{}'.format(i) for i in xrange(3))
+    self.assertEqual(tags, expected)
 
-    tf.summary.scalar('1', c1)
-    with self.assertRaises(ValueError):
-      tf.summary.scalar('2', c2)
-    with self.assertRaises(ValueError):
-      tf.summary.scalar('3', c3)
+  def testHistogramSummary(self):
+    with self.test_session() as s:
+      i = tf.ones((5, 4, 4, 3))
+      with tf.name_scope('outer'):
+        summ_op = tf.summary.histogram('inner', i)
+      summary_str = s.run(summ_op)
+    summary = tf.summary.Summary()
+    summary.ParseFromString(summary_str)
+    self.assertEqual(len(summary.value), 1)
+    self.assertEqual(summary.value[0].tag, 'outer/inner')
 
-  def testLabelsAdded(self):
-    c = tf.constant(0)
+  def testSummaryNameConversion(self):
+    c = tf.constant(3)
+    s = tf.summary.scalar('name with spaces', c)
+    self.assertEqual(s.op.name, 'name_with_spaces')
 
-    no_labels = tf.summary.scalar('2', c)
-    labels = tf.summary.scalar('1', c, labels=['foo'])
+    s2 = tf.summary.scalar('name with many $#illegal^: characters!', c)
+    self.assertEqual(s2.op.name, 'name_with_many___illegal___characters_')
 
-    def _GetLabels(n):
-      return n.op.get_attr('labels')
-
-    expected_label = six.b(tf.summary.SCALAR_SUMMARY_LABEL)
-    self.assertEquals(_GetLabels(no_labels), [expected_label])
-    self.assertEquals(_GetLabels(labels), [six.b('foo'), expected_label])
-
-  def testTensorSummaryOpCreated(self):
-    c = tf.constant(0)
-    s = tf.summary.scalar('', c)
-    self.assertEquals(s.op.type, 'TensorSummary')
-    self.assertEquals(s.op.inputs[0], c)
+    s3 = tf.summary.scalar('/name/with/leading/slash', c)
+    self.assertEqual(s3.op.name, 'name/with/leading/slash')
 
 
 if __name__ == '__main__':

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numbers
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -182,6 +183,9 @@ def apply_regularization(regularizer, weights_list=None):
   with ops.name_scope('get_regularization_penalty',
                       values=weights_list) as scope:
     penalties = [regularizer(w) for w in weights_list]
+    penalties = [
+        p if p is not None else constant_op.constant(0.0) for p in penalties
+    ]
     for p in penalties:
       if p.get_shape().ndims != 0:
         raise ValueError('regularizer must return a scalar Tensor instead of a '

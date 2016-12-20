@@ -27,15 +27,63 @@ from tensorflow.python.lib.io import file_io
 from tensorflow.python.saved_model import builder as saved_model_builder
 from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import loader
-from tensorflow.python.saved_model import utils
+from tensorflow.python.saved_model import main_op
+from tensorflow.python.saved_model import signature_def_utils
+from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.util import compat
 
+
+SAVED_MODEL_PATH = (
+    "cc/saved_model/testdata/half_plus_two/00000123")
 
 def tearDownModule():
   file_io.delete_recursively(tf.test.get_temp_dir())
 
 
 class SavedModelTest(tf.test.TestCase):
+
+  def _init_and_validate_variable(self, sess, variable_name, variable_value):
+    v = tf.Variable(variable_value, name=variable_name)
+    sess.run(tf.global_variables_initializer())
+    self.assertEqual(variable_value, v.eval())
+
+  def _build_asset_collection(self, asset_file_name, asset_file_contents,
+                              asset_file_tensor_name):
+    asset_filepath = os.path.join(
+        compat.as_bytes(tf.test.get_temp_dir()),
+        compat.as_bytes(asset_file_name))
+    file_io.write_string_to_file(asset_filepath, asset_file_contents)
+    asset_file_tensor = tf.constant(asset_filepath, name=asset_file_tensor_name)
+    tf.add_to_collection(tf.GraphKeys.ASSET_FILEPATHS, asset_file_tensor)
+    asset_collection = tf.get_collection(tf.GraphKeys.ASSET_FILEPATHS)
+    return asset_collection
+
+  def _validate_asset_collection(self, export_dir, graph_collection_def,
+                                 expected_asset_file_name,
+                                 expected_asset_file_contents,
+                                 expected_asset_tensor_name):
+    assets_any = graph_collection_def[constants.ASSETS_KEY].any_list.value
+    asset = meta_graph_pb2.AssetFileDef()
+    assets_any[0].Unpack(asset)
+    assets_path = os.path.join(
+        compat.as_bytes(export_dir),
+        compat.as_bytes(constants.ASSETS_DIRECTORY),
+        compat.as_bytes(expected_asset_file_name))
+    actual_asset_contents = file_io.read_file_to_string(assets_path)
+    self.assertEqual(expected_asset_file_contents,
+                     compat.as_text(actual_asset_contents))
+    self.assertEqual(expected_asset_file_name, asset.filename)
+    self.assertEqual(expected_asset_tensor_name, asset.tensor_info.name)
+
+
+  def testMaybeSavedModelDir(self):
+    base_path = tf.test.test_src_dir_path("/python/saved_model")
+    self.assertFalse(loader.maybe_saved_model_directory(base_path))
+    base_path = tf.test.test_src_dir_path(SAVED_MODEL_PATH)
+    self.assertTrue(loader.maybe_saved_model_directory(base_path))
+    base_path = "complete_garbage"
+    self.assertFalse(loader.maybe_saved_model_directory(base_path))
+
 
   def testSequence(self):
     export_dir = os.path.join(tf.test.get_temp_dir(), "test_sequence")
@@ -49,9 +97,7 @@ class SavedModelTest(tf.test.TestCase):
     # Expect an assertion error for multiple calls of
     # add_meta_graph_and_variables() since weights should be saved exactly once.
     with self.test_session(graph=tf.Graph()) as sess:
-      v = tf.Variable(42, name="v")
-      sess.run(tf.initialize_all_variables())
-      self.assertEqual(42, v.eval())
+      self._init_and_validate_variable(sess, "v", 42)
       builder.add_meta_graph_and_variables(sess, ["bar"])
       self.assertRaises(AssertionError, builder.add_meta_graph_and_variables,
                         sess, ["baz"])
@@ -64,27 +110,21 @@ class SavedModelTest(tf.test.TestCase):
     # - add with weights.
     # - a single tag (from predefined constants).
     with self.test_session(graph=tf.Graph()) as sess:
-      v = tf.Variable(42, name="v")
-      sess.run(tf.initialize_all_variables())
-      self.assertEqual(42, v.eval())
-      builder.add_meta_graph_and_variables(sess, [constants.TAG_TRAINING])
+      self._init_and_validate_variable(sess, "v", 42)
+      builder.add_meta_graph_and_variables(sess, [tag_constants.TRAINING])
 
     # Graph that updates the single variable. SavedModel invoked to:
     # - simply add the model (weights are not updated).
     # - a single tag (from predefined constants).
     with self.test_session(graph=tf.Graph()) as sess:
-      v = tf.Variable(43, name="v")
-      sess.run(tf.initialize_all_variables())
-      self.assertEqual(43, v.eval())
-      builder.add_meta_graph([constants.TAG_SERVING])
+      self._init_and_validate_variable(sess, "v", 43)
+      builder.add_meta_graph([tag_constants.SERVING])
 
     # Graph that updates the single variable. SavedModel is invoked:
     # - to add the model (weights are not updated).
     # - multiple custom tags.
     with self.test_session(graph=tf.Graph()) as sess:
-      v = tf.Variable(44, name="v")
-      sess.run(tf.initialize_all_variables())
-      self.assertEqual(44, v.eval())
+      self._init_and_validate_variable(sess, "v", 44)
       builder.add_meta_graph(["foo", "bar"])
 
     # Save the SavedModel to disk.
@@ -92,20 +132,23 @@ class SavedModelTest(tf.test.TestCase):
 
     # Restore the graph with a single predefined tag whose variables were saved.
     with self.test_session(graph=tf.Graph()) as sess:
-      loader.load(sess, [constants.TAG_TRAINING], export_dir)
-      self.assertEqual(42, tf.get_collection(tf.GraphKeys.VARIABLES)[0].eval())
+      loader.load(sess, [tag_constants.TRAINING], export_dir)
+      self.assertEqual(
+          42, tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)[0].eval())
 
     # Restore the graph with a single predefined tag whose variables were not
     # saved.
     with self.test_session(graph=tf.Graph()) as sess:
-      loader.load(sess, [constants.TAG_SERVING], export_dir)
-      self.assertEqual(42, tf.get_collection(tf.GraphKeys.VARIABLES)[0].eval())
+      loader.load(sess, [tag_constants.SERVING], export_dir)
+      self.assertEqual(
+          42, tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)[0].eval())
 
     # Restore the graph with multiple tags. Provide duplicate tags to test set
     # semantics.
     with self.test_session(graph=tf.Graph()) as sess:
       loader.load(sess, ["foo", "bar", "foo"], export_dir)
-      self.assertEqual(42, tf.get_collection(tf.GraphKeys.VARIABLES)[0].eval())
+      self.assertEqual(
+          42, tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)[0].eval())
 
     # Try restoring a graph with a non-existent tag. This should yield a runtime
     # error.
@@ -127,29 +170,22 @@ class SavedModelTest(tf.test.TestCase):
     # Graph with two variables. SavedModel invoked to:
     # - add with weights.
     with self.test_session(graph=tf.Graph()) as sess:
-      v1 = tf.Variable(1, name="v1")
-      v2 = tf.Variable(2, name="v2")
-      sess.run(tf.initialize_all_variables())
-      self.assertEqual(1, v1.eval())
-      self.assertEqual(2, v2.eval())
+      self._init_and_validate_variable(sess, "v1", 1)
+      self._init_and_validate_variable(sess, "v2", 2)
       builder.add_meta_graph_and_variables(sess, ["foo"])
 
     # Graph with a single variable (subset of the variables from the previous
     # graph whose weights were saved). SavedModel invoked to:
     # - simply add the model (weights are not updated).
     with self.test_session(graph=tf.Graph()) as sess:
-      v2 = tf.Variable(3, name="v2")
-      sess.run(tf.initialize_all_variables())
-      self.assertEqual(3, v2.eval())
+      self._init_and_validate_variable(sess, "v2", 3)
       builder.add_meta_graph(["bar"])
 
     # Graph with a single variable (disjoint set of variables from the previous
     # graph whose weights were saved). SavedModel invoked to:
     # - simply add the model (weights are not updated).
     with self.test_session(graph=tf.Graph()) as sess:
-      v3 = tf.Variable(4, name="v3")
-      sess.run(tf.initialize_all_variables())
-      self.assertEqual(4, v3.eval())
+      self._init_and_validate_variable(sess, "v3", 4)
       builder.add_meta_graph(["baz"])
 
     # Save the SavedModel to disk.
@@ -158,7 +194,7 @@ class SavedModelTest(tf.test.TestCase):
     # Restore the graph with tag "foo", whose variables were saved.
     with self.test_session(graph=tf.Graph()) as sess:
       loader.load(sess, ["foo"], export_dir)
-      collection_vars = tf.get_collection(tf.GraphKeys.VARIABLES)
+      collection_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
       self.assertEqual(len(collection_vars), 2)
       self.assertEqual(1, collection_vars[0].eval())
       self.assertEqual(2, collection_vars[1].eval())
@@ -168,7 +204,7 @@ class SavedModelTest(tf.test.TestCase):
     # checkpointed value.
     with self.test_session(graph=tf.Graph()) as sess:
       loader.load(sess, ["bar"], export_dir)
-      collection_vars = tf.get_collection(tf.GraphKeys.VARIABLES)
+      collection_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
       self.assertEqual(len(collection_vars), 1)
       self.assertEqual(2, collection_vars[0].eval())
 
@@ -179,6 +215,30 @@ class SavedModelTest(tf.test.TestCase):
       self.assertRaises(errors.NotFoundError, loader.load, sess, ["baz"],
                         export_dir)
 
+  def testNoOverwrite(self):
+    export_dir = os.path.join(tf.test.get_temp_dir(), "test_no_overwrite")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    # Graph with a single variable. SavedModel invoked to:
+    # - add with weights.
+    with self.test_session(graph=tf.Graph()) as sess:
+      self._init_and_validate_variable(sess, "v", 42)
+      builder.add_meta_graph_and_variables(sess, ["foo"])
+
+    # Save the SavedModel to disk in text format.
+    builder.save(as_text=True)
+
+    # Restore the graph with tag "foo", whose variables were saved.
+    with self.test_session(graph=tf.Graph()) as sess:
+      loader.load(sess, ["foo"], export_dir)
+      self.assertEqual(
+          42, tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)[0].eval())
+
+    # An attempt to create another builder with the same export directory should
+    # result in an assertion error.
+    self.assertRaises(AssertionError, saved_model_builder.SavedModelBuilder,
+                      export_dir)
+
   def testSaveAsText(self):
     export_dir = os.path.join(tf.test.get_temp_dir(), "test_astext")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
@@ -186,17 +246,13 @@ class SavedModelTest(tf.test.TestCase):
     # Graph with a single variable. SavedModel invoked to:
     # - add with weights.
     with self.test_session(graph=tf.Graph()) as sess:
-      v = tf.Variable(42, name="v")
-      sess.run(tf.initialize_all_variables())
-      self.assertEqual(42, v.eval())
+      self._init_and_validate_variable(sess, "v", 42)
       builder.add_meta_graph_and_variables(sess, ["foo"])
 
     # Graph with the same single variable. SavedModel invoked to:
     # - simply add the model (weights are not updated).
     with self.test_session(graph=tf.Graph()) as sess:
-      v = tf.Variable(43, name="v")
-      sess.run(tf.initialize_all_variables())
-      self.assertEqual(43, v.eval())
+      self._init_and_validate_variable(sess, "v", 43)
       builder.add_meta_graph(["bar"])
 
     # Save the SavedModel to disk in text format.
@@ -205,12 +261,14 @@ class SavedModelTest(tf.test.TestCase):
     # Restore the graph with tag "foo", whose variables were saved.
     with self.test_session(graph=tf.Graph()) as sess:
       loader.load(sess, ["foo"], export_dir)
-      self.assertEqual(42, tf.get_collection(tf.GraphKeys.VARIABLES)[0].eval())
+      self.assertEqual(
+          42, tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)[0].eval())
 
     # Restore the graph with tag "bar", whose variables were not saved.
     with self.test_session(graph=tf.Graph()) as sess:
       loader.load(sess, ["bar"], export_dir)
-      self.assertEqual(42, tf.get_collection(tf.GraphKeys.VARIABLES)[0].eval())
+      self.assertEqual(
+          42, tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)[0].eval())
 
   def testCollections(self):
     export_dir = os.path.join(tf.test.get_temp_dir(), "test_collections")
@@ -221,7 +279,7 @@ class SavedModelTest(tf.test.TestCase):
     with self.test_session(graph=tf.Graph()) as sess:
       v = tf.Variable(42, name="v")
       tf.add_to_collection("foo_vars", v)
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       self.assertEqual(42, v.eval())
       builder.add_meta_graph_and_variables(sess, ["foo"])
 
@@ -231,7 +289,7 @@ class SavedModelTest(tf.test.TestCase):
     with self.test_session(graph=tf.Graph()) as sess:
       v = tf.Variable(43, name="v")
       tf.add_to_collection("bar_vars", v)
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       self.assertEqual(43, v.eval())
       builder.add_meta_graph(["bar"])
 
@@ -269,26 +327,24 @@ class SavedModelTest(tf.test.TestCase):
     # Graph with a single variable and a single entry in the signature def map.
     # SavedModel is invoked to add with weights.
     with self.test_session(graph=tf.Graph()) as sess:
-      v = tf.Variable(42, name="v")
-      sess.run(tf.initialize_all_variables())
-      self.assertEqual(42, v.eval())
+      self._init_and_validate_variable(sess, "v", 42)
       # Build and populate an empty SignatureDef for testing.
-      foo_signature = utils.build_signature_def(dict(), dict(), "foo")
+      foo_signature = signature_def_utils.build_signature_def(
+          dict(), dict(), "foo")
       builder.add_meta_graph_and_variables(
           sess, ["foo"], signature_def_map={"foo_key": foo_signature})
 
     # Graph with the same single variable and multiple entries in the signature
     # def map. No weights are saved by SavedModel.
     with self.test_session(graph=tf.Graph()) as sess:
-      v = tf.Variable(43, name="v")
-      sess.run(tf.initialize_all_variables())
-      self.assertEqual(43, v.eval())
-
+      self._init_and_validate_variable(sess, "v", 43)
       # Build and populate a different SignatureDef for testing.
-      bar_signature = utils.build_signature_def(dict(), dict(), "bar")
+      bar_signature = signature_def_utils.build_signature_def(
+          dict(), dict(), "bar")
       # Also, build a different SignatureDef corresponding to "foo_key" defined
       # in the previous graph.
-      foo_new_signature = utils.build_signature_def(dict(), dict(), "foo_new")
+      foo_new_signature = signature_def_utils.build_signature_def(
+          dict(), dict(), "foo_new")
       builder.add_meta_graph(
           ["bar"],
           signature_def_map={"bar_key": bar_signature,
@@ -301,7 +357,8 @@ class SavedModelTest(tf.test.TestCase):
     # corresponding to "foo_key" should exist.
     with self.test_session(graph=tf.Graph()) as sess:
       foo_graph = loader.load(sess, ["foo"], export_dir)
-      self.assertEqual(42, tf.get_collection(tf.GraphKeys.VARIABLES)[0].eval())
+      self.assertEqual(
+          42, tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)[0].eval())
 
       foo_signature = foo_graph.signature_def
       self.assertEqual(len(foo_signature), 1)
@@ -312,7 +369,8 @@ class SavedModelTest(tf.test.TestCase):
     # new value of "foo_key".
     with self.test_session(graph=tf.Graph()) as sess:
       bar_graph = loader.load(sess, ["bar"], export_dir)
-      self.assertEqual(42, tf.get_collection(tf.GraphKeys.VARIABLES)[0].eval())
+      self.assertEqual(
+          42, tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)[0].eval())
 
       bar_signature = bar_graph.signature_def
       self.assertEqual(len(bar_signature), 2)
@@ -324,24 +382,17 @@ class SavedModelTest(tf.test.TestCase):
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
     with self.test_session(graph=tf.Graph()) as sess:
-      v = tf.Variable(42, name="v")
-      sess.run(tf.initialize_all_variables())
-      self.assertEqual(42, v.eval())
+      self._init_and_validate_variable(sess, "v", 42)
 
       # Build an asset collection.
-      asset_filepath = os.path.join(
-          compat.as_bytes(tf.test.get_temp_dir()),
-          compat.as_bytes("hello42.txt"))
-      file_io.write_string_to_file(asset_filepath, "foo bar baz")
-      asset_file_tensor = tf.constant(asset_filepath, name="asset_file_tensor")
-      tf.add_to_collection(tf.GraphKeys.ASSET_FILEPATHS, asset_file_tensor)
-
       ignored_filepath = os.path.join(
           compat.as_bytes(tf.test.get_temp_dir()),
           compat.as_bytes("ignored.txt"))
       file_io.write_string_to_file(ignored_filepath, "will be ignored")
 
-      asset_collection = tf.get_collection(tf.GraphKeys.ASSET_FILEPATHS)
+      asset_collection = self._build_asset_collection("hello42.txt",
+                                                      "foo bar baz",
+                                                      "asset_file_tensor")
 
       builder.add_meta_graph_and_variables(
           sess, ["foo"], assets_collection=asset_collection)
@@ -351,26 +402,173 @@ class SavedModelTest(tf.test.TestCase):
 
     with self.test_session(graph=tf.Graph()) as sess:
       foo_graph = loader.load(sess, ["foo"], export_dir)
-
-      # Validate the assets.
-      collection_def = foo_graph.collection_def
-      assets_any = collection_def[constants.ASSETS_KEY].any_list.value
-      self.assertEqual(len(assets_any), 1)
-      asset = meta_graph_pb2.AssetFileDef()
-      assets_any[0].Unpack(asset)
-      assets_path = os.path.join(
-          compat.as_bytes(export_dir),
-          compat.as_bytes(constants.ASSETS_DIRECTORY),
-          compat.as_bytes("hello42.txt"))
-      asset_contents = file_io.read_file_to_string(assets_path)
-      self.assertEqual("foo bar baz", compat.as_text(asset_contents))
-      self.assertEqual("hello42.txt", asset.filename)
-      self.assertEqual("asset_file_tensor:0", asset.tensor_info.name)
+      self._validate_asset_collection(export_dir, foo_graph.collection_def,
+                                      "hello42.txt", "foo bar baz",
+                                      "asset_file_tensor:0")
       ignored_asset_path = os.path.join(
           compat.as_bytes(export_dir),
           compat.as_bytes(constants.ASSETS_DIRECTORY),
           compat.as_bytes("ignored.txt"))
       self.assertFalse(file_io.file_exists(ignored_asset_path))
+
+  def testCustomMainOp(self):
+    export_dir = os.path.join(tf.test.get_temp_dir(), "test_main_op")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    with self.test_session(graph=tf.Graph()) as sess:
+      # Add `v1` and `v2` variables to the graph.
+      v1 = tf.Variable(1, name="v1")
+      tf.add_to_collection("v", v1)
+      v2 = tf.Variable(2, name="v2")
+      tf.add_to_collection("v", v2)
+
+      # Initialize another variable `v3` to 42.
+      v3 = tf.Variable(42, name="v3")
+      tf.add_to_collection("v", v3)
+
+      # Set up an assignment op to be run as part of the main_op.
+      with tf.control_dependencies([main_op.main_op()]):
+        add_v1_v2 = tf.add(v1._ref(), v2._ref())
+        custom_main_op = tf.group(tf.assign(v3, add_v1_v2))
+
+      sess.run(custom_main_op)
+      builder.add_meta_graph_and_variables(
+          sess, ["foo"], main_op=custom_main_op)
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    with self.test_session(graph=tf.Graph()) as sess:
+      loader.load(sess, ["foo"], export_dir)
+      self.assertEqual(1, tf.get_collection("v")[0].eval())
+      self.assertEqual(2, tf.get_collection("v")[1].eval())
+      # Evaluates to the sum of the first two variables and assigned as part of
+      # the main_op, following a restore.
+      self.assertEqual(3, tf.get_collection("v")[2].eval())
+
+  def testLegacyInitOp(self):
+    export_dir = os.path.join(tf.test.get_temp_dir(), "test_legacy_init_op")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    with self.test_session(graph=tf.Graph()) as sess:
+      # Add `v1` and `v2` variables to the graph.
+      v1 = tf.Variable(1, name="v1")
+      tf.add_to_collection("v", v1)
+      v2 = tf.Variable(2, name="v2")
+      tf.add_to_collection("v", v2)
+
+      # Initialize another variable `v3` to 42.
+      v3 = tf.Variable(42, name="v3", trainable=False, collections=[])
+      tf.add_to_collection("v", v3)
+
+      # Set up an assignment op to be run as part of the legacy_init_op.
+      assign_v3 = tf.assign(v3, tf.add(v1, v2))
+      legacy_init_op = tf.group(assign_v3, name="legacy_init_op")
+
+      sess.run(tf.global_variables_initializer())
+      builder.add_meta_graph_and_variables(
+          sess, ["foo"], legacy_init_op=legacy_init_op)
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    with self.test_session(graph=tf.Graph()) as sess:
+      loader.load(sess, ["foo"], export_dir)
+      self.assertEqual(1, tf.get_collection("v")[0].eval())
+      self.assertEqual(2, tf.get_collection("v")[1].eval())
+      # Evaluates to the sum of the first two variables and assigned as part of
+      # the legacy_init_op, following a restore.
+      self.assertEqual(3, tf.get_collection("v")[2].eval())
+
+  def testMultipleAssets(self):
+    export_dir = os.path.join(tf.test.get_temp_dir(), "test_multiple_assets")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    with self.test_session(graph=tf.Graph()) as sess:
+      self._init_and_validate_variable(sess, "v", 42)
+
+      # Build an asset collection specific to `foo` graph.
+      asset_collection = self._build_asset_collection("foo.txt", "content_foo",
+                                                      "asset_file_tensor")
+
+      # Add the asset collection as part of the graph with tag "foo".
+      builder.add_meta_graph_and_variables(
+          sess, ["foo"], assets_collection=asset_collection)
+
+    with self.test_session(graph=tf.Graph()) as sess:
+      self._init_and_validate_variable(sess, "v", 42)
+
+      # Build an asset collection specific to `bar` graph.
+      asset_collection = self._build_asset_collection("bar.txt", "content_bar",
+                                                      "asset_file_tensor")
+
+      # Add the asset collection as part of the graph with tag "bar".
+      builder.add_meta_graph(["bar"], assets_collection=asset_collection)
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    # Check assets restored for graph with tag "foo".
+    with self.test_session(graph=tf.Graph()) as sess:
+      foo_graph = loader.load(sess, ["foo"], export_dir)
+      self._validate_asset_collection(export_dir, foo_graph.collection_def,
+                                      "foo.txt", "content_foo",
+                                      "asset_file_tensor:0")
+
+    # Check assets restored for graph with tag "bar".
+    with self.test_session(graph=tf.Graph()) as sess:
+      bar_graph = loader.load(sess, ["bar"], export_dir)
+      self._validate_asset_collection(export_dir, bar_graph.collection_def,
+                                      "bar.txt", "content_bar",
+                                      "asset_file_tensor:0")
+
+  def testDuplicateAssets(self):
+    export_dir = os.path.join(tf.test.get_temp_dir(), "test_duplicate_assets")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    with self.test_session(graph=tf.Graph()) as sess:
+      self._init_and_validate_variable(sess, "v", 42)
+
+      # Build an asset collection with `foo.txt` that has `foo` specific
+      # content.
+      asset_collection = self._build_asset_collection("foo.txt", "content_foo",
+                                                      "asset_file_tensor")
+
+      # Add the asset collection as part of the graph with tag "foo".
+      builder.add_meta_graph_and_variables(
+          sess, ["foo"], assets_collection=asset_collection)
+
+    with self.test_session(graph=tf.Graph()) as sess:
+      self._init_and_validate_variable(sess, "v", 42)
+
+      # Build an asset collection with `foo.txt` that has `bar` specific
+      # content.
+      asset_collection = self._build_asset_collection("foo.txt", "content_bar",
+                                                      "asset_file_tensor")
+
+      # Add the asset collection as part of the graph with tag "bar".
+      builder.add_meta_graph(["bar"], assets_collection=asset_collection)
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    # Check assets restored for graph with tag "foo".
+    with self.test_session(graph=tf.Graph()) as sess:
+      foo_graph = loader.load(sess, ["foo"], export_dir)
+      self._validate_asset_collection(export_dir, foo_graph.collection_def,
+                                      "foo.txt", "content_foo",
+                                      "asset_file_tensor:0")
+
+    # Check assets restored for graph with tag "bar".
+    with self.test_session(graph=tf.Graph()) as sess:
+      bar_graph = loader.load(sess, ["bar"], export_dir)
+
+      # Validate the assets for `bar` graph. `foo.txt` should contain the
+      # original contents corresponding to `foo` graph since an asset with the
+      # same name across multiple graphs is only stored the first time
+      self._validate_asset_collection(export_dir, bar_graph.collection_def,
+                                      "foo.txt", "content_foo",
+                                      "asset_file_tensor:0")
 
   def testOp(self):
     export_dir = os.path.join(tf.test.get_temp_dir(), "test_op")
@@ -395,7 +593,7 @@ class SavedModelTest(tf.test.TestCase):
       tf.add_to_collection("v", v3)
       tf.add_to_collection("init_op", init_op)
 
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       self.assertEqual(1, tf.get_collection("v")[0].eval())
       self.assertEqual(2, tf.get_collection("v")[1].eval())
 
@@ -414,6 +612,30 @@ class SavedModelTest(tf.test.TestCase):
       self.assertEqual(2, tf.get_collection("v")[1].eval())
       tf.get_collection("init_op")[0].run()
       self.assertEqual(3, tf.get_collection("v")[2].eval())
+
+  def testClearDevices(self):
+    export_dir = os.path.join(tf.test.get_temp_dir(), "test_clear_devices")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    # Specify a device and save a variable.
+    tf.reset_default_graph()
+    with tf.Session(
+        target="",
+        config=config_pb2.ConfigProto(device_count={"CPU": 2})) as sess:
+      with sess.graph.device("/cpu:0"):
+        self._init_and_validate_variable(sess, "v", 42)
+        builder.add_meta_graph_and_variables(
+            sess, [tag_constants.TRAINING], clear_devices=True)
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    # Restore the graph with a single predefined tag whose variables were saved
+    # without any device information.
+    with self.test_session(graph=tf.Graph()) as sess:
+      loader.load(sess, [tag_constants.TRAINING], export_dir)
+      self.assertEqual(
+          42, tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)[0].eval())
 
 
 if __name__ == "__main__":

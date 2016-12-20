@@ -63,6 +63,7 @@ here](https://www.tensorflow.org/code/tensorflow/core/example/feature.proto).
 @@VarLenFeature
 @@FixedLenFeature
 @@FixedLenSequenceFeature
+@@SparseFeature
 @@parse_example
 @@parse_single_example
 @@parse_tensor
@@ -92,6 +93,7 @@ Queues](../../how_tos/threading_and_queues/index.md).
 
 @@matching_files
 @@read_file
+@@write_file
 
 ## Input pipeline
 
@@ -129,19 +131,22 @@ single subgraph producing examples but you want to run it in *N* threads
 (where you increase *N* until it can keep the queue full).  Use
 [`batch_join`](#batch_join) or [`shuffle_batch_join`](#shuffle_batch_join)
 if you have *N* different subgraphs producing examples to batch and you
-want them run by *N* threads.
+want them run by *N* threads. Use `maybe_*` to enqueue conditionally.
 
 @@batch
+@@maybe_batch
 @@batch_join
+@@maybe_batch_join
 @@shuffle_batch
+@@maybe_shuffle_batch
 @@shuffle_batch_join
+@@maybe_shuffle_batch_join
 """
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import python_io
@@ -208,18 +213,6 @@ def _restore_slice(file_pattern, tensor_name, shape_and_slice, tensor_type,
   return gen_io_ops._restore_slice(
       file_pattern, tensor_name, shape_and_slice, base_type,
       preferred_shard, name=name)
-
-
-ops.RegisterShape("Restore")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("RestoreSlice")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Save")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("SaveSlices")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ShardedFilename")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ShardedFilespec")(common_shapes.call_cpp_shape_fn)
-
-ops.RegisterShape("SaveV2")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("RestoreV2")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MergeV2Checkpoints")(common_shapes.call_cpp_shape_fn)
 
 
 class ReaderBase(object):
@@ -505,20 +498,3 @@ class IdentityReader(ReaderBase):
 
 
 ops.NotDifferentiable("IdentityReader")
-
-
-ops.RegisterShape("FixedLengthRecordReader")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("IdentityReader")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("TextLineReader")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("WholeFileReader")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("TFRecordReader")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ReaderNumRecordsProduced")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ReaderNumWorkUnitsCompleted")(
-    common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ReaderSerializeState")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ReaderRead")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ReaderReadUpTo")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ReaderReset")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ReaderRestoreState")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ReadFile")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MatchingFiles")(common_shapes.call_cpp_shape_fn)

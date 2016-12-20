@@ -94,6 +94,8 @@ class Gamma(distribution.Distribution):
     Raises:
       TypeError: if `alpha` and `beta` are different dtypes.
     """
+    parameters = locals()
+    parameters.pop("self")
     with ops.name_scope(name, values=[alpha, beta]) as ns:
       with ops.control_dependencies([
           check_ops.assert_positive(alpha),
@@ -102,14 +104,15 @@ class Gamma(distribution.Distribution):
         self._alpha = array_ops.identity(alpha, name="alpha")
         self._beta = array_ops.identity(beta, name="beta")
         contrib_tensor_util.assert_same_float_dtype((self._alpha, self._beta))
-        super(Gamma, self).__init__(
-            dtype=self._alpha.dtype,
-            parameters={"alpha": self._alpha, "beta": self._beta},
-            validate_args=validate_args,
-            allow_nan_stats=allow_nan_stats,
-            is_continuous=True,
-            is_reparameterized=False,
-            name=ns)
+    super(Gamma, self).__init__(
+        dtype=self._alpha.dtype,
+        validate_args=validate_args,
+        allow_nan_stats=allow_nan_stats,
+        is_continuous=True,
+        is_reparameterized=False,
+        parameters=parameters,
+        graph_parents=[self._alpha, self._beta],
+        name=ns)
 
   @staticmethod
   def _param_shapes(sample_shape):
@@ -205,7 +208,7 @@ class Gamma(distribution.Distribution):
     mode = (self.alpha - 1.) / self.beta
     if self.allow_nan_stats:
       nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
-      return math_ops.select(
+      return array_ops.where(
           self.alpha >= 1.,
           mode,
           array_ops.fill(self.batch_shape(), nan, name="nan"))
@@ -227,6 +230,8 @@ class GammaWithSoftplusAlphaBeta(Gamma):
                validate_args=False,
                allow_nan_stats=True,
                name="GammaWithSoftplusAlphaBeta"):
+    parameters = locals()
+    parameters.pop("self")
     with ops.name_scope(name, values=[alpha, beta]) as ns:
       super(GammaWithSoftplusAlphaBeta, self).__init__(
           alpha=nn.softplus(alpha),
@@ -234,3 +239,4 @@ class GammaWithSoftplusAlphaBeta(Gamma):
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           name=ns)
+    self._parameters = parameters

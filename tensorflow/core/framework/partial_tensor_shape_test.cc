@@ -220,7 +220,7 @@ TEST(PartialTensorShapeTest, PartialShapeMergeWith) {
 
 TEST(PartialTensorShapeTest, MakePartialShapeEmpty) {
   // Empty made partial shapes should still be fully defined
-  const int64 dims[0] = {};
+  const int64 dims[1] = {};
   PartialTensorShape shape;
   EXPECT_FALSE(shape.IsFullyDefined());
   TF_ASSERT_OK(PartialTensorShape::MakePartialShape(dims, 0, &shape));

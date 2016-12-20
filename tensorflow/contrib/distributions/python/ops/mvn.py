@@ -136,6 +136,8 @@ class _MultivariateNormalOperatorPD(distribution.Distribution):
     Raises:
       TypeError: If `mu` and `cov` are different dtypes.
     """
+    parameters = locals()
+    parameters.pop("self")
     with ops.name_scope(name) as ns:
       with ops.name_scope("init", values=[mu] + cov.inputs):
         self._mu = array_ops.identity(mu, name="mu")
@@ -144,11 +146,12 @@ class _MultivariateNormalOperatorPD(distribution.Distribution):
         self._mu = self._assert_valid_mu(self._mu)
         super(_MultivariateNormalOperatorPD, self).__init__(
             dtype=self._mu.dtype,
-            parameters={"mu": self._mu, "cov": self._cov},
             is_reparameterized=True,
             is_continuous=True,
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
+            parameters=parameters,
+            graph_parents=[self._mu] + cov.inputs,
             name=ns)
 
   def _assert_valid_mu(self, mu):
@@ -219,26 +222,26 @@ class _MultivariateNormalOperatorPD(distribution.Distribution):
     return self._cov.get_batch_shape()
 
   def _event_shape(self):
-    return array_ops.pack([self._cov.vector_space_dimension()])
+    return array_ops.stack([self._cov.vector_space_dimension()])
 
   def _get_event_shape(self):
     return self._cov.get_shape()[-1:]
 
   def _sample_n(self, n, seed=None):
     # Recall _assert_valid_mu ensures mu and self._cov have same batch shape.
-    shape = array_ops.concat(0, [self._cov.vector_shape(), [n]])
+    shape = array_ops.concat_v2([self._cov.vector_shape(), [n]], 0)
     white_samples = random_ops.random_normal(shape=shape,
-                                             mean=0,
-                                             stddev=1,
+                                             mean=0.,
+                                             stddev=1.,
                                              dtype=self.dtype,
                                              seed=seed)
 
     correlated_samples = self._cov.sqrt_matmul(white_samples)
 
     # Move the last dimension to the front
-    perm = array_ops.concat(0, (
-        array_ops.pack([array_ops.rank(correlated_samples) - 1]),
-        math_ops.range(0, array_ops.rank(correlated_samples) - 1)))
+    perm = array_ops.concat_v2(
+        (array_ops.stack([array_ops.rank(correlated_samples) - 1]),
+         math_ops.range(0, array_ops.rank(correlated_samples) - 1)), 0)
 
     # TODO(ebrevdo): Once we get a proper tensor contraction op,
     # perform the inner product using that instead of batch_matmul
@@ -383,11 +386,17 @@ class MultivariateNormalDiag(_MultivariateNormalOperatorPD):
     Raises:
       TypeError: If `mu` and `diag_stdev` are different dtypes.
     """
-    cov = operator_pd_diag.OperatorPDSqrtDiag(
-        diag_stdev, verify_pd=validate_args)
+    parameters = locals()
+    parameters.pop("self")
+    with ops.name_scope(name, values=[diag_stdev]) as ns:
+      cov = operator_pd_diag.OperatorPDSqrtDiag(diag_stdev,
+                                                verify_pd=validate_args)
     super(MultivariateNormalDiag, self).__init__(
-        mu, cov, allow_nan_stats=allow_nan_stats, validate_args=validate_args,
-        name=name)
+        mu, cov,
+        allow_nan_stats=allow_nan_stats,
+        validate_args=validate_args,
+        name=ns)
+    self._parameters = parameters
 
 
 class MultivariateNormalDiagWithSoftplusStDev(MultivariateNormalDiag):
@@ -399,13 +408,16 @@ class MultivariateNormalDiagWithSoftplusStDev(MultivariateNormalDiag):
                validate_args=False,
                allow_nan_stats=True,
                name="MultivariateNormalDiagWithSoftplusStdDev"):
-    with ops.name_scope(name, values=[mu, diag_stdev]) as ns:
+    parameters = locals()
+    parameters.pop("self")
+    with ops.name_scope(name, values=[diag_stdev]) as ns:
       super(MultivariateNormalDiagWithSoftplusStDev, self).__init__(
           mu=mu,
           diag_stdev=nn.softplus(diag_stdev),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           name=ns)
+    self._parameters = parameters
 
 
 class MultivariateNormalDiagPlusVDVT(_MultivariateNormalOperatorPD):
@@ -518,13 +530,22 @@ class MultivariateNormalDiagPlusVDVT(_MultivariateNormalOperatorPD):
         undefined statistics will return NaN for this statistic.
       name: The name to give Ops created by the initializer.
     """
-    m = operator_pd_diag.OperatorPDDiag(diag_large, verify_pd=validate_args)
-    cov = operator_pd_vdvt_update.OperatorPDSqrtVDVTUpdate(
-        m, v, diag=diag_small, verify_pd=validate_args,
-        verify_shapes=validate_args)
+    parameters = locals()
+    parameters.pop("self")
+    with ops.name_scope(name, values=[diag_large, v, diag_small]) as ns:
+      cov = operator_pd_vdvt_update.OperatorPDSqrtVDVTUpdate(
+          operator_pd_diag.OperatorPDDiag(
+              diag_large, verify_pd=validate_args),
+          v,
+          diag=diag_small,
+          verify_pd=validate_args,
+          verify_shapes=validate_args)
     super(MultivariateNormalDiagPlusVDVT, self).__init__(
-        mu, cov, allow_nan_stats=allow_nan_stats, validate_args=validate_args,
-        name=name)
+        mu, cov,
+        allow_nan_stats=allow_nan_stats,
+        validate_args=validate_args,
+        name=ns)
+    self._parameters = parameters
 
 
 class MultivariateNormalCholesky(_MultivariateNormalOperatorPD):
@@ -606,13 +627,17 @@ class MultivariateNormalCholesky(_MultivariateNormalOperatorPD):
     Raises:
       TypeError: If `mu` and `chol` are different dtypes.
     """
-    cov = operator_pd_cholesky.OperatorPDCholesky(chol, verify_pd=validate_args)
+    parameters = locals()
+    parameters.pop("self")
+    with ops.name_scope(name, values=[chol]) as ns:
+      cov = operator_pd_cholesky.OperatorPDCholesky(chol,
+                                                    verify_pd=validate_args)
     super(MultivariateNormalCholesky, self).__init__(
-        mu,
-        cov,
+        mu, cov,
         allow_nan_stats=allow_nan_stats,
         validate_args=validate_args,
-        name=name)
+        name=ns)
+    self._parameters = parameters
 
 
 class MultivariateNormalFull(_MultivariateNormalOperatorPD):
@@ -685,15 +710,20 @@ class MultivariateNormalFull(_MultivariateNormalOperatorPD):
     Raises:
       TypeError: If `mu` and `sigma` are different dtypes.
     """
-    cov = operator_pd_full.OperatorPDFull(sigma, verify_pd=validate_args)
+    parameters = locals()
+    parameters.pop("self")
+    with ops.name_scope(name, values=[sigma]) as ns:
+      cov = operator_pd_full.OperatorPDFull(sigma, verify_pd=validate_args)
     super(MultivariateNormalFull, self).__init__(
-        mu,
-        cov,
+        mu, cov,
         allow_nan_stats=allow_nan_stats,
         validate_args=validate_args,
-        name=name)
+        name=ns)
+    self._parameters = parameters
 
 
+@kullback_leibler.RegisterKL(
+    _MultivariateNormalOperatorPD, _MultivariateNormalOperatorPD)
 def _kl_mvn_mvn_brute_force(mvn_a, mvn_b, name=None):
   """Batched KL divergence `KL(mvn_a || mvn_b)` for multivariate normals.
 
@@ -743,21 +773,3 @@ def _kl_mvn_mvn_brute_force(mvn_a, mvn_b, name=None):
     k = math_ops.cast(cov_a.vector_space_dimension(), mvn_a.dtype)
     one_half_l = cov_b.sqrt_log_det() - cov_a.sqrt_log_det()
     return 0.5 * (t + q - k) + one_half_l
-
-
-# Register KL divergences.
-kl_classes = [
-    MultivariateNormalFull,
-    MultivariateNormalCholesky,
-    MultivariateNormalDiag,
-    MultivariateNormalDiagPlusVDVT,
-]
-
-
-for mvn_aa in kl_classes:
-  # Register when they are the same here, and do not register when they are the
-  # same below because that would result in a repeated registration.
-  kullback_leibler.RegisterKL(mvn_aa, mvn_aa)(_kl_mvn_mvn_brute_force)
-  for mvn_bb in kl_classes:
-    if mvn_bb != mvn_aa:
-      kullback_leibler.RegisterKL(mvn_aa, mvn_bb)(_kl_mvn_mvn_brute_force)

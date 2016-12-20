@@ -64,7 +64,7 @@ class TestFileSystem : public NullFileSystem {
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override {
     float val = 0;
     StringPiece scheme, host, path;
-    ParseURI(fname, &scheme, &host, &path);
+    io::ParseURI(fname, &scheme, &host, &path);
     // For the tests create in-memory regions with float values equal to the
     // region name.
     if (path == "/2") {

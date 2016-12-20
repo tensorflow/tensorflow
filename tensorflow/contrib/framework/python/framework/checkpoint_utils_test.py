@@ -32,7 +32,7 @@ def _create_checkpoints(sess, checkpoint_dir):
   v3 = tf.get_variable("var3", [100, 100])
   with tf.variable_scope("useful_scope"):
     v4 = tf.get_variable("var4", [9, 9])
-  sess.run(tf.initialize_all_variables())
+  sess.run(tf.global_variables_initializer())
   v1_value, v2_value, v3_value, v4_value = sess.run([v1, v2, v3, v4])
   saver = tf.train.Saver()
   saver.save(sess, checkpoint_prefix, global_step=0,
@@ -49,7 +49,7 @@ def _create_partition_checkpoints(sess, checkpoint_dir):
       initializer=tf.truncated_normal_initializer(0.5),
       partitioner=tf.min_max_variable_partitioner(max_partitions=5, axis=0,
                                                   min_slice_size=8 << 10))
-  sess.run(tf.initialize_all_variables())
+  sess.run(tf.global_variables_initializer())
   v1_value = sess.run(v1._get_variable_list())
   saver = tf.train.Saver()
   saver.save(sess, checkpoint_prefix, global_step=0,
@@ -122,14 +122,14 @@ class CheckpointsTest(tf.test.TestCase):
             "var3": my3,
         })
 
-        session.run(tf.initialize_all_variables())
+        session.run(tf.global_variables_initializer())
         self.assertAllEqual(my1.eval(session), v1)
         self.assertAllEqual(my2.eval(session), v2)
         self.assertAllEqual(my3.eval(session), v3)
         self.assertAllEqual(my4.eval(session), v4)
 
         # Check that tensors are not explicitly in the graph.
-        self.assertLess(len(str(session.graph.as_graph_def())), 26000)
+        self.assertLess(len(str(session.graph.as_graph_def())), 27000)
 
   def testInitFromRootCheckpoint(self):
     checkpoint_dir = self.get_temp_dir()
@@ -150,7 +150,7 @@ class CheckpointsTest(tf.test.TestCase):
             "/": "some_scope/",
         })
 
-        session.run(tf.initialize_all_variables())
+        session.run(tf.global_variables_initializer())
         self.assertAllEqual(my1.eval(session), v1)
         self.assertAllEqual(my2.eval(session), v2)
         self.assertAllEqual(my3.eval(session), v3)
@@ -177,7 +177,7 @@ class CheckpointsTest(tf.test.TestCase):
             "var1": "some_scope/my1",
         })
 
-        session.run(tf.initialize_all_variables())
+        session.run(tf.global_variables_initializer())
         my1_values = session.run(my1_var_list)
         self.assertAllEqual(my1_values, v1)
 
@@ -197,7 +197,7 @@ class CheckpointsTest(tf.test.TestCase):
             "var1": my1_var_list,
         })
 
-        session.run(tf.initialize_all_variables())
+        session.run(tf.global_variables_initializer())
         my1_values = session.run(my1_var_list)
         self.assertAllEqual(my1_values, v1)
 
@@ -211,8 +211,10 @@ class CheckpointsTest(tf.test.TestCase):
       with self.test_session(graph=g) as session:
         with tf.variable_scope("some_scope"):
           _ = tf.get_variable("my1", [10, 10])
-          _ = tf.get_variable("my2", [1, 10],
-                              dtype=tf.int64, initializer=tf.zeros_initializer)
+          _ = tf.get_variable(
+              "my2", [1, 10],
+              dtype=tf.int64,
+              initializer=tf.zeros_initializer())
 
         # No directory.
         with self.assertRaises(tf.errors.OpError):

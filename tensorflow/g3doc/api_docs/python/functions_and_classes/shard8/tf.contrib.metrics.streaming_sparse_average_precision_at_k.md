@@ -6,11 +6,10 @@ See `sparse_average_precision_at_k` for details on formula. `weights` are
 applied to the result of `sparse_average_precision_at_k`
 
 `streaming_sparse_average_precision_at_k` creates two local variables,
-`average_precision_at_<k>/count` and `average_precision_at_<k>/total`, that
+`average_precision_at_<k>/total` and `average_precision_at_<k>/max`, that
 are used to compute the frequency. This frequency is ultimately returned as
-`precision_at_<k>`: an idempotent operation that simply divides
-`true_positive_at_<k>` by total (`true_positive_at_<k>` +
-`false_positive_at_<k>`).
+`average_precision_at_<k>`: an idempotent operation that simply divides
+`average_precision_at_<k>/total` by `average_precision_at_<k>/max`.
 
 For estimation of the metric over a stream of data, the function creates an
 `update_op` operation that updates these variables and returns the
@@ -33,11 +32,12 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
     [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
     target classes for the associated prediction. Commonly, N=1 and `labels`
     has shape [batch_size, num_labels]. [D1, ... DN] must match
-    `predictions_idx`. Values should be in range [0, num_classes], where
-    num_classes is the last dimension of `predictions`.
+    `predictions_`. Values should be in range [0, num_classes), where
+    num_classes is the last dimension of `predictions`. Values outside this
+    range are ignored.
 *  <b>`k`</b>: Integer, k for @k metric. This will calculate an average precision for
     range `[1,k]`, as documented above.
-*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to the the first
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to the first
     [D1, ... DN] dimensions of `predictions` and `labels`.
 *  <b>`metrics_collections`</b>: An optional list of collections that values should
     be added to.

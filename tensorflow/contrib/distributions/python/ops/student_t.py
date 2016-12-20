@@ -120,6 +120,8 @@ class StudentT(distribution.Distribution):
     Raises:
       TypeError: if mu and sigma are different dtypes.
     """
+    parameters = locals()
+    parameters.pop("self")
     with ops.name_scope(name, values=[df, mu, sigma]) as ns:
       with ops.control_dependencies([
           check_ops.assert_positive(df),
@@ -130,14 +132,15 @@ class StudentT(distribution.Distribution):
         self._sigma = array_ops.identity(sigma, name="sigma")
         contrib_tensor_util.assert_same_float_dtype(
             (self._df, self._mu, self._sigma))
-        super(StudentT, self).__init__(
-            dtype=self._sigma.dtype,
-            parameters={"df": self._df, "mu": self._mu, "sigma": self._sigma},
-            is_continuous=True,
-            is_reparameterized=True,
-            validate_args=validate_args,
-            allow_nan_stats=allow_nan_stats,
-            name=ns)
+    super(StudentT, self).__init__(
+        dtype=self._sigma.dtype,
+        is_continuous=True,
+        is_reparameterized=True,
+        validate_args=validate_args,
+        allow_nan_stats=allow_nan_stats,
+        parameters=parameters,
+        graph_parents=[self._df, self._mu, self._sigma],
+        name=ns)
 
   @staticmethod
   def _param_shapes(sample_shape):
@@ -165,10 +168,10 @@ class StudentT(distribution.Distribution):
 
   def _get_batch_shape(self):
     return common_shapes.broadcast_shape(
-        self.sigma.get_shape(),
         common_shapes.broadcast_shape(
             self.df.get_shape(),
-            self.mu.get_shape()))
+            self.mu.get_shape()),
+        self.sigma.get_shape())
 
   def _event_shape(self):
     return constant_op.constant([], dtype=math_ops.int32)
@@ -177,22 +180,20 @@ class StudentT(distribution.Distribution):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):
-    # We use 2 uniform random floats to generate polar random variates.
-    # http://dl.acm.org/citation.cfm?id=179631
-    # Theorem 2. Let G, H be iid variates, uniformly distributed on [0,1].
-    # Let theta = 2*pi*H, let R = sqrt(df*(G^(-2/df) - 1)) for df > 0.
-    # Let X = R*cos(theta), and let Y = R*sin(theta).
-    # Then X ~ t_df and Y ~ t_df.
-    # The variates X and Y are not independent.
-    shape = array_ops.concat(0, ([2, n], self.batch_shape()))
-    uniform = random_ops.random_uniform(shape=shape,
-                                        dtype=self.dtype,
-                                        seed=seed)
-    samples_g, samples_h = array_ops.unpack(uniform, num=2)
-    theta = (2. * math.pi) * samples_h
-    r = math_ops.sqrt(self.df *
-                      (math_ops.pow(samples_g, -2 / self.df) - 1))
-    samples = r * math_ops.cos(theta)
+    # The sampling method comes from the fact that if:
+    #   X ~ Normal(0, 1)
+    #   Z ~ Chi2(df)
+    #   Y = X / sqrt(Z / df)
+    # then:
+    #   Y ~ StudentT(df).
+    shape = array_ops.concat_v2([[n], self.batch_shape()], 0)
+    normal_sample = random_ops.random_normal(
+        shape, dtype=self.dtype, seed=seed)
+    df = self.df * array_ops.ones(self.batch_shape(), dtype=self.dtype)
+    gamma_sample = random_ops.random_gamma(
+        [n], 0.5 * df, beta=0.5, dtype=self.dtype,
+        seed=distribution_util.gen_new_seed(seed, salt="student_t"))
+    samples = normal_sample / math_ops.sqrt(gamma_sample / df)
     return samples * self.sigma + self.mu
 
   def _log_prob(self, x):
@@ -216,7 +217,7 @@ class StudentT(distribution.Distribution):
   def _entropy(self):
     u = array_ops.expand_dims(self.df * self._ones(), -1)
     v = array_ops.expand_dims(self._ones(), -1)
-    beta_arg = array_ops.concat(len(u.get_shape()) - 1, [u, v]) / 2
+    beta_arg = array_ops.concat_v2([u, v], len(u.get_shape()) - 1) / 2
     half_df = 0.5 * self.df
     return ((0.5 + half_df) * (math_ops.digamma(0.5 + half_df) -
                                math_ops.digamma(half_df)) +
@@ -232,7 +233,7 @@ class StudentT(distribution.Distribution):
     mean = self.mu * self._ones()
     if self.allow_nan_stats:
       nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
-      return math_ops.select(
+      return array_ops.where(
           math_ops.greater(self.df, self._ones()), mean,
           array_ops.fill(self.batch_shape(), nan, name="nan"))
     else:
@@ -257,14 +258,14 @@ class StudentT(distribution.Distribution):
            math_ops.square(self.sigma) * self.df / (self.df - 2))
     # When 1 < df <= 2, variance is infinite.
     inf = np.array(np.inf, dtype=self.dtype.as_numpy_dtype())
-    result_where_defined = math_ops.select(
+    result_where_defined = array_ops.where(
         math_ops.greater(self.df, array_ops.fill(self.batch_shape(), 2.)),
         var,
         array_ops.fill(self.batch_shape(), inf, name="inf"))
 
     if self.allow_nan_stats:
       nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
-      return math_ops.select(
+      return array_ops.where(
           math_ops.greater(self.df, self._ones()),
           result_where_defined,
           array_ops.fill(self.batch_shape(), nan, name="nan"))
@@ -295,7 +296,9 @@ class StudentTWithAbsDfSoftplusSigma(StudentT):
                validate_args=False,
                allow_nan_stats=True,
                name="StudentTWithAbsDfSoftplusSigma"):
-    with ops.name_scope(name, values=[df, mu, sigma]) as ns:
+    parameters = locals()
+    parameters.pop("self")
+    with ops.name_scope(name, values=[df, sigma]) as ns:
       super(StudentTWithAbsDfSoftplusSigma, self).__init__(
           df=math_ops.floor(math_ops.abs(df)),
           mu=mu,
@@ -303,3 +306,4 @@ class StudentTWithAbsDfSoftplusSigma(StudentT):
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           name=ns)
+    self._parameters = parameters

@@ -23,11 +23,11 @@ import tempfile
 
 import tensorflow as tf
 
-from tensorflow.contrib import layers
 from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.learn.python.learn.estimators import composable_model
 from tensorflow.contrib.learn.python.learn.estimators import estimator
+from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import state_ops
 
@@ -42,30 +42,34 @@ def _iris_input_fn():
 class _BaseEstimatorForTest(estimator.BaseEstimator):
 
   def __init__(self,
-               target_column,
+               head,
                feature_columns):
     super(_BaseEstimatorForTest, self).__init__(model_dir=tempfile.mkdtemp())
-    self._target_column = target_column
+    self._head = head
     self._feature_columns = feature_columns
 
-  def _get_train_ops(self, features, targets):
+  def _get_train_ops(self, features, labels):
     global_step = contrib_variables.get_global_step()
     assert global_step
 
     logits = self._model.build_model(
         features, self._feature_columns, is_training=True)
-    loss = self._target_column.loss(logits, targets, features)
-    train_step = self._model.get_train_step(loss)
+    model_fn_ops = self._head.head_ops(features, labels,
+                                       tf.contrib.learn.ModeKeys.TRAIN,
+                                       _noop_training_fn, logits=logits)
+    train_step = self._model.get_train_step(model_fn_ops.loss)
 
     with ops.control_dependencies(train_step):
       with ops.get_default_graph().colocate_with(global_step):
-        return state_ops.assign_add(global_step, 1).op, loss
+        return state_ops.assign_add(global_step, 1).op, model_fn_ops.loss
 
-  def _get_eval_ops(self, features, targets, metrics=None):
+  def _get_eval_ops(self, features, labels, metrics=None):
     logits = self._model.build_model(
         features, self._feature_columns, is_training=False)
-    loss = self._target_column.loss(logits, targets, features)
-    return {'loss': metrics_lib.streaming_mean(loss)}
+    model_fn_ops = self._head.head_ops(features, labels,
+                                       tf.contrib.learn.ModeKeys.TRAIN,
+                                       _noop_training_fn, logits=logits)
+    return {'loss': metrics_lib.streaming_mean(model_fn_ops.loss)}
 
   def _get_predict_ops(self, features):
     raise NotImplementedError
@@ -74,32 +78,32 @@ class _BaseEstimatorForTest(estimator.BaseEstimator):
 class LinearEstimator(_BaseEstimatorForTest):
 
   def __init__(self,
-               target_column,
+               head,
                feature_columns):
-    super(LinearEstimator, self).__init__(target_column, feature_columns)
+    super(LinearEstimator, self).__init__(head, feature_columns)
     self._model = composable_model.LinearComposableModel(
-        num_label_columns=target_column.num_label_columns)
+        num_label_columns=head.logits_dimension)
 
 
 class JointLinearEstimator(_BaseEstimatorForTest):
 
   def __init__(self,
-               target_column,
+               head,
                feature_columns):
-    super(JointLinearEstimator, self).__init__(target_column, feature_columns)
+    super(JointLinearEstimator, self).__init__(head, feature_columns)
     self._model = composable_model.LinearComposableModel(
-        num_label_columns=target_column.num_label_columns, _joint_weights=True)
+        num_label_columns=head.logits_dimension, _joint_weights=True)
 
 
 class DNNEstimator(_BaseEstimatorForTest):
 
   def __init__(self,
-               target_column,
+               head,
                feature_columns,
                hidden_units):
-    super(DNNEstimator, self).__init__(target_column, feature_columns)
+    super(DNNEstimator, self).__init__(head, feature_columns)
     self._model = composable_model.DNNComposableModel(
-        num_label_columns=target_column.num_label_columns,
+        num_label_columns=head.logits_dimension,
         hidden_units=hidden_units)
 
 
@@ -113,14 +117,14 @@ class ComposableModelTest(tf.test.TestCase):
           'age': tf.constant([1]),
           'language': tf.SparseTensor(values=['english'],
                                       indices=[[0, 0]],
-                                      shape=[1, 1])
+                                      dense_shape=[1, 1])
       }, tf.constant([[1]])
 
     language = tf.contrib.layers.sparse_column_with_hash_bucket('language', 100)
     age = tf.contrib.layers.real_valued_column('age')
 
-    target_column = layers.multi_class_target(n_classes=2)
-    classifier = LinearEstimator(target_column,
+    head = head_lib._multi_class_head(n_classes=2)
+    classifier = LinearEstimator(head,
                                  feature_columns=[age, language])
 
     classifier.fit(input_fn=input_fn, steps=1000)
@@ -135,17 +139,18 @@ class ComposableModelTest(tf.test.TestCase):
 
     def input_fn():
       return {
-          'age': tf.SparseTensor(values=['1'], indices=[[0, 0]], shape=[1, 1]),
+          'age': tf.SparseTensor(
+              values=['1'], indices=[[0, 0]], dense_shape=[1, 1]),
           'language': tf.SparseTensor(values=['english'],
                                       indices=[[0, 0]],
-                                      shape=[1, 1])
+                                      dense_shape=[1, 1])
       }, tf.constant([[1]])
 
     language = tf.contrib.layers.sparse_column_with_hash_bucket('language', 100)
     age = tf.contrib.layers.sparse_column_with_hash_bucket('age', 2)
 
-    target_column = layers.multi_class_target(n_classes=2)
-    classifier = JointLinearEstimator(target_column,
+    head = head_lib._multi_class_head(n_classes=2)
+    classifier = JointLinearEstimator(head,
                                       feature_columns=[age, language])
 
     classifier.fit(input_fn=input_fn, steps=1000)
@@ -160,13 +165,17 @@ class ComposableModelTest(tf.test.TestCase):
     cont_features = [
         tf.contrib.layers.real_valued_column('feature', dimension=4)]
 
-    target_column = layers.multi_class_target(n_classes=3)
-    classifier = DNNEstimator(target_column,
+    head = head_lib._multi_class_head(n_classes=3)
+    classifier = DNNEstimator(head,
                               feature_columns=cont_features,
                               hidden_units=[3, 3])
 
     classifier.fit(input_fn=_iris_input_fn, steps=1000)
     classifier.evaluate(input_fn=_iris_input_fn, steps=100)
+
+
+def _noop_training_fn(unused_loss):
+  return tf.no_op()
 
 
 if __name__ == '__main__':

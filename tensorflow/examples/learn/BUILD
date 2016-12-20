@@ -19,6 +19,13 @@ py_binary(
 )
 
 py_binary(
+    name = "hdf5_classification",
+    srcs = ["hdf5_classification.py"],
+    srcs_version = "PY2AND3",
+    deps = ["//tensorflow:tensorflow_py"],
+)
+
+py_binary(
     name = "iris",
     srcs = ["iris.py"],
     srcs_version = "PY2AND3",
@@ -85,8 +92,8 @@ py_binary(
 )
 
 py_binary(
-    name = "text_classification",
-    srcs = ["text_classification.py"],
+    name = "resnet",
+    srcs = ["resnet.py"],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
@@ -94,8 +101,8 @@ py_binary(
 )
 
 py_binary(
-    name = "text_classification_builtin_rnn_model",
-    srcs = ["text_classification_builtin_rnn_model.py"],
+    name = "text_classification",
+    srcs = ["text_classification.py"],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
@@ -140,6 +147,25 @@ py_binary(
     ],
 )
 
+py_binary(
+    name = "mnist",
+    srcs = ["mnist.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/examples/tutorials/mnist:input_data",
+    ],
+)
+
+py_binary(
+    name = "multiple_gpu",
+    srcs = ["multiple_gpu.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 sh_test(
     name = "examples_test",
     size = "large",
@@ -153,6 +179,7 @@ sh_test(
         ":iris_val_based_early_stopping",
         ":iris_with_pipeline",
         ":random_forest_mnist",
+        ":resnet",
         ":text_classification",
         ":text_classification_builtin_rnn_model",
         ":text_classification_character_cnn",

@@ -1,6 +1,10 @@
-### `tf.unpack(value, num=None, axis=0, name='unpack')` {#unpack}
+### `tf.unpack(*args, **kwargs)` {#unpack}
 
-Unpacks the given dimension of a rank-`R` tensor into rank-`(R-1)` tensors.
+Unpacks the given dimension of a rank-`R` tensor into rank-`(R-1)` tensors. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-14.
+Instructions for updating:
+This op will be removed after the deprecation date. Please switch to tf.unstack().
 
 Unpacks `num` tensors from `value` by chipping it along the `axis` dimension.
 If `num` is not specified (the default), it is inferred from `value`'s shape.

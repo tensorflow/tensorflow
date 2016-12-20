@@ -104,7 +104,7 @@ class ResnetUtilsTest(tf.test.TestCase):
     y4_expected = tf.reshape(y4_expected, [1, n2, n2, 1])
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       self.assertAllClose(y1.eval(), y1_expected.eval())
       self.assertAllClose(y2.eval(), y2_expected.eval())
       self.assertAllClose(y3.eval(), y3_expected.eval())
@@ -145,7 +145,7 @@ class ResnetUtilsTest(tf.test.TestCase):
     y4_expected = y2_expected
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       self.assertAllClose(y1.eval(), y1_expected.eval())
       self.assertAllClose(y2.eval(), y2_expected.eval())
       self.assertAllClose(y3.eval(), y3_expected.eval())
@@ -239,7 +239,7 @@ class ResnetUtilsTest(tf.test.TestCase):
             tf.get_variable_scope().reuse_variables()
             # Feature extraction at the nominal network rate.
             expected = self._stack_blocks_nondense(inputs, blocks)
-            sess.run(tf.initialize_all_variables())
+            sess.run(tf.global_variables_initializer())
             output, expected = sess.run([output, expected])
             self.assertAllClose(output, expected, atol=1e-4, rtol=1e-4)
 
@@ -375,7 +375,7 @@ class ResnetCompleteNetworkTest(tf.test.TestCase):
             tf.get_variable_scope().reuse_variables()
             # Feature extraction at the nominal network rate.
             expected, _ = self._resnet_small(inputs, None, global_pool=False)
-            sess.run(tf.initialize_all_variables())
+            sess.run(tf.global_variables_initializer())
             self.assertAllClose(output.eval(), expected.eval(),
                                 atol=1e-4, rtol=1e-4)
 
@@ -393,7 +393,7 @@ class ResnetCompleteNetworkTest(tf.test.TestCase):
                          [None, 1, 1, num_classes])
     images = create_test_input(batch, height, width, 3)
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       output = sess.run(logits, {inputs: images.eval()})
       self.assertEqual(output.shape, (batch, 1, 1, num_classes))
 
@@ -408,7 +408,7 @@ class ResnetCompleteNetworkTest(tf.test.TestCase):
                          [batch, None, None, 32])
     images = create_test_input(batch, height, width, 3)
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       output = sess.run(output, {inputs: images.eval()})
       self.assertEqual(output.shape, (batch, 3, 3, 32))
 
@@ -427,7 +427,7 @@ class ResnetCompleteNetworkTest(tf.test.TestCase):
                          [batch, None, None, 32])
     images = create_test_input(batch, height, width, 3)
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       output = sess.run(output, {inputs: images.eval()})
       self.assertEqual(output.shape, (batch, 9, 9, 32))
 

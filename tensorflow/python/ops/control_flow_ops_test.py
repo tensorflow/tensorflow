@@ -136,7 +136,7 @@ class SwitchTestCase(TensorFlowTestCase):
       optimizer = momentum.MomentumOptimizer(0.1, 0.9)
       train_op = optimizer.minimize(cost)
       with self.test_session() as sess:
-        sess.run(tf.initialize_all_variables())
+        sess.run(tf.global_variables_initializer())
         for _ in range(10):
           sess.run([train_op])
 
@@ -170,7 +170,7 @@ class SwitchTestCase(TensorFlowTestCase):
       static_grads = tf.segment_sum(static_grads.values, static_grads.indices)
 
       with self.test_session() as sess:
-        sess.run(tf.initialize_all_variables())
+        sess.run(tf.global_variables_initializer())
         self.assertAllEqual(*sess.run([static_grads, dynamic_grads]))
 
   def testIndexedSlicesWithShapeGradientInWhileLoop(self):
@@ -192,7 +192,7 @@ class SwitchTestCase(TensorFlowTestCase):
 
         _, outputs = tf.while_loop(Cond, Body, [initial_i, initial_outputs])
 
-        outputs = tf.reduce_sum(outputs.pack())
+        outputs = tf.reduce_sum(outputs.stack())
         r = tf.gradients([outputs], [inputs])[0]
         grad_wr_inputs = ops.convert_to_tensor(r)
         o, grad = sess.run([outputs, grad_wr_inputs],
@@ -218,7 +218,7 @@ class SwitchTestCase(TensorFlowTestCase):
 
         _, outputs = tf.while_loop(Cond, Body, [initial_i, initial_outputs])
 
-        outputs = tf.reduce_sum(outputs.pack())
+        outputs = tf.reduce_sum(outputs.stack())
         r = tf.gradients([outputs], [inputs])[0]
         grad_wr_inputs = ops.convert_to_tensor(r)
         o, grad = sess.run([outputs, grad_wr_inputs],

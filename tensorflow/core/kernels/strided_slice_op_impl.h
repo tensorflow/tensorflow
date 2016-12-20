@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types_traits.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/bounds_check.h"
+#include "tensorflow/core/kernels/dense_update_ops.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -51,12 +52,14 @@ void HandleStridedSliceGradCase(OpKernelContext* context,
                                 bool is_simple_slice, Tensor* result);
 
 template <typename Device, typename T, int NDIM>
-void HandleStridedSliceAssignCase(OpKernelContext* context,
-                                  const gtl::ArraySlice<int64>& begin,
-                                  const gtl::ArraySlice<int64>& end,
-                                  const gtl::ArraySlice<int64>& strides,
-                                  const TensorShape& processing_shape,
-                                  bool is_simple_slice, Tensor* result);
+class HandleStridedSliceAssignCase {
+ public:
+  void operator()(OpKernelContext* context, const gtl::ArraySlice<int64>& begin,
+                  const gtl::ArraySlice<int64>& end,
+                  const gtl::ArraySlice<int64>& strides,
+                  const TensorShape& processing_shape, bool is_simple_slice,
+                  Tensor* result);
+};
 }  // namespace tensorflow
 
 // The actual implementation. This is designed so multiple
@@ -134,12 +137,10 @@ void HandleStridedSliceGradCase(OpKernelContext* context,
 }
 
 template <typename Device, typename T, int NDIM>
-void HandleStridedSliceAssignCase(OpKernelContext* context,
-                                  const gtl::ArraySlice<int64>& begin,
-                                  const gtl::ArraySlice<int64>& end,
-                                  const gtl::ArraySlice<int64>& strides,
-                                  const TensorShape& processing_shape,
-                                  bool is_simple_slice, Tensor* result) {
+void HandleStridedSliceAssignCase<Device, T, NDIM>::operator()(
+    OpKernelContext* context, const gtl::ArraySlice<int64>& begin,
+    const gtl::ArraySlice<int64>& end, const gtl::ArraySlice<int64>& strides,
+    const TensorShape& processing_shape, bool is_simple_slice, Tensor* result) {
   gtl::InlinedVector<int64, 4> processing_dims = processing_shape.dim_sizes();
   typedef typename proxy_type<Device, T>::type Proxy;
   Eigen::DSizes<Eigen::DenseIndex, NDIM> begin_di;
@@ -156,14 +157,34 @@ void HandleStridedSliceAssignCase(OpKernelContext* context,
       begin_di, end_di, strides_di);
 }
 
+template <typename Device, typename T>
+class HandleStridedSliceAssignCase<Device, T, 0> {
+ public:
+  enum { NDIM_PROXY = 1 };
+  void operator()(OpKernelContext* context, const gtl::ArraySlice<int64>& begin,
+                  const gtl::ArraySlice<int64>& end,
+                  const gtl::ArraySlice<int64>& strides,
+                  const TensorShape& processing_shape, bool is_simple_slice,
+                  Tensor* result) {
+    gtl::InlinedVector<int64, 1> processing_dims(1);
+    processing_dims[0] = 1;
+
+    typedef typename proxy_type<Device, T>::type Proxy;
+    functor::StridedSliceAssignScalar<Device, Proxy>()(
+        context->eigen_device<Device>(),
+        result->bit_casted_shaped<Proxy, 1>(processing_dims),
+        context->input(4).bit_casted_shaped<Proxy, 1>(processing_dims));
+  }
+};
+
 // NODE(aselle): according to bsteiner, we need this because otherwise
 // nvcc instantiates templates that are invalid. strided_slice_op_gpu.cu
 // handles instantiates externally. It is important that this is done#
 
 // before the HandleXXCase's are instantiated to avoid duplicate
 // specialization errors.
-#if GOOGLE_CUDA
-#define PREVENT_INSTANTIATE(T, NDIM)                               \
+
+#define PREVENT_INSTANTIATE_DIM1_AND_UP(T, NDIM)                   \
   namespace functor {                                              \
   template <>                                                      \
   void StridedSlice<GPUDevice, T, NDIM>::operator()(               \
@@ -197,12 +218,28 @@ void HandleStridedSliceAssignCase(OpKernelContext* context,
       const Eigen::DSizes<Eigen::DenseIndex, NDIM>& strides);      \
   extern template struct StridedSliceAssign<GPUDevice, T, NDIM>;   \
   }  // namespace functor
+#define PREVENT_INSTANTIATE_DIM0_ONLY(T, NDIM)                   \
+  namespace functor {                                            \
+  template <>                                                    \
+  void StridedSliceAssignScalar<GPUDevice, T>::operator()(       \
+      const GPUDevice& d, typename TTypes<T, 1>::Tensor output,  \
+      typename TTypes<T, 1>::ConstTensor input);                 \
+  extern template struct StridedSliceAssignScalar<GPUDevice, T>; \
+  }  // namespace functor
 
+// Dimension 0 only instantiates some functors. So we only need
+// to prevent ones defined by PREVENT_INSTANTIATE_DIM0_ONLY
+#if GOOGLE_CUDA
+#if STRIDED_SLICE_INSTANTIATE_DIM == 0
+#define PREVENT_INSTANTIATE(T, NDIM) PREVENT_INSTANTIATE_DIM0_ONLY(T, NDIM)
+#else
+#define PREVENT_INSTANTIATE(T, NDIM) PREVENT_INSTANTIATE_DIM1_AND_UP(T, NDIM)
+#endif
 #else
 #define PREVENT_INSTANTIATE(T, NDIM)
 #endif
 
-#define INSTANTIATE(DEVICE, T, DIM)                                   \
+#define INSTANTIATE_DIM1_AND_UP_HANDLERS(DEVICE, T, DIM)              \
   template void HandleStridedSliceCase<DEVICE, T, DIM>(               \
       OpKernelContext * context, const gtl::ArraySlice<int64>& begin, \
       const gtl::ArraySlice<int64>& end,                              \
@@ -214,13 +251,20 @@ void HandleStridedSliceAssignCase(OpKernelContext* context,
       const gtl::ArraySlice<int64>& end,                              \
       const gtl::ArraySlice<int64>& strides,                          \
       const TensorShape& processing_shape, bool is_simple_slice,      \
-      Tensor* result);                                                \
-  template void HandleStridedSliceAssignCase<DEVICE, T, DIM>(         \
-      OpKernelContext * context, const gtl::ArraySlice<int64>& begin, \
-      const gtl::ArraySlice<int64>& end,                              \
-      const gtl::ArraySlice<int64>& strides,                          \
-      const TensorShape& processing_shape, bool is_simple_slice,      \
       Tensor* result);
+
+#define INSTANTIATE_DIM0_AND_UP_HANDLERS(DEVICE, T, DIM) \
+  template class HandleStridedSliceAssignCase<DEVICE, T, DIM>;
+
+// Only some kernels need to be instantiated on dim 0.
+#if STRIDED_SLICE_INSTANTIATE_DIM == 0
+#define INSTANTIATE(DEVICE, T, DIM) \
+  INSTANTIATE_DIM0_AND_UP_HANDLERS(DEVICE, T, DIM)
+#else
+#define INSTANTIATE(DEVICE, T, DIM)                \
+  INSTANTIATE_DIM0_AND_UP_HANDLERS(DEVICE, T, DIM) \
+  INSTANTIATE_DIM1_AND_UP_HANDLERS(DEVICE, T, DIM)
+#endif
 
 #define DECLARE_FOR_N_CPU(T) \
   INSTANTIATE(CPUDevice, T, STRIDED_SLICE_INSTANTIATE_DIM)
@@ -238,7 +282,7 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_FOR_N_GPU);
 DECLARE_FOR_N_GPU(int32);
 #endif  // END GOOGLE_CUDA
 
-TF_CALL_ALL_TYPES(DECLARE_FOR_N_CPU);
+TF_CALL_POD_STRING_TYPES(DECLARE_FOR_N_CPU);
 DECLARE_FOR_N_CPU(bfloat16);
 
 #undef INSTANTIATE

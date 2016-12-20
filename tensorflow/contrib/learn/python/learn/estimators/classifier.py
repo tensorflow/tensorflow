@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib import metrics as metrics_lib
+from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.session_bundle import exporter
@@ -27,6 +28,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 
 
+@deprecated('2016-11-30', 'Please write an appropriate function for use with'
+            ' your estimator.')
 def classification_signature_fn(examples, unused_features, predictions):
   """Creates classification signature from given examples and predictions.
 
@@ -61,12 +64,13 @@ class Classifier(estimator.Estimator):
   CLASS_OUTPUT = 'classes'
   PROBABILITY_OUTPUT = 'probabilities'
 
+  @deprecated('2016-11-30', 'Please use Estimator directly.')
   def __init__(self, model_fn, n_classes, model_dir=None, config=None,
                params=None, feature_engineering_fn=None):
     """Constructor for Classifier.
 
     Args:
-      model_fn: (targets, predictions, mode) -> logits, loss, train_op
+      model_fn: (labels, predictions, mode) -> logits, loss, train_op
       n_classes: Number of classes
       model_dir: Directory to save model parameters, graph and etc. This can
         also be used to load checkpoints from the directory into a estimator to
@@ -74,8 +78,8 @@ class Classifier(estimator.Estimator):
       config: Configuration object (optional)
       params: `dict` of hyper parameters that will be passed into `model_fn`.
       feature_engineering_fn: Feature engineering function. Takes features and
-                        targets which are the output of `input_fn` and
-                        returns features and targets which will be fed
+                        labels which are the output of `input_fn` and
+                        returns features and labels which will be fed
                         into the model.
     """
     self._n_classes = n_classes
@@ -103,7 +107,7 @@ class Classifier(estimator.Estimator):
 
     Args:
       x: features.
-      y: targets.
+      y: labels.
       input_fn: Input function.
       feed_fn: Function creating a feed dict every time it is called.
       batch_size: minibatch size to use on the input.
@@ -126,7 +130,7 @@ class Classifier(estimator.Estimator):
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
       as_iterable=False)
-  def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=False):
+  def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=True):
     """Returns predicted classes for given features.
 
     Args:
@@ -160,7 +164,7 @@ class Classifier(estimator.Estimator):
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
       as_iterable=False)
   def predict_proba(
-      self, x=None, input_fn=None, batch_size=None, as_iterable=False):
+      self, x=None, input_fn=None, batch_size=None, as_iterable=True):
     """Returns predicted probabilty distributions for given features.
 
     Args:
@@ -190,13 +194,13 @@ class Classifier(estimator.Estimator):
     else:
       return predictions[Classifier.PROBABILITY_OUTPUT]
 
-  def _classifier_model(self, features, targets, mode):
+  def _classifier_model(self, features, labels, mode):
     return self._convert_to_estimator_model_result(
-        self._logits_fn(features, targets, mode))
+        self._logits_fn(features, labels, mode))
 
-  def _classifier_model_with_params(self, features, targets, mode, params):
+  def _classifier_model_with_params(self, features, labels, mode, params):
     return self._convert_to_estimator_model_result(
-        self._logits_fn(features, targets, mode, params))
+        self._logits_fn(features, labels, mode, params))
 
   def _convert_to_estimator_model_result(self, logits_fn_result):
     logits, loss, train_op = logits_fn_result

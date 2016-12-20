@@ -3,10 +3,10 @@
 Repeat `body` while the condition `cond` is true.
 
 `cond` is a callable returning a boolean scalar tensor. `body` is a callable
-returning a (possibly nested) tuple or list of tensors of the same
+returning a (possibly nested) tuple, namedtuple or list of tensors of the same
 arity (length and structure) and types as `loop_vars`. `loop_vars` is a
-(possibly nested) tuple or list of tensors that is passed to both `cond`
-and `body`. `cond` and `body` both take as many arguments as there are
+(possibly nested) tuple, namedtuple or list of tensors that is passed to both
+`cond` and `body`. `cond` and `body` both take as many arguments as there are
 `loop_vars`.
 
 While `cond` evaluates to true, `body` is executed.
@@ -35,7 +35,7 @@ a) If a loop variable is a SparseTensor, the shape invariant must be
 TensorShape([r]) where r is the rank of the dense tensor represented
 by the sparse tensor. It means the shapes of the three tensors of the
 SparseTensor are ([None], [None, r], [r]). NOTE: The shape invariant here
-is the shape of the SparseTensor.shape property. It must be the shape of
+is the shape of the SparseTensor.dense_shape property. It must be the shape of
 a vector.
 
 b) If a loop variable is an IndexedSlices, the shape invariant must be
@@ -61,10 +61,11 @@ sequences and large batches.
 
 *  <b>`cond`</b>: A callable that represents the termination condition of the loop.
 *  <b>`body`</b>: A callable that represents the loop body.
-*  <b>`loop_vars`</b>: A (possibly nested) tuple or list of numpy array, `Tensor`,
-    and `TensorArray` objects.
+*  <b>`loop_vars`</b>: A (possibly nested) tuple, namedtuple or list of numpy array,
+    `Tensor`, and `TensorArray` objects.
 *  <b>`shape_invariants`</b>: The shape invariants for the loop variables.
 *  <b>`parallel_iterations`</b>: The number of iterations allowed to run in parallel.
+    It must be a positive integer.
 *  <b>`back_prop`</b>: Whether backprop is enabled for this while loop.
 *  <b>`swap_memory`</b>: Whether GPU-CPU memory swap is enabled for this loop.
 *  <b>`name`</b>: Optional name prefix for the returned tensors.
@@ -91,12 +92,14 @@ sequences and large batches.
   r = tf.while_loop(c, b, [i])
   ```
 
-Example with nesting:
+Example with nesting and a namedtuple:
 
   ```python
-  ijk_0 = (tf.constant(0), (tf.constant(1), tf.constant(2)))
-  c = lambda i, (j, k): i < 10
-  b = lambda i, (j, k): (i + 1, ((j + k), (j - k)))
+  import collections
+  Pair = collections.namedtuple('Pair', 'j, k')
+  ijk_0 = (tf.constant(0), Pair(tf.constant(1), tf.constant(2)))
+  c = lambda i, p: i < 10
+  b = lambda i, p: (i + 1, Pair((p.j + p.k), (p.j - p.k)))
   ijk_final = tf.while_loop(c, b, ijk_0)
   ```
 
@@ -106,7 +109,7 @@ Example using shape_invariants:
   i0 = tf.constant(0)
   m0 = tf.ones([2, 2])
   c = lambda i, m: i < 10
-  b = lambda i, m: [i+1, tf.concat(0, [m, m])]
+  b = lambda i, m: [i+1, tf.concat_v2(0, [m, m])]
   tf.while_loop(
       c, b, loop_vars=[i0, m0],
       shape_invariants=[i0.get_shape(), tensor_shape.TensorShape([None, 2])])

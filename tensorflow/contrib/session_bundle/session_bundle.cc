@@ -31,26 +31,27 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/protobuf_internal.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saver.pb.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/util/tensor_bundle/naming.h"
 
 namespace tensorflow {
 namespace serving {
 namespace {
 
-auto* load_attempt = monitoring::Counter<1>::New(
-    "/tensorflow/contrib/session_bundle/load_attempt", "model_path",
-    "The number of times a session bundle was requested to be loaded.");
-auto* load_success = monitoring::Counter<1>::New(
-    "/tensorflow/contrib/session_bundle/load_success", "model_path",
-    "The number of times a session bundle was successfully loaded.");
+auto* load_attempt_count = monitoring::Counter<2>::New(
+    "/tensorflow/contrib/session_bundle/load_attempt_count",
+    "The number of times a SessionBundle was requested to be loaded.",
+    "model_path", "status");
 auto* load_latency = monitoring::Counter<1>::New(
-    "/tensorflow/contrib/session_bundle/load_latency", "model_path",
-    "Latency in microseconds for session bundles that were succesfully "
-    "loaded.");
+    "/tensorflow/contrib/session_bundle/load_latency",
+    "Latency in microseconds for SessionBundles that were successfully loaded.",
+    "model_path");
+constexpr char kLoadAttemptFail[] = "fail";
+constexpr char kLoadAttemptSuccess[] = "success";
 
 // Create a session using the given options and load the graph.
 Status CreateSessionFromGraphDef(const SessionOptions& options,
@@ -86,24 +87,40 @@ void AddAssetsTensorsToInputs(const StringPiece export_dir,
         io::JoinPath(export_dir, kAssetsDirectory, asset.filename()));
     inputs->push_back(
         {asset.tensor_binding().tensor_name(), assets_file_tensor});
-    }
+  }
 }
 
-// Historically, model exporter(exporter.py) takes only saver with
-// sharded=True, and therefore always exports checkpoint in pattern file names.
-// In practice, instead of training from scratch and export directly, we
-// usually want to restore from existing checkpoints and then export directly.
-// To support such case, model exporter now supports reusing saver object
-// restored from existing checkpoint, that may have sharded=False - it will
-// then export checkpoint file in plain file name.
-// This method is to support models exported by both types of saver object.
-// The change is backward-compatible, therefore no changes are needed for
-// existing model exports.
+// Historically, model exporter(exporter.py) takes only saver with sharded=True,
+// and therefore always exports checkpoint in pattern file names.  In practice,
+// instead of training from scratch and export directly, we usually want to
+// restore from existing checkpoints and then export directly.  To support such
+// case, model exporter now supports reusing saver object restored from existing
+// checkpoint, that may have sharded=False - it will then export checkpoint file
+// in plain file name.  This method is to support models exported by both types
+// of saver object.  The change is backward-compatible, therefore no changes are
+// needed for existing model exports.
+//
+// Checkpoint v2 support: Variables exported using tf-exporter in the checkpoint
+// v2 format will have export.index and export.data-?????-of-????? files as
+// opposed to just an export or export-?????-of-????? file. The V2 save/restore
+// code accepts a filename prefix and assumes both prefix.index and
+// prefix.data-* are present in the filesystem. So if we see export.index
+// present in the export_dir, we know the export is in V2 format and we return
+// <export_dir>/export as this prefix.
 string GetVariablesFilename(const StringPiece export_dir) {
   const char kVariablesFilename[] = "export";
+  const string kVariablesIndexFilename = MetaFilename("export");  // V2 ckpts
   const char kVariablesFilenamePattern[] = "export-\?\?\?\?\?-of-\?\?\?\?\?";
-  if (Env::Default()->FileExists(
-          io::JoinPath(export_dir, kVariablesFilename))) {
+  if (Env::Default()
+          ->FileExists(io::JoinPath(export_dir, kVariablesFilename))
+          .ok() ||
+      // This works for the case of V2 because the variables filename is taken
+      // as a prefix in the save/restore abstraction, and the index and actual
+      // variables are meant to be present as prefix.index and
+      // prefix.data-?????-of-?????.
+      Env::Default()
+          ->FileExists(io::JoinPath(export_dir, kVariablesIndexFilename))
+          .ok()) {
     return io::JoinPath(export_dir, kVariablesFilename);
   } else {
     return io::JoinPath(export_dir, kVariablesFilenamePattern);
@@ -115,7 +132,8 @@ Status RunRestoreOp(const RunOptions& run_options, const StringPiece export_dir,
                     const StringPiece restore_op_name,
                     const StringPiece variables_filename_const_op_name,
                     Session* session) {
-  LOG(INFO) << "Running restore op for SessionBundle";
+  LOG(INFO) << "Running restore op for SessionBundle: " << restore_op_name
+            << ", " << variables_filename_const_op_name;
   Tensor variables_tensor =
       CreateStringTensor(GetVariablesFilename(export_dir));
   std::vector<std::pair<string, Tensor>> inputs = {
@@ -137,24 +155,11 @@ Status RunInitOp(const RunOptions& run_options, const StringPiece export_dir,
                       nullptr /* outputs */, &run_metadata);
 }
 
-}  // namespace
-
-Status LoadSessionBundleFromPath(const SessionOptions& options,
-                                 const StringPiece export_dir,
-                                 SessionBundle* const bundle) {
-  TF_RETURN_IF_ERROR(LoadSessionBundleFromPathUsingRunOptions(
-      options, RunOptions(), export_dir, bundle));
-  return Status::OK();
-}
-
-Status LoadSessionBundleFromPathUsingRunOptions(const SessionOptions& options,
-                                                const RunOptions& run_options,
-                                                const StringPiece export_dir,
-                                                SessionBundle* const bundle) {
-  load_attempt->GetCell(export_dir.ToString())->IncrementBy(1);
+Status LoadSessionBundleFromPathUsingRunOptionsInternal(
+    const SessionOptions& options, const RunOptions& run_options,
+    const StringPiece export_dir, SessionBundle* const bundle) {
   LOG(INFO) << "Attempting to load a SessionBundle from: " << export_dir;
   LOG(INFO) << "Using RunOptions: " << DebugStringIfAvailable(run_options);
-  const uint64 start_microseconds = Env::Default()->NowMicros();
   TF_RETURN_IF_ERROR(
       GetMetaGraphDefFromExport(export_dir, &(bundle->meta_graph_def)));
 
@@ -165,8 +170,7 @@ Status LoadSessionBundleFromPathUsingRunOptions(const SessionOptions& options,
     // Use serving graph_def in MetaGraphDef collection_def.
     if (graph_collection_def.any_list().value_size() != 1) {
       return errors::FailedPrecondition(
-          "Expected exactly one serving GraphDef in : ",
-          DebugStringIfAvailable(bundle->meta_graph_def));
+          "Expected exactly one serving GraphDef in : ", export_dir);
     }
     const auto& any = graph_collection_def.any_list().value(0);
     GraphDef graph_def;
@@ -201,14 +205,34 @@ Status LoadSessionBundleFromPathUsingRunOptions(const SessionOptions& options,
   const auto init_op_it = collection_def_map.find(kInitOpKey);
   if (init_op_it != collection_def_map.end()) {
     if (init_op_it->second.node_list().value_size() != 1) {
-      return errors::FailedPrecondition(
-          strings::StrCat("Expected exactly one serving init op in : ",
-                          DebugStringIfAvailable(bundle->meta_graph_def)));
+      return errors::FailedPrecondition(strings::StrCat(
+          "Expected exactly one serving init op in : ", export_dir));
     }
     TF_RETURN_IF_ERROR(RunInitOp(run_options, export_dir, asset_files,
                                  init_op_it->second.node_list().value(0),
                                  bundle->session.get()));
   }
+
+  return Status::OK();
+}
+
+}  // namespace
+
+Status LoadSessionBundleFromPath(const SessionOptions& options,
+                                 const StringPiece export_dir,
+                                 SessionBundle* const bundle) {
+  TF_RETURN_IF_ERROR(LoadSessionBundleFromPathUsingRunOptions(
+      options, RunOptions(), export_dir, bundle));
+  return Status::OK();
+}
+
+Status LoadSessionBundleFromPathUsingRunOptions(const SessionOptions& options,
+                                                const RunOptions& run_options,
+                                                const StringPiece export_dir,
+                                                SessionBundle* const bundle) {
+  const uint64 start_microseconds = Env::Default()->NowMicros();
+  const Status status = LoadSessionBundleFromPathUsingRunOptionsInternal(
+      options, run_options, export_dir, bundle);
 
   const uint64 load_latency_microsecs = [&]() -> uint64 {
     const uint64 end_microseconds = Env::Default()->NowMicros();
@@ -216,18 +240,26 @@ Status LoadSessionBundleFromPathUsingRunOptions(const SessionOptions& options,
     if (end_microseconds < start_microseconds) return 0;
     return end_microseconds - start_microseconds;
   }();
-  LOG(INFO) << "Done loading SessionBundle. Took " << load_latency_microsecs
-            << " microseconds.";
-  load_success->GetCell(export_dir.ToString())->IncrementBy(1);
+  auto log_and_count = [&](const string& status_str) {
+    LOG(INFO) << "Loading SessionBundle: " << status_str << ". Took "
+              << load_latency_microsecs << " microseconds.";
+    load_attempt_count->GetCell(export_dir.ToString(), status_str)
+        ->IncrementBy(1);
+  };
+  if (status.ok()) {
+    log_and_count(kLoadAttemptSuccess);
+  } else {
+    log_and_count(kLoadAttemptFail);
+  }
   load_latency->GetCell(export_dir.ToString())
       ->IncrementBy(load_latency_microsecs);
-  return Status::OK();
+  return status;
 }
 
 bool IsPossibleExportDirectory(const StringPiece directory) {
   const string meta_graph_def_path =
       io::JoinPath(directory, kMetaGraphDefFilename);
-  return Env::Default()->FileExists(meta_graph_def_path);
+  return Env::Default()->FileExists(meta_graph_def_path).ok();
 }
 
 }  // namespace serving

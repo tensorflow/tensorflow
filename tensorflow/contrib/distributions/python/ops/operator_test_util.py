@@ -87,9 +87,7 @@ class OperatorPDDerivedClassTest(tf.test.TestCase):
           self.assertEqual(mat.shape, sqrt.get_shape())
           # Square roots are not unique, but SS^T should equal mat.  In this
           # case however, we should have S = S^T.
-          self._compare_results(
-              expected=mat,
-              actual=tf.batch_matmul(sqrt, sqrt))
+          self._compare_results(expected=mat, actual=tf.matmul(sqrt, sqrt))
 
   def testDeterminants(self):
     with self.test_session():
@@ -111,8 +109,7 @@ class OperatorPDDerivedClassTest(tf.test.TestCase):
           x = self._rng.randn(*(batch_shape + (k, 5)))
 
           self._compare_results(
-              expected=tf.batch_matmul(mat, x).eval(),
-              actual=operator.matmul(x))
+              expected=tf.matmul(mat, x).eval(), actual=operator.matmul(x))
 
   def testSqrtMatmul(self):
     # Square roots are not unique, but we should have SS^T x = Ax, and in our
@@ -126,7 +123,7 @@ class OperatorPDDerivedClassTest(tf.test.TestCase):
           x = self._rng.randn(*(batch_shape + (k, 5)))
 
           self._compare_results(
-              expected=tf.batch_matmul(mat, x).eval(),
+              expected=tf.matmul(mat, x).eval(),
               actual=operator.sqrt_matmul(operator.sqrt_matmul(x)))
 
   def testSolve(self):

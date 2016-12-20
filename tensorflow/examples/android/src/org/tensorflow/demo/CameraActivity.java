@@ -18,37 +18,108 @@ package org.tensorflow.demo;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.Fragment;
 import android.content.pm.PackageManager;
+import android.media.Image.Plane;
+import android.media.ImageReader.OnImageAvailableListener;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.HandlerThread;
+import android.util.Size;
+import android.view.MotionEvent;
 import android.view.WindowManager;
 import android.widget.Toast;
+import java.nio.ByteBuffer;
+import org.tensorflow.demo.env.Logger;
+import org.tensorflow.demo.R;
 
-public class CameraActivity extends Activity {
+public abstract class CameraActivity extends Activity implements OnImageAvailableListener {
+  private static final Logger LOGGER = new Logger();
+
   private static final int PERMISSIONS_REQUEST = 1;
 
   private static final String PERMISSION_CAMERA = Manifest.permission.CAMERA;
   private static final String PERMISSION_STORAGE = Manifest.permission.WRITE_EXTERNAL_STORAGE;
 
+  private boolean debug = false;
+
+  private Handler handler;
+  private HandlerThread handlerThread;
+
   @Override
   protected void onCreate(final Bundle savedInstanceState) {
-    super.onCreate(savedInstanceState);
+    LOGGER.d("onCreate " + this);
+    super.onCreate(null);
     getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
     setContentView(R.layout.activity_camera);
 
     if (hasPermission()) {
-      if (null == savedInstanceState) {
-        setFragment();
-      }
+      setFragment();
     } else {
       requestPermission();
     }
-
   }
 
   @Override
-  public void onRequestPermissionsResult(int requestCode, String permissions[], int[] grantResults) {
+  public synchronized void onStart() {
+    LOGGER.d("onStart " + this);
+    super.onStart();
+  }
+
+  @Override
+  public synchronized void onResume() {
+    LOGGER.d("onResume " + this);
+    super.onResume();
+
+    handlerThread = new HandlerThread("inference");
+    handlerThread.start();
+    handler = new Handler(handlerThread.getLooper());
+  }
+
+  @Override
+  public synchronized void onPause() {
+    LOGGER.d("onPause " + this);
+
+    if (!isFinishing()) {
+      LOGGER.d("Requesting finish");
+      finish();
+    }
+
+    handlerThread.quitSafely();
+    try {
+      handlerThread.join();
+      handlerThread = null;
+      handler = null;
+    } catch (final InterruptedException e) {
+      LOGGER.e(e, "Exception!");
+    }
+
+    super.onPause();
+  }
+
+  @Override
+  public synchronized void onStop() {
+    LOGGER.d("onStop " + this);
+    super.onStop();
+  }
+
+  @Override
+  public synchronized void onDestroy() {
+    LOGGER.d("onDestroy " + this);
+    super.onDestroy();
+  }
+
+  protected synchronized void runInBackground(final Runnable r) {
+    if (handler != null) {
+      handler.post(r);
+    }
+  }
+
+  @Override
+  public void onRequestPermissionsResult(
+      final int requestCode, final String[] permissions, final int[] grantResults) {
     switch (requestCode) {
       case PERMISSIONS_REQUEST: {
         if (grantResults.length > 0
@@ -79,10 +150,64 @@ public class CameraActivity extends Activity {
     }
   }
 
-  private void setFragment() {
+  protected void setFragment() {
+    final Fragment fragment = CameraConnectionFragment.newInstance(
+        new CameraConnectionFragment.ConnectionCallback(){
+          @Override
+          public void onPreviewSizeChosen(final Size size, final int rotation) {
+            CameraActivity.this.onPreviewSizeChosen(size, rotation);
+          }
+        },
+        this, getLayoutId(), getDesiredPreviewFrameSize());
+
     getFragmentManager()
-            .beginTransaction()
-            .replace(R.id.container, CameraConnectionFragment.newInstance())
-            .commit();
+        .beginTransaction()
+        .replace(R.id.container, fragment)
+        .commit();
   }
+
+  protected void fillBytes(final Plane[] planes, final byte[][] yuvBytes) {
+    // Because of the variable row stride it's not possible to know in
+    // advance the actual necessary dimensions of the yuv planes.
+    for (int i = 0; i < planes.length; ++i) {
+      final ByteBuffer buffer = planes[i].getBuffer();
+      if (yuvBytes[i] == null) {
+        LOGGER.d("Initializing buffer %d at size %d", i, buffer.capacity());
+        yuvBytes[i] = new byte[buffer.capacity()];
+      }
+      buffer.get(yuvBytes[i]);
+    }
+  }
+
+  @Override
+  public boolean onTouchEvent(final MotionEvent event) {
+    if (event.getAction() == MotionEvent.ACTION_DOWN) {
+      debug = !debug;
+      requestRender();
+    }
+
+    return false;
+  }
+
+  public boolean isDebug() {
+    return debug;
+  }
+
+  public void requestRender() {
+    final OverlayView overlay = (OverlayView) findViewById(R.id.overlay);
+    if (overlay != null) {
+      overlay.postInvalidate();
+    }
+  }
+
+  public void addCallback(final OverlayView.DrawCallback callback) {
+    final OverlayView overlay = (OverlayView) findViewById(R.id.overlay);
+    if (overlay != null) {
+      overlay.addCallback(callback);
+    }
+  }
+
+  protected abstract void onPreviewSizeChosen(final Size size, final int rotation);
+  protected abstract int getLayoutId();
+  protected abstract int getDesiredPreviewFrameSize();
 }

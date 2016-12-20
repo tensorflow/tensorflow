@@ -47,7 +47,7 @@ def main(unused_argv):
 
   pipeline.fit(x_train, y_train, DNNclassifier__steps=200)
 
-  score = accuracy_score(y_test, pipeline.predict(x_test))
+  score = accuracy_score(y_test, list(pipeline.predict(x_test)))
   print('Accuracy: {0:f}'.format(score))
 
 

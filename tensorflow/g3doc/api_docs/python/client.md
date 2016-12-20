@@ -52,8 +52,7 @@ with tf.Session() as sess:
   sess.run(...)
 ```
 
-The [`ConfigProto`]
-(https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto)
+The [`ConfigProto`](https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto)
 protocol buffer exposes various configuration options for a
 session. For example, to create a session that uses soft constraints
 for device placement, and log the resulting placement decisions,
@@ -84,8 +83,8 @@ the session constructor.
 
 
 *  <b>`target`</b>: (Optional.) The execution engine to connect to.
-    Defaults to using an in-process engine. See [Distributed Tensorflow]
-    (https://www.tensorflow.org/how_tos/distributed/index.html)
+    Defaults to using an in-process engine. See
+    [Distributed Tensorflow](https://www.tensorflow.org/how_tos/distributed/index.html)
     for more examples.
 *  <b>`graph`</b>: (Optional.) The `Graph` to be launched (described above).
 *  <b>`config`</b>: (Optional.) A [`ConfigProto`](https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto)
@@ -104,8 +103,8 @@ and evaluate every `Tensor` in `fetches`, substituting the values in
 `feed_dict` for the corresponding input values.
 
 The `fetches` argument may be a single graph element, or an arbitrarily
-nested list, tuple, namedtuple, or dict containing graph elements at its
-leaves.  A graph element can be one of the following types:
+nested list, tuple, namedtuple, dict, or OrderedDict containing graph
+elements at its leaves.  A graph element can be one of the following types:
 
 * An [`Operation`](../../api_docs/python/framework.md#Operation).
   The corresponding fetched value will be `None`.
@@ -423,7 +422,7 @@ thread's function.
 
 
 
-## Error classes
+## Error classes and convenience functions
 
 - - -
 
@@ -795,6 +794,28 @@ operation, if the file is truncated while it is being read.
 #### `tf.errors.DataLossError.__init__(node_def, op, message)` {#DataLossError.__init__}
 
 Creates a `DataLossError`.
+
+
+
+
+- - -
+
+### `tf.errors.exception_type_from_error_code(error_code)` {#exception_type_from_error_code}
+
+
+
+
+- - -
+
+### `tf.errors.error_code_from_exception_type(cls)` {#error_code_from_exception_type}
+
+
+
+
+- - -
+
+### `tf.errors.raise_exception_on_not_ok_status()` {#raise_exception_on_not_ok_status}
+
 
 
 

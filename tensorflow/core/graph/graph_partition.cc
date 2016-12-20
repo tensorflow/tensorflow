@@ -22,6 +22,8 @@ limitations under the License.
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/graph/costmodel.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -72,13 +74,27 @@ struct RecvInfo {
 typedef std::unordered_map<DupRecvKey, RecvInfo, DupRecvKeyHash, DupRecvKeyEq>
     DupRecvTable;
 
-// Control flow info for a graph node.
-struct ControlFlowInfo {
-  const Node* frame = nullptr;         // frame of a node
-  const Node* parent_frame = nullptr;  // parent frame of a node
-  string frame_name;                   // frame name of a node
-  int iter_level = -1;                 // level of a node
+struct DupControlKey {
+  int dst_node_id;      // Edge's dst node id
+  GraphDef* src_graph;  // Edge's src node is in this subgraph
 };
+
+struct DupControlKeyHash {
+  size_t operator()(const DupControlKey& k) const {
+    return Hash64(reinterpret_cast<const char*>(&k.src_graph),
+                  sizeof(k.src_graph), k.dst_node_id);
+  }
+};
+
+struct DupControlKeyEq {
+  bool operator()(const DupControlKey& x, const DupControlKey& y) const {
+    return (x.dst_node_id == y.dst_node_id) && (x.src_graph == y.src_graph);
+  }
+};
+
+typedef std::unordered_map<DupControlKey, NodeDef*, DupControlKeyHash,
+                           DupControlKeyEq>
+    DupControlTable;
 
 struct PairIntHash {
  public:
@@ -98,6 +114,7 @@ struct GraphInfo {
   MemoryTypeMap input_types;
   MemoryTypeMap output_types;
   std::vector<ControlFlowInfo> cf_info;
+  std::vector<int32> num_outgoing_control_edges;
 };
 
 DataType EdgeType(const Edge* e) {
@@ -316,148 +333,48 @@ NodeDef* AddControlTrigger(const PartitionOptions& opts, GraphDef* gdef,
 // TODO(yuanbyu): In this case, we don't respect the requested device in
 // the GraphDef for these nodes. Ideally, the placer would enforce the
 // colocation to render this unnecessary.
-void OptimizeControlFlowColocation(Node* node) {
-  if (IsSwitch(node)) {
-    for (const Edge* in_edge : node->in_edges()) {
-      if (in_edge->dst_input() == 0) {
-        // Colocate with the data input.
-        node->set_assigned_device_name(in_edge->src()->assigned_device_name());
-        return;
-      }
-    }
-  } else if (IsExit(node)) {
-    for (const Edge* in_edge : node->in_edges()) {
-      if (!in_edge->IsControlEdge()) {
-        // Colocate with upstream node.
-        node->set_assigned_device_name(in_edge->src()->assigned_device_name());
-        return;
-      }
-    }
-  } else {
-    if ((IsEnter(node) && !IsRefType(node->input_type(0))) ||
-        IsNextIteration(node)) {
-      const Edge* data_edge = nullptr;
-      for (const Edge* out_edge : node->out_edges()) {
-        if (!out_edge->IsControlEdge()) {
-          if (data_edge) {
-            data_edge = nullptr;
-            return;
-          }
-          data_edge = out_edge;
+void OptimizeControlFlowColocation(Graph* graph) {
+  auto visit = [](Node* node) {
+    if (IsSwitch(node)) {
+      for (const Edge* in_edge : node->in_edges()) {
+        if (in_edge->dst_input() == 0) {
+          // Colocate with the data input.
+          node->set_assigned_device_name(
+              in_edge->src()->assigned_device_name());
+          return;
         }
       }
-      // Colocate if there is only one downstream data node.
-      if (data_edge) {
-        node->set_assigned_device_name(
-            data_edge->dst()->assigned_device_name());
-      }
-    }
-  }
-}
-
-// Assign to each node the name of the frame and the level it belongs to.
-// We check the well-formedness of the graph: All inputs to a node must
-// come from the same frame and have the same "static" iteration level.
-// NOTE(yuanbyu): For now, we require all sends/recvs have iteration level
-// 0. This essentially means there can't be multiple serial Nexts in
-// an iteration, which all sane front-ends should satisfy.
-Status BuildControlFlowInfo(Graph* g, std::vector<ControlFlowInfo>* info) {
-  info->clear();
-  info->resize(g->num_node_ids());
-
-  Node* src_node = g->source_node();
-  ControlFlowInfo& src_info = (*info)[src_node->id()];
-  src_info.frame = src_node;
-  src_info.parent_frame = src_node;
-  src_info.iter_level = 0;
-
-  string frame_name;
-  std::deque<Node*> ready;
-  ready.push_back(src_node);
-  while (!ready.empty()) {
-    Node* curr_node = ready.front();
-    ready.pop_front();
-    const ControlFlowInfo& curr_info = (*info)[curr_node->id()];
-    const Node* frame = curr_info.frame;
-    const Node* parent = curr_info.parent_frame;
-    frame_name = curr_info.frame_name;
-    int iter_level = curr_info.iter_level;
-
-    if (IsExit(curr_node)) {
-      // Exit to the parent frame.
-      const ControlFlowInfo& parent_info = (*info)[parent->id()];
-      frame = parent_info.frame;
-      parent = parent_info.parent_frame;
-      frame_name = parent_info.frame_name;
-      iter_level = parent_info.iter_level;
-    }
-
-    // Optimize colocation for control flow nodes.
-    OptimizeControlFlowColocation(curr_node);
-
-    for (const Edge* out_edge : curr_node->out_edges()) {
-      Node* out = out_edge->dst();
-      int out_id = out->id();
-      ControlFlowInfo* out_info = &(*info)[out_id];
-      const Node* out_parent = out_info->parent_frame;
-      bool is_visited = (out_info->iter_level != -1);
-
-      // Skip Sink/Source nodes.
-      if (!out->IsOp()) continue;
-
-      // Add to ready queue if not seen.
-      if (!is_visited) {
-        ready.push_back(out);
-      }
-
-      // Process the node 'out'.
-      if (IsEnter(out)) {
-        if (is_visited) {
-          const string& parent_name = (*info)[out_parent->id()].frame_name;
-          if (parent_name != frame_name || iter_level != out_info->iter_level) {
-            return errors::InvalidArgument("All inputs to node ", out->name(),
-                                           " must be from the same frame.");
-          }
-        } else {
-          out_info->frame = out;
-          out_info->parent_frame = frame;
-          TF_RETURN_IF_ERROR(
-              GetNodeAttr(out->def(), "frame_name", &out_info->frame_name));
-          if (out_info->frame_name.empty()) {
-            return errors::InvalidArgument("The Enter node ", out->name(),
-                                           " must have a frame name.");
-          }
-          out_info->iter_level = 0;
+    } else if (IsExit(node)) {
+      for (const Edge* in_edge : node->in_edges()) {
+        if (!in_edge->IsControlEdge()) {
+          // Colocate with upstream node.
+          node->set_assigned_device_name(
+              in_edge->src()->assigned_device_name());
+          return;
         }
-      } else if (IsNextIteration(out)) {
-        if (is_visited) {
-          if (out_info->frame_name != frame_name) {
-            return errors::InvalidArgument("All inputs to node ", out->name(),
-                                           " must be from the same frame.");
+      }
+    } else {
+      if ((IsEnter(node) && !IsRefType(node->input_type(0))) ||
+          IsNextIteration(node)) {
+        const Edge* data_edge = nullptr;
+        for (const Edge* out_edge : node->out_edges()) {
+          if (!out_edge->IsControlEdge()) {
+            if (data_edge) {
+              data_edge = nullptr;
+              return;
+            }
+            data_edge = out_edge;
           }
-        } else {
-          out_info->frame = frame;
-          out_info->parent_frame = parent;
-          out_info->frame_name = frame_name;
-          out_info->iter_level = iter_level + 1;
         }
-      } else {
-        if (is_visited) {
-          if (out_info->frame_name != frame_name) {
-            return errors::InvalidArgument("All inputs to node ", out->name(),
-                                           " must be from the same frame.");
-          }
-        } else {
-          out_info->frame = frame;
-          out_info->parent_frame = parent;
-          out_info->frame_name = frame_name;
-          out_info->iter_level = iter_level;
+        // Colocate if there is only one downstream data node.
+        if (data_edge) {
+          node->set_assigned_device_name(
+              data_edge->dst()->assigned_device_name());
         }
       }
     }
-  }
-
-  return Status::OK();
+  };
+  DFS(*graph, visit, {});
 }
 
 string ControlLoopName(const string& name) {
@@ -559,7 +476,6 @@ void AddControlFlowInfo(const Node* node, const Node* src,
   info->frame = src_info.frame;
   info->parent_frame = src_info.parent_frame;
   info->frame_name = src_info.frame_name;
-  info->iter_level = src_info.iter_level;
 }
 
 // Constructs a control loop. Returns a struct containing the newly created
@@ -624,11 +540,12 @@ Status AddControlLoop(const PartitionOptions& opts, Graph* g, const Node* src,
 // Build memory and device type info for every node in the graph.
 // TODO(yuanbyu): It might be simpler if we convert MemoryType to
 // DeviceType for the inputs/outputs of each node.
-Status BuildMemoryDeviceInfo(const Graph& g, GraphInfo* info) {
+Status BuildGraphInfo(const Graph& g, GraphInfo* info) {
+  info->device_types.resize(g.num_node_ids(), DEVICE_CPU);
+  info->num_outgoing_control_edges.resize(g.num_node_ids());
+
   MemoryTypeVector input_memory_types;
   MemoryTypeVector output_memory_types;
-
-  info->device_types.resize(g.num_node_ids(), DEVICE_CPU);
   for (const Node* node : g.nodes()) {
     if (!node->IsOp()) continue;  // Skip Sink/Source nodes.
 
@@ -651,6 +568,14 @@ Status BuildMemoryDeviceInfo(const Graph& g, GraphInfo* info) {
     for (size_t i = 0; i < output_memory_types.size(); ++i) {
       info->output_types[{node_id, i}] = output_memory_types[i];
     }
+
+    int32 num_control_edges = 0;
+    for (const Edge* edge : node->out_edges()) {
+      if (edge->IsControlEdge()) {
+        ++num_control_edges;
+      }
+    }
+    info->num_outgoing_control_edges[node_id] = num_control_edges;
   }
   return Status::OK();
 }
@@ -694,6 +619,8 @@ Status AddControlFlow(const PartitionOptions& opts, Graph* g,
   // Build the control flow info for every node.
   status = BuildControlFlowInfo(g, &cf_info);
   if (!status.ok()) return status;
+
+  OptimizeControlFlowColocation(g);
 
   // The map from frames to their LoopCond nodes.
   std::unordered_map<string, Node*> frame_cond_map;
@@ -924,12 +851,13 @@ Status Partition(const PartitionOptions& opts, Graph* g,
 
   // At this point, all the graph mutations have been done. Build memory
   // and device type info for every node and edge in the graph.
-  status = BuildMemoryDeviceInfo(*g, &g_info);
+  status = BuildGraphInfo(*g, &g_info);
   if (!status.ok()) return status;
 
   string dstp;
   std::vector<const Edge*> inputs;
   DupRecvTable dup_recv(3);
+  DupControlTable dup_control(3);
   // For a node dst, 'ref_recvs' remembers the recvs introduced by a ref
   // edge to dst. 'ref_control_inputs' remembers the inputs by a non-ref
   // edge to dst. We will add a control edge for every pair in
@@ -962,6 +890,7 @@ Status Partition(const PartitionOptions& opts, Graph* g,
     ref_control_inputs.clear();
     const Edge* control_flow_edge = nullptr;
     int32 num_control_flow_edges = 0;
+    int32 num_input_edges = 0;
     for (const Edge* edge : dst->in_edges()) {
       if (edge->IsControlEdge()) {
         if (IsMerge(edge->src()) && IsControlLoop(edge->src())) {
@@ -976,7 +905,14 @@ Status Partition(const PartitionOptions& opts, Graph* g,
       } else {
         DCHECK(inputs[edge->dst_input()] == nullptr);
         inputs[edge->dst_input()] = edge;
+        ++num_input_edges;
       }
+    }
+
+    if (num_input_edges != dst->num_inputs()) {
+      return errors::InvalidArgument("Incomplete graph, missing ",
+                                     (dst->num_inputs() - num_input_edges),
+                                     " inputs for ", dst->name());
     }
 
     // Process in order so that all data edges are added as inputs to
@@ -1015,7 +951,9 @@ Status Partition(const PartitionOptions& opts, Graph* g,
       }
 
       // Check whether there is already a send/recv pair transferring
-      // the same tensor/control from the src to dst partition.
+      // the same tensor/control from src to the dst partition. This
+      // handles the dedup case when a single source in one partition
+      // going to multiple destinations in another partition.
       const bool on_host = IsDstInputOnHost(edge, g_info);
       DupRecvKey key{src->id(), edge->src_output(), dst_graph, on_host};
       auto iter = dup_recv.find(key);
@@ -1040,6 +978,22 @@ Status Partition(const PartitionOptions& opts, Graph* g,
 
       NodeDefBuilder::NodeOut send_from;
       if (edge->IsControlEdge()) {
+        DupControlKey key{dst->id(), src_graph};
+        int32 num_control_edges = g_info.num_outgoing_control_edges[src->id()];
+        if (num_control_edges == 1) {
+          // Handle dedup of multiple control edges going from one partition
+          // to a single destination in another partition.
+          // Note: We require that src has only one outgoing control edge.
+          // This is to avoid non-equivalent changes to the graph when
+          // combinded with dedup of single-source-multi-destination.
+          auto iter = dup_control.find(key);
+          if (iter != dup_control.end()) {
+            // Note: This may cause start_time(src) > start_time(iter->second).
+            AddInput(iter->second, src->name(), Graph::kControlSlot);
+            continue;
+          }
+        }
+
         // Insert a dummy const node that will generate a tiny
         // data element to be sent from send to recv.
         VLOG(1) << "Send/Recv control: " << src->assigned_device_name() << "["
@@ -1053,6 +1007,9 @@ Status Partition(const PartitionOptions& opts, Graph* g,
         }
         AddInput(dummy, src->name(), Graph::kControlSlot);
         send_from.Reset(dummy->name(), 0, DT_FLOAT);
+        if (num_control_edges == 1) {
+          dup_control[key] = dummy;
+        }
       } else {
         send_from.Reset(src->name(), edge->src_output(), EdgeType(edge));
       }

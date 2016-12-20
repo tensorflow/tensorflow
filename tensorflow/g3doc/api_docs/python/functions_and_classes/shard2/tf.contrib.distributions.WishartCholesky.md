@@ -128,7 +128,7 @@ independent distributions of this kind the instance represents.
 
 - - -
 
-#### `tf.contrib.distributions.WishartCholesky.cdf(value, name='cdf')` {#WishartCholesky.cdf}
+#### `tf.contrib.distributions.WishartCholesky.cdf(value, name='cdf', **condition_kwargs)` {#WishartCholesky.cdf}
 
 Cumulative distribution function.
 
@@ -143,6 +143,7 @@ cdf(x) := P[X <= x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -156,6 +157,29 @@ cdf(x) := P[X <= x]
 #### `tf.contrib.distributions.WishartCholesky.cholesky_input_output_matrices` {#WishartCholesky.cholesky_input_output_matrices}
 
 Boolean indicating if `Tensor` input/outputs are Cholesky factorized.
+
+
+- - -
+
+#### `tf.contrib.distributions.WishartCholesky.copy(**override_parameters_kwargs)` {#WishartCholesky.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
 
 
 - - -
@@ -183,7 +207,7 @@ The `DType` of `Tensor`s handled by this `Distribution`.
 
 #### `tf.contrib.distributions.WishartCholesky.entropy(name='entropy')` {#WishartCholesky.entropy}
 
-Shanon entropy in nats.
+Shannon entropy in nats.
 
 
 - - -
@@ -247,7 +271,21 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.WishartCholesky.log_cdf(value, name='log_cdf')` {#WishartCholesky.log_cdf}
+#### `tf.contrib.distributions.WishartCholesky.is_scalar_batch` {#WishartCholesky.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.WishartCholesky.is_scalar_event` {#WishartCholesky.is_scalar_event}
+
+Indicates that `event_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.WishartCholesky.log_cdf(value, name='log_cdf', **condition_kwargs)` {#WishartCholesky.log_cdf}
 
 Log cumulative distribution function.
 
@@ -266,6 +304,7 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -283,7 +322,7 @@ Computes the log normalizing constant, log(Z).
 
 - - -
 
-#### `tf.contrib.distributions.WishartCholesky.log_pdf(value, name='log_pdf')` {#WishartCholesky.log_pdf}
+#### `tf.contrib.distributions.WishartCholesky.log_pdf(value, name='log_pdf', **condition_kwargs)` {#WishartCholesky.log_pdf}
 
 Log probability density function.
 
@@ -292,6 +331,7 @@ Log probability density function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -307,7 +347,7 @@ Log probability density function.
 
 - - -
 
-#### `tf.contrib.distributions.WishartCholesky.log_pmf(value, name='log_pmf')` {#WishartCholesky.log_pmf}
+#### `tf.contrib.distributions.WishartCholesky.log_pmf(value, name='log_pmf', **condition_kwargs)` {#WishartCholesky.log_pmf}
 
 Log probability mass function.
 
@@ -316,6 +356,7 @@ Log probability mass function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -331,7 +372,7 @@ Log probability mass function.
 
 - - -
 
-#### `tf.contrib.distributions.WishartCholesky.log_prob(value, name='log_prob')` {#WishartCholesky.log_prob}
+#### `tf.contrib.distributions.WishartCholesky.log_prob(value, name='log_prob', **condition_kwargs)` {#WishartCholesky.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
 
@@ -340,6 +381,7 @@ Log probability density/mass function (depending on `is_continuous`).
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -350,7 +392,7 @@ Log probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.WishartCholesky.log_survival_function(value, name='log_survival_function')` {#WishartCholesky.log_survival_function}
+#### `tf.contrib.distributions.WishartCholesky.log_survival_function(value, name='log_survival_function', **condition_kwargs)` {#WishartCholesky.log_survival_function}
 
 Log survival function.
 
@@ -370,6 +412,7 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -451,12 +494,12 @@ param_shapes with static (i.e. TensorShape) shapes.
 
 #### `tf.contrib.distributions.WishartCholesky.parameters` {#WishartCholesky.parameters}
 
-Dictionary of parameters used by this `Distribution`.
+Dictionary of parameters used to instantiate this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.WishartCholesky.pdf(value, name='pdf')` {#WishartCholesky.pdf}
+#### `tf.contrib.distributions.WishartCholesky.pdf(value, name='pdf', **condition_kwargs)` {#WishartCholesky.pdf}
 
 Probability density function.
 
@@ -465,6 +508,7 @@ Probability density function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -480,7 +524,7 @@ Probability density function.
 
 - - -
 
-#### `tf.contrib.distributions.WishartCholesky.pmf(value, name='pmf')` {#WishartCholesky.pmf}
+#### `tf.contrib.distributions.WishartCholesky.pmf(value, name='pmf', **condition_kwargs)` {#WishartCholesky.pmf}
 
 Probability mass function.
 
@@ -489,6 +533,7 @@ Probability mass function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -504,7 +549,7 @@ Probability mass function.
 
 - - -
 
-#### `tf.contrib.distributions.WishartCholesky.prob(value, name='prob')` {#WishartCholesky.prob}
+#### `tf.contrib.distributions.WishartCholesky.prob(value, name='prob', **condition_kwargs)` {#WishartCholesky.prob}
 
 Probability density/mass function (depending on `is_continuous`).
 
@@ -513,6 +558,7 @@ Probability density/mass function (depending on `is_continuous`).
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -523,7 +569,7 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.WishartCholesky.sample(sample_shape=(), seed=None, name='sample')` {#WishartCholesky.sample}
+#### `tf.contrib.distributions.WishartCholesky.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#WishartCholesky.sample}
 
 Generate samples of the specified shape.
 
@@ -536,6 +582,7 @@ sample.
 *  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -545,7 +592,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.WishartCholesky.sample_n(n, seed=None, name='sample_n')` {#WishartCholesky.sample_n}
+#### `tf.contrib.distributions.WishartCholesky.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#WishartCholesky.sample_n}
 
 Generate `n` samples.
 
@@ -556,6 +603,7 @@ Generate `n` samples.
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -591,7 +639,7 @@ Standard deviation.
 
 - - -
 
-#### `tf.contrib.distributions.WishartCholesky.survival_function(value, name='survival_function')` {#WishartCholesky.survival_function}
+#### `tf.contrib.distributions.WishartCholesky.survival_function(value, name='survival_function', **condition_kwargs)` {#WishartCholesky.survival_function}
 
 Survival function.
 
@@ -608,6 +656,7 @@ survival_function(x) = P[X > x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 

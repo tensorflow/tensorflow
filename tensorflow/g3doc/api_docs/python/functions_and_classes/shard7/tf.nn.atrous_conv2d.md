@@ -32,10 +32,11 @@ Convolutional Nets and Fully Connected CRFs](http://arxiv.org/abs/1412.7062).
 The same operation is investigated further in [Multi-Scale Context Aggregation
 by Dilated Convolutions](http://arxiv.org/abs/1511.07122). Previous works
 that effectively use atrous convolution in different ways are, among others,
-[OverFeat: Integrated Recognition, Localization and Detection using Convolutional Networks](http://arxiv.org/abs/1312.6229)
-and [Fast Image Scanning with Deep Max-Pooling Convolutional Neural Networks](http://arxiv.org/abs/1302.1700).
-Atrous convolution is also closely related to the so-called noble identities in
-multi-rate signal processing.
+[OverFeat: Integrated Recognition, Localization and Detection using
+Convolutional Networks](http://arxiv.org/abs/1312.6229) and [Fast Image
+Scanning with Deep Max-Pooling Convolutional Neural Networks](http://arxiv.org/abs/1302.1700).
+Atrous convolution is also closely related to the so-called noble identities
+in multi-rate signal processing.
 
 There are many different ways to implement atrous convolution (see the refs
 above). The implementation here reduces

@@ -21,6 +21,7 @@ from __future__ import print_function
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 # go/tf-wildcard-import
@@ -83,7 +84,7 @@ def _MergeGrad(op, grad, _):
   input_op = op.inputs[0].op
   graph = ops.get_default_graph()
   # pylint: disable=protected-access
-  op_ctxt = input_op._get_control_flow_context()
+  op_ctxt = control_flow_ops._GetOutputContext(input_op)
   grad_ctxt = graph._get_control_flow_context()
   # pylint: enable=protected-access
   if isinstance(op_ctxt, WhileContext):
@@ -149,14 +150,11 @@ def _ExitGrad(op, grad):
   if isinstance(grad, ops.Tensor):
     grad_ctxt.AddName(grad.name)
   else:
-    if not isinstance(grad, (ops.IndexedSlices, ops.SparseTensor)):
+    if not isinstance(grad, (ops.IndexedSlices, sparse_tensor.SparseTensor)):
       raise TypeError("Type %s not supported" % type(grad))
     grad_ctxt.AddName(grad.values.name)
     grad_ctxt.AddName(grad.indices.name)
-    if isinstance(grad, ops.IndexedSlices):
-      dense_shape = grad.dense_shape
-    else:
-      dense_shape = grad.shape
+    dense_shape = grad.dense_shape
     if dense_shape is not None:
       grad_ctxt.AddName(dense_shape.name)
   enter_fn = control_flow_ops._Enter  # pylint: disable=protected-access

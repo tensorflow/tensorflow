@@ -124,19 +124,16 @@ class FakeHttpRequest : public HttpRequest {
     }
     return Status::OK();
   }
-  Status SetResultBuffer(char* scratch, size_t size,
-                         StringPiece* result) override {
-    scratch_ = scratch;
-    size_ = size;
-    result_ = result;
+  Status SetResultBuffer(std::vector<char>* buffer) override {
+    buffer->clear();
+    buffer_ = buffer;
     return Status::OK();
   }
   Status Send() override {
     EXPECT_EQ(expected_request_, actual_request_) << "Unexpected HTTP request.";
-    if (scratch_ && result_) {
-      auto actual_size = std::min(response_.size(), size_);
-      memcpy(scratch_, response_.c_str(), actual_size);
-      *result_ = StringPiece(scratch_, actual_size);
+    if (buffer_) {
+      buffer_->insert(buffer_->begin(), response_.c_str(),
+                      response_.c_str() + response_.size());
     }
     return response_status_;
   }
@@ -164,9 +161,7 @@ class FakeHttpRequest : public HttpRequest {
   virtual uint64 GetResponseCode() const override { return response_code_; }
 
  private:
-  char* scratch_ = nullptr;
-  size_t size_ = 0;
-  StringPiece* result_ = nullptr;
+  std::vector<char>* buffer_ = nullptr;
   string expected_request_;
   string actual_request_;
   string response_;

@@ -41,6 +41,23 @@ Furthermore, `fn` may emit a different structure than its input.  For example,
 the `dtype` parameter is not optional: `dtype` must be a type or (possibly
 nested) tuple of types matching the output of `fn`.
 
+To apply a functional operation to the nonzero elements of a SparseTensor
+one of the following methods is recommended. First, if the function is
+expressible as TensorFlow ops, use
+
+```python
+  result = SparseTensor(input.indices, fn(input.values), input.dense_shape)
+```
+
+If, however, the function is not expressible as a TensorFlow op, then use
+
+```python
+result = SparseTensor(
+  input.indices, map_fn(fn, input.values), input.dense_shape)
+```
+
+instead.
+
 ##### Args:
 
 
@@ -71,7 +88,7 @@ nested) tuple of types matching the output of `fn`.
 
 
 *  <b>`TypeError`</b>: if `fn` is not callable or the structure of the output of
-    `fn` and `dtype` do not match.
+    `fn` and `dtype` do not match, or if elems is a SparseTensor.
 *  <b>`ValueError`</b>: if the lengths of the output of `fn` and `dtype` do not match.
 
 ##### Examples:
@@ -230,9 +247,9 @@ For example, if `elems` is `(t1, [t2, t3])` and `initializer` is
 
 
 *  <b>`fn`</b>: The callable to be performed.  It accepts two arguments.  The first
-    will have the same (possibly nested) structure as `elems`.  The second
     will have the same structure as `initializer` if one is provided,
-    otherwise it will have the same structure as `elems`.  Its output
+    otherwise it will have the same structure as `elems`.  The second
+    will have the same (possibly nested) structure as `elems`.  Its output
     must have the same structure as `initializer` if one is provided,
     otherwise it must have the same structure as `elems`.
 *  <b>`elems`</b>: A tensor or (possibly nested) sequence of tensors, each of which

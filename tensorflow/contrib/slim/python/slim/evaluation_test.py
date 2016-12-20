@@ -26,6 +26,7 @@ import time
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.python.framework import errors
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import gfile
 
@@ -72,33 +73,11 @@ class EvaluationTest(tf.test.TestCase):
     self._labels = tf.constant(labels, dtype=tf.int64)
     self._predictions, self._scale = TestModel(self._inputs)
 
-  def testUpdateOpsAreEvaluated(self):
-    accuracy, update_op = slim.metrics.streaming_accuracy(
-        self._predictions, self._labels)
-    initial_op = tf.group(tf.initialize_all_variables(),
-                          tf.initialize_local_variables())
-
-    with self.test_session() as sess:
-      slim.evaluation.evaluation(
-          sess, initial_op=initial_op, eval_op=update_op)
-      self.assertAlmostEqual(accuracy.eval(), self._expected_accuracy)
-
-  def testFinalOpsIsEvaluated(self):
-    _, update_op = slim.metrics.streaming_accuracy(
-        self._predictions, self._labels)
-    initial_op = tf.group(tf.initialize_all_variables(),
-                          tf.initialize_local_variables())
-
-    with self.test_session() as sess:
-      accuracy_value = slim.evaluation.evaluation(
-          sess, initial_op=initial_op, final_op=update_op)
-      self.assertAlmostEqual(accuracy_value, self._expected_accuracy)
-
   def testFinalOpsOnEvaluationLoop(self):
     value_op, update_op = slim.metrics.streaming_accuracy(
         self._predictions, self._labels)
-    init_op = tf.group(tf.initialize_all_variables(),
-                       tf.initialize_local_variables())
+    init_op = tf.group(tf.global_variables_initializer(),
+                       tf.local_variables_initializer())
     # Create Checkpoint and log directories
     chkpt_dir = os.path.join(self.get_temp_dir(), 'tmp_logs/')
     gfile.MakeDirs(chkpt_dir)
@@ -123,8 +102,11 @@ class EvaluationTest(tf.test.TestCase):
     accuracy1, update_op1 = tf.contrib.metrics.streaming_accuracy(
         predictions+1, labels)
 
-    names_to_values = {'Accuracy': accuracy0, 'Another accuracy': accuracy1}
-    names_to_updates = {'Accuracy': update_op0, 'Another accuracy': update_op1}
+    names_to_values = {'Accuracy': accuracy0, 'Another_accuracy': accuracy1}
+    names_to_updates = {
+        'Accuracy': update_op0,
+        'Another_accuracy': update_op1
+    }
     return names_to_values, names_to_updates
 
   def _verify_summaries(self, output_dir, names_to_values):
@@ -148,96 +130,6 @@ class EvaluationTest(tf.test.TestCase):
     saved_results = {v.tag: v.simple_value for v in values}
     for name in names_to_values:
       self.assertAlmostEqual(names_to_values[name], saved_results[name])
-
-  def testSummariesAreFlushedToDisk(self):
-    output_dir = os.path.join(self.get_temp_dir(), 'flush_test')
-    if tf.gfile.Exists(output_dir):  # For running on jenkins.
-      tf.gfile.DeleteRecursively(output_dir)
-
-    names_to_metrics, names_to_updates = self._create_names_to_metrics(
-        self._predictions, self._labels)
-
-    for k in names_to_metrics:
-      v = names_to_metrics[k]
-      tf.scalar_summary(k, v)
-
-    summary_writer = tf.train.SummaryWriter(output_dir)
-
-    initial_op = tf.group(tf.initialize_all_variables(),
-                          tf.initialize_local_variables())
-    eval_op = tf.group(*names_to_updates.values())
-
-    with self.test_session() as sess:
-      slim.evaluation.evaluation(
-          sess,
-          initial_op=initial_op,
-          eval_op=eval_op,
-          summary_op=tf.merge_all_summaries(),
-          summary_writer=summary_writer,
-          global_step=self._global_step)
-
-      names_to_values = {name: names_to_metrics[name].eval()
-                         for name in names_to_metrics}
-    self._verify_summaries(output_dir, names_to_values)
-
-  def testSummariesAreFlushedToDiskWithoutGlobalStep(self):
-    output_dir = os.path.join(self.get_temp_dir(), 'flush_test_no_global_step')
-    if tf.gfile.Exists(output_dir):  # For running on jenkins.
-      tf.gfile.DeleteRecursively(output_dir)
-
-    names_to_metrics, names_to_updates = self._create_names_to_metrics(
-        self._predictions, self._labels)
-
-    for k in names_to_metrics:
-      v = names_to_metrics[k]
-      tf.scalar_summary(k, v)
-
-    summary_writer = tf.train.SummaryWriter(output_dir)
-
-    initial_op = tf.group(tf.initialize_all_variables(),
-                          tf.initialize_local_variables())
-    eval_op = tf.group(*names_to_updates.values())
-
-    with self.test_session() as sess:
-      slim.evaluation.evaluation(
-          sess,
-          initial_op=initial_op,
-          eval_op=eval_op,
-          summary_op=tf.merge_all_summaries(),
-          summary_writer=summary_writer)
-
-      names_to_values = {name: names_to_metrics[name].eval()
-                         for name in names_to_metrics}
-    self._verify_summaries(output_dir, names_to_values)
-
-  def testWithFeedDict(self):
-    accuracy, update_op = slim.metrics.streaming_accuracy(
-        self._predictions, self._labels)
-    initial_op = tf.group(tf.initialize_all_variables(),
-                          tf.initialize_local_variables())
-
-    with self.test_session() as sess:
-      slim.evaluation.evaluation(
-          sess,
-          initial_op=initial_op,
-          eval_op=update_op,
-          eval_op_feed_dict={self._scale: np.ones([], dtype=np.float32)})
-      self.assertAlmostEqual(accuracy.eval(), self._expected_accuracy)
-
-  def testWithQueueRunning(self):
-    strings = ['the', 'cat', 'in', 'the', 'hat']
-    _ = tf.train.string_input_producer(strings, capacity=5)
-
-    accuracy, update_op = slim.metrics.streaming_accuracy(
-        self._predictions, self._labels)
-
-    initial_op = tf.group(tf.initialize_all_variables(),
-                          tf.initialize_local_variables())
-
-    with self.test_session() as sess:
-      slim.evaluation.evaluation(
-          sess, initial_op=initial_op, eval_op=update_op)
-      self.assertAlmostEqual(accuracy.eval(), self._expected_accuracy)
 
   def testLatestCheckpointReturnsNoneAfterTimeout(self):
     start = time.time()
@@ -275,7 +167,7 @@ class SingleEvaluationTest(tf.test.TestCase):
     checkpoint_path = os.path.join(self.get_temp_dir(),
                                    'this_file_doesnt_exist')
     log_dir = os.path.join(self.get_temp_dir(), 'error_raised')
-    with self.assertRaises(ValueError):
+    with self.assertRaises(errors.NotFoundError):
       slim.evaluation.evaluate_once('', checkpoint_path, log_dir)
 
   def testRestoredModelPerformance(self):
@@ -283,9 +175,9 @@ class SingleEvaluationTest(tf.test.TestCase):
     log_dir = os.path.join(self.get_temp_dir(), 'log_dir1/')
 
     # First, save out the current model to a checkpoint:
-    init_op = tf.group(tf.initialize_all_variables(),
-                       tf.initialize_local_variables())
-    saver = tf.train.Saver()
+    init_op = tf.group(tf.global_variables_initializer(),
+                       tf.local_variables_initializer())
+    saver = tf.train.Saver(write_version=tf.train.SaverDef.V1)
     with self.test_session() as sess:
       sess.run(init_op)
       saver.save(sess, checkpoint_path)

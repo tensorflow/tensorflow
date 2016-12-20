@@ -73,7 +73,7 @@ independent distributions of this kind the instance represents.
 
 - - -
 
-#### `tf.contrib.distributions.Poisson.cdf(value, name='cdf')` {#Poisson.cdf}
+#### `tf.contrib.distributions.Poisson.cdf(value, name='cdf', **condition_kwargs)` {#Poisson.cdf}
 
 Cumulative distribution function.
 
@@ -88,12 +88,36 @@ cdf(x) := P[X <= x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
 *  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Poisson.copy(**override_parameters_kwargs)` {#Poisson.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
 
 
 - - -
@@ -107,7 +131,7 @@ The `DType` of `Tensor`s handled by this `Distribution`.
 
 #### `tf.contrib.distributions.Poisson.entropy(name='entropy')` {#Poisson.entropy}
 
-Shanon entropy in nats.
+Shannon entropy in nats.
 
 
 - - -
@@ -171,6 +195,20 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.Poisson.is_scalar_batch` {#Poisson.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Poisson.is_scalar_event` {#Poisson.is_scalar_event}
+
+Indicates that `event_shape==[]`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Poisson.lam` {#Poisson.lam}
 
 Rate parameter.
@@ -178,7 +216,7 @@ Rate parameter.
 
 - - -
 
-#### `tf.contrib.distributions.Poisson.log_cdf(value, name='log_cdf')` {#Poisson.log_cdf}
+#### `tf.contrib.distributions.Poisson.log_cdf(value, name='log_cdf', **condition_kwargs)` {#Poisson.log_cdf}
 
 Log cumulative distribution function.
 
@@ -197,6 +235,7 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -207,7 +246,7 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.Poisson.log_pdf(value, name='log_pdf')` {#Poisson.log_pdf}
+#### `tf.contrib.distributions.Poisson.log_pdf(value, name='log_pdf', **condition_kwargs)` {#Poisson.log_pdf}
 
 Log probability density function.
 
@@ -216,6 +255,7 @@ Log probability density function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -231,7 +271,7 @@ Log probability density function.
 
 - - -
 
-#### `tf.contrib.distributions.Poisson.log_pmf(value, name='log_pmf')` {#Poisson.log_pmf}
+#### `tf.contrib.distributions.Poisson.log_pmf(value, name='log_pmf', **condition_kwargs)` {#Poisson.log_pmf}
 
 Log probability mass function.
 
@@ -240,6 +280,7 @@ Log probability mass function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -255,7 +296,7 @@ Log probability mass function.
 
 - - -
 
-#### `tf.contrib.distributions.Poisson.log_prob(value, name='log_prob')` {#Poisson.log_prob}
+#### `tf.contrib.distributions.Poisson.log_prob(value, name='log_prob', **condition_kwargs)` {#Poisson.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
 
@@ -271,6 +312,7 @@ legal if it is non-negative and its components are equal to integer values.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -281,7 +323,7 @@ legal if it is non-negative and its components are equal to integer values.
 
 - - -
 
-#### `tf.contrib.distributions.Poisson.log_survival_function(value, name='log_survival_function')` {#Poisson.log_survival_function}
+#### `tf.contrib.distributions.Poisson.log_survival_function(value, name='log_survival_function', **condition_kwargs)` {#Poisson.log_survival_function}
 
 Log survival function.
 
@@ -301,6 +343,7 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -381,12 +424,12 @@ param_shapes with static (i.e. TensorShape) shapes.
 
 #### `tf.contrib.distributions.Poisson.parameters` {#Poisson.parameters}
 
-Dictionary of parameters used by this `Distribution`.
+Dictionary of parameters used to instantiate this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.Poisson.pdf(value, name='pdf')` {#Poisson.pdf}
+#### `tf.contrib.distributions.Poisson.pdf(value, name='pdf', **condition_kwargs)` {#Poisson.pdf}
 
 Probability density function.
 
@@ -395,6 +438,7 @@ Probability density function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -410,7 +454,7 @@ Probability density function.
 
 - - -
 
-#### `tf.contrib.distributions.Poisson.pmf(value, name='pmf')` {#Poisson.pmf}
+#### `tf.contrib.distributions.Poisson.pmf(value, name='pmf', **condition_kwargs)` {#Poisson.pmf}
 
 Probability mass function.
 
@@ -419,6 +463,7 @@ Probability mass function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -434,7 +479,7 @@ Probability mass function.
 
 - - -
 
-#### `tf.contrib.distributions.Poisson.prob(value, name='prob')` {#Poisson.prob}
+#### `tf.contrib.distributions.Poisson.prob(value, name='prob', **condition_kwargs)` {#Poisson.prob}
 
 Probability density/mass function (depending on `is_continuous`).
 
@@ -450,6 +495,7 @@ legal if it is non-negative and its components are equal to integer values.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -460,7 +506,7 @@ legal if it is non-negative and its components are equal to integer values.
 
 - - -
 
-#### `tf.contrib.distributions.Poisson.sample(sample_shape=(), seed=None, name='sample')` {#Poisson.sample}
+#### `tf.contrib.distributions.Poisson.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#Poisson.sample}
 
 Generate samples of the specified shape.
 
@@ -473,6 +519,7 @@ sample.
 *  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -482,7 +529,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Poisson.sample_n(n, seed=None, name='sample_n')` {#Poisson.sample_n}
+#### `tf.contrib.distributions.Poisson.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Poisson.sample_n}
 
 Generate `n` samples.
 
@@ -493,6 +540,7 @@ Generate `n` samples.
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -514,7 +562,7 @@ Standard deviation.
 
 - - -
 
-#### `tf.contrib.distributions.Poisson.survival_function(value, name='survival_function')` {#Poisson.survival_function}
+#### `tf.contrib.distributions.Poisson.survival_function(value, name='survival_function', **condition_kwargs)` {#Poisson.survival_function}
 
 Survival function.
 
@@ -531,6 +579,7 @@ survival_function(x) = P[X > x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 

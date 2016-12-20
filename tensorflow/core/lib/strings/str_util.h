@@ -108,15 +108,20 @@ struct SkipWhitespace {
   }
 };
 
-std::vector<string> Split(StringPiece text, char delim);
+// Split strings using any of the supplied delimiters. For example:
+// Split("a,b.c,d", ".,") would return {"a", "b", "c", "d"}.
+std::vector<string> Split(StringPiece text, StringPiece delims);
+
 template <typename Predicate>
-std::vector<string> Split(StringPiece text, char delim, Predicate p);
+std::vector<string> Split(StringPiece text, StringPiece delims, Predicate p);
 
 // Split "text" at "delim" characters, and parse each component as
 // an integer.  If successful, adds the individual numbers in order
 // to "*result" and returns true.  Otherwise returns false.
 bool SplitAndParseAsInts(StringPiece text, char delim,
                          std::vector<int32>* result);
+bool SplitAndParseAsInts(StringPiece text, char delim,
+                         std::vector<int64>* result);
 
 // ------------------------------------------------------------------
 // Implementation details below
@@ -155,17 +160,17 @@ string Join(const T& s, const char* sep, Formatter f) {
   return result;
 }
 
-inline std::vector<string> Split(StringPiece text, char delim) {
-  return Split(text, delim, AllowEmpty());
+inline std::vector<string> Split(StringPiece text, StringPiece delims) {
+  return Split(text, delims, AllowEmpty());
 }
 
 template <typename Predicate>
-std::vector<string> Split(StringPiece text, char delim, Predicate p) {
+std::vector<string> Split(StringPiece text, StringPiece delims, Predicate p) {
   std::vector<string> result;
   size_t token_start = 0;
   if (!text.empty()) {
     for (size_t i = 0; i < text.size() + 1; i++) {
-      if ((i == text.size()) || (text[i] == delim)) {
+      if ((i == text.size()) || (delims.find(text[i]) != StringPiece::npos)) {
         StringPiece token(text.data() + token_start, i - token_start);
         if (p(token)) {
           result.push_back(token.ToString());
@@ -175,6 +180,15 @@ std::vector<string> Split(StringPiece text, char delim, Predicate p) {
     }
   }
   return result;
+}
+
+inline std::vector<string> Split(StringPiece text, char delim) {
+  return Split(text, StringPiece(&delim, 1));
+}
+
+template <typename Predicate>
+std::vector<string> Split(StringPiece text, char delims, Predicate p) {
+  return Split(text, StringPiece(&delims, 1), p);
 }
 
 }  // namespace str_util

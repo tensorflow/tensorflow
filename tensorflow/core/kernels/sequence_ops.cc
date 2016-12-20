@@ -89,6 +89,12 @@ class RangeOp : public OpKernel {
 
 #define REGISTER_CPU_KERNEL(T) REGISTER_KERNEL(DEVICE_CPU, T)
 #define REGISTER_GPU_KERNEL(T) REGISTER_KERNEL(DEVICE_GPU, T)
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(T) REGISTER_KERNEL(DEVICE_SYCL, T)
+TF_CALL_float(REGISTER_SYCL_KERNEL);
+TF_CALL_int32(REGISTER_SYCL_KERNEL);
+TF_CALL_int64(REGISTER_SYCL_KERNEL);
+#endif // TENSORFLOW_USE_SYCL
 
 TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
@@ -144,14 +150,15 @@ class LinSpaceOp : public OpKernel {
   }
 };
 
-#define REGISTER_KERNEL(DEV, T)                       \
-  REGISTER_KERNEL_BUILDER(Name("LinSpace")            \
-                              .Device(DEV)            \
-                              .TypeConstraint<T>("T") \
-                              .HostMemory("start")    \
-                              .HostMemory("stop")     \
-                              .HostMemory("num")      \
-                              .HostMemory("output"),  \
+#define REGISTER_KERNEL(DEV, T)                              \
+  REGISTER_KERNEL_BUILDER(Name("LinSpace")                   \
+                              .Device(DEV)                   \
+                              .TypeConstraint<T>("T")        \
+                              .TypeConstraint<int32>("Tidx") \
+                              .HostMemory("start")           \
+                              .HostMemory("stop")            \
+                              .HostMemory("num")             \
+                              .HostMemory("output"),         \
                           LinSpaceOp<T>);
 #define REGISTER_CPU_KERNEL(T) REGISTER_KERNEL(DEVICE_CPU, T)
 TF_CALL_float(REGISTER_CPU_KERNEL);

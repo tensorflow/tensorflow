@@ -27,6 +27,7 @@ import numbers
 
 import six
 
+from tensorflow.python import summary
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -35,7 +36,6 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.training import queue_runner
@@ -662,7 +662,7 @@ class SequenceQueueingStateSaver(object):
   batch_size = 32
   num_unroll = 20
   lstm_size = 8
-  cell = tf.nn.rnn_cell.BasicLSTMCell(num_units=lstm_size)
+  cell = tf.contrib.rnn.BasicLSTMCell(num_units=lstm_size)
   initial_state_values = tf.zeros(cell.state_size, dtype=tf.float32)
 
   raw_data = get_single_input_from_input_reader()
@@ -681,10 +681,10 @@ class SequenceQueueingStateSaver(object):
   inputs = batch.sequences["input"]
   context_label = batch.context["label"]
 
-  inputs_by_time = tf.split(1, num_unroll, inputs)
+  inputs_by_time = tf.split(value=inputs, num_or_size_splits=num_unroll, axis=1)
   assert len(inputs_by_time) == num_unroll
 
-  lstm_output, _ = tf.nn.state_saving_rnn(
+  lstm_output, _ = tf.contrib.rnn.static_state_saving_rnn(
     cell,
     inputs_by_time,
     state_saver=batch,
@@ -1065,38 +1065,52 @@ class SequenceQueueingStateSaver(object):
          ":",
          self._key],
         name="StringJoinCurrentKeys")
-    next_keys = array_ops.concat(
-        0, [array_ops.slice(current_keys, [1], [-1]),
-            array_ops.expand_dims(string_ops.string_join(
-                ["STOP:", self._key], name="StringJoinStop"), 0)],
+    next_keys = array_ops.concat_v2(
+        [
+            array_ops.slice(current_keys, [1], [-1]), array_ops.expand_dims(
+                string_ops.string_join(
+                    ["STOP:", self._key], name="StringJoinStop"),
+                0)
+        ],
+        0,
         name="concat_next_keys")
-    reshaped_sequences = collections.OrderedDict(
-        (k, _check_dimensions(
+    reshaped_sequences = collections.OrderedDict((
+        k,
+        _check_dimensions(
             # Reshape sequences to sequence_count rows
             array_ops.reshape(
-                v, array_ops.concat(
-                    0, [array_ops.expand_dims(sequence_count, 0),
+                v,
+                array_ops.concat_v2(
+                    [
+                        array_ops.expand_dims(sequence_count, 0),
                         array_ops.expand_dims(self._num_unroll, 0),
-                        v.get_shape().as_list()[1:]],
+                        v.get_shape().as_list()[1:]
+                    ],
+                    0,
                     name="concat_sequences_%s" % k),
                 name="reshape_sequences_%s" % k),
             [0, 1] + list(range(2, v.get_shape().ndims + 1)),
             [sequence_count, self._num_unroll] + v.get_shape().as_list()[1:],
-            debug_prefix="reshaped_sequences_%s" % k))
-        for k, v in self._sorted_sequences.items())
+            debug_prefix="reshaped_sequences_%s" %
+            k)) for k, v in self._sorted_sequences.items())
     expanded_context = collections.OrderedDict(
-        (k, _check_dimensions(
-            # Copy context to be sequence_count rows
-            array_ops.tile(
-                array_ops.expand_dims(v, 0),
-                array_ops.concat(
-                    0, [array_ops.expand_dims(sequence_count, 0),
-                        [1] * v.get_shape().ndims],
-                    name="concat_context_%s" % k),
-                name="tile_context_%s" % k),
-            [0] + list(range(1, v.get_shape().ndims + 1)),
-            [sequence_count] + v.get_shape().as_list(),
-            debug_prefix="expanded_context_%s" % k))
+        (
+            k,
+            _check_dimensions(
+                # Copy context to be sequence_count rows
+                array_ops.tile(
+                    array_ops.expand_dims(v, 0),
+                    array_ops.concat_v2(
+                        [
+                            array_ops.expand_dims(sequence_count, 0),
+                            [1] * v.get_shape().ndims
+                        ],
+                        0,
+                        name="concat_context_%s" % k),
+                    name="tile_context_%s" % k),
+                [0] + list(range(1, v.get_shape().ndims + 1)),
+                [sequence_count] + v.get_shape().as_list(),
+                debug_prefix="expanded_context_%s" % k))
         for k, v in self._sorted_context.items())
 
     # Storing into the barrier, for each current_key:
@@ -1150,7 +1164,8 @@ class SequenceQueueingStateSaver(object):
       insert_initial_state_ops = dict(
           (name, self._barrier.insert_many(
               self._get_barrier_index("state", name),
-              array_ops.pack([current_keys[0]]), array_ops.pack([value]),
+              array_ops.stack([current_keys[0]]),
+              array_ops.stack([value]),
               name="BarrierInitialInsertState_%s" % name))
           for (name, value) in self._uninitialized_states.items())
 
@@ -1267,7 +1282,7 @@ def batch_sequences_with_states(input_key, input_sequences, input_context,
   num_unroll = 20
   num_enqueue_threads = 3
   lstm_size = 8
-  cell = tf.nn.rnn_cell.BasicLSTMCell(num_units=lstm_size)
+  cell = tf.contrib.rnn.BasicLSTMCell(num_units=lstm_size)
 
   key, sequences, context = my_parser(raw_data)
   initial_state_values = tf.zeros((state_size,), dtype=tf.float32)
@@ -1285,10 +1300,10 @@ def batch_sequences_with_states(input_key, input_sequences, input_context,
   inputs = batch.sequences["input"]
   context_label = batch.context["label"]
 
-  inputs_by_time = tf.split(1, num_unroll, inputs)
+  inputs_by_time = tf.split(value=inputs, num_or_size_splits=num_unroll, axis=1)
   assert len(inputs_by_time) == num_unroll
 
-  lstm_output, _ = tf.nn.state_saving_rnn(
+  lstm_output, _ = tf.contrib.rnn.static_state_saving_rnn(
     cell,
     inputs_by_time,
     state_saver=batch,
@@ -1411,9 +1426,8 @@ def batch_sequences_with_states(input_key, input_sequences, input_context,
         allow_small_batch=allow_small_batch)
 
     barrier = stateful_reader.barrier
-    logging_ops.scalar_summary(
-        "queue/%s/ready_segment_batches_" % barrier.name,
-        math_ops.cast(barrier.ready_size(), dtypes.float32))
+    summary.scalar("queue/%s/ready_segment_batches_" % barrier.name,
+                   math_ops.cast(barrier.ready_size(), dtypes.float32))
 
     q_runner = queue_runner.QueueRunner(
         stateful_reader, [stateful_reader.prefetch_op]*num_threads,
@@ -1475,12 +1489,12 @@ def _padding(sequences, num_unroll):
     # the shape of the paddings that we concat with the original value will be
     # [num_paddings, tf.shape(value)[1], tf.shape(value)[2], ...,
     #  tf.shape(value)[tf.rank(value) - 1])]
-    padding_shape = array_ops.concat(0, (
-        num_paddings, array_ops.shape(value)[1:]))
+    padding_shape = array_ops.concat_v2((num_paddings,
+                                         array_ops.shape(value)[1:]), 0)
     # 2. fill padding shape with dummies
     dummy = array_ops.constant("" if value.dtype == dtypes.string else 0,
                                dtype=value.dtype)
     paddings = array_ops.fill(dims=padding_shape, value=dummy)
     # 3. concat values with paddings
-    padded_sequences[key] = array_ops.concat(0, [value, paddings])
+    padded_sequences[key] = array_ops.concat_v2([value, paddings], 0)
   return length, padded_sequences

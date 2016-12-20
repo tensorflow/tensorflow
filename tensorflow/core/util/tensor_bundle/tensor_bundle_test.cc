@@ -52,9 +52,11 @@ void Expect(BundleReader* reader, const string& key,
             const Tensor& expected_val) {
   // Tests for Contains().
   EXPECT_TRUE(reader->Contains(key));
-  // Tests for LookupTensorShape().
+  // Tests for LookupDtypeAndShape().
+  DataType dtype;
   TensorShape shape;
-  TF_ASSERT_OK(reader->LookupTensorShape(key, &shape));
+  TF_ASSERT_OK(reader->LookupDtypeAndShape(key, &dtype, &shape));
+  EXPECT_EQ(expected_val.dtype(), dtype);
   EXPECT_EQ(expected_val.shape(), shape);
   // Tests for Lookup(), checking tensor contents.
   Tensor val(expected_val.dtype(), shape);
@@ -362,7 +364,7 @@ TEST(TensorBundleTest, DirectoryStructure) {
                              gtl::ArraySlice<string> expected_files) {
     StringPiece dir = io::Dirname(bundle_prefix);
     for (const string& expected_file : expected_files) {
-      EXPECT_TRUE(env->FileExists(io::JoinPath(dir, expected_file)));
+      TF_EXPECT_OK(env->FileExists(io::JoinPath(dir, expected_file)));
     }
   };
 
@@ -509,12 +511,7 @@ TEST(TensorBundleTest, TruncatedTensorContents) {
   BundleReader reader(env, Prefix("end"));
   TF_ASSERT_OK(reader.status());
   Tensor val(DT_FLOAT, TensorShape({2, 3}));
-#if defined(PLATFORM_GOOGLE)
-  EXPECT_EQ("Data loss: Requested 24 bytes but read 23 bytes.",
-            reader.Lookup("key", &val).ToString());
-#else
   EXPECT_TRUE(errors::IsOutOfRange(reader.Lookup("key", &val)));
-#endif
 }
 
 TEST(TensorBundleTest, HeaderEntry) {

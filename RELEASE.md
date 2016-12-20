@@ -1,7 +1,180 @@
+# Changes since the last release
+
+## Breaking Changes to the API
+
+* Division and modulus operators (/, //, %) now match Python (flooring)
+  semantics. This applies to `tf.div` and `tf.mod` as well. To obtain forced
+  integer truncation based behaviors you can use `tf.truncatediv`
+  and `tf.truncatemod`.
+* `tf.divide()` is now the recommended division function. `tf.div()` will
+  remain, but its semantics do not respond to Python 3 or `from future`
+  mechanisms.
+* tf.reverse() now takes indices of axes to be reversed. E.g.
+  `tf.reverse(a, [True, False, True])` must now be written as
+  `tf.reverse(a, [0, 2])`. `tf.reverse_v2()` will remain until 1.0 final.
+* `tf.mul`, `tf.sub` and `tf.neg` are deprecated in favor of `tf.multiply`,
+  `tf.subtract` and `tf.negative`.
+* The following Python functions have had their arguments changed to use `axis`
+  when referring to specific dimensions. We have kept the old keyword arguments
+  for compatibility currently, but we will be removing them well before the
+  final 1.0.
+  * `tf.argmax`: `dimension` becomes `axis`
+  * `tf.argmin`: `dimension` becomes `axis`
+  * `tf.count_nonzero`: `reduction_indices` becomes `axis`
+  * `tf.expand_dims`: `dim` becomes `axis`
+  * `tf.reduce_all`: `reduction_indices` becomes `axis`
+  * `tf.reduce_any`: `reduction_indices` becomes `axis`
+  * `tf.reduce_join`: `reduction_indices` becomes `axis`
+  * `tf.reduce_logsumexp`: `reduction_indices` becomes `axis`
+  * `tf.reduce_max`: `reduction_indices` becomes `axis`
+  * `tf.reduce_mean`: `reduction_indices` becomes `axis`
+  * `tf.reduce_min`: `reduction_indices` becomes `axis`
+  * `tf.reduce_prod`: `reduction_indices` becomes `axis`
+  * `tf.reduce_sum`: `reduction_indices` becomes `axis`
+  * `tf.reverse_sequence`: `batch_dim` becomes `batch_axis`, `seq_dim` becomes `seq_axis`
+  * `tf.sparse_concat`: `concat_dim` becomes `axis`
+  * `tf.sparse_reduce_sum`: `reduction_axes` becomes `axis`
+  * `tf.sparse_reduce_sum_sparse`: `reduction_axes` becomes `axis`
+  * `tf.sparse_split`: `split_dim` becomes `axis`
+* `tf.listdiff` has been renamed to `tf.setdiff1d` to match NumPy naming.
+* `tf.inv` has been renamed to be `tf.reciprocal` (component-wise reciprocal)
+  to avoid confusion with `np.inv` which is matrix inversion
+* tf.round now uses banker's rounding (round to even) semantics to match NumPy.
+* `tf.split` now takes arguments in a reversed order and with different
+  keywords. In particular, we now match NumPy order as
+  `tf.split(value, num_or_size_splits, axis)`.
+* `tf.sparse_split` now takes arguments in reversed order and with different
+  keywords. In particular we now match NumPy order as
+  `tf.sparse_split(sp_input, num_split, axis)`. NOTE: we have temporarily
+  made `tf.sparse_split` require keyword arguments.
+* Deprecated `tf.concat` operator. Please switch to use `tf.concat_v2` for now.
+  In the Beta release, we will update `tf.concat` to match argument order of
+  `tf.concat_v2.
+
+# Release 0.12.0
+
+## Major Features and Improvements
+
+* TensorFlow now builds and runs on Microsoft Windows (tested on Windows 10,
+  Windows 7, and Windows Server 2016). Supported languages include Python (via a
+  pip package) and C++. CUDA 8.0 and cuDNN 5.1 are supported for GPU
+  acceleration. Known limitations include: It is not currently possible to load
+  a custom op library. The GCS and HDFS file systems are not currently
+  supported. The following ops are not currently implemented:
+  Dequantize, QuantizeAndDequantize, QuantizedAvgPool,
+  QuantizedBatchNomWithGlobalNormalization, QuantizedBiasAdd, QuantizedConcat,
+  QuantizedConv2D, QuantizedMatmul, QuantizedMaxPool,
+  QuantizeDownAndShrinkRange, QuantizedRelu, QuantizedRelu6, QuantizedReshape,
+  QuantizeV2, RequantizationRange, and Requantize.
+* Go: Experimental API in Go to create and execute graphs
+  (https://godoc.org/github.com/tensorflow/tensorflow/tensorflow/go)
+* New checkpoint format becomes the default in `tf.train.Saver`. Old V1
+  checkpoints continue to be readable; controlled by the `write_version`
+  argument, `tf.train.Saver` now by default writes out in the new V2
+  format. It significantly reduces the peak memory required and latency
+  incurred during restore.
+* Added a new library for library of matrix-free (iterative) solvers for linear
+  equations, linear least-squares, eigenvalues and singular values in
+  tensorflow/contrib/solvers. Initial version has lanczos bidiagonalization,
+  conjugate gradients and CGLS.
+* Added gradients for `matrix_solve_ls` and `self_adjoint_eig`.
+* Large cleanup to add second order gradient for ops with C++ gradients and
+  improve existing gradients such that most ops can now be differentiated
+  multiple times.
+* Added a solver for ordinary differential equations,
+  `tf.contrib.integrate.odeint`.
+* New contrib module for tensors with named axes, `tf.contrib.labeled_tensor`.
+* Visualization of embeddings in TensorBoard.
+
+## Breaking Changes to the API
+
+* `BusAdjacency` enum replaced with a protocol buffer `DeviceLocality`.  PCI bus
+  indexing now starts from 1 instead of 0, and bus_id==0 is used where
+  previously BUS_ANY was used.
+* `Env::FileExists` and `FileSystem::FileExists` now return a tensorflow::Status
+  intead of a bool. Any callers to this function can be converted to a bool
+  by adding .ok() to the call.
+* The C API type `TF_SessionWithGraph` has been renamed to `TF_Session`,
+  indicating its preferred use in language bindings for TensorFlow.
+  What was previously `TF_Session` has been renamed to `TF_DeprecatedSession`.
+* Renamed TF_Port to TF_Output in the C API.
+* Removes RegisterShape from public API. Use C++ shape function registration instead.
+  indexing now starts from 1 instead of 0, and `bus_id==0` is used where
+  previously `BUS_ANY` was used.
+* Most RNN cells and RNN functions now use different variable scopes to be
+  consistent with layers (`tf.contrib.layers`).  This means old checkpoints
+  written using this code will not load after this change without providing
+  `Saver` a list of variable renames.  Examples of variable scope changes
+  include `RNN` -> `rnn` in `tf.nn.rnn`, `tf.nn.dynamic_rnn` and moving from
+  `Linear/Matrix` -> `weights` and `Linear/Bias` -> `biases` in most RNN cells.
+* Deprecated tf.select op. tf.where should be used instead.
+* `SparseTensor.shape` has been renamed to `SparseTensor.dense_shape`.  Same for
+  `SparseTensorValue.shape`.
+* `Env::FileExists` and `FileSystem::FileExists` now return a
+  `tensorflow::Status` intead of a bool. Any callers to this function can be
+  converted to a bool by adding `.ok()` to the call.
+* C API: Type `TF_SessionWithGraph` has been renamed to `TF_Session`, indicating
+  its preferred use in language bindings for TensorFlow. What was previously
+  `TF_Session` has been renamed to `TF_DeprecatedSession`.
+* C API: Renamed `TF_Port` to `TF_Output`.
+* C API: The caller retains ownership of `TF_Tensor` objects provided to
+  `TF_Run`, `TF_SessionRun`, `TF_SetAttrTensor` etc.
+* Renamed `tf.image.per_image_whitening()` to
+  `tf.image.per_image_standardization()`
+* Move Summary protobuf constructors to `tf.summary` submodule.
+* Deprecate `histogram_summary`, `audio_summary`, `scalar_summary`,
+  `image_summary`, `merge_summary`, and `merge_all_summaries`.
+* Combined `batch_*` and regular version of linear algebra and FFT ops. The
+  regular op now handles batches as well. All `batch_*` Python interfaces were
+  removed.
+* `tf.all_variables`, `tf.VARIABLES` and `tf.initialize_all_variables` renamed
+  to `tf.global_variables`, `tf.GLOBAL_VARIABLES` and
+  `tf.global_variables_initializer` respectively.
+
+## Bug Fixes and Other Changes
+
+* Use threadsafe version of `lgamma` function.
+* Fix `tf.sqrt` handling of negative arguments.
+* Fixed bug causing incorrect number of threads to be used for multi-threaded
+  benchmarks.
+* Performance optimizations for `batch_matmul` on multi-core CPUs.
+* Improve trace, `matrix_set_diag`, `matrix_diag_part` and their gradients to
+  work for rectangular matrices.
+* Support for SVD of complex valued matrices.
+
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+@a7744hsc, Abhi Agg, @admcrae, Adriano Carmezim, Aki Sukegawa, Alex Kendall,
+Alexander Rosenberg Johansen, @amcrae, Amlan Kar, Andre Simpelo, Andreas Eberle,
+Andrew Hundt, Arnaud Lenglet, @b0noI, Balachander Ramachandran, Ben Barsdell,
+Ben Guidarelli, Benjamin Mularczyk, Burness Duan, @c0g, Changming Sun,
+@chanis, Corey Wharton, Dan J, Daniel Trebbien, Darren Garvey, David Brailovsky,
+David Jones, Di Zeng, @DjangoPeng, Dr. Kashif Rasul, @drag0, Fabrizio (Misto)
+Milo, FabríCio Ceschin, @fp, @Ghedeon, @guschmue, Gökçen Eraslan, Haosdent
+Huang, Haroen Viaene, Harold Cooper, Henrik Holst, @hoangmit, Ivan Ukhov, Javier
+Dehesa, Jingtian Peng, Jithin Odattu, Joan Pastor, Johan Mathe, Johannes Mayer,
+Jongwook Choi, Justus Schwabedal, Kai Wolf, Kamil Hryniewicz, Kamran Amini,
+Karen Brems, Karl Lattimer, @kborer, Ken Shirriff, Kevin Rose, Larissa Laich,
+Laurent Mazare, Leonard Lee, Liang-Chi Hsieh, Liangliang He, Luke Iwanski,
+Marek Kolodziej, Moustafa Alzantot, @MrQianjinsi, @nagachika, Neil Han, Nick
+Meehan, Niels Ole Salscheider, Nikhil Mishra, @nschuc, Ondrej Skopek, OndřEj
+Filip, @OscarDPan, Pablo Moyano, Przemyslaw Tredak, @qitaishui, @Quarazy,
+@raix852, Philipp Helo, Sam Abrahams, @SriramRamesh, Till Hoffmann, Tushar Soni,
+@tvn, @tyfkda, Uwe Schmidt, Victor Villas, Vit Stepanovs, Vladislav Gubarev,
+@wujingyue, Xuesong Yang, Yi Liu, Yilei Yang, @youyou3, Yuan (Terry) Tang,
+Yuming Wang, Zafar Takhirov, @zhongyuk, Ziming Dong, @guotong1988
+
+We are also grateful to all who filed issues or helped resolve them, asked and
+answered questions, and were part of inspiring discussions.
+
 # Release 0.11.0
 
 ## Major Features and Improvements
 
+* CUDA 8 support.
 * cuDNN 5 support.
 * HDFS Support.
 * Adds Fused LSTM support via cuDNN 5 in `tensorflow/contrib/cudnn_rnn`.
@@ -76,7 +249,7 @@ Snyder, @jpangburn, Jules Gagnon-Marchand, Karen Brems, @kborer, Kirill Bobyrev,
 Laurent Mazare, Longqi Yang, Malith Yapa, Maniteja Nandana, Martin Englund,
 Matthias Winkelmann, @mecab, Mu-Ik Jeon, Nand Dalal, Niels Ole Salscheider,
 Nikhil Mishra, Park Jiin, Pieter De Rijk, @raix852, Ritwik Gupta, Sahil Sharma,
-@Sangheum, @SergejsRk, Shinichiro Hamaji, Simon Denel, @Steve, @suiyuan2009,
+Sangheum Hwang, @SergejsRk, Shinichiro Hamaji, Simon Denel, @Steve, @suiyuan2009,
 Tiago Jorge, Tijmen Tieleman, @tvn, @tyfkda, Wang Yang, Wei-Ting Kuo, Wenjian
 Huang, Yan Chen, @YenChenLin, Yuan (Terry) Tang, Yuncheng Li, Yunfeng Wang, Zack
 Polizzi, @zhongzyd, Ziming Dong, @perhapszzy

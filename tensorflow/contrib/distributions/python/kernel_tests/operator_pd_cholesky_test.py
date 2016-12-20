@@ -84,7 +84,7 @@ class OperatorPDCholeskyTest(tf.test.TestCase):
         operator = operator_pd_cholesky.OperatorPDCholesky(chol)
 
         sqrt_operator_times_x = operator.sqrt_matmul(x)
-        expected = tf.batch_matmul(chol, x)
+        expected = tf.matmul(chol, x)
 
         self.assertEqual(expected.get_shape(),
                          sqrt_operator_times_x.get_shape())
@@ -102,7 +102,7 @@ class OperatorPDCholeskyTest(tf.test.TestCase):
         operator = operator_pd_cholesky.OperatorPDCholesky(chol)
 
         sqrt_operator_times_x = operator.sqrt_matmul(x)
-        expected = tf.batch_matmul(chol, x)
+        expected = tf.matmul(chol, x)
 
         self.assertEqual(expected.get_shape(),
                          sqrt_operator_times_x.get_shape())
@@ -121,7 +121,7 @@ class OperatorPDCholeskyTest(tf.test.TestCase):
 
         sqrt_operator_times_x = operator.sqrt_matmul(x, transpose_x=True)
         # tf.batch_matmul is defined x * y, so "y" is on the right, not "x".
-        expected = tf.batch_matmul(chol, x, adj_y=True)
+        expected = tf.matmul(chol, x, adjoint_b=True)
 
         self.assertEqual(expected.get_shape(),
                          sqrt_operator_times_x.get_shape())
@@ -135,11 +135,11 @@ class OperatorPDCholeskyTest(tf.test.TestCase):
         x = self._rng.rand(*x_shape)
         chol_shape = batch_shape + (k, k)
         chol = self._random_cholesky_array(chol_shape)
-        matrix = tf.batch_matmul(chol, chol, adj_y=True)
+        matrix = tf.matmul(chol, chol, adjoint_b=True)
 
         operator = operator_pd_cholesky.OperatorPDCholesky(chol)
 
-        expected = tf.batch_matmul(matrix, x)
+        expected = tf.matmul(matrix, x)
 
         self.assertEqual(expected.get_shape(), operator.matmul(x).get_shape())
         self.assertAllClose(expected.eval(), operator.matmul(x).eval())
@@ -152,11 +152,11 @@ class OperatorPDCholeskyTest(tf.test.TestCase):
         x = self._rng.rand(*x_shape)
         chol_shape = batch_shape + (k, k)
         chol = self._random_cholesky_array(chol_shape)
-        matrix = tf.batch_matmul(chol, chol, adj_y=True)
+        matrix = tf.matmul(chol, chol, adjoint_b=True)
 
         operator = operator_pd_cholesky.OperatorPDCholesky(chol)
 
-        expected = tf.batch_matmul(matrix, x)
+        expected = tf.matmul(matrix, x)
 
         self.assertEqual(expected.get_shape(), operator.matmul(x).get_shape())
         self.assertAllClose(expected.eval(), operator.matmul(x).eval())
@@ -169,13 +169,13 @@ class OperatorPDCholeskyTest(tf.test.TestCase):
         x = self._rng.rand(*x_shape)
         chol_shape = batch_shape + (k, k)
         chol = self._random_cholesky_array(chol_shape)
-        matrix = tf.batch_matmul(chol, chol, adj_y=True)
+        matrix = tf.matmul(chol, chol, adjoint_b=True)
 
         operator = operator_pd_cholesky.OperatorPDCholesky(chol)
         operator_times_x = operator.matmul(x, transpose_x=True)
 
         # tf.batch_matmul is defined x * y, so "y" is on the right, not "x".
-        expected = tf.batch_matmul(matrix, x, adj_y=True)
+        expected = tf.matmul(matrix, x, adjoint_b=True)
 
         self.assertEqual(expected.get_shape(), operator_times_x.get_shape())
         self.assertAllClose(expected.eval(), operator_times_x.eval())

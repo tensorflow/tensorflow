@@ -18,25 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import common_shapes
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import math_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_linalg_ops import *
 # pylint: enable=wildcard-import
-
-ops.RegisterShape("Cholesky")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("CholeskyGrad")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MatrixInverse")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MatrixDeterminant")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("SelfAdjointEig")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("SelfAdjointEigV2")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Svd")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MatrixSolve")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MatrixTriangularSolve")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("MatrixSolveLs")(common_shapes.call_cpp_shape_fn)
 
 # Names below are lower_case.
 # pylint: disable=invalid-name
@@ -82,6 +72,65 @@ def cholesky_solve(chol, rhs, name=None):
     x = gen_linalg_ops.matrix_triangular_solve(
         chol, y, adjoint=True, lower=True)
     return x
+
+
+def eye(
+    num_rows,
+    num_columns=None,
+    batch_shape=None,
+    dtype=dtypes.float32,
+    name=None):
+  """Construct an identity matrix, or a batch of matrices.
+
+  ```python
+  # Construct one identity matrix.
+  tf.eye(2)
+  ==> [[1., 0.],
+       [0., 1.]]
+
+  # Construct a batch of 3 identity matricies, each 2 x 2.
+  # batch_identity[i, :, :] is a 2 x 2 identity matrix, i = 0, 1, 2.
+  batch_identity = tf.eye(2, batch_shape=[3])
+
+  # Construct one 2 x 3 "identity" matrix
+  tf.eye(2, num_columns=3)
+  ==> [[ 1.,  0.,  0.],
+       [ 0.,  1.,  0.]]
+  ```
+
+  Args:
+    num_rows: Non-negative `int32` scalar `Tensor` giving the number of rows
+      in each batch matrix.
+    num_columns: Optional non-negative `int32` scalar `Tensor` giving the number
+      of columns in each batch matrix.  Defaults to `num_rows`.
+    batch_shape:  `int32` `Tensor`.  If provided, returned `Tensor` will have
+      leading batch dimensions of this shape.
+    dtype:  The type of an element in the resulting `Tensor`
+    name:  A name for this `Op`.  Defaults to "eye".
+
+  Returns:
+    A `Tensor` of shape `batch_shape + [num_rows, num_columns]`
+  """
+  with ops.name_scope(
+      name, default_name="eye", values=[num_rows, num_columns, batch_shape]):
+
+    batch_shape = [] if batch_shape is None else batch_shape
+    batch_shape = ops.convert_to_tensor(
+        batch_shape, name="shape", dtype=dtypes.int32)
+
+    if num_columns is None:
+      diag_size = num_rows
+    else:
+      diag_size = math_ops.minimum(num_rows, num_columns)
+    diag_shape = array_ops.concat_v2((batch_shape, [diag_size]), 0)
+    diag_ones = array_ops.ones(diag_shape, dtype=dtype)
+
+    if num_columns is None:
+      return array_ops.matrix_diag(diag_ones)
+    else:
+      shape = array_ops.concat_v2((batch_shape, [num_rows, num_columns]), 0)
+      zero_matrix = array_ops.zeros(shape, dtype=dtype)
+      return array_ops.matrix_set_diag(zero_matrix, diag_ones)
 
 
 def matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None):
@@ -178,7 +227,7 @@ def self_adjoint_eigvals(tensor, name=None):
   return e
 
 
-def svd(tensor, compute_uv=True, full_matrices=False, name=None):
+def svd(tensor, full_matrices=False, compute_uv=True, name=None):
   """Computes the singular value decompositions of one or more matrices.
 
   Computes the SVD of each inner matrix in `tensor` such that
@@ -197,12 +246,12 @@ def svd(tensor, compute_uv=True, full_matrices=False, name=None):
   Args:
     matrix: `Tensor` of shape `[..., M, N]`. Let `P` be the minimum of `M` and
       `N`.
-    compute_uv: If `True` then left and right singular vectors will be
-      computed and returned in `u` and `v`, respectively. Otherwise, only the
-      singular values will be computed, which can be significantly faster.
     full_matrices: If true, compute full-sized `u` and `v`. If false
       (the default), compute only the leading `P` singular vectors.
       Ignored if `compute_uv` is `False`.
+    compute_uv: If `True` then left and right singular vectors will be
+      computed and returned in `u` and `v`, respectively. Otherwise, only the
+      singular values will be computed, which can be significantly faster.
     name: string, optional name of the operation.
 
   Returns:

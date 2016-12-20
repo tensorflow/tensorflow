@@ -113,39 +113,77 @@ class LBetaTestGpu(LBetaTest):
 
 class EinsumTest(tf.test.TestCase):
 
-  # standard cases
   simple_cases = [
     'ij,jk->ik',
     'ijk,jklm->il',
     'ij,jk,kl->il',
     'ijk->i',
-  ]
-
-  # where axes are not in order
-  misordered_cases = [
+    'ijk->kji',
     'ji,kj->ik',
+
     'ikl,kji->kl',
     'klj,lki->ij',
-  ]
-
-  # more than two arguments
-  multiarg_cases = [
+    'ijk,ilj->kli',
+    'kij,mkb->ijmb',
     'ijk,ijl,ikl->i',
     'i,ijk,j->k',
     'ij,ij,jk,kl->il',
+    'ij,kj,il,jm->ml',
+
+    'a,ab,abc->abc',
+    'a,b,ab->ab',
+    'ab,ab,c->',
+    'ab,ab,c->c',
+    'ab,ab,cd,cd->',
+    'ab,ab,cd,cd->ac',
+    'ab,ab,cd,cd->cd',
+    'ab,ab,cd,cd,ef,ef->',
+
+    'ab,cd,ef->abcdef',
+    'ab,cd,ef->acdf',
+    'ab,cd,de->abcde',
+    'ab,cd,de->be',
+    'ab,bcd,cd->abcd',
+    'ab,bcd,cd->abd',
+
+    'eb,cb,fb->cef',
+    'abcd,ad',
+    'bd,db,eac->ace',
+    'ba,ac,da->bcd',
+
+    'ab,ab',
+    'ab,ba',
+    'abc,abc',
+    'abc,bac',
+    'abc,cba',
+
+    'dba,ead,cad->bce',
+    'aef,fbc,dca->bde',
+  ]
+
+  long_cases = [
+    'bca,cdb,dbf,afc->',
+    'efc,dbc,acf,fd->abe',
+    'ea,fb,gc,hd,abcd->efgh',
+    'ea,fb,abcd,gc,hd->efgh',
+    'abhe,hidj,jgba,hiab,gab',
   ]
 
   invalid_cases = [
     # bad formats
+    '',
     'ijk ijk',
-    'ij,jk,kl'
-    'ij->',
+    'ij.jk->ik',
+    'ij...,jk...->ik...',
 
     # axis in output that does not exist
     'ij,jk->im',
 
     # incorrect number of dimensions
     'ij,jkl->kl',
+
+    # this is allowed in numpy but not implemented here yet
+    'iij,jk'
   ]
 
   dim_mismatch_cases = [
@@ -158,28 +196,18 @@ class EinsumTest(tf.test.TestCase):
     for case in self.simple_cases:
       self.run_test(case)
 
-  def test_misordered(self):
-    for case in self.misordered_cases:
-      self.run_test(case)
-
-  def test_multiarg(self):
-    for case in self.multiarg_cases:
+  def test_long(self):
+    for case in self.long_cases:
       self.run_test(case)
 
   def test_invalid(self):
     for axes in self.invalid_cases:
-      result = None
       inputs = [
         tf.placeholder(tf.float32, shape=(3,4)),
         tf.placeholder(tf.float32, shape=(3,4)),
       ]
-
-      try:
-        result = tf.einsum(axes, *inputs)
-      except AssertionError as e:
-        print(e)
-      assert result is None, \
-        "An exception should have been thrown."
+      with self.assertRaises(ValueError):
+        _ = tf.einsum(axes, *inputs)
 
   def test_dim_mismatch(self):
     for axes, input_shapes in self.dim_mismatch_cases:
@@ -187,12 +215,8 @@ class EinsumTest(tf.test.TestCase):
         tf.placeholder(tf.float32, shape=shape)
         for shape in input_shapes
       ]
-      result = None
-      try:
-        result = tf.einsum(axes, *inputs)
-      except AssertionError:
-        pass
-      assert result is None, "An exception should have been thrown."
+      with self.assertRaises(ValueError):
+        _ = tf.einsum(axes, *inputs)
 
   def run_test(self, axes):
     all_axes = {ax: np.random.randint(4, 12)
@@ -216,6 +240,31 @@ class EinsumTest(tf.test.TestCase):
     err = np.abs(correct_value - output_value).max()
     print(axes, err)
     assert err < 1e-8
+
+  def test_input_is_placeholder(self):
+    with tf.Graph().as_default():
+      m0 = tf.placeholder(tf.int32, shape=(1, None))
+      m1 = tf.placeholder(tf.int32, shape=(None, 1))
+      out = tf.einsum('ij,jk->ik', m0, m1)
+      with tf.Session() as sess:
+        feed_dict = {
+            m0: [[1, 2, 3]],
+            m1: [[2], [1], [1]],
+        }
+        np.testing.assert_almost_equal([[7]],
+                                       sess.run(out, feed_dict=feed_dict))
+
+    with tf.Graph().as_default():
+      m0 = tf.placeholder(tf.int32, shape=(None, 3))
+      m1 = tf.placeholder(tf.int32, shape=(3,))
+      out = tf.einsum('ij,j->i', m0, m1)
+      with tf.Session() as sess:
+        feed_dict = {
+            m0: [[1, 2, 3]],
+            m1: [2, 1, 1],
+        }
+        np.testing.assert_almost_equal([7],
+                                       sess.run(out, feed_dict=feed_dict))
 
 
 if __name__ == '__main__':

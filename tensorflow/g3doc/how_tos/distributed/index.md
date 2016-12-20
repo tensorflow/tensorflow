@@ -171,7 +171,7 @@ simplify the work of specifying a replicated model. Possible approaches include:
   values for the current parameters, compute gradients in parallel, and then
   apply them together. It is compatible with in-graph replication (e.g. using
   gradient averaging as in the
-  [CIFAR-10 multi-GPU trainer](https://www.tensorflow.org/code/tensorflow/models/image/cifar10/cifar10_multi_gpu_train.py)),
+  [CIFAR-10 multi-GPU trainer](https://www.tensorflow.org/code/tensorflow_models/tutorials/image/cifar10/cifar10_multi_gpu_train.py)),
   and between-graph replication (e.g. using the
   `tf.train.SyncReplicasOptimizer`).
 
@@ -226,8 +226,8 @@ def main(_):
           loss, global_step=global_step)
 
       saver = tf.train.Saver()
-      summary_op = tf.merge_all_summaries()
-      init_op = tf.initialize_all_variables()
+      summary_op = tf.summary.merge_all()
+      init_op = tf.global_variables_initializer()
 
     # Create a "supervisor", which oversees the training process.
     sv = tf.train.Supervisor(is_chief=(FLAGS.task_index == 0),

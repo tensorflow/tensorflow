@@ -22,6 +22,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+const string kTestContent = "random original scratch content";
+
 // A fake proxy that pretends to be libcurl.
 class FakeLibCurl : public LibCurl {
  public:
@@ -214,16 +216,45 @@ TEST(HttpRequestTest, GetRequest) {
   HttpRequest http_request(&libcurl);
   TF_EXPECT_OK(http_request.Init());
 
-  char scratch[100] = "random original scratch content";
-  StringPiece result = "random original string piece";
+  std::vector<char> scratch;
+  scratch.insert(scratch.begin(), kTestContent.begin(), kTestContent.end());
+  StringPiece result;
+  scratch.reserve(100);
 
   TF_EXPECT_OK(http_request.SetUri("http://www.testuri.com"));
   TF_EXPECT_OK(http_request.AddAuthBearerHeader("fake-bearer"));
   TF_EXPECT_OK(http_request.SetRange(100, 199));
-  TF_EXPECT_OK(http_request.SetResultBuffer(scratch, 100, &result));
+  TF_EXPECT_OK(http_request.SetResultBuffer(&scratch));
   TF_EXPECT_OK(http_request.Send());
 
-  EXPECT_EQ("get response", result);
+  EXPECT_EQ("get response", string(scratch.begin(), scratch.end()));
+
+  // Check interactions with libcurl.
+  EXPECT_TRUE(libcurl.is_initialized);
+  EXPECT_EQ("http://www.testuri.com", libcurl.url);
+  EXPECT_EQ("100-199", libcurl.range);
+  EXPECT_EQ("", libcurl.custom_request);
+  EXPECT_EQ(1, libcurl.headers->size());
+  EXPECT_EQ("Authorization: Bearer fake-bearer", (*libcurl.headers)[0]);
+  EXPECT_FALSE(libcurl.is_post);
+  EXPECT_EQ(200, http_request.GetResponseCode());
+}
+
+TEST(HttpRequestTest, GetRequest_Empty) {
+  FakeLibCurl libcurl("", 200);
+  HttpRequest http_request(&libcurl);
+  TF_EXPECT_OK(http_request.Init());
+
+  std::vector<char> scratch;
+  scratch.resize(0);
+
+  TF_EXPECT_OK(http_request.SetUri("http://www.testuri.com"));
+  TF_EXPECT_OK(http_request.AddAuthBearerHeader("fake-bearer"));
+  TF_EXPECT_OK(http_request.SetRange(100, 199));
+  TF_EXPECT_OK(http_request.SetResultBuffer(&scratch));
+  TF_EXPECT_OK(http_request.Send());
+
+  EXPECT_TRUE(scratch.empty());
 
   // Check interactions with libcurl.
   EXPECT_TRUE(libcurl.is_initialized);
@@ -242,16 +273,16 @@ TEST(HttpRequestTest, GetRequest_RangeOutOfBound) {
   HttpRequest http_request(&libcurl);
   TF_EXPECT_OK(http_request.Init());
 
-  char scratch[100] = "random original scratch content";
-  StringPiece result = "random original string piece";
+  std::vector<char> scratch;
+  scratch.insert(scratch.end(), kTestContent.begin(), kTestContent.end());
 
   TF_EXPECT_OK(http_request.SetUri("http://www.testuri.com"));
   TF_EXPECT_OK(http_request.AddAuthBearerHeader("fake-bearer"));
   TF_EXPECT_OK(http_request.SetRange(100, 199));
-  TF_EXPECT_OK(http_request.SetResultBuffer(scratch, 100, &result));
+  TF_EXPECT_OK(http_request.SetResultBuffer(&scratch));
   TF_EXPECT_OK(http_request.Send());
 
-  EXPECT_TRUE(result.empty());
+  EXPECT_TRUE(scratch.empty());
   EXPECT_EQ(416, http_request.GetResponseCode());
 }
 
@@ -261,13 +292,13 @@ TEST(HttpRequestTest, GetRequest_503) {
   HttpRequest http_request(&libcurl);
   TF_EXPECT_OK(http_request.Init());
 
-  char scratch[100] = "random original scratch content";
-  StringPiece result = "random original string piece";
+  std::vector<char> scratch;
+  scratch.insert(scratch.end(), kTestContent.begin(), kTestContent.end());
 
   TF_EXPECT_OK(http_request.SetUri("http://www.testuri.com"));
   TF_EXPECT_OK(http_request.AddAuthBearerHeader("fake-bearer"));
   TF_EXPECT_OK(http_request.SetRange(100, 199));
-  TF_EXPECT_OK(http_request.SetResultBuffer(scratch, 100, &result));
+  TF_EXPECT_OK(http_request.SetResultBuffer(&scratch));
   EXPECT_EQ(error::UNAVAILABLE, http_request.Send().code());
   EXPECT_EQ(503, http_request.GetResponseCode());
 }

@@ -20,6 +20,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import json
 import os
 
 from six.moves import urllib
@@ -52,8 +53,8 @@ FLAGS = flags.FLAGS
 
 
 # Constants: Data download URLs
-TRAIN_DATA_URL = "https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data"
-TEST_DATA_URL = "https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.test"
+TRAIN_DATA_URL = "http://mlr.cs.umass.edu/ml/machine-learning-databases/adult/adult.data"
+TEST_DATA_URL = "http://mlr.cs.umass.edu/ml/machine-learning-databases/adult/adult.test"
 
 
 # Define features for the model
@@ -216,11 +217,12 @@ class CensusDataSource(object):
                        for k in self.continuous_columns}
     # Creates a dictionary mapping from each categorical feature column name (k)
     # to the values of that column stored in a tf.SparseTensor.
-    categorical_cols = {k: tf.SparseTensor(
-        indices=[[i, 0] for i in range(df[k].size)],
-        values=df[k].values,
-        shape=[df[k].size, 1])
-                        for k in self.categorical_columns}
+    categorical_cols = {
+        k: tf.SparseTensor(
+            indices=[[i, 0] for i in range(df[k].size)],
+            values=df[k].values,
+            dense_shape=[df[k].size, 1])
+        for k in self.categorical_columns}
     # Merges the two dictionaries into one.
     feature_cols = dict(continuous_cols.items() + categorical_cols.items())
     # Converts the label column into a constant Tensor.
@@ -240,9 +242,16 @@ def _create_experiment_fn(output_dir):  # pylint: disable=unused-argument
                                         categorical_columns,
                                         continuous_columns)
 
-  config = run_config.RunConfig(master=FLAGS.master_grpc_url,
-                                num_ps_replicas=FLAGS.num_parameter_servers,
-                                task=FLAGS.worker_index)
+  os.environ["TF_CONFIG"] = json.dumps({
+      "cluster": {
+          tf.contrib.learn.TaskType.PS: ["fake_ps"] *
+                                        FLAGS.num_parameter_servers
+      },
+      "task": {
+          "index": FLAGS.worker_index
+      }
+  })
+  config = run_config.RunConfig(master=FLAGS.master_grpc_url)
 
   estimator = tf.contrib.learn.DNNLinearCombinedClassifier(
       model_dir=FLAGS.model_dir,

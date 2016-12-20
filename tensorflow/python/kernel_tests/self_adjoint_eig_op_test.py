@@ -13,25 +13,32 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tensorflow.ops.math_ops.matrix_inverse."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import constant_op
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
 
 
-class SelfAdjointEigTest(tf.test.TestCase):
+class SelfAdjointEigTest(test.TestCase):
 
   def testWrongDimensions(self):
     # The input to self_adjoint_eig should be a tensor of
     # at least rank 2.
-    scalar = tf.constant(1.)
+    scalar = constant_op.constant(1.)
     with self.assertRaises(ValueError):
-      tf.self_adjoint_eig(scalar)
-    vector = tf.constant([1., 2.])
+      linalg_ops.self_adjoint_eig(scalar)
+    vector = constant_op.constant([1., 2.])
     with self.assertRaises(ValueError):
-      tf.self_adjoint_eig(vector)
+      linalg_ops.self_adjoint_eig(vector)
 
 
 def SortEigenDecomposition(e, v):
@@ -79,25 +86,27 @@ def _GetSelfAdjointEigTest(dtype_, shape_):
       np_e, np_v = np.linalg.eig(a)
       with self.test_session():
         if compute_v:
-          tf_e, tf_v = tf.self_adjoint_eig(tf.constant(a))
+          tf_e, tf_v = linalg_ops.self_adjoint_eig(constant_op.constant(a))
 
           # Check that V*diag(E)*V^T is close to A.
-          a_ev = tf.batch_matmul(
-              tf.batch_matmul(tf_v, tf.matrix_diag(tf_e)), tf_v, adj_y=True)
+          a_ev = math_ops.matmul(
+              math_ops.matmul(tf_v, array_ops.matrix_diag(tf_e)),
+              tf_v,
+              adjoint_b=True)
           self.assertAllClose(a_ev.eval(), a, atol=atol)
 
           # Compare to numpy.linalg.eig.
-          CompareEigenDecompositions(self, np_e, np_v, tf_e.eval(), tf_v.eval(),
-                                     atol)
+          CompareEigenDecompositions(self, np_e, np_v,
+                                     tf_e.eval(), tf_v.eval(), atol)
         else:
-          tf_e = tf.self_adjoint_eigvals(tf.constant(a))
+          tf_e = linalg_ops.self_adjoint_eigvals(constant_op.constant(a))
           self.assertAllClose(
               np.sort(np_e, -1), np.sort(tf_e.eval(), -1), atol=atol)
 
   return Test
 
 
-class SelfAdjointEigGradTest(tf.test.TestCase):
+class SelfAdjointEigGradTest(test.TestCase):
   pass  # Filled in below
 
 
@@ -121,14 +130,14 @@ def _GetSelfAdjointEigGradTest(dtype_, shape_):
     else:
       tol = 1e-7
     with self.test_session():
-      tf_a = tf.constant(a)
-      tf_e, tf_v = tf.self_adjoint_eig(tf_a)
+      tf_a = constant_op.constant(a)
+      tf_e, tf_v = linalg_ops.self_adjoint_eig(tf_a)
       for b in tf_e, tf_v:
         x_init = np.random.uniform(
             low=-1.0, high=1.0, size=n * n).reshape([n, n]).astype(dtype_)
         x_init += x_init.T
         x_init = np.tile(x_init, batch_shape + (1, 1))
-        theoretical, numerical = tf.test.compute_gradient(
+        theoretical, numerical = gradient_checker.compute_gradient(
             tf_a,
             tf_a.get_shape().as_list(),
             b,
@@ -150,4 +159,4 @@ if __name__ == '__main__':
                 _GetSelfAdjointEigTest(dtype, shape))
         setattr(SelfAdjointEigGradTest, 'testSelfAdjointEigGrad_' + name,
                 _GetSelfAdjointEigGradTest(dtype, shape))
-  tf.test.main()
+  test.main()

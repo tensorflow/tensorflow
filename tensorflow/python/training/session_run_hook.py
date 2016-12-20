@@ -98,6 +98,22 @@ class SessionRunHook(object):
     """
     pass
 
+  def after_create_session(self, session):  # pylint: disable=unused-argument
+    """Called when new TensorFlow session is created.
+
+    This is called to signal the hooks that a new session has been created. This
+    has two essential differences with the situation in which `begin` is called:
+
+    * When this is called, the graph is finalized and ops can no longer be added
+        to the graph.
+    * This method will be called as a result of recovering a wrapped session,
+        instead of at the beginning of the overall session.
+
+    Args:
+      session: A TensorFlow Session that has been created.
+    """
+    pass
+
   def before_run(self, run_context):  # pylint: disable=unused-argument
     """Called before each call to run().
 
@@ -152,7 +168,7 @@ class SessionRunHook(object):
 
 class SessionRunArgs(
     collections.namedtuple("SessionRunArgs",
-                           ["fetches", "feed_dict"])):
+                           ["fetches", "feed_dict", "options"])):
   """Represents arguments to be added to a `Session.run()` call.
 
   Args:
@@ -166,10 +182,12 @@ class SessionRunArgs(
         fetches = {'step': global_step_tensor,
                    'ops': [train_op, check_nan_op]}
     feed_dict: Exactly like the `feed_dict` argument to `Session.Run()`
+    options: Exactly like the `options` argument to `Session.run()`, i.e., a
+      config_pb2.RunOptions proto.
   """
 
-  def __new__(cls, fetches, feed_dict=None):
-    return super(SessionRunArgs, cls).__new__(cls, fetches, feed_dict)
+  def __new__(cls, fetches, feed_dict=None, options=None):
+    return super(SessionRunArgs, cls).__new__(cls, fetches, feed_dict, options)
 
 
 class SessionRunContext(object):
@@ -223,7 +241,9 @@ class SessionRunContext(object):
     self._stop_requested = True
 
 
-class SessionRunValues(collections.namedtuple("SessionRunValues", ["results"])):
+class SessionRunValues(
+    collections.namedtuple("SessionRunValues",
+                           ["results", "options", "run_metadata"])):
   """Contains the results of `Session.run()`.
 
   In the future we may use this object to add more information about result of
@@ -239,4 +259,6 @@ class SessionRunValues(collections.namedtuple("SessionRunValues", ["results"])):
         => results = [None, nparray(string), nparray(int)]
         fetches = {'step': global_step_tensor, 'summ': summary_op}
         => results = {'step': nparray(int), 'summ': nparray(string)}
+    options: `RunOptions` from the `Session.run()` call.
+    run_metadata: `RunMetadata` from the `Session.run()` call.
   """

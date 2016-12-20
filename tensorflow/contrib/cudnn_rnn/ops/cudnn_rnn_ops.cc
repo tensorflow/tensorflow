@@ -21,6 +21,12 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+constexpr auto kCudnnRNNCommonInputs = R"doc(
+num_layers: Specifies the number of layers in the RNN model.
+num_units: Specifies the size of the hidden state.
+input_size: Specifies the size of the input state.
+)doc";
+
 constexpr auto kCudnnRNNCommonAttrs = R"doc(
 rnn_mode: Indicates the type of the RNN model.
 input_mode: Indicate whether there is a linear projection between the input and
@@ -47,12 +53,12 @@ constexpr auto kRNNInputModeAttrs =
 constexpr auto kRNNDirectionAttrs =
     "direction: {'unidirectional', 'bidirectional'} = 'unidirectional'";
 
-constexpr auto kCudnnRNNCanonicalParams = R"doc(
-canonical_weights: the canonical form of weights that can be used for saving
+constexpr auto kCudnnRNNParamsCanonical = R"doc(
+weights: the canonical form of weights that can be used for saving
     and restoration. They are more likely to be compatible across different
     generations.
-canonical_biases: the canonical form of biases that can be used for saving and
-    restoration. They are more likely to be compatible across different
+biases: the canonical form of biases that can be used for saving
+    and restoration. They are more likely to be compatible across different
     generations.
 )doc";
 
@@ -80,11 +86,8 @@ REGISTER_OP("CudnnRNNParamsSize")
 Return the params size that can be used by the Cudnn RNN model. Subsequent
 weight allocation and initialization should use this size.
 )doc",
-                         kCudnnRNNCommonAttrs,
+                         kCudnnRNNCommonInputs, kCudnnRNNCommonAttrs,
                          R"doc(
-num_layers: Specifies the number of layers in the RNN model.
-num_units: Specifies the size of the hidden state.
-input_size: Specifies the size of the input state.
 params_size: The size of the params buffer that should be allocated and
     initialized for this RNN model. Note that this params buffer may not be
     compatible across GPUs. Please use CudnnRNNParamsWeights and
@@ -213,46 +216,72 @@ params_backprop: The backprop to the params buffer in the forward pass. Has the
     same shape as params.
 )doc"));
 
-// NOTE(zhengxq): this is not currently implemented yet. And may subject to
-// change.
 REGISTER_OP("CudnnRNNParamsToCanonical")
     .Input("num_layers: int32")
     .Input("num_units: int32")
     .Input("input_size: int32")
     .Input("params: T")
-    .Output("canonical_weights: T")
-    .Output("canonical_biases: T")
+    .Output("weights: num_params * T")
+    .Output("biases: num_params * T")
     .Attr("T: {float}")
-    .Attr("N: int >= 1")
+    .Attr("num_params: int")
     .Attr(kRNNModeAttrs)
     .Attr(kRNNInputModeAttrs)
     .Attr(kRNNDirectionAttrs)
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 1, &unused));
+      int num_params;
+      c->GetAttr("num_params", &num_params);
+      // Set shape for weight matrices
+      for (int i = 0; i < num_params; i++) {
+        c->set_output(i,
+                      c->Matrix(InferenceContext::kUnknownDim,
+                                InferenceContext::kUnknownDim));
+      }
+      // Set shape for bias vectors
+      for (int i = 0; i < num_params; i++) {
+        c->set_output(num_params + i, c->Vector(InferenceContext::kUnknownDim));
+      }
+      return Status::OK();
+    })
     .Doc(strings::StrCat(R"doc(
 Retrieves a set of weights from the opaque params buffer that can be saved and
 restored in a way compatible with future runs.
 )doc",
-                         kCudnnRNNCommonAttrs, kCudnnRNNParamsBuffer,
-                         kCudnnRNNCanonicalParams));
+                         kCudnnRNNCommonInputs, kCudnnRNNParamsBuffer, R"doc(
+num_params: number of parameter sets for all layers.
+    Each layer may contain multiple parameter sets, with each set consisting of
+    a weight matrix and a bias vector.
+)doc",
+                         kCudnnRNNParamsCanonical, kCudnnRNNCommonAttrs));
 
-// NOTE(zhengxq): this is not currently implemented yet. And may subject to
-// change.
-REGISTER_OP("CudnnRNNParamsFromCanonical")
+REGISTER_OP("CudnnRNNCanonicalToParams")
     .Input("num_layers: int32")
     .Input("num_units: int32")
     .Input("input_size: int32")
-    .Input("params: Ref(T)")
-    .Input("canonical_weights: T")
-    .Input("canonical_biases: T")
+    .Input("weights: num_params * T")
+    .Input("biases: num_params * T")
+    .Output("params: T")
     .Attr("T: {float}")
-    .Attr("N: int >= 1")
+    .Attr("num_params: int")
     .Attr(kRNNModeAttrs)
     .Attr(kRNNInputModeAttrs)
     .Attr(kRNNDirectionAttrs)
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
+      return Status::OK();
+    })
     .Doc(strings::StrCat(R"doc(
-Writes a set of weights into the the opaque params buffer so they can be used in
+Writes a set of weights into the opaque params buffer so they can be used in
 upcoming training or inferences.
 )doc",
-                         kCudnnRNNCommonAttrs, kCudnnRNNParamsBuffer,
-                         kCudnnRNNCanonicalParams));
+                         kCudnnRNNCommonInputs, kCudnnRNNParamsCanonical,
+                         kCudnnRNNParamsBuffer, R"doc(
+num_params: number of parameter sets for all layers.
+    Each layer may contain multiple parameter sets, with each set consisting of
+    a weight matrix and a bias vector.
+)doc",
+                         kCudnnRNNCommonAttrs));
 
 }  // namespace tensorflow

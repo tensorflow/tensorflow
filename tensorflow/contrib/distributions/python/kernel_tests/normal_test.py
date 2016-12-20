@@ -192,7 +192,7 @@ class NormalTest(tf.test.TestCase):
           value = func(x)
           grads = tf.gradients(value, [mu, sigma])
           with self.test_session(graph=g):
-            tf.initialize_all_variables().run()
+            tf.global_variables_initializer().run()
             self.assertAllFinite(value)
             self.assertAllFinite(grads[0])
             self.assertAllFinite(grads[1])
@@ -290,7 +290,7 @@ class NormalTest(tf.test.TestCase):
       sigma_v = np.sqrt(3.0)
       n = tf.constant(100000)
       normal = tf.contrib.distributions.Normal(mu=mu, sigma=sigma)
-      samples = normal.sample_n(n)
+      samples = normal.sample(n)
       sample_values = samples.eval()
       # Note that the standard error for the sample mean is ~ sigma / sqrt(n).
       # The sample variance similarly is dependent on sigma and n.
@@ -323,7 +323,7 @@ class NormalTest(tf.test.TestCase):
       sigma_v = [np.sqrt(2.0), np.sqrt(3.0)]
       n = tf.constant(100000)
       normal = tf.contrib.distributions.Normal(mu=mu, sigma=sigma)
-      samples = normal.sample_n(n)
+      samples = normal.sample(n)
       sample_values = samples.eval()
       # Note that the standard error for the sample mean is ~ sigma / sqrt(n).
       # The sample variance similarly is dependent on sigma and n.

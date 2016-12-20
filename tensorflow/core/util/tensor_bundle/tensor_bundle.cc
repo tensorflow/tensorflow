@@ -221,20 +221,23 @@ Status ReadInputByChunk(const RandomAccessFile* file, size_t offset,
   return Status::OK();
 }
 
+// Returns whether "slice_spec" is a full slice, with respect to the full shape.
+//
+// This can happen say, when "slice_spec" is
+// "TensorSlice(full_tensor_shape.dims())", or when it is "TensorSlice({{0,
+// dim(0)}, ..., {0, dim(N)}})" -- a degenerate case we need to guard against.
+bool IsFullSlice(const TensorSlice& slice_spec,
+                 const TensorShape& full_tensor_shape) {
+  if (slice_spec.IsFull()) {
+    return true;
+  } else {
+    TensorShape sliced_shape;
+    slice_spec.SliceTensorShape(full_tensor_shape, &sliced_shape);
+    return sliced_shape == full_tensor_shape;
+  }
+}
+
 }  // namespace
-
-string DataFilename(StringPiece prefix, int32 shard_id, int32 num_shards) {
-  DCHECK_GT(num_shards, 0);
-  DCHECK_LT(shard_id, num_shards);
-  return strings::Printf("%.*s.data-%05d-of-%05d",
-                         static_cast<int>(prefix.size()), prefix.data(),
-                         shard_id, num_shards);
-}
-
-string MetaFilename(StringPiece prefix) {
-  return strings::Printf("%.*s.index", static_cast<int>(prefix.size()),
-                         prefix.data());
-}
 
 BundleWriter::BundleWriter(Env* env, StringPiece prefix)
     : env_(env), prefix_(prefix.ToString()), out_(nullptr), size_(0) {
@@ -290,6 +293,11 @@ Status BundleWriter::AddSlice(StringPiece full_tensor_key,
                               const TensorShape& full_tensor_shape,
                               const TensorSlice& slice_spec,
                               const Tensor& slice_tensor) {
+  // If just a singleton full slice, use the regular Add() to be more efficient.
+  if (IsFullSlice(slice_spec, full_tensor_shape)) {
+    return Add(full_tensor_key, slice_tensor);
+  }
+
   CHECK_NE(full_tensor_key, kHeaderEntryKey);
   if (!status_.ok()) return status_;
 
@@ -335,7 +343,11 @@ Status BundleWriter::Finish() {
   status_ = env_->NewWritableFile(MetaFilename(prefix_), &file);
   if (!status_.ok()) return status_;
   {
-    table::TableBuilder builder(table::Options(), file.get());
+    // N.B.: the default use of Snappy compression may not be supported on all
+    // platforms (e.g. Android).  The metadata file is small, so this is fine.
+    table::Options options;
+    options.compression = table::kNoCompression;
+    table::TableBuilder builder(options, file.get());
     // Header entry.
     BundleHeaderProto header;
     header.set_num_shards(1);
@@ -745,11 +757,10 @@ Status BundleReader::GetSliceValue(StringPiece full_tensor_key,
     // allocate_temp()?  Note that without major refactorings to Saver, it's
     // hard for the caller of the tensor bundle module to allocate these
     // precisely-shaped scratch storage.
-    // TODO(zongheng): implement an important optimization: if the stored slice
-    // is a subset of the to-restore slice, directly read the stored slice into
-    // the latter's already-allocated backing buffer.
 
     // Optimization for the common case: stored slice == to-restore slice.
+    // TODO(zongheng): also include the case where "slice_spec" is full ("-"),
+    // and "stored_slice" is logically full but contains actual extents.
     if (stored_slice == slice_spec) {
       VLOG(1) << "Optimized for common case: directly copying into "
                  "pre-allocated buffer; spec: "
@@ -800,12 +811,18 @@ bool BundleReader::Contains(StringPiece key) {
   return Valid() && (this->key() == key);
 }
 
-Status BundleReader::LookupTensorShape(StringPiece key, TensorShape* shape) {
+Status BundleReader::LookupDtypeAndShape(StringPiece key, DataType* dtype,
+                                         TensorShape* shape) {
   BundleEntryProto entry;
   TF_RETURN_IF_ERROR(GetBundleEntryProto(key, &entry));
-
+  *dtype = entry.dtype();
   *shape = TensorShape(entry.shape());
   return Status::OK();
+}
+
+Status BundleReader::LookupTensorShape(StringPiece key, TensorShape* shape) {
+  DataType ignored;
+  return LookupDtypeAndShape(key, &ignored, shape);
 }
 
 string BundleReader::DebugString() {

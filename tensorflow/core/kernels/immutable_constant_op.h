@@ -33,9 +33,9 @@ class ImmutableConstantOp : public OpKernel {
   ~ImmutableConstantOp() override;
 
   // Names of attributes that are used by this op
-  static constexpr char kDTypeAttr[] = "dtype";
-  static constexpr char kShapeAttr[] = "shape";
-  static constexpr char kMemoryRegionNameAttr[] = "memory_region_name";
+  static constexpr char const* kDTypeAttr = "dtype";
+  static constexpr char const* kShapeAttr = "shape";
+  static constexpr char const* kMemoryRegionNameAttr = "memory_region_name";
 
  private:
   string region_name_;

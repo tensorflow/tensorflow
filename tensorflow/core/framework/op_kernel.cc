@@ -222,7 +222,7 @@ OpKernelContext::~OpKernelContext() {
 
 Allocator* OpKernelContext::get_allocator(AllocatorAttributes attr) {
   Allocator* allocator =
-      params_->device->GetStepAllocator(attr, step_resource_manager());
+      params_->device->GetStepAllocator(attr, resource_manager());
   if (params_->track_allocations) {
     mutex_lock lock(mu_);
     for (const auto& wrapped : wrapped_allocators_) {
@@ -948,6 +948,13 @@ template <>
 const Eigen::GpuDevice& OpKernelContext::eigen_device() const {
   return eigen_gpu_device();
 }
+
+#ifdef TENSORFLOW_USE_SYCL
+template <>
+const Eigen::SyclDevice& OpKernelContext::eigen_device() const {
+  return eigen_sycl_device();
+}
+#endif
 
 void OpKernelConstruction::CtxFailure(Status s) {
   VLOG(1) << s;

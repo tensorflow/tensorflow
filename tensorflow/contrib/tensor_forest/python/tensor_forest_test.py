@@ -33,14 +33,13 @@ class TensorForestTest(test_util.TensorFlowTestCase):
         split_after_samples=25, num_features=60).fill()
     self.assertEquals(2, hparams.num_classes)
     self.assertEquals(3, hparams.num_output_columns)
-    # sqrt(num_features) < 10, so num_splits_to_consider should be 10.
-    self.assertEquals(10, hparams.num_splits_to_consider)
+    self.assertEquals(60, hparams.num_splits_to_consider)
     # Don't have more fertile nodes than max # leaves, which is 500.
     self.assertEquals(500, hparams.max_fertile_nodes)
     # Default value of valid_leaf_threshold
     self.assertEquals(1, hparams.valid_leaf_threshold)
-    # split_after_samples is larger than 10
-    self.assertEquals(1, hparams.split_initializations_per_input)
+    # floor(60 / 25) = 2
+    self.assertEquals(2, hparams.split_initializations_per_input)
     self.assertEquals(0, hparams.base_random_seed)
 
   def testForestHParamsBigTree(self):
@@ -48,12 +47,11 @@ class TensorForestTest(test_util.TensorFlowTestCase):
         num_classes=2, num_trees=100, max_nodes=1000000,
         split_after_samples=25,
         num_features=1000).fill()
-    # sqrt(1000) = 31.63...
-    self.assertEquals(32, hparams.num_splits_to_consider)
-    # 1000000 / 32 = 31250
-    self.assertEquals(31250, hparams.max_fertile_nodes)
-    # floor(31.63 / 25) = 1
-    self.assertEquals(1, hparams.split_initializations_per_input)
+    self.assertEquals(1000, hparams.num_splits_to_consider)
+    # 1000000 / 2 = 500000
+    self.assertEquals(500000, hparams.max_fertile_nodes)
+    # floor(1000 / 25) = 40
+    self.assertEquals(40, hparams.split_initializations_per_input)
 
   def testTrainingConstructionClassification(self):
     input_data = [[-1., 0.], [-1., 2.],  # node 1
@@ -112,7 +110,7 @@ class TensorForestTest(test_util.TensorFlowTestCase):
                 -1., 2.,
                 1.,
                 -2.0],
-        shape=[4, 10])
+        dense_shape=[4, 10])
     input_labels = [0, 1, 2, 3]
 
     params = tensor_forest.ForestHParams(
@@ -133,7 +131,7 @@ class TensorForestTest(test_util.TensorFlowTestCase):
                 -1., 2.,
                 1.,
                 -2.0],
-        shape=[4, 10])
+        dense_shape=[4, 10])
 
     params = tensor_forest.ForestHParams(
         num_classes=4, num_features=10, num_trees=10, max_nodes=1000,

@@ -9,6 +9,7 @@ option java_package = "org.tensorflow.framework";
 import "tensorflow/core/framework/cost_graph.proto";
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/framework/step_stats.proto";
+import "tensorflow/core/protobuf/debug.proto";
 
 message GPUOptions {
   // A value between 0 and 1 that indicates what fraction of the
@@ -78,6 +79,19 @@ message OptimizerOptions {
   }
 
   Level opt_level = 3;
+
+  // Control the use of the compiler/jit.  Experimental.
+  enum GlobalJitLevel {
+    DEFAULT = 0;  // Default setting ("off" now, but later expected to be "on")
+    OFF = -1;
+    // The following settings turn on compilation, with higher values being
+    // more aggressive.  Higher values may reduce opportunities for parallelism
+    // and may use more memory.  (At present, there is no distinction, but this
+    // is expected to change.)
+    ON_1 = 1;
+    ON_2 = 2;
+  }
+  GlobalJitLevel global_jit_level = 5;
 }
 
 message GraphOptions {
@@ -96,6 +110,10 @@ message GraphOptions {
   // the memory usage and performance of each node of the graph. 0 means
   // no cost model.
   int64 build_cost_model = 4;
+
+  // The number of steps to skip before collecting statistics for the
+  // cost model.
+  int64 build_cost_model_after = 9;
 
   // Annotate each Node with Op output shape data, to the extent it can
   // be statically inferred.
@@ -124,6 +142,15 @@ message ThreadPoolOptionProto {
   // 0 means the system picks a value based on where this option proto is used
   // (see the declaration of the specific field for more info).
   int32 num_threads = 1;
+};
+
+message RPCOptions {
+  // If true, always use RPC to contact the session target.
+  //
+  // If false (the default option), TensorFlow may use an optimized
+  // transport for client-master communication that avoids the RPC
+  // stack. This option is primarily for used testing the RPC stack.
+  bool use_rpc_for_inprocess_master = 1;
 };
 
 // Session configuration parameters.
@@ -203,31 +230,10 @@ message ConfigProto {
   // and not overridden on a per-operation basis, this value will be used as the
   // deadline for all blocking operations.
   int64 operation_timeout_in_ms = 11;
+
+  // Options that apply when this session uses the distributed runtime.
+  RPCOptions rpc_options = 13;
 };
-
-// EXPERIMENTAL. Option for watching a node.
-message DebugTensorWatch {
-  // Name of the node to watch.
-  string node_name = 1;
-
-  // Output slot to watch.
-  // The semantics of output_slot == -1 is that the node is only watched for
-  // completion, but not for any output tensors. See NodeCompletionCallback
-  // in debug_gateway.h.
-  // TODO(cais): Implement this semantics.
-  int32 output_slot = 2;
-
-  // Name(s) of the debugging op(s).
-  // One or more than one probes on a tensor.
-  // e.g., {"DebugIdentity", "DebugNanCount"}
-  repeated string debug_ops = 3;
-
-  // URL(s) for debug targets(s).
-  //   E.g., "file:///foo/tfdbg_dump", "grpc://localhost:11011"
-  // Each debug op listed in debug_ops will publish its output tensor (debug
-  // signal) to all URLs in debug_urls.
-  repeated string debug_urls = 4;
-}
 
 // EXPERIMENTAL. Options for a single Run() call.
 message RunOptions {
@@ -247,12 +253,14 @@ message RunOptions {
   // The thread pool to use, if session_inter_op_thread_pool is configured.
   int32 inter_op_thread_pool = 3;
 
-  // Debugging options
-  repeated DebugTensorWatch debug_tensor_watch_opts = 4;
-
   // Whether the partition graph(s) executed by the executor(s) should be
   // outputted via RunMetadata.
   bool output_partition_graphs = 5;
+
+  // EXPERIMENTAL.  Options used to initialize DebuggerState, if enabled.
+  DebugOptions debug_options = 6;
+
+  reserved 4;
 }
 
 // EXPERIMENTAL. Metadata output (i.e., non-Tensor) for a single Run() call.

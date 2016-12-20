@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tensorflow.ops.tf.gather_nd."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -21,17 +21,24 @@ from __future__ import print_function
 import time
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.client import session
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
 
 
-class GatherNdTest(tf.test.TestCase):
+class GatherNdTest(test.TestCase):
   use_gpu = False
 
   def _testSimpleDtype(self, dtype):
     with self.test_session(use_gpu=self.use_gpu):
-      params = tf.constant(np.array([8, 1, 2, 3, 7, 5], dtype=dtype))
-      indices = tf.constant([[4], [4], [0]])
-      gather_nd_t = tf.gather_nd(params, indices)
+      params = constant_op.constant(np.array([8, 1, 2, 3, 7, 5], dtype=dtype))
+      indices = constant_op.constant([[4], [4], [0]])
+      gather_nd_t = array_ops.gather_nd(params, indices)
       gather_nd_val = gather_nd_t.eval()
 
     self.assertAllEqual(np.array([7, 7, 8], dtype=dtype), gather_nd_val)
@@ -50,58 +57,58 @@ class GatherNdTest(tf.test.TestCase):
       params = np.ones((3, 3), dtype=np.float32)
 
       indices_empty = np.empty((0, 2), dtype=np.int32)
-      gather_nd_ok_t = tf.gather_nd(params, indices_empty)
+      gather_nd_ok_t = array_ops.gather_nd(params, indices_empty)
       gather_nd_ok_val = gather_nd_ok_t.eval()
       self.assertEqual([0], gather_nd_ok_t.get_shape())
-      self.assertAllEqual(np.empty((0,), dtype=np.float32), gather_nd_ok_val)
+      self.assertAllClose(np.empty((0,), dtype=np.float32), gather_nd_ok_val)
 
       indices_empty = np.empty((0, 1), dtype=np.int32)
-      gather_nd_ok_t = tf.gather_nd(params, indices_empty)
+      gather_nd_ok_t = array_ops.gather_nd(params, indices_empty)
       gather_nd_ok_val = gather_nd_ok_t.eval()
       self.assertEqual([0, 3], gather_nd_ok_t.get_shape())
-      self.assertAllEqual(np.empty((0, 3), dtype=np.float32), gather_nd_ok_val)
+      self.assertAllClose(np.empty((0, 3), dtype=np.float32), gather_nd_ok_val)
 
       params_empty = np.empty((0, 3), dtype=np.float32)
       indices_empty = np.empty((0, 2), dtype=np.int32)
-      gather_nd_ok_t = tf.gather_nd(params_empty, indices_empty)
+      gather_nd_ok_t = array_ops.gather_nd(params_empty, indices_empty)
       gather_nd_ok_val = gather_nd_ok_t.eval()
       self.assertEqual([0], gather_nd_ok_t.get_shape())
-      self.assertAllEqual(np.empty((0,), dtype=np.float32), gather_nd_ok_val)
+      self.assertAllClose(np.empty((0,), dtype=np.float32), gather_nd_ok_val)
 
       params_empty = np.empty((0, 3), dtype=np.float32)
       indices_nonempty = np.zeros((1, 2), dtype=np.int32)
-      gather_nd_break_t = tf.gather_nd(params_empty, indices_nonempty)
+      gather_nd_break_t = array_ops.gather_nd(params_empty, indices_nonempty)
       with self.assertRaisesOpError(
           r"Requested more than 0 entries, but params is empty."):
         gather_nd_break_t.eval()
-      self.assertAllEqual(np.empty((0,), dtype=np.float32), gather_nd_ok_val)
+      self.assertAllClose(np.empty((0,), dtype=np.float32), gather_nd_ok_val)
 
   def testIndexScalar(self):
     with self.test_session(use_gpu=self.use_gpu):
-      params = np.array([[-8, -1, -2, -3, -7, -5], [8, 1, 2, 3, 7, 5]],
-                        dtype=np.float32).T
-      indices = tf.constant([4, 1])
-      gather_nd_t = tf.gather_nd(params, indices)
+      params = np.array(
+          [[-8, -1, -2, -3, -7, -5], [8, 1, 2, 3, 7, 5]], dtype=np.float32).T
+      indices = constant_op.constant([4, 1])
+      gather_nd_t = array_ops.gather_nd(params, indices)
       gather_nd_val = gather_nd_t.eval()
       self.assertEqual([], gather_nd_t.get_shape())
       self.assertAllEqual(np.array(7), gather_nd_val)
 
   def testParamsRankLargerThanIndexIndexScalarSlices(self):
     with self.test_session(use_gpu=self.use_gpu):
-      params = np.array([[-8, -1, -2, -3, -7, -5], [8, 1, 2, 3, 7, 5]],
-                        dtype=np.float32).T
-      indices = tf.constant([4])
-      gather_nd_t = tf.gather_nd(params, indices)
+      params = np.array(
+          [[-8, -1, -2, -3, -7, -5], [8, 1, 2, 3, 7, 5]], dtype=np.float32).T
+      indices = constant_op.constant([4])
+      gather_nd_t = array_ops.gather_nd(params, indices)
       gather_nd_val = gather_nd_t.eval()
       self.assertEqual([2], gather_nd_t.get_shape())
       self.assertAllEqual(np.array([-7, 7]), gather_nd_val)
 
   def testParamsRankLargerThanIndexSlices(self):
     with self.test_session(use_gpu=self.use_gpu):
-      params = np.array([[-8, -1, -2, -3, -7, -5], [8, 1, 2, 3, 7, 5]],
-                        dtype=np.float32).T
-      indices = tf.constant([[4], [4], [0]])
-      gather_nd_t = tf.gather_nd(params, indices)
+      params = np.array(
+          [[-8, -1, -2, -3, -7, -5], [8, 1, 2, 3, 7, 5]], dtype=np.float32).T
+      indices = constant_op.constant([[4], [4], [0]])
+      gather_nd_t = array_ops.gather_nd(params, indices)
       gather_nd_val = gather_nd_t.eval()
 
     self.assertEqual([3, 2], gather_nd_t.get_shape())
@@ -113,9 +120,9 @@ class GatherNdTest(tf.test.TestCase):
           [[[-8, -1, -2, -3, -7, -5], [8, 1, 2, 3, 7, 5]],
            [[-80, -10, -20, -30, -70, -50], [80, 10, 20, 30, 70, 50]]],
           dtype=np.float32).T
-      params_t = tf.constant(params)
-      indices = tf.constant([[4], [4], [0]])
-      gather_nd_t = tf.gather_nd(params_t, indices)
+      params_t = constant_op.constant(params)
+      indices = constant_op.constant([[4], [4], [0]])
+      gather_nd_t = array_ops.gather_nd(params_t, indices)
       gather_nd_val = gather_nd_t.eval()
 
     self.assertEqual([3, 2, 2], gather_nd_t.get_shape())
@@ -127,9 +134,10 @@ class GatherNdTest(tf.test.TestCase):
           [[[-8, -1, -2, -3, -7, -5], [8, 1, 2, 3, 7, 5]],
            [[-80, -10, -20, -30, -70, -50], [80, 10, 20, 30, 70, 50]]],
           dtype=np.float32).T
-      params_t = tf.constant(params)
-      indices = tf.constant([[], []], dtype=tf.int32)  # Size (2, 0)
-      gather_nd_t = tf.gather_nd(params_t, indices)
+      params_t = constant_op.constant(params)
+      indices = constant_op.constant(
+          [[], []], dtype=dtypes.int32)  # Size (2, 0)
+      gather_nd_t = array_ops.gather_nd(params_t, indices)
       gather_nd_val = gather_nd_t.eval()
 
     self.assertEqual([2, 6, 2, 2], gather_nd_t.get_shape())
@@ -143,9 +151,9 @@ class GatherNdTest(tf.test.TestCase):
           [[[-8, -1, -2, -3, -7, -5], [8, 1, 2, 3, 7, 5]],
            [[-80, -10, -20, -30, -70, -50], [80, 10, 20, 30, 70, 50]]],
           dtype=np.float32).T
-      params_t = tf.constant(params)
-      indices = tf.constant([[[3], [2], [1]], [[4], [4], [0]]])
-      gather_nd_t = tf.gather_nd(params_t, indices)
+      params_t = constant_op.constant(params)
+      indices = constant_op.constant([[[3], [2], [1]], [[4], [4], [0]]])
+      gather_nd_t = array_ops.gather_nd(params_t, indices)
       gather_nd_val = gather_nd_t.eval()
 
     self.assertEqual([2, 3, 2, 2], gather_nd_t.get_shape())
@@ -156,9 +164,8 @@ class GatherNdTest(tf.test.TestCase):
     with self.test_session(use_gpu=self.use_gpu):
       shape = (10, 20, 5, 1, 17)
       params = np.random.rand(*shape)
-      indices = np.vstack([
-          np.random.randint(0, s, size=2000) for s in shape]).T
-      gather_nd_t = tf.gather_nd(params, indices)
+      indices = np.vstack([np.random.randint(0, s, size=2000) for s in shape]).T
+      gather_nd_t = array_ops.gather_nd(params, indices)
       gather_nd_val = gather_nd_t.eval()
 
     expected = params[tuple(indices.T)]
@@ -169,10 +176,9 @@ class GatherNdTest(tf.test.TestCase):
     with self.test_session(use_gpu=self.use_gpu):
       shape = (10, 20, 5, 1, 17)
       params = np.random.rand(*shape)
-      indices = np.vstack([
-          np.random.randint(0, s, size=2000) for s in shape]).T
+      indices = np.vstack([np.random.randint(0, s, size=2000) for s in shape]).T
       indices_reshaped = indices.reshape([10, 10, 20, 5])
-      gather_nd_t = tf.gather_nd(params, indices_reshaped)
+      gather_nd_t = array_ops.gather_nd(params, indices_reshaped)
       gather_nd_val = gather_nd_t.eval()
 
     expected = params[tuple(indices.T)]
@@ -180,60 +186,117 @@ class GatherNdTest(tf.test.TestCase):
     self.assertEqual([10, 10, 20], gather_nd_t.get_shape())
 
   def testUnknownIndices(self):
-    params = tf.constant([[0, 1, 2]])
-    indices = tf.placeholder(tf.int32)
-    gather_nd_t = tf.gather_nd(params, indices)
+    params = constant_op.constant([[0, 1, 2]])
+    indices = array_ops.placeholder(dtypes.int32)
+    gather_nd_t = array_ops.gather_nd(params, indices)
     shape = gather_nd_t.get_shape()
-    self.assertEqual(shape.ndims, None)
-    self.assertEqual(shape[0].value, None)
+    self.assertEqual(None, shape.ndims)
+    self.assertEqual(None, shape[0].value)
 
   def testBadIndices(self):
-    with self.test_session(use_gpu=False):
+    with self.test_session():
       params = [0, 1, 2]
       indices = [[[0], [7]]]  # Make this one higher rank
-      gather_nd = tf.gather_nd(params, indices)
+      gather_nd = array_ops.gather_nd(params, indices)
       with self.assertRaisesOpError(
           r"flat indices\[1, :\] = \[7\] does not index into param "
           r"\(shape: \[3\]\)"):
         gather_nd.eval()
 
   def testBadIndicesWithSlices(self):
-    with self.test_session(use_gpu=False):
+    with self.test_session():
       params = [[0, 1, 2]]
       indices = [[[0], [0], [1]]]  # Make this one higher rank
-      gather_nd = tf.gather_nd(params, indices)
+      gather_nd = array_ops.gather_nd(params, indices)
       with self.assertRaisesOpError(
           r"flat indices\[2, :\] = \[1\] does not index into param "
           r"\(shape: \[1,3\]\)"):
         gather_nd.eval()
+
+  def testGradientsRank2Elements(self):
+    indices = constant_op.constant([[0, 0], [1, 1]], dtype=dtypes.int32)
+    inputs = constant_op.constant([[1, 2], [3, 4]], dtype=dtypes.float64)
+    outputs = array_ops.gather_nd(inputs, indices)
+
+    grad_vals = constant_op.constant([1, 2], dtype=dtypes.float64)
+    grads = gradients_impl.gradients([outputs], [inputs], [grad_vals])[0]
+    expected_grads = np.array([[1, 0], [0, 2]], dtype=np.float64)
+    with self.test_session():
+      assert np.array_equal(expected_grads, grads.eval())
+
+  def testGradientsRank2Slices(self):
+    indices = constant_op.constant([[1], [0]], dtype=dtypes.int32)
+    inputs = constant_op.constant([[1, 2], [3, 4]], dtype=dtypes.float64)
+    outputs = array_ops.gather_nd(inputs, indices)
+
+    grad_vals = constant_op.constant([[1, 2], [3, 4]], dtype=dtypes.float64)
+    grads = gradients_impl.gradients([outputs], [inputs], [grad_vals])[0]
+    expected_grads = np.array([[3, 4], [1, 2]], dtype=np.float64)
+    with self.test_session():
+      self.assertAllEqual(expected_grads, grads.eval())
+
+  def testGradientsRank3Elements(self):
+    indices = constant_op.constant(
+        [[[0, 1], [1, 0]], [[0, 0], [1, 1]]], dtype=dtypes.int32)
+    inputs = constant_op.constant(
+        [[[1, 3], [5, 7]], [[2, 4], [6, 8]]], dtype=dtypes.float64)
+    outputs = array_ops.gather_nd(inputs, indices)
+
+    grad_vals = constant_op.constant(
+        [[[1, 2], [3, 4]], [[5, 6], [7, 8]]], dtype=dtypes.float64)
+    grads = gradients_impl.gradients([outputs], [inputs], [grad_vals])[0]
+    expected_grads = np.array(
+        [[[5, 6], [1, 2]], [[3, 4], [7, 8]]], dtype=np.float64)
+    with self.test_session():
+      self.assertAllEqual(expected_grads, grads.eval())
+
+  def testGradientsRank2SlicesWithEmptySpace(self):
+    indices = constant_op.constant([[2], [0], [5]], dtype=dtypes.int32)
+    inputs = constant_op.constant(
+        [[1, 2, 3, 4, 5, 6, 7, 8, 9], [1, 2, 3, 4, 5, 6, 7, 8, 9],
+         [1, 2, 3, 4, 5, 6, 7, 8, 9], [1, 2, 3, 4, 5, 6, 7, 8, 9],
+         [1, 2, 3, 4, 5, 6, 7, 8, 9], [1, 2, 3, 4, 5, 6, 7, 8, 9]],
+        dtype=dtypes.float64)
+    outputs = array_ops.gather_nd(inputs, indices)
+    grad_vals = constant_op.constant(
+        [[1, 1, 1, 1, 1, 1, 1, 1, 1], [2, 2, 2, 2, 2, 2, 2, 2, 2],
+         [3, 3, 3, 3, 3, 3, 3, 3, 3]],
+        dtype=dtypes.float64)
+    grads = gradients_impl.gradients([outputs], [inputs], [grad_vals])[0]
+    expected_grads = np.array(
+        [[2, 2, 2, 2, 2, 2, 2, 2, 2], [0, 0, 0, 0, 0, 0, 0, 0, 0],
+         [1, 1, 1, 1, 1, 1, 1, 1, 1], [0, 0, 0, 0, 0, 0, 0, 0, 0],
+         [0, 0, 0, 0, 0, 0, 0, 0, 0], [3, 3, 3, 3, 3, 3, 3, 3, 3]],
+        dtype=np.float64)
+    with self.test_session():
+      self.assertAllEqual(expected_grads, grads.eval())
 
 
 class GatherNdGpuTest(GatherNdTest):
   use_gpu = True
 
 
-class GatherNdOpBenchmark(tf.test.Benchmark):
+class GatherNdOpBenchmark(test.Benchmark):
 
   def benchmark_gather_nd_op(self):
     shape = (100, 47, 18, 170, 13)
     np.random.seed(127)
     params = np.random.rand(*shape)
-    indices = np.vstack([
-        np.random.randint(0, s, size=10000) for s in shape]).T
+    indices = np.vstack([np.random.randint(0, s, size=10000) for s in shape]).T
 
-    with tf.Session():
-      t_params = tf.Variable(params)
-      t_indices = tf.Variable(indices)
-      gather_op = tf.gather_nd(t_params, t_indices)
-      tf.initialize_all_variables().run()
+    with session.Session():
+      t_params = variables.Variable(params)
+      t_indices = variables.Variable(indices)
+      gather_op = array_ops.gather_nd(t_params, t_indices)
+      variables.global_variables_initializer().run()
       for _ in range(10):
         gather_op.eval()
       t1 = time.time()
       for _ in range(1000):
         gather_op.eval()
       t2 = time.time()
-      self.report_benchmark(iters=1000, wall_time=(t2-t1)/1000.0)
+      self.report_benchmark(iters=1000, wall_time=(t2 - t1) / 1000.0)
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

@@ -46,7 +46,7 @@ class AdadeltaOptimizerTest(tf.test.TestCase):
             adadelta_update = adadelta_opt.apply_gradients(zip(
               [grads, grads], [var0, var1]))
 
-            tf.initialize_all_variables().run()
+            tf.global_variables_initializer().run()
 
             # Assign slots
             slot = [None] * 2
@@ -91,18 +91,18 @@ class AdadeltaOptimizerTest(tf.test.TestCase):
               for slot_idx in range(2):
                 self.assertAllCloseAccordingToType(
                   np.array([accum, accum], dtype=dtype.as_numpy_dtype()),
-                  slot[slot_idx].eval(), rtol=1e-2, atol=1e-2)
+                  slot[slot_idx].eval(), rtol=1e-3)
 
                 self.assertAllCloseAccordingToType(
                   np.array([accum_update, accum_update],
                   dtype=dtype.as_numpy_dtype()),
-                  slot_update[slot_idx].eval())
+                  slot_update[slot_idx].eval(), rtol=1e-3)
 
               # Check that the parameters have been updated
               self.assertAllCloseAccordingToType(
                 np.array([var0_init[0] - tot_update,
                 var0_init[1] - tot_update], dtype=dtype.as_numpy_dtype()),
-                var0.eval(), rtol=1e-2)
+                var0.eval(), rtol=1e-3)
 
               self.assertAllCloseAccordingToType(
                 np.array([var1_init[0] - tot_update,

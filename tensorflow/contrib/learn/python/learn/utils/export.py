@@ -19,10 +19,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib import layers
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
+from tensorflow.contrib.learn.python.learn.estimators import model_fn
 from tensorflow.contrib.session_bundle import exporter
 from tensorflow.contrib.session_bundle import gc
 from tensorflow.python.client import session as tf_session
@@ -53,7 +53,7 @@ def _get_saver():
       saver = saver[0]
     else:
       saver = None
-  if saver is None and variables.all_variables():
+  if saver is None and variables.global_variables():
     saver = tf_saver.Saver()
     ops.add_to_collection(ops.GraphKeys.SAVERS, saver)
   return saver
@@ -65,13 +65,13 @@ def _export_graph(graph, saver, checkpoint_path, export_dir,
   """Exports graph via session_bundle, by creating a Session."""
   with graph.as_default():
     with tf_session.Session('') as session:
-      variables.initialize_local_variables()
+      variables.local_variables_initializer()
       data_flow_ops.initialize_all_tables()
       saver.restore(session, checkpoint_path)
 
       export = exporter.Exporter(saver)
       export.init(init_op=control_flow_ops.group(
-          variables.initialize_local_variables(),
+          variables.local_variables_initializer(),
           data_flow_ops.initialize_all_tables()),
                   default_graph_signature=default_graph_signature,
                   named_graph_signatures=named_graph_signatures,
@@ -296,12 +296,24 @@ def _export_estimator(estimator,
       features, _ = input_fn()
       examples = None
       if input_feature_key is not None:
-        examples = features[input_feature_key]
+        examples = features.pop(input_feature_key)
 
-    if not features and not examples:
+    if (not features) and (examples is None):
       raise ValueError('Either features or examples must be defined.')
 
-    predictions = estimator._get_predict_ops(features)
+    # The default return type of _get_predict_ops is ModelFnOps. But there are
+    # some subclasses of tf.contrib.learn.Estimator which override this
+    # method and use the legacy signature, namely _get_predict_ops returns a
+    # `predictions` Tensor or dict or Tensors. The following else-statement
+    # code covers these cases, but will soon be deleted after the subclasses
+    # are updated.
+    # TODO(b/32664904): Update subclasses and delete the else-statement.
+    infer_ops = estimator._get_predict_ops(features)
+    if isinstance(infer_ops, model_fn.ModelFnOps):  # Default signature
+      predictions = infer_ops.predictions
+    else:  # Legacy signature
+      predictions = infer_ops
+
     if prediction_key is not None:
       predictions = predictions[prediction_key]
 
@@ -312,21 +324,10 @@ def _export_estimator(estimator,
                                                                predictions)
     else:
       try:
-        # Some estimators provide a target_column of known type
-        target_column = estimator._get_target_column()
-        problem_type = target_column.problem_type
-
-        if problem_type == layers.ProblemType.CLASSIFICATION:
-          signature_fn = classification_signature_fn
-        elif problem_type == layers.ProblemType.LINEAR_REGRESSION:
-          signature_fn = regression_signature_fn
-        elif problem_type == layers.ProblemType.LOGISTIC_REGRESSION:
-          signature_fn = logistic_regression_signature_fn
-        else:
-          raise ValueError(
-              'signature_fn must be provided because the TargetColumn is a %s, '
-              'which does not have a standard problem type and so cannot use a '
-              'standard export signature.' % type(target_column).__name__)
+        # Some estimators provide a signature function.
+        # TODO(zakaria): check if the estimator has this function,
+        #   raise helpful error if not
+        signature_fn = estimator._create_signature_fn()
 
         default_signature, named_graph_signatures = (
             signature_fn(examples, features, predictions))

@@ -14,7 +14,12 @@ This value is ultimately returned as `auc`, an idempotent operation that
 computes the area under a discretized curve of precision versus recall values
 (computed using the aforementioned variables). The `num_thresholds` variable
 controls the degree of discretization with larger numbers of thresholds more
-closely approximating the true AUC.
+closely approximating the true AUC. The quality of the approximation may vary
+dramatically depending on `num_thresholds`.
+
+For best results, `predictions` should be distributed approximately uniformly
+in the range [0, 1] and not peaked around 0 or 1. The quality of the AUC
+approximation may be poor if this is not the case.
 
 For estimation of the metric over a stream of data, the function creates an
 `update_op` operation that updates these variables and returns the `auc`.
@@ -42,7 +47,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Returns:
 
 
-*  <b>`auc`</b>: A scalar tensor representing the current area-under-curve.
+*  <b>`auc`</b>: A scalar `Tensor` representing the current area-under-curve.
 *  <b>`update_op`</b>: An operation that increments the `true_positives`,
     `true_negatives`, `false_positives` and `false_negatives` variables
     appropriately and whose value matches `auc`.

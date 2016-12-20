@@ -50,6 +50,7 @@ Status InvGrad(const Scope& scope, const Operation& op,
   return scope.status();
 }
 REGISTER_GRADIENT_OP("Inv", InvGrad);
+REGISTER_GRADIENT_OP("Reciprocal", InvGrad);
 
 Status SquareGrad(const Scope& scope, const Operation& op,
                   const std::vector<Output>& grad_inputs,
@@ -68,7 +69,7 @@ Status SqrtGrad(const Scope& scope, const Operation& op,
   // y = sqrt(x)
   // dy/dx =  0.5 * (1 / sqrt(x)) = 0.5 * (1 / y)
   // dx = dy * (0.5 * (1 / y))
-  auto y_inv = Inv(scope, op.output(0));
+  auto y_inv = Reciprocal(scope, op.output(0));
   auto half = Cast(scope, Const(scope, 0.5), op.input(0).type());
   auto dx = Mul(scope, grad_inputs[0], Mul(scope, half, y_inv));
   grad_outputs->push_back(dx);
@@ -82,7 +83,7 @@ Status RsqrtGrad(const Scope& scope, const Operation& op,
   // y = 1/x^1/2 = x^-1/2
   // dy/dx = -1/2 * x^-3/2 = -1/2 * x^-1/2 * x^-1 = -1/2 * y * x^-1
   // dx = dy * (-1/2 * y * x^-1)
-  auto x_inv = Inv(scope, op.input(0));
+  auto x_inv = Reciprocal(scope, op.input(0));
   auto y = op.output(0);
   auto neghalf = Cast(scope, Const(scope, -0.5), op.input(0).type());
   auto a = Mul(scope, neghalf, x_inv);
@@ -110,10 +111,24 @@ Status LogGrad(const Scope& scope, const Operation& op,
   // f(x) = log(x) = y
   // df/dx = 1 / x
   // dx = dy * (1 / x)
-  grad_outputs->push_back(Mul(scope, grad_inputs[0], Inv(scope, op.input(0))));
+  grad_outputs->push_back(
+      Mul(scope, grad_inputs[0], Reciprocal(scope, op.input(0))));
   return scope.status();
 }
 REGISTER_GRADIENT_OP("Log", LogGrad);
+
+Status Log1pGrad(const Scope& scope, const Operation& op,
+                 const std::vector<Output>& grad_inputs,
+                 std::vector<Output>* grad_outputs) {
+  // f(x) = log1p(x) = y
+  // df/dx = 1 / (1 + x)
+  // dx = dy * (1 / (1 + x))
+  auto one = Cast(scope, Const(scope, 1.0), op.input(0).type());
+  grad_outputs->push_back(
+      Div(scope, grad_inputs[0], Add(scope, one, op.input(0))));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Log1p", Log1pGrad);
 
 Status TanhGrad(const Scope& scope, const Operation& op,
                 const std::vector<Output>& grad_inputs,
@@ -186,7 +201,7 @@ Status AsinGrad(const Scope& scope, const Operation& op,
   // dx = dy * (1 / (1 - x * x)^1/2)
   auto x2 = Square(scope, op.input(0));
   auto one = Cast(scope, Const(scope, 1.0), op.input(0).type());
-  auto dydx = Inv(scope, Sqrt(scope, Sub(scope, one, x2)));
+  auto dydx = Reciprocal(scope, Sqrt(scope, Sub(scope, one, x2)));
   auto dx = Mul(scope, grad_inputs[0], dydx);
   grad_outputs->push_back(dx);
   return scope.status();
@@ -201,7 +216,7 @@ Status AcosGrad(const Scope& scope, const Operation& op,
   // dx = dy * (- 1 / (1 - x * x)^1/2)
   auto x2 = Square(scope, op.input(0));
   auto one = Cast(scope, Const(scope, 1.0), op.input(0).type());
-  auto dydx = Neg(scope, Inv(scope, Sqrt(scope, Sub(scope, one, x2))));
+  auto dydx = Neg(scope, Reciprocal(scope, Sqrt(scope, Sub(scope, one, x2))));
   auto dx = Mul(scope, grad_inputs[0], dydx);
   grad_outputs->push_back(dx);
   return scope.status();
@@ -214,7 +229,7 @@ Status TanGrad(const Scope& scope, const Operation& op,
   // y = tan(x)
   // dy/dx = sec(x)^2 = 1 / cos(x)^2
   // dx = dy * (1 / cos(x)^2)
-  auto dydx = Square(scope, Inv(scope, Cos(scope, op.input(0))));
+  auto dydx = Square(scope, Reciprocal(scope, Cos(scope, op.input(0))));
   auto dx = Mul(scope, grad_inputs[0], dydx);
   grad_outputs->push_back(dx);
   return scope.status();
@@ -228,7 +243,7 @@ Status AtanGrad(const Scope& scope, const Operation& op,
   // dy/dx = 1 / (1 + x^2)
   // dx = dy * (1 / (1 + x^2)
   auto one = Cast(scope, Const(scope, 1.0), op.input(0).type());
-  auto dydx = Inv(scope, Add(scope, one, Square(scope, op.input(0))));
+  auto dydx = Reciprocal(scope, Add(scope, one, Square(scope, op.input(0))));
   auto dx = Mul(scope, grad_inputs[0], dydx);
   grad_outputs->push_back(dx);
   return scope.status();

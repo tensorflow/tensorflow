@@ -53,7 +53,7 @@ def gfile_copy_callback(files_to_copy, export_dir_path):
       basename in the export directory.
     export_dir_path: Directory to copy the files to.
   """
-  logging.info("Write assest into: %s using gfile_copy.", export_dir_path)
+  logging.info("Write assets into: %s using gfile_copy.", export_dir_path)
   gfile.MakeDirs(export_dir_path)
   for source_filepath, basename in files_to_copy.items():
     new_path = os.path.join(

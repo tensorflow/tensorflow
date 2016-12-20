@@ -18,7 +18,7 @@
 # and run the Python unit tests from the source code on the installation
 #
 # Usage:
-#   test_installation.sh [--virtualenv] [--gpu]
+#   test_installation.sh [--virtualenv] [--gpu] [--mac]
 #
 # If the flag --virtualenv is set, the script will use "python" as the Python
 # binary path. Otherwise, it will use tools/python_bin_path.sh to determine
@@ -26,6 +26,9 @@
 #
 # The --gpu flag informs the script that this is a GPU build, so that the
 # appropriate test blacklists can be applied accordingly.
+#
+# The --mac flag informs the script that this is running on mac. Mac does not
+# have flock, so we should skip using parallel_gpu_execute on mac.
 #
 # When executing the Python unit tests, the script obeys the shell
 # variables: PY_TEST_WHITELIST, PY_TEST_BLACKLIST, PY_TEST_GPU_BLACKLIST,
@@ -47,9 +50,8 @@
 # TF_BUILD_BAZEL_CLEAN, if set to any non-empty and non-0 value, directs the
 # script to perform bazel clean prior to main build and test steps.
 #
-# TF_BUILD_SERIAL_INSTALL_TESTS, if set to any non-empty and non-0 value,
-# will force the Python install tests to run serially, overriding than the
-# concurrent testing behavior.
+# TF_GPU_COUNT, Set the number of GPUs in the system. We run only this many
+# concurrent tests when running GPU tests.
 #
 # TF_BUILD_EXTRA_EXCLUSIVE_INSTALL_TESTS, add to the default list of
 # Python unit tests to run in exclusive mode (i.e., not concurrently with
@@ -92,20 +94,24 @@ PY_TEST_BLACKLIST="${PY_TEST_BLACKLIST}:"\
 "tensorflow/python/util/protobuf/compare_test.py:"\
 "tensorflow/python/framework/device_test.py:"\
 "tensorflow/python/framework/file_system_test.py:"\
+"tensorflow/python/kernel_tests/seq2seq_test.py:"\
 "tensorflow/contrib/quantization/python/dequantize_op_test.py:"\
 "tensorflow/contrib/quantization/python/quantized_conv_ops_test.py:"\
 "tensorflow/contrib/quantization/tools/quantize_graph_test.py:"\
+"tensorflow/contrib/session_bundle/bundle_shim_test.py:"\
 "tensorflow/contrib/session_bundle/exporter_test.py:"\
 "tensorflow/contrib/session_bundle/session_bundle_test.py:"\
 "tensorflow/python/platform/default/_resource_loader_test.py:"\
 "tensorflow/python/platform/default/flags_test.py:"\
 "tensorflow/python/platform/default/logging_test.py:"\
+"tensorflow/python/saved_model/saved_model_test.py:"\
 "tensorflow/contrib/learn/nonlinear_test.py:"
 
 # Test blacklist: GPU-only
 PY_TEST_GPU_BLACKLIST="${PY_TEST_GPU_BLACKLIST}:"\
 "tensorflow/python/client/session_test.py:"\
 "tensorflow/python/framework/function_test.py:"\
+"tensorflow/contrib/integrate/python/ops/odes_test.py:"\
 "tensorflow/contrib/tensor_forest/python/kernel_tests/scatter_add_ndim_op_test.py"
 
 # Tests that should be run in the exclusive mode (i.e., not parallel with
@@ -129,15 +135,19 @@ echo "PY_TEST_GPU_BLACKLIST: ${PY_TEST_GPU_BLACKLIST}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/builds_common.sh"
 
+TF_GPU_COUNT=${TF_GPU_COUNT:-8}
 
 # Process input arguments
 IS_VIRTUALENV=0
 IS_GPU=0
+IS_MAC=0
 while true; do
   if [[ "$1" == "--virtualenv" ]]; then
     IS_VIRTUALENV=1
   elif [[ "$1" == "--gpu" ]]; then
     IS_GPU=1
+  elif [[ "$1" == "--mac" ]]; then
+    IS_MAC=1
   fi
   shift
 
@@ -407,21 +417,25 @@ SKIP_COUNTER=0
 FAILED_TESTS=""
 FAILED_TEST_LOGS=""
 
-N_JOBS=$(grep -c ^processor /proc/cpuinfo)
-if [[ -z ${N_JOBS} ]]; then
-  # Try the Mac way of getting number of CPUs
-  N_JOBS=$(sysctl -n hw.ncpu)
-fi
+if [[ "${IS_GPU}" == "1" ]]; then
+  if [[ "${IS_MAC}" == "1" ]]; then
+    N_JOBS=1
+  else
+    N_JOBS=$TF_GPU_COUNT
+  fi
+else
+  N_JOBS=$(grep -c ^processor /proc/cpuinfo)
+  if [[ -z ${N_JOBS} ]]; then
+    # Try the Mac way of getting number of CPUs
+    N_JOBS=$(sysctl -n hw.ncpu)
+  fi
 
-if [[ -z ${N_JOBS} ]]; then
-  N_JOBS=8
-  echo "Cannot determine the number of processors"
-  echo "Using default concurrent job counter ${N_JOBS}"
-fi
-
-if [[ ! -z "${TF_BUILD_SERIAL_INSTALL_TESTS}" ]] &&
-   [[ "${TF_BUILD_SERIAL_INSTALL_TESTS}" != "0" ]]; then
-  N_JOBS=1
+  # If still cannot determine the number of CPUs, pick 8.
+  if [[ -z ${N_JOBS} ]]; then
+    N_JOBS=8
+    echo "Cannot determine the number of processors"
+    echo "Using default concurrent job counter ${N_JOBS}"
+  fi
 fi
 
 echo "Running Python tests-on-install with ${N_JOBS} concurrent jobs..."
@@ -481,8 +495,16 @@ while true; do
     TEST_LOGS="${TEST_LOGS} ${TEST_LOG}"
 
     # Launch test asynchronously
-    "${SCRIPT_DIR}/py_test_delegate.sh" \
-      "${PYTHON_BIN_PATH}" "${PY_TEST_DIR}/${TEST_BASENAME}" "${TEST_LOG}" &
+    if [[ "${IS_GPU}" == "1" ]] && [[ "${IS_MAC}" == "0" ]]; then
+      # Only use this script without mac. This uses flock, which is not
+      # available in MacOSX.
+      "${SCRIPT_DIR}/../gpu_build/parallel_gpu_execute.sh" \
+        "${SCRIPT_DIR}/py_test_delegate.sh" \
+        "${PYTHON_BIN_PATH}" "${PY_TEST_DIR}/${TEST_BASENAME}" "${TEST_LOG}" &
+    else
+      "${SCRIPT_DIR}/py_test_delegate.sh" \
+        "${PYTHON_BIN_PATH}" "${PY_TEST_DIR}/${TEST_BASENAME}" "${TEST_LOG}" &
+    fi
 
     if [[ "${TEST_COUNTER}" -ge "${N_PAR_TESTS}" ]]; then
       # Run in exclusive mode
