@@ -221,7 +221,7 @@ class StudentT(distribution.Distribution):
     # The cdf is defined differently for positive and negative t
     positive_cdf = 1. - 0.5 * math_ops.betainc(0.5 * self.df, 0.5, x_t)
     negative_cdf = 0.5 * math_ops.betainc(0.5 * self.df, 0.5, x_t)
-    return tf.select(tf.less(t, 0), negative_cdf, positive_cdf)
+    return tf.where(tf.less(t, 0), negative_cdf, positive_cdf)
 
   def _entropy(self):
     u = array_ops.expand_dims(self.df * self._ones(), -1)
