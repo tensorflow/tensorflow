@@ -3853,7 +3853,7 @@ op {
     }
   }
   summary: "Computes the complex absolute value of a tensor."
-  description: "Given a tensor `x` of complex numbers, this operation returns a tensor of type\n`float` or `double` that is the absolute value of each element in `x`. All\nelements in `x` must be complex numbers of the form \\\\(a + bj\\\\). The absolute\nvalue is computed as \\\\( \\sqrt{a^2 + b^2}\\\\).\n\nFor example:\n\n```\n# tensor \'x\' is [[-2.25 + 4.75j], [-3.25 + 5.75j]]\ntf.complex_abs(x) ==> [5.25594902, 6.60492229]\n```"
+  description: "Given a tensor `x` of complex numbers, this operation returns a tensor of type\n`float` or `double` that is the absolute value of each element in `x`. All\nelements in `x` must be complex numbers of the form \\\\(a + bj\\\\). The absolute\nvalue is computed as \\\\( \\sqrt{a^2 + b^2}\\\\)."
 }
 op {
   name: "ComputeAccidentalHits"
