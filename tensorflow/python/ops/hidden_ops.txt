@@ -1,5 +1,6 @@
 # array_ops
 BatchToSpace
+BroadcastArgs
 BroadcastGradientArgs
 ConcatOffset
 Concat
@@ -184,6 +185,7 @@ BatchIFFT
 BatchIFFT2D
 BatchIFFT3D
 Complex
+ComplexAbs
 Conj
 FloorDiv
 FloorMod

@@ -1,6 +1,6 @@
 #new_http_archive(
 #  name = "eigen_archive",
-#  url = "https://bitbucket.org/eigen/eigen/get/...",
+#  urls = ["https://bitbucket.org/eigen/eigen/get/..."],
 #  sha256 = "...",
 #  build_file = "eigen.BUILD",
 #)
@@ -10,7 +10,7 @@ include (ExternalProject)
 # We parse the current Eigen version and archive hash from the bazel configuration
 file(STRINGS ${PROJECT_SOURCE_DIR}/../../workspace.bzl workspace_contents)
 foreach(line ${workspace_contents})
-    string(REGEX MATCH ".*\"(http.*bitbucket.org/eigen/eigen/get/.*tar.gz)\"" has_url ${line})
+    string(REGEX MATCH ".*\"(https://bitbucket.org/eigen/eigen/get/[^\"]*tar.gz)\"" has_url ${line})
     if(has_url)
         set(eigen_url ${CMAKE_MATCH_1})
         break()

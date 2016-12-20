@@ -27,6 +27,7 @@ from tensorflow.python.training import queue_runner
 
 def prefetch_queue(tensors,
                    capacity=8,
+                   num_threads=1,
                    shared_name=None,
                    name=None):
   """Creates a queue to prefetech tensors from `tensors`.
@@ -48,6 +49,7 @@ def prefetch_queue(tensors,
   Args:
     tensors: A list or dictionary of `Tensors` to enqueue in the buffer.
     capacity: An integer. The maximum number of elements in the queue.
+    num_threads: An integer.  Number of threads running the enqueue op.
     shared_name: (optional). If set, this queue will be shared under the given
       name across multiple sessions.
     name: (Optional) A name for the operations.
@@ -73,9 +75,9 @@ def prefetch_queue(tensors,
                                     shapes=shapes,
                                     names=names,
                                     shared_name=shared_name)
-    enqueue_op = queue.enqueue(tensors, name=name)
+    enqueue_op = queue.enqueue(tensors)
     queue_runner.add_queue_runner(
-        queue_runner.QueueRunner(queue, [enqueue_op]))
-    summary.scalar("queue/%s/fraction_of_%d_full" % (queue.name, capacity),
+        queue_runner.QueueRunner(queue, [enqueue_op] * num_threads))
+    summary.scalar("fraction_of_%d_full" % capacity,
                    math_ops.to_float(queue.size()) * (1. / capacity))
     return queue

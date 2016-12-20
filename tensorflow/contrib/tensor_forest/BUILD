@@ -364,6 +364,7 @@ py_test(
         ":tensor_forest_ops_py",
         ":topn_py",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:client",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:session",

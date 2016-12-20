@@ -2,6 +2,8 @@
 # tf_core_cpu library
 ########################################################
 file(GLOB_RECURSE tf_core_cpu_srcs
+    "${tensorflow_source_dir}/tensorflow/cc/saved_model/*.h"
+    "${tensorflow_source_dir}/tensorflow/cc/saved_model/*.cc"
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/*.h"
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/*.cc"
     "${tensorflow_source_dir}/tensorflow/core/graph/*.h"
@@ -10,6 +12,8 @@ file(GLOB_RECURSE tf_core_cpu_srcs
 )
 
 file(GLOB_RECURSE tf_core_cpu_exclude_srcs
+    "${tensorflow_source_dir}/tensorflow/cc/saved_model/*test*.h"
+    "${tensorflow_source_dir}/tensorflow/cc/saved_model/*test*.cc"
     "${tensorflow_source_dir}/tensorflow/core/*test*.h"
     "${tensorflow_source_dir}/tensorflow/core/*test*.cc"
     "${tensorflow_source_dir}/tensorflow/core/*main.cc"

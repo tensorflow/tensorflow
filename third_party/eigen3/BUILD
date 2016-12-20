@@ -21,6 +21,7 @@ cc_library(
         "Eigen/QR",
         "Eigen/SVD",
         "unsupported/Eigen/SpecialFunctions",
+        "unsupported/Eigen/CXX11/ThreadPool",
         "unsupported/Eigen/CXX11/Tensor",
         "unsupported/Eigen/CXX11/FixedPoint",
     ],

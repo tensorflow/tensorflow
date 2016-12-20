@@ -105,7 +105,7 @@ def _ImageDimensions(image):
     return image.get_shape().as_list()
   else:
     static_shape = image.get_shape().with_rank(3).as_list()
-    dynamic_shape = array_ops.unpack(array_ops.shape(image), 3)
+    dynamic_shape = array_ops.unstack(array_ops.shape(image), 3)
     return [s if s is not None else d
             for s, d in zip(static_shape, dynamic_shape)]
 

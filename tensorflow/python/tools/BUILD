@@ -33,26 +33,29 @@ py_binary(
 py_test(
     name = "freeze_graph_test",
     size = "small",
-    srcs = [
-        "freeze_graph_test.py",
-    ],
+    srcs = ["freeze_graph_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":freeze_graph",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:session",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
     ],
 )
 
 py_binary(
     name = "inspect_checkpoint",
-    srcs = [
-        "inspect_checkpoint.py",
-    ],
+    srcs = ["inspect_checkpoint.py"],
     srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
+    deps = ["//tensorflow:tensorflow_py"],
 )
 
 py_library(
@@ -80,14 +83,19 @@ py_binary(
 py_test(
     name = "strip_unused_test",
     size = "small",
-    srcs = [
-        "strip_unused_test.py",
-    ],
+    srcs = ["strip_unused_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":strip_unused_lib",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:session",
     ],
 )
 
@@ -118,15 +126,19 @@ py_binary(
 py_test(
     name = "optimize_for_inference_test",
     size = "small",
-    srcs = [
-        "optimize_for_inference_test.py",
-    ],
+    srcs = ["optimize_for_inference_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":optimize_for_inference_lib",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:image_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_ops",
         "//tensorflow/python:nn_ops_gen",
         "//tensorflow/python:platform_test",
     ],
@@ -146,7 +158,8 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":print_selective_registration_header",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:platform",
     ],
 )
 

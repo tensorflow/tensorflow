@@ -58,9 +58,11 @@ py_library(
     deps = [
         ":input_pipeline_ops",
         "//tensorflow/contrib/util:util_py",
+        "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:state_ops",
         "//tensorflow/python:variable_scope",
     ],
 )
@@ -68,7 +70,7 @@ py_library(
 py_test(
     name = "input_pipeline_ops_test",
     size = "small",
-    srcs = ["python/kernel_tests/input_pipeline_ops_test.py"],
+    srcs = ["python/ops/input_pipeline_ops_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":input_pipeline_py",
