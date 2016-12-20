@@ -11,8 +11,8 @@ The GPU version works best with Cuda Toolkit 8.0 and
 cuDNN v5.  Other versions are supported (Cuda toolkit >= 7.0 and
 cuDNN >= v3) only when installing from sources.
 Please see [Cuda installation](#optional-install-cuda-gpus-on-linux) for
-details. For Mac OS X, please see [Setup GPU for
-Mac](#optional-setup-gpu-for-mac).
+details. For Mac OS X, please see 
+[Setup GPU for Mac](#optional-setup-gpu-for-mac).
 
 ## Overview
 
@@ -43,8 +43,8 @@ If you encounter installation errors, see
 [Pip](https://en.wikipedia.org/wiki/Pip_(package_manager)) is a package
 management system used to install and manage software packages written in
 Python. We provide pip packages for TensorFlow on Linux, Mac OS X, and
-Windows. For Windows instructions, please see [Pip installation on
-Windows](#pip-installation-on-windows).
+Windows. For Windows instructions, please see 
+[Pip installation on Windows](#pip-installation-on-windows).
 
 The packages that will be installed or upgraded during the pip install are
 listed in the [REQUIRED_PACKAGES section of
