@@ -228,9 +228,6 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
     // Worker name.
     string name;
 
-    // Graph definition.
-    GraphDef gdef;
-
     // Maps feed names to rendezvous keys. Empty most of the time.
     std::unordered_map<string, string> feed_key;
 
@@ -268,12 +265,17 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   // Send/Recv nodes that are the result of client-added
   // feeds and fetches must be tracked so that the tensors
   // can be added to the local rendezvous.
-  static void TrackFeedsAndFetches(Part* part, const PartitionOptions& popts);
+  static void TrackFeedsAndFetches(Part* part, const GraphDef& graph_def,
+                                   const PartitionOptions& popts);
 
   // The actual graph partitioning and registration implementation.
-  Status DoRegisterPartitions(const MasterEnv* env,
-                              const PartitionOptions& popts,
-                              const FunctionDefLibrary& func_def_lib);
+  Status DoBuildPartitions(
+      PartitionOptions pots,
+      std::unordered_map<string, GraphDef>* out_partitions);
+  Status DoRegisterPartitions(
+      const MasterEnv* env, const PartitionOptions& popts,
+      const FunctionDefLibrary& func_def_lib,
+      std::unordered_map<string, GraphDef> graph_partitions);
 
   // Deregisters the partitions on the workers.  Called in the
   // destructor and does not wait for the rpc completion.
@@ -290,13 +292,19 @@ Status MasterSession::ReffedClientGraph::RegisterPartitions(
     if (!init_started_) {
       init_started_ = true;
       mu_.unlock();
-      Status s = DoRegisterPartitions(env, popts, func_def_lib);
-      std::vector<const GraphDef*> graph_defs;
-      graph_defs.reserve(partitions_.size());
-      for (const Part& part : partitions_) {
-        graph_defs.push_back(&part.gdef);
+      std::unordered_map<string, GraphDef> graph_defs;
+      Status s = DoBuildPartitions(popts, &graph_defs);
+      // NOTE(mrry): The pointers in `graph_defs_for_publishing` do not remain
+      // valid after the call to DoRegisterPartitions begins, so
+      // `stats_publisher_` must make a copy if it wants to retain the
+      // GraphDef objects.
+      std::vector<const GraphDef*> graph_defs_for_publishing;
+      graph_defs_for_publishing.reserve(partitions_.size());
+      for (const auto& name_def : graph_defs) {
+        graph_defs_for_publishing.push_back(&name_def.second);
       }
-      stats_publisher_->PublishGraphProto(graph_defs);
+      stats_publisher_->PublishGraphProto(graph_defs_for_publishing);
+      s = DoRegisterPartitions(env, popts, func_def_lib, std::move(graph_defs));
       mu_.lock();
       init_result_ = s;
       init_done_.Notify();
@@ -321,33 +329,33 @@ static string SplitByWorker(const Node* node) {
 }
 
 void MasterSession::ReffedClientGraph::TrackFeedsAndFetches(
-    Part* part, const PartitionOptions& popts) {
-  for (int i = 0; i < part->gdef.node_size(); ++i) {
-    NodeDef* ndef = part->gdef.mutable_node(i);
-    const bool is_recv = ndef->op() == "_Recv";
-    const bool is_send = ndef->op() == "_Send";
+    Part* part, const GraphDef& graph_def, const PartitionOptions& popts) {
+  for (int i = 0; i < graph_def.node_size(); ++i) {
+    const NodeDef& ndef = graph_def.node(i);
+    const bool is_recv = ndef.op() == "_Recv";
+    const bool is_send = ndef.op() == "_Send";
 
     if (is_recv || is_send) {
-      string name;
-      TF_CHECK_OK(GetNodeAttr(*ndef, "tensor_name", &name));
-      string send_device;
-      TF_CHECK_OK(GetNodeAttr(*ndef, "send_device", &send_device));
-      string recv_device;
-      TF_CHECK_OK(GetNodeAttr(*ndef, "recv_device", &recv_device));
-      uint64 send_device_incarnation;
-      TF_CHECK_OK(
-          GetNodeAttr(*ndef, "send_device_incarnation",
-                      reinterpret_cast<int64*>(&send_device_incarnation)));
-      const string& key =
-          Rendezvous::CreateKey(send_device, send_device_incarnation,
-                                recv_device, name, FrameAndIter(0, 0));
-
       // Only send/recv nodes that were added as feeds and fetches
       // (client-terminated) should be tracked.  Other send/recv nodes
       // are for transferring data between partitions / memory spaces.
       bool client_terminated;
-      TF_CHECK_OK(GetNodeAttr(*ndef, "client_terminated", &client_terminated));
+      TF_CHECK_OK(GetNodeAttr(ndef, "client_terminated", &client_terminated));
       if (client_terminated) {
+        string name;
+        TF_CHECK_OK(GetNodeAttr(ndef, "tensor_name", &name));
+        string send_device;
+        TF_CHECK_OK(GetNodeAttr(ndef, "send_device", &send_device));
+        string recv_device;
+        TF_CHECK_OK(GetNodeAttr(ndef, "recv_device", &recv_device));
+        uint64 send_device_incarnation;
+        TF_CHECK_OK(
+            GetNodeAttr(ndef, "send_device_incarnation",
+                        reinterpret_cast<int64*>(&send_device_incarnation)));
+        const string& key =
+            Rendezvous::CreateKey(send_device, send_device_incarnation,
+                                  recv_device, name, FrameAndIter(0, 0));
+
         if (is_recv) {
           part->feed_key.insert({name, key});
         } else {
@@ -358,10 +366,9 @@ void MasterSession::ReffedClientGraph::TrackFeedsAndFetches(
   }
 }
 
-Status MasterSession::ReffedClientGraph::DoRegisterPartitions(
-    const MasterEnv* env, const PartitionOptions& popts_in,
-    const FunctionDefLibrary& func_def_lib) {
-  PartitionOptions popts = popts_in;
+Status MasterSession::ReffedClientGraph::DoBuildPartitions(
+    PartitionOptions popts,
+    std::unordered_map<string, GraphDef>* out_partitions) {
   if (popts.need_to_record_start_times) {
     CostModel cost_model(true);
     cost_model.InitFromGraph(client_graph()->graph);
@@ -374,17 +381,20 @@ Status MasterSession::ReffedClientGraph::DoRegisterPartitions(
   // Partition the graph.
   Status s;
   std::unordered_map<string, GraphDef> graph_partitions;
-  s = Partition(popts, &client_graph_->graph, &graph_partitions);
-  if (!s.ok()) return s;
+  return Partition(popts, &client_graph_->graph, out_partitions);
+}
+
+Status MasterSession::ReffedClientGraph::DoRegisterPartitions(
+    const MasterEnv* env, const PartitionOptions& popts,
+    const FunctionDefLibrary& func_def_lib,
+    std::unordered_map<string, GraphDef> graph_partitions) {
   partitions_.reserve(graph_partitions.size());
+  Status s;
   for (auto& name_def : graph_partitions) {
     partitions_.resize(partitions_.size() + 1);
     Part* part = &partitions_.back();
     part->name = name_def.first;
-    part->gdef.Swap(&name_def.second);
-    // For simplicity, we ship the library completely to every worker.
-    *(part->gdef.mutable_library()) = func_def_lib;
-    TrackFeedsAndFetches(part, popts);
+    TrackFeedsAndFetches(part, name_def.second, popts);
     part->worker = env->worker_cache->CreateWorker(part->name);
     if (part->worker == nullptr) {
       s = errors::NotFound("worker ", part->name);
@@ -409,9 +419,11 @@ Status MasterSession::ReffedClientGraph::DoRegisterPartitions(
     const Part& part = partitions_[i];
     Call* c = &calls[i];
     c->req.set_session_handle(session_handle_);
-    *c->req.mutable_graph_def() = part.gdef;
+    c->req.mutable_graph_def()->Swap(&graph_partitions[part.name]);
+    // For simplicity, we ship the library completely to every worker.
+    *c->req.mutable_graph_def()->mutable_library() = func_def_lib;
     *c->req.mutable_graph_options() = session_opts_.config.graph_options();
-    VLOG(2) << "Register " << part.gdef.DebugString();
+    VLOG(2) << "Register " << c->req.graph_def().DebugString();
     auto cb = [c, &done](const Status& s) {
       c->status = s;
       done.DecrementCount();
