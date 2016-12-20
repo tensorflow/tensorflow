@@ -122,7 +122,11 @@ Status SYCLDevice::FillContextMap(const Graph *graph,
 
 Status SYCLDevice::Sync() {
   sycl_device_->synchronize();
-  return Status::OK();
+  if (sycl_device_->ok()) {
+    return Status::OK();
+  } else {
+    return errors::Internal("Unknown error detected on device ", name());
+  }
 }
 
 
