@@ -9,15 +9,14 @@ config_setting(
     },
 )
 
-
 cc_library(
     name = "farmhash",
     srcs = ["src/farmhash.cc"],
     hdrs = ["src/farmhash.h"],
     # Disable __builtin_expect support on Windows
     copts = select({
-        ":windows" : ["/DFARMHASH_OPTIONAL_BUILTIN_EXPECT"],
-        "//conditions:default" : [],
+        ":windows": ["/DFARMHASH_OPTIONAL_BUILTIN_EXPECT"],
+        "//conditions:default": [],
     }),
     includes = ["src/."],
     visibility = ["//visibility:public"],
