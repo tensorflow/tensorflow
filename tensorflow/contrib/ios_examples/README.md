@@ -42,7 +42,7 @@ cp ~/graphs/inception5h/* tensorflow/contrib/ios_examples/simple/data/
 If you're hitting problems, here's a checklist of common things to investigate:
 
  - Make sure that you've run the `build_all_ios.sh` script 
-   this will run `download_dependencies.sh`,`compile_ios_protobuf.sh` and `compile_ios_tensorflow`.
+   This will run `download_dependencies.sh`,`compile_ios_protobuf.sh` and `compile_ios_tensorflow`.
    (check each one if they have run successful.)
  
  - Check that you have version 7.3 of Xcode.
