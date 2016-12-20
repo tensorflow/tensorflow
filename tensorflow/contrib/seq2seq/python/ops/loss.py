@@ -45,7 +45,6 @@ __all__ = ["seq2seq_loss",
 def seq2seq_loss(*args, **kwargs):
   pass
 
-
 def sequence_loss_by_example(logits, targets, weights,
                              average_across_timesteps=True,
                              softmax_loss_function=None, name=None):
@@ -71,16 +70,16 @@ def sequence_loss_by_example(logits, targets, weights,
       #croosents [batch_size, num_steps]
       crossents = nn_ops.sparse_softmax_cross_entropy_with_logits(logits, targets)
     else:
-      shape_ = array_ops.shape(logits)
-      batch_size = shape_[0]
-      emb_dim = shape_[-1]
+      logits_shape = array_ops.shape(logits)
+      batch_size = logits_shape[0]
+      emb_dim = logits_shape[-1]
       #need reshape because unlike sparse_softmax_cross_entropy_with_logits, 
       #tf.nn.sampled_softmax_loss now only accept [batch_size, dim] as logtis input
       logits = array_ops.reshape(logits, [-1, emb_dim])
       targets = array_ops.reshape(targets, [-1, 1])
       #croosents [batch_size * num_steps]
       crossents = softmax_loss_function(logits, targets)
-      #croosents [batch_size, num_steps]
+      # croosents [batch_size, num_steps]
       crossents = array_ops.reshape(crossents, [batch_size, -1])
 
     log_perps = math_ops.reduce_sum(math_ops.mul(crossents, weights), 1)
