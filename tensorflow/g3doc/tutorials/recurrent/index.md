@@ -26,7 +26,7 @@ on the PTB dataset.
 
 ## Tutorial Files
 
-This tutorial references the following files from `models/tutorials/rnn/ptb`:
+This tutorial references the following files from `models/tutorials/rnn/ptb` in the [TensorFlow models repo](https://github.com/tensorflow/models):
 
 File | Purpose
 --- | ---
