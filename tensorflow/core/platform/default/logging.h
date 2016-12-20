@@ -40,7 +40,7 @@ class LogMessage : public std::basic_ostringstream<char> {
  public:
   LogMessage(const char* fname, int line, int severity);
   ~LogMessage();
-  static int min_lvl_;
+  static int64 MinVLogLevel();
 
  protected:
   void GenerateLogMessage();
@@ -72,11 +72,18 @@ class LogMessageFatal : public LogMessage {
 
 #define LOG(severity) _TF_LOG_##severity
 
-// Set TF_CPP_MIN_VLOG_LEVEL environment to update minimum log level of VLOG
-#define VLOG_IS_ON(lvl) ((lvl) <= ::tensorflow::internal::LogMessage::min_lvl_)
+#ifdef IS_MOBILE_PLATFORM
+// Turn VLOG off when under mobile devices for considerations of binary size.
+#define VLOG_IS_ON(lvl) ((lvl) <= 0)
+#else
+// Otherwise, Set TF_CPP_MIN_VLOG_LEVEL environment to update minimum log level
+// of VLOG
+#define VLOG_IS_ON(lvl) \
+  ((lvl) <= ::tensorflow::internal::LogMessage::MinVLogLevel())
+#endif
 
 #define VLOG(lvl)      \
-  if (VLOG_IS_ON(lvl)) \
+  if (TF_PREDICT_FALSE(VLOG_IS_ON(lvl))) \
   ::tensorflow::internal::LogMessage(__FILE__, __LINE__, tensorflow::INFO)
 
 // CHECK dies with a fatal error if condition is not true.  It is *not*

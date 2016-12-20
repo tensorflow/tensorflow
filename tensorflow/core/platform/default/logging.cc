@@ -109,12 +109,12 @@ int64 LogLevelStrToInt(const char* tf_env_var_val) {
   }
 }
 
-int64 MinLogLevel() {
+int64 MinLogLevelFromEnv() {
   const char* tf_env_var_val = getenv("TF_CPP_MIN_LOG_LEVEL");
   return LogLevelStrToInt(tf_env_var_val);
 }
 
-int64 MinVLogLevel() {
+int64 MinVLogLevelFromEnv() {
   const char* tf_env_var_val = getenv("TF_CPP_MIN_VLOG_LEVEL");
   return LogLevelStrToInt(tf_env_var_val);
 }
@@ -123,11 +123,14 @@ int64 MinVLogLevel() {
 
 LogMessage::~LogMessage() {
   // Read the min log level once during the first call to logging.
-  static int64 min_log_level = MinLogLevel();
+  static int64 min_log_level = MinLogLevelFromEnv();
   if (TF_PREDICT_TRUE(severity_ >= min_log_level)) GenerateLogMessage();
 }
 
-int LogMessage::min_lvl_ = MinVLogLevel();
+int64 LogMessage::MinVLogLevel() {
+  static int64 min_vlog_level = MinVLogLevelFromEnv();
+  return min_vlog_level;
+}
 
 LogMessageFatal::LogMessageFatal(const char* file, int line)
     : LogMessage(file, line, FATAL) {}
