@@ -452,7 +452,7 @@ then compares them using self._AssertProtoEqual().
 
 - - -
 
-#### `tf.test.TestCase.assertProtoEqualsVersion(expected, actual, producer=19, min_consumer=0)` {#TestCase.assertProtoEqualsVersion}
+#### `tf.test.TestCase.assertProtoEqualsVersion(expected, actual, producer=20, min_consumer=0)` {#TestCase.assertProtoEqualsVersion}
 
 
 

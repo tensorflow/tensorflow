@@ -50,7 +50,7 @@ REGISTER_KERNEL_BUILDER(Name("Reshape")
                             .TypeConstraint<int32>("T")
                             .TypeConstraint<int32>("Tshape"),
                         ReshapeOp);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 #if GOOGLE_CUDA
 // A special GPU kernel for int32.

@@ -129,9 +129,6 @@ class ResizeBilinearOpGrad : public OpKernel {
 
     if (!context->status().ok()) return;
 
-    // Return if the output is empty.
-    if (st.output->NumElements() == 0) return;
-
     typename TTypes<float, 4>::ConstTensor input_grad =
         input.tensor<float, 4>();
     typename TTypes<T, 4>::Tensor output_grad = st.output->tensor<T, 4>();

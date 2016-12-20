@@ -48,18 +48,27 @@ class ModeKeys(object):
 
 
 # TODO(roumposg): Pass output_signature_fn instead of signature_fn.
-class ModelFnOps(collections.namedtuple(
-    'ModelFnOps',
-    ['predictions', 'loss', 'train_op', 'eval_metric_ops', 'signature_fn',
-     'output_alternatives', 'training_chief_hooks', 'training_hooks'])):
+class ModelFnOps(
+    collections.namedtuple('ModelFnOps', [
+        'predictions', 'loss', 'train_op', 'eval_metric_ops', 'signature_fn',
+        'output_alternatives', 'training_chief_hooks', 'training_hooks',
+        'training_scaffold'
+    ])):
   """Ops returned from a model_fn."""
 
   # TODO(soergel): remove signature_fn once sessionbundle export is deprecated.
 
-  def __new__(cls, mode, predictions=None, loss=None, train_op=None,
-              eval_metric_ops=None, signature_fn=None,
-              output_alternatives=None, training_chief_hooks=None,
-              training_hooks=None):
+  def __new__(cls,
+              mode,
+              predictions=None,
+              loss=None,
+              train_op=None,
+              eval_metric_ops=None,
+              signature_fn=None,
+              output_alternatives=None,
+              training_chief_hooks=None,
+              training_hooks=None,
+              training_scaffold=None):
     """Creates a validated `ModelFnOps` instance.
 
     For a multi-headed model, the predictions dict here will contain the outputs
@@ -99,6 +108,8 @@ class ModelFnOps(collections.namedtuple(
         run on the chief worker during training.
       training_hooks: A list of `SessionRunHook` objects that will be run on
         all workers during training.
+      training_scaffold: A `tf.train.Scaffold` object that can be used to set
+        initialization, saver, and more to be used in training.
 
     Returns:
       A validated `ModelFnOps` object.
@@ -169,4 +180,5 @@ class ModelFnOps(collections.namedtuple(
     return super(ModelFnOps, cls).__new__(cls, predictions, loss, train_op,
                                           eval_metric_ops, signature_fn,
                                           output_alternatives,
-                                          training_chief_hooks, training_hooks)
+                                          training_chief_hooks, training_hooks,
+                                          training_scaffold)

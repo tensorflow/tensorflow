@@ -302,21 +302,41 @@ TEST_F(ResizeBilinearOpTest, TestBilinear2x2To4x4) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
+TEST_F(ResizeBilinearOpTest, TestInvalidOutputSize) {
+  AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
+  AddInputFromArray<int32>(TensorShape({2}), {0, 0});
+  Status s = RunOpKernel();
+  EXPECT_TRUE(
+      StringPiece(s.ToString())
+          .contains("Invalid argument: output dimensions must be positive"))
+      << s;
+}
+
 TEST_F(ResizeBilinearOpTest, TestInvalidInputShape) {
   AddInputFromArray<float>(TensorShape({2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({2}), {4, 4});
-  ASSERT_FALSE(RunOpKernel().ok());
+  Status s = RunOpKernel();
+  EXPECT_TRUE(StringPiece(s.ToString())
+                  .contains("Invalid argument: input must be 4-dimensional"))
+      << s;
 }
 
 TEST_F(ResizeBilinearOpTest, TestInvalidSizeDim) {
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({2, 1}), {4, 4});
-  ASSERT_FALSE(RunOpKernel().ok());
+  Status s = RunOpKernel();
+  EXPECT_TRUE(StringPiece(s.ToString())
+                  .contains("Invalid argument: shape_t must be 1-dimensional"))
+      << s;
 }
+
 TEST_F(ResizeBilinearOpTest, TestInvalidSizeElements) {
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({3}), {4, 4, 1});
-  ASSERT_FALSE(RunOpKernel().ok());
+  Status s = RunOpKernel();
+  EXPECT_TRUE(StringPiece(s.ToString())
+                  .contains("Invalid argument: shape_t must have two elements"))
+      << s;
 }
 
 }  // namespace tensorflow

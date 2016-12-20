@@ -18,12 +18,12 @@ from __future__ import division
 from __future__ import print_function
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
-import tensorflow as tf
 
+from tensorflow.python.platform import test
 from tensorflow.python.summary.impl import reservoir
 
 
-class ReservoirTest(tf.test.TestCase):
+class ReservoirTest(test.TestCase):
 
   def testEmptyReservoir(self):
     r = reservoir.Reservoir(1)
@@ -79,8 +79,8 @@ class ReservoirTest(tf.test.TestCase):
       interleaved_reservoir.AddItem('key2', i)
 
     for key in ['key1', 'key2']:
-      self.assertEqual(separate_reservoir.Items(key),
-                       interleaved_reservoir.Items(key))
+      self.assertEqual(
+          separate_reservoir.Items(key), interleaved_reservoir.Items(key))
 
   def testUsesSeed(self):
     """Tests that reservoirs with different seeds keep different samples."""
@@ -110,7 +110,7 @@ class ReservoirTest(tf.test.TestCase):
     self.assertEqual(len(r.Items('key2')), 8)
 
 
-class ReservoirBucketTest(tf.test.TestCase):
+class ReservoirBucketTest(test.TestCase):
 
   def testEmptyBucket(self):
     b = reservoir._ReservoirBucket(1)
@@ -229,7 +229,7 @@ class ReservoirBucketTest(tf.test.TestCase):
     self.assertEqual(b.Items(), [x * 2 for x in xrange(99)] + [999 * 2])
 
 
-class ReservoirBucketStatisticalDistributionTest(tf.test.TestCase):
+class ReservoirBucketStatisticalDistributionTest(test.TestCase):
 
   def setUp(self):
     self.total = 1000000
@@ -276,4 +276,4 @@ class ReservoirBucketStatisticalDistributionTest(tf.test.TestCase):
 
 
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

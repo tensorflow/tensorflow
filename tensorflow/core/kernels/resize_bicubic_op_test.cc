@@ -14,11 +14,52 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
+#include "tensorflow/core/framework/fake_input.h"
+#include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
+
+class ResizeBicubicOpTest : public OpsTestBase {
+ protected:
+  ResizeBicubicOpTest() {
+    TF_EXPECT_OK(NodeDefBuilder("resize_bicubic_op", "ResizeBicubic")
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(DT_INT32))
+                     .Attr("align_corners", false)
+                     .Finalize(node_def()));
+    TF_EXPECT_OK(InitOp());
+  }
+};
+
+TEST_F(ResizeBicubicOpTest, TestBicubic2x2To1x1) {
+  // Input:
+  // 1, 2
+  // 3, 4
+  AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
+  AddInputFromArray<int32>(TensorShape({2}), {1, 1});
+  TF_ASSERT_OK(RunOpKernel());
+
+  // When scaling down, we have to arbitrarily pick a pixel from the
+  // original input. In this case, we choose the top/left most pixel.
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 1, 1, 1}));
+  test::FillValues<float>(&expected, {1.0});
+  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+}
+
+TEST_F(ResizeBicubicOpTest, TestBicubic2x2To0x0) {
+  AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
+  AddInputFromArray<int32>(TensorShape({2}), {0, 0});
+
+  Status s = RunOpKernel();
+  EXPECT_TRUE(
+      StringPiece(s.ToString())
+          .contains("Invalid argument: output dimensions must be positive"))
+      << s;
+}
 
 static Graph* ResizeBicubic(int batch_size, int size, int channels) {
   Graph* g = new Graph(OpRegistry::Global());

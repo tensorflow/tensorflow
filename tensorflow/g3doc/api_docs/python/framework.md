@@ -1356,10 +1356,6 @@ containing the absolute value of each element in `x`. For example, if x is
 an input element and y is an output element, this operation computes
 \\(y = |x|\\).
 
-See [`tf.complex_abs()`](#tf_complex_abs) to compute the absolute value of a
-complex
-number.
-
 ##### Args:
 
 
@@ -2873,7 +2869,7 @@ following gradient function would be registered:
 ```python
 @tf.RegisterGradient("Sub")
 def _sub_grad(unused_op, grad):
-  return grad, tf.neg(grad)
+  return grad, tf.negative(grad)
 ```
 
 The decorator argument `op_type` is the string type of an

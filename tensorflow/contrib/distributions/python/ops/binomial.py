@@ -19,7 +19,6 @@ from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import distribution_util
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -177,11 +176,12 @@ class Binomial(distribution.Distribution):
     return self._p
 
   def _batch_shape(self):
-    return array_ops.shape(self._n + self._p)
+    return array_ops.broadcast_dynamic_shape(
+        array_ops.shape(self.n), array_ops.shape(self.p))
 
   def _get_batch_shape(self):
-    return common_shapes.broadcast_shape(self.n.get_shape(),
-                                         self.p.get_shape())
+    return array_ops.broadcast_static_shape(
+        self.n.get_shape(), self.p.get_shape())
 
   def _event_shape(self):
     return constant_op.constant([], dtype=dtypes.int32)

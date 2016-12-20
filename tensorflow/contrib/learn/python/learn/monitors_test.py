@@ -236,7 +236,7 @@ class MonitorsTest(tf.test.TestCase):
       var = tf.Variable(tf.constant(42.0), name='foo')
       var.initializer.run()
       cof = tf.constant(1.0)
-      loss = tf.sub(tf.mul(var, cof), tf.constant(1.0))
+      loss = tf.subtract(tf.multiply(var, cof), tf.constant(1.0))
       train_step = tf.train.GradientDescentOptimizer(0.5).minimize(loss)
       tf.get_default_session().run(train_step)
       self._run_monitor(learn.monitors.LoggingTrainable('foo'))

@@ -36,7 +36,7 @@ struct MasterEnv;
 
 // A session encapsulates a graph computation (resource allocation,
 // placement, execution, etc.).
-class MasterSession {
+class MasterSession : public core::RefCounted {
  public:
   // This session encapsulates the graph computation for a graph.
   //
@@ -155,6 +155,8 @@ class MasterSession {
   // Active RunStep calls.
   condition_variable num_running_is_zero_;
   int32 num_running_ GUARDED_BY(mu_) = 0;
+
+  bool closed_ GUARDED_BY(mu_) = false;
 
   std::unordered_map<uint64, int64> subgraph_execution_counts_ GUARDED_BY(mu_);
 

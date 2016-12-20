@@ -13,14 +13,21 @@
 # limitations under the License.
 # ==============================================================================
 """Benchmark for split and grad of split."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
 
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.client import session as session_lib
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import benchmark
+from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 
 
@@ -36,16 +43,16 @@ def build_graph(device, input_shape, output_sizes, axis):
   Returns:
     An array of tensors to run()
   """
-  with tf.device("/%s:0" % device):
-    inp = tf.zeros(input_shape)
+  with ops.device("/%s:0" % device):
+    inp = array_ops.zeros(input_shape)
 
     outputs = []
     for _ in range(100):
-      outputs.extend(tf.split(inp, output_sizes, axis))
-    return tf.group(*outputs)
+      outputs.extend(array_ops.split(inp, output_sizes, axis))
+    return control_flow_ops.group(*outputs)
 
 
-class SplitBenchmark(tf.test.Benchmark):
+class SplitBenchmark(test.Benchmark):
   """Benchmark split!"""
 
   def _run_graph(self, device, output_shape, variable, num_outputs, axis):
@@ -61,7 +68,7 @@ class SplitBenchmark(tf.test.Benchmark):
     Returns:
       The duration of the run in seconds.
     """
-    graph = tf.Graph()
+    graph = ops.Graph()
     with graph.as_default():
       if not variable:
         if axis == 0:
@@ -82,12 +89,12 @@ class SplitBenchmark(tf.test.Benchmark):
           input_shape = [output_shape[0], total_size]
 
       outputs = build_graph(device, input_shape, sizes, axis)
-    config = tf.ConfigProto(graph_options=tf.GraphOptions(
-        optimizer_options=tf.OptimizerOptions(
-            opt_level=tf.OptimizerOptions.L0)))
-    with tf.Session(graph=graph, config=config) as session:
+    config = config_pb2.ConfigProto(graph_options=config_pb2.GraphOptions(
+        optimizer_options=config_pb2.OptimizerOptions(
+            opt_level=config_pb2.OptimizerOptions.L0)))
+    with session_lib.Session(graph=graph, config=config) as session:
       logging.set_verbosity("info")
-      tf.global_variables_initializer().run()
+      variables.global_variables_initializer().run()
       bench = benchmark.TensorFlowBenchmark()
       bench.run_op_benchmark(
           session,
@@ -113,4 +120,4 @@ class SplitBenchmark(tf.test.Benchmark):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()
