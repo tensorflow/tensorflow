@@ -134,7 +134,7 @@ def _count_condition(values, weights=None, metrics_collections=None,
   values = math_ops.to_float(values)
   if weights is not None:
     weights = math_ops.to_float(weights)
-    values = math_ops.mul(values, weights)
+    values = math_ops.multiply(values, weights)
 
   value_tensor = array_ops.identity(count)
   update_op = state_ops.assign_add(count, math_ops.reduce_sum(values))
@@ -318,7 +318,7 @@ def _broadcast_weights(weights, values):
       values_shape.is_fully_defined() and
       weights_shape.is_compatible_with(values_shape)):
     return weights
-  return math_ops.mul(
+  return math_ops.multiply(
       weights, array_ops.ones_like(values), name='broadcast_weights')
 
 
@@ -1065,12 +1065,14 @@ def streaming_sparse_recall_at_k(predictions,
                                  name=None):
   """Computes recall@k of the predictions with respect to sparse labels.
 
-  If `class_id` is specified, we calculate recall by considering only the
-      entries in the batch for which `class_id` is in the label, and computing
-      the fraction of them for which `class_id` is in the top-k `predictions`.
-  If `class_id` is not specified, we'll calculate recall as how often on
-      average a class among the labels of a batch entry is in the top-k
-      `predictions`.
+  If `class_id` is not specified, we'll calculate recall as the ratio of true
+      positives (i.e., correct predictions, items in the top `k` highest
+      `predictions` that are found in the corresponding row in `labels`) to
+      actual positives (the full `labels` row).
+  If `class_id` is specified, we calculate recall by considering only the rows
+      in the batch for which `class_id` is in `labels`, and computing the
+      fraction of them for which `class_id` is in the corresponding row in
+      `labels`.
 
   `streaming_sparse_recall_at_k` creates two local variables,
   `true_positive_at_<k>` and `false_negative_at_<k>`, that are used to compute
@@ -1211,13 +1213,16 @@ def streaming_sparse_precision_at_k(predictions,
                                     name=None):
   """Computes precision@k of the predictions with respect to sparse labels.
 
+  If `class_id` is not specified, we calculate precision as the ratio of true
+      positives (i.e., correct predictions, items in the top `k` highest
+      `predictions` that are found in the corresponding row in `labels`) to
+      positives (all top `k` `predictions`).
   If `class_id` is specified, we calculate precision by considering only the
-      entries in the batch for which `class_id` is in the top-k highest
+      rows in the batch for which `class_id` is in the top `k` highest
       `predictions`, and computing the fraction of them for which `class_id` is
-      indeed a correct label.
-  If `class_id` is not specified, we'll calculate precision as how often on
-      average a class among the top-k classes with the highest predicted values
-      of a batch entry is correct and can be found in the label for that entry.
+      in the corresponding row in `labels`.
+
+  We expect precision to decrease as `k` increases.
 
   `streaming_sparse_precision_at_k` creates two local variables,
   `true_positive_at_<k>` and `false_positive_at_<k>`, that are used to compute
@@ -1290,13 +1295,16 @@ def streaming_sparse_precision_at_top_k(top_k_predictions,
                                         name=None):
   """Computes precision@k of top-k predictions with respect to sparse labels.
 
+  If `class_id` is not specified, we calculate precision as the ratio of
+      true positives (i.e., correct predictions, items in `top_k_predictions`
+      that are found in the corresponding row in `labels`) to positives (all
+      `top_k_predictions`).
   If `class_id` is specified, we calculate precision by considering only the
-      entries in the batch for which `class_id` is in the top-k highest
+      rows in the batch for which `class_id` is in the top `k` highest
       `predictions`, and computing the fraction of them for which `class_id` is
-      indeed a correct label.
-  If `class_id` is not specified, we'll calculate precision as how often on
-      average a class among the top-k classes with the highest predicted values
-      of a batch entry is correct and can be found in the label for that entry.
+      in the corresponding row in `labels`.
+
+  We expect precision to decrease as `k` increases.
 
   `streaming_sparse_precision_at_top_k` creates two local variables,
   `true_positive_at_k` and `false_positive_at_k`, that are used to compute
@@ -1534,7 +1542,7 @@ def sparse_average_precision_at_k(predictions, labels, k):
     precision_per_k = math_ops.div(
         math_ops.to_double(tp_per_k), math_ops.to_double(retrieved_per_k),
         name='precision_per_k')
-    relevant_precision_per_k = math_ops.mul(
+    relevant_precision_per_k = math_ops.multiply(
         precision_per_k, math_ops.to_double(relevant_per_k),
         name='relevant_precision_per_k')
 
@@ -1702,7 +1710,7 @@ def _sparse_true_positive_at_k(predictions_idx,
     tp = math_ops.to_double(tp)
     if weights is not None:
       weights = math_ops.to_double(weights)
-      tp = math_ops.mul(tp, weights)
+      tp = math_ops.multiply(tp, weights)
     return tp
 
 
@@ -1790,7 +1798,7 @@ def _sparse_false_positive_at_k(predictions_idx,
     fp = math_ops.to_double(fp)
     if weights is not None:
       weights = math_ops.to_double(weights)
-      fp = math_ops.mul(fp, weights)
+      fp = math_ops.multiply(fp, weights)
     return fp
 
 
@@ -1879,7 +1887,7 @@ def _sparse_false_negative_at_k(predictions_idx,
     fn = math_ops.to_double(fn)
     if weights is not None:
       weights = math_ops.to_double(weights)
-      fn = math_ops.mul(fn, weights)
+      fn = math_ops.multiply(fn, weights)
     return fn
 
 
@@ -2321,11 +2329,12 @@ def streaming_pearson_correlation(predictions,
 
     pearson_r = _safe_div(
         cov,
-        math_ops.mul(math_ops.sqrt(var_predictions), math_ops.sqrt(var_labels)),
+        math_ops.multiply(math_ops.sqrt(var_predictions),
+                          math_ops.sqrt(var_labels)),
         'pearson_r')
     with ops.control_dependencies(
         [update_cov, update_var_predictions, update_var_labels]):
-      update_op = _safe_div(update_cov, math_ops.mul(
+      update_op = _safe_div(update_cov, math_ops.multiply(
           math_ops.sqrt(update_var_predictions),
           math_ops.sqrt(update_var_labels)), 'update_op')
 
@@ -2385,7 +2394,7 @@ def streaming_mean_cosine_distance(predictions, labels, dim, weights=None,
   predictions, labels, weights = _remove_squeezable_dimensions(
       predictions, labels, weights)
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
-  radial_diffs = math_ops.mul(predictions, labels)
+  radial_diffs = math_ops.multiply(predictions, labels)
   radial_diffs = math_ops.reduce_sum(radial_diffs,
                                      reduction_indices=[dim,],
                                      keep_dims=True)
@@ -2393,8 +2402,8 @@ def streaming_mean_cosine_distance(predictions, labels, dim, weights=None,
                                             None,
                                             None,
                                             name or 'mean_cosine_distance')
-  mean_distance = math_ops.sub(1.0, mean_distance)
-  update_op = math_ops.sub(1.0, update_op)
+  mean_distance = math_ops.subtract(1.0, mean_distance)
+  update_op = math_ops.subtract(1.0, update_op)
 
   if metrics_collections:
     ops.add_to_collections(metrics_collections, mean_distance)

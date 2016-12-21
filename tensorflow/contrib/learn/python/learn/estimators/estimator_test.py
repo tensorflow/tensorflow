@@ -308,6 +308,15 @@ class EstimatorTest(tf.test.TestCase):
     est.fit(input_fn=boston_input_fn, steps=1)
     self.assertTrue(self.is_init_fn_called)
 
+  def testCheckpointSaverHookSuppressesTheDefaultOne(self):
+    saver_hook = tf.test.mock.Mock(spec=tf.train.CheckpointSaverHook)
+    saver_hook.before_run.return_value = None
+    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
+    est.fit(input_fn=boston_input_fn, steps=1, monitors=[saver_hook])
+    # test nothing is saved, due to suppressing default saver
+    with self.assertRaises(tf.contrib.learn.NotFittedError):
+      est.evaluate(input_fn=boston_input_fn, steps=1)
+
   def testCustomConfig(self):
     test_random_seed = 5783452
 

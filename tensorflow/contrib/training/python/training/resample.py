@@ -76,7 +76,9 @@ def resample_at_rate(inputs, rates, scope=None, seed=None, back_prop=False):
       """Body of the resampling loop."""
       # Update the running product
       next_running_products = running_products * random_ops.random_uniform(
-          shape=array_ops.shape(running_products), seed=seed)
+          shape=array_ops.shape(running_products),
+          dtype=running_products.dtype,
+          seed=seed)
 
       # Append inputs which still pass the condition:
       indexes = array_ops.reshape(
@@ -160,7 +162,9 @@ def weighted_resample(inputs, weights, overall_rate, scope=None,
 
     with variable_scope.variable_scope(scope, 'estimate_mean', inputs):
       estimated_mean = variable_scope.get_local_variable(
-          'estimated_mean', initializer=0.0)
+          'estimated_mean',
+          initializer=math_ops.cast(0, weights.dtype),
+          dtype=weights.dtype)
 
       batch_mean = math_ops.reduce_mean(weights)
       mean = moving_averages.assign_moving_average(

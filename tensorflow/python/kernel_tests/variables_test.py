@@ -349,7 +349,7 @@ class VariablesTestCase(test.TestCase):
         v1.eval()
 
       v2 = variables.Variable(
-          math_ops.neg(v1.initialized_value()), dtype=dtypes.float32)
+          math_ops.negative(v1.initialized_value()), dtype=dtypes.float32)
       self.assertEqual(v1.get_shape(), v2.get_shape())
       self.assertAllClose(np.negative(value), v2.initial_value.eval())
 

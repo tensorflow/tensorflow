@@ -20,6 +20,7 @@ from __future__ import print_function
 from collections import namedtuple
 
 from tensorflow.python.debug.cli import cli_shared
+from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -58,17 +59,37 @@ class GetRunStartIntroAndDescriptionTest(test_util.TensorFlowTestCase):
 
     # Verify lines about possible commands and their font attributes.
     self.assertEqual("run:", run_start_intro.lines[11][2:])
-    self.assertEqual([(2, 5, "bold")], run_start_intro.font_attr_segs[11])
-    self.assertEqual("run -n:", run_start_intro.lines[13][2:])
-    self.assertEqual([(2, 8, "bold")], run_start_intro.font_attr_segs[13])
+    annot = run_start_intro.font_attr_segs[11][0]
+    self.assertEqual(2, annot[0])
+    self.assertEqual(5, annot[1])
+    self.assertEqual("run", annot[2][0].content)
+    self.assertEqual("bold", annot[2][1])
+    annot = run_start_intro.font_attr_segs[13][0]
+    self.assertEqual(2, annot[0])
+    self.assertEqual(8, annot[1])
+    self.assertEqual("run -n", annot[2][0].content)
+    self.assertEqual("bold", annot[2][1])
     self.assertEqual("run -t <T>:", run_start_intro.lines[15][2:])
     self.assertEqual([(2, 12, "bold")], run_start_intro.font_attr_segs[15])
     self.assertEqual("run -f <filter_name>:", run_start_intro.lines[17][2:])
     self.assertEqual([(2, 22, "bold")], run_start_intro.font_attr_segs[17])
+    annot = run_start_intro.font_attr_segs[21][0]
+    self.assertEqual(2, annot[0])
+    self.assertEqual(16, annot[1])
+    self.assertEqual("invoke_stepper", annot[2][0].content)
 
     # Verify short description.
     description = cli_shared.get_run_short_description(12, self.const_a, None)
     self.assertEqual("run #12: 1 fetch (a:0); 0 feeds", description)
+
+    # Verify the main menu associated with the run_start_intro.
+    self.assertIn(debugger_cli_common.MAIN_MENU_KEY,
+                  run_start_intro.annotations)
+    menu = run_start_intro.annotations[debugger_cli_common.MAIN_MENU_KEY]
+    self.assertEqual("run", menu.caption_to_item("run").content)
+    self.assertEqual("invoke_stepper",
+                     menu.caption_to_item("invoke_stepper").content)
+    self.assertEqual("exit", menu.caption_to_item("exit").content)
 
   def testSparseTensorAsFetchShouldHandleNoNameAttribute(self):
     run_start_intro = cli_shared.get_run_start_intro(1, self.sparse_d, None, {})
@@ -188,8 +209,8 @@ class GetRunStartIntroAndDescriptionTest(test_util.TensorFlowTestCase):
 
     # Verify the listed names of the tensor filters.
     filter_names = set()
-    filter_names.add(run_start_intro.lines[22].split(" ")[-1])
-    filter_names.add(run_start_intro.lines[23].split(" ")[-1])
+    filter_names.add(run_start_intro.lines[20].split(" ")[-1])
+    filter_names.add(run_start_intro.lines[21].split(" ")[-1])
 
     self.assertEqual({"filter_a", "filter_b"}, filter_names)
 
@@ -197,6 +218,14 @@ class GetRunStartIntroAndDescriptionTest(test_util.TensorFlowTestCase):
     description = cli_shared.get_run_short_description(1, self.const_c,
                                                        feed_dict)
     self.assertEqual("run #1: 1 fetch (c:0); 1 feed (a:0)", description)
+
+    # Verify the command links for the two filters.
+    command_set = set()
+    annot = run_start_intro.font_attr_segs[20][0]
+    command_set.add(annot[2].content)
+    annot = run_start_intro.font_attr_segs[21][0]
+    command_set.add(annot[2].content)
+    self.assertEqual({"run -f filter_a", "run -f filter_b"}, command_set)
 
 
 class GetErrorIntroTest(test_util.TensorFlowTestCase):

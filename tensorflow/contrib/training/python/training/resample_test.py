@@ -124,6 +124,17 @@ class ResampleTest(tf.test.TestCase):
                   rates: numpy.zeros(shape=[count], dtype=numpy.float32)})
       self.assertEqual(0, len(rs))
 
+  def testDtypes(self, count=10):
+    """Test that we can define the ops with float64 weights."""
+
+    vals = self.get_values(count)
+    weights = tf.cast(self.get_weights(count), tf.float64)
+
+    # should not error:
+    tf.contrib.training.resample_at_rate([vals], weights)
+    tf.contrib.training.weighted_resample(
+        [vals], weights, overall_rate=tf.cast(1.0, tf.float64))
+
   def get_weights(self, n, mean=10.0, stddev=5):
     """Returns random positive weight values."""
     assert mean > 0, 'Weights have to be positive.'

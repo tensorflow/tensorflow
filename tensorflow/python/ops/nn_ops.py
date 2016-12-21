@@ -1387,7 +1387,7 @@ def _flatten_outer_dims(logits):
   """Flattens logits' outer dimensions and keep its last dimension."""
   rank = array_ops.rank(logits)
   last_dim_size = array_ops.slice(
-      array_ops.shape(logits), [math_ops.sub(rank, 1)], [1])
+      array_ops.shape(logits), [math_ops.subtract(rank, 1)], [1])
   output = array_ops.reshape(logits,
                              array_ops.concat_v2([[-1], last_dim_size], 0))
 
@@ -1461,7 +1461,7 @@ def _softmax(logits, compute_op, dim=-1, name=None):
 
   # Swap logits' dimension of dim and its last dimension.
   input_rank = array_ops.rank(logits)
-  logits = _swap_axis(logits, dim, math_ops.sub(input_rank, 1))
+  logits = _swap_axis(logits, dim, math_ops.subtract(input_rank, 1))
   shape_after_swap = array_ops.shape(logits)
 
   # Reshape logits into a matrix.
@@ -1472,7 +1472,7 @@ def _softmax(logits, compute_op, dim=-1, name=None):
 
   # Transform back the output tensor.
   output = array_ops.reshape(output, shape_after_swap)
-  output = _swap_axis(output, dim, math_ops.sub(input_rank, 1))
+  output = _swap_axis(output, dim, math_ops.subtract(input_rank, 1))
 
   # Make shape inference work since reshape and transpose may erase its static
   # shape.
@@ -1602,7 +1602,7 @@ def softmax_cross_entropy_with_logits(logits, labels, dim=-1, name=None):
 
   # The output cost shape should be the input minus dim.
   output_shape = array_ops.slice(input_shape, [0],
-                                 [math_ops.sub(input_rank, 1)])
+                                 [math_ops.subtract(input_rank, 1)])
   cost = array_ops.reshape(cost, output_shape)
 
   # Make shape inference work since reshape and transpose may erase its static
@@ -2075,12 +2075,12 @@ def erosion2d(value, kernel, strides, rates, padding, name=None):
   """
   with ops.name_scope(name, "erosion2d", [value, kernel]) as name:
     # Reduce erosion to dilation by duality.
-    return math_ops.neg(gen_nn_ops.dilation2d(input=math_ops.neg(value),
-                                              filter=array_ops.reverse_v2(
-                                                  kernel, [0, 1]),
-                                              strides=strides,
-                                              rates=rates,
-                                              padding=padding,
-                                              name=name))
+    return math_ops.negative(
+        gen_nn_ops.dilation2d(input=math_ops.negative(value),
+                              filter=array_ops.reverse_v2(kernel, [0, 1]),
+                              strides=strides,
+                              rates=rates,
+                              padding=padding,
+                              name=name))
 
 # pylint: enable=invalid-name

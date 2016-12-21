@@ -540,7 +540,7 @@ def _AsinGrad(op, grad):
     x = math_ops.conj(x)
     x2 = math_ops.square(x)
     one = constant_op.constant(1, dtype=grad.dtype)
-    den = math_ops.sqrt(math_ops.sub(one, x2))
+    den = math_ops.sqrt(math_ops.subtract(one, x2))
     inv = math_ops.reciprocal(den)
     return grad * inv
 
@@ -553,7 +553,7 @@ def _AcosGrad(op, grad):
     x = math_ops.conj(x)
     x2 = math_ops.square(x)
     one = constant_op.constant(1, dtype=grad.dtype)
-    den = math_ops.sqrt(math_ops.sub(one, x2))
+    den = math_ops.sqrt(math_ops.subtract(one, x2))
     inv = math_ops.reciprocal(den)
     return -grad * inv
 

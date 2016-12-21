@@ -197,6 +197,9 @@ class SparseMatmulOpTest : public ::testing::Test {
       data2[i] = internal::random<float>() / RealFloat(PacketSize);
       data3[i] = internal::random<float>() / RealFloat(PacketSize);
     }
+    for (int i = kMaxPacketSize; i < kMaxPacketSize * 2; ++i) {
+      data3[i] = internal::random<float>() / RealFloat(PacketSize);
+    }
 
     // zero out lower 16-bits of mantissa of data3 values
     // copy bfloat representation to data3_bfloat16

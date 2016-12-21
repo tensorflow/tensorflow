@@ -308,7 +308,7 @@ def _einsum_reduction(t0, t0_axis_labels, t1, t1_axis_labels, axes_to_sum):
       t0 = array_ops.expand_dims(t0, -1)
     for _ in broadcast_axes[0]:
       t1 = array_ops.expand_dims(t1, len(preserved_axes))
-    product = math_ops.mul(t0, t1)
+    product = math_ops.multiply(t0, t1)
     product_axes = sorted_axes[0] + sorted_axes[1][len(preserved_axes):]
     return product, ''.join(product_axes)
   else:

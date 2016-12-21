@@ -125,6 +125,7 @@ from __future__ import print_function
 from tensorflow.contrib.training.python.training import evaluation
 from tensorflow.python import summary
 from tensorflow.python.training import monitored_session
+from tensorflow.python.training import saver as tf_saver
 
 __all__ = [
     'evaluate_once',
@@ -192,17 +193,19 @@ def evaluate_once(master,
     hooks.append(
         evaluation.SummaryAtEndHook(logdir, summary_op, summary_op_feed_dict))
 
+  saver = None
+  if variables_to_restore is not None:
+    saver = tf_saver.Saver(variables_to_restore)
+
   return evaluation.evaluate_once(
       checkpoint_path,
       master=master,
       scaffold=monitored_session.Scaffold(
-          init_op=initial_op,
-          init_feed_dict=initial_op_feed_dict),
+          init_op=initial_op, init_feed_dict=initial_op_feed_dict, saver=saver),
       eval_ops=eval_op,
       feed_dict=eval_op_feed_dict,
       final_ops=final_op,
       final_ops_feed_dict=final_op_feed_dict,
-      variables_to_restore=variables_to_restore,
       hooks=hooks,
       config=session_config)
 
@@ -267,17 +270,19 @@ def evaluation_loop(master,
     hooks.append(
         evaluation.SummaryAtEndHook(logdir, summary_op, summary_op_feed_dict))
 
+  saver = None
+  if variables_to_restore is not None:
+    saver = tf_saver.Saver(variables_to_restore)
+
   return evaluation.evaluate_repeatedly(
       checkpoint_dir,
       master=master,
       scaffold=monitored_session.Scaffold(
-          init_op=initial_op,
-          init_feed_dict=initial_op_feed_dict),
+          init_op=initial_op, init_feed_dict=initial_op_feed_dict, saver=saver),
       eval_ops=eval_op,
       feed_dict=eval_op_feed_dict,
       final_ops=final_op,
       final_ops_feed_dict=final_op_feed_dict,
-      variables_to_restore=variables_to_restore,
       eval_interval_secs=eval_interval_secs,
       hooks=hooks,
       config=session_config,

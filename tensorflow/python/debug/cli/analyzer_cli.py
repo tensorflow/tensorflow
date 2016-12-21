@@ -51,6 +51,75 @@ CTRL_LABEL = "(Ctrl) "
 ELLIPSIS = "..."
 
 
+def _add_main_menu(output,
+                   node_name=None,
+                   enable_list_tensors=True,
+                   enable_node_info=True,
+                   enable_print_tensor=True,
+                   enable_list_inputs=True,
+                   enable_list_outputs=True):
+  """Generate main menu for the screen output from a command.
+
+  Args:
+    output: (debugger_cli_common.RichTextLines) the output object to modify.
+    node_name: (str or None) name of the node involved (if any). If None,
+      the menu items node_info, list_inputs and list_outputs will be
+      automatically disabled, overriding the values of arguments
+      enable_node_info, enable_list_inputs and enable_list_outputs.
+    enable_list_tensors: (bool) whether the list_tensor menu item will be
+      enabled.
+    enable_node_info: (bool) whether the node_info item will be enabled.
+    enable_print_tensor: (bool) whether the print_tensor item will be enabled.
+    enable_list_inputs: (bool) whether the item list_inputs will be enabled.
+    enable_list_outputs: (bool) whether the item list_outputs will be enabled.
+  """
+
+  menu = debugger_cli_common.Menu()
+
+  menu.append(
+      debugger_cli_common.MenuItem(
+          "list_tensors", "list_tensors", enabled=enable_list_tensors))
+
+  if node_name:
+    menu.append(
+        debugger_cli_common.MenuItem(
+            "node_info",
+            "node_info -a -d %s" % node_name,
+            enabled=enable_node_info))
+    menu.append(
+        debugger_cli_common.MenuItem(
+            "print_tensor",
+            "print_tensor %s" % node_name,
+            enabled=enable_print_tensor))
+    menu.append(
+        debugger_cli_common.MenuItem(
+            "list_inputs",
+            "list_inputs -c -r %s" % node_name,
+            enabled=enable_list_inputs))
+    menu.append(
+        debugger_cli_common.MenuItem(
+            "list_outputs",
+            "list_outputs -c -r %s" % node_name,
+            enabled=enable_list_outputs))
+  else:
+    menu.append(
+        debugger_cli_common.MenuItem(
+            "node_info", None, enabled=False))
+    menu.append(
+        debugger_cli_common.MenuItem("print_tensor", None, enabled=False))
+    menu.append(
+        debugger_cli_common.MenuItem("list_inputs", None, enabled=False))
+    menu.append(
+        debugger_cli_common.MenuItem("list_outputs", None, enabled=False))
+
+  menu.append(
+      debugger_cli_common.MenuItem("run_info", "run_info"))
+  menu.append(
+      debugger_cli_common.MenuItem("help", "help"))
+
+  output.annotations[debugger_cli_common.MAIN_MENU_KEY] = menu
+
+
 class DebugAnalyzer(object):
   """Analyzer for debug data from dump directories."""
 
@@ -301,6 +370,7 @@ class DebugAnalyzer(object):
     parsed = self._arg_parsers["list_tensors"].parse_args(args)
 
     output = []
+    font_attr_segs = {}
 
     filter_strs = []
     if parsed.op_type_filter:
@@ -316,12 +386,16 @@ class DebugAnalyzer(object):
     else:
       node_name_regex = None
 
+    filter_output = debugger_cli_common.RichTextLines(filter_strs)
+
     if parsed.tensor_filter:
       try:
         filter_callable = self.get_tensor_filter(parsed.tensor_filter)
       except ValueError:
-        return cli_shared.error(
-            "There is no tensor filter named \"%s\"." % parsed.tensor_filter)
+        output = cli_shared.error("There is no tensor filter named \"%s\"." %
+                                  parsed.tensor_filter)
+        _add_main_menu(output, node_name=None, enable_list_tensors=False)
+        return output
 
       data_to_show = self._debug_dump.find(filter_callable)
     else:
@@ -340,21 +414,28 @@ class DebugAnalyzer(object):
           continue
 
       rel_time = (dump.timestamp - self._debug_dump.t0) / 1000.0
-      output.append("[%.3f ms] %s:%d" % (rel_time, dump.node_name,
-                                         dump.output_slot))
+      dumped_tensor_name = "%s:%d" % (dump.node_name, dump.output_slot)
+      output.append("[%.3f ms] %s" % (rel_time, dumped_tensor_name))
+      font_attr_segs[len(output) - 1] = [(
+          len(output[-1]) - len(dumped_tensor_name), len(output[-1]),
+          debugger_cli_common.MenuItem("", "pt %s" % dumped_tensor_name))]
       dump_count += 1
 
-    output.insert(0, "")
-
-    output = filter_strs + output
+    filter_output.append("")
+    filter_output.extend(debugger_cli_common.RichTextLines(
+        output, font_attr_segs=font_attr_segs))
+    output = filter_output
 
     if parsed.tensor_filter:
-      output.insert(0, "%d dumped tensor(s) passing filter \"%s\":" %
-                    (dump_count, parsed.tensor_filter))
+      output.prepend([
+          "%d dumped tensor(s) passing filter \"%s\":" %
+          (dump_count, parsed.tensor_filter)
+      ])
     else:
-      output.insert(0, "%d dumped tensor(s):" % dump_count)
+      output.prepend(["%d dumped tensor(s):" % dump_count])
 
-    return debugger_cli_common.RichTextLines(output)
+    _add_main_menu(output, node_name=None, enable_list_tensors=False)
+    return output
 
   def node_info(self, args, screen_info=None):
     """Command handler for node_info.
@@ -383,8 +464,16 @@ class DebugAnalyzer(object):
         parsed.node_name)
 
     if not self._debug_dump.node_exists(node_name):
-      return cli_shared.error(
+      output = cli_shared.error(
           "There is no node named \"%s\" in the partition graphs" % node_name)
+      _add_main_menu(
+          output,
+          node_name=None,
+          enable_list_tensors=True,
+          enable_node_info=False,
+          enable_list_inputs=False,
+          enable_list_outputs=False)
+      return output
 
     # TODO(cais): Provide UI glossary feature to explain to users what the
     # term "partition graph" means and how it is related to TF graph objects
@@ -422,7 +511,9 @@ class DebugAnalyzer(object):
     if parsed.dumps:
       lines.extend(self._list_node_dumps(node_name))
 
-    return debugger_cli_common.RichTextLines(lines)
+    output = debugger_cli_common.RichTextLines(lines)
+    _add_main_menu(output, node_name=node_name, enable_node_info=False)
+    return output
 
   def list_inputs(self, args, screen_info=None):
     """Command handler for inputs.
@@ -447,13 +538,18 @@ class DebugAnalyzer(object):
 
     parsed = self._arg_parsers["list_inputs"].parse_args(args)
 
-    return self._list_inputs_or_outputs(
+    output = self._list_inputs_or_outputs(
         parsed.recursive,
         parsed.node_name,
         parsed.depth,
         parsed.control,
         parsed.op_type,
         do_outputs=False)
+
+    node_name = debug_data.get_node_name(parsed.node_name)
+    _add_main_menu(output, node_name=node_name, enable_list_inputs=False)
+
+    return output
 
   def print_tensor(self, args, screen_info=None):
     """Command handler for print_tensor.
@@ -484,16 +580,44 @@ class DebugAnalyzer(object):
         command_parser.parse_tensor_name_with_slicing(parsed.tensor_name))
 
     node_name, output_slot = debug_data.parse_node_or_tensor_name(tensor_name)
-    if output_slot is None:
-      return cli_shared.error("\"%s\" is not a valid tensor name" %
-                              parsed.tensor_name)
-
     if (self._debug_dump.loaded_partition_graphs() and
         not self._debug_dump.node_exists(node_name)):
-      return cli_shared.error(
+      output = cli_shared.error(
           "Node \"%s\" does not exist in partition graphs" % node_name)
+      _add_main_menu(
+          output,
+          node_name=None,
+          enable_list_tensors=True,
+          enable_print_tensor=False)
+      return output
 
     watch_keys = self._debug_dump.debug_watch_keys(node_name)
+    if output_slot is None:
+      output_slots = set()
+      for watch_key in watch_keys:
+        output_slots.add(int(watch_key.split(":")[1]))
+
+      if len(output_slots) == 1:
+        # There is only one dumped tensor from this node, so there is no
+        # ambiguity. Proceed to show the only dumped tensor.
+        output_slot = list(output_slots)[0]
+      else:
+        # There are more than one dumped tensors from this node. Indicate as
+        # such.
+        # TODO(cais): Provide an output screen with command links for
+        # convenience.
+        lines = [
+            "Node \"%s\" generated debug dumps from %s output slots:" %
+            (node_name, len(output_slots)),
+            "Please specify the output slot: %s:x." % node_name
+        ]
+        output = debugger_cli_common.RichTextLines(lines)
+        _add_main_menu(
+            output,
+            node_name=node_name,
+            enable_list_tensors=True,
+            enable_print_tensor=False)
+        return output
 
     # Find debug dump data that match the tensor name (node name + output
     # slot).
@@ -506,12 +630,12 @@ class DebugAnalyzer(object):
 
     if not matching_data:
       # No dump for this tensor.
-      return cli_shared.error(
-          "Tensor \"%s\" did not generate any dumps." % parsed.tensor_name)
+      output = cli_shared.error("Tensor \"%s\" did not generate any dumps." %
+                                parsed.tensor_name)
     elif len(matching_data) == 1:
       # There is only one dump for this tensor.
       if parsed.number <= 0:
-        return cli_shared.format_tensor(
+        output = cli_shared.format_tensor(
             matching_data[0].get_tensor(),
             matching_data[0].watch_key,
             np_printoptions,
@@ -519,9 +643,11 @@ class DebugAnalyzer(object):
             tensor_slicing=tensor_slicing,
             highlight_options=highlight_options)
       else:
-        return cli_shared.error(
+        output = cli_shared.error(
             "Invalid number (%d) for tensor %s, which generated one dump." %
             (parsed.number, parsed.tensor_name))
+
+      _add_main_menu(output, node_name=node_name, enable_print_tensor=False)
     else:
       # There are more than one dumps for this tensor.
       if parsed.number < 0:
@@ -540,14 +666,14 @@ class DebugAnalyzer(object):
         lines.append("For example:")
         lines.append("  print_tensor %s -n 0" % parsed.tensor_name)
 
-        return debugger_cli_common.RichTextLines(lines)
+        output = debugger_cli_common.RichTextLines(lines)
       elif parsed.number >= len(matching_data):
-        return cli_shared.error(
+        output = cli_shared.error(
             "Specified number (%d) exceeds the number of available dumps "
             "(%d) for tensor %s" %
             (parsed.number, len(matching_data), parsed.tensor_name))
       else:
-        return cli_shared.format_tensor(
+        output = cli_shared.format_tensor(
             matching_data[parsed.number].get_tensor(),
             matching_data[parsed.number].watch_key + " (dump #%d)" %
             parsed.number,
@@ -555,6 +681,9 @@ class DebugAnalyzer(object):
             print_all=parsed.print_all,
             tensor_slicing=tensor_slicing,
             highlight_options=highlight_options)
+      _add_main_menu(output, node_name=node_name, enable_print_tensor=False)
+
+    return output
 
   def list_outputs(self, args, screen_info=None):
     """Command handler for inputs.
@@ -579,13 +708,18 @@ class DebugAnalyzer(object):
 
     parsed = self._arg_parsers["list_outputs"].parse_args(args)
 
-    return self._list_inputs_or_outputs(
+    output = self._list_inputs_or_outputs(
         parsed.recursive,
         parsed.node_name,
         parsed.depth,
         parsed.control,
         parsed.op_type,
         do_outputs=True)
+
+    node_name = debug_data.get_node_name(parsed.node_name)
+    _add_main_menu(output, node_name=node_name, enable_list_outputs=False)
+
+    return output
 
   def _list_inputs_or_outputs(self,
                               recursive,

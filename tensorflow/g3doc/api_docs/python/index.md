@@ -208,7 +208,6 @@
   * [`cholesky`](../../api_docs/python/math_ops.md#cholesky)
   * [`cholesky_solve`](../../api_docs/python/math_ops.md#cholesky_solve)
   * [`complex`](../../api_docs/python/math_ops.md#complex)
-  * [`complex_abs`](../../api_docs/python/math_ops.md#complex_abs)
   * [`conj`](../../api_docs/python/math_ops.md#conj)
   * [`cos`](../../api_docs/python/math_ops.md#cos)
   * [`count_nonzero`](../../api_docs/python/math_ops.md#count_nonzero)
@@ -666,7 +665,6 @@
   * [`SummarySaverHook`](../../api_docs/python/train.md#SummarySaverHook)
   * [`Supervisor`](../../api_docs/python/train.md#Supervisor)
   * [`SyncReplicasOptimizer`](../../api_docs/python/train.md#SyncReplicasOptimizer)
-  * [`SyncReplicasOptimizerV2`](../../api_docs/python/train.md#SyncReplicasOptimizerV2)
   * [`WorkerSessionCreator`](../../api_docs/python/train.md#WorkerSessionCreator)
   * [`write_graph`](../../api_docs/python/train.md#write_graph)
 

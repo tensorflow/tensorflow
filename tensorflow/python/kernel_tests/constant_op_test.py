@@ -617,7 +617,7 @@ class PlaceholderTest(test.TestCase):
       p = array_ops.placeholder(dtypes_lib.int32, shape=[], name="p")
       with ops.control_dependencies([p]):
         c = constant_op.constant(5, dtypes_lib.int32)
-      d = math_ops.mul(p, c)
+      d = math_ops.multiply(p, c)
       self.assertEqual(10, d.eval(feed_dict={p: 2}))
 
   def testBadShape(self):
@@ -702,7 +702,7 @@ class PlaceholderV2Test(test.TestCase):
       p = array_ops.placeholder_v2(dtypes_lib.int32, shape=[], name="p")
       with ops.control_dependencies([p]):
         c = constant_op.constant(5, dtypes_lib.int32)
-      d = math_ops.mul(p, c)
+      d = math_ops.multiply(p, c)
       val = np.array(2).astype(np.int)
       self.assertEqual(10, d.eval(feed_dict={p: val}))
 
