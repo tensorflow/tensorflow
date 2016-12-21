@@ -703,6 +703,24 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "ops_testutil_test",
+    size = "small",
+    srcs = ["ops_testutil_test.cc"],
+    deps = [
+        ":identity_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
     name = "concat_op_test",
     size = "small",
     srcs = ["concat_op_test.cc"],
