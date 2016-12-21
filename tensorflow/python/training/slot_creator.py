@@ -52,7 +52,8 @@ def _create_slot_var(primary, val, scope):
   # scope.
   current_partitioner = variable_scope.get_variable_scope().partitioner
   variable_scope.get_variable_scope().set_partitioner(None)
-  slot = variable_scope.get_variable(scope, initializer=val, trainable=False)
+  slot = variable_scope.get_variable(scope, initializer=val, trainable=False,
+                                     validate_shape=primary.get_shape().is_fully_defined())
   variable_scope.get_variable_scope().set_partitioner(current_partitioner)
 
   # pylint: disable=protected-access
@@ -118,6 +119,8 @@ def create_zeros_slot(primary, name, dtype=None, colocate_with_primary=True):
   """
   if dtype is None:
     dtype = primary.dtype
-  val = array_ops.zeros(primary.get_shape().as_list(), dtype=dtype)
+  val = array_ops.zeros(
+      primary.get_shape().as_list() if primary.get_shape().is_fully_defined() else array_ops.shape(primary),
+      dtype=dtype)
   return create_slot(primary, val, name,
                      colocate_with_primary=colocate_with_primary)
