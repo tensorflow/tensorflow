@@ -8,7 +8,7 @@ exports_files(["LICENSE"])
 # Arguments to ./scripts/libxsmm_interface.py, see that file for detailed description.
 #  precision: SP & DP
 #  prefetch: 1 (auto)
-libxsmm_interface_arguments = "0 0 1"
+libxsmm_interface_arguments = "0 1"
 
 # Arguments to ./scripts/libxsmm_config.py, see that file for detailed description.
 #  ilp64: no
@@ -60,6 +60,8 @@ cc_library(
         "src/libxsmm_dump.c",
         "src/libxsmm_malloc.c",
         "src/libxsmm_gemm.c",
+        "src/libxsmm_gemm_diff.c",
+        "src/libxsmm_hash.c",
         "src/libxsmm_timer.c",
         "src/libxsmm_trace.c",
         "src/libxsmm_trans.c",
@@ -87,17 +89,11 @@ cc_library(
         "include/libxsmm_sync.h",
         "include/libxsmm_timer.h",
         "include/libxsmm_typedefs.h",
-        "src/libxsmm_gemm_diff.c",
-        "src/libxsmm_cpuid_x86.c",
-        "src/libxsmm_hash.c",
         # Generated:
         "include/libxsmm.h",
         "include/libxsmm_config.h",
         "include/libxsmm_dispatch.h",
-    ] + glob([
-        "src/*.h",
-        "src/template/*.c",
-    ]),
+    ],
     copts = [
         "-mavx",  # JIT does not work without avx anyway, and this silences some CRC32 warnings.
         "-Wno-vla",  # Libxsmm convolutions heavily use VLA.
@@ -107,12 +103,13 @@ cc_library(
         "LIBXSMM_CPUID_X86_NOINLINE",
         "__BLAS=0",
     ],
-    includes = ["include"],
+    includes = [
+        "include",
+        "src",
+        "src/template",
+    ],
     linkopts = ["-ldl"],
     visibility = ["//visibility:public"],
-    deps = [
-        ":libxsmm_headers",
-    ],
 )
 
 py_library(

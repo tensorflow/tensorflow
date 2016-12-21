@@ -1972,8 +1972,17 @@ cc_library(
 
 tf_kernel_library(
     name = "sparse_matmul_op",
+    defines = select({
+        ":xsmm": ["TENSORFLOW_USE_LIBXSMM"],
+        "//conditions:default": [],
+    }),
     prefix = "sparse_matmul_op",
-    deps = MATH_DEPS,
+    deps = MATH_DEPS + select({
+        ":xsmm": [
+            "@libxsmm_archive//:xsmm_avx",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(
