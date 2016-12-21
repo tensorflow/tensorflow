@@ -38,6 +38,41 @@ limitations under the License.
 #include "tensorflow/core/util/strided_slice_op.h"
 
 namespace tensorflow {
+namespace {
+
+template <typename T>
+struct MemCpyFunctor {
+  // Returns true if the copy was made with memcpy, false otherwise.
+  bool Copy(const Tensor& input, const gtl::InlinedVector<int64, 4>& begin,
+            const gtl::InlinedVector<int64, 4>& end, Tensor* result) {
+    if (DataTypeCanUseMemcpy(DataTypeToEnum<T>::v())) {
+      auto in = input.tensor<T, 2>();
+      auto output = result->tensor<T, 2>();
+      // TODO(agarwal): Consider multi-threading if size[0] is large
+      for (int row_in = begin[0], row_out = 0; row_in < end[0];
+           ++row_in, ++row_out) {
+        if (row_in + 1 < end[0]) {
+          port::prefetch<port::PREFETCH_HINT_T0>(&output(row_in + 1, 0));
+          port::prefetch<port::PREFETCH_HINT_T0>(&in(row_in + 1, begin[1]));
+        }
+        memcpy(&output(row_out, 0), &in(row_in, begin[1]),
+               (end[1] - begin[1]) * sizeof(T));
+      }
+      return true;
+    }
+    return false;
+  }
+};
+
+template <>
+struct MemCpyFunctor<ResourceHandle> {
+  bool Copy(const Tensor& input, const gtl::InlinedVector<int64, 4>& begin,
+            const gtl::InlinedVector<int64, 4>& end, Tensor* result) {
+    return false;
+  }
+};
+
+}  // namespace
 
 template <typename Device, typename T>
 class StridedSliceOp : public OpKernel {
@@ -106,21 +141,11 @@ class StridedSliceOp : public OpKernel {
       // NDIM and T
       if (is_simple_slice && std::is_same<Device, CPUDevice>::value &&
           input_dims == 2 && processing_shape.dims() == 2 &&
-          final_shape.dims() == 2 &&
-          DataTypeCanUseMemcpy(DataTypeToEnum<T>::v())) {
-        auto in = input.tensor<T, 2>();
-        auto output = result->tensor<T, 2>();
-        // TODO(agarwal): Consider multi-threading if size[0] is large
-        for (int row_in = begin[0], row_out = 0; row_in < end[0];
-             ++row_in, ++row_out) {
-          if (row_in + 1 < end[0]) {
-            port::prefetch<port::PREFETCH_HINT_T0>(&output(row_in + 1, 0));
-            port::prefetch<port::PREFETCH_HINT_T0>(&in(row_in + 1, begin[1]));
-          }
-          memcpy(&output(row_out, 0), &in(row_in, begin[1]),
-                 (end[1] - begin[1]) * sizeof(T));
+          final_shape.dims() == 2) {
+        MemCpyFunctor<T> functor;
+        if (functor.Copy(input, begin, end, result)) {
+          return;
         }
-        return;
       }
 
 #define HANDLE_DIM(NDIM)                                                       \
@@ -350,7 +375,7 @@ class StridedSliceAssignOp : public OpKernel {
                               .HostMemory("strides"),          \
                           StridedSliceAssignOp<CPUDevice, type>)
 
-TF_CALL_POD_STRING_TYPES(REGISTER_STRIDED_SLICE);
+TF_CALL_ALL_TYPES(REGISTER_STRIDED_SLICE);
 REGISTER_STRIDED_SLICE(bfloat16);
 
 #undef REGISTER_STRIDED_SLICE
