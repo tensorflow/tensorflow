@@ -162,17 +162,21 @@ Status GrpcSession::Extend(const RunOptions& run_options,
   return ExtendImpl(&call_options, graph);
 }
 
-Status GrpcSession::Run(const RunOptions& run_options,
-                        const std::vector<std::pair<string, Tensor>>& inputs,
-                        const std::vector<string>& output_tensor_names,
-                        const std::vector<string>& target_node_names,
-                        std::vector<Tensor>* outputs,
-                        RunMetadata* run_metadata) {
+Status GrpcSession::RunHelper(
+    const RunOptions& run_options,
+    const std::vector<std::pair<string, Tensor>>& inputs,
+    const std::vector<string>& output_tensor_names,
+    const std::vector<string>& target_node_names, std::vector<Tensor>* outputs,
+    RunMetadata* run_metadata, const string& prun_handle) {
   // Convert to proto
   RunStepRequest req;
   RunStepResponse resp;
 
   *req.mutable_options() = run_options;
+
+  if (!prun_handle.empty()) {
+    req.set_partial_run_handle(prun_handle);
+  }
 
   for (const auto& it : inputs) {
     Tensor input_tensor = it.second;
@@ -225,6 +229,16 @@ Status GrpcSession::Run(const RunOptions& run_options,
   return Status::OK();
 }
 
+Status GrpcSession::Run(const RunOptions& run_options,
+                        const std::vector<std::pair<string, Tensor>>& inputs,
+                        const std::vector<string>& output_tensor_names,
+                        const std::vector<string>& target_node_names,
+                        std::vector<Tensor>* outputs,
+                        RunMetadata* run_metadata) {
+  return RunHelper(run_options, inputs, output_tensor_names, target_node_names,
+                   outputs, run_metadata, /* prun_handle */ "");
+}
+
 Status GrpcSession::Run(const std::vector<std::pair<string, Tensor>>& inputs,
                         const std::vector<string>& output_tensor_names,
                         const std::vector<string>& target_node_names,
@@ -252,14 +266,41 @@ Status GrpcSession::PRunSetup(const std::vector<string>& input_names,
                               const std::vector<string>& output_names,
                               const std::vector<string>& target_nodes,
                               string* handle) {
-  return errors::Internal("Partial run is not supported for remote session.");
+  // Convert to proto
+  PartialRunSetupRequest req;
+  PartialRunSetupResponse resp;
+  CallOptions call_options;
+  {
+    mutex_lock l(mu_);
+    if (handle_.empty()) {
+      return errors::InvalidArgument("A session is not created yet....");
+    }
+
+    req.set_session_handle(handle_);
+  }
+  for (const string& feed : input_names) {
+    req.add_feed(feed);
+  }
+  for (const string& fetch : output_names) {
+    req.add_fetch(fetch);
+  }
+  for (const string& target : target_nodes) {
+    req.add_target(target);
+  }
+  call_options.SetTimeout(options_.config.operation_timeout_in_ms());
+  TF_RETURN_IF_ERROR(master_->PartialRunSetup(&call_options, &req, &resp));
+  *handle = resp.partial_run_handle();
+  return Status::OK();
 }
 
 Status GrpcSession::PRun(const string& handle,
                          const std::vector<std::pair<string, Tensor>>& inputs,
                          const std::vector<string>& output_names,
                          std::vector<Tensor>* outputs) {
-  return errors::Internal("Partial run is not supported for remote session.");
+  RunOptions run_options;
+  run_options.set_timeout_in_ms(options_.config.operation_timeout_in_ms());
+  return RunHelper(run_options, inputs, output_names, /* targets */ {}, outputs,
+                   /* run_metadata */ nullptr, handle);
 }
 
 Status GrpcSession::Close() {

@@ -21,10 +21,12 @@ from __future__ import print_function
 import math
 import numpy as np
 
+import tensorflow as tf
+
+from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -164,11 +166,15 @@ class StudentT(distribution.Distribution):
     return self._sigma
 
   def _batch_shape(self):
-    return array_ops.shape(self.df + self.mu + self.sigma)
+    return array_ops.broadcast_dynamic_shape(
+        array_ops.shape(self.df),
+        array_ops.broadcast_dynamic_shape(
+            array_ops.shape(self.mu),
+            array_ops.shape(self.sigma)))
 
   def _get_batch_shape(self):
-    return common_shapes.broadcast_shape(
-        common_shapes.broadcast_shape(
+    return array_ops.broadcast_static_shape(
+        array_ops.broadcast_static_shape(
             self.df.get_shape(),
             self.mu.get_shape()),
         self.sigma.get_shape())
@@ -213,6 +219,15 @@ class StudentT(distribution.Distribution):
                          math_ops.lgamma(half_df)) /
             (math_ops.sqrt(self.df) * math.sqrt(math.pi) * self.sigma) *
             math_ops.pow(1. + math_ops.square(y) / self.df, -(0.5 + half_df)))
+
+  def _cdf(self, x):
+    # we use the same notation here as in wikipedia for the
+    t = (x - self.mu)/self.sigma
+    x_t = self.df / (math_ops.square(t) + self.df)
+    # The cdf is defined differently for positive and negative t
+    positive_cdf = 1. - 0.5 * math_ops.betainc(0.5 * self.df, 0.5, x_t)
+    negative_cdf = 0.5 * math_ops.betainc(0.5 * self.df, 0.5, x_t)
+    return tf.where(tf.less(t, 0), negative_cdf, positive_cdf)
 
   def _entropy(self):
     u = array_ops.expand_dims(self.df * self._ones(), -1)
@@ -283,6 +298,8 @@ class StudentT(distribution.Distribution):
     return array_ops.identity(self.mu)
 
   def _ones(self):
+    if self.get_batch_shape().is_fully_defined():
+      return array_ops.ones(self.get_batch_shape(), dtype=self.dtype)
     return array_ops.ones(self.batch_shape(), dtype=self.dtype)
 
 

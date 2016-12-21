@@ -48,7 +48,7 @@ def TestModel(inputs):
   scale = tf.Variable(1.0, trainable=False)
 
   # Scaling the outputs wont change the result...
-  outputs = tf.mul(inputs, scale)
+  outputs = tf.multiply(inputs, scale)
   return tf.argmax(outputs, 1), scale
 
 

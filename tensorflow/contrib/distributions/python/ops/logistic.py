@@ -22,7 +22,6 @@ import math
 import numpy as np
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -144,11 +143,12 @@ class _Logistic(distribution.Distribution):
     return self._scale
 
   def _batch_shape(self):
-    return array_ops.shape(self.loc + self.scale)
+    return array_ops.broadcast_dynamic_shape(
+        array_ops.shape(self.loc), array_ops.shape(self.scale))
 
   def _get_batch_shape(self):
-    return common_shapes.broadcast_shape(self.loc.get_shape(),
-                                         self.scale.get_shape())
+    return array_ops.broadcast_static_shape(
+        self.loc.get_shape(), self.scale.get_shape())
 
   def _event_shape(self):
     return constant_op.constant([], dtype=dtypes.int32)

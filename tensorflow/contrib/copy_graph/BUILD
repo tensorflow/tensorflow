@@ -16,6 +16,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/python:client",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:session",
         "//tensorflow/python:variables",

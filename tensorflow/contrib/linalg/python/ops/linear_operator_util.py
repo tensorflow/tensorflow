@@ -39,14 +39,8 @@ def assert_no_entries_with_modulus_zero(
   with ops.name_scope(name, values=[x]):
     x = ops.convert_to_tensor(x, name="x")
     dtype = x.dtype.base_dtype
-
-    if dtype.is_complex:
-      should_be_nonzero = math_ops.complex_abs(x)
-    else:
-      should_be_nonzero = math_ops.abs(x)
-
+    should_be_nonzero = math_ops.abs(x)
     zero = ops.convert_to_tensor(0, dtype=dtype.real_dtype)
-
     return check_ops.assert_less(zero, should_be_nonzero, message=message)
 
 

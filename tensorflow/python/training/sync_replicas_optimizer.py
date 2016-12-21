@@ -310,6 +310,7 @@ class SyncReplicasOptimizerV2(optimizer.Optimizer):
             data_flow_ops.FIFOQueue(-1,
                                     global_step.dtype.base_dtype,
                                     shapes=(),
+                                    name="sync_token_q",
                                     shared_name="sync_token_q"))
         self._sync_token_queue = sync_token_queue
 
@@ -320,6 +321,7 @@ class SyncReplicasOptimizerV2(optimizer.Optimizer):
             data_flow_ops.FIFOQueue(1,
                                     types_pb2.DT_INT32,
                                     shapes=(),
+                                    name="dummy_queue",
                                     shared_name="dummy_queue"))
 
       with ops.device(global_step.device), ops.name_scope(""):
