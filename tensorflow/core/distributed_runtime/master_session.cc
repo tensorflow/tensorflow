@@ -61,11 +61,13 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
                     std::unique_ptr<SimpleClientGraph> cg,
                     const SessionOptions& session_opts,
                     StatsPublisherFactory stats_publisher_factory,
-                    SimpleGraphExecutionState* execution_state, bool is_partial)
+                    SimpleGraphExecutionState* execution_state, bool is_partial,
+                    WorkerCacheInterface* worker_cache)
       : session_handle_(handle),
         client_graph_(std::move(cg)),
         session_opts_(session_opts),
-        is_partial_(is_partial) {
+        is_partial_(is_partial),
+        worker_cache_(worker_cache) {
     VLOG(1) << "Created ReffedClientGraph for node with "
             << client_graph_->graph.num_node_ids();
 
@@ -106,8 +108,8 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   // Turn RPC logging on or off, both at the WorkerCache used by this
   // master process, and at each remote worker in use for the current
   // partitions.
-  void SetRPCLogging(const MasterEnv* env, bool active) {
-    env->worker_cache->SetLogging(active);
+  void SetRPCLogging(bool active) {
+    worker_cache_->SetLogging(active);
     // Logging is a best-effort activity, so we make async calls to turn
     // it on/off and don't make use of the responses.
     for (auto& p : partitions_) {
@@ -130,9 +132,9 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   // Retrieve all RPC logs data accumulated for the current step, both
   // from the local WorkerCache in use by this master process and from
   // all the remote workers executing the remote partitions.
-  void RetrieveLogs(const MasterEnv* env, int64 step_id, StepStats* ss) {
+  void RetrieveLogs(int64 step_id, StepStats* ss) {
     // Get the local data first, because it sets *ss without merging.
-    env->worker_cache->RetrieveLogs(step_id, ss);
+    worker_cache_->RetrieveLogs(step_id, ss);
 
     // Then merge in data from all the remote workers.
     LoggingRequest req;
@@ -172,7 +174,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
 
   // Partitions the graph into subgraphs and registers them on
   // workers.
-  Status RegisterPartitions(const MasterEnv* env, const PartitionOptions& popts,
+  Status RegisterPartitions(const PartitionOptions& popts,
                             const FunctionDefLibrary& func_def_lib);
 
   // Runs one step of all partitions.
@@ -188,7 +190,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   void CleanupPartitionsAsync(int64 step_id, StatusCallback done);
 
   // Post-processing of any runtime statistics gathered during execution.
-  void ProcessStats(const MasterEnv* env, int64 step_id, PerStepState* pss,
+  void ProcessStats(int64 step_id, PerStepState* pss,
                     SimpleGraphExecutionState* execution_state,
                     ProfileHandler* ph, const RunStepRequest& req,
                     RunStepResponse* resp);
@@ -221,6 +223,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   const std::unique_ptr<SimpleClientGraph> client_graph_;
   const SessionOptions session_opts_;
   const bool is_partial_;
+  WorkerCacheInterface* const worker_cache_;  // Not owned.
   std::unordered_map<StringPiece, Node*, StringPiece::Hasher> name_to_node_;
 
   // Graph partitioned into per-location subgraphs.
@@ -273,8 +276,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
       PartitionOptions pots,
       std::unordered_map<string, GraphDef>* out_partitions);
   Status DoRegisterPartitions(
-      const MasterEnv* env, const PartitionOptions& popts,
-      const FunctionDefLibrary& func_def_lib,
+      const PartitionOptions& popts, const FunctionDefLibrary& func_def_lib,
       std::unordered_map<string, GraphDef> graph_partitions);
 
   // Deregisters the partitions on the workers.  Called in the
@@ -285,8 +287,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
 };
 
 Status MasterSession::ReffedClientGraph::RegisterPartitions(
-    const MasterEnv* env, const PartitionOptions& popts,
-    const FunctionDefLibrary& func_def_lib) {
+    const PartitionOptions& popts, const FunctionDefLibrary& func_def_lib) {
   {  // Ensure register once.
     mu_.lock();
     if (!init_started_) {
@@ -304,7 +305,7 @@ Status MasterSession::ReffedClientGraph::RegisterPartitions(
         graph_defs_for_publishing.push_back(&name_def.second);
       }
       stats_publisher_->PublishGraphProto(graph_defs_for_publishing);
-      s = DoRegisterPartitions(env, popts, func_def_lib, std::move(graph_defs));
+      s = DoRegisterPartitions(popts, func_def_lib, std::move(graph_defs));
       mu_.lock();
       init_result_ = s;
       init_done_.Notify();
@@ -385,8 +386,7 @@ Status MasterSession::ReffedClientGraph::DoBuildPartitions(
 }
 
 Status MasterSession::ReffedClientGraph::DoRegisterPartitions(
-    const MasterEnv* env, const PartitionOptions& popts,
-    const FunctionDefLibrary& func_def_lib,
+    const PartitionOptions& popts, const FunctionDefLibrary& func_def_lib,
     std::unordered_map<string, GraphDef> graph_partitions) {
   partitions_.reserve(graph_partitions.size());
   Status s;
@@ -395,7 +395,7 @@ Status MasterSession::ReffedClientGraph::DoRegisterPartitions(
     Part* part = &partitions_.back();
     part->name = name_def.first;
     TrackFeedsAndFetches(part, name_def.second, popts);
-    part->worker = env->worker_cache->CreateWorker(part->name);
+    part->worker = worker_cache_->CreateWorker(part->name);
     if (part->worker == nullptr) {
       s = errors::NotFound("worker ", part->name);
       break;
@@ -403,7 +403,7 @@ Status MasterSession::ReffedClientGraph::DoRegisterPartitions(
   }
   if (!s.ok()) {
     for (Part& part : partitions_) {
-      delete part.worker;
+      worker_cache_->ReleaseWorker(part.name, part.worker);
     }
     return s;
   }
@@ -536,7 +536,7 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
     exec_opts.set_record_timeline(true);
   }
   if (pss->collect_rpcs) {
-    SetRPCLogging(env, true);
+    SetRPCLogging(true);
   }
   if (pss->collect_costs || pss->collect_timeline) {
     pss->step_stats.resize(partitions_.size());
@@ -737,15 +737,15 @@ void MasterSession::ReffedClientGraph::CleanupPartitionsAsync(
 }
 
 void MasterSession::ReffedClientGraph::ProcessStats(
-    const MasterEnv* env, int64 step_id, PerStepState* pss,
+    int64 step_id, PerStepState* pss,
     SimpleGraphExecutionState* execution_state, ProfileHandler* ph,
     const RunStepRequest& req, RunStepResponse* resp) {
   if (!pss->collect_costs && !pss->collect_timeline) return;
 
   // Out-of-band logging data is collected now, during post-processing.
   if (pss->collect_timeline) {
-    SetRPCLogging(env, false);
-    RetrieveLogs(env, step_id, &pss->rpc_stats);
+    SetRPCLogging(false);
+    RetrieveLogs(step_id, &pss->rpc_stats);
   }
   for (size_t i = 0; i < partitions_.size(); ++i) {
     const StepStats& ss = pss->step_stats[i];
@@ -894,16 +894,20 @@ void MasterSession::ReffedClientGraph::DeregisterPartitions() {
     if (!part.graph_handle.empty()) {
       Call* c = new Call;
       c->req.set_graph_handle(part.graph_handle);
+      // NOTE(mrry): We must capture `worker_cache_` since `this`
+      // could be deleted before the callback is called.
+      WorkerCacheInterface* worker_cache = worker_cache_;
+      const string name = part.name;
       WorkerInterface* w = part.worker;
       CHECK_NOTNULL(w);
-      auto cb = [c, w](const Status& s) {
+      auto cb = [worker_cache, c, name, w](const Status& s) {
         if (!s.ok()) {
           // This error is potentially benign, so we don't log at the
           // error level.
           LOG(INFO) << "DeregisterGraph error: " << s;
         }
         delete c;
-        delete w;
+        worker_cache->ReleaseWorker(name, w);
       };
       w->DeregisterGraphAsync(&c->req, &c->resp, cb);
     }
@@ -1098,7 +1102,8 @@ Status MasterSession::StartStep(const BuildGraphOptions& opts, int64* count,
       TF_RETURN_IF_ERROR(execution_state_->BuildGraph(opts, &client_graph));
       auto entry = new ReffedClientGraph(
           handle_, opts, std::move(client_graph), session_opts_,
-          stats_publisher_factory_, execution_state_.get(), is_partial);
+          stats_publisher_factory_, execution_state_.get(), is_partial,
+          env_->worker_cache);
       iter = m->insert({hash, entry}).first;
       VLOG(1) << "Preparing to execute new graph";
     }
@@ -1225,8 +1230,8 @@ Status MasterSession::BuildAndRegisterPartitions(ReffedClientGraph* rcg) {
     popts.need_to_record_start_times = true;
   }
 
-  TF_RETURN_IF_ERROR(rcg->RegisterPartitions(
-      env_, popts, rcg->client_graph()->flib_def->ToProto()));
+  TF_RETURN_IF_ERROR(
+      rcg->RegisterPartitions(popts, rcg->client_graph()->flib_def->ToProto()));
 
   return Status::OK();
 }
@@ -1318,7 +1323,7 @@ Status MasterSession::DoPartialRun(CallOptions* opts, const RunStepRequest* req,
     run_state->pss.end_micros = Env::Default()->NowMicros();
     // Schedule post-processing and cleanup to be done asynchronously.
     rcg->Ref();
-    rcg->ProcessStats(env_, run_state->step_id, &run_state->pss,
+    rcg->ProcessStats(run_state->step_id, &run_state->pss,
                       execution_state_.get(), run_state->ph.get(), *req, resp);
     rcg->CleanupPartitionsAsync(
         run_state->step_id, [this, rcg, prun_handle](const Status& s) {
@@ -1385,7 +1390,7 @@ Status MasterSession::DoRunWithLocalExecution(CallOptions* opts,
 
   // Schedule post-processing and cleanup to be done asynchronously.
   rcg->Ref();
-  rcg->ProcessStats(env_, step_id, &pss, execution_state_.get(), ph.get(), *req,
+  rcg->ProcessStats(step_id, &pss, execution_state_.get(), ph.get(), *req,
                     resp);
   rcg->CleanupPartitionsAsync(step_id, [rcg](const Status& s) {
     if (!s.ok()) {

@@ -437,13 +437,15 @@ void Master::CleanupWorkers(const ResetRequest& reset) {
     std::vector<CleanupAllResponse> resp(num_workers);
     int c = 0;
     for (int i = 0; i < num_workers; ++i) {
-      auto worker = env_->worker_cache->CreateWorker(worker_names[i]);
+      const string& worker_name = worker_names[i];
+      auto worker = env_->worker_cache->CreateWorker(worker_name);
       if (worker) {
-        worker->CleanupAllAsync(&req, &resp[i], [&n, worker, c](Status s) {
-          TF_CHECK_OK(s);
-          delete worker;
-          n[c].Notify();
-        });
+        worker->CleanupAllAsync(
+            &req, &resp[i], [this, &n, worker_name, worker, c](Status s) {
+              TF_CHECK_OK(s);
+              env_->worker_cache->ReleaseWorker(worker_name, worker);
+              n[c].Notify();
+            });
       } else {
         n[c].Notify();
       }
