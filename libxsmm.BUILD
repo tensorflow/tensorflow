@@ -63,12 +63,16 @@ cc_library(
         "src/libxsmm_sync.c",
         "src/libxsmm_perf.c",
         "src/libxsmm_dnn.c",
+        "src/libxsmm_dnn_handle.c",
         "src/libxsmm_dnn_convolution_forward.c",
+        "src/libxsmm_dnn_convolution_backward.c",
+        "src/libxsmm_dnn_convolution_weight_update.c",
         "src/libxsmm_cpuid_x86.c",
     ] + glob([
         "src/generator_*.c",
     ]),
     hdrs = [
+        "include/libxsmm_cpuid.h",
         "include/libxsmm_dnn.h",
         "include/libxsmm_frontend.h",
         "include/libxsmm_generator.h",
@@ -77,17 +81,11 @@ cc_library(
         "include/libxsmm_sync.h",
         "include/libxsmm_timer.h",
         "include/libxsmm_typedefs.h",
-        "src/libxsmm_gemm_diff.c",
-        "src/libxsmm_cpuid_x86.c",
-        "src/libxsmm_hash.c",
         # Generated:
         "include/libxsmm.h",
         "include/libxsmm_config.h",
 	"include/libxsmm_dispatch.h",
-    ] + glob([
-        "src/*.h",
-        "src/template/*.c",
-    ]),
+    ],
     copts = [
         "-mavx",  # JIT does not work without avx anyway, and this silences some CRC32 warnings.
         "-Wno-vla",  # Libxsmm convolutions heavily use VLA.
@@ -97,7 +95,7 @@ cc_library(
         "LIBXSMM_CPUID_X86_NOINLINE",
         "__BLAS=0",
     ],
-    includes = ["include"],
+    includes = ["include", "src", "src/template/"],
     linkopts = ["-ldl"],
     visibility = ["//visibility:public"],
 )
