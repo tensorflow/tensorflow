@@ -17,11 +17,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.new_http_archive(
       name = "eigen_archive",
       urls = [
-          "http://bazel-mirror.storage.googleapis.com/bitbucket.org/eigen/eigen/get/feceaf0a7311.tar.gz",
-          "https://bitbucket.org/eigen/eigen/get/feceaf0a7311.tar.gz",
+          "http://bazel-mirror.storage.googleapis.com/bitbucket.org/benoitsteiner/opencl/get/9b260ecee216.tar.gz",
+          "https://bitbucket.org/benoitsteiner/opencl/get/9b260ecee216.tar.gz",
       ],
-      sha256 = "5f7f73fe5f612f8fbf0261a29b3b7061ba43583d02adb5e744a98e125bf26d93",
-      strip_prefix = "eigen-eigen-feceaf0a7311",
+      sha256 = "2e398f1f5d0a1544b358adf27f6c20e3ca19877d3dabf5e78d772c92243cae5c",
+      strip_prefix = "benoitsteiner-opencl-9b260ecee216",
       build_file = str(Label("//:eigen.BUILD")),
   )
 
