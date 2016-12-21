@@ -77,8 +77,8 @@ void NewRemoteDevices(Env* env, WorkerCacheInterface* worker_cache,
         remote_devices.push_back(d);
       }
     }
-    done(s, &remote_devices);
     worker_cache->ReleaseWorker(worker_name, wi);
+    done(s, &remote_devices);
     delete call;
   };
   wi->GetStatusAsync(&call->req, &call->resp, cb);
