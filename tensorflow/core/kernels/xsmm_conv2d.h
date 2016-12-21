@@ -19,8 +19,8 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/util/tensor_format.h"
 
-#include "libxsmm_archive/include/libxsmm.h"
-#include "libxsmm_archive/include/libxsmm_dnn.h"
+#include "include/libxsmm.h"
+#include "include/libxsmm_dnn.h"
 
 namespace tensorflow {
 
