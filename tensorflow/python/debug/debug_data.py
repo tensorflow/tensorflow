@@ -94,8 +94,23 @@ def _is_graph_file(file_name):
   return file_name.startswith("_tfdbg_graph_")
 
 
-def _get_node_name(element_name):
+def get_node_name(element_name):
   return element_name.split(":")[0] if ":" in element_name else element_name
+
+
+def get_output_slot(element_name):
+  """Get the output slot number from the name of a graph element.
+
+  If element_name is a node name without output slot at the end, 0 will be
+  assumed.
+
+  Args:
+    element_name: (str) name of the graph element in question.
+
+  Returns:
+    (int) output slot number.
+  """
+  return int(element_name.split(":")[-1]) if ":" in element_name else 0
 
 
 def _get_tensor_name(node_name, output_slot):
@@ -641,7 +656,7 @@ class DebugDumpDir(object):
     for node in self._node_inputs:
       inputs = self._node_inputs[node]
       for inp in inputs:
-        inp = _get_node_name(inp)
+        inp = get_node_name(inp)
         if inp not in self._node_recipients:
           self._node_recipients[inp] = []
         self._node_recipients[inp].append(node)
@@ -684,12 +699,16 @@ class DebugDumpDir(object):
       pending_inputs[node] = []
       inputs = self._node_inputs[node]
       for inp in inputs:
-        inp = _get_node_name(inp)
-        if inp in self._debug_watches:
-          pending_inputs[node].append(inp)
+        inp_node = get_node_name(inp)
+        inp_output_slot = get_output_slot(inp)
+        if (inp_node in self._debug_watches and
+            inp_output_slot in self._debug_watches[inp_node] and
+            (inp_node, inp_output_slot) not in pending_inputs[node]):
+          pending_inputs[node].append((inp_node, inp_output_slot))
 
     for datum in self._dump_tensor_data:
       node = datum.node_name
+      slot = datum.output_slot
       if pending_inputs[node]:
         raise ValueError("Causality violated in timing relations of debug "
                          "dumps: %s (%d): "
@@ -699,13 +718,14 @@ class DebugDumpDir(object):
       recipients = self._node_recipients[node]
       for recipient in recipients:
         recipient_pending_inputs = pending_inputs[recipient]
-        if node in recipient_pending_inputs:
+        if (node, slot) in recipient_pending_inputs:
           if self.node_op_type(recipient) == "Merge":
             # If this is a Merge op, we automatically clear the list because
             # a Merge node only requires one of its two inputs.
             del recipient_pending_inputs[:]
           else:
-            del recipient_pending_inputs[recipient_pending_inputs.index(node)]
+            del recipient_pending_inputs[
+                recipient_pending_inputs.index((node, slot))]
 
   def loaded_partition_graphs(self):
     """Test whether partition graphs have been loaded."""
@@ -829,7 +849,7 @@ class DebugDumpDir(object):
       Args:
         node: Name of the node, as a str.
       """
-      node = _get_node_name(node)
+      node = get_node_name(node)
 
       # Stop the tracing at a Merge op, as it is generally impossible to infer
       # outside the runtime which input to the Merge op is alive.

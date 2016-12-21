@@ -35,8 +35,6 @@ class TensorResponse;
 // Interface for talking with the TensorFlow Worker service.
 class WorkerInterface {
  public:
-  virtual ~WorkerInterface() {}
-
   virtual void GetStatusAsync(const GetStatusRequest* request,
                               GetStatusResponse* response,
                               StatusCallback done) = 0;
@@ -104,6 +102,12 @@ class WorkerInterface {
   Status Tracing(const TracingRequest* request, TracingResponse* response) {
     return CallAndWait(&ME::TracingAsync, request, response);
   }
+
+ protected:
+  // Instances of WorkerInterface must be deleted by a call to
+  // WorkerCacheInterface::ReleaseWorker().
+  virtual ~WorkerInterface() {}
+  friend class WorkerCacheInterface;
 
  private:
   typedef WorkerInterface ME;

@@ -1512,7 +1512,10 @@ py_library(
 
 py_library(
     name = "metrics",
-    srcs = ["ops/metrics.py"],
+    srcs = [
+        "ops/metrics.py",
+        "ops/metrics_impl.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",

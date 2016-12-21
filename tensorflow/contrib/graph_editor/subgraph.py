@@ -561,10 +561,19 @@ class SubGraphView(object):
     return subgraph_id
 
   def consumers(self):
-    """Return a Python set of all the consumers of this subgraph view."""
+    """Return a Python set of all the consumers of this subgraph view.
+
+    A consumer of a subgraph view is a tf.Operation which is a consumer
+    of one of the output tensors and is not in the subgraph.
+
+    Returns:
+      A list of `tf.Operation` which are the consumers of this subgraph view.
+    """
+    ops_set = frozenset(self._ops)
     res = []
     for output in self._output_ts:
-      util.concatenate_unique(res, output.consumers())
+      consumers = [op for op in output.consumers() if op not in ops_set]
+      util.concatenate_unique(res, consumers)
     return res
 
 

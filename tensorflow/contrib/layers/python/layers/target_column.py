@@ -194,9 +194,9 @@ class _TargetColumn(object):
   def _weighted_loss(self, loss, weight_tensor):
     """Returns cumulative weighted loss."""
     unweighted_loss = array_ops.reshape(loss, shape=(-1,))
-    weighted_loss = math_ops.mul(unweighted_loss,
-                                 array_ops.reshape(
-                                     weight_tensor, shape=(-1,)))
+    weighted_loss = math_ops.multiply(unweighted_loss,
+                                      array_ops.reshape(
+                                          weight_tensor, shape=(-1,)))
     return weighted_loss
 
   def training_loss(self, logits, target, features, name="training_loss"):

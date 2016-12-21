@@ -52,7 +52,9 @@ from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
-import tensorflow.python.ops.tensor_array_grad  # pylint: disable=unused-import
+# pylint: disable=unused-import
+import tensorflow.python.ops.tensor_array_grad
+# pylint: enable=unused-import
 from tensorflow.python.platform import test
 from tensorflow.python.training import adam
 from tensorflow.python.training import gradient_descent
@@ -155,7 +157,7 @@ class ControlFlowTest(test.TestCase):
       enter_data = control_flow_ops.enter(data, "foo_1", False)
       five = constant_op.constant(5)
       enter_five = control_flow_ops.enter(five, "foo_1", False)
-      mul_op = math_ops.mul(enter_data, enter_five)
+      mul_op = math_ops.multiply(enter_data, enter_five)
       exit_op = control_flow_ops.exit(mul_op)
 
       result = exit_op.eval()
@@ -220,7 +222,7 @@ class ControlFlowTest(test.TestCase):
       one = constant_op.constant(1)
       add_op = math_ops.add(switch_op[0], one)
       five = constant_op.constant(5)
-      mul_op = math_ops.mul(switch_op[1], five)
+      mul_op = math_ops.multiply(switch_op[1], five)
       merge_op = control_flow_ops.merge([add_op, mul_op])[0]
 
       result = merge_op.eval()
@@ -307,7 +309,7 @@ class ControlFlowTest(test.TestCase):
   def testCondBool(self):
     values = constant_op.constant(10)
     fn1 = lambda: math_ops.add(values, 1)
-    fn2 = lambda: math_ops.sub(values, 1)
+    fn2 = lambda: math_ops.subtract(values, 1)
     with self.assertRaisesRegexp(TypeError, "must not be a Python bool"):
       _ = control_flow_ops.cond(False, fn1, fn2)
 
@@ -328,7 +330,7 @@ class ControlFlowTest(test.TestCase):
       x = ops.IndexedSlices(values, indices)
       pred = math_ops.less(1, 2)
       fn1 = lambda: ops.IndexedSlices(math_ops.add(x.values, 1), indices)
-      fn2 = lambda: ops.IndexedSlices(math_ops.sub(x.values, 1), indices)
+      fn2 = lambda: ops.IndexedSlices(math_ops.subtract(x.values, 1), indices)
       r = control_flow_ops.cond(pred, fn1, fn2)
 
       val = r.values.eval()
@@ -374,7 +376,7 @@ class ControlFlowTest(test.TestCase):
       x = ops.IndexedSlices(values, i_32)
       pred = math_ops.less(1, 2)
       fn1 = lambda: ops.IndexedSlices(math_ops.add(x.values, 1), i_32)
-      fn2 = lambda: ops.IndexedSlices(math_ops.sub(x.values, 1), i_64)
+      fn2 = lambda: ops.IndexedSlices(math_ops.subtract(x.values, 1), i_64)
       r = control_flow_ops.cond(pred, fn1, fn2)
 
       val = r.values.eval()
@@ -392,7 +394,7 @@ class ControlFlowTest(test.TestCase):
       x = constant_op.constant(10.0)
       pred = math_ops.less(1.0, 2.0)
       fn1 = lambda: math_ops.add(v, 1.0)
-      fn2 = lambda: math_ops.sub(x, 1.0)
+      fn2 = lambda: math_ops.subtract(x, 1.0)
       r = control_flow_ops.cond(pred, fn1, fn2)
 
       for op in x.graph.get_operations():
@@ -404,7 +406,7 @@ class ControlFlowTest(test.TestCase):
       x = constant_op.constant(10)
       pred = math_ops.less(1, 2)
       fn1 = lambda: math_ops.add(x, 1)
-      fn2 = lambda: math_ops.sub(x, 1)
+      fn2 = lambda: math_ops.subtract(x, 1)
       r = control_flow_ops.cond(pred, fn1, fn2)
 
       result = r.eval()
@@ -420,7 +422,7 @@ class ControlFlowTest(test.TestCase):
       x = constant_op.constant(10)
       r = control_flow_ops.cond(
           math_ops.less(1, 0), lambda: math_ops.add(x, 1),
-          lambda: math_ops.sub(x, 1))
+          lambda: math_ops.subtract(x, 1))
       result = r.eval()
     self.assertTrue(check_op_order(x.graph))
     self.assertAllEqual(9, result)
@@ -430,7 +432,7 @@ class ControlFlowTest(test.TestCase):
       x = constant_op.constant(10)
       pred = math_ops.less(1, 2)
       fn1 = lambda: math_ops.add(x, 1)
-      fn2 = lambda: math_ops.sub(x, 1)
+      fn2 = lambda: math_ops.subtract(x, 1)
       fn3 = lambda: math_ops.add(control_flow_ops.cond(pred, fn1, fn2), 1)
       r = control_flow_ops.cond(pred, fn3, fn2)
 
@@ -595,8 +597,8 @@ class ControlFlowTest(test.TestCase):
       c = array_ops.placeholder(dtypes.int32, shape=[])
       x = constant_op.constant(10.0)
       pred = math_ops.less(c, 2)
-      fn1 = lambda: math_ops.mul(x, 42.0)
-      fn2 = lambda: math_ops.mul(x, 3.0)
+      fn1 = lambda: math_ops.multiply(x, 42.0)
+      fn2 = lambda: math_ops.multiply(x, 3.0)
       r = control_flow_ops.cond(pred, fn1, fn2)
 
       grad = gradients_impl.gradients(r, [x])[0]
@@ -1080,7 +1082,7 @@ class ControlFlowTest(test.TestCase):
 
       r = control_flow_ops.cond(p,
                                 lambda: control_flow_ops.while_loop(c, b, [n]),
-                                lambda: math_ops.mul(n, 2.0))
+                                lambda: math_ops.multiply(n, 2.0))
       r1 = gradients_impl.gradients(r, [n])
       self.assertEqual(10, sess.run(r, {p: True}))
       self.assertEqual([1.0], sess.run(r1, {p: True}))
@@ -1100,7 +1102,8 @@ class ControlFlowTest(test.TestCase):
       # pylint: disable=undefined-variable
       # for OSS build
       b = lambda x: control_flow_ops.cond(
-          constant_op.constant(True), lambda: math_ops.add(x, one), lambda: math_ops.sub(x, one))
+          constant_op.constant(True),
+          lambda: math_ops.add(x, one), lambda: math_ops.subtract(x, one))
       # pylint: enable=undefined-variable
       r = control_flow_ops.while_loop(c, b, [i])
       self.assertAllEqual(10, r.eval())
@@ -1119,8 +1122,9 @@ class ControlFlowTest(test.TestCase):
       c = lambda x: math_ops.less(x, 10)
       # pylint: disable=undefined-variable
       # for OSS build
-      b = lambda x: control_flow_ops.cond(math_ops.less(0, 1), lambda: math_ops.add(x, 1),
-                            lambda: math_ops.sub(x, 1))
+      b = lambda x: control_flow_ops.cond(math_ops.less(0, 1),
+                                          lambda: math_ops.add(x, 1),
+                                          lambda: math_ops.subtract(x, 1))
       # pylint: enable=undefined-variable
       r = control_flow_ops.while_loop(c, b, [n])
       self.assertAllEqual(10, r.eval())
@@ -1326,7 +1330,7 @@ class ControlFlowTest(test.TestCase):
         return math_ops.greater(i, 0)
 
       def b1(i, x):
-        ni = math_ops.sub(i, 1)
+        ni = math_ops.subtract(i, 1)
         nx = x + gen_data_flow_ops._stack_pop(s, dtypes.int32)
         return [ni, nx]
 
@@ -1388,7 +1392,7 @@ class ControlFlowTest(test.TestCase):
       v = constant_op.constant([2.0], name="v")
       n = constant_op.constant(0, name="n")
       c = lambda i, v: math_ops.less(i, 5)
-      b = lambda i, v: [i + 1, math_ops.mul(x, v)]
+      b = lambda i, v: [i + 1, math_ops.multiply(x, v)]
       r = control_flow_ops.while_loop(
           c,
           b, [n, v], [n.get_shape(), tensor_shape.unknown_shape()],
@@ -1403,7 +1407,7 @@ class ControlFlowTest(test.TestCase):
       x = array_ops.placeholder(dtypes.float32, [None])
       v0 = constant_op.constant([2.0, 2.0], name="v")
       c = lambda v: constant_op.constant(False)
-      b = lambda v: math_ops.mul(v, x)
+      b = lambda v: math_ops.multiply(v, x)
       r = control_flow_ops.while_loop(c, b, [v0])
       y = math_ops.square(x)
 
@@ -1416,7 +1420,7 @@ class ControlFlowTest(test.TestCase):
       c = lambda v: math_ops.less(v, 100.0)
       b = math_ops.square
       r = control_flow_ops.while_loop(c, b, [v], parallel_iterations=1)
-      r = math_ops.mul(r, r)
+      r = math_ops.multiply(r, r)
 
       r = gradients_impl.gradients(r, v)[0]
       self.assertEqual(524288.0, r.eval())
@@ -1437,7 +1441,7 @@ class ControlFlowTest(test.TestCase):
       a = constant_op.constant(3.0, name="a")
       v = constant_op.constant(2.0, name="v")
       c = lambda v: math_ops.less(v, 100.0)
-      b = lambda v: math_ops.mul(v, a)
+      b = lambda v: math_ops.multiply(v, a)
       r = control_flow_ops.while_loop(c, b, [v], parallel_iterations=p_iters)
 
       grad_a, grad_v = gradients_impl.gradients(r, [a, v])
@@ -1457,13 +1461,13 @@ class ControlFlowTest(test.TestCase):
       def inner_loop(s):
         z = constant_op.constant(0)
         c = lambda i, x: math_ops.less(i, 4)
-        b = lambda i, x: [math_ops.add(i, 1), math_ops.mul(x, 2.0)]
+        b = lambda i, x: [math_ops.add(i, 1), math_ops.multiply(x, 2.0)]
         return control_flow_ops.while_loop(c, b, [z, s])
       c = lambda x: math_ops.less(x, 128.0)
       def b(x):
         return control_flow_ops.cond(constant_op.constant(True),
                                      lambda: math_ops.square(inner_loop(x)[1]),
-                                     lambda: math_ops.mul(x, 2.0))
+                                     lambda: math_ops.multiply(x, 2.0))
       r = control_flow_ops.while_loop(c, b, [v])
       r = gradients_impl.gradients(r, v)[0]
       self.assertAllClose(512.0, r.eval())
@@ -1477,7 +1481,7 @@ class ControlFlowTest(test.TestCase):
       a = variables.Variable(3.0)
       v = constant_op.constant(2.0, name="v")
       c = lambda v: math_ops.less(v, 100.0)
-      b = lambda v: math_ops.mul(v, a)
+      b = lambda v: math_ops.multiply(v, a)
       r = control_flow_ops.while_loop(c, b, [v], parallel_iterations=1)
 
       r = gradients_impl.gradients(r, a)
@@ -1569,7 +1573,7 @@ class ControlFlowTest(test.TestCase):
 
       def b(x, y):
         y1 = math_ops.add(x, y)
-        x1 = math_ops.mul(x, y1)
+        x1 = math_ops.multiply(x, y1)
         return x1, y1
 
       rx, ry = control_flow_ops.while_loop(c, b, [x, y], parallel_iterations=1)
@@ -1591,7 +1595,7 @@ class ControlFlowTest(test.TestCase):
       c = lambda i, x: math_ops.less(i, 10)
 
       def b(i, x):
-        x = math_ops.mul(x, 2.0)
+        x = math_ops.multiply(x, 2.0)
         i = math_ops.add(i, 1)
         return i, x
 
@@ -1658,7 +1662,7 @@ class ControlFlowTest(test.TestCase):
       c = lambda i, x: math_ops.less(i, 5)
 
       def b(i, x):
-        x = math_ops.mul(x, 2.0)
+        x = math_ops.multiply(x, 2.0)
         i = math_ops.add(i, 1)
         return i, x
 
@@ -1676,7 +1680,7 @@ class ControlFlowTest(test.TestCase):
       c = lambda i, x: math_ops.less(i, 5)
 
       def b(i, x):
-        x = math_ops.mul(x, 2.0)
+        x = math_ops.multiply(x, 2.0)
         i = math_ops.add(i, 1)
         return i, x
 
@@ -1714,11 +1718,11 @@ class ControlFlowTest(test.TestCase):
 
       def inner_loop(s):
         c = lambda x: math_ops.less(x, 4.0)
-        b = lambda x: math_ops.mul(x, 2.0)
+        b = lambda x: math_ops.multiply(x, 2.0)
         return control_flow_ops.while_loop(c, b, [s])
 
       c = lambda x: math_ops.less(x, 2.0)
-      b = lambda x: math_ops.mul(inner_loop(x), 2.0)
+      b = lambda x: math_ops.multiply(inner_loop(x), 2.0)
       r = control_flow_ops.while_loop(c, b, [v])
 
       r = gradients_impl.gradients(r, v)[0]
@@ -1735,13 +1739,13 @@ class ControlFlowTest(test.TestCase):
       def inner_loop1(s):
         z = constant_op.constant(0)
         c = lambda i, x: math_ops.less(i, 4)
-        b = lambda i, x: [math_ops.add(i, 1), math_ops.mul(x, 2.0)]
+        b = lambda i, x: [math_ops.add(i, 1), math_ops.multiply(x, 2.0)]
         return control_flow_ops.while_loop(c, b, [z, s])
 
       def inner_loop2(s):
         z = constant_op.constant(0)
         c = lambda i, x: math_ops.less(i, 4)
-        b = lambda i, x: [math_ops.add(i, 1), math_ops.mul(x, 2.0)]
+        b = lambda i, x: [math_ops.add(i, 1), math_ops.multiply(x, 2.0)]
         return control_flow_ops.while_loop(c, b, [z, s])
 
       c = lambda x: math_ops.less(x, 128.0)
@@ -1758,17 +1762,17 @@ class ControlFlowTest(test.TestCase):
       def inner_loop1(s):
         z = constant_op.constant(0)
         c = lambda i, x: math_ops.less(i, 4)
-        b = lambda i, x: [math_ops.add(i, 1), math_ops.mul(x, 2.0)]
+        b = lambda i, x: [math_ops.add(i, 1), math_ops.multiply(x, 2.0)]
         return control_flow_ops.while_loop(c, b, [z, s])
 
       def inner_loop2(s):
         z = constant_op.constant(0)
         c = lambda i, x: math_ops.less(i, 4)
-        b = lambda i, x: [math_ops.add(i, 1), math_ops.mul(x, 2.0)]
+        b = lambda i, x: [math_ops.add(i, 1), math_ops.multiply(x, 2.0)]
         return control_flow_ops.while_loop(c, b, [z, s])
 
       c = lambda x: math_ops.less(x, 128.0)
-      b = lambda x: math_ops.mul(inner_loop1(x)[1], inner_loop2(x)[1])
+      b = lambda x: math_ops.multiply(inner_loop1(x)[1], inner_loop2(x)[1])
       r = control_flow_ops.while_loop(c, b, [v])
 
       r = gradients_impl.gradients(r, v)[0]
@@ -1805,8 +1809,8 @@ class ControlFlowTest(test.TestCase):
       # pylint: disable=undefined-variable
       # for OSS build
       b = lambda x: control_flow_ops.cond(constant_op.constant(True),
-                            lambda: math_ops.square(x),
-                            lambda: math_ops.sub(x, one))
+                                          lambda: math_ops.square(x),
+                                          lambda: math_ops.subtract(x, one))
       # pylint: enable=undefined-variable
       r = control_flow_ops.while_loop(c, b, [v])
       r = gradients_impl.gradients(r, v)[0]
@@ -1825,8 +1829,8 @@ class ControlFlowTest(test.TestCase):
       # pylint: disable=undefined-variable
       # for OSS build
       b = lambda x: control_flow_ops.cond(constant_op.constant(True),
-                                     lambda: math_ops.square(x),
-                                     lambda: math_ops.sub(x, one))
+                                          lambda: math_ops.square(x),
+                                          lambda: math_ops.subtract(x, one))
       # pylint: enable=undefined-variable
       r = control_flow_ops.while_loop(c, b, [v])
       r = gradients_impl.gradients(r, v)[0]
@@ -1940,7 +1944,7 @@ class ControlFlowTest(test.TestCase):
 
       def b(i, x):
         data = constant_op.constant([1.0, 2.0, 3.0])
-        data = math_ops.mul(data, params_1)
+        data = math_ops.multiply(data, params_1)
         x1 = x + gradients_impl.gradients(data, params)[0]
         return i + 1, x1
 
@@ -1959,7 +1963,8 @@ class ControlFlowTest(test.TestCase):
 
       def b(i, y):
         return [
-            i + 1, functional_ops.map_fn(lambda x: math_ops.mul(x, param), y)
+            i + 1,
+            functional_ops.map_fn(lambda x: math_ops.multiply(x, param), y)
         ]
 
       r = control_flow_ops.while_loop(c, b, [n0, y0], parallel_iterations=1)
