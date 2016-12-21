@@ -8,10 +8,12 @@ exports_files(["LICENSE"])
 #  precision: SP & DP
 #  ilp64: no
 #  prefetch: 1 (auto)
-libxsmm_interface_arguments = "0 0 1"
+libxsmm_interface_arguments = "0 1"
 
 # Arguments to ./scripts/libxsmm_config.py, see that file for detailed description.
+libxsmm_config_arguments = "0 0 64 1 0 1 1 0 1 1"
 #  ilp64: no
+#  big: no
 #  offload: no
 #  alignment [b]
 #  prefetch: 1 (auto)
@@ -21,7 +23,7 @@ libxsmm_interface_arguments = "0 0 1"
 #  flags
 #  alpha = 1
 #  beta = 1
-libxsmm_config_arguments = "0 0 64 1 0 1 1 0 1 1"
+libxsmm_config_arguments = "0 0 0 64 1 0 1 1 0 1 1"
 
 # Arguments to ./scripts/libxsmm_dispatch.py, see that file for detailed description.
 #  (dummy argument)
