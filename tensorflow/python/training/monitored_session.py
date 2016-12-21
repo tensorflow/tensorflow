@@ -327,8 +327,12 @@ class SessionCreator(object):
 class ChiefSessionCreator(SessionCreator):
   """Creates a tf.Session  for a chief."""
 
-  def __init__(self, scaffold=None, master='', config=None,
-               checkpoint_dir=None):
+  def __init__(self,
+               scaffold=None,
+               master='',
+               config=None,
+               checkpoint_dir=None,
+               checkpoint_filename_with_path=None):
     """Initializes a chief session creator.
 
     Args:
@@ -338,8 +342,10 @@ class ChiefSessionCreator(SessionCreator):
       config: `ConfigProto` proto used to configure the session.
       checkpoint_dir: A string.  Optional path to a directory where to restore
         variables.
+      checkpoint_filename_with_path: Full file name path to the checkpoint file.
     """
     self._checkpoint_dir = checkpoint_dir
+    self._checkpoint_filename_with_path = checkpoint_filename_with_path
     self._scaffold = scaffold or Scaffold()
     self._session_manager = None
     self._master = master
@@ -362,6 +368,7 @@ class ChiefSessionCreator(SessionCreator):
         self._master,
         saver=self._scaffold.saver,
         checkpoint_dir=self._checkpoint_dir,
+        checkpoint_filename_with_path=self._checkpoint_filename_with_path,
         config=self._config,
         init_op=self._scaffold.init_op,
         init_feed_dict=self._scaffold.init_feed_dict,
