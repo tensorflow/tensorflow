@@ -28,6 +28,10 @@ libxsmm_config_arguments = "0 0 0 64 1 0 1 1 0 1 1"
 #  (dummy argument)
 libxsmm_dispatch_arguments = "0"
 
+# Arguments to ./scripts/libxsmm_dispatch.py, see that file for detailed description.
+#  (dummy argument)
+libxsmm_dispatch_arguments = "0"
+
 genrule(
     name = "libxsmm_headers",
     srcs = [
