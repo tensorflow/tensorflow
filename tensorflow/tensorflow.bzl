@@ -124,7 +124,8 @@ def tf_copts():
   return (["-DEIGEN_AVOID_STL_ARRAY",
            "-Iexternal/gemmlowp",
            "-Wno-sign-compare",
-           "-fno-exceptions"] +
+           "-fno-exceptions",
+           "-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK",] +
           if_cuda(["-DGOOGLE_CUDA=1"]) +
           if_android_arm(["-mfpu=neon"]) +
           if_x86(["-msse4.1"]) +
@@ -133,7 +134,6 @@ def tf_copts():
                   "-std=c++11",
                   "-DTF_LEAN_BINARY",
                   "-O2",
-                  "-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK",
               ],
               "//tensorflow:darwin": [],
               "//tensorflow:windows": [
