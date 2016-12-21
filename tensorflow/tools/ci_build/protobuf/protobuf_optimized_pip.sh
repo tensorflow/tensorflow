@@ -15,7 +15,7 @@
 # ==============================================================================
 
 PROTOBUF_VERSION="3.1.0"
-PYTHON_BIN_PATH=${PYTHON_BIN_PATH:-python}
+PYTHON_BIN=${PYTHON_BIN:-python}
 DIR=${PWD}/protobuf
 
 set -ex
@@ -30,4 +30,4 @@ CXXFLAGS="-fPIC -g -O2" ./configure
 make -j8
 export PROTOC=$DIR/src/protoc
 cd python
-$PYTHON_BIN_PATH setup.py bdist_wheel --cpp_implementation --compile_static_extension
+$PYTHON_BIN setup.py bdist_wheel --cpp_implementation --compile_static_extension
