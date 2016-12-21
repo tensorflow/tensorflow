@@ -9,7 +9,6 @@ licenses(["notice"])  # Apache 2.0
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_kernel_library",
     "tf_cc_test",
 )
 
@@ -29,24 +28,6 @@ filegroup(
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
-)
-
-tf_kernel_library(
-    name = "bigquery_reader_ops",
-    srcs = [
-        "bigquery_reader_ops.cc",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":bigquery_table_accessor",
-        ":bigquery_table_partition_proto_cc",
-        "//tensorflow/core:cloud_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/kernels:reader_base",
-    ],
 )
 
 cc_library(

@@ -83,7 +83,6 @@ from tensorflow.python.ops.standard_ops import *
 
 # Bring in subpackages.
 from tensorflow.python.layers import layers
-from tensorflow.python.ops import cloud
 from tensorflow.python.ops import metrics
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import sdca_ops as sdca
@@ -214,7 +213,6 @@ _allowed_symbols.extend([
 _allowed_symbols.extend([
     'app',
     'compat',
-    'cloud',
     'errors',
     'flags',
     'gfile',
