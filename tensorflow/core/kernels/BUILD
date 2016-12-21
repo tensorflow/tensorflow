@@ -42,12 +42,23 @@ load(
 )
 
 config_setting(
-    # Add "--define tensorflow_xsmm=1" to your build command to use libxsmm
-    # for convolutions (and possibly more in the future). You will also need
+    # Add "--define tensorflow_xsmm=1" to your build command to use libxsmm for
+    # convolutions (and possibly more in the future). You will also need
     # appropriate -mavx*, as required by specific op you use.
     name = "xsmm",
     values = {
         "define": "tensorflow_xsmm=1",
+    },
+)
+
+config_setting(
+    # Add "--define tensorflow_xsmm_backward=1" to your build command to use
+    # libxsmm for backward convolutions (and possibly more in the future). You
+    # will also need appropriate -mavx*, as required by specific op you use.
+    name = "xsmm_backward",
+    values = {
+        "define": "tensorflow_xsmm=1",
+        "define": "tensorflow_xsmm_backward=1",
     },
 )
 
@@ -2292,6 +2303,9 @@ tf_kernel_library(
     }),
     defines = select({
         ":xsmm": ["TENSORFLOW_USE_LIBXSMM"],
+        "//conditions:default": [],
+    }) + select({
+        ":xsmm_backward": ["TENSORFLOW_USE_LIBXSMM_BACKWARD"],
         "//conditions:default": [],
     }),
     prefix = "conv_ops",
