@@ -555,7 +555,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
 
     assert_node_attribute_lines(self, out, node_name, "Identity",
                                 self._main_device,
-                                [("Variable", "simple_mul_add/u")], [],
+                                [("VariableV2", "simple_mul_add/u")], [],
                                 [("MatMul", "simple_mul_add/matmul")], [])
     check_main_menu(
         self,
@@ -949,14 +949,14 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
     assert_node_attribute_lines(
         self, out, "control_deps/ctrl_dep_y", "Identity",
         self._main_device, [("Add", "control_deps/y")],
-        [("Variable", "control_deps/x")],
+        [("VariableV2", "control_deps/x")],
         [("Mul", "control_deps/z")],
         [("Identity", "control_deps/ctrl_dep_z")])
 
     # Call node info on a node with control recipients.
     out = self._registry.dispatch_command("ni", ["control_deps/x"])
 
-    assert_node_attribute_lines(self, out, "control_deps/x", "Variable",
+    assert_node_attribute_lines(self, out, "control_deps/x", "VariableV2",
                                 self._main_device, [], [],
                                 [("Identity", "control_deps/x/read")],
                                 [("Identity", "control_deps/ctrl_dep_y"),
@@ -1024,7 +1024,7 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
         "Inputs to node \"%s\" (Depth limit = 1, " % node_name +
         "control inputs included):", "|- (1) [Mul] control_deps/z", "|  |- ...",
         "|- (1) (Ctrl) [Identity] control_deps/ctrl_dep_y", "|  |- ...",
-        "|- (1) (Ctrl) [Variable] control_deps/x", "", "Legend:",
+        "|- (1) (Ctrl) [VariableV2] control_deps/x", "", "Legend:",
         "  (d): recursion depth = d.", "  (Ctrl): Control input.",
         "  [Op]: Input node has op type Op."
     ], out.lines)
@@ -1045,22 +1045,22 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
         "Inputs to node \"%s\" (Depth limit = 20, " % node_name +
         "control inputs included):", "|- (1) [Mul] control_deps/z",
         "|  |- (2) [Identity] control_deps/x/read",
-        "|  |  |- (3) [Variable] control_deps/x",
+        "|  |  |- (3) [VariableV2] control_deps/x",
         "|  |- (2) [Identity] control_deps/ctrl_dep_y",
         "|     |- (3) [Add] control_deps/y",
         "|     |  |- (4) [Identity] control_deps/x/read",
-        "|     |  |  |- (5) [Variable] control_deps/x",
+        "|     |  |  |- (5) [VariableV2] control_deps/x",
         "|     |  |- (4) [Identity] control_deps/x/read",
-        "|     |     |- (5) [Variable] control_deps/x",
-        "|     |- (3) (Ctrl) [Variable] control_deps/x",
+        "|     |     |- (5) [VariableV2] control_deps/x",
+        "|     |- (3) (Ctrl) [VariableV2] control_deps/x",
         "|- (1) (Ctrl) [Identity] control_deps/ctrl_dep_y",
         "|  |- (2) [Add] control_deps/y",
         "|  |  |- (3) [Identity] control_deps/x/read",
-        "|  |  |  |- (4) [Variable] control_deps/x",
+        "|  |  |  |- (4) [VariableV2] control_deps/x",
         "|  |  |- (3) [Identity] control_deps/x/read",
-        "|  |     |- (4) [Variable] control_deps/x",
-        "|  |- (2) (Ctrl) [Variable] control_deps/x",
-        "|- (1) (Ctrl) [Variable] control_deps/x", "", "Legend:",
+        "|  |     |- (4) [VariableV2] control_deps/x",
+        "|  |- (2) (Ctrl) [VariableV2] control_deps/x",
+        "|- (1) (Ctrl) [VariableV2] control_deps/x", "", "Legend:",
         "  (d): recursion depth = d.", "  (Ctrl): Control input.",
         "  [Op]: Input node has op type Op."
     ], out.lines)
@@ -1085,8 +1085,8 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
         "|  |- (2) [Identity] control_deps/ctrl_dep_y", "|     |- ...",
         "|- (1) (Ctrl) [Identity] control_deps/ctrl_dep_y",
         "|  |- (2) [Add] control_deps/y", "|  |  |- ...",
-        "|  |- (2) (Ctrl) [Variable] control_deps/x",
-        "|- (1) (Ctrl) [Variable] control_deps/x", "", "Legend:",
+        "|  |- (2) (Ctrl) [VariableV2] control_deps/x",
+        "|- (1) (Ctrl) [VariableV2] control_deps/x", "", "Legend:",
         "  (d): recursion depth = d.", "  (Ctrl): Control input.",
         "  [Op]: Input node has op type Op."
     ], out.lines)

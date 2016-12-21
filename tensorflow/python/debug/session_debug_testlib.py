@@ -459,7 +459,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     self.assertFalse(dump.node_exists(u_name + "/read" + "/foo"))
 
     # Test node_op_type().
-    self.assertEqual("Variable", dump.node_op_type(u_name))
+    self.assertEqual("VariableV2", dump.node_op_type(u_name))
     self.assertEqual("Identity", dump.node_op_type(u_name + "/read"))
     self.assertEqual("Add", dump.node_op_type(v_name))
     self.assertEqual("Add", dump.node_op_type(w_name))
