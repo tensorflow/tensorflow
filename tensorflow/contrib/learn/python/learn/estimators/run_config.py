@@ -84,7 +84,7 @@ class ClusterConfig(object):
                  'worker': ['host3:2222', 'host4:2222', 'host5:2222']}
       os.environ['TF_CONFIG'] = json.dumps({
           {'cluster': cluster,
-           'task_id': {'type': 'worker', 'index': 1}}})
+           'task': {'type': 'worker', 'index': 1}}})
       config = ClusterConfig()
       assert config.master == 'host4:2222'
       assert config.task_id == 1
