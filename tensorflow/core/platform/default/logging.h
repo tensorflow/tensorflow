@@ -43,7 +43,7 @@ class LogMessage : public std::basic_ostringstream<char> {
 
   // Returns the minimum log level for VLOG statements.
   // E.g., if MinVLogLevel() is 2, then VLOG(2) statements will produce output,
-  // but VLOG(3) will not. Defaults to 0
+  // but VLOG(3) will not. Defaults to 0.
   static int64 MinVLogLevel();
 
  protected:
