@@ -92,21 +92,16 @@ int64 LogLevelStrToInt(const char* tf_env_var_val) {
 
   // Ideally we would use env_var / safe_strto64, but it is
   // hard to use here without pulling in a lot of dependencies,
-  // so we do a poor-man's parsing.
+  // so we use std:istringstream instead
   string min_log_level(tf_env_var_val);
-  if (min_log_level == "1") {
-    // Maps to WARNING
-    return 1;
-  } else if (min_log_level == "2") {
-    // Maps to ERROR
-    return 2;
-  } else if (min_log_level == "3") {
-    // Maps to FATAL
-    return 3;
-  } else {
-    // Maps to INFO (the default).
-    return 0;
+  std::istringstream ss(min_log_level);
+  int64 level;
+  if (!(ss >> level)) {
+    // Invalid vlog level setting, set level to default (0)
+    level = 0;
   }
+
+  return level;
 }
 
 int64 MinLogLevelFromEnv() {
