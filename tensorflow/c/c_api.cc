@@ -82,6 +82,12 @@ extern "C" {
 const char* TF_Version() { return TF_VERSION_STRING; }
 
 // --------------------------------------------------------------------------
+size_t TF_DataTypeSize(TF_DataType dt) {
+  return static_cast<size_t>(
+      tensorflow::DataTypeSize(static_cast<DataType>(dt)));
+}
+
+// --------------------------------------------------------------------------
 struct TF_Status {
   Status status;
 };
