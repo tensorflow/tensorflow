@@ -6962,56 +6962,6 @@ op {
   }
 }
 op {
-  name: "BigQueryReader"
-  output_arg {
-    name: "reader_handle"
-    type: DT_STRING
-    is_ref: true
-  }
-  attr {
-    name: "container"
-    type: "string"
-    default_value {
-      s: ""
-    }
-  }
-  attr {
-    name: "shared_name"
-    type: "string"
-    default_value {
-      s: ""
-    }
-  }
-  attr {
-    name: "project_id"
-    type: "string"
-  }
-  attr {
-    name: "dataset_id"
-    type: "string"
-  }
-  attr {
-    name: "table_id"
-    type: "string"
-  }
-  attr {
-    name: "columns"
-    type: "list(string)"
-  }
-  attr {
-    name: "timestamp_millis"
-    type: "int"
-  }
-  attr {
-    name: "test_end_point"
-    type: "string"
-    default_value {
-      s: ""
-    }
-  }
-  is_stateful: true
-}
-op {
   name: "Bitcast"
   input_arg {
     name: "input"
@@ -13145,44 +13095,6 @@ op {
         type: DT_INT32
         type: DT_INT64
       }
-    }
-  }
-}
-op {
-  name: "GenerateBigQueryReaderPartitions"
-  output_arg {
-    name: "partitions"
-    type: DT_STRING
-  }
-  attr {
-    name: "project_id"
-    type: "string"
-  }
-  attr {
-    name: "dataset_id"
-    type: "string"
-  }
-  attr {
-    name: "table_id"
-    type: "string"
-  }
-  attr {
-    name: "columns"
-    type: "list(string)"
-  }
-  attr {
-    name: "timestamp_millis"
-    type: "int"
-  }
-  attr {
-    name: "num_partitions"
-    type: "int"
-  }
-  attr {
-    name: "test_end_point"
-    type: "string"
-    default_value {
-      s: ""
     }
   }
 }
