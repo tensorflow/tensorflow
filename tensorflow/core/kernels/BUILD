@@ -2349,7 +2349,6 @@ tf_kernel_library(
         "//tensorflow/core:nn_ops_op_lib",
     ] + select({
         ":xsmm": [
-            "@libxsmm_archive//:libxsmm_headers",
             "@libxsmm_archive//:xsmm_avx",
         ],
         "//conditions:default": [],
