@@ -451,11 +451,22 @@ cc_library(
 )
 
 cc_library(
+    name = "cloud_ops_op_lib",
+    srcs = ["ops/cloud_ops.cc"],
+    copts = tf_copts(),
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+    deps = [":framework"],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "ops",
     visibility = ["//visibility:public"],
     deps = [
         ":array_ops_op_lib",
         ":candidate_sampling_ops_op_lib",
+        ":cloud_ops_op_lib",
         ":control_flow_ops_op_lib",
         ":ctc_ops_op_lib",
         ":data_flow_ops_op_lib",
@@ -602,6 +613,7 @@ cc_library(
         "//tensorflow/core/kernels:string",
         "//tensorflow/core/kernels:training_ops",
         "//tensorflow/core/kernels:word2vec_kernels",
+        "//tensorflow/core/kernels/cloud:bigquery_reader_ops",
     ] + if_not_windows([
         "//tensorflow/core/kernels:fact_op",
         "//tensorflow/core/kernels:array_not_windows",

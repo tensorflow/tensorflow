@@ -35,6 +35,7 @@ py_library(
         ":check_ops",
         ":client",
         ":client_testlib",
+        ":cloud_ops",
         ":confusion_matrix",
         ":control_flow_ops",
         ":errors",
@@ -790,6 +791,11 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "cloud_ops_gen",
+    require_shape_functions = True,
+)
+
+tf_gen_op_wrapper_private_py(
     name = "control_flow_ops_gen",
     require_shape_functions = True,
     deps = [
@@ -1432,6 +1438,19 @@ py_library(
 )
 
 py_library(
+    name = "cloud_ops",
+    srcs = [
+        "ops/cloud/__init__.py",
+        "ops/cloud/bigquery_reader_ops.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":cloud_ops_gen",
+        ":framework",
+    ],
+)
+
+py_library(
     name = "script_ops",
     srcs = ["ops/script_ops.py"],
     srcs_version = "PY2AND3",
@@ -2025,6 +2044,17 @@ cuda_py_test(
         ":math_ops",
         ":session",
         ":special_math_ops",
+    ],
+)
+
+tf_py_test(
+    name = "bigquery_reader_ops_test",
+    size = "small",
+    srcs = ["ops/cloud/bigquery_reader_ops_test.py"],
+    additional_deps = [
+        ":cloud_ops",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:util",
     ],
 )
 
