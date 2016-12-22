@@ -260,6 +260,7 @@ TF_CALL_complex128(HANDLE_TYPE_NAME_GPU);
 
 #ifdef TENSORFLOW_USE_SYCL
 TF_CALL_float(HANDLE_TYPE_NAME_SYCL);
+TF_CALL_double(HANDLE_TYPE_NAME_SYCL);
 #endif // TENSORFLOW_USE_SYCL
 
 #undef HANDLE_TYPE_NAME_CPU
@@ -602,6 +603,12 @@ REGISTER_KERNEL_BUILDER(Name("TileGrad")
 REGISTER_KERNEL_BUILDER(Name("Tile")
                             .Device(DEVICE_SYCL)
                             .TypeConstraint<float>("T")
+                            .TypeConstraint<int32>("Tmultiples")
+                            .HostMemory("multiples"),
+                        TileOp<SYCLDevice>);
+REGISTER_KERNEL_BUILDER(Name("Tile")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<double>("T")
                             .TypeConstraint<int32>("Tmultiples")
                             .HostMemory("multiples"),
                         TileOp<SYCLDevice>);
