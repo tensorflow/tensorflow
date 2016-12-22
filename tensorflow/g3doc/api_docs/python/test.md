@@ -976,6 +976,13 @@ Returns whether TensorFlow can access a GPU.
   True iff a gpu device of the requested kind is available.
 
 
+- - -
+
+### `tf.test.gpu_device_name()` {#gpu_device_name}
+
+Returns the name of a GPU device if available or the empty string.
+
+
 
 ## Gradient checking
 

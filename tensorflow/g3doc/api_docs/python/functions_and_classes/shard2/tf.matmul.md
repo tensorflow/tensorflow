@@ -33,13 +33,15 @@ c = tf.matmul(a, b) => [[58 64]
 
 
 # 3-D tensor `a`
-a = tf.constant(np.arange(1,13), shape=[2, 2, 3]) => [[[ 1.  2.  3.]
+a = tf.constant(np.arange(1, 13, dtype=np.int32),
+                shape=[2, 2, 3])                  => [[[ 1.  2.  3.]
                                                        [ 4.  5.  6.]],
                                                       [[ 7.  8.  9.]
                                                        [10. 11. 12.]]]
 
 # 3-D tensor `b`
-b = tf.constant(np.arange(13,25), shape=[2, 3, 2]) => [[[13. 14.]
+b = tf.constant(np.arange(13, 25, dtype=np.int32),
+                shape=[2, 3, 2])                   => [[[13. 14.]
                                                         [15. 16.]
                                                         [17. 18.]],
                                                        [[19. 20.]

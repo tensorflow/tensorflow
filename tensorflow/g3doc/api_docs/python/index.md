@@ -691,6 +691,7 @@
   * [`compute_gradient`](../../api_docs/python/test.md#compute_gradient)
   * [`compute_gradient_error`](../../api_docs/python/test.md#compute_gradient_error)
   * [`get_temp_dir`](../../api_docs/python/test.md#get_temp_dir)
+  * [`gpu_device_name`](../../api_docs/python/test.md#gpu_device_name)
   * [`is_built_with_cuda`](../../api_docs/python/test.md#is_built_with_cuda)
   * [`is_gpu_available`](../../api_docs/python/test.md#is_gpu_available)
   * [`main`](../../api_docs/python/test.md#main)
