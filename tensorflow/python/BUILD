@@ -944,7 +944,10 @@ py_library(
 
 py_library(
     name = "sets",
-    srcs = ["ops/sets.py"],
+    srcs = [
+        "ops/sets.py",
+        "ops/sets_impl.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":framework",
