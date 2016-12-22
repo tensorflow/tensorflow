@@ -1726,8 +1726,9 @@ Compute set difference of elements in last dimension of `a` and `b`.
 
 All but the last dimension of `a` and `b` must match.
 
-##### Example:
+Example:
 
+```python
   a = [
     [
       [
@@ -1764,6 +1765,7 @@ All but the last dimension of `a` and `b` must match.
       ],
     ],
   ]
+```
 
 ##### Args:
 
@@ -1791,8 +1793,9 @@ Compute set intersection of elements in last dimension of `a` and `b`.
 
 All but the last dimension of `a` and `b` must match.
 
-##### Example:
+Example:
 
+```python
   a = [
     [
       [
@@ -1829,6 +1832,7 @@ All but the last dimension of `a` and `b` must match.
       ],
     ],
   ]
+```
 
 ##### Args:
 
@@ -1880,8 +1884,9 @@ Compute set union of elements in last dimension of `a` and `b`.
 
 All but the last dimension of `a` and `b` must match.
 
-##### Example:
+Example:
 
+```python
   a = [
     [
       [
@@ -1918,6 +1923,7 @@ All but the last dimension of `a` and `b` must match.
       ],
     ],
   ]
+```
 
 ##### Args:
 
