@@ -896,6 +896,7 @@ cuda_py_test(
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:session",
+        "//tensorflow/python:test_ops",
         "//tensorflow/python:variables",
     ],
 )

@@ -1065,7 +1065,7 @@ class Conv2DTranspose(Conv2D):
 
     def get_deconv_dim(dim_size, stride_size, kernel_size, padding):
       if isinstance(dim_size, ops.Tensor):
-        dim_size = math_ops.mul(dim_size, stride_size)
+        dim_size = math_ops.multiply(dim_size, stride_size)
       elif dim_size is not None:
         dim_size *= stride_size
 

@@ -970,6 +970,14 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_headers_lib",
+    hdrs = [
+        "common_runtime/gpu/gpu_event_mgr.h",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "cuda",
     visibility = ["//visibility:public"],
     deps = [

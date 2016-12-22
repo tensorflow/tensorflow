@@ -18,7 +18,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-REGISTER_KERNEL_BUILDER(Name("Reshape").Device(DEVICE_CPU).HostMemory("shape"),
+REGISTER_KERNEL_BUILDER(Name("Reshape")
+                            .Device(DEVICE_CPU)
+                            .HostMemory("shape")
+                            .TypeConstraint<int32>("Tshape"),
                         ReshapeOp);
 
 #define REGISTER_GPU_KERNEL(type)                               \

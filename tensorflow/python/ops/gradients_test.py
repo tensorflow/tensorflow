@@ -474,7 +474,7 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
       c = constant_op.constant(np_val)
       c_sparse = math_ops._as_indexed_slices(c)
       self.assertAllEqual(np_val.shape, c_sparse.dense_shape.eval())
-      c_dense = math_ops.mul(c_sparse, 1.0)
+      c_dense = math_ops.multiply(c_sparse, 1.0)
       self.assertAllClose(np_val, c_dense.eval())
 
   def testIndexedSlicesToTensorList(self):
@@ -502,7 +502,7 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
           c_sparse.values,
           math_ops.cast(c_sparse.indices, dtypes.int64), c_sparse.dense_shape)
       self.assertAllEqual(np_val.shape, c_sparse.dense_shape.eval())
-      c_dense = math_ops.mul(c_sparse, 1.0)
+      c_dense = math_ops.multiply(c_sparse, 1.0)
       self.assertAllClose(np_val, c_dense.eval())
 
   def testWarnings(self):
@@ -511,7 +511,7 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
         array_ops.placeholder(dtypes.float32),
         array_ops.placeholder(dtypes.int32), constant([4, 4, 4, 4]))
     with warnings.catch_warnings(record=True) as w:
-      math_ops.mul(c_sparse, 1.0)
+      math_ops.multiply(c_sparse, 1.0)
     self.assertEqual(0, len(w))
 
     # Greater than or equal to the threshold: warning.
@@ -519,7 +519,7 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
         array_ops.placeholder(dtypes.float32),
         array_ops.placeholder(dtypes.int32), constant([100, 100, 100, 100]))
     with warnings.catch_warnings(record=True) as w:
-      math_ops.mul(c_sparse, 1.0)
+      math_ops.multiply(c_sparse, 1.0)
     self.assertEqual(1, len(w))
     self.assertTrue(
         "with 100000000 elements. This may consume a large amount of memory." in
@@ -531,7 +531,7 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
         array_ops.placeholder(dtypes.int32),
         array_ops.placeholder(dtypes.int32))
     with warnings.catch_warnings(record=True) as w:
-      math_ops.mul(c_sparse, 1.0)
+      math_ops.multiply(c_sparse, 1.0)
     self.assertEqual(1, len(w))
     self.assertTrue(
         "of unknown shape. This may consume a large amount of memory." in

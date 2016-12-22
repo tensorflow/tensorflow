@@ -248,7 +248,7 @@ class StackPushOp : public AsyncOpKernel {
     }
 
     // Execute synchronously if not swapped.
-    OP_REQUIRES_OK(ctx, stack->Push({tensor, alloc_attrs, false}));
+    OP_REQUIRES_OK_ASYNC(ctx, stack->Push({tensor, alloc_attrs, false}), done);
     ctx->set_output(0, tensor);
     done();
   }

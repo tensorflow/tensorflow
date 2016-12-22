@@ -829,6 +829,13 @@ class MonitoredSessionTest(test.TestCase):
           session_creator=monitored_session.ChiefSessionCreator(
               scaffold, checkpoint_dir=logdir)) as session:
         self.assertEqual(2, session.run(gstep))
+      # A restart will find the checkpoint and recover automatically.
+      with monitored_session.MonitoredSession(
+          session_creator=monitored_session.ChiefSessionCreator(
+              scaffold,
+              checkpoint_filename_with_path=saver_lib.latest_checkpoint(
+                  logdir))) as session:
+        self.assertEqual(2, session.run(gstep))
 
   def test_retry_on_aborted_error(self):
     # Tests that we silently retry on abort.  Note that this does not test
