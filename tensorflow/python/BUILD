@@ -944,7 +944,10 @@ py_library(
 
 py_library(
     name = "sets",
-    srcs = ["ops/sets.py"],
+    srcs = [
+        "ops/sets.py",
+        "ops/sets_impl.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":framework",
@@ -1411,7 +1414,6 @@ py_library(
 py_library(
     name = "rnn_cell",
     srcs = [
-        "ops/rnn_cell.py",
         "ops/rnn_cell_impl.py",
     ],
     srcs_version = "PY2AND3",
@@ -1512,7 +1514,10 @@ py_library(
 
 py_library(
     name = "metrics",
-    srcs = ["ops/metrics.py"],
+    srcs = [
+        "ops/metrics.py",
+        "ops/metrics_impl.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",

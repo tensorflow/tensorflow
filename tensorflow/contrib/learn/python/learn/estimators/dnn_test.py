@@ -507,7 +507,8 @@ class DNNClassifierTest(tf.test.TestCase):
       # For the case of binary classification, the 2nd column of "predictions"
       # denotes the model predictions.
       labels = tf.to_float(labels)
-      predictions = tf.slice(predictions, [0, 1], [-1, 1])
+      predictions = tf.strided_slice(
+          predictions, [0, 1], [-1, 2], end_mask=1)
       labels = math_ops.cast(labels, predictions.dtype)
       return tf.reduce_sum(tf.multiply(predictions, labels))
 

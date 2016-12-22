@@ -3853,7 +3853,7 @@ op {
     }
   }
   summary: "Computes the complex absolute value of a tensor."
-  description: "Given a tensor `x` of complex numbers, this operation returns a tensor of type\n`float` or `double` that is the absolute value of each element in `x`. All\nelements in `x` must be complex numbers of the form \\\\(a + bj\\\\). The absolute\nvalue is computed as \\\\( \\sqrt{a^2 + b^2}\\\\).\n\nFor example:\n\n```\n# tensor \'x\' is [[-2.25 + 4.75j], [-3.25 + 5.75j]]\ntf.complex_abs(x) ==> [5.25594902, 6.60492229]\n```"
+  description: "Given a tensor `x` of complex numbers, this operation returns a tensor of type\n`float` or `double` that is the absolute value of each element in `x`. All\nelements in `x` must be complex numbers of the form \\\\(a + bj\\\\). The absolute\nvalue is computed as \\\\( \\sqrt{a^2 + b^2}\\\\)."
 }
 op {
   name: "ComputeAccidentalHits"
@@ -22454,19 +22454,16 @@ op {
   name: "Variable"
   output_arg {
     name: "ref"
-    description: "A reference to the variable tensor."
     type_attr: "dtype"
     is_ref: true
   }
   attr {
     name: "shape"
     type: "shape"
-    description: "The shape of the variable tensor, where scalar shapes are\ntreated as undefined."
   }
   attr {
     name: "dtype"
     type: "type"
-    description: "The type of elements in the variable tensor."
   }
   attr {
     name: "container"
@@ -22474,7 +22471,6 @@ op {
     default_value {
       s: ""
     }
-    description: "If non-empty, this variable is placed in the given container.\nOtherwise, a default container is used."
   }
   attr {
     name: "shared_name"
@@ -22482,10 +22478,8 @@ op {
     default_value {
       s: ""
     }
-    description: "If non-empty, this variable is named in the given bucket\nwith this shared_name. Otherwise, the node name is used instead."
   }
-  summary: "Holds state in the form of a tensor that persists across steps."
-  description: "Outputs a ref to the tensor state so it may be read or modified.\nTODO(zhifengc/mrry): Adds a pointer to a more detail document\nabout sharing states in tensorflow."
+  summary: "Use VariableV2 instead."
   is_stateful: true
 }
 op {

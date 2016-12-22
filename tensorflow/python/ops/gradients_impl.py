@@ -823,7 +823,7 @@ def _hessian_vector_product(ys, xs, v):
 
   assert len(grads) == length
   elemwise_products = [
-      math_ops.mul(grad_elem, array_ops.stop_gradient(v_elem))
+      math_ops.multiply(grad_elem, array_ops.stop_gradient(v_elem))
       for grad_elem, v_elem in zip(grads, v) if grad_elem is not None
   ]
 

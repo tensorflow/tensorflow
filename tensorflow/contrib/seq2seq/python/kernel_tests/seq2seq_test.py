@@ -61,13 +61,13 @@ class Seq2SeqTest(tf.test.TestCase):
 
           # Define model
           encoder_outputs, encoder_state = tf.nn.dynamic_rnn(
-              cell=tf.nn.rnn_cell.GRUCell(encoder_hidden_size), inputs=inputs,
+              cell=tf.contrib.rnn.GRUCell(encoder_hidden_size), inputs=inputs,
               dtype=tf.float32, time_major=True, scope=scope)
 
 
         with tf.variable_scope("decoder") as scope:
           # Train decoder
-          decoder_cell = tf.nn.rnn_cell.GRUCell(decoder_hidden_size)
+          decoder_cell = tf.contrib.rnn.GRUCell(decoder_hidden_size)
           decoder_fn_train = tf.contrib.seq2seq.simple_decoder_fn_train(
               encoder_state=encoder_state)
           decoder_outputs_train, decoder_state_train = (

@@ -49,10 +49,10 @@ class EditTest(tf.test.TestCase):
     """Test for ge.detach."""
     sgv = ge.sgv(self.c.op, self.a.op)
     control_outputs = ge.util.ControlOutputs(self.graph)
-    ge.detach(sgv, control_inputs=control_outputs)
+    ge.detach(sgv, control_ios=control_outputs)
     # make sure the detached graph is as expected.
     self.assertTrue(ge.matcher("^foo/c$")
-                    .input_ops("geph__a_0", "geph__b_0")(self.c.op))
+                    .input_ops("a", "geph__b_0")(self.c.op))
 
   def test_connect(self):
     """Test for ge.connect."""

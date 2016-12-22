@@ -1214,7 +1214,7 @@ def boolean_mask(tensor, mask, name="boolean_mask"):
     leading_size = gen_math_ops._prod(shape(tensor)[:ndims_mask], [0])
     tensor = reshape(
         tensor,
-        concat(0, [[leading_size], shape(tensor)[ndims_mask:]]))
+        concat_v2([[leading_size], shape(tensor)[ndims_mask:]], 0))
     first_dim = shape_tensor[:ndims_mask].num_elements()
     tensor.set_shape(
         tensor_shape.as_shape([first_dim])
@@ -1288,7 +1288,7 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
   tf.shape(split1) ==> [5, 15]
   tf.shape(split2) ==> [5, 11]
   # Split 'value' into 3 tensors along dimension 1
-  split0, split1, split2 = tf.split(value=1, num_or_size_splits=3, axis=value)
+  split0, split1, split2 = tf.split(value, num_or_size_splits=3, axis=1)
   tf.shape(split0) ==> [5, 10]
   ```
 
@@ -1438,8 +1438,8 @@ def matrix_transpose(a, name="matrix_transpose"):
       perm = list(range(ndims - 2)) + [ndims - 1] + [ndims - 2]
     else:
       a_rank = rank(a)
-      perm = concat(
-          0, (gen_math_ops._range(0, a_rank - 2, 1), [a_rank - 1, a_rank - 2]))
+      perm = concat_v2(
+          (gen_math_ops._range(0, a_rank - 2, 1), [a_rank - 1, a_rank - 2]), 0)
 
     return transpose(a, perm=perm)
 # pylint: enable=invalid-name

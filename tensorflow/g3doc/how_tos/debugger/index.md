@@ -327,6 +327,9 @@ stuck. Success!
 
 ## Other Features of the tfdbg Diagnostics CLI:
 
+*   Some commands provide clickable links and menu items in their output. These
+    are underlined. They can help you navigate to the desired information more
+    quickly.
 *   Navigation through command history using the Up and Down arrow keys.
     Prefix-based navigation is also supported.
 *   Tab completion of commands and some command arguments.
@@ -443,5 +446,13 @@ bazel build -c opt tensorflow/python/debug:debug_errors && \
 # Debugging uninitialized variable.
 bazel build -c opt tensorflow/python/debug:debug_errors && \
     bazel-bin/tensorflow/python/debug/debug_errors \
-    -error uninitialized_variable --debug
+        -error uninitialized_variable --debug
 ```
+
+**Q**: _Why can't I select text in the tfdbg CLI?_
+
+**A**: This is because the tfdbg CLI enables mouse events in the terminal by
+       default. This [mouse-mask](https://linux.die.net/man/3/mousemask) mode
+       overrides default terminal interactions, including text selection. You
+       can re-enable text selection by using the command `mouse off` or
+       `m off`.

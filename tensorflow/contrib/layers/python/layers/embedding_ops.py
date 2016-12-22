@@ -304,7 +304,7 @@ def _sampled_scattered_embedding_lookup(
           math_ops.range(0, dimension), 0), array_ops.shape(values))
     else:
       dimension = array_ops.shape(sampled_candidates)[
-          math_ops.sub(array_ops.rank(sampled_candidates), 1)]
+          math_ops.subtract(array_ops.rank(sampled_candidates), 1)]
       sampled_candidates_shape = array_ops.shape(sampled_candidates)
       dimension_tensor = array_ops.reshape(dimension, shape=[1,])
       expected_shape = array_ops.concat_v2([values_shape, dimension_tensor], 0)
@@ -539,7 +539,7 @@ def _sampled_scattered_embedding_lookup_sparse(params,
           array_ops.constant([-1., 1.]), sp_values.values, dimension=dimension,
           sampled_candidates=sampled_candidates, hash_key=hash_key,
           name="signs_lookup")
-      embeddings = math_ops.mul(signs, embeddings, name="signs_hash")
+      embeddings = math_ops.multiply(signs, embeddings, name="signs_hash")
 
     if segment_ids.dtype != dtypes.int32:
       segment_ids = math_ops.cast(segment_ids, dtypes.int32)
