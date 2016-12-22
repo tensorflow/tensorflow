@@ -863,7 +863,7 @@ class TensorArrayTest(test.TestCase):
       def b(i, acc):
         x1 = control_flow_ops.cond(
             math_ops.equal(i, 0), lambda: x,
-            lambda: math_ops.mul(acc.read(i - 1), 2.0))
+            lambda: math_ops.multiply(acc.read(i - 1), 2.0))
         return i + 1, acc.write(i, x1)
 
       i1, acc1 = control_flow_ops.while_loop(c, b, [i, acc])

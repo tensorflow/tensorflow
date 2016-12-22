@@ -1335,13 +1335,19 @@ class Estimator(BaseEstimator):
       chief_hooks = []
       if (self._config.save_checkpoints_secs or
           self._config.save_checkpoints_steps):
-        chief_hooks = [
-            basic_session_run_hooks.CheckpointSaverHook(
-                self._model_dir,
-                save_secs=self._config.save_checkpoints_secs,
-                save_steps=self._config.save_checkpoints_steps,
-                scaffold=scaffold)
-        ]
+        saver_hook_exists = any([
+            isinstance(h, basic_session_run_hooks.CheckpointSaverHook)
+            for h in (all_hooks + model_fn_ops.training_hooks + chief_hooks +
+                      model_fn_ops.training_chief_hooks)
+        ])
+        if not saver_hook_exists:
+          chief_hooks = [
+              basic_session_run_hooks.CheckpointSaverHook(
+                  self._model_dir,
+                  save_secs=self._config.save_checkpoints_secs,
+                  save_steps=self._config.save_checkpoints_steps,
+                  scaffold=scaffold)
+          ]
       with monitored_session.MonitoredTrainingSession(
           master=self._config.master,
           is_chief=self._config.is_chief,

@@ -361,9 +361,9 @@ def add_gradients_summaries(grads_and_vars):
       else:
         grad_values = grad
       summaries.append(
-          summary.histogram(var.op.name + ':gradient', grad_values))
+          summary.histogram(var.op.name + '/gradient', grad_values))
       summaries.append(
-          summary.histogram(var.op.name + ':gradient_norm',
+          summary.histogram(var.op.name + '/gradient_norm',
                             clip_ops.global_norm([grad_values])))
     else:
       logging.info('Var %s has no gradient', var.op.name)

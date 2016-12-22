@@ -37,20 +37,20 @@ class NormOpTest(test_lib.TestCase):
 
   def testBadOrder(self):
     matrix = [[0., 1.], [2., 3.]]
-    for order_ in "foo", -7, -1.1, 0:
+    for ord_ in "foo", -7, -1.1, 0:
       with self.assertRaisesRegexp(ValueError,
-                                   "'order' must be a supported vector norm"):
-        linalg_ops.norm(matrix, order="fro")
+                                   "'ord' must be a supported vector norm"):
+        linalg_ops.norm(matrix, ord="fro")
 
-    for order_ in "foo", -7, -1.1, 0:
+    for ord_ in "foo", -7, -1.1, 0:
       with self.assertRaisesRegexp(ValueError,
-                                   "'order' must be a supported vector norm"):
-        linalg_ops.norm(matrix, order=order_, axis=-1)
+                                   "'ord' must be a supported vector norm"):
+        linalg_ops.norm(matrix, ord=ord_, axis=-1)
 
-    for order_ in 1.1, 2:
+    for ord_ in 1.1, 2:
       with self.assertRaisesRegexp(ValueError,
-                                   "'order' must be a supported matrix norm"):
-        linalg_ops.norm(matrix, order=order_, axis=[-2, -1])
+                                   "'ord' must be a supported matrix norm"):
+        linalg_ops.norm(matrix, ord=ord_, axis=[-2, -1])
 
   def testInvalidAxis(self):
     matrix = [[0., 1.], [2., 3.]]
@@ -61,42 +61,40 @@ class NormOpTest(test_lib.TestCase):
         linalg_ops.norm(matrix, axis=axis_)
 
 
-def _GetNormOpTest(dtype_, shape_, order_, axis_, keep_dims_,
-                   use_static_shape_):
+def _GetNormOpTest(dtype_, shape_, ord_, axis_, keep_dims_, use_static_shape_):
 
   def _CompareNorm(self, matrix):
-    np_norm = np.linalg.norm(
-        matrix, ord=order_, axis=axis_, keepdims=keep_dims_)
+    np_norm = np.linalg.norm(matrix, ord=ord_, axis=axis_, keepdims=keep_dims_)
     with self.test_session(use_gpu=True) as sess:
       if use_static_shape_:
         tf_matrix = constant_op.constant(matrix)
         tf_norm = linalg_ops.norm(
-            tf_matrix, order=order_, axis=axis_, keep_dims=keep_dims_)
+            tf_matrix, ord=ord_, axis=axis_, keep_dims=keep_dims_)
         tf_norm_val = sess.run(tf_norm)
       else:
         tf_matrix = array_ops.placeholder(dtype_)
         tf_norm = linalg_ops.norm(
-            tf_matrix, order=order_, axis=axis_, keep_dims=keep_dims_)
+            tf_matrix, ord=ord_, axis=axis_, keep_dims=keep_dims_)
         tf_norm_val = sess.run(tf_norm, feed_dict={tf_matrix: matrix})
     self.assertAllClose(np_norm, tf_norm_val)
 
   def Test(self):
     is_matrix_norm = (isinstance(axis_, tuple) or
                       isinstance(axis_, list)) and len(axis_) == 2
-    is_fancy_p_norm = np.isreal(order_) and np.floor(order_) != order_
-    if ((not is_matrix_norm and order_ == "fro") or
+    is_fancy_p_norm = np.isreal(ord_) and np.floor(ord_) != ord_
+    if ((not is_matrix_norm and ord_ == "fro") or
         (is_matrix_norm and is_fancy_p_norm)):
       self.skipTest("Not supported by neither numpy.linalg.norm nor tf.norm")
-    if is_matrix_norm and order_ == 2:
+    if is_matrix_norm and ord_ == 2:
       self.skipTest("Not supported by tf.norm")
-    if axis_ is None and len(shape) > 2:
+    if ord_ == 'euclidean' or (axis_ is None and len(shape) > 2):
       self.skipTest("Not supported by numpy.linalg.norm")
     matrix = np.random.randn(*shape_).astype(dtype_)
     _CompareNorm(self, matrix)
 
   return Test
 
-
+# pylint: disable=redefined-builtin
 if __name__ == "__main__":
   for use_static_shape in False, True:
     for dtype in np.float32, np.float64, np.complex64, np.complex128:
@@ -104,16 +102,16 @@ if __name__ == "__main__":
         for cols in 2, 5:
           for batch in [], [2], [2, 3]:
             shape = batch + [rows, cols]
-            for order in "fro", 0.5, 1, 2, np.inf:
+            for ord in "euclidean", "fro", 0.5, 1, 2, np.inf:
               for axis in [
                   None, (-2, -1), (-1, -2), -len(shape), 0, len(shape) - 1
               ]:
                 for keep_dims in False, True:
                   name = "%s_%s_ord_%s_axis_%s_%s_%s" % (
-                      dtype.__name__, "_".join(map(str, shape)), order, axis,
+                      dtype.__name__, "_".join(map(str, shape)), ord, axis,
                       keep_dims, use_static_shape)
                   _AddTest(NormOpTest, "Norm_" + name,
-                           _GetNormOpTest(dtype, shape, order, axis, keep_dims,
+                           _GetNormOpTest(dtype, shape, ord, axis, keep_dims,
                                           use_static_shape))
 
   test_lib.main()
