@@ -355,8 +355,8 @@ def _GatherGrad(op, grad):
 @ops.RegisterGradient("GatherNd")
 def _GatherNdGrad(op, grad):
   ref = op.inputs[0]
-  ref_shape = array_ops.shape(ref)
   indices = op.inputs[1]
+  ref_shape = array_ops.shape(ref, out_type=indices.dtype)
   ref_grad = array_ops.scatter_nd(indices, grad, ref_shape)
   return [ref_grad, None]
 
