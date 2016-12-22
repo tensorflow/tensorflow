@@ -51,6 +51,7 @@ struct EvaluateParams {
   int current_epoch;
   int32 num_split_after_samples;
   int32 min_split_samples;
+  int32 check_dominates_every_samples;
   bool need_random;
   int64 random_seed;
   std::function<bool(int, random::SimplePhilox*)> dominate_method;
@@ -116,6 +117,10 @@ void Evaluate(const EvaluateParams& params, mutex* mutex, int32 start,
       continue;
     }
 
+    if (count % params.check_dominates_every_samples != 0) {
+      continue;
+    }
+
     bool finished = params.dominate_method(accumulator, simple_philox.get());
     if (finished) {
       finished_leaves.push_back(leaf);
@@ -145,6 +150,9 @@ class FinishedNodes : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->GetAttr("dominate_method", &dominate_method_));
     OP_REQUIRES_OK(context, context->GetAttr("random_seed", &random_seed_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("check_dominates_every_samples",
+                                    &check_dominates_every_samples_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -206,6 +214,7 @@ class FinishedNodes : public OpKernel {
     params.min_split_samples = min_split_samples_;
     params.num_split_after_samples = num_split_after_samples_;
     params.need_random = false;
+    params.check_dominates_every_samples = check_dominates_every_samples_;
 
     if (regression_) {
       params.dominate_method =
@@ -283,6 +292,7 @@ class FinishedNodes : public OpKernel {
   float dominate_fraction_;
   string dominate_method_;
   int32 random_seed_;
+  int32 check_dominates_every_samples_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("FinishedNodes").Device(DEVICE_CPU),

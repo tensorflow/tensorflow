@@ -36,10 +36,10 @@ class StepperTest(test_util.TensorFlowTestCase):
     self.a = variables.Variable(2.0, name="a")
     self.b = variables.Variable(3.0, name="b")
 
-    self.c = math_ops.mul(self.a, self.b, name="c")  # Should be 6.0.
-    self.d = math_ops.mul(self.a, self.a, name="d")  # Should be 4.0.
+    self.c = math_ops.multiply(self.a, self.b, name="c")  # Should be 6.0.
+    self.d = math_ops.multiply(self.a, self.a, name="d")  # Should be 4.0.
 
-    self.e = math_ops.mul(self.d, self.c, name="e")  # Should be 24.0.
+    self.e = math_ops.multiply(self.d, self.c, name="e")  # Should be 24.0.
 
     self.f_y = constant_op.constant(0.30, name="f_y")
     self.f = math_ops.div(self.b, self.f_y, name="f")  # Should be 10.0.
@@ -47,9 +47,9 @@ class StepperTest(test_util.TensorFlowTestCase):
     # The there nodes x, y and z form a graph with "cross-links" in. I.e., x
     # and y are both direct inputs to z, but x is also a direct input to y.
     self.x = variables.Variable(2.0, name="x")  # Should be 2.0
-    self.y = math_ops.neg(self.x, name="y")  # Should be -2.0.
+    self.y = math_ops.negative(self.x, name="y")  # Should be -2.0.
 
-    self.z = math_ops.mul(self.x, self.y, name="z")  # Should be -4.0.
+    self.z = math_ops.multiply(self.x, self.y, name="z")  # Should be -4.0.
 
     self.sess = session.Session()
     self.sess.run(variables.global_variables_initializer())
@@ -565,9 +565,9 @@ class StepperBackwardRunTest(test_util.TensorFlowTestCase):
     self.a = variables.Variable(1.0, name="a")
     self.b = variables.Variable(2.0, name="b")
     self.c = variables.Variable(4.0, name="c")
-    self.d = math_ops.mul(self.a, self.b, name="d")
-    self.e = math_ops.mul(self.b, self.c, name="e")
-    self.f = math_ops.mul(self.d, self.e, name="f")
+    self.d = math_ops.multiply(self.a, self.b, name="d")
+    self.e = math_ops.multiply(self.b, self.c, name="e")
+    self.f = math_ops.multiply(self.d, self.e, name="f")
 
     # Gradient descent optimizer that minimizes g.
     gradient_descent.GradientDescentOptimizer(0.01).minimize(

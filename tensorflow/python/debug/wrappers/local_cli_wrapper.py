@@ -363,7 +363,15 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     return response
 
   def _run_info_handler(self, args, screen_info=None):
-    return self._run_info
+    output = self._run_info
+
+    # Add main menu.
+    menu = debugger_cli_common.Menu()
+    menu.append(debugger_cli_common.MenuItem("list_tensors", "lt"))
+    menu.append(debugger_cli_common.MenuItem("help", "help"))
+    output.annotations[debugger_cli_common.MAIN_MENU_KEY] = menu
+
+    return output
 
   def _run_handler(self, args, screen_info=None):
     """Command handler for "run" command during on-run-start."""

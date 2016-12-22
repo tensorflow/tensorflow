@@ -196,6 +196,36 @@ class RichTextLinesTest(test_util.TensorFlowTestCase):
         1: "shorter wavelength",
     }, screen_output_1.annotations)
 
+  def testAppendALineWithAttributeSegmentsWorks(self):
+    screen_output_1 = debugger_cli_common.RichTextLines(
+        ["Roses are red"],
+        font_attr_segs={0: [(0, 5, "red")]},
+        annotations={0: "longer wavelength"})
+
+    screen_output_1.append("Violets are blue", [(0, 7, "blue")])
+
+    self.assertEqual(["Roses are red", "Violets are blue"],
+                     screen_output_1.lines)
+    self.assertEqual({
+        0: [(0, 5, "red")],
+        1: [(0, 7, "blue")],
+    }, screen_output_1.font_attr_segs)
+
+  def testPrependALineWithAttributeSegmentsWorks(self):
+    screen_output_1 = debugger_cli_common.RichTextLines(
+        ["Roses are red"],
+        font_attr_segs={0: [(0, 5, "red")]},
+        annotations={0: "longer wavelength"})
+
+    screen_output_1.prepend("Violets are blue", font_attr_segs=[(0, 7, "blue")])
+
+    self.assertEqual(["Violets are blue", "Roses are red"],
+                     screen_output_1.lines)
+    self.assertEqual({
+        0: [(0, 7, "blue")],
+        1: [(0, 5, "red")],
+    }, screen_output_1.font_attr_segs)
+
   def testWriteToFileSucceeds(self):
     screen_output = debugger_cli_common.RichTextLines(
         ["Roses are red", "Violets are blue"],
@@ -342,7 +372,8 @@ class CommandHandlerRegistryTest(test_util.TensorFlowTestCase):
     # should be triggered.
     with self.assertRaisesRegexp(
         ValueError,
-        "Return value from command handler.*is not a RichTextLines instance"):
+        "Return value from command handler.*is not None or a RichTextLines "
+        "instance"):
       registry.dispatch_command("wrong_return", [])
 
   def testRegisterDuplicateHandlers(self):
@@ -911,6 +942,99 @@ class CommandHistoryTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(
         TypeError, "Attempt to enter non-str entry to command history"):
       self._cmd_hist.add_command(["print_tensor node_a:0"])
+
+
+class MenuNodeTest(test_util.TensorFlowTestCase):
+
+  def testCommandTypeConstructorSucceeds(self):
+    menu_node = debugger_cli_common.MenuItem("water flower", "water_flower")
+
+    self.assertEqual("water flower", menu_node.caption)
+    self.assertEqual("water_flower", menu_node.content)
+
+  def testDisableWorks(self):
+    menu_node = debugger_cli_common.MenuItem("water flower", "water_flower")
+    self.assertTrue(menu_node.is_enabled())
+
+    menu_node.disable()
+    self.assertFalse(menu_node.is_enabled())
+    menu_node.enable()
+    self.assertTrue(menu_node.is_enabled())
+
+  def testConstructAsDisabledWorks(self):
+    menu_node = debugger_cli_common.MenuItem(
+        "water flower", "water_flower", enabled=False)
+    self.assertFalse(menu_node.is_enabled())
+
+    menu_node.enable()
+    self.assertTrue(menu_node.is_enabled())
+
+
+class MenuTest(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    self.menu = debugger_cli_common.Menu()
+    self.assertEqual(0, self.menu.num_items())
+
+    self.node1 = debugger_cli_common.MenuItem("water flower", "water_flower")
+    self.node2 = debugger_cli_common.MenuItem(
+        "measure wavelength", "measure_wavelength")
+    self.menu.append(self.node1)
+    self.menu.append(self.node2)
+    self.assertEqual(2, self.menu.num_items())
+
+  def testFormatAsSingleLineWithStrItemAttrsWorks(self):
+    output = self.menu.format_as_single_line(
+        prefix="Menu: ", divider=", ", enabled_item_attrs="underline")
+    self.assertEqual(["Menu: water flower, measure wavelength, "], output.lines)
+    self.assertEqual((6, 18, [self.node1, "underline"]),
+                     output.font_attr_segs[0][0])
+    self.assertEqual((20, 38, [self.node2, "underline"]),
+                     output.font_attr_segs[0][1])
+    self.assertEqual({}, output.annotations)
+
+  def testFormatAsSingleLineWithListItemAttrsWorks(self):
+    output = self.menu.format_as_single_line(
+        prefix="Menu: ", divider=", ", enabled_item_attrs=["underline", "bold"])
+    self.assertEqual(["Menu: water flower, measure wavelength, "], output.lines)
+    self.assertEqual((6, 18, [self.node1, "underline", "bold"]),
+                     output.font_attr_segs[0][0])
+    self.assertEqual((20, 38, [self.node2, "underline", "bold"]),
+                     output.font_attr_segs[0][1])
+    self.assertEqual({}, output.annotations)
+
+  def testFormatAsSingleLineWithNoneItemAttrsWorks(self):
+    output = self.menu.format_as_single_line(prefix="Menu: ", divider=", ")
+    self.assertEqual(["Menu: water flower, measure wavelength, "], output.lines)
+    self.assertEqual((6, 18, [self.node1]), output.font_attr_segs[0][0])
+    self.assertEqual((20, 38, [self.node2]), output.font_attr_segs[0][1])
+    self.assertEqual({}, output.annotations)
+
+  def testInsertNode(self):
+    self.assertEqual(["water flower", "measure wavelength"],
+                     self.menu.captions())
+
+    node2 = debugger_cli_common.MenuItem("write poem", "write_poem")
+    self.menu.insert(1, node2)
+    self.assertEqual(["water flower", "write poem", "measure wavelength"],
+                     self.menu.captions())
+
+    output = self.menu.format_as_single_line(prefix="Menu: ", divider=", ")
+    self.assertEqual(["Menu: water flower, write poem, measure wavelength, "],
+                     output.lines)
+
+  def testFormatAsSingleLineWithDisabledNode(self):
+    node2 = debugger_cli_common.MenuItem(
+        "write poem", "write_poem", enabled=False)
+    self.menu.append(node2)
+
+    output = self.menu.format_as_single_line(
+        prefix="Menu: ", divider=", ", disabled_item_attrs="bold")
+    self.assertEqual(["Menu: water flower, measure wavelength, write poem, "],
+                     output.lines)
+    self.assertEqual((6, 18, [self.node1]), output.font_attr_segs[0][0])
+    self.assertEqual((20, 38, [self.node2]), output.font_attr_segs[0][1])
+    self.assertEqual((40, 50, ["bold"]), output.font_attr_segs[0][2])
 
 
 if __name__ == "__main__":

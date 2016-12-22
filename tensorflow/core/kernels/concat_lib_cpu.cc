@@ -35,6 +35,16 @@ struct MemCpyCopier {
     }
   }
 };
+template <>
+struct MemCpyCopier<ResourceHandle> {
+  inline void Copy(ResourceHandle* dst, const ResourceHandle* src,
+                   int input_index, size_t n) {
+    for (size_t k = 0; k < n; ++k) {
+      *dst++ = *src++;
+    }
+  }
+};
+
 }  // namespace
 
 template <typename T>
@@ -51,7 +61,7 @@ void ConcatCPU(DeviceBase* d,
       DeviceBase*,                                                             \
       const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&, \
       typename TTypes<T, 2>::Matrix* output);
-TF_CALL_POD_STRING_TYPES(REGISTER)
+TF_CALL_ALL_TYPES(REGISTER)
 REGISTER(quint8)
 REGISTER(qint8)
 REGISTER(quint16)

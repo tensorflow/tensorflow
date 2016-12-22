@@ -58,8 +58,8 @@ opt = GradientDescentOptimizer(learning_rate=0.1)
 # Note that if you want to have 2 backup replicas, you can change
 # total_num_replicas=52 and make sure this number matches how many physical
 # replicas you started in your job.
-opt = tf.SyncReplicasOptimizerV2(opt, replicas_to_aggregate=50,
-                                 total_num_replicas=50)
+opt = tf.SyncReplicasOptimizer(opt, replicas_to_aggregate=50,
+                               total_num_replicas=50)
 
 # Some models have startup_delays to help stabilize the model but when using
 # sync_replicas training, set it to 0.

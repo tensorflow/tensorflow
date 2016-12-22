@@ -28,6 +28,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
@@ -911,6 +912,18 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
       check_dtypes(dtypes.int64, dtypes.int32)
       check_dtypes(dtypes.int64, dtypes.int64)
 
+
+class ConcatSliceResourceTest(test_util.TensorFlowTestCase):
+
+  def testConcatSlice(self):
+    with self.test_session():
+      r1 = test_ops.stub_resource_handle_op(container="a", shared_name="b")
+      r2 = test_ops.stub_resource_handle_op(container="a", shared_name="c")
+      c = array_ops.stack([r1, r2])
+      s = array_ops.strided_slice(c, [1], [2])
+      test_ops.resource_create_op(s).run()
+      with self.assertRaises(errors.AlreadyExistsError):
+        test_ops.resource_create_op(r2).run()
 
 if __name__ == "__main__":
   test_lib.main()

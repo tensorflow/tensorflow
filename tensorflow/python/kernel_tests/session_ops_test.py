@@ -32,13 +32,13 @@ class SessionOpsTest(test.TestCase):
       # Return a handle.
       a = constant_op.constant(10)
       b = constant_op.constant(5)
-      c = math_ops.mul(a, b)
+      c = math_ops.multiply(a, b)
       h = session_ops.get_session_handle(c)
       h = sess.run(h)
 
       # Feed a tensor handle.
       f, x = session_ops.get_session_tensor(h.handle, dtypes.int32)
-      y = math_ops.mul(x, 10)
+      y = math_ops.multiply(x, 10)
       self.assertEqual(500, sess.run(y, feed_dict={f: h.handle}))
 
   def testHandleEval(self):
@@ -46,7 +46,7 @@ class SessionOpsTest(test.TestCase):
       # Return a handle.
       a = constant_op.constant(10)
       b = constant_op.constant(5)
-      c = math_ops.mul(a, b)
+      c = math_ops.multiply(a, b)
       h = session_ops.get_session_handle(c)
       h = sess.run(h)
 
@@ -58,9 +58,9 @@ class SessionOpsTest(test.TestCase):
       # Return a handle and a value.
       a = constant_op.constant(10)
       b = constant_op.constant(5)
-      c = math_ops.mul(a, b)
+      c = math_ops.multiply(a, b)
       h = session_ops.get_session_handle(c)
-      v = math_ops.mul(a, c)
+      v = math_ops.multiply(a, c)
       h, v = sess.run([h, v])
 
       self.assertEqual(50, h.eval())
@@ -72,16 +72,16 @@ class SessionOpsTest(test.TestCase):
       a = constant_op.constant(10)
       b = constant_op.constant(5)
       p = math_ops.less(a, b)
-      c = math_ops.mul(a, b)
+      c = math_ops.multiply(a, b)
       h = session_ops.get_session_handle(c)
       p, h = sess.run([p, h])
 
       # Run by feeding a tensor handle.
       f, x = session_ops.get_session_tensor(h.handle, dtypes.int32)
       if p:
-        y = math_ops.mul(x, 10)
+        y = math_ops.multiply(x, 10)
       else:
-        y = math_ops.mul(x, 100)
+        y = math_ops.multiply(x, 100)
       result = sess.run(y, feed_dict={f: h.handle})
 
       self.assertEqual(5000, result)
@@ -128,13 +128,13 @@ class SessionOpsTest(test.TestCase):
       # Return a handle.
       a = constant_op.constant(10)
       b = constant_op.constant(5)
-      c = math_ops.mul(a, b)
+      c = math_ops.multiply(a, b)
       h = session_ops.get_session_handle(c)
       h = sess.run(h)
 
       # Feed a tensor handle.
       f, x = session_ops.get_session_tensor(h.handle, dtypes.int32)
-      y = math_ops.mul(x, 10)
+      y = math_ops.multiply(x, 10)
       self.assertEqual(500, sess.run(y, feed_dict={f: h.handle}))
 
       # Feed another tensor handle.
@@ -149,7 +149,7 @@ class SessionOpsTest(test.TestCase):
       # Return a handle.
       a = constant_op.constant(10)
       b = constant_op.constant(5)
-      c = math_ops.mul(a, b)
+      c = math_ops.multiply(a, b)
       h = session_ops.get_session_handle(c)
       sess.run(h).delete()
 
@@ -158,7 +158,7 @@ class SessionOpsTest(test.TestCase):
       # Return a handle.
       a = constant_op.constant(10)
       b = constant_op.constant(5)
-      c = math_ops.mul(a, b)
+      c = math_ops.multiply(a, b)
       h = session_ops.get_session_handle(c)
       h = sess.run(h)
 

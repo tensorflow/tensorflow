@@ -80,6 +80,14 @@ class BaseGPUDevice : public LocalDevice {
   void ReinitializeGpuDevice(OpKernelContext* context, PerOpGpuDevice* device,
                              DeviceContext* dc, Allocator* allocator) override;
 
+  // Returns the id of this device within the native driver system; e.g., for
+  // CUDA this is the ordinal of the GPU within the system.
+  int gpu_id() const { return gpu_id_; }
+
+  // The executor that provides control for the device; e.g., for CUDA this
+  // corresponds to the cuda context.
+  gpu::StreamExecutor* executor() const { return executor_; }
+
  protected:
   Allocator* gpu_allocator_;  // not owned
   Allocator* cpu_allocator_;  // not owned

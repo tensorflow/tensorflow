@@ -233,7 +233,7 @@ class DeviceFunctionsTest(test.TestCase):
           if node.name == "variable_node":
             variable_node = node
         self.assertIsNotNone(variable_node)
-        self.assertEqual(variable_node.op, "Variable")
+        self.assertEqual(variable_node.op, "VariableV2")
 
     # Now we make sure the variable is now a constant, and that the graph still
     # produces the expected result.
