@@ -402,6 +402,52 @@ class AdjustHueBenchmark(test.Benchmark):
     self._benchmarkAdjustHue(test.gpu_device_name(), None)
 
 
+class AdjustSaturationBenchmark(test.Benchmark):
+
+  def _benchmarkAdjustSaturation(self, device, cpu_count):
+    image_shape = [299, 299, 3]
+    warmup_rounds = 100
+    benchmark_rounds = 1000
+    config = config_pb2.ConfigProto()
+    if cpu_count is not None:
+      config.inter_op_parallelism_threads = 1
+      config.intra_op_parallelism_threads = cpu_count
+    with session.Session('', graph=ops.Graph(), config=config) as sess:
+      with ops.device(device):
+        inputs = variables.Variable(
+            random_ops.random_uniform(
+                image_shape, dtype=dtypes.float32) * 255,
+            trainable=False,
+            dtype=dtypes.float32)
+        delta = constant_op.constant(0.1, dtype=dtypes.float32)
+        outputs = image_ops.adjust_saturation(inputs, delta)
+        run_op = control_flow_ops.group(outputs)
+        sess.run(variables.global_variables_initializer())
+        for i in xrange(warmup_rounds):
+          sess.run(run_op)
+        start = time.time()
+        for i in xrange(benchmark_rounds):
+          sess.run(run_op)
+    end = time.time()
+    step_time = (end - start) / benchmark_rounds
+    tag = '%s' % (cpu_count) if cpu_count is not None else '_all'
+    print('benchmarkAdjustSaturation_299_299_3_cpu%s step_time: %.2f us' %
+          (tag, step_time * 1e6))
+    self.report_benchmark(
+        name='benchmarkAdjustSaturation_299_299_3_cpu%s' % (tag),
+        iters=benchmark_rounds,
+        wall_time=step_time)
+
+  def benchmarkAdjustSaturationCpu1(self):
+    self._benchmarkAdjustSaturation('/cpu:0', 1)
+
+  def benchmarkAdjustSaturationCpuAll(self):
+    self._benchmarkAdjustSaturation('/cpu:0', None)
+
+  def benchmarkAdjustSaturationGpu(self):
+    self._benchmarkAdjustSaturation(test.gpu_device_name(), None)
+
+
 class AdjustSaturationTest(test_util.TensorFlowTestCase):
 
   def testHalfSaturation(self):
