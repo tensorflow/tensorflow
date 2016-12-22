@@ -94,7 +94,8 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
     libxsmm_dnn_transpose_filter(libxsmm_handle);
   }
 
-  const CpuWorkerThreads* worker_threads = ctx->device()->tensorflow_cpu_worker_threads();
+  const DeviceBase::CpuWorkerThreads* worker_threads =
+      ctx->device()->tensorflow_cpu_worker_threads();
   int num_threads = worker_threads->num_threads;
   BlockingCounter counter(num_threads);
   for (int i = 0; i < num_threads; ++i) {
