@@ -66,7 +66,7 @@ class MathGradTest : public ::testing::Test {
                  {"Tin", DataTypeSlice{T, T}},
                  {"Tout", DataTypeSlice{T}},
              }},
-            {{"dx"}, "Identity", {"grad:0"}, {{"T", T}}},
+            {{"dx"}, "Identity", {"grad"}, {{"T", T}}},
         });
     // Each test case will feed in "x:0" and expects to get "dx:0".
     auto gdef = test::function::GDef(
@@ -120,7 +120,7 @@ class MathGradTest : public ::testing::Test {
         {
             FDH::Const("one", 1),
             {{"dz"}, "Cast", {"one"}, {{"DstT", T}, {"SrcT", DT_INT32}}},
-            {{"grad"},
+            {{"grad0", "grad1"},
              "SymbolicGradient",
              {"x", "y", "dz"},
              {
@@ -128,8 +128,8 @@ class MathGradTest : public ::testing::Test {
                  {"Tin", DataTypeSlice{T, T, T}},
                  {"Tout", DataTypeSlice{T, T}},
              }},
-            {{"dx"}, "Identity", {"grad:0"}, {{"T", T}}},
-            {{"dy"}, "Identity", {"grad:1"}, {{"T", T}}},
+            {{"dx"}, "Identity", {"grad0"}, {{"T", T}}},
+            {{"dy"}, "Identity", {"grad1"}, {{"T", T}}},
         });
     // Each test case will feed in "x:0" and "y:0" and expects to get "d0" and
     // "d:0".
@@ -177,7 +177,7 @@ class MathGradTest : public ::testing::Test {
         {
             FDH::Const("one", 1),
             {{"dy"}, "Cast", {"one"}, {{"DstT", T}, {"SrcT", DT_INT32}}},
-            {{"grad"},
+            {{"grad0", "grad1"},
              "SymbolicGradient",
              {"x", "i", "dy"},
              {
@@ -185,8 +185,8 @@ class MathGradTest : public ::testing::Test {
                  {"Tin", DataTypeSlice{T, DT_INT32, T}},
                  {"Tout", DataTypeSlice{T, DT_INT32}},
              }},
-            {{"dx"}, "Identity", {"grad:0"}, {{"T", T}}},
-            {{"di"}, "Identity", {"grad:1"}, {{"T", DT_INT32}}},
+            {{"dx"}, "Identity", {"grad0"}, {{"T", T}}},
+            {{"di"}, "Identity", {"grad1"}, {{"T", DT_INT32}}},
         });
     // Each test case will feed in "x:0" and expects to get "dx:0".
     auto gdef = test::function::GDef(
@@ -267,7 +267,7 @@ class MathGradTest : public ::testing::Test {
         {
             FDH::Const("one", 1),
             {{"dz"}, "Cast", {"one"}, {{"DstT", T}, {"SrcT", DT_INT32}}},
-            {{"grad"},
+            {{"grad0", "grad1"},
              "SymbolicGradient",
              {"x", "y", "dz"},
              {
@@ -275,8 +275,8 @@ class MathGradTest : public ::testing::Test {
                  {"Tin", DataTypeSlice{T, T, T}},
                  {"Tout", DataTypeSlice{T, T}},
              }},
-            {{"dx"}, "Identity", {"grad:0"}, {{"T", T}}},
-            {{"dy"}, "Identity", {"grad:1"}, {{"T", T}}},
+            {{"dx"}, "Identity", {"grad0"}, {{"T", T}}},
+            {{"dy"}, "Identity", {"grad1"}, {{"T", T}}},
         });
     // Each test case will feed in "x:0" and "y:0" and expects to get "d0" and
     // "d:0".
@@ -331,7 +331,7 @@ class MathGradTest : public ::testing::Test {
     auto grad = FDH::Define("TestGrad", {"c:bool", "x:float", "y:float"},
                             {"dc:bool", "dx:float", "dy:float"}, {},
                             {FDH::Const("dz", 1.f),
-                             {{"grad"},
+                             {{"grad0", "grad1", "grad2"},
                               "SymbolicGradient",
                               {"c", "x", "y", "dz"},
                               {
@@ -339,9 +339,9 @@ class MathGradTest : public ::testing::Test {
                                   {"Tin", DataTypeSlice{DT_BOOL, T, T, T}},
                                   {"Tout", DataTypeSlice{DT_BOOL, T, T}},
                               }},
-                             {{"dc"}, "Identity", {"grad:0"}, {{"T", DT_BOOL}}},
-                             {{"dx"}, "Identity", {"grad:1"}, {{"T", T}}},
-                             {{"dy"}, "Identity", {"grad:2"}, {{"T", T}}}});
+                             {{"dc"}, "Identity", {"grad0"}, {{"T", DT_BOOL}}},
+                             {{"dx"}, "Identity", {"grad1"}, {{"T", T}}},
+                             {{"dy"}, "Identity", {"grad2"}, {{"T", T}}}});
     // Each test case will feed in "x:0" and expects to get "dx:0".
     auto gdef = test::function::GDef(
         {

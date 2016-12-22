@@ -44,12 +44,8 @@ from __future__ import print_function
 
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
-from tensorflow.python.ops.rnn_cell_impl import *
+from tensorflow.contrib.rnn.python.ops.core_rnn_cell_impl import *
 # pylint: enable=wildcard-import
-# TODO(drpng): remove this once internal use has been eradicated.
-# pylint: disable=unused-import
-from tensorflow.python.ops.rnn_cell_impl import _linear
-# pylint: enable=unused-import
 from tensorflow.python.util.all_util import remove_undocumented
 
 

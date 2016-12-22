@@ -1691,7 +1691,7 @@ c = tf.matmul(a, b) => [[[ 94 100]
 
 - - -
 
-### `tf.norm(tensor, order='euclidian', axis=None, keep_dims=False, name=None)` {#norm}
+### `tf.norm(tensor, ord='euclidean', axis=None, keep_dims=False, name=None)` {#norm}
 
 Computes the norm of vectors, matrices, and tensors.
 
@@ -1702,20 +1702,20 @@ inf-norm) and up to 9218868437227405311 different vectors norms.
 
 
 *  <b>`tensor`</b>: `Tensor` of types `float32`, `float64`, `complex64`, `complex128`
-*  <b>`order`</b>: Order of the norm. Supported values are 'fro', 'euclidian', `0`,
+*  <b>`ord`</b>: Order of the norm. Supported values are 'fro', 'euclidean', `0`,
     `1, `2`, `np.inf` and any positive real number yielding the corresponding
-    p-norm. Default is 'euclidian' which is equivalent to Frobenius norm if
+    p-norm. Default is 'euclidean' which is equivalent to Frobenius norm if
     `tensor` is a matrix and equivalent to 2-norm for vectors.
     Some restrictions apply,
       a) The Frobenius norm `fro` is not defined for vectors,
-      b) If axis is a 2-tuple (matrix-norm), only 'euclidian', 'fro', `1`,
+      b) If axis is a 2-tuple (matrix-norm), only 'euclidean', 'fro', `1`,
          `np.inf` are supported.
     See the description of `axis` on how to compute norms for a batch of
     vectors or matrices stored in a tensor.
 *  <b>`axis`</b>: If `axis` is `None` (the default), the input is considered a vector
     and a single vector norm is computed over the entire set of values in the
-    tensor, i.e. `norm(tensor, order=order)` is equivalent to
-    `norm(reshape(tensor, [-1]), order=order)`.
+    tensor, i.e. `norm(tensor, ord=ord)` is equivalent to
+    `norm(reshape(tensor, [-1]), ord=ord)`.
     If `axis` is a Python integer, the input is considered a batch of vectors,
     and `axis`t determines the axis in `tensor` over which to compute vector
     norms.
@@ -1743,17 +1743,17 @@ inf-norm) and up to 9218868437227405311 different vectors norms.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If `order` or `axis` is invalid.
+*  <b>`ValueError`</b>: If `ord` or `axis` is invalid.
 
 @compatibility(numpy)
 Mostly equivalent to np.linalg.norm.
-Not supported: order <= 0, 2-norm for matrices, nuclear norm.
+Not supported: ord <= 0, 2-norm for matrices, nuclear norm.
 
 ##### Other differences:
 
   a) If axis is `None`, treats the the flattened `tensor` as a vector
    regardless of rank.
-  b) Explicitly supports 'euclidian' norm as the default, including for
+  b) Explicitly supports 'euclidean' norm as the default, including for
    higher order tensors.
 @end_compatibility
 
@@ -2242,35 +2242,6 @@ tf.complex(real, imag) ==> [[2.25 + 4.75j], [3.25 + 5.75j]]
 ##### Returns:
 
   A `Tensor` of type `complex64` or `complex128`.
-
-
-- - -
-
-### `tf.complex_abs(x, name=None)` {#complex_abs}
-
-Computes the complex absolute value of a tensor.
-
-Given a tensor `x` of complex numbers, this operation returns a tensor of type
-`float32` or `float64` that is the absolute value of each element in `x`. All
-elements in `x` must be complex numbers of the form \\(a + bj\\). The
-absolute value is computed as \\( \sqrt{a^2 + b^2}\\).
-
-For example:
-
-```
-# tensor 'x' is [[-2.25 + 4.75j], [-3.25 + 5.75j]]
-tf.complex_abs(x) ==> [5.25594902, 6.60492229]
-```
-
-##### Args:
-
-
-*  <b>`x`</b>: A `Tensor` of type `complex64` or `complex128`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor` of type `float32` or `float64`.
 
 
 - - -

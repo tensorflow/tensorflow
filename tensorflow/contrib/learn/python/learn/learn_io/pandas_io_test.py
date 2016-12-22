@@ -57,7 +57,7 @@ class PandasIoTest(tf.test.TestCase):
     x, _ = self.makeTestDataFrame()
     y_noindex = pd.Series(np.arange(-32, -28))
     with self.assertRaises(ValueError):
-      failing_input_fn = pandas_io.pandas_input_fn(
+      pandas_io.pandas_input_fn(
           x, y_noindex, batch_size=2, shuffle=False, num_epochs=1)
 
   def testPandasInputFn_ProducesExpectedOutputs(self):
@@ -70,7 +70,6 @@ class PandasIoTest(tf.test.TestCase):
 
       features, target = self.callInputFnOnce(input_fn, session)
 
-      self.assertAllEqual(features['index'], [100, 101])
       self.assertAllEqual(features['a'], [0, 1])
       self.assertAllEqual(features['b'], [32, 33])
       self.assertAllEqual(target, [-32, -31])
@@ -85,9 +84,20 @@ class PandasIoTest(tf.test.TestCase):
 
       features = self.callInputFnOnce(input_fn, session)
 
-      self.assertAllEqual(features['index'], [100, 101])
       self.assertAllEqual(features['a'], [0, 1])
       self.assertAllEqual(features['b'], [32, 33])
+
+  def testPandasInputFn_ExcludesIndex(self):
+    if not HAS_PANDAS:
+      return
+    with self.test_session() as session:
+      x, y = self.makeTestDataFrame()
+      input_fn = pandas_io.pandas_input_fn(
+          x, y, batch_size=2, shuffle=False, num_epochs=1)
+
+      features, _ = self.callInputFnOnce(input_fn, session)
+
+      self.assertFalse('index' in features)
 
   def assertInputsCallableNTimes(self, input_fn, session, n):
     inputs = input_fn()

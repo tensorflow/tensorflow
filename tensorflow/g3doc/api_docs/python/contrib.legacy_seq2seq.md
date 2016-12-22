@@ -24,7 +24,7 @@ details). It is recommended for complex sequence-to-sequence tasks.
 *  <b>`decoder_inputs`</b>: A list of 2D Tensors [batch_size x input_size].
 *  <b>`initial_state`</b>: 2D Tensor [batch_size x cell.state_size].
 *  <b>`attention_states`</b>: 3D Tensor [batch_size x attn_length x attn_size].
-*  <b>`cell`</b>: rnn_cell.RNNCell defining the cell function and size.
+*  <b>`cell`</b>: core_rnn_cell.RNNCell defining the cell function and size.
 *  <b>`output_size`</b>: Size of the output vectors; if None, we use cell.output_size.
 *  <b>`num_heads`</b>: Number of attention heads that read from attention_states.
 *  <b>`loop_function`</b>: If not None, this function will be applied to i-th output
@@ -83,7 +83,7 @@ Encoder and decoder use the same RNN cell type, but don't share parameters.
 
 *  <b>`encoder_inputs`</b>: A list of 2D Tensors [batch_size x input_size].
 *  <b>`decoder_inputs`</b>: A list of 2D Tensors [batch_size x input_size].
-*  <b>`cell`</b>: rnn_cell.RNNCell defining the cell function and size.
+*  <b>`cell`</b>: core_rnn_cell.RNNCell defining the cell function and size.
 *  <b>`dtype`</b>: The dtype of the initial state of the RNN cell (default: tf.float32).
 *  <b>`scope`</b>: VariableScope for the created subgraph; default: "basic_rnn_seq2seq".
 
@@ -109,7 +109,7 @@ RNN decoder with embedding and attention and a pure-decoding option.
 *  <b>`decoder_inputs`</b>: A list of 1D batch-sized int32 Tensors (decoder inputs).
 *  <b>`initial_state`</b>: 2D Tensor [batch_size x cell.state_size].
 *  <b>`attention_states`</b>: 3D Tensor [batch_size x attn_length x attn_size].
-*  <b>`cell`</b>: rnn_cell.RNNCell defining the cell function.
+*  <b>`cell`</b>: core_rnn_cell.RNNCell defining the cell function.
 *  <b>`num_symbols`</b>: Integer, how many symbols come into the embedding.
 *  <b>`embedding_size`</b>: Integer, the length of the embedding vector for each symbol.
 *  <b>`num_heads`</b>: Number of attention heads that read from attention_states.
@@ -174,7 +174,7 @@ and variables will be made proportional to num_decoder_symbols, can be large.
 
 *  <b>`encoder_inputs`</b>: A list of 1D int32 Tensors of shape [batch_size].
 *  <b>`decoder_inputs`</b>: A list of 1D int32 Tensors of shape [batch_size].
-*  <b>`cell`</b>: rnn_cell.RNNCell defining the cell function and size.
+*  <b>`cell`</b>: core_rnn_cell.RNNCell defining the cell function and size.
 *  <b>`num_encoder_symbols`</b>: Integer; number of symbols on the encoder side.
 *  <b>`num_decoder_symbols`</b>: Integer; number of symbols on the decoder side.
 *  <b>`embedding_size`</b>: Integer, the length of the embedding vector for each symbol.
@@ -216,7 +216,7 @@ RNN decoder with embedding and a pure-decoding option.
 
 *  <b>`decoder_inputs`</b>: A list of 1D batch-sized int32 Tensors (decoder inputs).
 *  <b>`initial_state`</b>: 2D Tensor [batch_size x cell.state_size].
-*  <b>`cell`</b>: rnn_cell.RNNCell defining the cell function.
+*  <b>`cell`</b>: core_rnn_cell.RNNCell defining the cell function.
 *  <b>`num_symbols`</b>: Integer, how many symbols come into the embedding.
 *  <b>`embedding_size`</b>: Integer, the length of the embedding vector for each symbol.
 *  <b>`output_projection`</b>: None or a pair (W, B) of output projection weights and
@@ -274,7 +274,7 @@ encoder state, on embedded decoder_inputs.
 
 *  <b>`encoder_inputs`</b>: A list of 1D int32 Tensors of shape [batch_size].
 *  <b>`decoder_inputs`</b>: A list of 1D int32 Tensors of shape [batch_size].
-*  <b>`cell`</b>: rnn_cell.RNNCell defining the cell function and size.
+*  <b>`cell`</b>: core_rnn_cell.RNNCell defining the cell function and size.
 *  <b>`num_encoder_symbols`</b>: Integer; number of symbols on the encoder side.
 *  <b>`num_decoder_symbols`</b>: Integer; number of symbols on the decoder side.
 *  <b>`embedding_size`</b>: Integer, the length of the embedding vector for each symbol.
@@ -324,7 +324,7 @@ is over 0 to num_symbols - 1.
 
 *  <b>`encoder_inputs`</b>: A list of 1D int32 Tensors of shape [batch_size].
 *  <b>`decoder_inputs`</b>: A list of 1D int32 Tensors of shape [batch_size].
-*  <b>`cell`</b>: rnn_cell.RNNCell defining the cell function and size.
+*  <b>`cell`</b>: core_rnn_cell.RNNCell defining the cell function and size.
 *  <b>`num_symbols`</b>: Integer; number of symbols for both encoder and decoder.
 *  <b>`embedding_size`</b>: Integer, the length of the embedding vector for each symbol.
 *  <b>`num_decoder_symbols`</b>: Integer; number of output symbols for decoder. If
@@ -368,7 +368,8 @@ is over 0 to num_symbols - 1.
 Create a sequence-to-sequence model with support for bucketing.
 
 The seq2seq argument is a function that defines a sequence-to-sequence model,
-e.g., seq2seq = lambda x, y: basic_rnn_seq2seq(x, y, rnn_cell.GRUCell(24))
+e.g., seq2seq = lambda x, y: basic_rnn_seq2seq(
+    x, y, core_rnn_cell.GRUCell(24))
 
 ##### Args:
 
@@ -424,7 +425,7 @@ here: http://arxiv.org/abs/1511.06114
     the corresponding decoder_inputs; each decoder_inputs is a list of 1D
     Tensors of shape [batch_size]; num_decoders is defined as
     len(decoder_inputs_dict).
-*  <b>`cell`</b>: rnn_cell.RNNCell defining the cell function and size.
+*  <b>`cell`</b>: core_rnn_cell.RNNCell defining the cell function and size.
 *  <b>`num_encoder_symbols`</b>: Integer; number of symbols on the encoder side.
 *  <b>`num_decoder_symbols_dict`</b>: A dictionary mapping decoder name (string) to an
     integer specifying number of symbols for the corresponding decoder;
@@ -463,7 +464,7 @@ RNN decoder for the sequence-to-sequence model.
 
 *  <b>`decoder_inputs`</b>: A list of 2D Tensors [batch_size x input_size].
 *  <b>`initial_state`</b>: 2D Tensor with shape [batch_size x cell.state_size].
-*  <b>`cell`</b>: rnn_cell.RNNCell defining the cell function and size.
+*  <b>`cell`</b>: core_rnn_cell.RNNCell defining the cell function and size.
 *  <b>`loop_function`</b>: If not None, this function will be applied to the i-th output
     in order to generate the i+1-st input, and decoder_inputs will be ignored,
     except for the first element ("GO" symbol). This can be used for decoding,
@@ -558,7 +559,7 @@ Encoder and decoder use the same RNN cell and share parameters.
 
 *  <b>`encoder_inputs`</b>: A list of 2D Tensors [batch_size x input_size].
 *  <b>`decoder_inputs`</b>: A list of 2D Tensors [batch_size x input_size].
-*  <b>`cell`</b>: rnn_cell.RNNCell defining the cell function and size.
+*  <b>`cell`</b>: core_rnn_cell.RNNCell defining the cell function and size.
 *  <b>`loop_function`</b>: If not None, this function will be applied to i-th output
     in order to generate i+1-th input, and decoder_inputs will be ignored,
     except for the first element ("GO" symbol), see rnn_decoder for details.

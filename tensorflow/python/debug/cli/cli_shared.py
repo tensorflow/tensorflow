@@ -168,13 +168,15 @@ def _get_fetch_names(fetches):
   return lines
 
 
-def _recommend_command(command, description, indent=2):
+def _recommend_command(command, description, indent=2, create_link=False):
   """Generate a RichTextLines object that describes a recommended command.
 
   Args:
     command: (str) The command to recommend.
     description: (str) A description of what the the command does.
     indent: (int) How many spaces to indent in the beginning.
+    create_link: (bool) Whether a command link is to be applied to the command
+      string.
 
   Returns:
     (RichTextLines) Formatted text (with font attributes) for recommending the
@@ -183,13 +185,22 @@ def _recommend_command(command, description, indent=2):
 
   indent_str = " " * indent
   lines = [indent_str + command + ":", indent_str + "  " + description]
-  font_attr_segs = {0: [(indent, indent + len(command), "bold")]}
+
+  if create_link:
+    font_attr_segs = {
+        0: [(indent, indent + len(command), [
+            debugger_cli_common.MenuItem("", command), "bold"])]}
+  else:
+    font_attr_segs = {0: [(indent, indent + len(command), "bold")]}
 
   return debugger_cli_common.RichTextLines(lines, font_attr_segs=font_attr_segs)
 
 
 def get_tfdbg_logo():
+  """Make an ASCII representation of the tfdbg logo."""
+
   lines = [
+      "",
       "TTTTTT FFFF DDD  BBBB   GGG ",
       "  TT   F    D  D B   B G    ",
       "  TT   FFF  D  D BBBB  G  GG",
@@ -247,11 +258,15 @@ def get_run_start_intro(run_call_count,
   out = debugger_cli_common.RichTextLines(intro_lines)
 
   out.extend(
-      _recommend_command("run",
-                         "Execute the run() call with debug tensor-watching"))
+      _recommend_command(
+          "run",
+          "Execute the run() call with debug tensor-watching",
+          create_link=True))
   out.extend(
       _recommend_command(
-          "run -n", "Execute the run() call without debug tensor-watching"))
+          "run -n",
+          "Execute the run() call without debug tensor-watching",
+          create_link=True))
   out.extend(
       _recommend_command(
           "run -t <T>",
@@ -262,35 +277,45 @@ def get_run_start_intro(run_call_count,
           "run -f <filter_name>",
           "Keep executing run() calls until a dumped tensor passes a given, "
           "registered filter (conditional breakpoint mode)"))
-  out.extend(
-      _recommend_command(
-          "invoke_stepper",
-          "Use the node-stepper interface, which allows you to interactively "
-          "step through nodes involved in the graph run() call and "
-          "inspect/modify their values"))
 
   more_font_attr_segs = {}
   more_lines = ["    Registered filter(s):"]
-
   if tensor_filters:
     filter_names = []
     for filter_name in tensor_filters:
       filter_names.append(filter_name)
       more_lines.append("        * " + filter_name)
-      more_font_attr_segs[len(more_lines) - 1] = [(10, len(more_lines[-1]),
-                                                   "green")]
+      command_menu_node = debugger_cli_common.MenuItem(
+          "", "run -f %s" % filter_name)
+      more_font_attr_segs[len(more_lines) - 1] = [
+          (10, len(more_lines[-1]), command_menu_node)]
   else:
     more_lines.append("        (None)")
-
-  more_lines.extend([
-      "",
-      "For more details, see help below:"
-      "",
-  ])
 
   out.extend(
       debugger_cli_common.RichTextLines(
           more_lines, font_attr_segs=more_font_attr_segs))
+
+  out.extend(
+      _recommend_command(
+          "invoke_stepper",
+          "Use the node-stepper interface, which allows you to interactively "
+          "step through nodes involved in the graph run() call and "
+          "inspect/modify their values", create_link=True))
+
+  out.extend(debugger_cli_common.RichTextLines([
+      "",
+      "For more details, see help below:"
+      "",
+  ]))
+
+  # Make main menu for the run-start intro.
+  menu = debugger_cli_common.Menu()
+  menu.append(debugger_cli_common.MenuItem("run", "run"))
+  menu.append(debugger_cli_common.MenuItem(
+      "invoke_stepper", "invoke_stepper"))
+  menu.append(debugger_cli_common.MenuItem("exit", "exit"))
+  out.annotations[debugger_cli_common.MAIN_MENU_KEY] = menu
 
   return out
 

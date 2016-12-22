@@ -273,9 +273,10 @@ class Image(ItemHandler):
         is stored.
       format_key: the name of the TF-Example feature in which the image format
         is stored.
-      shape: the output shape of the image. If provided, the image is reshaped
-        accordingly. If left as None, no reshaping is done. A shape should be
-        supplied only if all the stored images have the same shape.
+      shape: the output shape of the image as 1-D `Tensor`
+        [height, width, channels]. If provided, the image is reshaped
+        accordingly. If left as None, no reshaping is done. A shape should
+        be supplied only if all the stored images have the same shape.
       channels: the number of channels in the image.
     """
     if not image_key:
@@ -300,11 +301,12 @@ class Image(ItemHandler):
     """Decodes the image buffer.
 
     Args:
-      image_buffer: T tensor representing the encoded image tensor.
+      image_buffer: The tensor representing the encoded image tensor.
       image_format: The image format for the image in `image_buffer`.
 
     Returns:
-      A decoder image.
+      A tensor that represents decoded image of self._shape, or
+      (?, ?, self._channels) if self._shape is not specified.
     """
     def decode_png():
       return image_ops.decode_png(image_buffer, self._channels)
@@ -329,7 +331,8 @@ class Image(ItemHandler):
       }
       default_decoder = decode_jpg
 
-    image = control_flow_ops.case(pred_fn_pairs, default=default_decoder, exclusive=True)
+    image = control_flow_ops.case(
+        pred_fn_pairs, default=default_decoder, exclusive=True)
 
     image.set_shape([None, None, self._channels])
     if self._shape is not None:
