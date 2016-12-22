@@ -23,10 +23,10 @@ import functools
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.python.ops import rnn_cell_impl
+from tensorflow.contrib.rnn.python.ops import core_rnn_cell_impl
 # TODO(ebrevdo): Remove once _linear is fully deprecated.
 # pylint: disable=protected-access
-from tensorflow.python.ops.rnn_cell_impl import _linear as linear
+from tensorflow.contrib.rnn.python.ops.core_rnn_cell_impl import _linear as linear
 # pylint: enable=protected-access
 
 
@@ -368,7 +368,7 @@ class SlimRNNCellTest(tf.test.TestCase):
         m = tf.zeros([1, 2])
         my_cell = functools.partial(basic_rnn_cell, num_units=2)
         # pylint: disable=protected-access
-        g, _ = rnn_cell_impl._SlimRNNCell(my_cell)(x, m)
+        g, _ = core_rnn_cell_impl._SlimRNNCell(my_cell)(x, m)
         # pylint: enable=protected-access
         sess.run([tf.global_variables_initializer()])
         res = sess.run([g], {x.name: np.array([[1., 1.]]),
@@ -385,7 +385,7 @@ class SlimRNNCellTest(tf.test.TestCase):
         _, initial_state = basic_rnn_cell(inputs, None, num_units)
         my_cell = functools.partial(basic_rnn_cell, num_units=num_units)
         # pylint: disable=protected-access
-        slim_cell = rnn_cell_impl._SlimRNNCell(my_cell)
+        slim_cell = core_rnn_cell_impl._SlimRNNCell(my_cell)
         # pylint: enable=protected-access
         slim_outputs, slim_state = slim_cell(inputs, initial_state)
         rnn_cell = tf.contrib.rnn.BasicRNNCell(num_units)

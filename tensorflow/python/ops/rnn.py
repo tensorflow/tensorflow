@@ -26,7 +26,6 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope as vs
@@ -334,10 +333,12 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
     TypeError: If `cell_fw` or `cell_bw` is not an instance of `RNNCell`.
   """
 
-  if not isinstance(cell_fw, rnn_cell.RNNCell):
+  # pylint: disable=protected-access
+  if not isinstance(cell_fw, rnn_cell_impl._RNNCell):
     raise TypeError("cell_fw must be an instance of RNNCell")
-  if not isinstance(cell_bw, rnn_cell.RNNCell):
+  if not isinstance(cell_bw, rnn_cell_impl._RNNCell):
     raise TypeError("cell_bw must be an instance of RNNCell")
+  # pylint: enable=protected-access
 
   with vs.variable_scope(scope or "bidirectional_rnn"):
     # Forward direction
@@ -472,8 +473,10 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
     ValueError: If inputs is None or an empty list.
   """
 
-  if not isinstance(cell, rnn_cell.RNNCell):
+  # pylint: disable=protected-access
+  if not isinstance(cell, rnn_cell_impl._RNNCell):
     raise TypeError("cell must be an instance of RNNCell")
+  # pylint: enable=protected-access
 
   # By default, time_major==False and inputs are batch-major: shaped
   #   [batch, time, depth]
@@ -888,8 +891,10 @@ def raw_rnn(cell, loop_fn,
       a `callable`.
   """
 
-  if not isinstance(cell, rnn_cell.RNNCell):
+  # pylint: disable=protected-access
+  if not isinstance(cell, rnn_cell_impl._RNNCell):
     raise TypeError("cell must be an instance of RNNCell")
+  # pylint: enable=protected-access
   if not callable(loop_fn):
     raise TypeError("loop_fn must be a callable")
 

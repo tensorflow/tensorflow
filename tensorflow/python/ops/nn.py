@@ -306,7 +306,6 @@ from tensorflow.python.ops import ctc_ops as _ctc_ops
 from tensorflow.python.ops import embedding_ops as _embedding_ops
 from tensorflow.python.ops import nn_grad as _nn_grad
 from tensorflow.python.ops import nn_ops as _nn_ops
-from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops.math_ops import sigmoid
 from tensorflow.python.ops.math_ops import tanh
 # pylint: enable=unused-import
@@ -329,7 +328,6 @@ _allowed_symbols = [
     "zero_fraction",  # documented in training.py
     # Modules whitelisted for reference through tf.nn.
     # TODO(cwhipkey): migrate callers to use the submodule directly.
-    "rnn_cell",
     # Symbols whitelisted for export without documentation.
     # TODO(cwhipkey): review these and move to contrib or expose through
     # documentation.
@@ -340,5 +338,4 @@ _allowed_symbols = [
 ]
 
 remove_undocumented(__name__, _allowed_symbols,
-                    [_sys.modules[__name__], _ctc_ops, _nn_ops, _nn_grad,
-                     rnn_cell])
+                    [_sys.modules[__name__], _ctc_ops, _nn_ops, _nn_grad])
