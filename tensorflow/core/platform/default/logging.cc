@@ -84,37 +84,47 @@ void LogMessage::GenerateLogMessage() {
 
 namespace {
 
-int64 MinLogLevel() {
-  const char* tf_env_var_val = getenv("TF_CPP_MIN_LOG_LEVEL");
+// Parse log level (int64) from environment variable (char*)
+int64 LogLevelStrToInt(const char* tf_env_var_val) {
   if (tf_env_var_val == nullptr) {
     return 0;
   }
 
   // Ideally we would use env_var / safe_strto64, but it is
   // hard to use here without pulling in a lot of dependencies,
-  // so we do a poor-man's parsing.
+  // so we use std:istringstream instead
   string min_log_level(tf_env_var_val);
-  if (min_log_level == "1") {
-    // Maps to WARNING
-    return 1;
-  } else if (min_log_level == "2") {
-    // Maps to ERROR
-    return 2;
-  } else if (min_log_level == "3") {
-    // Maps to FATAL
-    return 3;
-  } else {
-    // Maps to INFO (the default).
-    return 0;
+  std::istringstream ss(min_log_level);
+  int64 level;
+  if (!(ss >> level)) {
+    // Invalid vlog level setting, set level to default (0)
+    level = 0;
   }
+
+  return level;
+}
+
+int64 MinLogLevelFromEnv() {
+  const char* tf_env_var_val = getenv("TF_CPP_MIN_LOG_LEVEL");
+  return LogLevelStrToInt(tf_env_var_val);
+}
+
+int64 MinVLogLevelFromEnv() {
+  const char* tf_env_var_val = getenv("TF_CPP_MIN_VLOG_LEVEL");
+  return LogLevelStrToInt(tf_env_var_val);
 }
 
 }  // namespace
 
 LogMessage::~LogMessage() {
   // Read the min log level once during the first call to logging.
-  static int64 min_log_level = MinLogLevel();
+  static int64 min_log_level = MinLogLevelFromEnv();
   if (TF_PREDICT_TRUE(severity_ >= min_log_level)) GenerateLogMessage();
+}
+
+int64 LogMessage::MinVLogLevel() {
+  static int64 min_vlog_level = MinVLogLevelFromEnv();
+  return min_vlog_level;
 }
 
 LogMessageFatal::LogMessageFatal(const char* file, int line)

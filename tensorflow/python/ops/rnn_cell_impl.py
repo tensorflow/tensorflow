@@ -138,4 +138,3 @@ class _RNNCell(object):
       zeros.set_shape(_state_size_with_prefix(state_size, prefix=[None]))
 
     return zeros
-

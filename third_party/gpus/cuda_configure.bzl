@@ -192,8 +192,8 @@ def _cuda_version(repository_ctx, cuda_toolkit_path, cpu_value):
     environ_version = repository_ctx.os.environ[_TF_CUDA_VERSION].strip()
   if environ_version and version != environ_version:
     auto_configure_fail(
-        "CUDA version detected from nvcc (%s) does not match " +
-        "TF_CUDA_VERSION (%s)" % (version, environ_version))
+        ("CUDA version detected from nvcc (%s) does not match " +
+         "TF_CUDA_VERSION (%s)") % (version, environ_version))
 
   if cpu_value == "Windows":
     version = "64_" + version.replace(".", "")

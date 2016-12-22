@@ -68,12 +68,15 @@ For the `'SAME'` padding, the output height and width are computed as:
 
 and the padding on the top and left are computed as:
 
-    pad_along_height = ((out_height - 1) * strides[1] +
-                        filter_height - in_height)
-    pad_along_width = ((out_width - 1) * strides[2] +
-                       filter_width - in_width)
-    pad_top = pad_along_height / 2
-    pad_left = pad_along_width / 2
+    pad_along_height = max((out_height - 1) * strides[1] +
+                        filter_height - in_height, 0)
+    pad_along_width = max((out_width - 1) * strides[2] +
+                       filter_width - in_width, 0)
+    pad_top = pad_along_height // 2
+    pad_bottom = pad_along_height - pad_top
+    pad_left = pad_along_width // 2
+    pad_right = pad_along_width - pad_left
+
 
 Note that the division by 2 means that there might be cases when the padding on
 both sides (top vs bottom, right vs left) are off by one. In this case, the

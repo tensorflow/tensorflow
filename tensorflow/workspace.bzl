@@ -17,11 +17,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.new_http_archive(
       name = "eigen_archive",
       urls = [
-          "https://bitbucket.org/eigen/eigen/get/c362228c7087.tar.gz",
-          "http://bazel-mirror.storage.googleapis.com/bitbucket.org/eigen/eigen/get/c362228c7087.tar.gz",
+          "http://bazel-mirror.storage.googleapis.com/bitbucket.org/eigen/eigen/get/60578b474802.tar.gz",
+          "https://bitbucket.org/eigen/eigen/get/60578b474802.tar.gz",
       ],
-      sha256 = "ea091e0a1d78b0c6714f7109a6a80af30c4745f3ff8c398675cf42271acc0c77",
-      strip_prefix = "eigen-eigen-c362228c7087",
+      sha256 = "7527cda827aff351981ebd910012e16be4d899c28a9ae7f143ae60e7f3f7b83d",
+      strip_prefix = "eigen-eigen-60578b474802",
       build_file = str(Label("//:eigen.BUILD")),
   )
 
