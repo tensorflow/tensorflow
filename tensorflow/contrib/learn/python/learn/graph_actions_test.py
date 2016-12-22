@@ -267,6 +267,21 @@ class GraphActionsTest(tf.test.TestCase):
           expected_session_logs=[])
       self._assert_ckpt(self._output_dir, False)
 
+  def test_evaluate_ready_for_local_init(self):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      tf.contrib.framework.create_global_step()
+      v = variables.Variable(1.0)
+      w = variables.Variable(v + 1,
+                             collections=[ops.GraphKeys.LOCAL_VARIABLES],
+                             trainable=False)
+      ready_for_local_init_op = tf.report_uninitialized_variables(
+          tf.global_variables())
+      ops.add_to_collection(ops.GraphKeys.READY_FOR_LOCAL_INIT_OP,
+                            ready_for_local_init_op)
+      _ = learn.graph_actions.evaluate(
+          g, output_dir=self._output_dir, checkpoint_path=None,
+          eval_dict={'a': v}, max_steps=1)
+
   def test_evaluate_feed_fn(self):
     with tf.Graph().as_default() as g, self.test_session(g):
       in0, _, out = self._build_inference_graph()
