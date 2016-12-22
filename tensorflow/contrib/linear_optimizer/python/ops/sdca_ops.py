@@ -241,7 +241,7 @@ class SdcaModel(object):
       for sfc, sv in zip(examples['sparse_features'], sparse_variables):
         # TODO(sibyl-Aix6ihai): following does not take care of missing features.
         result += math_ops.segment_sum(
-            math_ops.mul(
+            math_ops.multiply(
                 array_ops.gather(sv, sfc.feature_indices), sfc.feature_values),
             sfc.example_indices)
       dense_features = self._convert_n_to_tensor(examples['dense_features'])
@@ -454,7 +454,7 @@ class SdcaModel(object):
               examples['example_weights']), dtypes.float64)
 
       if self._options['loss_type'] == 'logistic_loss':
-        return math_ops.reduce_sum(math_ops.mul(
+        return math_ops.reduce_sum(math_ops.multiply(
             sigmoid_cross_entropy_with_logits(predictions, labels),
             weights)) / math_ops.reduce_sum(weights)
 
@@ -462,19 +462,19 @@ class SdcaModel(object):
         # hinge_loss = max{0, 1 - y_i w*x} where y_i \in {-1, 1}. So, we need to
         # first convert 0/1 labels into -1/1 labels.
         all_ones = array_ops.ones_like(predictions)
-        adjusted_labels = math_ops.sub(2 * labels, all_ones)
+        adjusted_labels = math_ops.subtract(2 * labels, all_ones)
         # Tensor that contains (unweighted) error (hinge loss) per
         # example.
-        error = nn_ops.relu(math_ops.sub(all_ones, math_ops.mul(adjusted_labels,
-                                                                predictions)))
-        weighted_error = math_ops.mul(error, weights)
+        error = nn_ops.relu(math_ops.subtract(
+            all_ones, math_ops.multiply(adjusted_labels, predictions)))
+        weighted_error = math_ops.multiply(error, weights)
         return math_ops.reduce_sum(weighted_error) / math_ops.reduce_sum(
             weights)
 
       # squared loss
-      err = math_ops.sub(labels, predictions)
+      err = math_ops.subtract(labels, predictions)
 
-      weighted_squared_err = math_ops.mul(math_ops.square(err), weights)
+      weighted_squared_err = math_ops.multiply(math_ops.square(err), weights)
       # SDCA squared loss function is sum(err^2) / (2*sum(weights))
       return (math_ops.reduce_sum(weighted_squared_err) /
               (2.0 * math_ops.reduce_sum(weights)))

@@ -1171,9 +1171,9 @@ class _MultiHead(_Head):
 def _weighted_loss(loss, weight):
   """Returns cumulative weighted loss as 1d `Tensor`."""
   with ops.name_scope(None, "weighted_loss", (loss, weight)) as name:
-    return math_ops.mul(array_ops.reshape(loss, shape=(-1,)),
-                        array_ops.reshape(weight, shape=(-1,)),
-                        name=name)
+    return math_ops.multiply(array_ops.reshape(loss, shape=(-1,)),
+                             array_ops.reshape(weight, shape=(-1,)),
+                             name=name)
 
 
 def _weight_tensor(features, weight_column_name):

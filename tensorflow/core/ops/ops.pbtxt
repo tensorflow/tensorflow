@@ -3372,6 +3372,66 @@ op {
   description: "This is a deprecated version of BiasAdd and will be soon removed.\n\nThis is a special case of `tf.add` where `bias` is restricted to be 1-D.\nBroadcasting is supported, so `value` may have any number of dimensions."
 }
 op {
+  name: "BigQueryReader"
+  output_arg {
+    name: "reader_handle"
+    description: "The handle to reference the Reader."
+    type: DT_STRING
+    is_ref: true
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this reader is named in the given bucket\nwith this shared_name. Otherwise, the node name is used instead."
+  }
+  attr {
+    name: "project_id"
+    type: "string"
+    description: "GCP project ID."
+  }
+  attr {
+    name: "dataset_id"
+    type: "string"
+    description: "BigQuery Dataset ID."
+  }
+  attr {
+    name: "table_id"
+    type: "string"
+    description: "Table to read."
+  }
+  attr {
+    name: "columns"
+    type: "list(string)"
+    description: "List of columns to read. Leave empty to read all columns."
+  }
+  attr {
+    name: "timestamp_millis"
+    type: "int"
+    description: "Table snapshot timestamp in millis since epoch. Relative\n(negative or zero) snapshot times are not allowed. For more details, see\n\'Table Decorators\' in BigQuery docs."
+  }
+  attr {
+    name: "test_end_point"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "Do not use. For testing purposes only."
+  }
+  summary: "A Reader that outputs rows from a BigQuery table as tensorflow Examples."
+  is_stateful: true
+}
+op {
   name: "Bitcast"
   input_arg {
     name: "input"
@@ -3853,7 +3913,7 @@ op {
     }
   }
   summary: "Computes the complex absolute value of a tensor."
-  description: "Given a tensor `x` of complex numbers, this operation returns a tensor of type\n`float` or `double` that is the absolute value of each element in `x`. All\nelements in `x` must be complex numbers of the form \\\\(a + bj\\\\). The absolute\nvalue is computed as \\\\( \\sqrt{a^2 + b^2}\\\\).\n\nFor example:\n\n```\n# tensor \'x\' is [[-2.25 + 4.75j], [-3.25 + 5.75j]]\ntf.complex_abs(x) ==> [5.25594902, 6.60492229]\n```"
+  description: "Given a tensor `x` of complex numbers, this operation returns a tensor of type\n`float` or `double` that is the absolute value of each element in `x`. All\nelements in `x` must be complex numbers of the form \\\\(a + bj\\\\). The absolute\nvalue is computed as \\\\( \\sqrt{a^2 + b^2}\\\\)."
 }
 op {
   name: "ComputeAccidentalHits"
@@ -8093,6 +8153,54 @@ op {
   }
   summary: "Gather values or slices from `params` according to `indices`."
   description: "`params` is a Tensor of rank `P` and `indices` is a Tensor of rank `Q`.\n\n`indices` must be integer tensor, containing indices into `params`.\nIt must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.\n\nThe innermost dimension of `indices` (with length `K`) corresponds to\nindices into elements (if `K = P`) or slices (if `K < P`) along the `K`th\ndimension of `params`.\n\nProduces an output tensor with shape\n\n```\n[d_0, ..., d_{Q-2}, params.shape[K], ..., params.shape[P-1]].\n```\n\nSome examples below.\n\nSimple indexing into a matrix:\n\n```python\n    indices = [[0, 0], [1, 1]]\n    params = [[\'a\', \'b\'], [\'c\', \'d\']]\n    output = [\'a\', \'d\']\n```\n\nSlice indexing into a matrix:\n\n```python\n    indices = [[1], [0]]\n    params = [[\'a\', \'b\'], [\'c\', \'d\']]\n    output = [[\'c\', \'d\'], [\'a\', \'b\']]\n```\n\nIndexing into a 3-tensor:\n\n```python\n    indices = [[1]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n\n\n    indices = [[0, 1], [1, 0]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[\'c0\', \'d0\'], [\'a1\', \'b1\']]\n\n\n    indices = [[0, 0, 1], [1, 0, 1]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [\'b0\', \'b1\']\n```\n\nBatched indexing into a matrix:\n\n```python\n    indices = [[[0, 0]], [[0, 1]]]\n    params = [[\'a\', \'b\'], [\'c\', \'d\']]\n    output = [[\'a\'], [\'b\']]\n```\n\nBatched slice indexing into a matrix:\n\n```python\n    indices = [[[1]], [[0]]]\n    params = [[\'a\', \'b\'], [\'c\', \'d\']]\n    output = [[[\'c\', \'d\']], [[\'a\', \'b\']]]\n```\n\nBatched indexing into a 3-tensor:\n\n```python\n    indices = [[[1]], [[0]]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[[[\'a1\', \'b1\'], [\'c1\', \'d1\']]],\n              [[[\'a0\', \'b0\'], [\'c0\', \'d0\']]]]\n\n    indices = [[[0, 1], [1, 0]], [[0, 0], [1, 1]]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[[\'c0\', \'d0\'], [\'a1\', \'b1\']],\n              [[\'a0\', \'b0\'], [\'c1\', \'d1\']]]\n\n\n    indices = [[[0, 0, 1], [1, 0, 1]], [[0, 1, 1], [1, 1, 0]]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[\'b0\', \'b1\'], [\'d0\', \'c1\']]\n```"
+}
+op {
+  name: "GenerateBigQueryReaderPartitions"
+  output_arg {
+    name: "partitions"
+    description: "Serialized table partitions."
+    type: DT_STRING
+  }
+  attr {
+    name: "project_id"
+    type: "string"
+    description: "GCP project ID."
+  }
+  attr {
+    name: "dataset_id"
+    type: "string"
+    description: "BigQuery Dataset ID."
+  }
+  attr {
+    name: "table_id"
+    type: "string"
+    description: "Table to read."
+  }
+  attr {
+    name: "columns"
+    type: "list(string)"
+    description: "List of columns to read. Leave empty to read all columns."
+  }
+  attr {
+    name: "timestamp_millis"
+    type: "int"
+    description: "Table snapshot timestamp in millis since epoch. Relative\n(negative or zero) snapshot times are not allowed. For more details, see\n\'Table Decorators\' in BigQuery docs."
+  }
+  attr {
+    name: "num_partitions"
+    type: "int"
+    description: "Number of partitions to split the table into."
+  }
+  attr {
+    name: "test_end_point"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "Do not use. For testing purposes only."
+  }
+  summary: "Generates serialized partition messages suitable for batch reads."
+  description: "This op should not be used directly by clients. Instead, the\nbigquery_reader_ops.py file defines a clean interface to the reader."
 }
 op {
   name: "GetSessionHandle"
@@ -22454,19 +22562,16 @@ op {
   name: "Variable"
   output_arg {
     name: "ref"
-    description: "A reference to the variable tensor."
     type_attr: "dtype"
     is_ref: true
   }
   attr {
     name: "shape"
     type: "shape"
-    description: "The shape of the variable tensor, where scalar shapes are\ntreated as undefined."
   }
   attr {
     name: "dtype"
     type: "type"
-    description: "The type of elements in the variable tensor."
   }
   attr {
     name: "container"
@@ -22474,7 +22579,6 @@ op {
     default_value {
       s: ""
     }
-    description: "If non-empty, this variable is placed in the given container.\nOtherwise, a default container is used."
   }
   attr {
     name: "shared_name"
@@ -22482,10 +22586,8 @@ op {
     default_value {
       s: ""
     }
-    description: "If non-empty, this variable is named in the given bucket\nwith this shared_name. Otherwise, the node name is used instead."
   }
-  summary: "Holds state in the form of a tensor that persists across steps."
-  description: "Outputs a ref to the tensor state so it may be read or modified.\nTODO(zhifengc/mrry): Adds a pointer to a more detail document\nabout sharing states in tensorflow."
+  summary: "Use VariableV2 instead."
   is_stateful: true
 }
 op {

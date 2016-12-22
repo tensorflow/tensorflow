@@ -231,6 +231,7 @@ REGISTER_OP("FinishedNodes")
         "dominate_method:"
         " {'none', 'hoeffding', 'bootstrap', 'chebyshev'} = 'bootstrap'")
     .Attr("random_seed: int = 0")
+    .Attr("check_dominates_every_samples: int = 75")
     .Input("leaves: int32")
     .Input("node_to_accumulator: int32")
     .Input("split_sums: float")
@@ -248,6 +249,17 @@ REGISTER_OP("FinishedNodes")
     })
     .Doc(R"doc(
 Determines which of the given leaf nodes are done accumulating.
+
+The `regression` attribute should be set to true for regression problems, and
+false for classification problems.
+
+If dominate_method is not set to none, then every
+`check_dominates_every_samples` steps the specified method will be used to
+see if the current best split has probability `dominate_fraction` of being
+asymptotically better than the second best split.  If so, the best split
+is picked now, rather than waiting until `num_split_after_samples` samples
+have been seen.  WARNING:  for weighted input data, only `dominate_method` =
+none is safe.
 
 leaves:= A 1-d int32 tensor.  Lists the nodes that are currently leaves.
 node_to_accumulator: If the i-th node is fertile, `node_to_accumulator[i]`

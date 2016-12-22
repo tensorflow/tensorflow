@@ -30,6 +30,7 @@ from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -112,6 +113,37 @@ class ShapeTestCase(TensorFlowTestCase):
       self.assertEquals([2],
                         control_flow_ops.with_dependencies(
                             [constant_op.constant(1.0)], tensor).get_shape())
+
+
+class WithDependenciesTestCase(TensorFlowTestCase):
+
+  def testTupleDependencies(self):
+    with ops.Graph().as_default():
+      counter = variable_scope.get_variable(
+          "my_counter", shape=[], initializer=init_ops.zeros_initializer())
+      increment_counter = state_ops.assign_add(counter, 1)
+      const_with_dep = control_flow_ops.with_dependencies(
+          (increment_counter, constant_op.constant(42)),
+          constant_op.constant(7))
+      with self.test_session():
+        variables.global_variables_initializer().run()
+        self.assertEquals(0, counter.eval())
+        self.assertEquals(7, const_with_dep.eval())
+        self.assertEquals(1, counter.eval())
+
+  def testListDependencies(self):
+    with ops.Graph().as_default():
+      counter = variable_scope.get_variable(
+          "my_counter", shape=[], initializer=init_ops.zeros_initializer())
+      increment_counter = state_ops.assign_add(counter, 1)
+      const_with_dep = control_flow_ops.with_dependencies(
+          [increment_counter, constant_op.constant(42)],
+          constant_op.constant(7))
+      with self.test_session():
+        variables.global_variables_initializer().run()
+        self.assertEquals(0, counter.eval())
+        self.assertEquals(7, const_with_dep.eval())
+        self.assertEquals(1, counter.eval())
 
 
 class SwitchTestCase(TensorFlowTestCase):

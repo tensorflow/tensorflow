@@ -1,7 +1,7 @@
 Creates a tf.Session  for a chief.
 - - -
 
-#### `tf.train.ChiefSessionCreator.__init__(scaffold=None, master='', config=None, checkpoint_dir=None)` {#ChiefSessionCreator.__init__}
+#### `tf.train.ChiefSessionCreator.__init__(scaffold=None, master='', config=None, checkpoint_dir=None, checkpoint_filename_with_path=None)` {#ChiefSessionCreator.__init__}
 
 Initializes a chief session creator.
 
@@ -14,6 +14,7 @@ Initializes a chief session creator.
 *  <b>`config`</b>: `ConfigProto` proto used to configure the session.
 *  <b>`checkpoint_dir`</b>: A string.  Optional path to a directory where to restore
     variables.
+*  <b>`checkpoint_filename_with_path`</b>: Full file name path to the checkpoint file.
 
 
 - - -

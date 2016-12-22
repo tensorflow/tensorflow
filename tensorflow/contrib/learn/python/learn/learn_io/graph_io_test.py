@@ -178,7 +178,7 @@ class GraphIOTest(tf.test.TestCase):
           "%s/read/TFRecordReader" % name: "TFRecordReader",
           example_queue_name: "RandomShuffleQueue",
           name: "QueueDequeueUpTo",
-          file_name_queue_limit_name: "Variable"
+          file_name_queue_limit_name: "VariableV2"
       }, g)
       self.assertEqual(
           set(_FILE_NAMES), set(sess.run(["%s:0" % file_names_name])[0]))
