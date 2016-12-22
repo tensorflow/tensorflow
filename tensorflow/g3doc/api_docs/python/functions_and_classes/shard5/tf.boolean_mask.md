@@ -23,8 +23,8 @@ where `(i1,...,iK)` is the ith `True` entry of `mask` (row-major order).
 
 ##### Returns:
 
-  Tensor populated by entries in `tensor` corresponding to `True` values in
-    `mask`.
+  (N-K+1)-dimensional tensor populated by entries in `tensor` corresponding
+  to `True` values in `mask`.
 
 ##### Raises:
 
