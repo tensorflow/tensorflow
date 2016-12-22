@@ -11,7 +11,6 @@ exports_files(["LICENSE"])
 libxsmm_interface_arguments = "0 1"
 
 # Arguments to ./scripts/libxsmm_config.py, see that file for detailed description.
-libxsmm_config_arguments = "0 0 64 1 0 1 1 0 1 1"
 #  ilp64: no
 #  big: no
 #  offload: no
@@ -61,8 +60,6 @@ cc_library(
         "src/libxsmm_dump.c",
         "src/libxsmm_malloc.c",
         "src/libxsmm_gemm.c",
-        "src/libxsmm_gemm_diff.c",
-        "src/libxsmm_hash.c",
         "src/libxsmm_timer.c",
         "src/libxsmm_trace.c",
         "src/libxsmm_trans.c",
@@ -109,7 +106,6 @@ cc_library(
         "src",
         "src/template",
     ],
-    linkopts = ["-ldl"],
     visibility = ["//visibility:public"],
 )
 
