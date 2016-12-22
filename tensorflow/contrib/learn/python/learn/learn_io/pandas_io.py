@@ -122,9 +122,14 @@ def extract_pandas_labels(labels):
     return labels
 
 
-def pandas_input_fn(x, y=None, batch_size=128, num_epochs=1, shuffle=True,
-                    queue_capacity=1000, num_threads=1, target_column='target',
-                    index_column='index'):
+def pandas_input_fn(x,
+                    y=None,
+                    batch_size=128,
+                    num_epochs=1,
+                    shuffle=True,
+                    queue_capacity=1000,
+                    num_threads=1,
+                    target_column='target'):
   """Returns input function that would feed Pandas DataFrame into the model.
 
   Note: `y`'s index must match `x`'s index.
@@ -140,7 +145,6 @@ def pandas_input_fn(x, y=None, batch_size=128, num_epochs=1, shuffle=True,
       roughly to the size of `x`.
     num_threads: int, number of threads used for reading and enqueueing.
     target_column: str, name to give the target column `y`.
-    index_column: str, name of the index column.
 
   Returns:
     Function, that has signature of ()->(dict of `features`, `target`)
@@ -183,7 +187,10 @@ def pandas_input_fn(x, y=None, batch_size=128, num_epochs=1, shuffle=True,
       features = queue.dequeue_many(batch_size)
     else:
       features = queue.dequeue_up_to(batch_size)
-    features = dict(zip([index_column] + list(x.columns), features))
+    assert len(features) == len(x.columns) + 1, ('Features should have one '
+                                                 'extra element for the index.')
+    features = features[1:]
+    features = dict(zip(list(x.columns), features))
     if y is not None:
       target = features.pop(target_column)
       return features, target
