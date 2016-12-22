@@ -45,93 +45,71 @@ def collect_named_outputs(collections, alias, outputs):
   It is useful to collect end-points or tags for summaries. Example of usage:
 
   logits = collect_named_outputs('end_points', 'inception_v3/logits', logits)
-  assert 'inception_v3/logits' in logits.aliases
+  assert logits.alias == 'inception_v3/logits'
 
   Args:
     collections: A collection or list of collections. If None skip collection.
-    alias: String to append to the list of aliases of outputs, for example,
-           'inception_v3/conv1'.
+    alias: String, alias to name the outputs, ex. 'inception_v3/conv1'
     outputs: Tensor, an output tensor to collect
 
   Returns:
     The outputs Tensor to allow inline call.
   """
-  append_tensor_alias(outputs, alias)
+  # Remove ending '/' if present.
+  if alias[-1] == '/':
+    alias = alias[:-1]
+  outputs.alias = alias
   if collections:
     ops.add_to_collections(collections, outputs)
   return outputs
 
 
-def append_tensor_alias(tensor, alias):
-  """Append an alias to the list of aliases of the tensor.
-
-  Args:
-    tensor: A `Tensor`.
-    alias: String, to add to the list of aliases of the tensor.
-
-  Returns:
-    The tensor with a new alias appended to its list of aliases.
-  """
-  # Remove ending '/' if present.
-  if alias[-1] == '/':
-    alias = alias[:-1]
-  if hasattr(tensor, 'aliases'):
-    tensor.aliases.append(alias)
-  else:
-    tensor.aliases = [alias]
-  return tensor
-
-
-def gather_tensors_aliases(tensors):
+def gather_tensors_alias(tensors):
   """Given a list of tensors, gather their aliases.
+
+  If the tensor does not have an alias it would default to its name.
 
   Args:
     tensors: A list of `Tensors`.
 
   Returns:
-    A list of strings with the aliases of all tensors.
+    A list of strings with the alias of each tensor.
   """
-  aliases = []
-  for tensor in tensors:
-    aliases += get_tensor_aliases(tensor)
-  return aliases
+  return [get_tensor_alias(tensor) for tensor in tensors]
 
 
-def get_tensor_aliases(tensor):
-  """Get a list with the aliases of the input tensor.
+def get_tensor_alias(tensor):
+  """Given a tensor gather its alias, its op.name or its name.
 
-  If the tensor does not have any alias, it would default to its its op.name or
-  its name.
+  If the tensor does not have an alias it would default to its name.
 
   Args:
     tensor: A `Tensor`.
 
   Returns:
-    A list of strings with the aliases of the tensor.
+    A string with the alias of the tensor.
   """
-  if hasattr(tensor, 'aliases'):
-    aliases = tensor.aliases
+  if hasattr(tensor, 'alias'):
+    alias = tensor.alias
   else:
     if tensor.name[-2:] == ':0':
       # Use op.name for tensor ending in :0
-      aliases = [tensor.op.name]
+      alias = tensor.op.name
     else:
-      aliases = [tensor.name]
-  return aliases
+      alias = tensor.name
+  return alias
 
 
 def convert_collection_to_dict(collection):
-  """Returns an OrderedDict of Tensors with their aliases as keys.
+  """Returns an OrderedDict of Tensors using get_tensor_alias as key.
 
   Args:
     collection: A collection.
 
   Returns:
-    An OrderedDict of {alias: tensor}
+    An OrderedDict of {get_tensor_alias(tensor): tensor}
   """
-  return OrderedDict((alias, tensor)
-                     for tensor in ops.get_collection(collection)
-                     for alias in get_tensor_aliases(tensor))
+  return OrderedDict((get_tensor_alias(t), t) for t in ops.get_collection(collection))
 
 
 def constant_value(value_or_tensor_or_var, dtype=None):
