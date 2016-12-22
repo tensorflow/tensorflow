@@ -53,7 +53,6 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
                                    libxsmm_dnn_conv_kind kind, InputPtr input,
                                    FilterPtr filter, OutputPtr output) {
   libxsmm_dnn_err_t status;
-
   libxsmm_dnn_conv_handle* libxsmm_handle;
   libxsmm_handle = libxsmm_dnn_create_conv_handle_check(desc, &status);
   chk_libxsmm_err(status, "Create handle");
@@ -95,12 +94,11 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
     libxsmm_dnn_transpose_filter(libxsmm_handle);
   }
 
-  // TODO(maciejd) We would prefer raw threads instead of threadpool.
-  auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
-  int num_threads = worker_threads.num_threads;
+  const CpuWorkerThreads* worker_threads = ctx->device()->tensorflow_cpu_worker_threads();
+  int num_threads = worker_threads->num_threads;
   BlockingCounter counter(num_threads);
   for (int i = 0; i < num_threads; ++i) {
-    worker_threads.workers->Schedule([=, &counter]() {
+    worker_threads->workers->Schedule([=, &counter]() {
       chk_libxsmm_err(libxsmm_dnn_convolve_st(libxsmm_handle, kind, 0, i),
                       "Worker");
       counter.DecrementCount();
