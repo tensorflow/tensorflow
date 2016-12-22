@@ -68,6 +68,8 @@ Example:
     x, y, steps=2, batch_size=1, monitors=[example_monitor])
 ```
 
+## Ops
+
 @@get_default_monitors
 @@BaseMonitor
 @@CaptureVariable
