@@ -36,8 +36,8 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #ifdef TENSORFLOW_USE_LIBXSMM
-#include "third_party/libxsmm/include/libxsmm_intrinsics_x86.h"
-#include "third_party/libxsmm/include/libxsmm_spmdm.h"
+#include "include/libxsmm_intrinsics_x86.h"
+#include "include/libxsmm_spmdm.h"
 #endif
 
 namespace tensorflow {
@@ -1408,7 +1408,7 @@ class PinnedToCurrentCPU {
     int ret = 0;
     ret = sched_getaffinity(0, sizeof(cpu_set_t), &old_cpu_set);
     if (ret != 0) {
-      PLOG(WARNING) << "sched_getaffinity";
+      VLOG(WARNING) << "sched_getaffinity";
       return;
     }
     valid = true;
@@ -1417,7 +1417,7 @@ class PinnedToCurrentCPU {
     CPU_SET(sched_getcpu(), &new_cpu_set);
     ret = sched_setaffinity(0, sizeof(cpu_set_t), &new_cpu_set);
     if (ret != 0) {
-      PLOG(WARNING) << "sched_setaffinity";
+      VLOG(WARNING) << "sched_setaffinity";
     }
   }
   ~PinnedToCurrentCPU() {
