@@ -1227,7 +1227,8 @@ class TensorArrayOnCorrectDeviceTest(test.TestCase):
     run_metadata = self._execute_rnn_on(
         rnn_device="/cpu:0", cell_device=test.gpu_device_name())
     step_stats = run_metadata.step_stats
-    ix = 0 if "gpu" in step_stats.dev_stats[0].device else 1
+    short_gpu_name = test.gpu_device_name().split(':')[-2].split('/')[-1].lower()
+    ix = 0 if short_gpu_name in step_stats.dev_stats[0].device.lower() else 1
     gpu_stats = step_stats.dev_stats[ix].node_stats
     cpu_stats = step_stats.dev_stats[1 - ix].node_stats
 
@@ -1251,7 +1252,8 @@ class TensorArrayOnCorrectDeviceTest(test.TestCase):
     run_metadata = self._execute_rnn_on(
         rnn_device="/cpu:0", cell_device="/cpu:0", input_device=test.gpu_device_name())
     step_stats = run_metadata.step_stats
-    ix = 0 if "gpu" in step_stats.dev_stats[0].device else 1
+    short_gpu_name = test.gpu_device_name().split(':')[-2].split('/')[-1].lower()
+    ix = 0 if short_gpu_name in step_stats.dev_stats[0].device.lower() else 1
     gpu_stats = step_stats.dev_stats[ix].node_stats
     cpu_stats = step_stats.dev_stats[1 - ix].node_stats
 
@@ -1268,7 +1270,8 @@ class TensorArrayOnCorrectDeviceTest(test.TestCase):
 
     run_metadata = self._execute_rnn_on(input_device=test.gpu_device_name())
     step_stats = run_metadata.step_stats
-    ix = 0 if "gpu" in step_stats.dev_stats[0].device else 1
+    short_gpu_name = test.gpu_device_name().split(':')[-2].split('/')[-1].lower()
+    ix = 0 if short_gpu_name in step_stats.dev_stats[0].device.lower() else 1
     gpu_stats = step_stats.dev_stats[ix].node_stats
     cpu_stats = step_stats.dev_stats[1 - ix].node_stats
 
