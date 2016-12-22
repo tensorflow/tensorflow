@@ -8,7 +8,7 @@ github source.
 The TensorFlow Python API supports Python 2.7 and Python 3.3+.
 
 The GPU version works best with Cuda Toolkit 8.0 and
-cuDNN v5.  Other versions are supported (Cuda toolkit >= 7.0 and
+cuDNN v5.1.  Other versions are supported (Cuda toolkit >= 7.0 and
 cuDNN >= v3) only when installing from sources.
 Please see [Cuda installation](#optional-install-cuda-gpus-on-linux) for
 details. For Mac OS X, please see 
@@ -520,7 +520,7 @@ the Docker container.
 ### (Optional, Linux) Enable GPU Support
 
 If you installed the GPU version of TensorFlow, you must also install the Cuda
-Toolkit 8.0 and cuDNN v5.  Please see [Cuda
+Toolkit 8.0 and cuDNN v5.1.  Please see [Cuda
 installation](#optional-install-cuda-gpus-on-linux).
 
 You also need to set the `LD_LIBRARY_PATH` and `CUDA_HOME` environment
@@ -634,7 +634,7 @@ Install the toolkit into e.g. `/usr/local/cuda`.
 
 [https://developer.nvidia.com/cudnn](https://developer.nvidia.com/cudnn)
 
-Download cuDNN v5.
+Download cuDNN v5.1.
 
 Uncompress and copy the cuDNN files into the toolkit directory. Assuming the
 toolkit is installed in `/usr/local/cuda`, run the following commands (edited
