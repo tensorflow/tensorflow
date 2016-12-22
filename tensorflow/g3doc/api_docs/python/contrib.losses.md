@@ -425,7 +425,7 @@ If `label_smoothing` is nonzero, smooth the labels towards 1/num_classes:
 
 ##### Returns:
 
-  A scalar `Tensor` representing the loss value.
+  A scalar `Tensor` representing the mean loss value.
 
 ##### Raises:
 
@@ -461,7 +461,7 @@ corresponding sample.
 
 ##### Returns:
 
-  A scalar `Tensor` representing the loss value.
+  A scalar `Tensor` representing the mean loss value.
 
 ##### Raises:
 
