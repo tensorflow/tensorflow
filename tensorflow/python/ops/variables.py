@@ -274,9 +274,6 @@ class Variable(object):
     if initial_value is None:
       raise ValueError("initial_value must be specified.")
     init_from_fn = callable(initial_value)
-    if init_from_fn and dtype is None:
-      raise ValueError(
-          "dtype must also be specified when initial_value is callable.")
 
     if collections is None:
       collections = [ops.GraphKeys.GLOBAL_VARIABLES]
@@ -652,6 +649,46 @@ class Variable(object):
       distinct.
     """
     return state_ops.count_up_to(self._variable, limit=limit)
+
+  def load(self, value, session=None):
+    """Load new value into this variable
+
+    Writes new value to variable's memory. Doesn't add ops to the graph.
+
+    This convenience method requires a session where the graph containing this
+    variable has been launched. If no session is passed, the default session is
+    used.  See the [Session class](../../api_docs/python/client.md#Session) for
+    more information on launching a graph and on sessions.
+
+    ```python
+    v = tf.Variable([1, 2])
+    init = tf.global_variables_initializer()
+
+    with tf.Session() as sess:
+        sess.run(init)
+        # Usage passing the session explicitly.
+        v.load([2, 3], sess)
+        print(v.eval(sess)) # prints [2 3]
+        # Usage with the default session.  The 'with' block
+        # above makes 'sess' the default session.
+        v.load([3, 4], sess)
+        print(v.eval()) # prints [3 4]
+    ```
+
+    Args:
+        value: New variable value
+        session: The session to use to evaluate this variable. If
+          none, the default session is used.
+
+    Raises:
+        ValueError: Session is not passed and no default session
+    """
+    session = session or ops.get_default_session()
+    if session is None:
+      raise ValueError(
+          "Either session argument should be provided or default session "
+          "should be established")
+    session.run(self._initializer_op, {self._initializer_op.inputs[1]: value})
 
   # Conversion to tensor.
   @staticmethod
@@ -1263,7 +1300,7 @@ def assert_variables_initialized(var_list=None):
     if len(ranks) == 1:
       return ranks[0]
     else:
-      return array_ops.pack(ranks)
+      return array_ops.stack(ranks)
 
 
 def report_uninitialized_variables(var_list=None,
@@ -1297,8 +1334,9 @@ def report_uninitialized_variables(var_list=None,
       return array_ops.constant([], dtype=dtypes.string)
     else:
       # Get a 1-D boolean tensor listing whether each variable is initialized.
-      variables_mask = math_ops.logical_not(array_ops.pack(
-          [state_ops.is_variable_initialized(v) for v in var_list]))
+      variables_mask = math_ops.logical_not(
+          array_ops.stack(
+              [state_ops.is_variable_initialized(v) for v in var_list]))
       # Get a 1-D string tensor containing all the variable names.
       variable_names_tensor = array_ops.constant([s.op.name for s in var_list])
       # Return a 1-D tensor containing all the names of uninitialized variables.

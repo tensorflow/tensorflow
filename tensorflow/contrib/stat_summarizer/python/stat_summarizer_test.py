@@ -48,12 +48,8 @@ class StatSummarizerTest(tf.test.TestCase):
 
       print(output_string)
 
-      # Test that the preliminary summary line was printed.
-      self.assertRegexpMatches(output_string, r"Total time")
-
       # Test it recorded running the expected number of times.
       self.assertRegexpMatches(output_string, r"count=20")
-      self.assertRegexpMatches(output_string, r"\n20 runs")
 
       # Test that a header line got printed.
       self.assertRegexpMatches(output_string, r"====== .* ======")

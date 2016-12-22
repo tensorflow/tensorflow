@@ -30,6 +30,13 @@ py_library(
     deps = [
         ":gen_clustering_ops",
         ":gen_factorization_ops",
+        "//tensorflow/contrib/learn",
+        "//tensorflow/contrib/util:util_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform",
     ],
 )
 
@@ -105,8 +112,10 @@ tf_py_test(
         "python/ops/gmm_ops_test.py",
     ],
     additional_deps = [
+        ":factorization_py",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
     ],
 )

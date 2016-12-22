@@ -30,6 +30,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import resources
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import coordinator
@@ -281,15 +282,15 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
   Returns:
     A `MonitoredSession` object.
   """
-  hooks = hooks or []
   scaffold = scaffold or Scaffold()
   if not is_chief:
     session_creator = WorkerSessionCreator(
         scaffold=scaffold, master=master, config=config)
-    return MonitoredSession(session_creator=session_creator, hooks=hooks)
+    return MonitoredSession(session_creator=session_creator, hooks=hooks or [])
 
+  all_hooks = []
   if chief_only_hooks:
-    hooks.extend(chief_only_hooks)
+    all_hooks.extend(chief_only_hooks)
   session_creator = ChiefSessionCreator(
       scaffold=scaffold,
       checkpoint_dir=checkpoint_dir,
@@ -297,19 +298,21 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
       config=config)
 
   if checkpoint_dir:
-    hooks.append(
+    all_hooks.append(
         basic_session_run_hooks.StepCounterHook(output_dir=checkpoint_dir))
 
     if save_summaries_steps > 0:
-      hooks.append(basic_session_run_hooks.SummarySaverHook(
+      all_hooks.append(basic_session_run_hooks.SummarySaverHook(
           scaffold=scaffold,
           save_steps=save_summaries_steps,
           output_dir=checkpoint_dir))
     if save_checkpoint_secs > 0:
-      hooks.append(basic_session_run_hooks.CheckpointSaverHook(
+      all_hooks.append(basic_session_run_hooks.CheckpointSaverHook(
           checkpoint_dir, save_secs=save_checkpoint_secs, scaffold=scaffold))
 
-  return MonitoredSession(session_creator=session_creator, hooks=hooks)
+  if hooks:
+    all_hooks.extend(hooks)
+  return MonitoredSession(session_creator=session_creator, hooks=all_hooks)
 
 
 class SessionCreator(object):
@@ -485,6 +488,9 @@ class _MonitoredSession(object):
       # We don't want coordinator to suppress any exception.
       self.coord = coordinator.Coordinator(clean_stop_exception_types=[])
       queue_runner.start_queue_runners(sess=self.tf_sess, coord=self.coord)
+      # Inform the hooks that a new session has been created.
+      for hook in self._hooks:
+        hook.after_create_session(self.tf_sess)
       return _CoordinatedSession(
           _HookedSession(self.tf_sess, self._hooks), self.coord)
 
@@ -519,6 +525,7 @@ class MonitoredSession(_MonitoredSession):
   """Session-like object that handles initialization, recovery and hooks.
 
   Example usage:
+
   ```python
   saver_hook = CheckpointSaverHook(...)
   summary_hook = SummaryHook(...)
@@ -552,20 +559,25 @@ class MonitoredSession(_MonitoredSession):
 
   * calls `hook.end()`
   * closes the queue runners and the session
-  * surpresses `OutOfRange` error which indicates that all inputs have been
-    processed if the monitored_session is used as a context.
+  * suppresses `OutOfRange` error which indicates that all inputs have been
+    processed if the monitored_session is used as a context
 
   How to set `tf.Session` arguments:
+
   * In most cases you can set session arguments as follows:
-    ```python
-    MonitoredSession(
-      session_creator=ChiefSessionCreator(master=..., config=...))
-    ```
+
+  ```python
+  MonitoredSession(
+    session_creator=ChiefSessionCreator(master=..., config=...))
+  ```
+
   * In distributed setting for a non-chief worker, you can use following:
-    ```python
-    MonitoredSession(
-      session_creator=WorkerSessionCreator(master=..., config=...))
-    ```
+
+  ```python
+  MonitoredSession(
+    session_creator=WorkerSessionCreator(master=..., config=...))
+  ```
+
   See `MonitoredTrainingSession` for an example usage based on chief or worker.
 
   Args:
@@ -757,6 +769,8 @@ class _RecoverableSession(_WrappedSession):
                               options=options,
                               run_metadata=run_metadata)
       except errors.AbortedError:
+        logging.info('An AbortedError was raised. Closing the current session. '
+                     'A new session will be created on the next session.run().')
         self.close()
         self._sess = None
 

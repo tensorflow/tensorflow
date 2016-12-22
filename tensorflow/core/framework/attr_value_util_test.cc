@@ -55,6 +55,9 @@ TEST(AttrValueUtil, HasType) {
   EXPECT_FALSE(AttrValueHasType(V(DT_FLOAT), "shape").ok());
   EXPECT_FALSE(AttrValueHasType(F("f", {}), "string").ok());
   EXPECT_FALSE(AttrValueHasType(P("T"), "float").ok());
+  EXPECT_FALSE(AttrValueHasType(V(static_cast<DataType>(1000)), "type").ok());
+  std::vector<DataType> list_type({static_cast<DataType>(1000)});
+  EXPECT_FALSE(AttrValueHasType(V(list_type), "list(type)").ok());
 }
 
 SubstituteFunc ReplaceTWith(const AttrValue& val) {

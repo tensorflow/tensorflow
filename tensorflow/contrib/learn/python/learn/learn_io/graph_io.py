@@ -19,12 +19,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.input_pipeline.python.ops import input_pipeline_ops
 from tensorflow.python import summary
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import io_ops
@@ -220,23 +222,6 @@ def _read_keyed_batch_examples_shared_queue(file_pattern,
       name=name)
 
 
-def _get_shared_file_name_queue(file_names, shuffle, num_epochs, name):
-  # Creating a dummy variable so we can put the shared queue in ps if there is
-  # a PS and in the worker otherwise. TODO(rohanj): Figure out how to place an
-  # op on PS without this hack
-  dummy_var = var_ops.Variable(initial_value=0, name='queue_placement_var')
-  with ops.device(dummy_var.device):
-    shared_file_name_queue = input_ops.string_input_producer(
-        constant_op.constant(
-            file_names, name='input'),
-        shuffle=shuffle,
-        num_epochs=num_epochs,
-        name=name,
-        shared_name=name,
-        cancel_op=control_flow_ops.no_op())
-    return shared_file_name_queue
-
-
 def _get_file_names(file_pattern, randomize_input):
   """Parse list of file names from pattern, optionally shuffled.
 
@@ -355,11 +340,11 @@ def _read_keyed_batch_examples_helper(file_pattern,
   with ops.name_scope(name, 'read_batch_examples', [file_pattern]) as scope:
     with ops.name_scope('file_name_queue') as file_name_queue_scope:
       if setup_shared_queue:
-        shared_file_name_queue = _get_shared_file_name_queue(
-            file_names, randomize_input, num_epochs, file_name_queue_scope)
         file_name_queue = data_flow_ops.FIFOQueue(
             capacity=1, dtypes=[dtypes.string], shapes=[[]])
-        enqueue_op = file_name_queue.enqueue(shared_file_name_queue.dequeue())
+        enqueue_op = file_name_queue.enqueue(
+            input_pipeline_ops.seek_next(
+                file_names, shuffle=randomize_input, num_epochs=num_epochs))
         queue_runner.add_queue_runner(
             queue_runner.QueueRunner(file_name_queue, [enqueue_op]))
       else:

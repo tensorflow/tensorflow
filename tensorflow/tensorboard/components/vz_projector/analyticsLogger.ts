@@ -53,4 +53,15 @@ export class AnalyticsLogger {
       });
     }
   }
+
+  logWebGLDisabled() {
+    if (this.eventLogging) {
+      ga('send', {
+        hitType: 'event',
+        eventCategory: 'Error',
+        eventAction: 'PageLoad',
+        eventLabel: 'WebGL_disabled'
+      });
+    }
+  }
 }

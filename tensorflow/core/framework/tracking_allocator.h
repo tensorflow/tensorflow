@@ -73,8 +73,10 @@ class TrackingAllocator : public Allocator {
   // have been deallocated the wrapper will delete itself.
   std::pair<size_t, size_t> GetSizesAndUnRef();
 
- private:
+ protected:
   ~TrackingAllocator() override {}
+
+ private:
   bool UnRef() EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   Allocator* allocator_;  // not owned.

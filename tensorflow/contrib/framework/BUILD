@@ -32,6 +32,23 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":gen_variable_ops",
+        "//tensorflow/contrib/util:util_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:io_ops",
+        "//tensorflow/python:logging_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:state_ops_gen",
+        "//tensorflow/python:tensor_array_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -104,7 +121,11 @@ py_test(
     name = "experimental_test",
     srcs = ["python/framework/experimental_test.py"],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow:tensorflow_py"],
+    deps = [
+        ":framework_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:platform",
+    ],
 )
 
 py_test(

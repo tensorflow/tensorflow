@@ -66,8 +66,12 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import builder as saved_model_builder
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import device_setter
+from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver
+from tensorflow.python.training import session_run_hook
+from tensorflow.python.training import summary_io
 from tensorflow.python.util import compat
 
 
@@ -330,8 +334,8 @@ class BaseEstimator(
 
     # Features and labels TensorSignature objects.
     # TODO(wicke): Rename these to something more descriptive
-    self._features_info = {}
-    self._labels_info = {}
+    self._features_info = None
+    self._labels_info = None
 
     self._graph = None
 
@@ -341,7 +345,8 @@ class BaseEstimator(
     return copy.deepcopy(self._config)
 
   @deprecated_args(
-      SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, 'x', 'y', 'batch_size'
+      SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, ('x', None),
+      ('y', None), ('batch_size', None)
   )
   def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
           monitors=None, max_steps=None):
@@ -367,7 +372,8 @@ class BaseEstimator(
     return self
 
   @deprecated_args(
-      SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, 'x', 'y', 'batch_size'
+      SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, ('x', None),
+      ('y', None), ('batch_size', None)
   )
   def partial_fit(
       self, x=None, y=None, input_fn=None, steps=1, batch_size=None,
@@ -411,7 +417,8 @@ class BaseEstimator(
                     batch_size=batch_size, monitors=monitors)
 
   @deprecated_args(
-      SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, 'x', 'y', 'batch_size'
+      SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, ('x', None),
+      ('y', None), ('batch_size', None)
   )
   def evaluate(
       self, x=None, y=None, input_fn=None, feed_fn=None, batch_size=None,
@@ -442,8 +449,8 @@ class BaseEstimator(
     return eval_results
 
   @deprecated_args(
-      SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, 'x', 'batch_size',
-      'as_iterable'
+      SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, ('x', None),
+      ('batch_size', None), ('as_iterable', True)
   )
   def predict(
       self, x=None, input_fn=None, batch_size=None, outputs=None,
@@ -641,29 +648,28 @@ class BaseEstimator(
     return tensor_signature.create_example_parser_from_signatures(
         self._features_info, examples_batch)
 
-  def _check_inputs(self, features, labels, mode):
-    if mode in self._features_info:
-      logging.debug('Given features for mode %s: %s, required signatures: %s.',
-                    mode, str(features), str(self._features_info[mode]))
-
-      if not tensor_signature.tensors_compatible(features, self._features_info[mode]):
-        raise ValueError('Features for mode %s are incompatible with given information. '
+  def _check_inputs(self, features, labels):
+    if self._features_info is not None:
+      logging.debug('Given features: %s, required signatures: %s.',
+                    str(features), str(self._features_info))
+      if not tensor_signature.tensors_compatible(features, self._features_info):
+        raise ValueError('Features are incompatible with given information. '
                          'Given features: %s, required signatures: %s.' %
-                         (mode, str(features), str(self._features_info[mode])))
+                         (str(features), str(self._features_info)))
     else:
-      self._features_info[mode] = tensor_signature.create_signatures(features)
-      logging.debug('Setting feature info for mode %s to %s.', mode, str(self._features_info[mode]))
+      self._features_info = tensor_signature.create_signatures(features)
+      logging.debug('Setting feature info to %s.', str(self._features_info))
     if labels is not None:
-      if mode in self._labels_info:
+      if self._labels_info is not None:
         logging.debug('Given labels: %s, required signatures: %s.',
                       str(labels), str(self._labels_info))
-        if not tensor_signature.tensors_compatible(labels, self._labels_info[mode]):
-          raise ValueError('Labels for mode %s are incompatible with given information. '
+        if not tensor_signature.tensors_compatible(labels, self._labels_info):
+          raise ValueError('Labels are incompatible with given information. '
                            'Given labels: %s, required signatures: %s.' %
-                           (mode, str(labels), str(self._labels_info[mode])))
+                           (str(labels), str(self._labels_info)))
       else:
-        self._labels_info[mode] = tensor_signature.create_signatures(labels)
-        logging.debug('Setting labels info for mode %s to %s', mode, str(self._labels_info[mode]))
+        self._labels_info = tensor_signature.create_signatures(labels)
+        logging.debug('Setting labels info to %s', str(self._labels_info))
 
   def _train_model(self,
                    input_fn,
@@ -700,7 +706,8 @@ class BaseEstimator(
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step = contrib_framework.create_global_step(g)
       features, labels = input_fn()
-      self._check_inputs(features, labels, model_fn_lib.ModeKeys.TRAIN)
+      self._check_inputs(features, labels)
+
       # The default return type of _get_train_ops is ModelFnOps. But there are
       # some subclasses of tf.contrib.learn.Estimator which override this
       # method and use the legacy signature, namely _get_train_ops returns a
@@ -800,7 +807,8 @@ class BaseEstimator(
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step = contrib_framework.create_global_step(g)
       features, labels = input_fn()
-      self._check_inputs(features, labels, model_fn_lib.ModeKeys.EVAL)
+      self._check_inputs(features, labels)
+
       # The default return type of _get_eval_ops is ModelFnOps. But there are
       # some subclasses of tf.contrib.learn.Estimator which override this
       # method and use the legacy signature, namely _get_eval_ops returns an
@@ -833,29 +841,6 @@ class BaseEstimator(
     if isinstance(result, (list, tuple)):
       return result[0]
     return result
-
-  def _set_infer_mode_feature_signature(self, features):
-    for mode in list(self._features_info.keys()):
-      if tensor_signature.tensors_compatible(features, self._features_info[mode]):
-        self._features_info[model_fn_lib.ModeKeys.INFER] = self._features_info[mode]
-        if mode in self._labels_info:
-          self._labels_info[model_fn_lib.ModeKeys.INFER] = (
-              self._labels_info[mode])
-        else:
-          self._labels_info[model_fn_lib.ModeKeys.INFER] = None
-        break
-
-    if model_fn_lib.ModeKeys.INFER not in self._features_info:
-      logging.warning('Features for mode %s are incompatible with neither train mode nor eval mode.'
-                      ' Given features: %s' % (model_fn_lib.ModeKeys.INFER, str(features)))
-      for mode in list(self._features_info.keys()):
-        logging.warning('Whereas %s mode signatures: %s' % (mode, str(self._features_info[mode])))
-      self._check_inputs(features, None, model_fn_lib.ModeKeys.INFER)
-      if model_fn_lib.ModeKeys.TRAIN in self._labels_info:
-        logging.warning('Setting labels info for mode infer equal to that of labels info for train mode')
-        self._labels_info[model_fn_lib.ModeKeys.INFER] = self._labels_info[model_fn_lib.ModeKeys.TRAIN]
-      else:
-        self._labels_info[model_fn_lib.ModeKeys.INFER] = {}
 
   def _infer_model(
       self, input_fn, feed_fn=None, outputs=None, as_iterable=True):
@@ -1105,6 +1090,17 @@ class Estimator(BaseEstimator):
     """
     return self._call_model_fn(features, labels, model_fn_lib.ModeKeys.TRAIN)
 
+  # TODO(ispir): delete this function after converting all legacy usages.
+  def _call_legacy_get_train_ops(self, features, labels):
+    train_ops = self._get_train_ops(features, labels)
+    if isinstance(train_ops, model_fn_lib.ModelFnOps):  # Default signature
+      return train_ops
+    return model_fn_lib.ModelFnOps(
+        mode=model_fn_lib.ModeKeys.TRAIN,
+        predictions=None,
+        loss=train_ops[1],
+        train_op=train_ops[0])
+
   def _get_eval_ops(self, features, labels, metrics):
     """Method that builds model graph and returns evaluation ops.
 
@@ -1156,10 +1152,8 @@ class Estimator(BaseEstimator):
     Returns:
       `ModelFnOps` object.
     """
-
-    self._set_infer_mode_feature_signature(features)
     labels = tensor_signature.create_placeholders_from_signatures(
-        self._labels_info[model_fn_lib.ModeKeys.INFER])
+        self._labels_info)
     return self._call_model_fn(features, labels, model_fn_lib.ModeKeys.INFER)
 
   @experimental
@@ -1262,8 +1256,121 @@ class Estimator(BaseEstimator):
 
       return export_dir
 
+  @deprecated_args(SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, 'x', 'y',
+                   'batch_size')
+  def fit(self,
+          x=None,
+          y=None,
+          input_fn=None,
+          steps=None,
+          batch_size=None,
+          monitors=None,
+          max_steps=None):
+    # pylint: disable=g-doc-args,g-doc-return-or-yield
+    """See `Trainable`.
 
-# For time of deprecation x,y from Estimator allow direct access
+    Raises:
+      ValueError: If `x` or `y` are not `None` while `input_fn` is not `None`.
+      ValueError: If both `steps` and `max_steps` are not `None`.
+    """
+    if (steps is not None) and (max_steps is not None):
+      raise ValueError('Can not provide both steps and max_steps.')
+    if max_steps is not None:
+      try:
+        start_step = load_variable(self._model_dir, ops.GraphKeys.GLOBAL_STEP)
+        if max_steps <= start_step:
+          logging.info('Skipping training since max_steps has already saved.')
+          return None
+      except:  # pylint: disable=bare-except
+        pass
+
+    hooks = monitor_lib.replace_monitors_with_hooks(monitors, self)
+    if steps is not None or max_steps is not None:
+      hooks.append(basic_session_run_hooks.StopAtStepHook(steps, max_steps))
+
+    input_fn, feed_fn = _get_input_fn(
+        x,
+        y,
+        input_fn,
+        feed_fn=None,
+        batch_size=batch_size,
+        shuffle=True,
+        epochs=None)
+    if feed_fn:
+      hooks.append(_FeedFnHook(feed_fn))
+    loss = self._train_model_v2(input_fn=input_fn, hooks=hooks)
+    logging.info('Loss for final step: %s.', loss)
+    return self
+
+  def _train_model_v2(self, input_fn, hooks):
+    all_hooks = []
+    self._graph = ops.Graph()
+    with self._graph.as_default() as g, g.device(self._device_fn):
+      random_seed.set_random_seed(self._config.tf_random_seed)
+      global_step = contrib_framework.create_global_step(g)
+      features, labels = input_fn()
+      self._check_inputs(features, labels)
+      model_fn_ops = self._call_legacy_get_train_ops(features, labels)
+      ops.add_to_collection(ops.GraphKeys.LOSSES, model_fn_ops.loss)
+      all_hooks.extend([
+          basic_session_run_hooks.NanTensorHook(model_fn_ops.loss),
+          basic_session_run_hooks.LoggingTensorHook(
+              {
+                  'loss': model_fn_ops.loss,
+                  'step': global_step
+              },
+              every_n_iter=100)
+      ])
+      all_hooks.extend(hooks)
+
+      scaffold = model_fn_ops.training_scaffold or monitored_session.Scaffold()
+      if not (scaffold.saver or ops.get_collection(ops.GraphKeys.SAVERS)):
+        ops.add_to_collection(
+            ops.GraphKeys.SAVERS,
+            saver.Saver(
+                sharded=True,
+                max_to_keep=self._config.keep_checkpoint_max,
+                defer_build=True))
+
+      chief_hooks = []
+      if (self._config.save_checkpoints_secs or
+          self._config.save_checkpoints_steps):
+        chief_hooks = [
+            basic_session_run_hooks.CheckpointSaverHook(
+                self._model_dir,
+                save_secs=self._config.save_checkpoints_secs,
+                save_steps=self._config.save_checkpoints_steps,
+                scaffold=scaffold)
+        ]
+      with monitored_session.MonitoredTrainingSession(
+          master=self._config.master,
+          is_chief=self._config.is_chief,
+          checkpoint_dir=self._model_dir,
+          scaffold=scaffold,
+          hooks=all_hooks + model_fn_ops.training_hooks,
+          chief_only_hooks=chief_hooks + model_fn_ops.training_chief_hooks,
+          save_checkpoint_secs=0,  # Saving is handled by a hook.
+          save_summaries_steps=self._config.save_summary_steps,
+          config=None) as mon_sess:
+        loss = None
+        while not mon_sess.should_stop():
+          _, loss = mon_sess.run([model_fn_ops.train_op, model_fn_ops.loss])
+      summary_io.SummaryWriterCache.clear()
+      return loss
+
+
+class _FeedFnHook(session_run_hook.SessionRunHook):
+  """Runs feed_fn and sets the feed_dict accordingly."""
+
+  def __init__(self, feed_fn):
+    self.feed_fn = feed_fn
+
+  def before_run(self, run_context):  # pylint: disable=unused-argument
+    return session_run_hook.SessionRunArgs(
+        fetches=None, feed_dict=self.feed_fn())
+
+
+# For time of deprecation x,y from Estimator allow direct access.
 # pylint: disable=protected-access
 class SKCompat(sklearn.BaseEstimator):
   """Scikit learn wrapper for TensorFlow Learn Estimator."""
@@ -1273,19 +1380,19 @@ class SKCompat(sklearn.BaseEstimator):
 
   def fit(self, x, y, batch_size=128, steps=None, max_steps=None,
           monitors=None):
-    if (steps is not None) and (max_steps is not None):
-      raise ValueError('Can not provide both steps and max_steps.')
-
     input_fn, feed_fn = _get_input_fn(x, y, input_fn=None, feed_fn=None,
                                       batch_size=batch_size, shuffle=True,
                                       epochs=None)
-    loss = self._estimator._train_model(
-        input_fn=input_fn,
-        feed_fn=feed_fn,
-        steps=steps,
-        monitors=monitors,
-        max_steps=max_steps)
-    logging.info('Loss for final step: %s.', loss)
+    all_monitors = []
+    if feed_fn:
+      all_monitors = [_FeedFnHook(feed_fn)]
+    if monitors:
+      all_monitors.extend(monitors)
+
+    self._estimator.fit(input_fn=input_fn,
+                        steps=steps,
+                        max_steps=max_steps,
+                        monitors=all_monitors)
     return self
 
   def score(self, x, y, batch_size=128, steps=None, metrics=None):

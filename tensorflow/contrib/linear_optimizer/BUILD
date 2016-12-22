@@ -19,6 +19,15 @@ py_library(
     deps = [
         ":sharded_mutable_dense_hashtable_py",
         ":sparse_feature_column_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:sdca_ops_gen",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -29,9 +38,11 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":sdca_ops_py",
+        ":sparse_feature_column_py",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:sdca_ops_gen",
     ],
 )
 
@@ -41,6 +52,11 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/contrib/lookup:lookup_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
     ],
 )
 
@@ -61,6 +77,7 @@ py_library(
     name = "sparse_feature_column_py",
     srcs = ["python/ops/sparse_feature_column.py"],
     srcs_version = "PY2AND3",
+    deps = ["//tensorflow/python:framework_for_generated_wrappers"],
 )
 
 py_test(

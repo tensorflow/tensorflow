@@ -204,6 +204,20 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.Laplace.is_scalar_batch` {#Laplace.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Laplace.is_scalar_event` {#Laplace.is_scalar_event}
+
+Indicates that `event_shape==[]`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Laplace.loc` {#Laplace.loc}
 
 Distribution parameter for the location.

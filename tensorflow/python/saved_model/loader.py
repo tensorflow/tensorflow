@@ -57,16 +57,18 @@ with tf.Session(graph=tf.Graph()) as sess:
 
 ```
 """
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import os
-import tensorflow as tf
 
 from google.protobuf import text_format
+
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
+from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.saved_model import constants
 from tensorflow.python.training import saver as tf_saver
@@ -168,7 +170,7 @@ def _get_main_op_tensor(meta_graph_def_to_load):
     main_ops = collection_def[constants.MAIN_OP_KEY].node_list.value
     if len(main_ops) != 1:
       raise RuntimeError("Expected exactly one SavedModel main op.")
-    main_op_tensor = tf.get_collection(constants.MAIN_OP_KEY)[0]
+    main_op_tensor = ops.get_collection(constants.MAIN_OP_KEY)[0]
   return main_op_tensor
 
 
@@ -192,7 +194,7 @@ def _get_legacy_init_op_tensor(meta_graph_def_to_load):
         constants.LEGACY_INIT_OP_KEY].node_list.value
     if len(legacy_init_ops) != 1:
       raise RuntimeError("Expected exactly one legacy serving init op.")
-    legacy_init_op_tensor = tf.get_collection(constants.LEGACY_INIT_OP_KEY)[0]
+    legacy_init_op_tensor = ops.get_collection(constants.LEGACY_INIT_OP_KEY)[0]
   return legacy_init_op_tensor
 
 

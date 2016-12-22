@@ -855,7 +855,7 @@ def sparse_merge(sp_ids, sp_values, vocab_size, name=None,
 
     # Slice off the last dimension of indices, then tack on the ids
     indices_columns_to_preserve = array_ops.slice(
-        sp_ids.indices, [0, 0], array_ops.pack([-1, rank - 1]))
+        sp_ids.indices, [0, 0], array_ops.stack([-1, rank - 1]))
     new_indices = array_ops.concat_v2(
         [indices_columns_to_preserve, array_ops.reshape(ids, [-1, 1])], 1)
 
@@ -863,7 +863,7 @@ def sparse_merge(sp_ids, sp_values, vocab_size, name=None,
     new_shape = array_ops.concat_v2([
         array_ops.slice(sp_ids.dense_shape, [0],
                         array_ops.expand_dims(rank - 1, 0)),
-        math_ops.cast(array_ops.pack([vocab_size]), dtypes.int64)
+        math_ops.cast(array_ops.stack([vocab_size]), dtypes.int64)
     ], 0)
 
     result = sparse_tensor.SparseTensor(new_indices, new_values, new_shape)

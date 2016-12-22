@@ -271,6 +271,20 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.WishartCholesky.is_scalar_batch` {#WishartCholesky.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.WishartCholesky.is_scalar_event` {#WishartCholesky.is_scalar_event}
+
+Indicates that `event_shape==[]`.
+
+
+- - -
+
 #### `tf.contrib.distributions.WishartCholesky.log_cdf(value, name='log_cdf', **condition_kwargs)` {#WishartCholesky.log_cdf}
 
 Log cumulative distribution function.

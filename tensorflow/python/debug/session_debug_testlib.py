@@ -78,7 +78,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     raise NotImplementedError(
         "_debug_dump_dir() method is not implemented in the base test class.")
 
-  def testDumpToFileOverlappingParentDir(self):
+  def testConcurrentDumpingToPathsWithOverlappingParentDirsWorks(self):
     with session.Session() as sess:
       u_init_val = np.array([[5.0, 3.0], [-1.0, 0.0]])
       v_init_val = np.array([[2.0], [-1.0]])
@@ -133,7 +133,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       self.assertGreaterEqual(
           dump.get_rel_timestamps("%s/read" % v_name, 0, "DebugIdentity")[0], 0)
 
-  def testDumpStringTensorsToFileSystem(self):
+  def testDumpStringTensorsWorks(self):
     with session.Session() as sess:
       str1_init_val = np.array(b"abc")
       str2_init_val = np.array(b"def")
@@ -237,7 +237,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       self.assertAllClose(u_init_val, sess.run(u))
       self.assertEqual(s_init_val, sess.run(s))
 
-  def testDumpToFileWhileLoop(self):
+  def testDebugWhileLoopGeneratesMultipleDumps(self):
     with session.Session() as sess:
       num_iter = 10
 
@@ -407,9 +407,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       self.assertEqual(1, len(first_bad_datum))
       self.assertEqual(x_name, first_bad_datum[0].node_name)
 
-  def testDumpGraphStructureLookup(self):
-    # TODO(cais): Separate this test into multiple test methods.
-
+  def _session_run_for_graph_structure_lookup(self):
     with session.Session() as sess:
       u_name = "testDumpGraphStructureLookup/u"
       v_name = "testDumpGraphStructureLookup/v"
@@ -432,155 +430,144 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       run_metadata = config_pb2.RunMetadata()
       sess.run(w, options=run_options, run_metadata=run_metadata)
 
-      self.assertEqual(self._expected_partition_graph_count,
-                       len(run_metadata.partition_graphs))
-      dump = debug_data.DebugDumpDir(
-          self._dump_root, partition_graphs=run_metadata.partition_graphs)
+    self.assertEqual(self._expected_partition_graph_count,
+                     len(run_metadata.partition_graphs))
 
-      u_read_name = u_name + "/read"
+    dump = debug_data.DebugDumpDir(
+        self._dump_root, partition_graphs=run_metadata.partition_graphs)
 
-      # Test node name list lookup of the DebugDumpDir object.
-      node_names = dump.nodes()
-      self.assertTrue(u_name in node_names)
-      self.assertTrue(u_read_name in node_names)
+    return u_name, v_name, w_name, dump
 
-      # Test querying node attributes.
-      u_attr = dump.node_attributes(u_name)
-      self.assertEqual(dtypes.float32, u_attr["dtype"].type)
-      self.assertEqual(1, len(u_attr["shape"].shape.dim))
-      self.assertEqual(2, u_attr["shape"].shape.dim[0].size)
+  def testGraphStructureLookupGivesDevicesAndNodesInfo(self):
+    u_name, v_name, w_name, dump = (
+        self._session_run_for_graph_structure_lookup())
 
-      with self.assertRaisesRegexp(ValueError, "No node named \"foo\" exists"):
-        dump.node_attributes("foo")
+    # Test num_devices().
+    self.assertEqual(self._expected_num_devices, len(dump.devices()))
 
-      # Test querying the debug watch keys with node names.
-      self.assertEqual(["%s:0:DebugIdentity" % u_name],
-                       dump.debug_watch_keys(u_name))
-      self.assertEqual(["%s:0:DebugIdentity" % v_name],
-                       dump.debug_watch_keys(v_name))
-      self.assertEqual(["%s:0:DebugIdentity" % w_name],
-                       dump.debug_watch_keys(w_name))
-      self.assertEqual([], dump.debug_watch_keys("foo"))
+    # Test node_device().
+    self.assertEqual(self._main_device, dump.node_device(u_name))
 
-      # Test querying debug datum instances from debug watch.
-      u_data = dump.watch_key_to_data(dump.debug_watch_keys(u_name)[0])
-      self.assertEqual(1, len(u_data))
-      self.assertEqual(u_name, u_data[0].node_name)
-      self.assertEqual(0, u_data[0].output_slot)
-      self.assertEqual("DebugIdentity", u_data[0].debug_op)
-      self.assertGreaterEqual(u_data[0].timestamp, 0)
+    with self.assertRaisesRegexp(ValueError,
+                                 "does not exist in partition graphs"):
+      dump.node_device(u_name + "foo")
 
-      self.assertEqual([], dump.watch_key_to_data("foo"))
+    # Test node_exists().
+    self.assertTrue(dump.node_exists(u_name))
+    self.assertTrue(dump.node_exists(u_name + "/read"))
+    self.assertFalse(dump.node_exists(u_name + "/read" + "/foo"))
 
-      # Test the inputs lookup of the DebugDumpDir object.
-      self.assertEqual([], dump.node_inputs(u_name))
-      self.assertEqual([u_name], dump.node_inputs(u_read_name))
-      self.assertEqual([u_read_name] * 2, dump.node_inputs(v_name))
-      self.assertEqual([v_name] * 2, dump.node_inputs(w_name))
+    # Test node_op_type().
+    self.assertEqual("Variable", dump.node_op_type(u_name))
+    self.assertEqual("Identity", dump.node_op_type(u_name + "/read"))
+    self.assertEqual("Add", dump.node_op_type(v_name))
+    self.assertEqual("Add", dump.node_op_type(w_name))
 
-      self.assertEqual([], dump.node_inputs(u_name, is_control=True))
-      self.assertEqual([], dump.node_inputs(u_read_name, is_control=True))
-      self.assertEqual([], dump.node_inputs(v_name, is_control=True))
-      self.assertEqual([], dump.node_inputs(w_name, is_control=True))
+    with self.assertRaisesRegexp(ValueError,
+                                 "does not exist in partition graphs"):
+      dump.node_op_type(u_name + "foo")
 
-      # Test the outputs recipient lookup of the DebugDumpDir object.
-      self.assertTrue(u_read_name in dump.node_recipients(u_name))
-      self.assertEqual(2, dump.node_recipients(u_read_name).count(v_name))
-      self.assertEqual(2, dump.node_recipients(v_name).count(w_name))
+  def testGraphStructureLookupGivesNodesAndAttributes(self):
+    u_name, _, _, dump = self._session_run_for_graph_structure_lookup()
 
-      self.assertEqual([], dump.node_recipients(u_name, is_control=True))
-      self.assertEqual([], dump.node_recipients(u_read_name, is_control=True))
-      self.assertEqual([], dump.node_recipients(v_name, is_control=True))
-      self.assertEqual([], dump.node_recipients(w_name, is_control=True))
+    u_read_name = u_name + "/read"
 
-      # Test errors raised on invalid node names.
-      with self.assertRaisesRegexp(ValueError,
-                                   "does not exist in partition graphs"):
-        dump.node_inputs(u_name + "foo")
+    # Test node name list lookup of the DebugDumpDir object.
+    node_names = dump.nodes()
+    self.assertTrue(u_name in node_names)
+    self.assertTrue(u_read_name in node_names)
 
-      with self.assertRaisesRegexp(ValueError,
-                                   "does not exist in partition graphs"):
-        dump.node_recipients(u_name + "foo")
+    # Test querying node attributes.
+    u_attr = dump.node_attributes(u_name)
+    self.assertEqual(dtypes.float32, u_attr["dtype"].type)
+    self.assertEqual(1, len(u_attr["shape"].shape.dim))
+    self.assertEqual(2, u_attr["shape"].shape.dim[0].size)
 
-      # Test transitive_inputs().
-      self.assertEqual([], dump.transitive_inputs(u_name))
-      self.assertEqual([u_name], dump.transitive_inputs(u_read_name))
-      self.assertEqual(
-          set([u_name, u_read_name]), set(dump.transitive_inputs(v_name)))
-      self.assertEqual(
-          set([u_name, u_read_name, v_name]),
-          set(dump.transitive_inputs(w_name)))
+    with self.assertRaisesRegexp(ValueError, "No node named \"foo\" exists"):
+      dump.node_attributes("foo")
 
-      with self.assertRaisesRegexp(ValueError,
-                                   "does not exist in partition graphs"):
-        dump.transitive_inputs(u_name + "foo")
+  def testGraphStructureLookupGivesDebugWatchKeys(self):
+    u_name, v_name, w_name, dump = (
+        self._session_run_for_graph_structure_lookup())
 
-      # Test num_devices().
-      self.assertEqual(self._expected_num_devices, len(dump.devices()))
+    # Test querying the debug watch keys with node names.
+    self.assertEqual(["%s:0:DebugIdentity" % u_name],
+                     dump.debug_watch_keys(u_name))
+    self.assertEqual(["%s:0:DebugIdentity" % v_name],
+                     dump.debug_watch_keys(v_name))
+    self.assertEqual(["%s:0:DebugIdentity" % w_name],
+                     dump.debug_watch_keys(w_name))
+    self.assertEqual([], dump.debug_watch_keys("foo"))
 
-      # Test node_device().
-      self.assertEqual(self._main_device, dump.node_device(u_name))
+    # Test querying debug datum instances from debug watch.
+    u_data = dump.watch_key_to_data(dump.debug_watch_keys(u_name)[0])
+    self.assertEqual(1, len(u_data))
+    self.assertEqual(u_name, u_data[0].node_name)
+    self.assertEqual(0, u_data[0].output_slot)
+    self.assertEqual("DebugIdentity", u_data[0].debug_op)
+    self.assertGreaterEqual(u_data[0].timestamp, 0)
 
-      with self.assertRaisesRegexp(ValueError,
-                                   "does not exist in partition graphs"):
-        dump.node_device(u_name + "foo")
+    self.assertEqual([], dump.watch_key_to_data("foo"))
 
-      # Test node_exists().
-      self.assertTrue(dump.node_exists(u_name))
-      self.assertTrue(dump.node_exists(u_name + "/read"))
-      self.assertFalse(dump.node_exists(u_name + "/read" + "/foo"))
+  def testGraphStructureLookupGivesNodeInputsAndRecipients(self):
+    u_name, v_name, w_name, dump = (
+        self._session_run_for_graph_structure_lookup())
 
-      # Test node_op_type().
-      self.assertEqual("Variable", dump.node_op_type(u_name))
-      self.assertEqual("Identity", dump.node_op_type(u_name + "/read"))
-      self.assertEqual("Add", dump.node_op_type(v_name))
-      self.assertEqual("Add", dump.node_op_type(w_name))
+    u_read_name = u_name + "/read"
 
-      with self.assertRaisesRegexp(ValueError,
-                                   "does not exist in partition graphs"):
-        dump.node_op_type(u_name + "foo")
+    # Test the inputs lookup of the DebugDumpDir object.
+    self.assertEqual([], dump.node_inputs(u_name))
+    self.assertEqual([u_name], dump.node_inputs(u_read_name))
+    self.assertEqual([u_read_name] * 2, dump.node_inputs(v_name))
+    self.assertEqual([v_name] * 2, dump.node_inputs(w_name))
 
-      # Now load the dump again, without the parition graphs, so we can check
-      # the errors raised for no partition graphs loaded.
-      dump = debug_data.DebugDumpDir(self._dump_root, validate=False)
+    self.assertEqual([], dump.node_inputs(u_name, is_control=True))
+    self.assertEqual([], dump.node_inputs(u_read_name, is_control=True))
+    self.assertEqual([], dump.node_inputs(v_name, is_control=True))
+    self.assertEqual([], dump.node_inputs(w_name, is_control=True))
 
-      with self.assertRaisesRegexp(RuntimeError,
-                                   "No partition graphs have been loaded"):
-        dump.partition_graphs()
-      self.assertFalse(dump.loaded_partition_graphs())
+    # Test the outputs recipient lookup of the DebugDumpDir object.
+    self.assertTrue(u_read_name in dump.node_recipients(u_name))
+    self.assertEqual(2, dump.node_recipients(u_read_name).count(v_name))
+    self.assertEqual(2, dump.node_recipients(v_name).count(w_name))
 
-      with self.assertRaisesRegexp(
-          RuntimeError, "Node inputs are not loaded from partition graphs yet"):
-        dump.node_inputs(u_name)
+    self.assertEqual([], dump.node_recipients(u_name, is_control=True))
+    self.assertEqual([], dump.node_recipients(u_read_name, is_control=True))
+    self.assertEqual([], dump.node_recipients(v_name, is_control=True))
+    self.assertEqual([], dump.node_recipients(w_name, is_control=True))
 
-      with self.assertRaisesRegexp(RuntimeError,
-                                   "No partition graphs have been loaded"):
-        dump.nodes()
+    # Test errors raised on invalid node names.
+    with self.assertRaisesRegexp(ValueError,
+                                 "does not exist in partition graphs"):
+      dump.node_inputs(u_name + "foo")
 
-      with self.assertRaisesRegexp(
-          RuntimeError,
-          "Node recipients are not loaded from partition graphs yet"):
-        dump.node_recipients(u_name)
+    with self.assertRaisesRegexp(ValueError,
+                                 "does not exist in partition graphs"):
+      dump.node_recipients(u_name + "foo")
 
-      with self.assertRaisesRegexp(
-          RuntimeError, "Node inputs are not loaded from partition graphs yet"):
-        dump.transitive_inputs(u_name)
+    # Test transitive_inputs().
+    self.assertEqual([], dump.transitive_inputs(u_name))
+    self.assertEqual([u_name], dump.transitive_inputs(u_read_name))
+    self.assertEqual(
+        set([u_name, u_read_name]), set(dump.transitive_inputs(v_name)))
+    self.assertEqual(
+        set([u_name, u_read_name, v_name]),
+        set(dump.transitive_inputs(w_name)))
 
-      with self.assertRaisesRegexp(
-          RuntimeError, "Devices are not loaded from partition graphs yet"):
-        dump.devices()
+    with self.assertRaisesRegexp(ValueError,
+                                 "does not exist in partition graphs"):
+      dump.transitive_inputs(u_name + "foo")
 
-      with self.assertRaisesRegexp(
-          RuntimeError,
-          "Node devices are not loaded from partition graphs yet"):
-        dump.node_device(u_name)
+  def testGraphStructureLookupWithoutPartitionGraphsDoesNotErrorOut(self):
+    _, _, _, dump = self._session_run_for_graph_structure_lookup()
 
-      with self.assertRaisesRegexp(
-          RuntimeError,
-          "Node op types are not loaded from partition graphs yet"):
-        dump.node_op_type(u_name)
+    # Now load the dump again, without the partition graphs, so we can check
+    # errors are not raised because the partition graphs are loaded from the
+    # dump directory.
+    dump = debug_data.DebugDumpDir(self._dump_root, validate=False)
+    self.assertTrue(dump.loaded_partition_graphs())
 
-  def testDumpCausalityCheck(self):
+  def testCausalityCheckOnDumpsDetectsWrongTemporalOrder(self):
     with session.Session() as sess:
       u_name = "testDumpCausalityCheck/u"
       v_name = "testDumpCausalityCheck/v"
@@ -607,7 +594,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
                        len(run_metadata.partition_graphs))
 
       # First, loading the original dump without supplying the
-      # partition_graphs should not cause a RuntimeError, validation occurs
+      # partition_graphs should not cause a LookupError, validation occurs
       # only with partition_graphs loaded.
       debug_data.DebugDumpDir(self._dump_root)
 
@@ -650,7 +637,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
           partition_graphs=run_metadata.partition_graphs,
           validate=False)
 
-  def testWatchingOutputSlotWithoutOutgoingEdge(self):
+  def testOutputSlotWithoutOutgoingEdgeCanBeWatched(self):
     """Test watching output slots not attached to any outgoing edges."""
 
     with session.Session() as sess:
@@ -685,7 +672,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       self.assertEqual("DebugIdentity", datum.debug_op)
       self.assertAllClose([[5.0, 3.0], [-1.0, 0.0]], datum.get_tensor())
 
-  def testWatchingVariableUpdateOps(self):
+  def testWatchingVariableUpdateOpsSeesUpdatedValues(self):
     """Watch output slots on Variable-updating ops, with no emitted edges."""
 
     with session.Session() as sess:
@@ -738,7 +725,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       self.assertAllClose(8.0, sess.run(u))
       self.assertAllClose(19.0, sess.run(v))
 
-  def testWatchingUnconnectedOutputTensor(self):
+  def testAllowsWatchingUnconnectedOutputTensor(self):
     """Watch an output slot not emitting any edges.
 
     (Not even control edges from the node.)
@@ -802,7 +789,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       self.assertAllClose([0, 0, 1, 2, 2],
                           unique_x_slot_1_dumps[0].get_tensor())
 
-  def testRunWithError(self):
+  def testDebuggingDuringOpError(self):
     """Test the debug tensor dumping when error occurs in graph runtime."""
 
     with session.Session() as sess:
@@ -826,7 +813,11 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
                  feed_dict={ph: np.array([[-3.0], [0.0]])})
 
       dump = debug_data.DebugDumpDir(self._dump_root)
-      self.assertFalse(dump.loaded_partition_graphs())
+
+      # Despite the fact that the run() call errored out and partition_graphs
+      # are not available via run_metadata, the partition graphs should still
+      # have been loaded from the dump directory.
+      self.assertTrue(dump.loaded_partition_graphs())
 
       m_dumps = dump.watch_key_to_data("mismatch/m:0:DebugIdentity")
       self.assertEqual(1, len(m_dumps))
@@ -835,6 +826,72 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       x_dumps = dump.watch_key_to_data("mismatch/x:0:DebugIdentity")
       self.assertEqual(1, len(x_dumps))
       self.assertAllClose(np.array([[-3.0, 0.0]]), x_dumps[0].get_tensor())
+
+  def testDebugNumericSummaryOnInitializedTensorGivesCorrectResult(self):
+    with session.Session() as sess:
+      a = variables.Variable(
+          [
+              np.nan, np.nan, 0.0, 0.0, 0.0, -1.0, -3.0, 3.0, 7.0, -np.inf,
+              -np.inf, np.inf, np.inf, np.inf, np.inf, np.inf, np.nan, np.nan
+          ],
+          dtype=np.float32,
+          name="numeric_summary/a")
+      b = variables.Variable(
+          [0.0] * 18, dtype=np.float32, name="numeric_summary/b")
+      c = math_ops.add(a, b, name="numeric_summary/c")
+
+      sess.run(variables.global_variables_initializer())
+
+      run_metadata = config_pb2.RunMetadata()
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          run_options,
+          sess.graph,
+          debug_ops=["DebugNumericSummary"],
+          debug_urls=self._debug_urls())
+
+      sess.run(c, options=run_options, run_metadata=run_metadata)
+
+      dump = debug_data.DebugDumpDir(
+          self._dump_root, partition_graphs=run_metadata.partition_graphs)
+      self.assertTrue(dump.loaded_partition_graphs())
+
+      self.assertAllClose([[
+          1.0, 18.0, 2.0, 2.0, 3.0, 2.0, 5.0, 4.0, -3.0, 7.0, 0.85714286,
+          8.97959184
+      ]], dump.get_tensors("numeric_summary/a/read", 0, "DebugNumericSummary"))
+
+  def testDebugNumericSummaryOnUninitializedTensorGivesCorrectResult(self):
+    with session.Session() as sess:
+      a = variables.Variable(
+          [42], dtype=np.float32, name="numeric_summary_uninit/a")
+
+      run_metadata = config_pb2.RunMetadata()
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          run_options,
+          sess.graph,
+          debug_ops=["DebugNumericSummary"],
+          debug_urls=self._debug_urls())
+
+      sess.run(a.initializer, options=run_options, run_metadata=run_metadata)
+
+      dump = debug_data.DebugDumpDir(
+          self._dump_root, partition_graphs=run_metadata.partition_graphs)
+      self.assertTrue(dump.loaded_partition_graphs())
+
+      # DebugNumericSummary output should reflect the uninitialized state of
+      # the watched tensor.
+      numeric_summary = dump.get_tensors(
+          "numeric_summary_uninit/a", 0, "DebugNumericSummary")[0]
+      self.assertAllClose(
+          [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], numeric_summary[0:8])
+      self.assertTrue(np.isinf(numeric_summary[8]))
+      self.assertGreater(numeric_summary[8], 0.0)
+      self.assertTrue(np.isinf(numeric_summary[9]))
+      self.assertLess(numeric_summary[9], 0.0)
+      self.assertTrue(np.isnan(numeric_summary[10]))
+      self.assertTrue(np.isnan(numeric_summary[11]))
 
 
 if __name__ == "__main__":

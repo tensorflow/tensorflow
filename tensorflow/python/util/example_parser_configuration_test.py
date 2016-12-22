@@ -13,14 +13,19 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for ExampleParserConfiguration."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-
 from google.protobuf import text_format
+
 from tensorflow.core.example import example_parser_configuration_pb2
+from tensorflow.python.client import session
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import parsing_ops
+from tensorflow.python.platform import test
 from tensorflow.python.util.example_parser_configuration import extract_example_parser_configuration
 
 BASIC_PROTO = """
@@ -61,19 +66,19 @@ feature_map {
 """
 
 
-class ExampleParserConfigurationTest(tf.test.TestCase):
+class ExampleParserConfigurationTest(test.TestCase):
 
   def testBasic(self):
     golden_config = example_parser_configuration_pb2.ExampleParserConfiguration(
     )
     text_format.Parse(BASIC_PROTO, golden_config)
-    with tf.Session() as sess:
-      examples = tf.placeholder(tf.string, shape=[1])
+    with session.Session() as sess:
+      examples = array_ops.placeholder(dtypes.string, shape=[1])
       feature_to_type = {
-          'x': tf.FixedLenFeature([1], tf.float32, 33.0),
-          'y': tf.VarLenFeature(tf.string)
+          'x': parsing_ops.FixedLenFeature([1], dtypes.float32, 33.0),
+          'y': parsing_ops.VarLenFeature(dtypes.string)
       }
-      _ = tf.parse_example(examples, feature_to_type)
+      _ = parsing_ops.parse_example(examples, feature_to_type)
       parse_example_op = sess.graph.get_operation_by_name(
           'ParseExample/ParseExample')
       config = extract_example_parser_configuration(parse_example_op, sess)
@@ -81,4 +86,4 @@ class ExampleParserConfigurationTest(tf.test.TestCase):
 
 
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

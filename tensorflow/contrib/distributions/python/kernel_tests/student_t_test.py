@@ -77,6 +77,32 @@ class StudentTTest(tf.test.TestCase):
       self.assertAllClose(expected_pdf, pdf_values)
       self.assertAllClose(np.exp(expected_log_pdf), pdf_values)
 
+  def testStudentCDFAndLogCDF(self):
+    with self.test_session():
+      batch_size = 6
+      df = tf.constant([3.] * batch_size)
+      mu = tf.constant([7.] * batch_size)
+      sigma = tf.constant([8.] * batch_size)
+      df_v = 3.
+      mu_v = 7.
+      sigma_v = 8.
+      t = np.array([-2.5, 2.5, 8., 0., -1., 2.], dtype=np.float32)
+      student = tf.contrib.distributions.StudentT(df, mu=mu, sigma=sigma)
+
+      log_cdf = student.log_cdf(t)
+      self.assertEquals(log_cdf.get_shape(), (6,))
+      log_cdf_values = log_cdf.eval()
+      cdf = student.cdf(t)
+      self.assertEquals(cdf.get_shape(), (6,))
+      cdf_values = cdf.eval()
+
+      expected_log_cdf = stats.t.logcdf(t, df_v, loc=mu_v, scale=sigma_v)
+      expected_cdf = stats.t.cdf(t, df_v, loc=mu_v, scale=sigma_v)
+      self.assertAllClose(expected_log_cdf, log_cdf_values, atol=0., rtol=1e-5)
+      self.assertAllClose(np.log(expected_cdf), log_cdf_values, atol=0., rtol=1e-5)
+      self.assertAllClose(expected_cdf, cdf_values, atol=0., rtol=1e-5)
+      self.assertAllClose(np.exp(expected_log_cdf), cdf_values, atol=0., rtol=1e-5)
+
   def testStudentEntropy(self):
     df_v = np.array([[2., 3., 7.]])  # 1x3
     mu_v = np.array([[1., -1, 0]])  # 1x3
@@ -397,6 +423,10 @@ class StudentTTest(tf.test.TestCase):
       student = tf.contrib.distributions.StudentT(df=[7., 11.],
                                                   mu=[[5.], [6.]],
                                                   sigma=3.)
+      self.assertAllEqual([], student.get_event_shape())
+      self.assertAllEqual([], student.event_shape().eval())
+      self.assertAllEqual([2, 2], student.get_batch_shape())
+      self.assertAllEqual([2, 2], student.batch_shape().eval())
       num = 50000
       samples = student.sample(num)
       pdfs = student.pdf(samples)
@@ -416,7 +446,7 @@ class StudentTTest(tf.test.TestCase):
       self._assertIntegral(sample_vals[:, 1, 0], pdf_vals[:, 1, 0], err=0.02)
       self._assertIntegral(sample_vals[:, 1, 1], pdf_vals[:, 1, 1], err=0.02)
 
-  def _assertIntegral(self, sample_vals, pdf_vals, err=1e-3):
+  def _assertIntegral(self, sample_vals, pdf_vals, err=1.5e-3):
     s_p = zip(sample_vals, pdf_vals)
     prev = (sample_vals.min() - 1000, 0)
     total = 0

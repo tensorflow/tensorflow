@@ -992,7 +992,7 @@ Status DirectSession::GetOrCreateExecutors(
 
     // EXPERIMENTAL: tfdbg inserts debug nodes (i.e., probes) to the graph
     if (run_state_args->debugger_state) {
-      TF_RETURN_IF_ERROR(run_state_args->debugger_state->InsertNodes(
+      TF_RETURN_IF_ERROR(run_state_args->debugger_state->DecorateGraphForDebug(
           partition_graph, params.device));
     }
     iter->second.reset(partition_graph);
@@ -1221,6 +1221,10 @@ void DirectSession::WaitForNotification(RunState* run_state,
       run_state->status.Update(status);
     }
     cm->StartCancel();
+    // We must wait for the executors to complete, because they have borrowed
+    // references to `cm` and other per-step state. After this notification, it
+    // is safe to clean up the step.
+    run_state->executors_done.WaitForNotification();
   }
 }
 

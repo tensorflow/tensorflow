@@ -7121,6 +7121,34 @@ op {
   }
 }
 op {
+  name: "BroadcastArgs"
+  input_arg {
+    name: "s0"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "s1"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "r0"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
   name: "BroadcastGradientArgs"
   input_arg {
     name: "s0"
@@ -9546,6 +9574,37 @@ op {
   allows_uninitialized_input: true
 }
 op {
+  name: "DebugNumericSummary"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type: DT_DOUBLE
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "tensor_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "debug_urls"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+  }
+  allows_uninitialized_input: true
+}
+op {
   name: "DecodeBase64"
   input_arg {
     name: "input"
@@ -11649,6 +11708,30 @@ op {
       list {
         type: DT_INT32
         type: DT_INT64
+      }
+    }
+  }
+}
+op {
+  name: "Expm1"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
       }
     }
   }
@@ -19857,6 +19940,21 @@ op {
   }
 }
 op {
+  name: "PreventGradient"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}
+op {
   name: "Print"
   input_arg {
     name: "input"
@@ -21124,6 +21222,117 @@ op {
     type: "bool"
     default_value {
       b: false
+    }
+  }
+}
+op {
+  name: "QuantizedMatMul"
+  input_arg {
+    name: "a"
+    type_attr: "T1"
+  }
+  input_arg {
+    name: "b"
+    type_attr: "T2"
+  }
+  input_arg {
+    name: "min_a"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_a"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "min_b"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_b"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "out"
+    type_attr: "Toutput"
+  }
+  output_arg {
+    name: "min_out"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "max_out"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T1"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "T2"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "Toutput"
+    type: "type"
+    default_value {
+      type: DT_QINT32
+    }
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "transpose_a"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "transpose_b"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "Tactivation"
+    type: "type"
+    default_value {
+      type: DT_QUINT8
+    }
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
     }
   }
 }

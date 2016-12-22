@@ -32,7 +32,7 @@ from tensorflow.python.util import compat
 
 SAVED_MODEL_PATH = (
     "python/saved_model/example/saved_model_half_plus_two/00000123")
-SESSION_BUNDLE_PATH = "contrib/session_bundle/example/half_plus_two/00000123"
+SESSION_BUNDLE_PATH = "contrib/session_bundle/testdata/half_plus_two/00000123"
 
 
 def _make_serialized_example(x):
@@ -112,7 +112,7 @@ class SessionBundleLoadTest(tf.test.TestCase):
 
   def testVarCheckpointV2(self):
     base_path = tf.test.test_src_dir_path(
-        "contrib/session_bundle/example/half_plus_two_ckpt_v2/00000123")
+        "contrib/session_bundle/testdata/half_plus_two_ckpt_v2/00000123")
     tf.reset_default_graph()
     sess, meta_graph_def = session_bundle.load_session_bundle_from_path(
         base_path, target="", config=tf.ConfigProto(device_count={"CPU": 2}))
@@ -150,7 +150,7 @@ class SessionBundleLoadNoVarsTest(tf.test.TestCase):
     with tf.Graph().as_default() as g:
       x = tf.placeholder(tf.float32, name="x")
       w = tf.Variable(3.0)
-      y = tf.sub(w * x, 7.0, name="y")  # pylint: disable=unused-variable
+      y = tf.subtract(w * x, 7.0, name="y")  # pylint: disable=unused-variable
       tf.add_to_collection("meta", "this is meta")
 
       with self.test_session(graph=g) as session:

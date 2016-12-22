@@ -61,7 +61,7 @@ state.
 * Allowing you to register special "filters" for tensor values, to facilitate
 the diagnosis of issues.
 
-In this example, we are registering a tensor filter called `"has_nan_or_inf"`,
+In this example, we are registering a tensor filter called `"has_inf_or_nan"`,
 which simply determines if there are any `nan` or `inf` values in any
 intermediate tensor of the graph. (This filter is a common enough use case that
 we ship it with the `debug_data` module.)
@@ -330,6 +330,11 @@ stuck. Success!
 *   Navigation through command history using the Up and Down arrow keys.
     Prefix-based navigation is also supported.
 *   Tab completion of commands and some command arguments.
+*   Write screen output to file by using bash-style redirection. For example:
+
+  ```none
+  tfdbg> pt cross_entropy/Log:0[:, 0:10] > /tmp/xent_value_slices.txt
+  ```
 
 ## Frequently Asked Questions
 
@@ -380,6 +385,48 @@ run:
 bazel build -c opt tensorflow/python/debug:debug_tflearn_iris && \
     bazel-bin/tensorflow/python/debug/debug_tflearn_iris --debug
 ```
+
+**Q**: If my model is running in a remote machine or process that I don't have
+terminal access to, how can I use `tfdbg`?
+
+**A**: One of the options is to use `offline_analyzer` of `tfdbg`.
+It supports offline debugging based on dumped data directories.
+If the process you are running is written in Python, you can
+configure the `RunOptions` proto that you call your `Session.run()` method
+with, by using the method `debug_utils.watch_graph()`. This will cause the
+intermediate tensors and runtime graphs to be dumped to a shared storage
+location of your choice when the `Session.run()` call occurs. For example:
+
+```python
+from tensorflow.python.debug import debug_utils
+
+# ... Code where your session and graph are set up...
+
+run_options = tf.RunOptions()
+debug_utils.watch_graph(
+      run_options,
+      session.graph,
+      debug_urls=["file:///shared/storage/location/tfdbg_dumps_1"])
+# Be sure to use different directories for different run() calls.
+
+session.run(fetches, feed_dict=feeds, options=run_options)
+```
+
+Later, in an environment that you have terminal access to, you can load and
+inspect the data in the dump directory on the shared storage by using the
+`offline_analyzer` of `tfdbg`. For example:
+
+```none
+bazel build -c opt tensorflow/python/debug:offline_analyzer && \
+    bazel-bin/tensorflow/python/debug/offline_analyzer \
+        --dump_dir=/cns/is-d/home/somebody/tfdbg_dumps_1
+```
+
+If you model code is written in C++ or other languages, you can also
+modify the `debug_options` field of `RunOptions` to generate debug dumps that
+can be inspected offline. See
+[the proto definition](https://www.tensorflow.org/code/tensorflow/core/protobuf/debug.proto)
+for more details.
 
 **Q**: _Does tfdbg help debugging runtime errors such as shape mismatches?_
 

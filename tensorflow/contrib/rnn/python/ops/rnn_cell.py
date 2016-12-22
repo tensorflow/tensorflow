@@ -208,13 +208,15 @@ class CoupledInputForgetGateLSTMCell(rnn_cell.RNNCell):
           dtype, self._num_unit_shards)
 
       b = vs.get_variable(
-          "B", shape=[3 * self._num_units],
-          initializer=init_ops.zeros_initializer, dtype=dtype)
+          "B",
+          shape=[3 * self._num_units],
+          initializer=init_ops.zeros_initializer(),
+          dtype=dtype)
 
       # j = new_input, f = forget_gate, o = output_gate
       cell_inputs = array_ops.concat_v2([inputs, m_prev], 1)
       lstm_matrix = nn_ops.bias_add(math_ops.matmul(cell_inputs, concat_w), b)
-      j, f, o = array_ops.split(1, 3, lstm_matrix)
+      j, f, o = array_ops.split(value=lstm_matrix, num_or_size_splits=3, axis=1)
 
       # Diagonal connections
       if self._use_peepholes:
@@ -335,8 +337,10 @@ class TimeFreqLSTMCell(rnn_cell.RNNCell):
           "W", [actual_input_size + 2*self._num_units, 4 * self._num_units],
           dtype, self._num_unit_shards)
       b = vs.get_variable(
-          "B", shape=[4 * self._num_units],
-          initializer=init_ops.zeros_initializer, dtype=dtype)
+          "B",
+          shape=[4 * self._num_units],
+          initializer=init_ops.zeros_initializer(),
+          dtype=dtype)
 
       # Diagonal connections
       if self._use_peepholes:
@@ -359,7 +363,8 @@ class TimeFreqLSTMCell(rnn_cell.RNNCell):
         cell_inputs = array_ops.concat_v2(
             [freq_inputs[fq], m_prev, m_prev_freq], 1)
         lstm_matrix = nn_ops.bias_add(math_ops.matmul(cell_inputs, concat_w), b)
-        i, j, f, o = array_ops.split(1, 4, lstm_matrix)
+        i, j, f, o = array_ops.split(
+            value=lstm_matrix, num_or_size_splits=4, axis=1)
 
         if self._use_peepholes:
           c = (sigmoid(f + self._forget_bias + w_f_diag * c_prev) * c_prev +
@@ -597,16 +602,20 @@ class GridLSTMCell(rnn_cell.RNNCell):
                            num_gates * self._num_units],
         dtype, self._num_unit_shards)
     b_f = vs.get_variable(
-        "B_f_%d" % block, shape=[num_gates * self._num_units],
-        initializer=init_ops.zeros_initializer, dtype=dtype)
+        "B_f_%d" % block,
+        shape=[num_gates * self._num_units],
+        initializer=init_ops.zeros_initializer(),
+        dtype=dtype)
     if not self._share_time_frequency_weights:
       concat_w_t = _get_concat_variable(
           "W_t_%d" % block, [actual_input_size + 2 * self._num_units,
                              num_gates * self._num_units],
           dtype, self._num_unit_shards)
       b_t = vs.get_variable(
-          "B_t_%d" % block, shape=[num_gates * self._num_units],
-          initializer=init_ops.zeros_initializer, dtype=dtype)
+          "B_t_%d" % block,
+          shape=[num_gates * self._num_units],
+          initializer=init_ops.zeros_initializer(),
+          dtype=dtype)
 
     if self._use_peepholes:
       # Diagonal connections
@@ -662,12 +671,12 @@ class GridLSTMCell(rnn_cell.RNNCell):
       lstm_matrix_freq = nn_ops.bias_add(math_ops.matmul(cell_inputs,
                                                          concat_w_f), b_f)
       if self._couple_input_forget_gates:
-        i_freq, j_freq, o_freq = array_ops.split(1, num_gates,
-                                                 lstm_matrix_freq)
+        i_freq, j_freq, o_freq = array_ops.split(
+            value=lstm_matrix_freq, num_or_size_splits=num_gates, axis=1)
         f_freq = None
       else:
-        i_freq, j_freq, f_freq, o_freq = array_ops.split(1, num_gates,
-                                                         lstm_matrix_freq)
+        i_freq, j_freq, f_freq, o_freq = array_ops.split(
+            value=lstm_matrix_freq, num_or_size_splits=num_gates, axis=1)
       # T-LSTM
       if self._share_time_frequency_weights:
         i_time = i_freq
@@ -678,12 +687,12 @@ class GridLSTMCell(rnn_cell.RNNCell):
         lstm_matrix_time = nn_ops.bias_add(math_ops.matmul(cell_inputs,
                                                            concat_w_t), b_t)
         if self._couple_input_forget_gates:
-          i_time, j_time, o_time = array_ops.split(1, num_gates,
-                                                   lstm_matrix_time)
+          i_time, j_time, o_time = array_ops.split(
+              value=lstm_matrix_time, num_or_size_splits=num_gates, axis=1)
           f_time = None
         else:
-          i_time, j_time, f_time, o_time = array_ops.split(1, 4,
-                                                           lstm_matrix_time)
+          i_time, j_time, f_time, o_time = array_ops.split(
+              value=lstm_matrix_time, num_or_size_splits=num_gates, axis=1)
 
       # F-LSTM c_freq
       # input gate activations
@@ -1221,7 +1230,7 @@ class LayerNormBasicLSTMCell(rnn_cell.RNNCell):
       args = array_ops.concat_v2([inputs, h], 1)
       concat = self._linear(args)
 
-      i, j, f, o = array_ops.split(1, 4, concat)
+      i, j, f, o = array_ops.split(value=concat, num_or_size_splits=4, axis=1)
       if self._layer_norm:
         i = self._norm(i, "input")
         j = self._norm(j, "transform")

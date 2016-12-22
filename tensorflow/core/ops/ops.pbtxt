@@ -3429,6 +3429,36 @@ op {
   description: "Given a tensor `input`, this operation returns a tensor that has the same buffer\ndata as `input` with datatype `type`.\n\nIf the input datatype `T` is larger than the output datatype `type` then the\nshape changes from [...] to [..., sizeof(`T`)/sizeof(`type`)].\n\nIf `T` is smaller than `type`, the operator requires that the rightmost\ndimension be equal to sizeof(`type`)/sizeof(`T`). The shape then goes from\n[..., sizeof(`type`)/sizeof(`T`)] to [...].\n\n*NOTE*: Bitcast is implemented as a low-level cast, so machines with different\nendian orderings will give different results."
 }
 op {
+  name: "BroadcastArgs"
+  input_arg {
+    name: "s0"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "s1"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "r0"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Return the shape of s0 op s1 with broadcast."
+  description: "Given `s0` and `s1`, tensors that represent shapes, compute `r0`, the\nbroadcasted shape. `s0`, `s1` and `r0` are all integer vectors."
+}
+op {
   name: "BroadcastGradientArgs"
   input_arg {
     name: "s0"
@@ -5142,6 +5172,43 @@ op {
   allows_uninitialized_input: true
 }
 op {
+  name: "DebugNumericSummary"
+  input_arg {
+    name: "input"
+    description: "Input tensor, non-Reference type, float or double."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "A double tensor of shape [12], the elements of which are:\n  [0]: is initialized (1.0) or not (0.0).\n  [1]: total number of elements\n  [2]: -inf count\n  [3]: negative element count (excluding -inf)\n  [4]: zero element count\n  [5]: positive element count (excluding +inf)\n  [6]: +inf element count\n  [7]: NaN element count\nOutput elements [1:8] are all zero, if the tensor is uninitialized.\n  [8]: minimum of all non-inf and non-NaN elements.\n       If uninitialized or no such element exists: +inf.\n  [9]: maximum of all non-inf and non-NaN elements.\n       If uninitialized or no such element exists: -inf.\n  [10]: mean of all non-inf and non-NaN elements.\n        If uninitialized or no such element exists: NaN.\n  [11]: variance of all non-inf and non-NaN elements.\n        If uninitialized or no such element exists: NaN."
+    type: DT_DOUBLE
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "tensor_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "Name of the input tensor."
+  }
+  attr {
+    name: "debug_urls"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+    description: "List of URLs to debug targets, e.g.,\nfile:///foo/tfdbg_dump, grpc:://localhost:11011"
+  }
+  summary: "Debug Numeric Summary Op."
+  description: "Provide a basic summary of numeric value types, range and distribution."
+  allows_uninitialized_input: true
+}
+op {
   name: "DecodeBase64"
   input_arg {
     name: "input"
@@ -6649,6 +6716,32 @@ op {
   }
   summary: "Inserts a dimension of 1 into a tensor\'s shape."
   description: "Given a tensor `input`, this operation inserts a dimension of 1 at the\ndimension index `dim` of `input`\'s shape. The dimension index `dim` starts at\nzero; if you specify a negative number for `dim` it is counted backward from\nthe end.\n\nThis operation is useful if you want to add a batch dimension to a single\nelement. For example, if you have a single image of shape `[height, width,\nchannels]`, you can make it a batch of 1 image with `expand_dims(image, 0)`,\nwhich will make the shape `[1, height, width, channels]`.\n\nOther examples:\n\n```prettyprint\n# \'t\' is a tensor of shape [2]\nshape(expand_dims(t, 0)) ==> [1, 2]\nshape(expand_dims(t, 1)) ==> [2, 1]\nshape(expand_dims(t, -1)) ==> [2, 1]\n\n# \'t2\' is a tensor of shape [2, 3, 5]\nshape(expand_dims(t2, 0)) ==> [1, 2, 3, 5]\nshape(expand_dims(t2, 2)) ==> [2, 3, 1, 5]\nshape(expand_dims(t2, 3)) ==> [2, 3, 5, 1]\n```\n\nThis operation requires that:\n\n`-1-input.dims() <= dim <= input.dims()`\n\nThis operation is related to `squeeze()`, which removes dimensions of\nsize 1."
+}
+op {
+  name: "Expm1"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Computes exponential of x - 1 element-wise."
+  description: "I.e., \\\\(y = (\\exp x) - 1\\\\)."
 }
 op {
   name: "ExtractGlimpse"
@@ -11874,6 +11967,23 @@ op {
   description: "Given a tensor `x` and a tensor `y`, this operation computes \\\\(x^y\\\\) for\ncorresponding elements in `x` and `y`. For example:\n\n```\n# tensor \'x\' is [[2, 2]], [3, 3]]\n# tensor \'y\' is [[8, 16], [2, 3]]\ntf.pow(x, y) ==> [[256, 65536], [9, 27]]\n```"
 }
 op {
+  name: "PreventGradient"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "An identity op that triggers an error if a gradient is requested."
+  description: "When executed in a graph, this op outputs its input tensor as-is.\n\nWhen building ops to compute gradients, the TensorFlow gradient system\nwill return an error when trying to lookup the gradient of this op,\nbecause no gradient must ever be registered for this function.  This\nop exists to prevent subtle bugs from silently returning unimplemented\ngradients in some corner cases."
+}
+op {
   name: "Print"
   input_arg {
     name: "input"
@@ -12957,6 +13067,23 @@ op {
       b: false
     }
     description: "If true, `b` is transposed before multiplication."
+  }
+  attr {
+    name: "Tactivation"
+    type: "type"
+    default_value {
+      type: DT_QUINT8
+    }
+    description: "The type of output produced by activation function\nfollowing this operation."
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
   }
   summary: "Perform a quantized matrix multiplication of  `a` by the matrix `b`."
   description: "The inputs must be two-dimensional matrices and the inner dimension of\n`a` (after being transposed if `transpose_a` is non-zero) must match the\nouter dimension of `b` (after being transposed if `transposed_b` is\nnon-zero)."
@@ -15234,7 +15361,7 @@ op {
     }
   }
   summary: "Reverses specific dimensions of a tensor."
-  description: "Given a `tensor`, and a `int32` tensor `axis` representing the set of\ndimensions of `tensor` to reverse. This operation reverses each dimension\n`i` for which there exists `j` s.t. `axis[j] == i`.\n\n`tensor` can have up to 8 dimensions. The number of dimensions specified\nin `axis` may be 0 or more entries. If an index is specified more than\nonce, a InvalidArgument error is raised.\n\nFor example:\n\n```prettyprint\n# tensor \'t\' is [[[[ 0,  1,  2,  3],\n#                  [ 4,  5,  6,  7],\n#                  [ 8,  9, 10, 11]],\n#                 [[12, 13, 14, 15],\n#                  [16, 17, 18, 19],\n#                  [20, 21, 22, 23]]]]\n# tensor \'t\' shape is [1, 2, 3, 4]\n\n# \'dims\' is [3] or \'dims\' is -1\nreverse(t, dims) ==> [[[[ 3,  2,  1,  0],\n                        [ 7,  6,  5,  4],\n                        [ 11, 10, 9, 8]],\n                       [[15, 14, 13, 12],\n                        [19, 18, 17, 16],\n                        [23, 22, 21, 20]]]]\n\n# \'dims\' is \'[1]\' (or \'dims\' is \'[-3]\')\nreverse(t, dims) ==> [[[[12, 13, 14, 15],\n                        [16, 17, 18, 19],\n                        [20, 21, 22, 23]\n                       [[ 0,  1,  2,  3],\n                        [ 4,  5,  6,  7],\n                        [ 8,  9, 10, 11]]]]\n\n# \'dims\' is \'[2]\' (or \'dims\' is \'[-2]\')\nreverse(t, dims) ==> [[[[8, 9, 10, 11],\n                        [4, 5, 6, 7],\n                        [0, 1, 2, 3]]\n                       [[20, 21, 22, 23],\n                        [16, 17, 18, 19],\n                        [12, 13, 14, 15]]]]\n```"
+  description: "NOTE `tf.reverse` has now changed behavior in preparation for 1.0.\n`tf.reverse_v2` is currently an alias that will be deprecated before TF 1.0.\n\nGiven a `tensor`, and a `int32` tensor `axis` representing the set of\ndimensions of `tensor` to reverse. This operation reverses each dimension\n`i` for which there exists `j` s.t. `axis[j] == i`.\n\n`tensor` can have up to 8 dimensions. The number of dimensions specified\nin `axis` may be 0 or more entries. If an index is specified more than\nonce, a InvalidArgument error is raised.\n\nFor example:\n\n```prettyprint\n# tensor \'t\' is [[[[ 0,  1,  2,  3],\n#                  [ 4,  5,  6,  7],\n#                  [ 8,  9, 10, 11]],\n#                 [[12, 13, 14, 15],\n#                  [16, 17, 18, 19],\n#                  [20, 21, 22, 23]]]]\n# tensor \'t\' shape is [1, 2, 3, 4]\n\n# \'dims\' is [3] or \'dims\' is -1\nreverse(t, dims) ==> [[[[ 3,  2,  1,  0],\n                        [ 7,  6,  5,  4],\n                        [ 11, 10, 9, 8]],\n                       [[15, 14, 13, 12],\n                        [19, 18, 17, 16],\n                        [23, 22, 21, 20]]]]\n\n# \'dims\' is \'[1]\' (or \'dims\' is \'[-3]\')\nreverse(t, dims) ==> [[[[12, 13, 14, 15],\n                        [16, 17, 18, 19],\n                        [20, 21, 22, 23]\n                       [[ 0,  1,  2,  3],\n                        [ 4,  5,  6,  7],\n                        [ 8,  9, 10, 11]]]]\n\n# \'dims\' is \'[2]\' (or \'dims\' is \'[-2]\')\nreverse(t, dims) ==> [[[[8, 9, 10, 11],\n                        [4, 5, 6, 7],\n                        [0, 1, 2, 3]]\n                       [[20, 21, 22, 23],\n                        [16, 17, 18, 19],\n                        [12, 13, 14, 15]]]]\n```"
 }
 op {
   name: "Rint"

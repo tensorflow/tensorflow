@@ -106,6 +106,15 @@ class SquareLinearOperatorCompositionTest(
           [operator_1, operator_2],
           is_non_singular=False)
 
+  def test_name(self):
+    matrix = [[11., 0.], [1., 8.]]
+    operator_1 = linalg.LinearOperatorMatrix(matrix, name="left")
+    operator_2 = linalg.LinearOperatorMatrix(matrix, name="right")
+
+    operator = linalg.LinearOperatorComposition([operator_1, operator_2])
+
+    self.assertEqual("left_o_right", operator.name)
+
   def test_different_dtypes_raises(self):
     operators = [
         linalg.LinearOperatorMatrix(rng.rand(2, 3, 3)),

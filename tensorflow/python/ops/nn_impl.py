@@ -846,7 +846,7 @@ def _sum_rows(x):
   # we use _sum_rows(x) in the nce_loss() computation since the loss
   # is mostly used for training.
   cols = array_ops.shape(x)[1]
-  ones_shape = array_ops.pack([cols, 1])
+  ones_shape = array_ops.stack([cols, 1])
   ones = array_ops.ones(ones_shape, x.dtype)
   return array_ops.reshape(math_ops.matmul(x, ones), [-1])
 
@@ -942,7 +942,7 @@ def _compute_sampled_logits(weights,
     # true_w shape is [batch_size * num_true, dim]
     # true_b is a [batch_size * num_true] tensor
     true_w = array_ops.slice(
-        all_w, [0, 0], array_ops.pack([array_ops.shape(labels_flat)[0], -1]))
+        all_w, [0, 0], array_ops.stack([array_ops.shape(labels_flat)[0], -1]))
     true_b = array_ops.slice(all_b, [0], array_ops.shape(labels_flat))
 
     # inputs shape is [batch_size, dim]
@@ -965,7 +965,7 @@ def _compute_sampled_logits(weights,
     #   sampled_w shape is [num_sampled, dim]
     #   sampled_b is a [num_sampled] float tensor
     sampled_w = array_ops.slice(
-        all_w, array_ops.pack([array_ops.shape(labels_flat)[0], 0]), [-1, -1])
+        all_w, array_ops.stack([array_ops.shape(labels_flat)[0], 0]), [-1, -1])
     sampled_b = array_ops.slice(all_b, array_ops.shape(labels_flat), [-1])
 
     # inputs has shape [batch_size, dim]
@@ -1103,8 +1103,8 @@ def nce_loss(weights,
 
 def sampled_softmax_loss(weights,
                          biases,
-                         inputs,
                          labels,
+                         inputs,
                          num_sampled,
                          num_classes,
                          num_true=1,
@@ -1134,11 +1134,11 @@ def sampled_softmax_loss(weights,
         objects whose concatenation along dimension 0 has shape
         [num_classes, dim].  The (possibly-sharded) class embeddings.
     biases: A `Tensor` of shape `[num_classes]`.  The class biases.
-    inputs: A `Tensor` of shape `[batch_size, dim]`.  The forward
-        activations of the input network.
     labels: A `Tensor` of type `int64` and shape `[batch_size,
         num_true]`. The target classes.  Note that this format differs from
         the `labels` argument of `nn.softmax_cross_entropy_with_logits`.
+    inputs: A `Tensor` of shape `[batch_size, dim]`.  The forward
+        activations of the input network.
     num_sampled: An `int`.  The number of classes to randomly sample per batch.
     num_classes: An `int`. The number of possible classes.
     num_true: An `int`.  The number of target classes per training example.

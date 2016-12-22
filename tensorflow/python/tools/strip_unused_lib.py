@@ -35,7 +35,8 @@ def strip_unused(input_graph_def, input_node_names, output_node_names,
     input_graph_def: A graph with nodes we want to prune.
     input_node_names: A list of the nodes we use as inputs.
     output_node_names: A list of the output nodes.
-    placeholder_type_enum: The AttrValue enum for the placeholder data type.
+    placeholder_type_enum: The AttrValue enum for the placeholder data type, or
+        a list that specifies one value per input node name.
 
   Returns:
     A GraphDef with all unnecessary ops removed.
@@ -49,8 +50,13 @@ def strip_unused(input_graph_def, input_node_names, output_node_names,
       placeholder_node = tf.NodeDef()
       placeholder_node.op = "Placeholder"
       placeholder_node.name = node.name
-      placeholder_node.attr["dtype"].CopyFrom(tf.AttrValue(
-          type=placeholder_type_enum))
+      if isinstance(placeholder_type_enum, list):
+        input_node_index = input_node_names.index(node.name)
+        placeholder_node.attr["dtype"].CopyFrom(tf.AttrValue(
+            type=placeholder_type_enum[input_node_index]))
+      else:
+        placeholder_node.attr["dtype"].CopyFrom(tf.AttrValue(
+            type=placeholder_type_enum))
       if "_output_shapes" in node.attr:
         placeholder_node.attr["_output_shapes"].CopyFrom(
             node.attr["_output_shapes"])

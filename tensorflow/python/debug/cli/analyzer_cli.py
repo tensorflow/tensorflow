@@ -32,6 +32,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.debug import debug_data
 from tensorflow.python.debug.cli import cli_shared
 from tensorflow.python.debug.cli import command_parser
+from tensorflow.python.debug.cli import curses_ui
 from tensorflow.python.debug.cli import debugger_cli_common
 
 
@@ -487,7 +488,7 @@ class DebugAnalyzer(object):
       return cli_shared.error("\"%s\" is not a valid tensor name" %
                               parsed.tensor_name)
 
-    if (self._debug_dump.loaded_partition_graphs and
+    if (self._debug_dump.loaded_partition_graphs() and
         not self._debug_dump.node_exists(node_name)):
       return cli_shared.error(
           "Node \"%s\" does not exist in partition graphs" % node_name)
@@ -840,3 +841,59 @@ class DebugAnalyzer(object):
     lines.insert(1, "%d dumped tensor(s):" % dump_count)
 
     return lines
+
+
+def create_analyzer_curses_cli(debug_dump, tensor_filters=None):
+  """Create an instance of CursesUI based on a DebugDumpDir object.
+
+  Args:
+    debug_dump: (debug_data.DebugDumpDir) The debug dump to use.
+    tensor_filters: (dict) A dict mapping tensor filter name (str) to tensor
+      filter (Callable).
+
+  Returns:
+    (curses_ui.CursesUI) A curses CLI object with a set of standard analyzer
+      commands and tab-completions registered.
+  """
+
+  analyzer = DebugAnalyzer(debug_dump)
+  if tensor_filters:
+    for tensor_filter_name in tensor_filters:
+      analyzer.add_tensor_filter(
+          tensor_filter_name, tensor_filters[tensor_filter_name])
+
+  cli = curses_ui.CursesUI()
+  cli.register_command_handler(
+      "list_tensors",
+      analyzer.list_tensors,
+      analyzer.get_help("list_tensors"),
+      prefix_aliases=["lt"])
+  cli.register_command_handler(
+      "node_info",
+      analyzer.node_info,
+      analyzer.get_help("node_info"),
+      prefix_aliases=["ni"])
+  cli.register_command_handler(
+      "list_inputs",
+      analyzer.list_inputs,
+      analyzer.get_help("list_inputs"),
+      prefix_aliases=["li"])
+  cli.register_command_handler(
+      "list_outputs",
+      analyzer.list_outputs,
+      analyzer.get_help("list_outputs"),
+      prefix_aliases=["lo"])
+  cli.register_command_handler(
+      "print_tensor",
+      analyzer.print_tensor,
+      analyzer.get_help("print_tensor"),
+      prefix_aliases=["pt"])
+
+  dumped_tensor_names = []
+  for datum in debug_dump.dumped_tensor_data:
+    dumped_tensor_names.append("%s:%d" % (datum.node_name, datum.output_slot))
+
+  # Tab completions for command "print_tensors".
+  cli.register_tab_comp_context(["print_tensor", "pt"], dumped_tensor_names)
+
+  return cli

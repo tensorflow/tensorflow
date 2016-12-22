@@ -160,6 +160,46 @@ class DNNLinearCombinedClassifierBenchmark(tf.test.Benchmark):
         input_fn=input_fn, steps=100)
     self._assertCommonMetrics(metrics)
 
+  def benchmarkPartitionedVariables(self):
+    def _input_fn():
+      features = {
+          'language': tf.SparseTensor(values=('en', 'fr', 'zh'),
+                                      indices=((0, 0), (0, 1), (2, 0)),
+                                      dense_shape=(3, 2))
+      }
+      labels = tf.constant(((1,), (0,), (0,)))
+      return features, labels
+
+    # The given hash_bucket_size results in variables larger than the
+    # default min_slice_size attribute, so the variables are partitioned.
+    sparse_feature = tf.contrib.layers.sparse_column_with_hash_bucket(
+        'language', hash_bucket_size=2e7)
+    embedding_feature = tf.contrib.layers.embedding_column(
+        sparse_feature, dimension=1)
+
+    tf_config = {
+        'cluster': {
+            tf.contrib.learn.TaskType.PS: ['fake_ps_0', 'fake_ps_1']
+        }
+    }
+    with tf.test.mock.patch.dict(
+        'os.environ', {'TF_CONFIG': json.dumps(tf_config)}):
+      config = tf.contrib.learn.RunConfig()
+      # Because we did not start a distributed cluster, we need to pass an
+      # empty ClusterSpec, otherwise the device_setter will look for
+      # distributed jobs, such as "/job:ps" which are not present.
+      config._cluster_spec = tf.train.ClusterSpec({})
+
+    classifier = tf.contrib.learn.DNNLinearCombinedClassifier(
+        linear_feature_columns=(sparse_feature,),
+        dnn_feature_columns=(embedding_feature,),
+        dnn_hidden_units=(3, 3),
+        config=config)
+
+    metrics = classifier.fit(input_fn=_input_fn, steps=_ITERS).evaluate(
+        input_fn=_input_fn, steps=100)
+    self._assertCommonMetrics(metrics)
+
 
 if __name__ == '__main__':
   tf.test.main()

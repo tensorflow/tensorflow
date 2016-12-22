@@ -129,66 +129,6 @@ void Evaluate(const EvaluateParams& params, mutex* mutex, int32 start,
 }
 }  // namespace
 
-REGISTER_OP("FinishedNodes")
-    .Attr("regression: bool = false")
-    .Attr("num_split_after_samples: int")
-    .Attr("min_split_samples: int")
-    .Attr("dominate_fraction: float = 0.99")
-    .Attr(
-        "dominate_method:"
-        " {'none', 'hoeffding', 'bootstrap', 'chebyshev'} = 'bootstrap'")
-    .Attr("random_seed: int = 0")
-    .Input("leaves: int32")
-    .Input("node_to_accumulator: int32")
-    .Input("split_sums: float")
-    .Input("split_squares: float")
-    .Input("accumulator_sums: float")
-    .Input("accumulator_squares: float")
-    .Input("birth_epochs: int32")
-    .Input("current_epoch: int32")
-    .Output("finished: int32")
-    .Output("stale: int32")
-    .SetShapeFn([](InferenceContext* c) {
-      c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
-      c->set_output(1, c->Vector(InferenceContext::kUnknownDim));
-      return Status::OK();
-    })
-    .Doc(R"doc(
-Determines which of the given leaf nodes are done accumulating.
-
-leaves:= A 1-d int32 tensor.  Lists the nodes that are currently leaves.
-node_to_accumulator: If the i-th node is fertile, `node_to_accumulator[i]`
-  is it's accumulator slot.  Otherwise, `node_to_accumulator[i]` is -1.
-split_sums:= a 3-d tensor where `split_sums[a][s]` summarizes the
-  training labels for examples that fall into the fertile node associated with
-  accumulator slot s and have then taken the *left* branch of candidate split
-  s.  For a classification problem, `split_sums[a][s][c]` is the count of such
-  examples with class c and for regression problems, `split_sums[a][s]` is the
-  sum of the regression labels for such examples.
-split_squares: Same as split_sums, but it contains the sum of the
-  squares of the regression labels.  Only used for regression.  For
-  classification problems, pass a dummy tensor into this.
-accumulator_sums: For classification, `accumulator_sums[a][c]` records how
-  many training examples have class c and have ended up in the fertile node
-  associated with accumulator slot a.  It has the total sum in entry 0 for
-  convenience. For regression, it is the same except it contains the sum
-  of the input labels that have been seen, and entry 0 contains the number
-  of training examples that have been seen.
-accumulator_squares: Same as accumulator_sums, but it contains the sum of the
-  squares of the regression labels.  Only used for regression.  For
-  classification problems, pass a dummy tensor into this.
-birth_epochs:= A 1-d int32 tensor.  `birth_epochs[i]` contains the epoch
-  the i-th node was created in.
-current_epoch:= A 1-d int32 tensor with shape (1).  `current_epoch[0]`
-  stores the current epoch number.
-finished:= A 1-d int32 tensor containing the indices of the finished nodes.
-  Nodes are finished if they have received at least num_split_after_samples
-  samples, or if they have received min_split_samples and the best scoring
-  split is sufficiently greater than the next best split.
-stale:= A 1-d int32 tensor containing the fertile nodes that were created two
-  or more epochs ago.
-
-)doc");
 
 class FinishedNodes : public OpKernel {
  public:

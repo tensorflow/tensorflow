@@ -30,9 +30,9 @@ namespace tensorflow {
 namespace {
 
 constexpr char kTestDataPbTxt[] =
-    "python/saved_model/example/saved_model_half_plus_two_pbtxt/00000123";
+    "cc/saved_model/testdata/half_plus_two_pbtxt/00000123";
 constexpr char kTestDataSharded[] =
-    "python/saved_model/example/saved_model_half_plus_two/00000123";
+    "cc/saved_model/testdata/half_plus_two/00000123";
 
 class LoaderTest : public ::testing::Test {
  protected:

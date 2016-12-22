@@ -52,6 +52,28 @@ class NumpyIoTest(tf.test.TestCase):
       coord.request_stop()
       coord.join(threads)
 
+  def testNumpyInputFnWithDifferentDimensionsOfFeatures(self):
+    a = np.array([[1, 2], [3, 4]])
+    b = np.array([5, 6])
+    x = {'a': a, 'b': b}
+    y = np.arange(-32, -30)
+
+    with self.test_session() as session:
+      input_fn = numpy_io.numpy_input_fn(
+          x, y, batch_size=2, shuffle=False, num_epochs=1)
+      features, target = input_fn()
+
+      coord = tf.train.Coordinator()
+      threads = tf.train.start_queue_runners(session, coord=coord)
+
+      res = session.run([features, target])
+      self.assertAllEqual(res[0]['a'], [[1, 2], [3, 4]])
+      self.assertAllEqual(res[0]['b'], [5, 6])
+      self.assertAllEqual(res[1], [-32, -31])
+
+      coord.request_stop()
+      coord.join(threads)
+
   def testNumpyInputFnWithXAsNonDict(self):
     x = np.arange(32, 36)
     y = np.arange(4)
@@ -81,12 +103,14 @@ class NumpyIoTest(tf.test.TestCase):
     y_longer_length = np.arange(10)
 
     with self.test_session():
-      with self.assertRaisesRegexp(ValueError, 'Shape of x and y are mismatch'):
+      with self.assertRaisesRegexp(
+          ValueError, 'Length of tensors in x and y is mismatched.'):
         failing_input_fn = numpy_io.numpy_input_fn(
             x, y_longer_length, batch_size=2, shuffle=False, num_epochs=1)
         failing_input_fn()
 
-      with self.assertRaisesRegexp(ValueError, 'Shape of x and y are mismatch'):
+      with self.assertRaisesRegexp(
+          ValueError, 'Length of tensors in x and y is mismatched.'):
         failing_input_fn = numpy_io.numpy_input_fn(
             x=x_mismatch_length,
             y=None,

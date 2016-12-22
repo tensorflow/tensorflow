@@ -19,6 +19,10 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <vector>
+#include "tensorflow/cc/saved_model/signature_constants.h"
+#include "tensorflow/cc/saved_model/tag_constants.h"
+#include "tensorflow/core/example/example.pb.h"
+#include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/framework/graph.pb_text.h"
 #include "tensorflow/core/framework/node_def.pb_text.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -27,9 +31,13 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
+#include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 using tensorflow::int32;
 using tensorflow::string;
@@ -203,6 +211,12 @@ TEST(CAPI, DataTypeEnum) {
   EXPECT_EQ(TF_UINT16, static_cast<TF_DataType>(tensorflow::DT_UINT16));
   EXPECT_EQ(TF_COMPLEX128, static_cast<TF_DataType>(tensorflow::DT_COMPLEX128));
   EXPECT_EQ(TF_HALF, static_cast<TF_DataType>(tensorflow::DT_HALF));
+  EXPECT_EQ(TF_DataTypeSize(TF_DOUBLE),
+            tensorflow::DataTypeSize(tensorflow::DT_DOUBLE));
+  EXPECT_EQ(TF_DataTypeSize(TF_STRING),
+            tensorflow::DataTypeSize(tensorflow::DT_STRING));
+  // Test with invalid type; should always return 0 as documented
+  EXPECT_EQ(TF_DataTypeSize(static_cast<TF_DataType>(0)), 0);
 }
 
 TEST(CAPI, StatusEnum) {
@@ -702,6 +716,8 @@ class CSession {
     TF_DeleteSessionOptions(opts);
   }
 
+  CSession(TF_Session* session) { session_ = session; }
+
   ~CSession() {
     TF_Status* s = TF_NewStatus();
     CloseAndDelete(s);
@@ -884,6 +900,103 @@ TEST(CAPI, ColocateWith) {
   EXPECT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
   EXPECT_EQ("loc:@feed", string(static_cast<const char*>(values[0]), lens[0]));
 
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(s);
+}
+
+TEST(CAPI, SavedModel) {
+  // Load the saved model.
+  const char kSavedModel[] = "cc/saved_model/testdata/half_plus_two/00000123";
+  const string saved_model_dir = tensorflow::io::JoinPath(
+      tensorflow::testing::TensorFlowSrcRoot(), kSavedModel);
+  TF_SessionOptions* opt = TF_NewSessionOptions();
+  TF_Buffer* run_options = TF_NewBufferFromString("", 0);
+  TF_Buffer* metagraph = TF_NewBuffer();
+  TF_Status* s = TF_NewStatus();
+  const char* tags[] = {tensorflow::kSavedModelTagServe};
+  TF_Graph* graph = TF_NewGraph();
+  TF_Session* session = TF_LoadSessionFromSavedModel(
+      opt, run_options, saved_model_dir.c_str(), tags, 1, graph, metagraph, s);
+  TF_DeleteBuffer(run_options);
+  TF_DeleteSessionOptions(opt);
+  tensorflow::MetaGraphDef metagraph_def;
+  metagraph_def.ParseFromArray(metagraph->data, metagraph->length);
+  TF_DeleteBuffer(metagraph);
+
+  EXPECT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  CSession csession(session);
+
+  // Retrieve the regression signature from meta graph def.
+  const auto signature_def_map = metagraph_def.signature_def();
+  const auto signature_def =
+      signature_def_map.at(tensorflow::kRegressMethodName);
+
+  const string input_name =
+      signature_def.inputs().at(tensorflow::kRegressInputs).name();
+  const string output_name =
+      signature_def.outputs().at(tensorflow::kRegressOutputs).name();
+
+  // Write {0, 1, 2, 3} as tensorflow::Example inputs.
+  Tensor input(tensorflow::DT_STRING, TensorShape({4}));
+  for (tensorflow::int64 i = 0; i < input.NumElements(); ++i) {
+    tensorflow::Example example;
+    auto* feature_map = example.mutable_features()->mutable_feature();
+    (*feature_map)["x"].mutable_float_list()->add_value(i);
+    input.flat<string>()(i) = example.SerializeAsString();
+  }
+
+  const tensorflow::string input_op_name =
+      tensorflow::ParseTensorName(input_name).first.ToString();
+  TF_Operation* input_op =
+      TF_GraphOperationByName(graph, input_op_name.c_str());
+  ASSERT_TRUE(input_op != nullptr);
+  csession.SetInputs({{input_op, TF_Tensor_EncodeStrings(input)}});
+
+  const tensorflow::string output_op_name =
+      tensorflow::ParseTensorName(output_name).first.ToString();
+  TF_Operation* output_op =
+      TF_GraphOperationByName(graph, output_op_name.c_str());
+  ASSERT_TRUE(output_op != nullptr);
+  csession.SetOutputs({output_op});
+  csession.Run(s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_Tensor* out = csession.output_tensor(0);
+  ASSERT_TRUE(out != nullptr);
+  EXPECT_EQ(TF_FLOAT, TF_TensorType(out));
+  EXPECT_EQ(2, TF_NumDims(out));
+  EXPECT_EQ(4, TF_Dim(out, 0));
+  EXPECT_EQ(1, TF_Dim(out, 1));
+  float* values = static_cast<float*>(TF_TensorData(out));
+  // These values are defined to be (input / 2) + 2.
+  EXPECT_EQ(2, values[0]);
+  EXPECT_EQ(2.5, values[1]);
+  EXPECT_EQ(3, values[2]);
+  EXPECT_EQ(3.5, values[3]);
+
+  csession.CloseAndDelete(s);
+  EXPECT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(s);
+}
+
+TEST(CAPI, SavedModelNullArgsAreValid) {
+  const char kSavedModel[] = "cc/saved_model/testdata/half_plus_two/00000123";
+  const string saved_model_dir = tensorflow::io::JoinPath(
+      tensorflow::testing::TensorFlowSrcRoot(), kSavedModel);
+  TF_SessionOptions* opt = TF_NewSessionOptions();
+  TF_Status* s = TF_NewStatus();
+  const char* tags[] = {tensorflow::kSavedModelTagServe};
+  TF_Graph* graph = TF_NewGraph();
+  // NULL run_options and meta_graph_def should work.
+  TF_Session* session = TF_LoadSessionFromSavedModel(
+      opt, nullptr, saved_model_dir.c_str(), tags, 1, graph, nullptr, s);
+  EXPECT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  TF_DeleteSessionOptions(opt);
+  TF_CloseSession(session, s);
+  EXPECT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  TF_DeleteSession(session, s);
+  EXPECT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
   TF_DeleteGraph(graph);
   TF_DeleteStatus(s);
 }

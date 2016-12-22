@@ -123,6 +123,16 @@ Status ExpGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("Exp", ExpGrad);
 
+Status Expm1Grad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  return GradForUnaryCwise(g, {
+      {{"y"}, "Exp", {"x"}},
+      {{"dx"}, "Mul", {"dy", "y"}},           // dy * y
+  });
+  // clang-format on
+}
+REGISTER_OP_GRADIENT("Expm1", Expm1Grad);
+
 Status LogGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   return GradForUnaryCwise(g, {

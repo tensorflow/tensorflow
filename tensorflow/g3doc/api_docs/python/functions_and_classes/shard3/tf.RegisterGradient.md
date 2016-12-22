@@ -14,7 +14,7 @@ following gradient function would be registered:
 ```python
 @tf.RegisterGradient("Sub")
 def _sub_grad(unused_op, grad):
-  return grad, tf.neg(grad)
+  return grad, tf.negative(grad)
 ```
 
 The decorator argument `op_type` is the string type of an

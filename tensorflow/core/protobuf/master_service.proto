@@ -79,7 +79,7 @@ import "tensorflow/core/protobuf/master.proto";
 //   // result of `fetches`, to determine whether to terminate. For
 //   // example, it might fetch the loss and evaluate whether it is less
 //   // than some threshold.
-// } whlie (!should_stop({fetches}));
+// } while (!should_stop({fetches}));
 // stub->CloseSession({handle})
 //
 ////////////////////////////////////////////////////////////////////////////////

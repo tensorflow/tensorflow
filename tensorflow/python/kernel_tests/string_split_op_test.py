@@ -13,21 +13,27 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for string_split_op."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import string_ops
+from tensorflow.python.platform import test
 
 
-class StringSplitOpTest(tf.test.TestCase):
+class StringSplitOpTest(test.TestCase):
 
   def testStringSplit(self):
     strings = ["pigs on the wing", "animals"]
 
     with self.test_session() as sess:
-      tokens = tf.string_split(strings)
+      tokens = string_ops.string_split(strings)
       indices, values, shape = sess.run(tokens)
       self.assertAllEqual(indices, [[0, 0], [0, 1], [0, 2], [0, 3], [1, 0]])
       self.assertAllEqual(values, [b"pigs", b"on", b"the", b"wing", b"animals"])
@@ -37,14 +43,17 @@ class StringSplitOpTest(tf.test.TestCase):
     strings = ["hello", "hola", b"\xF0\x9F\x98\x8E"]  # Last string is U+1F60E
 
     with self.test_session() as sess:
-      tokens = tf.string_split(strings, delimiter="")
+      tokens = string_ops.string_split(strings, delimiter="")
       indices, values, shape = sess.run(tokens)
       self.assertAllEqual(indices, [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4],
-                                    [1, 0], [1, 1], [1, 2], [1, 3],
-                                    [2, 0], [2, 1], [2, 2], [2, 3]])
+                                    [1, 0], [1, 1], [1, 2], [1, 3], [2, 0],
+                                    [2, 1], [2, 2], [2, 3]])
       expected = np.array(
-          ['h', 'e', 'l', 'l', 'o', 'h', 'o', 'l',
-           'a', b'\xf0', b'\x9f', b'\x98', b'\x8e'], dtype='|S1')
+          [
+              "h", "e", "l", "l", "o", "h", "o", "l", "a", b"\xf0", b"\x9f",
+              b"\x98", b"\x8e"
+          ],
+          dtype="|S1")
       self.assertAllEqual(values.tolist(), expected)
       self.assertAllEqual(shape, [3, 5])
 
@@ -52,7 +61,7 @@ class StringSplitOpTest(tf.test.TestCase):
     strings = [" hello ", "", "world "]
 
     with self.test_session() as sess:
-      tokens = tf.string_split(strings)
+      tokens = string_ops.string_split(strings)
       indices, values, shape = sess.run(tokens)
       self.assertAllEqual(indices, [[0, 0], [2, 0]])
       self.assertAllEqual(values, [b"hello", b"world"])
@@ -63,17 +72,18 @@ class StringSplitOpTest(tf.test.TestCase):
 
     with self.test_session() as sess:
       self.assertRaises(
-          ValueError, tf.string_split, strings, delimiter=["|", ""])
+          ValueError, string_ops.string_split, strings, delimiter=["|", ""])
 
-      self.assertRaises(ValueError, tf.string_split, strings, delimiter=["a"])
+      self.assertRaises(
+          ValueError, string_ops.string_split, strings, delimiter=["a"])
 
-      tokens = tf.string_split(strings, delimiter="|")
+      tokens = string_ops.string_split(strings, delimiter="|")
       indices, values, shape = sess.run(tokens)
       self.assertAllEqual(indices, [[0, 0], [0, 1], [1, 0]])
       self.assertAllEqual(values, [b"hello", b"world", b"hello world"])
       self.assertAllEqual(shape, [2, 2])
 
-      tokens = tf.string_split(strings, delimiter="| ")
+      tokens = string_ops.string_split(strings, delimiter="| ")
       indices, values, shape = sess.run(tokens)
       self.assertAllEqual(indices, [[0, 0], [0, 1], [1, 0], [1, 1]])
       self.assertAllEqual(values, [b"hello", b"world", b"hello", b"world"])
@@ -83,13 +93,13 @@ class StringSplitOpTest(tf.test.TestCase):
     strings = ["hello|world", "hello world"]
 
     with self.test_session() as sess:
-      delimiter = tf.placeholder(tf.string)
+      delimiter = array_ops.placeholder(dtypes.string)
 
-      tokens = tf.string_split(strings, delimiter=delimiter)
+      tokens = string_ops.string_split(strings, delimiter=delimiter)
 
-      with self.assertRaises(tf.errors.InvalidArgumentError):
+      with self.assertRaises(errors_impl.InvalidArgumentError):
         sess.run(tokens, feed_dict={delimiter: ["a", "b"]})
-      with self.assertRaises(tf.errors.InvalidArgumentError):
+      with self.assertRaises(errors_impl.InvalidArgumentError):
         sess.run(tokens, feed_dict={delimiter: ["a"]})
       indices, values, shape = sess.run(tokens, feed_dict={delimiter: "|"})
 
@@ -101,21 +111,21 @@ class StringSplitOpTest(tf.test.TestCase):
     strings = ["hello.cruel,world", "hello cruel world"]
 
     with self.test_session() as sess:
-      delimiter = tf.placeholder(tf.string)
+      delimiter = array_ops.placeholder(dtypes.string)
 
-      tokens = tf.string_split(strings, delimiter=delimiter)
+      tokens = string_ops.string_split(strings, delimiter=delimiter)
 
-      with self.assertRaises(tf.errors.InvalidArgumentError):
+      with self.assertRaises(errors_impl.InvalidArgumentError):
         sess.run(tokens, feed_dict={delimiter: ["a", "b"]})
-      with self.assertRaises(tf.errors.InvalidArgumentError):
+      with self.assertRaises(errors_impl.InvalidArgumentError):
         sess.run(tokens, feed_dict={delimiter: ["a"]})
       indices, values, shape = sess.run(tokens, feed_dict={delimiter: ".,"})
 
       self.assertAllEqual(indices, [[0, 0], [0, 1], [0, 2], [1, 0]])
-      self.assertAllEqual(values, [b"hello", b"cruel", b"world",
-                                   b"hello cruel world"])
+      self.assertAllEqual(values,
+                          [b"hello", b"cruel", b"world", b"hello cruel world"])
       self.assertAllEqual(shape, [2, 3])
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

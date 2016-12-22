@@ -1,22 +1,18 @@
 ### `tf.contrib.losses.log_loss(*args, **kwargs)` {#log_loss}
 
-Adds a Log Loss term to the training procedure. (deprecated arguments) (deprecated)
+Adds a Log Loss term to the training procedure. (deprecated)
 
 THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
 Instructions for updating:
 Use tf.losses.log_loss instead.
 
-SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-11-25.
-Instructions for updating:
-`targets` is being deprecated, use `labels`. `weight` is being deprecated, use `weights`.
-
-`weight` acts as a coefficient for the loss. If a scalar is provided, then the
-loss is simply scaled by the given value. If `weight` is a tensor of size
+`weights` acts as a coefficient for the loss. If a scalar is provided, then
+the loss is simply scaled by the given value. If `weights` is a tensor of size
 [batch_size], then the total loss for each sample of the batch is rescaled
-by the corresponding element in the `weight` vector. If the shape of
-`weight` matches the shape of `predictions`, then the loss of each
+by the corresponding element in the `weights` vector. If the shape of
+`weights` matches the shape of `predictions`, then the loss of each
 measurable element of `predictions` is scaled by the corresponding value of
-`weight`.
+`weights`.
 
 ##### Args:
 
@@ -27,8 +23,6 @@ measurable element of `predictions` is scaled by the corresponding value of
     [batch_size] or a tensor whose shape matches `predictions`.
 *  <b>`epsilon`</b>: A small increment to add to avoid taking a log of zero.
 *  <b>`scope`</b>: The scope for the operations performed in computing the loss.
-*  <b>`targets`</b>: Deprecated alias for `labels`.
-*  <b>`weight`</b>: Deprecated alias for `weights`.
 
 ##### Returns:
 
@@ -38,5 +32,5 @@ measurable element of `predictions` is scaled by the corresponding value of
 
 
 *  <b>`ValueError`</b>: If the shape of `predictions` doesn't match that of `labels` or
-    if the shape of `weight` is invalid.
+    if the shape of `weights` is invalid.
 

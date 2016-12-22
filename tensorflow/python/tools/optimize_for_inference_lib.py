@@ -72,7 +72,8 @@ def optimize_for_inference(input_graph_def, input_node_names,
       inference.
     output_node_names: A list of names of the nodes that produce the final
       results.
-    placeholder_type_enum: Data type of the placeholders used for inputs.
+    placeholder_type_enum: The AttrValue enum for the placeholder data type, or
+        a list that specifies one value per input node name.
 
   Returns:
     An optimized version of the input graph.

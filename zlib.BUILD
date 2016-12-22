@@ -32,6 +32,9 @@ cc_library(
         "zutil.h",
     ],
     hdrs = ["zlib.h"],
-    copts = ["-Wno-shift-negative-value", "-Wno-implicit-function-declaration"],
+    copts = [
+        "-Wno-shift-negative-value",
+        "-Wno-implicit-function-declaration",
+    ],
     includes = ["."],
 )

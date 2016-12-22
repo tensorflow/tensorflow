@@ -45,7 +45,7 @@ class GMMTest(tf.test.TestCase):
     # Use initial means from kmeans (just like scikit-learn does).
     clusterer = tf.contrib.learn.KMeansClustering(
         num_clusters=self.num_centers)
-    clusterer.fit(self.points, steps=30)
+    clusterer.fit(input_fn=lambda: (tf.constant(self.points), None), steps=30)
     self.initial_means = clusterer.clusters()
 
   @staticmethod

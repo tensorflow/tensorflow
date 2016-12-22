@@ -25,6 +25,8 @@ import math
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.contrib.layers.python.layers import embedding_ops
+
 
 class SafeEmbeddingLookupSparseTest(tf.test.TestCase):
 
@@ -392,6 +394,178 @@ class ScatteredEmbeddingLookupTest(tf.test.TestCase):
     np.testing.assert_almost_equal(embedded_np, embedded_tf_lst)
     self.assertEqual(embedded_np2d.shape, embedded_tf2d.shape)
     np.testing.assert_almost_equal(embedded_np2d, embedded_tf2d)
+
+
+class SampledScatteredEmbeddingLookupTest(tf.test.TestCase):
+
+  def setUp(self):
+    tf.set_random_seed(1)
+    self._hash_key = 1
+
+  def _random_weights(self, size=50, num_shards=1):
+    assert size > 0
+    assert num_shards > 0
+    assert num_shards <= size
+
+    embedding_weights = tf.create_partitioned_variables(
+        shape=[size],
+        slicing=[num_shards],
+        initializer=tf.truncated_normal_initializer(mean=0.0,
+                                                    stddev=1.0,
+                                                    dtype=tf.float32))
+    for w in embedding_weights:
+      w.initializer.run()
+    return embedding_weights
+
+  def test_hashed_embedding_consistency(self):
+    with self.test_session():
+      embedding_weights = self._random_weights()
+      values = tf.constant(["foo", "foo"])
+      # The first three sampled_candidates are equal, so the first three
+      # embedding weights will be equal.
+      sampled_candidates = tf.constant([[1, 3, 4, 6], [1, 3, 4, 7]])
+
+      embedding_lookup_result = (  # pylint: disable=protected-access
+          embedding_ops._sampled_scattered_embedding_lookup(
+              embedding_weights, values,
+              sampled_candidates=sampled_candidates,
+              hash_key=self._hash_key).eval())
+
+      self.assertAllEqual(embedding_lookup_result.shape, [2, 4])
+      self.assertAllEqual(embedding_lookup_result[0][:3],
+                          embedding_lookup_result[1][:3])
+      self.assertNotEqual(embedding_lookup_result[0][3],
+                          embedding_lookup_result[1][3])
+
+  def test_hashed_embedding_multi_dimension(self):
+    with self.test_session():
+      embedding_weights = self._random_weights()
+      values = tf.constant([["foo", "bar", "bar"], ["bar", "bar", "foo"]])
+      sampled_candidates = tf.constant(
+          [[[1, 3, 4, 6], [1, 7, 8, 9], [1, 7, 8, 9]],
+           [[1, 7, 8, 9], [1, 7, 8, 9], [1, 3, 4, 6]]])
+
+      embedding_lookup_result = (  # pylint: disable=protected-access
+          embedding_ops._sampled_scattered_embedding_lookup(
+              embedding_weights, values,
+              sampled_candidates=sampled_candidates,
+              hash_key=self._hash_key).eval())
+
+      self.assertAllEqual(embedding_lookup_result.shape, [2, 3, 4])
+      self.assertAllEqual(embedding_lookup_result[0][0],
+                          embedding_lookup_result[1][2])
+
+      invalid_indices = tf.constant([[[1, 3, 4, 6], [1, 7, 8, 9]],
+                                     [[1, 7, 8, 9], [1, 7, 8, 9]]])
+      with self.assertRaisesRegexp(
+          tf.errors.InvalidArgumentError,
+          (r"\[The shape of sampled_candidates: \] \[2 2 4\] "
+           r"\[ does not match the shape of values: \] \[2 3\]")):
+        # pylint: disable=protected-access
+        embedding_ops._sampled_scattered_embedding_lookup(
+            embedding_weights, values,
+            sampled_candidates=invalid_indices).eval()
+
+
+class SampledScatteredEmbeddingLookupSparseTest(tf.test.TestCase):
+
+  def setUp(self):
+    tf.set_random_seed(1)
+    self._hash_key = 1
+
+  def test_output_shape(self):
+    """Verifies the shape of the output tensor."""
+    with self.test_session():
+      sp_values = tf.SparseTensor(
+          values=["a", "a", "b", "c", "d", "e", "f"],
+          indices=[[1, 0], [2, 0], [2, 1], [2, 2], [2, 3], [2, 4], [2, 5]],
+          dense_shape=[3, 6])
+      params = tf.constant([.1, .2, .3])
+
+      result = embedding_ops._sampled_scattered_embedding_lookup_sparse(
+          params, sp_values, dimension=4, hash_key=self._hash_key)
+
+      self.assertEqual(result.eval().shape, (3, 4))
+
+  def test_output_values(self):
+    """Verifies the values in a trivial case."""
+    with self.test_session():
+      sp_values = tf.SparseTensor(
+          values=["a"], indices=[[1, 0]], dense_shape=[3, 1])
+      params = tf.constant([.1, .2, .3])
+
+      result = embedding_ops._sampled_scattered_embedding_lookup_sparse(
+          params, sp_values, dimension=5, hash_key=self._hash_key)
+
+      self.assertAllClose(result.eval(), [[0., 0., 0., 0., 0.],
+                                          [.3, .2, .2, .3, .1],
+                                          [0., 0., 0., 0., 0.]])
+
+  def test_output_values_with_sampled_candidates(self):
+    """Verifies the values for given sampled_candidates."""
+    with self.test_session():
+      sp_values = tf.SparseTensor(
+          values=["a", "a", "b", "c", "d", "e", "f"],
+          indices=[[1, 0], [2, 0], [2, 1], [2, 2], [2, 3], [2, 4], [2, 5]],
+          dense_shape=[3, 6])
+      params = tf.constant([.1, .2, .3])
+
+      sampled_candidates = [[1, 0], [2, 1], [3, 2]]
+      sampled_result = embedding_ops._sampled_scattered_embedding_lookup_sparse(
+          params, sp_values, sampled_candidates=tf.constant(sampled_candidates),
+          hash_key=self._hash_key)
+      full_result = embedding_ops._sampled_scattered_embedding_lookup_sparse(
+          params, sp_values, dimension=4, hash_key=self._hash_key)
+
+      sampled_result_val = sampled_result.eval()
+      full_result_val = full_result.eval()
+      self.assertEqual(sampled_result_val.shape, (3, 2))
+      for i in range(len(sampled_candidates)):
+        self.assertAllClose(sampled_result_val[i],
+                            full_result_val[i, sampled_candidates[i]])
+
+  def test_output_values_with_sign_hash(self):
+    """Verifies the values in a trivial case with hash_signs=True."""
+    with self.test_session():
+      sp_values = tf.SparseTensor(
+          values=["a"], indices=[[1, 0]], dense_shape=[3, 1])
+      params = tf.constant([.1, .1, .1])
+
+      result = embedding_ops._sampled_scattered_embedding_lookup_sparse(
+          params, sp_values, dimension=4, with_sign_hash=True,
+          hash_key=self._hash_key)
+
+      self.assertAllClose(result.eval(),
+                          [[0., 0., 0., 0.],
+                           [-.1, -.1, -.1, .1],
+                           [0., 0., 0., 0.]])
+
+  def test_distributive_property(self):
+    """Verifies the distributive property of matrix multiplication."""
+    with self.test_session():
+      params = tf.constant([.1, .2, .3])
+      sp_values_a = tf.SparseTensor(
+          values=["a"], indices=[[0, 0]], dense_shape=[3, 1])
+      sp_values_b = tf.SparseTensor(
+          values=["b"], indices=[[2, 0]], dense_shape=[3, 1])
+      sp_values_c = tf.SparseTensor(
+          values=["c"], indices=[[2, 0]], dense_shape=[3, 1])
+      sp_values = tf.SparseTensor(
+          values=["a", "b", "c"],
+          indices=[[0, 0], [2, 0], [2, 1]],
+          dense_shape=[3, 2])
+
+      result_a = embedding_ops._sampled_scattered_embedding_lookup_sparse(
+          params, sp_values_a, dimension=4, hash_key=self._hash_key)
+      result_b = embedding_ops._sampled_scattered_embedding_lookup_sparse(
+          params, sp_values_b, dimension=4, hash_key=self._hash_key)
+      result_c = embedding_ops._sampled_scattered_embedding_lookup_sparse(
+          params, sp_values_c, dimension=4, hash_key=self._hash_key)
+      result = embedding_ops._sampled_scattered_embedding_lookup_sparse(
+          params, sp_values, dimension=4, hash_key=self._hash_key)
+
+      result_abc = tf.add_n([result_a, result_b, result_c])
+      self.assertAllClose(result.eval(), result_abc.eval())
 
 
 if __name__ == "__main__":

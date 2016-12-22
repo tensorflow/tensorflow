@@ -67,7 +67,7 @@ def rnn_model(features, target):
 
   # Create an unrolled Recurrent Neural Networks to length of
   # MAX_DOCUMENT_LENGTH and passes word_list as inputs for each unit.
-  _, encoding = tf.nn.rnn(cell, word_list, dtype=tf.float32)
+  _, encoding = tf.contrib.rnn.static_rnn(cell, word_list, dtype=tf.float32)
 
   # Given encoding of RNN, take encoding of last step (e.g hidden size of the
   # neural network of last step) and pass it as features for logistic

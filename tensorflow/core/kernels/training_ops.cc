@@ -25,6 +25,7 @@ namespace tensorflow {
 
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
+using SYCLDevice = Eigen::SyclDevice;
 
 namespace {
 template <class T>
@@ -44,6 +45,17 @@ struct ApplyGradientDescent<CPUDevice, T> {
     var.device(d) -= grad * lr();
   }
 };
+
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+struct ApplyGradientDescent<SYCLDevice, T> {
+  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstFlat grad) {
+    var.device(d) -= grad * lr();
+  }
+};
+#endif
 
 template <typename T>
 struct ApplyAdadelta<CPUDevice, T> {
@@ -220,9 +232,9 @@ struct ApplyMomentum<CPUDevice, T> {
   }
 };
 
-template <typename T>
-struct ApplyAdam<CPUDevice, T> {
-  void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
+template <typename Device, typename T>
+struct ApplyAdamNonCuda {
+  void operator()(const Device& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat m, typename TTypes<T>::Flat v,
                   typename TTypes<T>::ConstScalar beta1_power,
                   typename TTypes<T>::ConstScalar beta2_power,
@@ -238,6 +250,11 @@ struct ApplyAdam<CPUDevice, T> {
     var.device(d) -= (m * alpha) / (v.sqrt() + epsilon());
   }
 };
+
+template <typename T>
+struct ApplyAdam<CPUDevice, T> : ApplyAdamNonCuda<CPUDevice, T> {};
+template <typename T>
+struct ApplyAdam<SYCLDevice, T> : ApplyAdamNonCuda<SYCLDevice, T> {};
 
 template <typename T>
 struct ApplyRMSProp<CPUDevice, T> {
@@ -350,6 +367,12 @@ class ApplyGradientDescentOp : public OpKernel {
 TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNELS(T) REGISTER_KERNELS(SYCL, T);
+TF_CALL_float(REGISTER_SYCL_KERNELS);
+#undef REGISTER_SYCL_KERNELS
+#endif
 
 #if GOOGLE_CUDA
 // Forward declarations of the functor specializations for GPU.
@@ -1610,8 +1633,9 @@ class ApplyFtrlOp : public OpKernel {
                                 grad.shape().DebugString()));
 
     const Tensor& lr = ctx->input(4);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()) &&
-                         lr.scalar<T>()() > static_cast<T>(0),
+    OP_REQUIRES(ctx,
+                TensorShapeUtils::IsScalar(lr.shape()) &&
+                    lr.scalar<T>()() > static_cast<T>(0),
                 errors::InvalidArgument("lr is not a scalar or <= 0.0: ",
                                         lr.shape().DebugString()));
     const Tensor& l1 = ctx->input(5);
@@ -1702,8 +1726,9 @@ class SparseApplyFtrlOp : public OpKernel {
                 errors::InvalidArgument("indices must be one-dimensional"));
 
     const Tensor& lr = ctx->input(5);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()) &&
-                         lr.scalar<T>()() > static_cast<T>(0),
+    OP_REQUIRES(ctx,
+                TensorShapeUtils::IsScalar(lr.shape()) &&
+                    lr.scalar<T>()() > static_cast<T>(0),
                 errors::InvalidArgument("lr is not a scalar or <= 0.0: ",
                                         lr.shape().DebugString()));
 
@@ -2138,6 +2163,12 @@ using GPUDevice = Eigen::GpuDevice;
 TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNELS(T) REGISTER_KERNELS(SYCL, T);
+
+TF_CALL_float(REGISTER_SYCL_KERNELS);
+#endif
 
 #if GOOGLE_CUDA
 // Forward declarations of the functor specializations for GPU.

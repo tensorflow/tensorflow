@@ -12,14 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Fake summary writer for unit tests."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import summary_pb2
-from tensorflow.python import summary
+from tensorflow.python.summary.writer import writer
 from tensorflow.python.summary.writer import writer_cache
 
 
@@ -33,15 +32,15 @@ class FakeSummaryWriter(object):
   def install(cls):
     if cls._replaced_summary_writer:
       raise ValueError('FakeSummaryWriter already installed.')
-    cls._replaced_summary_writer = summary.FileWriter
-    summary.FileWriter = FakeSummaryWriter
+    cls._replaced_summary_writer = writer.FileWriter
+    writer.FileWriter = FakeSummaryWriter
     writer_cache.FileWriter = FakeSummaryWriter
 
   @classmethod
   def uninstall(cls):
     if not cls._replaced_summary_writer:
       raise ValueError('FakeSummaryWriter not installed.')
-    summary.FileWriter = cls._replaced_summary_writer
+    writer.FileWriter = cls._replaced_summary_writer
     writer_cache.FileWriter = cls._replaced_summary_writer
     cls._replaced_summary_writer = None
 
@@ -57,10 +56,14 @@ class FakeSummaryWriter(object):
   def summaries(self):
     return self._summaries
 
-  def assert_summaries(
-      self, test_case, expected_logdir=None, expected_graph=None,
-      expected_summaries=None, expected_added_graphs=None,
-      expected_added_meta_graphs=None, expected_session_logs=None):
+  def assert_summaries(self,
+                       test_case,
+                       expected_logdir=None,
+                       expected_graph=None,
+                       expected_summaries=None,
+                       expected_added_graphs=None,
+                       expected_added_meta_graphs=None,
+                       expected_session_logs=None):
     """Assert expected items have been added to summary writer."""
     if expected_logdir is not None:
       test_case.assertEqual(expected_logdir, self._logdir)

@@ -187,6 +187,9 @@ paper-dropdown-menu paper-item {
   display: none;
 }
 
+.colorby-container {
+  margin-bottom: 10px;
+}
 </style>
 <div class="title">DATA</div>
 <div class="container">
@@ -232,7 +235,7 @@ paper-dropdown-menu paper-item {
   </template>
 
   <!-- Color by -->
-  <template is="dom-if" if="[[_hasChoices(colorOptions)]]">
+  <div hidden$="[[!_hasChoices(colorOptions)]]" class="colorby-container">
     <paper-dropdown-menu id="colorby" no-animations label="Color by">
       <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedColorOptionName}}">
         <template is="dom-repeat" items="[[colorOptions]]">
@@ -243,8 +246,20 @@ paper-dropdown-menu paper-item {
         </template>
       </paper-listbox>
     </paper-dropdown-menu>
-    <vz-projector-legend render-info="[[colorLegendRenderInfo]]"></vz-projector-legend>
-  </template>
+    <div hidden$="[[!showForceCategoricalColorsCheckbox]]">
+      <paper-checkbox id="force-categorical-checkbox"></paper-checkbox>
+      Use categorical coloring
+      <paper-icon-button icon="help" class="help-icon"></paper-icon-button>
+      <paper-tooltip position="bottom" animation-delay="0" fit-to-visible-bounds>
+        For metadata fields that have many unique values we use a gradient color map
+        by default. This checkbox allows you to force categorical coloring by a given
+        metadata field.
+      </paper-tooltip>
+    </div>
+    <template dom-if="[[colorLegendRenderInfo]]">
+      <vz-projector-legend render-info="[[colorLegendRenderInfo]]"></vz-projector-legend>
+    </template>
+  </div>
   <paper-checkbox id="normalize-data-checkbox" checked="{{normalizeData}}">
     Sphereize data
     <paper-icon-button icon="help" class="help-icon"></paper-icon-button>
@@ -301,7 +316,7 @@ paper-dropdown-menu paper-item {
           <div class="data-step-contents">
             <div class="data-step-contents-contents">
               Example of 3 data points and 2 columns.<br/>
-              <i>Note: the first row is a header.</i>
+              <i>Note: If there is more than one column, the first row will be parsed as column labels.</i>
               <div class="code">
                 <b>Pokémon<span class="delimiter">\t</span>Species</b><br/>
                 Wartortle<span class="delimiter">\t</span>Turtle<br/>

@@ -1447,7 +1447,7 @@ class ControlFlowContext(object):
       outer_ctxt = outer_ctxt.outer_context
     return True
 
-  def _MaybeRemoveExternalControlEdges(self, op):
+  def _RemoveExternalControlEdges(self, op):
     """Remove any external control dependency on this op."""
     while_ctxt = self.GetWhileContext()
     # A control input of `op` is internal if it is in the same while
@@ -1597,6 +1597,7 @@ class CondContext(ControlFlowContext):
         self._values.add(result.name)
       with ops.control_dependencies(None):
         result = _SwitchRefOrTensor(result, self._pred)[self._branch]
+      result.op.graph.prevent_fetching(result.op)
       # pylint: disable=protected-access
       result.op._set_control_flow_context(self)
       # pylint: enable=protected-access
@@ -1612,7 +1613,7 @@ class CondContext(ControlFlowContext):
     """Add `op` to the current context."""
     if not op.inputs:
       # Remove any external control dependency on this op
-      self._MaybeRemoveExternalControlEdges(op)
+      self._RemoveExternalControlEdges(op)
       # pylint: disable=protected-access
       op._add_control_input(self._pivot.op)
       # pylint: enable=protected-access
@@ -1621,19 +1622,11 @@ class CondContext(ControlFlowContext):
     else:
       for index in range(len(op.inputs)):
         x = op.inputs[index]
-        if x.name not in self._values:
-          self._values.add(x.name)
-          # Add this value to the parent contexts up to the context that
-          # creates this value.
-          real_x = x
-          if self._outer_context:
-            real_x = self._outer_context.AddValue(x)
-            self._values.add(real_x.name)
-          real_x = _SwitchRefOrTensor(real_x, self._pred)[self._branch]
-          self._external_values[x.name] = real_x
-        x = self._external_values.get(x.name)
-        if x is not None:
-          op._update_input(index, x)
+        real_x = self.AddValue(x)
+        if real_x != x:
+          # pylint: disable=protected-access
+          op._update_input(index, real_x)
+          # pylint: enable=protected-access
       for x in op.outputs:
         self._values.add(x.name)
     if self._outer_context or not IsLoopExit(op):
@@ -1699,7 +1692,7 @@ def cond(pred, fn1, fn2, name=None):
   fn1 and fn2. Consider the following simple program:
 
   ```python
-  z = tf.mul(a, b)
+  z = tf.multiply(a, b)
   result = tf.cond(x < y, lambda: tf.add(x, z), lambda: tf.square(y))
   ```
 
@@ -1729,7 +1722,7 @@ def cond(pred, fn1, fn2, name=None):
   ```python
     x = tf.constant(2)
     y = tf.constant(5)
-    def f1(): return tf.mul(x, 17)
+    def f1(): return tf.multiply(x, 17)
     def f2(): return tf.add(y, 23)
     r = tf.cond(tf.less(x, y), f1, f2)
     # r is set to f1().
@@ -1993,6 +1986,8 @@ class WhileContext(ControlFlowContext):
           forward_ctxt = _GetWhileContext(val.op)
           if IsLoopExit(val.op):
             forward_ctxt = forward_ctxt.outer_context
+            if forward_ctxt:
+              forward_ctxt = forward_ctxt.GetWhileContext()
           if forward_ctxt == grad_ctxt.grad_state.forward_context:
             real_val = grad_ctxt.grad_state.GetRealValue(val)
             self._external_values[val.name] = real_val
@@ -2047,7 +2042,7 @@ class WhileContext(ControlFlowContext):
     """
     if not op.inputs:
       # Remove any external control dependency on this op
-      control_inputs = self._MaybeRemoveExternalControlEdges(op)
+      control_inputs = self._RemoveExternalControlEdges(op)
       # Add a control edge from the control pivot to this op.
       if not control_inputs:
         # pylint: disable=protected-access
@@ -2056,18 +2051,13 @@ class WhileContext(ControlFlowContext):
       for x in op.outputs:
         self._values.add(x.name)
     else:
-      has_internal_data_input = False
       for index in range(len(op.inputs)):
         x = op.inputs[index]
-        self.AddValue(x)
-        real_x = self._external_values.get(x.name)
-        if real_x is not None:
+        real_x = self.AddValue(x)
+        if real_x != x:
           op._update_input(index, real_x)
-        else:
-          has_internal_data_input = True
-      if not has_internal_data_input:
-        # Remove any external control dependency on this op
-        self._MaybeRemoveExternalControlEdges(op)
+      # Remove any external control dependency on this op.
+      self._RemoveExternalControlEdges(op)
       # Add a control dependency to prevent loop invariants from
       # enabling ops that should not be executed.
       self._MaybeAddControlDependency(op)
@@ -2163,8 +2153,8 @@ class WhileContext(ControlFlowContext):
     merge_count = merge([enter_count, enter_count])[0]
     self._pivot_for_pred = merge_count
 
-    cond = math_ops.greater_equal(merge_count, one)
-    self._pivot = loop_cond(cond, name="b_count")
+    pred = math_ops.greater_equal(merge_count, one)
+    self._pivot = loop_cond(pred, name="b_count")
     switch_count = switch(merge_count, self._pivot)
 
     index = math_ops.sub(switch_count[1], one)
@@ -2977,7 +2967,7 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
       return prev_case
 
     if exclusive:
-      preds_c = array_ops.pack(preds, name="preds_c")
+      preds_c = array_ops.stack(preds, name="preds_c")
       num_true_conditions = math_ops.reduce_sum(
           math_ops.cast(preds_c, dtypes.int32), name="num_true_conds")
       at_most_one_true_condition = math_ops.less(
