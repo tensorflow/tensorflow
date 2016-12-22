@@ -299,8 +299,8 @@ while true; do
     CUDA_DNN_LIB_PATH="lib64/libcudnn.so${TF_CUDNN_EXT}"
     CUDA_DNN_LIB_ALT_PATH="libcudnn.so${TF_CUDNN_EXT}"
   elif [ "$OSNAME" == "Darwin" ]; then
-    CUDA_DNN_LIB_PATH="lib/libcudnn${TF_CUDNN_EXT}"
-    CUDA_DNN_LIB_ALT_PATH="libcudnn${TF_CUDNN_EXT}"
+    CUDA_DNN_LIB_PATH="lib/libcudnn${TF_CUDNN_EXT}.dylib"
+    CUDA_DNN_LIB_ALT_PATH="libcudnn${TF_CUDNN_EXT}.dylib"
   fi
 
   if [ -e "$CUDNN_INSTALL_PATH/${CUDA_DNN_LIB_ALT_PATH}" -o -e "$CUDNN_INSTALL_PATH/${CUDA_DNN_LIB_PATH}" ]; then
