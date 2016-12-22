@@ -1087,6 +1087,13 @@ regular expression:
 
 - - -
 
+#### `tf.Operation.__repr__()` {#Operation.__repr__}
+
+
+
+
+- - -
+
 #### `tf.Operation.__str__()` {#Operation.__str__}
 
 
