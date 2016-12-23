@@ -5,7 +5,7 @@ licenses(["notice"])  # custom notice-style license, see LICENSE.md
 
 exports_files(["LICENSE.md"])
 
-load("@//third_party/jpeg:expand_template.bzl", "expand_template")
+load("@//third_party:common.bzl", "expand_header_template")
 
 libjpegturbo_nocopts = "-[W]error"
 
@@ -276,7 +276,7 @@ cc_library(
     nocopts = libjpegturbo_nocopts,
 )
 
-expand_template(
+expand_header_template(
     name = "jconfig_win",
     out = "jconfig_win.h",
     substitutions = {
@@ -289,7 +289,7 @@ expand_template(
     template = "win/jconfig.h.in",
 )
 
-expand_template(
+expand_header_template(
     name = "jconfigint_win",
     out = "jconfigint_win.h",
     substitutions = {
@@ -328,21 +328,21 @@ jconfig_nowin_nosimd_substitutions = jconfig_nowin_common_substitutions + {
     "#undef WITH_SIMD": "",
 }
 
-expand_template(
+expand_header_template(
     name = "jconfig_nowin_nosimd",
     out = "jconfig_nowin_nosimd.h",
     substitutions = jconfig_nowin_nosimd_substitutions,
     template = "jconfig.h.in",
 )
 
-expand_template(
+expand_header_template(
     name = "jconfig_nowin_simd",
     out = "jconfig_nowin_simd.h",
     substitutions = jconfig_nowin_simd_substitutions,
     template = "jconfig.h.in",
 )
 
-expand_template(
+expand_header_template(
     name = "jconfigint_nowin",
     out = "jconfigint_nowin.h",
     substitutions = {
