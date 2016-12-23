@@ -300,7 +300,7 @@ expand_header_template(
     },
 )
 
-jconfig_nowin_common_substitutions = {
+JCONFIG_NOWIN_COMMON_SUBSTITUTIONS = {
     "LIBJPEG_TURBO_VERSION 0": "LIBJPEG_TURBO_VERSION 1.5.1",
     "LIBJPEG_TURBO_VERSION_NUMBER 0": "LIBJPEG_TURBO_VERSION_NUMBER 1005001",
     "#undef C_ARITH_CODING_SUPPORTED": "#define C_ARITH_CODING_SUPPORTED 1",
@@ -320,11 +320,11 @@ jconfig_nowin_common_substitutions = {
     "#undef RIGHT_SHIFT_IS_UNSIGNED": "",
 }
 
-jconfig_nowin_simd_substitutions = jconfig_nowin_common_substitutions + {
+JCONFIG_NOWIN_SIMD_SUBSTITUTIONS = JCONFIG_NOWIN_COMMON_SUBSTITUTIONS + {
     "#undef WITH_SIMD": "#define WITH_SIMD 1",
 }
 
-jconfig_nowin_nosimd_substitutions = jconfig_nowin_common_substitutions + {
+JCONFIG_NOWIN_NOSIMD_SUBSTITUTIONS = JCONFIG_NOWIN_COMMON_SUBSTITUTIONS + {
     "#undef WITH_SIMD": "",
 }
 
@@ -332,14 +332,14 @@ expand_header_template(
     name = "jconfig_nowin_nosimd",
     src = "jconfig.h.in",
     out = "jconfig_nowin_nosimd.h",
-    substitutions = jconfig_nowin_nosimd_substitutions,
+    substitutions = JCONFIG_NOWIN_NOSIMD_SUBSTITUTIONS,
 )
 
 expand_header_template(
     name = "jconfig_nowin_simd",
     src = "jconfig.h.in",
     out = "jconfig_nowin_simd.h",
-    substitutions = jconfig_nowin_simd_substitutions,
+    substitutions = JCONFIG_NOWIN_SIMD_SUBSTITUTIONS,
 )
 
 expand_header_template(
