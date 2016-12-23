@@ -286,7 +286,7 @@ expand_header_template(
         "cmakedefine" : "define",
         "@BITS_IN_JSAMPLE@" : "8",
     },
-    template = "win/jconfig.h.in",
+    src = "win/jconfig.h.in",
 )
 
 expand_header_template(
@@ -297,7 +297,7 @@ expand_header_template(
         "@BUILD@" : "20161115",
         "@CMAKE_PROJECT_NAME@" : "libjpeg-turbo",
     },
-    template = "win/jconfigint.h.in",
+    src = "win/jconfigint.h.in",
 )
 
 jconfig_nowin_common_substitutions = {
@@ -332,14 +332,14 @@ expand_header_template(
     name = "jconfig_nowin_nosimd",
     out = "jconfig_nowin_nosimd.h",
     substitutions = jconfig_nowin_nosimd_substitutions,
-    template = "jconfig.h.in",
+    src = "jconfig.h.in",
 )
 
 expand_header_template(
     name = "jconfig_nowin_simd",
     out = "jconfig_nowin_simd.h",
     substitutions = jconfig_nowin_simd_substitutions,
-    template = "jconfig.h.in",
+    src = "jconfig.h.in",
 )
 
 expand_header_template(
@@ -357,23 +357,23 @@ expand_header_template(
             "#define SIZEOF_SIZE_T 4\n" +
             "#endif\n",
     },
-    template = "jconfigint.h.in",
+    src = "jconfigint.h.in",
 )
 
 genrule(
     name = "configure",
     outs = ["jconfig.h"],
     srcs = [
-        ":jconfig_win",
-        ":jconfig_nowin_nosimd",
-        ":jconfig_nowin_simd",
+        "jconfig_win.h",
+        "jconfig_nowin_nosimd.h",
+        "jconfig_nowin_simd.h",
     ],
     cmd = select({
-        ":windows": "cp $(locations :jconfig_win) $(@D)/jconfig.h",
-        ":k8": "cp $(locations :jconfig_nowin_simd) $(@D)/jconfig.h",
-        ":armeabi-v7a": "cp $(locations :jconfig_nowin_simd) $(@D)/jconfig.h",
-        ":arm64-v8a": "cp $(locations :jconfig_nowin_simd) $(@D)/jconfig.h",
-        "//conditions:default": "cp $(locations :jconfig_nowin_nosimd) $(@D)/jconfig.h",
+        ":windows": "cp $(location jconfig_win.h) $@",
+        ":k8": "cp $(location jconfig_nowin_simd.h) $@",
+        ":armeabi-v7a": "cp $(location jconfig_nowin_simd.h) $@",
+        ":arm64-v8a": "cp $(location jconfig_nowin_simd.h) $@",
+        "//conditions:default": "cp $(location jconfig_nowin_nosimd.h) $@",
     }),
 )
 
@@ -381,12 +381,12 @@ genrule(
     name = "configure_internal",
     outs = ["jconfigint.h"],
     srcs = [
-        ":jconfigint_win",
-        ":jconfigint_nowin",
+        "jconfigint_win.h",
+        "jconfigint_nowin.h",
     ],
     cmd = select({
-        ":windows": "cp $(locations :jconfigint_win) $(@D)/jconfigint.h",
-        "//conditions:default": "cp $(locations :jconfigint_nowin) $(@D)/jconfigint.h",
+        ":windows": "cp $(location jconfigint_win.h) $@",
+        "//conditions:default": "cp $(location jconfigint_nowin.h) $@",
     }),
 )
 

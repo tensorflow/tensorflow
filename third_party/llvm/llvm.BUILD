@@ -10,10 +10,14 @@ load(
     "@//third_party/llvm:llvm.bzl",
     "gentbl",
     "expand_cmake_vars",
-    "expand_header_template",
     "llvm_target_cmake_vars",
     "cmake_var_string",
 )
+
+load(
+    "@//third_party:common.bzl",
+    "expand_header_template",
+)    
 
 package(default_visibility = ["@//tensorflow/compiler/xla:internal"])
 
@@ -184,7 +188,7 @@ expand_header_template(
             ["LLVM_TARGET({})".format(t) for t in llvm_targets],
         ),
     },
-    template = "include/llvm/Config/Targets.def.in",
+    src = "include/llvm/Config/Targets.def.in",
 )
 
 expand_header_template(
@@ -195,7 +199,7 @@ expand_header_template(
             ["LLVM_ASM_PARSER({})".format(t) for t in llvm_target_asm_parsers],
         ),
     },
-    template = "include/llvm/Config/AsmParsers.def.in",
+    src = "include/llvm/Config/AsmParsers.def.in",
 )
 
 expand_header_template(
@@ -206,7 +210,7 @@ expand_header_template(
             ["LLVM_ASM_PRINTER({})".format(t) for t in llvm_target_asm_printers],
         ),
     },
-    template = "include/llvm/Config/AsmPrinters.def.in",
+    src = "include/llvm/Config/AsmPrinters.def.in",
 )
 
 expand_header_template(
@@ -217,7 +221,7 @@ expand_header_template(
             ["LLVM_DISASSEMBLER({})".format(t) for t in llvm_target_disassemblers],
         ),
     },
-    template = "include/llvm/Config/Disassemblers.def.in",
+    src = "include/llvm/Config/Disassemblers.def.in",
 )
 
 # A common library that all LLVM targets depend on.

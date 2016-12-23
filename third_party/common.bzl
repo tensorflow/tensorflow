@@ -6,7 +6,7 @@
 #   load("/tools/build_rules/expand_header_template", "expand_header_template")
 #   expand_header_template(
 #       name = "ExpandMyTemplate",
-#       template = "my.template",
+#       src = "my.template",
 #       out = "my.txt",
 #       substitutions = {
 #         "$VAR1": "foo",
@@ -22,7 +22,7 @@
 
 def expand_header_template_impl(ctx):
   ctx.template_action(
-      template = ctx.file.template,
+      template = ctx.file.src,
       output = ctx.outputs.out,
       substitutions = ctx.attr.substitutions,
   )
@@ -30,7 +30,7 @@ def expand_header_template_impl(ctx):
 expand_header_template = rule(
     implementation = expand_header_template_impl,
     attrs = {
-        "template": attr.label(mandatory=True, allow_files=True, single_file=True),
+        "src": attr.label(mandatory=True, allow_files=True, single_file=True),
         "substitutions": attr.string_dict(mandatory=True),
         "out": attr.output(mandatory=True),
     },
