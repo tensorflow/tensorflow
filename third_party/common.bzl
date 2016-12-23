@@ -28,12 +28,16 @@ def expand_header_template_impl(ctx):
   )
 
 expand_header_template = rule(
-    implementation = expand_header_template_impl,
     attrs = {
-        "src": attr.label(mandatory=True, allow_files=True, single_file=True),
-        "substitutions": attr.string_dict(mandatory=True),
-        "out": attr.output(mandatory=True),
+        "src": attr.label(
+            mandatory = True,
+            allow_files = True,
+            single_file = True,
+        ),
+        "substitutions": attr.string_dict(mandatory = True),
+        "out": attr.output(mandatory = True),
     },
     # output_to_genfiles is required for header files.
     output_to_genfiles = True,
+    implementation = expand_header_template_impl,
 )

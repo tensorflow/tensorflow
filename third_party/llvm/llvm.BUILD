@@ -13,11 +13,10 @@ load(
     "llvm_target_cmake_vars",
     "cmake_var_string",
 )
-
 load(
     "@//third_party:common.bzl",
     "expand_header_template",
-)    
+)
 
 package(default_visibility = ["@//tensorflow/compiler/xla:internal"])
 
@@ -182,46 +181,46 @@ expand_cmake_vars(
 # Performs macro expansions on .def.in files
 expand_header_template(
     name = "targets_def_gen",
+    src = "include/llvm/Config/Targets.def.in",
     out = "include/llvm/Config/Targets.def",
     substitutions = {
         "@LLVM_ENUM_TARGETS@": "\n".join(
             ["LLVM_TARGET({})".format(t) for t in llvm_targets],
         ),
     },
-    src = "include/llvm/Config/Targets.def.in",
 )
 
 expand_header_template(
     name = "asm_parsers_def_gen",
+    src = "include/llvm/Config/AsmParsers.def.in",
     out = "include/llvm/Config/AsmParsers.def",
     substitutions = {
         "@LLVM_ENUM_ASM_PARSERS@": "\n".join(
             ["LLVM_ASM_PARSER({})".format(t) for t in llvm_target_asm_parsers],
         ),
     },
-    src = "include/llvm/Config/AsmParsers.def.in",
 )
 
 expand_header_template(
     name = "asm_printers_def_gen",
+    src = "include/llvm/Config/AsmPrinters.def.in",
     out = "include/llvm/Config/AsmPrinters.def",
     substitutions = {
         "@LLVM_ENUM_ASM_PRINTERS@": "\n".join(
             ["LLVM_ASM_PRINTER({})".format(t) for t in llvm_target_asm_printers],
         ),
     },
-    src = "include/llvm/Config/AsmPrinters.def.in",
 )
 
 expand_header_template(
     name = "disassemblers_def_gen",
+    src = "include/llvm/Config/Disassemblers.def.in",
     out = "include/llvm/Config/Disassemblers.def",
     substitutions = {
         "@LLVM_ENUM_DISASSEMBLERS@": "\n".join(
             ["LLVM_DISASSEMBLER({})".format(t) for t in llvm_target_disassemblers],
         ),
     },
-    src = "include/llvm/Config/Disassemblers.def.in",
 )
 
 # A common library that all LLVM targets depend on.

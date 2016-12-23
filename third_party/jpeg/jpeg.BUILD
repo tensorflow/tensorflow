@@ -278,46 +278,46 @@ cc_library(
 
 expand_header_template(
     name = "jconfig_win",
+    src = "win/jconfig.h.in",
     out = "jconfig_win.h",
     substitutions = {
-        "@JPEG_LIB_VERSION@" : "62",
-        "@VERSION@" : "1.5.1",
-        "@LIBJPEG_TURBO_VERSION_NUMBER@" : "1005001",
-        "cmakedefine" : "define",
-        "@BITS_IN_JSAMPLE@" : "8",
+        "@JPEG_LIB_VERSION@": "62",
+        "@VERSION@": "1.5.1",
+        "@LIBJPEG_TURBO_VERSION_NUMBER@": "1005001",
+        "cmakedefine": "define",
+        "@BITS_IN_JSAMPLE@": "8",
     },
-    src = "win/jconfig.h.in",
 )
 
 expand_header_template(
     name = "jconfigint_win",
+    src = "win/jconfigint.h.in",
     out = "jconfigint_win.h",
     substitutions = {
-        "@VERSION@" : "1.5.1",
-        "@BUILD@" : "20161115",
-        "@CMAKE_PROJECT_NAME@" : "libjpeg-turbo",
+        "@VERSION@": "1.5.1",
+        "@BUILD@": "20161115",
+        "@CMAKE_PROJECT_NAME@": "libjpeg-turbo",
     },
-    src = "win/jconfigint.h.in",
 )
 
 jconfig_nowin_common_substitutions = {
-    "LIBJPEG_TURBO_VERSION 0" : "LIBJPEG_TURBO_VERSION 1.5.1",
-    "LIBJPEG_TURBO_VERSION_NUMBER 0" : "LIBJPEG_TURBO_VERSION_NUMBER 1005001",
-    "#undef C_ARITH_CODING_SUPPORTED" : "#define C_ARITH_CODING_SUPPORTED 1",
-    "#undef D_ARITH_CODING_SUPPORTED" : "#define D_ARITH_CODING_SUPPORTED 1",
-    "#undef HAVE_LOCALE_H" : "#define HAVE_LOCALE_H 1",
-    "#undef HAVE_STDDEF_H" : "#define HAVE_STDDEF_H 1",
-    "#undef HAVE_STDLIB_H" : "#define HAVE_STDLIB_H 1",
-    "#undef HAVE_UNSIGNED_CHAR" : "#define HAVE_UNSIGNED_CHAR 1",
-    "#undef HAVE_UNSIGNED_SHORT" : "#define HAVE_UNSIGNED_SHORT 1",
-    "#undef INCOMPLETE_TYPES_BROKEN" : "",
-    "#undef MEM_SRCDST_SUPPORTED" : "#define MEM_SRCDST_SUPPORTED 1",
-    "#undef NEED_BSD_STRINGS" : "",
-    "#undef NEED_SYS_TYPES_H" : "#define NEED_SYS_TYPES_H 1",
-    "#undef __CHAR_UNSIGNED__" : "",
-    "#undef const" : "",
-    "#undef size_t" : "",
-    "#undef RIGHT_SHIFT_IS_UNSIGNED" : "",
+    "LIBJPEG_TURBO_VERSION 0": "LIBJPEG_TURBO_VERSION 1.5.1",
+    "LIBJPEG_TURBO_VERSION_NUMBER 0": "LIBJPEG_TURBO_VERSION_NUMBER 1005001",
+    "#undef C_ARITH_CODING_SUPPORTED": "#define C_ARITH_CODING_SUPPORTED 1",
+    "#undef D_ARITH_CODING_SUPPORTED": "#define D_ARITH_CODING_SUPPORTED 1",
+    "#undef HAVE_LOCALE_H": "#define HAVE_LOCALE_H 1",
+    "#undef HAVE_STDDEF_H": "#define HAVE_STDDEF_H 1",
+    "#undef HAVE_STDLIB_H": "#define HAVE_STDLIB_H 1",
+    "#undef HAVE_UNSIGNED_CHAR": "#define HAVE_UNSIGNED_CHAR 1",
+    "#undef HAVE_UNSIGNED_SHORT": "#define HAVE_UNSIGNED_SHORT 1",
+    "#undef INCOMPLETE_TYPES_BROKEN": "",
+    "#undef MEM_SRCDST_SUPPORTED": "#define MEM_SRCDST_SUPPORTED 1",
+    "#undef NEED_BSD_STRINGS": "",
+    "#undef NEED_SYS_TYPES_H": "#define NEED_SYS_TYPES_H 1",
+    "#undef __CHAR_UNSIGNED__": "",
+    "#undef const": "",
+    "#undef size_t": "",
+    "#undef RIGHT_SHIFT_IS_UNSIGNED": "",
 }
 
 jconfig_nowin_simd_substitutions = jconfig_nowin_common_substitutions + {
@@ -330,44 +330,44 @@ jconfig_nowin_nosimd_substitutions = jconfig_nowin_common_substitutions + {
 
 expand_header_template(
     name = "jconfig_nowin_nosimd",
+    src = "jconfig.h.in",
     out = "jconfig_nowin_nosimd.h",
     substitutions = jconfig_nowin_nosimd_substitutions,
-    src = "jconfig.h.in",
 )
 
 expand_header_template(
     name = "jconfig_nowin_simd",
+    src = "jconfig.h.in",
     out = "jconfig_nowin_simd.h",
     substitutions = jconfig_nowin_simd_substitutions,
-    src = "jconfig.h.in",
 )
 
 expand_header_template(
     name = "jconfigint_nowin",
+    src = "jconfigint.h.in",
     out = "jconfigint_nowin.h",
     substitutions = {
-        "#undef BUILD" : "#define BUILD \"20161115\"",
-        "#undef inline" : "",
-        "#undef INLINE" : "#define INLINE inline __attribute__((always_inline))",
-        "#undef PACKAGE_NAME" : "#define PACKAGE_NAME \"libjpeg-turbo\"",
-        "#undef VERSION" : "#define VERSION \"1.5.1\"",
-        "#undef SIZEOF_SIZE_T" : "#if (__WORDSIZE==64 && !defined(__native_client__))\n" +
-            "#define SIZEOF_SIZE_T 8\n" +
-            "#else\n" +
-            "#define SIZEOF_SIZE_T 4\n" +
-            "#endif\n",
+        "#undef BUILD": "#define BUILD \"20161115\"",
+        "#undef inline": "",
+        "#undef INLINE": "#define INLINE inline __attribute__((always_inline))",
+        "#undef PACKAGE_NAME": "#define PACKAGE_NAME \"libjpeg-turbo\"",
+        "#undef VERSION": "#define VERSION \"1.5.1\"",
+        "#undef SIZEOF_SIZE_T": "#if (__WORDSIZE==64 && !defined(__native_client__))\n" +
+                                "#define SIZEOF_SIZE_T 8\n" +
+                                "#else\n" +
+                                "#define SIZEOF_SIZE_T 4\n" +
+                                "#endif\n",
     },
-    src = "jconfigint.h.in",
 )
 
 genrule(
     name = "configure",
-    outs = ["jconfig.h"],
     srcs = [
         "jconfig_win.h",
         "jconfig_nowin_nosimd.h",
         "jconfig_nowin_simd.h",
     ],
+    outs = ["jconfig.h"],
     cmd = select({
         ":windows": "cp $(location jconfig_win.h) $@",
         ":k8": "cp $(location jconfig_nowin_simd.h) $@",
@@ -379,11 +379,11 @@ genrule(
 
 genrule(
     name = "configure_internal",
-    outs = ["jconfigint.h"],
     srcs = [
         "jconfigint_win.h",
         "jconfigint_nowin.h",
     ],
+    outs = ["jconfigint.h"],
     cmd = select({
         ":windows": "cp $(location jconfigint_win.h) $@",
         "//conditions:default": "cp $(location jconfigint_nowin.h) $@",
