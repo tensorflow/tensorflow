@@ -103,10 +103,10 @@ Status Worker::PrepareRunGraph(const RunGraphRequest& req,
     TF_RETURN_IF_ERROR(env_->device_mgr->LookupDevice("CPU:0", &cpu_dev));
     AllocatorAttributes alloc_attrs;
     Tensor val;
-    for (const NamedTensor& entry : req.send()) {
+    for (const NamedTensorProto& entry : req.send()) {
       TF_RETURN_IF_ERROR(
-          cpu_dev->MakeTensorFromProto(entry.val(), alloc_attrs, &val));
-      in->insert({entry.key(), val});
+          cpu_dev->MakeTensorFromProto(entry.tensor(), alloc_attrs, &val));
+      in->insert({entry.name(), val});
     }
   }
   for (const string& key : req.recv_key()) {
@@ -182,10 +182,10 @@ void Worker::DoRunGraph(CallOptions* opts, const RunGraphRequest* request,
             const string& key = p.first;
             const Tensor& val = p.second;
             auto* recv = response->add_recv();
-            recv->set_key(key);
+            recv->set_name(key);
             // TODO(zhifengc): Deal with gpu -> cpu copy.
-            TensorProto* proto = recv->mutable_val();
-            val.AsProtoField(proto);
+            TensorProto* proto = recv->mutable_tensor();
+            val.AsProtoTensorContent(proto);
           }
         }
         delete collector;
@@ -279,10 +279,10 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
       const string& key = p.first;
       const Tensor& val = p.second;
       auto* recv = response->add_recv();
-      recv->set_key(key);
+      recv->set_name(key);
       // TODO(zhifengc): Deal with gpu -> cpu copy.
-      TensorProto* proto = recv->mutable_val();
-      val.AsProtoField(proto);
+      TensorProto* proto = recv->mutable_tensor();
+      val.AsProtoTensorContent(proto);
     }
 
     // If this is the last partial run request we must also wait for the entire
