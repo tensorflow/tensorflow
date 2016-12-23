@@ -68,7 +68,7 @@ class TransformerTest(tf.test.TestCase):
     self.assertTrue(sparse_real_valued in output_dict)
     output = output_dict[sparse_real_valued]
     with self.test_session():
-      self.assertArrayNear(output.values.eval(), [4.0, 25.0], 1e-6)
+      self.assertArrayNear(output.values.eval(), [4.0, 25.0], 1e-5)
       self.assertAllEqual(output.indices.eval(),
                           rating_tensor.indices.eval())
       self.assertAllEqual(output.dense_shape.eval(),

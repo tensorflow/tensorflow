@@ -11,8 +11,8 @@ The GPU version works best with Cuda Toolkit 8.0 and
 cuDNN v5.  Other versions are supported (Cuda toolkit >= 7.0 and
 cuDNN >= v3) only when installing from sources.
 Please see [Cuda installation](#optional-install-cuda-gpus-on-linux) for
-details. For Mac OS X, please see [Setup GPU for
-Mac](#optional-setup-gpu-for-mac).
+details. For Mac OS X, please see 
+[Setup GPU for Mac](#optional-setup-gpu-for-mac).
 
 ## Overview
 
@@ -43,8 +43,8 @@ If you encounter installation errors, see
 [Pip](https://en.wikipedia.org/wiki/Pip_(package_manager)) is a package
 management system used to install and manage software packages written in
 Python. We provide pip packages for TensorFlow on Linux, Mac OS X, and
-Windows. For Windows instructions, please see [Pip installation on
-Windows](#pip-installation-on-windows).
+Windows. For Windows instructions, please see 
+[Pip installation on Windows](#pip-installation-on-windows).
 
 The packages that will be installed or upgraded during the pip install are
 listed in the [REQUIRED_PACKAGES section of
@@ -983,20 +983,20 @@ package:
 
 ```bash
 # Ubuntu/Linux 64-bit:
-$ pip install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/protobuf-3.0.0-cp27-none-linux_x86_64.whl
+$ pip install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/protobuf-3.1.0-cp27-none-linux_x86_64.whl
 
 # Mac OS X:
-$ pip install --upgrade https://storage.googleapis.com/tensorflow/mac/cpu/protobuf-3.0.0-cp27-cp27m-macosx_10_11_x86_64.whl
+$ pip install --upgrade https://storage.googleapis.com/tensorflow/mac/cpu/protobuf-3.1.0-cp27-none-macosx_10_11_x86_64.whl
 ```
 
 And for Python 3.5:
 
 ```bash
 # Ubuntu/Linux 64-bit:
-$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/protobuf-3.0.0-cp35-cp35m-linux_x86_64.whl
+$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/protobuf-3.1.0-cp35-none-linux_x86_64.whl
 
 # Mac OS X:
-$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/mac/cpu/protobuf-3.0.0-cp35-cp35m-macosx_10_11_x86_64.whl
+$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/mac/cpu/protobuf-3.1.0-cp35-none-macosx_10_11_x86_64.whl
 ```
 
 If your system/configuration is not listed above, you can use the following
@@ -1204,7 +1204,7 @@ Traceback (most recent call last):
 TypeError: __init__() got an unexpected keyword argument 'syntax'
 ```
 
-This is due to a conflict between protobuf versions (we require protobuf 3.0.0).
+This is due to a conflict between protobuf versions (we require protobuf 3.1.0).
 The best current solution is to make sure older versions of protobuf are not
 installed, such as:
 

@@ -401,6 +401,5 @@ class Mixture(distribution.Distribution):
     """Get a list of num_components batchwise probabilities."""
     which_softmax = nn_ops.log_softmax if log_probs else nn_ops.softmax
     cat_probs = which_softmax(self.cat.logits)
-    cat_probs = array_ops.unpack(
-        cat_probs, num=self.num_components, axis=-1)
+    cat_probs = array_ops.unstack(cat_probs, num=self.num_components, axis=-1)
     return cat_probs

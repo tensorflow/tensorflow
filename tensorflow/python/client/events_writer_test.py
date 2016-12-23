@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for the SWIG-wrapped events writer."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -23,9 +23,9 @@ import os.path
 from tensorflow.core.framework import summary_pb2
 from tensorflow.core.util import event_pb2
 from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.lib.io import tf_record
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
+from tensorflow.python.lib.io import tf_record
 from tensorflow.python.platform import googletest
 from tensorflow.python.util import compat
 
@@ -37,9 +37,11 @@ class PywrapeventsWriterTest(test_util.TensorFlowTestCase):
     writer = pywrap_tensorflow.EventsWriter(compat.as_bytes(file_prefix))
     filename = compat.as_text(writer.FileName())
     event_written = event_pb2.Event(
-        wall_time=123.45, step=67,
+        wall_time=123.45,
+        step=67,
         summary=summary_pb2.Summary(
-            value=[summary_pb2.Summary.Value(tag="foo", simple_value=89.0)]))
+            value=[summary_pb2.Summary.Value(
+                tag="foo", simple_value=89.0)]))
     writer.WriteEvent(event_written)
     writer.Flush()
     writer.Close()
@@ -65,8 +67,12 @@ class PywrapeventsWriterTest(test_util.TensorFlowTestCase):
       next(reader)
 
   def testWriteEventInvalidType(self):
+
     class _Invalid(object):
-      def __str__(self): return "Invalid"
+
+      def __str__(self):
+        return "Invalid"
+
     with self.assertRaisesRegexp(TypeError, "Invalid"):
       pywrap_tensorflow.EventsWriter(b"foo").WriteEvent(_Invalid())
 

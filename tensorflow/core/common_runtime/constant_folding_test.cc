@@ -228,8 +228,12 @@ TEST_F(ConstantFoldingTest, TestNoReplaceLargeConstant) {
   g->AddControlEdge(concat_send, g->sink_node());
 
   // The above concat should not have been constant folded.
-  EXPECT_FALSE(DoConstantFolding(ConstantFoldingOptions{}, nullptr,
-                                 Env::Default(), nullptr, g));
+  bool was_mutated;
+  Status status =
+      DoConstantFoldingWithStatus(ConstantFoldingOptions{}, nullptr,
+                                  Env::Default(), nullptr, g, &was_mutated);
+  EXPECT_FALSE(was_mutated);
+  TF_EXPECT_OK(status);
 }
 
 TEST_F(ConstantFoldingTest, TestNoReplaceFunctionCall) {
@@ -257,8 +261,12 @@ TEST_F(ConstantFoldingTest, TestNoReplaceFunctionCall) {
   g->AddControlEdge(times_two_send, g->sink_node());
 
   // The above function call should not have been constant folded.
-  EXPECT_FALSE(DoConstantFolding(ConstantFoldingOptions{}, nullptr,
-                                 Env::Default(), nullptr, g));
+  bool was_mutated;
+  status =
+      DoConstantFoldingWithStatus(ConstantFoldingOptions{}, nullptr,
+                                  Env::Default(), nullptr, g, &was_mutated);
+  EXPECT_FALSE(was_mutated);
+  EXPECT_FALSE(status.ok());
 
   g_ = nullptr;
 }
@@ -337,10 +345,16 @@ TEST_F(ConstantFoldingTest, TestImmutableConst) {
   auto result2 = ops::MatMul(root, result1, c);
   TF_ASSERT_OK(root.ToGraph(g));
   TestTFEnvironment test_env;
-  EXPECT_FALSE(DoConstantFolding(ConstantFoldingOptions{}, nullptr,
-                                 Env::Default(), nullptr, g));
-  EXPECT_TRUE(DoConstantFolding(ConstantFoldingOptions{}, nullptr, &test_env,
-                                nullptr, g));
+  bool was_mutated;
+  Status status =
+      DoConstantFoldingWithStatus(ConstantFoldingOptions{}, nullptr,
+                                  Env::Default(), nullptr, g, &was_mutated);
+  EXPECT_FALSE(was_mutated);
+  EXPECT_FALSE(status.ok());
+  status = DoConstantFoldingWithStatus(ConstantFoldingOptions{}, nullptr,
+                                       &test_env, nullptr, g, &was_mutated);
+  EXPECT_TRUE(was_mutated);
+  TF_EXPECT_OK(status);
 }
 
 }  // namespace

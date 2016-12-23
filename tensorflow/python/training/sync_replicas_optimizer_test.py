@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for sync_replicas_optimizer.py."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -21,7 +21,15 @@ from __future__ import print_function
 import time
 
 import portpicker
-import tensorflow as tf
+
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
+from tensorflow.python.training import gradient_descent
+from tensorflow.python.training import server_lib
+from tensorflow.python.training import supervisor as supervisor_lib
+from tensorflow.python.training import training
 
 
 def create_local_cluster(num_workers, num_ps, protocol="grpc"):
@@ -30,17 +38,20 @@ def create_local_cluster(num_workers, num_ps, protocol="grpc"):
   ps_ports = [portpicker.pick_unused_port() for _ in range(num_ps)]
   cluster_dict = {
       "worker": ["localhost:%s" % port for port in worker_ports],
-      "ps": ["localhost:%s" % port for port in ps_ports]}
-  cs = tf.train.ClusterSpec(cluster_dict)
+      "ps": ["localhost:%s" % port for port in ps_ports]
+  }
+  cs = server_lib.ClusterSpec(cluster_dict)
 
   workers = [
-      tf.train.Server(
+      server_lib.Server(
           cs, job_name="worker", protocol=protocol, task_index=ix, start=True)
-      for ix in range(num_workers)]
+      for ix in range(num_workers)
+  ]
   ps_servers = [
-      tf.train.Server(
+      server_lib.Server(
           cs, job_name="ps", protocol=protocol, task_index=ix, start=True)
-      for ix in range(num_ps)]
+      for ix in range(num_ps)
+  ]
 
   return workers, ps_servers
 
@@ -51,33 +62,38 @@ def get_workers(num_workers, replicas_to_aggregate, workers):
   graphs = []
   train_ops = []
   for worker_id in range(num_workers):
-    graph = tf.Graph()
+    graph = ops.Graph()
     is_chief = (worker_id == 0)
     with graph.as_default():
-      with tf.device("/job:ps/task:0"):
-        global_step = tf.Variable(0, name="global_step", trainable=False)
-        var_0 = tf.Variable(0.0, name="v0")
-      with tf.device("/job:ps/task:1"):
-        var_1 = tf.Variable(1.0, name="v1")
-        var_sparse = tf.Variable([[3.0], [4.0]], name="v_sparse")
+      with ops.device("/job:ps/task:0"):
+        global_step = variables.Variable(0, name="global_step", trainable=False)
+        var_0 = variables.Variable(0.0, name="v0")
+      with ops.device("/job:ps/task:1"):
+        var_1 = variables.Variable(1.0, name="v1")
+        var_sparse = variables.Variable([[3.0], [4.0]], name="v_sparse")
 
-      with tf.device("/job:worker/task:"+str(worker_id)):
-        grads_0 = tf.constant(0.1+worker_id*0.2)
-        grads_1 = tf.constant(0.9+worker_id*0.2)
+      with ops.device("/job:worker/task:" + str(worker_id)):
+        grads_0 = constant_op.constant(0.1 + worker_id * 0.2)
+        grads_1 = constant_op.constant(0.9 + worker_id * 0.2)
         # This is to test against sparse gradients.
-        grads_sparse = tf.IndexedSlices(
-            tf.constant([0.1+worker_id*0.2], shape=[1, 1]),
-            tf.constant([1]),
-            tf.constant([2, 1]))
-        sgd_opt = tf.train.GradientDescentOptimizer(2.0)
-        sync_rep_opt = tf.train.SyncReplicasOptimizer(
-            sgd_opt, replicas_to_aggregate=replicas_to_aggregate,
+        grads_sparse = ops.IndexedSlices(
+            constant_op.constant(
+                [0.1 + worker_id * 0.2], shape=[1, 1]),
+            constant_op.constant([1]),
+            constant_op.constant([2, 1]))
+        sgd_opt = gradient_descent.GradientDescentOptimizer(2.0)
+        sync_rep_opt = training.SyncReplicasOptimizer(
+            sgd_opt,
+            replicas_to_aggregate=replicas_to_aggregate,
             total_num_replicas=num_workers)
-        train_op = [sync_rep_opt.apply_gradients(
-            zip([grads_0, grads_1, grads_sparse], [var_0, var_1, var_sparse]),
-            global_step=global_step)]
+        train_op = [
+            sync_rep_opt.apply_gradients(
+                zip([grads_0, grads_1, grads_sparse],
+                    [var_0, var_1, var_sparse]),
+                global_step=global_step)
+        ]
 
-        init_op = tf.global_variables_initializer()
+        init_op = variables.global_variables_initializer()
         # Needed ops from the sync_rep optimizer. This is mainly for the
         # local_step initialization.
         local_init_op = sync_rep_opt.local_step_init_op
@@ -90,7 +106,7 @@ def get_workers(num_workers, replicas_to_aggregate, workers):
         sync_init_op = sync_rep_opt.get_init_tokens_op(num_workers)
 
     # Creates session for chief.
-    supervisor = tf.train.Supervisor(
+    supervisor = supervisor_lib.Supervisor(
         graph=graph,
         is_chief=is_chief,
         recovery_wait_secs=1,
@@ -111,7 +127,7 @@ def get_workers(num_workers, replicas_to_aggregate, workers):
   return sessions, graphs, train_ops
 
 
-class SyncReplicasOptimizerTest(tf.test.TestCase):
+class SyncReplicasOptimizerTest(test.TestCase):
 
   def _run(self, train_op, sess):
     sess.run(train_op)
@@ -124,8 +140,7 @@ class SyncReplicasOptimizerTest(tf.test.TestCase):
 
     # Creates and returns all the workers.
     sessions, graphs, train_ops = get_workers(num_workers,
-                                              replicas_to_aggregate,
-                                              workers)
+                                              replicas_to_aggregate, workers)
 
     # Chief should have already initialized all the variables.
     var_0_g_0 = graphs[0].get_tensor_by_name("v0:0")
@@ -145,8 +160,8 @@ class SyncReplicasOptimizerTest(tf.test.TestCase):
     # The steps should also be initialized.
     self.assertAllEqual(0, global_step.eval(session=sessions[1]))
     self.assertAllEqual(0, local_step_1.eval(session=sessions[1]))
-    self.assertAllClose([[3.0], [4.0]],
-                        var_sparse_g_1.eval(session=sessions[1]))
+    self.assertAllClose(
+        [[3.0], [4.0]], var_sparse_g_1.eval(session=sessions[1]))
 
     # We have initial tokens in the queue so we can call this one by one. After
     # the first step, this will no longer work as there will be no more extra
@@ -159,10 +174,13 @@ class SyncReplicasOptimizerTest(tf.test.TestCase):
     while global_step.eval(session=sessions[1]) != 1:
       time.sleep(0.01)
 
-    self.assertAllClose(0-(0.1+0.3)/2*2.0, var_0_g_1.eval(session=sessions[1]))
-    self.assertAllClose(1-(0.9+1.1)/2*2.0, var_1_g_1.eval(session=sessions[1]))
-    self.assertAllClose([[3.0], [4.0-(0.1+0.3)/2*2.0]],
-                        var_sparse_g_1.eval(session=sessions[1]))
+    self.assertAllClose(
+        0 - (0.1 + 0.3) / 2 * 2.0, var_0_g_1.eval(session=sessions[1]))
+    self.assertAllClose(
+        1 - (0.9 + 1.1) / 2 * 2.0, var_1_g_1.eval(session=sessions[1]))
+    self.assertAllClose(
+        [[3.0], [4.0 - (0.1 + 0.3) / 2 * 2.0]],
+        var_sparse_g_1.eval(session=sessions[1]))
 
     # The local step for both workers should still be 0 because the initial
     # tokens in the token queue are 0s. This means that the following
@@ -180,16 +198,20 @@ class SyncReplicasOptimizerTest(tf.test.TestCase):
     self.assertAllEqual(1, global_step.eval(session=sessions[1]))
     self.assertAllEqual(1, local_step_0.eval(session=sessions[0]))
     self.assertAllEqual(1, local_step_1.eval(session=sessions[1]))
-    self.assertAllClose(0-(0.1+0.3)/2*2.0, var_0_g_1.eval(session=sessions[1]))
-    self.assertAllClose(1-(0.9+1.1)/2*2.0, var_1_g_1.eval(session=sessions[1]))
+    self.assertAllClose(
+        0 - (0.1 + 0.3) / 2 * 2.0, var_0_g_1.eval(session=sessions[1]))
+    self.assertAllClose(
+        1 - (0.9 + 1.1) / 2 * 2.0, var_1_g_1.eval(session=sessions[1]))
 
     # At this step, the token queue is empty. So the 2 workers need to work
     # together to proceed.
     threads = []
-    threads.append(self.checkedThread(target=self._run,
-                                      args=(train_ops[0], sessions[0])))
-    threads.append(self.checkedThread(target=self._run,
-                                      args=(train_ops[1], sessions[1])))
+    threads.append(
+        self.checkedThread(
+            target=self._run, args=(train_ops[0], sessions[0])))
+    threads.append(
+        self.checkedThread(
+            target=self._run, args=(train_ops[1], sessions[1])))
 
     # The two workers starts to execute the train op.
     for thread in threads:
@@ -200,10 +222,10 @@ class SyncReplicasOptimizerTest(tf.test.TestCase):
     # The global step should now be 2 and the gradients should have been
     # applied twice.
     self.assertAllEqual(2, global_step.eval(session=sessions[1]))
-    self.assertAllClose(0 - 2 * (0.1 + 0.3) / 2 * 2.0,
-                        var_0_g_1.eval(session=sessions[1]))
-    self.assertAllClose(1 - 2 * (0.9 + 1.1) / 2 * 2.0,
-                        var_1_g_1.eval(session=sessions[1]))
+    self.assertAllClose(
+        0 - 2 * (0.1 + 0.3) / 2 * 2.0, var_0_g_1.eval(session=sessions[1]))
+    self.assertAllClose(
+        1 - 2 * (0.9 + 1.1) / 2 * 2.0, var_1_g_1.eval(session=sessions[1]))
 
   # 3 workers and one of them is backup.
   def test3Workers1Backup(self):
@@ -214,8 +236,7 @@ class SyncReplicasOptimizerTest(tf.test.TestCase):
 
     # Creates and returns all the workers.
     sessions, graphs, train_ops = get_workers(num_workers,
-                                              replicas_to_aggregate,
-                                              workers)
+                                              replicas_to_aggregate, workers)
 
     # Chief should have already initialized all the variables.
     var_0_g_1 = graphs[1].get_tensor_by_name("v0:0")
@@ -240,8 +261,10 @@ class SyncReplicasOptimizerTest(tf.test.TestCase):
       time.sleep(0.01)
 
     self.assertAllEqual(1, global_step.eval(session=sessions[1]))
-    self.assertAllClose(0-(0.1+0.5)/2*2.0, var_0_g_1.eval(session=sessions[1]))
-    self.assertAllClose(1-(0.9+1.3)/2*2.0, var_1_g_1.eval(session=sessions[1]))
+    self.assertAllClose(
+        0 - (0.1 + 0.5) / 2 * 2.0, var_0_g_1.eval(session=sessions[1]))
+    self.assertAllClose(
+        1 - (0.9 + 1.3) / 2 * 2.0, var_1_g_1.eval(session=sessions[1]))
 
     # Worker 1 finished later and its gradients will now be dropped as it is
     # stale.
@@ -258,10 +281,10 @@ class SyncReplicasOptimizerTest(tf.test.TestCase):
     self.assertAllEqual(1, global_step.eval(session=sessions[1]))
     self.assertAllEqual(1, local_step_1.eval(session=sessions[1]))
 
-    thread_0 = self.checkedThread(target=self._run,
-                                  args=(train_ops[0], sessions[0]))
-    thread_1 = self.checkedThread(target=self._run,
-                                  args=(train_ops[1], sessions[1]))
+    thread_0 = self.checkedThread(
+        target=self._run, args=(train_ops[0], sessions[0]))
+    thread_1 = self.checkedThread(
+        target=self._run, args=(train_ops[1], sessions[1]))
 
     # Lets worker 0 execute first.
     # It will wait as we need 2 workers to finish this step and the global step
@@ -276,10 +299,11 @@ class SyncReplicasOptimizerTest(tf.test.TestCase):
     # The global step should now be 2 and the gradients should have been
     # applied again.
     self.assertAllEqual(2, global_step.eval(session=sessions[1]))
-    self.assertAllClose(-0.6 -(0.1 + 0.3) / 2 * 2.0,
-                        var_0_g_1.eval(session=sessions[1]))
-    self.assertAllClose(-1.2 - (0.9 + 1.1) / 2 * 2.0,
-                        var_1_g_1.eval(session=sessions[1]))
+    self.assertAllClose(
+        -0.6 - (0.1 + 0.3) / 2 * 2.0, var_0_g_1.eval(session=sessions[1]))
+    self.assertAllClose(
+        -1.2 - (0.9 + 1.1) / 2 * 2.0, var_1_g_1.eval(session=sessions[1]))
+
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

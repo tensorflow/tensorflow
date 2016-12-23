@@ -19,10 +19,17 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
 
 
-class SquaredDifferenceOpTest(tf.test.TestCase):
+class SquaredDifferenceOpTest(test.TestCase):
 
   def _testGrad(self, left_shape, right_shape):
 
@@ -34,19 +41,13 @@ class SquaredDifferenceOpTest(tf.test.TestCase):
     r = np.random.randn(*right_shape)
 
     with self.test_session(use_gpu=True):
-      left_tensor = tf.constant(l, shape=left_shape)
-      right_tensor = tf.constant(r, shape=right_shape)
-      output = tf.squared_difference(left_tensor, right_tensor)
-      left_err = tf.test.compute_gradient_error(left_tensor,
-                                                left_shape,
-                                                output,
-                                                output_shape,
-                                                x_init_value=l)
-      right_err = tf.test.compute_gradient_error(right_tensor,
-                                                 right_shape,
-                                                 output,
-                                                 output_shape,
-                                                 x_init_value=r)
+      left_tensor = constant_op.constant(l, shape=left_shape)
+      right_tensor = constant_op.constant(r, shape=right_shape)
+      output = math_ops.squared_difference(left_tensor, right_tensor)
+      left_err = gradient_checker.compute_gradient_error(
+          left_tensor, left_shape, output, output_shape, x_init_value=l)
+      right_err = gradient_checker.compute_gradient_error(
+          right_tensor, right_shape, output, output_shape, x_init_value=r)
     self.assertLess(left_err, 1e-10)
     self.assertLess(right_err, 1e-10)
 
@@ -55,7 +56,7 @@ class SquaredDifferenceOpTest(tf.test.TestCase):
     self._testGrad([2, 4], [3, 2, 4])
 
 
-class AbsOpTest(tf.test.TestCase):
+class AbsOpTest(test.TestCase):
 
   def _biasedRandN(self, shape, bias=0.1, sigma=1.0):
     """Returns samples from a normal distribution shifted `bias` away from 0."""
@@ -64,89 +65,94 @@ class AbsOpTest(tf.test.TestCase):
 
   def _testGrad(self, shape, dtype=None, max_error=None, bias=None, sigma=None):
     np.random.seed(7)
-    if dtype in (tf.complex64, tf.complex128):
-      value = tf.complex(self._biasedRandN(shape, bias=bias, sigma=sigma),
-                         self._biasedRandN(shape, bias=bias, sigma=sigma))
+    if dtype in (dtypes.complex64, dtypes.complex128):
+      value = math_ops.complex(
+          self._biasedRandN(
+              shape, bias=bias, sigma=sigma),
+          self._biasedRandN(
+              shape, bias=bias, sigma=sigma))
     else:
-      value = tf.convert_to_tensor(self._biasedRandN(shape, bias=bias),
-                                   dtype=dtype)
+      value = ops.convert_to_tensor(
+          self._biasedRandN(
+              shape, bias=bias), dtype=dtype)
 
     with self.test_session(use_gpu=True):
-      if dtype in (tf.complex64, tf.complex128):
-        output = tf.complex_abs(value)
-      else:
-        output = tf.abs(value)
-      error = tf.test.compute_gradient_error(
+      output = math_ops.abs(value)
+      error = gradient_checker.compute_gradient_error(
           value, shape, output, output.get_shape().as_list())
     self.assertLess(error, max_error)
 
   def testComplexAbs(self):
     # Bias random test values away from zero to avoid numeric instabilities.
-    self._testGrad([3, 3], dtype=tf.float32, max_error=2e-5, bias=0.1,
-                   sigma=1.0)
-    self._testGrad([3, 3], dtype=tf.complex64, max_error=2e-5, bias=0.1,
-                   sigma=1.0)
+    self._testGrad(
+        [3, 3], dtype=dtypes.float32, max_error=2e-5, bias=0.1, sigma=1.0)
+    self._testGrad(
+        [3, 3], dtype=dtypes.complex64, max_error=2e-5, bias=0.1, sigma=1.0)
 
     # Ensure stability near the pole at zero.
-    self._testGrad([3, 3], dtype=tf.float32, max_error=100.0, bias=0.0,
-                   sigma=0.1)
-    self._testGrad([3, 3], dtype=tf.complex64, max_error=100.0, bias=0.0,
-                   sigma=0.1)
+    self._testGrad(
+        [3, 3], dtype=dtypes.float32, max_error=100.0, bias=0.0, sigma=0.1)
+    self._testGrad(
+        [3, 3], dtype=dtypes.complex64, max_error=100.0, bias=0.0, sigma=0.1)
 
 
-class MinOrMaxGradientTest(tf.test.TestCase):
+class MinOrMaxGradientTest(test.TestCase):
 
   def testMinGradient(self):
-    inputs = tf.constant([1.0], dtype=tf.float32)
-    outputs = tf.reduce_min(tf.concat_v2([inputs, inputs], 0))
+    inputs = constant_op.constant([1.0], dtype=dtypes.float32)
+    outputs = math_ops.reduce_min(array_ops.concat_v2([inputs, inputs], 0))
     with self.test_session():
-      error = tf.test.compute_gradient_error(inputs, [1], outputs, [])
+      error = gradient_checker.compute_gradient_error(inputs, [1], outputs, [])
       self.assertLess(error, 1e-4)
 
   def testMaxGradient(self):
-    inputs = tf.constant([1.0], dtype=tf.float32)
-    outputs = tf.reduce_max(tf.concat_v2([inputs, inputs], 0))
+    inputs = constant_op.constant([1.0], dtype=dtypes.float32)
+    outputs = math_ops.reduce_max(array_ops.concat_v2([inputs, inputs], 0))
     with self.test_session():
-      error = tf.test.compute_gradient_error(inputs, [1], outputs, [])
+      error = gradient_checker.compute_gradient_error(inputs, [1], outputs, [])
       self.assertLess(error, 1e-4)
 
 
-class SegmentMinOrMaxGradientTest(tf.test.TestCase):
+class SegmentMinOrMaxGradientTest(test.TestCase):
 
   def testSegmentMinGradient(self):
-    data = tf.constant([1.0, 2.0, 3.0], dtype=tf.float32)
-    segment_ids = tf.constant([0, 0, 1], dtype=tf.int64)
-    segment_min = tf.segment_min(data, segment_ids)
+    data = constant_op.constant([1.0, 2.0, 3.0], dtype=dtypes.float32)
+    segment_ids = constant_op.constant([0, 0, 1], dtype=dtypes.int64)
+    segment_min = math_ops.segment_min(data, segment_ids)
     with self.test_session():
-      error = tf.test.compute_gradient_error(data, [3], segment_min, [2])
+      error = gradient_checker.compute_gradient_error(data, [3], segment_min,
+                                                      [2])
       self.assertLess(error, 1e-4)
 
   def testSegmentMaxGradient(self):
-    data = tf.constant([1.0, 2.0, 3.0], dtype=tf.float32)
-    segment_ids = tf.constant([0, 0, 1], dtype=tf.int64)
-    segment_max = tf.segment_max(data, segment_ids)
+    data = constant_op.constant([1.0, 2.0, 3.0], dtype=dtypes.float32)
+    segment_ids = constant_op.constant([0, 0, 1], dtype=dtypes.int64)
+    segment_max = math_ops.segment_max(data, segment_ids)
     with self.test_session():
-      error = tf.test.compute_gradient_error(data, [3], segment_max, [2])
+      error = gradient_checker.compute_gradient_error(data, [3], segment_max,
+                                                      [2])
       self.assertLess(error, 1e-4)
 
   def testSegmentMinGradientWithTies(self):
-    inputs = tf.constant([1.0], dtype=tf.float32)
-    data = tf.concat_v2([inputs, inputs], 0)
-    segment_ids = tf.constant([0, 0], dtype=tf.int64)
-    segment_min = tf.segment_min(data, segment_ids)
+    inputs = constant_op.constant([1.0], dtype=dtypes.float32)
+    data = array_ops.concat_v2([inputs, inputs], 0)
+    segment_ids = constant_op.constant([0, 0], dtype=dtypes.int64)
+    segment_min = math_ops.segment_min(data, segment_ids)
     with self.test_session():
-      error = tf.test.compute_gradient_error(inputs, [1], segment_min, [1])
+      error = gradient_checker.compute_gradient_error(inputs, [1], segment_min,
+                                                      [1])
       self.assertLess(error, 1e-4)
 
   def testSegmentMaxGradientWithTies(self):
-    inputs = tf.constant([1.0], dtype=tf.float32)
-    data = tf.concat_v2([inputs, inputs], 0)
-    segment_ids = tf.constant([0, 0], dtype=tf.int64)
-    segment_max = tf.segment_max(data, segment_ids)
+    inputs = constant_op.constant([1.0], dtype=dtypes.float32)
+    data = array_ops.concat_v2([inputs, inputs], 0)
+    segment_ids = constant_op.constant([0, 0], dtype=dtypes.int64)
+    segment_max = math_ops.segment_max(data, segment_ids)
     with self.test_session():
-      error = tf.test.compute_gradient_error(inputs, [1], segment_max, [1])
+      error = gradient_checker.compute_gradient_error(inputs, [1], segment_max,
+                                                      [1])
       self.assertLess(error, 1e-4)
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

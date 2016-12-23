@@ -35,7 +35,7 @@ class DecodeImageOpTest(test.TestCase):
 
   def testGif(self):
     # Read some real GIFs
-    path = os.path.join(prefix_path, 'gif', 'testdata', 'scan.gif')
+    path = os.path.join(prefix_path, "gif", "testdata", "scan.gif")
     WIDTH = 20
     HEIGHT = 40
     STRIDE = 5
@@ -69,7 +69,7 @@ class DecodeImageOpTest(test.TestCase):
 
   def testJpeg(self):
     # Read a real jpeg and verify shape
-    path = os.path.join(prefix_path, 'jpeg', 'testdata', 'jpeg_merge_test1.jpg')
+    path = os.path.join(prefix_path, "jpeg", "testdata", "jpeg_merge_test1.jpg")
     with self.test_session(use_gpu=True) as sess:
       jpeg0 = io_ops.read_file(path)
       image0 = image_ops.decode_image(jpeg0)
@@ -81,11 +81,11 @@ class DecodeImageOpTest(test.TestCase):
 
   def testPng(self):
     # Read some real PNGs, converting to different channel numbers
-    inputs = [(1, 'lena_gray.png')]
+    inputs = [(1, "lena_gray.png")]
     for channels_in, filename in inputs:
       for channels in 0, 1, 3:
         with self.test_session(use_gpu=True) as sess:
-          path = os.path.join(prefix_path, 'png', 'testdata', filename)
+          path = os.path.join(prefix_path, "png", "testdata", filename)
           png0 = io_ops.read_file(path)
           image0 = image_ops.decode_image(png0, channels=channels)
           image1 = image_ops.decode_png(png0, channels=channels)
@@ -94,17 +94,17 @@ class DecodeImageOpTest(test.TestCase):
           self.assertAllEqual(image0, image1)
 
   def testInvalidBytes(self):
-    image_bytes = b'ThisIsNotAnImage!'
+    image_bytes = b"ThisIsNotAnImage!"
     decode = image_ops.decode_image(image_bytes)
     with self.test_session():
       with self.assertRaises(errors_impl.InvalidArgumentError):
         decode.eval()
 
   def testInvalidChannels(self):
-    image_bytes = b'unused'
+    image_bytes = b"unused"
     with self.assertRaises(ValueError):
       decode = image_ops.decode_image(image_bytes, channels=4)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   test.main()

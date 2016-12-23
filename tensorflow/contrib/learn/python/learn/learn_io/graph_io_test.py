@@ -178,7 +178,7 @@ class GraphIOTest(tf.test.TestCase):
           "%s/read/TFRecordReader" % name: "TFRecordReader",
           example_queue_name: "RandomShuffleQueue",
           name: "QueueDequeueUpTo",
-          file_name_queue_limit_name: "Variable"
+          file_name_queue_limit_name: "VariableV2"
       }, g)
       self.assertEqual(
           set(_FILE_NAMES), set(sess.run(["%s:0" % file_names_name])[0]))
@@ -361,19 +361,16 @@ class GraphIOTest(tf.test.TestCase):
           name=name)
       self.assertAllEqual((None,), keys.get_shape().as_list())
       self.assertAllEqual((None,), inputs.get_shape().as_list())
-      session.run(tf.local_variables_initializer())
+      session.run(
+          [tf.local_variables_initializer(), tf.global_variables_initializer()])
 
       coord = tf.train.Coordinator()
       threads = tf.train.start_queue_runners(session, coord=coord)
 
       self.assertEqual("%s:1" % name, inputs.name)
-      shared_file_name_queue_name = "%s/file_name_queue" % name
-      file_names_name = "%s/input" % shared_file_name_queue_name
       example_queue_name = "%s/fifo_queue" % name
       worker_file_name_queue_name = "%s/file_name_queue/fifo_queue" % name
       test_util.assert_ops_in_graph({
-          file_names_name: "Const",
-          shared_file_name_queue_name: "FIFOQueue",
           "%s/read/TextLineReader" % name: "TextLineReader",
           example_queue_name: "FIFOQueue",
           worker_file_name_queue_name: "FIFOQueue",
@@ -409,7 +406,6 @@ class GraphIOTest(tf.test.TestCase):
     batch_size = 1
     queue_capacity = 5
     name = "my_batch"
-    shared_file_name_queue_name = "%s/file_name_queue" % name
     example_queue_name = "%s/fifo_queue" % name
     worker_file_name_queue_name = "%s/file_name_queue/fifo_queue" % name
 
@@ -427,10 +423,10 @@ class GraphIOTest(tf.test.TestCase):
           name=name)
       self.assertAllEqual((None,), keys.get_shape().as_list())
       self.assertAllEqual((None,), inputs.get_shape().as_list())
-      session.run(tf.local_variables_initializer())
+      session.run(
+          [tf.local_variables_initializer(), tf.global_variables_initializer()])
 
-      # Run the three queues once manually.
-      self._run_queue(shared_file_name_queue_name, session)
+      # Run the two queues once manually.
       self._run_queue(worker_file_name_queue_name, session)
       self._run_queue(example_queue_name, session)
 

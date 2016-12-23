@@ -288,6 +288,35 @@ class EstimatorTest(tf.test.TestCase):
           input_fn=functools.partial(boston_input_fn, num_epochs=1),
           as_iterable=True)
 
+  def testModelFnScaffold(self):
+    self.is_init_fn_called = False
+
+    def _init_fn(scaffold, session):
+      _, _ = scaffold, session
+      self.is_init_fn_called = True
+
+    def _model_fn_scaffold(features, labels, mode):
+      _, _ = features, labels
+      return model_fn.ModelFnOps(
+          mode=mode,
+          predictions=tf.constant(0.),
+          loss=tf.constant(0.),
+          train_op=tf.constant(0.),
+          training_scaffold=tf.train.Scaffold(init_fn=_init_fn))
+
+    est = tf.contrib.learn.Estimator(model_fn=_model_fn_scaffold)
+    est.fit(input_fn=boston_input_fn, steps=1)
+    self.assertTrue(self.is_init_fn_called)
+
+  def testCheckpointSaverHookSuppressesTheDefaultOne(self):
+    saver_hook = tf.test.mock.Mock(spec=tf.train.CheckpointSaverHook)
+    saver_hook.before_run.return_value = None
+    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
+    est.fit(input_fn=boston_input_fn, steps=1, monitors=[saver_hook])
+    # test nothing is saved, due to suppressing default saver
+    with self.assertRaises(tf.contrib.learn.NotFittedError):
+      est.evaluate(input_fn=boston_input_fn, steps=1)
+
   def testCustomConfig(self):
     test_random_seed = 5783452
 
@@ -331,21 +360,40 @@ class EstimatorTest(tf.test.TestCase):
 
   def testBadInput(self):
     est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
-    self.assertRaisesRegexp(ValueError,
-                            'Either x or input_fn must be provided.',
-                            est.fit, x=None, input_fn=None)
-    self.assertRaisesRegexp(ValueError,
-                            'Can not provide both input_fn and x or y',
-                            est.fit, x='X', input_fn=iris_input_fn)
-    self.assertRaisesRegexp(ValueError,
-                            'Can not provide both input_fn and x or y',
-                            est.fit, y='Y', input_fn=iris_input_fn)
-    self.assertRaisesRegexp(ValueError,
-                            'Can not provide both input_fn and batch_size',
-                            est.fit, input_fn=iris_input_fn, batch_size=100)
     self.assertRaisesRegexp(
-        ValueError, 'Inputs cannot be tensors. Please provide input_fn.',
-        est.fit, x=tf.constant(1.))
+        ValueError,
+        'Either x or input_fn must be provided.',
+        est.fit,
+        x=None,
+        input_fn=None,
+        steps=1)
+    self.assertRaisesRegexp(
+        ValueError,
+        'Can not provide both input_fn and x or y',
+        est.fit,
+        x='X',
+        input_fn=iris_input_fn,
+        steps=1)
+    self.assertRaisesRegexp(
+        ValueError,
+        'Can not provide both input_fn and x or y',
+        est.fit,
+        y='Y',
+        input_fn=iris_input_fn,
+        steps=1)
+    self.assertRaisesRegexp(
+        ValueError,
+        'Can not provide both input_fn and batch_size',
+        est.fit,
+        input_fn=iris_input_fn,
+        batch_size=100,
+        steps=1)
+    self.assertRaisesRegexp(
+        ValueError,
+        'Inputs cannot be tensors. Please provide input_fn.',
+        est.fit,
+        x=tf.constant(1.),
+        steps=1)
 
   def testUntrained(self):
     boston = tf.contrib.learn.datasets.load_boston()

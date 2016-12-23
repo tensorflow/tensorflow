@@ -101,6 +101,19 @@ class SelectTest(tf.test.TestCase):
     self.assertEqual(list(output_ts), [self.h])
     self.assertEqual(list(inside_ts), [self.g])
 
+  def test_compute_boundary_ts_2(self):
+    """Test for ge.select.compute_boundary_ts."""
+    graph = tf.Graph()
+    with graph.as_default():
+      a = tf.constant(1, name="a")
+      b = tf.constant(1, name="b")
+      c = tf.add(a, b, name="c")
+      _ = a + c
+    input_ts, output_ts, inside_ts = ge.select.compute_boundary_ts([a.op, c.op])
+    self.assertEqual(list(input_ts), [b])
+    self.assertEqual(list(output_ts), [a, c])
+    self.assertEqual(list(inside_ts), [a])
+
   def test_get_within_boundary_ops_0(self):
     """Test for test_get_within_boundary_ops."""
     control_outputs = ge.util.ControlOutputs(self.graph)

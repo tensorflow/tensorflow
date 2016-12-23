@@ -230,8 +230,7 @@ class CreateTrainOpTest(tf.test.TestCase):
     self._labels = np.random.randint(0, 2, size=(16, 1)).astype(np.float32)
 
   def testUseUpdateOps(self):
-    g = tf.Graph()
-    with g.as_default():
+    with tf.Graph().as_default():
       tf.set_random_seed(0)
       tf_inputs = tf.constant(self._inputs, dtype=tf.float32)
       tf_labels = tf.constant(self._labels, dtype=tf.float32)
@@ -268,8 +267,7 @@ class CreateTrainOpTest(tf.test.TestCase):
         self.assertAllClose(variance, expected_var)
 
   def testEmptyUpdateOps(self):
-    g = tf.Graph()
-    with g.as_default():
+    with tf.Graph().as_default():
       tf.set_random_seed(0)
       tf_inputs = tf.constant(self._inputs, dtype=tf.float32)
       tf_labels = tf.constant(self._labels, dtype=tf.float32)
@@ -301,6 +299,58 @@ class CreateTrainOpTest(tf.test.TestCase):
         # Since we skip update_ops the moving_vars are not updated.
         self.assertAllClose(mean, [0] * 4)
         self.assertAllClose(variance, [1] * 4)
+
+  def testUseGlobalStep(self):
+    with tf.Graph().as_default():
+      tf.set_random_seed(0)
+      tf_inputs = tf.constant(self._inputs, dtype=tf.float32)
+      tf_labels = tf.constant(self._labels, dtype=tf.float32)
+
+      tf_predictions = BatchNormClassifier(tf_inputs)
+      slim.losses.log_loss(tf_predictions, tf_labels)
+      total_loss = slim.losses.get_total_loss()
+      optimizer = tf.train.GradientDescentOptimizer(learning_rate=1.0)
+
+      train_op = slim.learning.create_train_op(total_loss, optimizer)
+
+      global_step = slim.get_or_create_global_step()
+
+      with tf.Session() as sess:
+        # Initialize all variables
+        sess.run(tf.global_variables_initializer())
+
+        for _ in range(10):
+          sess.run([train_op])
+        global_step = global_step.eval()
+        # After 10 updates global_step should be 10.
+        self.assertAllClose(global_step, 10)
+
+  def testNoneGlobalStep(self):
+    with tf.Graph().as_default():
+      tf.set_random_seed(0)
+      tf_inputs = tf.constant(self._inputs, dtype=tf.float32)
+      tf_labels = tf.constant(self._labels, dtype=tf.float32)
+
+      tf_predictions = BatchNormClassifier(tf_inputs)
+      slim.losses.log_loss(tf_predictions, tf_labels)
+      total_loss = slim.losses.get_total_loss()
+      optimizer = tf.train.GradientDescentOptimizer(learning_rate=1.0)
+
+      train_op = slim.learning.create_train_op(total_loss,
+                                               optimizer,
+                                               global_step=None)
+
+      global_step = slim.get_or_create_global_step()
+
+      with tf.Session() as sess:
+        # Initialize all variables
+        sess.run(tf.global_variables_initializer())
+
+        for _ in range(10):
+          sess.run([train_op])
+        global_step = global_step.eval()
+        # Since train_op don't use global_step it shouldn't change.
+        self.assertAllClose(global_step, 0)
 
   def testRecordTrainOpInCollection(self):
     with tf.Graph().as_default():

@@ -277,6 +277,53 @@ def check_error_output(tst, out, command_prefix, args):
                        (command_prefix, " ".join(args)))
 
 
+def check_main_menu(tst,
+                    out,
+                    list_tensors_enabled=False,
+                    node_info_node_name=None,
+                    print_tensor_node_name=None,
+                    list_inputs_node_name=None,
+                    list_outputs_node_name=None):
+  """Check the main menu annotation of an output."""
+
+  tst.assertIn(debugger_cli_common.MAIN_MENU_KEY, out.annotations)
+
+  menu = out.annotations[debugger_cli_common.MAIN_MENU_KEY]
+  tst.assertEqual(list_tensors_enabled,
+                  menu.caption_to_item("list_tensors").is_enabled())
+
+  menu_item = menu.caption_to_item("node_info")
+  if node_info_node_name:
+    tst.assertTrue(menu_item.is_enabled())
+    tst.assertTrue(menu_item.content.endswith(node_info_node_name))
+  else:
+    tst.assertFalse(menu_item.is_enabled())
+
+  menu_item = menu.caption_to_item("print_tensor")
+  if print_tensor_node_name:
+    tst.assertTrue(menu_item.is_enabled())
+    tst.assertTrue(menu_item.content.endswith(print_tensor_node_name))
+  else:
+    tst.assertFalse(menu_item.is_enabled())
+
+  menu_item = menu.caption_to_item("list_inputs")
+  if list_inputs_node_name:
+    tst.assertTrue(menu_item.is_enabled())
+    tst.assertTrue(menu_item.content.endswith(list_inputs_node_name))
+  else:
+    tst.assertFalse(menu_item.is_enabled())
+
+  menu_item = menu.caption_to_item("list_outputs")
+  if list_outputs_node_name:
+    tst.assertTrue(menu_item.is_enabled())
+    tst.assertTrue(menu_item.content.endswith(list_outputs_node_name))
+  else:
+    tst.assertFalse(menu_item.is_enabled())
+
+  tst.assertTrue(menu.caption_to_item("run_info").is_enabled())
+  tst.assertTrue(menu.caption_to_item("help").is_enabled())
+
+
 class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
 
   @classmethod
@@ -360,6 +407,9 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         "simple_mul_add/add:0"
     ])
 
+    # Check the main menu.
+    check_main_menu(self, out, list_tensors_enabled=False)
+
   def testListTensorsFilterByNodeNameRegex(self):
     out = self._registry.dispatch_command("list_tensors",
                                           ["--node_name_filter", ".*read.*"])
@@ -372,6 +422,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
 
     out = self._registry.dispatch_command("list_tensors", ["-n", "^read"])
     assert_listed_tensors(self, out, [], node_name_regex="^read")
+    check_main_menu(self, out, list_tensors_enabled=False)
 
   def testListTensorFilterByOpTypeRegex(self):
     out = self._registry.dispatch_command("list_tensors",
@@ -391,6 +442,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
             "simple_mul_add/add:0", "simple_mul_add/matmul:0"
         ],
         op_type_regex="(Add|MatMul)")
+    check_main_menu(self, out, list_tensors_enabled=False)
 
   def testListTensorFilterByNodeNameRegexAndOpTypeRegex(self):
     out = self._registry.dispatch_command(
@@ -402,6 +454,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         ],
         node_name_regex=".*add$",
         op_type_regex="(Add|MatMul)")
+    check_main_menu(self, out, list_tensors_enabled=False)
 
   def testListTensorsFilterNanOrInf(self):
     """Test register and invoke a tensor filter."""
@@ -417,6 +470,8 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     assert_listed_tensors(self, out, [], tensor_filter_name="has_inf_or_nan")
     # TODO(cais): A test with some actual bad numerical values.
 
+    check_main_menu(self, out, list_tensors_enabled=False)
+
   def testListTensorNonexistentFilter(self):
     """Test attempt to use a nonexistent tensor filter."""
 
@@ -424,31 +479,39 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
 
     self.assertEqual(["ERROR: There is no tensor filter named \"foo_filter\"."],
                      out.lines)
+    check_main_menu(self, out, list_tensors_enabled=False)
 
   def testListTensorsInvalidOptions(self):
-    out = self._registry.dispatch_command("list_tensors", ["--foo"])
+    out = self._registry.dispatch_command("list_tensors", ["--bar"])
     check_syntax_error_output(self, out, "list_tensors")
 
   def testNodeInfoByNodeName(self):
-    out = self._registry.dispatch_command("node_info",
-                                          ["simple_mul_add/matmul"])
+    node_name = "simple_mul_add/matmul"
+    out = self._registry.dispatch_command("node_info", [node_name])
 
     recipients = [("Add", "simple_mul_add/add"), ("Add", "simple_mul_add/add")]
 
-    assert_node_attribute_lines(self, out, "simple_mul_add/matmul", "MatMul",
+    assert_node_attribute_lines(self, out, node_name, "MatMul",
                                 self._main_device,
                                 [("Identity", "simple_mul_add/u/read"),
                                  ("Identity", "simple_mul_add/v/read")], [],
                                 recipients, [])
+    check_main_menu(
+        self,
+        out,
+        list_tensors_enabled=True,
+        list_inputs_node_name=node_name,
+        print_tensor_node_name=node_name,
+        list_outputs_node_name=node_name)
 
   def testNodeInfoShowAttributes(self):
-    out = self._registry.dispatch_command("node_info",
-                                          ["-a", "simple_mul_add/matmul"])
+    node_name = "simple_mul_add/matmul"
+    out = self._registry.dispatch_command("node_info", ["-a", node_name])
 
     assert_node_attribute_lines(
         self,
         out,
-        "simple_mul_add/matmul",
+        node_name,
         "MatMul",
         self._main_device, [("Identity", "simple_mul_add/u/read"),
                             ("Identity", "simple_mul_add/v/read")], [],
@@ -456,29 +519,51 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         attr_key_val_pairs=[("transpose_a", "b: false"),
                             ("transpose_b", "b: false"),
                             ("T", "type: DT_DOUBLE")])
+    check_main_menu(
+        self,
+        out,
+        list_tensors_enabled=True,
+        list_inputs_node_name=node_name,
+        print_tensor_node_name=node_name,
+        list_outputs_node_name=node_name)
 
   def testNodeInfoShowDumps(self):
-    out = self._registry.dispatch_command("node_info",
-                                          ["-d", "simple_mul_add/matmul"])
+    node_name = "simple_mul_add/matmul"
+    out = self._registry.dispatch_command("node_info", ["-d", node_name])
 
     assert_node_attribute_lines(
         self,
         out,
-        "simple_mul_add/matmul",
+        node_name,
         "MatMul",
         self._main_device, [("Identity", "simple_mul_add/u/read"),
                             ("Identity", "simple_mul_add/v/read")], [],
         [("Add", "simple_mul_add/add"), ("Add", "simple_mul_add/add")], [],
         num_dumped_tensors=1)
+    check_main_menu(
+        self,
+        out,
+        list_tensors_enabled=True,
+        list_inputs_node_name=node_name,
+        print_tensor_node_name=node_name,
+        list_outputs_node_name=node_name)
 
   def testNodeInfoByTensorName(self):
-    out = self._registry.dispatch_command("node_info",
-                                          ["simple_mul_add/u/read:0"])
+    node_name = "simple_mul_add/u/read"
+    tensor_name = node_name + ":0"
+    out = self._registry.dispatch_command("node_info", [tensor_name])
 
-    assert_node_attribute_lines(self, out, "simple_mul_add/u/read", "Identity",
+    assert_node_attribute_lines(self, out, node_name, "Identity",
                                 self._main_device,
-                                [("Variable", "simple_mul_add/u")], [],
+                                [("VariableV2", "simple_mul_add/u")], [],
                                 [("MatMul", "simple_mul_add/matmul")], [])
+    check_main_menu(
+        self,
+        out,
+        list_tensors_enabled=True,
+        list_inputs_node_name=node_name,
+        print_tensor_node_name=node_name,
+        list_outputs_node_name=node_name)
 
   def testNodeInfoNonexistentNodeName(self):
     out = self._registry.dispatch_command("node_info", ["bar"])
@@ -487,13 +572,16 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         out.lines)
     # Check color indicating error.
     self.assertEqual({0: [(0, 59, "red")]}, out.font_attr_segs)
+    check_main_menu(self, out, list_tensors_enabled=True)
 
   def testPrintTensor(self):
+    node_name = "simple_mul_add/matmul"
+    tensor_name = node_name + ":0"
     out = self._registry.dispatch_command(
-        "print_tensor", ["simple_mul_add/matmul:0"], screen_info={"cols": 80})
+        "print_tensor", [tensor_name], screen_info={"cols": 80})
 
     self.assertEqual([
-        "Tensor \"simple_mul_add/matmul:0:DebugIdentity\":",
+        "Tensor \"%s:DebugIdentity\":" % tensor_name,
         "  dtype: float64",
         "  shape: (2, 1)",
         "",
@@ -504,14 +592,23 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     self.assertIn("tensor_metadata", out.annotations)
     self.assertIn(4, out.annotations)
     self.assertIn(5, out.annotations)
+    check_main_menu(
+        self,
+        out,
+        list_tensors_enabled=True,
+        node_info_node_name=node_name,
+        list_inputs_node_name=node_name,
+        list_outputs_node_name=node_name)
 
   def testPrintTensorHighlightingRanges(self):
+    node_name = "simple_mul_add/matmul"
+    tensor_name = node_name + ":0"
     out = self._registry.dispatch_command(
-        "print_tensor", ["simple_mul_add/matmul:0", "--ranges", "[-inf, 0.0]"],
+        "print_tensor", [tensor_name, "--ranges", "[-inf, 0.0]"],
         screen_info={"cols": 80})
 
     self.assertEqual([
-        "Tensor \"simple_mul_add/matmul:0:DebugIdentity\": "
+        "Tensor \"%s:DebugIdentity\": " % tensor_name +
         "Highlighted([-inf, 0.0]): 1 of 2 element(s) (50.00%)",
         "  dtype: float64",
         "  shape: (2, 1)",
@@ -526,12 +623,11 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     self.assertEqual([(8, 11, "bold")], out.font_attr_segs[5])
 
     out = self._registry.dispatch_command(
-        "print_tensor",
-        ["simple_mul_add/matmul:0", "--ranges", "[[-inf, -5.5], [5.5, inf]]"],
+        "print_tensor", [tensor_name, "--ranges", "[[-inf, -5.5], [5.5, inf]]"],
         screen_info={"cols": 80})
 
     self.assertEqual([
-        "Tensor \"simple_mul_add/matmul:0:DebugIdentity\": "
+        "Tensor \"%s:DebugIdentity\": " % tensor_name +
         "Highlighted([[-inf, -5.5], [5.5, inf]]): "
         "1 of 2 element(s) (50.00%)",
         "  dtype: float64",
@@ -546,37 +642,54 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     self.assertIn(5, out.annotations)
     self.assertEqual([(9, 11, "bold")], out.font_attr_segs[4])
     self.assertNotIn(5, out.font_attr_segs)
+    check_main_menu(
+        self,
+        out,
+        list_tensors_enabled=True,
+        node_info_node_name=node_name,
+        list_inputs_node_name=node_name,
+        list_outputs_node_name=node_name)
 
   def testPrintTensorWithSlicing(self):
+    node_name = "simple_mul_add/matmul"
+    tensor_name = node_name + ":0"
     out = self._registry.dispatch_command(
-        "print_tensor", ["simple_mul_add/matmul:0[1, :]"],
-        screen_info={"cols": 80})
+        "print_tensor", [tensor_name + "[1, :]"], screen_info={"cols": 80})
 
     self.assertEqual([
-        "Tensor \"simple_mul_add/matmul:0:DebugIdentity[1, :]\":",
-        "  dtype: float64", "  shape: (1,)", "", "array([-2.])"
+        "Tensor \"%s:DebugIdentity[1, :]\":" % tensor_name, "  dtype: float64",
+        "  shape: (1,)", "", "array([-2.])"
     ], out.lines)
 
     self.assertIn("tensor_metadata", out.annotations)
     self.assertIn(4, out.annotations)
+    check_main_menu(
+        self,
+        out,
+        list_tensors_enabled=True,
+        node_info_node_name=node_name,
+        list_inputs_node_name=node_name,
+        list_outputs_node_name=node_name)
 
   def testPrintTensorInvalidSlicingString(self):
+    node_name = "simple_mul_add/matmul"
+    tensor_name = node_name + ":0"
     out = self._registry.dispatch_command(
-        "print_tensor", ["simple_mul_add/matmul:0[1, foo()]"],
-        screen_info={"cols": 80})
+        "print_tensor", [tensor_name + "[1, foo()]"], screen_info={"cols": 80})
 
     self.assertEqual("Error occurred during handling of command: print_tensor "
-                     "simple_mul_add/matmul:0[1, foo()]:", out.lines[0])
+                     + tensor_name + "[1, foo()]:", out.lines[0])
     self.assertEqual("ValueError: Invalid tensor-slicing string.",
                      out.lines[-2])
 
   def testPrintTensorValidExplicitNumber(self):
+    node_name = "simple_mul_add/matmul"
+    tensor_name = node_name + ":0"
     out = self._registry.dispatch_command(
-        "print_tensor", ["simple_mul_add/matmul:0", "-n", "0"],
-        screen_info={"cols": 80})
+        "print_tensor", [tensor_name, "-n", "0"], screen_info={"cols": 80})
 
     self.assertEqual([
-        "Tensor \"simple_mul_add/matmul:0:DebugIdentity\":",
+        "Tensor \"%s:DebugIdentity\":" % tensor_name,
         "  dtype: float64",
         "  shape: (2, 1)",
         "",
@@ -587,11 +700,19 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     self.assertIn("tensor_metadata", out.annotations)
     self.assertIn(4, out.annotations)
     self.assertIn(5, out.annotations)
+    check_main_menu(
+        self,
+        out,
+        list_tensors_enabled=True,
+        node_info_node_name=node_name,
+        list_inputs_node_name=node_name,
+        list_outputs_node_name=node_name)
 
   def testPrintTensorInvalidExplicitNumber(self):
+    node_name = "simple_mul_add/matmul"
+    tensor_name = node_name + ":0"
     out = self._registry.dispatch_command(
-        "print_tensor", ["simple_mul_add/matmul:0", "-n", "1"],
-        screen_info={"cols": 80})
+        "print_tensor", [tensor_name, "-n", "1"], screen_info={"cols": 80})
 
     self.assertEqual([
         "ERROR: Invalid number (1) for tensor simple_mul_add/matmul:0, "
@@ -600,13 +721,29 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
 
     self.assertNotIn("tensor_metadata", out.annotations)
 
-  def testPrintTensorMissingOutputSlot(self):
-    out = self._registry.dispatch_command(
-        "print_tensor", ["simple_mul_add/matmul"])
+    check_main_menu(
+        self,
+        out,
+        list_tensors_enabled=True,
+        node_info_node_name=node_name,
+        list_inputs_node_name=node_name,
+        list_outputs_node_name=node_name)
+
+  def testPrintTensorMissingOutputSlotLeadsToOnlyDumpedTensorPrinted(self):
+    node_name = "simple_mul_add/matmul"
+    out = self._registry.dispatch_command("print_tensor", [node_name])
 
     self.assertEqual([
-        "ERROR: \"simple_mul_add/matmul\" is not a valid tensor name"
+        "Tensor \"%s:0:DebugIdentity\":" % node_name, "  dtype: float64",
+        "  shape: (2, 1)", "", "array([[ 7.],", "       [-2.]])"
     ], out.lines)
+    check_main_menu(
+        self,
+        out,
+        list_tensors_enabled=True,
+        node_info_node_name=node_name,
+        list_inputs_node_name=node_name,
+        list_outputs_node_name=node_name)
 
   def testPrintTensorNonexistentNodeName(self):
     out = self._registry.dispatch_command(
@@ -616,6 +753,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         "ERROR: Node \"simple_mul_add/matmul/foo\" does not exist in partition "
         "graphs"
     ], out.lines)
+    check_main_menu(self, out, list_tensors_enabled=True)
 
   def testAddGetTensorFilterLambda(self):
     analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump)
@@ -754,7 +892,7 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
       y = control_flow_ops.with_dependencies(
           [x], y, name="control_deps/ctrl_dep_y")
 
-      z = math_ops.mul(x, y, name="control_deps/z")
+      z = math_ops.multiply(x, y, name="control_deps/z")
 
       z = control_flow_ops.with_dependencies(
           [x, y], z, name="control_deps/ctrl_dep_z")
@@ -811,14 +949,14 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
     assert_node_attribute_lines(
         self, out, "control_deps/ctrl_dep_y", "Identity",
         self._main_device, [("Add", "control_deps/y")],
-        [("Variable", "control_deps/x")],
+        [("VariableV2", "control_deps/x")],
         [("Mul", "control_deps/z")],
         [("Identity", "control_deps/ctrl_dep_z")])
 
     # Call node info on a node with control recipients.
     out = self._registry.dispatch_command("ni", ["control_deps/x"])
 
-    assert_node_attribute_lines(self, out, "control_deps/x", "Variable",
+    assert_node_attribute_lines(self, out, "control_deps/x", "VariableV2",
                                 self._main_device, [], [],
                                 [("Identity", "control_deps/x/read")],
                                 [("Identity", "control_deps/ctrl_dep_y"),
@@ -828,126 +966,156 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
     """List inputs non-recursively, without any control inputs."""
 
     # Do not include node op types.
-    out = self._registry.dispatch_command("list_inputs", ["control_deps/z"])
+    node_name = "control_deps/z"
+    out = self._registry.dispatch_command("list_inputs", [node_name])
 
     self.assertEqual([
-        "Inputs to node \"control_deps/z\" (Depth limit = 1):",
-        "|- (1) control_deps/x/read",
-        "|  |- ...",
-        "|- (1) control_deps/ctrl_dep_y",
-        "   |- ...",
-        "", "Legend:", "  (d): recursion depth = d."], out.lines)
+        "Inputs to node \"%s\" (Depth limit = 1):" % node_name,
+        "|- (1) control_deps/x/read", "|  |- ...",
+        "|- (1) control_deps/ctrl_dep_y", "   |- ...", "", "Legend:",
+        "  (d): recursion depth = d."
+    ], out.lines)
 
     # Include node op types.
-    out = self._registry.dispatch_command("li", ["-t", "control_deps/z"])
+    out = self._registry.dispatch_command("li", ["-t", node_name])
 
     self.assertEqual([
-        "Inputs to node \"control_deps/z\" (Depth limit = 1):",
-        "|- (1) [Identity] control_deps/x/read",
-        "|  |- ...",
-        "|- (1) [Identity] control_deps/ctrl_dep_y",
-        "   |- ...",
-        "", "Legend:", "  (d): recursion depth = d.",
-        "  [Op]: Input node has op type Op."], out.lines)
+        "Inputs to node \"%s\" (Depth limit = 1):" % node_name,
+        "|- (1) [Identity] control_deps/x/read", "|  |- ...",
+        "|- (1) [Identity] control_deps/ctrl_dep_y", "   |- ...", "", "Legend:",
+        "  (d): recursion depth = d.", "  [Op]: Input node has op type Op."
+    ], out.lines)
+    check_main_menu(
+        self,
+        out,
+        list_tensors_enabled=True,
+        node_info_node_name=node_name,
+        print_tensor_node_name=node_name,
+        list_outputs_node_name=node_name)
 
   def testListInputsNonRecursiveNoControlUsingTensorName(self):
     """List inputs using the name of an output tensor of the node."""
 
     # Do not include node op types.
-    out = self._registry.dispatch_command("list_inputs", ["control_deps/z:0"])
+    node_name = "control_deps/z"
+    tensor_name = node_name + ":0"
+    out = self._registry.dispatch_command("list_inputs", [tensor_name])
 
     self.assertEqual([
-        "Inputs to node \"control_deps/z\" (Depth limit = 1):",
-        "|- (1) control_deps/x/read",
-        "|  |- ...",
-        "|- (1) control_deps/ctrl_dep_y",
-        "   |- ...",
-        "", "Legend:", "  (d): recursion depth = d."], out.lines)
+        "Inputs to node \"%s\" (Depth limit = 1):" % node_name,
+        "|- (1) control_deps/x/read", "|  |- ...",
+        "|- (1) control_deps/ctrl_dep_y", "   |- ...", "", "Legend:",
+        "  (d): recursion depth = d."
+    ], out.lines)
+    check_main_menu(
+        self,
+        out,
+        list_tensors_enabled=True,
+        node_info_node_name=node_name,
+        print_tensor_node_name=node_name,
+        list_outputs_node_name=node_name)
 
   def testListInputsNonRecursiveWithControls(self):
     """List inputs non-recursively, with control inputs."""
-
-    out = self._registry.dispatch_command(
-        "li", ["-t", "control_deps/ctrl_dep_z", "-c"])
+    node_name = "control_deps/ctrl_dep_z"
+    out = self._registry.dispatch_command("li", ["-t", node_name, "-c"])
 
     self.assertEqual([
-        "Inputs to node \"control_deps/ctrl_dep_z\" (Depth limit = 1, "
-        "control inputs included):",
-        "|- (1) [Mul] control_deps/z",
-        "|  |- ...",
-        "|- (1) (Ctrl) [Identity] control_deps/ctrl_dep_y",
-        "|  |- ...",
-        "|- (1) (Ctrl) [Variable] control_deps/x",
-        "", "Legend:", "  (d): recursion depth = d.",
-        "  (Ctrl): Control input.",
-        "  [Op]: Input node has op type Op."], out.lines)
+        "Inputs to node \"%s\" (Depth limit = 1, " % node_name +
+        "control inputs included):", "|- (1) [Mul] control_deps/z", "|  |- ...",
+        "|- (1) (Ctrl) [Identity] control_deps/ctrl_dep_y", "|  |- ...",
+        "|- (1) (Ctrl) [VariableV2] control_deps/x", "", "Legend:",
+        "  (d): recursion depth = d.", "  (Ctrl): Control input.",
+        "  [Op]: Input node has op type Op."
+    ], out.lines)
+    check_main_menu(
+        self,
+        out,
+        list_tensors_enabled=True,
+        node_info_node_name=node_name,
+        print_tensor_node_name=node_name,
+        list_outputs_node_name=node_name)
 
   def testListInputsRecursiveWithControls(self):
     """List inputs recursively, with control inputs."""
-
-    out = self._registry.dispatch_command(
-        "li", ["-c", "-r", "-t", "control_deps/ctrl_dep_z"])
+    node_name = "control_deps/ctrl_dep_z"
+    out = self._registry.dispatch_command("li", ["-c", "-r", "-t", node_name])
 
     self.assertEqual([
-        "Inputs to node \"control_deps/ctrl_dep_z\" (Depth limit = 20, "
-        "control inputs included):",
-        "|- (1) [Mul] control_deps/z",
+        "Inputs to node \"%s\" (Depth limit = 20, " % node_name +
+        "control inputs included):", "|- (1) [Mul] control_deps/z",
         "|  |- (2) [Identity] control_deps/x/read",
-        "|  |  |- (3) [Variable] control_deps/x",
+        "|  |  |- (3) [VariableV2] control_deps/x",
         "|  |- (2) [Identity] control_deps/ctrl_dep_y",
         "|     |- (3) [Add] control_deps/y",
         "|     |  |- (4) [Identity] control_deps/x/read",
-        "|     |  |  |- (5) [Variable] control_deps/x",
+        "|     |  |  |- (5) [VariableV2] control_deps/x",
         "|     |  |- (4) [Identity] control_deps/x/read",
-        "|     |     |- (5) [Variable] control_deps/x",
-        "|     |- (3) (Ctrl) [Variable] control_deps/x",
+        "|     |     |- (5) [VariableV2] control_deps/x",
+        "|     |- (3) (Ctrl) [VariableV2] control_deps/x",
         "|- (1) (Ctrl) [Identity] control_deps/ctrl_dep_y",
         "|  |- (2) [Add] control_deps/y",
         "|  |  |- (3) [Identity] control_deps/x/read",
-        "|  |  |  |- (4) [Variable] control_deps/x",
+        "|  |  |  |- (4) [VariableV2] control_deps/x",
         "|  |  |- (3) [Identity] control_deps/x/read",
-        "|  |     |- (4) [Variable] control_deps/x",
-        "|  |- (2) (Ctrl) [Variable] control_deps/x",
-        "|- (1) (Ctrl) [Variable] control_deps/x",
-        "", "Legend:", "  (d): recursion depth = d.",
-        "  (Ctrl): Control input.",
-        "  [Op]: Input node has op type Op."], out.lines)
+        "|  |     |- (4) [VariableV2] control_deps/x",
+        "|  |- (2) (Ctrl) [VariableV2] control_deps/x",
+        "|- (1) (Ctrl) [VariableV2] control_deps/x", "", "Legend:",
+        "  (d): recursion depth = d.", "  (Ctrl): Control input.",
+        "  [Op]: Input node has op type Op."
+    ], out.lines)
+    check_main_menu(
+        self,
+        out,
+        list_tensors_enabled=True,
+        node_info_node_name=node_name,
+        print_tensor_node_name=node_name,
+        list_outputs_node_name=node_name)
 
   def testListInputsRecursiveWithControlsWithDepthLimit(self):
     """List inputs recursively, with control inputs and a depth limit."""
-
+    node_name = "control_deps/ctrl_dep_z"
     out = self._registry.dispatch_command(
-        "li", ["-c", "-r", "-t", "-d", "2", "control_deps/ctrl_dep_z"])
+        "li", ["-c", "-r", "-t", "-d", "2", node_name])
 
     self.assertEqual([
-        "Inputs to node \"control_deps/ctrl_dep_z\" (Depth limit = 2, "
-        "control inputs included):",
-        "|- (1) [Mul] control_deps/z",
-        "|  |- (2) [Identity] control_deps/x/read",
-        "|  |  |- ...",
-        "|  |- (2) [Identity] control_deps/ctrl_dep_y",
-        "|     |- ...",
+        "Inputs to node \"%s\" (Depth limit = 2, " % node_name +
+        "control inputs included):", "|- (1) [Mul] control_deps/z",
+        "|  |- (2) [Identity] control_deps/x/read", "|  |  |- ...",
+        "|  |- (2) [Identity] control_deps/ctrl_dep_y", "|     |- ...",
         "|- (1) (Ctrl) [Identity] control_deps/ctrl_dep_y",
-        "|  |- (2) [Add] control_deps/y",
-        "|  |  |- ...",
-        "|  |- (2) (Ctrl) [Variable] control_deps/x",
-        "|- (1) (Ctrl) [Variable] control_deps/x",
-        "", "Legend:", "  (d): recursion depth = d.",
-        "  (Ctrl): Control input.",
-        "  [Op]: Input node has op type Op."], out.lines)
+        "|  |- (2) [Add] control_deps/y", "|  |  |- ...",
+        "|  |- (2) (Ctrl) [VariableV2] control_deps/x",
+        "|- (1) (Ctrl) [VariableV2] control_deps/x", "", "Legend:",
+        "  (d): recursion depth = d.", "  (Ctrl): Control input.",
+        "  [Op]: Input node has op type Op."
+    ], out.lines)
+    check_main_menu(
+        self,
+        out,
+        list_tensors_enabled=True,
+        node_info_node_name=node_name,
+        print_tensor_node_name=node_name,
+        list_outputs_node_name=node_name)
 
   def testListInputsNodeWithoutInputs(self):
     """List the inputs to a node without any input."""
-    out = self._registry.dispatch_command(
-        "li", ["-c", "-r", "-t", "control_deps/x"])
+    node_name = "control_deps/x"
+    out = self._registry.dispatch_command("li", ["-c", "-r", "-t", node_name])
 
     self.assertEqual([
-        "Inputs to node \"control_deps/x\" (Depth limit = 20, control inputs "
-        "included):",
-        "  [None]",
-        "", "Legend:", "  (d): recursion depth = d.",
-        "  (Ctrl): Control input.",
-        "  [Op]: Input node has op type Op."], out.lines)
+        "Inputs to node \"%s\" (Depth limit = 20, control " % node_name +
+        "inputs included):", "  [None]", "", "Legend:",
+        "  (d): recursion depth = d.", "  (Ctrl): Control input.",
+        "  [Op]: Input node has op type Op."
+    ], out.lines)
+    check_main_menu(
+        self,
+        out,
+        list_tensors_enabled=True,
+        node_info_node_name=node_name,
+        print_tensor_node_name=node_name,
+        list_outputs_node_name=node_name)
 
   def testListInputsNonexistentNode(self):
     out = self._registry.dispatch_command(

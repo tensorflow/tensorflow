@@ -219,6 +219,7 @@ cc_library(
         "lib/hash/crc32c.h",
         "lib/histogram/histogram.h",
         "lib/io/buffered_inputstream.h",
+        "lib/io/compression.h",
         "lib/io/inputstream_interface.h",
         "lib/io/path.h",
         "lib/io/proto_encode_helper.h",
@@ -966,6 +967,14 @@ cc_library(
         ":protos_all_cc",
         ":stream_executor",
     ],
+)
+
+cc_library(
+    name = "gpu_headers_lib",
+    hdrs = [
+        "common_runtime/gpu/gpu_event_mgr.h",
+    ],
+    visibility = ["//visibility:public"],
 )
 
 cc_library(

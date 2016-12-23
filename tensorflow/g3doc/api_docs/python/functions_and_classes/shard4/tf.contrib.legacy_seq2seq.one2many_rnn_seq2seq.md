@@ -14,7 +14,7 @@ here: http://arxiv.org/abs/1511.06114
     the corresponding decoder_inputs; each decoder_inputs is a list of 1D
     Tensors of shape [batch_size]; num_decoders is defined as
     len(decoder_inputs_dict).
-*  <b>`cell`</b>: rnn_cell.RNNCell defining the cell function and size.
+*  <b>`cell`</b>: core_rnn_cell.RNNCell defining the cell function and size.
 *  <b>`num_encoder_symbols`</b>: Integer; number of symbols on the encoder side.
 *  <b>`num_decoder_symbols_dict`</b>: A dictionary mapping decoder name (string) to an
     integer specifying number of symbols for the corresponding decoder;

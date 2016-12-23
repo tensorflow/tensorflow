@@ -2,11 +2,11 @@
 #    LIBXSMM: Library for small matrix-matrix multiplications targeting Intel Architecture (x86).
 
 licenses(["notice"])  # BSD 3-clause
+
 exports_files(["LICENSE"])
 
 # Arguments to ./scripts/libxsmm_interface.py, see that file for detailed description.
 #  precision: SP & DP
-#  ilp64: no
 #  prefetch: 1 (auto)
 libxsmm_interface_arguments = "0 1"
 
@@ -48,6 +48,10 @@ genrule(
         ":libxsmm_dispatch",
         ":libxsmm_interface",
     ],
+    visibility = [
+        "//tensorflow/core/kernels:__pkg__",
+        "//third_party/eigen3:__pkg__",
+    ],
 )
 
 cc_library(
@@ -62,6 +66,7 @@ cc_library(
         "src/libxsmm_trans.c",
         "src/libxsmm_sync.c",
         "src/libxsmm_perf.c",
+        "src/libxsmm_spmdm.c",
         "src/libxsmm_dnn.c",
         "src/libxsmm_dnn_handle.c",
         "src/libxsmm_dnn_convolution_forward.c",
@@ -76,8 +81,10 @@ cc_library(
         "include/libxsmm_dnn.h",
         "include/libxsmm_frontend.h",
         "include/libxsmm_generator.h",
+        "include/libxsmm_intrinsics_x86.h",
         "include/libxsmm_macros.h",
         "include/libxsmm_malloc.h",
+        "include/libxsmm_spmdm.h",
         "include/libxsmm_sync.h",
         "include/libxsmm_timer.h",
         "include/libxsmm_typedefs.h",
@@ -95,8 +102,11 @@ cc_library(
         "LIBXSMM_CPUID_X86_NOINLINE",
         "__BLAS=0",
     ],
-    includes = ["include", "src", "src/template/"],
-    linkopts = ["-ldl"],
+    includes = [
+        "include",
+        "src",
+        "src/template",
+    ],
     visibility = ["//visibility:public"],
 )
 

@@ -150,7 +150,7 @@ class SessionBundleLoadNoVarsTest(tf.test.TestCase):
     with tf.Graph().as_default() as g:
       x = tf.placeholder(tf.float32, name="x")
       w = tf.Variable(3.0)
-      y = tf.sub(w * x, 7.0, name="y")  # pylint: disable=unused-variable
+      y = tf.subtract(w * x, 7.0, name="y")  # pylint: disable=unused-variable
       tf.add_to_collection("meta", "this is meta")
 
       with self.test_session(graph=g) as session:

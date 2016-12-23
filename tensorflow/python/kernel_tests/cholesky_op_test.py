@@ -146,7 +146,7 @@ class CholeskyGradTest(test.TestCase):
               x = constant_op.constant(np.random.randn(), dtype)
               R = constant_op.constant(
                   np.random.randn(shape[0], shape[1]), dtype)
-              e = math_ops.mul(R, x)
+              e = math_ops.multiply(R, x)
               tensor = math_ops.matmul(e, array_ops.transpose(e)) / shape[0]
 
             # Inner-most matrices in tensor are positive definite.

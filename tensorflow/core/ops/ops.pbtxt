@@ -3429,6 +3429,36 @@ op {
   description: "Given a tensor `input`, this operation returns a tensor that has the same buffer\ndata as `input` with datatype `type`.\n\nIf the input datatype `T` is larger than the output datatype `type` then the\nshape changes from [...] to [..., sizeof(`T`)/sizeof(`type`)].\n\nIf `T` is smaller than `type`, the operator requires that the rightmost\ndimension be equal to sizeof(`type`)/sizeof(`T`). The shape then goes from\n[..., sizeof(`type`)/sizeof(`T`)] to [...].\n\n*NOTE*: Bitcast is implemented as a low-level cast, so machines with different\nendian orderings will give different results."
 }
 op {
+  name: "BroadcastArgs"
+  input_arg {
+    name: "s0"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "s1"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "r0"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Return the shape of s0 op s1 with broadcast."
+  description: "Given `s0` and `s1`, tensors that represent shapes, compute `r0`, the\nbroadcasted shape. `s0`, `s1` and `r0` are all integer vectors."
+}
+op {
   name: "BroadcastGradientArgs"
   input_arg {
     name: "s0"
@@ -3823,7 +3853,7 @@ op {
     }
   }
   summary: "Computes the complex absolute value of a tensor."
-  description: "Given a tensor `x` of complex numbers, this operation returns a tensor of type\n`float` or `double` that is the absolute value of each element in `x`. All\nelements in `x` must be complex numbers of the form \\\\(a + bj\\\\). The absolute\nvalue is computed as \\\\( \\sqrt{a^2 + b^2}\\\\).\n\nFor example:\n\n```\n# tensor \'x\' is [[-2.25 + 4.75j], [-3.25 + 5.75j]]\ntf.complex_abs(x) ==> [5.25594902, 6.60492229]\n```"
+  description: "Given a tensor `x` of complex numbers, this operation returns a tensor of type\n`float` or `double` that is the absolute value of each element in `x`. All\nelements in `x` must be complex numbers of the form \\\\(a + bj\\\\). The absolute\nvalue is computed as \\\\( \\sqrt{a^2 + b^2}\\\\)."
 }
 op {
   name: "ComputeAccidentalHits"
@@ -6686,6 +6716,32 @@ op {
   }
   summary: "Inserts a dimension of 1 into a tensor\'s shape."
   description: "Given a tensor `input`, this operation inserts a dimension of 1 at the\ndimension index `dim` of `input`\'s shape. The dimension index `dim` starts at\nzero; if you specify a negative number for `dim` it is counted backward from\nthe end.\n\nThis operation is useful if you want to add a batch dimension to a single\nelement. For example, if you have a single image of shape `[height, width,\nchannels]`, you can make it a batch of 1 image with `expand_dims(image, 0)`,\nwhich will make the shape `[1, height, width, channels]`.\n\nOther examples:\n\n```prettyprint\n# \'t\' is a tensor of shape [2]\nshape(expand_dims(t, 0)) ==> [1, 2]\nshape(expand_dims(t, 1)) ==> [2, 1]\nshape(expand_dims(t, -1)) ==> [2, 1]\n\n# \'t2\' is a tensor of shape [2, 3, 5]\nshape(expand_dims(t2, 0)) ==> [1, 2, 3, 5]\nshape(expand_dims(t2, 2)) ==> [2, 3, 1, 5]\nshape(expand_dims(t2, 3)) ==> [2, 3, 5, 1]\n```\n\nThis operation requires that:\n\n`-1-input.dims() <= dim <= input.dims()`\n\nThis operation is related to `squeeze()`, which removes dimensions of\nsize 1."
+}
+op {
+  name: "Expm1"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Computes exponential of x - 1 element-wise."
+  description: "I.e., \\\\(y = (\\exp x) - 1\\\\)."
 }
 op {
   name: "ExtractGlimpse"
@@ -22398,19 +22454,16 @@ op {
   name: "Variable"
   output_arg {
     name: "ref"
-    description: "A reference to the variable tensor."
     type_attr: "dtype"
     is_ref: true
   }
   attr {
     name: "shape"
     type: "shape"
-    description: "The shape of the variable tensor, where scalar shapes are\ntreated as undefined."
   }
   attr {
     name: "dtype"
     type: "type"
-    description: "The type of elements in the variable tensor."
   }
   attr {
     name: "container"
@@ -22418,7 +22471,6 @@ op {
     default_value {
       s: ""
     }
-    description: "If non-empty, this variable is placed in the given container.\nOtherwise, a default container is used."
   }
   attr {
     name: "shared_name"
@@ -22426,10 +22478,8 @@ op {
     default_value {
       s: ""
     }
-    description: "If non-empty, this variable is named in the given bucket\nwith this shared_name. Otherwise, the node name is used instead."
   }
-  summary: "Holds state in the form of a tensor that persists across steps."
-  description: "Outputs a ref to the tensor state so it may be read or modified.\nTODO(zhifengc/mrry): Adds a pointer to a more detail document\nabout sharing states in tensorflow."
+  summary: "Use VariableV2 instead."
   is_stateful: true
 }
 op {

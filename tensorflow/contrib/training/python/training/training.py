@@ -356,9 +356,12 @@ def multiply_gradients(grads_and_vars, gradient_multipliers):
   return multiplied_grads_and_vars
 
 
+_USE_GLOBAL_STEP = 0
+
+
 def create_train_op(total_loss,
                     optimizer,
-                    global_step=None,
+                    global_step=_USE_GLOBAL_STEP,
                     update_ops=None,
                     variables_to_train=None,
                     transform_grads_fn=None,
@@ -372,7 +375,7 @@ def create_train_op(total_loss,
     total_loss: A `Tensor` representing the total loss.
     optimizer: A tf.Optimizer to use for computing the gradients.
     global_step: A `Tensor` representing the global step variable. If left as
-      `None`, then tf.contrib.framework.global_step() is used.
+      `_USE_GLOBAL_STEP`, then tf.contrib.framework.global_step() is used.
     update_ops: An optional list of updates to execute. If `update_ops` is
       `None`, then the update ops are set to the contents of the
       `tf.GraphKeys.UPDATE_OPS` collection. If `update_ops` is not `None`, but
@@ -395,7 +398,7 @@ def create_train_op(total_loss,
     A `Tensor` that when evaluated, computes the gradients and returns the total
       loss value.
   """
-  if global_step is None:
+  if global_step is _USE_GLOBAL_STEP:
     global_step = variables.get_or_create_global_step()
 
   # Update ops use GraphKeys.UPDATE_OPS collection if update_ops is None.

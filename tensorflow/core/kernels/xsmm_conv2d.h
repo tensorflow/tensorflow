@@ -28,17 +28,24 @@ class OpKernelContext;
 
 // XsmmConv2D is a wrapper for libxsmm direct convolutions.
 
-// Returns true if convolution operation specified by function arguments
-// can use XsmmConv2D implementation, and false otherwise.
-bool CanUseXsmmConv2D(const libxsmm_dnn_conv_desc& desc,
-                      TensorFormat data_format);
-
 namespace functor {
 
 template <typename Device, typename T>
-struct XsmmConv2D {
-  void operator()(OpKernelContext* ctx, const libxsmm_dnn_conv_desc& desc,
+struct XsmmFwdConv2D {
+  bool operator()(OpKernelContext* ctx, const libxsmm_dnn_conv_desc& desc,
                   const T* input, const T* filter, T* output);
+};
+
+template <typename Device, typename T>
+struct XsmmBkwInputConv2D {
+  bool operator()(OpKernelContext* ctx, const libxsmm_dnn_conv_desc& desc,
+                  T* input, const T* filter, const T* output);
+};
+
+template <typename Device, typename T>
+struct XsmmBkwFilterConv2D {
+  bool operator()(OpKernelContext* ctx, const libxsmm_dnn_conv_desc& desc,
+                  const T* input, T* filter, const T* output);
 };
 
 }  // namespace functor

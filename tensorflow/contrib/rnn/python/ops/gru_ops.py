@@ -17,13 +17,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.rnn.python.ops import core_rnn_cell
 from tensorflow.contrib.util import loader
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
-from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import resource_loader
 
@@ -93,7 +93,7 @@ def _GRUBlockCellGrad(op, *grad):
   return d_x, d_h_prev, d_w_ru, d_w_c, d_b_ru, d_b_c
 
 
-class GRUBlockCell(rnn_cell.RNNCell):
+class GRUBlockCell(core_rnn_cell.RNNCell):
   r"""Block GRU cell implementation.
 
   The implementation is based on:  http://arxiv.org/abs/1406.1078

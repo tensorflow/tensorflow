@@ -12,28 +12,38 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for QueueRunner."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import time
 
-import tensorflow as tf
+from tensorflow.python.client import session
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
+from tensorflow.python.training import coordinator
+from tensorflow.python.training import queue_runner_impl
 
 
-class QueueRunnerTest(tf.test.TestCase):
+class QueueRunnerTest(test.TestCase):
 
   def testBasic(self):
     with self.test_session() as sess:
       # CountUpTo will raise OUT_OF_RANGE when it reaches the count.
-      zero64 = tf.constant(0, dtype=tf.int64)
-      var = tf.Variable(zero64)
+      zero64 = constant_op.constant(0, dtype=dtypes.int64)
+      var = variables.Variable(zero64)
       count_up_to = var.count_up_to(3)
-      queue = tf.FIFOQueue(10, tf.float32)
-      tf.global_variables_initializer().run()
-      qr = tf.train.QueueRunner(queue, [count_up_to])
+      queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
+      variables.global_variables_initializer().run()
+      qr = queue_runner_impl.QueueRunner(queue, [count_up_to])
       threads = qr.create_threads(sess)
       for t in threads:
         t.start()
@@ -46,15 +56,15 @@ class QueueRunnerTest(tf.test.TestCase):
   def testTwoOps(self):
     with self.test_session() as sess:
       # CountUpTo will raise OUT_OF_RANGE when it reaches the count.
-      zero64 = tf.constant(0, dtype=tf.int64)
-      var0 = tf.Variable(zero64)
+      zero64 = constant_op.constant(0, dtype=dtypes.int64)
+      var0 = variables.Variable(zero64)
       count_up_to_3 = var0.count_up_to(3)
-      var1 = tf.Variable(zero64)
+      var1 = variables.Variable(zero64)
       count_up_to_30 = var1.count_up_to(30)
-      queue = tf.FIFOQueue(10, tf.float32)
-      qr = tf.train.QueueRunner(queue, [count_up_to_3, count_up_to_30])
+      queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
+      qr = queue_runner_impl.QueueRunner(queue, [count_up_to_3, count_up_to_30])
       threads = qr.create_threads(sess)
-      tf.global_variables_initializer().run()
+      variables.global_variables_initializer().run()
       for t in threads:
         t.start()
       for t in threads:
@@ -65,10 +75,10 @@ class QueueRunnerTest(tf.test.TestCase):
 
   def testExceptionsCaptured(self):
     with self.test_session() as sess:
-      queue = tf.FIFOQueue(10, tf.float32)
-      qr = tf.train.QueueRunner(queue, ["i fail", "so fail"])
+      queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
+      qr = queue_runner_impl.QueueRunner(queue, ["i fail", "so fail"])
       threads = qr.create_threads(sess)
-      tf.global_variables_initializer().run()
+      variables.global_variables_initializer().run()
       for t in threads:
         t.start()
       for t in threads:
@@ -80,13 +90,13 @@ class QueueRunnerTest(tf.test.TestCase):
 
   def testRealDequeueEnqueue(self):
     with self.test_session() as sess:
-      q0 = tf.FIFOQueue(3, tf.float32)
+      q0 = data_flow_ops.FIFOQueue(3, dtypes.float32)
       enqueue0 = q0.enqueue((10.0,))
       close0 = q0.close()
-      q1 = tf.FIFOQueue(30, tf.float32)
+      q1 = data_flow_ops.FIFOQueue(30, dtypes.float32)
       enqueue1 = q1.enqueue((q0.dequeue(),))
       dequeue1 = q1.dequeue()
-      qr = tf.train.QueueRunner(q1, [enqueue1])
+      qr = queue_runner_impl.QueueRunner(q1, [enqueue1])
       threads = qr.create_threads(sess)
       for t in threads:
         t.start()
@@ -103,21 +113,21 @@ class QueueRunnerTest(tf.test.TestCase):
       self.assertEqual(10.0, dequeue1.eval())
       self.assertEqual(10.0, dequeue1.eval())
       # And queue1 should now be closed.
-      with self.assertRaisesRegexp(tf.errors.OutOfRangeError, "is closed"):
+      with self.assertRaisesRegexp(errors_impl.OutOfRangeError, "is closed"):
         dequeue1.eval()
 
   def testRespectCoordShouldStop(self):
     with self.test_session() as sess:
       # CountUpTo will raise OUT_OF_RANGE when it reaches the count.
-      zero64 = tf.constant(0, dtype=tf.int64)
-      var = tf.Variable(zero64)
+      zero64 = constant_op.constant(0, dtype=dtypes.int64)
+      var = variables.Variable(zero64)
       count_up_to = var.count_up_to(3)
-      queue = tf.FIFOQueue(10, tf.float32)
-      tf.global_variables_initializer().run()
-      qr = tf.train.QueueRunner(queue, [count_up_to])
+      queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
+      variables.global_variables_initializer().run()
+      qr = queue_runner_impl.QueueRunner(queue, [count_up_to])
       # As the coordinator to stop.  The queue runner should
       # finish immediately.
-      coord = tf.train.Coordinator()
+      coord = coordinator.Coordinator()
       coord.request_stop()
       threads = qr.create_threads(sess, coord)
       for t in threads:
@@ -129,9 +139,9 @@ class QueueRunnerTest(tf.test.TestCase):
 
   def testRequestStopOnException(self):
     with self.test_session() as sess:
-      queue = tf.FIFOQueue(10, tf.float32)
-      qr = tf.train.QueueRunner(queue, ["not an op"])
-      coord = tf.train.Coordinator()
+      queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
+      qr = queue_runner_impl.QueueRunner(queue, ["not an op"])
+      coord = coordinator.Coordinator()
       threads = qr.create_threads(sess, coord)
       for t in threads:
         t.start()
@@ -142,11 +152,11 @@ class QueueRunnerTest(tf.test.TestCase):
   def testGracePeriod(self):
     with self.test_session() as sess:
       # The enqueue will quickly block.
-      queue = tf.FIFOQueue(2, tf.float32)
+      queue = data_flow_ops.FIFOQueue(2, dtypes.float32)
       enqueue = queue.enqueue((10.0,))
       dequeue = queue.dequeue()
-      qr = tf.train.QueueRunner(queue, [enqueue])
-      coord = tf.train.Coordinator()
+      qr = queue_runner_impl.QueueRunner(queue, [enqueue])
+      coord = coordinator.Coordinator()
       qr.create_threads(sess, coord, start=True)
       # Dequeue one element and then request stop.
       dequeue.op.run()
@@ -158,14 +168,14 @@ class QueueRunnerTest(tf.test.TestCase):
 
   def testMultipleSessions(self):
     with self.test_session() as sess:
-      with tf.Session() as other_sess:
-        zero64 = tf.constant(0, dtype=tf.int64)
-        var = tf.Variable(zero64)
+      with session.Session() as other_sess:
+        zero64 = constant_op.constant(0, dtype=dtypes.int64)
+        var = variables.Variable(zero64)
         count_up_to = var.count_up_to(3)
-        queue = tf.FIFOQueue(10, tf.float32)
-        tf.global_variables_initializer().run()
-        coord = tf.train.Coordinator()
-        qr = tf.train.QueueRunner(queue, [count_up_to])
+        queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
+        variables.global_variables_initializer().run()
+        coord = coordinator.Coordinator()
+        qr = queue_runner_impl.QueueRunner(queue, [count_up_to])
         # NOTE that this test does not actually start the threads.
         threads = qr.create_threads(sess, coord=coord)
         other_threads = qr.create_threads(other_sess, coord=coord)
@@ -174,13 +184,13 @@ class QueueRunnerTest(tf.test.TestCase):
   def testIgnoreMultiStarts(self):
     with self.test_session() as sess:
       # CountUpTo will raise OUT_OF_RANGE when it reaches the count.
-      zero64 = tf.constant(0, dtype=tf.int64)
-      var = tf.Variable(zero64)
+      zero64 = constant_op.constant(0, dtype=dtypes.int64)
+      var = variables.Variable(zero64)
       count_up_to = var.count_up_to(3)
-      queue = tf.FIFOQueue(10, tf.float32)
-      tf.global_variables_initializer().run()
-      coord = tf.train.Coordinator()
-      qr = tf.train.QueueRunner(queue, [count_up_to])
+      queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
+      variables.global_variables_initializer().run()
+      coord = coordinator.Coordinator()
+      qr = queue_runner_impl.QueueRunner(queue, [count_up_to])
       threads = []
       # NOTE that this test does not actually start the threads.
       threads.extend(qr.create_threads(sess, coord=coord))
@@ -190,12 +200,12 @@ class QueueRunnerTest(tf.test.TestCase):
   def testThreads(self):
     with self.test_session() as sess:
       # CountUpTo will raise OUT_OF_RANGE when it reaches the count.
-      zero64 = tf.constant(0, dtype=tf.int64)
-      var = tf.Variable(zero64)
+      zero64 = constant_op.constant(0, dtype=dtypes.int64)
+      var = variables.Variable(zero64)
       count_up_to = var.count_up_to(3)
-      queue = tf.FIFOQueue(10, tf.float32)
-      tf.global_variables_initializer().run()
-      qr = tf.train.QueueRunner(queue, [count_up_to, "bad op"])
+      queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
+      variables.global_variables_initializer().run()
+      qr = queue_runner_impl.QueueRunner(queue, [count_up_to, "bad op"])
       threads = qr.create_threads(sess, start=True)
       for t in threads:
         t.join()
@@ -211,26 +221,26 @@ class QueueRunnerTest(tf.test.TestCase):
       self.assertTrue("Operation not in the graph" in str(exceptions[0]))
 
   def testName(self):
-    with tf.name_scope("scope"):
-      queue = tf.FIFOQueue(10, tf.float32, name="queue")
-    qr = tf.train.QueueRunner(queue, [tf.no_op()])
+    with ops.name_scope("scope"):
+      queue = data_flow_ops.FIFOQueue(10, dtypes.float32, name="queue")
+    qr = queue_runner_impl.QueueRunner(queue, [control_flow_ops.no_op()])
     self.assertEqual("scope/queue", qr.name)
-    tf.train.add_queue_runner(qr)
-    self.assertEqual(1, len(tf.get_collection(tf.GraphKeys.QUEUE_RUNNERS,
-                                              "scope")))
+    queue_runner_impl.add_queue_runner(qr)
+    self.assertEqual(
+        1, len(ops.get_collection(ops.GraphKeys.QUEUE_RUNNERS, "scope")))
 
   def testStartQueueRunners(self):
     # CountUpTo will raise OUT_OF_RANGE when it reaches the count.
-    zero64 = tf.constant(0, dtype=tf.int64)
-    var = tf.Variable(zero64)
+    zero64 = constant_op.constant(0, dtype=dtypes.int64)
+    var = variables.Variable(zero64)
     count_up_to = var.count_up_to(3)
-    queue = tf.FIFOQueue(10, tf.float32)
-    init_op = tf.global_variables_initializer()
-    qr = tf.train.QueueRunner(queue, [count_up_to])
-    tf.train.add_queue_runner(qr)
+    queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
+    init_op = variables.global_variables_initializer()
+    qr = queue_runner_impl.QueueRunner(queue, [count_up_to])
+    queue_runner_impl.add_queue_runner(qr)
     with self.test_session() as sess:
       init_op.run()
-      threads = tf.train.start_queue_runners(sess)
+      threads = queue_runner_impl.start_queue_runners(sess)
       for t in threads:
         t.join()
       self.assertEqual(0, len(qr.exceptions_raised))
@@ -239,18 +249,18 @@ class QueueRunnerTest(tf.test.TestCase):
 
   def testStartQueueRunnersNonDefaultGraph(self):
     # CountUpTo will raise OUT_OF_RANGE when it reaches the count.
-    graph = tf.Graph()
+    graph = ops.Graph()
     with graph.as_default():
-      zero64 = tf.constant(0, dtype=tf.int64)
-      var = tf.Variable(zero64)
+      zero64 = constant_op.constant(0, dtype=dtypes.int64)
+      var = variables.Variable(zero64)
       count_up_to = var.count_up_to(3)
-      queue = tf.FIFOQueue(10, tf.float32)
-      init_op = tf.global_variables_initializer()
-      qr = tf.train.QueueRunner(queue, [count_up_to])
-      tf.train.add_queue_runner(qr)
+      queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
+      init_op = variables.global_variables_initializer()
+      qr = queue_runner_impl.QueueRunner(queue, [count_up_to])
+      queue_runner_impl.add_queue_runner(qr)
     with self.test_session(graph=graph) as sess:
       init_op.run()
-      threads = tf.train.start_queue_runners(sess)
+      threads = queue_runner_impl.start_queue_runners(sess)
       for t in threads:
         t.join()
       self.assertEqual(0, len(qr.exceptions_raised))
@@ -258,40 +268,41 @@ class QueueRunnerTest(tf.test.TestCase):
       self.assertEqual(3, var.eval())
 
   def testQueueRunnerSerializationRoundTrip(self):
-    graph = tf.Graph()
+    graph = ops.Graph()
     with graph.as_default():
-      queue = tf.FIFOQueue(10, tf.float32, name="queue")
-      enqueue_op = tf.no_op(name="enqueue")
-      close_op = tf.no_op(name="close")
-      cancel_op = tf.no_op(name="cancel")
-      qr0 = tf.train.QueueRunner(
-          queue, [enqueue_op], close_op, cancel_op,
-          queue_closed_exception_types=(
-              tf.errors.OutOfRangeError, tf.errors.CancelledError))
-      qr0_proto = tf.train.QueueRunner.to_proto(qr0)
-      qr0_recon = tf.train.QueueRunner.from_proto(qr0_proto)
+      queue = data_flow_ops.FIFOQueue(10, dtypes.float32, name="queue")
+      enqueue_op = control_flow_ops.no_op(name="enqueue")
+      close_op = control_flow_ops.no_op(name="close")
+      cancel_op = control_flow_ops.no_op(name="cancel")
+      qr0 = queue_runner_impl.QueueRunner(
+          queue, [enqueue_op],
+          close_op,
+          cancel_op,
+          queue_closed_exception_types=(errors_impl.OutOfRangeError,
+                                        errors_impl.CancelledError))
+      qr0_proto = queue_runner_impl.QueueRunner.to_proto(qr0)
+      qr0_recon = queue_runner_impl.QueueRunner.from_proto(qr0_proto)
       self.assertEqual("queue", qr0_recon.queue.name)
       self.assertEqual(1, len(qr0_recon.enqueue_ops))
       self.assertEqual(enqueue_op, qr0_recon.enqueue_ops[0])
       self.assertEqual(close_op, qr0_recon.close_op)
       self.assertEqual(cancel_op, qr0_recon.cancel_op)
       self.assertEqual(
-          (tf.errors.OutOfRangeError, tf.errors.CancelledError),
+          (errors_impl.OutOfRangeError, errors_impl.CancelledError),
           qr0_recon.queue_closed_exception_types)
 
       # Assert we reconstruct an OutOfRangeError for QueueRunners
       # created before QueueRunnerDef had a queue_closed_exception_types field.
       del qr0_proto.queue_closed_exception_types[:]
-      qr0_legacy_recon = tf.train.QueueRunner.from_proto(qr0_proto)
+      qr0_legacy_recon = queue_runner_impl.QueueRunner.from_proto(qr0_proto)
       self.assertEqual("queue", qr0_legacy_recon.queue.name)
       self.assertEqual(1, len(qr0_legacy_recon.enqueue_ops))
       self.assertEqual(enqueue_op, qr0_legacy_recon.enqueue_ops[0])
       self.assertEqual(close_op, qr0_legacy_recon.close_op)
       self.assertEqual(cancel_op, qr0_legacy_recon.cancel_op)
-      self.assertEqual(
-          (tf.errors.OutOfRangeError,),
-          qr0_legacy_recon.queue_closed_exception_types)
+      self.assertEqual((errors_impl.OutOfRangeError,),
+                       qr0_legacy_recon.queue_closed_exception_types)
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

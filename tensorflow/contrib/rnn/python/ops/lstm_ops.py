@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import abc
 
+from tensorflow.contrib.rnn.python.ops import core_rnn_cell
 from tensorflow.contrib.rnn.python.ops import fused_rnn_cell
 from tensorflow.contrib.util import loader
 from tensorflow.python.framework import dtypes
@@ -27,7 +28,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
-from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import resource_loader
 
@@ -219,9 +219,9 @@ def _block_lstm(seq_len_max,
       name=name,
       use_peephole=use_peephole)
 
-  return array_ops.unpack(i), array_ops.unpack(cs), array_ops.unpack(
-      f), array_ops.unpack(o), array_ops.unpack(ci), array_ops.unpack(
-          co), array_ops.unpack(h)
+  return array_ops.unstack(i), array_ops.unstack(cs), array_ops.unstack(
+      f), array_ops.unstack(o), array_ops.unstack(ci), array_ops.unstack(
+          co), array_ops.unstack(h)
   # pylint: enable=protected-access
   # pylint: enable=invalid-name
 
@@ -324,7 +324,7 @@ def _BlockLSTMGrad(op, *grad):
           wcf_grad, b_grad]
 
 
-class LSTMBlockCell(rnn_cell.RNNCell):
+class LSTMBlockCell(core_rnn_cell.RNNCell):
   """Basic LSTM recurrent network cell.
 
   The implementation is based on: http://arxiv.org/abs/1409.2329.
@@ -332,9 +332,9 @@ class LSTMBlockCell(rnn_cell.RNNCell):
   We add `forget_bias` (default: 1) to the biases of the forget gate in order to
   reduce the scale of forgetting in the beginning of the training.
 
-  Unlike `rnn_cell.LSTMCell`, this is a monolithic op and should be much faster.
-  The weight and bias matrixes should be compatible as long as the variable
-  scope matches.
+  Unlike `core_rnn_cell.LSTMCell`, this is a monolithic op and should be much
+  faster.  The weight and bias matrixes should be compatible as long as the
+  variable scope matches.
   """
 
   def __init__(self,
@@ -542,7 +542,7 @@ class LSTMBlockWrapper(fused_rnn_cell.FusedRNNCell):
 
       if is_list:
         # Input was a list, so return a list
-        outputs = array_ops.unpack(outputs)
+        outputs = array_ops.unstack(outputs)
 
       return outputs, (final_cell_state, final_output)
 
@@ -565,7 +565,7 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
   We add forget_bias (default: 1) to the biases of the forget gate in order to
   reduce the scale of forgetting in the beginning of the training.
 
-  The variable naming is consistent with `rnn_cell.LSTMCell`.
+  The variable naming is consistent with `core_rnn_cell.LSTMCell`.
   """
 
   def __init__(self,
