@@ -242,12 +242,14 @@ class _FeatureColumn(object):
   # pylint: disable=unused-argument
   def _wide_embedding_lookup_arguments(self, input_tensor):
     """Returns arguments to look up embeddings for this column."""
-    raise NotImplementedError("Calling an abstract method.")
+    raise NotImplementedError(
+        "No wide embedding lookup arguments for column {}.".format(self))
 
   # pylint: disable=unused-argument
   def _to_dense_tensor(self, input_tensor):
     """Returns a dense tensor representing this column's values."""
-    raise NotImplementedError("Calling an abstract method.")
+    raise NotImplementedError(
+        "No dense tensor representation for column {}.".format(self))
 
   def _checkpoint_path(self):
     """Returns None, or a (path,tensor_name) to load a checkpoint from."""
