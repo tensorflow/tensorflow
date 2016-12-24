@@ -341,6 +341,16 @@ class OperationTest(test_util.TensorFlowTestCase):
                                  r"Can't convert Operation '.*' to Tensor"):
       ops.convert_to_tensor(op)
 
+  def testStr(self):
+    node_def = ops._NodeDef("noop", "op1")
+    op = ops.Operation(node_def, ops.Graph(), [], [dtypes.float32])
+    self.assertEqual(str(node_def), str(op))
+
+  def testRepr(self):
+    op = ops.Operation(
+        ops._NodeDef("noop", "op1"), ops.Graph(), [], [dtypes.float32])
+    self.assertEqual("<tf.Operation 'op1' type=noop>", repr(op))
+
 
 class CreateOpTest(test_util.TensorFlowTestCase):
 

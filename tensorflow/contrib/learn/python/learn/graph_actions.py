@@ -711,11 +711,14 @@ def evaluate(graph,
     # Create or get summary op, global_step and saver.
     saver = _get_saver()
     local_init_op = _get_local_init_op()
+    ready_for_local_init_op = _get_first_op_from_collection(
+        ops.GraphKeys.READY_FOR_LOCAL_INIT_OP)
     ready_op = _get_ready_op()
 
     session_manager = session_manager_lib.SessionManager(
         local_init_op=local_init_op,
-        ready_op=ready_op)
+        ready_op=ready_op,
+        ready_for_local_init_op=ready_for_local_init_op)
     session, initialized = session_manager.recover_session(
         master=supervisor_master,
         saver=saver,

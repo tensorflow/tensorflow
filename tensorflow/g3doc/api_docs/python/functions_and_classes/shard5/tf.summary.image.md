@@ -2,7 +2,7 @@
 
 Outputs a `Summary` protocol buffer with images.
 
-The summary has up to `max_images` summary values containing images. The
+The summary has up to `max_outputs` summary values containing images. The
 images are built from `tensor` which must be 4-D with shape `[batch_size,
 height, width, channels]` and where `channels` can be:
 
