@@ -15,7 +15,7 @@ load(
 )
 load(
     "@//third_party:common.bzl",
-    "expand_header_template",
+    "template_rule",
 )
 
 package(default_visibility = ["@//tensorflow/compiler/xla:internal"])
@@ -179,7 +179,7 @@ expand_cmake_vars(
 )
 
 # Performs macro expansions on .def.in files
-expand_header_template(
+template_rule(
     name = "targets_def_gen",
     src = "include/llvm/Config/Targets.def.in",
     out = "include/llvm/Config/Targets.def",
@@ -190,7 +190,7 @@ expand_header_template(
     },
 )
 
-expand_header_template(
+template_rule(
     name = "asm_parsers_def_gen",
     src = "include/llvm/Config/AsmParsers.def.in",
     out = "include/llvm/Config/AsmParsers.def",
@@ -201,7 +201,7 @@ expand_header_template(
     },
 )
 
-expand_header_template(
+template_rule(
     name = "asm_printers_def_gen",
     src = "include/llvm/Config/AsmPrinters.def.in",
     out = "include/llvm/Config/AsmPrinters.def",
@@ -212,7 +212,7 @@ expand_header_template(
     },
 )
 
-expand_header_template(
+template_rule(
     name = "disassemblers_def_gen",
     src = "include/llvm/Config/Disassemblers.def.in",
     out = "include/llvm/Config/Disassemblers.def",

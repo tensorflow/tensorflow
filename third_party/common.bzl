@@ -3,8 +3,8 @@
 # and replaces them with the corresponding values.
 #
 # Typical usage:
-#   load("/tools/build_rules/expand_header_template", "expand_header_template")
-#   expand_header_template(
+#   load("/tools/build_rules/template_rule", "expand_header_template")
+#   template_rule(
 #       name = "ExpandMyTemplate",
 #       src = "my.template",
 #       out = "my.txt",
@@ -20,14 +20,14 @@
 #   out: The destination of the expanded file
 #   substitutions: A dictionary mapping strings to their substitutions
 
-def expand_header_template_impl(ctx):
+def template_rule_impl(ctx):
   ctx.template_action(
       template = ctx.file.src,
       output = ctx.outputs.out,
       substitutions = ctx.attr.substitutions,
   )
 
-expand_header_template = rule(
+template_rule = rule(
     attrs = {
         "src": attr.label(
             mandatory = True,
@@ -39,5 +39,5 @@ expand_header_template = rule(
     },
     # output_to_genfiles is required for header files.
     output_to_genfiles = True,
-    implementation = expand_header_template_impl,
+    implementation = template_rule_impl,
 )
