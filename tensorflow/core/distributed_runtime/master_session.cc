@@ -576,8 +576,9 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
                                          ", key=", key);
         }
         auto* send = c->req.add_send();
-        send->set_key(key);
-        *(send->mutable_val()) = *val;  // TODO(mrry): make it faster if needed.
+        send->set_name(key);
+        // TODO(mrry): Avoid copy whenever possible.
+        *(send->mutable_tensor()) = *val;
       }
       // TODO(suharshs): Make a map from feed to fetch_key to make this faster.
       // For now, we just iterate through partitions to find the matching key.
@@ -599,8 +600,9 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
                                          ", key=", key);
         }
         auto* send = c->req.add_send();
-        send->set_key(key);
-        *(send->mutable_val()) = *val;  // TODO(mrry): make it faster if needed.
+        send->set_name(key);
+        // TODO(mrry): Avoid copy whenever possible.
+        *(send->mutable_tensor()) = *val;
       }
       for (const auto& key_fetch : part.key_fetch) {
         const string& key = key_fetch.first;
@@ -642,16 +644,17 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
       const Part& part = partitions_[i];
       for (auto& recv : *(calls.get(i)->resp.mutable_recv())) {
         auto* ret = resp->add_tensor();
-        auto iter = part.key_fetch.find(recv.key());
+        auto iter = part.key_fetch.find(recv.name());
         if (iter == part.key_fetch.end()) {
-          status.Update(errors::Internal("Unexpected fetch key: ", recv.key()));
+          status.Update(
+              errors::Internal("Unexpected fetch key: ", recv.name()));
           break;
         }
         const string& fetch = iter->second;
         ret->set_name(fetch);
-        if (!CopyIfNeeded(recv.mutable_val(), ret->mutable_tensor())) {
+        if (!CopyIfNeeded(recv.mutable_tensor(), ret->mutable_tensor())) {
           status.Update(
-              errors::Internal("Unexpected unparseable tensor: ", recv.key()));
+              errors::Internal("Unexpected unparseable tensor: ", recv.name()));
           break;
         }
       }

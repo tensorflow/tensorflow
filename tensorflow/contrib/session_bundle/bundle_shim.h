@@ -59,6 +59,14 @@ Status LoadSessionBundleOrSavedModelBundle(
     const string& export_dir, const std::unordered_set<string>& tags,
     SavedModelBundle* bundle);
 
+// Checks whether the provided directory could contain a SessionBundle or a
+// SavedModel. Note that the method does not load any data by itself. If the
+// method returns `false`, the export directory definitely does not contain a
+// SessionBundle or SavedModel. If the method returns `true`, the export
+// directory may contain a SessionBundle or a SavedModel but provides no
+// guarantee that it can be loaded.
+bool MaybeSessionBundleOrSavedModelDirectory(const string& export_dir);
+
 }  // namespace serving
 }  // namespace tensorflow
 #endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_SESSION_BUNDLE_BUNDLE_SHIM_H_

@@ -1673,7 +1673,7 @@ c = tf.matmul(a, b) => [[[ 94 100]
 ##### Returns:
 
   A `Tensor` of the same type as `a` and `b` where each inner-most matrix is
-  the product of the corresponding matrices in `a` and `b, e.g. if all
+  the product of the corresponding matrices in `a` and `b`, e.g. if all
   transpose or adjoint attributes are `False`:
 
   `output`[..., i, j] = sum_k (`a`[..., i, k] * `b`[..., k, j]),

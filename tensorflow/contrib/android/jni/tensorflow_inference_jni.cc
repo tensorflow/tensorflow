@@ -109,17 +109,14 @@ JNIEXPORT jint JNICALL TENSORFLOW_METHOD(initializeTensorFlow)(
 
   LOG(INFO) << "Loading Tensorflow.";
 
-  LOG(INFO) << "Making new SessionOptions.";
   tensorflow::SessionOptions options;
   tensorflow::ConfigProto& config = options.config;
-  LOG(INFO) << "Got config, " << config.device_count_size() << " devices";
 
   tensorflow::Session* session = tensorflow::NewSession(options);
   vars->session.reset(session);
   LOG(INFO) << "Session created.";
 
   tensorflow::GraphDef tensorflow_graph;
-  LOG(INFO) << "Graph created.";
 
   AAssetManager* const asset_manager =
       AAssetManager_fromJava(env, java_asset_manager);
@@ -127,19 +124,21 @@ JNIEXPORT jint JNICALL TENSORFLOW_METHOD(initializeTensorFlow)(
 
   LOG(INFO) << "Reading file to proto: " << model_str;
   ReadFileToProtoOrDie(asset_manager, model_str.c_str(), &tensorflow_graph);
+  CHECK(tensorflow_graph.node_size() > 0) << "Problem loading GraphDef!";
 
-  LOG(INFO) << "Creating session.";
+  LOG(INFO) << "GraphDef loaded from " << model_str << " with "
+            << tensorflow_graph.node_size() << " nodes.";
+
+  LOG(INFO) << "Creating TensorFlow graph from GraphDef.";
   tensorflow::Status s = session->Create(tensorflow_graph);
 
   // Clear the proto to save memory space.
   tensorflow_graph.Clear();
 
   if (!s.ok()) {
-    LOG(ERROR) << "Could not create Tensorflow Graph: " << s;
+    LOG(ERROR) << "Could not create TensorFlow graph: " << s;
     return s.code();
   }
-
-  LOG(INFO) << "Tensorflow graph loaded from: " << model_str;
 
   const int64 end_time = CurrentWallTimeUs();
   LOG(INFO) << "Initialization done in " << (end_time - start_time) / 1000.0
