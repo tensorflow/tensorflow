@@ -381,7 +381,7 @@ have to create an operation to initialize the variables we created. Note that
 this defines the operation but does not run it yet:
 
 ```python
-init = tf.global_variables_initializer()
+init = tf.initialize_all_variables()
 ```
 
 We can now launch the model in a `Session`, and now we run the operation that
