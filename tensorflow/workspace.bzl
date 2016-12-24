@@ -106,7 +106,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       ],
       sha256 = "c15a9607892113946379ccea3ca8b85018301b200754f209453ab21674268e77",
       strip_prefix = "libjpeg-turbo-1.5.1",
-      build_file = str(Label("//third_party:jpeg.BUILD")),
+      build_file = str(Label("//third_party/jpeg:jpeg.BUILD")),
   )
 
   native.new_http_archive(
