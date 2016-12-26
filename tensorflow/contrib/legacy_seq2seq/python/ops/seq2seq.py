@@ -1039,7 +1039,7 @@ def sequence_loss_by_example(logits,
     weights: List of 1D batch-sized float-Tensors of the same length as logits.
     average_across_timesteps: If set, divide the returned cost by the total
       label weight.
-    softmax_loss_function: Function (labels-batch, inputs-batch) -> loss-batch
+    softmax_loss_function: Function (inputs-batch, labels-batch) -> loss-batch
       to be used instead of the standard softmax (the default if this is None).
     name: Optional name for this operation, default: "sequence_loss_by_example".
 
@@ -1064,7 +1064,7 @@ def sequence_loss_by_example(logits,
         crossent = nn_ops.sparse_softmax_cross_entropy_with_logits(
             logits=logit, labels=target)
       else:
-        crossent = softmax_loss_function(target, logit)
+        crossent = softmax_loss_function(logit, target)
       log_perp_list.append(crossent * weight)
     log_perps = math_ops.add_n(log_perp_list)
     if average_across_timesteps:
