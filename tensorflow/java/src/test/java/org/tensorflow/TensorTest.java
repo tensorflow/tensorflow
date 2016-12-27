@@ -235,14 +235,14 @@ public class TensorTest {
     // same native handle.
     //
     // An exception is made for this test, where the pitfalls of this is avoided by not calling
-    // close() on both Tensors.
+    // unref() on both Tensors.
     final float[][] matrix = {{1, 2, 3}, {4, 5, 6}};
-    try (Tensor src = Tensor.create(matrix)) {
-      Tensor cpy = Tensor.fromHandle(src.getNativeHandle());
-      assertEquals(src.dataType(), cpy.dataType());
-      assertEquals(src.numDimensions(), cpy.numDimensions());
-      assertArrayEquals(src.shape(), cpy.shape());
-      assertArrayEquals(matrix, cpy.copyTo(new float[2][3]));
-    }
+    Tensor src = Tensor.create(matrix);
+    Tensor cpy = Tensor.fromHandle(src.getNativeHandle());
+    assertEquals(src.dataType(), cpy.dataType());
+    assertEquals(src.numDimensions(), cpy.numDimensions());
+    assertArrayEquals(src.shape(), cpy.shape());
+    assertArrayEquals(matrix, cpy.copyTo(new float[2][3]));
+    src.unref();
   }
 }
