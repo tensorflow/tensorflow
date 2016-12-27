@@ -128,7 +128,9 @@ def assert_node_attribute_lines(tst,
                                 recipient_op_type_node_name_pairs,
                                 ctrl_recipient_op_type_node_name_pairs,
                                 attr_key_val_pairs=None,
-                                num_dumped_tensors=None):
+                                num_dumped_tensors=None,
+                                show_stack_trace=False,
+                                stack_trace_available=False):
   """Check RichTextLines output for node_info commands.
 
   Args:
@@ -148,6 +150,9 @@ def assert_node_attribute_lines(tst,
     attr_key_val_pairs: Optional: attribute key-value pairs of the node, as a
       list of 2-tuples.
     num_dumped_tensors: Optional: number of tensor dumps from the node.
+    show_stack_trace: (bool) whether the stack trace of the node's
+      construction is asserted to be present.
+    stack_trace_available: (bool) whether Python stack trace is available.
   """
 
   line_iter = iter(out.lines)
@@ -251,6 +256,35 @@ def assert_node_attribute_lines(tst,
 
     tst.assertEqual(sorted(dump_timestamps_ms), dump_timestamps_ms)
 
+  if show_stack_trace:
+    tst.assertEqual("", next(line_iter))
+    tst.assertEqual("", next(line_iter))
+    tst.assertEqual("Traceback of node construction:", next(line_iter))
+    if stack_trace_available:
+      try:
+        depth_counter = 0
+        while True:
+          for i in range(5):
+            line = next(line_iter)
+            print(line)
+            if i == 0:
+              tst.assertEqual(depth_counter, int(line.split(":")[0]))
+            elif i == 1:
+              tst.assertStartsWith(line, "  Line:")
+            elif i == 2:
+              tst.assertStartsWith(line, "  Function:")
+            elif i == 3:
+              tst.assertStartsWith(line, "  Text:")
+            elif i == 4:
+              tst.assertEqual("", line)
+
+          depth_counter += 1
+      except StopIteration:
+        tst.assertEqual(0, i)
+    else:
+      tst.assertEqual("(Unavailable because no Python graph has been loaded)",
+                      next(line_iter))
+
 
 def check_syntax_error_output(tst, out, command_prefix):
   """Check RichTextLines output for valid command prefix but invalid syntax."""
@@ -336,7 +370,8 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     else:
       cls._main_device = "/job:localhost/replica:0/task:0/cpu:0"
 
-    with session.Session() as sess:
+    cls._sess = session.Session()
+    with cls._sess as sess:
       u_init_val = np.array([[5.0, 3.0], [-1.0, 0.0]])
       v_init_val = np.array([[2.0], [-1.0]])
 
@@ -540,6 +575,52 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
                             ("Identity", "simple_mul_add/v/read")], [],
         [("Add", "simple_mul_add/add"), ("Add", "simple_mul_add/add")], [],
         num_dumped_tensors=1)
+    check_main_menu(
+        self,
+        out,
+        list_tensors_enabled=True,
+        list_inputs_node_name=node_name,
+        print_tensor_node_name=node_name,
+        list_outputs_node_name=node_name)
+
+  def testNodeInfoShowStackTraceUnavailableIsIndicated(self):
+    self._debug_dump.set_python_graph(None)
+
+    node_name = "simple_mul_add/matmul"
+    out = self._registry.dispatch_command("node_info", ["-t", node_name])
+
+    assert_node_attribute_lines(
+        self,
+        out,
+        node_name,
+        "MatMul",
+        self._main_device, [("Identity", "simple_mul_add/u/read"),
+                            ("Identity", "simple_mul_add/v/read")], [],
+        [("Add", "simple_mul_add/add"), ("Add", "simple_mul_add/add")], [],
+        show_stack_trace=True, stack_trace_available=False)
+    check_main_menu(
+        self,
+        out,
+        list_tensors_enabled=True,
+        list_inputs_node_name=node_name,
+        print_tensor_node_name=node_name,
+        list_outputs_node_name=node_name)
+
+  def testNodeInfoShowStackTraceAvailableWorks(self):
+    self._debug_dump.set_python_graph(self._sess.graph)
+
+    node_name = "simple_mul_add/matmul"
+    out = self._registry.dispatch_command("node_info", ["-t", node_name])
+
+    assert_node_attribute_lines(
+        self,
+        out,
+        node_name,
+        "MatMul",
+        self._main_device, [("Identity", "simple_mul_add/u/read"),
+                            ("Identity", "simple_mul_add/v/read")], [],
+        [("Add", "simple_mul_add/add"), ("Add", "simple_mul_add/add")], [],
+        show_stack_trace=True, stack_trace_available=True)
     check_main_menu(
         self,
         out,

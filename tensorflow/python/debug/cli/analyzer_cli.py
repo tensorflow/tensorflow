@@ -185,6 +185,13 @@ class DebugAnalyzer(object):
         dest="dumps",
         action="store_true",
         help="Also list dumps available from the node.")
+    ap.add_argument(
+        "-t",
+        "--traceback",
+        dest="traceback",
+        action="store_true",
+        help="Also include the traceback of the node's creation "
+        "(if available in Python).")
     self._arg_parsers["node_info"] = ap
 
     # Parser for list_inputs.
@@ -512,8 +519,43 @@ class DebugAnalyzer(object):
       lines.extend(self._list_node_dumps(node_name))
 
     output = debugger_cli_common.RichTextLines(lines)
+
+    if parsed.traceback:
+      output.extend(self._render_node_traceback(node_name))
+
     _add_main_menu(output, node_name=node_name, enable_node_info=False)
     return output
+
+  def _render_node_traceback(self, node_name):
+    """Render traceback of a node's creation in Python, if available.
+
+    Args:
+      node_name: (str) name of the node.
+
+    Returns:
+      A RichTextLines object containing the stack trace of the node's
+      construction.
+    """
+
+    lines = ["", "", "Traceback of node construction:"]
+    font_attr_segs = {len(lines) - 1: [(0, len(lines[-1]), "bold")]}
+
+    try:
+      node_stack = self._debug_dump.node_traceback(node_name)
+      for depth, (file_path, line, function_name, text) in enumerate(
+          node_stack):
+        lines.append("%d: %s" % (depth, file_path))
+        lines.append("  Line:     %d" % line)
+        lines.append("  Function: %s" % function_name)
+        lines.append("  Text:     " + (("\"%s\"" % text) if text else "None"))
+        lines.append("")
+    except KeyError:
+      lines.append("(Node unavailable in the loaded Python graph)")
+    except LookupError:
+      lines.append("(Unavailable because no Python graph has been loaded)")
+
+    return debugger_cli_common.RichTextLines(lines,
+                                             font_attr_segs=font_attr_segs)
 
   def list_inputs(self, args, screen_info=None):
     """Command handler for inputs.

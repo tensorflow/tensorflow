@@ -227,6 +227,16 @@ class GetRunStartIntroAndDescriptionTest(test_util.TensorFlowTestCase):
     command_set.add(annot[2].content)
     self.assertEqual({"run -f filter_a", "run -f filter_b"}, command_set)
 
+  def testGetRunShortDescriptionWorksForTensorFeedKey(self):
+    short_description = cli_shared.get_run_short_description(
+        1, self.const_a, {self.const_a: 42.0})
+    self.assertEqual("run #1: 1 fetch (a:0); 1 feed (a:0)", short_description)
+
+  def testGetRunShortDescriptionWorksForUnicodeFeedKey(self):
+    short_description = cli_shared.get_run_short_description(
+        1, self.const_a, {u"foo": 42.0})
+    self.assertEqual("run #1: 1 fetch (a:0); 1 feed (foo)", short_description)
+
 
 class GetErrorIntroTest(test_util.TensorFlowTestCase):
 
@@ -247,14 +257,25 @@ class GetErrorIntroTest(test_util.TensorFlowTestCase):
     self.assertEqual([(0, len(error_intro.lines[1]), "blink")],
                      error_intro.font_attr_segs[1])
 
-    self.assertEqual(2, error_intro.lines[4].index("ni a/Assign"))
-    self.assertEqual([(2, 13, "bold")], error_intro.font_attr_segs[4])
+    self.assertEqual(2, error_intro.lines[4].index("ni -a -d -t a/Assign"))
+    self.assertEqual(2, error_intro.font_attr_segs[4][0][0])
+    self.assertEqual(22, error_intro.font_attr_segs[4][0][1])
+    self.assertEqual("ni -a -d -t a/Assign",
+                     error_intro.font_attr_segs[4][0][2][0].content)
+    self.assertEqual("bold", error_intro.font_attr_segs[4][0][2][1])
 
     self.assertEqual(2, error_intro.lines[6].index("li -r a/Assign"))
-    self.assertEqual([(2, 16, "bold")], error_intro.font_attr_segs[6])
+    self.assertEqual(2, error_intro.font_attr_segs[6][0][0])
+    self.assertEqual(16, error_intro.font_attr_segs[6][0][1])
+    self.assertEqual("li -r a/Assign",
+                     error_intro.font_attr_segs[6][0][2][0].content)
+    self.assertEqual("bold", error_intro.font_attr_segs[6][0][2][1])
 
     self.assertEqual(2, error_intro.lines[8].index("lt"))
-    self.assertEqual([(2, 4, "bold")], error_intro.font_attr_segs[8])
+    self.assertEqual(2, error_intro.font_attr_segs[8][0][0])
+    self.assertEqual(4, error_intro.font_attr_segs[8][0][1])
+    self.assertEqual("lt", error_intro.font_attr_segs[8][0][2][0].content)
+    self.assertEqual("bold", error_intro.font_attr_segs[8][0][2][1])
 
     self.assertStartsWith(error_intro.lines[11], "Op name:")
     self.assertTrue(error_intro.lines[11].endswith("a/Assign"))

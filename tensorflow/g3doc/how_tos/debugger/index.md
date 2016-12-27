@@ -23,14 +23,7 @@ This code trains a simple NN for MNIST digit image recognition. Notice that the
 accuracy increases slightly after the first training step, but then gets stuck
 at a low (near-chance) level:
 
-```none
-Accuracy at step 0: 0.1113
-Accuracy at step 1: 0.3183
-Accuracy at step 2: 0.098
-Accuracy at step 3: 0.098
-Accuracy at step 4: 0.098
-...
-```
+![debug_mnist training fails](tfdbg_screenshot_mnist_symptom.png)
 
 Scratching your head, you suspect that certain nodes in the training graph
 generated bad numeric values such as `inf`s and `nan`s. The computation-graph
@@ -89,31 +82,7 @@ The debug wrapper session will prompt you when it is about to execute the first
 `run()` call, with information regarding the fetched tensor and feed
 dictionaries displayed on the screen.
 
-```none
---- run-start: run #1: fetch: accuracy/accuracy/Mean:0; 2 feeds
-======================================
-About to enter Session run() call #1:
-
-Fetch(es):
-  accuracy/accuracy/Mean:0
-
-Feed dict(s):
-  input/x-input:0
-  input/y-input:0
-======================================
-
-Select one of the following commands to proceed ---->
-  run:
-      Execute the run() call with the debug tensor-watching
-  run -n:
-      Execute the run() call without the debug tensor-watching
-  run -f <filter_name>:
-      Keep executing run() calls until a dumped tensor passes
-      a given, registered filter emerge. Registered filter(s):
-        * has_inf_or_nan
---- Scroll: 0.00% ----------------------------------------------
-tfdbg>
-```
+![tfdbg run-start UI](tfdbg_screenshot_run_start.png)
 
 This is what we refer to as the *run-start UI*. If the screen size is
 too small to display the content of the message in its entirety, you can use the
@@ -122,7 +91,9 @@ output.
 
 As the screen output indicates, the first `run()` call calculates the accuracy
 using a test data set—i.e., a forward pass on the graph. You can enter the
-command `run` (or its shorthand `r`) to launch the `run()` call.
+command `run` (or its shorthand `r`) to launch the `run()` call. On terminals
+that support mouse events, you can simply click the underlined `run` on the top
+left corner of the screen to proceed.
 
 This will bring up another screen
 right after the `run()` call has ended, which will display all dumped
@@ -130,27 +101,7 @@ intermedate tensors from the run. (These tensors can also be obtained by
 running the command `lt` after you executed `run`.) This is called the
 **run-end UI**:
 
-```none
---- run-end: run #1: fetch: accuracy/accuracy/Mean:0; 2 feeds --
-21 dumped tensor(s):
-
-[0.000 ms] accuracy/correct_prediction/ArgMax/dimension:0
-[0.000 ms] softmax/biases/Variable:0
-[0.013 ms] hidden/biases/Variable:0
-[0.112 ms] softmax/weights/Variable:0
-[1.953 ms] hidden/weights/Variable:0
-[4.566 ms] accuracy/accuracy/Const:0
-[5.188 ms] accuracy/correct_prediction/ArgMax_1:0
-[6.901 ms] hidden/biases/Variable/read:0
-[9.140 ms] softmax/biases/Variable/read:0
-[11.145 ms] softmax/weights/Variable/read:0
-[19.563 ms] hidden/weights/Variable/read:0
-[171.189 ms] hidden/Wx_plus_b/MatMul:0
-[209.433 ms] hidden/Wx_plus_b/add:0
-[245.143 ms] hidden/Relu:0
---- Scroll: 0.00% ----------------------------------------------
-tfdbg>
-```
+![tfdbg run-end UI: accuracy](tfdbg_screenshot_run_end_accuracy.png)
 
 Try the following commands at the `tfdbg>` prompt (referencing the code at
 `third_party/tensorflow/python/debug/examples/debug_mnist.py`):
@@ -165,6 +116,7 @@ Try the following commands at the `tfdbg>` prompt (referencing the code at
 | `/inf` | Search the screen output with the regex `inf` and highlight any matches. |
 | `/` | Scroll to the next line with matches to the searched regex (if any). |
 | `ni -a hidden/Relu` | Display information about the node `hidden/Relu`, including node attributes. |
+| `ni -t hidden/Relu` | Display the stack trace of node `hidden/Relu`'s construction. |
 | `li -r hidden/Relu:0` | List the inputs to the node `hidden/Relu`, recursively—i.e., the input tree. |
 | `lo -r hidden/Relu:0` | List the recipients of the output of the node `hidden/Relu`, recursively—i.e., the output recipient tree. |
 | `lt -n softmax.*` | List all dumped tensors whose names match the regular-expression pattern `softmax.*`. |
@@ -212,21 +164,7 @@ screen with a red-colored title line indicating **tfdbg** stopped immediately
 after a `run()` call generated intermediate tensors that passed the specified
 filter `has_inf_or_nan`:
 
-
-```none
---- run-end: run #4: fetch: train/Adam; 2 feeds ----------------
-30 dumped tensor(s) passing filter "has_inf_or_nan":
-
-[13.255 ms] cross_entropy/Log:0
-[13.499 ms] cross_entropy/mul:0
-[14.426 ms] train/gradients/cross_entropy/mul_grad/mul:0
-[14.681 ms] train/gradients/cross_entropy/mul_grad/Sum:0
-[14.885 ms] train/gradients/cross_entropy/Log_grad/Inv:0
-[15.239 ms] train/gradients/cross_entropy/Log_grad/mul:0
-[15.378 ms] train/gradients/softmax/Softmax_grad/mul:0
---- Scroll: 0.00% ----------------------------------------------
-tfdbg>
-```
+![tfdbg run-end UI: infs and nans](tfdbg_screenshot_run_end_inf_nan.png)
 
 As the screen display indicates, the `has_inf_or_nan` filter is first passed
 during the fourth `run()` call: an [Adam optimizer](https://arxiv.org/abs/1412.6980)
@@ -236,7 +174,8 @@ in chronological order, with their timestamps displayed on the left. At the top
 of the list, you can see the first tensor in which the bad numerical values
 first surfaced: `cross_entropy/Log:0`.
 
-To view the value of the tensor, run
+To view the value of the tensor, click the underlined tensor name
+`cross_entropy/Log:0` or enter the equivalent command:
 
 ```none
 tfdbg> pt cross_entropy/Log:0
@@ -252,37 +191,19 @@ tfdbg> /inf
 
 Or, alternatively:
 
-``` none
+```none
 tfdbg> /(inf|nan)
 ```
 
-To go back to the list of "offending" tensors, use the up-arrow key to
-navigate to the following command, and hit Enter:
-
-```none
-tfdbg> lt -f has_inf_or_nan
-```
-
-To further debug, display more information about `cross_entropy/Log`:
+Why did these infinities appear? To further debug, display more information
+about the node `cross_entropy/Log` by clicking the underlined `node_info` menu
+item on the top or entering the equivalent command:
 
 ```none
 tfdbg> ni cross_entropy/Log
---- run-end: run #4: fetch: train/Adam; 2 feeds ---
-Node cross_entropy/Log
-
-  Op: Log
-  Device: /job:localhost/replica:0/task:0/cpu:0
-
-  1 input(s) + 0 control input(s):
-    1 input(s):
-      [Softmax] softmax/Softmax
-
-  3 recipient(s) + 0 control recipient(s):
-    3 recipient(s):
-      [Mul] cross_entropy/mul
-      [Shape] train/gradients/cross_entropy/mul_grad/Shape_1
-      [Mul] train/gradients/cross_entropy/mul_grad/mul
 ```
+
+![tfdbg run-end UI: infs and nans](tfdbg_screenshot_run_end_node_info.png)
 
 You can see that this node has the op type `Log`
 and that its input is the node `softmax/Softmax`. Run the following command to
@@ -294,14 +215,21 @@ tfdbg> pt softmax/Softmax:0
 
 Examine the values in the input tensor, and search to see if there are any zeros:
 
-``` none
+```none
 tfdbg> /0\.000
 ```
 
 Indeed, there are zeros. Now it is clear that the origin of the bad numerical
-values is the node `cross_entropy/Log` taking logs of zeros. You can go back to
-the source code in [`debug_mnist.py`](https://www.tensorflow.org/code/tensorflow/python/debug/examples/debug_mnist.py)
-and infer that the culprit line is:
+values is the node `cross_entropy/Log` taking logs of zeros. To find out the
+culprit line in the Python source code, use the `-t` flag of the `ni` command
+to show the traceback of the node's construction:
+
+```none
+tfdbg> ni -t cross_entropy/Log
+```
+
+From the traceback, you can see that the op is constructed at line 109 of
+[`debug_mnist.py`](https://www.tensorflow.org/code/tensorflow/python/debug/examples/debug_mnist.py):
 
 ```python
 diff = y_ * tf.log(y)
@@ -327,9 +255,6 @@ stuck. Success!
 
 ## Other Features of the tfdbg Diagnostics CLI:
 
-*   Some commands provide clickable links and menu items in their output. These
-    are underlined. They can help you navigate to the desired information more
-    quickly.
 *   Navigation through command history using the Up and Down arrow keys.
     Prefix-based navigation is also supported.
 *   Tab completion of commands and some command arguments.
