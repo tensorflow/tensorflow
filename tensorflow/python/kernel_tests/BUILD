@@ -1929,7 +1929,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "fft_ops_test",
-    size = "medium",
+    size = "large",
     srcs = ["fft_ops_test.py"],
     additional_deps = [
         "//tensorflow/python:client_testlib",
