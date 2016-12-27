@@ -116,6 +116,7 @@ Try the following commands at the `tfdbg>` prompt (referencing the code at
 | `/inf` | Search the screen output with the regex `inf` and highlight any matches. |
 | `/` | Scroll to the next line with matches to the searched regex (if any). |
 | `ni -a hidden/Relu` | Display information about the node `hidden/Relu`, including node attributes. |
+| `ni -t hidden/Relu` | Display the stack trace of node `hidden/Relu`'s construction. |
 | `li -r hidden/Relu:0` | List the inputs to the node `hidden/Relu`, recursively—i.e., the input tree. |
 | `lo -r hidden/Relu:0` | List the recipients of the output of the node `hidden/Relu`, recursively—i.e., the output recipient tree. |
 | `lt -n softmax.*` | List all dumped tensors whose names match the regular-expression pattern `softmax.*`. |
@@ -190,7 +191,7 @@ tfdbg> /inf
 
 Or, alternatively:
 
-``` none
+```none
 tfdbg> /(inf|nan)
 ```
 
@@ -199,7 +200,7 @@ about the node `cross_entropy/Log` by clicking the underlined `node_info` menu
 item on the top or entering the equivalent command:
 
 ```none
-ni cross_entropy/Log
+tfdbg> ni cross_entropy/Log
 ```
 
 ![tfdbg run-end UI: infs and nans](tfdbg_screenshot_run_end_node_info.png)
@@ -214,14 +215,21 @@ tfdbg> pt softmax/Softmax:0
 
 Examine the values in the input tensor, and search to see if there are any zeros:
 
-``` none
+```none
 tfdbg> /0\.000
 ```
 
 Indeed, there are zeros. Now it is clear that the origin of the bad numerical
-values is the node `cross_entropy/Log` taking logs of zeros. You can go back to
-the source code in [`debug_mnist.py`](https://www.tensorflow.org/code/tensorflow/python/debug/examples/debug_mnist.py)
-and infer that the culprit line is:
+values is the node `cross_entropy/Log` taking logs of zeros. To find out the
+culprit line in the Python source code, use the `-t` flag of the `ni` command
+to show the traceback of the node's construction:
+
+```none
+tfdbg> ni -t cross_entropy/Log
+```
+
+From the traceback, you can see that the op is constructed at line 109 of
+[`debug_mnist.py`](https://www.tensorflow.org/code/tensorflow/python/debug/examples/debug_mnist.py):
 
 ```python
 diff = y_ * tf.log(y)

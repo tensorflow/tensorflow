@@ -932,6 +932,54 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       self.assertTrue(np.isnan(numeric_summary[10]))
       self.assertTrue(np.isnan(numeric_summary[11]))
 
+  def testLookUpNodePythonTracebackWorks(self):
+    with session.Session() as sess:
+      u_init = constant_op.constant(10.0)
+      u = variables.Variable(u_init, name="traceback/u")
+      v_init = constant_op.constant(20.0)
+      v = variables.Variable(v_init, name="traceback/v")
+
+      w = math_ops.multiply(u, v, name="traceback/w")
+
+      sess.run(variables.global_variables_initializer())
+
+      run_metadata = config_pb2.RunMetadata()
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          run_options, sess.graph, debug_urls=self._debug_urls())
+
+      sess.run(w, options=run_options, run_metadata=run_metadata)
+      dump = debug_data.DebugDumpDir(
+          self._dump_root, partition_graphs=run_metadata.partition_graphs)
+
+      # Prior to setting the Python graph, attempts to do traceback lookup
+      # should lead to exceptions.
+      with self.assertRaisesRegexp(
+          LookupError, "Python graph is not available for traceback lookup"):
+        dump.node_traceback("traceback/w")
+
+      dump.set_python_graph(sess.graph)
+
+      # After setting the Python graph, attempts to look up nonexistent nodes
+      # should lead to exceptions.
+      with self.assertRaisesRegexp(
+          KeyError, r"Cannot find node \"foo\" in Python graph"):
+        dump.node_traceback("foo")
+
+      # Lookup should work with node name input.
+      traceback = dump.node_traceback("traceback/w")
+      self.assertIsInstance(traceback, list)
+      self.assertGreater(len(traceback), 0)
+      for trace in traceback:
+        self.assertIsInstance(trace, tuple)
+
+      # Lookup should also work with tensor name input.
+      traceback = dump.node_traceback("traceback/w:0")
+      self.assertIsInstance(traceback, list)
+      self.assertGreater(len(traceback), 0)
+      for trace in traceback:
+        self.assertIsInstance(trace, tuple)
+
 
 if __name__ == "__main__":
   googletest.main()
