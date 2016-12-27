@@ -138,9 +138,9 @@ class SimpleMetaGraphTest(test.TestCase):
     b = graph.library.function.add()
     a.signature.name = "A"
     b.signature.name = "B"
-    a.node.add().op = "B"
-    b.node.add().op = "Const"
-    b.node.add().op = "A"
+    a.node_def.add().op = "B"
+    b.node_def.add().op = "Const"
+    b.node_def.add().op = "A"
 
     # Use A in the graph
     graph.node.add().op = "A"
