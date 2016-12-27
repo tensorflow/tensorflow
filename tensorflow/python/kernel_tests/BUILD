@@ -365,7 +365,6 @@ tf_py_test(
     size = "small",
     srcs = ["losses_test.py"],
     additional_deps = [
-        "//tensorflow/contrib/losses:losses_py",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

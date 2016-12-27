@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.losses.python.losses import loss_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -1099,7 +1098,7 @@ class ComputeWeightedLossTest(test.TestCase):
 
   def testUnweighted(self):
     with ops.Graph().as_default():
-      self.assertEqual(0, len(loss_ops.get_losses()))
+      self.assertEqual(0, len(util.get_losses()))
       raw_losses = self._raw_losses
       shape = self._shape
       unweighted_losses = (losses.compute_weighted_loss(raw_losses),
@@ -1111,18 +1110,18 @@ class ComputeWeightedLossTest(test.TestCase):
                                raw_losses, weights=np.ones(shape=shape[0:2])),
                            losses.compute_weighted_loss(
                                raw_losses, weights=np.ones(shape=shape)))
-      self.assertEqual(5, len(loss_ops.get_losses()))
+      self.assertEqual(5, len(util.get_losses()))
       with self.test_session():
         for unweighted_loss in unweighted_losses:
           self.assertAllClose(self._unweighted_loss, unweighted_loss.eval())
 
   def testScalarWeight(self):
     with ops.Graph().as_default():
-      self.assertEqual(0, len(loss_ops.get_losses()))
+      self.assertEqual(0, len(util.get_losses()))
       weight = 17.0
       weighted_loss = losses.compute_weighted_loss(
           self._raw_losses, weights=weight)
-      self.assertEqual(1, len(loss_ops.get_losses()))
+      self.assertEqual(1, len(util.get_losses()))
       with self.test_session():
         self.assertAllClose(
             np.mean(weight * self._raw_losses), weighted_loss.eval())
@@ -1131,12 +1130,12 @@ class ComputeWeightedLossTest(test.TestCase):
   # `loss17` should be the same as `testScalarWeight`.
   def testScalar1DWeight(self):
     with ops.Graph().as_default():
-      self.assertEqual(0, len(loss_ops.get_losses()))
+      self.assertEqual(0, len(util.get_losses()))
       loss1 = losses.compute_weighted_loss(self._raw_losses, weights=(1.0,))
-      self.assertEqual(1, len(loss_ops.get_losses()))
+      self.assertEqual(1, len(util.get_losses()))
       weight = 17.0
       loss17 = losses.compute_weighted_loss(self._raw_losses, weights=(weight,))
-      self.assertEqual(2, len(loss_ops.get_losses()))
+      self.assertEqual(2, len(util.get_losses()))
       with self.test_session():
         self.assertAllClose(self._unweighted_loss * self._shape[0],
                             loss1.eval())
@@ -1156,11 +1155,11 @@ class ComputeWeightedLossTest(test.TestCase):
 
   def test3Weight(self):
     with ops.Graph().as_default():
-      self.assertEqual(0, len(loss_ops.get_losses()))
+      self.assertEqual(0, len(util.get_losses()))
       weights3 = (17.0, 5.0, 2.0)
       weighted_loss = losses.compute_weighted_loss(
           self._raw_losses, weights=weights3)
-      self.assertEqual(1, len(loss_ops.get_losses()))
+      self.assertEqual(1, len(util.get_losses()))
       with self.test_session():
         weights3x1x1 = np.reshape(weights3, (3, 1, 1))
         self.assertAllClose(
@@ -1168,14 +1167,14 @@ class ComputeWeightedLossTest(test.TestCase):
 
   def test3x1Weight(self):
     with ops.Graph().as_default():
-      self.assertEqual(0, len(loss_ops.get_losses()))
+      self.assertEqual(0, len(util.get_losses()))
       weights3x1 = (
           (17.0,),
           (5.0,),
           (2.0,),)
       weighted_loss = losses.compute_weighted_loss(
           self._raw_losses, weights=weights3x1)
-      self.assertEqual(1, len(loss_ops.get_losses()))
+      self.assertEqual(1, len(util.get_losses()))
       with self.test_session():
         weights3x1x1 = np.reshape(weights3x1, (3, 1, 1))
         self.assertAllClose(
@@ -1184,14 +1183,14 @@ class ComputeWeightedLossTest(test.TestCase):
   # TODO(ptucker): Bug: this should be the same as `test3x1Weight`.
   def test3x1x1Weight(self):
     with ops.Graph().as_default():
-      self.assertEqual(0, len(loss_ops.get_losses()))
+      self.assertEqual(0, len(util.get_losses()))
       weights3x1x1 = (
           ((17.0,),),
           ((5.0,),),
           ((2.0,),),)
       weighted_loss = losses.compute_weighted_loss(
           self._raw_losses, weights=weights3x1x1)
-      self.assertEqual(1, len(loss_ops.get_losses()))
+      self.assertEqual(1, len(util.get_losses()))
       with self.test_session():
         self.assertAllClose(
             np.mean(weights3x1x1 * self._raw_losses) * self._shape[1],
@@ -1199,14 +1198,14 @@ class ComputeWeightedLossTest(test.TestCase):
 
   def test3x2Weight(self):
     with ops.Graph().as_default():
-      self.assertEqual(0, len(loss_ops.get_losses()))
+      self.assertEqual(0, len(util.get_losses()))
       weights3x2 = (
           (17.0, 3.0),
           (5.0, 31.0),
           (2.0, 7.0),)
       weighted_loss = losses.compute_weighted_loss(
           self._raw_losses, weights=weights3x2)
-      self.assertEqual(1, len(loss_ops.get_losses()))
+      self.assertEqual(1, len(util.get_losses()))
       with self.test_session():
         weights3x2x1 = np.reshape(weights3x2, (3, 2, 1))
         self.assertAllClose(
@@ -1216,13 +1215,13 @@ class ComputeWeightedLossTest(test.TestCase):
   # summed across dim 0.
   def test1x2Weight(self):
     with ops.Graph().as_default():
-      self.assertEqual(0, len(loss_ops.get_losses()))
+      self.assertEqual(0, len(util.get_losses()))
       weights1x2 = ((
           17.0,
           3.0,),)
       weighted_loss = losses.compute_weighted_loss(
           self._raw_losses, weights=weights1x2)
-      self.assertEqual(1, len(loss_ops.get_losses()))
+      self.assertEqual(1, len(util.get_losses()))
       with self.test_session():
         weights1x2x1 = np.reshape(weights1x2, (1, 2, 1))
         self.assertAllClose(
@@ -1233,13 +1232,13 @@ class ComputeWeightedLossTest(test.TestCase):
   # summed across dim 0.
   def test1x2x1Weight(self):
     with ops.Graph().as_default():
-      self.assertEqual(0, len(loss_ops.get_losses()))
+      self.assertEqual(0, len(util.get_losses()))
       weights1x2x1 = ((
           (17.0,),
           (3.0,),),)
       weighted_loss = losses.compute_weighted_loss(
           self._raw_losses, weights=weights1x2x1)
-      self.assertEqual(1, len(loss_ops.get_losses()))
+      self.assertEqual(1, len(util.get_losses()))
       with self.test_session():
         self.assertAllClose(
             np.mean(weights1x2x1 * self._raw_losses) * self._shape[0],
@@ -1249,11 +1248,11 @@ class ComputeWeightedLossTest(test.TestCase):
   # summed across dims 0 & 1.
   def test1x1x4Weight(self):
     with ops.Graph().as_default():
-      self.assertEqual(0, len(loss_ops.get_losses()))
+      self.assertEqual(0, len(util.get_losses()))
       weights1x1x4 = (((17.0, 13.0, 2.0, 5.0),),)
       weighted_loss = losses.compute_weighted_loss(
           self._raw_losses, weights=weights1x1x4)
-      self.assertEqual(1, len(loss_ops.get_losses()))
+      self.assertEqual(1, len(util.get_losses()))
       shape = self._shape
       with self.test_session():
         self.assertAllClose(
@@ -1262,15 +1261,15 @@ class ComputeWeightedLossTest(test.TestCase):
 
   def test3x2x1Weight(self):
     with ops.Graph().as_default():
-      self.assertEqual(0, len(loss_ops.get_losses()))
+      self.assertEqual(0, len(util.get_losses()))
       weights3x2x1 = (
           ((17.0,), (3.0,)),
           ((5.0,), (31.0,)),
           ((2.0,), (7.0,)),
       )
-      weighted_loss = loss_ops.compute_weighted_loss(
+      weighted_loss = losses.compute_weighted_loss(
           self._raw_losses, weights=weights3x2x1)
-      self.assertEqual(1, len(loss_ops.get_losses()))
+      self.assertEqual(1, len(util.get_losses()))
       with self.test_session():
         self.assertAllClose(
             np.mean(weights3x2x1 * self._raw_losses),
@@ -1280,15 +1279,15 @@ class ComputeWeightedLossTest(test.TestCase):
   # summed across dim 1.
   def test3x1x4Weight(self):
     with ops.Graph().as_default():
-      self.assertEqual(0, len(loss_ops.get_losses()))
+      self.assertEqual(0, len(util.get_losses()))
       weights3x1x4 = (
           ((17.0, 13.0, 2.0, 5.0),),
           ((5.0, 31.0, 17.0, 5.0),),
           ((7.0, 3.0, 11.0, 5.0),),
       )
-      weighted_loss = loss_ops.compute_weighted_loss(
+      weighted_loss = losses.compute_weighted_loss(
           self._raw_losses, weights=weights3x1x4)
-      self.assertEqual(1, len(loss_ops.get_losses()))
+      self.assertEqual(1, len(util.get_losses()))
       with self.test_session():
         self.assertAllClose(
             np.mean(weights3x1x4 * self._raw_losses) * self._shape[1],
@@ -1298,13 +1297,13 @@ class ComputeWeightedLossTest(test.TestCase):
   # summed across dim 0.
   def test1x2x4Weight(self):
     with ops.Graph().as_default():
-      self.assertEqual(0, len(loss_ops.get_losses()))
+      self.assertEqual(0, len(util.get_losses()))
       weights1x2x4 = ((
           (17.0, 13.0, 2.0, 5.0),
           (3.0, 13.0, 11.0, 2.0),),)
       weighted_loss = losses.compute_weighted_loss(
           self._raw_losses, weights=weights1x2x4)
-      self.assertEqual(1, len(loss_ops.get_losses()))
+      self.assertEqual(1, len(util.get_losses()))
       with self.test_session():
         self.assertAllClose(
             np.mean(weights1x2x4 * self._raw_losses) * self._shape[0],
@@ -1312,7 +1311,7 @@ class ComputeWeightedLossTest(test.TestCase):
 
   def test3x2x4Weight(self):
     with ops.Graph().as_default():
-      self.assertEqual(0, len(loss_ops.get_losses()))
+      self.assertEqual(0, len(util.get_losses()))
       weights3x2x4 = (
           (
               (17.0, 13.0, 2.0, 5.0),
@@ -1325,7 +1324,7 @@ class ComputeWeightedLossTest(test.TestCase):
               (13.0, 11.0, 1.0, 7.0),),)
       weighted_loss = losses.compute_weighted_loss(
           self._raw_losses, weights=weights3x2x4)
-      self.assertEqual(1, len(loss_ops.get_losses()))
+      self.assertEqual(1, len(util.get_losses()))
       with self.test_session():
         self.assertAllClose(
             np.mean(weights3x2x4 * self._raw_losses), weighted_loss.eval())
