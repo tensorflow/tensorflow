@@ -19,38 +19,41 @@ from __future__ import print_function
 
 from tensorflow.contrib.util import loader
 from tensorflow.python.platform import resource_loader
-from tensorflow.python.framework import ops, common_shapes
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-
-_sparsemax_loss = loader.load_op_library(
-    resource_loader.get_path_to_datafile("_sparsemax_loss.so"))
-
-# The C++ op fully defines the op
-sparsemax_loss = _sparsemax_loss.sparsemax_loss
-
-# Bind the python shape to C++ shape op
-ops.RegisterShape("SparsemaxLoss")(common_shapes.call_cpp_shape_fn)
+from tensorflow.python.ops import math_ops
 
 
-@ops.RegisterGradient("SparsemaxLoss")
-def _sparsemax_loss_grad(op, grad):
-    """The gradients for the SparsemaxLoss op.
+def sparsemax_loss(logits, sparsemax, labels, name=None):
+  """Computes sparsemax loss function [1].
 
-    Args:
-    op: The `SparsemaxLoss` operation that we are differentiating, which we
-      can use to find the inputs and outputs of the original op.
-    grad: Gradient with respect to the output of the `SparsemaxLoss` op.
+  [1]: https://arxiv.org/abs/1602.02068
 
-    Returns:
-    Gradients with respect to the input of `SparsemaxLoss`.
-    """
-    # Get parameters in correct shape
-    sparsemax = op.inputs[1]
-    labels = op.inputs[2]
-    grad = array_ops.expand_dims(grad, 1)
+  Args:
+    logits: A `Tensor`. Must be one of the following types: `half`, `float32`,
+      `float64`.
+    sparsemax: A `Tensor`. Must have the same type as `logits`.
+    labels: A `Tensor`. Must have the same type as `logits`.
+    name: A name for the operation (optional).
 
-    return [
-        grad * (-labels + sparsemax),
-        None,
-        None
-    ]
+  Returns:
+    A `Tensor`. Has the same type as `logits`.
+  """
+
+  with ops.name_scope(name, "sparsemax_loss",
+                      [logits, sparsemax, labels]) as name:
+    logits = ops.convert_to_tensor(logits, name="logits")
+    sparsemax = ops.convert_to_tensor(sparsemax, name="sparsemax")
+    labels = ops.convert_to_tensor(labels, name="labels")
+
+    shifted_logits = logits - \
+        math_ops.reduce_mean(logits, axis=1)[:, array_ops.newaxis]
+
+    # sum over support
+    support = math_ops.cast(sparsemax > 0, sparsemax.dtype)
+    sum_s = support * sparsemax * (shifted_logits - 0.5 * sparsemax)
+
+    # - z_k + ||q||^2
+    q_part = labels * (0.5 * labels - shifted_logits)
+
+    return math_ops.reduce_sum(sum_s + q_part, axis=1)

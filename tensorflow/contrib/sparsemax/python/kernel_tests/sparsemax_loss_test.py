@@ -200,28 +200,19 @@ class SparsemaxLossTest(test.TestCase):
     random = np.random.RandomState(1)
 
     self._test_sparsemax_loss_against_numpy(dtype, random, use_gpu=False)
-    self._test_sparsemax_loss_against_numpy(dtype, random, use_gpu=True)
 
     self._test_constant_add(dtype, random, use_gpu=False)
-    self._test_constant_add(dtype, random, use_gpu=True)
 
     self._test_sparsemax_loss_positive(dtype, random, use_gpu=False)
-    self._test_sparsemax_loss_positive(dtype, random, use_gpu=True)
 
     self._test_sparsemax_loss_zero(dtype, random, use_gpu=False)
-    self._test_sparsemax_loss_zero(dtype, random, use_gpu=True)
 
     # sparsemax is not a smooth function so gradient estimation is only
     # possibol for float64.
     if dtype == 'float64':
       self._test_gradient_against_estimate(dtype, random, use_gpu=False)
-      self._test_gradient_against_estimate(dtype, random, use_gpu=True)
 
     self._test_gradient_against_numpy(dtype, random, use_gpu=False)
-    self._test_gradient_against_numpy(dtype, random, use_gpu=True)
-
-  def testHalf(self):
-    self._test_dtype('float16')
 
   def testFloat(self):
     self._test_dtype('float32')
