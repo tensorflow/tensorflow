@@ -18,13 +18,12 @@ package org.tensorflow;
 /** Static utility functions. */
 public class TestUtil {
   public static Output constant(Graph g, String name, Object value) {
-    try (Tensor t = Tensor.create(value)) {
-      return g.opBuilder("Const", name)
-          .setAttr("dtype", t.dataType())
-          .setAttr("value", t)
-          .build()
-          .output(0);
-    }
+    Tensor t = Tensor.create(value);
+    return g.opBuilder("Const", name)
+        .setAttr("dtype", t.dataType())
+        .setAttr("value", t)
+        .build()
+        .output(0);
   }
 
   public static Output placeholder(Graph g, String name, DataType dtype) {

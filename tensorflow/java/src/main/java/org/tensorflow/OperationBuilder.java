@@ -158,8 +158,10 @@ public final class OperationBuilder {
 
   public OperationBuilder setAttr(String name, Tensor value) {
     try (Graph.Reference r = graph.ref()) {
+      // note: setAttrTensor copies the tensor and refs the buffer
       setAttrTensor(unsafeNativeHandle, name, value.getNativeHandle());
     }
+    value.unref();
     return this;
   }
 
@@ -170,7 +172,11 @@ public final class OperationBuilder {
       handles[idx++] = t.getNativeHandle();
     }
     try (Graph.Reference r = graph.ref()) {
+      // note: setAttrTensorList copies the tensor and refs the buffer
       setAttrTensorList(unsafeNativeHandle, name, handles);
+    }
+    for (Tensor t : value) {
+      t.unref();
     }
     return this;
   }

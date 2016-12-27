@@ -7,7 +7,7 @@ licenses(["notice"])  # Apache 2.0
 
 java_library(
     name = "tensorflow",
-    srcs = glob(["src/main/java/org/tensorflow/*.java"]),
+    srcs = glob(["src/main/java/org/tensorflow/**/*.java"]),
     data = [":libtensorflow-jni"],
     visibility = ["//visibility:public"],
 )
@@ -17,6 +17,18 @@ java_library(
     testonly = 1,
     srcs = ["src/test/java/org/tensorflow/TestUtil.java"],
     deps = [":tensorflow"],
+)
+
+java_test(
+    name = "AbstractRefCountedTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/util/AbstractRefCountedTest.java"],
+    test_class = "org.tensorflow.util.AbstractRefCountedTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "//external:junit",
+    ],
 )
 
 java_test(

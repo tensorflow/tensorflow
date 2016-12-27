@@ -18,22 +18,36 @@ package org.tensorflow;
 import java.lang.reflect.Array;
 import java.util.Arrays;
 
+import org.tensorflow.util.AbstractRefCounted;
+
 /**
  * A typed multi-dimensional array.
  *
  * <p>Instances of a Tensor are <b>not</b> thread-safe.
  *
  * <p><b>WARNING:</b> Resources consumed by the Tensor object <b>must</b> be explicitly freed by
- * invoking the {@link #close()} method when the object is no longer needed. For example, using a
- * try-with-resources block like:
+ * invoking the {@link #unref()} method when the object is no longer needed. The general rule-of-thumb is
+ * that the party that last accesses a reference-counted object releases it. For example:
  *
  * <pre>{@code
- * try(Tensor t = Tensor.create(...)) {
+ * void main() {
+ *   Tensor t = Tensor.create(...);
+ *   assert(t.refCount() == 1);
+ *
+ *   doSomethingWith(t.ref());
+ *   assert(t.refCount() == 1);
+ *
  *   doSomethingWith(t);
+ *   assert(t.refCount() == 0);
  * }
+ *
+ * void doSomethingWith(Tensor t) { t.unref(); }
  * }</pre>
+ *
+ * <p>Tensors fed to the session with @{link Session.Runner#feed(String,Tensor)} are automatically released.
+ * Meanwhile, tensors fetched as outputs must be released by you.
  */
-public final class Tensor implements AutoCloseable {
+public final class Tensor extends AbstractRefCounted {
   /**
    * Create a Tensor from a Java object.
    *
@@ -84,15 +98,22 @@ public final class Tensor implements AutoCloseable {
     return t;
   }
 
+  protected void finalize() throws Throwable {
+    try {
+      // deallocate the native tensor to avoid a leak
+      while(refCount() > 0) unref();
+    } finally {
+      super.finalize();
+    }
+  }
+
   /**
-   * Release resources associated with the Tensor.
+   * Deallocates the underlying Tensor.
    *
-   * <p><b>WARNING:</b>If not invoked, memory will be leaked.
-   *
-   * <p>The Tensor object is no longer usable after {@code close} returns.
+   * <p>The Tensor object is no longer usable after {@code deallocate} returns.
    */
   @Override
-  public void close() {
+  protected void deallocate() {
     if (nativeHandle != 0) {
       delete(nativeHandle);
       nativeHandle = 0;
