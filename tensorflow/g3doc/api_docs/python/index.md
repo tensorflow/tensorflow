@@ -1146,3 +1146,14 @@
   * [`copy_variable_to_graph`](../../api_docs/python/contrib.copy_graph.md#copy_variable_to_graph)
   * [`get_copied_op`](../../api_docs/python/contrib.copy_graph.md#get_copied_op)
 
+* **[TensorFlow Debugger](../../api_docs/python/tf_debug.md)**:
+  * [`add_debug_tensor_watch`](../../api_docs/python/tf_debug.md#add_debug_tensor_watch)
+  * [`DebugDumpDir`](../../api_docs/python/tf_debug.md#DebugDumpDir)
+  * [`DebugTensorDatum`](../../api_docs/python/tf_debug.md#DebugTensorDatum)
+  * [`has_inf_or_nan`](../../api_docs/python/tf_debug.md#has_inf_or_nan)
+  * [`load_tensor_from_event_file`](../../api_docs/python/tf_debug.md#load_tensor_from_event_file)
+  * [`LocalCLIDebugHook`](../../api_docs/python/tf_debug.md#LocalCLIDebugHook)
+  * [`LocalCLIDebugWrapperSession`](../../api_docs/python/tf_debug.md#LocalCLIDebugWrapperSession)
+  * [`watch_graph`](../../api_docs/python/tf_debug.md#watch_graph)
+  * [`watch_graph_with_blacklists`](../../api_docs/python/tf_debug.md#watch_graph_with_blacklists)
+
