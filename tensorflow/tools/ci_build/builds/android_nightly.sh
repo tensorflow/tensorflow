@@ -16,11 +16,23 @@
 
 set -e
 
+copy_lib() {
+  FILE=$1
+  TARGET_DIR=${OUT_DIR}/native/$(basename $FILE)/${CPU}
+  mkdir -p ${TARGET_DIR}
+  echo "Copying ${FILE} to ${TARGET_DIR}"
+  cp ${FILE} ${TARGET_DIR}
+}
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/builds_common.sh"
 configure_android_workspace
 
 CPUS=armeabi-v7a,arm64-v8a,x86,x86_64
+
+OUT_DIR="$(pwd)/out/"
+
+rm -rf ${OUT_DIR}
 
 # Build all relevant native libraries for each architecture.
 for CPU in ${CPUS//,/ }
@@ -32,6 +44,10 @@ do
         //tensorflow/core:android_tensorflow_lib \
         //tensorflow/contrib/android:libtensorflow_inference.so \
         //tensorflow/examples/android:libtensorflow_demo.so
+
+    copy_lib bazel-bin/tensorflow/core/libandroid_tensorflow_lib.lo
+    copy_lib bazel-bin/tensorflow/contrib/android/libtensorflow_inference.so
+    copy_lib bazel-bin/tensorflow/examples/android/libtensorflow_demo.so
 done
 
 # Build Jar and also demo containing native libs for all architectures.
@@ -39,3 +55,7 @@ echo "========== Building TensorFlow Android Jar and Demo =========="
 bazel build -c opt --fat_apk_cpu=${CPUS} \
     //tensorflow/contrib/android:android_tensorflow_inference_java \
     //tensorflow/examples/android:tensorflow_demo
+
+echo "Copying demo and Jar to ${OUT_DIR}"
+cp bazel-bin/tensorflow/examples/android/tensorflow_demo.apk \
+    bazel-bin/tensorflow/contrib/android/libandroid_tensorflow_inference_java.jar ${OUT_DIR}
