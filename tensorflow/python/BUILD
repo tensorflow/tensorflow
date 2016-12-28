@@ -89,6 +89,7 @@ py_library(
         ":pywrap_tensorflow",
         ":util",
         "//tensorflow/core:protos_all_py",
+        "@six_archive//:six",
     ],
 )
 
@@ -342,6 +343,7 @@ py_library(
         ":platform",
         ":pywrap_tensorflow",
         ":util",
+        "@six_archive//:six",
     ],
 )
 
@@ -360,6 +362,10 @@ py_library(
 py_library(
     name = "extra_py_tests_deps",
     srcs_version = "PY2AND3",
+    deps = [
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
 )
 
 py_library(
@@ -376,6 +382,7 @@ py_library(
         ":pywrap_tensorflow",
         ":session",
         ":util",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -939,6 +946,7 @@ py_library(
         ":framework_for_generated_wrappers",
         ":math_ops_gen",
         ":util",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1795,6 +1803,7 @@ py_library(
         ":user_ops_gen",
         ":variable_scope",
         ":variables",
+        "@six_archive//:six",
     ],
 )
 
@@ -2070,6 +2079,7 @@ py_library(
         ":util",
         ":variable_scope",
         ":variables",
+        "@six_archive//:six",
     ],
 )
 
@@ -2089,6 +2099,7 @@ py_library(
         ":platform",
         ":session_ops",
         ":util",
+        "@six_archive//:six",
     ],
 )
 
@@ -2102,7 +2113,11 @@ py_library(
         ],
     ),
     srcs_version = "PY2AND3",
-    deps = ["@protobuf//:protobuf_python"],
+    deps = [
+        "//third_party/py/numpy",
+        "@protobuf//:protobuf_python",
+        "@six_archive//:six",
+    ],
 )
 
 py_test(
@@ -2179,6 +2194,7 @@ py_test(
         ":compare_test_proto_py",
         ":platform_test",
         ":util",
+        "@six_archive//:six",
     ],
 )
 
@@ -2331,11 +2347,11 @@ tf_py_wrap_cc(
         ":py_record_writer_lib",
         ":python_op_gen",
         ":tf_session_helper",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_session",
         "//tensorflow/c:c_api",
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/c:tf_status_helper",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_session",
         "//tensorflow/core:lib",
         "//tensorflow/core/debug",
         "//tensorflow/core/distributed_runtime:server_lib",
@@ -2371,6 +2387,7 @@ py_library(
         ":pywrap_tensorflow",
         ":session_ops",
         ":util",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -2471,6 +2488,7 @@ py_test(
         ":training",
         ":util",
         ":variables",
+        "@six_archive//:six",
     ],
 )
 

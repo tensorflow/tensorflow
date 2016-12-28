@@ -27,6 +27,7 @@ py_binary(
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform",
+        "@six_archive//:six",
     ],
 )
 
@@ -77,6 +78,7 @@ py_binary(
         ":strip_unused_lib",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:platform",
+        "@six_archive//:six",
     ],
 )
 
@@ -109,6 +111,7 @@ py_library(
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform",
+        "@six_archive//:six",
     ],
 )
 
@@ -120,6 +123,7 @@ py_binary(
         ":optimize_for_inference_lib",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:platform",
+        "@six_archive//:six",
     ],
 )
 

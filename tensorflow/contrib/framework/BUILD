@@ -89,7 +89,10 @@ py_test(
     size = "small",
     srcs = ["python/ops/arg_scope_test.py"],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow:tensorflow_py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+    ],
 )
 
 py_test(
@@ -98,7 +101,10 @@ py_test(
     srcs = ["python/framework/checkpoint_utils_test.py"],
     srcs_version = "PY2AND3",
     tags = ["manual"],  # http://b/30468735
-    deps = ["//tensorflow:tensorflow_py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+    ],
 )
 
 py_test(
@@ -106,7 +112,10 @@ py_test(
     size = "small",
     srcs = ["python/ops/ops_test.py"],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow:tensorflow_py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+    ],
 )
 
 py_test(
@@ -114,7 +123,10 @@ py_test(
     size = "small",
     srcs = ["python/ops/prettyprint_ops_test.py"],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow:tensorflow_py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+    ],
 )
 
 py_test(
@@ -125,6 +137,7 @@ py_test(
         ":framework_py",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:platform",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -132,7 +145,10 @@ py_test(
     name = "tensor_util_test",
     srcs = ["python/framework/tensor_util_test.py"],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow:tensorflow_py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+    ],
 )
 
 py_test(
@@ -141,7 +157,10 @@ py_test(
     srcs = ["python/ops/variables_test.py"],
     srcs_version = "PY2AND3",
     tags = ["manual"],
-    deps = ["//tensorflow:tensorflow_py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+    ],
 )
 
 filegroup(

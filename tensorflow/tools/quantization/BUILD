@@ -26,6 +26,7 @@ py_binary(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
+        "@six_archive//:six",
     ],
 )
 

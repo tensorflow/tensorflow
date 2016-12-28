@@ -26,6 +26,7 @@ py_library(
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/learn/python/learn/datasets",
+        "@six_archive//:six",
     ],
 )
 

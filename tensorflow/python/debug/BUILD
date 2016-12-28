@@ -35,6 +35,7 @@ py_library(
     deps = [
         "//tensorflow/python:framework",
         "//tensorflow/python:platform",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -56,6 +57,7 @@ py_library(
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:session_ops",
+        "@six_archive//:six",
     ],
 )
 
@@ -76,7 +78,10 @@ py_library(
     name = "debugger_cli_common",
     srcs = ["cli/debugger_cli_common.py"],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow/python:platform"],
+    deps = [
+        "//tensorflow/python:platform",
+        "@six_archive//:six",
+    ],
 )
 
 py_library(
@@ -103,6 +108,7 @@ py_library(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:variables",
+        "@six_archive//:six",
     ],
 )
 
@@ -117,6 +123,7 @@ py_library(
         ":debug_data",
         ":debugger_cli_common",
         ":tensor_format",
+        "@six_archive//:six",
     ],
 )
 
@@ -130,6 +137,8 @@ py_library(
         ":debugger_cli_common",
         ":stepper",
         ":tensor_format",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
@@ -141,6 +150,7 @@ py_library(
         ":command_parser",
         ":debugger_cli_common",
         ":tensor_format",
+        "@six_archive//:six",
     ],
 )
 
@@ -189,14 +199,21 @@ py_binary(
     name = "debug_fibonacci",
     srcs = ["examples/debug_fibonacci.py"],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow:tensorflow_py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
 )
 
 py_binary(
     name = "debug_errors",
     srcs = ["examples/debug_errors.py"],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow:tensorflow_py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+    ],
 )
 
 py_binary(
@@ -213,7 +230,11 @@ py_binary(
     name = "debug_tflearn_iris",
     srcs = ["examples/debug_tflearn_iris.py"],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow:tensorflow_py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
 )
 
 py_test(
@@ -248,6 +269,7 @@ py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:session",
         "//tensorflow/python:variables",
+        "@six_archive//:six",
     ],
 )
 
@@ -309,6 +331,7 @@ py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -332,6 +355,7 @@ py_library(
         "//tensorflow/python:session",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
+        "@six_archive//:six",
     ],
 )
 
@@ -393,6 +417,7 @@ py_test(
         ":tensor_format",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
+        "@six_archive//:six",
     ],
 )
 
@@ -425,6 +450,7 @@ cuda_py_test(
         ":debug_data",
         ":debug_utils",
         ":debugger_cli_common",
+        "@six_archive//:six",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
@@ -448,6 +474,8 @@ cuda_py_test(
     additional_deps = [
         ":stepper",
         ":stepper_cli",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:framework",

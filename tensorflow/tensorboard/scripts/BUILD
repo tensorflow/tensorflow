@@ -16,6 +16,7 @@ py_binary(
         "//tensorflow/python:platform",
         "//tensorflow/python:summary",
         "//tensorflow/tensorboard/backend:server",
+        "@six_archive//:six",
     ],
 )
 
@@ -26,6 +27,8 @@ py_binary(
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:platform",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 

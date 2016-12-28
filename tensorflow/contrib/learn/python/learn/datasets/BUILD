@@ -26,6 +26,7 @@ py_library(
     deps = [
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
+        "//third_party/py/numpy",
     ],
 )
 

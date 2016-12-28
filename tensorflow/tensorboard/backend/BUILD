@@ -18,6 +18,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/tensorboard:plugins",
         "//tensorflow/tensorboard/lib/python:http",
+        "@six_archive//:six",
     ],
 )
 
@@ -48,6 +49,7 @@ py_library(
         ":handler",
         "//tensorflow/python:platform",
         "//tensorflow/python:summary",
+        "@six_archive//:six",
     ],
 )
 

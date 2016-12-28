@@ -64,6 +64,7 @@ py_library(
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:signature_def_utils",
         "//tensorflow/python/saved_model:tag_constants",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -732,6 +733,7 @@ py_test(
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_test_lib",
+        "//third_party/py/numpy",
     ],
 )
 
