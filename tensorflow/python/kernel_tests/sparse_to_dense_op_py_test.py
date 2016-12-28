@@ -12,25 +12,34 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tensorflow.kernels.sparse_op."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import sparse_ops
+from tensorflow.python.platform import test
 
 
-def _SparseToDense(sparse_indices, output_size, sparse_values,
-                   default_value, validate_indices=True):
-  return tf.sparse_to_dense(sparse_indices, output_size,
-                            sparse_values,
-                            default_value=default_value,
-                            validate_indices=validate_indices)
+def _SparseToDense(sparse_indices,
+                   output_size,
+                   sparse_values,
+                   default_value,
+                   validate_indices=True):
+  return sparse_ops.sparse_to_dense(
+      sparse_indices,
+      output_size,
+      sparse_values,
+      default_value=default_value,
+      validate_indices=validate_indices)
 
 
-class SparseToDenseTest(tf.test.TestCase):
+class SparseToDenseTest(test.TestCase):
 
   def testInt(self):
     with self.test_session(use_gpu=False):
@@ -73,7 +82,7 @@ class SparseToDenseTest(tf.test.TestCase):
 
   def testZeroDefault(self):
     with self.test_session():
-      x = tf.sparse_to_dense(2, [4], 7).eval()
+      x = sparse_ops.sparse_to_dense(2, [4], 7).eval()
       self.assertAllEqual(x, [0, 0, 7, 0])
 
   def test3d(self):
@@ -113,64 +122,78 @@ class SparseToDenseTest(tf.test.TestCase):
   def testOutOfBoundsIndicesWithWithoutValidation(self):
     with self.test_session():
       dense = _SparseToDense(
-          sparse_indices=[[1], [10]], output_size=[5],
-          sparse_values=[-1.0, 1.0], default_value=0.0)
+          sparse_indices=[[1], [10]],
+          output_size=[5],
+          sparse_values=[-1.0, 1.0],
+          default_value=0.0)
       with self.assertRaisesOpError(
           r"indices\[1\] = \[10\] is out of bounds: need 0 <= index < \[5\]"):
         dense.eval()
       # Disable checks, the allocation should still fail.
       with self.assertRaisesOpError("out of bounds"):
         dense_without_validation = _SparseToDense(
-            sparse_indices=[[1], [10]], output_size=[5],
-            sparse_values=[-1.0, 1.0], default_value=0.0,
+            sparse_indices=[[1], [10]],
+            output_size=[5],
+            sparse_values=[-1.0, 1.0],
+            default_value=0.0,
             validate_indices=False)
         dense_without_validation.eval()
 
   def testRepeatingIndicesWithWithoutValidation(self):
     with self.test_session():
       dense = _SparseToDense(
-          sparse_indices=[[1], [1]], output_size=[5],
-          sparse_values=[-1.0, 1.0], default_value=0.0)
+          sparse_indices=[[1], [1]],
+          output_size=[5],
+          sparse_values=[-1.0, 1.0],
+          default_value=0.0)
       with self.assertRaisesOpError(r"indices\[1\] = \[1\] is repeated"):
         dense.eval()
       # Disable checks
       dense_without_validation = _SparseToDense(
-          sparse_indices=[[1], [1]], output_size=[5],
-          sparse_values=[-1.0, 1.0], default_value=0.0, validate_indices=False)
+          sparse_indices=[[1], [1]],
+          output_size=[5],
+          sparse_values=[-1.0, 1.0],
+          default_value=0.0,
+          validate_indices=False)
       dense_without_validation.eval()
 
   def testUnsortedIndicesWithWithoutValidation(self):
     with self.test_session():
       dense = _SparseToDense(
-          sparse_indices=[[2], [1]], output_size=[5],
-          sparse_values=[-1.0, 1.0], default_value=0.0)
+          sparse_indices=[[2], [1]],
+          output_size=[5],
+          sparse_values=[-1.0, 1.0],
+          default_value=0.0)
       with self.assertRaisesOpError(r"indices\[1\] = \[1\] is out of order"):
         dense.eval()
       # Disable checks
       dense_without_validation = _SparseToDense(
-          sparse_indices=[[2], [1]], output_size=[5],
-          sparse_values=[-1.0, 1.0], default_value=0.0, validate_indices=False)
+          sparse_indices=[[2], [1]],
+          output_size=[5],
+          sparse_values=[-1.0, 1.0],
+          default_value=0.0,
+          validate_indices=False)
       dense_without_validation.eval()
 
   def testShapeInferenceKnownShape(self):
     with self.test_session(use_gpu=False):
-      indices = tf.placeholder(tf.int64)
+      indices = array_ops.placeholder(dtypes.int64)
 
       shape = [4, 5, 6]
-      output = tf.sparse_to_dense(indices, shape, 1, 0)
+      output = sparse_ops.sparse_to_dense(indices, shape, 1, 0)
       self.assertEqual(output.get_shape(), [4, 5, 6])
 
-      shape = tf.placeholder(tf.int64, shape=(3,))
-      output = tf.sparse_to_dense(indices, shape, 1, 0)
+      shape = array_ops.placeholder(dtypes.int64, shape=(3,))
+      output = sparse_ops.sparse_to_dense(indices, shape, 1, 0)
       self.assertEqual(output.get_shape().as_list(), [None, None, None])
 
   def testShapeInferenceUnknownShape(self):
     with self.test_session(use_gpu=False):
-      indices = tf.placeholder(tf.int64)
-      shape = tf.placeholder(tf.int64)
-      output = tf.sparse_to_dense(indices, shape, 1, 0)
+      indices = array_ops.placeholder(dtypes.int64)
+      shape = array_ops.placeholder(dtypes.int64)
+      output = sparse_ops.sparse_to_dense(indices, shape, 1, 0)
       self.assertEqual(output.get_shape().ndims, None)
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

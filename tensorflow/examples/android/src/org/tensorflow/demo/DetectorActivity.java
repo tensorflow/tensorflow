@@ -33,7 +33,6 @@ import android.os.Trace;
 import android.util.Size;
 import android.util.TypedValue;
 import android.view.Display;
-import java.io.IOException;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Vector;
@@ -108,19 +107,25 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     tracker = new MultiBoxTracker(getResources().getDisplayMetrics());
 
     detector = new TensorFlowMultiBoxDetector();
+
     try {
-      detector.initializeTensorFlow(
-          getAssets(),
-          MODEL_FILE,
-          LOCATION_FILE,
-          NUM_LOCATIONS,
-          INPUT_SIZE,
-          IMAGE_MEAN,
-          IMAGE_STD,
-          INPUT_NAME,
-          OUTPUT_NAMES);
-    } catch (final IOException e) {
-      LOGGER.e(e, "Exception!");
+      final int initStatus =
+          detector.initializeTensorFlow(
+              getAssets(),
+              MODEL_FILE,
+              LOCATION_FILE,
+              NUM_LOCATIONS,
+              INPUT_SIZE,
+              IMAGE_MEAN,
+              IMAGE_STD,
+              INPUT_NAME,
+              OUTPUT_NAMES);
+      if (initStatus != 0) {
+        LOGGER.e("TF init status != 0: %d", initStatus);
+        throw new RuntimeException();
+      }
+    } catch (final Exception e) {
+      throw new RuntimeException("Error initializing TensorFlow!", e);
     }
 
     previewWidth = size.getWidth();

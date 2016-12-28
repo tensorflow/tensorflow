@@ -235,11 +235,3 @@ class Shared(specs_lib.Composable):
     else:
       with tf.variable_scope(self.scope, values=[x], reuse=True):
         return self.subnet.funcall(x)
-
-# AutoFunction bindings of some existing modules
-
-TF = specs_lib.AutoFunction(tf)
-NN = specs_lib.AutoFunction(tf.nn)
-SL = specs_lib.AutoFunction(slim)
-
-# pylint: enable=invalid-name

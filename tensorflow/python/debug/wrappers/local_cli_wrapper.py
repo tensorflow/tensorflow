@@ -257,6 +257,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
 
       debug_dump = debug_data.DebugDumpDir(
           self._dump_root, partition_graphs=partition_graphs)
+      debug_dump.set_python_graph(self._sess.graph)
 
       passed_filter = None
       if self._active_tensor_filter:
@@ -316,39 +317,8 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
         self._init_command = "lt -f %s" % passed_filter
         self._title_color = "red_on_white"
 
-    analyzer = analyzer_cli.DebugAnalyzer(debug_dump)
-
-    # Supply all the available tensor filters.
-    for filter_name in self._tensor_filters:
-      analyzer.add_tensor_filter(filter_name,
-                                 self._tensor_filters[filter_name])
-
-    self._run_cli = curses_ui.CursesUI()
-    self._run_cli.register_command_handler(
-        "list_tensors",
-        analyzer.list_tensors,
-        analyzer.get_help("list_tensors"),
-        prefix_aliases=["lt"])
-    self._run_cli.register_command_handler(
-        "node_info",
-        analyzer.node_info,
-        analyzer.get_help("node_info"),
-        prefix_aliases=["ni"])
-    self._run_cli.register_command_handler(
-        "list_inputs",
-        analyzer.list_inputs,
-        analyzer.get_help("list_inputs"),
-        prefix_aliases=["li"])
-    self._run_cli.register_command_handler(
-        "list_outputs",
-        analyzer.list_outputs,
-        analyzer.get_help("list_outputs"),
-        prefix_aliases=["lo"])
-    self._run_cli.register_command_handler(
-        "print_tensor",
-        analyzer.print_tensor,
-        analyzer.get_help("print_tensor"),
-        prefix_aliases=["pt"])
+    self._run_cli = analyzer_cli.create_analyzer_curses_cli(
+        debug_dump, self._tensor_filters)
 
     # Get names of all dumped tensors.
     dumped_tensor_names = []
@@ -394,7 +364,15 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     return response
 
   def _run_info_handler(self, args, screen_info=None):
-    return self._run_info
+    output = self._run_info
+
+    # Add main menu.
+    menu = debugger_cli_common.Menu()
+    menu.append(debugger_cli_common.MenuItem("list_tensors", "lt"))
+    menu.append(debugger_cli_common.MenuItem("help", "help"))
+    output.annotations[debugger_cli_common.MAIN_MENU_KEY] = menu
+
+    return output
 
   def _run_handler(self, args, screen_info=None):
     """Command handler for "run" command during on-run-start."""

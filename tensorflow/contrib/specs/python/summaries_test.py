@@ -42,7 +42,7 @@ class SummariesTest(tf.test.TestCase):
       self.assertEqual(tuple(result.shape), (1, 18, 19, 64))
       self.assertEqual(summaries.tf_spec_structure(spec,
                                                    input_shape=inputs_shape),
-                       "_ var conv var biasadd relu")
+                       "_ variablev2 conv variablev2 biasadd relu")
 
   def testStructureFromTensor(self):
     with self.test_session():
@@ -53,7 +53,7 @@ class SummariesTest(tf.test.TestCase):
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (1, 18, 19, 64))
       self.assertEqual(summaries.tf_spec_structure(spec, inputs),
-                       "_ var conv var biasadd relu")
+                       "_ variablev2 conv variablev2 biasadd relu")
 
   def testPrint(self):
     with self.test_session():

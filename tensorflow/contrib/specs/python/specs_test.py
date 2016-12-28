@@ -40,7 +40,7 @@ class SpecsTest(tf.test.TestCase):
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (1, 18, 19, 64))
       self.assertEqual(summaries.tf_spec_structure(spec, inputs),
-                       "_ var conv var biasadd relu")
+                       "_ variablev2 conv variablev2 biasadd relu")
 
   def testUnary(self):
     # This is just a quick and dirty check that these ops exist
@@ -64,8 +64,8 @@ class SpecsTest(tf.test.TestCase):
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (17, 10))
       self.assertEqual(summaries.tf_spec_structure(spec, inputs),
-                       "_ var dot var biasadd sig "
-                       "<> var dot var biasadd relu add")
+                       "_ variablev2 dot variablev2 biasadd sig "
+                       "<> variablev2 dot variablev2 biasadd relu add")
 
   def testMpPower(self):
     with self.test_session():
@@ -89,8 +89,9 @@ class SpecsTest(tf.test.TestCase):
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (1, 8, 8, 5))
       self.assertEqual(summaries.tf_spec_structure(spec, inputs),
-                       "_ var conv var biasadd relu maxpool var conv var"
-                       " biasadd relu maxpool var conv var"
+                       "_ variablev2 conv variablev2 biasadd relu maxpool"
+                       " variablev2 conv variablev2"
+                       " biasadd relu maxpool variablev2 conv variablev2"
                        " biasadd relu maxpool")
 
   def testAbbrevPower2(self):
@@ -104,9 +105,10 @@ class SpecsTest(tf.test.TestCase):
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (1, 8, 8, 5))
       self.assertEqual(summaries.tf_spec_structure(spec, inputs),
-                       "_ var conv var biasadd relu maxpool var conv"
-                       " var biasadd relu"
-                       " maxpool var conv var biasadd relu maxpool")
+                       "_ variablev2 conv variablev2 biasadd relu maxpool"
+                       " variablev2 conv variablev2 biasadd relu"
+                       " maxpool variablev2 conv variablev2 biasadd relu"
+                       " maxpool")
 
   def testConc(self):
     with self.test_session():
@@ -118,8 +120,8 @@ class SpecsTest(tf.test.TestCase):
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (10, 30))
       self.assertEqual(summaries.tf_spec_structure(spec, inputs),
-                       "_ var dot var biasadd sig "
-                       "<> var dot var biasadd sig _ concatv2")
+                       "_ variablev2 dot variablev2 biasadd sig "
+                       "<> variablev2 dot variablev2 biasadd sig _ concatv2")
 
   def testImport(self):
     with self.test_session():
@@ -213,19 +215,6 @@ class SpecsTest(tf.test.TestCase):
       _ = g.funcall(inputs)
       self.assertEqual(len(tf.global_variables()), 2)
 
-  def testAutoFunction(self):
-    with self.test_session():
-      inputs = tf.constant(_rand(1, 18, 19, 5))
-      with specs.ops:
-        # pylint: disable=undefined-variable
-        net = SL.conv2d(64, 5)
-      outputs = net.funcall(inputs)
-      self.assertEqual(outputs.get_shape().as_list(), [1, 18, 19, 64])
-      tf.global_variables_initializer().run()
-      result = outputs.eval()
-      self.assertEqual(tuple(result.shape), (1, 18, 19, 64))
-      self.assertEqual(summaries.tf_spec_structure("net = Cr(64, 5)", inputs),
-                       "_ var conv var biasadd relu")
 
 if __name__ == "__main__":
   tf.test.main()

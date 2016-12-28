@@ -416,24 +416,49 @@ REGISTER_OP("SplitV")
     .Attr("T: type")
     .Attr("Tlen: {int32, int64} = DT_INT64")
     .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle unused;
+      DimensionHandle split_dimension;
+      TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(2, &split_dimension));
       int32 num_outputs = c->num_outputs();
-      // Return unknown shapes with the same rank as the input
-      // or unknown rank if input's rank isn't known
-      // can't determine exact shapes until runtime because
-      // we don't know where the tensor containing the split sizes
-      // is located
-      int32 rank = c->Rank(c->input(0));
+      ShapeHandle input = c->input(0);
+      int32 rank = c->Rank(input);
       ShapeHandle output_shape;
+      const Tensor* size_splits = c->input_tensor(1);
       if (rank == InferenceContext::kUnknownRank) {
+        // If the rank of input tensor is unknown, then return unkown shapes.
         output_shape = c->UnknownShape();
+        for (int i = 0; i < num_outputs; ++i) {
+          c->set_output(i, output_shape);
+        }
       } else if (rank == 0) {
+        // Throw error if input is a scalar.
         return errors::InvalidArgument("Can't split scalars");
-      } else {
+      } else if (size_splits == nullptr || !c->ValueKnown(split_dimension)) {
+        // If split dimension or tensor containing the split sizes is unkown,
+        // then return unknown shapes of same rank as input.
         output_shape = c->UnknownShapeOfRank(rank);
-      }
-      for (int i = 0; i < num_outputs; ++i) {
-        c->set_output(i, output_shape);
+        for (int i = 0; i < num_outputs; ++i) {
+          c->set_output(i, output_shape);
+        }
+      } else {
+        // Determine the output shape if split dimension and split sizes are known
+        int64 split_dim = c->Value(split_dimension);
+        TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, split_dim + 1, &input));
+        std::vector<int64> data;
+        if (size_splits->dtype() == DT_INT32) {
+          data = AsInt64<int32>(size_splits, size_splits->shape().dim_size(0));
+        } else {
+          data = AsInt64<int64>(size_splits, size_splits->shape().dim_size(0));
+        }
+        if (num_outputs != data.size()) {
+          return errors::InvalidArgument(
+            "Length of size_splits should be equal to num_outputs");
+        }
+        for (int i = 0; i < num_outputs; ++i) {
+          output_shape = c->UnknownShapeOfRank(rank);
+          TF_RETURN_IF_ERROR(
+              c->ReplaceDim(input, split_dim, c->MakeDim(data[i]), &output_shape));
+          c->set_output(i, output_shape);
+        }
       }
 
       return Status::OK();
@@ -935,6 +960,9 @@ REGISTER_OP("ReverseV2")
     })
     .Doc(R"Doc(
 Reverses specific dimensions of a tensor.
+
+NOTE `tf.reverse` has now changed behavior in preparation for 1.0.
+`tf.reverse_v2` is currently an alias that will be deprecated before TF 1.0.
 
 Given a `tensor`, and a `int32` tensor `axis` representing the set of
 dimensions of `tensor` to reverse. This operation reverses each dimension
@@ -2334,6 +2362,39 @@ where(input) ==> [[0, 0, 0],
                   [2, 1, 1]]
 ```
 
+)doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("BroadcastArgs")
+    .Input("s0: T")
+    .Input("s1: T")
+    .Output("r0: T")
+    .Attr("T: {int32, int64} = DT_INT32")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      ShapeHandle shape_x = c->input(0);
+      ShapeHandle shape_y = c->input(1);
+      TF_RETURN_IF_ERROR(c->WithRank(shape_x, 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(shape_y, 1, &unused));
+
+      if (!c->ValueKnown(c->Dim(shape_x, 0)) ||
+          !c->ValueKnown(c->Dim(shape_y, 0))) {
+        c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
+        return Status::OK();
+      }
+
+      int64 x_dim = c->Value(c->Dim(shape_x, 0));
+      int64 y_dim = c->Value(c->Dim(shape_y, 0));
+
+      // Broadcasted shape is going to be as large as the largest dimension.
+      c->set_output(0, c->Vector(std::max(x_dim, y_dim)));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Return the shape of s0 op s1 with broadcast.
+
+Given `s0` and `s1`, tensors that represent shapes, compute `r0`, the
+broadcasted shape. `s0`, `s1` and `r0` are all integer vectors.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -4241,6 +4302,43 @@ Counts number of NaNs in the input tensor, for debugging.
 
 input: Input tensor, non-Reference type.
 output: An integer output tensor that is the number of NaNs in the input.
+tensor_name: Name of the input tensor.
+debug_urls: List of URLs to debug targets, e.g.,
+            file:///foo/tfdbg_dump, grpc:://localhost:11011
+)doc");
+
+REGISTER_OP("DebugNumericSummary")
+    .Input("input: T")
+    .Output("output: double")
+    .Attr("T: type")
+    .Attr("tensor_name: string = ''")
+    .Attr("debug_urls: list(string) = []")
+    .SetAllowsUninitializedInput()
+    .Doc(R"doc(
+Debug Numeric Summary Op.
+
+Provide a basic summary of numeric value types, range and distribution.
+
+input: Input tensor, non-Reference type, float or double.
+output: A double tensor of shape [12], the elements of which are:
+  [0]: is initialized (1.0) or not (0.0).
+  [1]: total number of elements
+  [2]: -inf count
+  [3]: negative element count (excluding -inf)
+  [4]: zero element count
+  [5]: positive element count (excluding +inf)
+  [6]: +inf element count
+  [7]: NaN element count
+Output elements [1:8] are all zero, if the tensor is uninitialized.
+  [8]: minimum of all non-inf and non-NaN elements.
+       If uninitialized or no such element exists: +inf.
+  [9]: maximum of all non-inf and non-NaN elements.
+       If uninitialized or no such element exists: -inf.
+  [10]: mean of all non-inf and non-NaN elements.
+        If uninitialized or no such element exists: NaN.
+  [11]: variance of all non-inf and non-NaN elements.
+        If uninitialized or no such element exists: NaN.
+
 tensor_name: Name of the input tensor.
 debug_urls: List of URLs to debug targets, e.g.,
             file:///foo/tfdbg_dump, grpc:://localhost:11011

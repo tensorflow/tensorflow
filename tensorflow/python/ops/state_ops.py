@@ -138,24 +138,7 @@ from tensorflow.python.ops.gen_state_ops import *
 # pylint: disable=protected-access,g-doc-return-or-yield,g-doc-args
 def variable_op(shape, dtype, name="Variable", set_shape=True, container="",
                 shared_name=""):
-  """Create a variable Operation.
-
-  See also variables.Variable.
-
-  Args:
-    shape: The shape of the tensor managed by this variable
-    dtype: The underlying type of the tensor values.
-    name: optional name to use for the variable op.
-    container: An optional string. Defaults to "".
-      If non-empty, this variable is placed in the given container.
-      Otherwise, a default container is used.
-    shared_name: An optional string. Defaults to "".
-      If non-empty, this variable is named in the given bucket
-      with this shared_name. Otherwise, the node name is used instead.
-
-  Returns:
-    A variable tensor.
-  """
+  """Deprecated. Used variable_op_v2 instead."""
   if not set_shape:
     shape = tensor_shape.unknown_shape()
   ret = gen_state_ops._variable(shape=shape, dtype=dtype, name=name,
@@ -244,6 +227,6 @@ def is_variable_initialized(ref, name=None):
   if ref.dtype._is_ref_dtype:
     return gen_state_ops.is_variable_initialized(ref=ref, name=name)
   # Handle resource variables.
-  if ref.op.type == "ReadVariableOp":
-    return gen_resource_variable_ops.var_is_initialized_op(ref.op.inputs[0],
+  if ref.op.type == "VarHandleOp":
+    return gen_resource_variable_ops.var_is_initialized_op(ref.handle,
                                                            name=name)

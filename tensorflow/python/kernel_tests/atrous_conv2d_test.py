@@ -12,14 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for convolution related functionality in tensorflow.ops.nn."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import nn_impl
+from tensorflow.python.ops import nn_ops
+import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
+from tensorflow.python.platform import test
 
 
 def _upsample_filters(filters, rate):
@@ -42,13 +50,13 @@ def _upsample_filters(filters, rate):
   filters_up = np.transpose(filters, [2, 3, 0, 1])
   ker = np.zeros([rate, rate], dtype=np.float32)
   ker[0, 0] = 1
-  filters_up = np.kron(filters_up, ker)[:, :, :-(rate-1), :-(rate-1)]
+  filters_up = np.kron(filters_up, ker)[:, :, :-(rate - 1), :-(rate - 1)]
   # [in_depth, out_depth, h_up, w_up] -> [h_up, w_up, in_depth, out_depth]
   filters_up = np.transpose(filters_up, [2, 3, 0, 1])
   return filters_up
 
 
-class AtrousConv2DTest(tf.test.TestCase):
+class AtrousConv2DTest(test.TestCase):
 
   def testAtrousConv2DForward(self):
     with self.test_session(use_gpu=True):
@@ -68,9 +76,9 @@ class AtrousConv2DTest(tf.test.TestCase):
               f_up = _upsample_filters(f, rate)
 
               for padding in ["SAME", "VALID"]:
-                y1 = tf.nn.atrous_conv2d(x, f, rate, padding=padding)
-                y2 = tf.nn.conv2d(x, f_up, strides=[1, 1, 1, 1],
-                                  padding=padding)
+                y1 = nn_ops.atrous_conv2d(x, f, rate, padding=padding)
+                y2 = nn_ops.conv2d(
+                    x, f_up, strides=[1, 1, 1, 1], padding=padding)
                 self.assertAllClose(y1.eval(), y2.eval(), rtol=1e-3, atol=1e-3)
 
   def testAtrousSequence(self):
@@ -111,18 +119,18 @@ class AtrousConv2DTest(tf.test.TestCase):
 
             for rate in range(2, 4):
               # y1: three atrous_conv2d in a row.
-              y1 = tf.nn.atrous_conv2d(x, f, rate, padding=padding)
-              y1 = tf.nn.atrous_conv2d(y1, f, rate, padding=padding)
-              y1 = tf.nn.atrous_conv2d(y1, f, rate, padding=padding)
+              y1 = nn_ops.atrous_conv2d(x, f, rate, padding=padding)
+              y1 = nn_ops.atrous_conv2d(y1, f, rate, padding=padding)
+              y1 = nn_ops.atrous_conv2d(y1, f, rate, padding=padding)
               # y2: space_to_batch, three conv2d in a row, batch_to_space
               pad_bottom = 0 if height % rate == 0 else rate - height % rate
               pad_right = 0 if width % rate == 0 else rate - width % rate
               pad = [[0, pad_bottom], [0, pad_right]]
-              y2 = tf.space_to_batch(x, paddings=pad, block_size=rate)
-              y2 = tf.nn.conv2d(y2, f, strides=[1, 1, 1, 1], padding=padding)
-              y2 = tf.nn.conv2d(y2, f, strides=[1, 1, 1, 1], padding=padding)
-              y2 = tf.nn.conv2d(y2, f, strides=[1, 1, 1, 1], padding=padding)
-              y2 = tf.batch_to_space(y2, crops=pad, block_size=rate)
+              y2 = array_ops.space_to_batch(x, paddings=pad, block_size=rate)
+              y2 = nn_ops.conv2d(y2, f, strides=[1, 1, 1, 1], padding=padding)
+              y2 = nn_ops.conv2d(y2, f, strides=[1, 1, 1, 1], padding=padding)
+              y2 = nn_ops.conv2d(y2, f, strides=[1, 1, 1, 1], padding=padding)
+              y2 = array_ops.batch_to_space(y2, crops=pad, block_size=rate)
               self.assertAllClose(y1.eval(), y2.eval(), rtol=1e-2, atol=1e-2)
 
   def testGradient(self):
@@ -137,19 +145,20 @@ class AtrousConv2DTest(tf.test.TestCase):
       np.random.seed(1)  # Make it reproducible.
       x_val = np.random.random_sample(x_shape).astype(np.float32)
       f_val = np.random.random_sample(f_shape).astype(np.float32)
-      x = tf.constant(x_val, name="x", dtype=tf.float32)
-      f = tf.constant(f_val, name="f", dtype=tf.float32)
+      x = constant_op.constant(x_val, name="x", dtype=dtypes.float32)
+      f = constant_op.constant(f_val, name="f", dtype=dtypes.float32)
 
       for rate in range(1, 4):
-        output = tf.nn.atrous_conv2d(x, f, rate=rate, padding="SAME")
-        err = tf.test.compute_gradient_error(
-            [x, f], [x_shape, f_shape], output, y_shape)
+        output = nn_ops.atrous_conv2d(x, f, rate=rate, padding="SAME")
+        err = gradient_checker.compute_gradient_error([x, f],
+                                                      [x_shape, f_shape],
+                                                      output, y_shape)
         print("atrous_conv2d gradient err = %g " % err)
         err_tolerance = 1e-3
         self.assertLess(err, err_tolerance)
 
 
-class AtrousConv2DTransposeTest(tf.test.TestCase):
+class AtrousConv2DTransposeTest(test.TestCase):
 
   def testAtrousConv2DTransposeForward(self):
     with self.test_session(use_gpu=True):
@@ -167,26 +176,27 @@ class AtrousConv2DTransposeTest(tf.test.TestCase):
 
             for rate in range(1, 4):
               f_up = _upsample_filters(f, rate)
-              kernel_height_up = (kernel_height +
-                                  (kernel_height - 1) * (rate - 1))
+              kernel_height_up = (kernel_height + (kernel_height - 1) *
+                                  (rate - 1))
               kernel_width_up = kernel_width + (kernel_width - 1) * (rate - 1)
 
               for padding in ["SAME", "VALID"]:
                 if padding == "SAME":
                   y_shape = [2, height, width, 2]
                 else:
-                  y_shape = [2,
-                             height + kernel_height_up - 1,
-                             width + kernel_width_up - 1,
-                             2]
+                  y_shape = [
+                      2, height + kernel_height_up - 1,
+                      width + kernel_width_up - 1, 2
+                  ]
 
-                y1 = tf.nn.atrous_conv2d_transpose(x, f, y_shape, rate, padding)
-                y2 = tf.nn.conv2d_transpose(
+                y1 = nn_ops.atrous_conv2d_transpose(x, f, y_shape, rate,
+                                                    padding)
+                y2 = nn_ops.conv2d_transpose(
                     x, f_up, y_shape, strides=[1, 1, 1, 1], padding=padding)
                 self.assertAllClose(y1.eval(), y2.eval(), rtol=1e-3, atol=1e-3)
 
 
-class AtrousDepthwiseConv2DTest(tf.test.TestCase):
+class AtrousDepthwiseConv2DTest(test.TestCase):
 
   def testAtrousDepthwiseConv2DForward(self):
     strides = [1, 1, 1, 1]
@@ -207,11 +217,11 @@ class AtrousDepthwiseConv2DTest(tf.test.TestCase):
               f_up = _upsample_filters(f, rate)
 
               for padding in ["SAME", "VALID"]:
-                y1 = tf.nn.depthwise_conv2d(x, f, strides, padding,
-                                            rate=[rate, rate])
-                y2 = tf.nn.depthwise_conv2d(x, f_up, strides, padding)
+                y1 = nn_impl.depthwise_conv2d(
+                    x, f, strides, padding, rate=[rate, rate])
+                y2 = nn_impl.depthwise_conv2d(x, f_up, strides, padding)
                 self.assertAllClose(y1.eval(), y2.eval(), rtol=1e-3, atol=1e-3)
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

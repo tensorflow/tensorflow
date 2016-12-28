@@ -135,10 +135,10 @@ class ScipyOptimizerInterfaceTest(TestCase):
 
       d = tf.size(x)
       s = tf.add(100 * tf.square(
-          tf.sub(
+          tf.subtract(
               tf.strided_slice(x, [1], [d]),
               tf.square(tf.strided_slice(x, [0], [d - 1])))),
-                 tf.square(tf.sub(1.0, tf.strided_slice(x, [0], [d - 1]))))
+                 tf.square(tf.subtract(1.0, tf.strided_slice(x, [0], [d - 1]))))
       return tf.reduce_sum(s)
 
     dimension = 5

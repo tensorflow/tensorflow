@@ -96,10 +96,10 @@ def _generate_saved_model_for_half_plus_two(export_dir, as_text=False):
     tf_example = tf.parse_example(serialized_tf_example, feature_configs)
     # Use tf.identity() to assign name
     x = tf.identity(tf_example["x"], name="x")
-    y = tf.add(tf.mul(a, x), b, name="y")
+    y = tf.add(tf.multiply(a, x), b, name="y")
 
     x2 = tf.placeholder(tf.float32, name="x2")
-    tf.add(tf.mul(a, x2), c, name="y2")
+    tf.add(tf.multiply(a, x2), c, name="y2")
 
     # Create an assets file that can be saved and restored as part of the
     # SavedModel.

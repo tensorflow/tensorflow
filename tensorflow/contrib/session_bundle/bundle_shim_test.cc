@@ -31,11 +31,11 @@ namespace internal {
 namespace {
 
 constexpr char kSessionBundlePath[] =
-    "session_bundle/example/half_plus_two/00000123";
+    "session_bundle/testdata/half_plus_two/00000123";
 constexpr char kSessionBundleMetaGraphFilename[] = "export.meta";
 constexpr char kSessionBundleVariablesFilename[] = "export-00000-of-00001";
 constexpr char kSavedModelBundlePath[] =
-    "python/saved_model/example/saved_model_half_plus_two/00000123";
+    "cc/saved_model/testdata/half_plus_two/00000123";
 
 string MakeSerializedExample(float x) {
   tensorflow::Example example;
@@ -493,6 +493,18 @@ TEST(BundleShimTest, LoadSessionBundleError) {
                                                    session_bundle_export_dir,
                                                    {"tag"}, &saved_model_bundle)
                    .ok());
+}
+
+TEST(BundleShimTest, MaybeSessionBundleOrSavedModelDirectory) {
+  const string saved_model_export_dir =
+      io::JoinPath(testing::TensorFlowSrcRoot(), kSavedModelBundlePath);
+  const string session_bundle_export_dir =
+      test_util::TestSrcDirPath(kSessionBundlePath);
+  const string invalid_export_dir = testing::TensorFlowSrcRoot();
+  EXPECT_TRUE(MaybeSessionBundleOrSavedModelDirectory(saved_model_export_dir));
+  EXPECT_TRUE(
+      MaybeSessionBundleOrSavedModelDirectory(session_bundle_export_dir));
+  EXPECT_FALSE(MaybeSessionBundleOrSavedModelDirectory(invalid_export_dir));
 }
 
 }  // namespace

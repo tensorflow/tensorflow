@@ -144,6 +144,7 @@ def _fused_batch_norm(
     outputs_collections=None,
     trainable=True,
     data_format=DATA_FORMAT_NHWC,
+    zero_debias_moving_mean=False,
     scope=None):
   """Adds a Batch Normalization layer from http://arxiv.org/abs/1502.03167.
 
@@ -171,9 +172,9 @@ def _fused_batch_norm(
       `batch_size`. The normalization is over all but the last dimension if
       `data_format` is `NHWC` and the second dimension if `data_format` is
       `NCHW`.
-    decay: decay for the moving average. Reasonable values for `decay` are close 
-      to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc. Lower 
-      `decay` value (recommend trying `decay`=0.9) if model experiences reasonably 
+    decay: decay for the moving average. Reasonable values for `decay` are close
+      to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc. Lower
+      `decay` value (recommend trying `decay`=0.9) if model experiences reasonably
       good training performance but poor validation and/or test performance.
     center: If True, subtract `beta`. If False, `beta` is ignored.
     scale: If True, multiply by `gamma`. If False, `gamma` is
@@ -200,6 +201,7 @@ def _fused_batch_norm(
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     data_format: A string. `NHWC` (default) and `NCHW` are supported.
+    zero_debias_moving_mean: Use zero_debias for moving_mean.
     scope: Optional scope for `variable_scope`.
 
   Returns:
@@ -249,7 +251,7 @@ def _fused_batch_norm(
     if not param_initializers:
       param_initializers = {}
     beta_initializer = param_initializers.get('beta',
-                                              init_ops.zeros_initializer)
+                                              init_ops.zeros_initializer())
     beta = variables.model_variable(
         'beta',
         shape=params_shape,
@@ -274,8 +276,8 @@ def _fused_batch_norm(
     # appropiate collections.
     moving_mean_collections = utils.get_variable_collections(
         variables_collections, 'moving_mean')
-    moving_mean_initializer = param_initializers.get('moving_mean',
-                                                     init_ops.zeros_initializer)
+    moving_mean_initializer = param_initializers.get(
+        'moving_mean', init_ops.zeros_initializer())
     moving_mean = variables.model_variable(
         'moving_mean',
         shape=params_shape,
@@ -323,7 +325,7 @@ def _fused_batch_norm(
         def _force_updates():
           """Internal function forces updates moving_vars if is_training."""
           update_moving_mean = moving_averages.assign_moving_average(
-              moving_mean, mean, decay, zero_debias=False)
+              moving_mean, mean, decay, zero_debias=zero_debias_moving_mean)
           update_moving_variance = moving_averages.assign_moving_average(
               moving_variance, variance, decay, zero_debias=False)
           with ops.control_dependencies(
@@ -335,7 +337,7 @@ def _fused_batch_norm(
         def _delay_updates():
           """Internal function that delay updates moving_vars if is_training."""
           update_moving_mean = moving_averages.assign_moving_average(
-              moving_mean, mean, decay, zero_debias=False)
+              moving_mean, mean, decay, zero_debias=zero_debias_moving_mean)
           update_moving_variance = moving_averages.assign_moving_average(
               moving_variance, variance, decay, zero_debias=False)
           return update_moving_mean, update_moving_variance
@@ -372,6 +374,7 @@ def batch_norm(
     batch_weights=None,
     fused=False,
     data_format=DATA_FORMAT_NHWC,
+    zero_debias_moving_mean=False,
     scope=None):
   """Adds a Batch Normalization layer from http://arxiv.org/abs/1502.03167.
 
@@ -399,10 +402,11 @@ def batch_norm(
       `batch_size`. The normalization is over all but the last dimension if
       `data_format` is `NHWC` and the second dimension if `data_format` is
       `NCHW`.
-    decay: decay for the moving average. Reasonable values for `decay` are close 
-      to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc. Lower 
-      `decay` value (recommend trying `decay`=0.9) if model experiences reasonably 
-      good training performance but poor validation and/or test performance.
+    decay: decay for the moving average. Reasonable values for `decay` are close
+      to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc.
+      Lower `decay` value (recommend trying `decay`=0.9) if model experiences
+      reasonably good training performance but poor validation and/or test
+      performance. Try zero_debias_moving_mean=True for improved stability.
     center: If True, subtract `beta`. If False, `beta` is ignored.
     scale: If True, multiply by `gamma`. If False, `gamma` is
       not used. When the next layer is linear (also e.g. `nn.relu`), this can be
@@ -434,6 +438,8 @@ def batch_norm(
       example selection.)
     fused:  Use nn.fused_batch_norm if True, nn.batch_normalization otherwise.
     data_format: A string. `NHWC` (default) and `NCHW` are supported.
+    zero_debias_moving_mean: Use zero_debias for moving_mean. It creates a new
+      pair of variables 'moving_mean/biased' and 'moving_mean/local_step'.
     scope: Optional scope for `variable_scope`.
 
   Returns:
@@ -464,6 +470,7 @@ def batch_norm(
         outputs_collections=outputs_collections,
         trainable=trainable,
         data_format=data_format,
+        zero_debias_moving_mean=zero_debias_moving_mean,
         scope=scope)
 
   if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
@@ -477,17 +484,18 @@ def batch_norm(
 
     # Determine whether we can use the core layer class.
     if (batch_weights is None and
-        updates_collections is ops.GraphKeys.UPDATE_OPS):
+        updates_collections is ops.GraphKeys.UPDATE_OPS and
+        not zero_debias_moving_mean):
       # Use the core layer class.
       axis = 1 if data_format == DATA_FORMAT_NCHW else -1
       if not param_initializers:
         param_initializers = {}
       beta_initializer = param_initializers.get('beta',
-                                                init_ops.zeros_initializer)
+                                                init_ops.zeros_initializer())
       gamma_initializer = param_initializers.get('gamma',
                                                  init_ops.ones_initializer())
       moving_mean_initializer = param_initializers.get(
-          'moving_mean', init_ops.zeros_initializer)
+          'moving_mean', init_ops.zeros_initializer())
       moving_variance_initializer = param_initializers.get(
           'moving_variance', init_ops.ones_initializer())
       layer = normalization_layers.BatchNormalization(
@@ -563,7 +571,7 @@ def batch_norm(
       beta_collections = utils.get_variable_collections(variables_collections,
                                                         'beta')
       beta_initializer = param_initializers.get('beta',
-                                                init_ops.zeros_initializer)
+                                                init_ops.zeros_initializer())
       beta = variables.model_variable('beta',
                                       shape=params_shape,
                                       dtype=dtype,
@@ -592,7 +600,7 @@ def batch_norm(
       moving_mean_collections = utils.get_variable_collections(
           variables_collections, 'moving_mean')
       moving_mean_initializer = param_initializers.get(
-          'moving_mean', init_ops.zeros_initializer)
+          'moving_mean', init_ops.zeros_initializer())
       moving_mean = variables.model_variable(
           'moving_mean',
           shape=params_shape,
@@ -647,7 +655,7 @@ def batch_norm(
         def _force_updates():
           """Internal function forces updates moving_vars if is_training."""
           update_moving_mean = moving_averages.assign_moving_average(
-              moving_mean, mean, decay, zero_debias=False)
+              moving_mean, mean, decay, zero_debias=zero_debias_moving_mean)
           update_moving_variance = moving_averages.assign_moving_average(
               moving_variance, variance, decay, zero_debias=False)
           with ops.control_dependencies([update_moving_mean,
@@ -660,7 +668,7 @@ def batch_norm(
         def _delay_updates():
           """Internal function that delay updates moving_vars if is_training."""
           update_moving_mean = moving_averages.assign_moving_average(
-              moving_mean, mean, decay, zero_debias=False)
+              moving_mean, mean, decay, zero_debias=zero_debias_moving_mean)
           update_moving_variance = moving_averages.assign_moving_average(
               moving_variance, variance, decay, zero_debias=False)
           return update_moving_mean, update_moving_variance
@@ -695,7 +703,7 @@ def batch_norm(
 @add_arg_scope
 def bias_add(inputs,
              activation_fn=None,
-             initializer=init_ops.zeros_initializer,
+             initializer=init_ops.zeros_initializer(),
              regularizer=None,
              reuse=None,
              variables_collections=None,
@@ -780,7 +788,7 @@ def convolution(inputs,
                 normalizer_params=None,
                 weights_initializer=initializers.xavier_initializer(),
                 weights_regularizer=None,
-                biases_initializer=init_ops.zeros_initializer,
+                biases_initializer=init_ops.zeros_initializer(),
                 biases_regularizer=None,
                 reuse=None,
                 variables_collections=None,
@@ -927,7 +935,7 @@ def convolution2d_in_plane(
     normalizer_params=None,
     weights_initializer=initializers.xavier_initializer(),
     weights_regularizer=None,
-    biases_initializer=init_ops.zeros_initializer,
+    biases_initializer=init_ops.zeros_initializer(),
     biases_regularizer=None,
     reuse=None,
     variables_collections=None,
@@ -1032,7 +1040,7 @@ def convolution2d_transpose(
     normalizer_params=None,
     weights_initializer=initializers.xavier_initializer(),
     weights_regularizer=None,
-    biases_initializer=init_ops.zeros_initializer,
+    biases_initializer=init_ops.zeros_initializer(),
     biases_regularizer=None,
     reuse=None,
     variables_collections=None,
@@ -1325,7 +1333,7 @@ def fully_connected(inputs,
                     normalizer_params=None,
                     weights_initializer=initializers.xavier_initializer(),
                     weights_regularizer=None,
-                    biases_initializer=init_ops.zeros_initializer,
+                    biases_initializer=init_ops.zeros_initializer(),
                     biases_regularizer=None,
                     reuse=None,
                     variables_collections=None,
@@ -1477,12 +1485,13 @@ def layer_norm(inputs,
     if center:
       beta_collections = utils.get_variable_collections(variables_collections,
                                                         'beta')
-      beta = variables.model_variable('beta',
-                                      shape=params_shape,
-                                      dtype=dtype,
-                                      initializer=init_ops.zeros_initializer,
-                                      collections=beta_collections,
-                                      trainable=trainable)
+      beta = variables.model_variable(
+          'beta',
+          shape=params_shape,
+          dtype=dtype,
+          initializer=init_ops.zeros_initializer(),
+          collections=beta_collections,
+          trainable=trainable)
     if scale:
       gamma_collections = utils.get_variable_collections(variables_collections,
                                                          'gamma')
@@ -1725,7 +1734,7 @@ def separable_convolution2d(
     normalizer_params=None,
     weights_initializer=initializers.xavier_initializer(),
     weights_regularizer=None,
-    biases_initializer=init_ops.zeros_initializer,
+    biases_initializer=init_ops.zeros_initializer(),
     biases_regularizer=None,
     reuse=None,
     variables_collections=None,
@@ -1995,7 +2004,7 @@ def legacy_fully_connected(x,
                            num_output_units,
                            activation_fn=None,
                            weight_init=initializers.xavier_initializer(),
-                           bias_init=init_ops.zeros_initializer,
+                           bias_init=init_ops.zeros_initializer(),
                            name=None,
                            weight_collections=(ops.GraphKeys.WEIGHTS,),
                            bias_collections=(ops.GraphKeys.BIASES,),
@@ -2109,10 +2118,10 @@ def legacy_fully_connected(x,
       y = nn.bias_add(y, b)
 
     if len(dims) > 2:
-      out_shape = array_ops.unpack(array_ops.shape(x))
+      out_shape = array_ops.unstack(array_ops.shape(x))
       out_shape[-1] = num_output_units
 
-      y = array_ops.reshape(y, array_ops.pack(out_shape))
+      y = array_ops.reshape(y, array_ops.stack(out_shape))
 
       static_shape = x.get_shape().as_list()
       static_shape[-1] = num_output_units

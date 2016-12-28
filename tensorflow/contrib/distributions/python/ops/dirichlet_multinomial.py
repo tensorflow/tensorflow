@@ -20,11 +20,13 @@ from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import distribution_util
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import special_math_ops
 
 
@@ -208,6 +210,34 @@ class DirichletMultinomial(distribution.Distribution):
     # Event shape depends only on alpha, not "n".
     return self.alpha.get_shape().with_rank_at_least(1)[-1:]
 
+  def _sample_n(self, n, seed=None):
+    n_draws = math_ops.cast(self.n, dtype=dtypes.int32)
+    if self.n.get_shape().ndims is not None:
+      if self.n.get_shape().ndims != 0:
+        raise NotImplementedError(
+            "Sample only supported for scalar number of draws.")
+    elif self.validate_args:
+      is_scalar = check_ops.assert_rank(
+          n_draws, 0,
+          message="Sample only supported for scalar number of draws.")
+      n_draws = control_flow_ops.with_dependencies([is_scalar], n_draws)
+    k = self.event_shape()[0]
+    unnormalized_logits = array_ops.reshape(
+        math_ops.log(random_ops.random_gamma(
+            shape=[n],
+            alpha=self.alpha,
+            dtype=self.dtype,
+            seed=seed)),
+        shape=[-1, k])
+    draws = random_ops.multinomial(
+        logits=unnormalized_logits,
+        num_samples=n_draws,
+        seed=distribution_util.gen_new_seed(seed, salt="dirichlet_multinomial"))
+    x = math_ops.reduce_sum(array_ops.one_hot(draws, depth=k),
+                            reduction_indices=-2)
+    final_shape = array_ops.concat_v2([[n], self.batch_shape(), [k]], 0)
+    return array_ops.reshape(x, final_shape)
+
   @distribution_util.AppendDocstring(_dirichlet_multinomial_prob_note)
   def _log_prob(self, counts):
     counts = self._assert_valid_counts(counts)
@@ -223,7 +253,7 @@ class DirichletMultinomial(distribution.Distribution):
 
   def _mean(self):
     normalized_alpha = self.alpha / array_ops.expand_dims(self.alpha_sum, -1)
-    return array_ops.expand_dims(self.n, -1) * normalized_alpha
+    return self.n[..., None] * normalized_alpha
 
   @distribution_util.AppendDocstring(
       """The variance for each batch member is defined as the following:

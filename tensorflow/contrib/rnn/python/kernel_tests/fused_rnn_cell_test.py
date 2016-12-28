@@ -37,7 +37,8 @@ class FusedRnnCellTest(tf.test.TestCase):
       inputs = tf.constant(np.random.randn(timelen, batch_size, input_size))
       with tf.variable_scope("basic", initializer=initializer):
         unpacked_inputs = tf.unstack(inputs)
-        outputs, state = tf.nn.rnn(cell, unpacked_inputs, dtype=tf.float64)
+        outputs, state = tf.contrib.rnn.static_rnn(
+            cell, unpacked_inputs, dtype=tf.float64)
         packed_outputs = tf.stack(outputs)
         basic_vars = [v for v in tf.trainable_variables()
                       if v.name.startswith("basic/")]

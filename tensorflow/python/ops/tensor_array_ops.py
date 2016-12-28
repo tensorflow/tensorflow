@@ -70,11 +70,13 @@ class TensorArray(object):
   @@read
   @@gather
   @@pack
+  @@stack
   @@concat
 
   @@write
   @@scatter
   @@unpack
+  @@unstack
   @@split
 
   @@grad

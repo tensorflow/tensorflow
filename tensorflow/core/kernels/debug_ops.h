@@ -152,8 +152,117 @@ class DebugNanCountOp : public OpKernel {
   std::vector<string> debug_urls_;
 };
 
-// TODO(cais): Add DebugInfinityCount
-// TODO(cais): Add DebugZeroCount
+// Numeric summary op for debugging.
+template <typename T>
+class DebugNumericSummaryOp : public OpKernel {
+ public:
+  explicit DebugNumericSummaryOp(OpKernelConstruction* context)
+      : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("tensor_name", &tensor_name_));
+    OP_REQUIRES_OK(context, context->GetAttr("debug_urls", &debug_urls_));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& input = context->input(0);
+
+    int64 is_initialized = 0;
+    int64 element_count = 0;
+    int64 negative_inf_count = 0;
+    int64 negative_count = 0;
+    int64 zero_count = 0;
+    int64 positive_count = 0;
+    int64 positive_inf_count = 0;
+    int64 nan_count = 0;
+    double min = std::numeric_limits<double>::infinity();
+    double max = -std::numeric_limits<double>::infinity();
+    double sum = 0.0;
+    double mean = std::numeric_limits<double>::quiet_NaN();
+    double variance = std::numeric_limits<double>::quiet_NaN();
+
+    // Equal to negative_count + zero_count + positive_count.
+    int64 non_inf_nan_count = 0;
+
+    if (input.IsInitialized()) {
+      is_initialized = 1;
+      const TensorShape& input_shape = input.shape();
+      const T* input_flat = input.template flat<T>().data();
+
+      element_count = input_shape.num_elements();
+      for (int64 i = 0; i < element_count; ++i) {
+        T x = input_flat[i];
+        if (Eigen::numext::isnan(x)) {
+          nan_count++;
+        } else if (Eigen::numext::isinf(x)) {
+          if (x < 0.0) {
+            negative_inf_count++;
+          } else {
+            positive_inf_count++;
+          }
+        } else {
+          if (x < 0.0) {
+            negative_count++;
+          } else if (x > 0.0) {
+            positive_count++;
+          } else {
+            zero_count++;
+          }
+
+          if (x < min) {
+            min = x;
+          } else if (x > max) {
+            max = x;
+          }
+
+          non_inf_nan_count++;
+          sum += x;
+        }
+      }
+
+      if (non_inf_nan_count > 0) {
+        mean = sum / non_inf_nan_count;
+
+        // Do a second pass to compute variance.
+        variance = 0.0;
+        for (int64 i = 0; i < element_count; ++i) {
+          T x = input_flat[i];
+          if (!Eigen::numext::isnan(x) && !Eigen::numext::isinf(x)) {
+            variance += (x - mean) * (x - mean);
+          }
+        }
+        variance /= non_inf_nan_count;
+      }
+    }
+
+    TensorShape shape({12});
+
+    Tensor* output_tensor;
+    OP_REQUIRES_OK(context, context->allocate_output(0, shape, &output_tensor));
+    output_tensor->vec<double>()(0) = static_cast<double>(is_initialized);
+    output_tensor->vec<double>()(1) = static_cast<double>(element_count);
+    output_tensor->vec<double>()(2) = static_cast<double>(negative_inf_count);
+    output_tensor->vec<double>()(3) = static_cast<double>(negative_count);
+    output_tensor->vec<double>()(4) = static_cast<double>(zero_count);
+    output_tensor->vec<double>()(5) = static_cast<double>(positive_count);
+    output_tensor->vec<double>()(6) = static_cast<double>(positive_inf_count);
+    output_tensor->vec<double>()(7) = static_cast<double>(nan_count);
+    output_tensor->vec<double>()(8) = min;
+    output_tensor->vec<double>()(9) = max;
+    output_tensor->vec<double>()(10) = mean;
+    output_tensor->vec<double>()(11) = variance;
+
+    if (!debug_urls_.empty()) {
+      DebugIO::PublishDebugTensor(tensor_name_, "DebugNumericSummary",
+                                  *output_tensor, Env::Default()->NowMicros(),
+                                  debug_urls_);
+    }
+  }
+
+  bool IsExpensive() override { return false; }
+
+ private:
+  string tensor_name_;
+  std::vector<string> debug_urls_;
+};
 
 }  // namespace tensorflow
 

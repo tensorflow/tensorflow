@@ -379,7 +379,7 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
     """
     # TODO(zoy): Give an unsupported error if enable_centered_bias is
     #    requested for SDCA once its default changes to False.
-    self._feature_columns = feature_columns
+    self._feature_columns = tuple(feature_columns or [])
     assert self._feature_columns
     self._optimizer = _get_default_optimizer(feature_columns)
     if optimizer:
@@ -658,7 +658,7 @@ class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
     Returns:
       A `LinearRegressor` estimator.
     """
-    self._feature_columns = feature_columns
+    self._feature_columns = tuple(feature_columns or [])
     assert self._feature_columns
     if optimizer:
       self._optimizer = _get_optimizer(optimizer)

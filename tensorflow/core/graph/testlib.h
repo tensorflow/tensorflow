@@ -167,6 +167,9 @@ Node* Cast(Graph* g, Node* in, DataType dst);
 // Perform gather op on params "in0" with indices "in1".
 Node* Gather(Graph* g, Node* in0, Node* in1);
 
+// Computes broadcasted shape from the given input shapes.
+Node* BroadcastArgs(Graph* g, Node* s0, Node* s1);
+
 // Computes the args needed broadcast gradient function.
 Node* BroadcastGradientArgs(Graph* g, Node* s0, Node* s1);
 
@@ -177,6 +180,11 @@ Node* GetSessionTensor(Graph* g, Node* in);
 // dimension to concatenate on, and the tensors to concatenate are
 // given in "tensors".
 Node* Concat(Graph* g, Node* concat_dim, gtl::ArraySlice<Node*> tensors);
+
+// Adds a ConcatV2 node in "g". The last input is "concat_dim", the
+// dimension to concatenate on, and the tensors to concatenate are
+// given in "tensors".
+Node* ConcatV2(Graph* g, gtl::ArraySlice<Node*> tensors, Node* concat_dim);
 
 // Add a Relu node in "g".
 Node* Relu(Graph* g, Node* in);

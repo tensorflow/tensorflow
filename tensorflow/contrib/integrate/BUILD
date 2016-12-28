@@ -14,6 +14,14 @@ py_library(
         "python/ops/odes.py",
     ],
     srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:tensor_array_ops",
+        "//tensorflow/python:util",
+    ],
 )
 
 py_test(

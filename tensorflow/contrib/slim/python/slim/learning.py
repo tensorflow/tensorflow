@@ -361,9 +361,9 @@ def add_gradients_summaries(grads_and_vars):
       else:
         grad_values = grad
       summaries.append(
-          summary.histogram(var.op.name + ':gradient', grad_values))
+          summary.histogram(var.op.name + '/gradient', grad_values))
       summaries.append(
-          summary.histogram(var.op.name + ':gradient_norm',
+          summary.histogram(var.op.name + '/gradient_norm',
                             clip_ops.global_norm([grad_values])))
     else:
       logging.info('Var %s has no gradient', var.op.name)
@@ -371,10 +371,13 @@ def add_gradients_summaries(grads_and_vars):
   return summaries
 
 
+_USE_GLOBAL_STEP = 0
+
+
 def create_train_op(
     total_loss,
     optimizer,
-    global_step=None,
+    global_step=_USE_GLOBAL_STEP,
     update_ops=None,
     variables_to_train=None,
     clip_gradient_norm=0,
@@ -389,7 +392,7 @@ def create_train_op(
     total_loss: A `Tensor` representing the total loss.
     optimizer: A tf.Optimizer to use for computing the gradients.
     global_step: A `Tensor` representing the global step variable. If left as
-      `None`, then slim.variables.global_step() is used.
+      `_USE_GLOBAL_STEP`, then slim.variables.global_step() is used.
     update_ops: An optional list of updates to execute. If `update_ops` is
       `None`, then the update ops are set to the contents of the
       `tf.GraphKeys.UPDATE_OPS` collection. If `update_ops` is not `None`, but
@@ -412,7 +415,7 @@ def create_train_op(
     A `Tensor` that when evaluated, computes the gradients and returns the total
       loss value.
   """
-  if global_step is None:
+  if global_step is _USE_GLOBAL_STEP:
     global_step = variables.get_or_create_global_step()
 
   # Update ops use GraphKeys.UPDATE_OPS collection if update_ops is None.
@@ -699,7 +702,7 @@ def train(train_op,
             data_flow_ops.initialize_all_tables())
 
       if sync_optimizer is not None and isinstance(
-          sync_optimizer, sync_replicas_optimizer.SyncReplicasOptimizerV2):
+          sync_optimizer, sync_replicas_optimizer.SyncReplicasOptimizer):
         with ops.control_dependencies([local_init_op] if local_init_op is
                                       not None else []):
           if is_chief:
@@ -720,11 +723,9 @@ def train(train_op,
 
     if is_chief and sync_optimizer is not None:
       if not isinstance(sync_optimizer,
-                        (sync_replicas_optimizer.SyncReplicasOptimizer,
-                         sync_replicas_optimizer.SyncReplicasOptimizerV2)):
+                        (sync_replicas_optimizer.SyncReplicasOptimizer)):
         raise ValueError(
-            '`sync_optimizer` must be a tf.train.SyncReplicasOptimizer or '
-            'tf.train.SyncReplicasOptimizerV2.')
+            '`sync_optimizer` must be a tf.train.SyncReplicasOptimizer.')
 
       # Need to create these BEFORE the supervisor finalizes the graph:
       init_tokens_op = sync_optimizer.get_init_tokens_op()

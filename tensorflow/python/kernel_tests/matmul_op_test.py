@@ -12,20 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tensorflow.ops.math_ops.matmul."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
 
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
 
 
-class MatMulTest(tf.test.TestCase):
+class MatMulTest(test.TestCase):
 
   def assertAllCloseAccordingToType(self, a, b, rtol=1e-6, atol=1e-6):
     """Like test_util.assertAllCloseToType, but with looser fp16 limits.
@@ -54,7 +62,7 @@ class MatMulTest(tf.test.TestCase):
     y_mat = np.matrix(y).T if transpose_y else np.matrix(y)
     np_ans = x_mat * y_mat
     with self.test_session(use_gpu=False):
-      tf_ans = tf.matmul(x, y, transpose_x, transpose_y).eval()
+      tf_ans = math_ops.matmul(x, y, transpose_x, transpose_y).eval()
     self.assertAllCloseAccordingToType(np_ans, tf_ans)
     self.assertAllEqual(np_ans.shape, tf_ans.shape)
 
@@ -63,7 +71,7 @@ class MatMulTest(tf.test.TestCase):
     y_mat = np.matrix(y).T if transpose_y else np.matrix(y)
     np_ans = x_mat * y_mat
     with self.test_session(use_gpu=True):
-      tf_ans = tf.matmul(x, y, transpose_x, transpose_y).eval()
+      tf_ans = math_ops.matmul(x, y, transpose_x, transpose_y).eval()
     self.assertAllCloseAccordingToType(np_ans, tf_ans)
     self.assertAllEqual(np_ans.shape, tf_ans.shape)
 
@@ -77,8 +85,9 @@ class MatMulTest(tf.test.TestCase):
       imag = self._randMatrix(rows, cols, float_dtype)
       return real + 1j * imag
     else:
-      return np.random.uniform(low=1.0, high=100.0, size=rows * cols).reshape(
-          [rows, cols]).astype(dtype)
+      return np.random.uniform(
+          low=1.0, high=100.0, size=rows * cols).reshape(
+              [rows, cols]).astype(dtype)
 
   # Basic test:
   #   [ [1],
@@ -279,62 +288,74 @@ class MatMulTest(tf.test.TestCase):
     self._testGpuMatmul(x, y)
 
   def testShapeErrors(self):
-    a = tf.placeholder(tf.float32, [32, 37])
-    b = tf.placeholder(tf.float32, [36, 2])
-    c = tf.placeholder(tf.float32, [37])
-    with self.assertRaisesRegexp(
-        ValueError, "Dimensions must be equal, but are 37 and 36"):
-      tf.matmul(a, b)
+    a = array_ops.placeholder(dtypes.float32, [32, 37])
+    b = array_ops.placeholder(dtypes.float32, [36, 2])
+    c = array_ops.placeholder(dtypes.float32, [37])
+    with self.assertRaisesRegexp(ValueError,
+                                 "Dimensions must be equal, but are 37 and 36"):
+      math_ops.matmul(a, b)
     with self.assertRaisesRegexp(ValueError, "must be rank 2"):
-      tf.matmul(a, c)
+      math_ops.matmul(a, c)
 
   def testShapeInference(self):
     """Tests common_shapes.call_cpp_shape_fn."""
-    a = tf.constant([2] * 6, shape=[3, 2])
-    b = tf.constant([2] * 2, shape=[2, 1])
-    mm = tf.matmul(a, b)
+    a = constant_op.constant([2] * 6, shape=[3, 2])
+    b = constant_op.constant([2] * 2, shape=[2, 1])
+    mm = math_ops.matmul(a, b)
     self.assertEqual([3, 1], mm.get_shape())
 
     # Transpose arguments are respected.
-    a = tf.constant([2] * 6, shape=[2, 3])
-    b = tf.constant([2] * 2, shape=[1, 2])
-    mm = tf.matmul(a, b, transpose_a=True, transpose_b=True)
+    a = constant_op.constant([2] * 6, shape=[2, 3])
+    b = constant_op.constant([2] * 2, shape=[1, 2])
+    mm = math_ops.matmul(a, b, transpose_a=True, transpose_b=True)
     self.assertEqual([3, 1], mm.get_shape())
 
     # Unknown dims come through in output.
-    a = tf.placeholder(np.float32)
-    b = tf.placeholder(np.float32)
-    mm = tf.matmul(a, b)
-    self.assertEqual(tf.TensorShape(None), mm.get_shape())
+    a = array_ops.placeholder(np.float32)
+    b = array_ops.placeholder(np.float32)
+    mm = math_ops.matmul(a, b)
+    self.assertEqual(tensor_shape.TensorShape(None), mm.get_shape())
 
-    a = tf.constant([1] * 6, shape=[2, 3])
-    b = tf.constant([2] * 2, shape=[1, 2])
+    a = constant_op.constant([1] * 6, shape=[2, 3])
+    b = constant_op.constant([2] * 2, shape=[1, 2])
     with self.assertRaisesRegexp(ValueError, ".*must be equal.*"):
-      tf.matmul(a, b, transpose_a=False, transpose_b=True)
+      math_ops.matmul(a, b, transpose_a=False, transpose_b=True)
 
 
 # TODO(zhifengc): Figures out how to test matmul gradients on GPU.
-class MatMulGradientTest(tf.test.TestCase):
+class MatMulGradientTest(test.TestCase):
 
   def testGradientInput0(self):
     with self.test_session(use_gpu=False):
-      x = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], shape=[3, 2],
-                   dtype=tf.float64, name="x")
-      y = tf.constant([1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7],
-                   shape=[2, 4], dtype=tf.float64, name="y")
-      m = tf.matmul(x, y, name="matmul")
-      err = tf.test.compute_gradient_error(x, [3, 2], m, [3, 4])
+      x = constant_op.constant(
+          [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+          shape=[3, 2],
+          dtype=dtypes.float64,
+          name="x")
+      y = constant_op.constant(
+          [1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7],
+          shape=[2, 4],
+          dtype=dtypes.float64,
+          name="y")
+      m = math_ops.matmul(x, y, name="matmul")
+      err = gradient_checker.compute_gradient_error(x, [3, 2], m, [3, 4])
     print("matmul input0 gradient err = ", err)
     self.assertLess(err, 1e-10)
 
   def testGradientInput1(self):
     with self.test_session(use_gpu=False):
-      x = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], shape=[3, 2],
-                   dtype=tf.float64, name="x")
-      y = tf.constant([1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7],
-                   shape=[2, 4], dtype=tf.float64, name="y")
-      m = tf.matmul(x, y, name="matmul")
-      err = tf.test.compute_gradient_error(y, [2, 4], m, [3, 4])
+      x = constant_op.constant(
+          [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+          shape=[3, 2],
+          dtype=dtypes.float64,
+          name="x")
+      y = constant_op.constant(
+          [1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7],
+          shape=[2, 4],
+          dtype=dtypes.float64,
+          name="y")
+      m = math_ops.matmul(x, y, name="matmul")
+      err = gradient_checker.compute_gradient_error(y, [2, 4], m, [3, 4])
     print("matmul input1 gradient err = ", err)
     self.assertLess(err, 1e-10)
 
@@ -346,12 +367,18 @@ class MatMulGradientTest(tf.test.TestCase):
     if transpose_b:
       shape_y = list(reversed(shape_y))
     with self.test_session(use_gpu=False):
-      x = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], shape=shape_x,
-                   dtype=tf.float64, name="x")
-      y = tf.constant([1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7],
-                   shape=shape_y, dtype=tf.float64, name="y")
-      m = tf.matmul(x, y, transpose_a, transpose_b, name="matmul")
-      err = tf.test.compute_gradient_error(x, shape_x, m, [3, 4])
+      x = constant_op.constant(
+          [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+          shape=shape_x,
+          dtype=dtypes.float64,
+          name="x")
+      y = constant_op.constant(
+          [1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7],
+          shape=shape_y,
+          dtype=dtypes.float64,
+          name="y")
+      m = math_ops.matmul(x, y, transpose_a, transpose_b, name="matmul")
+      err = gradient_checker.compute_gradient_error(x, shape_x, m, [3, 4])
     print("matmul input0 gradient err = ", err)
     self.assertLess(err, 1e-10)
 
@@ -368,12 +395,18 @@ class MatMulGradientTest(tf.test.TestCase):
     if transpose_b:
       shape_y = list(reversed(shape_y))
     with self.test_session(use_gpu=False):
-      x = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], shape=shape_x,
-                   dtype=tf.float64, name="x")
-      y = tf.constant([1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7],
-                   shape=shape_y, dtype=tf.float64, name="y")
-      m = tf.matmul(x, y, transpose_a, transpose_b, name="matmul")
-      err = tf.test.compute_gradient_error(y, shape_y, m, [3, 4])
+      x = constant_op.constant(
+          [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+          shape=shape_x,
+          dtype=dtypes.float64,
+          name="x")
+      y = constant_op.constant(
+          [1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7],
+          shape=shape_y,
+          dtype=dtypes.float64,
+          name="y")
+      m = math_ops.matmul(x, y, transpose_a, transpose_b, name="matmul")
+      err = gradient_checker.compute_gradient_error(y, shape_y, m, [3, 4])
     print("matmul input1 gradient err = ", err)
     self.assertLess(err, 1e-10)
 
@@ -383,25 +416,25 @@ class MatMulGradientTest(tf.test.TestCase):
     self._VerifyInput1(transpose_a=True, transpose_b=True)
 
 
-class MatMulStatsTest(tf.test.TestCase):
+class MatMulStatsTest(test.TestCase):
 
   def testSimpleStatistics(self):
-    g = tf.Graph()
+    g = ops.Graph()
     with g.as_default():
-      a = tf.Variable(tf.random_normal([25, 16]))
-      b = tf.Variable(tf.random_normal([16, 9]))
-      tf.matmul(a, b)
+      a = variables.Variable(random_ops.random_normal([25, 16]))
+      b = variables.Variable(random_ops.random_normal([16, 9]))
+      math_ops.matmul(a, b)
       for op in g.get_operations():
         flops = ops.get_stats_for_node_def(g, op.node_def, "flops").value
         if op.name == "MatMul":
           self.assertEqual(7200, flops)
 
   def testTransposedStatistics(self):
-    g = tf.Graph()
+    g = ops.Graph()
     with g.as_default():
-      a = tf.Variable(tf.random_normal([16, 25]))
-      b = tf.Variable(tf.random_normal([16, 9]))
-      tf.matmul(a, b, transpose_a=True)
+      a = variables.Variable(random_ops.random_normal([16, 25]))
+      b = variables.Variable(random_ops.random_normal([16, 9]))
+      math_ops.matmul(a, b, transpose_a=True)
       for op in g.get_operations():
         flops = ops.get_stats_for_node_def(g, op.node_def, "flops").value
         if op.name == "MatMul":
@@ -409,4 +442,4 @@ class MatMulStatsTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

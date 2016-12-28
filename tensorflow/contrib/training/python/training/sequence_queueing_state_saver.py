@@ -1164,7 +1164,8 @@ class SequenceQueueingStateSaver(object):
       insert_initial_state_ops = dict(
           (name, self._barrier.insert_many(
               self._get_barrier_index("state", name),
-              array_ops.pack([current_keys[0]]), array_ops.pack([value]),
+              array_ops.stack([current_keys[0]]),
+              array_ops.stack([value]),
               name="BarrierInitialInsertState_%s" % name))
           for (name, value) in self._uninitialized_states.items())
 

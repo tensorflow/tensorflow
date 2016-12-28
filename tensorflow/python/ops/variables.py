@@ -21,6 +21,7 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -274,9 +275,6 @@ class Variable(object):
     if initial_value is None:
       raise ValueError("initial_value must be specified.")
     init_from_fn = callable(initial_value)
-    if init_from_fn and dtype is None:
-      raise ValueError(
-          "dtype must also be specified when initial_value is callable.")
 
     if collections is None:
       collections = [ops.GraphKeys.GLOBAL_VARIABLES]
@@ -289,23 +287,6 @@ class Variable(object):
     with ops.control_dependencies(None):
       with ops.name_scope(name, "Variable", [] if init_from_fn else
                           [initial_value]) as name:
-
-        # Get the initial value from a callable function. The real shape of the
-        # variable will be set later, since under the init_from_fn case, the
-        # shape won't be known until after the function is invoked.
-        #
-        # NOTE: The current Variable OpKernel does not support
-        # partially defined shapes, so we only set the shape if it is
-        # fully defined. For historical reasons, we use the scalar
-        # shape (`[]`) to represent an unknown or partially known
-        # shape. A future version of the Variable ops will remove this
-        # limitation.
-        def full_shape_to_list(shape):
-          """Returns shape as a list if shape is fully defined."""
-          if shape and shape.is_fully_defined():
-            return shape.as_list()
-          else:
-            return []
 
         if init_from_fn:
           # Use attr_scope and device(None) to simulate the behavior of
@@ -320,26 +301,24 @@ class Variable(object):
             with ops.name_scope("Initializer"),  ops.device(None):
               self._initial_value = ops.convert_to_tensor(
                   initial_value(), name="initial_value", dtype=dtype)
-            set_shape = (validate_shape
-                         and self._initial_value.get_shape().is_fully_defined())
-            self._variable = state_ops.variable_op(
-                full_shape_to_list(self._initial_value.get_shape()),
+              shape = (self._initial_value.get_shape()
+                       if validate_shape else tensor_shape.unknown_shape())
+            self._variable = state_ops.variable_op_v2(
+                shape,
                 self._initial_value.dtype.base_dtype,
-                set_shape=set_shape,
                 name=name)
 
         # Or get the initial value from a Tensor or Python object.
         else:
           self._initial_value = ops.convert_to_tensor(
               initial_value, name="initial_value", dtype=dtype)
-          set_shape = (validate_shape
-                       and self._initial_value.get_shape().is_fully_defined())
+          shape = (self._initial_value.get_shape()
+                   if validate_shape else tensor_shape.unknown_shape())
           # In this case, the variable op can't be created until after the
           # initial_value has been converted to a Tensor with a known type.
-          self._variable = state_ops.variable_op(
-              full_shape_to_list(self._initial_value.get_shape()),
+          self._variable = state_ops.variable_op_v2(
+              shape,
               self._initial_value.dtype.base_dtype,
-              set_shape=set_shape,
               name=name)
 
         # Manually overrides the variable's shape with the initial value's.
@@ -348,11 +327,6 @@ class Variable(object):
           if not initial_value_shape.is_fully_defined():
             raise ValueError("initial_value must have a shape specified: %s" %
                              self._initial_value)
-          self._variable.set_shape(initial_value_shape)
-          # TODO(b/28152992): Remove the below hack modifying the node_def shape
-          # directly once set_shape() handles it.
-          self._variable.op.node_def.attr["shape"].shape.CopyFrom(
-              initial_value_shape.as_proto())
 
         # Assigns initial value.
         self._initializer_op = state_ops.assign(
@@ -652,6 +626,46 @@ class Variable(object):
       distinct.
     """
     return state_ops.count_up_to(self._variable, limit=limit)
+
+  def load(self, value, session=None):
+    """Load new value into this variable
+
+    Writes new value to variable's memory. Doesn't add ops to the graph.
+
+    This convenience method requires a session where the graph containing this
+    variable has been launched. If no session is passed, the default session is
+    used.  See the [Session class](../../api_docs/python/client.md#Session) for
+    more information on launching a graph and on sessions.
+
+    ```python
+    v = tf.Variable([1, 2])
+    init = tf.global_variables_initializer()
+
+    with tf.Session() as sess:
+        sess.run(init)
+        # Usage passing the session explicitly.
+        v.load([2, 3], sess)
+        print(v.eval(sess)) # prints [2 3]
+        # Usage with the default session.  The 'with' block
+        # above makes 'sess' the default session.
+        v.load([3, 4], sess)
+        print(v.eval()) # prints [3 4]
+    ```
+
+    Args:
+        value: New variable value
+        session: The session to use to evaluate this variable. If
+          none, the default session is used.
+
+    Raises:
+        ValueError: Session is not passed and no default session
+    """
+    session = session or ops.get_default_session()
+    if session is None:
+      raise ValueError(
+          "Either session argument should be provided or default session "
+          "should be established")
+    session.run(self._initializer_op, {self._initializer_op.inputs[1]: value})
 
   # Conversion to tensor.
   @staticmethod
@@ -1263,7 +1277,7 @@ def assert_variables_initialized(var_list=None):
     if len(ranks) == 1:
       return ranks[0]
     else:
-      return array_ops.pack(ranks)
+      return array_ops.stack(ranks)
 
 
 def report_uninitialized_variables(var_list=None,
@@ -1288,7 +1302,7 @@ def report_uninitialized_variables(var_list=None,
     if not var_list:
       var_list = []
       for op in ops.get_default_graph().get_operations():
-        if op.type in ["Variable", "AutoReloadVariable"]:
+        if op.type in ["Variable", "VariableV2", "AutoReloadVariable"]:
           var_list.append(op.outputs[0])
   with ops.name_scope(name):
     if not var_list:
@@ -1297,8 +1311,9 @@ def report_uninitialized_variables(var_list=None,
       return array_ops.constant([], dtype=dtypes.string)
     else:
       # Get a 1-D boolean tensor listing whether each variable is initialized.
-      variables_mask = math_ops.logical_not(array_ops.pack(
-          [state_ops.is_variable_initialized(v) for v in var_list]))
+      variables_mask = math_ops.logical_not(
+          array_ops.stack(
+              [state_ops.is_variable_initialized(v) for v in var_list]))
       # Get a 1-D string tensor containing all the variable names.
       variable_names_tensor = array_ops.constant([s.op.name for s in var_list])
       # Return a 1-D tensor containing all the names of uninitialized variables.

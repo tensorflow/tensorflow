@@ -194,8 +194,18 @@ class CollectNamedOutputsTest(tf.test.TestCase):
     t2 = tf.constant(2.0, name='t2')
     utils.collect_named_outputs('end_points', 'a1', t1)
     utils.collect_named_outputs('end_points', 'a2', t2)
-    self.assertEqual(t1.alias, 'a1')
-    self.assertEqual(t2.alias, 'a2')
+    self.assertEqual(t1.aliases, ['a1'])
+    self.assertEqual(t2.aliases, ['a2'])
+
+  def test_multiple_aliases(self):
+    t1 = tf.constant(1.0, name='t1')
+    t2 = tf.constant(2.0, name='t2')
+    utils.collect_named_outputs('end_points', 'a11', t1)
+    utils.collect_named_outputs('end_points', 'a12', t1)
+    utils.collect_named_outputs('end_points', 'a21', t2)
+    utils.collect_named_outputs('end_points', 'a22', t2)
+    self.assertEqual(t1.aliases, ['a11', 'a12'])
+    self.assertEqual(t2.aliases, ['a21', 'a22'])
 
   def test_gather_aliases(self):
     t1 = tf.constant(1.0, name='t1')
@@ -204,8 +214,19 @@ class CollectNamedOutputsTest(tf.test.TestCase):
     utils.collect_named_outputs('end_points', 'a1', t1)
     utils.collect_named_outputs('end_points', 'a2', t2)
     tf.add_to_collection('end_points', t3)
-    aliases = utils.gather_tensors_alias(tf.get_collection('end_points'))
-    self.assertListEqual(aliases, ['a1', 'a2', 't3'])
+    aliases = utils.gather_tensors_aliases(tf.get_collection('end_points'))
+    self.assertEqual(aliases, ['a1', 'a2', 't3'])
+
+  def test_convert_collection_to_dict(self):
+    t1 = tf.constant(1.0, name='t1')
+    t2 = tf.constant(2.0, name='t2')
+    utils.collect_named_outputs('end_points', 'a1', t1)
+    utils.collect_named_outputs('end_points', 'a21', t2)
+    utils.collect_named_outputs('end_points', 'a22', t2)
+    end_points = utils.convert_collection_to_dict('end_points')
+    self.assertEqual(end_points['a1'], t1)
+    self.assertEqual(end_points['a21'], t2)
+    self.assertEqual(end_points['a22'], t2)
 
 
 class NPositiveIntegersTest(tf.test.TestCase):

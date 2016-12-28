@@ -59,6 +59,9 @@ py_library(
     deps = [
         ":zero_out_op_2",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:sparse_ops",
     ],
 )
 

@@ -58,6 +58,7 @@ def make_random_points(centers, num_points, max_offset=20):
 class KMeansTestBase(tf.test.TestCase):
 
   def input_fn(self, batch_size=None, points=None):
+    """Returns an input_fn that randomly selects batches from given points."""
     batch_size = batch_size or self.batch_size
     points = points if points is not None else self.points
     num_points = points.shape[0]
@@ -156,11 +157,11 @@ class KMeansTest(KMeansTestBase):
     self.assertAllEqual(assignments, true_assignments)
 
     # Test score
-    score = kmeans.score(points, batch_size=128)
+    score = kmeans.score(input_fn=lambda: (tf.constant(points), None), steps=1)
     self.assertNear(score, np.sum(true_offsets), 0.01 * score)
 
     # Test transform
-    transform = kmeans.transform(points, batch_size=128)
+    transform = kmeans.transform(input_fn=lambda: (tf.constant(points), None))
     true_transform = np.maximum(
         0,
         np.sum(np.square(points), axis=1, keepdims=True) -
@@ -263,20 +264,18 @@ class KMeansTestCosineDistance(KMeansTestBase):
         distance_metric=tf.contrib.factorization.COSINE_DISTANCE,
         use_mini_batch=self.use_mini_batch,
         config=self.config(3))
-    batch_size = 12 if self.use_mini_batch else None
-    kmeans.fit(input_fn=lambda: (tf.constant(points), None), steps=30,
-               batch_size=batch_size)
+    kmeans.fit(input_fn=lambda: (tf.constant(points), None), steps=30)
 
     centers = normalize(kmeans.clusters())
     self.assertAllClose(sorted(centers.tolist()),
                         sorted(true_centers.tolist()),
                         atol=1e-2)
 
-    assignments = kmeans.predict(points, batch_size=12)
+    assignments = kmeans.predict(input_fn=lambda: (tf.constant(points), None))
     self.assertAllClose(centers[assignments],
                         true_centers[true_assignments], atol=1e-2)
 
-    score = kmeans.score(points, batch_size=12)
+    score = kmeans.score(input_fn=lambda: (tf.constant(points), None), steps=1)
     self.assertAllClose(score, true_score, atol=1e-2)
 
 
@@ -354,10 +353,12 @@ class TensorflowKMeansBenchmark(KMeansBenchmark):
           kmeans_plus_plus_num_retries=int(math.log(self.num_clusters) + 2),
           random_seed=i * 42,
           config=tf.contrib.learn.RunConfig(tf_random_seed=3))
-      tf_kmeans.fit(x=self.points, batch_size=self.num_points, steps=50,
+      tf_kmeans.fit(input_fn=lambda: (tf.constant(self.points), None),
+                    steps=50,
                     relative_tolerance=1e-6)
       _ = tf_kmeans.clusters()
-      scores.append(tf_kmeans.score(self.points))
+      scores.append(tf_kmeans.score(
+          input_fn=lambda: (tf.constant(self.points), None), steps=1))
     self._report(num_iters, start, time.time(), scores)
 
 

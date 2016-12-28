@@ -29,10 +29,8 @@ REGISTER_OP("ObtainNext")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused_input, input1;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused_input));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &input1));
-      DimensionHandle unused_dim;
-      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(input1, 0), 1, &unused_dim));
-      c->set_output(0, c->Vector(1));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &input1));
+      c->set_output(0, c->Scalar());
       return Status::OK();
     })
     .Doc(R"doc(

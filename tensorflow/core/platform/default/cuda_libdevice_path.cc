@@ -17,22 +17,27 @@ limitations under the License.
 
 #include <stdlib.h>
 
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/default/logging.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 
 string CudaRoot() {
   // 'bazel test' sets TEST_SRCDIR.
-  const string kRelativeCudaRoot = "local_config_cuda/cuda";
-  const char* env = getenv("TEST_SRCDIR");
-  if (env && env[0] != '\0') {
-    return strings::StrCat(env, "/", kRelativeCudaRoot);
-  } else {
-    LOG(WARNING) << "TEST_SRCDIR environment variable not set: "
-                 << "using $PWD/" << kRelativeCudaRoot << "as the CUDA root.";
-    return kRelativeCudaRoot;
+  const string kRelativeCudaRoot = io::JoinPath("local_config_cuda", "cuda");
+  const char* test_srcdir = getenv("TEST_SRCDIR");
+  if (test_srcdir && test_srcdir[0] != '\0') {
+    return io::JoinPath(test_srcdir, kRelativeCudaRoot);
   }
+
+  LOG(INFO) << "TEST_SRCDIR environment variable not set: using "
+            << kRelativeCudaRoot
+            << " under this executable's runfiles directory as the CUDA root.";
+  return io::JoinPath(
+      strings::StrCat(Env::Default()->GetExecutablePath(), ".runfiles"),
+      kRelativeCudaRoot);
 }
 
 }  // namespace tensorflow

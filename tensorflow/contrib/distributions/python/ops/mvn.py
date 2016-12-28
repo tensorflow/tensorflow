@@ -222,7 +222,7 @@ class _MultivariateNormalOperatorPD(distribution.Distribution):
     return self._cov.get_batch_shape()
 
   def _event_shape(self):
-    return array_ops.pack([self._cov.vector_space_dimension()])
+    return array_ops.stack([self._cov.vector_space_dimension()])
 
   def _get_event_shape(self):
     return self._cov.get_shape()[-1:]
@@ -240,7 +240,7 @@ class _MultivariateNormalOperatorPD(distribution.Distribution):
 
     # Move the last dimension to the front
     perm = array_ops.concat_v2(
-        (array_ops.pack([array_ops.rank(correlated_samples) - 1]),
+        (array_ops.stack([array_ops.rank(correlated_samples) - 1]),
          math_ops.range(0, array_ops.rank(correlated_samples) - 1)), 0)
 
     # TODO(ebrevdo): Once we get a proper tensor contraction op,

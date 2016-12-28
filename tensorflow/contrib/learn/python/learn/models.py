@@ -28,7 +28,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops as array_ops_
 from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import nn
 from tensorflow.python.ops import variable_scope as vs
 
 
@@ -263,13 +262,14 @@ def bidirectional_rnn(cell_fw,
   name = scope or 'BiRNN'
   # Forward direction
   with vs.variable_scope(name + '_FW'):
-    output_fw, state_fw = nn.rnn(cell_fw, inputs, initial_state_fw, dtype,
-                                 sequence_length)
+    output_fw, state_fw = contrib_rnn.static_rnn(
+        cell_fw, inputs, initial_state_fw, dtype, sequence_length)
 
   # Backward direction
   with vs.variable_scope(name + '_BW'):
-    tmp, state_bw = nn.rnn(cell_bw, _reverse_seq(inputs, sequence_length),
-                           initial_state_bw, dtype, sequence_length)
+    tmp, state_bw = contrib_rnn.static_rnn(
+        cell_bw, _reverse_seq(inputs, sequence_length),
+        initial_state_bw, dtype, sequence_length)
   output_bw = _reverse_seq(tmp, sequence_length)
   # Concat each of the forward/backward outputs
   outputs = [array_ops_.concat(1, [fw, bw])
@@ -359,11 +359,11 @@ def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn, bidirectional,
             attn_vec_size=attn_vec_size, state_is_tuple=False)
       cell = contrib_rnn.MultiRNNCell([rnn_cell] * num_layers,
                                       state_is_tuple=False)
-      _, encoding = nn.rnn(cell,
-                           x,
-                           dtype=dtypes.float32,
-                           sequence_length=sequence_length,
-                           initial_state=initial_state)
+      _, encoding = contrib_rnn.static_rnn(cell,
+                                           x,
+                                           dtype=dtypes.float32,
+                                           sequence_length=sequence_length,
+                                           initial_state=initial_state)
     return target_predictor_fn(encoding, y)
 
   return rnn_estimator

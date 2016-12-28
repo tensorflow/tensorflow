@@ -232,7 +232,7 @@ class Mixture(distribution.Distribution):
           cat_lp + d_lp
           for (cat_lp, d_lp) in zip(cat_log_probs, distribution_log_probs)
       ]
-      concat_log_probs = array_ops.pack(final_log_probs, 0)
+      concat_log_probs = array_ops.stack(final_log_probs, 0)
       log_sum_exp = math_ops.reduce_logsumexp(concat_log_probs, [0])
       return log_sum_exp
 
@@ -401,6 +401,5 @@ class Mixture(distribution.Distribution):
     """Get a list of num_components batchwise probabilities."""
     which_softmax = nn_ops.log_softmax if log_probs else nn_ops.softmax
     cat_probs = which_softmax(self.cat.logits)
-    cat_probs = array_ops.unpack(
-        cat_probs, num=self.num_components, axis=-1)
+    cat_probs = array_ops.unstack(cat_probs, num=self.num_components, axis=-1)
     return cat_probs

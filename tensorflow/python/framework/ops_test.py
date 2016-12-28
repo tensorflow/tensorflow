@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tensorflow.python.framework.ops."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -31,7 +31,6 @@ from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_ops_2
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
-# Import gradients to register _IndexedSlicesToTensor.
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resources
@@ -58,18 +57,22 @@ class ResourceTest(test_util.TensorFlowTestCase):
           handle=handle,
           create_op=test_ops.resource_create_op(handle),
           is_initialized_op=test_ops.resource_initialized_op(handle))
-      self.assertEquals(len(resources.report_uninitialized_resources(
-          resources.shared_resources()).eval()), 1)
+      self.assertEquals(
+          len(
+              resources.report_uninitialized_resources(
+                  resources.shared_resources()).eval()), 1)
       resources.initialize_resources(resources.shared_resources()).run()
-      self.assertEquals(len(resources.report_uninitialized_resources(
-          resources.shared_resources()).eval()), 0)
+      self.assertEquals(
+          len(
+              resources.report_uninitialized_resources(
+                  resources.shared_resources()).eval()), 0)
 
 
 class TensorTest(test_util.TensorFlowTestCase):
 
   def testShape(self):
-    op = ops.Operation(ops._NodeDef("noop", "myop"), ops.Graph(),
-                       [], [dtypes.float32])
+    op = ops.Operation(
+        ops._NodeDef("noop", "myop"), ops.Graph(), [], [dtypes.float32])
     t = op.outputs[0]
     self.assertEqual(tensor_shape.unknown_shape(), t.get_shape())
     t.set_shape([1, 2, 3])
@@ -155,9 +158,9 @@ def _apply_op(g, *args, **kwargs):
 class OperationTest(test_util.TensorFlowTestCase):
 
   def testNoInputs(self):
-    op = ops.Operation(ops._NodeDef("noop", "myop"), ops.Graph(),
-                       [],
-                       [dtypes.float32, dtypes.string])
+    op = ops.Operation(
+        ops._NodeDef("noop", "myop"),
+        ops.Graph(), [], [dtypes.float32, dtypes.string])
     self.assertEqual(2, len(op.values()))
     self.assertEqual(0, len(op.inputs))
     self.assertEqual("myop", op.name)
@@ -179,8 +182,7 @@ class OperationTest(test_util.TensorFlowTestCase):
 
   def testNoOutputs(self):
     g = ops.Graph()
-    op1 = ops.Operation(
-        ops._NodeDef("noop", "myop1"), g, [], [dtypes.float32])
+    op1 = ops.Operation(ops._NodeDef("noop", "myop1"), g, [], [dtypes.float32])
     float_t, = op1.values()
     op2 = ops.Operation(ops._NodeDef("reop", "myop2"), g, [float_t], [])
     self.assertEqual(0, len(op2.values()))
@@ -191,25 +193,23 @@ class OperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(op2, float_t._consumers[0])
 
     self.assertProtoEquals("op:'noop' name:'myop1'", op1.node_def)
-    self.assertProtoEquals("op:'reop' name:'myop2' input:'myop1'",
-                           op2.node_def)
+    self.assertProtoEquals("op:'reop' name:'myop2' input:'myop1'", op2.node_def)
 
   def testInputsAndOutputs(self):
     g = ops.Graph()
-    op1 = ops.Operation(
-        ops._NodeDef("noop", "myop1"), g, [], [dtypes.float32])
+    op1 = ops.Operation(ops._NodeDef("noop", "myop1"), g, [], [dtypes.float32])
     self.assertEqual(1, len(op1.values()))
     float1_t, = op1.values()
 
-    op2 = ops.Operation(ops._NodeDef("reop", "myop2"), g,
-                        [], [dtypes.float32, dtypes.string])
+    op2 = ops.Operation(
+        ops._NodeDef("reop", "myop2"), g, [], [dtypes.float32, dtypes.string])
     self.assertEqual(2, len(op2.values()))
     float2_t, label2_str_t = op2.values()
 
     # Note that we consume label2_str_t twice here.
-    op3 = ops.Operation(ops._NodeDef("add", "myop3"), g,
-                        [float1_t, label2_str_t, label2_str_t],
-                        [dtypes.float32, dtypes.int32])
+    op3 = ops.Operation(
+        ops._NodeDef("add", "myop3"), g, [float1_t, label2_str_t, label2_str_t],
+        [dtypes.float32, dtypes.int32])
     self.assertEqual(2, len(op3.values()))
 
     self.assertEqual(1, len(float1_t._consumers))
@@ -230,25 +230,25 @@ class OperationTest(test_util.TensorFlowTestCase):
     op = ops.Operation(ops._NodeDef("noop", "myop"), ops.Graph(), [], [])
     op._set_device("/job:goo/device:GPU:0")
     self.assertProtoEquals(
-        "op:'noop' name:'myop' device:'/job:goo/device:GPU:0' ",
-        op.node_def)
+        "op:'noop' name:'myop' device:'/job:goo/device:GPU:0' ", op.node_def)
     op = ops.Operation(ops._NodeDef("noop", "op2"), ops.Graph(), [], [])
-    op._set_device(pydev.DeviceSpec(job="muu", device_type="CPU",
-                                    device_index=0))
+    op._set_device(
+        pydev.DeviceSpec(
+            job="muu", device_type="CPU", device_index=0))
     self.assertProtoEquals(
-        "op:'noop' name:'op2' device:'/job:muu/device:CPU:0'",
-        op.node_def)
+        "op:'noop' name:'op2' device:'/job:muu/device:CPU:0'", op.node_def)
 
   def testReferenceInput(self):
     g = ops.Graph()
-    op1 = ops.Operation(ops._NodeDef("noop", "op1"), g, [],
-                        [dtypes.float32_ref, dtypes.float32])
-    self.assertProtoEquals("op:'noop' name:'op1'",
-                           op1.node_def)
+    op1 = ops.Operation(
+        ops._NodeDef("noop", "op1"), g, [],
+        [dtypes.float32_ref, dtypes.float32])
+    self.assertProtoEquals("op:'noop' name:'op1'", op1.node_def)
     ref_t, nonref_t = op1.values()
     # NOTE(mrry): Must specify input_types to preserve ref-typed input.
     op2 = ops.Operation(
-        ops._NodeDef("refop", "op2"), g, [ref_t, nonref_t], [],
+        ops._NodeDef("refop", "op2"),
+        g, [ref_t, nonref_t], [],
         input_types=[dtypes.float32_ref, dtypes.float32])
     self.assertProtoEquals("op:'refop' name:'op2' input:'op1' input:'op1:1'",
                            op2.node_def)
@@ -272,8 +272,7 @@ class OperationTest(test_util.TensorFlowTestCase):
 
   def testNoShapeFunction(self):
     g = ops.Graph()
-    ops.Operation(ops._NodeDef("op", "an_op"), g,
-                  output_types=[dtypes.float32])
+    ops.Operation(ops._NodeDef("op", "an_op"), g, output_types=[dtypes.float32])
     self.assertEqual(tensor_shape.unknown_shape(),
                      _apply_op(g, "an_op", [], [dtypes.float32]).get_shape())
 
@@ -342,6 +341,16 @@ class OperationTest(test_util.TensorFlowTestCase):
                                  r"Can't convert Operation '.*' to Tensor"):
       ops.convert_to_tensor(op)
 
+  def testStr(self):
+    node_def = ops._NodeDef("noop", "op1")
+    op = ops.Operation(node_def, ops.Graph(), [], [dtypes.float32])
+    self.assertEqual(str(node_def), str(op))
+
+  def testRepr(self):
+    op = ops.Operation(
+        ops._NodeDef("noop", "op1"), ops.Graph(), [], [dtypes.float32])
+    self.assertEqual("<tf.Operation 'op1' type=noop>", repr(op))
+
 
 class CreateOpTest(test_util.TensorFlowTestCase):
 
@@ -349,16 +358,14 @@ class CreateOpTest(test_util.TensorFlowTestCase):
     g = ops.Graph()
     op1 = g.create_op("const", [], [dtypes.float32], None, name="myop1")
     with g.device("/device:GPU:0"):
-      op2 = g.create_op("add",
-                        [],
-                        [dtypes.float32, dtypes.string], None,
-                        name="myop2")
-    op3 = g.create_op("foo",
-                      [list(op1.values())[0], list(op2.values())[1],
-                       list(op2.values())[0]],
-                      [dtypes.float32, dtypes.int32],
-                      None,
-                      name="myop3")
+      op2 = g.create_op(
+          "add", [], [dtypes.float32, dtypes.string], None, name="myop2")
+    op3 = g.create_op(
+        "foo",
+        [list(op1.values())[0], list(op2.values())[1], list(op2.values())[0]],
+        [dtypes.float32, dtypes.int32],
+        None,
+        name="myop3")
     self.assertDeviceEqual(None, op1.device)
     self.assertDeviceEqual("/device:GPU:0", op2.device)
     self.assertDeviceEqual(None, op3.device)
@@ -371,14 +378,15 @@ class CreateOpTest(test_util.TensorFlowTestCase):
 
   def testReferenceInput(self):
     g = ops.Graph()
-    op1 = g.create_op("noop", [],
-                      [dtypes.float32_ref, dtypes.float32], name="op1")
+    op1 = g.create_op(
+        "noop", [], [dtypes.float32_ref, dtypes.float32], name="op1")
     self.assertProtoEquals("op:'noop' name:'op1'", op1.node_def)
     ref_t, nonref_t = op1.values()
     # NOTE(mrry): Must specify input_types to preserve ref-typed input.
-    op2 = g.create_op("refop", [ref_t, nonref_t], [],
-                      input_types=[dtypes.float32_ref, dtypes.float32],
-                      name="op2")
+    op2 = g.create_op(
+        "refop", [ref_t, nonref_t], [],
+        input_types=[dtypes.float32_ref, dtypes.float32],
+        name="op2")
     self.assertProtoEquals("op:'refop' name:'op2' input:'op1' input:'op1:1'",
                            op2.node_def)
     op3 = g.create_op("nonrefop", [ref_t, nonref_t], [], name="op3")
@@ -402,12 +410,12 @@ class ApplyOpTest(test_util.TensorFlowTestCase):
     g = ops.Graph()
     t1 = _apply_op(g, "const", [], [dtypes.float32], name="myop1")
     with g.device("/device:GPU:0"):
-      t2 = _apply_op(g, "add",
-                     [],
-                     [dtypes.float32, dtypes.string],
-                     name="myop2")
-    t3 = _apply_op(g, "foo", [t1, t2[1], t2[0]],
-                   [dtypes.float32, dtypes.int32], name="myop3")
+      t2 = _apply_op(
+          g, "add", [], [dtypes.float32, dtypes.string], name="myop2")
+    t3 = _apply_op(
+        g,
+        "foo", [t1, t2[1], t2[0]], [dtypes.float32, dtypes.int32],
+        name="myop3")
     self.assertTrue(isinstance(t1, ops.Tensor))
     self.assertTrue(isinstance(t2, list))
     self.assertTrue(isinstance(t3, list))
@@ -430,13 +438,15 @@ class ApplyOpTest(test_util.TensorFlowTestCase):
         g, "noop", [], [dtypes.float32_ref, dtypes.float32], name="op1")
     self.assertProtoEquals("op:'noop' name:'op1'", ref_t.op.node_def)
     # NOTE(mrry): Must specify input_types to preserve ref-typed input.
-    out_2 = _apply_op(g, "refop", [ref_t, nonref_t], [dtypes.int32],
-                      input_types=[dtypes.float32_ref, dtypes.float32],
-                      name="op2")
+    out_2 = _apply_op(
+        g,
+        "refop", [ref_t, nonref_t], [dtypes.int32],
+        input_types=[dtypes.float32_ref, dtypes.float32],
+        name="op2")
     self.assertProtoEquals("op:'refop' name:'op2' input:'op1' input:'op1:1'",
                            out_2.op.node_def)
-    out_3 = _apply_op(g, "nonrefop", [ref_t, nonref_t], [dtypes.int32],
-                      name="op3")
+    out_3 = _apply_op(
+        g, "nonrefop", [ref_t, nonref_t], [dtypes.int32], name="op3")
     self.assertProtoEquals("op:'nonrefop' name:'op3' input:'op1' input:'op1:1'",
                            out_3.op.node_def)
 
@@ -467,26 +477,31 @@ class NameStackTest(test_util.TensorFlowTestCase):
         self.assertEqual("foo_3", g.unique_name("foo", mark_as_used=False))
         self.assertEqual("foo_3", g.unique_name("foo"))
       with g.name_scope("baz"):
-        self.assertEqual("bar/baz/foo", g.unique_name("foo",
-                                                      mark_as_used=False))
+        self.assertEqual(
+            "bar/baz/foo", g.unique_name(
+                "foo", mark_as_used=False))
         self.assertEqual("bar/baz/foo", g.unique_name("foo"))
-        self.assertEqual("bar/baz/foo_1", g.unique_name("foo",
-                                                        mark_as_used=False))
+        self.assertEqual(
+            "bar/baz/foo_1", g.unique_name(
+                "foo", mark_as_used=False))
         self.assertEqual("bar/baz/foo_1", g.unique_name("foo"))
       with g.name_scope("baz"):
-        self.assertEqual("bar/baz_1/foo", g.unique_name("foo",
-                                                        mark_as_used=False))
+        self.assertEqual(
+            "bar/baz_1/foo", g.unique_name(
+                "foo", mark_as_used=False))
         self.assertEqual("bar/baz_1/foo", g.unique_name("foo"))
-        self.assertEqual("bar/baz_1/foo_1", g.unique_name("foo",
-                                                          mark_as_used=False))
+        self.assertEqual(
+            "bar/baz_1/foo_1", g.unique_name(
+                "foo", mark_as_used=False))
         self.assertEqual("bar/baz_1/foo_1", g.unique_name("foo"))
     with g.name_scope("quux"):
       self.assertEqual("quux/foo", g.unique_name("foo", mark_as_used=False))
       self.assertEqual("quux/foo", g.unique_name("foo"))
     with g.name_scope("bar"):
       with g.name_scope("baz"):
-        self.assertEqual("bar_1/baz/foo", g.unique_name("foo",
-                                                        mark_as_used=False))
+        self.assertEqual(
+            "bar_1/baz/foo", g.unique_name(
+                "foo", mark_as_used=False))
         self.assertEqual("bar_1/baz/foo", g.unique_name("foo"))
     self.assertEqual("foo_4", g.unique_name("foo", mark_as_used=False))
     self.assertEqual("foo_4", g.unique_name("foo"))
@@ -499,13 +514,17 @@ class NameStackTest(test_util.TensorFlowTestCase):
         with variable_scope.variable_scope("l1"):
           with sess.graph.name_scope("l1") as scope:
             self.assertEqual("l0/l1/l1/", scope)
-            self.assertEqual("l0/l1/l1/foo",
-                             sess.graph.unique_name("foo", mark_as_used=False))
+            self.assertEqual(
+                "l0/l1/l1/foo",
+                sess.graph.unique_name(
+                    "foo", mark_as_used=False))
             self.assertEqual("l0/l1/l1/foo", sess.graph.unique_name("foo"))
           with sess.graph.name_scope("l2") as scope:
             self.assertEqual("l0/l1/l2/", scope)
-            self.assertEqual("l0/l1/l2/foo",
-                             sess.graph.unique_name("foo", mark_as_used=False))
+            self.assertEqual(
+                "l0/l1/l2/foo",
+                sess.graph.unique_name(
+                    "foo", mark_as_used=False))
             self.assertEqual("l0/l1/l2/foo", sess.graph.unique_name("foo"))
 
   def testOutOfOrderUniqueName(self):
@@ -561,8 +580,7 @@ class NameTest(test_util.TensorFlowTestCase):
       with g.name_scope("") as empty2:
         self.assertEqual("", empty2)
 
-    self.assertEqual("const",
-                     g.create_op("const", [], [dtypes.float32]).name)
+    self.assertEqual("const", g.create_op("const", [], [dtypes.float32]).name)
     with g.name_scope("bar") as scope:
       self.assertEqual("bar/const",
                        g.create_op("const", [], [dtypes.float32]).name)
@@ -570,8 +588,8 @@ class NameTest(test_util.TensorFlowTestCase):
                        g.create_op("const", [], [dtypes.float32]).name)
       # If you use the value from "with .. as", that values is used as-is.
       self.assertEqual(
-          "bar",
-          g.create_op("const", [], [dtypes.float32], name=scope).name)
+          "bar", g.create_op(
+              "const", [], [dtypes.float32], name=scope).name)
     with g.name_scope("baz") as scope:
       with g.name_scope("quux"):
         self.assertEqual("baz/quux/const",
@@ -580,12 +598,13 @@ class NameTest(test_util.TensorFlowTestCase):
       with g.name_scope(scope):
         self.assertEqual("baz/const",
                          g.create_op("const", [], [dtypes.float32]).name)
-        self.assertEqual("baz",
-                         g.create_op("const", [], [dtypes.float32],
-                                     name=scope).name)
-        self.assertEqual("trailing",
-                         g.create_op("const", [], [dtypes.float32],
-                                     name="trailing/").name)
+        self.assertEqual(
+            "baz", g.create_op(
+                "const", [], [dtypes.float32], name=scope).name)
+        self.assertEqual(
+            "trailing",
+            g.create_op(
+                "const", [], [dtypes.float32], name="trailing/").name)
     with g.name_scope("bar"):
       self.assertEqual("bar_1/const",
                        g.create_op("const", [], [dtypes.float32]).name)
@@ -616,8 +635,10 @@ class DeviceTest(test_util.TensorFlowTestCase):
 
   def testDeviceFull(self):
     g = ops.Graph()
-    with g.device(pydev.DeviceSpec(job="worker", replica=2, task=0,
-                                   device_type="CPU", device_index=3)):
+    with g.device(
+        pydev.DeviceSpec(
+            job="worker", replica=2, task=0, device_type="CPU",
+            device_index=3)):
       g.create_op("an_op", [], [dtypes.float32])
     gd = g.as_graph_def()
     self.assertProtoEqualsVersion("""
@@ -908,9 +929,11 @@ class CollectionTest(test_util.TensorFlowTestCase):
 
   def test_add_to_collections_from_generator(self):
     g = ops.Graph()
+
     def generator():
       yield "abc"
       yield "123"
+
     g.add_to_collections(generator(), "key")
     self.assertEqual(["key"], g.get_collection("abc"))
     self.assertEqual(["key"], g.get_collection("123"))
@@ -1041,8 +1064,8 @@ class ControlDependenciesTest(test_util.TensorFlowTestCase):
           with g.control_dependencies([a_4]):
             b_2 = _apply_op(g, "const", [], [dtypes.float32])
 
-    self.assertItemsEqual(
-        [a_1.op, a_2.op, a_3.op, a_4.op], b_1.op.control_inputs)
+    self.assertItemsEqual([a_1.op, a_2.op, a_3.op, a_4.op],
+                          b_1.op.control_inputs)
     self.assertItemsEqual(b_1.op.control_inputs, b_2.op.control_inputs)
 
   def testClear(self):
@@ -1162,7 +1185,8 @@ class OpScopeTest(test_util.TensorFlowTestCase):
     g0 = ops.Graph()
     values = [
         g0.create_op("a", [], [dtypes.float32]),
-        g0.create_op("b", [], [dtypes.float32])]
+        g0.create_op("b", [], [dtypes.float32])
+    ]
     with self.assertRaises(ValueError):
       with ops.name_scope(None, values=values):
         pass
@@ -1258,6 +1282,7 @@ class GraphTest(test_util.TensorFlowTestCase):
     self._AssertDefault(orig)
 
   def testAsGraphElementConversions(self):
+
     class ConvertibleObj(object):
 
       def _as_graph_element(self):
@@ -1296,15 +1321,18 @@ class AttrScopeTest(test_util.TensorFlowTestCase):
   def testLabelMap(self):
     with self.test_session() as sess:
       a1 = self._get_test_attrs()
-      with sess.graph._attr_scope(
-          {"_A": attr_value_pb2.AttrValue(s=compat.as_bytes("foo"))}):
+      with sess.graph._attr_scope({
+          "_A": attr_value_pb2.AttrValue(s=compat.as_bytes("foo"))
+      }):
         a2 = self._get_test_attrs()
-        with sess.graph._attr_scope(
-            {"_A": None,
-             "_B": attr_value_pb2.AttrValue(s=compat.as_bytes("bar"))}):
+        with sess.graph._attr_scope({
+            "_A": None,
+            "_B": attr_value_pb2.AttrValue(s=compat.as_bytes("bar"))
+        }):
           a3 = self._get_test_attrs()
-          with sess.graph._attr_scope(
-              {"_A": attr_value_pb2.AttrValue(s=compat.as_bytes("baz"))}):
+          with sess.graph._attr_scope({
+              "_A": attr_value_pb2.AttrValue(s=compat.as_bytes("baz"))
+          }):
             a4 = self._get_test_attrs()
           a5 = self._get_test_attrs()
         a6 = self._get_test_attrs()
@@ -1317,6 +1345,7 @@ class AttrScopeTest(test_util.TensorFlowTestCase):
       self.assertAllEqual((None, "bar"), a5)
       self.assertAllEqual(("foo", None), a6)
       self.assertAllEqual((None, None), a7)
+
 
 ops.RegisterShape("KernelLabel")(common_shapes.scalar_shape)
 
@@ -1560,8 +1589,8 @@ class DeprecatedTest(test_util.TensorFlowTestCase):
 class DenseTensorLikeTypeTest(test_util.TensorFlowTestCase):
 
   def testSuccess(self):
-    op = ops.Operation(ops._NodeDef("noop", "myop"), ops.Graph(),
-                       [], [dtypes.float32])
+    op = ops.Operation(
+        ops._NodeDef("noop", "myop"), ops.Graph(), [], [dtypes.float32])
     t = op.outputs[0]
     self.assertTrue(ops.is_dense_tensor_like(t))
 
@@ -1609,24 +1638,23 @@ class DenseTensorLikeTypeTest(test_util.TensorFlowTestCase):
 class NameScopeTest(test_util.TensorFlowTestCase):
 
   def testStripAndPrependScope(self):
-    strs = ["hidden1/hidden1/weights",       # Same prefix. Should strip.
-            "hidden1///hidden1/weights",     # Extra "/". Should strip.
-            "^hidden1/hidden1/weights",      # Same prefix. Should strip.
-            "loc:@hidden1/hidden1/weights",  # Same prefix. Should strip.
-            "hhidden1/hidden1/weights",  # Different prefix. Should keep.
-            "hidden1"]                   # Not a prefix. Should keep.
-    expected_striped = ["hidden1/weights",
-                        "hidden1/weights",
-                        "^hidden1/weights",
-                        "loc:@hidden1/weights",
-                        "hhidden1/hidden1/weights",
-                        "hidden1"]
-    expected_prepended = ["hidden2/hidden1/weights",
-                          "hidden2/hidden1/weights",
-                          "^hidden2/hidden1/weights",
-                          "loc:@hidden2/hidden1/weights",
-                          "hidden2/hhidden1/hidden1/weights",
-                          "hidden2/hidden1"]
+    strs = [
+        "hidden1/hidden1/weights",  # Same prefix. Should strip.
+        "hidden1///hidden1/weights",  # Extra "/". Should strip.
+        "^hidden1/hidden1/weights",  # Same prefix. Should strip.
+        "loc:@hidden1/hidden1/weights",  # Same prefix. Should strip.
+        "hhidden1/hidden1/weights",  # Different prefix. Should keep.
+        "hidden1"
+    ]  # Not a prefix. Should keep.
+    expected_striped = [
+        "hidden1/weights", "hidden1/weights", "^hidden1/weights",
+        "loc:@hidden1/weights", "hhidden1/hidden1/weights", "hidden1"
+    ]
+    expected_prepended = [
+        "hidden2/hidden1/weights", "hidden2/hidden1/weights",
+        "^hidden2/hidden1/weights", "loc:@hidden2/hidden1/weights",
+        "hidden2/hhidden1/hidden1/weights", "hidden2/hidden1"
+    ]
     name_scope_to_strip = "hidden1"
     name_scope_to_add = "hidden2"
     for es, ep, s in zip(expected_striped, expected_prepended, strs):

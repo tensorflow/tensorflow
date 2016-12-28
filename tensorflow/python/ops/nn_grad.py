@@ -322,33 +322,18 @@ def _BroadcastMul(vec, mat):
 
 @ops.RegisterGradient("SoftmaxCrossEntropyWithLogits")
 def _SoftmaxCrossEntropyWithLogitsGrad(op, grad_0, _):
-  """Gradient function for SoftmaxCrossEntropyWithLogits."""
   # grad_0 is the backprop for cost, and we multiply it with the gradients
   # (which is output[1])
   # There is no gradient for the labels
-  #
-  # Currently there is no way to take the second derivative of this op
-  # due to the fused implementation's interaction with tf.gradients(),
-  # so we make sure we prevent silently incorrect results by raising
-  # an error if the second derivative is requested via prevent_gradient.
-  softmax_grad_without_gradient = array_ops.prevent_gradient(op.outputs[1])
-  return _BroadcastMul(grad_0, softmax_grad_without_gradient), None
+  return _BroadcastMul(grad_0, op.outputs[1]), None
 
 
 @ops.RegisterGradient("SparseSoftmaxCrossEntropyWithLogits")
 def _SparseSoftmaxCrossEntropyWithLogitsGrad(op, grad_0, _):
-  """Gradient function for SparseSoftmaxCrossEntropyWithLogits."""
   # grad_0 is the backprop for cost, and we multiply it with the gradients
   # (which is output[1])
   # There is no gradient for the labels
-  #
-  # Currently there is no way to take the second derivative of this op
-  # due to the fused implementation's interaction with tf.gradients(),
-  # so we make sure we prevent silently incorrect results by raising
-  # an error if the second derivative is requested via prevent_gradient.
-  sparse_softmax_grad_without_gradient = array_ops.prevent_gradient(
-      op.outputs[1])
-  return _BroadcastMul(grad_0, sparse_softmax_grad_without_gradient), None
+  return _BroadcastMul(grad_0, op.outputs[1]), None
 
 
 @ops.RegisterGradient("Conv2D")
@@ -557,7 +542,7 @@ def _TopKGrad(op, grad, _):
 
   ind_lastdim = array_ops.gather(ind_shape, array_ops.size(ind_shape) - 1)
   # Flatten indices to 2D.
-  ind_2d = array_ops.reshape(op.outputs[1], array_ops.pack([-1, ind_lastdim]))
+  ind_2d = array_ops.reshape(op.outputs[1], array_ops.stack([-1, ind_lastdim]))
 
   in_lastdim = array_ops.gather(in_shape, array_ops.size(in_shape) - 1)
   outerdim = array_ops.shape(ind_2d)[0]

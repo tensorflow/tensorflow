@@ -225,7 +225,7 @@ public final class Session implements AutoCloseable {
       public Reference() {
         synchronized (nativeHandleLock) {
           if (nativeHandle == 0) {
-            throw new IllegalStateException("run() called after the Session was close()d");
+            throw new IllegalStateException("run() cannot be called on the Session after close()");
           }
           ++numActiveRuns;
         }

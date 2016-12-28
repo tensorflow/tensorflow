@@ -61,8 +61,9 @@ class DecodeJpegOp : public OpKernel {
     } else if (dct_method == "INTEGER_ACCURATE") {
       flags_.dct_method = JDCT_ISLOW;
     } else {
-      // TODO(vrv): We plan on changing the default to DCT_IFAST.
-      flags_.dct_method = JDCT_DEFAULT;
+      // The TensorFlow-chosen default is IFAST, sacrificing decoding
+      // image quality for speed.
+      flags_.dct_method = JDCT_IFAST;
     }
   }
 

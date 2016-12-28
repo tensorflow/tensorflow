@@ -351,6 +351,20 @@ Node* Concat(Graph* g, Node* concat_dim, gtl::ArraySlice<Node*> tensors) {
   return ret;
 }
 
+Node* ConcatV2(Graph* g, gtl::ArraySlice<Node*> tensors, Node* concat_dim) {
+  std::vector<NodeBuilder::NodeOut> nodeouts;
+  nodeouts.reserve(tensors.size());
+  for (auto const t : tensors) {
+    nodeouts.emplace_back(t);
+  }
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "ConcatV2")
+                  .Input(nodeouts)
+                  .Input(concat_dim)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
 Node* Next(Graph* g, const string& name, Node* input) {
   Node* ret;
   TF_CHECK_OK(
@@ -384,6 +398,15 @@ Node* Cast(Graph* g, Node* in, DataType dst) {
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Cast")
                   .Input(in)
                   .Attr("DstT", dst)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* BroadcastArgs(Graph* g, Node* s0, Node* s1) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "BroadcastArgs")
+                  .Input(s0)
+                  .Input(s1)
                   .Finalize(g, &ret));
   return ret;
 }

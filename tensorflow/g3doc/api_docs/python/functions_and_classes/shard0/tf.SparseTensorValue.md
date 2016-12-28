@@ -1,59 +1,50 @@
-Stores the calculated numpy arrays representing a `SparseTensor`.
-
-Returned as the output of a session.run on a `SparseTensor` object.
+SparseTensorValue(indices, values, dense_shape)
 - - -
 
-#### `tf.SparseTensorValue.__getitem__(i)` {#SparseTensorValue.__getitem__}
+#### `tf.SparseTensorValue.__getnewargs__()` {#SparseTensorValue.__getnewargs__}
 
-
-
-
-- - -
-
-#### `tf.SparseTensorValue.__init__(indices, values, dense_shape=None, shape=None)` {#SparseTensorValue.__init__}
-
-
+Return self as a plain tuple.  Used by copy and pickle.
 
 
 - - -
 
-#### `tf.SparseTensorValue.__iter__()` {#SparseTensorValue.__iter__}
+#### `tf.SparseTensorValue.__getstate__()` {#SparseTensorValue.__getstate__}
+
+Exclude the OrderedDict from pickling
 
 
+- - -
+
+#### `tf.SparseTensorValue.__new__(_cls, indices, values, dense_shape)` {#SparseTensorValue.__new__}
+
+Create new instance of SparseTensorValue(indices, values, dense_shape)
 
 
 - - -
 
 #### `tf.SparseTensorValue.__repr__()` {#SparseTensorValue.__repr__}
 
-
+Return a nicely formatted representation string
 
 
 - - -
 
 #### `tf.SparseTensorValue.dense_shape` {#SparseTensorValue.dense_shape}
 
-
+Alias for field number 2
 
 
 - - -
 
 #### `tf.SparseTensorValue.indices` {#SparseTensorValue.indices}
 
-
-
-
-- - -
-
-#### `tf.SparseTensorValue.shape` {#SparseTensorValue.shape}
-
-
+Alias for field number 0
 
 
 - - -
 
 #### `tf.SparseTensorValue.values` {#SparseTensorValue.values}
 
-
+Alias for field number 1
 
 

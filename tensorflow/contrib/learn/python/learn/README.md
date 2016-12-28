@@ -34,7 +34,7 @@ Optionally you can install [scikit-learn](http://scikit-learn.org/stable/) and [
 
 ### Usage
 
-Below are a few simple examples of the API. For more examples, please see [examples](https://www.tensorflow.org/code/tensorflow/examples/skflow).
+Below are a few simple examples of the API. For more examples, please see [examples](https://www.tensorflow.org/code/tensorflow/examples/learn).
 
 General tips:
 
@@ -210,10 +210,9 @@ and then load the reported URL.
 
 ## More examples
 
-See the [examples folder](https://www.tensorflow.org/code/tensorflow/examples/skflow) for:
+See the [examples folder](https://www.tensorflow.org/code/tensorflow/examples/learn) for:
 
--  An easy way to handle [categorical variables](https://www.tensorflow.org/code/tensorflow/examples/skflow/text_classification.py) (words are just an example of a categorical variable)
--  Text Classification: see examples for [RNN](https://www.tensorflow.org/code/tensorflow/examples/skflow/text_classification_character_rnn.py) and [CNN](https://www.tensorflow.org/code/tensorflow/examples/skflow/text_classification_character_cnn.py) on characters
--  [Language modeling and text sequence to sequence](https://www.tensorflow.org/code/tensorflow/examples/skflow/language_model.py)
--  [Digit recognition using a CNN](https://www.tensorflow.org/code/tensorflow/examples/skflow/digits.py)
+-  An easy way to handle [categorical variables](https://www.tensorflow.org/code/tensorflow/examples/learn/text_classification.py) (words are just an example of a categorical variable)
+-  Text Classification: see examples for [RNN](https://www.tensorflow.org/code/tensorflow/examples/learn/text_classification_character_rnn.py) and [CNN](https://www.tensorflow.org/code/tensorflow/examples/learn/text_classification_character_cnn.py) on characters
+-  [Digit recognition using a CNN](https://www.tensorflow.org/code/tensorflow/examples/learn/mnist.py)
 -  And much more!

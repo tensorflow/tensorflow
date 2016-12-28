@@ -30,7 +30,6 @@ import android.os.Trace;
 import android.util.Size;
 import android.util.TypedValue;
 import android.view.Display;
-import java.io.IOException;
 import java.util.List;
 import java.util.Vector;
 import org.tensorflow.demo.OverlayView.DrawCallback;
@@ -108,12 +107,25 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
     borderedText = new BorderedText(textSizePx);
 
     classifier = new TensorFlowImageClassifier();
+
     try {
-      classifier.initializeTensorFlow(
-        getAssets(), MODEL_FILE, LABEL_FILE, NUM_CLASSES, INPUT_SIZE, IMAGE_MEAN, IMAGE_STD,
-        INPUT_NAME, OUTPUT_NAME);
-    } catch (final IOException e) {
-      LOGGER.e(e, "Exception!");
+      final int initStatus =
+          classifier.initializeTensorFlow(
+              getAssets(),
+              MODEL_FILE,
+              LABEL_FILE,
+              NUM_CLASSES,
+              INPUT_SIZE,
+              IMAGE_MEAN,
+              IMAGE_STD,
+              INPUT_NAME,
+              OUTPUT_NAME);
+      if (initStatus != 0) {
+        LOGGER.e("TF init status != 0: %d", initStatus);
+        throw new RuntimeException();
+      }
+    } catch (final Exception e) {
+      throw new RuntimeException("Error initializing TensorFlow!", e);
     }
 
     resultsView = (ResultsView) findViewById(R.id.results);

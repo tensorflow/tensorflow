@@ -157,7 +157,7 @@ using ConcatV2Op = ConcatBaseOp<Device, T, NAME_IS_AXIS>;
                               .HostMemory("axis"),           \
                           ConcatV2Op<CPUDevice, type>)
 
-TF_CALL_ALL_TYPES(REGISTER_CONCAT);
+TF_CALL_POD_STRING_TYPES(REGISTER_CONCAT);
 REGISTER_CONCAT(quint8);
 REGISTER_CONCAT(qint8);
 REGISTER_CONCAT(quint16);

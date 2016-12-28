@@ -47,7 +47,7 @@ class BaseLayerTest(test.TestCase):
 
       # Test basic variable creation.
       variable = layer._add_variable(
-          'my_var', [2, 2], initializer=init_ops.zeros_initializer)
+          'my_var', [2, 2], initializer=init_ops.zeros_initializer())
       self.assertEqual(variable.name, 'my_var:0')
       self.assertListEqual(layer.variables, [variable])
       self.assertListEqual(layer.trainable_variables, [variable])
@@ -60,7 +60,7 @@ class BaseLayerTest(test.TestCase):
       # layer._add_variable should work even outside `build` and `call`.
       variable_2 = layer._add_variable(
           'non_trainable_var', [2, 2],
-          initializer=init_ops.zeros_initializer,
+          initializer=init_ops.zeros_initializer(),
           trainable=False)
       self.assertListEqual(layer.variables, [variable, variable_2])
       self.assertListEqual(layer.trainable_variables, [variable])
@@ -72,7 +72,7 @@ class BaseLayerTest(test.TestCase):
       regularizer = lambda x: math_ops.reduce_sum(x) * 1e-3
       variable = layer._add_variable(
           'reg_var', [2, 2],
-          initializer=init_ops.zeros_initializer,
+          initializer=init_ops.zeros_initializer(),
           regularizer=regularizer)
       self.assertEqual(len(layer.losses), 1)
 
@@ -85,15 +85,19 @@ class BaseLayerTest(test.TestCase):
 
         def build(self, input_shape):
           self.my_var = variable_scope.get_variable(
-              'my_var', [2, 2], initializer=init_ops.zeros_initializer)
+              'my_var', [2, 2], initializer=init_ops.zeros_initializer())
 
         def call(self, inputs):
+          variable_scope.get_variable(
+              'my_call_var', [2, 2], initializer=init_ops.zeros_initializer())
           return inputs
 
       layer = MyLayer(name='my_layer')
       inputs = random_ops.random_uniform((5,), seed=1)
-      _ = layer.apply(inputs)
-      self.assertListEqual(layer.variables, [layer.my_var])
+      layer.apply(inputs)
+      layer.apply(inputs)
+      self.assertListEqual([v.name for v in layer.variables],
+                           ['my_layer/my_var:0', 'my_layer/my_call_var:0'])
 
   def testCall(self):
 

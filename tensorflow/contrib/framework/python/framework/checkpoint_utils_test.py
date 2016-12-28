@@ -211,8 +211,10 @@ class CheckpointsTest(tf.test.TestCase):
       with self.test_session(graph=g) as session:
         with tf.variable_scope("some_scope"):
           _ = tf.get_variable("my1", [10, 10])
-          _ = tf.get_variable("my2", [1, 10],
-                              dtype=tf.int64, initializer=tf.zeros_initializer)
+          _ = tf.get_variable(
+              "my2", [1, 10],
+              dtype=tf.int64,
+              initializer=tf.zeros_initializer())
 
         # No directory.
         with self.assertRaises(tf.errors.OpError):

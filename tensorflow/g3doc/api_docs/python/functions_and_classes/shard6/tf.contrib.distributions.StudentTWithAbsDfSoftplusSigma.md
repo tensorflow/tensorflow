@@ -178,6 +178,20 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.is_scalar_batch` {#StudentTWithAbsDfSoftplusSigma.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.is_scalar_event` {#StudentTWithAbsDfSoftplusSigma.is_scalar_event}
+
+Indicates that `event_shape==[]`.
+
+
+- - -
+
 #### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.log_cdf(value, name='log_cdf', **condition_kwargs)` {#StudentTWithAbsDfSoftplusSigma.log_cdf}
 
 Log cumulative distribution function.

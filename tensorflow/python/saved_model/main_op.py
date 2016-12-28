@@ -22,10 +22,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops as tf_data_flow_ops
+from tensorflow.python.ops import variables
 
 
 def main_op():
@@ -37,10 +37,11 @@ def main_op():
   Returns:
     The set of ops to be run as part of the main op upon the load operation.
   """
-  init = tf.global_variables_initializer()
-  init_local = tf.local_variables_initializer()
+  init = variables.global_variables_initializer()
+  init_local = variables.local_variables_initializer()
   init_tables = tf_data_flow_ops.initialize_all_tables()
-  return tf.group(init, init_local, init_tables)
+  return control_flow_ops.group(init, init_local, init_tables)
+
 
 def main_op_with_restore(restore_op_name):
   """Returns a main op to init variables, tables and restore the graph.
@@ -56,5 +57,5 @@ def main_op_with_restore(restore_op_name):
     The set of ops to be run as part of the main op upon the load operation.
   """
   with ops.control_dependencies([main_op()]):
-    main_op_with_restore = tf.group(restore_op_name)
+    main_op_with_restore = control_flow_ops.group(restore_op_name)
   return main_op_with_restore

@@ -694,6 +694,12 @@ class _DefinedFunction(object):
         for s in slist:
           update_str(s)
 
+      for adef in self._definition.signature.input_arg:
+        update_str(adef.SerializeToString())
+
+      for adef in self._definition.signature.output_arg:
+        update_str(adef.SerializeToString())
+
       for n in sorted(self._definition.node_def, key=lambda n: n.name):
         update_str(n.name)
         update_str(n.op)

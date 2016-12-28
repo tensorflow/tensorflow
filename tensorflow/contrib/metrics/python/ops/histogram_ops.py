@@ -153,17 +153,17 @@ def _auc_hist_accumulate(hist_true, hist_false, nbins, collections):
     # Holds running total histogram of scores for records labeled True.
     hist_true_acc = variable_scope.get_variable(
         'hist_true_acc',
-        initializer=init_ops.zeros_initializer(
-            [nbins],
-            dtype=hist_true.dtype),
+        shape=[nbins],
+        dtype=hist_true.dtype,
+        initializer=init_ops.zeros_initializer(),
         collections=collections,
         trainable=False)
     # Holds running total histogram of scores for records labeled False.
     hist_false_acc = variable_scope.get_variable(
         'hist_false_acc',
-        initializer=init_ops.zeros_initializer(
-            [nbins],
-            dtype=hist_false.dtype),
+        shape=[nbins],
+        dtype=hist_true.dtype,
+        initializer=init_ops.zeros_initializer(),
         collections=collections,
         trainable=False)
 

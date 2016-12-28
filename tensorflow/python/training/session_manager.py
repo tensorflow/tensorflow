@@ -132,6 +132,7 @@ class SessionManager(object):
                           master,
                           saver=None,
                           checkpoint_dir=None,
+                          checkpoint_filename_with_path=None,
                           wait_for_checkpoint=False,
                           max_wait_secs=7200,
                           config=None):
@@ -141,7 +142,9 @@ class SessionManager(object):
     Args:
       master: `String` representation of the TensorFlow master to use.
       saver: A `Saver` object used to restore a model.
-      checkpoint_dir: Path to the checkpoint files.
+      checkpoint_dir: Path to the checkpoint files. The latest checkpoint in the
+        dir will be used to restore.
+      checkpoint_filename_with_path: Full file name path to the checkpoint file.
       wait_for_checkpoint: Whether to wait for checkpoint to become available.
       max_wait_secs: Maximum time to wait for checkpoints to become available.
       config: Optional `ConfigProto` proto used to configure the session.
@@ -149,14 +152,25 @@ class SessionManager(object):
     Returns:
       A pair (sess, is_restored) where 'is_restored' is `True` if
       the session could be restored, `False` otherwise.
+
+    Raises:
+      ValueError: If both checkpoint_dir and checkpoint_filename_with_path are
+        set.
     """
     self._target = master
     sess = session.Session(self._target, graph=self._graph, config=config)
 
-    # If either saver or checkpoint_dir is not specified, cannot restore. Just
+    if checkpoint_dir and checkpoint_filename_with_path:
+      raise ValueError("Can not provide both checkpoint_dir and "
+                       "checkpoint_filename_with_path.")
+    # If either saver or checkpoint_* is not specified, cannot restore. Just
     # return.
-    if not saver or not checkpoint_dir:
+    if not saver or not (checkpoint_dir or checkpoint_filename_with_path):
       return sess, False
+
+    if checkpoint_filename_with_path:
+      saver.restore(sess, checkpoint_filename_with_path)
+      return sess, True
 
     # Waits up until max_wait_secs for checkpoint to become available.
     wait_time = 0
@@ -175,9 +189,16 @@ class SessionManager(object):
     saver.recover_last_checkpoints(ckpt.all_model_checkpoint_paths)
     return sess, True
 
-  def prepare_session(self, master, init_op=None, saver=None,
-                      checkpoint_dir=None, wait_for_checkpoint=False,
-                      max_wait_secs=7200, config=None, init_feed_dict=None,
+  def prepare_session(self,
+                      master,
+                      init_op=None,
+                      saver=None,
+                      checkpoint_dir=None,
+                      checkpoint_filename_with_path=None,
+                      wait_for_checkpoint=False,
+                      max_wait_secs=7200,
+                      config=None,
+                      init_feed_dict=None,
                       init_fn=None):
     """Creates a `Session`. Makes sure the model is ready to be used.
 
@@ -201,7 +222,9 @@ class SessionManager(object):
       master: `String` representation of the TensorFlow master to use.
       init_op: Optional `Operation` used to initialize the model.
       saver: A `Saver` object used to restore a model.
-      checkpoint_dir: Path to the checkpoint files.
+      checkpoint_dir: Path to the checkpoint files. The latest checkpoint in the
+        dir will be used to restore.
+      checkpoint_filename_with_path: Full file name path to the checkpoint file.
       wait_for_checkpoint: Whether to wait for checkpoint to become available.
       max_wait_secs: Maximum time to wait for checkpoints to become available.
       config: Optional `ConfigProto` proto used to configure the session.
@@ -217,12 +240,17 @@ class SessionManager(object):
 
     Raises:
       RuntimeError: If the model cannot be initialized or recovered.
+
+    Raises:
+      ValueError: If both checkpoint_dir and checkpoint_filename_with_path are
+        set.
     """
 
     sess, is_loaded_from_checkpoint = self._restore_checkpoint(
         master,
         saver,
         checkpoint_dir=checkpoint_dir,
+        checkpoint_filename_with_path=checkpoint_filename_with_path,
         wait_for_checkpoint=wait_for_checkpoint,
         max_wait_secs=max_wait_secs,
         config=config)
@@ -256,6 +284,7 @@ class SessionManager(object):
                       master,
                       saver=None,
                       checkpoint_dir=None,
+                      checkpoint_filename_with_path=None,
                       wait_for_checkpoint=False,
                       max_wait_secs=7200,
                       config=None):
@@ -267,7 +296,9 @@ class SessionManager(object):
     Args:
       master: `String` representation of the TensorFlow master to use.
       saver: A `Saver` object used to restore a model.
-      checkpoint_dir: Path to the checkpoint files.
+      checkpoint_dir: Path to the checkpoint files. The latest checkpoint in the
+        dir will be used to restore.
+      checkpoint_filename_with_path: Full file name path to the checkpoint file.
       wait_for_checkpoint: Whether to wait for checkpoint to become available.
       max_wait_secs: Maximum time to wait for checkpoints to become available.
       config: Optional `ConfigProto` proto used to configure the session.
@@ -275,12 +306,17 @@ class SessionManager(object):
     Returns:
       A pair (sess, initialized) where 'initialized' is `True` if
       the session could be recovered and initialized, `False` otherwise.
+
+    Raises:
+      ValueError: If both checkpoint_dir and checkpoint_filename_with_path are
+        set.
     """
 
     sess, is_loaded_from_checkpoint = self._restore_checkpoint(
         master,
         saver,
         checkpoint_dir=checkpoint_dir,
+        checkpoint_filename_with_path=checkpoint_filename_with_path,
         wait_for_checkpoint=wait_for_checkpoint,
         max_wait_secs=max_wait_secs,
         config=config)
@@ -292,19 +328,20 @@ class SessionManager(object):
       # Do not need to run checks for readiness
       return sess, False
 
+    restoring_file = checkpoint_dir or checkpoint_filename_with_path
     if not local_init_success:
       logging.info(
           "Restoring model from %s did not make model ready for local init:"
-          " %s", checkpoint_dir, msg)
+          " %s", restoring_file, msg)
       return sess, False
 
     is_ready, msg = self._model_ready(sess)
     if not is_ready:
       logging.info("Restoring model from %s did not make model ready: %s",
-                   checkpoint_dir, msg)
+                   restoring_file, msg)
       return sess, False
 
-    logging.info("Restored model from %s", checkpoint_dir)
+    logging.info("Restored model from %s", restoring_file)
     return sess, is_loaded_from_checkpoint
 
   def wait_for_session(self, master, config=None, max_wait_secs=float("Inf")):

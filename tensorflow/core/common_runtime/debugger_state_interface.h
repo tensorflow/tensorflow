@@ -35,9 +35,10 @@ class DebuggerStateInterface {
   // Returns a summary string for RepeatedPtrFields of DebugTensorWatches.
   virtual const string SummarizeDebugTensorWatches() = 0;
 
-  // Insert special-purpose debug nodes to graph. See the documentation of
-  // DebugNodeInserter::InsertNodes() for details.
-  virtual Status InsertNodes(Graph* graph, Device* device) = 0;
+  // Insert special-purpose debug nodes to graph and dump the graph for
+  // record. See the documentation of DebugNodeInserter::InsertNodes() for
+  // details.
+  virtual Status DecorateGraphForDebug(Graph* graph, Device* device) = 0;
 };
 
 typedef std::function<std::unique_ptr<DebuggerStateInterface>(

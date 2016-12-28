@@ -295,7 +295,7 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
       ValueError: If `n_classes` < 2.
     """
     self._hidden_units = hidden_units
-    self._feature_columns = feature_columns
+    self._feature_columns = tuple(feature_columns or [])
     self._enable_centered_bias = enable_centered_bias
     self._estimator = estimator.Estimator(
         model_fn=_dnn_model_fn,
@@ -308,7 +308,7 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
                     weight_column_name=weight_column_name,
                     enable_centered_bias=enable_centered_bias),
             "hidden_units": hidden_units,
-            "feature_columns": feature_columns,
+            "feature_columns": self._feature_columns,
             "optimizer": optimizer,
             "activation_fn": activation_fn,
             "dropout": dropout,
@@ -608,7 +608,7 @@ class DNNRegressor(evaluable.Evaluable, trainable.Trainable):
     Returns:
       A `DNNRegressor` estimator.
     """
-    self._feature_columns = feature_columns
+    self._feature_columns = tuple(feature_columns or [])
     self._estimator = estimator.Estimator(
         model_fn=_dnn_model_fn,
         model_dir=model_dir,
@@ -619,7 +619,7 @@ class DNNRegressor(evaluable.Evaluable, trainable.Trainable):
                 weight_column_name=weight_column_name,
                 enable_centered_bias=enable_centered_bias),
             "hidden_units": hidden_units,
-            "feature_columns": feature_columns,
+            "feature_columns": self._feature_columns,
             "optimizer": optimizer,
             "activation_fn": activation_fn,
             "dropout": dropout,

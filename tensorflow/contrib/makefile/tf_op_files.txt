@@ -106,6 +106,7 @@ tensorflow/core/kernels/deep_conv2d.cc
 tensorflow/core/kernels/xsmm_conv2d.cc
 tensorflow/core/kernels/cwise_ops_common.cc
 tensorflow/core/kernels/cwise_op_tanh.cc
+tensorflow/core/kernels/cwise_op_pow.cc
 tensorflow/core/kernels/cwise_op_sub.cc
 tensorflow/core/kernels/cwise_op_squared_difference.cc
 tensorflow/core/kernels/cwise_op_square.cc

@@ -23,7 +23,10 @@ py_library(
     srcs = ["input_data.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = ["//tensorflow:tensorflow_py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/learn/python/learn/datasets",
+    ],
 )
 
 py_library(

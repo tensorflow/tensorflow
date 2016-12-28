@@ -897,7 +897,7 @@ REGISTER_KERNEL(int64, string);
 
 #undef REGISTER_KERNEL
 
-// Register the MutableHashTableOfTensors op.
+// Register the MutableDenseHashTable op.
 #define REGISTER_KERNEL(key_dtype, value_dtype)                            \
   REGISTER_KERNEL_BUILDER(                                                 \
       Name("MutableDenseHashTable")                                        \
@@ -909,6 +909,7 @@ REGISTER_KERNEL(int64, string);
 
 REGISTER_KERNEL(int64, int64);
 REGISTER_KERNEL(int64, float);
+REGISTER_KERNEL(int64, double);
 REGISTER_KERNEL(string, float);
 
 #undef REGISTER_KERNEL

@@ -35,108 +35,120 @@ void dummy_xsmm_conv2d_ensure_file_is_not_empty(void);
 
 namespace tensorflow {
 
-// XsmmConv2D is a wrapper for libxsmm direct convolutions.
-
-// Returns true if convolution can be computed efficiently by XsmmConv2D,
-// returns false otherwise.
-bool CanUseXsmmConv2D(const libxsmm_dnn_conv_desc& desc,
-                      TensorFormat data_format) {
-  int VECTOR_SIZE;
-  int arch = libxsmm_cpuid_x86();
-
-  if (arch == LIBXSMM_X86_AVX512_CORE) {
-    VECTOR_SIZE = 16;
-  } else if (arch == LIBXSMM_X86_AVX2) {
-    VECTOR_SIZE = 8;
-  } else {
-    VLOG(1) << "Cannot use XSMM convolutions: unsupported architecture!";
-    return false;
-  }
-
-  if (data_format != FORMAT_NHWC) {
-    VLOG(1) << "Cannot use XSMM convolutions: unsupported format!";
-    return false;
-  }
-  if (desc.pad_h_in != 0 || desc.pad_w_in != 0) {
-    VLOG(1) << "Cannot use XSMM convolutions: unsupported padding!";
-    return false;
-  }
-  if (desc.K % VECTOR_SIZE != 0) {
-    VLOG(1) << "Cannot use XSMM convolutions: output features count not"
-               " divisible by vector size!";
-    return false;
-  }
-  VLOG(2) << "Can use XSMM convolutions.";
-  return true;
-}
+// Xsmm*Conv2D are wrappers for libxsmm direct convolutions.
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
 namespace functor {
 
-template <typename T>
-struct XsmmConv2D<CPUDevice, T> {
-  static void chkerr(libxsmm_dnn_err_t status, string msg) {
-    if (status != LIBXSMM_DNN_SUCCESS) {
-      VLOG(0) << msg << " failed: " << libxsmm_dnn_get_error(status);
-    }
+static void chk_libxsmm_err(libxsmm_dnn_err_t status, string msg) {
+  if (status != LIBXSMM_DNN_SUCCESS) {
+    VLOG(0) << msg << " failed: " << libxsmm_dnn_get_error(status);
+  }
+}
+
+template <typename InputPtr, typename FilterPtr, typename OutputPtr>
+static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
+                                   const libxsmm_dnn_conv_desc& desc,
+                                   libxsmm_dnn_conv_kind kind, InputPtr input,
+                                   FilterPtr filter, OutputPtr output) {
+  libxsmm_dnn_err_t status;
+
+  libxsmm_dnn_conv_handle* libxsmm_handle;
+  libxsmm_handle = libxsmm_dnn_create_conv_handle_check(desc, &status);
+  chk_libxsmm_err(status, "Create handle");
+
+  status = libxsmm_dnn_get_codegen_success(libxsmm_handle, kind);
+  if (status == LIBXSMM_DNN_WARN_FALLBACK) {
+    chk_libxsmm_err(libxsmm_dnn_destroy_conv_handle(libxsmm_handle),
+                    "Destroy handle");
+    return false;  // Use non-libxsmm code
+  }
+  // libxsmm_dnn_get_codegen_success can return real errors as well
+  chk_libxsmm_err(status, "Check codegen status");
+
+  libxsmm_dnn_buffer* libxsmm_input;
+  libxsmm_dnn_buffer* libxsmm_output;
+  libxsmm_dnn_filter* libxsmm_filter;
+
+  libxsmm_input = libxsmm_dnn_link_input_buffer_check(
+      libxsmm_handle, input, LIBXSMM_DNN_CONV_FORMAT_NHWC_PTR, &status);
+  chk_libxsmm_err(status, "Link input buffer");
+  libxsmm_output = libxsmm_dnn_link_output_buffer_check(
+      libxsmm_handle, output, LIBXSMM_DNN_CONV_FORMAT_NHWC_PTR, &status);
+  chk_libxsmm_err(status, "Link output buffer");
+  libxsmm_filter = libxsmm_dnn_link_filter_check(
+      libxsmm_handle, filter, LIBXSMM_DNN_CONV_FORMAT_RSCK_PTR, &status);
+  chk_libxsmm_err(status, "Link filter");
+
+  chk_libxsmm_err(libxsmm_dnn_zero_buffer(libxsmm_output), "Zero output");
+
+  chk_libxsmm_err(libxsmm_dnn_bind_input_buffer(libxsmm_handle, libxsmm_input),
+                  "Bind input");
+  chk_libxsmm_err(
+      libxsmm_dnn_bind_output_buffer(libxsmm_handle, libxsmm_output),
+      "Bind output");
+  chk_libxsmm_err(libxsmm_dnn_bind_filter(libxsmm_handle, libxsmm_filter),
+                  "Bind filter");
+
+  if (kind == LIBXSMM_DNN_CONV_KIND_BWD) {
+    libxsmm_dnn_transpose_filter(libxsmm_handle);
   }
 
-  void operator()(OpKernelContext* ctx, const libxsmm_dnn_conv_desc& desc,
+  // TODO(maciejd) We would prefer raw threads instead of threadpool.
+  auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
+  int num_threads = worker_threads.num_threads;
+  BlockingCounter counter(num_threads);
+  for (int i = 0; i < num_threads; ++i) {
+    worker_threads.workers->Schedule([=, &counter]() {
+      chk_libxsmm_err(libxsmm_dnn_convolve_st(libxsmm_handle, kind, 0, i),
+                      "Worker");
+      counter.DecrementCount();
+    });
+  }
+  counter.Wait();
+
+  chk_libxsmm_err(libxsmm_dnn_destroy_buffer(libxsmm_input), "Destroy input");
+  chk_libxsmm_err(libxsmm_dnn_destroy_buffer(libxsmm_output), "Destroy output");
+  chk_libxsmm_err(libxsmm_dnn_destroy_filter(libxsmm_filter), "Destroy filter");
+  chk_libxsmm_err(libxsmm_dnn_destroy_conv_handle(libxsmm_handle),
+                  "Destroy handle");
+
+  return true;  // Succeeded
+}
+
+template <typename T>
+struct XsmmFwdConv2D<CPUDevice, T> {
+  bool operator()(OpKernelContext* ctx, const libxsmm_dnn_conv_desc& desc,
                   const T* input, const T* filter, T* output) {
-    libxsmm_dnn_err_t status;
+    return CallLibxsmmConvGeneric(ctx, desc, LIBXSMM_DNN_CONV_KIND_FWD, input,
+                                  filter, output);
+  }
+};
 
-    libxsmm_dnn_conv_handle* libxsmm_handle;
-    libxsmm_handle = libxsmm_dnn_create_conv_handle_check(desc, &status);
-    chkerr(status, "Create handle");
+template <typename T>
+struct XsmmBkwInputConv2D<CPUDevice, T> {
+  bool operator()(OpKernelContext* ctx, const libxsmm_dnn_conv_desc& desc,
+                  T* input, const T* filter, const T* output) {
+    return CallLibxsmmConvGeneric(ctx, desc, LIBXSMM_DNN_CONV_KIND_BWD, input,
+                                  filter, output);
+  }
+};
 
-    libxsmm_dnn_buffer* libxsmm_input;
-    libxsmm_dnn_buffer* libxsmm_output;
-    libxsmm_dnn_filter* libxsmm_filter;
-
-    libxsmm_input = libxsmm_dnn_link_input_buffer_check(
-        libxsmm_handle, input, LIBXSMM_DNN_CONV_FORMAT_NHWC_PTR, &status);
-    chkerr(status, "Link input buffer");
-    libxsmm_output = libxsmm_dnn_link_output_buffer_check(
-        libxsmm_handle, output, LIBXSMM_DNN_CONV_FORMAT_NHWC_PTR, &status);
-    chkerr(status, "Link output buffer");
-    libxsmm_filter = libxsmm_dnn_link_filter_check(
-        libxsmm_handle, filter, LIBXSMM_DNN_CONV_FORMAT_RSCK_PTR, &status);
-    chkerr(status, "Link filter");
-
-    chkerr(libxsmm_dnn_zero_buffer(libxsmm_output), "Zero output");
-
-    chkerr(libxsmm_dnn_bind_input_buffer(libxsmm_handle, libxsmm_input),
-           "Bind input");
-    chkerr(libxsmm_dnn_bind_output_buffer(libxsmm_handle, libxsmm_output),
-           "Bind output");
-    chkerr(libxsmm_dnn_bind_filter(libxsmm_handle, libxsmm_filter),
-           "Bind filter");
-
-    // TODO(maciejd) We would prefer raw threads instead of threadpool.
-    auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
-    int num_threads = worker_threads.num_threads;
-    BlockingCounter counter(num_threads);
-    for (int i = 0; i < num_threads; ++i) {
-      worker_threads.workers->Schedule([=, &counter]() {
-        chkerr(libxsmm_dnn_convolve_st(libxsmm_handle,
-                                       LIBXSMM_DNN_CONV_KIND_FWD, 0, i),
-               "Worker");
-        counter.DecrementCount();
-      });
-    }
-    counter.Wait();
-
-    chkerr(libxsmm_dnn_destroy_buffer(libxsmm_input), "Destroy input");
-    chkerr(libxsmm_dnn_destroy_buffer(libxsmm_output), "Destroy output");
-    chkerr(libxsmm_dnn_destroy_filter(libxsmm_filter), "Destroy filter");
-    chkerr(libxsmm_dnn_destroy_conv_handle(libxsmm_handle), "Destory handle");
+template <typename T>
+struct XsmmBkwFilterConv2D<CPUDevice, T> {
+  bool operator()(OpKernelContext* ctx, const libxsmm_dnn_conv_desc& desc,
+                  const T* input, T* filter, const T* output) {
+    return CallLibxsmmConvGeneric(ctx, desc, LIBXSMM_DNN_CONV_KIND_UPD, input,
+                                  filter, output);
   }
 };
 
 }  // namespace functor
 
-template struct functor::XsmmConv2D<CPUDevice, float>;
+template struct functor::XsmmFwdConv2D<CPUDevice, float>;
+template struct functor::XsmmBkwInputConv2D<CPUDevice, float>;
+template struct functor::XsmmBkwFilterConv2D<CPUDevice, float>;
 
 }  // namespace tensorflow
 
