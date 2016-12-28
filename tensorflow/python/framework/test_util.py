@@ -23,6 +23,7 @@ import contextlib
 import math
 import random
 import re
+import tempfile
 import threading
 
 import numpy as np
@@ -39,6 +40,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import versions
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
@@ -154,6 +156,10 @@ class TensorFlowTestCase(googletest.TestCase):
   def tearDown(self):
     for thread in self._threads:
       self.assertFalse(thread.is_alive(), "A checkedThread did not terminate")
+
+    if self._tempdir:
+      file_io.delete_recursively(self._tempdir)
+
     self._ClearCachedSession()
 
   def _ClearCachedSession(self):
@@ -162,8 +168,17 @@ class TensorFlowTestCase(googletest.TestCase):
       self._cached_session = None
 
   def get_temp_dir(self):
+    """Returns a unique temporary directory for the test to use.
+
+    Across different test runs, this method will return a different folder.
+    This will ensure that across different runs tests will not be able to
+    pollute each others environment.
+
+    Returns:
+      string, the path to the unique temporary directory created for this test.
+    """
     if not self._tempdir:
-      self._tempdir = googletest.GetTempDir()
+      self._tempdir = tempfile.mkdtemp(prefix=googletest.GetTempDir())
     return self._tempdir
 
   def _AssertProtoEquals(self, a, b):
