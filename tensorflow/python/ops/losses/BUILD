@@ -13,6 +13,7 @@ py_library(
     srcs = [
         "__init__.py",
         "losses.py",
+        "losses_impl.py",
         "util.py",
     ],
     srcs_version = "PY2AND3",
