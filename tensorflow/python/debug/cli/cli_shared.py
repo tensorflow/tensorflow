@@ -352,7 +352,8 @@ def get_run_short_description(run_call_count, fetches, feed_dict):
   else:
     if len(feed_dict) == 1:
       for key in feed_dict:
-        description += "1 feed (%s)" % key.name
+        description += "1 feed (%s)" % (
+            key if isinstance(key, six.string_types) else key.name)
     else:
       description += "%d feeds" % len(feed_dict)
 
@@ -384,14 +385,19 @@ def get_error_intro(tf_error):
       intro_lines, font_attr_segs=intro_font_attr_segs)
 
   out.extend(
-      _recommend_command("ni %s" % op_name,
-                         "Inspect information about the failing op."))
+      _recommend_command("ni -a -d -t %s" % op_name,
+                         "Inspect information about the failing op.",
+                         create_link=True))
   out.extend(
       _recommend_command("li -r %s" % op_name,
-                         "List inputs to the failing op, recursively."))
+                         "List inputs to the failing op, recursively.",
+                         create_link=True))
+
   out.extend(
       _recommend_command(
-          "lt", "List all tensors dumped during the failing run() call."))
+          "lt",
+          "List all tensors dumped during the failing run() call.",
+          create_link=True))
 
   more_lines = [
       "",

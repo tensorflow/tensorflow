@@ -68,23 +68,25 @@ class Seq2SeqTest(tf.test.TestCase):
         with tf.variable_scope("decoder") as scope:
           # Train decoder
           decoder_cell = tf.contrib.rnn.GRUCell(decoder_hidden_size)
-          decoder_fn_train = tf.contrib.seq2seq.simple_decoder_fn_train(
-              encoder_state=encoder_state)
-          decoder_outputs_train, decoder_state_train = (
-            tf.contrib.seq2seq.dynamic_rnn_decoder(
-                cell=decoder_cell,
-                decoder_fn=decoder_fn_train,
-                inputs=decoder_inputs,
-                sequence_length=decoder_length,
-                time_major=True,
-                scope=scope))
+          decoder_fn_train = Seq2SeqTest._decoder_fn_with_context_state(
+              tf.contrib.seq2seq.simple_decoder_fn_train(
+                  encoder_state=encoder_state))
+          (decoder_outputs_train, decoder_state_train,
+           decoder_context_state_train) = (
+               tf.contrib.seq2seq.dynamic_rnn_decoder(
+                   cell=decoder_cell,
+                   decoder_fn=decoder_fn_train,
+                   inputs=decoder_inputs,
+                   sequence_length=decoder_length,
+                   time_major=True,
+                   scope=scope))
           decoder_outputs_train = output_fn(decoder_outputs_train)
 
           # Setup variable reuse
           scope.reuse_variables()
 
           # Inference decoder
-          decoder_fn_inference = (
+          decoder_fn_inference = Seq2SeqTest._decoder_fn_with_context_state(
               tf.contrib.seq2seq.simple_decoder_fn_inference(
                 output_fn=output_fn,
                 encoder_state=encoder_state,
@@ -95,19 +97,26 @@ class Seq2SeqTest(tf.test.TestCase):
                 maximum_length=decoder_sequence_length-1,
                 num_decoder_symbols=num_decoder_symbols,
                 dtype=tf.int32))
-          decoder_outputs_inference, decoder_state_inference = (
-              tf.contrib.seq2seq.dynamic_rnn_decoder(
-                cell=decoder_cell,
-                decoder_fn=decoder_fn_inference,
-                time_major=True,
-                scope=scope))
+          (decoder_outputs_inference, decoder_state_inference,
+           decoder_context_state_inference) = (
+               tf.contrib.seq2seq.dynamic_rnn_decoder(
+                   cell=decoder_cell,
+                   decoder_fn=decoder_fn_inference,
+                   time_major=True,
+                   scope=scope))
 
         # Run model
         tf.global_variables_initializer().run()
-        decoder_outputs_train_res, decoder_state_train_res = sess.run(
-            [decoder_outputs_train, decoder_state_train])
-        decoder_outputs_inference_res, decoder_state_inference_res = sess.run(
-            [decoder_outputs_inference, decoder_state_inference])
+        (decoder_outputs_train_res, decoder_state_train_res,
+         decoder_context_state_train_res) = sess.run([
+             decoder_outputs_train, decoder_state_train,
+             decoder_context_state_train
+         ])
+        (decoder_outputs_inference_res, decoder_state_inference_res,
+         decoder_context_state_inference_res) = sess.run([
+             decoder_outputs_inference, decoder_state_inference,
+             decoder_context_state_inference
+         ])
 
         # Assert outputs
         self.assertEqual((decoder_sequence_length, batch_size,
@@ -115,15 +124,47 @@ class Seq2SeqTest(tf.test.TestCase):
                          decoder_outputs_train_res.shape)
         self.assertEqual((batch_size, num_decoder_symbols),
                          decoder_outputs_inference_res.shape[1:3])
+        self.assertEqual(decoder_sequence_length,
+                         decoder_context_state_inference_res)
         self.assertEqual((batch_size, decoder_hidden_size),
                          decoder_state_train_res.shape)
         self.assertEqual((batch_size, decoder_hidden_size),
                          decoder_state_inference_res.shape)
+        self.assertEqual(decoder_sequence_length,
+                         decoder_context_state_train_res)
         # The dynamic decoder might end earlier than `maximal_length`
         # under inference
-        true_value = (decoder_sequence_length>=
-                      decoder_state_inference_res.shape[0])
-        self.assertEqual((true_value), True)
+        self.assertGreaterEqual(decoder_sequence_length,
+                                decoder_state_inference_res.shape[0])
+
+  @staticmethod
+  def _decoder_fn_with_context_state(inner_decoder_fn, name=None):
+    """Wraps a given decoder function, adding context state to it.
+
+    Given a valid `inner_decoder_fn`, returns another valid `decoder_fn` which
+    first calls `inner_decoder_fn`, then overwrites the context_state, setting
+    it to the current time.
+
+    Args:
+      inner_decoder_fn: A valid `decoder_fn` of the type passed into
+        `dynamic_rnn_decoder`.
+
+    Returns:
+      A valid `decoder_fn` to be passed into `dynamic_rnn_decoder`.
+    """
+
+    def decoder_fn(time, cell_state, cell_input, cell_output, context_state):
+      with tf.name_scope(
+          name, "decoder_fn_with_context_state",
+          [time, cell_state, cell_input, cell_output, context_state]):
+        done, next_state, next_input, emit_output, next_context_state = (
+            inner_decoder_fn(time, cell_state, cell_input, cell_output,
+                             context_state))
+        next_context_state = time
+        return done, next_state, next_input, emit_output, next_context_state
+
+    return decoder_fn
+
 
 if __name__ == '__main__':
   tf.test.main()

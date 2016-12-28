@@ -20,5 +20,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/builds_common.sh"
 configure_android_workspace
 
-CPUS=armeabi-v7a,x86_64
-bazel build -c opt --fat_apk_cpu=${CPUS} //tensorflow/examples/android:tensorflow_demo
+CPUS=armeabi-v7a,arm64-v8a,x86,x86_64
+
+# Build all relevant native libraries for each architecture.
+for CPU in ${CPUS//,/ }
+do
+    echo "========== Building native libs for Android ${CPU} =========="
+    bazel build -c opt --cpu=${CPU} \
+        --crosstool_top=//external:android/crosstool \
+        --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
+        //tensorflow/core:android_tensorflow_lib \
+        //tensorflow/contrib/android:libtensorflow_inference.so \
+        //tensorflow/examples/android:libtensorflow_demo.so
+done
+
+# Build Jar and also demo containing native libs for all architectures.
+echo "========== Building TensorFlow Android Jar and Demo =========="
+bazel build -c opt --fat_apk_cpu=${CPUS} \
+    //tensorflow/contrib/android:android_tensorflow_inference_java \
+    //tensorflow/examples/android:tensorflow_demo

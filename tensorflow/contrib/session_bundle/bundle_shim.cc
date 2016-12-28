@@ -173,7 +173,9 @@ Status ConvertDefaultSignatureToSignatureDef(const Signatures& signatures,
     LOG(WARNING) << "Default signature up-conversion to SignatureDef is only "
                     "supported for `Classification` and `Regression`. Could "
                     "not up-convert signature: "
-                 << signature.DebugString();
+                 << signature.DebugString()
+                 << ". (If using SessionRun with the SessionBundle export "
+                    "format please ignore this warning.)";
   }
   return Status::OK();
 }

@@ -378,6 +378,8 @@ class DebugDumpDir(object):
     self._create_tensor_watch_maps()
     self._load_partition_graphs(partition_graphs, validate)
 
+    self._python_graph = None
+
   def _load_dumps(self, dump_root):
     """Load DebugTensorDatum instances from the dump root.
 
@@ -470,6 +472,23 @@ class DebugDumpDir(object):
         self._watch_key_to_datum[datum.watch_key].append(datum)
         self._watch_key_to_rel_time[datum.watch_key].append(datum.timestamp -
                                                             self._t0)
+
+  def set_python_graph(self, python_graph):
+    """Provide Python `Graph` object to the wrapper.
+
+    Unlike the partition graphs, which are protobuf `GraphDef` objects, `Graph`
+    is a Python object and carries additional information such as the traceback
+    of nodes in the graph.
+
+    Args:
+      python_graph: (ops.Graph) The Python Graph object.
+    """
+
+    self._python_graph = python_graph
+    self._node_traceback = {}
+    if self._python_graph:
+      for op in self._python_graph.get_operations():
+        self._node_traceback[op.name] = op.traceback
 
   @property
   def dumped_tensor_data(self):
@@ -1136,3 +1155,27 @@ class DebugDumpDir(object):
                        watch_key)
 
     return self._watch_key_to_rel_time[watch_key]
+
+  def node_traceback(self, element_name):
+    """Try to retrieve the Python traceback of node's construction.
+
+    Args:
+      element_name: (str) Name of a graph element (node or tensor).
+
+    Returns:
+      (list) The traceback list object as returned by the `extract_trace`
+        method of Python's traceback module.
+
+    Raises:
+      LookupError: If Python graph is not available for traceback lookup.
+      KeyError: If the node cannot be found in the Python graph loaded.
+    """
+
+    if self._python_graph is None:
+      raise LookupError("Python graph is not available for traceback lookup")
+
+    node_name = get_node_name(element_name)
+    if node_name not in self._node_traceback:
+      raise KeyError("Cannot find node \"%s\" in Python graph" % node_name)
+
+    return self._node_traceback[node_name]
