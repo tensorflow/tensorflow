@@ -38,6 +38,7 @@ py_library(
         "//tensorflow/contrib/losses:losses_py",
         "//tensorflow/contrib/metrics:metrics_py",
         "//tensorflow/contrib/ndlstm",
+        "//tensorflow/contrib/nn:nn_py",
         "//tensorflow/contrib/opt:opt_py",
         "//tensorflow/contrib/quantization:quantization_py",
         "//tensorflow/contrib/rnn:rnn_py",
