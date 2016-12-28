@@ -25,6 +25,7 @@ import sys
 import tensorflow as tf
 
 from tensorflow.contrib import ffmpeg
+from tensorflow.python import debug as tf_debug
 from tensorflow.python.client import client_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import docs
@@ -79,6 +80,7 @@ def module_names():
       "tf.contrib.solvers",
       "tf.contrib.training",
       "tf.contrib.util",
+      "tf_debug",
   ]
 
 
@@ -89,6 +91,8 @@ def find_module(base_module, name):
   # to size concerns.
   elif name == "tf.contrib.ffmpeg":
     return ffmpeg
+  elif name == "tf_debug":
+    return tf_debug
   elif name.startswith("tf."):
     subname = name[3:]
     subnames = subname.split(".")
@@ -240,6 +244,7 @@ def all_libraries(module_to_name, members, documented):
       library("contrib.util", "Utilities (contrib)", tf.contrib.util),
       library("contrib.copy_graph", "Copying Graph Elements (contrib)",
               tf.contrib.copy_graph),
+      library("tf_debug", "TensorFlow Debugger", tf_debug),
   ])
 
 _hidden_symbols = ["Event", "LogMessage", "Summary", "SessionLog", "xrange",

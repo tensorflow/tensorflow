@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """TensorFlow Debugger (tfdbg) Utilities."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -27,18 +28,20 @@ def add_debug_tensor_watch(run_options,
                            output_slot=0,
                            debug_ops="DebugIdentity",
                            debug_urls=None):
-  """Add debug tensor watch option to RunOptions.
+  """Add watch on a `Tensor` to `RunOptions`.
+
+  N.B.: Under certain circumstances, the `Tensor` may not be actually watched
+    (e.g., if the node of the `Tensor` is constant-folded during runtime).
 
   Args:
-    run_options: An instance of tensorflow.core.protobuf.config_pb2.RunOptions
-    node_name: Name of the node to watch.
-    output_slot: Output slot index of the tensor from the watched node.
-    debug_ops: Name(s) of the debug op(s). Default: "DebugIdentity".
-        Can be a list of strings or a single string. The latter case is
-        equivalent to a list of string with only one element.
-    debug_urls: URLs to send debug signals to: a non-empty list of strings or
-        a string, or None. The case of a string is equivalent to a list of
-        string with only one element.
+    run_options: An instance of `config_pb2.RunOptions` to be modified.
+    node_name: (`str`) name of the node to watch.
+    output_slot: (`int`) output slot index of the tensor from the watched node.
+    debug_ops: (`str` or `list` of `str`) name(s) of the debug op(s). Can be a
+      `list` of `str` or a single `str`. The latter case is equivalent to a
+      `list` of `str` with only one element.
+    debug_urls: (`str` or `list` of `str`) URL(s) to send debug values to,
+      e.g., `file:///tmp/tfdbg_dump_1`, `grpc://localhost:12345`.
   """
 
   watch_opts = run_options.debug_options.debug_tensor_watch_opts
@@ -65,27 +68,31 @@ def watch_graph(run_options,
                 debug_urls=None,
                 node_name_regex_whitelist=None,
                 op_type_regex_whitelist=None):
-  """Add debug tensor watch options to RunOptions based on a TensorFlow graph.
+  """Add debug watches to `RunOptions` for a TensorFlow graph.
 
-  To watch all tensors on the graph, set both node_name_regex_whitelist
-  and op_type_regex_whitelist to None.
+  To watch all `Tensor`s on the graph, let both `node_name_regex_whitelist`
+  and `op_type_regex_whitelist` be the default (`None`).
+
+  N.B.: Under certain circumstances, not all specified `Tensor`s will be
+    actually watched (e.g., nodes that are constant-folded during runtime will
+    not be watched).
 
   Args:
-    run_options: An instance of tensorflow.core.protobuf.config_pb2.RunOptions
-    graph: An instance of tensorflow.python.framework.ops.Graph
-    debug_ops: Name of the debug op to use. Default: "DebugIdentity".
-        Can be a list of strings of a single string. The latter case is
-        equivalent to a list of a single string.
-    debug_urls: Debug urls. Can be a list of strings, a single string, or
-        None. The case of a single string is equivalen to a list consisting
-        of a single string.
-    node_name_regex_whitelist: Regular-expression whitelist for node_name.
-        This should be a string, e.g., "(weight_[0-9]+|bias_.*)"
+    run_options: An instance of `config_pb2.RunOptions` to be modified.
+    graph: An instance of `ops.Graph`.
+    debug_ops: (`str` or `list` of `str`) name(s) of the debug op(s) to use.
+    debug_urls: URLs to send debug values to. Can be a list of strings,
+      a single string, or None. The case of a single string is equivalent to
+      a list consisting of a single string, e.g., `file:///tmp/tfdbg_dump_1`,
+      `grpc://localhost:12345`.
+    node_name_regex_whitelist: Regular-expression whitelist for node_name,
+      e.g., `"(weight_[0-9]+|bias_.*)"`
     op_type_regex_whitelist: Regular-expression whitelist for the op type of
-        nodes. If both node_name_regex_whitelist and op_type_regex_whitelist
-        are none, the two filtering operations will occur in an "AND"
-        relation. In other words, a node will be included if and only if it
-        hits both whitelists. This should be a string, e.g., "(Variable|Add)".
+      nodes, e.g., `"(Variable|Add)"`.
+      If both `node_name_regex_whitelist` and `op_type_regex_whitelist`
+      are set, the two filtering operations will occur in a logical `AND`
+      relation. In other words, a node will be included if and only if it
+      hits both whitelists.
   """
 
   if isinstance(debug_ops, str):
@@ -130,29 +137,30 @@ def watch_graph_with_blacklists(run_options,
                                 debug_urls=None,
                                 node_name_regex_blacklist=None,
                                 op_type_regex_blacklist=None):
-  """Add debug tensor watch options, blacklisting nodes and op types.
+  """Add debug tensor watches, blacklisting nodes and op types.
 
-  This is similar to watch_graph(), but the node names and op types can be
+  This is similar to `watch_graph()`, but the node names and op types are
   blacklisted, instead of whitelisted.
 
+  N.B.: Under certain circumstances, not all specified `Tensor`s will be
+    actually watched (e.g., nodes that are constant-folded during runtime will
+    not be watched).
+
   Args:
-    run_options: An instance of tensorflow.core.protobuf.config_pb2.RunOptions
-    graph: An instance of tensorflow.python.framework.ops.Graph
-    debug_ops: Name of the debug op to use. Default: "DebugIdentity".
-        Can be a list of strings of a single string. The latter case is
-        equivalent to a list of a single string.
-    debug_urls: Debug urls. Can be a list of strings, a single string, or
-        None. The case of a single string is equivalen to a list consisting
-        of a single string.
+    run_options: An instance of `config_pb2.RunOptions` to be modified.
+    graph: An instance of `ops.Graph`.
+    debug_ops: (`str` or `list` of `str`) name(s) of the debug op(s) to use.
+    debug_urls: URL(s) to send ebug values to, e.g.,
+      `file:///tmp/tfdbg_dump_1`, `grpc://localhost:12345`.
     node_name_regex_blacklist: Regular-expression blacklist for node_name.
-        This should be a string, e.g., "(weight_[0-9]+|bias_.*)"
+      This should be a string, e.g., `"(weight_[0-9]+|bias_.*)"`.
     op_type_regex_blacklist: Regular-expression blacklist for the op type of
-        nodes. If both node_name_regex_blacklist and op_type_regex_blacklist
-        are none, the two filtering operations will occur in an "OR"
-        relation. In other words, a node will be excluded if it hits either of
-        the two blacklists; a node will be included if and only if it hits
-        none of the blacklists. This should be a string, e.g.,
-        "(Variable|Add)".
+      nodes, e.g., `"(Variable|Add)"`.
+      If both node_name_regex_blacklist and op_type_regex_blacklist
+      are set, the two filtering operations will occur in a logical `OR`
+      relation. In other words, a node will be excluded if it hits either of
+      the two blacklists; a node will be included if and only if it hits
+      neither of the blacklists.
   """
 
   if isinstance(debug_ops, str):
