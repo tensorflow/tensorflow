@@ -55,39 +55,8 @@ while true; do
 done
 
 if is_windows; then
-  TF_NEED_GCP=0
   TF_NEED_HDFS=0
   TF_NEED_OPENCL=0
-fi
-
-while [ "$TF_NEED_GCP" == "" ]; do
-  read -p "Do you wish to build TensorFlow with "\
-"Google Cloud Platform support? [y/N] " INPUT
-  case $INPUT in
-    [Yy]* ) echo "Google Cloud Platform support will be enabled for "\
-"TensorFlow"; TF_NEED_GCP=1;;
-    [Nn]* ) echo "No Google Cloud Platform support will be enabled for "\
-"TensorFlow"; TF_NEED_GCP=0;;
-    "" ) echo "No Google Cloud Platform support will be enabled for "\
-"TensorFlow"; TF_NEED_GCP=0;;
-    * ) echo "Invalid selection: " $INPUT;;
-  esac
-done
-
-if [ "$TF_NEED_GCP" == "1" ]; then
-  ## Verify that libcurl header files are available.
-  # Only check Linux, since on MacOS the header files are installed with XCode.
-  if [[ $(uname -a) =~ Linux ]] && [[ ! -f "/usr/include/curl/curl.h" ]]; then
-    echo "ERROR: It appears that the development version of libcurl is not "\
-"available. Please install the libcurl3-dev package."
-    exit 1
-  fi
-
-  # Update Bazel build configuration.
-  sed -i -e "s/WITH_GCP_SUPPORT = False/WITH_GCP_SUPPORT = True/" tensorflow/core/platform/default/build_config.bzl
-else
-  # Update Bazel build configuration.
-  sed -i -e "s/WITH_GCP_SUPPORT = True/WITH_GCP_SUPPORT = False/" tensorflow/core/platform/default/build_config.bzl
 fi
 
 while [ "$TF_NEED_HDFS" == "" ]; do

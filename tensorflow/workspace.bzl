@@ -207,6 +207,17 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       build_file = str(Label("//third_party:swig.BUILD")),
   )
 
+  native.new_http_archive(
+      name = "curl",
+      sha256 = "ff3e80c1ca6a068428726cd7dd19037a47cc538ce58ef61c59587191039b2ca6",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/curl.haxx.se/download/curl-7.49.1.tar.gz",
+          "https://curl.haxx.se/download/curl-7.49.1.tar.gz",
+      ],
+      strip_prefix = "curl-7.49.1",
+      build_file = str(Label("//third_party:curl.BUILD")),
+  )
+
   # grpc expects //external:protobuf_clib and //external:protobuf_compiler
   # to point to the protobuf's compiler library.
   native.bind(
