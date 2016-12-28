@@ -698,7 +698,9 @@ seed: If either `seed` or `seed2` are set to non-zero, the random number
   seed.
 seed2: A second seed to avoid seed collision.
 min_object_covered: The cropped area of the image must contain at least this
-  fraction of any bounding box supplied.
+  fraction of any bounding box supplied. The value of this parameter should be
+  non-negative. In the case of 0, the cropped area does not need to overlap
+  any of the bounding boxes supplied.
 aspect_ratio_range: The cropped area of the image must have an aspect ratio =
   width / height within this range.
 area_range: The cropped area of the image must contain a fraction of the
