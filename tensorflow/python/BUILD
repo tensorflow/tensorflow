@@ -2339,7 +2339,6 @@ tf_py_wrap_cc(
         "//tensorflow/core:lib",
         "//tensorflow/core/debug",
         "//tensorflow/core/distributed_runtime:server_lib",
-        "//tensorflow/core/platform/cloud:gcs_file_system",
         "//tensorflow/tools/tfprof/internal:print_model_analysis",
         "//util/python:python_headers",
     ] + tf_additional_lib_deps() + tf_additional_plugin_deps(),

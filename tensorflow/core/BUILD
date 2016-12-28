@@ -1351,7 +1351,6 @@ tf_cuda_library(
         ":protos_all_cc",
         "//third_party/eigen3",
         "//tensorflow/core/kernels:required",
-        "//tensorflow/core/platform/cloud:gcs_file_system",
     ] + tf_additional_lib_deps(),
     alwayslink = 1,
 )
