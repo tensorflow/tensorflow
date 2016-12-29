@@ -222,7 +222,7 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
       zeros += array_ops.zeros(shape=operator.batch_shape_dynamic())
     batch_shape = array_ops.shape(zeros)
 
-    return array_ops.concat(0, (batch_shape, matrix_shape))
+    return array_ops.concat_v2((batch_shape, matrix_shape), 0)
 
   def _apply(self, x, adjoint=False):
     # If self.operators = [A, B], and not adjoint, then

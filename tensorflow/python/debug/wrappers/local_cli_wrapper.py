@@ -37,18 +37,23 @@ _DUMP_ROOT_PREFIX = "tfdbg_"
 
 
 class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
-  """Concrete subclass of BaseDebugWrapperSession implementing a local CLI."""
+  """Concrete subclass of BaseDebugWrapperSession implementing a local CLI.
+
+  This class has all the methods that a `session.Session` object has, in order
+  to support debugging with minimal code changes. Invoking its `run()` method
+  will launch the command-line interface (CLI) of tfdbg.
+  """
 
   def __init__(self, sess, dump_root=None, log_usage=True):
     """Constructor of LocalCLIDebugWrapperSession.
 
     Args:
-      sess: (BaseSession subtypes) The TensorFlow Session object being wrapped.
-      dump_root: (str) Optional path to the dump root directory. Must be either
-        a directory that does not exist or an empty directory. If the directory
+      sess: The TensorFlow `Session` object being wrapped.
+      dump_root: (`str`) optional path to the dump root directory. Must be a
+        directory that does not exist or an empty directory. If the directory
         does not exist, it will be created by the debugger core during debug
-        run() calls and removed afterwards.
-      log_usage: (bool) Whether the usage of this class is to be logged.
+        `run()` calls and removed afterwards.
+      log_usage: (`bool`) whether the usage of this class is to be logged.
 
     Raises:
       ValueError: If dump_root is an existing and non-empty directory or if
@@ -137,14 +142,10 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
   def add_tensor_filter(self, filter_name, tensor_filter):
     """Add a tensor filter.
 
-    The signature of this command is identical to that of
-    debug_data.DebugDumpDir.add_tensor_filter(). This method is a thin wrapper
-    around that method.
-
     Args:
-      filter_name: (str) Name of the filter.
-      tensor_filter: (callable) The filter callable. See the doc string of
-        debug_data.DebugDumpDir.add_tensor_filter() for more details.
+      filter_name: (`str`) name of the filter.
+      tensor_filter: (`callable`) the filter callable. See the doc string of
+        `DebugDumpDir.find()` for more details about its signature.
     """
 
     self._tensor_filters[filter_name] = tensor_filter
@@ -153,7 +154,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     """Overrides on-session-init callback.
 
     Args:
-      request: An instance of OnSessionInitRequest.
+      request: An instance of `OnSessionInitRequest`.
 
     Returns:
       An instance of OnSessionInitResponse.
@@ -166,13 +167,13 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     """Overrides on-run-start callback.
 
     Invoke the CLI to let user choose what action to take:
-      run / run --no_debug / step.
+      `run` / `invoke_stepper`.
 
     Args:
-      request: An instance of OnSessionInitRequest.
+      request: An instance of `OnSessionInitRequest`.
 
     Returns:
-      An instance of OnSessionInitResponse.
+      An instance of `OnSessionInitResponse`.
 
     Raises:
       RuntimeError: If user chooses to prematurely exit the debugger.
@@ -483,10 +484,11 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     """Overrides method in base class to implement interactive node stepper.
 
     Args:
-      node_stepper: (stepper.NodeStepper) The underlying NodeStepper API object.
-      restore_variable_values_on_exit: (bool) Whether any variables whose values
-        have been altered during this node-stepper invocation should be restored
-        to their old values when this invocation ends.
+      node_stepper: (`stepper.NodeStepper`) The underlying NodeStepper API
+        object.
+      restore_variable_values_on_exit: (`bool`) Whether any variables whose
+        values have been altered during this node-stepper invocation should be
+        restored to their old values when this invocation ends.
 
     Returns:
       The same return values as the `Session.run()` call on the same fetches as

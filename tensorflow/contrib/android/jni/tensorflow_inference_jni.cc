@@ -53,6 +53,9 @@ struct SessionVariables {
   int num_runs = 0;
   int64 timing_total_us = 0;
 
+  bool log_stats = false;
+  StatSummarizer* summarizer = nullptr;
+
   InputMap input_tensors;
   std::vector<std::string> output_tensor_names;
   std::vector<tensorflow::Tensor> output_tensors;
@@ -129,6 +132,10 @@ JNIEXPORT jint JNICALL TENSORFLOW_METHOD(initializeTensorFlow)(
   LOG(INFO) << "GraphDef loaded from " << model_str << " with "
             << tensorflow_graph.node_size() << " nodes.";
 
+  // Whether or not stat logging is currently enabled, the StatSummarizer must
+  // be initialized here with the GraphDef while it is available.
+  vars->summarizer = new StatSummarizer(tensorflow_graph);
+
   LOG(INFO) << "Creating TensorFlow graph from GraphDef.";
   tensorflow::Status s = session->Create(tensorflow_graph);
 
@@ -193,8 +200,28 @@ JNIEXPORT jint JNICALL TENSORFLOW_METHOD(runInference)(
   }
 
   vars->output_tensors.clear();
-  s = vars->session->Run(input_tensors, vars->output_tensor_names, {},
-                         &(vars->output_tensors));
+
+  if (vars->log_stats) {
+    RunOptions run_options;
+    run_options.set_trace_level(RunOptions::FULL_TRACE);
+    RunMetadata run_metadata;
+
+    s = vars->session->Run(run_options, input_tensors,
+                           vars->output_tensor_names, {},
+                           &(vars->output_tensors), &run_metadata);
+
+    assert(run_metadata.has_step_stats());
+    const StepStats& step_stats = run_metadata.step_stats();
+    vars->summarizer->ProcessStepStats(step_stats);
+
+    // Print the full output string, not just the abbreviated one returned by
+    // getStatString().
+    vars->summarizer->PrintStepStats();
+  } else {
+    s = vars->session->Run(input_tensors, vars->output_tensor_names, {},
+                           &(vars->output_tensors));
+  }
+
   end_time = CurrentWallTimeUs();
   const int64 elapsed_time_inf = end_time - start_time;
   vars->timing_total_us += elapsed_time_inf;
@@ -208,6 +235,24 @@ JNIEXPORT jint JNICALL TENSORFLOW_METHOD(runInference)(
   return s.code();
 }
 
+JNIEXPORT void JNICALL TENSORFLOW_METHOD(enableStatLogging)(
+    JNIEnv* env, jobject thiz, jboolean enableStatLogging) {
+  SessionVariables* vars = GetSessionVars(env, thiz);
+  vars->log_stats = enableStatLogging;
+}
+
+JNIEXPORT jstring JNICALL TENSORFLOW_METHOD(getStatString)(JNIEnv* env,
+                                                           jobject thiz) {
+  // Return an abbreviated stat string suitable for displaying on screen.
+  SessionVariables* vars = GetSessionVars(env, thiz);
+  std::stringstream ss;
+  ss << vars->summarizer->GetStatsByMetric("Top 10 CPU",
+                                           StatSummarizer::BY_TIME, 10);
+  ss << vars->summarizer->GetStatsByNodeType();
+  ss << vars->summarizer->ShortSummary();
+  return env->NewStringUTF(ss.str().c_str());
+}
+
 JNIEXPORT jint JNICALL TENSORFLOW_METHOD(close)(JNIEnv* env, jobject thiz) {
   SessionVariables* vars = GetSessionVars(env, thiz);
 
@@ -215,6 +260,8 @@ JNIEXPORT jint JNICALL TENSORFLOW_METHOD(close)(JNIEnv* env, jobject thiz) {
   if (!s.ok()) {
     LOG(ERROR) << "Error closing session: " << s;
   }
+
+  delete vars->summarizer;
 
   mutex_lock l(mutex_);
   std::map<int64, SessionVariables*>& sessions = *GetSessionsSingleton();

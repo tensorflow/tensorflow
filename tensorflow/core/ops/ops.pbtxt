@@ -15532,7 +15532,7 @@ op {
     default_value {
       f: 0.1
     }
-    description: "The cropped area of the image must contain at least this\nfraction of any bounding box supplied."
+    description: "The cropped area of the image must contain at least this\nfraction of any bounding box supplied. The value of this parameter should be\nnon-negative. In the case of 0, the cropped area does not need to overlap\nany of the bounding boxes supplied."
   }
   attr {
     name: "aspect_ratio_range"

@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import shutil
 import tensorflow as tf
 
 from google.protobuf import text_format
@@ -37,7 +36,6 @@ class ProjectorApiTest(tf.test.TestCase):
 
     # Call the API method to save the configuration to a temporary dir.
     temp_dir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, temp_dir)
     writer = tf.summary.FileWriter(temp_dir)
     tf.contrib.tensorboard.plugins.projector.visualize_embeddings(writer,
                                                                   config)

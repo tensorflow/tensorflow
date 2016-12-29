@@ -97,6 +97,7 @@ tf_py_test(
         "python/ops/gmm_test.py",
     ],
     additional_deps = [
+        "//third_party/py/numpy",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
@@ -113,6 +114,7 @@ tf_py_test(
     ],
     additional_deps = [
         ":factorization_py",
+        "//third_party/py/numpy",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
@@ -124,6 +126,7 @@ tf_py_test(
     name = "factorization_ops_test",
     srcs = ["python/ops/factorization_ops_test.py"],
     additional_deps = [
+        "//third_party/py/numpy",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
@@ -135,6 +138,7 @@ tf_py_test(
     name = "wals_solver_ops_test",
     srcs = ["python/kernel_tests/wals_solver_ops_test.py"],
     additional_deps = [
+        "//third_party/py/numpy",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
@@ -145,6 +149,7 @@ tf_py_test(
     name = "clustering_ops_test",
     srcs = ["python/kernel_tests/clustering_ops_test.py"],
     additional_deps = [
+        "//third_party/py/numpy",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
