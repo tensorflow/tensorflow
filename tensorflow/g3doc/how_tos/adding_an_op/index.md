@@ -189,7 +189,7 @@ the shared library is compatible with TensorFlow's plugin loading mechanism.
 ## Using the Op in Python
 
 TensorFlow Python API provides the
-[load_op_library](../../api_docs/python/framework#load_op_library) function to
+[load_op_library](https://www.tensorflow.org/versions/r0.7/api_docs/python/framework.html#load_op_library) function to
 load the dynamic library and register the Op with the TensorFlow
 framework. `load_op_library` returns a Python module, that contains the Python
 wrappers for the Op. Thus, once you have built the op, you can do the following
