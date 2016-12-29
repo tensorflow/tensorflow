@@ -364,7 +364,6 @@ py_library(
         ":errors",
         ":framework",
         ":framework_for_generated_wrappers",
-        ":lib",
         ":platform",
         ":platform_test",
         ":pywrap_tensorflow",
