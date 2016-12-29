@@ -344,7 +344,7 @@ class TensorArrayTest(test.TestCase):
         r1_0 = g_ta_1.read(0)
 
       t_g_ta_0, t_g_ta_1, d_r1_0 = session.run(
-          [g_ta_0.handle, g_ta_1.handle, r1_0])
+          [g_ta_0.handle.op, g_ta_1.handle.op, r1_0])
       self.assertAllEqual(t_g_ta_0, t_g_ta_1)
       self.assertAllEqual([[4.0, 5.0]], d_r1_0)
 
@@ -378,7 +378,7 @@ class TensorArrayTest(test.TestCase):
       w0 = ta.write(0, [[4.0, 5.0]])
 
       # Test reading wrong datatype
-      r0_bad = gen_data_flow_ops._tensor_array_read_v2(
+      r0_bad = gen_data_flow_ops._tensor_array_read_v3(
           handle=w0.handle, index=0, dtype=dtypes.float64, flow_in=w0.flow)
       with self.assertRaisesOpError(
           "TensorArray dtype is float but Op requested dtype double."):
@@ -530,23 +530,6 @@ class TensorArrayTest(test.TestCase):
       r2 = w2.read(0)
       r = r1 + r2
       self.assertAllClose(9.0, r.eval())
-
-  def testDuplicateTensorArrayHasDifferentName(self):
-    with self.test_session(use_gpu=True) as session:
-      h1 = tensor_array_ops.TensorArray(
-          size=1, dtype=dtypes.float32, tensor_array_name="foo")
-      c1 = h1.write(0, 4.0)
-      h2 = tensor_array_ops.TensorArray(
-          size=1, dtype=dtypes.float32, tensor_array_name="foo")
-      c2 = h2.write(0, 5.0)
-      _, _, c1h, c2h = session.run([c1.flow, c2.flow, c1.handle, c2.handle])
-      c1h = [x.decode("ascii") for x in c1h]
-      c2h = [x.decode("ascii") for x in c2h]
-      self.assertEqual(c1h[0], "_tensor_arrays")
-      self.assertEqual(c2h[0], "_tensor_arrays")
-      self.assertTrue(c1h[1].startswith("foo_"))
-      self.assertTrue(c2h[1].startswith("foo_"))
-      self.assertNotEqual(c1h[1], c2h[1])
 
   def _testTensorArrayGradientWriteReadType(self, dtype):
     with self.test_session(use_gpu=True) as session:
