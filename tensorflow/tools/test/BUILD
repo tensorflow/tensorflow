@@ -105,4 +105,5 @@ py_test(
     srcs = ["check_futures_test.py"],
     data = ["//tensorflow:all_opensource_files"],
     srcs_version = "PY2AND3",
+    deps = ["@six_archive//:six"],
 )

@@ -15,9 +15,9 @@ py_library(
         ":process_graph",
         "//tensorflow/python:platform",
         "//tensorflow/python:summary",
-        "//tensorflow/python:util",
-        "//tensorflow/tensorboard:plugins",
+        "//tensorflow/tensorboard:projector",
         "//tensorflow/tensorboard/lib/python:http",
+        "@six_archive//:six",
     ],
 )
 
@@ -48,6 +48,7 @@ py_library(
         ":handler",
         "//tensorflow/python:platform",
         "//tensorflow/python:summary",
+        "@six_archive//:six",
     ],
 )
 
@@ -58,6 +59,7 @@ py_test(
     data = ["//tensorflow/tensorboard:frontend"],
     srcs_version = "PY2AND3",
     deps = [
+        ":handler",
         ":server",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:platform",

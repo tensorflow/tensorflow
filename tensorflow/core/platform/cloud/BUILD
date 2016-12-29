@@ -48,16 +48,13 @@ cc_library(
 
 cc_library(
     name = "http_request",
-    srcs = [
-        "http_request.cc",
-    ],
-    hdrs = [
-        "http_request.h",
-    ],
+    srcs = ["http_request.cc"],
+    hdrs = ["http_request.h"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_internal",
+        "@curl//:curl",
     ],
 )
 
@@ -73,6 +70,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
+        "@curl//:curl",
     ],
 )
 

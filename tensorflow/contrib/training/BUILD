@@ -40,6 +40,7 @@ py_library(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:string_ops",
+        "//tensorflow/python:summary",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
