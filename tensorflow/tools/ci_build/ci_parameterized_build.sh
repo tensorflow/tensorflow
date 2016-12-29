@@ -237,7 +237,7 @@ elif [[ ${CTYPE} == "gpu" ]]; then
       echo ""
     fi
   fi
-elif [[ ${CTYPE} == "android" ]]; then
+elif [[ ${CTYPE} == "android" ]] || [[ ${CTYPE} == "android_nightly" ]]; then
   :
 else
   die "Unrecognized value in TF_BUILD_CONTAINER_TYPE: "\
