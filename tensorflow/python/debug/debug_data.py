@@ -317,6 +317,7 @@ class DebugTensorDatum(object):
 
     return load_tensor_from_event_file(self.file_path)
 
+  # TODO(cais): Add time unit suffix to timestamp and t0 (us).
   @property
   def timestamp(self):
     """Timestamp of when this tensor value was dumped.
