@@ -44,7 +44,7 @@ class Seq2SeqTest(tf.test.TestCase):
         decoder_sequence_length = 7
         num_decoder_symbols = 20
         start_of_sequence_id = end_of_sequence_id = 1
-        decoder_embeddings = tf.get_variable('decoder_embeddings',
+        decoder_embeddings = tf.get_variable("decoder_embeddings",
             [num_decoder_symbols, decoder_embedding_size],
             initializer=tf.random_normal_initializer(stddev=0.1))
         inputs = tf.constant(0.5, shape=[input_sequence_length, batch_size,
@@ -132,6 +132,122 @@ class Seq2SeqTest(tf.test.TestCase):
                          decoder_state_inference_res.shape)
         self.assertEqual(decoder_sequence_length,
                          decoder_context_state_train_res)
+        # The dynamic decoder might end earlier than `maximal_length`
+        # under inference
+        self.assertGreaterEqual(decoder_sequence_length,
+                                decoder_state_inference_res.shape[0])
+
+  # test attention
+  def test_attention(self):
+    with self.test_session() as sess:
+      with tf.variable_scope("root", initializer=
+                             tf.constant_initializer(0.5)):
+        # Define inputs/outputs to model
+        batch_size = 2
+        encoder_embedding_size = 3
+        decoder_embedding_size = 4
+        encoder_hidden_size = 5
+        decoder_hidden_size = encoder_hidden_size
+        input_sequence_length = 6
+        decoder_sequence_length = 7
+        num_decoder_symbols = 20
+        start_of_sequence_id = end_of_sequence_id = 1
+        decoder_embeddings = tf.get_variable(
+            "decoder_embeddings",
+            [num_decoder_symbols, decoder_embedding_size],
+            initializer=tf.random_normal_initializer(stddev=0.1))
+        inputs = tf.constant(0.5, shape=[input_sequence_length, batch_size,
+                                         encoder_embedding_size])
+        decoder_inputs = tf.constant(0.4, shape=[decoder_sequence_length,
+                                                 batch_size,
+                                                 decoder_embedding_size])
+        decoder_length = tf.constant(decoder_sequence_length, dtype=tf.int32,
+                                     shape=[batch_size,])
+
+        # attention
+        attention_option = "luong"  # can be "bahdanau"
+
+        with tf.variable_scope("rnn") as scope:
+          # Define model
+          encoder_outputs, encoder_state = tf.nn.dynamic_rnn(
+              cell=tf.contrib.rnn.GRUCell(encoder_hidden_size), inputs=inputs,
+              dtype=tf.float32, time_major=True, scope=scope)
+
+          # attention_states: size [batch_size, max_time, num_units]
+          attention_states = tf.transpose(encoder_outputs, [1, 0, 2])
+
+        with tf.variable_scope("decoder") as scope:
+          # Prepare attention
+          (attention_keys, attention_values, attention_score_fn,
+           attention_construct_fn) = (tf.contrib.seq2seq.prepare_attention(
+               attention_states, attention_option, decoder_hidden_size))
+          decoder_fn_train = tf.contrib.seq2seq.attention_decoder_fn_train(
+              encoder_state=encoder_state,
+              attention_keys=attention_keys,
+              attention_values=attention_values,
+              attention_score_fn=attention_score_fn,
+              attention_construct_fn=attention_construct_fn)
+
+          # setting up weights for computing the final output
+          def create_output_fn():
+            def output_fn(x):
+              return layers.linear(x, num_decoder_symbols, scope=scope)
+            return output_fn
+          output_fn = create_output_fn()
+
+          # Train decoder
+          decoder_cell = tf.contrib.rnn.GRUCell(decoder_hidden_size)
+          (decoder_outputs_train, decoder_state_train, _) = (
+              tf.contrib.seq2seq.dynamic_rnn_decoder(
+                  cell=decoder_cell,
+                  decoder_fn=decoder_fn_train,
+                  inputs=decoder_inputs,
+                  sequence_length=decoder_length,
+                  time_major=True,
+                  scope=scope))
+          decoder_outputs_train = output_fn(decoder_outputs_train)
+          # Setup variable reuse
+          scope.reuse_variables()
+
+          # Inference decoder
+          decoder_fn_inference = (
+              tf.contrib.seq2seq.attention_decoder_fn_inference(
+                  output_fn=output_fn,
+                  encoder_state=encoder_state,
+                  attention_keys=attention_keys,
+                  attention_values=attention_values,
+                  attention_score_fn=attention_score_fn,
+                  attention_construct_fn=attention_construct_fn,
+                  embeddings=decoder_embeddings,
+                  start_of_sequence_id=start_of_sequence_id,
+                  end_of_sequence_id=end_of_sequence_id,
+                  maximum_length=decoder_sequence_length-1,
+                  num_decoder_symbols=num_decoder_symbols,
+                  dtype=tf.int32))
+          (decoder_outputs_inference, decoder_state_inference, _) = (
+              tf.contrib.seq2seq.dynamic_rnn_decoder(
+                  cell=decoder_cell,
+                  decoder_fn=decoder_fn_inference,
+                  time_major=True,
+                  scope=scope))
+
+        # Run model
+        tf.global_variables_initializer().run()
+        (decoder_outputs_train_res, decoder_state_train_res) = sess.run(
+            [decoder_outputs_train, decoder_state_train])
+        (decoder_outputs_inference_res, decoder_state_inference_res) = sess.run(
+            [decoder_outputs_inference, decoder_state_inference])
+
+        # Assert outputs
+        self.assertEqual((decoder_sequence_length, batch_size,
+                          num_decoder_symbols),
+                         decoder_outputs_train_res.shape)
+        self.assertEqual((batch_size, num_decoder_symbols),
+                         decoder_outputs_inference_res.shape[1:3])
+        self.assertEqual((batch_size, decoder_hidden_size),
+                         decoder_state_train_res.shape)
+        self.assertEqual((batch_size, decoder_hidden_size),
+                         decoder_state_inference_res.shape)
         # The dynamic decoder might end earlier than `maximal_length`
         # under inference
         self.assertGreaterEqual(decoder_sequence_length,
