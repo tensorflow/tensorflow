@@ -33,6 +33,7 @@ tf_py_test(
     srcs = ["python/lstm1d_test.py"],
     additional_deps = [
         ":ndlstm",
+        "//third_party/py/numpy",
         "//tensorflow:tensorflow_py",
     ],
 )
@@ -42,6 +43,7 @@ tf_py_test(
     srcs = ["python/lstm2d_test.py"],
     additional_deps = [
         ":ndlstm",
+        "//third_party/py/numpy",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
     ],
@@ -52,6 +54,7 @@ tf_py_test(
     srcs = ["python/misc_test.py"],
     additional_deps = [
         ":ndlstm",
+        "//third_party/py/numpy",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         # "//tensorflow:tensorflow_py:tensorflow_google",

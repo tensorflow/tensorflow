@@ -19,6 +19,7 @@ py_library(
     deps = [
         ":sharded_mutable_dense_hashtable_py",
         ":sparse_feature_column_py",
+        "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -27,6 +28,7 @@ py_library(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:sdca_ops_gen",
         "//tensorflow/python:state_ops",
+        "//tensorflow/python:summary",
         "//tensorflow/python:variables",
     ],
 )

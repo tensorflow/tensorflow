@@ -15,6 +15,7 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/learn",
     ],
 )
 
@@ -22,7 +23,10 @@ py_binary(
     name = "hdf5_classification",
     srcs = ["hdf5_classification.py"],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow:tensorflow_py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/learn",
+    ],
 )
 
 py_binary(
@@ -31,6 +35,7 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/learn",
     ],
 )
 
@@ -49,6 +54,8 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/contrib/learn",
     ],
 )
 
@@ -67,6 +74,7 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/learn",
     ],
 )
 
@@ -76,6 +84,7 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/learn",
     ],
 )
 
@@ -97,6 +106,8 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/contrib/learn",
     ],
 )
 
@@ -106,6 +117,7 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/learn",
     ],
 )
 
@@ -115,6 +127,7 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/learn",
     ],
 )
 
@@ -124,6 +137,7 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/learn",
     ],
 )
 
@@ -133,6 +147,7 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/learn",
     ],
 )
 
@@ -153,6 +168,8 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/contrib/learn",
         "//tensorflow/examples/tutorials/mnist:input_data",
     ],
 )
@@ -163,6 +180,8 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/contrib/learn",
     ],
 )
 

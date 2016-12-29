@@ -197,11 +197,14 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
     }
   }
 
+  public void onSetDebug(boolean debug) {}
+
   @Override
   public boolean onKeyDown(final int keyCode, final KeyEvent event) {
     if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
       debug = !debug;
       requestRender();
+      onSetDebug(debug);
       return true;
     }
     return super.onKeyDown(keyCode, event);

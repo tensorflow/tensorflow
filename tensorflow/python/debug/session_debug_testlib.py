@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import os
 import shutil
 import tempfile
@@ -79,22 +80,23 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     raise NotImplementedError(
         "_debug_dump_dir() method is not implemented in the base test class.")
 
-  def testConcurrentDumpingToPathsWithOverlappingParentDirsWorks(self):
+  def _generate_dump_from_simple_addition_graph(self):
     with session.Session() as sess:
       u_init_val = np.array([[5.0, 3.0], [-1.0, 0.0]])
       v_init_val = np.array([[2.0], [-1.0]])
 
       # Use node names with overlapping namespace (i.e., parent directory) to
       # test concurrent, non-racing directory creation.
-      u_name = "testDumpToFile/u"
-      v_name = "testDumpToFile/v"
+      u_name = "u"
+      v_name = "v"
+      w_name = "w"
 
       u_init = constant_op.constant(u_init_val, shape=[2, 2])
       u = variables.Variable(u_init, name=u_name)
       v_init = constant_op.constant(v_init_val, shape=[2, 1])
       v = variables.Variable(v_init, name=v_name)
 
-      w = math_ops.matmul(u, v, name="testDumpToFile/matmul")
+      w = math_ops.matmul(u, v, name=w_name)
 
       u.initializer.run()
       v.initializer.run()
@@ -119,20 +121,45 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
       dump = debug_data.DebugDumpDir(
           self._dump_root, partition_graphs=run_metadata.partition_graphs)
-      self.assertTrue(dump.loaded_partition_graphs())
 
-      # Verify the dumped tensor values for u and v.
-      self.assertEqual(2, dump.size)
+    simple_add_results = collections.namedtuple("SimpleAddResults", [
+        "u_init_val", "v_init_val", "u", "v", "w", "u_name", "v_name",
+        "w_name", "dump"])
+    return simple_add_results(u_init_val, v_init_val, u, v, w, u_name, v_name,
+                              w_name, dump)
 
-      self.assertAllClose([u_init_val], dump.get_tensors("%s/read" % u_name, 0,
-                                                         "DebugIdentity"))
-      self.assertAllClose([v_init_val], dump.get_tensors("%s/read" % v_name, 0,
-                                                         "DebugIdentity"))
+  def testConcurrentDumpingToPathsWithOverlappingParentDirsWorks(self):
+    results = self._generate_dump_from_simple_addition_graph()
+    self.assertTrue(results.dump.loaded_partition_graphs())
 
-      self.assertGreaterEqual(
-          dump.get_rel_timestamps("%s/read" % u_name, 0, "DebugIdentity")[0], 0)
-      self.assertGreaterEqual(
-          dump.get_rel_timestamps("%s/read" % v_name, 0, "DebugIdentity")[0], 0)
+    # Verify the dumped tensor values for u and v.
+    self.assertEqual(2, results.dump.size)
+
+    self.assertAllClose([results.u_init_val],
+                        results.dump.get_tensors("%s/read" % results.u_name, 0,
+                                                 "DebugIdentity"))
+    self.assertAllClose([results.v_init_val],
+                        results.dump.get_tensors("%s/read" % results.v_name, 0,
+                                                 "DebugIdentity"))
+
+    self.assertGreaterEqual(
+        results.dump.get_rel_timestamps("%s/read" % results.u_name, 0,
+                                        "DebugIdentity")[0], 0)
+    self.assertGreaterEqual(
+        results.dump.get_rel_timestamps("%s/read" % results.v_name, 0,
+                                        "DebugIdentity")[0], 0)
+
+  def testGetOpTypeWorks(self):
+    results = self._generate_dump_from_simple_addition_graph()
+
+    self.assertEqual(results.u.op.type,
+                     results.dump.node_op_type(results.u_name))
+    self.assertIn(results.v.op.type, results.dump.node_op_type(results.v_name))
+    self.assertIn(results.w.op.type, results.dump.node_op_type(results.w_name))
+
+    with self.assertRaisesRegexp(
+        ValueError, "Node 'foo_bar' does not exist in partition graphs."):
+      results.dump.node_op_type("foo_bar")
 
   def testDumpStringTensorsWorks(self):
     with session.Session() as sess:
@@ -440,8 +467,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     return u_name, v_name, w_name, dump
 
   def testGraphStructureLookupGivesDevicesAndNodesInfo(self):
-    u_name, v_name, w_name, dump = (
-        self._session_run_for_graph_structure_lookup())
+    u_name, _, _, dump = self._session_run_for_graph_structure_lookup()
 
     # Test num_devices().
     self.assertEqual(self._expected_num_devices, len(dump.devices()))
@@ -457,16 +483,6 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     self.assertTrue(dump.node_exists(u_name))
     self.assertTrue(dump.node_exists(u_name + "/read"))
     self.assertFalse(dump.node_exists(u_name + "/read" + "/foo"))
-
-    # Test node_op_type().
-    self.assertEqual("VariableV2", dump.node_op_type(u_name))
-    self.assertEqual("Identity", dump.node_op_type(u_name + "/read"))
-    self.assertEqual("Add", dump.node_op_type(v_name))
-    self.assertEqual("Add", dump.node_op_type(w_name))
-
-    with self.assertRaisesRegexp(ValueError,
-                                 "does not exist in partition graphs"):
-      dump.node_op_type(u_name + "foo")
 
   def testGraphStructureLookupGivesNodesAndAttributes(self):
     u_name, _, _, dump = self._session_run_for_graph_structure_lookup()

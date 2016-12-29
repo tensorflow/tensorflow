@@ -31,6 +31,7 @@ py_test(
     deps = [
         ":integrate_py",
         "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
     ],
 )
 

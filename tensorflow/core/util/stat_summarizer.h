@@ -113,6 +113,15 @@ class Stat {
 // See tensorflow/examples/android/jni/tensorflow_jni.cc for an example usage.
 class StatSummarizer {
  public:
+  enum SortingMetric {
+    BY_NAME,
+    BY_DEFINITION_ORDER,
+    BY_RUN_ORDER,
+    BY_TIME,
+    BY_MEMORY,
+    BY_TYPE,
+  };
+
   explicit StatSummarizer(const tensorflow::GraphDef& tensorflow_graph);
 
   // Adds another run's StepStats output to the aggregate counts.
@@ -122,6 +131,8 @@ class StatSummarizer {
   // format which can be pasted into a spreadsheet for further analysis.
   std::string GetOutputString() const;
 
+  std::string ShortSummary() const;
+
   // Prints the string returned by GetOutputString().
   void PrintStepStats() const;
 
@@ -129,6 +140,10 @@ class StatSummarizer {
   void PrintOutputs() const;
 
   std::string GetStatsByNodeType() const;
+
+  std::string GetStatsByMetric(const string& title,
+                               SortingMetric sorting_metric,
+                               int num_stats) const;
 
   void Reset() {
     run_total_us_.Reset();
@@ -153,30 +168,15 @@ class StatSummarizer {
     std::vector<TensorDescription> outputs;
   };
 
-  enum SortingMetric {
-    BY_NAME,
-    BY_DEFINITION_ORDER,
-    BY_RUN_ORDER,
-    BY_TIME,
-    BY_MEMORY,
-    BY_TYPE,
-  };
-
   void Validate(const Detail* detail, const NodeExecStats& ns) const;
 
   void OrderNodesByMetric(SortingMetric sorting_metric,
                           std::vector<const Detail*>* details) const;
 
-  std::string GetStatsByMetric(const string& title,
-                               SortingMetric sorting_metric,
-                               int num_stats) const;
-
   std::string HeaderString(const string& title) const;
   std::string ColumnString(const Detail& detail,
                            const int64 cumulative_stat_on_node,
                            const Stat<int64>& stat) const;
-
-  std::string ShortSummary() const;
 
   Stat<int64> run_total_us_;
   Stat<int64> memory_;
