@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/version.h"
@@ -28,147 +27,86 @@ namespace tensorflow {
 
 namespace {
 
-// Windows is not currently supported.
-constexpr char kCurlLibLinux[] = "libcurl.so.3";
-constexpr char kCurlLibMac[] = "/usr/lib/libcurl.3.dylib";
-
-constexpr char kCertsPath[] = "/etc/ssl/certs";
-
 // Set to 1 to enable verbose debug output from curl.
 constexpr uint64 kVerboseOutput = 0;
 
 // Timeout for the whole request. Set only to prevent hanging indefinitely.
 constexpr uint32 kRequestTimeoutSeconds = 3600;  // 1 hour
+
 // Timeout for the connection phase.
 constexpr uint32 kConnectTimeoutSeconds = 120;  // 2 minutes
 
-/// An implementation that dynamically loads libcurl and forwards calls to it.
+// Proxy to the real libcurl implementation.
 class LibCurlProxy : public LibCurl {
  public:
   static LibCurlProxy* Load() {
     static LibCurlProxy* libcurl = []() -> LibCurlProxy* {
-      std::unique_ptr<LibCurlProxy> libcurl(new LibCurlProxy);
-      Status status = libcurl->LoadAndBind();
-      if (!status.ok()) {
-        return nullptr;
-      }
-      libcurl->curl_global_init_(CURL_GLOBAL_ALL);
-      return libcurl.release();
+      curl_global_init(CURL_GLOBAL_ALL);
+      return new LibCurlProxy;
     }();
-
     return libcurl;
   }
 
-  CURL* curl_easy_init() override {
-    return curl_easy_init_();
-  }
+  CURL* curl_easy_init() override { return ::curl_easy_init(); }
 
   CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
                             uint64 param) override {
-    return curl_easy_setopt_(curl, option, param);
+    return ::curl_easy_setopt(curl, option, param);
   }
 
   CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
                             const char* param) override {
-    return curl_easy_setopt_(curl, option, param);
+    return ::curl_easy_setopt(curl, option, param);
   }
+
   CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
                             void* param) override {
-    return curl_easy_setopt_(curl, option, param);
+    return ::curl_easy_setopt(curl, option, param);
   }
+
   CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
                             size_t (*param)(void*, size_t, size_t,
                                             FILE*)) override {
-    return curl_easy_setopt_(curl, option, param);
+    return ::curl_easy_setopt(curl, option, param);
   }
+
   CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
                             size_t (*param)(const void*, size_t, size_t,
                                             void*)) override {
-    return curl_easy_setopt_(curl, option, param);
+    return ::curl_easy_setopt(curl, option, param);
   }
 
   CURLcode curl_easy_perform(CURL* curl) override {
-    return curl_easy_perform_(curl);
+    return ::curl_easy_perform(curl);
   }
 
   CURLcode curl_easy_getinfo(CURL* curl, CURLINFO info,
                              uint64* value) override {
-    return curl_easy_getinfo_(curl, info, value);
+    return ::curl_easy_getinfo(curl, info, value);
   }
+
   CURLcode curl_easy_getinfo(CURL* curl, CURLINFO info,
                              double* value) override {
-    return curl_easy_getinfo_(curl, info, value);
+    return ::curl_easy_getinfo(curl, info, value);
   }
+
   void curl_easy_cleanup(CURL* curl) override {
-    return curl_easy_cleanup_(curl);
+    return ::curl_easy_cleanup(curl);
   }
+
   char* curl_easy_escape(CURL* curl, const char* str, int length) override {
-    return curl_easy_escape_(curl, str, length);
+    return ::curl_easy_escape(curl, str, length);
   }
 
   curl_slist* curl_slist_append(curl_slist* list, const char* str) override {
-    return curl_slist_append_(list, str);
+    return ::curl_slist_append(list, str);
   }
 
   void curl_slist_free_all(curl_slist* list) override {
-    return curl_slist_free_all_(list);
+    return ::curl_slist_free_all(list);
   }
 
-  void curl_free(void* p) override {
-    curl_free_(p);
-  }
-
- private:
-  Status LoadAndBind() {
-    auto TryLoadAndBind = [this](const char* name, void** handle) -> Status {
-      TF_RETURN_IF_ERROR(Env::Default()->LoadLibrary(name, handle));
-#define BIND_CURL_FUNC(function)                             \
-  do {                                                       \
-    void* symbol_ptr = nullptr;                              \
-    TF_RETURN_IF_ERROR(Env::Default()->GetSymbolFromLibrary( \
-        *handle, #function, &symbol_ptr));                   \
-    *reinterpret_cast<void**>(&(function##_)) = symbol_ptr;  \
-  } while (0)
-
-      BIND_CURL_FUNC(curl_global_init);
-      BIND_CURL_FUNC(curl_easy_init);
-      BIND_CURL_FUNC(curl_easy_setopt);
-      BIND_CURL_FUNC(curl_easy_perform);
-      BIND_CURL_FUNC(curl_easy_getinfo);
-      BIND_CURL_FUNC(curl_slist_append);
-      BIND_CURL_FUNC(curl_slist_free_all);
-      BIND_CURL_FUNC(curl_easy_cleanup);
-      BIND_CURL_FUNC(curl_easy_escape);
-      BIND_CURL_FUNC(curl_free);
-#undef BIND_CURL_FUNC
-      return Status::OK();
-    };
-
-    // This may have been linked statically; if curl_easy_init is in the
-    // current binary, no need to search for a dynamic version.
-    Status status = TryLoadAndBind(nullptr, &handle_);
-    if (status.ok()) {
-      return status;
-    }
-    status = TryLoadAndBind(kCurlLibLinux, &handle_);
-    if (status.ok()) {
-      return status;
-    }
-    return TryLoadAndBind(kCurlLibMac, &handle_);
-  }
-
-  void* handle_ = nullptr;
-  CURLcode (*curl_global_init_)(int64) = nullptr;
-  CURL* (*curl_easy_init_)(void) = nullptr;
-  CURLcode (*curl_easy_setopt_)(CURL*, CURLoption, ...) = nullptr;
-  CURLcode (*curl_easy_perform_)(CURL* curl) = nullptr;
-  CURLcode (*curl_easy_getinfo_)(CURL* curl, CURLINFO info, ...) = nullptr;
-  void (*curl_easy_cleanup_)(CURL* curl) = nullptr;
-  curl_slist* (*curl_slist_append_)(curl_slist* list,
-                                    const char* str) = nullptr;
-  void (*curl_slist_free_all_)(curl_slist* list) = nullptr;
-  char* (*curl_easy_escape_)(CURL* curl, const char* str, int length) = nullptr;
-  void (*curl_free_)(void* p) = nullptr;
+  void curl_free(void* p) override { ::curl_free(p); }
 };
 }  // namespace
 
@@ -194,19 +132,16 @@ Status HttpRequest::Init() {
   if (is_initialized_) {
     return errors::FailedPrecondition("Already initialized.");
   }
-  if (!libcurl_) {
-    return errors::FailedPrecondition(
-        "Could not initialize the libcurl library. Please make sure that "
-        "libcurl is installed in the OS or statically linked to the "
-        "TensorFlow binary.");
-  }
   curl_ = libcurl_->curl_easy_init();
   if (!curl_) {
     return errors::Internal("Couldn't initialize a curl session.");
   }
 
+  // NOTE: CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt is configured by
+  //       default in //third_party:curl.BUILD and can be customized via an
+  //       environment variable.
+
   libcurl_->curl_easy_setopt(curl_, CURLOPT_VERBOSE, kVerboseOutput);
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_CAPATH, kCertsPath);
   libcurl_->curl_easy_setopt(
       curl_, CURLOPT_USERAGENT,
       strings::StrCat("TensorFlow/", TF_VERSION_STRING).c_str());

@@ -176,7 +176,7 @@ class OnSessionInitResponse(object):
     """Constructor.
 
     Args:
-      action: (OnSessionInitAction) Debugger action to take on session init.
+      action: (`OnSessionInitAction`) Debugger action to take on session init.
     """
     _check_type(action, str)
     self.action = action
@@ -191,7 +191,7 @@ class OnRunStartRequest(object):
 
   def __init__(self, fetches, feed_dict, run_options, run_metadata,
                run_call_count):
-    """Constructor of OnRunStartRequest.
+    """Constructor of `OnRunStartRequest`.
 
     Args:
       fetches: Fetch targets of the run() call.
@@ -233,10 +233,10 @@ class OnRunStartResponse(object):
   """
 
   def __init__(self, action, debug_urls):
-    """Constructor of OnRunStartResponse.
+    """Constructor of `OnRunStartResponse`.
 
     Args:
-      action: (OnRunStartAction) the action actually taken by the wrapped
+      action: (`OnRunStartAction`) the action actually taken by the wrapped
         session for the run() call.
       debug_urls: (list of str) debug_urls used in watching the tensors during
         the run() call.
@@ -260,10 +260,10 @@ class OnRunEndRequest(object):
                run_metadata=None,
                client_graph_def=None,
                tf_error=None):
-    """Constructor for OnRunEndRequest.
+    """Constructor for `OnRunEndRequest`.
 
     Args:
-      performed_action: (OnRunStartAction) Actually-performed action by the
+      performed_action: (`OnRunStartAction`) Actually-performed action by the
         debug-wrapper session.
       run_metadata: run_metadata output from the run() call (if any).
       client_graph_def: (GraphDef) GraphDef from the client side, i.e., from
@@ -303,13 +303,13 @@ class BaseDebugWrapperSession(session.SessionInterface):
   # is available.
 
   def __init__(self, sess):
-    """Constructor of BaseDebugWrapperSession.
+    """Constructor of `BaseDebugWrapperSession`.
 
     Args:
       sess: An (unwrapped) TensorFlow session instance.
 
     Raises:
-      ValueError: On invalid OnSessionInitAction value.
+      ValueError: On invalid `OnSessionInitAction` value.
     """
 
     _check_type(sess, session.BaseSession)
@@ -352,16 +352,16 @@ class BaseDebugWrapperSession(session.SessionInterface):
     """Wrapper around Session.run() that inserts tensor watch options.
 
     Args:
-      fetches: Same as the fetches arg to regular Session.run()
-      feed_dict: Same as the feed_dict arg to regular Session.run()
-      options: Same as the options arg to regular Session.run()
-      run_metadata: Same as the run_metadata to regular Session.run()
+      fetches: Same as the `fetches` arg to regular `Session.run()`.
+      feed_dict: Same as the `feed_dict` arg to regular `Session.run()`.
+      options: Same as the `options` arg to regular `Session.run()`.
+      run_metadata: Same as the `run_metadata` arg to regular `Session.run()`.
 
     Returns:
-      Simply forwards the output of the wrapped Session.run() call.
+      Simply forwards the output of the wrapped `Session.run()` call.
 
     Raises:
-      ValueError: On invalid OnRunStartAction value.
+      ValueError: On invalid `OnRunStartAction` value.
     """
 
     self._run_call_count += 1
@@ -458,11 +458,11 @@ class BaseDebugWrapperSession(session.SessionInterface):
     The invocation happens right before the constructor ends.
 
     Args:
-      request: (OnSessionInitRequest) callback request carrying information
+      request: (`OnSessionInitRequest`) callback request carrying information
         such as the session being wrapped.
 
     Returns:
-      An instance of OnSessionInitResponse.
+      An instance of `OnSessionInitResponse`.
     """
 
   @abc.abstractmethod
@@ -474,12 +474,13 @@ class BaseDebugWrapperSession(session.SessionInterface):
     after an increment of run call counter.
 
     Args:
-      request: (OnRunStartRequest) callback request object carrying information
-        about the run call such as the fetches, feed dict, run options, run
-        metadata, and how many run() calls to this wrapper session has occurred.
+      request: (`OnRunStartRequest`) callback request object carrying
+        information about the run call such as the fetches, feed dict, run
+        options, run metadata, and how many `run()` calls to this wrapper
+        session have occurred.
 
     Returns:
-      An instance of OnRunStartResponse, carrying information to
+      An instance of `OnRunStartResponse`, carrying information to
         1) direct the wrapper session to perform a specified action (e.g., run
           with or without debug tensor watching, invoking the stepper.)
         2) debug URLs used to watch the tensors.
@@ -493,12 +494,12 @@ class BaseDebugWrapperSession(session.SessionInterface):
     The invocation happens right before the wrapper exits its run() call.
 
     Args:
-      request: (OnRunEndRequest) callback request object carrying information
+      request: (`OnRunEndRequest`) callback request object carrying information
         such as the actual action performed by the session wrapper for the
         run() call.
 
     Returns:
-      An instance of OnRunStartResponse.
+      An instance of `OnRunStartResponse`.
     """
 
   def __enter__(self):

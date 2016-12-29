@@ -14,6 +14,7 @@ py_library(
     srcs = ["__init__.py"] + glob(["python/ops/*.py"]),
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -45,6 +46,7 @@ cuda_py_test(
     additional_deps = [
         ":seq2seq_py",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
