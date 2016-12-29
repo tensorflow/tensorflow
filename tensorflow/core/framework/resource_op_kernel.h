@@ -55,8 +55,11 @@ class ResourceOpKernel : public OpKernel {
     if (resource_ != nullptr) {
       resource_->Unref();
       if (cinfo_.resource_is_private_to_kernel()) {
-        TF_CHECK_OK(cinfo_.resource_manager()->template Delete<T>(
-            cinfo_.container(), cinfo_.name()));
+        if (!cinfo_.resource_manager()
+                 ->template Delete<T>(cinfo_.container(), cinfo_.name())
+                 .ok()) {
+          // Do nothing; the resource can have been deleted by session resets.
+        }
       }
     }
   }

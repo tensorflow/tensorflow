@@ -33,6 +33,7 @@ py_library(
     deps = [
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/tools/tfprof:protos_all_py",
+        "@six_archive//:six",
     ],
 )
 

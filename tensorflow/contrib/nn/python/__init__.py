@@ -12,11 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Holds the list of registered plugins to TensorBoard."""
+"""Module for deprecated ops in tf.nn."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
-from tensorflow.tensorboard.plugins.projector.plugin import ProjectorPlugin
-# Map of registered plugins in TensorBoard.
-REGISTERED_PLUGINS = {'projector': ProjectorPlugin()}
