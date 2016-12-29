@@ -140,6 +140,7 @@ py_library(
     srcs = ["client/eval_metrics.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/losses:losses_py",
         "//tensorflow/contrib/metrics:metrics_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:math_ops",

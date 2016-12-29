@@ -99,7 +99,7 @@ from tensorflow.python.ops import metrics
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import sdca_ops as sdca
 from tensorflow.python.ops import image_ops as image
-from tensorflow.python.ops import losses
+from tensorflow.python.ops.losses import losses
 from tensorflow.python.ops import sets
 from tensorflow.python.user_ops import user_ops
 from tensorflow.python.util import compat

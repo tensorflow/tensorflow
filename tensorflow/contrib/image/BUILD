@@ -61,6 +61,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["python/kernel_tests/image_ops_test.py"],
     additional_deps = [
+        "//third_party/py/numpy",
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib:contrib_py",
         "//tensorflow/python:framework_test_lib",

@@ -40,8 +40,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import event_accumulator
 from tensorflow.tensorboard.backend import process_graph
 from tensorflow.tensorboard.lib.python import http
-from tensorflow.tensorboard.plugins import REGISTERED_PLUGINS
-
+from tensorflow.tensorboard.plugins.projector import plugin as projector_plugin
 
 DATA_PREFIX = '/data'
 LOGDIR_ROUTE = '/logdir'
@@ -57,6 +56,10 @@ INDIVIDUAL_AUDIO_ROUTE = '/individualAudio'
 GRAPH_ROUTE = '/' + event_accumulator.GRAPH
 RUN_METADATA_ROUTE = '/' + event_accumulator.RUN_METADATA
 TAB_ROUTES = ['', '/events', '/images', '/audio', '/graphs', '/histograms']
+
+REGISTERED_PLUGINS = {
+    'projector': projector_plugin.ProjectorPlugin(),
+}
 
 _IMGHDR_TO_MIMETYPE = {
     'bmp': 'image/bmp',
