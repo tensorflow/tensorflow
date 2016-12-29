@@ -64,6 +64,7 @@ py_library(
         ":tensor_array_ops",
         ":training",
         ":ops",
+        ":test_ops",  # TODO: Break testing code out into separate rule.
         ":util",
         "//tensorflow/python/ops/losses",
     ] + if_not_windows([
