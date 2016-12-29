@@ -20,6 +20,7 @@ py_library(
     name = "debug_py",
     srcs = ["__init__.py"],
     srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
     deps = [
         ":debug_data",
         ":debug_utils",
