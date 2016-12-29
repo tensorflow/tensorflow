@@ -35,6 +35,7 @@ tf_py_test(
     srcs = ["python/specs_test.py"],
     additional_deps = [
         ":specs",
+        "//third_party/py/numpy",
         "//tensorflow:tensorflow_py",
     ],
 )
@@ -44,6 +45,7 @@ tf_py_test(
     srcs = ["python/summaries_test.py"],
     additional_deps = [
         ":specs",
+        "//third_party/py/numpy",
         "//tensorflow:tensorflow_py",
     ],
 )

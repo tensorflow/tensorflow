@@ -41,8 +41,8 @@ from tensorflow.contrib.tensorboard.plugins.projector.projector_config_pb2 impor
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.summary import event_multiplexer
+from tensorflow.tensorboard.backend import handler
 from tensorflow.tensorboard.backend import server
-from tensorflow.tensorboard.plugins import REGISTERED_PLUGINS
 
 
 class TensorboardServerTest(tf.test.TestCase):
@@ -231,7 +231,7 @@ class TensorboardServerTest(tf.test.TestCase):
 
   def testProjectorRunsWithEmbeddings(self):
     """Test the format of /runs endpoint in projector."""
-    if 'projector' not in REGISTERED_PLUGINS:
+    if 'projector' not in handler.REGISTERED_PLUGINS:
       return
 
     run_json = self._getJson('/data/plugin/projector/runs')
@@ -240,7 +240,7 @@ class TensorboardServerTest(tf.test.TestCase):
 
   def testProjectorInfo(self):
     """Test the format of /info endpoint in projector."""
-    if 'projector' not in REGISTERED_PLUGINS:
+    if 'projector' not in handler.REGISTERED_PLUGINS:
       return
 
     info_json = self._getJson('/data/plugin/projector/info?run=run1')
@@ -261,7 +261,7 @@ class TensorboardServerTest(tf.test.TestCase):
 
   def testProjectorTensor(self):
     """Test the format of /tensor endpoint in projector."""
-    if 'projector' not in REGISTERED_PLUGINS:
+    if 'projector' not in handler.REGISTERED_PLUGINS:
       return
 
     url = '/data/plugin/projector/tensor?run=run1&name=var1'
@@ -399,7 +399,7 @@ class TensorboardServerTest(tf.test.TestCase):
     writer.flush()
     writer.close()
 
-    if 'projector' in REGISTERED_PLUGINS:
+    if 'projector' in handler.REGISTERED_PLUGINS:
       self._GenerateProjectorTestData(run1_path)
 
     return temp_dir
