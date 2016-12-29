@@ -628,7 +628,7 @@ def _DivGrad(op, grad):
   y = math_ops.conj(y)
   return (array_ops.reshape(math_ops.reduce_sum(math_ops.div(grad, y), rx), sx),
           array_ops.reshape(
-              math_ops.reduce_sum(grad * math_ops.div(-x, math_ops.square(y)),
+              math_ops.reduce_sum(grad * math_ops.div(math_ops.div(-x, y), y),
                                   ry), sy))
 
 
@@ -658,7 +658,7 @@ def _RealDivGrad(op, grad):
   return (array_ops.reshape(
       math_ops.reduce_sum(math_ops.realdiv(grad, y), rx),
       sx), array_ops.reshape(
-          math_ops.reduce_sum(grad * math_ops.realdiv(-x, math_ops.square(y)),
+          math_ops.reduce_sum(grad * math_ops.realdiv(math_ops.realdiv(-x, y), y),
                               ry), sy))
 
 
