@@ -22,7 +22,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       ],
       sha256 = "7527cda827aff351981ebd910012e16be4d899c28a9ae7f143ae60e7f3f7b83d",
       strip_prefix = "eigen-eigen-60578b474802",
-      build_file = str(Label("//:eigen.BUILD")),
+      build_file = str(Label("//third_party:eigen.BUILD")),
   )
 
   native.new_http_archive(
@@ -33,12 +33,12 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       ],
       sha256 = "1dd81077b186300122dc8a8f1872c21fd2bd9b88286ab9f068cc7b62fa7593a7",
       strip_prefix = "libxsmm-1.6.1",
-      build_file = str(Label("//:libxsmm.BUILD")),
+      build_file = str(Label("//third_party:libxsmm.BUILD")),
   )
 
   native.bind(
       name = "xsmm_avx",
-      actual = "@libxsmm_archive//:xsmm_avx",
+      actual = "@libxsmm_archive//third_party:xsmm_avx",
   )
 
   native.http_archive(
@@ -69,7 +69,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       ],
       sha256 = "4c626d1f306bda2c6804ab955892f803f5245f4dcaecb4979dc08b091256da54",
       strip_prefix = "farmhash-92e897b282426729f4724d91a637596c7e2fe28f",
-      build_file = str(Label("//:farmhash.BUILD")),
+      build_file = str(Label("//third_party:farmhash.BUILD")),
   )
 
   native.bind(
@@ -117,7 +117,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       ],
       sha256 = "c35bcc6387495ee6e757507a68ba036d38ad05b415c2553b3debe2a57647a692",
       strip_prefix = "libpng-1.2.53",
-      build_file = str(Label("//:png.BUILD")),
+      build_file = str(Label("//third_party:png.BUILD")),
   )
 
   native.new_http_archive(
@@ -129,7 +129,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       ],
       sha256 = "34a7377ba834397db019e8eb122e551a49c98f49df75ec3fcc92b9a794a4f6d1",
       strip_prefix = "giflib-5.1.4",
-      build_file = str(Label("//:gif.BUILD")),
+      build_file = str(Label("//third_party:gif.BUILD")),
   )
 
   native.new_http_archive(
@@ -140,7 +140,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       ],
       sha256 = "105f8d68616f8248e24bf0e9372ef04d3cc10104f1980f54d57b2ce73a5ad56a",
       strip_prefix = "six-1.10.0",
-      build_file = str(Label("//:six.BUILD")),
+      build_file = str(Label("//third_party:six.BUILD")),
   )
 
   native.bind(
@@ -166,7 +166,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       ],
       sha256 = "26fcbb5925b74ad5fc8c26b0495dfc96353f4d553492eb97e85a8a6d2f43095b",
       strip_prefix = "gmock-1.7.0",
-      build_file = str(Label("//:gmock.BUILD")),
+      build_file = str(Label("//third_party:gmock.BUILD")),
   )
 
   native.bind(
@@ -238,7 +238,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       ],
       sha256 = "a15f352436ab92c521b1ac11e729e155ace38d0856380cf25048c5d1d9ba8e31",
       strip_prefix = "grpc-d7ff4ff40071d2b486a052183e3e9f9382afb745",
-      build_file = str(Label("//:grpc.BUILD")),
+      build_file = str(Label("//third_party:grpc.BUILD")),
   )
 
   # protobuf expects //external:grpc_cpp_plugin to point to grpc's
@@ -261,7 +261,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
           "https://github.com/antirez/linenoise/archive/c894b9e59f02203dbe4e2be657572cf88c4230c3.tar.gz",
       ],
       strip_prefix = "linenoise-c894b9e59f02203dbe4e2be657572cf88c4230c3",
-      build_file = str(Label("//:linenoise.BUILD")),
+      build_file = str(Label("//third_party:linenoise.BUILD")),
   )
 
   # TODO(phawkins): currently, this rule uses an unofficial LLVM mirror.
@@ -285,7 +285,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       ],
       sha256 = "07d34db40593d257324ec5fb9debc4dc33f29f8fb44e33a2eeb35503e61d0fe2",
       strip_prefix = "jsoncpp-11086dd6a7eba04289944367ca82cea71299ed70",
-      build_file = str(Label("//:jsoncpp.BUILD")),
+      build_file = str(Label("//third_party:jsoncpp.BUILD")),
   )
 
   native.bind(
@@ -311,7 +311,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       ],
       sha256 = "ab1455c8edff855f4f55b68480991559e51c11e7dab060bbab7cffb12dd3af33",
       strip_prefix = "nanopb-1251fa1065afc0d62f635e0f63fec8276e14e13c",
-      build_file = str(Label("//:nanopb.BUILD")),
+      build_file = str(Label("//third_party:nanopb.BUILD")),
   )
 
   native.bind(
@@ -327,7 +327,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       ],
       sha256 = "36658cb768a54c1d4dec43c3116c27ed893e88b02ecfcb44f2166f9c0b7f2a0d",
       strip_prefix = "zlib-1.2.8",
-      build_file = str(Label("//:zlib.BUILD")),
+      build_file = str(Label("//third_party:zlib.BUILD")),
   )
 
   native.bind(
