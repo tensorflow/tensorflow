@@ -13,10 +13,7 @@ py_library(
     name = "freeze_graph_lib",
     srcs = ["freeze_graph.py"],
     srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:platform",
-    ],
+    deps = ["//tensorflow:tensorflow_py"],
 )
 
 py_binary(
@@ -45,8 +42,6 @@ py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:session",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],
@@ -66,7 +61,6 @@ py_library(
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework",
-        "//tensorflow/python:platform",
     ],
 )
 
@@ -96,8 +90,6 @@ py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:session",
     ],
 )
 
@@ -110,7 +102,6 @@ py_library(
         ":strip_unused_lib",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework",
-        "//tensorflow/python:platform",
         "@six_archive//:six",
     ],
 )
@@ -139,12 +130,10 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:image_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:nn_ops_gen",
-        "//tensorflow/python:platform_test",
     ],
 )
 

@@ -11,10 +11,7 @@ py_library(
     name = "quantize_graph_lib",
     srcs = ["quantize_graph.py"],
     srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:platform",
-    ],
+    deps = ["//tensorflow:tensorflow_py"],
 )
 
 py_binary(
@@ -41,8 +38,6 @@ py_test(
     deps = [
         ":quantize_graph",
         "//tensorflow/python:framework",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
     ],
 )
 

@@ -88,7 +88,6 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
         "//tensorflow/python:platform_benchmark",
-        "//tensorflow/python:session",
     ],
 )
 
@@ -268,7 +267,6 @@ tf_py_test(
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:session",
         "//tensorflow/python:util",
     ],
 )
@@ -436,7 +434,6 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
         "//tensorflow/python:random_ops",
-        "//tensorflow/python:session",
     ],
 )
 
@@ -524,7 +521,6 @@ tf_py_test(
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:io_ops_gen",
-        "//tensorflow/python:session",
     ],
 )
 
@@ -538,7 +534,6 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:gradients",
-        "//tensorflow/python:session",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
     ],
@@ -567,7 +562,6 @@ tf_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:session",
         "//tensorflow/python:sparse_grad",
         "//tensorflow/python:sparse_ops",
     ],
@@ -732,7 +726,6 @@ tf_py_test(
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_grad",
-        "//tensorflow/python:session",
         "//tensorflow/python:template",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
@@ -894,7 +887,6 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:session",
         "//tensorflow/python:test_ops",
         "//tensorflow/python:variables",
     ],
@@ -1013,7 +1005,6 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:script_ops",
-        "//tensorflow/python:session",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:state_ops_gen",
         "//tensorflow/python:tensor_array_grad",
@@ -1188,7 +1179,6 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:gradients",
-        "//tensorflow/python:session",
         "//tensorflow/python:variables",
     ],
 )
@@ -1302,7 +1292,6 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
-        "//tensorflow/python:session",
     ],
 )
 
@@ -1379,7 +1368,6 @@ cuda_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:script_ops",
-        "//tensorflow/python:session",
     ],
 )
 
@@ -1609,7 +1597,6 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:session",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:variables",
     ],
@@ -1645,7 +1632,6 @@ cuda_py_test(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:nn_ops_gen",
         "//tensorflow/python:platform",
-        "//tensorflow/python:session",
         "//tensorflow/python:sparse_ops",
     ],
 )
@@ -1898,7 +1884,6 @@ cuda_py_test(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:random_ops",
-        "//tensorflow/python:session",
         "//tensorflow/python:variables",
     ],
 )
@@ -1994,17 +1979,11 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:gradients",
         "//tensorflow/python:init_ops",
-        "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_grad",
-        "//tensorflow/python:platform",
         "//tensorflow/python:rnn",
         "//tensorflow/python:rnn_cell",
-        "//tensorflow/python:session",
         "//tensorflow/python:sparse_grad",
         "//tensorflow/python:tensor_array_grad",
-        "//tensorflow/python:tensor_array_ops",
-        "//tensorflow/python:util",
-        "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
     shard_count = 10,
@@ -2077,7 +2056,6 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
-        "//tensorflow/python:session",
         "//tensorflow/python:sparse_ops",
     ],
 )

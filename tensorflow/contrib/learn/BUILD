@@ -5,7 +5,10 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-package(default_visibility = ["//tensorflow:__subpackages__"])
+package(default_visibility = [
+    "//engedu/ml/tf_from_scratch:__pkg__",
+    "//tensorflow:__subpackages__",
+])
 
 py_library(
     name = "learn",
@@ -24,6 +27,8 @@ py_library(
         "//tensorflow/contrib/learn/python/learn/datasets",
         "//tensorflow/contrib/linear_optimizer:sdca_ops_py",
         "//tensorflow/contrib/losses:losses_py",
+        "//tensorflow/contrib/metrics:metrics_py",
+        "//tensorflow/contrib/rnn:rnn_py",
         "//tensorflow/contrib/session_bundle:exporter",
         "//tensorflow/contrib/session_bundle:gc",
         "//tensorflow/contrib/tensor_forest:client_lib",
@@ -55,6 +60,7 @@ py_library(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:string_ops",
+        "//tensorflow/python:summary",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
@@ -128,6 +134,7 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
     ],
@@ -302,6 +309,7 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/learn/python/learn/datasets",
         "//tensorflow/python:framework_test_lib",
     ],
 )
@@ -339,6 +347,7 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/testing:testing_py",
         "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -369,6 +378,7 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/testing:testing_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:training",
@@ -383,6 +393,7 @@ py_test(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":learn",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
     ],
@@ -607,6 +618,7 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/learn/python/learn/datasets",
         "//tensorflow/python:framework_test_lib",
     ],
 )
@@ -655,6 +667,7 @@ py_test(
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/python:framework_test_lib",
     ],
 )
