@@ -501,6 +501,13 @@ fi
 
 chmod +x ${TMP_SCRIPT}
 
+# Map TF_BUILD container types to containers we actually have.
+if [[ "${CTYPE}" == "android_nightly" ]]; then
+  CONTAINER="android"
+else
+  CONTAINER=${CTYPE}
+fi
+
 FAILURE=0
 if [[ ! -z "${TF_BUILD_DRY_RUN}" ]] && [[ ${TF_BUILD_DRY_RUN} != "0" ]]; then
   # Do a dry run: just print the final command
@@ -508,7 +515,7 @@ if [[ ! -z "${TF_BUILD_DRY_RUN}" ]] && [[ ${TF_BUILD_DRY_RUN} != "0" ]]; then
 else
   # Actually run the command
   if [[ "${DO_DOCKER}" == "1" ]]; then
-    ${DOCKER_MAIN_CMD} ${CTYPE} ${DOCKERFILE_FLAG} /tmp/tf_build.sh
+    ${DOCKER_MAIN_CMD} ${CONTAINER} ${DOCKERFILE_FLAG} /tmp/tf_build.sh
   else
     ${TMP_SCRIPT}
   fi
