@@ -200,7 +200,8 @@ void StatSummarizer::OrderNodesByMetric(
   for (const auto& det : details_) {
     const Detail* detail = &(det.second);
     std::stringstream stream;
-    stream << std::setw(20) << std::right << std::setprecision(10);
+    stream << std::setw(20) << std::right << std::setprecision(10)
+           << std::fixed;
 
     int definition_index = 0;
     auto it = std::find(nodes_in_def_order_.begin(), nodes_in_def_order_.end(),

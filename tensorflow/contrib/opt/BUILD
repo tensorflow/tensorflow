@@ -36,6 +36,7 @@ py_test(
         ":opt_py",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:extra_py_tests_deps",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -49,6 +50,7 @@ py_test(
     deps = [
         ":opt_py",
         "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -62,6 +64,7 @@ py_test(
     deps = [
         ":opt_py",
         "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
     ],
 )
 

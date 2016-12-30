@@ -1,5 +1,8 @@
 package(
-    default_visibility = ["//tensorflow:internal"],
+    default_visibility = [
+        "//engedu/ml/tf_from_scratch:__pkg__",
+        "//tensorflow:internal",
+    ],
     features = [
         "-layering_check",
         "-parse_headers",
@@ -13,10 +16,10 @@ py_library(
     srcs = [
         "__init__.py",
         "losses.py",
+        "losses_impl.py",
         "util.py",
     ],
     srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -24,6 +27,7 @@ py_library(
         "//tensorflow/python:nn",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:util",
     ],
 )
 
