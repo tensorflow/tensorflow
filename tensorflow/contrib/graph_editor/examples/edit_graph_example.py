@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,7 +22,7 @@ from __future__ import print_function
 
 import numpy as np
 import tensorflow as tf
-from tf.contrib import graph_editor as ge
+from tensorflow.contrib import graph_editor as ge
 
 FLAGS = tf.flags.FLAGS
 

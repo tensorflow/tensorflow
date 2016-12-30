@@ -2,6 +2,10 @@
 
 ## Basic Neural Networks
 
+The first few Tensorflow tutorials guide you through training and testing a
+simple neural network to classify handwritten digits from the MNIST database of
+digit images.
+
 ### MNIST For ML Beginners
 
 If you're new to machine learning, we recommend starting here.  You'll learn
@@ -26,13 +30,6 @@ TensorFlow infrastructure to train models at scale.  We use MNIST as the
 example.
 
 [View Tutorial](../tutorials/mnist/tf/index.md)
-
-### MNIST Data Download
-
-Details about downloading the MNIST handwritten digits data set.  Exciting
-stuff.
-
-[View Tutorial](../tutorials/mnist/download/index.md)
 
 
 ## Easy ML with tf.contrib.learn
@@ -66,6 +63,28 @@ model and a deep neural net to harness the advantages of each type of model.
 
 [View Tutorial](../tutorials/wide_and_deep/index.md)
 
+### Logging and Monitoring Basics with tf.contrib.learn
+
+This tutorial shows you how to use TensorFlow’s logging capabilities and the
+Monitor API to audit the in-progress training of a neural network.
+
+[View Tutorial](../tutorials/monitors/index.md)
+
+### Building Input Functions with tf.contrib.learn
+
+This tutorial introduces you to creating input functions in tf.contrib.learn,
+and walks you through implementing an `input_fn` to train a neural network
+for predicting median house values.
+
+[View Tutorial](../tutorials/input_fn/index.md)
+
+### Creating Estimators in tf.contrib.learn
+
+This tutorial covers how to create your own `Estimator` using the building blocks
+provided in tf.contrib.learn. You'll build a model to predict the ages of abalones
+based on their physical measurements.
+
+[View Tutorial](../tutorials/estimators/index.md)
 
 ## TensorFlow Serving
 
@@ -101,7 +120,7 @@ Building on the Inception recognition model, we will release a TensorFlow
 version of the [Deep Dream](https://github.com/google/deepdream) neural network
 visual hallucination software.
 
-[View Tutorial](https://www.tensorflow.org/code/tensorflow/examples/tutorials/deepdream/deepdream.ipynb)
+[View Tutorial](https://nbviewer.jupyter.org/github/tensorflow/tensorflow/blob/master/tensorflow/examples/tutorials/deepdream/deepdream.ipynb)
 
 
 ## Language and Sequence Processing

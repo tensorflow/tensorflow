@@ -1,0 +1,123 @@
+[
+  {
+    "name": "Mnist Eval",
+    "path": "mnist_eval.pbtxt"
+  },
+  {
+    "name": "Mnist with summaries (+stats)",
+    "path": "mnist_with_summaries.pbtxt",
+    "runMetadata": [
+      {
+        "tag": "step100",
+        "path": "mnist_with_summaries_step100.pbtxt"
+      },
+      {
+        "tag": "step1000",
+        "path": "mnist_with_summaries_step1000.pbtxt"
+      }
+    ]
+  },
+  {
+    "name": "Mnist Train (with shapes)",
+    "path": "mnist_train_shapes.pbtxt"
+  },
+  {
+    "name": "Inception Train (huge)",
+    "path": "inception_train.pbtxt"
+  },
+  {
+    "name": "Inception Train Eval",
+    "path": "inception_train_eval.pbtxt"
+  },
+  {
+    "name": "Inception Test",
+    "path": "inception_test_eval.pbtxt"
+  },
+  {
+    "name": "PTB Word LSTM Train",
+    "path": "ptb_word_lstm_train.pbtxt"
+  },
+  {
+    "name": "PTB Word LSTM Train Eval",
+    "path": "ptb_word_lstm_train_eval.pbtxt"
+  },
+  {
+    "name": "PTB Word LSTM Test",
+    "path": "ptb_word_lstm_test_eval.pbtxt"
+  },
+  {
+    "name": "Cifar10 Train (+stats)",
+    "path": "cifar10_train.pbtxt",
+    "runMetadata": [
+      {
+        "tag": "step0",
+        "path": "cifar10_train_step0.pbtxt"
+      },
+      {
+        "tag": "step100",
+        "path": "cifar10_train_step100.pbtxt"
+      },
+      {
+        "tag": "step200",
+        "path": "cifar10_train_step200.pbtxt"
+      },
+      {
+        "tag": "step300",
+        "path": "cifar10_train_step300.pbtxt"
+      }
+    ]
+  },
+  {
+    "name": "Cifar10 Multi-GPU Train",
+    "path": "cifar10_multi_gpu_train.pbtxt"
+  },
+  {
+    "name": "Cifar10 Eval (+stats)",
+    "path": "cifar10_eval.pbtxt",
+    "runMetadata": [
+      {
+        "tag": "step0",
+        "path": "cifar10_eval_step0.pbtxt"
+      },
+      {
+        "tag": "step10",
+        "path": "cifar10_eval_step10.pbtxt"
+      },
+      {
+        "tag": "step20",
+        "path": "cifar10_eval_step20.pbtxt"
+      }
+    ]
+  },
+  {
+    "name": "Fatcat LSTM",
+    "path": "fatcat_lstm.pbtxt"
+  },
+  {
+    "name": "Legacy Inception Renamed",
+    "path": "legacy_inception_renamed.pbtxt"
+  },
+  {
+    "name": "Wolfe (Broken)",
+    "path": "wolfe1.pbtxt"
+  },
+  {
+    "name": "Wolfe (Fixed)",
+    "path": "wolfe2.pbtxt"
+  },
+  {
+    "id": "alex",
+    "name": "AlexNet",
+    "path": "alexnet.pbtxt"
+  },
+  {
+    "id": "alexprivate",
+    "name": "AlexNet Private",
+    "path": "alexnet.pbtxt",
+    "private": true
+  },
+  {
+    "name": "TestError404",
+    "path": "nofile"
+  }
+]

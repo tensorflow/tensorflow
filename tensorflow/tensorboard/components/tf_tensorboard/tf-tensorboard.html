@@ -1,0 +1,323 @@
+<!--
+@license
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../iron-icons/iron-icons.html">
+<link rel="import" href="../paper-tabs/paper-tabs.html">
+<link rel="import" href="../paper-dialog/paper-dialog.html">
+<link rel="import" href="../paper-checkbox/paper-checkbox.html">
+<link rel="import" href="../paper-toolbar/paper-toolbar.html">
+<link rel="import" href="../paper-button/paper-button.html">
+<link rel="import" href="../paper-icon-button/paper-icon-button.html">
+<link rel="import" href="../paper-header-panel/paper-header-panel.html">
+<link rel="import" href="../tf-globals/tf-globals.html">
+<link rel="import" href="../tf-scalar-dashboard/tf-scalar-dashboard.html">
+<link rel="import" href="../tf-distribution-dashboard/tf-distribution-dashboard.html">
+<link rel="import" href="../tf-histogram-dashboard/tf-histogram-dashboard.html">
+<link rel="import" href="../tf-image-dashboard/tf-image-dashboard.html">
+<link rel="import" href="../tf-audio-dashboard/tf-audio-dashboard.html">
+<link rel="import" href="../tf-graph-dashboard/tf-graph-dashboard.html">
+<link rel="import" href="../tf-dashboard-common/tensorboard-color.html">
+<link rel="import" href="../tf-backend/tf-backend.html">
+<link rel="import" href="../tf-storage/tf-storage.html">
+<link rel="import" href="../vz-projector/vz-projector-dashboard.html">
+
+<!--
+tf-tensorboard is the frontend entry point for TensorBoard.
+
+It implements a toolbar (via paper-header-panel and paper-toolbar) that
+allows the user to toggle between various dashboards.
+-->
+<script src="autoReloadBehavior.js"></script>
+<dom-module id="tf-tensorboard">
+  <template>
+    <paper-dialog with-backdrop id="settings">
+      <h2>Settings</h2>
+      <paper-checkbox id="auto-reload-checkbox" checked="{{autoReloadEnabled}}">
+        Reload data every <span>[[autoReloadIntervalSecs]]</span>s.
+      </paper-checkbox>
+    </paper-dialog>
+    <paper-header-panel>
+      <paper-toolbar id="toolbar">
+        <div id="toolbar-content">
+          <div class="toolbar-title">TensorBoard</div>
+          <paper-tabs selected="{{modeIndex}}" noink class="tabs" id="tabs">
+            <template is="dom-repeat" items="[[tabs]]">
+              <template is="dom-if" if="[[_isTabEnabled(item)]]">
+                <paper-tab data-mode="[[item]]">[[item]]</paper-tab>
+              </template>
+            </template>
+          </paper-tabs>
+          <div class="global-actions">
+            <paper-icon-button
+              icon="refresh"
+              on-tap="reload"
+              disabled$="[[_modeIsGraphs(mode)]]"
+              id="reload-button"
+            ></paper-icon-button>
+            <paper-icon-button
+              icon="settings"
+              on-tap="openSettings"
+              id="settings-button"
+            ></paper-icon-button>
+            <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tensorboard/README.md" tabindex="-1">
+              <paper-icon-button icon="help-outline"></paper-icon-button>
+            </a>
+          </div>
+        </div>
+      </paper-toolbar>
+
+      <div id="content" class="fit">
+        <content id="injected-overview"></content>
+
+        <template is="dom-if" if="[[_modeIsScalars(mode)]]">
+          <tf-scalar-dashboard
+            id="scalars"
+            backend="[[_backend]]"
+            router="[[router]]"
+          ></tf-scalar-dashboard>
+        </template>
+
+        <template is="dom-if" if="[[_modeIsImages(mode)]]">
+          <tf-image-dashboard
+            id="images"
+            backend="[[_backend]]"
+          ></tf-image-dashboard>
+        </template>
+
+        <template is="dom-if" if="[[_modeIsAudio(mode)]]">
+          <tf-audio-dashboard
+            id="audio"
+            backend="[[_backend]]"
+          ></tf-audio-dashboard>
+        </template>
+
+        <template is="dom-if" if="[[_modeIsGraphs(mode)]]">
+          <tf-graph-dashboard
+            id="graphs"
+            backend="[[_backend]]"
+          ></tf-graph-dashboard>
+        </template>
+
+        <template is="dom-if" if="[[_modeIsDistributions(mode)]]">
+          <tf-distribution-dashboard
+            id="distributions"
+            backend="[[_backend]]"
+          ></tf-distribution-dashboard>
+        </template>
+
+        <template is="dom-if" if="[[_modeIsHistograms(mode)]]">
+          <tf-histogram-dashboard
+            id="histograms"
+            backend="[[_backend]]"
+          ></tf-histogram-dashboard>
+        </template>
+
+        <template is="dom-if" if="[[_modeIsEmbeddings(mode)]]">
+          <vz-projector-dashboard
+            id="projector"
+            route-prefix="/data/plugin/projector">
+          </vz-projector-dashboard>
+        </template>
+      </div>
+    </paper-header-panel>
+
+    <style>
+      :host {
+        height: 100%;
+        display: block;
+        background-color: var(--paper-grey-100);
+      }
+
+      #toolbar {
+        background-color: var(--tb-toolbar-background-color, --tb-orange-strong);
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .toolbar-title {
+        font-size: 20px;
+        margin-left: 10px;
+        text-rendering: optimizeLegibility;
+        letter-spacing: -0.025em;
+        font-weight: 500;
+        flex-grow: 2;
+        display: var(--tb-toolbar-title-display, block);
+      }
+
+      .tabs {
+        flex-grow: 1;
+        text-transform: uppercase;
+        height: 100%;
+      }
+
+      paper-tabs {
+        --paper-tabs-selection-bar-color: white;
+      }
+
+      .global-actions {
+        flex-grow: 2;
+        display: inline-flex; /* Ensure that icons stay aligned */
+        justify-content: flex-end;
+        text-align: right;
+        color: white;
+      }
+
+      .global-actions a {
+        color: white;
+      }
+
+      #toolbar-content {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      #content {
+        height: 100%;
+      }
+
+      [disabled] {
+        opacity: 0.2;
+        color: white;
+      }
+
+    </style>
+  </template>
+  <script>
+    Polymer({
+      is: "tf-tensorboard",
+      behaviors: [TF.TensorBoard.AutoReloadBehavior],
+      properties: {
+        router: {
+          type: Object,
+          value: function() {
+            return TF.Backend.router();
+          },
+        },
+        _backend: {
+          type: Object,
+          computed: "_makeBackend(router, demoDir)",
+        },
+        // Which tab is selected (scalars, graph, images etc).
+        mode: {
+          type: String,
+          computed: '_getModeFromIndex(modeIndex)',
+          notify: true,
+        },
+        tabs: {
+          type: Array,
+          readOnly: true,
+          value: TF.Globals.TABS,
+        },
+        // If this is set to a string, TensorBoard will switch to "demo mode"
+        // and attempt to load serialized json data from that directory. You can
+        // generate conformant json using
+        // tensorboard/scripts/serialize_tensorboard.py
+        demoDir: {
+          type: String,
+          value: null,
+        },
+        // Set this to true to store state in URI hash. Should be true for all non-test purposes.
+        useHash: {
+          type: Boolean,
+          value: false,
+        },
+        disabledTabs: String,
+      },
+      _isTabEnabled: function(tab) {
+        if (this.disabledTabs != null &&
+            this.disabledTabs.split(',').indexOf(tab) >= 0) {
+          return false;
+        }
+        return true;
+      },
+      _getModeFromIndex: function(modeIndex) {
+        var mode = this.tabs[modeIndex];
+        TF.URIStorage.setString(TF.URIStorage.TAB, mode);
+        return mode;
+      },
+      _makeBackend: function(router, demoDir) {
+        // use the demoDir if it is set, otherwise use the provided router
+        if (demoDir != null) {
+          router = TF.Backend.router(demoDir, true);
+        }
+        return new TF.Backend.Backend(router);
+      },
+      _modeIsScalars: function(mode) {
+        return mode === "scalars";
+      },
+      _modeIsImages: function(mode) {
+        return mode === "images";
+      },
+      _modeIsAudio: function(mode) {
+        return mode === "audio";
+      },
+      _modeIsGraphs: function(mode) {
+        return mode === "graphs";
+      },
+      _modeIsEmbeddings: function(mode) {
+        return mode === "embeddings";
+      },
+      _modeIsDistributions: function(mode) {
+        return mode === "distributions";
+      },
+      _modeIsHistograms: function(mode) {
+        return mode === "histograms";
+      },
+      selectedDashboard: function() {
+        var dashboard = this.$$("#" + this.mode);
+        if (dashboard == null) {
+          throw new Error(`Unable to find dashboard for mode: ${this.mode}`);
+        }
+        return dashboard;
+      },
+      ready: function() {
+        TF.Globals.USE_HASH = this.useHash;
+
+        this._getModeFromHash();
+        window.addEventListener('hashchange', function() {
+          this._getModeFromHash();
+        }.bind(this));
+      },
+      _getModeFromHash: function() {
+        var tabName = TF.URIStorage.getString(TF.URIStorage.TAB);
+        var modeIndex = this.tabs.indexOf(tabName);
+        if (modeIndex == -1 && this.modeIndex == null) {
+          // Select the first tab as default.
+          this.set('modeIndex', 0);
+        }
+        if (modeIndex != -1 && modeIndex != this.modeIndex) {
+          this.set('modeIndex', modeIndex);
+        }
+      },
+      reload: function() {
+        if (this.mode === "graphs" || this.mode === "embeddings") {
+          return;
+        }
+        this.selectedDashboard().reload();
+      },
+      openSettings: function() {
+        this.$.settings.open();
+      },
+    });
+  </script>
+  <!-- Compiled bundle of all components using ES6 modules. -->
+  <script src="../bundle.js"></script>
+</dom-module>

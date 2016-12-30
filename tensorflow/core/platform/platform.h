@@ -20,7 +20,8 @@ limitations under the License.
 // mobile.
 
 #if !defined(PLATFORM_POSIX) && !defined(PLATFORM_GOOGLE) && \
-    !defined(PLATFORM_POSIX_ANDROID) && !defined(PLATFORM_GOOGLE_ANDROID)
+    !defined(PLATFORM_POSIX_ANDROID) && !defined(PLATFORM_GOOGLE_ANDROID) && \
+    !defined(PLATFORM_WINDOWS)
 
 // Choose which platform we are on.
 #if defined(ANDROID) || defined(__ANDROID__)
@@ -29,13 +30,15 @@ limitations under the License.
 
 #elif defined(__APPLE__)
 #define PLATFORM_POSIX
-
 #include "TargetConditionals.h"
 #if TARGET_IPHONE_SIMULATOR
 #define IS_MOBILE_PLATFORM
 #elif TARGET_OS_IPHONE
 #define IS_MOBILE_PLATFORM
 #endif
+
+#elif defined(_WIN32)
+#define PLATFORM_WINDOWS
 
 #elif defined(__arm__)
 #define PLATFORM_POSIX

@@ -17,6 +17,7 @@
 
 #include <memory>
 #include "tensorflow/core/public/session.h"
+#include "tensorflow/core/util/memmapped_file_system.h"
 
 @interface CameraExampleViewController
     : UIViewController<UIGestureRecognizerDelegate,
@@ -35,6 +36,7 @@
   NSMutableArray *labelLayers;
   AVCaptureSession *session;
   std::unique_ptr<tensorflow::Session> tf_session;
+  std::unique_ptr<tensorflow::MemmappedEnv> tf_memmapped_env;
   std::vector<std::string> labels;
 }
 @property(retain, nonatomic) CATextLayer *predictionTextLayer;

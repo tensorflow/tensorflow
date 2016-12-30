@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_FRAMEWORK_FUNCTION_H_
 #define TENSORFLOW_FRAMEWORK_FUNCTION_H_
 
-#include <unordered_map>
-
 #include <vector>
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -26,18 +24,35 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/selective_registration.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
 
 class CancellationManager;
-class Node;
 class OpKernel;
+class ResourceMgr;
+class ScopedStepContainer;
 
-// FunctionDefHelper::Define is a convenient helper to construct a
+// FunctionDefHelper::Create is a convenient helper to construct a
 // FunctionDef proto.
+// E.g.,
+//   FunctionDef my_func = FunctionDefHelper::Create(
+//     "my_func_name",
+//     {"x:T", "y:T" /* one string per argument */},
+//     {"z:T" /* one string per return value */},
+//     {"T: {float, double}" /* one string per attribute  */},
+//     {
+//        {{"o"}, "Mul", {"x", "y"}, {{"T", "$T"}}}
+//        /* one entry per function node */
+//     },
+//     /* Mapping between function returns and function node outputs. */
+//     {{"z", "o:z"}});
 //
+// For the old Function::Node approach, use FunctionDefHelper::Define()
 // E.g.,
 //   FunctionDef my_func = FunctionDefHelper::Define(
 //     "my_func_name",
@@ -47,10 +62,7 @@ class OpKernel;
 //     {
 //        {{"z"}, "Mul", {"x", "y"}, {{"T", "$T"}}}
 //        /* one entry per function node */
-//     })
-//
-// NOTE: When we have a TFLang parser, we can add another helper:
-//   FunctionDef FunctionDefHelper::Define(const string& tf_func);
+//     });
 class FunctionDefHelper {
  public:
   // AttrValueWrapper has copy constructors for the type T so that
@@ -88,15 +100,29 @@ class FunctionDefHelper {
   // lists. E.g.,
   //  Node n = {{"z"}, "Mul", {"x", "y"}, {{"T", "$T"}}};  // z = x * y
   struct Node {
+    // When constructing a NodeDef, the first entry in ret is used as
+    // the node name, the remaining values are ignored.
     std::vector<string> ret;
     string op;
     std::vector<string> arg;
     std::vector<std::pair<string, AttrValueWrapper>> attr;
     std::vector<string> dep;
 
-    FunctionDef::Node ToProto() const;
+    NodeDef ToNodeDef() const;
   };
 
+  // The Create() function uses the new NodeDef field.  `ret_def`
+  // holds a mapping from the function output names from `out_def` to
+  // the node outputs from `node_def`.
+  static FunctionDef Create(const string& function_name,
+                            gtl::ArraySlice<string> in_def,
+                            gtl::ArraySlice<string> out_def,
+                            gtl::ArraySlice<string> attr_def,
+                            gtl::ArraySlice<Node> node_def,
+                            gtl::ArraySlice<std::pair<string, string>> ret_def);
+
+  // The two Define() functions use the old FunctionDef::Node field.
+  // TODO(josh11b): Get rid of these and transition to the one above.
   static FunctionDef Define(const string& function_name,
                             gtl::ArraySlice<string> arg_def,
                             gtl::ArraySlice<string> ret_def,
@@ -252,7 +278,8 @@ class FunctionCallFrame {
 class FunctionLibraryDefinition : public OpRegistryInterface {
  public:
   explicit FunctionLibraryDefinition(const FunctionLibraryDefinition& lib_def);
-  explicit FunctionLibraryDefinition(const FunctionDefLibrary& lib_def);
+  FunctionLibraryDefinition(const OpRegistryInterface* default_registry,
+                            const FunctionDefLibrary& lib_def);
   ~FunctionLibraryDefinition() override;
 
   FunctionLibraryDefinition& operator=(const FunctionLibraryDefinition&) =
@@ -281,6 +308,15 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   Status LookUp(const string& op_type_name,
                 const OpRegistrationData** op_reg_data) const override;
 
+  static constexpr const char* const kGradientOp = "SymbolicGradient";
+  static constexpr const char* const kFuncAttr = "f";
+
+  // Given a node def 'ndef', inspects attributes of the callee
+  // function to derive the attribute 'value' for 'attr'. Returns OK
+  // iff the attribute is given by the function's definition.
+  template <typename T>
+  Status GetAttr(const NodeDef& ndef, const string& attr, T* value) const;
+
   // Returns a proto representation of the state of this function library.
   FunctionDefLibrary ToProto() const;
 
@@ -294,9 +330,14 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
     OpRegistrationData op_registration_data;
   };
 
-  std::unordered_map<string, std::unique_ptr<FunctionDefAndOpRegistration>>
+  const OpRegistryInterface* const default_registry_;
+  gtl::FlatMap<string, std::unique_ptr<FunctionDefAndOpRegistration>, HashStr>
       function_defs_;
-  std::unordered_map<string, string> func_grad_;
+  gtl::FlatMap<string, string, HashStr> func_grad_;
+
+  // Helper function for GetAttr. Returns the FunctionDef* to get the
+  // attr from.
+  const FunctionDef* GetAttrImpl(const NodeDef& ndef) const;
 };
 
 // Forward declare. Defined in common_runtime/function.h
@@ -340,6 +381,9 @@ class FunctionLibraryRuntime {
     // The id of the step that is calling this function.
     int64 step_id = 0;
 
+    // Per-step container.
+    ScopedStepContainer* step_container;
+
     std::function<void(std::function<void()>)>* runner = nullptr;
   };
   typedef std::function<void(const Status&)> DoneCallback;
@@ -353,11 +397,25 @@ class FunctionLibraryRuntime {
   // returned "*kernel". Otherwise, returns an error.
   virtual Status CreateKernel(const NodeDef& ndef, OpKernel** kernel) = 0;
 
-  // Return true iff 'function' is stateful.
+  // Returns true iff 'function' is stateful.
   virtual bool IsStateful(const string& function_name) = 0;
 
-  // Return the device on which the function executes.
+  // Returns the device on which the function executes.
   virtual Device* device() = 0;
+
+  // Returns the function library definition that backs this runtime.
+  virtual const FunctionLibraryDefinition* GetFunctionLibraryDefinition()
+      const = 0;
+
+  // Returns the environment on which the function executes.
+  virtual Env* env() = 0;
+
+  // Returns a debug string showing the definition of the function of
+  // 'handle'.
+  virtual string DebugString(Handle handle) = 0;
+
+  // Returns the graph version number.
+  virtual int graph_def_version() = 0;
 };
 
 // To register a gradient function for a builtin op, one should use
@@ -427,6 +485,18 @@ bool RegisterOp(const string& op, Creator func);
 // nullptr if REGISTER_OP_NO_GRADIENT is used.
 Status GetOpGradientCreator(const string& op, Creator* creator);
 };
+
+// Implementation details.
+
+template <typename T>
+Status FunctionLibraryDefinition::GetAttr(const NodeDef& ndef,
+                                          const string& attr, T* value) const {
+  const FunctionDef* fdef = GetAttrImpl(ndef);
+  if (fdef && GetNodeAttr(AttrSlice(&fdef->attr()), attr, value).ok()) {
+    return Status::OK();
+  }
+  return errors::InvalidArgument("Attr ", attr, " is not defined.");
+}
 
 }  // end namespace tensorflow
 

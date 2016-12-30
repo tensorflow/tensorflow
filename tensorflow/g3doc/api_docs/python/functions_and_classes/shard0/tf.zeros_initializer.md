@@ -1,4 +1,4 @@
-### `tf.zeros_initializer(shape, dtype=tf.float32)` {#zeros_initializer}
+### `tf.zeros_initializer(dtype=tf.float32)` {#zeros_initializer}
 
-An adaptor for zeros() to match the Initializer spec.
+Returns an initializer that generates tensors initialized to 0.
 

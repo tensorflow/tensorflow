@@ -1,8 +1,8 @@
-# Tensorflow Builds
+# TensorFlow Builds
 
 This directory contains all the files and setup instructions to run all
 the important builds and tests. **You can trivially run it yourself!** It also
-run continuous integration [ci.tensorflow.org](http://ci.tensorflow.org).
+run continuous integration [ci.tensorflow.org](https://ci.tensorflow.org).
 
 
 
@@ -39,7 +39,7 @@ tensorflow/tools/ci_build/ci_build.sh CPU bazel test //tensorflow/...
 
 ## Jobs
 
-The jobs run by [ci.tensorflow.org](http://ci.tensorflow.org) include following:
+The jobs run by [ci.tensorflow.org](https://ci.tensorflow.org) include following:
 
 ```bash
 # Note: You can run the following one-liners yourself if you have Docker. Run
@@ -71,14 +71,14 @@ CI_DOCKER_EXTRA_PARAMS='-it --rm' tensorflow/tools/ci_build/ci_build.sh CPU /bin
 **Note**: The set of jobs and how they are triggered is still evolving.
 There are builds for master branch on cpu, gpu and android. There is a build
 for incoming gerrit changes. Gpu tests and benchmark are coming soon. Check
-[ci.tensorflow.org](http://ci.tensorflow.org) for current jobs.
+[ci.tensorflow.org](https://ci.tensorflow.org) for current jobs.
 
 
 
-## How Does Tensorflow Continuous Integration Work
+## How Does TensorFlow Continuous Integration Work
 
 We use [jenkins](https://jenkins-ci.org/) as our continuous integration.
-It is running at [ci.tensorflow.org](http://ci.tensorflow.org).
+It is running at [ci.tensorflow.org](https://ci.tensorflow.org).
 All the jobs are run within [docker](http://www.docker.com/) containers.
 
 Builds can be triggered by push to master, push a change set or manually.

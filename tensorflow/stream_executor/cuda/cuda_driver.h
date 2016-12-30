@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform/port.h"
-#include "third_party/gpus/cuda/include/cuda.h"
+#include "cuda/include/cuda.h"
 
 namespace perftools {
 namespace gputools {

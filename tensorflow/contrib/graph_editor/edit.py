@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,214 +14,71 @@
 # ==============================================================================
 """Various function for graph editing."""
 
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.graph_editor import reroute
 from tensorflow.contrib.graph_editor import select
 from tensorflow.contrib.graph_editor import subgraph
 from tensorflow.contrib.graph_editor import util
 from tensorflow.python.ops import array_ops as tf_array_ops
 
-
-def _check_graphs(*args):
-  """Check that all the element in args belong to the same graph.
-
-  Args:
-    *args: a list of object with a obj.graph property.
-  Raises:
-    ValueError: if all the elements do not belong to the same graph.
-  """
-  graph = None
-  for i, sgv in enumerate(args):
-    if graph is None and sgv.graph is not None:
-      graph = sgv.graph
-    elif sgv.graph is not None and sgv.graph != graph:
-      raise ValueError("Argument[{}]: Wrong graph!".format(i))
+__all__ = [
+    "detach_control_inputs",
+    "detach_control_outputs",
+    "detach_inputs",
+    "detach_outputs",
+    "detach",
+    "connect",
+    "bypass",
+]
 
 
-def _reroute_sgv_remap(sgv0, sgv1, mode):
-  """Remap in place the inputs of two subgraph views to mimic the reroute.
-
-  This function is meant to used by reroute_inputs only.
+def detach_control_inputs(sgv):
+  """Detach all the external control inputs of the subgraph sgv.
 
   Args:
-    sgv0: the first subgraph to have its inputs remapped.
-    sgv1: the second subgraph to have its inputs remapped.
-    mode: reroute mode, see util.reroute_ts(...).
-  Raises:
-    TypeError: if svg0 or svg1 are not SubGraphView.
-    ValueError: if sgv0 and sgv1 do not belong to the same graph.
+    sgv: the subgraph view to be detached. This argument is converted to a
+      subgraph using the same rules as the function subgraph.make_view.
   """
-  a2b, b2a = util.RerouteMode.check(mode)
-  if not isinstance(sgv0, subgraph.SubGraphView):
-    raise TypeError("Expected a SubGraphView, got {}".format(type(sgv0)))
-  if not isinstance(sgv1, subgraph.SubGraphView):
-    raise TypeError("Expected a SubGraphView, got {}".format(type(sgv1)))
-  _check_graphs(sgv0, sgv1)
-  sgv0_ = sgv0.copy()
-  sgv1_ = sgv1.copy()
-  # pylint: disable=protected-access
-  if a2b and b2a:
-    (sgv0_._input_ts, sgv1_._input_ts) = (
-        sgv1_._input_ts, sgv0_._input_ts)
-    (sgv0_._passthrough_ts, sgv1_._passthrough_ts) = (
-        sgv1_._passthrough_ts, sgv0_._passthrough_ts)
-  elif a2b:
-    sgv1_._input_ts = sgv0_._input_ts[:]
-    sgv1_._passthrough_ts = sgv0_._passthrough_ts[:]
-  elif b2a:
-    sgv0_._input_ts = sgv1_._input_ts[:]
-    sgv0_._passthrough_ts = sgv1_._passthrough_ts[:]
-
-  # Update the passthrough outputs as well.
-  def update_passthrough_outputs(a, b):
-    for i, t in enumerate(b._output_ts):
-      if t in a._passthrough_ts:
-        ii = a._input_ts.index(t)
-        b._output_ts[i] = b._input_ts[ii]
-  if a2b: update_passthrough_outputs(sgv0_, sgv1_)
-  if b2a: update_passthrough_outputs(sgv1_, sgv0_)
-
-  # in-place
-  sgv0._assign_from(sgv0_)
-  sgv1._assign_from(sgv1_)
+  sgv = subgraph.make_view(sgv)
+  for op in sgv.ops:
+    cops = [cop for cop in op.control_inputs if cop not in sgv.ops]
+    reroute.remove_control_inputs(op, cops)
 
 
-def reroute_inputs(sgv0, sgv1, mode):
-  """Re-route all the inputs of two subgraphs.
+def detach_control_outputs(sgv, control_outputs):
+  """Detach all the external control outputs of the subgraph sgv.
 
   Args:
-    sgv0: the first subgraph to have its inputs swapped. This argument is
-      converted to a subgraph using the same rules than the function
-      subgraph.make_view.
-    sgv1: the second subgraph to have its inputs swapped. This argument is
-      converted to a subgraph using the same rules than the function
-      subgraph.make_view.
-    mode: reroute mode, see util.reroute_ts(...).
-  Returns:
-    Two new subgraph views with their inputs swapped.
-      Note that sgv0 and sgv1 are also modified in place.
-  Raises:
-    StandardError: if sgv0 or sgv1 cannot be converted to a SubGraphView using
-      the same rules than the function subgraph.make_view.
+    sgv: the subgraph view to be detached. This argument is converted to a
+      subgraph using the same rules as the function subgraph.make_view.
+    control_outputs: a util.ControlOutputs instance.
   """
-  sgv0 = subgraph.make_view(sgv0)
-  sgv1 = subgraph.make_view(sgv1)
-  _check_graphs(sgv0, sgv1)
-  can_modify = sgv0.ops + sgv1.ops
-  # also allow consumers of passthrough to be modified:
-  can_modify += select.get_consuming_ops(sgv0.passthroughs)
-  can_modify += select.get_consuming_ops(sgv1.passthroughs)
-  util.reroute_ts(sgv0.inputs, sgv1.inputs, mode, can_modify=can_modify)
-  _reroute_sgv_remap(sgv0, sgv1, mode)
-  return sgv0, sgv1
+  if not isinstance(control_outputs, util.ControlOutputs):
+    raise TypeError("Expected a util.ControlOutputs, got: {}",
+                    type(control_outputs))
+  control_outputs.update()
+  sgv = subgraph.make_view(sgv)
+  for op in sgv.ops:
+    for cop in control_outputs.get(op):
+      if cop not in sgv.ops:
+        reroute.remove_control_inputs(cop, op)
 
 
-def swap_inputs(sgv0, sgv1):
-  """Swap all the inputs of sgv0 and sgv1 (see reroute_inputs)."""
-  return reroute_inputs(sgv0, sgv1, util.RerouteMode.swap)
-
-
-def reroute_a2b_inputs(sgv0, sgv1):
-  """Re-route all the inputs of sgv0 to sgv1 (see reroute_inputs)."""
-  return reroute_inputs(sgv0, sgv1, util.RerouteMode.a2b)
-
-
-def reroute_b2a_inputs(sgv0, sgv1):
-  """Re-route all the inputs of sgv1 to sgv0 (see reroute_inputs)."""
-  return reroute_inputs(sgv0, sgv1, util.RerouteMode.b2a)
-
-
-def reroute_outputs(sgv0, sgv1, mode):
-  """Re-route all the outputs of two operations.
-
-  Args:
-    sgv0: the first subgraph to have its outputs swapped. This argument is
-      converted to a subgraph using the same rules than the function
-      subgraph.make_view.
-    sgv1: the second subgraph to have its outputs swapped. This argument is
-      converted to a subgraph using the same rules than the function
-      subgraph.make_view.
-    mode: reroute mode, see util.reroute_ts(...).
-  Returns:
-    Two new subgraph views with their outputs swapped.
-      Note that sgv0 and sgv1 are also modified in place.
-  Raises:
-    StandardError: if sgv0 or sgv1 cannot be converted to a SubGraphView using
-      the same rules than the function subgraph.make_view.
-  """
-  sgv0 = subgraph.make_view(sgv0)
-  sgv1 = subgraph.make_view(sgv1)
-  _check_graphs(sgv0, sgv1)
-  cannot_modify = sgv0.ops + sgv1.ops
-  util.reroute_ts(sgv0.outputs, sgv1.outputs, mode, cannot_modify=cannot_modify)
-  return sgv0, sgv1
-
-
-def swap_outputs(sgv0, sgv1):
-  """Swap all the outputs of sgv0 and sgv1 (see reroute_outputs)."""
-  return reroute_outputs(sgv0, sgv1, util.RerouteMode.swap)
-
-
-def reroute_a2b_outputs(sgv0, sgv1):
-  """Re-route all the outputs of sgv0 to sgv1 (see reroute_outputs)."""
-  return reroute_outputs(sgv0, sgv1, util.RerouteMode.a2b)
-
-
-def reroute_b2a_outputs(sgv0, sgv1):
-  """Re-route all the outputs of sgv1 to sgv0 (see reroute_outputs)."""
-  return reroute_outputs(sgv0, sgv1, util.RerouteMode.b2a)
-
-
-def reroute(sgv0, sgv1, mode):
-  """Re-route both the inputs and the outputs of the two subgraph views.
-
-  This involves swapping all the inputs/ouputs of the two subgraph views.
-
-  Args:
-    sgv0: the first subgraph to be swapped. This argument is converted to a
-      subgraph using the same rules than the function subgraph.make_view.
-    sgv1: the second subgraph to be swapped. This argument is converted to a
-      subgraph using the same rules than the function subgraph.make_view.
-    mode: reroute mode, see util.reroute_ts(...).
-  Returns:
-    Two new subgraph views with their outputs and inputs swapped.
-      Note that sgv0 and sgv1 are also modified in place.
-  Raises:
-    StandardError: if sgv0 or sgv1 cannot be converted to a SubGraphView using
-      the same rules than the function subgraph.make_view.
-  """
-  reroute_outputs(sgv0, sgv1, mode)
-  reroute_inputs(sgv0, sgv1, mode)
-  return sgv0, sgv1
-
-
-def swap(sgv0, sgv1):
-  """Swap the inputs and outputs of sgv1 to sgv0 (see reroute)."""
-  return reroute(sgv0, sgv1, util.RerouteMode.swap)
-
-
-def reroute_a2b(sgv0, sgv1):
-  """Re-route the inputs and outputs of sgv0 to sgv1 (see reroute_outputs)."""
-  return reroute(sgv0, sgv1, util.RerouteMode.a2b)
-
-
-def reroute_b2a(sgv0, sgv1):
-  """Re-route the inputs and outputs of sgv1 to sgv0 (see reroute_outputs)."""
-  return reroute(sgv0, sgv1, util.RerouteMode.b2a)
-
-
-def detach_inputs(sgv):
+def detach_inputs(sgv, control_inputs=False):
   """Detach the inputs of a subgraph view.
 
   Args:
     sgv: the subgraph view to be detached. This argument is converted to a
-      subgraph using the same rules than the function subgraph.make_view.
+      subgraph using the same rules as the function subgraph.make_view.
+      Note that sgv is modified in place.
+    control_inputs: if True control_inputs are also detached.
   Returns:
-    A new subgraph view of the detached subgraph.
-      Note that sgv is also modified in place.
+    A tuple `(sgv, input_placeholders)` where
+      `sgv` is a new subgraph view of the detached subgraph;
+      `input_placeholders` is a list of the created input placeholders.
   Raises:
     StandardError: if sgv cannot be converted to a SubGraphView using
       the same rules than the function subgraph.make_view.
@@ -231,23 +87,30 @@ def detach_inputs(sgv):
 
   with sgv.graph.as_default():
     input_placeholders = [
-        tf_array_ops.placeholder(dtype=input_t.dtype,
-                                 name=util.placeholder_name(input_t))
+        tf_array_ops.placeholder(
+            dtype=input_t.dtype, name=util.placeholder_name(input_t))
         for input_t in sgv.inputs
     ]
 
-  return swap_inputs(sgv, input_placeholders)
+  reroute.swap_inputs(sgv, input_placeholders)
+  if control_inputs:
+    detach_control_inputs(sgv)
+  return sgv, input_placeholders
 
 
-def detach_outputs(sgv):
-  """Detach the outputa of a subgraph view.
+def detach_outputs(sgv, control_outputs=None):
+  """Detach the output of a subgraph view.
 
   Args:
     sgv: the subgraph view to be detached. This argument is converted to a
-      subgraph using the same rules than the function subgraph.make_view.
+      subgraph using the same rules as the function subgraph.make_view.
+      Note that sgv is modified in place.
+    control_outputs: a util.ControlOutputs instance or None. If not None the
+      control outputs are also detached.
   Returns:
-    A new subgraph view of the detached subgraph.
-      Note that sgv is also modified in place.
+    A tuple `(sgv, output_placeholders)` where
+      `sgv` is a new subgraph view of the detached subgraph;
+      `output_placeholders` is a list of the created output placeholders.
   Raises:
     StandardError: if sgv cannot be converted to a SubGraphView using
       the same rules than the function subgraph.make_view.
@@ -269,24 +132,40 @@ def detach_outputs(sgv):
         for input_t in consumers_sgv.inputs
     ]
 
-  return swap_outputs(sgv_, output_placeholders)
+  reroute.swap_outputs(sgv_, output_placeholders)
+  if control_outputs is not None:
+    detach_control_outputs(sgv_, control_outputs)
+  return sgv_, output_placeholders
 
 
-def detach(sgv):
+def detach(sgv, control_inputs=False, control_outputs=None, control_ios=None):
   """Detach both the inputs and the outputs of a subgraph view.
 
   Args:
     sgv: the subgraph view to be detached. This argument is converted to a
-      subgraph using the same rules than the function subgraph.make_view.
+      subgraph using the same rules as the function subgraph.make_view.
+      Note that sgv is modified in place.
+    control_inputs: A boolean indicating whether control inputs are enabled.
+    control_outputs: An instance of util.ControlOutputs or None. If not None,
+      control outputs are enabled.
+    control_ios:  An instance of util.ControlOutputs or None. If not None, both
+      control inputs and control outputs are enabled. This is equivalent to set
+      control_inputs to True and control_outputs to the util.ControlOutputs
+      instance.
   Returns:
-    A new subgraph view of the detached subgraph.
-      Note that sgv is also modified in place.
+    A tuple `(sgv, detached_inputs, detached_outputs)` where:
+    `sgv` is a new subgraph view of the detached subgraph;
+    `detach_inputs` is a list of the created input placeholders;
+    `detach_outputs` is a list of the created output placeholders.
   Raises:
     StandardError: if sgv cannot be converted to a SubGraphView using
       the same rules than the function subgraph.make_view.
   """
-  _, detached_inputs = detach_inputs(sgv)
-  _, detached_outputs = detach_outputs(sgv)
+  control_inputs, control_outputs = select.check_cios(control_inputs,
+                                                      control_outputs,
+                                                      control_ios)
+  _, detached_inputs = detach_inputs(sgv, control_inputs)
+  _, detached_outputs = detach_outputs(sgv, control_outputs)
   return sgv, detached_inputs, detached_outputs
 
 
@@ -295,48 +174,48 @@ def connect(sgv0, sgv1, disconnect_first=False):
 
   Args:
     sgv0: the first subgraph to have its outputs swapped. This argument is
-      converted to a subgraph using the same rules than the function
+      converted to a subgraph using the same rules as the function
       subgraph.make_view.
+      Note that sgv0 is modified in place.
     sgv1: the second subgraph to have its outputs swapped. This argument is
-      converted to a subgraph using the same rules than the function
+      converted to a subgraph using the same rules as the function
       subgraph.make_view.
-    disconnect_first: if True thecurrent outputs of sgv0 are disconnected.
+      Note that sgv1 is modified in place.
+    disconnect_first: if True the current outputs of sgv0 are disconnected.
   Returns:
-    Two new subgraph views (now connected). sgv0 and svg1 are also modified
-      in place.
+    A tuple `(sgv0, sgv1)` of the now connected subgraphs.
   Raises:
     StandardError: if sgv0 or sgv1 cannot be converted to a SubGraphView using
       the same rules than the function subgraph.make_view.
   """
   sgv0 = subgraph.make_view(sgv0)
   sgv1 = subgraph.make_view(sgv1)
-  _check_graphs(sgv0, sgv1)
+  util.check_graphs(sgv0, sgv1)
   if disconnect_first:
     detach_outputs(sgv0)
   sgv0_outputs = subgraph.SubGraphView(passthrough_ts=sgv0.outputs)
-  reroute_a2b_inputs(sgv0_outputs, sgv1)
+  reroute.reroute_a2b_inputs(sgv0_outputs, sgv1)
   return sgv0, sgv1
 
 
-def remove(sgv, reconnect_after=False):
-  """Remove sgv and optionally reconnect its inputs and outputs.
+def bypass(sgv):
+  """Bypass the given subgraph by connecting its inputs to its outputs.
 
   Args:
-    sgv: the subgraph view to be removed. This argument is converted to a
+    sgv: the subgraph view to be bypassed. This argument is converted to a
       subgraph using the same rules than the function subgraph.make_view.
-    reconnect_after: if False, the inputs and outputs of sgv are not
-      reconnected after the removal.
+      Note that sgv is modified in place.
   Returns:
-    A new subgraph view of the removed subgraph.
-      Note that sgv is also modified in place.
+    A tuple `(sgv, detached_inputs)` where:
+      `sgv` is a new subgraph view of the bypassed subgraph;
+      `detached_inputs` is a list of the created input placeholders.
   Raises:
-    StandardError: if sgv0 or sgv1 cannot be converted to a SubGraphView using
+    StandardError: if sgv cannot be converted to a SubGraphView using
       the same rules than the function subgraph.make_view.
   """
+  # TODO(fkp): allows to plug sgv.inputs to individual sgv.outputs consumers
   sgv = subgraph.make_view(sgv)
-  util.check_ts_compatibility(sgv.inputs, sgv.outputs)
-  sgv, detached_inputs, detached_outputs = detach(sgv)
-  if reconnect_after:
-    connect(detached_inputs, detached_outputs)
-  return sgv
-
+  sgv_inputs = list(sgv.inputs)
+  sgv, detached_inputs = detach_inputs(sgv)
+  reroute.reroute_a2b_ts(sgv_inputs, sgv.outputs)
+  return sgv, detached_inputs

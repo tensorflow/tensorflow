@@ -13,10 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/env.h"
+#include <deque>
+#include <vector>
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
+#if defined(PLATFORM_WINDOWS)
+#include <windows.h>
+#define PATH_MAX MAX_PATH
+#else
+#include <unistd.h>
+#endif
+
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
+#include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
@@ -65,8 +78,9 @@ Status FileSystemRegistryImpl::GetRegisteredFileSystemSchemes(
 Env::Env() : file_system_registry_(new FileSystemRegistryImpl) {}
 
 Status Env::GetFileSystemForFile(const string& fname, FileSystem** result) {
-  string scheme = GetSchemeFromURI(fname);
-  FileSystem* file_system = file_system_registry_->Lookup(scheme);
+  StringPiece scheme, host, path;
+  io::ParseURI(fname, &scheme, &host, &path);
+  FileSystem* file_system = file_system_registry_->Lookup(scheme.ToString());
   if (!file_system) {
     return errors::Unimplemented("File system scheme ", scheme,
                                  " not implemented");
@@ -112,11 +126,9 @@ Status Env::NewAppendableFile(const string& fname,
   return fs->NewAppendableFile(fname, result);
 }
 
-bool Env::FileExists(const string& fname) {
+Status Env::FileExists(const string& fname) {
   FileSystem* fs;
-  if (!GetFileSystemForFile(fname, &fs).ok()) {
-    return false;
-  }
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
   return fs->FileExists(fname);
 }
 
@@ -126,10 +138,23 @@ Status Env::GetChildren(const string& dir, std::vector<string>* result) {
   return fs->GetChildren(dir, result);
 }
 
+Status Env::GetMatchingPaths(const string& pattern,
+                             std::vector<string>* results) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(pattern, &fs));
+  return fs->GetMatchingPaths(pattern, results);
+}
+
 Status Env::DeleteFile(const string& fname) {
   FileSystem* fs;
   TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
   return fs->DeleteFile(fname);
+}
+
+Status Env::RecursivelyCreateDir(const string& dirname) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(dirname, &fs));
+  return fs->RecursivelyCreateDir(dirname);
 }
 
 Status Env::CreateDir(const string& dirname) {
@@ -142,6 +167,25 @@ Status Env::DeleteDir(const string& dirname) {
   FileSystem* fs;
   TF_RETURN_IF_ERROR(GetFileSystemForFile(dirname, &fs));
   return fs->DeleteDir(dirname);
+}
+
+Status Env::Stat(const string& fname, FileStatistics* stat) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
+  return fs->Stat(fname, stat);
+}
+
+Status Env::IsDirectory(const string& fname) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
+  return fs->IsDirectory(fname);
+}
+
+Status Env::DeleteRecursively(const string& dirname, int64* undeleted_files,
+                              int64* undeleted_dirs) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(dirname, &fs));
+  return fs->DeleteRecursively(dirname, undeleted_files, undeleted_dirs);
 }
 
 Status Env::GetFileSize(const string& fname, uint64* file_size) {
@@ -160,6 +204,26 @@ Status Env::RenameFile(const string& src, const string& target) {
                                  " not implemented");
   }
   return src_fs->RenameFile(src, target);
+}
+
+string Env::GetExecutablePath() {
+  char exe_path[PATH_MAX] = {0};
+#ifdef __APPLE__
+  uint32_t buffer_size(0U);
+  _NSGetExecutablePath(nullptr, &buffer_size);
+  char unresolved_path[buffer_size];
+  _NSGetExecutablePath(unresolved_path, &buffer_size);
+  CHECK(realpath(unresolved_path, exe_path));
+#elif defined(PLATFORM_WINDOWS)
+  HMODULE hModule = GetModuleHandle(NULL);
+  GetModuleFileName(hModule, exe_path, MAX_PATH);
+#else
+  CHECK_NE(-1, readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1));
+#endif
+  // Make sure it's null-terminated:
+  exe_path[sizeof(exe_path) - 1] = 0;
+
+  return exe_path;
 }
 
 Thread::~Thread() {}
@@ -220,7 +284,7 @@ class FileStream : public ::tensorflow::protobuf::io::ZeroCopyInputStream {
     pos_ += count;
     return true;
   }
-  int64 ByteCount() const override { return pos_; }
+  protobuf_int64 ByteCount() const override { return pos_; }
   Status status() const { return status_; }
 
   bool Next(const void** data, int* size) override {
@@ -247,13 +311,17 @@ class FileStream : public ::tensorflow::protobuf::io::ZeroCopyInputStream {
 
 }  // namespace
 
+Status WriteBinaryProto(Env* env, const string& fname,
+                        const ::tensorflow::protobuf::MessageLite& proto) {
+  string serialized;
+  proto.AppendToString(&serialized);
+  return WriteStringToFile(env, fname, serialized);
+}
+
 Status ReadBinaryProto(Env* env, const string& fname,
                        ::tensorflow::protobuf::MessageLite* proto) {
   std::unique_ptr<RandomAccessFile> file;
-  auto s = env->NewRandomAccessFile(fname, &file);
-  if (!s.ok()) {
-    return s;
-  }
+  TF_RETURN_IF_ERROR(env->NewRandomAccessFile(fname, &file));
   std::unique_ptr<FileStream> stream(new FileStream(file.get()));
 
   // TODO(jiayq): the following coded stream is for debugging purposes to allow
@@ -266,12 +334,40 @@ Status ReadBinaryProto(Env* env, const string& fname,
   coded_stream.SetTotalBytesLimit(1024LL << 20, 512LL << 20);
 
   if (!proto->ParseFromCodedStream(&coded_stream)) {
-    s = stream->status();
-    if (s.ok()) {
-      s = Status(error::DATA_LOSS, "Parse error");
-    }
+    TF_RETURN_IF_ERROR(stream->status());
+    return errors::DataLoss("Can't parse ", fname, " as binary proto");
   }
-  return s;
+  return Status::OK();
+}
+
+Status WriteTextProto(Env* env, const string& fname,
+                      const ::tensorflow::protobuf::Message& proto) {
+#if !defined(TENSORFLOW_LITE_PROTOS)
+  string serialized;
+  if (!::tensorflow::protobuf::TextFormat::PrintToString(proto, &serialized)) {
+    return errors::FailedPrecondition("Unable to convert proto to text.");
+  }
+  return WriteStringToFile(env, fname, serialized);
+#else
+  return errors::Unimplemented("Can't write text protos with protolite.");
+#endif
+}
+
+Status ReadTextProto(Env* env, const string& fname,
+                     ::tensorflow::protobuf::Message* proto) {
+#if !defined(TENSORFLOW_LITE_PROTOS)
+  std::unique_ptr<RandomAccessFile> file;
+  TF_RETURN_IF_ERROR(env->NewRandomAccessFile(fname, &file));
+  std::unique_ptr<FileStream> stream(new FileStream(file.get()));
+
+  if (!::tensorflow::protobuf::TextFormat::Parse(stream.get(), proto)) {
+    TF_RETURN_IF_ERROR(stream->status());
+    return errors::DataLoss("Can't parse ", fname, " as text proto");
+  }
+  return Status::OK();
+#else
+  return errors::Unimplemented("Can't parse text protos with protolite.");
+#endif
 }
 
 }  // namespace tensorflow

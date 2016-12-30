@@ -236,15 +236,20 @@ TEST(RefCountedVec, EraseBeginEnd) {
 }
 
 struct NoDefaultCtor {
-  explicit NoDefaultCtor(int /* x */) {}
+  explicit NoDefaultCtor(int) {}
 };
 struct NoCopy {
   NoCopy() {}
-  NoCopy(const NoCopy& /* x */) = delete;
+  NoCopy(const NoCopy&) = delete;
 };
 struct NoAssign {
   NoAssign() {}
-  NoAssign& operator=(const NoAssign& /* x */) = delete;
+  NoAssign& operator=(const NoAssign&) = delete;
+};
+struct MoveOnly {
+  MoveOnly() {}
+  MoveOnly(MoveOnly&&) = default;
+  MoveOnly& operator=(MoveOnly&&) = default;
 };
 TEST(InlinedVectorTest, NoDefaultCtor) {
   tensorflow::gtl::InlinedVector<NoDefaultCtor, 1> v(10, NoDefaultCtor(2));
@@ -257,6 +262,12 @@ TEST(InlinedVectorTest, NoCopy) {
 TEST(InlinedVectorTest, NoAssign) {
   tensorflow::gtl::InlinedVector<NoAssign, 1> v(10);
   (void)v;
+}
+TEST(InlinedVectorTest, MoveOnly) {
+  gtl::InlinedVector<MoveOnly, 2> v;
+  v.push_back(MoveOnly{});
+  v.push_back(MoveOnly{});
+  v.push_back(MoveOnly{});
 }
 
 TEST(IntVec, Insert) {
@@ -432,7 +443,7 @@ static std::vector<typename T::value_type> Vec(const T& src) {
 TEST(IntVec, SelfRefPushBack) {
   std::vector<string> std_v;
   tensorflow::gtl::InlinedVector<string, 4> v;
-  const string s = "A very long string to ensure heap.";
+  const string s = "A quite long string to ensure heap.";
   std_v.push_back(s);
   v.push_back(s);
   for (int i = 0; i < 20; ++i) {
@@ -442,6 +453,21 @@ TEST(IntVec, SelfRefPushBack) {
     std_v.push_back(std_v.back());
   }
   EXPECT_EQ(std_v, Vec(v));
+}
+
+TEST(IntVec, SelfRefPushBackWithMove) {
+  std::vector<string> std_v;
+  gtl::InlinedVector<string, 4> v;
+  const string s = "A quite long string to ensure heap.";
+  std_v.push_back(s);
+  v.push_back(s);
+  for (int i = 0; i < 20; ++i) {
+    EXPECT_EQ(v.back(), std_v.back());
+
+    v.push_back(std::move(v.back()));
+    std_v.push_back(std::move(std_v.back()));
+  }
+  EXPECT_EQ(v.back(), std_v.back());
 }
 
 TEST(IntVec, Swap) {
@@ -733,7 +759,7 @@ static void BM_InlinedVectorFill(int iters, int len) {
       v.push_back(j);
     }
   }
-  testing::BytesProcessed((static_cast<int64>(iters) * len) * sizeof(int));
+  testing::BytesProcessed((int64{iters} * len) * sizeof(int));
 }
 BENCHMARK(BM_InlinedVectorFill)->Range(0, 1024);
 
@@ -745,7 +771,7 @@ static void BM_InlinedVectorFillRange(int iters, int len) {
   for (int i = 0; i < iters; i++) {
     IntVec TF_ATTRIBUTE_UNUSED v(ia.get(), ia.get() + len);
   }
-  testing::BytesProcessed((static_cast<int64>(iters) * len) * sizeof(int));
+  testing::BytesProcessed((int64{iters} * len) * sizeof(int));
 }
 BENCHMARK(BM_InlinedVectorFillRange)->Range(0, 1024);
 
@@ -756,9 +782,45 @@ static void BM_StdVectorFill(int iters, int len) {
       v.push_back(j);
     }
   }
-  testing::BytesProcessed((static_cast<int64>(iters) * len) * sizeof(int));
+  testing::BytesProcessed((int64{iters} * len) * sizeof(int));
 }
 BENCHMARK(BM_StdVectorFill)->Range(0, 1024);
+
+bool StringRepresentedInline(string s) {
+  const char* chars = s.data();
+  string s1 = std::move(s);
+  return s1.data() != chars;
+}
+
+static void BM_InlinedVectorFillString(int iters, int len) {
+  string strings[4] = {"a quite long string", "another long string",
+                       "012345678901234567", "to cause allocation"};
+  for (int i = 0; i < iters; i++) {
+    gtl::InlinedVector<string, 8> v;
+    for (int j = 0; j < len; j++) {
+      v.push_back(strings[j & 3]);
+    }
+  }
+  testing::ItemsProcessed(int64{iters} * len);
+}
+BENCHMARK(BM_InlinedVectorFillString)->Range(0, 1024);
+
+static void BM_StdVectorFillString(int iters, int len) {
+  string strings[4] = {"a quite long string", "another long string",
+                       "012345678901234567", "to cause allocation"};
+  for (int i = 0; i < iters; i++) {
+    std::vector<string> v;
+    for (int j = 0; j < len; j++) {
+      v.push_back(strings[j & 3]);
+    }
+  }
+  testing::ItemsProcessed(int64{iters} * len);
+  // The purpose of the benchmark is to verify that inlined vector is
+  // efficient when moving is more efficent than copying. To do so, we
+  // use strings that are larger than the small string optimization.
+  CHECK(!StringRepresentedInline(strings[0]));
+}
+BENCHMARK(BM_StdVectorFillString)->Range(0, 1024);
 
 namespace {
 struct Buffer {  // some arbitrary structure for benchmarking.

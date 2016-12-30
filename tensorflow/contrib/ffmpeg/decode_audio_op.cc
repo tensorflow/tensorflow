@@ -21,10 +21,12 @@
 #include "tensorflow/contrib/ffmpeg/ffmpeg_lib.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace ffmpeg {
@@ -33,7 +35,7 @@ namespace {
 // The complete set of audio file formats that are supported by the op. These
 // strings are defined by FFmpeg and documented here:
 // https://www.ffmpeg.org/ffmpeg-formats.html
-const char* kValidFileFormats[] = {"mp3", "ogg", "wav"};
+const char* kValidFileFormats[] = {"mp3", "mp4", "ogg", "wav"};
 
 // Writes binary data to a file.
 Status WriteFile(const string& filename, tensorflow::StringPiece contents) {
@@ -62,13 +64,11 @@ class FileDeleter {
 
 class DecodeAudioOp : public OpKernel {
  public:
-  explicit DecodeAudioOp(OpKernelConstruction* context)
-      : OpKernel(context) {
+  explicit DecodeAudioOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("file_format", &file_format_));
     file_format_ = str_util::Lowercase(file_format_);
     const std::set<string> valid_file_formats(
-        kValidFileFormats,
-        kValidFileFormats + TF_ARRAYSIZE(kValidFileFormats));
+        kValidFileFormats, kValidFileFormats + TF_ARRAYSIZE(kValidFileFormats));
     OP_REQUIRES(context, valid_file_formats.count(file_format_) == 1,
                 errors::InvalidArgument(
                     "file_format arg must be in {",
@@ -79,8 +79,7 @@ class DecodeAudioOp : public OpKernel {
     OP_REQUIRES(context, samples_per_second_ > 0,
                 errors::InvalidArgument("samples_per_second must be > 0."));
 
-    OP_REQUIRES_OK(
-        context, context->GetAttr("channel_count", &channel_count_));
+    OP_REQUIRES_OK(context, context->GetAttr("channel_count", &channel_count_));
     OP_REQUIRES(context, channel_count_ > 0,
                 errors::InvalidArgument("channel_count must be > 0."));
   }
@@ -112,12 +111,18 @@ class DecodeAudioOp : public OpKernel {
           context, result.ok(),
           errors::Unavailable("FFmpeg must be installed to run this op. FFmpeg "
                               "can be found at http://www.ffmpeg.org."));
+    } else if (result.code() == error::UNKNOWN) {
+      LOG(ERROR) << "Ffmpeg failed with error '" << result.error_message()
+                 << "'. Returning empty tensor.";
+      Tensor* output = nullptr;
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(0, TensorShape({0, 0}), &output));
+      return;
     } else {
       OP_REQUIRES_OK(context, result);
     }
-    OP_REQUIRES(
-        context, !output_samples.empty(),
-        errors::Unknown("No output created by FFmpeg."));
+    OP_REQUIRES(context, !output_samples.empty(),
+                errors::Unknown("No output created by FFmpeg."));
     OP_REQUIRES(
         context, output_samples.size() % channel_count_ == 0,
         errors::Unknown("FFmpeg created non-integer number of audio frames."));
@@ -125,9 +130,9 @@ class DecodeAudioOp : public OpKernel {
     // Copy the output data to the output Tensor.
     Tensor* output = nullptr;
     const int64 frame_count = output_samples.size() / channel_count_;
-    OP_REQUIRES_OK(
-        context, context->allocate_output(
-            0, TensorShape({frame_count, channel_count_}), &output));
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(
+                       0, TensorShape({frame_count, channel_count_}), &output));
     auto matrix = output->tensor<float, 2>();
     for (int32 frame = 0; frame < frame_count; ++frame) {
       for (int32 channel = 0; channel < channel_count_; ++channel) {
@@ -151,6 +156,15 @@ REGISTER_OP("DecodeAudio")
     .Attr("file_format: string")
     .Attr("samples_per_second: int")
     .Attr("channel_count: int")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      int64 channels;
+      if (c->GetAttr("channel_count", &channels).ok()) {
+        c->set_output(0, c->Matrix(c->UnknownDim(), channels));
+      } else {
+        c->set_output(0, c->Matrix(c->UnknownDim(), c->UnknownDim()));
+      }
+      return Status::OK();
+    })
     .Doc(R"doc(
 Processes the contents of an audio file into a tensor using FFmpeg to decode
 the file.
@@ -162,7 +176,8 @@ different from the contents of the file, channels will be merged or created.
 
 contents: The binary audio file contents.
 sampled_audio: A rank 2 tensor containing all tracks of the audio. Dimension 0
-    is time and dimension 1 is the channel.
+    is time and dimension 1 is the channel. If ffmpeg fails to decode the audio
+    then an empty tensor will be returned.
 file_format: A string describing the audio file format. This can be "wav" or
     "mp3".
 samples_per_second: The number of samples per second that the audio should have.

@@ -55,19 +55,176 @@ Read the value at location `index` in the TensorArray.
 
 - - -
 
-#### `tf.TensorArray.unpack(value, name=None)` {#TensorArray.unpack}
+#### `tf.TensorArray.gather(indices, name=None)` {#TensorArray.gather}
 
-Pack the values of a `Tensor` in the TensorArray.
+Return selected values in the TensorArray as a packed `Tensor`.
+
+All of selected values must have been written and their shapes
+must all match.
 
 ##### Args:
 
 
+*  <b>`indices`</b>: A `1-D` `Tensor` taking values in `[0, max_value)`.  If
+    the `TensorArray` is not dynamic, `max_value=size()`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  The in the `TensorArray` selected by `indices`, packed into one tensor.
+
+
+- - -
+
+#### `tf.TensorArray.pack(*args, **kwargs)` {#TensorArray.pack}
+
+Return the values in the TensorArray as a stacked `Tensor`.
+
+All of the values must have been written and their shapes must all match.
+If input shapes have rank-`R`, then output shape will have rank-`(R+1)`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  All the tensors in the TensorArray stacked into one tensor.
+
+
+- - -
+
+#### `tf.TensorArray.stack(name=None)` {#TensorArray.stack}
+
+Return the values in the TensorArray as a stacked `Tensor`.
+
+All of the values must have been written and their shapes must all match.
+If input shapes have rank-`R`, then output shape will have rank-`(R+1)`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  All the tensors in the TensorArray stacked into one tensor.
+
+
+- - -
+
+#### `tf.TensorArray.concat(name=None)` {#TensorArray.concat}
+
+Return the values in the TensorArray as a concatenated `Tensor`.
+
+All of the values must have been written, their ranks must match, and
+and their shapes must all match for all dimensions except the first.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  All the tensors in the TensorArray concatenated into one tensor.
+
+
+
+- - -
+
+#### `tf.TensorArray.write(index, value, name=None)` {#TensorArray.write}
+
+Write `value` into index `index` of the TensorArray.
+
+##### Args:
+
+
+*  <b>`index`</b>: 0-D.  int32 scalar with the index to write to.
+*  <b>`value`</b>: N-D.  Tensor of type `dtype`.  The Tensor to write to this index.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A new TensorArray object with flow that ensures the write occurs.
+  Use this object all for subsequent operations.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if there are more writers than specified.
+
+
+- - -
+
+#### `tf.TensorArray.scatter(indices, value, name=None)` {#TensorArray.scatter}
+
+Scatter the values of a `Tensor` in specific indices of a `TensorArray`.
+
+##### Args:
+
+
+*  <b>`indices`</b>: A `1-D` `Tensor` taking values in `[0, max_value)`.  If
+    the `TensorArray` is not dynamic, `max_value=size()`.
 *  <b>`value`</b>: (N+1)-D.  Tensor of type `dtype`.  The Tensor to unpack.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A new TensorArray object with flow that ensures the unpack occurs.
+  A new TensorArray object with flow that ensures the scatter occurs.
+  Use this object all for subsequent operations.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if the shape inference fails.
+
+
+- - -
+
+#### `tf.TensorArray.unpack(*args, **kwargs)` {#TensorArray.unpack}
+
+Unstack the values of a `Tensor` in the TensorArray.
+
+If input value shapes have rank-`R`, then the output TensorArray will
+contain elements whose shapes are rank-`(R-1)`.
+
+##### Args:
+
+
+*  <b>`value`</b>: (N+1)-D.  Tensor of type `dtype`.  The Tensor to unstack.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A new TensorArray object with flow that ensures the unstack occurs.
+  Use this object all for subsequent operations.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if the shape inference fails.
+
+
+- - -
+
+#### `tf.TensorArray.unstack(value, name=None)` {#TensorArray.unstack}
+
+Unstack the values of a `Tensor` in the TensorArray.
+
+If input value shapes have rank-`R`, then the output TensorArray will
+contain elements whose shapes are rank-`(R-1)`.
+
+##### Args:
+
+
+*  <b>`value`</b>: (N+1)-D.  Tensor of type `dtype`.  The Tensor to unstack.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A new TensorArray object with flow that ensures the unstack occurs.
   Use this object all for subsequent operations.
 
 ##### Raises:
@@ -104,68 +261,6 @@ Split the values of a `Tensor` into the TensorArray.
 
 - - -
 
-#### `tf.TensorArray.write(index, value, name=None)` {#TensorArray.write}
-
-Write `value` into index `index` of the TensorArray.
-
-##### Args:
-
-
-*  <b>`index`</b>: 0-D.  int32 scalar with the index to write to.
-*  <b>`value`</b>: N-D.  Tensor of type `dtype`.  The Tensor to write to this index.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A new TensorArray object with flow that ensures the write occurs.
-  Use this object all for subsequent operations.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: if there are more writers than specified.
-
-
-- - -
-
-#### `tf.TensorArray.pack(name=None)` {#TensorArray.pack}
-
-Return the values in the TensorArray as a packed `Tensor`.
-
-All of the values must have been written and their shapes must all match.
-
-##### Args:
-
-
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  All the tensors in the TensorArray packed into one tensor.
-
-
-- - -
-
-#### `tf.TensorArray.concat(name=None)` {#TensorArray.concat}
-
-Return the values in the TensorArray as a concatenated `Tensor`.
-
-All of the values must have been written, their ranks must match, and
-and their shapes must all match for all dimensions except the first.
-
-##### Args:
-
-
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  All the tensors in the TensorArray concatenated into one tensor.
-
-
-
-- - -
-
 #### `tf.TensorArray.grad(source, flow=None, name=None)` {#TensorArray.grad}
 
 
@@ -175,7 +270,7 @@ and their shapes must all match for all dimensions except the first.
 #### Other Methods
 - - -
 
-#### `tf.TensorArray.__init__(dtype, size=None, dynamic_size=None, clear_after_read=None, tensor_array_name=None, handle=None, flow=None, infer_shape=True, name=None)` {#TensorArray.__init__}
+#### `tf.TensorArray.__init__(dtype, size=None, dynamic_size=None, clear_after_read=None, tensor_array_name=None, handle=None, flow=None, infer_shape=True, element_shape=None, name=None)` {#TensorArray.__init__}
 
 Construct a new TensorArray or wrap an existing TensorArray handle.
 
@@ -183,7 +278,7 @@ A note about the parameter `name`:
 
 The name of the `TensorArray` (even if passed in) is uniquified: each time
 a new `TensorArray` is created at runtime it is assigned its own name for
-the duration of the run.  This avoids name collissions if a `TensorArray`
+the duration of the run.  This avoids name collisions if a `TensorArray`
 is created within a `while_loop`.
 
 ##### Args:
@@ -206,6 +301,9 @@ is created within a `while_loop`.
     `TensorArray.flow`.
 *  <b>`infer_shape`</b>: (optional, default: True) If True, shape inference
     is enabled.  In this case, all elements must have the same shape.
+*  <b>`element_shape`</b>: (optional, default: None) A `TensorShape` object specifying
+    the shape constraints of each of the elements of the TensorArray.
+    Need not be fully defined.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Raises:

@@ -14,11 +14,14 @@ instructions for the first two dimensions are swapped.
 Examples:
 
 Calling `X, Y = meshgrid(x, y)` with the tensors
+
 ```prettyprint
   x = [1, 2, 3]
   y = [4, 5, 6]
 ```
+
 results in
+
 ```prettyprint
   X = [[1, 1, 1],
        [2, 2, 2],

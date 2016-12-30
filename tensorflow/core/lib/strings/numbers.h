@@ -122,10 +122,23 @@ bool safe_strtof(const char* str, float* value);
 // Values may be rounded on over- and underflow.
 bool safe_strtod(const char* str, double* value);
 
+// Converts from an int64 to a human readable string representing the
+// same number, using decimal powers.  e.g. 1200000 -> "1.20M".
+string HumanReadableNum(int64 value);
+
 // Converts from an int64 representing a number of bytes to a
 // human readable string representing the same number.
 // e.g. 12345678 -> "11.77MiB".
 string HumanReadableNumBytes(int64 num_bytes);
+
+// Converts a time interval as double to a human readable
+// string. For example:
+//   0.001       -> "1 ms"
+//   10.0        -> "10 s"
+//   933120.0    -> "10.8 days"
+//   39420000.0  -> "1.25 years"
+//   -10         -> "-10 s"
+string HumanReadableElapsedTime(double seconds);
 
 }  // namespace strings
 }  // namespace tensorflow

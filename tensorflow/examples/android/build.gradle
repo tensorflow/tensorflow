@@ -1,0 +1,72 @@
+// This file provides basic support for building the TensorFlow demo
+// in Android Studio with Gradle.
+//
+// Note that Bazel is still used to compile the native libs, and must be
+// installed at the location noted below. This build configuration merely
+// automates the process of calling out to it and copying the compiled
+// libraries back into the appropriate directory.
+
+def bazel_location = '/usr/local/bin/bazel'
+def cpuType = 'armeabi-v7a'
+def nativeDir = 'libs/' + cpuType
+
+project.buildDir = 'gradleBuild'
+getProject().setBuildDir('gradleBuild')
+
+buildscript {
+    System.properties['com.android.build.gradle.overrideVersionCheck'] = 'true'
+
+    repositories {
+        jcenter()
+    }
+
+    dependencies {
+        classpath 'com.android.tools.build:gradle:2.1.3'
+    }
+}
+
+apply plugin: 'com.android.application'
+
+android {
+    compileSdkVersion 24
+    buildToolsVersion "24.0.1"
+
+    lintOptions {
+        abortOnError false
+    }
+
+    sourceSets {
+        main {
+            manifest.srcFile 'AndroidManifest.xml'
+            java.srcDirs = ['src', '../../contrib/android/java']
+            resources.srcDirs = ['src']
+            aidl.srcDirs = ['src']
+            renderscript.srcDirs = ['src']
+            res.srcDirs = ['res']
+            assets.srcDirs = ['assets']
+            jniLibs.srcDirs = ['libs']
+        }
+
+        debug.setRoot('build-types/debug')
+        release.setRoot('build-types/release')
+    }
+}
+
+task buildNative(type:Exec) {
+    workingDir '../../..'
+    commandLine bazel_location, 'build', '-c', 'opt', \
+      'tensorflow/examples/android:tensorflow_native_libs', \
+       '--crosstool_top=//external:android/crosstool', \
+       '--cpu=' + cpuType, \
+       '--host_crosstool_top=@bazel_tools//tools/cpp:toolchain'
+}
+
+task copyNativeLibs(type: Copy) {
+    from('../../../bazel-bin/tensorflow/examples/android') { include '**/*.so' }
+    into nativeDir
+    duplicatesStrategy = 'include'
+}
+
+copyNativeLibs.dependsOn buildNative
+assemble.dependsOn copyNativeLibs
+assembleDebug.dependsOn copyNativeLibs

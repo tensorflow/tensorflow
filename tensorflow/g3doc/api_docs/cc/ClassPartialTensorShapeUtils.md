@@ -12,6 +12,12 @@ Static helper routines for ` PartialTensorShape `. Includes a few common predica
 
 
 
+#### `bool tensorflow::PartialTensorShapeUtils::AreIdentical(const gtl::ArraySlice< PartialTensorShape > &shapes0, const gtl::ArraySlice< PartialTensorShape > &shapes1)` {#bool_tensorflow_PartialTensorShapeUtils_AreIdentical}
+
+
+
+
+
 #### `bool tensorflow::PartialTensorShapeUtils::AreCompatible(const gtl::ArraySlice< PartialTensorShape > &shapes0, const gtl::ArraySlice< PartialTensorShape > &shapes1)` {#bool_tensorflow_PartialTensorShapeUtils_AreCompatible}
 
 

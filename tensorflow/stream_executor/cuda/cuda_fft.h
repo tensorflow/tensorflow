@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/fft.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
-#include "third_party/gpus/cuda/include/cufft.h"
+#include "cuda/include/cufft.h"
 
 namespace perftools {
 namespace gputools {

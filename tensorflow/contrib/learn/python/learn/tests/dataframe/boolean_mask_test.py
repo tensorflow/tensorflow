@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -71,7 +71,7 @@ class BooleanMaskTestCase(tf.test.TestCase):
 
     np.testing.assert_array_equal(expected_indices, actual.indices)
     np.testing.assert_array_equal(expected_values, actual.values)
-    np.testing.assert_array_equal(shape, actual.shape)
+    np.testing.assert_array_equal(shape, actual.dense_shape)
 
 if __name__ == "__main__":
   tf.test.main()

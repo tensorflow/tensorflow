@@ -35,6 +35,7 @@ import psutil
 
 from tensorflow.core.util import test_log_pb2
 from tensorflow.python.client import device_lib
+from tensorflow.python.framework import errors
 from tensorflow.tools.test import gpu_info_lib
 
 
@@ -85,7 +86,7 @@ def gather_cpu_info():
     if nc:  # e.g. 'ff' => 8, 'fff' => 12
       cpu_info.num_cores_allowed = (
           bin(int(nc.group(1).replace(',', ''), 16)).count('1'))
-  except IOError:
+  except errors.OpError:
     pass
   finally:
     if cpu_info.num_cores_allowed == 0:
@@ -112,7 +113,7 @@ def gather_cpu_info():
         cpu_info.cpu_governor = 'mixed'
       else:
         cpu_info.cpu_governor = list(cpu_governors)[0]
-  except IOError:
+  except errors.OpError:
     pass
 
   return cpu_info

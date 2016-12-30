@@ -18,11 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import os
-import numpy
-import tensorflow as tf
-from tensorflow.contrib.learn.python.learn.datasets import mnist
+import sys
 
+import tensorflow as tf
+
+from tensorflow.contrib.learn.python.learn.datasets import mnist
 
 SOURCE_URL = 'http://yann.lecun.com/exdb/mnist/'
 
@@ -32,13 +34,7 @@ TEST_IMAGES = 't10k-images-idx3-ubyte.gz'
 TEST_LABELS = 't10k-labels-idx1-ubyte.gz'
 
 
-tf.app.flags.DEFINE_string('directory', '/tmp/data',
-                           'Directory to download data files and write the '
-                           'converted result')
-tf.app.flags.DEFINE_integer('validation_size', 5000,
-                            'Number of examples to separate from the training '
-                            'data for the validation set.')
-FLAGS = tf.app.flags.FLAGS
+FLAGS = None
 
 
 def _int64_feature(value):
@@ -50,6 +46,7 @@ def _bytes_feature(value):
 
 
 def convert_to(data_set, name):
+  """Converts a dataset to tfrecords."""
   images = data_set.images
   labels = data_set.labels
   num_examples = data_set.num_examples
@@ -76,11 +73,12 @@ def convert_to(data_set, name):
   writer.close()
 
 
-def main(argv):
+def main(unused_argv):
   # Get the data.
   data_sets = mnist.read_data_sets(FLAGS.directory,
                                    dtype=tf.uint8,
-                                   reshape=False)
+                                   reshape=False,
+                                   validation_size=FLAGS.validation_size)
 
   # Convert to Examples and write the result to TFRecords.
   convert_to(data_sets.train, 'train')
@@ -89,4 +87,21 @@ def main(argv):
 
 
 if __name__ == '__main__':
-  tf.app.run()
+  parser = argparse.ArgumentParser()
+  parser.add_argument(
+      '--directory',
+      type=str,
+      default='/tmp/data',
+      help='Directory to download data files and write the converted result'
+  )
+  parser.add_argument(
+      '--validation_size',
+      type=int,
+      default=5000,
+      help="""\
+      Number of examples to separate from the training data for the validation
+      set.\
+      """
+  )
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

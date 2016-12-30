@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for sparse_ops.sparse_tensor_dense_matmul."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -22,21 +22,30 @@ import sys
 import time
 
 import numpy as np
-import tensorflow as tf
 
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.client import session
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
-# pylint: enable=g-bad-import-order,unused-import
+from tensorflow.python.platform import app
+from tensorflow.python.platform import test
 
 
 def _maybe_complex(x):
   if x.dtype.kind == "c":  # complex
-    return (x + 1j*x) / 2
+    return (x + 1j * x) / 2
   return x
 
 
-class SparseTensorDenseMatMulTest(tf.test.TestCase):
+class SparseTensorDenseMatMulTest(test.TestCase):
 
-  def _testMatmul(self, x, y, adjoint_a=False, adjoint_b=False, use_gpu=False):
+  def _testMatmul(self, x, y, adjoint_a=False, adjoint_b=False):
     x_mat = np.matrix(x)
     if adjoint_a:
       x_mat = x_mat.H
@@ -50,19 +59,28 @@ class SparseTensorDenseMatMulTest(tf.test.TestCase):
     x_values = x[np.where(x)]
     x_shape = x.shape
 
-    with self.test_session(use_gpu=use_gpu):
-      sp_x = tf.SparseTensor(indices=x_indices, values=x_values, shape=x_shape)
-      tf_ans = sparse_ops.sparse_tensor_dense_matmul(
-          sp_x, y, adjoint_a=adjoint_a, adjoint_b=adjoint_b)
-      out = tf_ans.eval()
-    # Ensure that the RHS shape is known at least.
-    self.assertEqual(tf_ans.get_shape()[1], np_ans.shape[1])
-    if x.dtype == np.float32:
-      self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-4)
-    elif x.dtype == np.float64:
-      self.assertAllClose(np_ans, out, rtol=1e-6, atol=1e-6)
-    else:
-      self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-4)
+    with self.test_session(use_gpu=True):
+      sp_x_value = sparse_tensor.SparseTensorValue(
+          indices=x_indices, values=x_values, dense_shape=x_shape)
+      tf_value_ans = sparse_ops.sparse_tensor_dense_matmul(
+          sp_x_value, y, adjoint_a=adjoint_a, adjoint_b=adjoint_b)
+      tf_tensor_ans = sparse_ops.sparse_tensor_dense_matmul(
+          sparse_tensor.SparseTensor.from_value(sp_x_value),
+          y,
+          adjoint_a=adjoint_a,
+          adjoint_b=adjoint_b)
+
+      # Ensure that the RHS shape is known at least.
+      self.assertEqual(tf_value_ans.get_shape()[1], np_ans.shape[1])
+      self.assertEqual(tf_tensor_ans.get_shape()[1], np_ans.shape[1])
+
+      for out in (tf_value_ans.eval(), tf_tensor_ans.eval()):
+        if x.dtype == np.float32:
+          self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-4)
+        elif x.dtype == np.float64:
+          self.assertAllClose(np_ans, out, rtol=1e-6, atol=1e-6)
+        else:
+          self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-4)
 
   def _testBasic(self, np_dtype):
     x = _maybe_complex(np.random.rand(10, 10).astype(np_dtype))
@@ -70,8 +88,7 @@ class SparseTensorDenseMatMulTest(tf.test.TestCase):
 
     y = _maybe_complex(np.random.randn(10, 20).astype(np_dtype))
 
-    self._testMatmul(x, y, use_gpu=True)
-    self._testMatmul(x, y, use_gpu=False)
+    self._testMatmul(x, y)
 
   def testBasic(self):
     np.random.seed(127)  # Repeatable results
@@ -80,6 +97,31 @@ class SparseTensorDenseMatMulTest(tf.test.TestCase):
     self._testBasic(np.float64)
     self._testBasic(np.complex64)
     self._testBasic(np.complex128)
+
+  def testShapeInference(self):
+    x = np.random.rand(10, 10)
+    x[np.abs(x) < 0.5] = 0  # Make it sparse
+    y = np.random.randn(10, 20)
+    x_indices = np.vstack(np.where(x)).astype(np.int64).T
+    x_values = x[np.where(x)]
+    x_shape = x.shape
+    x_st = sparse_tensor.SparseTensor(x_indices, x_values, x_shape)
+    result = sparse_ops.sparse_tensor_dense_matmul(x_st, y)
+    self.assertEqual(result.get_shape(), (10, 20))
+
+    x_shape_unknown = array_ops.placeholder(dtype=dtypes.int64, shape=None)
+    x_st_shape_unknown = sparse_tensor.SparseTensor(x_indices, x_values,
+                                                    x_shape_unknown)
+    result_left_shape_unknown = sparse_ops.sparse_tensor_dense_matmul(
+        x_st_shape_unknown, y)
+    self.assertEqual(result_left_shape_unknown.get_shape().as_list(),
+                     [None, 20])
+
+    x_shape_inconsistent = [10, 15]
+    x_st_shape_inconsistent = sparse_tensor.SparseTensor(x_indices, x_values,
+                                                         x_shape_inconsistent)
+    with self.assertRaisesRegexp(ValueError, "Dimensions must be equal"):
+      sparse_ops.sparse_tensor_dense_matmul(x_st_shape_inconsistent, y)
 
   # Tests setting one dimension to be a high value.
   def _testLarge(self, np_dtype):
@@ -95,8 +137,7 @@ class SparseTensorDenseMatMulTest(tf.test.TestCase):
 
       y = _maybe_complex(np.random.randn(k, n).astype(np_dtype))
 
-      self._testMatmul(x, y, use_gpu=False)
-      self._testMatmul(x, y, use_gpu=True)
+      self._testMatmul(x, y)
 
   def testLarge(self):
     np.random.seed(127)  # Repeatable results
@@ -118,50 +159,70 @@ class SparseTensorDenseMatMulTest(tf.test.TestCase):
             y = np.random.randn(k, m).astype(np.float32)
             x = x.transpose() if adjoint_a else x
             y = y.transpose() if adjoint_b else y
-            self._testMatmul(x, y, adjoint_a, adjoint_b, use_gpu=False)
-            self._testMatmul(x, y, adjoint_a, adjoint_b, use_gpu=True)
+            self._testMatmul(x, y, adjoint_a, adjoint_b)
 
 
-def _sparse_tensor_dense_vs_dense_matmul_benchmark_dense(
-    x, y, adjoint_a, adjoint_b):
+def _sparse_tensor_dense_vs_dense_matmul_benchmark_dense(x, y, adjoint_a,
+                                                         adjoint_b):
+
   def body(t, prev):
-    with tf.control_dependencies([prev]):
-      return (t + 1, tf.matmul(
-          x, y, transpose_a=adjoint_a, transpose_b=adjoint_b,
-          a_is_sparse=True, b_is_sparse=False))
-  t0 = tf.constant(0)
-  v0 = tf.constant(0.0)
+    with ops.control_dependencies([prev]):
+      return (t + 1, math_ops.matmul(
+          x,
+          y,
+          transpose_a=adjoint_a,
+          transpose_b=adjoint_b,
+          a_is_sparse=True,
+          b_is_sparse=False))
+
+  t0 = constant_op.constant(0)
+  v0 = constant_op.constant(0.0)
+
   def _timeit(iterations, _):
-    (_, final) = tf.while_loop(
-        lambda t, _: t < iterations, body, (t0, v0),
-        parallel_iterations=1, back_prop=False)
+    (_, final) = control_flow_ops.while_loop(
+        lambda t, _: t < iterations,
+        body, (t0, v0),
+        parallel_iterations=1,
+        back_prop=False)
     return [final]
+
   return _timeit
 
 
-def _sparse_tensor_dense_vs_dense_matmul_benchmark_sparse(
-    x_ind, x_val, x_shape, y, adjoint_a, adjoint_b):
-  sp_x = tf.SparseTensor(indices=x_ind, values=x_val, shape=x_shape)
+def _sparse_tensor_dense_vs_dense_matmul_benchmark_sparse(x_ind, x_val, x_shape,
+                                                          y, adjoint_a,
+                                                          adjoint_b):
+  sp_x = sparse_tensor.SparseTensor(
+      indices=x_ind, values=x_val, dense_shape=x_shape)
 
   def body(t, prev):
-    with tf.control_dependencies([prev]):
-      return (t + 1,
-              sparse_ops.sparse_tensor_dense_matmul(
-                  sp_x, y, adjoint_a=adjoint_a, adjoint_b=adjoint_b))
+    with ops.control_dependencies([prev]):
+      return (t + 1, sparse_ops.sparse_tensor_dense_matmul(
+          sp_x, y, adjoint_a=adjoint_a, adjoint_b=adjoint_b))
 
-  t0 = tf.constant(0)
-  v0 = tf.constant(0.0)
+  t0 = constant_op.constant(0)
+  v0 = constant_op.constant(0.0)
+
   def _timeit(iterations, _):
-    (_, final) = tf.while_loop(
-        lambda t, _: t < iterations, body, (t0, v0),
-        parallel_iterations=1, back_prop=False)
+    (_, final) = control_flow_ops.while_loop(
+        lambda t, _: t < iterations,
+        body, (t0, v0),
+        parallel_iterations=1,
+        back_prop=False)
     return [final]
+
   return _timeit
 
 
-def sparse_tensor_dense_vs_dense_matmul_benchmark(
-    thresh, m, k, n, adjoint_a, adjoint_b, use_gpu, skip_dense=False):
-  config = tf.ConfigProto()
+def sparse_tensor_dense_vs_dense_matmul_benchmark(thresh,
+                                                  m,
+                                                  k,
+                                                  n,
+                                                  adjoint_a,
+                                                  adjoint_b,
+                                                  use_gpu,
+                                                  skip_dense=False):
+  config = config_pb2.ConfigProto()
   config.allow_soft_placement = True
 
   # Configurable for benchmarking:
@@ -172,8 +233,10 @@ def sparse_tensor_dense_vs_dense_matmul_benchmark(
   x = np.random.rand(m, k).astype(np.float32)
   x[x < thresh] = 0
   y = np.random.randn(k, n).astype(np.float32)
-  if adjoint_a: x = x.T
-  if adjoint_b: y = y.T
+  if adjoint_a:
+    x = x.T
+  if adjoint_b:
+    y = y.T
 
   def _timer(sess, ops_fn, iterations):
     # Warm in
@@ -184,49 +247,49 @@ def sparse_tensor_dense_vs_dense_matmul_benchmark(
     sess.run(ops_fn(iterations, sess))
     end = time.time()
 
-    return (end - start)/(1.0 * iterations)  # Average runtime per iteration
+    return (end - start) / (1.0 * iterations)  # Average runtime per iteration
 
   # Using regular matmul, marking one of the matrices as dense.
   if skip_dense:
     delta_dense = float("nan")
   else:
-    with tf.Session("", config=config, graph=tf.Graph()) as sess:
+    with session.Session("", config=config, graph=ops.Graph()) as sess:
       if not use_gpu:
-        with tf.device("/cpu:0"):
-          x_t = tf.constant(x)
-          y_t = tf.constant(y)
+        with ops.device("/cpu:0"):
+          x_t = constant_op.constant(x)
+          y_t = constant_op.constant(y)
           ops_fn = _sparse_tensor_dense_vs_dense_matmul_benchmark_dense(
               x_t, y_t, adjoint_a, adjoint_b)
       else:
-        x_t = tf.constant(x)
-        y_t = tf.constant(y)
-        ops_fn = _sparse_tensor_dense_vs_dense_matmul_benchmark_dense(
-            x_t, y_t, adjoint_a, adjoint_b)
+        x_t = constant_op.constant(x)
+        y_t = constant_op.constant(y)
+        ops_fn = _sparse_tensor_dense_vs_dense_matmul_benchmark_dense(x_t, y_t,
+                                                                      adjoint_a,
+                                                                      adjoint_b)
       delta_dense = _timer(sess, ops_fn, 1000)
 
   # Using sparse_tensor_dense_matmul.
-  with tf.Session("", config=config, graph=tf.Graph()) as sess:
+  with session.Session("", config=config, graph=ops.Graph()) as sess:
     if not use_gpu:
-      with tf.device("/cpu:0"):
-        x_ind = tf.constant(np.vstack(np.where(x)).astype(np.int64).T)
-        x_val = tf.constant(x[np.where(x)])
-        x_shape = tf.constant(np.array(x.shape).astype(np.int64))
-        y_t = tf.constant(y)
+      with ops.device("/cpu:0"):
+        x_ind = constant_op.constant(np.vstack(np.where(x)).astype(np.int64).T)
+        x_val = constant_op.constant(x[np.where(x)])
+        x_shape = constant_op.constant(np.array(x.shape).astype(np.int64))
+        y_t = constant_op.constant(y)
         ops_fn = _sparse_tensor_dense_vs_dense_matmul_benchmark_sparse(
             x_ind, x_val, x_shape, y_t, adjoint_a, adjoint_b)
     else:
-      x_ind = tf.constant(np.vstack(np.where(x)).astype(np.int64).T)
-      x_val = tf.constant(x[np.where(x)])
-      x_shape = tf.constant(np.array(x.shape).astype(np.int64))
-      y_t = tf.constant(y)
+      x_ind = constant_op.constant(np.vstack(np.where(x)).astype(np.int64).T)
+      x_val = constant_op.constant(x[np.where(x)])
+      x_shape = constant_op.constant(np.array(x.shape).astype(np.int64))
+      y_t = constant_op.constant(y)
       ops_fn = _sparse_tensor_dense_vs_dense_matmul_benchmark_sparse(
           x_ind, x_val, x_shape, y_t, adjoint_a, adjoint_b)
     delta_sparse = _timer(sess, ops_fn, 1000)
 
-  print(
-      "%g \t %d \t %s \t %d \t %d \t %g \t %g \t %g"
-      % (1 - thresh, n, use_gpu, m, k, delta_dense, delta_sparse,
-         delta_sparse/delta_dense))
+  print("%g \t %d \t %s \t %d \t %d \t %g \t %g \t %g" %
+        (1 - thresh, n, use_gpu, m, k, delta_dense, delta_sparse,
+         delta_sparse / delta_dense))
 
 
 def main(_):
@@ -257,6 +320,6 @@ def main(_):
 if __name__ == "__main__":
   if "--benchmarks" in sys.argv:
     sys.argv.remove("--benchmarks")
-    tf.app.run()
+    app.run()
   else:
-    tf.test.main()
+    test.main()

@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -124,7 +124,7 @@ class SinglePassReadTest(tf.test.TestCase):
 
     key, value = slim.parallel_reader.single_pass_read(
         tfrecord_path, reader_class=tf.TFRecordReader)
-    init_op = tf.initialize_local_variables()
+    init_op = tf.local_variables_initializer()
 
     with self.test_session() as sess:
       sess.run(init_op)
@@ -142,7 +142,7 @@ class SinglePassReadTest(tf.test.TestCase):
 
     key, value = slim.parallel_reader.single_pass_read(
         tfrecord_path, reader_class=tf.TFRecordReader)
-    init_op = tf.initialize_local_variables()
+    init_op = tf.local_variables_initializer()
 
     with self.test_session() as sess:
       sess.run(init_op)

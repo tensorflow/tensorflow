@@ -62,12 +62,12 @@ def histogram_fixed_width(values,
 
   with tf.default_session() as sess:
     hist = tf.histogram_fixed_width(new_values, value_range, nbins=5)
-    variables.initialize_all_variables().run()
+    variables.global_variables_initializer().run()
     sess.run(hist) => [2, 1, 1, 0, 2]
   ```
   """
-  with ops.op_scope([values, value_range, nbins], name,
-                    'histogram_fixed_width') as scope:
+  with ops.name_scope(name, 'histogram_fixed_width',
+                      [values, value_range, nbins]) as scope:
     values = ops.convert_to_tensor(values, name='values')
     values = array_ops.reshape(values, [-1])
     value_range = ops.convert_to_tensor(value_range, name='value_range')

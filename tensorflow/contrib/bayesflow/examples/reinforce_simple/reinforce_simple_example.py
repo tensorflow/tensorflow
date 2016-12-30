@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import tensorflow as tf
 
 distributions = tf.contrib.distributions
 sg = tf.contrib.bayesflow.stochastic_graph
+st = tf.contrib.bayesflow.stochastic_tensor
 
 
 def split_apply_merge(inp, partitions, fns):
@@ -74,8 +75,8 @@ def build_split_apply_merge_model():
   logits = tf.matmul(inputs, weights) + bias
 
   # REINFORCE forward step
-  route_selection = sg.DistributionTensor(
-      distributions.Categorical, logits=logits)
+  route_selection = st.StochasticTensor(
+      distributions.Categorical(logits=logits))
 
   # Accessing route_selection as a Tensor below forces a sample of
   # the Categorical distribution based on its logits.
@@ -89,21 +90,17 @@ def build_split_apply_merge_model():
   # flatten routing_loss to a row vector (from a column vector)
   routing_loss = tf.reshape(tf.square(outputs - targets), shape=[-1])
 
-  # returns
+  # Total loss: score function loss + routing loss.
+  # The score function loss (through `route_selection.loss(routing_loss)`)
+  # returns:
   #  [stop_gradient(routing_loss) *
-  #   route_selection.log_pmf(stop_gradients(route_selection.value()))],
+  #   route_selection.log_pmf(stop_gradient(route_selection.value()))],
   # where log_pmf has gradients going all the way back to weights and bias.
-
-  # REINFORCE loss
-  score_function_losses = sg.surrogate_losses([routing_loss])
-
-  # calculate the entire loss:
-  #   routing_loss, and the score function loss.
-  # in this case, the routing_loss depends on the variables only through
-  # "route_selection", which has a stop_gradients on it.  so the
+  # In this case, the routing_loss depends on the variables only through
+  # "route_selection", which has a stop_gradient on it.  So the
   # gradient of the loss really come through the score function
-  all_loss = score_function_losses + [routing_loss]
-  final_loss = tf.reduce_sum(tf.add_n(all_loss))
+  surrogate_loss = sg.surrogate_loss([routing_loss])
+  final_loss = tf.reduce_sum(surrogate_loss)
 
   return (route_selection, routing_loss, final_loss)
 
@@ -116,14 +113,14 @@ class REINFORCESimpleExample(tf.test.TestCase):
 
     with self.test_session() as sess:
       # Use sampling to train REINFORCE
-      with sg.value_type(sg.SampleAndReshapeValue(n=1)):
+      with st.value_type(st.SampleValue()):
         (route_selection,
          routing_loss,
          final_loss) = build_split_apply_merge_model()
 
       sgd = tf.train.GradientDescentOptimizer(1.0).minimize(final_loss)
 
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       for i in range(10):
         # Run loss and inference step.  This toy problem converges VERY quickly.

@@ -79,12 +79,15 @@ class RandomAccessFileFromMemmapped : public RandomAccessFile {
 
 MemmappedFileSystem::MemmappedFileSystem() {}
 
-bool MemmappedFileSystem::FileExists(const string& fname) {
+Status MemmappedFileSystem::FileExists(const string& fname) {
   if (!mapped_memory_) {
-    return false;
+    return errors::FailedPrecondition("MemmappedEnv is not initialized");
   }
   const auto dir_element = directory_.find(fname);
-  return dir_element != directory_.end();
+  if (dir_element != directory_.end()) {
+    return Status::OK();
+  }
+  return errors::NotFound(fname, " not found");
 }
 
 Status MemmappedFileSystem::NewRandomAccessFile(
@@ -129,6 +132,15 @@ Status MemmappedFileSystem::GetFileSize(const string& filename, uint64* size) {
   return Status::OK();
 }
 
+Status MemmappedFileSystem::Stat(const string& fname, FileStatistics* stat) {
+  uint64 size;
+  auto status = GetFileSize(fname, &size);
+  if (status.ok()) {
+    stat->length = size;
+  }
+  return status;
+}
+
 Status MemmappedFileSystem::NewWritableFile(const string& filename,
                                             std::unique_ptr<WritableFile>* wf) {
   return errors::Unimplemented("memmapped format doesn't support writing");
@@ -165,8 +177,13 @@ const void* MemmappedFileSystem::GetMemoryWithOffset(uint64 offset) const {
   return reinterpret_cast<const uint8*>(mapped_memory_->data()) + offset;
 }
 
+#if defined(COMPILER_MSVC)
+constexpr char* MemmappedFileSystem::kMemmappedPackagePrefix;
+constexpr char* MemmappedFileSystem::kMemmappedPackageDefaultGraphDef;
+#else
 constexpr char MemmappedFileSystem::kMemmappedPackagePrefix[];
 constexpr char MemmappedFileSystem::kMemmappedPackageDefaultGraphDef[];
+#endif
 
 Status MemmappedFileSystem::InitializeFromFile(Env* env,
                                                const string& filename) {

@@ -17,16 +17,6 @@
 # the master Bazel build configuration.
 
 bazel query 'kind("source file", deps(//tensorflow/core:android_tensorflow_lib))' | \
-grep "//tensorflow/.*\.cc$" | \
-grep -v "gen_proto_text" | \
-grep -E -v "jpeg" | \
-grep -E -v "png" | \
-grep -E -v "zlib" | \
-sed -E 's#^//##g' | \
-sed -E 's#:#/#g' \
-> tensorflow/contrib/makefile/tf_cc_files.txt
-
-bazel query 'kind("source file", deps(//tensorflow/core:android_tensorflow_lib))' | \
 grep "//tensorflow/.*\.proto$" | \
 sed -E 's#^//##g' | \
 sed -E 's#:#/#g' \

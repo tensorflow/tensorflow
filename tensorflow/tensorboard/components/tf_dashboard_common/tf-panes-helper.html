@@ -1,0 +1,351 @@
+<!--
+@license
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="tf-collapsable-pane.html">
+<link rel="import" href="tf-no-data-warning.html">
+<link rel="import" href="tf-chart-scaffold.html">
+
+<!--
+tf-panes-helper is a component that renders the contents of TensorBoard pages.
+It renders a tf-collapsable-pane for each category. Inside each category, the
+provided content template is rendered repeatedly for each tag within that
+category.
+
+This helper also incorporates an expand button and data download utility for
+each card.
+
+To use it, just specify a template inside tf-panes-helper that contains the
+code that will be replicated for each tag.
+
+<tf-panes-helper
+  categories="[[categories]]"
+  data-type="type"
+  data-provider="[[provider]]"
+  run2tag="[[run2tag]]"
+  selected-runs="[[selectedRuns]]"
+  >
+  <template>
+    <Code instantiated for each card>
+  </template>
+</tf-panes-helper>
+
+If you want for the template to be replicated for each tag and run, not only for
+each tag, you can set the repeatForRuns property to true.
+
+You can also set the showDownloadLinks property, which will show a menu with
+options to download JSON and CSV data. For this, you must also set the
+downloadLinkUrlFunction property to an appropriate value.
+
+@element tf-panes-helper
+-->
+<dom-module id="tf-panes-helper">
+  <template>
+    <content></content> <!-- User template will be put here -->
+    <tf-no-data-warning
+      data-type="[[dataType]]"
+      show-warning="[[dataNotFound]]"
+      ></tf-no-data-warning>
+
+    <template is="dom-repeat" items="[[categories]]" as="category">
+      <tf-collapsable-pane
+        name="[[category.name]]"
+        count="[[_count(category.tags, selectedRuns.*)]]"
+        >
+        <div class="layout horizontal wrap">
+          <template is="dom-repeat" items="[[_categoryCards(category, selectedRuns.*, run2tag.*)]]">
+              <div class="card">
+                <div class="card-title-container" style="border-color: [[_titleBorderColor(item.run)]]">
+                  <div class="card-title" inner-h-t-m-l="[[_break(item.tag)]]"></div>
+                  <template is="dom-if" if="[[repeatForRuns]]">
+                    <div class="card-subtitle" title="[[item.run]]">[[item.run]]</div>
+                  </template>
+                </div>
+                <div class="card-content">
+                  <tf-chart-scaffold
+                    tag="[[item.tag]]"
+                    data-provider="[[dataProvider]]"
+                    visible-series="[[item.runs]]"
+                    on-ready="_instantiateTemplate"
+                    >
+                    <!-- Instantiated template will be put here -->
+                  </tf-chart-scaffold>
+                </div>
+                <div class="card-bottom-row">
+                  <paper-icon-button
+                    class="expand-button"
+                    icon="fullscreen"
+                    on-tap="_toggleExpanded"
+                    ></paper-icon-button>
+                  <template is="dom-if" if="[[showDownloadLinks]]">
+                    <tf-downloader
+                      runs="[[item.runs]]"
+                      tag="[[item.tag]]"
+                      url-fn="[[downloadLinkUrlFunction]]"
+                      >
+                    </tf-downloader>
+                  </template>
+                </div>
+              </div>
+          </template>
+        </div>
+      </tf-collapsable-pane>
+    </template>
+
+    <style>
+      .card {
+        height: var(--card-height, 200px);
+        width: var(--card-width, 300px);
+        display: flex;
+        flex-direction: column;
+        margin: 5px;
+        padding: 0 30px 35px 0;
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        position: relative;
+      }
+
+      .card-expanded {
+        height: var(--card-expanded-height, 400px);
+        width: var(--card-expanded-width, 100%);
+      }
+
+      .card-title, .card-subtitle {
+        flex-grow: 0;
+        flex-shrink: 0;
+        font-size: 14px;
+        text-overflow: ellipsis;
+        overflow: hidden;
+      }
+
+      .card-subtitle {
+        font-size: 12px;
+      }
+
+      .card-content {
+        flex-grow: 1;
+        flex-shrink: 1;
+        display: flex;
+        margin-top: 10px;
+      }
+
+      .card-bottom-row {
+        position: absolute;
+        left: 0px;
+        bottom: 0px;
+        width: 100%;
+        display: flex;
+        flex-direction: row;
+        justify-content: space-between;
+        pointer-events: none;
+      }
+
+      .card-title-container {
+        border-left: 4px solid;
+        padding-left: 5px;
+      }
+
+      .expand-button {
+        color: #2196F3;
+        width: 32px;
+        height: 32px;
+        padding: 4px;
+        border-radius: 100%;
+        pointer-events: auto;
+      }
+
+      .card-expanded .expand-button {
+        background: var(--tb-ui-light-accent);
+      }
+
+      tf-downloader {
+        margin-right: 30px;
+        pointer-events: auto;
+      }
+
+    </style>
+  </template>
+  <script>
+    Polymer({
+      is: "tf-panes-helper",
+      properties: {
+        /**
+         * Categories that separate the template instances. Each category will
+         * be given its own collapsible pane. The category must be an array of
+         * objects, each with a 'name' property and a 'tags' array of strings.
+         */
+        categories: Array,
+
+        /**
+         * Input of the colors that are used for the user's runs.
+         */
+        colorScale: Object,
+
+        /**
+         * The name of the data type that is used by this dashboard. This will
+         * be used to display what is missing when there is no data available.
+         */
+        dataType: String,
+
+        /**
+         * The function that requests and returns a promise with the data of the
+         * required type for the templates from the backend.
+         */
+        dataProvider: Object,
+
+        /**
+         * If false, instantiates one template for each tag and calls
+         * setVisibleSeries on the first element of the template with all valid
+         * runs the tag has. If true, instantiates one template for each run of
+         * each tag, and calls setVisibleSeries of the first element of the
+         * instantiated template with just the one run.
+         */
+        repeatForRuns: {
+          type: Boolean,
+          value: false
+        },
+
+        /**
+         * Map from runs to the valid tags that have them.
+         */
+        run2tag: Object,
+
+        /**
+         * Array with the runs that are selected by the user (i.e. valid to be
+         * displayed).
+         */
+        selectedRuns: Array,
+
+        /**
+         * If true, shows a menu with download links for the template data.
+         * If this is set to true, urlFn must also be provided.
+         */
+        showDownloadLinks: Boolean,
+
+        /**
+         * Function that returns the route to get data to download. Must be
+         * provided if showDownloadLinks is enabled.
+         */
+        downloadLinkUrlFunction: Function,
+        _contentTemplate: {
+          type: Object,
+          value: null
+        },
+        _stampedTemplates: {
+          type: Array,
+          value: function() { return [] }
+        }
+      },
+      behaviors: [
+        Polymer.Templatizer,
+      ],
+
+      /**
+       * Initializes the Polymer.Templatizer behavior with the template supplied
+       * by the user. With this, all calls to this.stamp() will produce an
+       * instance of the user template.
+       */
+      _initTemplatizer: function() {
+        if (!this._contentTemplate) {
+          // First template is used as the content.
+          this._contentTemplate = Polymer.dom(this).querySelector('template');
+          this.templatize(this._contentTemplate);
+        }
+      },
+
+      /**
+       * Called every time a tf-chart-scaffold is ready, stamps the user
+       * template inside the scaffold element (before it is attached) and
+       * stores the stamped template in an array to use for data binding
+       * (forwardParentProp/Path).
+       */
+      _instantiateTemplate: function(e) {
+        var scaffold = e.target;
+        this._initTemplatizer();
+        var instance = this.stamp();
+        this._stampedTemplates.push(instance);
+        Polymer.dom(scaffold).appendChild(instance.root);
+      },
+      _toggleExpanded: function(e) {
+        var currentTarget = Polymer.dom(e.currentTarget);
+        var card = currentTarget.node.closest('.card');
+        var scaffold = card.querySelector('tf-chart-scaffold');
+        card.classList.toggle('card-expanded');
+        scaffold.chart().redraw();
+      },
+      _count: function(tags) {
+        if (!this.repeatForRuns) {
+          return tags.length;
+        }
+
+        var targetTags = d3.set(tags);
+        var count = 0;
+        this.selectedRuns.forEach(function(r) {
+          this.run2tag[r].forEach(function(t) {
+            if (targetTags.has(t)) {
+              count++;
+            }
+          });
+        }.bind(this));
+        return count;
+      },
+      _categoryCards: function(category) {
+        var cards = [];
+        category.tags.forEach(function(tag) {
+          var runs = this.selectedRuns.filter(function(r) {
+            return this.run2tag[r] && this.run2tag[r].indexOf(tag) !== -1;
+          }.bind(this));
+
+          if (this.repeatForRuns) {
+            runs.forEach(function(run) {
+              cards.push({tag: tag, run: run, runs: [run]});
+            });
+          } else {
+            cards.push({tag: tag, runs: runs});
+          }
+        }.bind(this));
+
+        return cards;
+      },
+      _titleBorderColor: function(run) {
+        return this.repeatForRuns ? this.colorScale.scale(run) : 'white';
+      },
+
+      /*
+       * Polymer data binding forwarding functions. Check the
+       * Polymer.Templatizer documentation for more information.
+       */
+
+      _forwardParentProp: function(property, value) {
+        this._stampedTemplates.forEach(function(instance) {
+          instance[property] = value;
+        });
+      },
+      _forwardParentPath: function(path, value) {
+        this._stampedTemplates.forEach(function(instance) {
+          instance.notifyPath(path, value, true);
+        });
+      },
+      // TODO(renatoutsch): implement the instance forwarding for two-way data
+      // binding.
+      // Add breaks to input so it will wrap nicely
+      _break: function(ipt) {
+        return ipt.replace(/([\/_-])/g, "$1<wbr>")
+      },
+    });
+  </script>
+</dom-module>

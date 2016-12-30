@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <string>
 #include <vector>
+
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -36,9 +38,9 @@ class DeviceFactory {
   // any device type specific properties/counts listed in "options".
   //
   // CPU devices are added first.
-  static void AddDevices(const SessionOptions& options,
-                         const string& name_prefix,
-                         std::vector<Device*>* devices);
+  static Status AddDevices(const SessionOptions& options,
+                           const string& name_prefix,
+                           std::vector<Device*>* devices);
 
   // Helper for tests.  Create a single device of type "type".  The
   // returned device is always numbered zero, so if creating multiple
@@ -47,9 +49,9 @@ class DeviceFactory {
                            const string& name_prefix);
 
   // Most clients should call AddDevices() instead.
-  virtual void CreateDevices(const SessionOptions& options,
-                             const string& name_prefix,
-                             std::vector<Device*>* devices) = 0;
+  virtual Status CreateDevices(const SessionOptions& options,
+                               const string& name_prefix,
+                               std::vector<Device*>* devices) = 0;
 };
 
 namespace dfactory {

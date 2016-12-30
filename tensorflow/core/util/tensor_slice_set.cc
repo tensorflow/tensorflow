@@ -42,7 +42,7 @@ Status TensorSliceSet::Register(const TensorSlice& slice, const string& tag,
     // We check if there is any intersection between this slice and any of the
     // registered slices.
     if (slices_hull_.Overlaps(slice)) {
-      for (const auto x : slices_) {
+      for (const auto& x : slices_) {
         if (slice.Overlaps(x.second.slice)) {
           return errors::Internal("Overlapping slices: existing slice = ",
                                   x.first, ", new slice = ", str);
@@ -89,7 +89,7 @@ bool TensorSliceSet::Query(const TensorSlice& slice, float* data) const {
     int64 overlap_size = 0;
     TensorSlice intersection;
     TensorShape inter_shape;
-    for (const auto x : slices_) {
+    for (const auto& x : slices_) {
       if (slice.Intersect(x.second.slice, &intersection)) {
         s = intersection.SliceTensorShape(shape_, &inter_shape);
         if (!s.ok()) {
@@ -103,7 +103,7 @@ bool TensorSliceSet::Query(const TensorSlice& slice, float* data) const {
       // We have it!
       // Now we need to copy the data to "data"
       if (data) {
-        for (const auto x : slices_) {
+        for (const auto& x : slices_) {
           CopyDataFromTensorSliceToTensorSlice(shape_, x.second.slice, slice,
                                                x.second.data, data);
         }
@@ -146,7 +146,7 @@ bool TensorSliceSet::QueryMeta(
     int64 overlap_size = 0;
     TensorSlice intersection;
     TensorShape inter_shape;
-    for (const auto x : slices_) {
+    for (const auto& x : slices_) {
       if (slice.Intersect(x.second.slice, &intersection)) {
         s = intersection.SliceTensorShape(shape_, &inter_shape);
         if (!s.ok()) {
@@ -166,6 +166,35 @@ bool TensorSliceSet::QueryMeta(
       return false;
     }
   }
+}
+
+Status RegisterTensorSlice(
+    const string& name, const TensorShape& shape, DataType type,
+    const string& tag, const TensorSlice& slice,
+    std::unordered_map<string, TensorSliceSet*>* tensor_slices) {
+  DCHECK_NE(tensor_slices, nullptr);
+  TensorSliceSet* tss = gtl::FindPtrOrNull(*tensor_slices, name);
+  // Create a tensor slice set if needed
+  if (!tss) {
+    tss = new TensorSliceSet(shape, type);
+    tensor_slices->insert(std::make_pair(name, tss));
+  } else {
+    // Check if the shapes match
+    const TensorShape& tss_shape(tss->shape());
+    if (!shape.IsSameSize(tss_shape)) {
+      return errors::Internal("Incompatible tensor shapes detected for tensor ",
+                              name, ": existing = ", tss_shape.DebugString(),
+                              ", new = ", shape.DebugString());
+    }
+    if (type != tss->type()) {
+      return errors::Internal("Incompatible tensor types detected for tensor ",
+                              name, ": existing = ",
+                              DataTypeString(tss->type()), ", new = ",
+                              DataTypeString(type));
+    }
+  }
+  // Register the tensor slices without the actual data.
+  return tss->Register(slice, tag, nullptr);
 }
 
 }  // namespace checkpoint

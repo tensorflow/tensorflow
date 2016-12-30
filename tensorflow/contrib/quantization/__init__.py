@@ -24,7 +24,8 @@ from tensorflow.contrib.quantization.python import array_ops as quantized_array_
 from tensorflow.contrib.quantization.python.math_ops import *
 from tensorflow.contrib.quantization.python.nn_ops import *
 
-from tensorflow.contrib.quantization.ops import gen_array_ops as quantized_gen_array_ops
-from tensorflow.contrib.quantization.ops.gen_array_ops import dequantize
-from tensorflow.contrib.quantization.ops.gen_array_ops import quantize_v2
-from tensorflow.contrib.quantization.ops.gen_array_ops import quantized_concat
+from tensorflow.python.ops import gen_array_ops as quantized_gen_array_ops
+from tensorflow.python.ops.gen_array_ops import dequantize
+from tensorflow.python.ops.gen_array_ops import quantize_v2
+from tensorflow.python.ops.gen_array_ops import quantized_concat
+# pylint: enable=unused-import,wildcard-import,g-bad-import-order

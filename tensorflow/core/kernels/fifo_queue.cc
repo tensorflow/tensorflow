@@ -60,7 +60,7 @@ void FIFOQueue::TryEnqueue(const Tuple& tuple, OpKernelContext* ctx,
           [tuple, this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             if (closed_) {
               attempt->context->SetStatus(
-                  errors::Aborted("FIFOQueue '", name_, "' is closed."));
+                  errors::Cancelled("FIFOQueue '", name_, "' is closed."));
               return kComplete;
             }
             if (queues_[0].size() < static_cast<size_t>(capacity_)) {
@@ -118,7 +118,7 @@ void FIFOQueue::TryEnqueueMany(const Tuple& tuple, OpKernelContext* ctx,
           [tuple, this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             if (closed_) {
               attempt->context->SetStatus(
-                  errors::Aborted("FIFOQueue '", name_, "' is closed."));
+                  errors::Cancelled("FIFOQueue '", name_, "' is closed."));
               return kComplete;
             }
             RunResult result = kNoProgress;

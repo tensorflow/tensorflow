@@ -22,6 +22,8 @@ limitations under the License.
 #include <typeinfo>
 #endif  // __GXX_RTTI
 
+#include "tensorflow/core/platform/types.h"
+
 namespace tensorflow {
 
 // On some platforms, we would like to avoid using RTTI in order to have smaller

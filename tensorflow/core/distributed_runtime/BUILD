@@ -27,6 +27,7 @@ filegroup(
     ]),
 )
 
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
 
 # For platform specific build config
@@ -51,11 +52,32 @@ cc_library(
 
 cc_library(
     name = "worker_interface",
-    hdrs = ["worker_interface.h"],
+    srcs = ["tensor_coding.cc"],
+    hdrs = [
+        "tensor_coding.h",
+        "worker_interface.h",
+    ],
     deps = [
         ":call_options",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:worker_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "worker",
+    srcs = ["worker.cc"],
+    hdrs = [
+        "worker.h",
+    ],
+    deps = [
+        ":graph_mgr",
+        ":rendezvous_mgr_interface",
+        ":worker_interface",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:lib_internal",
     ],
 )
 
@@ -76,6 +98,23 @@ cc_test(
         ":call_options",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+cc_test(
+    name = "tensor_coding_test",
+    size = "small",
+    srcs = ["tensor_coding_test.cc"],
+    linkstatic = 1,
+    deps = [
+        ":worker_interface",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:tensor_testutil",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:worker_proto_cc",
     ],
 )
 
@@ -114,7 +153,7 @@ cc_library(
     deps = [
         ":call_options",
         ":master_env",
-        ":master_session_interface",
+        ":master_session",
         ":remote_device",
         ":worker_cache",
         ":worker_interface",
@@ -122,6 +161,7 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:master_proto_cc",
         "//tensorflow/core:worker_proto_cc",
     ],
@@ -132,8 +172,9 @@ cc_library(
     srcs = ["master_session.cc"],
     hdrs = ["master_session.h"],
     deps = [
+        ":call_options",
         ":master_env",
-        ":master_session_interface",
+        ":scheduler",
         ":worker_cache",
         ":worker_interface",
         "//tensorflow/core:core_cpu",
@@ -147,6 +188,17 @@ cc_library(
 )
 
 cc_library(
+    name = "local_master",
+    srcs = ["local_master.cc"],
+    hdrs = ["local_master.h"],
+    deps = [
+        ":master",
+        ":master_interface",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "rendezvous_mgr_interface",
     srcs = [],
     hdrs = ["rendezvous_mgr_interface.h"],
@@ -156,10 +208,14 @@ cc_library(
 )
 
 cc_library(
-    name = "master_session_interface",
-    srcs = [],
-    hdrs = ["master_session_interface.h"],
-    deps = ["//tensorflow/core:lib"],
+    name = "scheduler",
+    srcs = ["scheduler.cc"],
+    hdrs = ["scheduler.h"],
+    deps = [
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:tensorflow_opensource",
+    ],
 )
 
 cc_library(
@@ -239,13 +295,14 @@ cc_library(
 # TODO(mrry): Move executor_test.cc to ../common_runtime when once it no longer depends
 # on grpc_testlib.
 tf_cuda_cc_tests(
+    name = "executor_tests",
     size = "medium",
-    linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
-    tests = [
+    srcs = [
         "executor_test.cc",
         #"master_test.cc",  # TODO(b/27683709): Re-enable when not flaky.
     ],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":master",
         ":remote_device",
@@ -274,13 +331,12 @@ tf_cuda_cc_tests(
     ],
 )
 
-tf_cuda_cc_tests(
+tf_cuda_cc_test(
+    name = "remote_device_test",
     size = "small",
+    srcs = ["remote_device_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["manual"],
-    tests = [
-        "remote_device_test.cc",
-    ],
     deps = [
         ":master",
         ":remote_device",

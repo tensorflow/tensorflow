@@ -25,15 +25,10 @@ namespace tensorflow {
 
 namespace {
 
-template <typename R, typename... Args>
-Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
-                            R (**symbol)(Args...)) {
-  Env* env = Env::Default();
-  void* symbol_ptr;
-  Status status = env->GetSymbolFromLibrary(handle, symbol_name, &symbol_ptr);
-  *symbol = reinterpret_cast<R (*)(Args...)>(symbol_ptr);
-  return status;
-}
+struct Library {
+  void* handle = nullptr;
+  OpList op_list;
+};
 
 }  // namespace
 
@@ -42,48 +37,66 @@ Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
 // OpList of OpDefs registered in the library to *buf and the length to *len,
 // and returns OK from the function. Otherwise return nullptr in result
 // and an error status from the function, leaving buf and len untouched.
+//
+// If `library_filename` has already been loaded, we return a cached handle
+// and OpList. Ops and kernels are registered as globals when a library is
+// loaded for the first time. Without caching, every subsequent load would not
+// perform initialization again, so the OpList would be empty.
 Status LoadLibrary(const char* library_filename, void** result,
                    const void** buf, size_t* len) {
   static mutex mu;
+  static std::unordered_map<string, Library> loaded_libs;
   Env* env = Env::Default();
-  void* lib;
-  OpList op_list;
+  Library library;
   std::unordered_set<string> seen_op_names;
   {
     mutex_lock lock(mu);
-    OpRegistry::Global()->ProcessRegistrations();
-    TF_RETURN_IF_ERROR(OpRegistry::Global()->SetWatcher(
-        [&op_list, &seen_op_names](const Status& s,
-                                   const OpDef& opdef) -> Status {
-          if (errors::IsAlreadyExists(s)) {
-            if (seen_op_names.find(opdef.name()) == seen_op_names.end()) {
-              // Over writing a registration of an op not in this custom op
-              // library. Treat this as not an error.
-              return Status::OK();
+    if (loaded_libs.find(library_filename) != loaded_libs.end()) {
+      library = loaded_libs[library_filename];
+    } else {
+      Status s = OpRegistry::Global()->ProcessRegistrations();
+      if (!s.ok()) {
+        return s;
+      }
+      TF_RETURN_IF_ERROR(OpRegistry::Global()->SetWatcher(
+          [&library, &seen_op_names](const Status& s,
+                                     const OpDef& opdef) -> Status {
+            if (errors::IsAlreadyExists(s)) {
+              if (seen_op_names.find(opdef.name()) == seen_op_names.end()) {
+                // Over writing a registration of an op not in this custom op
+                // library. Treat this as not an error.
+                return Status::OK();
+              }
             }
-          }
-          *op_list.add_op() = opdef;
-          seen_op_names.insert(opdef.name());
-          return s;
-        }));
-    OpRegistry::Global()->DeferRegistrations();
-    Status s = env->LoadLibrary(library_filename, &lib);
-    if (!s.ok()) {
-      OpRegistry::Global()->ClearDeferredRegistrations();
+            if (s.ok()) {
+              *library.op_list.add_op() = opdef;
+              seen_op_names.insert(opdef.name());
+            }
+            return s;
+          }));
+      OpRegistry::Global()->DeferRegistrations();
+      s = env->LoadLibrary(library_filename, &library.handle);
+      if (s.ok()) {
+        s = OpRegistry::Global()->ProcessRegistrations();
+      }
+      if (!s.ok()) {
+        OpRegistry::Global()->ClearDeferredRegistrations();
+        TF_RETURN_IF_ERROR(OpRegistry::Global()->SetWatcher(nullptr));
+        return s;
+      }
       TF_RETURN_IF_ERROR(OpRegistry::Global()->SetWatcher(nullptr));
-      return s;
+
+      loaded_libs[library_filename] = library;
     }
-    OpRegistry::Global()->ProcessRegistrations();
-    TF_RETURN_IF_ERROR(OpRegistry::Global()->SetWatcher(nullptr));
   }
   string str;
-  op_list.SerializeToString(&str);
-  char* str_buf = reinterpret_cast<char*>(operator new(str.length()));
+  library.op_list.SerializeToString(&str);
+  char* str_buf = reinterpret_cast<char*>(malloc(str.length()));
   memcpy(str_buf, str.data(), str.length());
   *buf = str_buf;
   *len = str.length();
 
-  *result = lib;
+  *result = library.handle;
   return Status::OK();
 }
 

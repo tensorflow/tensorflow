@@ -267,7 +267,7 @@ void QueueBase::Close(OpKernelContext* ctx, bool cancel_pending_enqueues,
           [this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             if (closed_) {
               attempt->context->SetStatus(
-                  errors::Aborted("Queue '", name_, "' is already closed."));
+                  errors::Cancelled("Queue '", name_, "' is already closed."));
             } else {
               closed_ = true;
             }

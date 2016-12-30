@@ -1,45 +1,30 @@
-<!DOCTYPE html>
+<!doctype html>
+<!--
+@license
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
 <html>
   <head>
     <title>TensorBoard</title>
-
-    <script src="external/webcomponentsjs/webcomponents-lite.min.js"></script>
+    <script src="webcomponentsjs/webcomponents-lite.min.js"></script>
     <link rel="stylesheet" type="text/css" href="lib/css/global.css">
+    <link rel="stylesheet" type="text/css" href="plottable/plottable.css">
     <link rel="shortcut icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMQAAADECAMAAAD3eH5ZAAAABGdBTUEAALGPC/xhBQAAAAFzUkdCAK7OHOkAAAD/UExURfFlKfaELvFmKfNyK/67NvWALf68Nv69NvNxK/20NfyyNP22NfN0K/JrKvqhMv2zNf25Nf24Nf23NfeOL/yzNPyvNPJoKviWMPmeMfN1K/WBLfePL/FnKfeML/qlMvR7LPmcMfeLL/aJLvR5LPFoKfJuKvR3LP66NvywNPeNL/V/LfaILv21Nf26NfNzK/NvK/R6LPmaMfyxNPqfMvV+LfurM/iSMPmbMfJvKvmdMfumM/qiMvmZMfytNPJqKvysNPN2K/iYMPNwK/upM/JtKvJsKviVMPaHLvaGLvJpKvR8LPaKLvqkMvuqM/aFLvR4LPuoM/iTMPWDLfiRMPmYMXS0ngkAAALoSURBVHja7drnctpAFIbhFUISSKJ3MKYa0+y4xTW9937/15JkJhlTjhrSrHRmvuf/as6L0YLFCgEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMBJ6njenqspzgnPrsrGX9Zpi2tCrmnc6+dYNthVY5WpMmxQLWPdMsOuYVwzNj3ei2t3mQwaV43BJPDCS2NbJ5aEeuX/+9qcjQOtfFIkIkrvY2g4MVcmOBsFWbowKO/kNyj62gRpJcDaPBlxLr1B0zdG0C/8LzbJiJrshuvy1gzlA9+rD8mIkuyIJjFE3/dqnYwoSm7IUEPoD/wut8iIguSIDjlFxe/yfXL5vuSI21BTZLLhXoOILMO8Hxwa/L8bI0LfmUdhGowb2ZvT0e57pFNDgB06IlVyjmmIBl2T/nl9Rw6SD9GgSG/Q0uQkaW3XhmovKQ3eFQ4N2Uo9OQ1eFZsNerf7vP+rO4rhmY1Lg3vFVoP8+8BXg1sFnwbnCk4NThW8GuiKBDdkVVtTNFvNelVsNqTbyWnIOM2oeTRoyWvwmpJHg/ucXBrcJuXT4DwrpwZi2vy0VCx8YtXg/D2bU4OfiuQ3eFfE2KD4bfCqiLNB993gXsGlwa2CT4NzBacGIVQ6YsipQdh0xEdODUKjIxrSp88onZ8zbbFLg1DoiFO5BXvDGv2My9/JhUT8JUZTI0yDaNHLBzIbvqTDNYhUiVw/kdjQ1kM2CHFDPjKW+KzyRTF0g/ga9w9y+fANQpxvX8CU+Ny7FUWDeF3Y+g3lROIf4k0UDX9eCyvO531PyYhHga9zvPZJU5b73Y/eXj8Hv9D48n6HaF5LbcjRt8TZTtda5M1DfXnbkX1C0SHCFKzQB5Fe8op4GNGNHavvZESbVwT5r6W1xyuCPBY3Y9YgDqzknH/e3YfNzzuL30l0IebrZ5kKtuDIXt1n868ET6kf3/49tLvrCcZyF8Pu215dAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAcPIbNrBhOaBXucoAAAAASUVORK5CYII=">
-
-    <script src="external/lodash/lodash.min.js"></script>
-    <script src="external/d3/d3.min.js"></script>
-    <script src="external/plottable/plottable.min.js"></script>
-    <link rel="stylesheet" type="text/css" href="external/plottable/plottable.css">
-
-    <script src="external/graphlib/dist/graphlib.core.min.js"></script>
-    <script src="external/dagre/dist/dagre.core.min.js"></script>
-
-    <link rel="import" href="external/polymer/polymer.html">
-
-    <link rel="import" href="external/iron-ajax/iron-ajax.html">
-    <link rel="import" href="external/iron-collapse/iron-collapse.html">
-    <link rel="import" href="external/iron-list/iron-list.html">
-    <link rel="import" href="external/paper-button/paper-button.html">
-    <link rel="import" href="external/paper-checkbox/paper-checkbox.html">
-    <link rel="import" href="external/paper-dialog/paper-dialog.html">
-    <link rel="import" href="external/paper-dropdown-menu/paper-dropdown-menu.html">
-    <link rel="import" href="external/paper-header-panel/paper-header-panel.html">
-    <link rel="import" href="external/paper-icon-button/paper-icon-button.html">
-    <link rel="import" href="external/paper-input/paper-input.html">
-    <link rel="import" href="external/paper-item/paper-item.html">
-    <link rel="import" href="external/paper-menu/paper-menu.html">
-    <link rel="import" href="external/paper-progress/paper-progress.html">
-    <link rel="import" href="external/paper-radio-button/paper-radio-button.html">
-    <link rel="import" href="external/paper-radio-group/paper-radio-group.html">
-    <link rel="import" href="external/paper-slider/paper-slider.html">
-    <link rel="import" href="external/paper-styles/paper-styles.html">
-    <link rel="import" href="external/paper-toggle-button/paper-toggle-button.html">
-    <link rel="import" href="external/paper-toolbar/paper-toolbar.html">
-    <link rel="import" href="external/paper-tabs/paper-tabs.html">
+    <link rel="import" href="dist/bazel-html-imports.html">
     <link rel="import" href="dist/tf-tensorboard.html">
-
-
   </head>
   <body>
     <tf-tensorboard></tf-tensorboard>

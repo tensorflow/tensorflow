@@ -20,9 +20,11 @@ limitations under the License.
 
 #include <stddef.h>
 #include <stdint.h>
-
-#include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
-
+#if defined(WIN32)
+#include "extras/CUPTI/include/cupti.h"
+#else
+#include "cuda/extras/CUPTI/include/cupti.h"
+#endif
 namespace perftools {
 namespace gputools {
 namespace profiler {

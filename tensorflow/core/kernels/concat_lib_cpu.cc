@@ -35,6 +35,16 @@ struct MemCpyCopier {
     }
   }
 };
+template <>
+struct MemCpyCopier<ResourceHandle> {
+  inline void Copy(ResourceHandle* dst, const ResourceHandle* src,
+                   int input_index, size_t n) {
+    for (size_t k = 0; k < n; ++k) {
+      *dst++ = *src++;
+    }
+  }
+};
+
 }  // namespace
 
 template <typename T>

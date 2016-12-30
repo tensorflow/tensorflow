@@ -14,8 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
+
+using shape_inference::DimensionHandle;
+using shape_inference::InferenceContext;
+using shape_inference::ShapeHandle;
 
 // CTC is Connectionist Temporal Classification.  See util/ctc/ for details.
 
@@ -28,6 +33,32 @@ REGISTER_OP("CTCLoss")
     .Attr("ctc_merge_repeated: bool = true")
     .Output("loss: float")
     .Output("gradient: float")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle inputs;
+      ShapeHandle labels_indices;
+      ShapeHandle labels_values;
+      ShapeHandle sequence_length;
+
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 3, &inputs));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &labels_indices));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &labels_values));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 1, &sequence_length));
+
+      DimensionHandle unused;
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(labels_indices, 0),
+                                  c->Dim(labels_values, 0), &unused));
+
+      // Get batch size from inputs and sequence_length, and update inputs
+      // with the merged batch_size since it is returned.
+      DimensionHandle batch_size;
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(inputs, 1), c->Dim(sequence_length, 0), &batch_size));
+      TF_RETURN_IF_ERROR(c->ReplaceDim(inputs, 1, batch_size, &inputs));
+
+      c->set_output(0, c->Vector(batch_size));
+      c->set_output(1, inputs);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Calculates the CTC Loss (log probability) for each batch entry.  Also calculates
 the gradient.  This class performs the softmax operation for you, so inputs
@@ -57,6 +88,25 @@ REGISTER_OP("CTCGreedyDecoder")
     .Output("decoded_values: int64")
     .Output("decoded_shape: int64")
     .Output("log_probability: float")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle inputs;
+      ShapeHandle sequence_length;
+
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 3, &inputs));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &sequence_length));
+
+      // Get batch size from inputs and sequence_length.
+      DimensionHandle batch_size;
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(inputs, 1), c->Dim(sequence_length, 0), &batch_size));
+
+      DimensionHandle total_decoded_outputs = c->UnknownDim();
+      c->set_output(0, c->Matrix(total_decoded_outputs, 2));
+      c->set_output(1, c->Vector(total_decoded_outputs));
+      c->set_output(2, c->Vector(2));
+      c->set_output(3, c->Matrix(batch_size, 1));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Performs greedy decoding on the logits given in inputs.
 
@@ -93,6 +143,36 @@ REGISTER_OP("CTCBeamSearchDecoder")
     .Output("decoded_values: top_paths * int64")
     .Output("decoded_shape: top_paths * int64")
     .Output("log_probability: float")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle inputs;
+      ShapeHandle sequence_length;
+
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 3, &inputs));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &sequence_length));
+
+      // Get batch size from inputs and sequence_length.
+      DimensionHandle batch_size;
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(inputs, 1), c->Dim(sequence_length, 0), &batch_size));
+
+      int32 top_paths;
+      TF_RETURN_IF_ERROR(c->GetAttr("top_paths", &top_paths));
+
+      // Outputs.
+      int out_idx = 0;
+      for (int i = 0; i < top_paths; ++i) {  // decoded_indices
+        c->set_output(out_idx++, c->Matrix(InferenceContext::kUnknownDim, 2));
+      }
+      for (int i = 0; i < top_paths; ++i) {  // decoded_values
+        c->set_output(out_idx++, c->Vector(InferenceContext::kUnknownDim));
+      }
+      ShapeHandle shape_v = c->Vector(2);
+      for (int i = 0; i < top_paths; ++i) {  // decoded_shape
+        c->set_output(out_idx++, shape_v);
+      }
+      c->set_output(out_idx++, c->Matrix(batch_size, top_paths));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Performs beam search decoding on the logits given in input.
 

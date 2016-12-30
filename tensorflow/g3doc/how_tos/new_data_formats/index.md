@@ -182,7 +182,7 @@ class SomeReader(io_ops.ReaderBase):
         super(SomeReader, self).__init__(rr)
 
 
-ops.NoGradient("SomeReader")
+ops.NotDifferentiable("SomeReader")
 ops.RegisterShape("SomeReader")(common_shapes.scalar_shape)
 ```
 

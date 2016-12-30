@@ -55,13 +55,14 @@ TEST(GrpcChannelTest, IsSameAddressSpace) {
 }
 
 TEST(GrpcChannelTest, HostPorts) {
-  std::unique_ptr<GrpcChannelCache> cc(NewHostPortsGrpcChannelCache(
-      "mnist", {"a:1", "b:2", "c:3", "d:4", "e:5", "f:6"}, 2,
-      NewHostPortGrpcChannel));
+  GrpcChannelSpec spec;
+  spec.AddHostPortsJob("mnist", {"a:1", "b:2", "c:3", "d:4", "e:5", "f:6"});
+  std::unique_ptr<GrpcChannelCache> cc(
+      NewGrpcChannelCache(spec, NewHostPortGrpcChannel));
   EXPECT_EQ(nullptr, cc->FindWorkerChannel("invalid_target"));
   EXPECT_EQ(nullptr, cc->FindWorkerChannel("/job:other/replica:0/task:0"));
-  EXPECT_EQ(nullptr, cc->FindWorkerChannel("/job:mnist/replica:0/task:2"));
-  EXPECT_EQ(nullptr, cc->FindWorkerChannel("/job:mnist/replica:3/task:0"));
+  EXPECT_EQ(nullptr, cc->FindWorkerChannel("/job:mnist/replica:0/task:6"));
+  EXPECT_EQ(nullptr, cc->FindWorkerChannel("/job:mnist/replica:1/task:0"));
 
   {
     // NOTE(mrry): The gRPC channel doesn't expose the target, so we
@@ -69,11 +70,11 @@ TEST(GrpcChannelTest, HostPorts) {
     auto a_1_1 = cc->FindWorkerChannel("/job:mnist/replica:0/task:0");
     auto a_1_2 = cc->FindWorkerChannel("/job:mnist/replica:0/task:0");
 
-    auto d_4_1 = cc->FindWorkerChannel("/job:mnist/replica:1/task:1");
-    auto d_4_2 = cc->FindWorkerChannel("/job:mnist/replica:1/task:1");
+    auto d_4_1 = cc->FindWorkerChannel("/job:mnist/replica:0/task:3");
+    auto d_4_2 = cc->FindWorkerChannel("/job:mnist/replica:0/task:3");
 
-    auto e_5_1 = cc->FindWorkerChannel("/job:mnist/replica:2/task:0");
-    auto e_5_2 = cc->FindWorkerChannel("/job:mnist/replica:2/task:0");
+    auto e_5_1 = cc->FindWorkerChannel("/job:mnist/replica:0/task:4");
+    auto e_5_2 = cc->FindWorkerChannel("/job:mnist/replica:0/task:4");
 
     EXPECT_EQ(a_1_1.get(), a_1_2.get());
     EXPECT_EQ(d_4_1.get(), d_4_2.get());
@@ -86,25 +87,23 @@ TEST(GrpcChannelTest, HostPorts) {
 
   std::vector<string> workers;
   cc->ListWorkers(&workers);
-  EXPECT_EQ(std::vector<string>({"/job:mnist/replica:0/task:0",
-                                 "/job:mnist/replica:0/task:1",
-                                 "/job:mnist/replica:1/task:0",
-                                 "/job:mnist/replica:1/task:1",
-                                 "/job:mnist/replica:2/task:0",
-                                 "/job:mnist/replica:2/task:1"}),
+  EXPECT_EQ(std::vector<string>(
+                {"/job:mnist/replica:0/task:0", "/job:mnist/replica:0/task:1",
+                 "/job:mnist/replica:0/task:2", "/job:mnist/replica:0/task:3",
+                 "/job:mnist/replica:0/task:4", "/job:mnist/replica:0/task:5"}),
             workers);
 }
 
 TEST(GrpcChannelTest, SparseHostPorts) {
-  std::unique_ptr<GrpcChannelCache> cc(NewHostPortsGrpcChannelCache(
-      "mnist", {"0:a:1", "3:d:4", "4:e:5"}, 2, NewHostPortGrpcChannel));
+  GrpcChannelSpec spec;
+  spec.AddHostPortsJob("mnist", {{0, "a:1"}, {3, "d:4"}, {4, "e:5"}});
+  std::unique_ptr<GrpcChannelCache> cc(
+      NewGrpcChannelCache(spec, NewHostPortGrpcChannel));
   EXPECT_EQ(nullptr, cc->FindWorkerChannel("invalid_target"));
   EXPECT_EQ(nullptr, cc->FindWorkerChannel("/job:other/replica:0/task:0"));
   EXPECT_EQ(nullptr, cc->FindWorkerChannel("/job:mnist/replica:0/task:1"));
   EXPECT_EQ(nullptr, cc->FindWorkerChannel("/job:mnist/replica:0/task:2"));
-  EXPECT_EQ(nullptr, cc->FindWorkerChannel("/job:mnist/replica:1/task:0"));
-  EXPECT_EQ(nullptr, cc->FindWorkerChannel("/job:mnist/replica:2/task:1"));
-  EXPECT_EQ(nullptr, cc->FindWorkerChannel("/job:mnist/replica:3/task:0"));
+  EXPECT_EQ(nullptr, cc->FindWorkerChannel("/job:mnist/replica:0/task:5"));
 
   {
     // NOTE(mrry): The gRPC channel doesn't expose the target, so we
@@ -112,11 +111,13 @@ TEST(GrpcChannelTest, SparseHostPorts) {
     auto a_1_1 = cc->FindWorkerChannel("/job:mnist/replica:0/task:0");
     auto a_1_2 = cc->FindWorkerChannel("/job:mnist/replica:0/task:0");
 
-    auto d_4_1 = cc->FindWorkerChannel("/job:mnist/replica:1/task:1");
-    auto d_4_2 = cc->FindWorkerChannel("/job:mnist/replica:1/task:1");
+    LOG(WARNING) << " Getting task 3";
+    auto d_4_1 = cc->FindWorkerChannel("/job:mnist/replica:0/task:3");
+    auto d_4_2 = cc->FindWorkerChannel("/job:mnist/replica:0/task:3");
 
-    auto e_5_1 = cc->FindWorkerChannel("/job:mnist/replica:2/task:0");
-    auto e_5_2 = cc->FindWorkerChannel("/job:mnist/replica:2/task:0");
+    LOG(WARNING) << " Getting task 4";
+    auto e_5_1 = cc->FindWorkerChannel("/job:mnist/replica:0/task:4");
+    auto e_5_2 = cc->FindWorkerChannel("/job:mnist/replica:0/task:4");
 
     EXPECT_EQ(a_1_1.get(), a_1_2.get());
     EXPECT_EQ(d_4_1.get(), d_4_2.get());
@@ -129,9 +130,10 @@ TEST(GrpcChannelTest, SparseHostPorts) {
 
   std::vector<string> workers;
   cc->ListWorkers(&workers);
+  std::sort(workers.begin(), workers.end());
   EXPECT_EQ(std::vector<string>({"/job:mnist/replica:0/task:0",
-                                 "/job:mnist/replica:1/task:1",
-                                 "/job:mnist/replica:2/task:0"}),
+                                 "/job:mnist/replica:0/task:3",
+                                 "/job:mnist/replica:0/task:4"}),
             workers);
 }
 

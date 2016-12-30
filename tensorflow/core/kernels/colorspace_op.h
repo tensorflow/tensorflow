@@ -24,18 +24,19 @@ namespace tensorflow {
 
 namespace functor {
 
-template <typename Device>
+template <typename Device, typename T>
 struct RGBToHSV {
-  void operator()(const Device &d, TTypes<float, 2>::ConstTensor input_data,
-                  TTypes<float, 1>::Tensor range,
-                  TTypes<float, 2>::Tensor output_data) {
-    auto H = output_data.chip<1>(0);
-    auto S = output_data.chip<1>(1);
-    auto V = output_data.chip<1>(2);
+  void operator()(const Device &d,
+                  typename TTypes<T, 2>::ConstTensor input_data,
+                  typename TTypes<T, 1>::Tensor range,
+                  typename TTypes<T, 2>::Tensor output_data) {
+    auto H = output_data.template chip<1>(0);
+    auto S = output_data.template chip<1>(1);
+    auto V = output_data.template chip<1>(2);
 
-    auto R = input_data.chip<1>(0);
-    auto G = input_data.chip<1>(1);
-    auto B = input_data.chip<1>(2);
+    auto R = input_data.template chip<1>(0);
+    auto G = input_data.template chip<1>(1);
+    auto B = input_data.template chip<1>(2);
 
 #if !defined(EIGEN_HAS_INDEX_LIST)
     Eigen::array<int, 1> channel_axis{{1}};
@@ -47,38 +48,40 @@ struct RGBToHSV {
 
     range.device(d) = V - input_data.minimum(channel_axis);
 
-    S.device(d) = (V > 0.f).select(range / V, V.constant(0.f));
+    S.device(d) = (V > T(0)).select(range / V, V.constant(T(0)));
 
-    auto norm = range.inverse() * (1.f / 6.f);
+    auto norm = range.inverse() * (T(1) / T(6));
     // TODO(wicke): all these assignments are only necessary because a combined
     // expression is larger than kernel parameter space. A custom kernel is
     // probably in order.
     H.device(d) = (R == V).select(norm * (G - B),
-                                  (G == V).select(norm * (B - R) + 2.f / 6.f,
-                                                  norm * (R - G) + 4.f / 6.f));
-    H.device(d) = (range > 0.f).select(H, H.constant(0.f));
-    H.device(d) = (H < 0.f).select(H + 1.f, H);
+                                  (G == V).select(
+                                      norm * (B - R) + T(2) / T(6),
+                                      norm * (R - G) + T(4) / T(6)));
+    H.device(d) = (range > T(0)).select(H, H.constant(T(0)));
+    H.device(d) = (H < T(0)).select(H + T(1), H);
   }
 };
 
-template <typename Device>
+template <typename Device, typename T>
 struct HSVToRGB {
-  void operator()(const Device &d, TTypes<float, 2>::ConstTensor input_data,
-                  TTypes<float, 2>::Tensor output_data) {
-    auto H = input_data.chip<1>(0);
-    auto S = input_data.chip<1>(1);
-    auto V = input_data.chip<1>(2);
+  void operator()(const Device &d,
+                  typename TTypes<T, 2>::ConstTensor input_data,
+                  typename TTypes<T, 2>::Tensor output_data) {
+    auto H = input_data.template chip<1>(0);
+    auto S = input_data.template chip<1>(1);
+    auto V = input_data.template chip<1>(2);
 
     // TODO(wicke): compute only the fractional part of H for robustness
-    auto dh = H * 6.f;
-    auto dr = ((dh - 3.f).abs() - 1.f).cwiseMax(0.f).cwiseMin(1.f);
-    auto dg = (-(dh - 2.f).abs() + 2.f).cwiseMax(0.f).cwiseMin(1.f);
-    auto db = (-(dh - 4.f).abs() + 2.f).cwiseMax(0.f).cwiseMin(1.f);
-    auto one_s = -S + 1.f;
+    auto dh = H * T(6);
+    auto dr = ((dh - T(3)).abs() - T(1)).cwiseMax(T(0)).cwiseMin(T(1));
+    auto dg = (-(dh - T(2)).abs() + T(2)).cwiseMax(T(0)).cwiseMin(T(1));
+    auto db = (-(dh - T(4)).abs() + T(2)).cwiseMax(T(0)).cwiseMin(T(1));
+    auto one_s = -S + T(1);
 
-    auto R = output_data.chip<1>(0);
-    auto G = output_data.chip<1>(1);
-    auto B = output_data.chip<1>(2);
+    auto R = output_data.template chip<1>(0);
+    auto G = output_data.template chip<1>(1);
+    auto B = output_data.template chip<1>(2);
 
     R.device(d) = (one_s + S * dr) * V;
     G.device(d) = (one_s + S * dg) * V;

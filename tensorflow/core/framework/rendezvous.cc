@@ -15,12 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/framework/rendezvous.h"
 
-#include <unordered_map>
+#include <functional>
 #include <utility>
 #include <vector>
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -81,8 +82,16 @@ static StringPiece ConsumeNextPart(StringPiece* s, char delim) {
 }
 
 /* static */
-Status Rendezvous::ParseKey(const string& key, ParsedKey* out) {
-  out->buf_ = key;  // Make a copy that our StringPieces can point at
+Status Rendezvous::ParseKey(StringPiece key, ParsedKey* out) {
+  if (key.data() == out->buf_.data()) {
+    // Caller used our buf_ string directly, so we don't need to copy.  (The
+    // SendOp and RecvOp implementations do this, for example).
+    DCHECK_EQ(key.size(), out->buf_.size());
+  } else {
+    // Make a copy that our StringPieces can point at a copy that will persist
+    // for the lifetime of the ParsedKey object.
+    out->buf_.assign(key.data(), key.size());
+  }
   StringPiece s(out->buf_);
   StringPiece parts[5];
   for (int i = 0; i < 5; i++) {
@@ -99,13 +108,13 @@ Status Rendezvous::ParseKey(const string& key, ParsedKey* out) {
     out->edge_name.set(parts[3].data(), parts[3].size());
     return Status::OK();
   }
-  return errors::InvalidArgument("Invalid rendezvous key: ", key);
+  return errors::InvalidArgument("Invalid  rendezvous key: ", key);
 }
 
 Rendezvous::~Rendezvous() {}
 
 Status Rendezvous::Recv(const ParsedKey& key, const Args& recv_args,
-                        Tensor* val, bool* is_dead) {
+                        Tensor* val, bool* is_dead, int64 timeout_ms) {
   Status ret;
   Notification n;
   RecvAsync(key, recv_args,
@@ -117,8 +126,22 @@ Status Rendezvous::Recv(const ParsedKey& key, const Args& recv_args,
               *is_dead = dead;
               n.Notify();
             });
-  n.WaitForNotification();
+  if (timeout_ms > 0) {
+    bool notified = WaitForNotificationWithTimeout(&n, timeout_ms);
+    if (!notified) {
+      return Status(error::DEADLINE_EXCEEDED,
+                    "Timed out waiting for notification");
+    }
+  } else {
+    n.WaitForNotification();
+  }
   return ret;
+}
+
+Status Rendezvous::Recv(const ParsedKey& key, const Args& args, Tensor* val,
+                        bool* is_dead) {
+  const int64 no_timeout = 0;
+  return Recv(key, args, val, is_dead, no_timeout);
 }
 
 class LocalRendezvousImpl : public Rendezvous {
@@ -232,10 +255,10 @@ class LocalRendezvousImpl : public Rendezvous {
         DeviceContext* send_dev_context = item->send_dev_context;
         if (send_dev_context) send_dev_context->Ref();
         bool is_dead = item->is_dead;
-        mu_.unlock();
         Args send_args;
         send_args.device_context = item->send_dev_context;
         send_args.alloc_attrs = item->send_alloc_attrs;
+        mu_.unlock();
         done(Status::OK(), send_args, recv_args, v, is_dead);
         if (send_dev_context) send_dev_context->Unref();
       } else {
@@ -309,7 +332,7 @@ class LocalRendezvousImpl : public Rendezvous {
     return Hash64(k.data(), k.size());
   }
 
-  typedef std::unordered_map<uint64, Item*> Table;
+  typedef gtl::FlatMap<uint64, Item*> Table;
 
   // TODO(zhifengc): shard table_.
   mutex mu_;

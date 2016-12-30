@@ -17,20 +17,27 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/platform/context.h"
 #include "tensorflow/core/platform/denormal.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/setround.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
+
 
 namespace tensorflow {
 namespace thread {
 
 struct EigenEnvironment {
   typedef Thread EnvThread;
-  struct Task {
+  struct TaskImpl {
     std::function<void()> f;
+    Context context;
     uint64 trace_id;
+  };
+  struct Task {
+    std::unique_ptr<TaskImpl> f;
   };
 
   Env* const env_;
@@ -45,6 +52,8 @@ struct EigenEnvironment {
     return env_->StartThread(thread_options_, name_, [=]() {
       // Set the processor flag to flush denormals to zero
       port::ScopedFlushDenormal flush;
+      // Set the C++ rounding mode to ROUND TO NEAREST
+      port::ScopedSetRound round;
       f();
     });
   }
@@ -56,16 +65,21 @@ struct EigenEnvironment {
       port::Tracing::RecordEvent(port::Tracing::EventCategory::kScheduleClosure,
                                  id);
     }
-    return Task{std::move(f), id};
+    return Task{
+        std::unique_ptr<TaskImpl>(new TaskImpl{
+            std::move(f), Context(ContextKind::kThread), id,
+        }),
+    };
   }
 
   void ExecuteTask(const Task& t) {
-    if (t.trace_id != 0) {
+    WithContext wc(t.f->context);
+    if (t.f->trace_id != 0) {
       port::Tracing::ScopedActivity region(
-          port::Tracing::EventCategory::kRunClosure, t.trace_id);
-      t.f();
+          port::Tracing::EventCategory::kRunClosure, t.f->trace_id);
+      t.f->f();
     } else {
-      t.f();
+      t.f->f();
     }
   }
 };
@@ -78,16 +92,12 @@ struct ThreadPool::Impl : Eigen::ThreadPoolTempl<EigenEnvironment> {
 
   void ParallelFor(int64 total, int64 cost_per_unit,
                    std::function<void(int64, int64)> fn) {
-#ifdef EIGEN_USE_NONBLOCKING_THREAD_POOL
     CHECK_GE(total, 0);
     CHECK_EQ(total, (int64)(Eigen::Index)total);
     Eigen::ThreadPoolDevice device(this, this->NumThreads());
     device.parallelFor(
         total, Eigen::TensorOpCost(0, 0, cost_per_unit),
         [&fn](Eigen::Index first, Eigen::Index last) { fn(first, last); });
-#else
-    CHECK(0);  // should not be used with the old thread pool
-#endif
   }
 };
 
@@ -111,6 +121,20 @@ void ThreadPool::Schedule(std::function<void()> fn) {
 void ThreadPool::ParallelFor(int64 total, int64 cost_per_unit,
                              std::function<void(int64, int64)> fn) {
   impl_->ParallelFor(total, cost_per_unit, std::move(fn));
+}
+
+void ThreadPool::ParallelForWithWorkerId(
+    int64 total, int64 cost_per_unit,
+    const std::function<void(int64, int64, int)>& fn) {
+  impl_->ParallelFor(total, cost_per_unit,
+                     [this, &fn](int64 start, int64 limit) {
+                       // ParallelFor may use the current thread to do some
+                       // work synchronously. When calling CurrentThreadId()
+                       // from outside of the thread pool, we get -1, so we can
+                       // shift every id up by 1.
+                       int id = CurrentThreadId() + 1;
+                       fn(start, limit, id);
+                     });
 }
 
 int ThreadPool::NumThreads() const { return impl_->NumThreads(); }

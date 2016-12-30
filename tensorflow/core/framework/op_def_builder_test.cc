@@ -582,9 +582,9 @@ attr {
 }
 
 TEST_F(OpDefBuilderTest, SetShapeFn) {
-  auto fn = OpShapeInferenceFn([](shape_inference::InferenceContext* c) {
+  auto fn = [](shape_inference::InferenceContext* c) {
     return errors::Unknown("ShapeFn was called");
-  });
+  };
   OpShapeInferenceFn fn_out;
   ExpectSuccess(
       b().SetShapeFn(fn).Attr("dtype: type"),
@@ -595,9 +595,9 @@ TEST_F(OpDefBuilderTest, SetShapeFn) {
 }
 
 TEST_F(OpDefBuilderTest, SetShapeFnCalledTwiceFailure) {
-  auto fn = OpShapeInferenceFn([](shape_inference::InferenceContext* c) {
+  auto fn = [](shape_inference::InferenceContext* c) {
     return errors::Unknown("ShapeFn was called");
-  });
+  };
   ExpectFailure(b().SetShapeFn(fn).SetShapeFn(fn),
                 "SetShapeFn called twice for Op Test");
 }

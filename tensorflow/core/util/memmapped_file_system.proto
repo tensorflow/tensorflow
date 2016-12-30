@@ -15,7 +15,7 @@ limitations under the License.
 syntax = "proto3";
 
 package tensorflow;
-// option cc_enable_arenas = true;
+option cc_enable_arenas = true;
 
 // A message that describes one region of memmapped file.
 message MemmappedFileSystemDirectoryElement {

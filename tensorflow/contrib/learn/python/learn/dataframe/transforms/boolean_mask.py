@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,6 +23,7 @@ from tensorflow.contrib.learn.python.learn.dataframe import series
 from tensorflow.contrib.learn.python.learn.dataframe import transform
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor as sparse_tensor_py
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import math_ops
@@ -43,7 +43,7 @@ def sparse_boolean_mask(sparse_tensor, mask, name="sparse_boolean_mask"):
     `True`.
   """
   # TODO(jamieas): consider mask dimension > 1 for symmetry with `boolean_mask`.
-  with ops.op_scope([sparse_tensor, mask], name):
+  with ops.name_scope(name, values=[sparse_tensor, mask]):
     mask = ops.convert_to_tensor(mask)
     mask_rows = array_ops.where(mask)
     first_indices = array_ops.squeeze(array_ops.slice(sparse_tensor.indices,
@@ -63,7 +63,7 @@ def sparse_boolean_mask(sparse_tensor, mask, name="sparse_boolean_mask"):
 
 
 @series.Series.register_binary_op("select_rows")
-class BooleanMask(transform.Transform):
+class BooleanMask(transform.TensorFlowTransform):
   """Apply a boolean mask to a `Series`."""
 
   @property
@@ -78,20 +78,23 @@ class BooleanMask(transform.Transform):
   def _output_names(self):
     return "output",
 
-  def _apply_transform(self, input_tensors):
+  def _apply_transform(self, input_tensors, **kwargs):
     """Applies the transformation to the `transform_input`.
 
     Args:
-        input_tensors: a list of Tensors representing the input to
+      input_tensors: a list of Tensors representing the input to
         the Transform.
+      **kwargs: Additional keyword arguments, unused here.
 
     Returns:
         A namedtuple of Tensors representing the transformed output.
     """
     input_tensor = input_tensors[0]
     mask = input_tensors[1]
+    if mask.get_shape().ndims > 1:
+      mask = array_ops.squeeze(mask)
 
-    if isinstance(input_tensor, ops.SparseTensor):
+    if isinstance(input_tensor, sparse_tensor_py.SparseTensor):
       mask_fn = sparse_boolean_mask
     else:
       mask_fn = array_ops.boolean_mask

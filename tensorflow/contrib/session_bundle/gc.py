@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -88,7 +88,7 @@ def largest_export_versions(n):
   def keep(paths):
     heap = []
     for idx, path in enumerate(paths):
-      if path.export_version:
+      if path.export_version is not None:
         heapq.heappush(heap, (path.export_version, idx))
     keepers = [paths[i] for _, i in heapq.nlargest(n, heap)]
     return sorted(keepers)

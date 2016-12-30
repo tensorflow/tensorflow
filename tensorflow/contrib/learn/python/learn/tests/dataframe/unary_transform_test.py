@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -34,7 +34,12 @@ class UnaryTestCase(tf.test.TestCase):
   @classmethod
   def add_test_case(cls, name, op, np_dtype=float):
     def _test(self):
-      arr = np.arange(NUMPY_ARRAY_SIZE, dtype=np_dtype)
+      if np_dtype == bool:
+        arr = np.array([True] * int(NUMPY_ARRAY_SIZE/2) +
+                       [False] * int(NUMPY_ARRAY_SIZE/2))
+        np.random.shuffle(arr)
+      else:
+        arr = np.arange(NUMPY_ARRAY_SIZE, dtype=np_dtype)
       frame = df.TensorFlowDataFrame.from_numpy(arr,
                                                 batch_size=NUMPY_ARRAY_SIZE,
                                                 shuffle=False)

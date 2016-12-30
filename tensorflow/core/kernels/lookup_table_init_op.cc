@@ -80,7 +80,7 @@ class KeyValueTensorIterator
 
   Status status() const override { return status_; }
 
-  int64 total_size() const {
+  int64 total_size() const override {
     return keys_ == nullptr ? -1 : keys_->NumElements();
   }
 
@@ -284,6 +284,15 @@ class TextFileLineIterator
                                          " is not a valid float.");
         }
         tensor->flat<float>()(0) = value;
+      } break;
+      case DT_DOUBLE: {
+        double value;
+        if (!strings::safe_strtod(token.c_str(), &value)) {
+          valid_ = false;
+          return errors::InvalidArgument("Field ", token, " in line ", next_id_,
+                                         " is not a valid double.");
+        }
+        tensor->flat<double>()(0) = value;
       } break;
       case DT_STRING:
         tensor->flat<string>()(0) = token;

@@ -146,13 +146,13 @@ NOTE: This constructor validates the name of the `Operation` (passed
 as `node_def.name`). Valid `Operation` names match the following
 regular expression:
 
-    [A-Za-z0-9.][A-Za-z0-9_.\-/]*
+    [A-Za-z0-9.][A-Za-z0-9_.\\-/]*
 
 ##### Args:
 
 
-*  <b>`node_def`</b>: `graph_pb2.NodeDef`.  `NodeDef` for the `Operation`.
-    Used for attributes of `graph_pb2.NodeDef`, typically `name`,
+*  <b>`node_def`</b>: `node_def_pb2.NodeDef`.  `NodeDef` for the `Operation`.
+    Used for attributes of `node_def_pb2.NodeDef`, typically `name`,
     `op`, and `device`.  The `input` attribute is irrelevant here
     as it will be computed when generating the model.
 *  <b>`g`</b>: `Graph`. The parent graph.
@@ -185,6 +185,20 @@ regular expression:
 
 - - -
 
+#### `tf.Operation.__repr__()` {#Operation.__repr__}
+
+
+
+
+- - -
+
+#### `tf.Operation.__str__()` {#Operation.__str__}
+
+
+
+
+- - -
+
 #### `tf.Operation.colocation_groups()` {#Operation.colocation_groups}
 
 Returns the list of colocation groups of the op.
@@ -199,7 +213,7 @@ Returns a serialized `NodeDef` representation of this operation.
 ##### Returns:
 
   A
-  [`NodeDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto)
+  [`NodeDef`](https://www.tensorflow.org/code/tensorflow/core/framework/node_def.proto)
   protocol buffer.
 
 

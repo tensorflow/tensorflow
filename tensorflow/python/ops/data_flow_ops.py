@@ -20,9 +20,11 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import hashlib
 import re
 
-from tensorflow.python.framework import common_shapes
+import six
+
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -31,6 +33,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
+from tensorflow.python.ops import math_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_data_flow_ops import *
@@ -86,6 +89,18 @@ def _as_name_list(names, dtypes):
     raise ValueError("List of names must have the same length as the list "
                      "of dtypes")
   return list(names)
+
+
+def _shape_common(s1, s2):
+  """The greatest lower bound (ordered by specificity) TensorShape."""
+  s1 = tensor_shape.TensorShape(s1)
+  s2 = tensor_shape.TensorShape(s2)
+  if s1.ndims is None or s2.ndims is None or s1.ndims != s2.ndims:
+    return tensor_shape.unknown_shape()
+  d = [
+      d1 if d1 is not None and d1 == d2 else None
+      for (d1, d2) in zip(s1.as_list(), s2.as_list())]
+  return tensor_shape.TensorShape(d)
 
 
 # pylint: disable=protected-access
@@ -186,10 +201,13 @@ class QueueBase(object):
     if not all([names == q.names for q in queues[1:]]):
       raise TypeError("Queues do not have matching component names.")
 
+    queue_shapes = [q.shapes for q in queues]
+    reduced_shapes = [
+        six.moves.reduce(_shape_common, s) for s in zip(*queue_shapes)]
+
     queue_refs = [x.queue_ref for x in queues]
     selected_queue = control_flow_ops.ref_select(index, queue_refs)
-    # TODO(josh11b): Unify the shapes of the queues too?
-    return QueueBase(dtypes=dtypes, shapes=None, names=names,
+    return QueueBase(dtypes=dtypes, shapes=reduced_shapes, names=names,
                      queue_ref=selected_queue)
 
   @property
@@ -206,6 +224,11 @@ class QueueBase(object):
   def dtypes(self):
     """The list of dtypes for each component of a queue element."""
     return self._dtypes
+
+  @property
+  def shapes(self):
+    """The list of shapes for each component of a queue element."""
+    return self._shapes
 
   @property
   def names(self):
@@ -256,7 +279,7 @@ class QueueBase(object):
     return tensors
 
   def _scope_vals(self, vals):
-    """Return a list of values to pass to `op_scope()`.
+    """Return a list of values to pass to `name_scope()`.
 
     Args:
       vals: A tensor, a list or tuple of tensors, or a dictionary.
@@ -280,7 +303,7 @@ class QueueBase(object):
     At runtime, this operation may raise an error if the queue is
     [closed](#QueueBase.close) before or during its execution. If the
     queue is closed before this operation runs,
-    `tf.errors.AbortedError` will be raised. If this operation is
+    `tf.errors.CancelledError` will be raised. If this operation is
     blocked, and either (i) the queue is closed by a close operation
     with `cancel_pending_enqueues=True`, or (ii) the session is
     [closed](../../api_docs/python/client.md#Session.close),
@@ -294,8 +317,8 @@ class QueueBase(object):
     Returns:
       The operation that enqueues a new tuple of tensors to the queue.
     """
-    with ops.op_scope(self._scope_vals(vals), name,
-                      "%s_enqueue" % self._name) as scope:
+    with ops.name_scope(name, "%s_enqueue" % self._name,
+                        self._scope_vals(vals)) as scope:
       vals = self._check_enqueue_dtypes(vals)
 
       # NOTE(mrry): Not using a shape function because we need access to
@@ -318,7 +341,7 @@ class QueueBase(object):
     At runtime, this operation may raise an error if the queue is
     [closed](#QueueBase.close) before or during its execution. If the
     queue is closed before this operation runs,
-    `tf.errors.AbortedError` will be raised. If this operation is
+    `tf.errors.CancelledError` will be raised. If this operation is
     blocked, and either (i) the queue is closed by a close operation
     with `cancel_pending_enqueues=True`, or (ii) the session is
     [closed](../../api_docs/python/client.md#Session.close),
@@ -332,8 +355,8 @@ class QueueBase(object):
     Returns:
       The operation that enqueues a batch of tuples of tensors to the queue.
     """
-    with ops.op_scope(self._scope_vals(vals), name,
-                      "%s_EnqueueMany" % self._name) as scope:
+    with ops.name_scope(name, "%s_EnqueueMany" % self._name,
+                        self._scope_vals(vals)) as scope:
       vals = self._check_enqueue_dtypes(vals)
 
       # NOTE(mrry): Not using a shape function because we need access to
@@ -379,7 +402,7 @@ class QueueBase(object):
     At runtime, this operation may raise an error if the queue is
     [closed](#QueueBase.close) before or during its execution. If the
     queue is closed, the queue is empty, and there are no pending
-    enqueue operations that can fulfil this request,
+    enqueue operations that can fulfill this request,
     `tf.errors.OutOfRangeError` will be raised. If the session is
     [closed](../../api_docs/python/client.md#Session.close),
     `tf.errors.CancelledError` will be raised.
@@ -416,7 +439,7 @@ class QueueBase(object):
     At runtime, this operation may raise an error if the queue is
     [closed](#QueueBase.close) before or during its execution. If the
     queue is closed, the queue contains fewer than `n` elements, and
-    there are no pending enqueue operations that can fulfil this
+    there are no pending enqueue operations that can fulfill this
     request, `tf.errors.OutOfRangeError` will be raised. If the
     session is [closed](../../api_docs/python/client.md#Session.close),
     `tf.errors.CancelledError` will be raised.
@@ -582,6 +605,15 @@ class RandomShuffleQueue(QueueBase):
     shapes = _as_shape_list(shapes, dtypes)
     names = _as_name_list(names, dtypes)
     seed1, seed2 = random_seed.get_seed(seed)
+    if seed1 is None and seed2 is None:
+      seed1, seed2 = 0, 0
+    elif seed is None and shared_name is not None:
+      # This means that graph seed is provided but op seed is not provided.
+      # If shared_name is also provided, make seed2 depend only on the graph
+      # seed and shared_name. (seed2 from get_seed() is generally dependent on
+      # the id of the last op created.)
+      string = (str(seed1) + shared_name).encode("utf-8")
+      seed2 = int(hashlib.md5(string).hexdigest()[:8], 16) & 0x7FFFFFFF
     queue_ref = gen_data_flow_ops._random_shuffle_queue(
         component_types=dtypes, shapes=shapes, capacity=capacity,
         min_after_dequeue=min_after_dequeue, seed=seed1, seed2=seed2,
@@ -591,7 +623,7 @@ class RandomShuffleQueue(QueueBase):
 
 
 class FIFOQueue(QueueBase):
-  """A queue implementation that dequeues elements in first-in-first out order.
+  """A queue implementation that dequeues elements in first-in first-out order.
 
   See [`tf.QueueBase`](#QueueBase) for a description of the methods on
   this class.
@@ -1019,156 +1051,317 @@ def initialize_all_tables(name="init_all_tables"):
   return control_flow_ops.no_op(name=name)
 
 
-ops.NoGradient("LookupTableFind")
-ops.NoGradient("LookupTableInsert")
-ops.NoGradient("LookupTableSize")
-ops.NoGradient("HashTable")
-ops.NoGradient("InitializeTable")
-ops.NoGradient("InitializeTableFromTextFile")
-ops.NoGradient("MutableHashTable")
-ops.NoGradient("MutableHashTableOfTensors")
+ops.NotDifferentiable("LookupTableFind")
+ops.NotDifferentiable("LookupTableInsert")
+ops.NotDifferentiable("LookupTableSize")
+ops.NotDifferentiable("HashTable")
+ops.NotDifferentiable("InitializeTable")
+ops.NotDifferentiable("InitializeTableFromTextFile")
+ops.NotDifferentiable("MutableDenseHashTable")
+ops.NotDifferentiable("MutableHashTable")
+ops.NotDifferentiable("MutableHashTableOfTensors")
 
 
-ops.RegisterShape("QueueSize")(common_shapes.scalar_shape)
-ops.RegisterShape("Queue")(common_shapes.scalar_shape)
-ops.RegisterShape("FIFOQueue")(common_shapes.scalar_shape)
-ops.RegisterShape("PaddingFIFOQueue")(common_shapes.scalar_shape)
-ops.RegisterShape("RandomShuffleQueue")(common_shapes.scalar_shape)
-ops.RegisterShape("PriorityQueue")(common_shapes.scalar_shape)
+class ConditionalAccumulatorBase(object):
+  """A conditional accumulator for aggregating gradients.
+
+  Up-to-date gradients (i.e., time step at which gradient was computed is
+  equal to the accumulator's time step) are added to the accumulator.
+
+  Extraction of the average gradient is blocked until the required number of
+  gradients has been accumulated.
+  """
+
+  def __init__(self, dtype, shape, accumulator_ref):
+    """Creates a new ConditionalAccumulator.
+
+    Args:
+      dtype: Datatype of the accumulated gradients.
+      shape: Shape of the accumulated gradients.
+      accumulator_ref: A handle to the conditional accumulator, created by sub-
+        classes
+    """
+    self._dtype = dtype
+    if shape is not None:
+      self._shape = tensor_shape.TensorShape(shape)
+    else:
+      self._shape = tensor_shape.unknown_shape()
+    self._accumulator_ref = accumulator_ref
+    self._name = self._accumulator_ref.op.name.split("/")[-1]
+
+  @property
+  def accumulator_ref(self):
+    """The underlying accumulator reference."""
+    return self._accumulator_ref
+
+  @property
+  def name(self):
+    """The name of the underlying accumulator."""
+    return self._name
+
+  @property
+  def dtype(self):
+    """The datatype of the gradients accumulated by this accumulator."""
+    return self._dtype
+
+  def num_accumulated(self, name=None):
+    """Number of gradients that have currently been aggregated in accumulator.
+
+    Args:
+      name: Optional name for the operation.
+
+    Returns:
+      Number of accumulated gradients currently in accumulator.
+    """
+    if name is None:
+      name = "%s_NumAccumulated" % self._name
+    return gen_data_flow_ops.accumulator_num_accumulated(
+        self._accumulator_ref, name=name)
+
+  def set_global_step(self, new_global_step, name=None):
+    """Sets the global time step of the accumulator.
+
+    The operation logs a warning if we attempt to set to a time step that is
+    lower than the accumulator's own time step.
+
+    Args:
+      new_global_step: Value of new time step. Can be a variable or a constant
+      name: Optional name for the operation.
+
+    Returns:
+      Operation that sets the accumulator's time step.
+    """
+    return gen_data_flow_ops.accumulator_set_global_step(
+        self._accumulator_ref,
+        math_ops.to_int64(ops.convert_to_tensor(new_global_step)),
+        name=name)
 
 
-def _ScalarToVoidShape(op):
-  """Shape function for ops that take a scalar and produce no outputs."""
-  op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
-  return []
+class ConditionalAccumulator(ConditionalAccumulatorBase):
+  """A conditional accumulator for aggregating gradients.
 
-# NOTE(mrry): The following ops use higher-level information in the
-# Queue class to provide shape information.
-ops.RegisterShape("QueueDequeue")(common_shapes.unknown_shape)
-ops.RegisterShape("QueueDequeueMany")(common_shapes.unknown_shape)
-ops.RegisterShape("QueueDequeueUpTo")(common_shapes.unknown_shape)
-ops.RegisterShape("QueueEnqueue")(common_shapes.unknown_shape)
-ops.RegisterShape("QueueEnqueueMany")(common_shapes.unknown_shape)
-ops.RegisterShape("QueueClose")(_ScalarToVoidShape)
+  Up-to-date gradients (i.e., time step at which gradient was computed is
+  equal to the accumulator's time step) are added to the accumulator.
 
-ops.RegisterShape("Stack")(common_shapes.scalar_shape)
-ops.RegisterShape("StackPush")(common_shapes.unknown_shape)
-ops.RegisterShape("StackPop")(common_shapes.unknown_shape)
-ops.RegisterShape("StackClose")(_ScalarToVoidShape)
+  Extraction of the average gradient is blocked until the required number of
+  gradients has been accumulated.
+  """
 
-# NOTE(mrry): Uses higher-level information in the Barrier class to
-# provide shape information.
-ops.RegisterShape("BarrierReadySize")(common_shapes.scalar_shape)
-ops.RegisterShape("BarrierIncompleteSize")(common_shapes.scalar_shape)
-ops.RegisterShape("Barrier")(common_shapes.scalar_shape)
-ops.RegisterShape("BarrierTakeMany")(common_shapes.unknown_shape)
-ops.RegisterShape("BarrierClose")(_ScalarToVoidShape)
+  def __init__(self,
+               dtype,
+               shape=None,
+               shared_name=None,
+               name="conditional_accumulator"):
+    """Creates a new ConditionalAccumulator.
 
+    Args:
+      dtype: Datatype of the accumulated gradients.
+      shape: Shape of the accumulated gradients.
+      shared_name: Optional. If non-empty, this accumulator will be shared under
+        the given name across multiple sessions.
+      name: Optional name for the accumulator.
+    """
+    accumulator_ref = gen_data_flow_ops.conditional_accumulator(
+        dtype=dtype, shape=shape, shared_name=shared_name, name=name)
+    super(ConditionalAccumulator, self).__init__(dtype, shape, accumulator_ref)
 
-@ops.RegisterShape("BarrierInsertMany")
-def _BarrierInsertManyShape(op):
-  unused_handle_shape = op.inputs[0].get_shape().merge_with(
-      tensor_shape.scalar())
-  keys_shape = op.inputs[1].get_shape().with_rank(1)
-  values_shape = op.inputs[2].get_shape().with_rank_at_least(1)
-  keys_shape.assert_is_compatible_with(values_shape[0])
-  return []
+  def apply_grad(self, grad, local_step=0, name=None):
+    """Attempts to apply a gradient to the accumulator.
 
+    The attempt is silently dropped if the gradient is stale, i.e., local_step
+    is less than the accumulator's global time step.
 
-# NOTE(yuanbyu): We probably can do better here.
-ops.RegisterShape("GetSessionHandle")(common_shapes.scalar_shape)
-ops.RegisterShape("GetSessionTensor")(common_shapes.unknown_shape)
-ops.RegisterShape("DeleteSessionTensor")(_ScalarToVoidShape)
+    Args:
+      grad: The gradient tensor to be applied.
+      local_step: Time step at which the gradient was computed.
+      name: Optional name for the operation.
 
+    Returns:
+      The operation that (conditionally) applies a gradient to the accumulator.
 
-@ops.RegisterShape("DynamicPartition")
-def _DynamicPartitionShape(op):
-  """Shape function for data_flow_ops.dynamic_partition."""
-  data_shape = op.inputs[0].get_shape()
-  partitions_shape = op.inputs[1].get_shape()
-  # If we don't know the rank of partitions, we don't know anything
-  mid = partitions_shape.ndims
-  if mid is None:
-    result_shape = tensor_shape.unknown_shape()
-  else:
-    # data_shape must start with partitions_shape
-    partitions_shape.assert_is_compatible_with(data_shape[:mid])
-    # The partition shape is dynamic in the 0th dimension, and matches
-    # data_shape in the remaining dimensions.
-    result_shape = tensor_shape.TensorShape([None]).concatenate(
-        data_shape[mid:])
-  return [result_shape] * op.get_attr("num_partitions")
+    Raises:
+      ValueError: If grad is of the wrong shape
+    """
+    grad = ops.convert_to_tensor(grad, self._dtype)
+    grad.get_shape().assert_is_compatible_with(self._shape)
+    local_step = math_ops.to_int64(ops.convert_to_tensor(local_step))
+    return gen_data_flow_ops.accumulator_apply_gradient(
+        self._accumulator_ref, local_step=local_step, gradient=grad, name=name)
 
+  def take_grad(self, num_required, name=None):
+    """Attempts to extract the average gradient from the accumulator.
 
-@ops.RegisterShape("DynamicStitch")
-def _DynamicStitchShape(op):
-  """Shape function for data_flow_ops.dynamic_stitch."""
-  num_partitions = op.get_attr("N")
-  indices_shapes = [t.get_shape() for t in op.inputs[0:num_partitions]]
-  data_shapes = [t.get_shape() for t in op.inputs[num_partitions:]]
-  output_shape = tensor_shape.unknown_shape()
-  extra_shape = tensor_shape.TensorShape(None)
-  for indices_shape, data_shape in zip(indices_shapes, data_shapes):
-    indices_ndims = indices_shape.ndims
-    if indices_ndims is not None:
-      # Assert that data_shape starts with indices_shape
-      indices_shape.merge_with(data_shape[:indices_ndims])
-      # The rest belongs to output
-      extra_shape = extra_shape.merge_with(data_shape[indices_ndims:])
-  return [tensor_shape.TensorShape([None]).concatenate(extra_shape)]
+    The operation blocks until sufficient number of gradients have been
+    successfully applied to the accumulator.
+
+    Once successful, the following actions are also triggered:
+    - Counter of accumulated gradients is reset to 0.
+    - Aggregated gradient is reset to 0 tensor.
+    - Accumulator's internal time step is incremented by 1.
+
+    Args:
+      num_required: Number of gradients that needs to have been aggregated
+      name: Optional name for the operation
+
+    Returns:
+      A tensor holding the value of the average gradient.
+
+    Raises:
+      InvalidArgumentError: If num_required < 1
+    """
+    return gen_data_flow_ops.accumulator_take_gradient(
+        self._accumulator_ref, num_required, dtype=self._dtype, name=name)
 
 
-@ops.RegisterShape("LookupTableFind")
-def _LookupTableFindShape(op):
-  """Shape function for data_flow_ops._lookup_table_find."""
-  op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
-  return [tensor_shape.unknown_shape()]
+class SparseConditionalAccumulator(ConditionalAccumulatorBase):
+  """A conditional accumulator for aggregating sparse gradients.
 
+  Sparse gradients are represented by IndexedSlices.
 
-@ops.RegisterShape("LookupTableInsert")
-def _LookupTableInsertShape(op):
-  """Shape function for data_flow_ops._lookup_table_insert."""
-  op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
-  return []
+  Up-to-date gradients (i.e., time step at which gradient was computed is
+  equal to the accumulator's time step) are added to the accumulator.
 
+  Extraction of the average gradient is blocked until the required number of
+  gradients has been accumulated.
 
-@ops.RegisterShape("LookupTableSize")
-def _LookupTableSizeShape(op):
-  """Shape function for data_flow_ops._lookup_table_find."""
-  op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
-  return [tensor_shape.scalar()]
+  Args:
+    dtype: Datatype of the accumulated gradients.
+    shape: Shape of the accumulated gradients.
+    shared_name: Optional. If non-empty, this accumulator will be shared under
+      the given name across multiple sessions.
+    name: Optional name for the accumulator.
+  """
 
+  def __init__(self,
+               dtype,
+               shape=None,
+               shared_name=None,
+               name="sparse_conditional_accumulator"):
+    accumulator_ref = gen_data_flow_ops.sparse_conditional_accumulator(
+        dtype=dtype, shape=shape, shared_name=shared_name, name=name)
+    super(SparseConditionalAccumulator,
+          self).__init__(dtype, shape, accumulator_ref)
 
-@ops.RegisterShape("LookupTableExport")
-def _LookupTableExportShape(op):
-  """Shape function for data_flow_ops._lookup_table_export_values."""
-  op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
-  keys_shape = tensor_shape.vector(None)
-  values_shape = tensor_shape.unknown_shape()
-  return [keys_shape, values_shape]
+  def apply_indexed_slices_grad(self, grad, local_step=0, name=None):
+    """Attempts to apply a gradient to the accumulator.
 
+    The attempt is silently dropped if the gradient is stale, i.e., local_step
+    is less than the accumulator's global time step.
 
-@ops.RegisterShape("HashTable")
-@ops.RegisterShape("MutableHashTable")
-@ops.RegisterShape("MutableHashTableOfTensors")
-def _HashTableShape(_):
-  """Shape function for data_flow_ops._hash_table."""
-  return [tensor_shape.scalar()]
+    Args:
+      grad: The gradient IndexedSlices to be applied.
+      local_step: Time step at which the gradient was computed.
+      name: Optional name for the operation.
 
+    Returns:
+      The operation that (conditionally) applies a gradient to the accumulator.
 
-@ops.RegisterShape("InitializeTable")
-def _InitializeLookupTableShape(op):
-  """Shape function for data_flow_ops._initialize_table."""
-  op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
-  keys_shape = op.inputs[1].get_shape().with_rank(1)
-  op.inputs[2].get_shape().merge_with(keys_shape)
-  return []
+    Raises:
+      InvalidArgumentError: If grad is of the wrong shape
+    """
+    return self.apply_grad(
+        grad_indices=grad.indices,
+        grad_values=grad.values,
+        grad_shape=grad.dense_shape,
+        local_step=local_step,
+        name=name)
 
+  def apply_grad(self,
+                 grad_indices,
+                 grad_values,
+                 grad_shape=None,
+                 local_step=0,
+                 name=None):
+    """Attempts to apply a sparse gradient to the accumulator.
 
-@ops.RegisterShape("InitializeTableFromTextFile")
-def _InitializeTableFromTextFileShape(op):
-  """Shape function for lookup_ops._initialize_table_from_text_file."""
-  unused_table_shape = op.inputs[0].get_shape().merge_with(tensor_shape.scalar(
-  ))
-  unused_filename = op.inputs[1].get_shape().merge_with(tensor_shape.scalar())
-  return []
+    The attempt is silently dropped if the gradient is stale, i.e., local_step
+    is less than the accumulator's global time step.
+
+    A sparse gradient is represented by its indices, values and possibly empty
+    or None shape. Indices must be a vector representing the locations of
+    non-zero entries in the tensor. Values are the non-zero slices of the
+    gradient, and must have the same first dimension as indices, i.e., the nnz
+    represented by indices and values must be consistent. Shape, if not empty or
+    None, must be consistent with the accumulator's shape (if also provided).
+
+    Example:
+      A tensor [[0, 0], [0. 1], [2, 3]] can be represented
+        indices: [1,2]
+        values: [[0,1],[2,3]]
+        shape: [3, 2]
+
+    Args:
+      grad_indices: Indices of the sparse gradient to be applied.
+      grad_values: Values of the sparse gradient to be applied.
+      grad_shape: Shape of the sparse gradient to be applied.
+      local_step: Time step at which the gradient was computed.
+      name: Optional name for the operation.
+
+    Returns:
+      The operation that (conditionally) applies a gradient to the accumulator.
+
+    Raises:
+      InvalidArgumentError: If grad is of the wrong shape
+    """
+    local_step = math_ops.to_int64(ops.convert_to_tensor(local_step))
+    return gen_data_flow_ops.sparse_accumulator_apply_gradient(
+        self._accumulator_ref,
+        local_step=local_step,
+        gradient_indices=math_ops.to_int64(grad_indices),
+        gradient_values=grad_values,
+        gradient_shape=math_ops.to_int64([] if grad_shape is None else
+                                         grad_shape),
+        has_known_shape=(grad_shape is not None),
+        name=name)
+
+  def take_grad(self, num_required, name=None):
+    """Attempts to extract the average gradient from the accumulator.
+
+    The operation blocks until sufficient number of gradients have been
+    successfully applied to the accumulator.
+
+    Once successful, the following actions are also triggered:
+    - Counter of accumulated gradients is reset to 0.
+    - Aggregated gradient is reset to 0 tensor.
+    - Accumulator's internal time step is incremented by 1.
+
+    Args:
+      num_required: Number of gradients that needs to have been aggregated
+      name: Optional name for the operation
+
+    Returns:
+      A tuple of indices, values, and shape representing the average gradient.
+
+    Raises:
+      InvalidArgumentError: If num_required < 1
+    """
+    return gen_data_flow_ops.sparse_accumulator_take_gradient(
+        self._accumulator_ref, num_required, dtype=self._dtype, name=name)
+
+  def take_indexed_slices_grad(self, num_required, name=None):
+    """Attempts to extract the average gradient from the accumulator.
+
+    The operation blocks until sufficient number of gradients have been
+    successfully applied to the accumulator.
+
+    Once successful, the following actions are also triggered:
+    - Counter of accumulated gradients is reset to 0.
+    - Aggregated gradient is reset to 0 tensor.
+    - Accumulator's internal time step is incremented by 1.
+
+    Args:
+      num_required: Number of gradients that needs to have been aggregated
+      name: Optional name for the operation
+
+    Returns:
+      An IndexedSlices holding the value of the average gradient.
+
+    Raises:
+      InvalidArgumentError: If num_required < 1
+    """
+    return_val = gen_data_flow_ops.sparse_accumulator_take_gradient(
+        self._accumulator_ref, num_required, dtype=self._dtype, name=name)
+    return ops.IndexedSlices(
+        indices=return_val.indices,
+        values=return_val.values,
+        dense_shape=return_val.shape)

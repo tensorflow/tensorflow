@@ -54,10 +54,15 @@ Device* DeviceSet::FindDeviceByName(const string& name) const {
 int DeviceSet::DeviceTypeOrder(const DeviceType& d) {
   if (StringPiece(d.type()) == DEVICE_CPU) {
     return 3;
-  } else if (StringPiece(d.type()) == DEVICE_GPU) {
+  } else if (StringPiece(d.type()) == DEVICE_GPU ||
+             StringPiece(d.type()) == DEVICE_SYCL) {
     return 2;
   } else {
-    return 1;
+    // Non-CPU/GPU devices are never prioritized over CPU and GPU, and
+    // must be explicitly selected.  This is to prevent surprising
+    // placements that cause a lot of cross-device communication
+    // between the host CPU device and other devices.
+    return 10;
   }
 }
 
@@ -71,9 +76,9 @@ std::vector<DeviceType> DeviceSet::PrioritizedDeviceTypeList() const {
   std::vector<DeviceType> result;
   std::set<string> seen;
   for (Device* d : devices_) {
-    auto t = d->device_type();
+    const auto& t = d->device_type();
     if (seen.insert(t).second) {
-      result.emplace_back(DeviceType(t));
+      result.emplace_back(t);
     }
   }
   std::sort(result.begin(), result.end(), DeviceTypeComparator);

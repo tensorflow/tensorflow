@@ -157,7 +157,7 @@ NSString* RunInferenceOnImage() {
   LOG(INFO) << "Creating session.";
   tensorflow::Status s = session->Create(tensorflow_graph);
   if (!s.ok()) {
-    LOG(ERROR) << "Could not create Tensorflow Graph: " << s;
+    LOG(ERROR) << "Could not create TensorFlow Graph: " << s;
     return @"";
   }
 
@@ -239,7 +239,7 @@ NSString* RunInferenceOnImage() {
     const float confidence = result.first;
     const int index = result.second;
 
-    ss << index << " " << confidence << " ";
+    ss << index << " " << confidence << "  ";
 
     // Write out the result as a string
     if (index < label_strings.size()) {

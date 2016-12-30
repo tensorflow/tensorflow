@@ -36,7 +36,7 @@ def verify_tensor_all_finite(t, msg, name=None):
   Returns:
     Same tensor as `t`.
   """
-  with ops.op_scope([t], name, "VerifyFinite") as name:
+  with ops.name_scope(name, "VerifyFinite", [t]) as name:
     t = ops.convert_to_tensor(t, name="t")
     with ops.colocate_with(t):
       verify_input = array_ops.check_numerics(t, message=msg)

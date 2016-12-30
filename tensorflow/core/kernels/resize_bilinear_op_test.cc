@@ -95,9 +95,10 @@ TEST_F(ResizeBilinearOpTest, TestBilinear2x2To3x3) {
 
   // clang-format off
   test::FillValues<float>(&expected,
-    {1,     5.0/3,   2,
-     7.0/3, 3,       10.0/3,
-     3,     11.0/3,  4});
+    {1,        5.0f / 3,  2,
+     7.0f / 3, 3,         10.0f / 3,
+     3,        11.0f / 3, 4});
+
 
   // clang-format on
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
@@ -206,9 +207,9 @@ TEST_F(ResizeBilinearOpTest, TestBilinear4x4To3x3) {
 
   // clang-format off
   test::FillValues<float>(&expected,
-    {1,       7.0/3, 11.0/3,
-     19.0/3, 23.0/3, 27.0/3,
-     35.0/3, 39.0/3, 43.0/3});
+    {1,        7.0f/3, 11.0f/3,
+     19.0f/3, 23.0f/3, 27.0f/3,
+     35.0f/3, 39.0f/3, 43.0f/3});
 
   // clang-format on
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
@@ -251,8 +252,8 @@ TEST_F(ResizeBilinearOpTest, TestBilinear2x2To3x3Batch2) {
   Tensor expected(allocator(), DT_FLOAT, TensorShape({2, 3, 3, 1}));
   // clang-format off
   test::FillValues<float>(&expected,
-    {1, 5.0/3, 2, 7.0/3, 3, 10.0/3, 3, 11.0/3, 4,
-     1, 5.0/3, 2, 7.0/3, 3, 10.0/3, 3, 11.0/3, 4
+    {1, 5.0f/3, 2, 7.0f/3, 3, 10.0f/3, 3, 11.0f/3, 4,
+     1, 5.0f/3, 2, 7.0f/3, 3, 10.0f/3, 3, 11.0f/3, 4
     });
   // clang-format on
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
@@ -268,15 +269,15 @@ TEST_F(ResizeBilinearOpTest, TestBilinear2x2x2To3x3x2) {
   // clang-format off
   test::FillValues<float>(&expected,
     {
-      1,      -1,
-      5.0/3,  -5.0/3,
-      2,      -2,
-      7.0/3,  -7.0/3,
-      3,      -3,
-      10.0/3, -10.0/3,
-      3,      -3,
-      11.0/3, -11.0/3,
-      4,      -4
+      1,       -1,
+      5.0f/3,  -5.0f/3,
+      2,       -2,
+      7.0f/3,  -7.0f/3,
+      3,       -3,
+      10.0f/3, -10.0f/3,
+      3,       -3,
+      11.0f/3, -11.0f/3,
+      4,       -4
     });
   // clang-format on
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
@@ -301,21 +302,41 @@ TEST_F(ResizeBilinearOpTest, TestBilinear2x2To4x4) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
+TEST_F(ResizeBilinearOpTest, TestInvalidOutputSize) {
+  AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
+  AddInputFromArray<int32>(TensorShape({2}), {0, 0});
+  Status s = RunOpKernel();
+  EXPECT_TRUE(
+      StringPiece(s.ToString())
+          .contains("Invalid argument: output dimensions must be positive"))
+      << s;
+}
+
 TEST_F(ResizeBilinearOpTest, TestInvalidInputShape) {
   AddInputFromArray<float>(TensorShape({2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({2}), {4, 4});
-  ASSERT_FALSE(RunOpKernel().ok());
+  Status s = RunOpKernel();
+  EXPECT_TRUE(StringPiece(s.ToString())
+                  .contains("Invalid argument: input must be 4-dimensional"))
+      << s;
 }
 
 TEST_F(ResizeBilinearOpTest, TestInvalidSizeDim) {
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({2, 1}), {4, 4});
-  ASSERT_FALSE(RunOpKernel().ok());
+  Status s = RunOpKernel();
+  EXPECT_TRUE(StringPiece(s.ToString())
+                  .contains("Invalid argument: shape_t must be 1-dimensional"))
+      << s;
 }
+
 TEST_F(ResizeBilinearOpTest, TestInvalidSizeElements) {
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({3}), {4, 4, 1});
-  ASSERT_FALSE(RunOpKernel().ok());
+  Status s = RunOpKernel();
+  EXPECT_TRUE(StringPiece(s.ToString())
+                  .contains("Invalid argument: shape_t must have two elements"))
+      << s;
 }
 
 }  // namespace tensorflow

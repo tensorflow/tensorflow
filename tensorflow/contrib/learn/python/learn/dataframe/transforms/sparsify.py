@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,12 +24,12 @@ import numpy as np
 from tensorflow.contrib.learn.python.learn.dataframe import transform
 
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 
 
-class Sparsify(transform.Transform):
+class Sparsify(transform.TensorFlowTransform):
   """Transforms Dense to Sparse Tensor."""
 
   def __init__(self, strip_value):
@@ -53,12 +52,13 @@ class Sparsify(transform.Transform):
   def _output_names(self):
     return "output",
 
-  def _apply_transform(self, input_tensors):
+  def _apply_transform(self, input_tensors, **kwargs):
     """Applies the transformation to the `transform_input`.
 
     Args:
-        input_tensors: a list of Tensors representing the input to
+      input_tensors: a list of Tensors representing the input to
         the Transform.
+      **kwargs: Additional keyword arguments, unused here.
 
     Returns:
         A namedtuple of Tensors representing the transformed output.
@@ -82,4 +82,5 @@ class Sparsify(transform.Transform):
     shape = math_ops.cast(array_ops.shape(d), dtypes.int64)
 
     # pylint: disable=not-callable
-    return self.return_type(ops.SparseTensor(sparse_indices, values, shape))
+    return self.return_type(
+        sparse_tensor.SparseTensor(sparse_indices, values, shape))

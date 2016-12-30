@@ -715,7 +715,7 @@ struct gemm_pack_rhs<
                   std::min<Index>(peeled_k - c * patch_rows * patch_depth -
                                       r * patch_depth + startDepth,
                                   patch_depth);
-              eigen_assert(max_depth % packet_size == 0);
+              eigen_assert((max_depth - startDepth) % packet_size == 0);
               for (Index d = startDepth; d < max_depth; d += packet_size) {
                 eigen_assert(k < peeled_k);
                 PacketBlock<Packet, 4> kernel;
@@ -991,6 +991,9 @@ EIGEN_DEVICE_FUNC
       out_width = numext::ceil(InputCols / static_cast<float>(col_stride));
       break;
     default:
+      // Initialize unused variables to avoid a compiler warning
+      out_height = 0;
+      out_width  = 0;
       eigen_assert(false && "unexpected padding");
   }
 

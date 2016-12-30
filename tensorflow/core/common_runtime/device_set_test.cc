@@ -68,13 +68,23 @@ TEST_F(DeviceSetTest, PrioritizedDeviceTypeList) {
       (std::vector<DeviceType>{DeviceType(DEVICE_GPU), DeviceType(DEVICE_CPU)}),
       types());
 
+  AddDevice("SYCL", "/job:a/replica:0/task:0/device:sycl:0");
+  EXPECT_TRUE((types()[0] == DeviceType(DEVICE_SYCL) ||
+               types()[0] == DeviceType(DEVICE_GPU)));
+  EXPECT_TRUE((types()[1] == DeviceType(DEVICE_SYCL) ||
+               types()[1] == DeviceType(DEVICE_GPU)));
+  EXPECT_TRUE(types()[2] == DeviceType(DEVICE_CPU));
+
   AddDevice("T1", "/job:a/replica:0/task:0/device:T1:0");
   AddDevice("T1", "/job:a/replica:0/task:0/device:T1:1");
   AddDevice("T2", "/job:a/replica:0/task:0/device:T2:0");
-  EXPECT_EQ(
-      (std::vector<DeviceType>{DeviceType("T1"), DeviceType("T2"),
-                               DeviceType(DEVICE_GPU), DeviceType(DEVICE_CPU)}),
-      types());
+  EXPECT_TRUE((types()[0] == DeviceType(DEVICE_SYCL) ||
+               types()[0] == DeviceType(DEVICE_GPU)));
+  EXPECT_TRUE((types()[1] == DeviceType(DEVICE_SYCL) ||
+               types()[1] == DeviceType(DEVICE_GPU)));
+  EXPECT_TRUE(types()[2] == DeviceType(DEVICE_CPU));
+  EXPECT_TRUE(types()[3] == DeviceType("T1"));
+  EXPECT_TRUE(types()[4] == DeviceType("T2"));
 }
 
 }  // namespace

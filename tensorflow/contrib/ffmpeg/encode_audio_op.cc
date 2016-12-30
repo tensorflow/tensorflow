@@ -16,6 +16,7 @@
 #include <limits>
 
 #include "tensorflow/contrib/ffmpeg/ffmpeg_lib.h"
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
@@ -24,8 +25,7 @@ namespace ffmpeg {
 
 class EncodeAudioOp : public OpKernel {
  public:
-  explicit EncodeAudioOp(OpKernelConstruction* context)
-      : OpKernel(context) {
+  explicit EncodeAudioOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("file_format", &file_format_));
     file_format_ = str_util::Lowercase(file_format_);
     OP_REQUIRES(context, file_format_ == "wav",
@@ -35,15 +35,15 @@ class EncodeAudioOp : public OpKernel {
         context, context->GetAttr("samples_per_second", &samples_per_second_));
     OP_REQUIRES(context, samples_per_second_ > 0,
                 errors::InvalidArgument("samples_per_second must be > 0."));
-    OP_REQUIRES_OK(
-        context, context->GetAttr("bits_per_second", &bits_per_second_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("bits_per_second", &bits_per_second_));
   }
 
   void Compute(OpKernelContext* context) override {
     // Get and verify the input data.
-    OP_REQUIRES(context, context->num_inputs() == 1,
-                errors::InvalidArgument(
-                    "EncodeAudio requires exactly one input."));
+    OP_REQUIRES(
+        context, context->num_inputs() == 1,
+        errors::InvalidArgument("EncodeAudio requires exactly one input."));
     const Tensor& contents = context->input(0);
     OP_REQUIRES(context, TensorShapeUtils::IsMatrix(contents.shape()),
                 errors::InvalidArgument(
@@ -88,6 +88,7 @@ REGISTER_OP("EncodeAudio")
     .Attr("file_format: string")
     .Attr("samples_per_second: int")
     .Attr("bits_per_second: int = 192000")
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 Processes a `Tensor` containing sampled audio with the number of channels
 and length of the audio specified by the dimensions of the `Tensor`. The

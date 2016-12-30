@@ -6,7 +6,7 @@ Returns a function that applies the sum of multiple regularizers.
 
 
 *  <b>`regularizer_list`</b>: A list of regularizers to apply.
-*  <b>`scope`</b>: An optional op_scope name
+*  <b>`scope`</b>: An optional scope name
 
 ##### Returns:
 

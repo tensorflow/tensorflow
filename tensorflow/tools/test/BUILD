@@ -20,7 +20,11 @@ py_library(
         "system_info_lib.py",
     ],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow:tensorflow_py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:client",
+        "//tensorflow/python:errors",
+    ],
 )
 
 py_binary(
@@ -101,4 +105,5 @@ py_test(
     srcs = ["check_futures_test.py"],
     data = ["//tensorflow:all_opensource_files"],
     srcs_version = "PY2AND3",
+    deps = ["@six_archive//:six"],
 )

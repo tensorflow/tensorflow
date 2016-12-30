@@ -53,8 +53,7 @@ the session constructor.
 
 
 *  <b>`target`</b>: (Optional.) The execution engine to connect to.
-    Defaults to using an in-process engine. At present, no value
-    other than the empty string is supported.
+    Defaults to using an in-process engine.
 *  <b>`graph`</b>: (Optional.) The `Graph` to be launched (described above).
 *  <b>`config`</b>: (Optional) `ConfigProto` proto used to configure the session.
 

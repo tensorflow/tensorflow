@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy
 import tensorflow as tf
 
 
@@ -253,10 +254,13 @@ class SparseCrossOpTest(tf.test.TestCase):
     Cross for the corresponding batch should be empty.
     """
     op = tf.contrib.layers.sparse_feature_cross([
-        self._sparse_tensor(
-            [['batch1-FC1-F1', 'batch1-FC1-F2']], 2), self._sparse_tensor(
-                [['batch1-FC2-F1'], ['batch2-FC2-F1']], 2), self._sparse_tensor(
-                    [['batch1-FC3-F1', 'batch1-FC3-F2']], 2)
+        self._sparse_tensor([
+            ['batch1-FC1-F1', 'batch1-FC1-F2']
+        ], 2), self._sparse_tensor([
+            ['batch1-FC2-F1'], ['batch2-FC2-F1']
+        ], 2), self._sparse_tensor([
+            ['batch1-FC3-F1', 'batch1-FC3-F2']
+        ], 2)
     ])
     expected_out = self._sparse_tensor([[
         'batch1-FC1-F1_X_batch1-FC2-F1_X_batch1-FC3-F1',
@@ -298,6 +302,26 @@ class SparseCrossOpTest(tf.test.TestCase):
     with self.test_session() as sess:
       self._assert_sparse_tensor_equals(expected_out, sess.run(op))
 
+  def test_hashed_output_zero_bucket_v2(self):
+    """Tests a simple scenario.
+    """
+    op = tf.contrib.layers.sparse_feature_cross(
+        [
+            self._sparse_tensor([
+                ['batch1-FC1-F1']
+            ]), self._sparse_tensor([
+                ['batch1-FC2-F1']
+            ]), self._sparse_tensor([
+                ['batch1-FC3-F1']
+            ])
+        ],
+        hashed_output=True,
+        hash_key=tf.contrib.layers.SPARSE_FEATURE_CROSS_DEFAULT_HASH_KEY)
+    # Check actual hashed output to prevent unintentional hashing changes.
+    expected_out = self._sparse_tensor([[1971693436396284976]])
+    with self.test_session() as sess:
+      self._assert_sparse_tensor_equals(expected_out, sess.run(op))
+
   # TODO(sibyl-Aix6ihai): Add benchmark to compare Hashed vs Non-hashed.
   def test_hashed_output(self):
     """Tests a simple scenario.
@@ -318,6 +342,56 @@ class SparseCrossOpTest(tf.test.TestCase):
     expected_out = self._sparse_tensor([[74]])
     with self.test_session() as sess:
       self._assert_sparse_tensor_equals(expected_out, sess.run(op))
+
+  def test_hashed_output_v2(self):
+    """Tests a simple scenario.
+    """
+    op = tf.contrib.layers.sparse_feature_cross(
+        [
+            self._sparse_tensor([
+                ['batch1-FC1-F1']
+            ]), self._sparse_tensor([
+                ['batch1-FC2-F1']
+            ]), self._sparse_tensor([
+                ['batch1-FC3-F1']
+            ])
+        ],
+        hashed_output=True,
+        num_buckets=100,
+        hash_key=tf.contrib.layers.SPARSE_FEATURE_CROSS_DEFAULT_HASH_KEY)
+    # Check actual hashed output to prevent unintentional hashing changes.
+    expected_out = self._sparse_tensor([[83]])
+    with self.test_session() as sess:
+      self._assert_sparse_tensor_equals(expected_out, sess.run(op))
+
+  def test_hashed_output_v1_has_collision(self):
+    """Tests the old version of the fingerprint concatenation has collisions.
+    """
+    # The last 10 bits of 359 and 1024+359 are identical.
+    # As a result, all the crosses collide.
+    t1 = tf.constant([[359], [359 + 1024]])
+    t2 = tf.constant([list(range(10)), list(range(10))])
+    cross = tf.contrib.layers.sparse_feature_cross(
+        [t2, t1], hashed_output=True, num_buckets=1024)
+    cross_dense = tf.sparse_tensor_to_dense(cross)
+    with tf.Session():
+      values = cross_dense.eval()
+      self.assertTrue(numpy.equal(values[0], values[1]).all())
+
+  def test_hashed_output_v2_has_no_collision(self):
+    """Tests the new version of the fingerprint concatenation has no collisions.
+    """
+    # Although the last 10 bits of 359 and 1024+359 are identical.
+    # As a result, all the crosses shouldn't collide.
+    t1 = tf.constant([[359], [359 + 1024]])
+    t2 = tf.constant([list(range(10)), list(range(10))])
+    cross = tf.contrib.layers.sparse_feature_cross(
+        [t2, t1], hashed_output=True, num_buckets=1024,
+        hash_key=tf.contrib.layers.SPARSE_FEATURE_CROSS_DEFAULT_HASH_KEY)
+    cross_dense = tf.sparse_tensor_to_dense(cross)
+    with tf.Session():
+      values = cross_dense.eval()
+      self.assertTrue(numpy.not_equal(values[0], values[1]).all())
 
   def test_hashed_3x1x2(self):
     """Tests 3x1x2 permutation with hashed output.
@@ -346,12 +420,12 @@ class SparseCrossOpTest(tf.test.TestCase):
     self.assertEquals(0, sp.indices.size)
     self.assertEquals(0, sp.values.size)
     # TODO(zakaria): check if we can ignore the first dim of the shape.
-    self.assertEquals(0, sp.shape[1])
+    self.assertEquals(0, sp.dense_shape[1])
 
   def _assert_sparse_tensor_equals(self, sp1, sp2):
     self.assertAllEqual(sp1.indices.eval(), sp2.indices)
     self.assertAllEqual(sp1.values.eval(), sp2.values)
-    self.assertAllEqual(sp1.shape.eval(), sp2.shape)
+    self.assertAllEqual(sp1.dense_shape.eval(), sp2.dense_shape)
 
   def _sparse_tensor(self, data, batch_size=-1):
     """Generates a SparseTensor.

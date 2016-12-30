@@ -284,7 +284,8 @@ class DummyDevice : public DeviceBase {
 TEST_F(OpKernelTest, SaveTempFalse) {
   Env* env = Env::Default();
   OpKernelContext::Params params;
-  params.device = new DummyDevice(env, false);
+  params.record_tensor_accesses = false;
+  params.device = new DummyDevice(env, params.record_tensor_accesses);
   Status status;
   std::unique_ptr<OpKernel> op(
       CreateOpKernel(DEVICE_CPU, params.device, cpu_allocator(),
@@ -308,7 +309,8 @@ TEST_F(OpKernelTest, SaveTempFalse) {
 TEST_F(OpKernelTest, SaveTempTrue) {
   Env* env = Env::Default();
   OpKernelContext::Params params;
-  params.device = new DummyDevice(env, true);
+  params.record_tensor_accesses = true;
+  params.device = new DummyDevice(env, params.record_tensor_accesses);
   Status status;
   std::unique_ptr<OpKernel> op(
       CreateOpKernel(DEVICE_CPU, params.device, cpu_allocator(),
@@ -379,7 +381,7 @@ class OpKernelBuilderTest : public ::testing::Test {
     DeviceTypeVector devices;
     TF_EXPECT_OK(SupportedDeviceTypesForNode(DeviceTypes(), def, &devices));
     bool found = false;
-    for (DeviceType dt : devices) {
+    for (const DeviceType& dt : devices) {
       if (dt == device_type) {
         found = true;
       }
@@ -412,7 +414,7 @@ class OpKernelBuilderTest : public ::testing::Test {
       DeviceTypeVector devices;
       if (errors::IsNotFound(status)) {
         TF_EXPECT_OK(SupportedDeviceTypesForNode(DeviceTypes(), def, &devices));
-        for (DeviceType dt : devices) {
+        for (const DeviceType& dt : devices) {
           EXPECT_NE(dt, device_type);
         }
       } else {

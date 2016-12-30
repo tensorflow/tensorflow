@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
@@ -29,6 +30,20 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
+
+REGISTER_OP("OneInput").Input("x: float");
+
+REGISTER_OP("OneOutput").Output("y: float");
+
+REGISTER_OP("OneInputTwoOutputs")
+    .Input("x: float")
+    .Output("y: float")
+    .Output("z: float");
+
+REGISTER_OP("TwoInputsOneOutput")
+    .Input("x: float")
+    .Input("y: float")
+    .Output("z: float");
 
 class GraphTest : public ::testing::Test {
  protected:
@@ -68,6 +83,22 @@ class GraphTest : public ::testing::Test {
   Node* AddNodeWithName(const string& name) {
     Node* node;
     TF_CHECK_OK(NodeBuilder(name, "NoOp").Finalize(&graph_, &node));
+    return node;
+  }
+
+  Node* FromNodeDef(const string& name, const string& node_type,
+                    int num_inputs) {
+    auto builder = NodeDefBuilder(name, node_type);
+    for (int i = 0; i < num_inputs; ++i) {
+      builder = builder.Input(strings::StrCat("node_", i), i, DT_FLOAT);
+    }
+
+    NodeDef node_def;
+    TF_CHECK_OK(builder.Finalize(&node_def));
+
+    Status s;
+    Node* node = graph_.AddNode(node_def, &s);
+    TF_CHECK_OK(s);
     return node;
   }
 
@@ -112,9 +143,9 @@ TEST_F(GraphTest, RemoveThenAdd) {
 }
 
 TEST_F(GraphTest, InNodesAndOutNodes) {
-  Node* a = AddNodeWithName("A");
+  Node* a = FromNodeDef("A", "OneOutput", 0);
   Node* b = AddNodeWithName("B");
-  Node* c = AddNodeWithName("C");
+  Node* c = FromNodeDef("C", "OneInput", 1);
   graph_.RemoveNode(b);
   Node* d = AddNodeWithName("D");
 
@@ -147,11 +178,75 @@ TEST_F(GraphTest, InNodesAndOutNodes) {
   VerifyGraphStats();
 }
 
+TEST_F(GraphTest, NodeByIndex) {
+  Node* a = FromNodeDef("A", "OneOutput", 0);
+  Node* c = FromNodeDef("C", "OneInput", 1);
+  graph_.AddEdge(a, 0, c, 0);
+
+  // Ask for 'a' from 'c' by index.
+  const Node* a_copy;
+  TF_ASSERT_OK(c->input_node(0, &a_copy));
+  EXPECT_EQ(a, a_copy);
+
+  const Edge* e;
+  TF_ASSERT_OK(c->input_edge(0, &e));
+  EXPECT_EQ(0, e->dst_input());
+  EXPECT_EQ(a, e->src());
+  EXPECT_EQ(c, e->dst());
+  EXPECT_EQ(0, e->src_output());
+
+  Node* t = FromNodeDef("T", "TwoInputsOneOutput", 2);
+  graph_.AddEdge(a, 0, t, 0);
+  // Weird self edge
+  graph_.AddEdge(t, 0, t, 1);
+
+  const Node* t_0;
+  const Node* t_1;
+  TF_ASSERT_OK(t->input_node(0, &t_0));
+  EXPECT_EQ(a, t_0);
+  TF_ASSERT_OK(t->input_node(1, &t_1));
+  EXPECT_EQ(t, t_1);
+
+  TF_ASSERT_OK(t->input_edge(1, &e));
+  EXPECT_EQ(1, e->dst_input());
+  EXPECT_EQ(t, e->src());
+
+  // Check out of bounds access
+  EXPECT_FALSE(c->input_node(1, &a_copy).ok());
+  EXPECT_FALSE(c->input_node(-1, &a_copy).ok());
+
+  graph_.RemoveNode(a);
+
+  // 'c's input_node entry should be invalidated.
+  Status s = c->input_node(0, &a_copy);
+  EXPECT_FALSE(s.ok());
+
+  // Add two new nodes.
+  Node* a_new = FromNodeDef("A_new", "OneOutput", 0);
+  Node* b_new = FromNodeDef("B_new", "OneOutput", 0);
+
+  // Connect one up to c.
+  graph_.AddEdge(a_new, 0, c, 0);
+  const Edge* a_new_c_edge;
+  TF_ASSERT_OK(c->input_edge(0, &a_new_c_edge));
+
+  // Connect up the second edge
+  graph_.AddEdge(b_new, 0, c, 0);
+  const Edge* b_new_c_edge;
+  TF_ASSERT_OK(c->input_edge(0, &b_new_c_edge));
+
+  // Now remove the old one
+  graph_.RemoveEdge(a_new_c_edge);
+
+  // Check that the second edge can still be retrieved
+  TF_ASSERT_OK(c->input_edge(0, &b_new_c_edge));
+}
+
 TEST_F(GraphTest, NodeIteration) {
   // Set up the graph with some holes due to removals.
-  Node* a = AddNodeWithName("A");
+  Node* a = FromNodeDef("A", "OneOutput", 0);
   Node* b = AddNodeWithName("B");
-  Node* c = AddNodeWithName("C");
+  Node* c = FromNodeDef("C", "OneInput", 1);
   graph_.RemoveNode(b);
   Node* d = AddNodeWithName("D");
   const Edge* source_to_a = graph_.AddControlEdge(graph_.source_node(), a);
@@ -245,8 +340,8 @@ static string EdgeIter(const Graph& g) {
 TEST_F(GraphTest, EdgeIteration) {
   EXPECT_EQ("0->1;", EdgeIter(graph_));
 
-  Node* a = AddNodeWithName("A");
-  Node* b = AddNodeWithName("B");
+  Node* a = FromNodeDef("A", "OneInputTwoOutputs", 1);
+  Node* b = FromNodeDef("B", "OneInput", 1);
   EXPECT_EQ("0->1;", EdgeIter(graph_));  // Since a,b are currently disconnected
 
   graph_.AddEdge(a, 0, b, 0);

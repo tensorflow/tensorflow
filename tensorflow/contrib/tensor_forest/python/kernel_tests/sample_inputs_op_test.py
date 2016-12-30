@@ -19,7 +19,7 @@ from __future__ import print_function
 
 import tensorflow as tf
 
-from tensorflow.contrib.tensor_forest.python.ops import training_ops
+from tensorflow.contrib.tensor_forest.python.ops import tensor_forest_ops
 
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
@@ -34,16 +34,18 @@ class SampleInputsTest(test_util.TensorFlowTestCase):
     self.leaves = [1, 1, 2, 2]
     self.split_features = [[-1, -1, -1], [1, 0, -1], [-1, -1, -1]]
     self.split_thresholds = [[0., 0., 0.], [5., -2., 0.], [0., 0., 0.]]
-    self.ops = training_ops.Load()
 
   def testSimple(self):
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       indices, feature_updates, threshold_updates = (
-          self.ops.sample_inputs(
-              self.input_data, [], [], [],
-              self.node_map, self.leaves, self.split_features,
-              self.split_thresholds, split_initializations_per_input=1,
+          tensor_forest_ops.sample_inputs(
+              self.input_data, [], [], [], [],
+              self.node_map,
+              self.leaves,
+              self.split_features,
+              self.split_thresholds,
+              split_initializations_per_input=1,
               split_sampling_random_seed=3))
       self.assertAllEqual([1, 0], indices.eval())
       self.assertAllEqual([[1, 0, 1], [0, 0, -1]],
@@ -63,12 +65,18 @@ class SampleInputsTest(test_util.TensorFlowTestCase):
                      -0.5, 2.0]
 
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       indices, feature_updates, threshold_updates = (
-          self.ops.sample_inputs(
-              [], sparse_indices, sparse_values, sparse_shape,
-              self.node_map, self.leaves, self.split_features,
-              self.split_thresholds, split_initializations_per_input=1,
+          tensor_forest_ops.sample_inputs(
+              [],
+              sparse_indices,
+              sparse_values,
+              sparse_shape, [],
+              self.node_map,
+              self.leaves,
+              self.split_features,
+              self.split_thresholds,
+              split_initializations_per_input=1,
               split_sampling_random_seed=3))
       self.assertAllEqual([1, 0], indices.eval())
       self.assertAllEqual([[1, 0, 0], [4, 7, -1]],
@@ -76,14 +84,33 @@ class SampleInputsTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([[5., -2., -2.], [-1., 6., 0.]],
                           threshold_updates.eval())
 
+  def testWeights(self):
+    with self.test_session():
+      tf.global_variables_initializer().run()
+      indices, feature_updates, threshold_updates = (
+          tensor_forest_ops.sample_inputs(
+              self.input_data, [], [], [], [0.5, 0.1, 0.8, 0.7],
+              self.node_map,
+              self.leaves,
+              self.split_features,
+              self.split_thresholds,
+              split_initializations_per_input=1,
+              split_sampling_random_seed=3))
+      self.assertAllEqual([1, 0], indices.eval())
+      self.assertAllEqual([[1, 0, 0], [-1, -1, -1]], feature_updates.eval())
+      self.assertAllEqual([[5., -2., 20.], [0., 0., 0.]],
+                          threshold_updates.eval())
+
   def testNoAccumulators(self):
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       indices, feature_updates, threshold_updates = (
-          self.ops.sample_inputs(
-              self.input_data, [], [], [],
-              [-1] * 3, self.leaves, self.split_features,
-              self.split_thresholds, split_initializations_per_input=1,
+          tensor_forest_ops.sample_inputs(
+              self.input_data, [], [], [], [], [-1] * 3,
+              self.leaves,
+              self.split_features,
+              self.split_thresholds,
+              split_initializations_per_input=1,
               split_sampling_random_seed=3))
       self.assertAllEqual([], indices.eval())
       self.assertAllEqual((0, 3), feature_updates.eval().shape)
@@ -92,13 +119,16 @@ class SampleInputsTest(test_util.TensorFlowTestCase):
   def testBadInput(self):
     del self.split_features[1]
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       with self.assertRaisesOpError(
           'split_features and split_thresholds should be the same shape.'):
-        indices, _, _ = self.ops.sample_inputs(
-            self.input_data, [], [], [],
-            self.node_map, self.leaves, self.split_features,
-            self.split_thresholds, split_initializations_per_input=1,
+        indices, _, _ = tensor_forest_ops.sample_inputs(
+            self.input_data, [], [], [], [],
+            self.node_map,
+            self.leaves,
+            self.split_features,
+            self.split_thresholds,
+            split_initializations_per_input=1,
             split_sampling_random_seed=3)
         self.assertAllEqual([], indices.eval())
 

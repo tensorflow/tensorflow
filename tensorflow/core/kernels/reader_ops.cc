@@ -55,8 +55,9 @@ class ReaderVerbAsyncOpKernel : public AsyncOpKernel {
 
   void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
     ReaderInterface* reader;
-    OP_REQUIRES_OK(context,
-                   GetResourceFromContext(context, "reader_handle", &reader));
+    OP_REQUIRES_OK_ASYNC(
+        context, GetResourceFromContext(context, "reader_handle", &reader),
+        done);
     thread_pool_->Schedule([this, context, reader, done]() {
       ComputeWithReader(context, reader);
       reader->Unref();

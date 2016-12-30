@@ -1,11 +1,13 @@
-### `tf.nn.embedding_lookup(params, ids, partition_strategy='mod', name=None, validate_indices=True)` {#embedding_lookup}
+### `tf.nn.embedding_lookup(params, ids, partition_strategy='mod', name=None, validate_indices=True, max_norm=None)` {#embedding_lookup}
 
 Looks up `ids` in a list of embedding tensors.
 
 This function is used to perform parallel lookups on the list of
 tensors in `params`.  It is a generalization of
 [`tf.gather()`](../../api_docs/python/array_ops.md#gather), where `params` is
-interpreted as a partition of a larger embedding tensor.
+interpreted as a partitioning of a large embedding tensor.  `params` may be
+a `PartitionedVariable` as returned by using `tf.get_variable()` with a
+partitioner.
 
 If `len(params) > 1`, each element `id` of `ids` is partitioned between
 the elements of `params` according to the `partition_strategy`.
@@ -28,9 +30,11 @@ tensor. The returned tensor has shape `shape(ids) + shape(params)[1:]`.
 ##### Args:
 
 
-*  <b>`params`</b>: A list of tensors with the same type and which can be concatenated
-    along dimension 0. Each `Tensor` must be appropriately sized for the given
-    `partition_strategy`.
+*  <b>`params`</b>: A single tensor representing the complete embedding tensor,
+    or a list of P tensors all of same shape except for the first dimension,
+    representing sharded embedding tensors.  Alternatively, a
+    `PartitionedVariable`, created by partitioning along dimension 0. Each
+    element must be appropriately sized for the given `partition_strategy`.
 *  <b>`ids`</b>: A `Tensor` with type `int32` or `int64` containing the ids to be looked
     up in `params`.
 *  <b>`partition_strategy`</b>: A string specifying the partitioning strategy, relevant
@@ -38,6 +42,8 @@ tensor. The returned tensor has shape `shape(ids) + shape(params)[1:]`.
     is `"mod"`.
 *  <b>`name`</b>: A name for the operation (optional).
 *  <b>`validate_indices`</b>: Whether or not to validate gather indices.
+*  <b>`max_norm`</b>: If not None, embedding values are l2-normalized to the value of
+   max_norm.
 
 ##### Returns:
 

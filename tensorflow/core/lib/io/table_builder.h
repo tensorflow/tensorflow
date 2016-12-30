@@ -50,9 +50,10 @@ class TableBuilder {
   // REQUIRES: Finish(), Abandon() have not been called
   void Add(const StringPiece& key, const StringPiece& value);
 
-  // Advanced operation: flush any buffered key/value pairs to file.
+  // Advanced operation: writes any buffered key/value pairs to file.
   // Can be used to ensure that two adjacent entries never live in
   // the same data block.  Most clients should not need to use this method.
+  // Does not flush the file itself.
   // REQUIRES: Finish(), Abandon() have not been called
   void Flush();
 

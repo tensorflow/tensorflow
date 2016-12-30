@@ -121,6 +121,16 @@ Node* Var(Graph* g, const DataType dtype, const TensorShape& shape) {
   return ret;
 }
 
+Node* Var(Graph* g, const DataType dtype, const TensorShape& shape,
+          const string& name) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(name, "Variable")
+                  .Attr("dtype", dtype)
+                  .Attr("shape", shape)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
 Node* Assign(Graph* g, Node* var, Node* val) {
   Node* ret;
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Assign")
@@ -161,6 +171,17 @@ Node* Matmul(Graph* g, Node* in0, Node* in1, bool transpose_a,
                   .Input(in1)
                   .Attr("transpose_a", transpose_a)
                   .Attr("transpose_b", transpose_b)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* BatchMatmul(Graph* g, Node* in0, Node* in1, bool adj_x, bool adj_y) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "BatchMatMul")
+                  .Input(in0)
+                  .Input(in1)
+                  .Attr("adj_x", adj_x)
+                  .Attr("adj_y", adj_y)
                   .Finalize(g, &ret));
   return ret;
 }
@@ -330,6 +351,20 @@ Node* Concat(Graph* g, Node* concat_dim, gtl::ArraySlice<Node*> tensors) {
   return ret;
 }
 
+Node* ConcatV2(Graph* g, gtl::ArraySlice<Node*> tensors, Node* concat_dim) {
+  std::vector<NodeBuilder::NodeOut> nodeouts;
+  nodeouts.reserve(tensors.size());
+  for (auto const t : tensors) {
+    nodeouts.emplace_back(t);
+  }
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "ConcatV2")
+                  .Input(nodeouts)
+                  .Input(concat_dim)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
 Node* Next(Graph* g, const string& name, Node* input) {
   Node* ret;
   TF_CHECK_OK(
@@ -363,6 +398,15 @@ Node* Cast(Graph* g, Node* in, DataType dst) {
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Cast")
                   .Input(in)
                   .Attr("DstT", dst)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* BroadcastArgs(Graph* g, Node* s0, Node* s1) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "BroadcastArgs")
+                  .Input(s0)
+                  .Input(s1)
                   .Finalize(g, &ret));
   return ret;
 }
@@ -418,6 +462,18 @@ Node* BiasAdd(Graph* g, Node* value, Node* bias) {
                   .Input(value)
                   .Input(bias)
                   .Attr("T", DT_FLOAT)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* Conv2D(Graph* g, Node* in0, Node* in1) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Conv2D")
+                  .Input(in0)
+                  .Input(in1)
+                  .Attr("T", DT_FLOAT)
+                  .Attr("strides", {1, 1, 1, 1})
+                  .Attr("padding", "SAME")
                   .Finalize(g, &ret));
   return ret;
 }

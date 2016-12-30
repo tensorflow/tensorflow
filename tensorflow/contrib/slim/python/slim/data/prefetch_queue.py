@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,15 +18,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python import summary
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import queue_runner
 
 
 def prefetch_queue(tensors,
                    capacity=8,
+                   num_threads=1,
                    shared_name=None,
                    name=None):
   """Creates a queue to prefetech tensors from `tensors`.
@@ -48,6 +49,7 @@ def prefetch_queue(tensors,
   Args:
     tensors: A list or dictionary of `Tensors` to enqueue in the buffer.
     capacity: An integer. The maximum number of elements in the queue.
+    num_threads: An integer.  Number of threads running the enqueue op.
     shared_name: (optional). If set, this queue will be shared under the given
       name across multiple sessions.
     name: (Optional) A name for the operations.
@@ -58,13 +60,14 @@ def prefetch_queue(tensors,
   """
   if isinstance(tensors, dict):
     # Need to wrap the keys and values in list() since Python3 returns views.
-    names = list(tensors.keys())
-    tensor_list = list(tensors.values())
+    # We sort the keys so the order is consistent across runs.
+    names = list(sorted(tensors.keys()))
+    tensor_list = list([tensors[n] for n in names])
   else:
     names = None
     tensor_list = tensors
 
-  with ops.op_scope(tensor_list, name, "prefetch_queue") as name:
+  with ops.name_scope(name, "prefetch_queue", tensor_list) as name:
     dtypes = [t.dtype for t in tensor_list]
     shapes = [t.get_shape() for t in tensor_list]
     queue = data_flow_ops.FIFOQueue(capacity=capacity,
@@ -72,9 +75,9 @@ def prefetch_queue(tensors,
                                     shapes=shapes,
                                     names=names,
                                     shared_name=shared_name)
-    enqueue_op = queue.enqueue(tensors, name=name)
-    queue_runner.add_queue_runner(queue_runner.QueueRunner(queue, [enqueue_op]))
-    logging_ops.scalar_summary(
-        "queue/%s/fraction_of_%d_full" % (queue.name, capacity),
-        math_ops.to_float(queue.size()) * (1. / capacity))
+    enqueue_op = queue.enqueue(tensors)
+    queue_runner.add_queue_runner(
+        queue_runner.QueueRunner(queue, [enqueue_op] * num_threads))
+    summary.scalar("fraction_of_%d_full" % capacity,
+                   math_ops.to_float(queue.size()) * (1. / capacity))
     return queue

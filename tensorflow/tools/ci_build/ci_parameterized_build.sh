@@ -18,10 +18,13 @@
 #   ci_parameterized_build.sh
 #
 # The script obeys the following required environment variables:
-#   TF_BUILD_CONTAINER_TYPE:   (CPU | GPU | ANDROID)
+#   TF_BUILD_CONTAINER_TYPE:   (CPU | GPU | ANDROID | ANDROID_NIGHTLY)
 #   TF_BUILD_PYTHON_VERSION:   (PYTHON2 | PYTHON3 | PYTHON3.5)
-#   TF_BUILD_IS_OPT:           (NO_OPT | OPT)
 #   TF_BUILD_IS_PIP:           (NO_PIP | PIP | BOTH)
+#
+# The below environment variable is required, but will be deprecated together
+# with TF_BUILD_MAVX and both will be replaced by TF_BUILD_OPTIONS.
+#   TF_BUILD_IS_OPT:           (NO_OPT | OPT)
 #
 # Note:
 #   1) Certain combinations of parameter values are regarded
@@ -44,7 +47,7 @@
 #   TF_BUILD_APPEND_ARGUMENTS:
 #                      Additional command line arguments for the bazel,
 #                      pip.sh or android.sh command
-#   TF_BUILD_MAVX:
+#   TF_BUILD_MAVX:     (Soon to be deprecated, use TF_BUILD_OPTIONS instead)
 #                      (unset | MAVX | MAVX2)
 #                      If set to MAVX or MAVX2, will cause bazel to use the
 #                      additional flag --copt=-mavx or --copt=-mavx2, to
@@ -56,11 +59,11 @@
 #   TF_BUILD_BAZEL_CLEAN:
 #                      Will perform "bazel clean", if and only if this variable
 #                      is set to any non-empty and non-0 value
-#   TF_BUILD_SERIAL_TESTS:
-#                      Build parallely, but test serially
-#                      (i.e., bazel test --job=1), potentially useful for
-#                      builds where the tests cannot be run in parallel due to
-#                      resource contention (e.g., for GPU builds)
+#   TF_GPU_COUNT:
+#                      Run this many parallel tests for serial builds.
+#                      For now, only can be edited for PIP builds.
+#                      TODO(gunan): Find a way to pass this environment variable
+#                      to the script bazel runs (using --run_under).
 #   TF_BUILD_TEST_TUTORIALS:
 #                      If set to any non-empty and non-0 value, will perform
 #                      tutorials tests (Applicable only if TF_BUILD_IS_PIP is
@@ -77,6 +80,11 @@
 #                      If set to any non-empty and non-0 value, will disable
 #                      support for Google Cloud Platform (GCP), which is
 #                      enabled by default.
+#   TF_BUILD_OPTIONS:
+#                     (FASTBUILD | OPT | OPTDBG | MAVX | MAVX2)
+#                     Use the specified configurations when building.
+#                     When set, overrides TF_BUILD_IS_OPT and TF_BUILD_MAVX
+#                     options, as this will replace the two.
 #
 # This script can be used by Jenkins parameterized / matrix builds.
 
@@ -96,7 +104,6 @@ die () {
   exit 1
 }
 
-
 ##########################################################
 # Default configuration
 CI_BUILD_DIR="tensorflow/tools/ci_build"
@@ -115,12 +122,15 @@ DO_DOCKER=1
 BAZEL_CMD="bazel test"
 BAZEL_BUILD_ONLY_CMD="bazel build"
 BAZEL_CLEAN_CMD="bazel clean"
-BAZEL_SERIAL_FLAG="--jobs=1"
 
 PIP_CMD="${CI_BUILD_DIR}/builds/pip.sh"
 PIP_TEST_TUTORIALS_FLAG="--test_tutorials"
 PIP_INTEGRATION_TESTS_FLAG="--integration_tests"
 ANDROID_CMD="${CI_BUILD_DIR}/builds/android.sh"
+ANDROID_NIGHTLY_CMD="${CI_BUILD_DIR}/builds/android_nightly.sh"
+
+TF_GPU_COUNT=${TF_GPU_COUNT:-8}
+PARALLEL_GPU_TEST_CMD='//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute'
 
 BENCHMARK_CMD="${CI_BUILD_DIR}/builds/benchmark.sh"
 
@@ -158,11 +168,11 @@ echo "  TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS="\
 echo "  TF_BUILD_APPEND_ARGUMENTS=${TF_BUILD_APPEND_ARGUMENTS}"
 echo "  TF_BUILD_BAZEL_TARGET=${TF_BUILD_BAZEL_TARGET}"
 echo "  TF_BUILD_BAZEL_CLEAN=${TF_BUILD_BAZEL_CLEAN}"
-echo "  TF_BUILD_SERIAL_TESTS=${TF_BUILD_SERIAL_TESTS}"
 echo "  TF_BUILD_TEST_TUTORIALS=${TF_BUILD_TEST_TUTORIALS}"
 echo "  TF_BUILD_INTEGRATION_TESTS=${TF_BUILD_INTEGRATION_TESTS}"
 echo "  TF_BUILD_RUN_BENCHMARKS=${TF_BUILD_RUN_BENCHMARKS}"
 echo "  TF_BUILD_DISABLE_GCP=${TF_BUILD_DISABLE_GCP}"
+echo "  TF_BUILD_OPTIONS=${TF_BUILD_OPTIONS}"
 
 # Function that tries to determine CUDA capability, if deviceQuery binary
 # is available on path
@@ -174,36 +184,11 @@ function get_cuda_capability_version() {
   fi
 }
 
-# Process container type
+# Container type, e.g., CPU, GPU
 CTYPE=${TF_BUILD_CONTAINER_TYPE}
-OPT_FLAG=""
-if [[ ${CTYPE} == "cpu" ]]; then
-  :
-elif [[ ${CTYPE} == "gpu" ]]; then
-  OPT_FLAG="--config=cuda"
-
-  # Attempt to determine CUDA capability version and use it
-  if [[ "${TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS}" != \
-        *"TF_CUDA_COMPUTE_CAPABILITIES="* ]]; then
-    CUDA_CAPA_VER=$(get_cuda_capability_version)
-    if [[ ! -z ${CUDA_CAPA_VER} ]]; then
-      echo "TF_CUDA_COMPUTE_CAPABILITIES is not set."
-      echo "Using CUDA capability version from deviceQuery: ${CUDA_CAPA_VER}"
-      TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS=\
-"${TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS} -e "\
-"TF_CUDA_COMPUTE_CAPABILITIES=${CUDA_CAPA_VER}"
-    fi
-  fi
-elif [[ ${CTYPE} == "android" ]]; then
-  :
-else
-  die "Unrecognized value in TF_BUILD_CONTAINER_TYPE: "\
-"\"${TF_BUILD_CONTAINER_TYPE}\""
-fi
-
-EXTRA_PARAMS=""
 
 # Determine if Docker is available
+OPT_FLAG=""
 if [[ -z "$(which docker)" ]]; then
   DO_DOCKER=0
 
@@ -213,8 +198,53 @@ if [[ -z "$(which docker)" ]]; then
   echo "  ${NO_DOCKER_OPT_FLAG}"
   MAIN_CMD="${NO_DOCKER_MAIN_CMD} ${CTYPE}"
   OPT_FLAG="${OPT_FLAG} ${NO_DOCKER_OPT_FLAG}"
-
 fi
+
+# Process container type
+if [[ ${CTYPE} == "cpu" ]] || [[ ${CTYPE} == "debian.jessie.cpu" ]]; then
+  :
+elif [[ ${CTYPE} == "gpu" ]]; then
+  OPT_FLAG="${OPT_FLAG} --config=cuda"
+
+  # Attempt to determine CUDA capability version automatically and use it if
+  # CUDA capability version is not specified by the environment variables.
+  CUDA_CAPA_VER=$(get_cuda_capability_version)
+
+  if [[ ! -z ${CUDA_CAPA_VER} ]]; then
+    AUTO_CUDA_CAPA_VER=0
+    if [[ ${DO_DOCKER} == "1" ]] && \
+       [[ "${TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS}" != \
+           *"TF_CUDA_COMPUTE_CAPABILITIES="* ]]; then
+      AUTO_CUDA_CAPA_VER=1
+      TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS=\
+"${TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS} -e "\
+"TF_CUDA_COMPUTE_CAPABILITIES=${CUDA_CAPA_VER}"
+
+      echo "Docker GPU build: TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS="\
+"\"${TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS}\""
+    elif [[ ${DO_DOCKER} == "0" ]] && \
+         [[ -z "${TF_CUDA_COMPUTE_CAPABILITIES}" ]]; then
+      AUTO_CUDA_CAPA_VER=1
+      TF_CUDA_COMPUTE_CAPABILITIES="${CUDA_CAPA_VER}"
+
+      echo "Non-Docker GPU build: TF_CUDA_COMPUTE_CAPABILITIES="\
+"\"${TF_CUDA_COMPUTE_CAPABILITIES}\""
+    fi
+
+    if [[ ${AUTO_CUDA_CAPA_VER} == "1" ]]; then
+      echo "TF_CUDA_COMPUTE_CAPABILITIES is not set:"
+      echo "Using CUDA capability version from deviceQuery: ${CUDA_CAPA_VER}"
+      echo ""
+    fi
+  fi
+elif [[ ${CTYPE} == "android" ]] || [[ ${CTYPE} == "android_nightly" ]]; then
+  :
+else
+  die "Unrecognized value in TF_BUILD_CONTAINER_TYPE: "\
+"\"${TF_BUILD_CONTAINER_TYPE}\""
+fi
+
+EXTRA_PARAMS=""
 
 # Determine if this is a benchmarks job
 RUN_BENCHMARKS=0
@@ -224,29 +254,52 @@ if [[ ! -z "${TF_BUILD_RUN_BENCHMARKS}" ]] &&
 fi
 
 # Process Bazel "-c opt" flag
-if [[ ${TF_BUILD_IS_OPT} == "no_opt" ]]; then
-  # PIP builds are done only with the -c opt flag
-  if [[ ${TF_BUILD_IS_PIP} == "pip" ]]; then
-    echo "Skipping parameter combination: ${TF_BUILD_IS_OPT} & "\
+if [[ -z "${TF_BUILD_OPTIONS}" ]]; then
+  if [[ ${TF_BUILD_IS_OPT} == "no_opt" ]]; then
+    # PIP builds are done only with the -c opt flag
+    if [[ ${TF_BUILD_IS_PIP} == "pip" ]]; then
+      echo "Skipping parameter combination: ${TF_BUILD_IS_OPT} & "\
 "${TF_BUILD_IS_PIP}"
-    exit 0
-  fi
+      exit 0
+    fi
 
-elif [[ ${TF_BUILD_IS_OPT} == "opt" ]]; then
-  OPT_FLAG="${OPT_FLAG} -c opt"
-else
-  die "Unrecognized value in TF_BUILD_IS_OPT: \"${TF_BUILD_IS_OPT}\""
-fi
-
-# Process MAVX option
-if [[ ! -z "${TF_BUILD_MAVX}" ]]; then
-  if [[ "${TF_BUILD_MAVX}" == "mavx" ]]; then
-    OPT_FLAG="${OPT_FLAG} --copt=-mavx"
-  elif [[ "${TF_BUILD_MAVX}" == "mavx2" ]]; then
-    OPT_FLAG="${OPT_FLAG} --copt=-mavx2"
+  elif [[ ${TF_BUILD_IS_OPT} == "opt" ]]; then
+    OPT_FLAG="${OPT_FLAG} -c opt"
   else
-    die "Unsupported value in TF_BUILD_MAVX: ${TF_BUILD_MAVX}"
+    die "Unrecognized value in TF_BUILD_IS_OPT: \"${TF_BUILD_IS_OPT}\""
   fi
+
+  # Process MAVX option
+  if [[ ! -z "${TF_BUILD_MAVX}" ]]; then
+    if [[ "${TF_BUILD_MAVX}" == "mavx" ]]; then
+      OPT_FLAG="${OPT_FLAG} --copt=-mavx"
+    elif [[ "${TF_BUILD_MAVX}" == "mavx2" ]]; then
+      OPT_FLAG="${OPT_FLAG} --copt=-mavx2"
+    else
+      die "Unsupported value in TF_BUILD_MAVX: ${TF_BUILD_MAVX}"
+    fi
+  fi
+else
+  case $TF_BUILD_OPTIONS in
+    FASTBUILD)
+      echo "Running FASTBUILD mode (noopt, nodbg)."
+      ;;
+    OPT)
+      OPT_FLAG="${OPT_FLAG} -c opt"
+      ;;
+    OPTDBG)
+      OPT_FLAG="${OPT_FLAG} -c opt --copt=-g"
+      ;;
+    MAVX)
+      OPT_FLAG="${OPT_FLAG} -c opt --copt=-mavx"
+      ;;
+    MAVXDBG)
+      OPT_FLAG="${OPT_FLAG} -c opt --copt=-g --copt=-mavx"
+      ;;
+    MAVX2)
+      OPT_FLAG="${OPT_FLAG} -c opt --copt=-mavx2"
+      ;;
+  esac
 fi
 
 # Strip whitespaces from OPT_FLAG
@@ -278,29 +331,22 @@ if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]] ||
     BAZEL_TARGET=${TF_BUILD_BAZEL_TARGET}
   fi
 
-  if [[ ${CTYPE} == "cpu" ]] || [[ ${CTYPE} == "gpu" ]]; then
-    # Run Bazel
-    NO_PIP_MAIN_CMD="${MAIN_CMD} ${BAZEL_CMD} ${OPT_FLAG} "\
-"${EXTRA_ARGS} ${BAZEL_TARGET}"
-    NO_PIP_MAIN_CMD=$(str_strip "${NO_PIP_MAIN_CMD}")
-
-    if [[ ! -z "${TF_BUILD_SERIAL_TESTS}" ]] &&
-       [[ "${TF_BUILD_SERIAL_TESTS}" != "0" ]]; then
-      # Break the operation into two steps: build and test
-      # The 1st (build) step will be done in parallel, as default
-      # But the 2nd (test) step will be done serially.
-
-      BUILD_ONLY_CMD="${BAZEL_BUILD_ONLY_CMD} ${OPT_FLAG} "\
-"${EXTRA_ARGS} ${BAZEL_TARGET}"
-      echo "Build-only command: ${BUILD_ONLY_CMD}"
-
-      NO_PIP_MAIN_CMD="${BUILD_ONLY_CMD} && "\
-"${BAZEL_CMD} ${OPT_FLAG} ${BAZEL_SERIAL_FLAG} "\
-"${EXTRA_ARGS} ${BAZEL_TARGET}"
-      echo "Parallel-build + serial-test command: ${NO_PIP_MAIN_CMD}"
-    fi
+  if [[ ${CTYPE} == "cpu" ]] || \
+     [[ ${CTYPE} == "debian.jessie.cpu" ]]; then
+    # CPU only command, fully parallel.
+    NO_PIP_MAIN_CMD="${MAIN_CMD} ${BAZEL_CMD} ${OPT_FLAG} ${EXTRA_ARGS} "\
+"${BAZEL_TARGET}"
+  elif [[ ${CTYPE} == "gpu" ]]; then
+    # GPU only command, run as many jobs as the GPU count only.
+    NO_PIP_MAIN_CMD="${BAZEL_CMD} ${OPT_FLAG} "\
+"--local_test_jobs=${TF_GPU_COUNT} "\
+"--run_under=${PARALLEL_GPU_TEST_CMD} ${EXTRA_ARGS} ${BAZEL_TARGET}"
   elif [[ ${CTYPE} == "android" ]]; then
+    # Run android specific script for android build.
     NO_PIP_MAIN_CMD="${ANDROID_CMD} ${OPT_FLAG} "
+  elif [[ ${CTYPE} == "android_nightly" ]]; then
+    # Run android specific script for android nightly build.
+    NO_PIP_MAIN_CMD="${ANDROID_NIGHTLY_CMD} ${OPT_FLAG} "
   fi
 
 fi

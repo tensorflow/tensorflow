@@ -16,46 +16,9 @@
 
 set -e
 
-# Download model file.
-# Note: This is workaround. This should be done by bazel.
-model_file_name="inception5h.zip"
-tmp_model_file_name="${HOME}/.cache/tensorflow_models/${model_file_name}"
-mkdir -p $(dirname ${tmp_model_file_name})
-[ -e "${tmp_model_file_name}" ] || wget -c "https://storage.googleapis.com/download.tensorflow.org/models/${model_file_name}" -O "${tmp_model_file_name}"
-# We clean up after ourselves, but not if we exit with an error, so make sure we start clean
-rm -rf tensorflow/examples/android/assets/
-unzip -o "${tmp_model_file_name}" -d tensorflow/examples/android/assets/
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/builds_common.sh"
+configure_android_workspace
 
-# Modify the WORKSPACE file.
-# Note: This is workaround. This should be done by bazel.
-if grep -q '^android_sdk_repository' WORKSPACE && grep -q '^android_ndk_repository' WORKSPACE; then
-  echo "You probably have your WORKSPACE file setup for Android."
-else
-  if [ -z "${ANDROID_API_LEVEL}" -o -z "${ANDROID_BUILD_TOOLS_VERSION}" ] || \
-      [ -z "${ANDROID_SDK_HOME}" -o -z "${ANDROID_NDK_HOME}" ]; then
-    echo "ERROR: Your WORKSPACE file does not seems to have proper android"
-    echo "       configuration and not all the environment variables expected"
-    echo "       inside ci_build android docker container are set."
-    echo "       Please configure it manually. See: https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/android/README.md"
-  else
-    cat << EOF >> WORKSPACE
-android_sdk_repository(
-    name = "androidsdk",
-    api_level = ${ANDROID_API_LEVEL},
-    build_tools_version = "${ANDROID_BUILD_TOOLS_VERSION}",
-    path = "${ANDROID_SDK_HOME}",
-)
-
-android_ndk_repository(
-    name="androidndk",
-    path="${ANDROID_NDK_HOME}",
-    api_level=21)
-EOF
-  fi
-fi
-
-# Build Android demo app.
-bazel build -c opt --copt=-mfpu=neon //tensorflow/examples/android:tensorflow_demo
-
-# Cleanup workarounds.
-rm -rf tensorflow/examples/android/assets/
+CPUS=armeabi-v7a,x86_64
+bazel build -c opt --fat_apk_cpu=${CPUS} //tensorflow/examples/android:tensorflow_demo

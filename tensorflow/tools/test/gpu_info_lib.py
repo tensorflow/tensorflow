@@ -26,6 +26,7 @@ import platform
 import tensorflow as tf
 
 from tensorflow.core.util import test_log_pb2
+from tensorflow.python.framework import errors
 
 
 def _gather_gpu_devices_proc():
@@ -174,11 +175,11 @@ def gather_gpu_devices():
     if not dev_info:
       raise ValueError("No devices found")
     return dev_info
-  except (IOError, ValueError):
+  except (IOError, ValueError, errors.OpError):
     pass
 
   try:
     # Fall back on using libcudart
     return _gather_gpu_devices_cudart()
-  except (OSError, ValueError, NotImplementedError):
+  except (OSError, ValueError, NotImplementedError, errors.OpError):
     return []

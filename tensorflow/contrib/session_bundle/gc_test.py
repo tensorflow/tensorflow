@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -43,6 +43,12 @@ class GcTest(test_util.TensorFlowTestCase):
     newest = gc.largest_export_versions(2)
     n = newest(paths)
     self.assertEquals(n, [gc.Path("/foo", 9), gc.Path("/foo", 10)])
+
+  def testLargestExportVersionsDoesNotDeleteZeroFolder(self):
+    paths = [gc.Path("/foo", 0), gc.Path("/foo", 3)]
+    newest = gc.largest_export_versions(2)
+    n = newest(paths)
+    self.assertEquals(n, [gc.Path("/foo", 0), gc.Path("/foo", 3)])
 
   def testModExportVersion(self):
     paths = [gc.Path("/foo", 4), gc.Path("/foo", 5), gc.Path("/foo", 6),

@@ -1,0 +1,128 @@
+<!--
+@license
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../tf-imports/plottable.html">
+<link rel="import" href="../tf-imports/lodash.html">
+
+<!--
+tf-chart-scaffold is responsible for providing data from TensorBoard to charts.
+It has the following settable properties:
+tag: (required, string) - the name of the tag to load for this chart
+visibleSeries: (required, string[]) - the names of the series the chart should
+    display.
+dataProvider: (required, VZ.ChartHelpers.DataFn) - function that takes (tag,
+    run) and returns a promise containing an array of VZ.ChartHelpers.Datum,
+    compatible with TF.Backend.Datum.
+
+It exposes the following methods:
+chart() - Returns the underlying chart element.
+reload() - Reloads the data and sends it to the underlying chart.
+
+This element should have a compatible chart plugin element as it's content. The
+plugin is requred to implement two functions:
+- setVisibleSeries(names: string[]): a function that receives an array of series
+    names as the first parameter, responsible for changing the series currently
+    being displayed to only the series in this array.
+- setSeriesData(name: string, data: VZ.ChartHelpers.Datum[]): sets the data of
+    the series with the given name to the data given in the second parameter.
+-->
+<dom-module id="tf-chart-scaffold">
+  <template>
+    <content></content>
+    <style>
+      :host {
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        display: flex;
+        flex-direction: column;
+        flex-grow: 1;
+        flex-shrink: 1;
+        position: relative;
+      }
+    </style>
+  </template>
+  <script>
+    Polymer({
+      is: "tf-chart-scaffold",
+      properties: {
+        tag: String,
+        dataProvider: Function,
+        visibleSeries: Array,
+        _attached: {
+          type: Boolean,
+          value: false
+        }
+      },
+      observers: [
+        "reload(tag, dataProvider)",
+        "_changeSeries(visibleSeries.*)"
+      ],
+      ready: function() {
+        this.fire('ready');
+      },
+      attached: function() {
+        this._attached = true;
+        this._changeSeries();
+      },
+      detached: function() {
+        this._attached = false;
+      },
+      reload: function() {
+        if (!this._attached) {
+          return;
+        }
+        else if (!this.dataProvider) {
+          throw new Error('tf-chart-scaffold requires a dataProvider.');
+        }
+        else if (!this.tag) {
+          throw new Error('tf-chart-scaffold requires a tag.');
+        }
+
+        this.visibleSeries.forEach(function(name) {
+          this.dataProvider(this.tag, name).then(function(data) {
+            this.chart().setSeriesData(name, data);
+          }.bind(this));
+        }.bind(this));
+      },
+      _changeSeries: function() {
+        if (!this._attached) {
+           return;
+        }
+        else if (!this.visibleSeries) {
+          throw new Error('tf-chart-scaffold requires a visibleSeries.');
+        }
+
+        this.chart().setVisibleSeries(this.visibleSeries);
+        this.reload();
+      },
+      chart: function() {
+        var children = this.getEffectiveChildren();
+        if (!children.length) {
+          throw new Error('tf-chart-scaffold has no children');
+        }
+
+        var child = children[0];
+        if (!child.setVisibleSeries || !child.setSeriesData) {
+          throw new Error("tf-chart-scaffold's content doesn't implement the " +
+              "required interface");
+        }
+        return child;
+      }
+    });
+  </script>
+</dom-module>

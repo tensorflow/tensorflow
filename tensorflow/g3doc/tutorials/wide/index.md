@@ -16,7 +16,7 @@ To try the code for this tutorial:
 already.
 
 2.  Download [the tutorial code](
-https://www.tensorflow.org/code/tensorflow/examples/learn/wide_n_deep_tutorial.py).
+https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/learn/wide_n_deep_tutorial.py).
 
 3.  Install the pandas data analysis library. tf.learn doesn't require pandas, but it does support it, and this tutorial uses pandas. To install pandas:
     1. Get `pip`:
@@ -36,8 +36,9 @@ https://www.tensorflow.org/code/tensorflow/examples/learn/wide_n_deep_tutorial.p
        $ sudo pip install pandas
        ```
 
-    If you have trouble installing pandas, consult the [instructions]
-(http://pandas.pydata.org/pandas-docs/stable/install.html) on the pandas site.
+    If you have trouble installing pandas, consult the
+    [instructions](http://pandas.pydata.org/pandas-docs/stable/install.html)
+    on the pandas site.
 
 4. Execute the tutorial code with the following command to train the linear
 model described in this tutorial:
@@ -50,12 +51,11 @@ Read on to find out how this code builds its linear model.
 
 ## Reading The Census Data
 
-The dataset we'll be using is the [Census Income Dataset]
-(https://archive.ics.uci.edu/ml/datasets/Census+Income). You can download the
-[training data]
-(https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data) and
-[test data]
-(https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.test)
+The dataset we'll be using is the
+[Census Income Dataset](https://archive.ics.uci.edu/ml/datasets/Census+Income).
+You can download the
+[training data](https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data)
+and [test data](https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.test)
 manually or use code like this:
 
 ```python
@@ -63,12 +63,12 @@ import tempfile
 import urllib
 train_file = tempfile.NamedTemporaryFile()
 test_file = tempfile.NamedTemporaryFile()
-urllib.urlretrieve("https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data", train_file.name)
-urllib.urlretrieve("https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.test", test_file.name)
+urllib.urlretrieve("http://mlr.cs.umass.edu/ml/machine-learning-databases/adult/adult.data", train_file.name)
+urllib.urlretrieve("http://mlr.cs.umass.edu/ml/machine-learning-databases/adult/adult.test", test_file.name)
 ```
 
-Once the CSV files are downloaded, let's read them into [Pandas]
-(http://pandas.pydata.org/) dataframes.
+Once the CSV files are downloaded, let's read them into
+[Pandas](http://pandas.pydata.org/) dataframes.
 
 ```python
 import pandas as pd
@@ -147,17 +147,16 @@ When building a TF.Learn model, the input data is specified by means of an Input
 Builder function. This builder function will not be called until it is later
 passed to TF.Learn methods such as `fit` and `evaluate`. The purpose of this
 function is to construct the input data, which is represented in the form of
-[Tensors]
-(https://www.tensorflow.org/versions/r0.9/api_docs/python/framework.html#Tensor)
-or [SparseTensors]
-(https://www.tensorflow.org/versions/r0.9/api_docs/python/sparse_ops.html#SparseTensor).
+[Tensors](https://www.tensorflow.org/versions/r0.9/api_docs/python/framework.html#Tensor)
+or
+[SparseTensors](https://www.tensorflow.org/versions/r0.9/api_docs/python/sparse_ops.html#SparseTensor).
 In more detail, the Input Builder function returns the following as a pair:
 
 1.  `feature_cols`: A dict from feature column names to `Tensors` or
     `SparseTensors`.
 2.  `label`: A `Tensor` containing the label column.
 
-The keys of the `feature_cols` will be used to when construct columns in the
+The keys of the `feature_cols` will be used to construct columns in the
 next section. Because we want to call the `fit` and `evaluate` methods with
 different data, we define two different input builder functions,
 `train_input_fn` and `test_input_fn` which are identical except that they pass
@@ -170,12 +169,11 @@ Our model represents the input data as *constant* tensors, meaning that the
 tensor represents a constant value, in this case the values of a particular
 column of `df_train` or `df_test`. This is the simplest way to pass data into
 TensorFlow. Another more advanced way to represent input data would be to
-construct an [Input Reader]
-(https://www.tensorflow.org/versions/r0.9/api_docs/python/io_ops.html#inputs-and-readers)
+construct an [Input Reader](https://www.tensorflow.org/versions/r0.9/api_docs/python/io_ops.html#inputs-and-readers)
 that represents a file or other data source, and iterates through the file as
 TensorFlow runs the graph. Each continuous column in the train or test dataframe
 will be converted into a `Tensor`, which in general is a good format to
-represent dense data. For cateogorical data, we must represent the data as a
+represent dense data. For categorical data, we must represent the data as a
 `SparseTensor`. This data format is good for representing sparse data.
 
 ```python
@@ -224,12 +222,12 @@ To define a feature column for a categorical feature, we can create a
 feature values of a column and there are only a few of them, you can use
 `sparse_column_with_keys`. Each key in the list will get assigned an
 auto-incremental ID starting from 0. For example, for the `gender` column we can
-assign the feature string "female" to an integer ID of 0 and "male" to 1 by
+assign the feature string "Female" to an integer ID of 0 and "Male" to 1 by
 doing:
 
 ```python
 gender = tf.contrib.layers.sparse_column_with_keys(
-  column_name="gender", keys=["female", "male"])
+  column_name="gender", keys=["Female", "Male"])
 ```
 
 What if we don't know the set of possible values in advance? Not a problem. We
@@ -264,9 +262,6 @@ learned through the model training process we'll go through later.
 We'll do the similar trick to define the other categorical features:
 
 ```python
-race = tf.contrib.layers.sparse_column_with_keys(column_name="race", keys=[
-  "Amer-Indian-Eskimo", "Asian-Pac-Islander", "Black", "Other", "White"])
-marital_status = tf.contrib.layers.sparse_column_with_hash_bucket("marital_status", hash_bucket_size=100)
 relationship = tf.contrib.layers.sparse_column_with_hash_bucket("relationship", hash_bucket_size=100)
 workclass = tf.contrib.layers.sparse_column_with_hash_bucket("workclass", hash_bucket_size=100)
 occupation = tf.contrib.layers.sparse_column_with_hash_bucket("occupation", hash_bucket_size=1000)
@@ -336,8 +331,8 @@ constituent column can be either a base feature column that is categorical
 or even another `CrossColumn`. Here's an example:
 
 ```python
-age_buckets_x_race_x_occupation = tf.contrib.layers.crossed_column(
-  [age_buckets, race, occupation], hash_bucket_size=int(1e6))
+age_buckets_x_education_x_occupation = tf.contrib.layers.crossed_column(
+  [age_buckets, education, occupation], hash_bucket_size=int(1e6))
 ```
 
 ## Defining The Logistic Regression Model
@@ -359,7 +354,7 @@ added to the `feature_columns` field of a model:
 model_dir = tempfile.mkdtemp()
 m = tf.contrib.learn.LinearClassifier(feature_columns=[
   gender, native_country, education, occupation, workclass, marital_status, race,
-  age_buckets, education_x_occupation, age_buckets_x_race_x_occupation],
+  age_buckets, education_x_occupation, age_buckets_x_education_x_occupation],
   model_dir=model_dir)
 ```
 
@@ -390,9 +385,8 @@ The first line of the output should be something like `accuracy: 0.83557522`,
 which means the accuracy is 83.6%. Feel free to try more features and
 transformations and see if you can do even better!
 
-If you'd like to see a working end-to-end example, you can download our [example
-code]
-(https://www.tensorflow.org/code/tensorflow/examples/learn/wide_n_deep_tutorial.py)
+If you'd like to see a working end-to-end example, you can download our
+[example code](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/learn/wide_n_deep_tutorial.py)
 and set the `model_type` flag to `wide`.
 
 ## Adding Regularization to Prevent Overfitting
@@ -411,7 +405,7 @@ as:
 ```
 m = tf.contrib.learn.LinearClassifier(feature_columns=[
   gender, native_country, education, occupation, workclass, marital_status, race,
-  age_buckets, education_x_occupation, age_buckets_x_race_x_occupation],
+  age_buckets, education_x_occupation, age_buckets_x_education_x_occupation],
   optimizer=tf.train.FtrlOptimizer(
     learning_rate=0.1,
     l1_regularization_strength=1.0,
@@ -436,35 +430,35 @@ you a desirable model size.
 
 Finally, let's take a minute to talk about what the Logistic Regression model
 actually looks like in case you're not already familiar with it. We'll denote
-the label as $$Y$$, and the set of observed features as a feature vector
-$$\mathbf{x}=[x_1, x_2, ..., x_d]$$. We define $$Y=1$$ if an individual earned >
-50,000 dollars and $$Y=0$$ otherwise. In Logistic Regression, the probability of
-the label being positive ($$Y=1$$) given the features $$\mathbf{x}$$ is given
+the label as \\(Y\\), and the set of observed features as a feature vector
+\\(\mathbf{x}=[x_1, x_2, ..., x_d]\\). We define \\(Y=1\\) if an individual earned >
+50,000 dollars and \\(Y=0\\) otherwise. In Logistic Regression, the probability of
+the label being positive (\\(Y=1\\)) given the features \\(\mathbf{x}\\) is given
 as:
 
 $$ P(Y=1|\mathbf{x}) = \frac{1}{1+\exp(-(\mathbf{w}^T\mathbf{x}+b))}$$
 
-where $$\mathbf{w}=[w_1, w_2, ..., w_d]$$ are the model weights for the features
-$$\mathbf{x}=[x_1, x_2, ..., x_d]$$. $$b$$ is a constant that is often called
+where \\(\mathbf{w}=[w_1, w_2, ..., w_d]\\) are the model weights for the features
+\\(\mathbf{x}=[x_1, x_2, ..., x_d]\\). \\(b\\) is a constant that is often called
 the **bias** of the model. The equation consists of two parts—A linear model and
 a logistic function:
 
-*   **Linear Model**: First, we can see that $$\mathbf{w}^T\mathbf{x}+b = b +
-    w_1x_1 + ... +w_dx_d$$ is a linear model where the output is a linear
-    function of the input features $$\mathbf{x}$$. The bias $$b$$ is the
+*   **Linear Model**: First, we can see that \\(\mathbf{w}^T\mathbf{x}+b = b +
+    w_1x_1 + ... +w_dx_d\\) is a linear model where the output is a linear
+    function of the input features \\(\mathbf{x}\\). The bias \\(b\\) is the
     prediction one would make without observing any features. The model weight
-    $$w_i$$ reflects how the feature $$x_i$$ is correlated with the positive
-    label. If $$x_i$$ is positively correlated with the positive label, the
-    weight $$w_i$$ increases, and the probability $$P(Y=1|\mathbf{x})$$ will be
-    closer to 1. On the other hand, if $$x_i$$ is negatively correlated with the
-    positive label, then the weight $$w_i$$ decreases and the probability
-    $$P(Y=1|\mathbf{x})$$ will be closer to 0.
+    \\(w_i\\) reflects how the feature \\(x_i\\) is correlated with the positive
+    label. If \\(x_i\\) is positively correlated with the positive label, the
+    weight \\(w_i\\) increases, and the probability \\(P(Y=1|\mathbf{x})\\) will be
+    closer to 1. On the other hand, if \\(x_i\\) is negatively correlated with the
+    positive label, then the weight \\(w_i\\) decreases and the probability
+    \\(P(Y=1|\mathbf{x})\\) will be closer to 0.
 
 *   **Logistic Function**: Second, we can see that there's a logistic function
-    (also known as the sigmoid function) $$S(t) = 1/(1+\exp(-t))$$ being applied
+    (also known as the sigmoid function) \\(S(t) = 1/(1+\exp(-t))\\) being applied
     to the linear model. The logistic function is used to convert the output of
-    the linear model $$\mathbf{w}^T\mathbf{x}+b$$ from any real number into the
-    range of $$[0, 1]$$, which can be interpreted as a probability.
+    the linear model \\(\mathbf{w}^T\mathbf{x}+b\\) from any real number into the
+    range of \\([0, 1]\\), which can be interpreted as a probability.
 
 Model training is an optimization problem: The goal is to find a set of model
 weights (i.e. model parameters) to minimize a **loss function** defined over the

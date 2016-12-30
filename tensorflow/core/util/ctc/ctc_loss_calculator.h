@@ -19,11 +19,13 @@ limitations under the License.
 #include <vector>
 
 #include "third_party/eigen3/Eigen/Core"
+#include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/util/ctc/ctc_loss_util.h"
+#include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
 namespace ctc {
@@ -64,7 +66,8 @@ class CTCLossCalculator {
                        const std::vector<MatrixIn>& inputs,
                        bool preprocess_collapse_repeated,
                        bool ctc_merge_repeated, VectorOut* loss,
-                       std::vector<MatrixOut>* gradients) const;
+                       std::vector<MatrixOut>* gradients,
+                       DeviceBase::CpuWorkerThreads* workers = nullptr) const;
 
  private:
   void CalculateForwardVariables(const std::vector<int>& l_prime,
@@ -105,8 +108,8 @@ template <typename VectorIn, typename VectorOut, typename MatrixIn,
 Status CTCLossCalculator::CalculateLoss(
     const VectorIn& seq_len, const LabelSequences& labels,
     const std::vector<MatrixIn>& inputs, bool preprocess_collapse_repeated,
-    bool ctc_merge_repeated, VectorOut* loss,
-    std::vector<MatrixOut>* gradients) const {
+    bool ctc_merge_repeated, VectorOut* loss, std::vector<MatrixOut>* gradients,
+    DeviceBase::CpuWorkerThreads* workers) const {
   auto num_time_steps = inputs.size();
 
   if (loss == nullptr) {
@@ -137,6 +140,7 @@ Status CTCLossCalculator::CalculateLoss(
   }
 
   // Check validity of sequence_length array values.
+  auto max_seq_len = seq_len(0);
   for (int b = 0; b < batch_size; b++) {
     if (seq_len(b) < 0) {
       return errors::InvalidArgument("seq_len(", b, ") < 0");
@@ -144,6 +148,7 @@ Status CTCLossCalculator::CalculateLoss(
     if (seq_len(b) > num_time_steps) {
       return errors::InvalidArgument("seq_len(", b, ") > num_time_steps");
     }
+    max_seq_len = std::max(seq_len(b), max_seq_len);
   }
 
   // Calculate the modified label sequence l' for each batch element,
@@ -157,78 +162,103 @@ Status CTCLossCalculator::CalculateLoss(
     return l_p_ret;
   }
 
-  // For each batch element, log(alpha) and log(beta).  Here we provide enough
-  // storage for the maximum possible size.
-  //   row size is: u_prime == l_prime.size()
-  //   col size is: seq_len[b] - output_delay_
-  Matrix log_alpha(max_u_prime, num_time_steps - output_delay_);
-  Matrix log_beta(max_u_prime, num_time_steps - output_delay_);
-
-  // Work matrices, pre-allocated to maximum sizes
-  Matrix y(num_classes, num_time_steps);
-  Matrix dy;
-  if (requires_backprop) dy = Matrix::Zero(y.rows(), y.cols());
-
-  // CTC is calcuated one batch element at a time
-  for (int b = 0; b < batch_size; b++) {
-    if (seq_len(b) == 0) {
-      continue;
-    }
-
-    // For this batch, we'll only work with this shortened sequence_length.
-    Matrix y_b = y.leftCols(seq_len(b));
-
-    const std::vector<int>& l_prime = l_primes[b];
-
-    // For this batch, we'll only work with log_alpha, log_beta matrices of
-    // the necessary size.
-    Matrix log_alpha_b =
-        log_alpha.topLeftCorner(l_prime.size(), seq_len(b) - output_delay_);
-    Matrix log_beta_b =
-        log_beta.topLeftCorner(l_prime.size(), seq_len(b) - output_delay_);
-
-    // Convert label from DistBelief
-    // y, prob are in num_classes x num_time_steps
-    // Output activations.
-    Eigen::ArrayXf y_b_col;
-    for (int t = 0; t < seq_len(b); t++) {
-      // Calculate the softmax of y_b.  Use double precision
-      // arithmetic for the sum.
-      float max_coeff = inputs[t].row(b).maxCoeff();
-      y_b_col = (inputs[t].row(b).array() - max_coeff).exp();
-      y_b.col(t) = y_b_col / y_b_col.sum();
-    }
-
-    // Compute forward, backward.
-    // Forward variables.
-    CalculateForwardVariables(l_prime, y_b, ctc_merge_repeated, &log_alpha_b);
-    // Backward variables.
-    CalculateBackwardVariables(l_prime, y_b, ctc_merge_repeated, &log_beta_b);
-
-    // The loss is computed as the log(p(z|x)) between the target and
-    // prediction. Do lazy evaluation of log_prob here.
-    float log_p_z_x = kLogZero;
-    for (int u = 0; u < l_prime.size(); ++u) {
-      // (GravesTh) Eq 7.26, sum over all paths for t = 0.
-      log_p_z_x = LogSumExp(log_p_z_x, log_alpha_b(u, 0) + log_beta_b(u, 0));
-    }
-
-    (*loss)(b) = -log_p_z_x;  // Use negative log loss for display.
-
-    // We compute the derivative if needed.
-    if (requires_backprop) {
-      // Gradients with respect to input activations.
-      // Calculate gradient.
-      dy.setZero();
-      CalculateGradient(l_prime, y_b, log_alpha_b, log_beta_b, log_p_z_x, &dy);
-
-      // Convert gradient for current sample to DistBelief.
-      for (int t = 0; t < seq_len(b); t++) {
-        (*gradients)[t].row(b).array() = dy.col(t);
+  // Process each item in a batch in parallel, using at most kMaxThreads.
+  auto ComputeLossAndGradients = [this, num_classes, &l_primes, &seq_len,
+                                  &inputs, requires_backprop,
+                                  ctc_merge_repeated, &loss, &gradients](
+      int64 start_row, int64 limit_row) {
+    for (int b = start_row; b < limit_row; b++) {
+      if (seq_len(b) == 0) {
+        continue;
       }
-    }
-  }  // for (int b = ...
 
+      // For each batch element, log(alpha) and log(beta).
+      //   row size is: u_prime == l_prime.size()
+      //   col size is: seq_len[b] - output_delay_
+      const std::vector<int>& l_prime = l_primes[b];
+
+      Matrix log_alpha_b(l_prime.size(), seq_len(b) - this->output_delay_);
+      Matrix log_beta_b(l_prime.size(), seq_len(b) - this->output_delay_);
+
+      // Work matrices, pre-allocated to the size required by this batch item.
+      Matrix y(num_classes, seq_len(b));
+      Matrix dy;
+      if (requires_backprop) {
+        dy = Matrix::Zero(y.rows(), y.cols());
+      }
+
+      // For this batch, we'll only work with this shortened sequence_length.
+      Matrix y_b = y.leftCols(seq_len(b));
+
+      // Convert label from DistBelief
+      // y, prob are in num_classes x seq_len(b)
+      // Output activations.
+      Eigen::ArrayXf y_b_col;
+      for (int t = 0; t < seq_len(b); t++) {
+        // Calculate the softmax of y_b.  Use double precision
+        // arithmetic for the sum.
+        float max_coeff = inputs[t].row(b).maxCoeff();
+        y_b_col = (inputs[t].row(b).array() - max_coeff).exp();
+        y_b.col(t) = y_b_col / y_b_col.sum();
+      }
+
+      // Compute forward, backward.
+      // Forward variables.
+      CalculateForwardVariables(l_prime, y_b, ctc_merge_repeated, &log_alpha_b);
+      // Backward variables.
+      CalculateBackwardVariables(l_prime, y_b, ctc_merge_repeated, &log_beta_b);
+
+      // The loss is computed as the log(p(z|x)) between the target and
+      // prediction. Do lazy evaluation of log_prob here.
+      float log_p_z_x = kLogZero;
+      for (int u = 0; u < l_prime.size(); ++u) {
+        // (GravesTh) Eq 7.26, sum over all paths for t = 0.
+        log_p_z_x = LogSumExp(log_p_z_x, log_alpha_b(u, 0) + log_beta_b(u, 0));
+      }
+
+      (*loss)(b) = -log_p_z_x;  // Use negative log loss for display.
+
+      // We compute the derivative if needed.
+      if (requires_backprop) {
+        // Gradients with respect to input activations.
+        // Calculate gradient.
+        dy.setZero();
+        CalculateGradient(l_prime, y_b, log_alpha_b, log_beta_b, log_p_z_x,
+                          &dy);
+
+        // Convert gradient for current sample to DistBelief.
+        for (int t = 0; t < seq_len(b); t++) {
+          (*gradients)[t].row(b).array() = dy.col(t);
+        }
+      }
+    }  // for (int b = ...
+  };
+  if (workers) {
+    // *Rough* estimate of the cost for one item in the batch.
+    // Forward, Backward: O(T * U (= 2L + 1)), Gradients: O(T * (U + L)).
+    //
+    // softmax: T * L * (Cost(Exp) + Cost(Div))softmax +
+    // fwd,bwd: T * 2 * (2*L + 1) * (Cost(LogSumExp) + Cost(Log)) +
+    // grad: T * ((2L + 1) * Cost(LogSumExp) + L * (Cost(Expf) + Cost(Add)).
+    const int64 cost_exp = Eigen::internal::functor_traits<
+        Eigen::internal::scalar_exp_op<float>>::Cost;
+    const int64 cost_log = Eigen::internal::functor_traits<
+        Eigen::internal::scalar_log_op<float>>::Cost;
+    const int64 cost_log_sum_exp =
+        Eigen::TensorOpCost::AddCost<float>() + cost_exp + cost_log;
+    const int64 cost =
+        max_seq_len * num_classes *
+            (cost_exp + Eigen::TensorOpCost::DivCost<float>()) +
+        max_seq_len * 2 * (2 * num_classes + 1) *
+            (cost_log_sum_exp + cost_log) +
+        max_seq_len *
+            ((2 * num_classes + 1) * cost_log_sum_exp +
+             num_classes * (cost_exp + Eigen::TensorOpCost::AddCost<float>()));
+    Shard(workers->num_threads, workers->workers, batch_size, cost,
+          ComputeLossAndGradients);
+  } else {
+    ComputeLossAndGradients(0, batch_size);
+  }
   return Status::OK();
 }
 

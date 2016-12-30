@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -54,7 +53,7 @@ class TransformedSeriesTest(tf.test.TestCase):
         mocks.MockOneOutputTransform("thb", "nth"), "out1")
 
     result = col.build()
-    expected = "Fake Tensor 1"
+    expected = mocks.MockTensor("Mock Tensor 1", tf.int32)
     self.assertEqual(expected, result)
 
   def test_build_multiple_output(self):
@@ -63,7 +62,7 @@ class TransformedSeriesTest(tf.test.TestCase):
         mocks.MockTwoOutputTransform("thb", "nth", "snt"), "out2")
 
     result = col.build()
-    expected = "Fake Tensor 2"
+    expected = mocks.MockTensor("Mock Tensor 2", tf.int32)
     self.assertEqual(expected, result)
 
 

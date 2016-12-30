@@ -19,6 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops import gamma
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 
@@ -34,33 +36,65 @@ class Chi2(gamma.Gamma):
   with Chi2(df) = Gamma(df/2, 1/2).
   """
 
-  def __init__(self, df, strict=True, strict_statistics=True, name="Chi2"):
+  def __init__(self,
+               df,
+               validate_args=False,
+               allow_nan_stats=True,
+               name="Chi2"):
     """Construct Chi2 distributions with parameter `df`.
 
     Args:
-      df: `float` or `double` tensor, the degrees of freedom of the
+      df: Floating point tensor, the degrees of freedom of the
         distribution(s).  `df` must contain only positive values.
-      strict: Whether to assert that `df > 0`, and that `x > 0` in the
-        methods `pdf(x)` and `log_pdf(x)`. If `strict` is False
-        and the inputs are invalid, correct behavior is not guaranteed.
-      strict_statistics:  Boolean, default True.  If True, raise an exception if
-        a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-        If False, batch members with valid parameters leading to undefined
-        statistics will return NaN for this statistic.
+      validate_args: `Boolean`, default `False`.  Whether to assert that
+        `df > 0`, and that `x > 0` in the methods `prob(x)` and `log_prob(x)`.
+        If `validate_args` is `False` and the inputs are invalid, correct
+        behavior is not guaranteed.
+      allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
+        exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+        batch member.  If `True`, batch members with valid parameters leading to
+        undefined statistics will return NaN for this statistic.
       name: The name to prepend to all ops created by this distribution.
     """
+    parameters = locals()
+    parameters.pop("self")
     # Even though all stats of chi2 are defined for valid parameters, this is
     # not true in the parent class "gamma."  therefore, passing
-    # strict_statistics=True
+    # allow_nan_stats=True
     # through to the parent class results in unnecessary asserts.
-    with ops.op_scope([df], name):
-      df = ops.convert_to_tensor(df)
-      self._df = df
-      super(Chi2, self).__init__(alpha=df / 2,
-                                 beta=math_ops.cast(0.5, dtype=df.dtype),
-                                 strict=strict,
-                                 strict_statistics=strict_statistics)
+    with ops.name_scope(name, values=[df]) as ns:
+      self._df = ops.convert_to_tensor(df, name="df")
+      super(Chi2, self).__init__(
+          alpha=0.5 * self._df,
+          beta=constant_op.constant(0.5, dtype=self._df.dtype),
+          validate_args=validate_args,
+          allow_nan_stats=allow_nan_stats,
+          name=ns)
+    self._parameters = parameters
+
+  @staticmethod
+  def _param_shapes(sample_shape):
+    return {"df": ops.convert_to_tensor(sample_shape, dtype=dtypes.int32)}
 
   @property
   def df(self):
     return self._df
+
+
+class Chi2WithAbsDf(Chi2):
+  """Chi2 with parameter transform `df = floor(abs(df))`."""
+
+  def __init__(self,
+               df,
+               validate_args=False,
+               allow_nan_stats=True,
+               name="Chi2WithAbsDf"):
+    parameters = locals()
+    parameters.pop("self")
+    with ops.name_scope(name, values=[df]) as ns:
+      super(Chi2WithAbsDf, self).__init__(
+          df=math_ops.floor(math_ops.abs(df)),
+          validate_args=validate_args,
+          allow_nan_stats=allow_nan_stats,
+          name=ns)
+    self._parameters = parameters

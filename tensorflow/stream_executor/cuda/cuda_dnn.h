@@ -31,6 +31,9 @@ namespace gputools {
 namespace cuda {
 
 class CUDAExecutor;
+class CudnnRnnDescriptor;
+class CudnnRnnSequenceTensorDescriptor;
+class CudnnRnnStateTensorDescriptor;
 
 // Opaque and unique identifier for the cuDNN plugin.
 extern const PluginId kCuDnnPlugin;
@@ -44,6 +47,62 @@ class CudnnSupport : public dnn::DnnSupport {
 
   port::Status Init() override;
 
+  port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> createRnnDescriptor(
+      int num_layers, int hidden_size, int input_size,
+      dnn::RnnInputMode input_mode, dnn::RnnDirectionMode direction_mode,
+      dnn::RnnMode rnn_mode, dnn::DataType data_type, float dropout,
+      uint64 seed, ScratchAllocator* state_allocator) override;
+
+  port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+  createRnnSequenceTensorDescriptor(int seq_length, int batch_size,
+                                    int data_size,
+                                    dnn::DataType data_type) override;
+
+  port::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
+  createRnnStateTensorDescriptor(int num_layer, int batch_size, int data_size,
+                                 dnn::DataType data_type) override;
+
+  bool DoRnnForward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
+                    const dnn::RnnSequenceTensorDescriptor& input_desc,
+                    const DeviceMemory<float>& input_data,
+                    const dnn::RnnStateTensorDescriptor& input_h_desc,
+                    const DeviceMemory<float>& input_h_data,
+                    const dnn::RnnStateTensorDescriptor& input_c_desc,
+                    const DeviceMemory<float>& input_c_data,
+                    const DeviceMemory<float>& params,
+                    const dnn::RnnSequenceTensorDescriptor& output_desc,
+                    DeviceMemory<float>* output_data,
+                    const dnn::RnnStateTensorDescriptor& output_h_desc,
+                    DeviceMemory<float>* output_h_data,
+                    const dnn::RnnStateTensorDescriptor& output_c_desc,
+                    DeviceMemory<float>* output_c_data, bool is_training,
+                    ScratchAllocator* reserve_space_allocator,
+                    ScratchAllocator* workspace_allocator) override;
+
+  bool DoRnnBackward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
+                     const dnn::RnnSequenceTensorDescriptor& input_desc,
+                     const DeviceMemory<float>& input_data,
+                     const dnn::RnnStateTensorDescriptor& input_h_desc,
+                     const DeviceMemory<float>& input_h_data,
+                     const dnn::RnnStateTensorDescriptor& input_c_desc,
+                     const DeviceMemory<float>& input_c_data,
+                     const DeviceMemory<float>& params,
+                     const dnn::RnnSequenceTensorDescriptor& output_desc,
+                     const DeviceMemory<float>& output_data,
+                     const dnn::RnnStateTensorDescriptor& output_h_desc,
+                     const DeviceMemory<float>& output_h_data,
+                     const dnn::RnnStateTensorDescriptor& output_c_desc,
+                     const DeviceMemory<float>& output_c_data,
+                     const DeviceMemory<float>& output_backprop_data,
+                     const DeviceMemory<float>& output_h_backprop_data,
+                     const DeviceMemory<float>& output_c_backprop_data,
+                     DeviceMemory<float>* input_backprop_data,
+                     DeviceMemory<float>* input_h_backprop_data,
+                     DeviceMemory<float>* input_c_backprop_data,
+                     DeviceMemory<float>* params_backprop_data,
+                     DeviceMemory<uint8>* reserve_space_data,
+                     ScratchAllocator* workspace_allocator) override;
+
   bool GetConvolveAlgorithms(
       std::vector<dnn::AlgorithmType>* out_algorithms) override;
 
@@ -52,6 +111,28 @@ class CudnnSupport : public dnn::DnnSupport {
 
   bool GetConvolveBackwardFilterAlgorithms(
       std::vector<dnn::AlgorithmType>* out_algorithms) override;
+
+  bool DoBatchNormalizationForward(
+      Stream* stream, const DeviceMemory<float>& x,
+      const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
+      const DeviceMemory<float>& estimated_mean,
+      const DeviceMemory<float>& estimated_variance,
+      const dnn::BatchDescriptor& x_desc,
+      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      DeviceMemory<float>* y, DeviceMemory<float>* batch_mean,
+      DeviceMemory<float>* batch_var, DeviceMemory<float>* saved_mean,
+      DeviceMemory<float>* saved_inv_var, bool is_training,
+      std::function<const DeviceMemory<float>&()> var_to_inv_var,
+      std::function<void()> inv_var_to_var) override;
+
+  bool DoBatchNormalizationBackward(
+      Stream* stream, const DeviceMemory<float>& y_backprop,
+      const DeviceMemory<float>& x, const DeviceMemory<float>& scale,
+      const DeviceMemory<float>& mean, const DeviceMemory<float>& variance,
+      const dnn::BatchDescriptor& x_desc,
+      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      DeviceMemory<float>* x_backprop, DeviceMemory<float>* scale_backprop,
+      DeviceMemory<float>* offset_backprop) override;
 
   bool DoConvolve(Stream* stream, const dnn::BatchDescriptor& input_descriptor,
                   const DeviceMemory<float>& input_data,
@@ -235,6 +316,20 @@ class CudnnSupport : public dnn::DnnSupport {
                    const DeviceMemory<float>& input_data,
                    DeviceMemory<float>* output_data) override;
 
+  bool DoNormalizeWithDimensions(
+      Stream* stream, const dnn::NormalizeDescriptor& normalize_descriptor,
+      const dnn::BatchDescriptor& dimensions,
+      const DeviceMemory<float>& input_data,
+      DeviceMemory<float>* output_data) override;
+
+  bool DoNormalizeBackwardWithDimensions(
+      Stream* stream, const dnn::NormalizeDescriptor& normalize_descriptor,
+      const dnn::BatchDescriptor& dimensions,
+      const DeviceMemory<float>& raw_data,
+      const DeviceMemory<float>& normalized_data,
+      const DeviceMemory<float>& normalized_variable_gradient,
+      DeviceMemory<float>* raw_variable_gradient) override;
+
   bool DoDepthConcatenate(
       Stream* stream, port::ArraySlice<dnn::BatchDescriptor> input_dimensions,
       port::ArraySlice<const DeviceMemory<float>*> input_data,
@@ -306,6 +401,30 @@ class CudnnSupport : public dnn::DnnSupport {
       EXCLUSIVE_LOCKS_REQUIRED(dnn_handle_mutex_);
 
   template <class T>
+  bool DoBatchNormalizationForwardImpl(
+      Stream* stream, dnn::DataType data_type, const DeviceMemory<T>& x,
+      const DeviceMemory<T>& scale, const DeviceMemory<T>& offset,
+      const DeviceMemory<T>& estimated_mean,
+      const DeviceMemory<T>& estimated_variance,
+      const dnn::BatchDescriptor& x_desc,
+      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      DeviceMemory<T>* y, DeviceMemory<T>* batch_mean,
+      DeviceMemory<T>* batch_var, DeviceMemory<T>* saved_mean,
+      DeviceMemory<T>* saved_inv_var, bool is_training,
+      std::function<const DeviceMemory<T>&()> var_to_inv_var,
+      std::function<void()> inv_var_to_var);
+
+  template <class T>
+  bool DoBatchNormalizationBackwardImpl(
+      Stream* stream, int cudnn_type, const DeviceMemory<T>& y_backprop,
+      const DeviceMemory<T>& x, const DeviceMemory<T>& scale,
+      const DeviceMemory<T>& mean, const DeviceMemory<T>& variance,
+      const dnn::BatchDescriptor& x_desc,
+      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      DeviceMemory<T>* x_backprop, DeviceMemory<T>* scale_backprop,
+      DeviceMemory<T>* offset_backprop);
+
+  template <class T>
   bool DoConvolveImpl(Stream* stream,
                       int cudnn_type,  // Actually cudnnDataType_t.
                       const dnn::BatchDescriptor& batch_descriptor,
@@ -354,6 +473,49 @@ class CudnnSupport : public dnn::DnnSupport {
                                   const DeviceMemory<T>& input_data,
                                   const dnn::BatchDescriptor& bias_descriptor,
                                   DeviceMemory<T>* backward_bias_data);
+
+  template <class T>
+  bool DoRnnForwardImpl(Stream* stream, const CudnnRnnDescriptor& rnn_desc,
+                        const CudnnRnnSequenceTensorDescriptor& input_desc,
+                        const DeviceMemory<T>& input_data,
+                        const CudnnRnnStateTensorDescriptor& input_h_desc,
+                        const DeviceMemory<T>& input_h_data,
+                        const CudnnRnnStateTensorDescriptor& input_c_desc,
+                        const DeviceMemory<T>& input_c_data,
+                        const DeviceMemory<T>& params,
+                        const CudnnRnnSequenceTensorDescriptor& output_desc,
+                        DeviceMemory<T>* output_data,
+                        const CudnnRnnStateTensorDescriptor& output_h_desc,
+                        DeviceMemory<T>* output_h_data,
+                        const CudnnRnnStateTensorDescriptor& output_c_desc,
+                        DeviceMemory<T>* output_c_data, bool is_training,
+                        ScratchAllocator* reserve_space_allocator,
+                        ScratchAllocator* workspace_allocator);
+
+  template <class T>
+  bool DoRnnBackwardImpl(Stream* stream, const CudnnRnnDescriptor& rnn_desc,
+                         const CudnnRnnSequenceTensorDescriptor& input_desc,
+                         const DeviceMemory<T>& input_data,
+                         const CudnnRnnStateTensorDescriptor& input_h_desc,
+                         const DeviceMemory<T>& input_h_data,
+                         const CudnnRnnStateTensorDescriptor& input_c_desc,
+                         const DeviceMemory<T>& input_c_data,
+                         const DeviceMemory<T>& params,
+                         const CudnnRnnSequenceTensorDescriptor& output_desc,
+                         const DeviceMemory<T>& output_data,
+                         const CudnnRnnStateTensorDescriptor& output_h_desc,
+                         const DeviceMemory<T>& output_h_data,
+                         const CudnnRnnStateTensorDescriptor& output_c_desc,
+                         const DeviceMemory<T>& output_c_data,
+                         const DeviceMemory<float>& output_backprop_data,
+                         const DeviceMemory<float>& output_h_backprop_data,
+                         const DeviceMemory<float>& output_c_backprop_data,
+                         DeviceMemory<float>* input_backprop_data,
+                         DeviceMemory<float>* input_h_backprop_data,
+                         DeviceMemory<float>* input_c_backprop_data,
+                         DeviceMemory<float>* params_backprop_data,
+                         DeviceMemory<uint8>* reserve_space_data,
+                         ScratchAllocator* workspace_allocator);
 
   SE_DISALLOW_COPY_AND_ASSIGN(CudnnSupport);
 };

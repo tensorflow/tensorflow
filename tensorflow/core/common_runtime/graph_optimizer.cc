@@ -31,21 +31,16 @@ GraphOptimizer::GraphOptimizer(const OptimizerOptions& opts) : opts_(opts) {
 
 GraphOptimizer::~GraphOptimizer() {}
 
-void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Device* device,
-                              Graph** graph) {
+void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
+                              Device* device, Graph** graph) {
   Graph* g = *graph;
-  for (const Node* n : g->nodes()) {
-    if (n->IsControlFlow()) {
-      VLOG(2) << "Skip optimization if there is any control flow ops";
-    }
-  }
-
   DumpGraph("Initial", g);
+
   bool changed = true;
   const int kMaxRounds = 10;
   for (int rounds = 0; rounds < kMaxRounds; ++rounds) {
     changed = false;
-    if (opts_.do_function_inlining() && RemoveListArrayConverter(g)) {
+    if (RemoveListArrayConverter(g)) {
       DumpGraph("RemoveListArrayConverter", g);
       changed = true;
     }
@@ -60,7 +55,7 @@ void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Device* device,
 
     if (opts_.do_constant_folding()) {
       ConstantFoldingOptions cf_opts;
-      if (DoConstantFolding(cf_opts, device, g)) {
+      if (DoConstantFolding(cf_opts, runtime, env, device, g)) {
         RemoveDeadNodes(g);
         DumpGraph("ConstFolding", g);
         changed = true;

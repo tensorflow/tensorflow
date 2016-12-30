@@ -32,6 +32,10 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif // TENSORFLOW_USE_SYCL
+
 template <typename Device, typename T>
 class UnpackOp : public OpKernel {
  public:
@@ -102,13 +106,15 @@ class UnpackOp : public OpKernel {
       Tensor* output;
       OP_REQUIRES_OK(context,
                      context->allocate_output(i, output_shape, &output));
-      auto output_shaped = output->shaped<T, 3>({1, before_dim, after_dim});
 
-      Eigen::DSizes<Eigen::DenseIndex, 3> indices{0, 0, i * after_dim};
-      Eigen::DSizes<Eigen::DenseIndex, 3> sizes{1, before_dim, after_dim};
-      functor::Split<Device, T>()(context->eigen_device<Device>(),
-                                  output_shaped, input_reshaped, indices,
-                                  sizes);
+      if (output_shape.num_elements() > 0) {
+        auto output_shaped = output->shaped<T, 3>({1, before_dim, after_dim});
+        Eigen::DSizes<Eigen::DenseIndex, 3> indices{0, 0, i * after_dim};
+        Eigen::DSizes<Eigen::DenseIndex, 3> sizes{1, before_dim, after_dim};
+        functor::Split<Device, T>()(context->eigen_device<Device>(),
+                                    output_shaped, input_reshaped, indices,
+                                    sizes);
+      }
     }
   }
 
@@ -146,5 +152,26 @@ REGISTER_KERNEL_BUILDER(Name("Unpack")
                         UnpackOp<CPUDevice, int32>);
 
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL(type)                                         \
+  REGISTER_KERNEL_BUILDER(                                          \
+      Name("Unpack").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
+      UnpackOp<SYCLDevice, type>)
+
+REGISTER_SYCL(float);
+#undef REGISTER_SYCL
+
+// A special SYCL kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
+REGISTER_KERNEL_BUILDER(Name("Unpack")
+                            .Device(DEVICE_SYCL)
+                            .HostMemory("value")
+                            .HostMemory("output")
+                            .TypeConstraint<int32>("T"),
+                        UnpackOp<CPUDevice, int32>);
+
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // end namespace tensorflow

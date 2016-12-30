@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,14 +19,16 @@ from __future__ import print_function
 
 import math
 import random
+import sys
 
+from tensorflow.contrib.losses.python.losses import loss_ops
 from tensorflow.contrib.tensor_forest.python import constants
-from tensorflow.contrib.tensor_forest.python.ops import inference_ops
-from tensorflow.contrib.tensor_forest.python.ops import training_ops
+from tensorflow.contrib.tensor_forest.python.ops import tensor_forest_ops
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
@@ -54,22 +55,30 @@ from tensorflow.python.platform import tf_logging as logging
 class ForestHParams(object):
   """A base class for holding hyperparameters and calculating good defaults."""
 
-  def __init__(self, num_trees=100, max_nodes=10000, bagging_fraction=1.0,
-               max_depth=0, num_splits_to_consider=0,
+  def __init__(self,
+               num_trees=100,
+               max_nodes=10000,
+               bagging_fraction=1.0,
+               num_splits_to_consider=0,
                feature_bagging_fraction=1.0,
-               max_fertile_nodes=0, split_after_samples=250,
+               max_fertile_nodes=0,
+               split_after_samples=250,
                min_split_samples=5,
-               valid_leaf_threshold=1, **kwargs):
+               valid_leaf_threshold=1,
+               dominate_method='bootstrap',
+               dominate_fraction=0.99,
+               **kwargs):
     self.num_trees = num_trees
     self.max_nodes = max_nodes
     self.bagging_fraction = bagging_fraction
     self.feature_bagging_fraction = feature_bagging_fraction
-    self.max_depth = max_depth
     self.num_splits_to_consider = num_splits_to_consider
     self.max_fertile_nodes = max_fertile_nodes
     self.split_after_samples = split_after_samples
     self.min_split_samples = min_split_samples
     self.valid_leaf_threshold = valid_leaf_threshold
+    self.dominate_method = dominate_method
+    self.dominate_fraction = dominate_fraction
 
     for name, value in kwargs.items():
       setattr(self, name, value)
@@ -102,30 +111,13 @@ class ForestHParams(object):
     # regression and avoids having to recompute sums for classification.
     self.num_output_columns = self.num_classes + 1
 
-    # Allow each tree to be unbalanced by up to a factor of 2.
-    self.max_depth = (self.max_depth or
-                      int(2 * math.ceil(math.log(self.max_nodes, 2))))
+    # Our experiments have found that num_splits_to_consider = num_features
+    # gives good accuracy.
+    self.num_splits_to_consider = self.num_splits_to_consider or min(
+        self.num_features, 1000)
 
-    # The Random Forest literature recommends sqrt(# features) for
-    # classification problems, and p/3 for regression problems.
-    # TODO(thomaswc): Consider capping this for large number of features.
-    self.num_splits_to_consider = (
-        self.num_splits_to_consider or
-        max(10, int(math.ceil(math.sqrt(self.num_features)))))
-
-    # max_fertile_nodes doesn't effect performance, only training speed.
-    # We therefore set it primarily based upon space considerations.
-    # Each fertile node takes up num_splits_to_consider times as much
-    # as space as a non-fertile node.  We want the fertile nodes to in
-    # total only take up as much space as the non-fertile nodes, so
-    num_fertile = int(math.ceil(self.max_nodes / self.num_splits_to_consider))
-    # But always use at least 1000 accumulate slots.
-    num_fertile = max(num_fertile, 1000)
-    self.max_fertile_nodes = self.max_fertile_nodes or num_fertile
-    # But it also never needs to be larger than the number of leaves,
-    # which is max_nodes / 2.
-    self.max_fertile_nodes = min(self.max_fertile_nodes,
-                                 int(math.ceil(self.max_nodes / 2.0)))
+    self.max_fertile_nodes = (self.max_fertile_nodes or
+                              int(math.ceil(self.max_nodes / 2.0)))
 
     # We have num_splits_to_consider slots to fill, and we want to spend
     # approximately split_after_samples samples initializing them.
@@ -141,6 +133,17 @@ class ForestHParams(object):
     self.base_random_seed = getattr(self, 'base_random_seed', 0)
 
     return self
+
+
+def get_epoch_variable():
+  """Returns the epoch variable, or [0] if not defined."""
+  # Grab epoch variable defined in
+  # //third_party/tensorflow/python/training/input.py::limit_epochs
+  for v in tf_variables.local_variables():
+    if 'limit_epochs/epoch' in v.op.name:
+      return array_ops.reshape(v, [1])
+  # TODO(thomaswc): Access epoch from the data feeder.
+  return [0]
 
 
 # A simple container to hold the training variables for a single tree.
@@ -161,22 +164,24 @@ class TreeTrainingVariables(object):
         name=self.get_tree_name('tree_thresholds', tree_num),
         shape=[params.max_nodes],
         initializer=init_ops.constant_initializer(-1.0))
-    self.tree_depths = variable_scope.get_variable(
-        name=self.get_tree_name('tree_depths', tree_num),
-        shape=[params.max_nodes],
-        dtype=dtypes.int32,
-        initializer=init_ops.constant_initializer(1))
     self.end_of_tree = variable_scope.get_variable(
         name=self.get_tree_name('end_of_tree', tree_num),
         dtype=dtypes.int32,
         initializer=constant_op.constant([1]))
-    self.start_epoch = tf_variables.Variable(
-        [0] * (params.max_nodes), name='start_epoch')
+    self.start_epoch = variable_scope.get_variable(
+        name=self.get_tree_name('start_epoch', tree_num),
+        dtype=dtypes.int32, shape=[params.max_nodes],
+        initializer=init_ops.constant_initializer(0))
 
     if training:
       self.node_to_accumulator_map = variable_scope.get_variable(
           name=self.get_tree_name('node_to_accumulator_map', tree_num),
           shape=[params.max_nodes],
+          dtype=dtypes.int32,
+          initializer=init_ops.constant_initializer(-1))
+      self.accumulator_to_node_map = variable_scope.get_variable(
+          name=self.get_tree_name('accumulator_to_node_map', tree_num),
+          shape=[params.max_fertile_nodes],
           dtype=dtypes.int32,
           initializer=init_ops.constant_initializer(-1))
 
@@ -308,11 +313,13 @@ class RandomForestDeviceAssigner(object):
 class RandomForestGraphs(object):
   """Builds TF graphs for random forest training and inference."""
 
-  def __init__(self, params, device_assigner=None,
-               variables=None, tree_variables_class=TreeTrainingVariables,
-               tree_graphs=None, training=True,
-               t_ops=training_ops,
-               i_ops=inference_ops):
+  def __init__(self,
+               params,
+               device_assigner=None,
+               variables=None,
+               tree_variables_class=TreeTrainingVariables,
+               tree_graphs=None,
+               training=True):
     self.params = params
     self.device_assigner = device_assigner or RandomForestDeviceAssigner()
     logging.info('Constructing forest with params = ')
@@ -322,18 +329,21 @@ class RandomForestGraphs(object):
         tree_variables_class=tree_variables_class)
     tree_graph_class = tree_graphs or RandomTreeGraphs
     self.trees = [
-        tree_graph_class(
-            self.variables[i], self.params,
-            t_ops.Load(), i_ops.Load(), i)
-        for i in range(self.params.num_trees)]
+        tree_graph_class(self.variables[i], self.params, i)
+        for i in range(self.params.num_trees)
+    ]
 
   def _bag_features(self, tree_num, input_data):
-    split_data = array_ops.split(1, self.params.num_features, input_data)
-    return array_ops.concat(
-        1, [split_data[ind] for ind in self.params.bagged_features[tree_num]])
+    split_data = array_ops.split(
+        value=input_data, num_or_size_splits=self.params.num_features, axis=1)
+    return array_ops.concat_v2(
+        [split_data[ind] for ind in self.params.bagged_features[tree_num]], 1)
 
-  def training_graph(self, input_data, input_labels, data_spec=None,
-                     epoch=None, **tree_kwargs):
+  def training_graph(self,
+                     input_data,
+                     input_labels,
+                     data_spec=None,
+                     **tree_kwargs):
     """Constructs a TF graph for training a random forest.
 
     Args:
@@ -342,14 +352,12 @@ class RandomForestGraphs(object):
         input_data.
       data_spec: A list of tf.dtype values specifying the original types of
         each column.
-      epoch: A tensor or placeholder for the epoch the training data comes from.
       **tree_kwargs: Keyword arguments passed to each tree's training_graph.
 
     Returns:
       The last op in the random forest training graph.
     """
-    data_spec = ([constants.DATA_FLOAT] * self.params.num_features
-                 if data_spec is None else data_spec)
+    data_spec = [constants.DATA_FLOAT] if data_spec is None else data_spec
     tree_graphs = []
     for i in range(self.params.num_trees):
       with ops.device(self.device_assigner.get_device(i)):
@@ -362,7 +370,8 @@ class RandomForestGraphs(object):
         if self.params.bagging_fraction < 1.0:
           # TODO(thomaswc): This does sampling without replacment.  Consider
           # also allowing sampling with replacement as an option.
-          batch_size = array_ops.slice(array_ops.shape(input_data), [0], [1])
+          batch_size = array_ops.strided_slice(
+              array_ops.shape(input_data), [0], [1])
           r = random_ops.random_uniform(batch_size, seed=seed)
           mask = math_ops.less(
               r, array_ops.ones_like(r) * self.params.bagging_fraction)
@@ -381,35 +390,36 @@ class RandomForestGraphs(object):
           tree_graphs.append(
               self.trees[i].training_graph(
                   tree_data, tree_labels, seed, data_spec=data_spec,
-                  epoch=([0] if epoch is None else epoch),
                   **tree_kwargs))
 
-    return control_flow_ops.group(*tree_graphs)
+    return control_flow_ops.group(*tree_graphs, name='train')
 
-  def inference_graph(self, input_data, data_spec=None):
+  def inference_graph(self, input_data, data_spec=None, **inference_args):
     """Constructs a TF graph for evaluating a random forest.
 
     Args:
       input_data: A tensor or SparseTensor or placeholder for input data.
       data_spec: A list of tf.dtype values specifying the original types of
         each column.
+      **inference_args: Keyword arguments to pass through to each tree.
 
     Returns:
       The last op in the random forest inference graph.
     """
-    data_spec = ([constants.DATA_FLOAT] * self.params.num_features
-                 if data_spec is None else data_spec)
+    data_spec = [constants.DATA_FLOAT] if data_spec is None else data_spec
     probabilities = []
     for i in range(self.params.num_trees):
       with ops.device(self.device_assigner.get_device(i)):
         tree_data = input_data
         if self.params.bagged_features:
           tree_data = self._bag_features(i, input_data)
-        probabilities.append(self.trees[i].inference_graph(tree_data,
-                                                           data_spec))
+        probabilities.append(self.trees[i].inference_graph(
+            tree_data, data_spec, **inference_args))
     with ops.device(self.device_assigner.get_device(0)):
-      all_predict = array_ops.pack(probabilities)
-      return math_ops.reduce_sum(all_predict, 0) / self.params.num_trees
+      all_predict = array_ops.stack(probabilities)
+      return math_ops.div(
+          math_ops.reduce_sum(all_predict, 0), self.params.num_trees,
+          name='probabilities')
 
   def average_size(self):
     """Constructs a TF graph for evaluating the average size of a forest.
@@ -421,14 +431,16 @@ class RandomForestGraphs(object):
     for i in range(self.params.num_trees):
       with ops.device(self.device_assigner.get_device(i)):
         sizes.append(self.trees[i].size())
-    return math_ops.reduce_mean(array_ops.pack(sizes))
+    return math_ops.reduce_mean(math_ops.to_float(array_ops.stack(sizes)))
 
-  def training_loss(self):
-    return math_ops.neg(self.average_size())
+  # pylint: disable=unused-argument
+  def training_loss(self, features, labels, data_spec=None,
+                    name='training_loss'):
+    return math_ops.negative(self.average_size(), name=name)
 
   # pylint: disable=unused-argument
   def validation_loss(self, features, labels):
-    return math_ops.neg(self.average_size())
+    return math_ops.negative(self.average_size())
 
   def average_impurity(self):
     """Constructs a TF graph for evaluating the leaf impurity of a forest.
@@ -440,7 +452,7 @@ class RandomForestGraphs(object):
     for i in range(self.params.num_trees):
       with ops.device(self.device_assigner.get_device(i)):
         impurities.append(self.trees[i].average_impurity())
-    return math_ops.reduce_mean(array_ops.pack(impurities))
+    return math_ops.reduce_mean(array_ops.stack(impurities))
 
   def get_stats(self, session):
     tree_stats = []
@@ -450,12 +462,67 @@ class RandomForestGraphs(object):
     return ForestStats(tree_stats, self.params)
 
 
+def one_hot_wrapper(num_classes, loss_fn):
+  """Some loss functions take one-hot labels."""
+  def _loss(probs, targets):
+    one_hot_labels = array_ops.one_hot(
+        math_ops.to_int32(targets), num_classes,
+        on_value=1., off_value=0., dtype=dtypes.float32)
+    return loss_fn(probs, one_hot_labels)
+  return _loss
+
+
+class TrainingLossForest(RandomForestGraphs):
+  """Random Forest that uses training loss as the termination criteria."""
+
+  def __init__(self, params, loss_fn=None, **kwargs):
+    """Initialize.
+
+    Args:
+      params: Like RandomForestGraphs, a ForestHParams object.
+      loss_fn: A function that takes probabilities and targets and returns
+        a loss for each example.
+      **kwargs: Keyword args to pass to superclass (RandomForestGraphs).
+    """
+    self.loss_fn = loss_fn or one_hot_wrapper(params.num_classes,
+                                              loss_ops.log_loss)
+    self._loss = None
+    super(TrainingLossForest, self).__init__(params, **kwargs)
+
+  def _get_loss(self, features, labels, data_spec=None):
+    """Constructs, caches, and returns the inference-based loss."""
+    if self._loss is not None:
+      return self._loss
+
+    def _average_loss():
+      probs = self.inference_graph(features, data_spec=data_spec)
+      return math_ops.reduce_sum(self.loss_fn(
+          probs, labels)) / math_ops.to_float(
+              array_ops.shape(features)[0])
+
+    self._loss = control_flow_ops.cond(
+        self.average_size() > 0, _average_loss,
+        lambda: constant_op.constant(sys.maxsize, dtype=dtypes.float32))
+
+    return self._loss
+
+  def training_graph(self, input_data, input_labels, data_spec=None,
+                     **kwargs):
+    loss = self._get_loss(input_data, input_labels, data_spec=data_spec)
+    with ops.control_dependencies([loss.op]):
+      return super(TrainingLossForest, self).training_graph(
+          input_data, input_labels, **kwargs)
+
+  def training_loss(self, features, labels, data_spec=None,
+                    name='training_loss'):
+    return array_ops.identity(
+        self._get_loss(features, labels, data_spec=data_spec), name=name)
+
+
 class RandomTreeGraphs(object):
   """Builds TF graphs for random tree training and inference."""
 
-  def __init__(self, variables, params, t_ops, i_ops, tree_num):
-    self.training_ops = t_ops
-    self.inference_ops = i_ops
+  def __init__(self, variables, params, tree_num):
     self.variables = variables
     self.params = params
     self.tree_num = tree_num
@@ -468,9 +535,10 @@ class RandomTreeGraphs(object):
       return control_flow_ops.no_op()
 
     return control_flow_ops.cond(
-        math_ops.equal(array_ops.squeeze(array_ops.slice(
-            self.variables.tree, [0, 0], [1, 1])), -2),
-        _init_tree, _nothing)
+        math_ops.equal(
+            array_ops.squeeze(
+                array_ops.strided_slice(self.variables.tree, [0, 0], [1, 1])),
+            -2), _init_tree, _nothing)
 
   def _gini(self, class_counts):
     """Calculate the Gini impurity.
@@ -530,8 +598,12 @@ class RandomTreeGraphs(object):
 
     return math_ops.reduce_sum(e_x2 - math_ops.square(e_x), 1)
 
-  def training_graph(self, input_data, input_labels, random_seed,
-                     data_spec, epoch=None):
+  def training_graph(self,
+                     input_data,
+                     input_labels,
+                     random_seed,
+                     data_spec,
+                     input_weights=None):
 
     """Constructs a TF graph for training a random tree.
 
@@ -543,64 +615,80 @@ class RandomTreeGraphs(object):
         means use the current time as the seed.
       data_spec: A list of tf.dtype values specifying the original types of
         each column.
-      epoch: A tensor or placeholder for the epoch the training data comes from.
+      input_weights: A float tensor or placeholder holding per-input weights,
+        or None if all inputs are to be weighted equally.
 
     Returns:
       The last op in the random tree training graph.
     """
-    epoch = [0] if epoch is None else epoch
+    epoch = math_ops.to_int32(get_epoch_variable())
+
+    if input_weights is None:
+      input_weights = []
 
     sparse_indices = []
     sparse_values = []
     sparse_shape = []
-    if isinstance(input_data, ops.SparseTensor):
+    if isinstance(input_data, sparse_tensor.SparseTensor):
       sparse_indices = input_data.indices
       sparse_values = input_data.values
-      sparse_shape = input_data.shape
+      sparse_shape = input_data.dense_shape
       input_data = []
 
     # Count extremely random stats.
-    (node_sums, node_squares, splits_indices, splits_sums,
-     splits_squares, totals_indices, totals_sums,
-     totals_squares, input_leaves) = (
-         self.training_ops.count_extremely_random_stats(
-             input_data, sparse_indices, sparse_values, sparse_shape,
-             data_spec, input_labels, self.variables.tree,
-             self.variables.tree_thresholds,
-             self.variables.node_to_accumulator_map,
-             self.variables.candidate_split_features,
-             self.variables.candidate_split_thresholds,
-             self.variables.start_epoch, epoch,
-             num_classes=self.params.num_output_columns,
-             regression=self.params.regression))
+    (node_sums, node_squares, splits_indices, splits_sums, splits_squares,
+     totals_indices, totals_sums, totals_squares,
+     input_leaves) = (tensor_forest_ops.count_extremely_random_stats(
+         input_data,
+         sparse_indices,
+         sparse_values,
+         sparse_shape,
+         data_spec,
+         input_labels,
+         input_weights,
+         self.variables.tree,
+         self.variables.tree_thresholds,
+         self.variables.node_to_accumulator_map,
+         self.variables.candidate_split_features,
+         self.variables.candidate_split_thresholds,
+         self.variables.start_epoch,
+         epoch,
+         num_classes=self.params.num_output_columns,
+         regression=self.params.regression))
     node_update_ops = []
     node_update_ops.append(
         state_ops.assign_add(self.variables.node_sums, node_sums))
 
     splits_update_ops = []
-    splits_update_ops.append(self.training_ops.scatter_add_ndim(
-        self.variables.candidate_split_sums,
-        splits_indices, splits_sums))
-    splits_update_ops.append(self.training_ops.scatter_add_ndim(
-        self.variables.accumulator_sums, totals_indices,
-        totals_sums))
+    splits_update_ops.append(
+        tensor_forest_ops.scatter_add_ndim(self.variables.candidate_split_sums,
+                                           splits_indices, splits_sums))
+    splits_update_ops.append(
+        tensor_forest_ops.scatter_add_ndim(self.variables.accumulator_sums,
+                                           totals_indices, totals_sums))
 
     if self.params.regression:
       node_update_ops.append(state_ops.assign_add(self.variables.node_squares,
                                                   node_squares))
-      splits_update_ops.append(self.training_ops.scatter_add_ndim(
-          self.variables.candidate_split_squares,
-          splits_indices, splits_squares))
-      splits_update_ops.append(self.training_ops.scatter_add_ndim(
-          self.variables.accumulator_squares, totals_indices,
-          totals_squares))
+      splits_update_ops.append(
+          tensor_forest_ops.scatter_add_ndim(
+              self.variables.candidate_split_squares, splits_indices,
+              splits_squares))
+      splits_update_ops.append(
+          tensor_forest_ops.scatter_add_ndim(self.variables.accumulator_squares,
+                                             totals_indices, totals_squares))
 
     # Sample inputs.
     update_indices, feature_updates, threshold_updates = (
-        self.training_ops.sample_inputs(
-            input_data, sparse_indices, sparse_values, sparse_shape,
+        tensor_forest_ops.sample_inputs(
+            input_data,
+            sparse_indices,
+            sparse_values,
+            sparse_shape,
+            input_weights,
             self.variables.node_to_accumulator_map,
-            input_leaves, self.variables.candidate_split_features,
+            input_leaves,
+            self.variables.candidate_split_features,
             self.variables.candidate_split_thresholds,
             split_initializations_per_input=(
                 self.params.split_initializations_per_input),
@@ -614,22 +702,33 @@ class RandomTreeGraphs(object):
 
     # Calculate finished nodes.
     with ops.control_dependencies(splits_update_ops):
-      children = array_ops.squeeze(array_ops.slice(
-          self.variables.tree, [0, 0], [-1, 1]), squeeze_dims=[1])
-      is_leaf = math_ops.equal(constants.LEAF_NODE, children)
-      leaves = math_ops.to_int32(array_ops.squeeze(array_ops.where(is_leaf),
-                                                   squeeze_dims=[1]))
-      finished, stale = self.training_ops.finished_nodes(
-          leaves, self.variables.node_to_accumulator_map,
+      # Passing input_leaves to finished nodes here means that nodes that
+      # have become stale won't be deallocated until an input reaches them,
+      # because we're trying to avoid considering every fertile node for
+      # performance reasons.
+      finished, stale = tensor_forest_ops.finished_nodes(
+          input_leaves,
+          self.variables.node_to_accumulator_map,
           self.variables.candidate_split_sums,
           self.variables.candidate_split_squares,
           self.variables.accumulator_sums,
           self.variables.accumulator_squares,
-          self.variables.start_epoch, epoch,
+          self.variables.start_epoch,
+          epoch,
           num_split_after_samples=self.params.split_after_samples,
-          min_split_samples=self.params.min_split_samples)
+          min_split_samples=self.params.min_split_samples,
+          dominate_method=self.params.dominate_method,
+          dominate_fraction=self.params.dominate_fraction)
 
     # Update leaf scores.
+    # TODO(thomaswc): Store the leaf scores in a TopN and only update the
+    # scores of the leaves that were touched by this batch of input.
+    children = array_ops.squeeze(
+        array_ops.slice(self.variables.tree, [0, 0], [-1, 1]), squeeze_dims=[1])
+    is_leaf = math_ops.equal(constants.LEAF_NODE, children)
+    leaves = math_ops.to_int32(
+        array_ops.squeeze(
+            array_ops.where(is_leaf), squeeze_dims=[1]))
     non_fertile_leaves = array_ops.boolean_mask(
         leaves, math_ops.less(array_ops.gather(
             self.variables.node_to_accumulator_map, leaves), 0))
@@ -648,8 +747,9 @@ class RandomTreeGraphs(object):
 
     # Calculate best splits.
     with ops.control_dependencies(splits_update_ops):
-      split_indices = self.training_ops.best_splits(
-          finished, self.variables.node_to_accumulator_map,
+      split_indices = tensor_forest_ops.best_splits(
+          finished,
+          self.variables.node_to_accumulator_map,
           self.variables.candidate_split_sums,
           self.variables.candidate_split_squares,
           self.variables.accumulator_sums,
@@ -658,43 +758,41 @@ class RandomTreeGraphs(object):
 
     # Grow tree.
     with ops.control_dependencies([update_features_op, update_thresholds_op]):
-      (tree_update_indices, tree_children_updates,
-       tree_threshold_updates, tree_depth_updates, new_eot) = (
-           self.training_ops.grow_tree(
-               self.variables.end_of_tree, self.variables.tree_depths,
-               self.variables.node_to_accumulator_map, finished, split_indices,
-               self.variables.candidate_split_features,
-               self.variables.candidate_split_thresholds))
+      (tree_update_indices, tree_children_updates, tree_threshold_updates,
+       new_eot) = (tensor_forest_ops.grow_tree(
+           self.variables.end_of_tree, self.variables.node_to_accumulator_map,
+           finished, split_indices, self.variables.candidate_split_features,
+           self.variables.candidate_split_thresholds))
       tree_update_op = state_ops.scatter_update(
           self.variables.tree, tree_update_indices, tree_children_updates)
       thresholds_update_op = state_ops.scatter_update(
           self.variables.tree_thresholds, tree_update_indices,
           tree_threshold_updates)
-      depth_update_op = state_ops.scatter_update(
-          self.variables.tree_depths, tree_update_indices, tree_depth_updates)
       # TODO(thomaswc): Only update the epoch on the new leaves.
-      new_epoch_updates = epoch * array_ops.ones_like(tree_depth_updates)
+      new_epoch_updates = epoch * array_ops.ones_like(tree_threshold_updates,
+                                                      dtype=dtypes.int32)
       epoch_update_op = state_ops.scatter_update(
           self.variables.start_epoch, tree_update_indices,
           new_epoch_updates)
 
     # Update fertile slots.
-    with ops.control_dependencies([depth_update_op]):
-      (node_map_updates, accumulators_cleared, accumulators_allocated) = (
-          self.training_ops.update_fertile_slots(
-              finished, non_fertile_leaves,
-              non_fertile_leaf_scores,
-              self.variables.end_of_tree, self.variables.tree_depths,
-              self.variables.accumulator_sums,
-              self.variables.node_to_accumulator_map,
-              stale,
-              max_depth=self.params.max_depth,
-              regression=self.params.regression))
+    with ops.control_dependencies([tree_update_op]):
+      (n2a_map_updates, a2n_map_updates, accumulators_cleared,
+       accumulators_allocated) = (tensor_forest_ops.update_fertile_slots(
+           finished,
+           non_fertile_leaves,
+           non_fertile_leaf_scores,
+           self.variables.end_of_tree,
+           self.variables.accumulator_sums,
+           self.variables.node_to_accumulator_map,
+           stale,
+           self.variables.node_sums,
+           regression=self.params.regression))
 
     # Ensure end_of_tree doesn't get updated until UpdateFertileSlots has
     # used it to calculate new leaves.
-    gated_new_eot, = control_flow_ops.tuple([new_eot],
-                                            control_inputs=[node_map_updates])
+    gated_new_eot, = control_flow_ops.tuple(
+        [new_eot], control_inputs=[n2a_map_updates])
     eot_update_op = state_ops.assign(self.variables.end_of_tree, gated_new_eot)
 
     updates = []
@@ -703,15 +801,17 @@ class RandomTreeGraphs(object):
     updates.append(thresholds_update_op)
     updates.append(epoch_update_op)
 
-    updates.append(state_ops.scatter_update(
-        self.variables.node_to_accumulator_map,
-        array_ops.squeeze(array_ops.slice(node_map_updates, [0, 0], [1, -1]),
-                          squeeze_dims=[0]),
-        array_ops.squeeze(array_ops.slice(node_map_updates, [1, 0], [1, -1]),
-                          squeeze_dims=[0])))
+    updates.append(
+        state_ops.scatter_update(self.variables.node_to_accumulator_map,
+                                 n2a_map_updates[0], n2a_map_updates[1]))
 
-    cleared_and_allocated_accumulators = array_ops.concat(
-        0, [accumulators_cleared, accumulators_allocated])
+    updates.append(
+        state_ops.scatter_update(self.variables.accumulator_to_node_map,
+                                 a2n_map_updates[0], a2n_map_updates[1]))
+
+    cleared_and_allocated_accumulators = array_ops.concat_v2(
+        [accumulators_cleared, accumulators_allocated], 0)
+
     # Calculate values to put into scatter update for candidate counts.
     # Candidate split counts are always reset back to 0 for both cleared
     # and allocated accumulators. This means some accumulators might be doubly
@@ -732,15 +832,15 @@ class RandomTreeGraphs(object):
     # Calculate values to put into scatter update for total counts.
     total_cleared = array_ops.tile(
         array_ops.expand_dims(
-            math_ops.neg(array_ops.ones_like(accumulators_cleared,
-                                             dtype=dtypes.float32)), 1),
+            math_ops.negative(array_ops.ones_like(accumulators_cleared,
+                                                  dtype=dtypes.float32)), 1),
         [1, self.params.num_output_columns])
     total_reset = array_ops.tile(
         array_ops.expand_dims(
             array_ops.zeros_like(accumulators_allocated,
                                  dtype=dtypes.float32), 1),
         [1, self.params.num_output_columns])
-    accumulator_updates = array_ops.concat(0, [total_cleared, total_reset])
+    accumulator_updates = array_ops.concat_v2([total_cleared, total_reset], 0)
     updates.append(state_ops.scatter_update(
         self.variables.accumulator_sums,
         cleared_and_allocated_accumulators, accumulator_updates))
@@ -752,7 +852,7 @@ class RandomTreeGraphs(object):
     # Calculate values to put into scatter update for candidate splits.
     split_features_updates = array_ops.tile(
         array_ops.expand_dims(
-            math_ops.neg(array_ops.ones_like(
+            math_ops.negative(array_ops.ones_like(
                 cleared_and_allocated_accumulators)), 1),
         [1, self.params.num_splits_to_consider])
     updates.append(state_ops.scatter_update(
@@ -788,13 +888,17 @@ class RandomTreeGraphs(object):
     sparse_indices = []
     sparse_values = []
     sparse_shape = []
-    if isinstance(input_data, ops.SparseTensor):
+    if isinstance(input_data, sparse_tensor.SparseTensor):
       sparse_indices = input_data.indices
       sparse_values = input_data.values
-      sparse_shape = input_data.shape
+      sparse_shape = input_data.dense_shape
       input_data = []
-    return self.inference_ops.tree_predictions(
-        input_data, sparse_indices, sparse_values, sparse_shape, data_spec,
+    return tensor_forest_ops.tree_predictions(
+        input_data,
+        sparse_indices,
+        sparse_values,
+        sparse_shape,
+        data_spec,
         self.variables.tree,
         self.variables.tree_thresholds,
         self.variables.node_sums,

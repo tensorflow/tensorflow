@@ -1,7 +1,8 @@
 ### TensorFlow Makefile
 
 The recommended way to build TensorFlow from source is using the Bazel
-open-source build system. Sometimes this isn't possible.
+open-source build system. Sometimes this isn't possible. For example,
+if you are building for iOS, you currently need to use the Makefile.
 
  - The build system may not have the RAM or processing power to support Bazel.
  - Bazel or its dependencies may not be available.
@@ -16,15 +17,15 @@ This static library will not contain:
  - Python or other language bindings
  - GPU support
  
- You can target:
- - iOS
- - OS X (macOS)
- - Android
- - Raspberry-PI
+You can target:
+- iOS
+- OS X (macOS)
+- Android
+- Raspberry-PI
  
- You will compile tensorflow and protobuf libraries that you can link into other
- applications.  You will also compile the [benchmark](../../tools/benchmark/)
- application that will let you check your application.
+You will compile tensorflow and protobuf libraries that you can link into other
+applications.  You will also compile the [benchmark](../../tools/benchmark/)
+application that will let you check your application.
  
 ## Before you start (all platforms)
 
@@ -46,44 +47,20 @@ You should download the example graph from [https://storage.googleapis.com/downl
 
 _Note: This has only been tested on Ubuntu._
 
-Don't forget to download dependencies if you haven't already:
-
+As a first step, you need to make sure the required packages are installed:
 ```bash
-tensorflow/contrib/makefile/download_dependencies.sh
+sudo apt-get install autoconf automake libtool curl make g++ unzip zlib1g-dev \
+git python
 ```
 
-You will need install a version of
-[protobuf 3](https://github.com/google/protobuf) on your system. We strongly
-recommend that you compile and install the version downloaded in the script
-above.
-
-On Ubuntu, you can do this:
+You should then be able to run the `build_all_linux.sh` script to compile:
 ```bash
-sudo apt-get install autoconf automake libtool curl make g++ unzip
-pushd .
-cd tensorflow/contrib/makefile/downloads/protobuf
-./autogen.sh
-./configure
-make
-make check
-sudo make install
-sudo ldconfig # refresh shared library cache
-popd
-```
-
-If you have issues (or can't use apt-get), see
-[these instructions](https://github.com/google/protobuf/blob/master/src/README.md)
-for specific installation of C++ support tools.
-
-After you have installed protobufs, you can run this from the repository root:
-
-```bash
-make -f tensorflow/contrib/makefile/Makefile
+tensorflow/contrib/makefile/build_all_linux.sh
 ```
 
 This should compile a static library in 
-`tensorflow/contrib/makefile/gen/lib/tf_lib.a`, and create an example executable
-at `tensorflow/contrib/makefile/gen/bin/benchmark`. 
+`tensorflow/contrib/makefile/gen/lib/libtensorflow-core.a`, 
+and create an example executable at `tensorflow/contrib/makefile/gen/bin/benchmark`. 
 
 Get the graph file, if you have not already:
 
@@ -140,7 +117,7 @@ attached Android device:
 adb push ~/graphs/inception/tensorflow_inception_graph.pb /data/local/tmp/
 adb push tensorflow/contrib/makefile/gen/bin/benchmark /data/local/tmp/
 adb shell '/data/local/tmp/benchmark \
- --graph=/data/local/tmp/classify_image_graph_def.pb \
+ --graph=/data/local/tmp/tensorflow_inception_graph.pb \
  --input_layer="input:0" \
  --input_layer_shape="1,224,224,3" \
  --input_layer_type="float" \
@@ -153,7 +130,7 @@ For more details, see the [benchmark documentation](../../tools/benchmark).
 ## iOS
 
 _Note: To use this library in an iOS application, see related instructions in
-the [iOS examples](../ios_examples/] directory._
+the [iOS examples](../ios_examples/) directory._
 
 Install XCode 7.3 or more recent. If you have not already, you will need to
 install the command-line tools using `xcode-select`:
@@ -164,6 +141,13 @@ xcode-select --install
 
 If this is a new install, you will need to run XCode once to agree to the
 license before continuing.
+
+Then install [automake](https://en.wikipedia.org/wiki/Automake)/[libtool](https://en.wikipedia.org/wiki/GNU_Libtool):
+
+```bash
+brew install automake
+brew install libtool
+```
 
 Also, download the graph if you haven't already:
 
@@ -176,20 +160,21 @@ curl -o ~/graphs/inception.zip \
 
 ### Building all at once
 
-If you just want to get the libraries compiled in a hurry, you can run:
+If you just want to get the libraries compiled in a hurry, you can run this
+from the root of your TensorFlow source folder:
 
 ```bash
-build_all_ios.sh
+tensorflow/contrib/makefile/build_all_ios.sh
 ```
 
-and wait a long time.
+This process will take around twenty minutes on a modern MacBook Pro.
 
-When this completes, you will have a library for a single architecture and the
+When it completes, you will have a library for a single architecture and the
 benchmark program. Although successfully compiling the benchmark program is a
 sign of success, the program is not a complete iOS app.
 
 To see TensorFlow running on iOS, the example Xcode project in
-[tensorflow/contrib/ios_example](../ios_example) shows how to use the static
+[tensorflow/contrib/ios_examples](../ios_examples) shows how to use the static
 library in a simple app.
 
 ### Building by hand
@@ -206,7 +191,7 @@ tensorflow/contrib/makefile/download_dependencies.sh
 Next, you will need to compile protobufs for iOS:
 
 ```bash
-compile_ios_protobuf.sh 
+tensorflow/contrib/makefile/compile_ios_protobuf.sh 
 ```
 
 Then, you can run the makefile specifying iOS as the target, along with the
@@ -227,7 +212,7 @@ benchmark program. Although successfully compiling the benchmark program is a
 sign of success, the program is not a complete iOS app. 
 
 To see TensorFlow running on iOS, the example Xcode project in
-[tensorflow/contrib/ios_example](../ios_example) shows how to use the static
+[tensorflow/contrib/ios_examples](../ios_examples) shows how to use the static
 library in a simple app.
 
 #### Universal binaries
@@ -258,22 +243,25 @@ For other variations of valid optimization flags, see [clang optimization levels
 
 ## Raspberry Pi
 
-Building on the Raspberry Pi is similar to a normal Linux system, though we
-recommend starting by compiling and installing protobuf:
+Building on the Raspberry Pi is similar to a normal Linux system. First
+download the dependencies, install the required packages and build protobuf:
 
 ```bash
+tensorflow/contrib/makefile/download_dependencies.sh
+sudo apt-get install -y autoconf automake libtool gcc-4.8 g++-4.8
 cd tensorflow/contrib/makefile/downloads/protobuf/
-./autogen.sh 
+./autogen.sh
 ./configure
 make
 sudo make install
+sudo ldconfig  # refresh shared library cache
 cd ../../../../..
 ```
 
 Once that's done, you can use make to build the library and example:
 
 ```bash
-make -f tensorflow/contrib/makefile/Makefile HOST_OS=PI TARGET=PI OPTFLAGS="-Os"
+make -f tensorflow/contrib/makefile/Makefile HOST_OS=PI TARGET=PI OPTFLAGS="-Os" CXX=g++-4.8
 ```
 
 If you're only interested in building for Raspberry Pi's 2 and 3, you can supply
@@ -281,8 +269,20 @@ some extra optimization flags to give you code that will run faster:
 
 ```bash
 make -f tensorflow/contrib/makefile/Makefile HOST_OS=PI TARGET=PI \
- OPTFLAGS="-Os -mfpu=neon-vfpv4 -funsafe-math-optimizations -ftree-vectorize"
+ OPTFLAGS="-Os -mfpu=neon-vfpv4 -funsafe-math-optimizations -ftree-vectorize" CXX=g++-4.8
 ```
+
+One thing to be careful of is that the gcc version 4.9 currently installed on
+Jessie by default will hit an error mentioning `__atomic_compare_exchange`. This
+is why the examples above specify `CXX=g++-4.8` explicitly, and why we install
+it using apt-get. If you have partially built using the default gcc 4.9, hit the
+error and switch to 4.8, you need to do a
+`make -f tensorflow/contrib/makefile/Makefile clean` before you build. If you
+don't, the build will appear to succeed but you'll encounter [malloc(): memory corruption errors](https://github.com/tensorflow/tensorflow/issues/3442)
+when you try to run any programs using the library.
+
+For more examples, look at the tensorflow/contrib/pi_examples folder in the
+source tree, which contains code samples aimed at the Raspberry Pi.
 
 # Other notes
 
@@ -319,3 +319,38 @@ tensorflow/contrib/makefile/gen
 
 Those directories can safely be removed, but you will have to start over with
 `download_dependencies.sh` once you delete them.
+
+### Fixing Makefile Issues
+
+Because the main development of TensorFlow is done using Bazel, changes to the
+codebase can sometimes break the makefile build process. If you find that tests
+relying on this makefile are failing with a change you're involved in, here are
+some trouble-shooting steps:
+
+ - Try to reproduce the issue on your platform. If you're on Linux, running 
+ `make -f tensorflow/contrib/makefile/Makefile` should be enough to recreate
+  most issues. For other platforms, see the sections earlier in this document.
+  
+ - The most common cause of breakages are files that have been added to the
+  Bazel build scripts, but that the makefile isn't aware of. Typical symptoms
+  of this include linker errors mentioning missing symbols or protobuf headers
+  that aren't found. To address these problems, take a look at the *.txt files
+  in `tensorflow/contrib/makefile`. If you have a new operator, you may need to
+  add it to `tf_op_files.txt`, or for a new proto to `tf_proto_files.txt`.
+
+ - There's also a wildcard system in `Makefile` that defines what core C++ files
+  are included in the library. This is designed to match the equivalent rule in
+  `tensorflow/core/BUILD`, so if you change the wildcards there to include new
+  files you'll need to also update `CORE_CC_ALL_SRCS` and `CORE_CC_EXCLUDE_SRCS`
+  in the makefile.
+  
+ - Some of the supported platforms use clang instead of gcc as their compiler,
+  so if you're hitting compile errors you may need to tweak your code to be more
+  friendly to different compilers by avoiding gcc extensions or idioms.
+  
+These are the most common reasons for makefile breakages, but it's also
+possible you may hit something unusual, like a platform incompatibility. For
+those, you'll need to see if you can reproduce the issue on that particular
+platform and debug it there. You can also reach out to the broader TensorFlow
+team by [filing a Github issue](https://github.com/tensorflow/tensorflow/issues)
+to ask for help.

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/ordered_code.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace tensorflow {
 
@@ -84,6 +85,41 @@ Status DecodeTensorNameSlice(const string& code, string* name,
     }
   }
   return Status::OK();
+}
+
+Status ParseShapeAndSlice(const string& shape_and_slice, TensorShape* shape,
+                          TensorSlice* slice, TensorShape* shape_slice) {
+  CHECK(!shape_and_slice.empty());
+  // Syntax: dim0 dim1 dim2 ... <slice string>
+  // Where slice string is defined in core/framework/tensor_slice.h
+  std::vector<string> splits = str_util::Split(shape_and_slice, ' ');
+
+  // Must have at least 2 strings.
+  if (splits.size() < 2) {
+    return errors::InvalidArgument(
+        "Need least two elements in shape_and_slice specification: ",
+        shape_and_slice);
+  }
+
+  // The last split is the slice specification.
+  slice->Clear();
+  auto status = slice->Parse(splits.back(), slice);
+  if (!status.ok()) return status;
+
+  // The first n-1 are the shape specification.
+  splits.pop_back();
+  shape->Clear();
+  for (const auto& s : splits) {
+    int64 dim;
+    if (!strings::safe_strto64(s, &dim)) {
+      return errors::InvalidArgument(
+          "Non numerical dimension in shape_and_slice: ", shape_and_slice);
+    }
+    shape->AddDim(dim);
+  }
+
+  // The specified slice must be compatible with the specified shape.
+  return slice->SliceTensorShape(*shape, shape_slice);
 }
 
 }  // namespace checkpoint

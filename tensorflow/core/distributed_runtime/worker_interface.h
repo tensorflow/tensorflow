@@ -29,16 +29,12 @@ namespace tensorflow {
 // Status callback.
 typedef std::function<void(const Status&)> StatusCallback;
 
-// Allocator callback for out-of-band transfers.
-class TensorShape;
-typedef std::function<void*(size_t, const DataType&, const TensorShape&)>
-    TensorBufAllocator;
+// Custom decoder for a response to RecvTensorAsync.
+class TensorResponse;
 
 // Interface for talking with the TensorFlow Worker service.
 class WorkerInterface {
  public:
-  virtual ~WorkerInterface() {}
-
   virtual void GetStatusAsync(const GetStatusRequest* request,
                               GetStatusResponse* response,
                               StatusCallback done) = 0;
@@ -65,8 +61,7 @@ class WorkerInterface {
 
   virtual void RecvTensorAsync(CallOptions* opts,
                                const RecvTensorRequest* request,
-                               RecvTensorResponse* response,
-                               TensorBufAllocator allocator,
+                               TensorResponse* response,
                                StatusCallback done) = 0;
 
   virtual void LoggingAsync(const LoggingRequest* request,
@@ -107,6 +102,12 @@ class WorkerInterface {
   Status Tracing(const TracingRequest* request, TracingResponse* response) {
     return CallAndWait(&ME::TracingAsync, request, response);
   }
+
+ protected:
+  // Instances of WorkerInterface must be deleted by a call to
+  // WorkerCacheInterface::ReleaseWorker().
+  virtual ~WorkerInterface() {}
+  friend class WorkerCacheInterface;
 
  private:
   typedef WorkerInterface ME;

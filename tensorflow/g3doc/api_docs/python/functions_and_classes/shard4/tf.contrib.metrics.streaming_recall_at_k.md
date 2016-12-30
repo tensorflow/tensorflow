@@ -1,43 +1,44 @@
-### `tf.contrib.metrics.streaming_recall_at_k(predictions, labels, k, ignore_mask=None, metrics_collections=None, updates_collections=None, name=None)` {#streaming_recall_at_k}
+### `tf.contrib.metrics.streaming_recall_at_k(*args, **kwargs)` {#streaming_recall_at_k}
 
-Computes the recall@k of the predictions with respect to dense labels.
+Computes the recall@k of the predictions with respect to dense labels. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-11-08.
+Instructions for updating:
+Please use `streaming_sparse_recall_at_k`, and reshape labels from [batch_size] to [batch_size, 1].
 
 The `streaming_recall_at_k` function creates two local variables, `total` and
 `count`, that are used to compute the recall@k frequency. This frequency is
 ultimately returned as `recall_at_<k>`: an idempotent operation that simply
-divides `total` by `count`. To facilitate the estimation of recall@k over a
-stream of data, the function utilizes two operations. First, an `in_top_k`
-operation computes a tensor with shape [batch_size] whose elements indicate
-whether or not the corresponding label is in the top `k` predictions of the
-`predictions` `Tensor`. Second, an `update_op` operation whose behavior is
-dependent on the value of `ignore_mask`. If `ignore_mask` is None, then
-`update_op` increments `total` with the number of elements of `in_top_k` that
-are set to `True` and increments `count` with the batch size. If `ignore_mask`
-is not `None`, then `update_op` increments `total` with the number of elements
-in `in_top_k` that are `True` whose corresponding element in `ignore_mask` is
-`False`. In addition to performing the updates, `update_op` also returns the
-recall value.
+divides `total` by `count`.
+
+For estimation of the metric over a stream of data, the function creates an
+`update_op` operation that updates these variables and returns the
+`recall_at_<k>`. Internally, an `in_top_k` operation computes a `Tensor` with
+shape [batch_size] whose elements indicate whether or not the corresponding
+label is in the top `k` `predictions`. Then `update_op` increments `total`
+with the reduced sum of `weights` where `in_top_k` is `True`, and it
+increments `count` with the reduced sum of `weights`.
+
+If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
 ##### Args:
 
 
-*  <b>`predictions`</b>: A floating point tensor of dimension [batch_size, num_classes]
-*  <b>`labels`</b>: A tensor of dimension [batch_size] whose type is in `int32`,
+*  <b>`predictions`</b>: A float `Tensor` of dimension [batch_size, num_classes].
+*  <b>`labels`</b>: A `Tensor` of dimension [batch_size] whose type is in `int32`,
     `int64`.
 *  <b>`k`</b>: The number of top elements to look at for computing recall.
-*  <b>`ignore_mask`</b>: An optional, binary tensor whose size matches `labels`. If an
-    element of `ignore_mask` is True, the corresponding prediction and label
-    pair is used to compute the metrics. Otherwise, the pair is ignored.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
 *  <b>`metrics_collections`</b>: An optional list of collections that `recall_at_k`
     should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections `update_op` should be
     added to.
-*  <b>`name`</b>: An optional variable_op_scope name.
+*  <b>`name`</b>: An optional variable_scope name.
 
 ##### Returns:
 
 
-*  <b>`recall_at_k`</b>: A tensor representing the recall@k, the fraction of labels
+*  <b>`recall_at_k`</b>: A `Tensor` representing the recall@k, the fraction of labels
     which fall into the top `k` predictions.
 *  <b>`update_op`</b>: An operation that increments the `total` and `count` variables
     appropriately and whose value matches `recall_at_k`.
@@ -45,8 +46,8 @@ recall value.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If the dimensions of `predictions` and `labels` don't match or
-    if `ignore_mask` is not `None` and its shape doesn't match `predictions`
-    or if either `metrics_collections` or `updates_collections` are not a list
-    or tuple.
+*  <b>`ValueError`</b>: If `predictions` and `labels` have mismatched shapes, or if
+    `weights` is not `None` and its shape doesn't match `predictions`, or if
+    either `metrics_collections` or `updates_collections` are not a list or
+    tuple.
 

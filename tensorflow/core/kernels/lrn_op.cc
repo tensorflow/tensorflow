@@ -30,6 +30,12 @@ limitations under the License.
 #include "tensorflow/core/util/work_sharder.h"
 #endif
 
+#if GOOGLE_CUDA
+#include "cuda/include/cuda.h"
+#include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/util/stream_executor_util.h"
+#endif  // GOOGLE_CUDA
+
 namespace tensorflow {
 
 namespace {
@@ -56,43 +62,24 @@ void GetBandMatrix(int depth, int depth_radius,
 
 }  // namespace
 
-template <typename T>
-class LRNOp : public OpKernel {
- public:
-  explicit LRNOp(OpKernelConstruction* context) : OpKernel(context) {
-    int64 depth_radius64;
-    OP_REQUIRES_OK(context, context->GetAttr("depth_radius", &depth_radius64));
-    OP_REQUIRES(context, FastBoundsCheck(depth_radius64,
-                                         std::numeric_limits<int>::max()),
-                errors::InvalidArgument("depth_radius = ", depth_radius64,
-                                        " larger than int max"));
-    depth_radius_ = static_cast<int>(depth_radius64);
-    float tmp;
-    OP_REQUIRES_OK(context, context->GetAttr("bias", &tmp));
-    bias_ = T(tmp);
-    OP_REQUIRES_OK(context, context->GetAttr("alpha", &tmp));
-    alpha_ = T(tmp);
-    OP_REQUIRES_OK(context, context->GetAttr("beta", &tmp));
-    beta_ = T(tmp);
-  }
+typedef Eigen::ThreadPoolDevice CPUDevice;
+typedef Eigen::GpuDevice GPUDevice;
 
-  void Compute(OpKernelContext* context) override {
-    const Tensor& in = context->input(0);
-    OP_REQUIRES(context, in.dims() == 4,
-                errors::InvalidArgument("in must be 4-dimensional"));
-    OP_REQUIRES(context, FastBoundsCheck(in.NumElements(),
-                                         std::numeric_limits<int>::max()),
-                errors::InvalidArgument("argument to LRN too large"));
+template <typename Device, typename T>
+struct LaunchLRN;
+
+template <typename T>
+struct LaunchLRN<CPUDevice, T> {
+  LaunchLRN(int depth_radius, T bias, T alpha, T beta)
+      : depth_radius_(depth_radius), bias_(bias), alpha_(alpha), beta_(beta) {}
+
+  void launch(OpKernelContext* context, OpKernel* kernel, const Tensor& in,
+              Tensor* output) {
     const int batch = static_cast<int>(in.dim_size(0));
     const int rows = static_cast<int>(in.dim_size(1));
     const int cols = static_cast<int>(in.dim_size(2));
     const int depth = static_cast<int>(in.dim_size(3));
     const int nodes = cols * rows;
-
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(
-                       0, TensorShape({batch, rows, cols, depth}), &output));
 
 #if defined(IS_MOBILE_PLATFORM)
     SingleThreadedLRN(in, batch, rows, cols, depth, output);
@@ -105,10 +92,6 @@ class LRNOp : public OpKernel {
 
     auto in_shaped = in.shaped<T, 2>({nodes * batch, depth});
 
-    OP_REQUIRES(context,
-                (depth + depth_radius_) <= std::numeric_limits<int>::max(),
-                errors::InvalidArgument("depth ", depth, " + depth_radius ",
-                                        depth_radius_, " exceeds int max."));
     // Multiplying the input with the band matrix has the effect of reducing the
     // correct patch along the depth.
     Eigen::Tensor<T, 2, Eigen::RowMajor> multiplier(depth, depth);
@@ -177,20 +160,73 @@ class LRNOp : public OpKernel {
   T beta_;
 };
 
-#define REGISTER_CPU(T)    \
-  REGISTER_KERNEL_BUILDER( \
-      Name("LRN").Device(DEVICE_CPU).TypeConstraint<T>("T"), LRNOp<T>);
-TF_CALL_float(REGISTER_CPU);
-TF_CALL_half(REGISTER_CPU);
-
-#undef REGISTER_CPU
-
-#if !defined(IS_MOBILE_PLATFORM)
+#if GOOGLE_CUDA
 
 template <typename T>
-class LRNGradOp : public OpKernel {
+struct LaunchLRN<GPUDevice, T> {
+  LaunchLRN(int depth_radius, T bias, T alpha, T beta)
+      : depth_radius_(depth_radius), bias_(bias), alpha_(alpha), beta_(beta) {}
+
+  void launch(OpKernelContext* context, OpKernel* kernel, const Tensor& in,
+              Tensor* output) {
+    OP_REQUIRES(
+        context, beta_ >= 0.01,
+        errors::InvalidArgument("cuDNN requires beta >= 0.01, got: ", beta_));
+
+    OP_REQUIRES(
+        context, depth_radius_ > 0 && depth_radius_ <= 7,
+        errors::InvalidArgument("cuDNN requires depth_radius in [1, 7], got: ",
+                                depth_radius_));
+    OP_REQUIRES(
+        context, bias_ >= 1e-5,
+        errors::InvalidArgument("cuDNN requires bias >= 1e-5, got: ", bias_));
+
+    // Cast to platform-specific int to avoid conversion warnings.
+    const int batch = static_cast<int>(in.dim_size(0));
+    const int rows = static_cast<int>(in.dim_size(1));
+    const int cols = static_cast<int>(in.dim_size(2));
+    const int depth = static_cast<int>(in.dim_size(3));
+
+    perftools::gputools::dnn::BatchDescriptor dimensions_desc;
+    dimensions_desc.set_count(batch)
+        .set_height(rows)
+        .set_width(cols)
+        .set_feature_map_count(depth)
+        .set_layout(perftools::gputools::dnn::DataLayout::kBatchYXDepth);
+
+    perftools::gputools::dnn::NormalizeDescriptor normalize_desc;
+    normalize_desc.set_bias(bias_)
+        .set_range(depth_radius_)
+        .set_alpha(alpha_)
+        .set_beta(beta_);
+
+    auto input_data = StreamExecutorUtil::AsDeviceMemory<T>(in);
+    auto output_data = StreamExecutorUtil::AsDeviceMemory<T>(*output);
+
+    auto* stream = context->op_device_context()->stream();
+    OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
+
+    bool status =
+        stream
+            ->ThenNormalizeWithDimensions(normalize_desc, dimensions_desc,
+                                          input_data, &output_data)
+            .ok();
+    OP_REQUIRES(context, status,
+                errors::Internal("NormalizeWithDimensions launch failed"));
+  }
+
+  int depth_radius_;
+  T bias_;
+  T alpha_;
+  T beta_;
+};
+
+#endif  // GOOGLE_CUDA
+
+template <typename Device, typename T>
+class LRNOp : public OpKernel {
  public:
-  explicit LRNGradOp(OpKernelConstruction* context) : OpKernel(context) {
+  explicit LRNOp(OpKernelConstruction* context) : OpKernel(context) {
     int64 depth_radius64;
     OP_REQUIRES_OK(context, context->GetAttr("depth_radius", &depth_radius64));
     OP_REQUIRES(context, FastBoundsCheck(depth_radius64,
@@ -208,34 +244,82 @@ class LRNGradOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
-    const Tensor& in_grads = context->input(0);
-    const Tensor& in_image = context->input(1);
-    const Tensor& out_image = context->input(2);
+    const Tensor& in = context->input(0);
+    OP_REQUIRES(context, in.dims() == 4,
+                errors::InvalidArgument("in must be 4-dimensional"));
+    OP_REQUIRES(context, FastBoundsCheck(in.NumElements(),
+                                         std::numeric_limits<int>::max()),
+                errors::InvalidArgument("argument to LRN too large"));
+    // Cast to platform-specific int to avoid conversion warnings.
+    const int batch = static_cast<int>(in.dim_size(0));
+    const int rows = static_cast<int>(in.dim_size(1));
+    const int cols = static_cast<int>(in.dim_size(2));
+    const int depth = static_cast<int>(in.dim_size(3));
 
-    OP_REQUIRES(context, in_grads.dims() == 4 && in_image.dims() == 4,
-                errors::InvalidArgument("inputs must be 4-dimensional"));
-    const int64 batch = in_grads.dim_size(0);
-    const int64 rows = in_grads.dim_size(1);
-    const int64 cols = in_grads.dim_size(2);
-    const int64 depth = in_grads.dim_size(3);
-    OP_REQUIRES(
-        context,
-        in_image.dim_size(0) == batch && in_image.dim_size(1) == rows &&
-            in_image.dim_size(2) == cols && in_image.dim_size(3) == depth &&
-            out_image.dim_size(0) == batch && out_image.dim_size(1) == rows &&
-            out_image.dim_size(2) == cols && out_image.dim_size(3) == depth,
-        errors::InvalidArgument(
-            "input_grads, input_image, and out_image should have the same "
-            "shape"));
-    const auto nodes = cols * rows;
-    auto grads_shaped = in_grads.shaped<T, 2>({nodes * batch, depth});
-    auto in_shaped = in_image.shaped<T, 2>({nodes * batch, depth});
-    auto activations = out_image.shaped<T, 2>({nodes * batch, depth});
+    OP_REQUIRES(context,
+                (depth + depth_radius_) <= std::numeric_limits<int>::max(),
+                errors::InvalidArgument("depth ", depth, " + depth_radius ",
+                                        depth_radius_, " exceeds int max."));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(
                        0, TensorShape({batch, rows, cols, depth}), &output));
+
+    LaunchLRN<Device, T> launcher(depth_radius_, bias_, alpha_, beta_);
+    launcher.launch(context, this, in, output);
+  }
+
+ private:
+  int depth_radius_;
+  T bias_;
+  T alpha_;
+  T beta_;
+};
+
+#define REGISTER_CPU(T)                                      \
+  REGISTER_KERNEL_BUILDER(                                   \
+      Name("LRN").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      LRNOp<CPUDevice, T>);
+TF_CALL_float(REGISTER_CPU);
+TF_CALL_half(REGISTER_CPU);
+
+#undef REGISTER_CPU
+
+#if GOOGLE_CUDA
+
+#define REGISTER_GPU(T)                                      \
+  REGISTER_KERNEL_BUILDER(                                   \
+      Name("LRN").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
+      LRNOp<GPUDevice, T>);
+TF_CALL_float(REGISTER_GPU);
+
+#undef REGISTER_GPU
+
+#endif  // GOOGLE_CUDA
+
+#if !defined(IS_MOBILE_PLATFORM)
+
+template <typename Device, typename T>
+struct LaunchLRNGrad;
+
+template <typename T>
+struct LaunchLRNGrad<CPUDevice, T> {
+  LaunchLRNGrad(int depth_radius, T bias, T alpha, T beta)
+      : depth_radius_(depth_radius), bias_(bias), alpha_(alpha), beta_(beta) {}
+
+  void launch(OpKernelContext* context, OpKernel* kernel,
+              const Tensor& in_grads, const Tensor& in_image,
+              const Tensor& out_image, Tensor* output) {
+    const int64 batch = in_grads.dim_size(0);
+    const int64 rows = in_grads.dim_size(1);
+    const int64 cols = in_grads.dim_size(2);
+    const int64 depth = in_grads.dim_size(3);
+    const auto nodes = cols * rows;
+    auto grads_shaped = in_grads.shaped<T, 2>({nodes * batch, depth});
+    auto in_shaped = in_image.shaped<T, 2>({nodes * batch, depth});
+    auto activations = out_image.shaped<T, 2>({nodes * batch, depth});
+
     auto out_shaped = output->shaped<T, 2>({nodes * batch, depth});
     out_shaped.setZero();
 
@@ -285,9 +369,130 @@ class LRNGradOp : public OpKernel {
           depth * depth, shard);
   }
 
- private:
-  typedef typename Eigen::Tensor<T, 1, Eigen::RowMajor>::DimensionPair DimPair;
+  int depth_radius_;
+  T bias_;
+  T alpha_;
+  T beta_;
+};
 
+#if GOOGLE_CUDA
+
+template <typename T>
+struct LaunchLRNGrad<GPUDevice, T> {
+  LaunchLRNGrad(int depth_radius, T bias, T alpha, T beta)
+      : depth_radius_(depth_radius), bias_(bias), alpha_(alpha), beta_(beta) {}
+
+  void launch(OpKernelContext* context, OpKernel* kernel,
+              const Tensor& in_grads, const Tensor& in_image,
+              const Tensor& out_image, Tensor* output) {
+    OP_REQUIRES(
+        context, beta_ >= 0.01,
+        errors::InvalidArgument("cuDNN requires beta >= 0.01, got: ", beta_));
+
+    OP_REQUIRES(
+        context, depth_radius_ > 0 && depth_radius_ <= 7,
+        errors::InvalidArgument("cuDNN requires depth_radius in [1, 7], got: ",
+                                depth_radius_));
+    OP_REQUIRES(
+        context, bias_ >= 1e-5,
+        errors::InvalidArgument("cuDNN requires bias >= 1e-5, got: ", bias_));
+
+    const int64 batch = in_grads.dim_size(0);
+    const int64 rows = in_grads.dim_size(1);
+    const int64 cols = in_grads.dim_size(2);
+    const int64 depth = in_grads.dim_size(3);
+
+    perftools::gputools::dnn::BatchDescriptor dimensions_desc;
+    dimensions_desc.set_count(batch)
+        .set_height(rows)
+        .set_width(cols)
+        .set_feature_map_count(depth)
+        .set_layout(perftools::gputools::dnn::DataLayout::kBatchYXDepth);
+
+    perftools::gputools::dnn::NormalizeDescriptor normalize_desc;
+    normalize_desc.set_bias(bias_)
+        .set_range(depth_radius_)
+        .set_alpha(alpha_)
+        .set_beta(beta_);
+
+    auto input_grads_data = StreamExecutorUtil::AsDeviceMemory<T>(in_grads);
+    auto input_image_data = StreamExecutorUtil::AsDeviceMemory<T>(in_image);
+    auto output_image_data = StreamExecutorUtil::AsDeviceMemory<T>(out_image);
+    auto output_grads_data = StreamExecutorUtil::AsDeviceMemory<T>(*output);
+
+    auto* stream = context->op_device_context()->stream();
+    OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
+
+    bool status =
+        stream
+            ->ThenNormalizeBackwardWithDimensions(
+                normalize_desc, dimensions_desc, input_image_data,
+                output_image_data, input_grads_data, &output_grads_data)
+            .ok();
+    OP_REQUIRES(
+        context, status,
+        errors::Internal("NormalizeBackwardWithDimensions launch failed"));
+  }
+
+  int depth_radius_;
+  T bias_;
+  T alpha_;
+  T beta_;
+};
+
+#endif  // GOOGLE_CUDA
+
+template <typename Device, typename T>
+class LRNGradOp : public OpKernel {
+ public:
+  explicit LRNGradOp(OpKernelConstruction* context) : OpKernel(context) {
+    int64 depth_radius64;
+    OP_REQUIRES_OK(context, context->GetAttr("depth_radius", &depth_radius64));
+    OP_REQUIRES(context, FastBoundsCheck(depth_radius64,
+                                         std::numeric_limits<int>::max()),
+                errors::InvalidArgument("depth_radius = ", depth_radius64,
+                                        " larger than int max"));
+    depth_radius_ = static_cast<int>(depth_radius64);
+    float tmp;
+    OP_REQUIRES_OK(context, context->GetAttr("bias", &tmp));
+    bias_ = T(tmp);
+    OP_REQUIRES_OK(context, context->GetAttr("alpha", &tmp));
+    alpha_ = T(tmp);
+    OP_REQUIRES_OK(context, context->GetAttr("beta", &tmp));
+    beta_ = T(tmp);
+  }
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& in_grads = context->input(0);
+    const Tensor& in_image = context->input(1);
+    const Tensor& out_image = context->input(2);
+
+    OP_REQUIRES(context, in_grads.dims() == 4 && in_image.dims() == 4,
+                errors::InvalidArgument("inputs must be 4-dimensional"));
+    const int64 batch = in_grads.dim_size(0);
+    const int64 rows = in_grads.dim_size(1);
+    const int64 cols = in_grads.dim_size(2);
+    const int64 depth = in_grads.dim_size(3);
+    OP_REQUIRES(
+        context,
+        in_image.dim_size(0) == batch && in_image.dim_size(1) == rows &&
+            in_image.dim_size(2) == cols && in_image.dim_size(3) == depth &&
+            out_image.dim_size(0) == batch && out_image.dim_size(1) == rows &&
+            out_image.dim_size(2) == cols && out_image.dim_size(3) == depth,
+        errors::InvalidArgument(
+            "input_grads, input_image, and out_image should have the same "
+            "shape"));
+
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(
+                       0, TensorShape({batch, rows, cols, depth}), &output));
+
+    LaunchLRNGrad<Device, T> launcher(depth_radius_, bias_, alpha_, beta_);
+    launcher.launch(context, this, in_grads, in_image, out_image, output);
+  }
+
+ private:
   int depth_radius_;
   T bias_;
   T alpha_;
@@ -297,11 +502,23 @@ class LRNGradOp : public OpKernel {
 #define REGISTER_CPU(T)                                          \
   REGISTER_KERNEL_BUILDER(                                       \
       Name("LRNGrad").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
-      LRNGradOp<T>);
+      LRNGradOp<CPUDevice, T>);
 TF_CALL_float(REGISTER_CPU);
 TF_CALL_half(REGISTER_CPU);
 
 #undef REGISTER_CPU
+
+#if GOOGLE_CUDA
+
+#define REGISTER_GPU(T)                                          \
+  REGISTER_KERNEL_BUILDER(                                       \
+      Name("LRNGrad").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
+      LRNGradOp<GPUDevice, T>);
+TF_CALL_float(REGISTER_GPU);
+
+#undef REGISTER_GPU
+
+#endif  // GOOGLE_CUDA
 
 #endif  // !defined(IS_MOBILE_PLATFORM)
 

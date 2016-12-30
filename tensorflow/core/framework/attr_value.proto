@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 package tensorflow;
-// option cc_enable_arenas = true;
+option cc_enable_arenas = true;
 option java_outer_classname = "AttrValueProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
@@ -14,6 +14,7 @@ import "tensorflow/core/framework/types.proto";
 // Comment indicates the corresponding attr type.  Only the field matching the
 // attr type may be filled.
 message AttrValue {
+  // LINT.IfChange
   message ListValue {
     repeated bytes s = 2;                        // "list(string)"
     repeated int64 i = 3 [packed = true];        // "list(int)"
@@ -24,6 +25,7 @@ message AttrValue {
     repeated TensorProto tensor = 8;             // "list(tensor)"
     // TODO(zhifengc/josh11b): implements list(func) if needed.
   }
+  // LINT.ThenChange(https://www.tensorflow.org/code/tensorflow/c/c_api.cc)
 
   oneof value {
     bytes s = 2;                 // "string"

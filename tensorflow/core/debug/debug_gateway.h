@@ -63,9 +63,6 @@ class DebugGateway {
   // invoke the NodeCompletionCallback only for the nodes specified in the
   // whitelist. And so forth for whitelist_val_.
 
-  // Clear tensor values stored for debugging, on the host.
-  void ClearHostTensors();
-
  private:
   DirectSession* session_;
   // TODO(cais): DebugGateway currently supports only DirectSession. Add
@@ -73,9 +70,6 @@ class DebugGateway {
 
   NodeCompletionCallback comp_cb_ = nullptr;
   NodeValueCallback val_cb_ = nullptr;
-
-  mutex mu_;
-  std::unordered_map<string, const Tensor*> host_tensors_ GUARDED_BY(mu_);
 
   typedef std::function<void(const Tensor* dst_tensor)> CopyDoneCallback;
 

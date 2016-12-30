@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_LIB_NOTIFICATION_H_
 #define TENSORFLOW_STREAM_EXECUTOR_LIB_NOTIFICATION_H_
 
-#include "tensorflow/core/lib/core/notification.h"
+#include "tensorflow/core/platform/notification.h"
 
 namespace perftools {
 namespace gputools {

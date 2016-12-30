@@ -64,7 +64,7 @@ Status OpRegistry::LookUp(const string& op_type_name,
   bool first_call = false;
   {  // Scope for lock.
     mutex_lock lock(mu_);
-    first_call = CallDeferred();
+    first_call = MustCallDeferred();
     res = gtl::FindWithDefault(registry_, op_type_name, nullptr);
     // Note: Can't hold mu_ while calling Export() below.
   }
@@ -93,7 +93,7 @@ Status OpRegistry::LookUp(const string& op_type_name,
 
 void OpRegistry::GetRegisteredOps(std::vector<OpDef>* op_defs) {
   mutex_lock lock(mu_);
-  CallDeferred();
+  MustCallDeferred();
   for (const auto& p : registry_) {
     op_defs->push_back(p.second->op_def);
   }
@@ -111,7 +111,7 @@ Status OpRegistry::SetWatcher(const Watcher& watcher) {
 
 void OpRegistry::Export(bool include_internal, OpList* ops) const {
   mutex_lock lock(mu_);
-  CallDeferred();
+  MustCallDeferred();
 
   std::vector<std::pair<string, const OpRegistrationData*>> sorted(
       registry_.begin(), registry_.end());
@@ -138,9 +138,9 @@ void OpRegistry::ClearDeferredRegistrations() {
   deferred_.clear();
 }
 
-void OpRegistry::ProcessRegistrations() const {
+Status OpRegistry::ProcessRegistrations() const {
   mutex_lock lock(mu_);
-  CallDeferred();
+  return CallDeferred();
 }
 
 string OpRegistry::DebugString(bool include_internal) const {
@@ -153,14 +153,27 @@ string OpRegistry::DebugString(bool include_internal) const {
   return ret;
 }
 
-bool OpRegistry::CallDeferred() const {
+bool OpRegistry::MustCallDeferred() const {
   if (initialized_) return false;
   initialized_ = true;
-  for (int i = 0; i < deferred_.size(); ++i) {
+  for (size_t i = 0; i < deferred_.size(); ++i) {
     TF_QCHECK_OK(RegisterAlreadyLocked(deferred_[i]));
   }
   deferred_.clear();
   return true;
+}
+
+Status OpRegistry::CallDeferred() const {
+  if (initialized_) return Status::OK();
+  initialized_ = true;
+  for (size_t i = 0; i < deferred_.size(); ++i) {
+    Status s = RegisterAlreadyLocked(deferred_[i]);
+    if (!s.ok()) {
+      return s;
+    }
+  }
+  deferred_.clear();
+  return Status::OK();
 }
 
 Status OpRegistry::RegisterAlreadyLocked(

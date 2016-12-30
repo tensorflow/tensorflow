@@ -15,9 +15,8 @@ tf_cuda_library(
     copts = tf_copts(),
     cuda_deps = [
         "//tensorflow/core:stream_executor",
-        "//third_party/gpus/cuda:cuda_headers",
-        "//third_party/gpus/cuda:cupti_headers",
+        "@local_config_cuda//cuda:cupti_headers",
     ],
-    data = ["//third_party/gpus/cuda:cupti_dsos"],
+    data = ["@local_config_cuda//cuda:cupti_dsos"],
     visibility = ["//visibility:public"],
 )

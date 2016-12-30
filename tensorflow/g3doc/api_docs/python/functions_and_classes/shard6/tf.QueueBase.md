@@ -27,7 +27,7 @@ until the element has been enqueued.
 At runtime, this operation may raise an error if the queue is
 [closed](#QueueBase.close) before or during its execution. If the
 queue is closed before this operation runs,
-`tf.errors.AbortedError` will be raised. If this operation is
+`tf.errors.CancelledError` will be raised. If this operation is
 blocked, and either (i) the queue is closed by a close operation
 with `cancel_pending_enqueues=True`, or (ii) the session is
 [closed](../../api_docs/python/client.md#Session.close),
@@ -61,7 +61,7 @@ until all of the elements have been enqueued.
 At runtime, this operation may raise an error if the queue is
 [closed](#QueueBase.close) before or during its execution. If the
 queue is closed before this operation runs,
-`tf.errors.AbortedError` will be raised. If this operation is
+`tf.errors.CancelledError` will be raised. If this operation is
 blocked, and either (i) the queue is closed by a close operation
 with `cancel_pending_enqueues=True`, or (ii) the session is
 [closed](../../api_docs/python/client.md#Session.close),
@@ -92,7 +92,7 @@ until there is an element to dequeue.
 At runtime, this operation may raise an error if the queue is
 [closed](#QueueBase.close) before or during its execution. If the
 queue is closed, the queue is empty, and there are no pending
-enqueue operations that can fulfil this request,
+enqueue operations that can fulfill this request,
 `tf.errors.OutOfRangeError` will be raised. If the session is
 [closed](../../api_docs/python/client.md#Session.close),
 `tf.errors.CancelledError` will be raised.
@@ -123,7 +123,7 @@ If the queue is closed and there are less than `n` elements left, then an
 At runtime, this operation may raise an error if the queue is
 [closed](#QueueBase.close) before or during its execution. If the
 queue is closed, the queue contains fewer than `n` elements, and
-there are no pending enqueue operations that can fulfil this
+there are no pending enqueue operations that can fulfill this
 request, `tf.errors.OutOfRangeError` will be raised. If the
 session is [closed](../../api_docs/python/client.md#Session.close),
 `tf.errors.CancelledError` will be raised.
@@ -300,5 +300,12 @@ The list of names for each component of a queue element.
 #### `tf.QueueBase.queue_ref` {#QueueBase.queue_ref}
 
 The underlying queue reference.
+
+
+- - -
+
+#### `tf.QueueBase.shapes` {#QueueBase.shapes}
+
+The list of shapes for each component of a queue element.
 
 

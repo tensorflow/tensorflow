@@ -64,13 +64,17 @@ void BaseRendezvousMgr::RecvLocalAsync(int64 step_id,
                                        const Rendezvous::ParsedKey& parsed,
                                        Rendezvous::DoneCallback done) {
   BaseRemoteRendezvous* rendez = FindOrCreate(step_id);
-  rendez->RecvLocalAsync(
-      parsed, [rendez, done](const Status& s, const Rendezvous::Args& send_args,
-                             const Rendezvous::Args& recv_args, const Tensor& v,
-                             bool dead) {
+  using namespace std::placeholders;
+  Rendezvous::DoneCallback done_cb = std::bind(
+      [rendez](Rendezvous::DoneCallback done,
+               // Begin unbound arguments.
+               const Status& s, const Rendezvous::Args& send_args,
+               const Rendezvous::Args& recv_args, const Tensor& v, bool dead) {
         rendez->Unref();
         done(s, send_args, recv_args, v, dead);
-      });
+      },
+      std::move(done), _1, _2, _3, _4, _5);
+  rendez->RecvLocalAsync(parsed, std::move(done_cb));
 }
 
 Status BaseRendezvousMgr::RecvLocal(int64 step_id,
@@ -126,7 +130,6 @@ BaseRemoteRendezvous::BaseRemoteRendezvous(const WorkerEnv* env, int64 step_id,
                                            bool tolerate_dup_recv)
     : env_(env),
       step_id_(step_id),
-      tolerate_dup_recv_(tolerate_dup_recv),
       local_(NewLocalRendezvous(tolerate_dup_recv)) {}
 
 BaseRemoteRendezvous::~BaseRemoteRendezvous() {
@@ -244,14 +247,12 @@ void BaseRemoteRendezvous::RecvAsync(const ParsedKey& parsed,
 
   // Are src and dst in the same worker?
   if (IsSameWorker(parsed.src, parsed.dst)) {
-    Rendezvous::ParsedKey parsed_copy = parsed;
     // Recv the tensor from local_.
     local_->RecvAsync(
-        parsed_copy, recv_args,
-        [this, parsed_copy, done](
+        parsed, recv_args,
+        [this, parsed, done](
             const Status& status, const Rendezvous::Args& send_args,
             const Rendezvous::Args& recv_args, const Tensor& in, bool is_dead) {
-          Status s = status;
           Tensor* out = new Tensor;
           StatusCallback final_callback = [done, send_args, recv_args, out,
                                            is_dead](const Status& s) {
@@ -259,11 +260,11 @@ void BaseRemoteRendezvous::RecvAsync(const ParsedKey& parsed,
             delete out;
           };
 
-          if (s.ok()) {
-            SameWorkerRecvDone(parsed_copy, send_args, recv_args, in, out,
+          if (status.ok()) {
+            SameWorkerRecvDone(parsed, send_args, recv_args, in, out,
                                std::move(final_callback));
           } else {
-            final_callback(s);
+            final_callback(status);
           }
         });
     return;

@@ -51,8 +51,8 @@ struct LaunchConvOp<CPUDevice, T> {
                      const Padding padding, Tensor* output) {
     functor::CuboidConvolution<CPUDevice, T>()(
         context->eigen_device<CPUDevice>(), output->tensor<T, 5>(),
-        input.tensor<T, 5>(), filter.tensor<T, 5>(), strides[0], strides[1],
-        strides[2], BrainPadding2EigenPadding(padding));
+        input.tensor<T, 5>(), filter.tensor<T, 5>(), strides[2], strides[1],
+        strides[0], BrainPadding2EigenPadding(padding));
   }
 };
 
@@ -95,6 +95,7 @@ class Conv3DOp : public BinaryOp<T> {
         context, in_depth == filter.dim_size(3),
         errors::InvalidArgument("input and filter must have the same depth"));
 
+    // Dimension order for these arrays is: z, y, x.
     std::array<int64, 3> input_size = {
         {input.dim_size(1), input.dim_size(2), input.dim_size(3)}};
     std::array<int64, 3> filter_size = {
@@ -159,7 +160,8 @@ struct LaunchConvOp<GPUDevice, T> {
     int64 out_cols = output->dim_size(3);
 
     if (padding == Padding::SAME) {
-      pad_planes = (out_planes - 1) * strides[0] + filter_planes - in_planes;
+      pad_planes = std::max<int64>(
+          0, (out_planes - 1) * strides[0] + filter_planes - in_planes);
       pad_rows = std::max<int64>(
           0, (out_rows - 1) * strides[1] + filter_rows - in_rows);
       pad_cols = std::max<int64>(
@@ -241,9 +243,9 @@ struct LaunchConvOp<GPUDevice, T> {
         transformed_input.tensor<T, 5>());
     input = transformed_input;
 
-    CHECK(pad_rows >= 0 && pad_cols >= 0) << "Negative row or col paddings: ("
-                                          << pad_rows << ", " << pad_cols
-                                          << ")";
+    CHECK(pad_rows >= 0 && pad_cols >= 0 && pad_planes >= 0)
+        << "Negative paddings: (" << pad_rows << ", " << pad_cols << ", "
+        << pad_planes << ")";
     perftools::gputools::dnn::BatchDescriptor input_desc(3);
     input_desc.set_count(in_batch)
         .set_feature_map_count(in_depth)

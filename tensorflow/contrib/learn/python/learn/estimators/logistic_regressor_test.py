@@ -27,21 +27,22 @@ def _iris_data_input_fn():
   iris = tf.contrib.learn.datasets.load_iris()
   ids = np.where((iris.target == 0) | (iris.target == 1))
   features = tf.constant(iris.data[ids], dtype=tf.float32)
-  targets = tf.constant(iris.target[ids], dtype=tf.float32)
-  targets = tf.reshape(targets, targets.get_shape().concatenate(1))
-  return features, targets
+  labels = tf.constant(iris.target[ids], dtype=tf.float32)
+  labels = tf.reshape(labels, labels.get_shape().concatenate(1))
+  return features, labels
 
 
-def _logistic_regression_model_fn(features, targets):
+def _logistic_regression_model_fn(features, labels, mode):
+  _ = mode
   logits = tf.contrib.layers.linear(
       features,
       1,
-      weights_initializer=tf.zeros_initializer,
+      weights_initializer=tf.zeros_initializer(),
       # Intentionally uses really awful initial values so that
       # AUC/precision/recall/etc will change meaningfully even on a toy dataset.
       biases_initializer=tf.constant_initializer(-10.0))
   predictions = tf.sigmoid(logits)
-  loss = tf.contrib.losses.sigmoid_cross_entropy(logits, targets)
+  loss = tf.contrib.losses.sigmoid_cross_entropy(logits, labels)
   train_op = tf.contrib.layers.optimize_loss(
       loss,
       tf.contrib.framework.get_global_step(),
@@ -62,30 +63,30 @@ class LogisticRegressorTest(tf.test.TestCase):
     eval_metrics = regressor.evaluate(input_fn=_iris_data_input_fn, steps=1)
     self.assertNear(
         0.0,
-        eval_metrics[tf.contrib.learn.LogisticRegressor.PREDICTION_MEAN],
+        eval_metrics[tf.contrib.learn.MetricKey.PREDICTION_MEAN],
         err=1e-3)
     self.assertNear(
         0.5,
-        eval_metrics[tf.contrib.learn.LogisticRegressor.TARGET_MEAN],
+        eval_metrics[tf.contrib.learn.MetricKey.LABEL_MEAN],
         err=1e-6)
     self.assertNear(
         0.5,
-        eval_metrics[tf.contrib.learn.LogisticRegressor.ACCURACY_BASELINE],
+        eval_metrics[tf.contrib.learn.MetricKey.ACCURACY_BASELINE],
         err=1e-6)
     self.assertNear(0.5,
-                    eval_metrics[tf.contrib.learn.LogisticRegressor.AUC],
+                    eval_metrics[tf.contrib.learn.MetricKey.AUC],
                     err=1e-6)
     self.assertNear(
         0.5,
-        eval_metrics[tf.contrib.learn.LogisticRegressor.ACCURACY_MEAN % 0.5],
+        eval_metrics[tf.contrib.learn.MetricKey.ACCURACY_MEAN % 0.5],
         err=1e-6)
     self.assertNear(
         0.0,
-        eval_metrics[tf.contrib.learn.LogisticRegressor.PRECISION_MEAN % 0.5],
+        eval_metrics[tf.contrib.learn.MetricKey.PRECISION_MEAN % 0.5],
         err=1e-6)
     self.assertNear(
         0.0,
-        eval_metrics[tf.contrib.learn.LogisticRegressor.RECALL_MEAN % 0.5],
+        eval_metrics[tf.contrib.learn.MetricKey.RECALL_MEAN % 0.5],
         err=1e-6)
 
     # Train for more steps and check the metrics again.
@@ -94,32 +95,32 @@ class LogisticRegressorTest(tf.test.TestCase):
     # Mean prediction moves from ~0.0 to ~0.5 as we stop predicting all 0's.
     self.assertNear(
         0.5,
-        eval_metrics[tf.contrib.learn.LogisticRegressor.PREDICTION_MEAN],
+        eval_metrics[tf.contrib.learn.MetricKey.PREDICTION_MEAN],
         err=1e-2)
-    # Target mean and baseline both remain the same at 0.5.
+    # Label mean and baseline both remain the same at 0.5.
     self.assertNear(
         0.5,
-        eval_metrics[tf.contrib.learn.LogisticRegressor.TARGET_MEAN],
+        eval_metrics[tf.contrib.learn.MetricKey.LABEL_MEAN],
         err=1e-6)
     self.assertNear(
         0.5,
-        eval_metrics[tf.contrib.learn.LogisticRegressor.ACCURACY_BASELINE],
+        eval_metrics[tf.contrib.learn.MetricKey.ACCURACY_BASELINE],
         err=1e-6)
     # AUC improves from 0.5 to 1.0.
     self.assertNear(1.0,
-                    eval_metrics[tf.contrib.learn.LogisticRegressor.AUC],
+                    eval_metrics[tf.contrib.learn.MetricKey.AUC],
                     err=1e-6)
     # Accuracy improves from 0.5 to >0.9.
     self.assertTrue(
-        eval_metrics[tf.contrib.learn.LogisticRegressor.ACCURACY_MEAN % 0.5] >
+        eval_metrics[tf.contrib.learn.MetricKey.ACCURACY_MEAN % 0.5] >
         0.9)
     # Precision improves from 0.0 to 1.0.
     self.assertNear(
         1.0,
-        eval_metrics[tf.contrib.learn.LogisticRegressor.PRECISION_MEAN % 0.5],
+        eval_metrics[tf.contrib.learn.MetricKey.PRECISION_MEAN % 0.5],
         err=1e-6)
     # Recall improves from 0.0 to >0.9.
-    self.assertTrue(eval_metrics[tf.contrib.learn.LogisticRegressor.RECALL_MEAN
+    self.assertTrue(eval_metrics[tf.contrib.learn.MetricKey.RECALL_MEAN
                                  % 0.5] > 0.9)
 
 

@@ -23,7 +23,7 @@ from __future__ import print_function
 from tensorflow.python.framework import ops
 
 
-_DEFAULT_GRAPH_SEED = 87654321
+DEFAULT_GRAPH_SEED = 87654321
 _MAXINT32 = 2**31 - 1
 
 def _truncate_seed(seed):
@@ -56,7 +56,7 @@ def get_seed(op_seed):
       return _truncate_seed(graph_seed), _truncate_seed(ops.get_default_graph()._last_id)
   else:
     if op_seed is not None:
-      return _truncate_seed(_DEFAULT_GRAPH_SEED), _truncate_seed(op_seed)
+      return _truncate_seed(DEFAULT_GRAPH_SEED), _truncate_seed(op_seed)
     else:
       return None, None
 
@@ -136,7 +136,7 @@ def set_random_seed(seed):
   a = tf.random_uniform([1])
   b = tf.random_normal([1])
 
-  # Repeatedly running this block with the same graph will generate different
+  # Repeatedly running this block with the same graph will generate the same
   # sequences of 'a' and 'b'.
   print("Session 1")
   with tf.Session() as sess1:
