@@ -24,9 +24,262 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
+import java.lang.reflect.Array;
+import java.nio.*;
+import java.util.Arrays;
+
 /** Unit tests for {@link org.tensorflow.Tensor}. */
 @RunWith(JUnit4.class)
 public class TensorTest {
+  private static final double EPSILON = 1e-7;
+  private static final float EPSILON_F = 1e-7f;
+
+  // reusable sample data, varying by type and dimension
+  static final int scalar = 42;
+  static final long[] scalar_shape = {};
+  static final double[] vector = {1.414, 2.718, 3.1415};
+  static final float[] vector_f = {1.414f, 2.718f, 3.1415f};
+  static final long[] vector_shape = {3};
+  static final int[][] matrix = {{1, 2, 3}, {4, 5, 6}};
+  static final long[] matrix_shape = {2, 3};
+  static final long[][][] threeD = {
+    {{1}, {3}, {5}, {7}, {9}}, {{2}, {4}, {6}, {8}, {0}},
+  };
+  static final long[] threeD_shape = {2, 5, 1};
+  static final boolean[][][][] fourD = {
+    {{{false, false, false, true}, {false, false, true, false}}},
+    {{{false, false, true, true}, {false, true, false, false}}},
+    {{{false, true, false, true}, {false, true, true, false}}},
+  };
+  static final long[] fourD_shape = {3, 1, 2, 4};
+
+  @Test
+  public void createWithBuffer() {
+    // validate creating a tensor using a direct byte buffer (in host order)
+    {
+      ByteBuffer buf = ByteBuffer.allocateDirect(Double.SIZE / Byte.SIZE * vector.length).order(ByteOrder.nativeOrder());
+      buf.asDoubleBuffer().put(vector);
+      try(Tensor t = Tensor.create(DataType.DOUBLE, vector_shape, buf)) {
+        double[] actual = new double[3];
+        assertArrayEquals(vector, t.copyTo(actual), EPSILON);
+      }
+    }
+
+    // validate byte order conversion
+    {
+      DoubleBuffer buf = ByteBuffer.allocate(Double.SIZE / Byte.SIZE * vector.length)
+          .order(ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN ? ByteOrder.BIG_ENDIAN : ByteOrder.LITTLE_ENDIAN)
+          .asDoubleBuffer()
+          .put(vector);
+      buf.flip();
+      try(Tensor t = Tensor.create(DataType.DOUBLE, vector_shape, buf)) {
+        double[] actual = new double[3];
+        assertArrayEquals(vector, t.copyTo(actual), EPSILON);
+      }
+    }
+
+    // validate creating a tensor using a typed buffer
+    {
+      try(Tensor t = Tensor.create(DataType.INT32, scalar_shape, IntBuffer.wrap(new int[] { scalar }))) {
+        assertEquals(scalar, t.intValue());
+      }
+      try(Tensor t = Tensor.create(DataType.DOUBLE, vector_shape, DoubleBuffer.wrap(vector))) {
+        double[] actual = new double[3];
+        assertArrayEquals(vector, t.copyTo(actual), EPSILON);
+      }
+      try(Tensor t = Tensor.create(DataType.FLOAT, vector_shape, FloatBuffer.wrap(vector_f))) {
+        float[] actual = new float[3];
+        assertArrayEquals(vector_f, t.copyTo(actual), EPSILON_F);
+      }
+      int[] matrix_ = (int[]) TestUtil.flatten(matrix, Integer.TYPE);
+      try(Tensor t = Tensor.create(DataType.INT32, matrix_shape, IntBuffer.wrap(matrix_))) {
+        int[][] actual = new int[2][3];
+        assertArrayEquals(matrix, t.copyTo(actual));
+      }
+      long[] threeD_ = (long[]) TestUtil.flatten(threeD, Long.TYPE);
+      try(Tensor t = Tensor.create(DataType.INT64, threeD_shape, LongBuffer.wrap(threeD_))) {
+        long[][][] actual = new long[2][5][1];
+        assertArrayEquals(threeD, t.copyTo(actual));
+      }
+      byte[] fourD_ = TestUtil.bool2byte((boolean[]) TestUtil.flatten(fourD, Boolean.TYPE));
+      try(Tensor t = Tensor.create(DataType.BOOL, fourD_shape, ByteBuffer.wrap(fourD_))) {
+        boolean[][][][] actual = new boolean[3][1][2][4];
+        assertArrayEquals(fourD, t.copyTo(actual));
+      }
+    }
+
+    // validate that incompatible buffers are rejected
+    {
+      try {
+        Tensor.create(DataType.FLOAT, vector_shape, DoubleBuffer.wrap(vector));
+        fail("should have failed on incompatible buffer");
+      }
+      catch(IllegalArgumentException e) {
+      }
+      try {
+        Tensor.create(DataType.DOUBLE, vector_shape, FloatBuffer.wrap(vector_f));
+        fail("should have failed on incompatible buffer");
+      }
+      catch(IllegalArgumentException e) {
+      }
+      int[] matrix_ = (int[]) TestUtil.flatten(matrix, Integer.TYPE);
+      try {
+        Tensor.create(DataType.FLOAT, matrix_shape, IntBuffer.wrap(matrix_));
+        fail("should have failed on incompatible buffer");
+      }
+      catch(IllegalArgumentException e) {
+      }
+      long[] threeD_ = (long[]) TestUtil.flatten(threeD, Long.TYPE);
+      try {
+        Tensor.create(DataType.FLOAT, threeD_shape, LongBuffer.wrap(threeD_));
+        fail("should have failed on incompatible buffer");
+      }
+      catch(IllegalArgumentException e) {
+      }
+      try {
+        Tensor.create(DataType.FLOAT, new long[] { 1 }, ShortBuffer.wrap(new short[] { 1 }));
+        fail("should have failed on incompatible buffer");
+      }
+      catch(IllegalArgumentException e) {
+      }
+    }
+  }
+
+  @Test
+  public void readData() {
+
+    Tensor tscalar = Tensor.create(scalar);
+    Tensor tvector = Tensor.create(vector);
+    Tensor tvector_f = Tensor.create(vector_f);
+    Tensor tmatrix = Tensor.create(matrix);
+    Tensor tthreeD = Tensor.create(threeD);
+    Tensor tfourD = Tensor.create(fourD);
+    try {
+
+      // validate that any datatype is readable with ByteBuffer (content, position)
+      {
+        ByteBuffer bbuf = ByteBuffer.allocate(1024).order(ByteOrder.nativeOrder());
+
+        bbuf.clear(); // FLOAT
+        tvector_f.readData(bbuf);
+        assertEquals(12, bbuf.position());
+        bbuf.flip();
+        assertEquals(vector_f[0], bbuf.asFloatBuffer().get(0), EPSILON);
+        bbuf.clear(); // DOUBLE
+        tvector.readData(bbuf);
+        assertEquals(24, bbuf.position());
+        bbuf.flip();
+        assertEquals(vector[0], bbuf.asDoubleBuffer().get(0), EPSILON);
+        bbuf.clear(); // INT32
+        tmatrix.readData(bbuf);
+        assertEquals(24, bbuf.position());
+        bbuf.flip();
+        assertEquals(matrix[0][0], bbuf.asIntBuffer().get(0));
+        bbuf.clear(); // INT64
+        tthreeD.readData(bbuf);
+        assertEquals(80, bbuf.position());
+        bbuf.flip();
+        assertEquals(threeD[0][0][0], bbuf.asLongBuffer().get(0));
+        bbuf.clear(); // (BOOL)
+        tfourD.readData(bbuf);
+        assertEquals(24, bbuf.position());
+        bbuf.flip();
+        assertEquals(fourD[0][0][0][0], bbuf.get(0) != 0);
+        assertEquals(fourD[0][0][0][3], bbuf.get(3) != 0);
+      }
+
+      // validate the use of direct buffers
+      {
+        DoubleBuffer buf = ByteBuffer.allocateDirect(tvector.getDataByteSize())
+            .order(ByteOrder.nativeOrder()).asDoubleBuffer();
+        tvector.readData(buf);
+        assertTrue(buf.isDirect());
+        assertEquals(3, buf.position());
+        assertEquals(vector[0], buf.get(0), EPSILON);
+      }
+
+      // validate typed buffers (content, position)
+      {
+        FloatBuffer buf = FloatBuffer.allocate(tvector_f.getDataByteSize() / (Float.SIZE / Byte.SIZE));
+        tvector_f.readData(buf);
+        assertEquals(3, buf.position());
+        assertEquals(vector_f[0], buf.get(0), EPSILON);
+      }
+      {
+        DoubleBuffer buf = DoubleBuffer.allocate(tvector.getDataByteSize() / (Double.SIZE / Byte.SIZE));
+        tvector.readData(buf);
+        assertEquals(3, buf.position());
+        assertEquals(vector[0], buf.get(0), EPSILON);
+      }
+      {
+        IntBuffer buf = IntBuffer.allocate(tmatrix.getDataByteSize() / (Integer.SIZE / Byte.SIZE));
+        tmatrix.readData(buf);
+        assertEquals(6, buf.position());
+        assertEquals(matrix[0][0], buf.get(0));
+      }
+      {
+        LongBuffer buf = LongBuffer.allocate(tthreeD.getDataByteSize() / (Long.SIZE / Byte.SIZE));
+        tthreeD.readData(buf);
+        assertEquals(10, buf.position());
+        assertEquals(threeD[0][0][0], buf.get(0));
+      }
+
+      // validate byte order conversion
+      {
+        DoubleBuffer foreignBuf = ByteBuffer.allocate(tvector.getDataByteSize())
+                .order(ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN ? ByteOrder.BIG_ENDIAN : ByteOrder.LITTLE_ENDIAN)
+                .asDoubleBuffer();
+        tvector.readData(foreignBuf);
+        foreignBuf.flip();
+        double[] foreignBufData = new double[foreignBuf.remaining()];
+        foreignBuf.get(foreignBufData);
+        assertTrue(Arrays.equals(vector, foreignBufData));
+      }
+
+      // validate that incompatible buffers are rejected
+      {
+        IntBuffer badbuf1 = IntBuffer.allocate(128);
+        try {
+          tvector.readData(badbuf1);
+          fail("should have failed on incompatible buffer");
+        } catch (IllegalArgumentException e) {
+        }
+        FloatBuffer badbuf2 = FloatBuffer.allocate(128);
+        try {
+          tvector.readData(badbuf2);
+          fail("should have failed on incompatible buffer");
+        } catch (IllegalArgumentException e) {
+        }
+        DoubleBuffer badbuf3 = DoubleBuffer.allocate(128);
+        try {
+          tmatrix.readData(badbuf3);
+          fail("should have failed on incompatible buffer");
+        } catch (IllegalArgumentException e) {
+        }
+        LongBuffer badbuf4 = LongBuffer.allocate(128);
+        try {
+          tvector.readData(badbuf4);
+          fail("should have failed on incompatible buffer");
+        } catch (IllegalArgumentException e) {
+        }
+        ShortBuffer badbuf5 = ShortBuffer.allocate(128);
+        try {
+          tvector.readData(badbuf5);
+          fail("should have failed on incompatible buffer");
+        } catch (IllegalArgumentException e) {
+        }
+      }
+    }
+    finally {
+      tscalar.close();
+      tvector.close();
+      tvector_f.close();
+      tmatrix.close();
+      tthreeD.close();
+      tfourD.close();
+    }
+  }
+
   @Test
   public void scalars() {
     try (Tensor t = Tensor.create(2.718f)) {
@@ -75,47 +328,37 @@ public class TensorTest {
 
   @Test
   public void nDimensional() {
-    double[] vector = {1.414, 2.718, 3.1415};
     try (Tensor t = Tensor.create(vector)) {
       assertEquals(DataType.DOUBLE, t.dataType());
       assertEquals(1, t.numDimensions());
-      assertArrayEquals(new long[] {3}, t.shape());
+      assertArrayEquals(vector_shape, t.shape());
 
       double[] got = new double[3];
       assertArrayEquals(vector, t.copyTo(got), 0);
     }
 
-    int[][] matrix = {{1, 2, 3}, {4, 5, 6}};
     try (Tensor t = Tensor.create(matrix)) {
       assertEquals(DataType.INT32, t.dataType());
       assertEquals(2, t.numDimensions());
-      assertArrayEquals(new long[] {2, 3}, t.shape());
+      assertArrayEquals(matrix_shape, t.shape());
 
       int[][] got = new int[2][3];
       assertArrayEquals(matrix, t.copyTo(got));
     }
 
-    long[][][] threeD = {
-      {{1}, {3}, {5}, {7}, {9}}, {{2}, {4}, {6}, {8}, {0}},
-    };
     try (Tensor t = Tensor.create(threeD)) {
       assertEquals(DataType.INT64, t.dataType());
       assertEquals(3, t.numDimensions());
-      assertArrayEquals(new long[] {2, 5, 1}, t.shape());
+      assertArrayEquals(threeD_shape, t.shape());
 
       long[][][] got = new long[2][5][1];
       assertArrayEquals(threeD, t.copyTo(got));
     }
 
-    boolean[][][][] fourD = {
-      {{{false, false, false, true}, {false, false, true, false}}},
-      {{{false, false, true, true}, {false, true, false, false}}},
-      {{{false, true, false, true}, {false, true, true, false}}},
-    };
     try (Tensor t = Tensor.create(fourD)) {
       assertEquals(DataType.BOOL, t.dataType());
       assertEquals(4, t.numDimensions());
-      assertArrayEquals(new long[] {3, 1, 2, 4}, t.shape());
+      assertArrayEquals(fourD_shape, t.shape());
 
       boolean[][][][] got = new boolean[3][1][2][4];
       assertArrayEquals(fourD, t.copyTo(got));

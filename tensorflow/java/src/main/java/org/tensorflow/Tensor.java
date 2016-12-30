@@ -16,6 +16,13 @@ limitations under the License.
 package org.tensorflow;
 
 import java.lang.reflect.Array;
+import java.nio.Buffer;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.DoubleBuffer;
+import java.nio.FloatBuffer;
+import java.nio.IntBuffer;
+import java.nio.LongBuffer;
 import java.util.Arrays;
 
 /**
@@ -34,6 +41,115 @@ import java.util.Arrays;
  * }</pre>
  */
 public final class Tensor implements AutoCloseable {
+
+  /**
+   * Create a Tensor with data from the given buffer.
+   *
+   * <p>Provide a {@link ByteBuffer} to create a Tensor of any datatype.  Note that primitive
+   * data must be in native byte order. Provide a {@link FloatBuffer}, {@link IntBuffer}, {@link DoubleBuffer},
+   * or {@link LongBuffer} to create a Tensor with a datatype of {@code FLOAT}, {@code INT32}, {@code DOUBLE},
+   * or {@code INT64} respectively.
+   *
+   * <p> This method copies
+   * <i>n</i>&nbsp;=&nbsp;<tt>src.remaining()</tt> elements from the given
+   * buffer into the tensor, starting at the buffer's current position.
+   * The position of the buffer is then incremented by <i>n</i>.
+   *
+   * @param dataType the tensor datatype.
+   * @param shape the tensor shape.
+   * @param data a buffer containing the tensor data.
+   */
+  public static Tensor create(DataType dataType, long[] shape, Buffer data) {
+    Tensor t = new Tensor();
+    t.dtype = dataType;
+    t.shapeCopy = Arrays.copyOf(shape, shape.length);
+
+    int elemsize = 0;
+    if(data instanceof ByteBuffer) elemsize = 1;
+    else if(data instanceof IntBuffer) elemsize = Integer.SIZE / Byte.SIZE;
+    else if(data instanceof FloatBuffer) elemsize = Float.SIZE / Byte.SIZE;
+    else if(data instanceof DoubleBuffer) elemsize = Double.SIZE / Byte.SIZE;
+    else if(data instanceof LongBuffer) elemsize = Long.SIZE / Byte.SIZE;
+    else throwIncompatibleBuffer();
+
+    t.nativeHandle = allocate(t.dtype.c(), t.shapeCopy, elemsize * data.remaining());
+    try {
+      ByteBuffer dst = getBuffer(t.nativeHandle);
+      if(data instanceof ByteBuffer) {
+        dst.put((ByteBuffer) data);
+      }
+      else if(data instanceof IntBuffer) {
+        if(t.dtype != DataType.INT32) throwIncompatibleBuffer();
+        dst.asIntBuffer().put((IntBuffer) data);
+      }
+      else if(data instanceof FloatBuffer) {
+        if(t.dtype != DataType.FLOAT) throwIncompatibleBuffer();
+        dst.asFloatBuffer().put((FloatBuffer) data);
+      }
+      else if(data instanceof DoubleBuffer) {
+        if(t.dtype != DataType.DOUBLE) throwIncompatibleBuffer();
+        dst.asDoubleBuffer().put((DoubleBuffer) data);
+      }
+      else if(data instanceof LongBuffer) {
+        if(t.dtype != DataType.INT64) throwIncompatibleBuffer();
+        dst.asLongBuffer().put((LongBuffer) data);
+      }
+
+      return t;
+    }
+    catch(RuntimeException e) {
+      delete(t.nativeHandle);
+      throw e;
+    }
+  }
+
+  /**
+   * Gets the size (in bytes) of the tensor data.
+   *
+   * <p>Use this size information when constructing a buffer with which to call {@link #readData(Buffer)}.
+   */
+  public int getDataByteSize() {
+    return getBuffer(nativeHandle).remaining();
+  }
+    
+  /**
+   * Reads the tensor data into the given buffer.
+   *
+   * <p>Provide a {@link ByteBuffer} to read a Tensor of any datatype.  Note that primitive
+   * data is in native byte order. Provide a {@link FloatBuffer}, {@link IntBuffer}, {@link DoubleBuffer},
+   * or {@link LongBuffer} to read a Tensor with a datatype of {@code FLOAT}, {@code INT32}, {@code DOUBLE},
+   * or {@code INT64} respectively.
+   *
+   * @param dst the destination buffer.
+   */
+  public void readData(Buffer dst) {
+    ByteBuffer src = getBuffer(nativeHandle);
+    if(dst instanceof ByteBuffer) {
+      ((ByteBuffer) dst).put(src);
+    }
+    else if(dst instanceof IntBuffer) {
+      if(dtype != DataType.INT32) throwIncompatibleBuffer();
+      ((IntBuffer) dst).put(src.asIntBuffer());
+    }
+    else if(dst instanceof FloatBuffer) {
+      if(dtype != DataType.FLOAT) throwIncompatibleBuffer();
+      ((FloatBuffer) dst).put(src.asFloatBuffer());
+    }
+    else if(dst instanceof DoubleBuffer) {
+      if(dtype != DataType.DOUBLE) throwIncompatibleBuffer();
+      ((DoubleBuffer) dst).put(src.asDoubleBuffer());
+    }
+    else if(dst instanceof LongBuffer) {
+      if(dtype != DataType.INT64) throwIncompatibleBuffer();
+      ((LongBuffer) dst).put(src.asLongBuffer());
+    }
+    else throwIncompatibleBuffer();
+  }
+
+  private static void throwIncompatibleBuffer() {
+    throw new IllegalArgumentException("incompatible buffer for Tensor data");
+  }
+
   /**
    * Create a Tensor from a Java object.
    *
@@ -71,7 +187,7 @@ public final class Tensor implements AutoCloseable {
     t.shapeCopy = new long[numDimensions(obj)];
     fillShape(obj, 0, t.shapeCopy);
     if (t.dtype != DataType.STRING) {
-      t.nativeHandle = allocate(t.dtype.c(), t.shapeCopy);
+      t.nativeHandle = allocateNDArray(t.dtype.c(), t.shapeCopy);
       setValue(t.nativeHandle, obj);
     } else if (t.shapeCopy.length != 0) {
       throw new UnsupportedOperationException(
@@ -317,7 +433,15 @@ public final class Tensor implements AutoCloseable {
     }
   }
 
-  private static native long allocate(int dtype, long[] shape);
+  private static ByteBuffer getBuffer(long nativeHandle) {
+    return buffer(nativeHandle).order(ByteOrder.nativeOrder());
+  }
+
+  private static native ByteBuffer buffer(long handle);
+
+  private static native long allocate(int dtype, long[] shape, long sizeInBytes);
+
+  private static native long allocateNDArray(int dtype, long[] shape);
 
   private static native long allocateScalarBytes(byte[] value);
 

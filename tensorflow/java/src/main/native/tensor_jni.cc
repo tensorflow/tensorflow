@@ -218,6 +218,45 @@ size_t readNDArray(JNIEnv* env, TF_DataType dtype, const char* src,
 JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_allocate(JNIEnv* env,
                                                             jclass clazz,
                                                             jint dtype,
+                                                            jlongArray shape,
+                                                            jlong size) {
+  int num_dims = static_cast<int>(env->GetArrayLength(shape));
+  jlong* dims = nullptr;
+  if (num_dims > 0) {
+    jboolean is_copy;
+    dims = env->GetLongArrayElements(shape, &is_copy);
+  }
+  static_assert(sizeof(jlong) == sizeof(int64_t),
+                "Java long is not compatible with the TensorFlow C API");
+  // On some platforms "jlong" is a "long" while "int64_t" is a "long long".
+  //
+  // Thus, static_cast<int64_t*>(dims) will trigger a compiler error:
+  // static_cast from 'jlong *' (aka 'long *') to 'int64_t *' (aka 'long long
+  // *') is not allowed
+  //
+  // Since this array is typically very small, use the guaranteed safe scheme of
+  // creating a copy.
+  int64_t* dims_copy = new int64_t[num_dims];
+  for (int i = 0; i < num_dims; ++i) {
+    dims_copy[i] = static_cast<int64_t>(dims[i]);
+  }
+  TF_Tensor* t = TF_AllocateTensor(static_cast<TF_DataType>(dtype), dims_copy,
+                                   num_dims, (size_t) size);
+  delete[] dims_copy;
+  if (dims != nullptr) {
+    env->ReleaseLongArrayElements(shape, dims, JNI_ABORT);
+  }
+  if (t == nullptr) {
+    throwException(env, kNullPointerException,
+                   "unable to allocate memory for the Tensor");
+    return 0;
+  }
+  return reinterpret_cast<jlong>(t);
+}
+
+JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_allocateNDArray(JNIEnv* env,
+                                                            jclass clazz,
+                                                            jint dtype,
                                                             jlongArray shape) {
   size_t elem_size = elemByteSize(static_cast<TF_DataType>(dtype));
   if (elem_size == 0) {
@@ -432,4 +471,16 @@ JNIEXPORT void JNICALL Java_org_tensorflow_Tensor_readNDArray(JNIEnv* env,
   }
   readNDArray(env, dtype, static_cast<const char*>(data), sz, num_dims,
               static_cast<jarray>(value));
+}
+
+JNIEXPORT jobject JNICALL Java_org_tensorflow_Tensor_buffer(JNIEnv* env,
+                                                              jclass clazz,
+                                                              jlong handle) {
+  TF_Tensor* t = requireHandle(env, handle);
+  if (t == nullptr) return nullptr;
+  void* data = TF_TensorData(t);
+  const size_t sz = TF_TensorByteSize(t);
+
+  jobject dataBuffer = env->NewDirectByteBuffer(data, (jlong) sz);
+  return dataBuffer;
 }
