@@ -12,20 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Linear regression tests."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
+
+# TODO: #6568 Remove this hack that makes dlopen() not crash.
+if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
+  import ctypes
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
+
 import numpy as np
-import tensorflow as tf
 
 from tensorflow.contrib.learn.python import learn
+from tensorflow.python.platform import test
 
 
-class RegressionTest(tf.test.TestCase):
+class RegressionTest(test.TestCase):
   """Linear regression tests."""
 
   def testLinearRegression(self):
@@ -48,4 +54,4 @@ class RegressionTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

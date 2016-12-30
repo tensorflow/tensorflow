@@ -15,7 +15,9 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:training",
     ],
 )
 
@@ -29,7 +31,8 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":grpc_tensorflow_server",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client_testlib",
     ],
 )
 

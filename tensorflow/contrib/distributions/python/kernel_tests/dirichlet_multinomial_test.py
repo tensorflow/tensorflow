@@ -17,12 +17,16 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+from tensorflow.contrib import distributions
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
 
-ds = tf.contrib.distributions
+ds = distributions
 
 
-class DirichletMultinomialTest(tf.test.TestCase):
+class DirichletMultinomialTest(test.TestCase):
 
   def setUp(self):
     self._rng = np.random.RandomState(42)
@@ -33,8 +37,8 @@ class DirichletMultinomialTest(tf.test.TestCase):
       dist = ds.DirichletMultinomial(1., alpha)
       self.assertEqual(3, dist.event_shape().eval())
       self.assertAllEqual([], dist.batch_shape().eval())
-      self.assertEqual(tf.TensorShape([3]), dist.get_event_shape())
-      self.assertEqual(tf.TensorShape([]), dist.get_batch_shape())
+      self.assertEqual(tensor_shape.TensorShape([3]), dist.get_event_shape())
+      self.assertEqual(tensor_shape.TensorShape([]), dist.get_batch_shape())
 
   def testComplexShapes(self):
     with self.test_session():
@@ -43,8 +47,8 @@ class DirichletMultinomialTest(tf.test.TestCase):
       dist = ds.DirichletMultinomial(n, alpha)
       self.assertEqual(2, dist.event_shape().eval())
       self.assertAllEqual([3, 2], dist.batch_shape().eval())
-      self.assertEqual(tf.TensorShape([2]), dist.get_event_shape())
-      self.assertEqual(tf.TensorShape([3, 2]), dist.get_batch_shape())
+      self.assertEqual(tensor_shape.TensorShape([2]), dist.get_event_shape())
+      self.assertEqual(tensor_shape.TensorShape([3, 2]), dist.get_batch_shape())
 
   def testNproperty(self):
     alpha = [[1., 2, 3]]
@@ -65,8 +69,7 @@ class DirichletMultinomialTest(tf.test.TestCase):
     alpha = [[1., 2, 3]]
     n = [[5.]]
     with self.test_session():
-      dist = ds.DirichletMultinomial(
-          n, alpha, validate_args=True)
+      dist = ds.DirichletMultinomial(n, alpha, validate_args=True)
       dist.pmf([2., 3, 0]).eval()
       dist.pmf([3., 0, 2]).eval()
       with self.assertRaisesOpError("Condition x >= 0.*"):
@@ -78,16 +81,14 @@ class DirichletMultinomialTest(tf.test.TestCase):
     alpha = [[1., 2, 3]]
     n = [[5.]]
     with self.test_session():
-      dist = ds.DirichletMultinomial(
-          n, alpha, validate_args=True)
+      dist = ds.DirichletMultinomial(n, alpha, validate_args=True)
       dist.pmf([2., 3, 0]).eval()
       dist.pmf([3., 0, 2]).eval()
       dist.pmf([3.0, 0, 2.0]).eval()
       # Both equality and integer checking fail.
       with self.assertRaisesOpError("Condition x == y.*"):
         dist.pmf([1.0, 2.5, 1.5]).eval()
-      dist = ds.DirichletMultinomial(
-          n, alpha, validate_args=False)
+      dist = ds.DirichletMultinomial(n, alpha, validate_args=False)
       dist.pmf([1., 2., 3.]).eval()
       # Non-integer arguments work.
       dist.pmf([1.0, 2.5, 1.5]).eval()
@@ -155,8 +156,7 @@ class DirichletMultinomialTest(tf.test.TestCase):
     with self.test_session():
       alpha = [[1., 2], [2., 3]]
       counts = [[1., 0]]
-      pmf = ds.DirichletMultinomial(
-          [1., 1.], alpha).pmf(counts)
+      pmf = ds.DirichletMultinomial([1., 1.], alpha).pmf(counts)
       self.assertAllClose([1 / 3., 2 / 5.], pmf.eval())
       self.assertEqual((2), pmf.get_shape())
 
@@ -220,13 +220,15 @@ class DirichletMultinomialTest(tf.test.TestCase):
     # Off diagonal entries are of the form:
     # Cov(X_i, X_j) = -n * alpha_i * alpha_j / (alpha_sum ** 2) *
     # (alpha_sum + n) / (alpha_sum + 1)
-    covariance_entry = lambda a, b, a_sum: -a  * b/ a_sum**2
+    covariance_entry = lambda a, b, a_sum: -a * b / a_sum**2
     # Shape [2, 2].
-    shared_matrix = np.array([
-        [variance_entry(alpha[0], alpha_0),
-         covariance_entry(alpha[0], alpha[1], alpha_0)],
-        [covariance_entry(alpha[1], alpha[0], alpha_0),
-         variance_entry(alpha[1], alpha_0)]])
+    shared_matrix = np.array([[
+        variance_entry(alpha[0], alpha_0),
+        covariance_entry(alpha[0], alpha[1], alpha_0)
+    ], [
+        covariance_entry(alpha[1], alpha[0], alpha_0),
+        variance_entry(alpha[1], alpha_0)
+    ]])
 
     with self.test_session():
       for n in ns:
@@ -248,25 +250,30 @@ class DirichletMultinomialTest(tf.test.TestCase):
     ns = np.array([[2.], [3.], [4.], [5.]], dtype=np.float32)
 
     variance_entry = lambda a, a_sum: a / a_sum * (1 - a / a_sum)
-    covariance_entry = lambda a, b, a_sum: -a  * b/ a_sum**2
+    covariance_entry = lambda a, b, a_sum: -a * b / a_sum**2
     # Shape [4, 3, 3]
-    shared_matrix = np.array(4 * [[
-        [variance_entry(alpha_v[0], alpha_0),
-         covariance_entry(alpha_v[0], alpha_v[1], alpha_0),
-         covariance_entry(alpha_v[0], alpha_v[2], alpha_0)],
-        [covariance_entry(alpha_v[1], alpha_v[0], alpha_0),
-         variance_entry(alpha_v[1], alpha_0),
-         covariance_entry(alpha_v[1], alpha_v[2], alpha_0)],
-        [covariance_entry(alpha_v[2], alpha_v[0], alpha_0),
-         covariance_entry(alpha_v[2], alpha_v[1], alpha_0),
-         variance_entry(alpha_v[2], alpha_0)]]], dtype=np.float32)
+    shared_matrix = np.array(
+        4 * [[[
+            variance_entry(alpha_v[0], alpha_0),
+            covariance_entry(alpha_v[0], alpha_v[1], alpha_0),
+            covariance_entry(alpha_v[0], alpha_v[2], alpha_0)
+        ], [
+            covariance_entry(alpha_v[1], alpha_v[0], alpha_0),
+            variance_entry(alpha_v[1], alpha_0),
+            covariance_entry(alpha_v[1], alpha_v[2], alpha_0)
+        ], [
+            covariance_entry(alpha_v[2], alpha_v[0], alpha_0),
+            covariance_entry(alpha_v[2], alpha_v[1], alpha_0),
+            variance_entry(alpha_v[2], alpha_0)
+        ]]],
+        dtype=np.float32)
 
     with self.test_session():
       # ns is shape [4, 1], and alpha is shape [4, 3].
       dist = ds.DirichletMultinomial(ns, alpha)
       variance = dist.variance()
-      expected_variance = np.expand_dims(
-          ns * (ns + alpha_0) / (1 + alpha_0), -1) * shared_matrix
+      expected_variance = np.expand_dims(ns * (ns + alpha_0) / (1 + alpha_0),
+                                         -1) * shared_matrix
 
       self.assertEqual((4, 3, 3), variance.get_shape())
       self.assertAllClose(expected_variance, variance.eval())
@@ -360,8 +367,7 @@ class DirichletMultinomialTest(tf.test.TestCase):
       alpha = [[-1., 2]]  # alpha should be positive.
       counts = [[1., 0], [0., -1]]  # counts should be non-negative.
       n = [-5.3]  # n should be a non negative integer equal to counts.sum.
-      dist = ds.DirichletMultinomial(
-          n, alpha, validate_args=False)
+      dist = ds.DirichletMultinomial(n, alpha, validate_args=False)
       dist.pmf(counts).eval()  # Should not raise.
 
   def testSampleUnbiasedNonScalarBatch(self):
@@ -370,10 +376,11 @@ class DirichletMultinomialTest(tf.test.TestCase):
           n=5., alpha=2. * self._rng.rand(4, 3, 2).astype(np.float32))
       n = int(3e3)
       x = dist.sample(n, seed=0)
-      sample_mean = tf.reduce_mean(x, 0)
+      sample_mean = math_ops.reduce_mean(x, 0)
       # Cyclically rotate event dims left.
-      x_centered = tf.transpose(x - sample_mean, [1, 2, 3, 0])
-      sample_covariance = tf.matmul(x_centered, x_centered, adjoint_b=True) / n
+      x_centered = array_ops.transpose(x - sample_mean, [1, 2, 3, 0])
+      sample_covariance = math_ops.matmul(
+          x_centered, x_centered, adjoint_b=True) / n
       [
           sample_mean_,
           sample_covariance_,
@@ -386,11 +393,10 @@ class DirichletMultinomialTest(tf.test.TestCase):
           dist.variance(),
       ])
       self.assertAllEqual([4, 3, 2], sample_mean.get_shape())
-      self.assertAllClose(actual_mean_, sample_mean_,
-                          atol=0., rtol=0.15)
+      self.assertAllClose(actual_mean_, sample_mean_, atol=0., rtol=0.15)
       self.assertAllEqual([4, 3, 2, 2], sample_covariance.get_shape())
-      self.assertAllClose(actual_covariance_, sample_covariance_,
-                          atol=0., rtol=0.20)
+      self.assertAllClose(
+          actual_covariance_, sample_covariance_, atol=0., rtol=0.20)
 
   def testSampleUnbiasedScalarBatch(self):
     with self.test_session() as sess:
@@ -398,9 +404,10 @@ class DirichletMultinomialTest(tf.test.TestCase):
           n=5., alpha=2. * self._rng.rand(4).astype(np.float32))
       n = int(5e3)
       x = dist.sample(n, seed=0)
-      sample_mean = tf.reduce_mean(x, 0)
+      sample_mean = math_ops.reduce_mean(x, 0)
       x_centered = x - sample_mean  # Already transposed to [n, 2].
-      sample_covariance = tf.matmul(x_centered, x_centered, adjoint_a=True) / n
+      sample_covariance = math_ops.matmul(
+          x_centered, x_centered, adjoint_a=True) / n
       [
           sample_mean_,
           sample_covariance_,
@@ -413,12 +420,11 @@ class DirichletMultinomialTest(tf.test.TestCase):
           dist.variance(),
       ])
       self.assertAllEqual([4], sample_mean.get_shape())
-      self.assertAllClose(actual_mean_, sample_mean_,
-                          atol=0., rtol=0.05)
+      self.assertAllClose(actual_mean_, sample_mean_, atol=0., rtol=0.05)
       self.assertAllEqual([4, 4], sample_covariance.get_shape())
-      self.assertAllClose(actual_covariance_, sample_covariance_,
-                          atol=0., rtol=0.15)
+      self.assertAllClose(
+          actual_covariance_, sample_covariance_, atol=0., rtol=0.15)
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

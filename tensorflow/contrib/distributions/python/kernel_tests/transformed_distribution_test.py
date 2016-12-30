@@ -20,11 +20,18 @@ from __future__ import print_function
 
 import numpy as np
 from scipy import stats
-import tensorflow as tf
+from tensorflow.contrib import distributions
+from tensorflow.contrib import linalg
+from tensorflow.contrib.distributions.python.ops import bijector as bijector_lib
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
 
-bs = tf.contrib.distributions.bijector
-ds = tf.contrib.distributions
-la = tf.contrib.linalg
+bs = bijector_lib
+ds = distributions
+la = linalg
 
 
 class _ChooseLocation(bs.Bijector):
@@ -34,7 +41,7 @@ class _ChooseLocation(bs.Bijector):
     self._graph_parents = []
     self._name = name
     with self._name_scope("init", values=[loc]):
-      self._loc = tf.convert_to_tensor(loc, name="loc")
+      self._loc = ops.convert_to_tensor(loc, name="loc")
       super(_ChooseLocation, self).__init__(
           graph_parents=[self._loc],
           is_constant_jacobian=True,
@@ -51,22 +58,23 @@ class _ChooseLocation(bs.Bijector):
     return 0.
 
   def _gather_loc(self, z):
-    z = tf.convert_to_tensor(z)
-    z = tf.cast((1 + z) / 2, tf.int32)
-    return tf.gather(self._loc, z)
+    z = ops.convert_to_tensor(z)
+    z = math_ops.cast((1 + z) / 2, dtypes.int32)
+    return array_ops.gather(self._loc, z)
 
 
-class TransformedDistributionTest(tf.test.TestCase):
+class TransformedDistributionTest(test.TestCase):
 
   def testTransformedDistribution(self):
-    g = tf.Graph()
+    g = ops.Graph()
     with g.as_default():
       mu = 3.0
       sigma = 2.0
       # Note: the Jacobian callable only works for this example; more generally
       # you may or may not need a reduce_sum.
       log_normal = ds.TransformedDistribution(
-          distribution=ds.Normal(mu=mu, sigma=sigma),
+          distribution=ds.Normal(
+              mu=mu, sigma=sigma),
           bijector=bs.Exp(event_ndims=0))
       sp_dist = stats.lognorm(s=sigma, scale=np.exp(mu))
 
@@ -75,19 +83,18 @@ class TransformedDistributionTest(tf.test.TestCase):
       self.assertAllEqual([], log_normal.get_event_shape())
       with self.test_session(graph=g):
         self.assertAllEqual([], log_normal.event_shape().eval())
-        self.assertAllClose(sp_dist.mean(), np.mean(sample.eval()),
-                            atol=0.0, rtol=0.05)
+        self.assertAllClose(
+            sp_dist.mean(), np.mean(sample.eval()), atol=0.0, rtol=0.05)
 
       # pdf, log_pdf, cdf, etc...
       # The mean of the lognormal is around 148.
       test_vals = np.linspace(0.1, 1000., num=20).astype(np.float32)
-      for func in [
-          [log_normal.log_prob, sp_dist.logpdf],
-          [log_normal.prob, sp_dist.pdf],
-          [log_normal.log_cdf, sp_dist.logcdf],
-          [log_normal.cdf, sp_dist.cdf],
-          [log_normal.survival_function, sp_dist.sf],
-          [log_normal.log_survival_function, sp_dist.logsf]]:
+      for func in [[log_normal.log_prob, sp_dist.logpdf],
+                   [log_normal.prob, sp_dist.pdf],
+                   [log_normal.log_cdf, sp_dist.logcdf],
+                   [log_normal.cdf, sp_dist.cdf],
+                   [log_normal.survival_function, sp_dist.sf],
+                   [log_normal.log_survival_function, sp_dist.logsf]]:
         actual = func[0](test_vals)
         expected = func[1](test_vals)
         with self.test_session(graph=g):
@@ -98,82 +105,86 @@ class TransformedDistributionTest(tf.test.TestCase):
       mu = 3.0
       sigma = 0.02
       log_normal = ds.TransformedDistribution(
-          distribution=ds.Normal(mu=mu, sigma=sigma),
+          distribution=ds.Normal(
+              mu=mu, sigma=sigma),
           bijector=bs.Exp(event_ndims=0))
 
       sample = log_normal.sample(1)
       sample_val, log_pdf_val = sess.run([sample, log_normal.log_pdf(sample)])
       self.assertAllClose(
-          stats.lognorm.logpdf(sample_val, s=sigma,
-                               scale=np.exp(mu)),
+          stats.lognorm.logpdf(
+              sample_val, s=sigma, scale=np.exp(mu)),
           log_pdf_val,
           atol=1e-2)
 
   def testConditioning(self):
     with self.test_session():
       conditional_normal = ds.TransformedDistribution(
-          distribution=ds.Normal(mu=0., sigma=1.),
+          distribution=ds.Normal(
+              mu=0., sigma=1.),
           bijector=_ChooseLocation(loc=[-100., 100.]))
       z = [-1, +1, -1, -1, +1]
       self.assertAllClose(
-          np.sign(conditional_normal.sample(
-              5, bijector_kwargs={"z": z}).eval()), z)
+          np.sign(
+              conditional_normal.sample(
+                  5, bijector_kwargs={"z": z}).eval()),
+          z)
 
   def testShapeChangingBijector(self):
     with self.test_session():
       softmax = bs.SoftmaxCentered()
       standard_normal = ds.Normal(mu=0., sigma=1.)
       multi_logit_normal = ds.TransformedDistribution(
-          distribution=standard_normal,
-          bijector=softmax)
-      x = [[-np.log(3.), 0.],
-           [np.log(3), np.log(5)]]
+          distribution=standard_normal, bijector=softmax)
+      x = [[-np.log(3.), 0.], [np.log(3), np.log(5)]]
       y = softmax.forward(x).eval()
-      expected_log_pdf = (stats.norm(loc=0., scale=1.).logpdf(x) -
-                          np.sum(np.log(y), axis=-1))
+      expected_log_pdf = (stats.norm(
+          loc=0., scale=1.).logpdf(x) - np.sum(np.log(y), axis=-1))
       self.assertAllClose(expected_log_pdf,
                           multi_logit_normal.log_prob(y).eval())
-      self.assertAllClose([1, 2, 3, 2],
-                          tf.shape(multi_logit_normal.sample([1, 2, 3])).eval())
+      self.assertAllClose(
+          [1, 2, 3, 2],
+          array_ops.shape(multi_logit_normal.sample([1, 2, 3])).eval())
       self.assertAllEqual([2], multi_logit_normal.get_event_shape())
       self.assertAllEqual([2], multi_logit_normal.event_shape().eval())
 
   def testEntropy(self):
     with self.test_session():
-      shift = np.array([[-1, 0, 1],
-                        [-1, -2, -3]], dtype=np.float32)
-      diag = np.array([[1, 2, 3],
-                       [2, 3, 2]], dtype=np.float32)
-      actual_mvn = ds.MultivariateNormalDiag(
-          shift, diag, validate_args=True)
+      shift = np.array([[-1, 0, 1], [-1, -2, -3]], dtype=np.float32)
+      diag = np.array([[1, 2, 3], [2, 3, 2]], dtype=np.float32)
+      actual_mvn = ds.MultivariateNormalDiag(shift, diag, validate_args=True)
       fake_mvn = ds.TransformedDistribution(
           ds.MultivariateNormalDiag(
-              tf.zeros_like(shift),
-              tf.ones_like(diag),
+              array_ops.zeros_like(shift),
+              array_ops.ones_like(diag),
               validate_args=True),
           bs.AffineLinearOperator(
               shift,
-              scale=la.LinearOperatorDiag(diag, is_non_singular=True),
+              scale=la.LinearOperatorDiag(
+                  diag, is_non_singular=True),
               validate_args=True),
           validate_args=True)
       self.assertAllClose(actual_mvn.entropy().eval(),
                           fake_mvn.entropy().eval())
 
 
-class ScalarToMultiTest(tf.test.TestCase):
+class ScalarToMultiTest(test.TestCase):
 
   def setUp(self):
     self._shift = np.array([-1, 0, 1], dtype=np.float32)
-    self._tril = np.array(
-        [[[-1., 0, 0],
-          [2, 1, 0],
-          [3, 2, 1]],
-         [[2, 0, 0],
-          [3, -2, 0],
-          [4, 3, 2]]], dtype=np.float32)
+    self._tril = np.array([[[-1., 0, 0],
+                            [2, 1, 0],
+                            [3, 2, 1]],
+                           [[2, 0, 0],
+                            [3, -2, 0],
+                            [4, 3, 2]]],
+                          dtype=np.float32)
 
-  def _testMVN(self, base_distribution, batch_shape=None,
-               event_shape=None, not_implemented_message=None):
+  def _testMVN(self,
+               base_distribution,
+               batch_shape=None,
+               event_shape=None,
+               not_implemented_message=None):
     with self.test_session() as sess:
       # Overriding shapes must be compatible w/bijector; most bijectors are
       # batch_shape agnostic and only care about event_ndims.
@@ -182,7 +193,8 @@ class ScalarToMultiTest(tf.test.TestCase):
       fake_mvn = ds.TransformedDistribution(
           distribution=base_distribution[0](validate_args=True,
                                             **base_distribution[1]),
-          bijector=bs.Affine(shift=self._shift, scale_tril=self._tril),
+          bijector=bs.Affine(
+              shift=self._shift, scale_tril=self._tril),
           batch_shape=batch_shape,
           event_shape=event_shape,
           validate_args=True)
@@ -194,9 +206,9 @@ class ScalarToMultiTest(tf.test.TestCase):
       # Ensure sample works by checking first, second moments.
       n = 5e3
       y = fake_mvn.sample(int(n), seed=0)
-      sample_mean = tf.reduce_mean(y, 0)
-      centered_y = tf.transpose(y - sample_mean, [1, 2, 0])
-      sample_cov = tf.matmul(centered_y, centered_y, transpose_b=True) / n
+      sample_mean = math_ops.reduce_mean(y, 0)
+      centered_y = array_ops.transpose(y - sample_mean, [1, 2, 0])
+      sample_cov = math_ops.matmul(centered_y, centered_y, transpose_b=True) / n
       [sample_mean_, sample_cov_] = sess.run([sample_mean, sample_cov])
       self.assertAllClose(actual_mean, sample_mean_, atol=0.1, rtol=0.1)
       self.assertAllClose(actual_cov, sample_cov_, atol=0., rtol=0.1)
@@ -212,34 +224,46 @@ class ScalarToMultiTest(tf.test.TestCase):
                           fake_mvn.get_batch_shape())
       self.assertAllEqual(actual_mvn.batch_shape().eval(),
                           fake_mvn.batch_shape().eval())
-      self.assertAllClose(actual_mvn.log_prob(x).eval(),
-                          fake_mvn.log_prob(x).eval(),
-                          atol=0., rtol=1e-7)
-      self.assertAllClose(actual_mvn.prob(x).eval(),
-                          fake_mvn.prob(x).eval(),
-                          atol=0., rtol=1e-6)
-      self.assertAllClose(actual_mvn.entropy().eval(),
-                          fake_mvn.entropy().eval(),
-                          atol=0., rtol=1e-6)
-      for unsupported_fn in (fake_mvn.log_cdf,
-                             fake_mvn.cdf,
+      self.assertAllClose(
+          actual_mvn.log_prob(x).eval(),
+          fake_mvn.log_prob(x).eval(),
+          atol=0.,
+          rtol=1e-7)
+      self.assertAllClose(
+          actual_mvn.prob(x).eval(),
+          fake_mvn.prob(x).eval(),
+          atol=0.,
+          rtol=1e-6)
+      self.assertAllClose(
+          actual_mvn.entropy().eval(),
+          fake_mvn.entropy().eval(),
+          atol=0.,
+          rtol=1e-6)
+      for unsupported_fn in (fake_mvn.log_cdf, fake_mvn.cdf,
                              fake_mvn.survival_function,
                              fake_mvn.log_survival_function):
-        with self.assertRaisesRegexp(
-            NotImplementedError, not_implemented_message):
+        with self.assertRaisesRegexp(NotImplementedError,
+                                     not_implemented_message):
           self.assertRaisesRegexp(unsupported_fn(x))
 
   def testScalarBatchScalarEvent(self):
     self._testMVN(
-        base_distribution=[ds.Normal, {"mu": 0., "sigma": 1.}],
+        base_distribution=[ds.Normal, {
+            "mu": 0.,
+            "sigma": 1.
+        }],
         batch_shape=[2],
         event_shape=[3],
         not_implemented_message="not implemented when overriding event_shape")
 
   def testScalarBatchNonScalarEvent(self):
     self._testMVN(
-        base_distribution=[ds.MultivariateNormalDiag, {
-            "mu": [0., 0., 0.], "diag_stdev": [1., 1, 1]}],
+        base_distribution=[
+            ds.MultivariateNormalDiag, {
+                "mu": [0., 0., 0.],
+                "diag_stdev": [1., 1, 1]
+            }
+        ],
         batch_shape=[2],
         not_implemented_message="not implemented$")
 
@@ -247,15 +271,20 @@ class ScalarToMultiTest(tf.test.TestCase):
       # Can't override event_shape for scalar batch, non-scalar event.
       with self.assertRaisesRegexp(ValueError, "requires scalar"):
         ds.TransformedDistribution(
-            distribution=ds.MultivariateNormalDiag(mu=[0.], diag_stdev=[1.]),
-            bijector=bs.Affine(shift=self._shift, scale_tril=self._tril),
+            distribution=ds.MultivariateNormalDiag(
+                mu=[0.], diag_stdev=[1.]),
+            bijector=bs.Affine(
+                shift=self._shift, scale_tril=self._tril),
             batch_shape=[2],
             event_shape=[3],
             validate_args=True)
 
   def testNonScalarBatchScalarEvent(self):
     self._testMVN(
-        base_distribution=[ds.Normal, {"mu": [0., 0], "sigma": [1., 1]}],
+        base_distribution=[ds.Normal, {
+            "mu": [0., 0],
+            "sigma": [1., 1]
+        }],
         event_shape=[3],
         not_implemented_message="not implemented when overriding event_shape")
 
@@ -263,8 +292,10 @@ class ScalarToMultiTest(tf.test.TestCase):
       # Can't override batch_shape for non-scalar batch, scalar event.
       with self.assertRaisesRegexp(ValueError, "requires scalar"):
         ds.TransformedDistribution(
-            distribution=ds.Normal(mu=[0.], sigma=[1.]),
-            bijector=bs.Affine(shift=self._shift, scale_tril=self._tril),
+            distribution=ds.Normal(
+                mu=[0.], sigma=[1.]),
+            bijector=bs.Affine(
+                shift=self._shift, scale_tril=self._tril),
             batch_shape=[2],
             event_shape=[3],
             validate_args=True)
@@ -275,13 +306,14 @@ class ScalarToMultiTest(tf.test.TestCase):
       # non-scalar event.
       with self.assertRaisesRegexp(ValueError, "requires scalar"):
         ds.TransformedDistribution(
-            distribution=ds.MultivariateNormalDiag(mu=[[0.]],
-                                                   diag_stdev=[[1.]]),
-            bijector=bs.Affine(shift=self._shift, scale_tril=self._tril),
+            distribution=ds.MultivariateNormalDiag(
+                mu=[[0.]], diag_stdev=[[1.]]),
+            bijector=bs.Affine(
+                shift=self._shift, scale_tril=self._tril),
             batch_shape=[2],
             event_shape=[3],
             validate_args=True)
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

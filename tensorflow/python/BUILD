@@ -66,6 +66,7 @@ py_library(
         ":ops",
         ":test_ops",  # TODO: Break testing code out into separate rule.
         ":util",
+        "//third_party/py/numpy",
         "//tensorflow/python/ops/losses",
     ] + if_not_windows([
         "//tensorflow/contrib:contrib_py",
@@ -98,6 +99,7 @@ py_library(
     deps = [
         ":client",
         ":platform",
+        "@six_archive//:six",
     ],
 )
 
@@ -302,6 +304,8 @@ py_library(
         ":platform",
         ":util",
         "//tensorflow/core:protos_all_py",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
@@ -330,6 +334,7 @@ py_library(
         ":platform",
         ":pywrap_tensorflow",
         ":util",
+        "//third_party/py/numpy",
         "@six_archive//:six",
     ],
 )
@@ -369,6 +374,7 @@ py_library(
         ":pywrap_tensorflow",
         ":util",
         "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
@@ -447,6 +453,7 @@ py_test(
     deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -494,6 +501,7 @@ cuda_py_tests(
         ":random_ops",
         ":variable_scope",
         ":variables",
+        "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
     ],
 )
@@ -528,6 +536,7 @@ py_test(
         ":random_ops",
         ":variables",
         "//tensorflow/core:protos_all_py",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -688,6 +697,7 @@ py_test(
         ":framework_test_lib",
         ":platform_test",
         "//tensorflow/core:protos_all_py",
+        "@six_archive//:six",
     ],
 )
 
@@ -704,6 +714,7 @@ py_test(
         ":framework_for_generated_wrappers",
         ":math_ops",
         ":state_ops_gen",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -720,6 +731,7 @@ py_test(
         ":framework_test_lib",
         ":platform_test",
         ":random_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -735,6 +747,7 @@ py_test(
         ":platform_test",
         "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -937,6 +950,7 @@ py_library(
         ":math_ops_gen",
         ":util",
         "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
@@ -978,6 +992,7 @@ py_library(
         ":framework_for_generated_wrappers",
         ":math_ops",
         ":util",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -990,6 +1005,7 @@ py_library(
         ":framework_for_generated_wrappers",
         ":math_ops",
         ":nn_ops_gen",
+        "@six_archive//:six",
     ],
 )
 
@@ -1022,6 +1038,7 @@ py_library(
         ":platform",
         ":tensor_array_ops",
         ":util",
+        "@six_archive//:six",
     ],
 )
 
@@ -1061,6 +1078,7 @@ py_library(
         ":framework",
         ":framework_for_generated_wrappers",
         ":math_ops",
+        "@six_archive//:six",
     ],
 )
 
@@ -1104,6 +1122,8 @@ py_library(
         ":math_ops",
         ":platform",
         ":util",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
@@ -1201,6 +1221,7 @@ py_library(
         ":framework_for_generated_wrappers",
         ":linalg_ops_gen",
         ":math_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1226,6 +1247,7 @@ py_library(
         ":framework_for_generated_wrappers",
         ":math_ops",
         ":math_ops_gen",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1244,6 +1266,7 @@ py_library(
         ":state_ops",
         ":state_ops_gen",
         ":util",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1319,6 +1342,7 @@ py_library(
         ":math_ops",
         ":nn_ops_gen",
         ":random_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1409,6 +1433,7 @@ py_library(
     deps = [
         ":framework_for_generated_wrappers",
         ":script_ops_gen",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1419,6 +1444,7 @@ py_library(
     deps = [
         ":framework_for_generated_wrappers",
         ":sdca_ops_gen",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1461,6 +1487,7 @@ py_library(
         ":math_ops",
         ":sparse_ops_gen",
         ":util",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1647,6 +1674,7 @@ py_library(
         ":init_ops",
         ":platform",
         ":variables",
+        "@six_archive//:six",
     ],
 )
 
@@ -1673,6 +1701,7 @@ py_library(
         ":framework_for_generated_wrappers",
         ":gradients",
         ":platform",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1723,6 +1752,7 @@ cuda_py_test(
         ":nn_grad",
         ":nn_ops",
         ":platform",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1746,6 +1776,7 @@ cuda_py_test(
         ":platform_test",
         ":state_grad",
         ":test_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1760,6 +1791,7 @@ cuda_py_test(
         ":histogram_ops",
         ":init_ops",
         ":variables",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1772,6 +1804,7 @@ cuda_py_test(
         ":framework_for_generated_wrappers",
         ":gradients",
         ":image_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1793,6 +1826,7 @@ cuda_py_test(
         ":platform_test",
         ":random_ops",
         ":variables",
+        "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
     ],
     data = ["//tensorflow/core:image_testdata"],
@@ -1808,6 +1842,7 @@ cuda_py_test(
         ":client_testlib",
         ":framework_for_generated_wrappers",
         ":math_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1823,6 +1858,7 @@ cuda_py_test(
         ":math_ops",
         ":platform_test",
         ":variables",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1839,6 +1875,7 @@ cuda_py_test(
         ":nn",
         ":nn_grad",
         ":nn_ops_gen",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1852,6 +1889,7 @@ cuda_py_test(
         ":framework_for_generated_wrappers",
         ":nn",
         ":nn_grad",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1866,6 +1904,7 @@ cuda_py_test(
         ":nn",
         ":nn_grad",
         ":nn_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1879,6 +1918,7 @@ cuda_py_test(
         ":gradients",
         ":nn",
         ":nn_grad",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1893,6 +1933,7 @@ cuda_py_test(
         ":framework_for_generated_wrappers",
         ":math_ops",
         ":special_math_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1931,6 +1972,7 @@ py_library(
         ":util",
         ":variable_scope",
         ":variables",
+        "//third_party/py/numpy",
         "@six_archive//:six",
     ],
 )
@@ -1951,6 +1993,7 @@ py_library(
         ":platform",
         ":session_ops",
         ":util",
+        "//third_party/py/numpy",
         "@six_archive//:six",
     ],
 )
@@ -1984,6 +2027,7 @@ py_test(
         ":framework_for_generated_wrappers",
         ":math_ops",
         ":util",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -2250,6 +2294,7 @@ py_test(
         ":training",
         ":variables",
         "//tensorflow/core:protos_all_py",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -2267,6 +2312,7 @@ cuda_py_test(
         ":training",
         ":variable_scope",
         ":variables",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -2325,6 +2371,7 @@ py_test(
         ":training",
         ":util",
         ":variables",
+        "//third_party/py/numpy",
         "@six_archive//:six",
     ],
 )
@@ -2428,6 +2475,8 @@ cuda_py_tests(
         ":util",
         ":variable_scope",
         ":variables",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
         "//tensorflow/core:protos_all_py",
     ],
 )
@@ -2568,6 +2617,7 @@ tf_py_test(
         ":util",
         ":variables",
         ":training",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -2590,6 +2640,8 @@ py_library(
         ":pywrap_tensorflow",
         ":summary_ops",
         ":util",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
@@ -2647,6 +2699,8 @@ py_library(
         ":util",
         ":variable_scope",
         ":variables",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
@@ -2683,6 +2737,7 @@ py_test(
         ":random_ops",
         ":variable_scope",
         ":variables",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -2741,6 +2796,7 @@ py_test(
         ":math_ops",
         ":random_ops",
         ":variables",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -2789,6 +2845,7 @@ py_test(
         ":array_ops",
         ":client_testlib",
         ":framework_for_generated_wrappers",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -2801,6 +2858,7 @@ py_test(
         ":client_testlib",
         ":framework_for_generated_wrappers",
         ":nn_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -2883,6 +2941,7 @@ cuda_py_test(
         ":platform",
         ":platform_benchmark",
         ":variables",
+        "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
     ],
     main = "ops/split_benchmark.py",
@@ -2899,6 +2958,7 @@ cuda_py_test(
         ":random_ops",
         ":training",
         ":variables",
+        "//third_party/py/numpy",
     ],
     main = "client/session_benchmark.py",
 )

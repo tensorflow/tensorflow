@@ -113,14 +113,27 @@ tf_custom_op_library(
 )
 
 py_library(
-    name = "tensor_forest_ops_py",
+    name = "init_py",
     srcs = [
         "__init__.py",
-        "python/ops/tensor_forest_ops.py",
+        "client/__init__.py",
+        "data/__init__.py",
+        "python/__init__.py",
     ],
-    data = [
-        ":python/ops/_tensor_forest_ops.so",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":constants",
+        ":data_ops_py",
+        ":eval_metrics",
+        ":tensor_forest_ops_py",
+        ":tensor_forest_py",
     ],
+)
+
+py_library(
+    name = "tensor_forest_ops_py",
+    srcs = ["python/ops/tensor_forest_ops.py"],
+    data = ["python/ops/_tensor_forest_ops.so"],
     srcs_version = "PY2AND3",
     deps = [
         ":constants",
@@ -145,6 +158,7 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -155,9 +169,10 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":eval_metrics",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -205,7 +220,7 @@ py_test(
     deps = [
         ":constants",
         ":tensor_forest_ops_py",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
@@ -218,9 +233,10 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":tensor_forest_ops_py",
-        "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -244,9 +260,9 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":tensor_forest_ops_py",
-        "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -257,9 +273,9 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":tensor_forest_ops_py",
-        "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -320,7 +336,8 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":tensor_forest_py",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
@@ -352,6 +369,14 @@ py_library(
     deps = [
         ":constants",
         ":tensor_forest_ops_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:variable_scope",
     ],
 )
 
@@ -359,15 +384,16 @@ py_test(
     name = "topn_test",
     size = "small",
     srcs = ["python/topn_test.py"],
+    shard_count = 10,
     srcs_version = "PY2AND3",
     tags = ["manual"],
     deps = [
         ":tensor_forest_ops_py",
         ":topn_py",
-        "//tensorflow:tensorflow_py",
         "//tensorflow/python:client",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:session",
+        "//tensorflow/python:variables",
     ],
 )

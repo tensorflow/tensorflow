@@ -57,9 +57,19 @@ cuda_py_tests(
     srcs = ["python/kernel_tests/rnn_cell_test.py"],
     additional_deps = [
         ":rnn_py",
-        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -69,8 +79,17 @@ cuda_py_tests(
     srcs = ["python/kernel_tests/core_rnn_cell_test.py"],
     additional_deps = [
         ":rnn_py",
-        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:rnn",
         "//tensorflow/python:rnn_cell",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -80,9 +99,16 @@ cuda_py_tests(
     srcs = ["python/kernel_tests/rnn_test.py"],
     additional_deps = [
         ":rnn_py",
-        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -92,7 +118,7 @@ cuda_py_tests(
     srcs = ["python/kernel_tests/core_rnn_test.py"],
     additional_deps = [
         ":rnn_py",
-        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
@@ -116,9 +142,16 @@ tf_py_test(
     srcs = ["python/kernel_tests/fused_rnn_cell_test.py"],
     additional_deps = [
         ":rnn_py",
-        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:init_ops",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -128,9 +161,17 @@ cuda_py_tests(
     srcs = ["python/kernel_tests/lstm_ops_test.py"],
     additional_deps = [
         ":rnn_py",
-        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:init_ops",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:rnn",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -178,10 +219,20 @@ cuda_py_tests(
     srcs = ["python/kernel_tests/gru_ops_test.py"],
     additional_deps = [
         ":rnn_py",
-        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:rnn",
+        "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
     ],
 )
 

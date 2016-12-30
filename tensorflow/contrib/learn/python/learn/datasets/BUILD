@@ -62,8 +62,8 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":datasets",
-        "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/learn",
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
 )
@@ -75,8 +75,8 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":datasets",
-        "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/learn",
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
 )
@@ -92,5 +92,7 @@ py_test(
         "//tensorflow/contrib/learn",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )

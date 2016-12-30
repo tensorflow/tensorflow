@@ -23,17 +23,23 @@ import textwrap
 
 import numpy as np
 from six.moves import range  # pylint: disable=redefined-builtin
-import tensorflow as tf
 
 from tensorflow.contrib.labeled_tensor.python.ops import _typecheck as tc
 from tensorflow.contrib.labeled_tensor.python.ops import core
 from tensorflow.contrib.labeled_tensor.python.ops import test_util
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test as test_lib
 
 
-class AxisTest(tf.test.TestCase):
+class AxisTest(test_lib.TestCase):
 
   def setUp(self):
-    d_7 = tf.Dimension(7)
+    d_7 = tensor_shape.Dimension(7)
     p_rgb = ['red', 'green', 'blue']
 
     self.i_7 = core.Axis('7', d_7)
@@ -53,7 +59,7 @@ class AxisTest(tf.test.TestCase):
           self.assertNotEqual(axis_0, axis_1)
 
   def test_axis_value(self):
-    self.assertEqual(self.i_7.value, tf.Dimension(7))
+    self.assertEqual(self.i_7.value, tensor_shape.Dimension(7))
     self.assertTrue(self.i_range.value == tuple(range(7)))
 
   def test_axis_input(self):
@@ -113,11 +119,11 @@ class AxisTest(tf.test.TestCase):
     self.assertEqual(self.i_7, core.as_axis(self.i_7))
 
 
-class AxesTest(tf.test.TestCase):
+class AxesTest(test_lib.TestCase):
 
   def setUp(self):
-    d_7 = tf.Dimension(7)
-    d_8 = tf.Dimension(8)
+    d_7 = tensor_shape.Dimension(7)
+    d_8 = tensor_shape.Dimension(8)
     p_rgb = ['red', 'green', 'blue']
     p_range = range(7)
 
@@ -155,11 +161,11 @@ class AxesTest(tf.test.TestCase):
 class LabeledTensorTest(test_util.Base):
 
   def setUp(self):
-    tensor = tf.ones([7, 3, 8, 1])
+    tensor = array_ops.ones([7, 3, 8, 1])
     a0 = ('x', range(7))
     a1 = ('channel', ['red', 'green', 'blue'])
     a2 = ('y', 8)
-    a3 = ('z', tf.Dimension(1))
+    a3 = ('z', tensor_shape.Dimension(1))
 
     self.lt = core.LabeledTensor(tensor, [a0, a1, a2, a3])
 
@@ -216,7 +222,7 @@ class LabeledTensorTest(test_util.Base):
       self.lt[:, :, :, :, 0]  # pylint: disable=pointless-statement
 
   def test_unknown_size(self):
-    tensor = tf.placeholder(tf.string, [None])
+    tensor = array_ops.placeholder(dtypes.string, [None])
     actual = core.LabeledTensor(tensor, ['x'])
     self.assertIsNone(actual.axes['x'].size)
     self.assertIs(actual.axes['x'].value, tensor.get_shape()[0])
@@ -243,7 +249,7 @@ class LabeledTensorTest(test_util.Base):
 
   def test_convert_to_tensor(self):
     expected = self.lt.tensor
-    actual = tf.convert_to_tensor(self.lt)
+    actual = ops.convert_to_tensor(self.lt)
     self.assertIs(expected, actual)
 
 
@@ -255,10 +261,10 @@ class Base(test_util.Base):
     self.z_size = 4
     self.probs_size = 11
 
-    tensor = tf.range(0, self.x_size * self.channel_size * self.z_size *
-                      self.probs_size)
-    tensor = tf.reshape(tensor, [self.x_size, self.channel_size, self.z_size,
-                                 self.probs_size])
+    tensor = math_ops.range(0, self.x_size * self.channel_size * self.z_size *
+                            self.probs_size)
+    tensor = array_ops.reshape(
+        tensor, [self.x_size, self.channel_size, self.z_size, self.probs_size])
     a0 = ('x', range(self.x_size))
     a1 = ('channel', ['red', 'green', 'blue'])
     a2 = 'z'
@@ -271,10 +277,12 @@ class Base(test_util.Base):
     self.a3 = a3
     self.original_lt = core.LabeledTensor(tensor, [a0, a1, a2, a3])
 
-    self.x_probs_lt = core.slice_function(self.original_lt, {'z': 0,
-                                                             'channel': 0})
-    self.channel_probs_lt = core.slice_function(self.original_lt, {'x': 3,
-                                                                   'z': 0})
+    self.x_probs_lt = core.slice_function(self.original_lt,
+                                          {'z': 0,
+                                           'channel': 0})
+    self.channel_probs_lt = core.slice_function(self.original_lt,
+                                                {'x': 3,
+                                                 'z': 0})
 
 
 class IdentityTest(Base):
@@ -292,8 +300,8 @@ class SliceFunctionTest(Base):
 
   def test_scalar(self):
     select_lt = core.slice_function(self.original_lt, {'channel': 1})
-    golden_lt = core.LabeledTensor(self.tensor[:, 1, :, :], [self.a0, self.a2,
-                                                             self.a3])
+    golden_lt = core.LabeledTensor(self.tensor[:, 1, :, :],
+                                   [self.a0, self.a2, self.a3])
 
     self.assertLabeledTensorsEqual(select_lt, golden_lt)
 
@@ -307,9 +315,9 @@ class SliceFunctionTest(Base):
     self.assertLabeledTensorsEqual(select_lt, golden_lt)
 
   def test_slices(self):
-    select_lt = core.slice_function(self.original_lt, {'x': slice(1, 5),
-                                                       'channel': slice(1,
-                                                                        None)})
+    select_lt = core.slice_function(
+        self.original_lt, {'x': slice(1, 5),
+                           'channel': slice(1, None)})
 
     a0_sliced = ('x', range(1, 5))
     a1_sliced = ('channel', ['green', 'blue'])
@@ -328,7 +336,8 @@ class SliceFunctionTest(Base):
     self.assertLabeledTensorsEqual(select_lt, golden_lt)
 
   def test_slice_unknown_shape(self):
-    lt = core.LabeledTensor(tf.placeholder(tf.float32, [None, 1]), ['x', 'y'])
+    lt = core.LabeledTensor(
+        array_ops.placeholder(dtypes.float32, [None, 1]), ['x', 'y'])
     sliced_lt = core.slice_function(lt, {'y': 0})
     self.assertEqual(list(sliced_lt.axes.values()), [lt.axes['x']])
 
@@ -348,10 +357,10 @@ class TransposeTest(Base):
     self.assertLabeledTensorsEqual(transpose_lt, golden_lt)
 
   def test(self):
-    transpose_lt = core.transpose(self.original_lt, ['z', 'channel', 'x',
-                                                     'probs'])
+    transpose_lt = core.transpose(self.original_lt,
+                                  ['z', 'channel', 'x', 'probs'])
     golden_lt = core.LabeledTensor(
-        tf.transpose(self.tensor, [2, 1, 0, 3]),
+        array_ops.transpose(self.tensor, [2, 1, 0, 3]),
         [self.a2, self.a1, self.a0, self.a3])
 
     self.assertLabeledTensorsEqual(transpose_lt, golden_lt)
@@ -359,7 +368,7 @@ class TransposeTest(Base):
   def test_default_axis_order(self):
     transpose_lt = core.transpose(self.original_lt)
     golden_lt = core.LabeledTensor(
-        tf.transpose(self.tensor, [3, 2, 1, 0]),
+        array_ops.transpose(self.tensor, [3, 2, 1, 0]),
         list(reversed(list(self.original_lt.axes.values()))))
 
     self.assertLabeledTensorsEqual(transpose_lt, golden_lt)
@@ -384,41 +393,45 @@ class ExpandDimsTest(Base):
     self.assertLabeledTensorsEqual(expand_lt, golden_lt)
 
   def test(self):
-    expand_lt = core.expand_dims(self.original_lt, ['foo', 'x', 'bar',
-                                                    'channel', 'z', 'probs',
-                                                    'grok'])
+    expand_lt = core.expand_dims(
+        self.original_lt, ['foo', 'x', 'bar', 'channel', 'z', 'probs', 'grok'])
     golden_lt = core.LabeledTensor(
-        tf.reshape(self.tensor, [1, self.x_size, 1, self.channel_size,
-                                 self.z_size, self.probs_size, 1]),
-        ['foo', self.a0, 'bar', self.a1, self.a2, self.a3, 'grok'])
+        array_ops.reshape(self.tensor, [
+            1, self.x_size, 1, self.channel_size, self.z_size, self.probs_size,
+            1
+        ]), ['foo', self.a0, 'bar', self.a1, self.a2, self.a3, 'grok'])
 
     self.assertLabeledTensorsEqual(expand_lt, golden_lt)
 
   def test_label(self):
-    expand_lt = core.expand_dims(self.original_lt, ['x',
-                                                    'channel',
-                                                    ('foo', 'bar'),
-                                                    'z',
-                                                    'probs',])
+    expand_lt = core.expand_dims(self.original_lt, [
+        'x',
+        'channel',
+        ('foo', 'bar'),
+        'z',
+        'probs',
+    ])
     golden_lt = core.LabeledTensor(
-        tf.reshape(self.tensor, [self.x_size, self.channel_size, 1, self.z_size,
-                                 self.probs_size]),
+        array_ops.reshape(
+            self.tensor,
+            [self.x_size, self.channel_size, 1, self.z_size, self.probs_size]),
         [self.a0, self.a1, ('foo', ['bar']), self.a2, self.a3])
 
     self.assertLabeledTensorsEqual(expand_lt, golden_lt)
 
   def test_unknown_dimension(self):
-    orig_lt = core.LabeledTensor(tf.placeholder(tf.float32, [None]), ['x'])
+    orig_lt = core.LabeledTensor(
+        array_ops.placeholder(dtypes.float32, [None]), ['x'])
     expand_lt = core.expand_dims(orig_lt, ['x', 'y'])
     self.assertEqual(expand_lt.axes, core.Axes([('x', None), ('y', 1)]))
 
   def test_invalid_input(self):
     with self.assertRaises(core.AxisOrderError):
-      core.expand_dims(self.original_lt, ['foo', 'not_x', 'bar', 'channel', 'z',
-                                          'probs', 'grok'])
+      core.expand_dims(self.original_lt,
+                       ['foo', 'not_x', 'bar', 'channel', 'z', 'probs', 'grok'])
     with self.assertRaises(core.AxisOrderError):
-      core.expand_dims(self.original_lt, ['foo', 'z', 'bar', 'channel', 'x',
-                                          'probs', 'grok'])
+      core.expand_dims(self.original_lt,
+                       ['foo', 'z', 'bar', 'channel', 'x', 'probs', 'grok'])
 
 
 class AxisOrderScopeTest(Base):
@@ -450,18 +463,18 @@ class CheckAxisOrderTest(Base):
   def test_passes(self):
     axis_order = ['w', 'x', 'y', 'z']
 
-    lt = core.LabeledTensor(tf.ones((1, 1, 1, 1)), axis_order)
+    lt = core.LabeledTensor(array_ops.ones((1, 1, 1, 1)), axis_order)
     core.check_axis_order(lt, axis_order)
 
-    lt = core.LabeledTensor(tf.ones((1, 1, 1)), axis_order[1:])
+    lt = core.LabeledTensor(array_ops.ones((1, 1, 1)), axis_order[1:])
     core.check_axis_order(lt, axis_order)
 
-    lt = core.LabeledTensor(tf.ones((1, 1, 1)), axis_order[:-1])
+    lt = core.LabeledTensor(array_ops.ones((1, 1, 1)), axis_order[:-1])
     core.check_axis_order(lt, axis_order)
 
   def test_invalid(self):
     axis_order = ['w', 'x', 'y', 'z']
-    lt = core.LabeledTensor(tf.ones((1, 1, 1, 1)), axis_order)
+    lt = core.LabeledTensor(array_ops.ones((1, 1, 1, 1)), axis_order)
     with self.assertRaises(core.AxisOrderError):
       core.check_axis_order(lt)
     with self.assertRaises(core.AxisOrderError):
@@ -471,7 +484,7 @@ class CheckAxisOrderTest(Base):
 
   def test_scope(self):
     axis_order = ['w', 'x', 'y', 'z']
-    lt = core.LabeledTensor(tf.ones((1, 1, 1, 1)), axis_order)
+    lt = core.LabeledTensor(array_ops.ones((1, 1, 1, 1)), axis_order)
     with core.axis_order_scope(axis_order):
       core.check_axis_order(lt)
 
@@ -480,23 +493,27 @@ class ImposeAxisOrderTest(Base):
 
   def test_identity(self):
     axis_order = ['w', 'x', 'y', 'z']
-    lt = core.LabeledTensor(tf.reshape(tf.range(24), (1, 2, 3, 4)), axis_order)
+    lt = core.LabeledTensor(
+        array_ops.reshape(math_ops.range(24), (1, 2, 3, 4)), axis_order)
     actual = core.impose_axis_order(lt, axis_order)
     self.assertLabeledTensorsEqual(lt, actual)
 
-    lt = core.LabeledTensor(tf.reshape(tf.range(6), (1, 2, 3)), axis_order[:3])
+    lt = core.LabeledTensor(
+        array_ops.reshape(math_ops.range(6), (1, 2, 3)), axis_order[:3])
     actual = core.impose_axis_order(lt, axis_order)
     self.assertLabeledTensorsEqual(lt, actual)
 
   def test_reverse(self):
     axis_order = ['w', 'x', 'y', 'z']
 
-    lt = core.LabeledTensor(tf.reshape(tf.range(24), (1, 2, 3, 4)), axis_order)
+    lt = core.LabeledTensor(
+        array_ops.reshape(math_ops.range(24), (1, 2, 3, 4)), axis_order)
     actual = core.impose_axis_order(lt, axis_order[::-1])
     expected = core.transpose(lt, axis_order[::-1])
     self.assertLabeledTensorsEqual(expected, actual)
 
-    lt = core.LabeledTensor(tf.reshape(tf.range(6), (1, 2, 3)), axis_order[:3])
+    lt = core.LabeledTensor(
+        array_ops.reshape(math_ops.range(6), (1, 2, 3)), axis_order[:3])
     actual = core.impose_axis_order(lt, axis_order[::-1])
     expected = core.transpose(lt, ['y', 'x', 'w'])
     self.assertLabeledTensorsEqual(expected, actual)
@@ -504,14 +521,16 @@ class ImposeAxisOrderTest(Base):
   def test_scope(self):
     axis_order = ['w', 'x', 'y', 'z']
 
-    lt = core.LabeledTensor(tf.reshape(tf.range(24), (1, 2, 3, 4)), axis_order)
+    lt = core.LabeledTensor(
+        array_ops.reshape(math_ops.range(24), (1, 2, 3, 4)), axis_order)
     expected = core.transpose(lt, axis_order[::-1])
     with core.axis_order_scope(axis_order[::-1]):
       actual = core.impose_axis_order(lt)
     self.assertLabeledTensorsEqual(expected, actual)
 
   def test_invalid(self):
-    lt = core.LabeledTensor(tf.reshape(tf.range(2), (1, 2)), ['x', 'y'])
+    lt = core.LabeledTensor(
+        array_ops.reshape(math_ops.range(2), (1, 2)), ['x', 'y'])
     with self.assertRaises(ValueError):
       core.impose_axis_order(lt)
     with self.assertRaises(ValueError):
@@ -571,14 +590,15 @@ class AlignTest(Base):
         self.x_probs_lt, self.channel_probs_lt)
 
     x_probs_golden_lt = core.LabeledTensor(
-        tf.reshape(self.x_probs_lt.tensor, [self.x_size, 1, self.probs_size]),
+        array_ops.reshape(self.x_probs_lt.tensor,
+                          [self.x_size, 1, self.probs_size]),
         [self.a0, 'channel', self.a3])
 
     self.assertLabeledTensorsEqual(align_x_probs_lt, x_probs_golden_lt)
 
     channel_probs_golden_lt = core.LabeledTensor(
-        tf.reshape(self.channel_probs_lt.tensor,
-                   [1, self.channel_size, self.probs_size]),
+        array_ops.reshape(self.channel_probs_lt.tensor,
+                          [1, self.channel_size, self.probs_size]),
         ['x', self.a1, self.a3])
 
     self.assertLabeledTensorsEqual(align_channel_probs_lt,
@@ -587,8 +607,8 @@ class AlignTest(Base):
     self.assertEqual(broadcast_axes, core.Axes([self.a0, self.a1, self.a3]))
 
   def test_axis_order_scope(self):
-    xz_lt = core.LabeledTensor(tf.ones((2, 3)), ['x', 'z'])
-    yz_lt = core.LabeledTensor(tf.ones((4, 3)), ['y', 'z'])
+    xz_lt = core.LabeledTensor(array_ops.ones((2, 3)), ['x', 'z'])
+    yz_lt = core.LabeledTensor(array_ops.ones((4, 3)), ['y', 'z'])
 
     _, _, broadcast_axes = core.align(xz_lt, yz_lt)
     self.assertEqual(list(broadcast_axes.keys()), ['x', 'y', 'z'])
@@ -607,8 +627,8 @@ class AlignTest(Base):
         core.align(yz_lt, xz_lt)
 
   def test_invalid_input(self):
-    lt_0 = core.LabeledTensor(tf.zeros([5]), [('a', range(5))])
-    lt_1 = core.LabeledTensor(tf.zeros([5]), [('a', range(1, 6))])
+    lt_0 = core.LabeledTensor(array_ops.zeros([5]), [('a', range(5))])
+    lt_1 = core.LabeledTensor(array_ops.zeros([5]), [('a', range(1, 6))])
     with self.assertRaises(ValueError):
       core.align(lt_0, lt_1)
 
@@ -624,22 +644,22 @@ class ConvertToLabeledTensorTest(Base):
 
   def test_python_scalar(self):
     actual = core.convert_to_labeled_tensor(42)
-    golden_lt = core.LabeledTensor(tf.convert_to_tensor(42), [])
+    golden_lt = core.LabeledTensor(ops.convert_to_tensor(42), [])
     self.assertLabeledTensorsEqual(actual, golden_lt)
 
   def test_numpy_array(self):
     actual = core.convert_to_labeled_tensor(np.array(42))
-    golden_lt = core.LabeledTensor(tf.convert_to_tensor(42), [])
+    golden_lt = core.LabeledTensor(ops.convert_to_tensor(42), [])
     self.assertLabeledTensorsEqual(actual, golden_lt)
 
   def test_tensor(self):
-    actual = core.convert_to_labeled_tensor(tf.constant(42))
-    golden_lt = core.LabeledTensor(tf.convert_to_tensor(42), [])
+    actual = core.convert_to_labeled_tensor(constant_op.constant(42))
+    golden_lt = core.LabeledTensor(ops.convert_to_tensor(42), [])
     self.assertLabeledTensorsEqual(actual, golden_lt)
 
   def test_invalid_input(self):
     with self.assertRaises(ValueError):
-      core.convert_to_labeled_tensor(tf.range(5))
+      core.convert_to_labeled_tensor(math_ops.range(5))
     with self.assertRaises(ValueError):
       core.convert_to_labeled_tensor(np.array([1, 2]))
 
@@ -660,8 +680,8 @@ class UnaryOpsTestsMixin(object):
   def test_core_op(self):
     for op_name, _, tf_op, lt_op in self.ops:
       if tf_op is not None:
-        golden_lt = core.LabeledTensor(tf_op(self.test_lt.tensor),
-                                       self.test_lt.axes)
+        golden_lt = core.LabeledTensor(
+            tf_op(self.test_lt.tensor), self.test_lt.axes)
         actual_lt = lt_op(self.test_lt)
         self.assertIn(op_name, actual_lt.name)
         self.assertLabeledTensorsEqual(golden_lt, actual_lt)
@@ -669,8 +689,8 @@ class UnaryOpsTestsMixin(object):
   def test_infix(self):
     for op_name, infix_op, _, _ in self.ops:
       if infix_op is not None:
-        expected_lt = core.LabeledTensor(infix_op(self.test_lt.tensor),
-                                         self.test_lt.axes)
+        expected_lt = core.LabeledTensor(
+            infix_op(self.test_lt.tensor), self.test_lt.axes)
         actual_lt = infix_op(self.test_lt)
         self.assertIn(op_name, actual_lt.name)
         self.assertLabeledTensorsEqual(expected_lt, actual_lt)
@@ -682,36 +702,36 @@ class CoreUnaryOpsTest(Base, DocStringCheckMixin, UnaryOpsTestsMixin):
     super(CoreUnaryOpsTest, self).setUp()
 
     self.ops = [
-        ('abs', operator.abs, tf.abs, core.abs_function),
-        ('neg', operator.neg, tf.neg, core.neg),
+        ('abs', operator.abs, math_ops.abs, core.abs_function),
+        ('neg', operator.neg, math_ops.neg, core.neg),
         # TODO(shoyer): add unary + to core TensorFlow
         ('pos', None, None, None),
-        ('sign', None, tf.sign, core.sign),
-        ('reciprocal', None, tf.reciprocal, core.reciprocal),
-        ('square', None, tf.square, core.square),
-        ('round', None, tf.round, core.round_function),
-        ('sqrt', None, tf.sqrt, core.sqrt),
-        ('rsqrt', None, tf.rsqrt, core.rsqrt),
-        ('log', None, tf.log, core.log),
-        ('exp', None, tf.exp, core.exp),
-        ('log', None, tf.log, core.log),
-        ('ceil', None, tf.ceil, core.ceil),
-        ('floor', None, tf.floor, core.floor),
-        ('cos', None, tf.cos, core.cos),
-        ('sin', None, tf.sin, core.sin),
-        ('tan', None, tf.tan, core.tan),
-        ('acos', None, tf.acos, core.acos),
-        ('asin', None, tf.asin, core.asin),
-        ('atan', None, tf.atan, core.atan),
-        ('lgamma', None, tf.lgamma, core.lgamma),
-        ('digamma', None, tf.digamma, core.digamma),
-        ('erf', None, tf.erf, core.erf),
-        ('erfc', None, tf.erfc, core.erfc),
-        ('lgamma', None, tf.lgamma, core.lgamma),
+        ('sign', None, math_ops.sign, core.sign),
+        ('reciprocal', None, math_ops.reciprocal, core.reciprocal),
+        ('square', None, math_ops.square, core.square),
+        ('round', None, math_ops.round, core.round_function),
+        ('sqrt', None, math_ops.sqrt, core.sqrt),
+        ('rsqrt', None, math_ops.rsqrt, core.rsqrt),
+        ('log', None, math_ops.log, core.log),
+        ('exp', None, math_ops.exp, core.exp),
+        ('log', None, math_ops.log, core.log),
+        ('ceil', None, math_ops.ceil, core.ceil),
+        ('floor', None, math_ops.floor, core.floor),
+        ('cos', None, math_ops.cos, core.cos),
+        ('sin', None, math_ops.sin, core.sin),
+        ('tan', None, math_ops.tan, core.tan),
+        ('acos', None, math_ops.acos, core.acos),
+        ('asin', None, math_ops.asin, core.asin),
+        ('atan', None, math_ops.atan, core.atan),
+        ('lgamma', None, math_ops.lgamma, core.lgamma),
+        ('digamma', None, math_ops.digamma, core.digamma),
+        ('erf', None, math_ops.erf, core.erf),
+        ('erfc', None, math_ops.erfc, core.erfc),
+        ('lgamma', None, math_ops.lgamma, core.lgamma),
     ]
     total_size = np.prod([v.size for v in self.original_lt.axes.values()])
     self.test_lt = core.LabeledTensor(
-        tf.cast(self.original_lt, tf.float32) / total_size,
+        math_ops.cast(self.original_lt, dtypes.float32) / total_size,
         self.original_lt.axes)
 
 
@@ -719,9 +739,8 @@ class LogicalNotTest(Base, DocStringCheckMixin, UnaryOpsTestsMixin):
 
   def setUp(self):
     super(LogicalNotTest, self).setUp()
-    self.ops = [
-        ('logical_not', operator.invert, tf.logical_not, core.logical_not),
-    ]
+    self.ops = [('logical_not', operator.invert, math_ops.logical_not,
+                 core.logical_not),]
     self.test_lt = self.original_lt < 10
 
 
@@ -731,8 +750,7 @@ class BinaryOpsTestsMixin(object):
 
   def test_core_op(self):
     for op_name, _, tf_op, lt_op in self.ops:
-      golden_tensor = tf_op(self.test_lt_1_broadcast,
-                            self.test_lt_2_broadcast)
+      golden_tensor = tf_op(self.test_lt_1_broadcast, self.test_lt_2_broadcast)
       golden_lt = core.LabeledTensor(golden_tensor, self.broadcast_axes)
       actual_lt = lt_op(self.test_lt_1, self.test_lt_2)
       self.assertIn(op_name, actual_lt.name)
@@ -752,27 +770,28 @@ class CoreBinaryOpsTest(Base, DocStringCheckMixin, BinaryOpsTestsMixin):
   def setUp(self):
     super(CoreBinaryOpsTest, self).setUp()
 
-    self.x_probs_broadcast_tensor = tf.reshape(
+    self.x_probs_broadcast_tensor = array_ops.reshape(
         self.x_probs_lt.tensor, [self.x_size, 1, self.probs_size])
 
-    self.channel_probs_broadcast_tensor = tf.reshape(
+    self.channel_probs_broadcast_tensor = array_ops.reshape(
         self.channel_probs_lt.tensor, [1, self.channel_size, self.probs_size])
 
     # == and != are not element-wise for tf.Tensor, so they shouldn't be
     # elementwise for LabeledTensor, either.
     self.ops = [
-        ('add', operator.add, tf.add, core.add),
-        ('sub', operator.sub, tf.sub, core.sub),
-        ('mul', operator.mul, tf.mul, core.mul),
-        ('div', operator.truediv, tf.div, core.div),
-        ('mod', operator.mod, tf.mod, core.mod),
-        ('pow', operator.pow, tf.pow, core.pow_function),
-        ('equal', None, tf.equal, core.equal),
-        ('less', operator.lt, tf.less, core.less),
-        ('less_equal', operator.le, tf.less_equal, core.less_equal),
-        ('not_equal', None, tf.not_equal, core.not_equal),
-        ('greater', operator.gt, tf.greater, core.greater),
-        ('greater_equal', operator.ge, tf.greater_equal, core.greater_equal),
+        ('add', operator.add, math_ops.add, core.add),
+        ('sub', operator.sub, math_ops.sub, core.sub),
+        ('mul', operator.mul, math_ops.mul, core.mul),
+        ('div', operator.truediv, math_ops.div, core.div),
+        ('mod', operator.mod, math_ops.mod, core.mod),
+        ('pow', operator.pow, math_ops.pow, core.pow_function),
+        ('equal', None, math_ops.equal, core.equal),
+        ('less', operator.lt, math_ops.less, core.less),
+        ('less_equal', operator.le, math_ops.less_equal, core.less_equal),
+        ('not_equal', None, math_ops.not_equal, core.not_equal),
+        ('greater', operator.gt, math_ops.greater, core.greater),
+        ('greater_equal', operator.ge, math_ops.greater_equal,
+         core.greater_equal),
     ]
     self.test_lt_1 = self.x_probs_lt
     self.test_lt_2 = self.channel_probs_lt
@@ -801,9 +820,9 @@ class LogicalBinaryOpsTest(Base, DocStringCheckMixin, BinaryOpsTestsMixin):
     super(LogicalBinaryOpsTest, self).setUp()
 
     self.ops = [
-        ('logical_and', operator.and_, tf.logical_and, core.logical_and),
-        ('logical_or', operator.or_, tf.logical_or, core.logical_or),
-        ('logical_xor', operator.xor, tf.logical_xor, core.logical_xor),
+        ('logical_and', operator.and_, math_ops.logical_and, core.logical_and),
+        ('logical_or', operator.or_, math_ops.logical_or, core.logical_or),
+        ('logical_xor', operator.xor, math_ops.logical_xor, core.logical_xor),
     ]
     self.test_lt_1 = self.original_lt < 10
     self.test_lt_2 = self.original_lt < 5
@@ -818,18 +837,18 @@ class FloatBinaryOpsTest(Base, DocStringCheckMixin, BinaryOpsTestsMixin):
     super(FloatBinaryOpsTest, self).setUp()
 
     self.ops = [
-        ('igamma', None, tf.igamma, core.igamma),
-        ('igammac', None, tf.igammac, core.igammac),
-        ('zeta', None, tf.zeta, core.zeta),
-        ('polygamma', None, tf.polygamma, core.polygamma),
-        ('maximum', None, tf.maximum, core.maximum),
-        ('minimum', None, tf.minimum, core.minimum),
-        ('squared_difference', None, tf.squared_difference,
+        ('igamma', None, math_ops.igamma, core.igamma),
+        ('igammac', None, math_ops.igammac, core.igammac),
+        ('zeta', None, math_ops.zeta, core.zeta),
+        ('polygamma', None, math_ops.polygamma, core.polygamma),
+        ('maximum', None, math_ops.maximum, core.maximum),
+        ('minimum', None, math_ops.minimum, core.minimum),
+        ('squared_difference', None, math_ops.squared_difference,
          core.squared_difference),
     ]
     total_size = np.prod([v.size for v in self.original_lt.axes.values()])
     test_lt = core.LabeledTensor(
-        tf.cast(self.original_lt, tf.float32) / total_size,
+        math_ops.cast(self.original_lt, dtypes.float32) / total_size,
         self.original_lt.axes)
     self.test_lt_1 = test_lt
     self.test_lt_2 = 1.0 - test_lt
@@ -839,4 +858,4 @@ class FloatBinaryOpsTest(Base, DocStringCheckMixin, BinaryOpsTestsMixin):
 
 
 if __name__ == '__main__':
-  tf.test.main()
+  test_lib.main()

@@ -13,15 +13,21 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tf.contrib.tensor_forest.ops.sample_inputs_op."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import sys
+
+# TODO: #6568 Remove this hack that makes dlopen() not crash.
+if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
+  import ctypes
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 from tensorflow.contrib.tensor_forest.python.ops import tensor_forest_ops
-
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
 
@@ -37,7 +43,7 @@ class SampleInputsTest(test_util.TensorFlowTestCase):
 
   def testSimple(self):
     with self.test_session():
-      tf.global_variables_initializer().run()
+      variables.global_variables_initializer().run()
       indices, feature_updates, threshold_updates = (
           tensor_forest_ops.sample_inputs(
               self.input_data, [], [], [], [],
@@ -48,8 +54,7 @@ class SampleInputsTest(test_util.TensorFlowTestCase):
               split_initializations_per_input=1,
               split_sampling_random_seed=3))
       self.assertAllEqual([1, 0], indices.eval())
-      self.assertAllEqual([[1, 0, 1], [0, 0, -1]],
-                          feature_updates.eval())
+      self.assertAllEqual([[1, 0, 1], [0, 0, -1]], feature_updates.eval())
       self.assertAllEqual([[5., -2., 50.], [-1., -10., 0.]],
                           threshold_updates.eval())
 
@@ -65,7 +70,7 @@ class SampleInputsTest(test_util.TensorFlowTestCase):
                      -0.5, 2.0]
 
     with self.test_session():
-      tf.global_variables_initializer().run()
+      variables.global_variables_initializer().run()
       indices, feature_updates, threshold_updates = (
           tensor_forest_ops.sample_inputs(
               [],
@@ -79,14 +84,13 @@ class SampleInputsTest(test_util.TensorFlowTestCase):
               split_initializations_per_input=1,
               split_sampling_random_seed=3))
       self.assertAllEqual([1, 0], indices.eval())
-      self.assertAllEqual([[1, 0, 0], [4, 7, -1]],
-                          feature_updates.eval())
+      self.assertAllEqual([[1, 0, 0], [4, 7, -1]], feature_updates.eval())
       self.assertAllEqual([[5., -2., -2.], [-1., 6., 0.]],
                           threshold_updates.eval())
 
   def testWeights(self):
     with self.test_session():
-      tf.global_variables_initializer().run()
+      variables.global_variables_initializer().run()
       indices, feature_updates, threshold_updates = (
           tensor_forest_ops.sample_inputs(
               self.input_data, [], [], [], [0.5, 0.1, 0.8, 0.7],
@@ -103,7 +107,7 @@ class SampleInputsTest(test_util.TensorFlowTestCase):
 
   def testNoAccumulators(self):
     with self.test_session():
-      tf.global_variables_initializer().run()
+      variables.global_variables_initializer().run()
       indices, feature_updates, threshold_updates = (
           tensor_forest_ops.sample_inputs(
               self.input_data, [], [], [], [], [-1] * 3,
@@ -119,7 +123,7 @@ class SampleInputsTest(test_util.TensorFlowTestCase):
   def testBadInput(self):
     del self.split_features[1]
     with self.test_session():
-      tf.global_variables_initializer().run()
+      variables.global_variables_initializer().run()
       with self.assertRaisesOpError(
           'split_features and split_thresholds should be the same shape.'):
         indices, _, _ = tensor_forest_ops.sample_inputs(

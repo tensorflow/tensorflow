@@ -18,44 +18,70 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
+
+# TODO: #6568 Remove this hack that makes dlopen() not crash.
+if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
+  import ctypes
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
+
 import numpy as np
 
-import tensorflow as tf
+from tensorflow.contrib.rnn.python.ops import core_rnn
+from tensorflow.contrib.rnn.python.ops import core_rnn_cell_impl
+from tensorflow.contrib.rnn.python.ops import fused_rnn_cell
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
 
 
-class FusedRnnCellTest(tf.test.TestCase):
+class FusedRnnCellTest(test.TestCase):
 
   def testBasicRNNFusedWrapper(self):
     """This test checks that using a wrapper for BasicRNN works as expected."""
 
     with self.test_session() as sess:
-      initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=19890212)
-      cell = tf.contrib.rnn.BasicRNNCell(10)
+      initializer = init_ops.random_uniform_initializer(
+          -0.01, 0.01, seed=19890212)
+      cell = core_rnn_cell_impl.BasicRNNCell(10)
       batch_size = 5
       input_size = 20
       timelen = 15
-      inputs = tf.constant(np.random.randn(timelen, batch_size, input_size))
-      with tf.variable_scope("basic", initializer=initializer):
-        unpacked_inputs = tf.unstack(inputs)
-        outputs, state = tf.contrib.rnn.static_rnn(
-            cell, unpacked_inputs, dtype=tf.float64)
-        packed_outputs = tf.stack(outputs)
-        basic_vars = [v for v in tf.trainable_variables()
-                      if v.name.startswith("basic/")]
-        sess.run([tf.global_variables_initializer()])
+      inputs = constant_op.constant(
+          np.random.randn(timelen, batch_size, input_size))
+      with variable_scope.variable_scope("basic", initializer=initializer):
+        unpacked_inputs = array_ops.unstack(inputs)
+        outputs, state = core_rnn.static_rnn(
+            cell, unpacked_inputs, dtype=dtypes.float64)
+        packed_outputs = array_ops.stack(outputs)
+        basic_vars = [
+            v for v in variables.trainable_variables()
+            if v.name.startswith("basic/")
+        ]
+        sess.run([variables.global_variables_initializer()])
         basic_outputs, basic_state = sess.run([packed_outputs, state])
-        basic_grads = sess.run(tf.gradients(packed_outputs, inputs))
-        basic_wgrads = sess.run(tf.gradients(packed_outputs, basic_vars))
+        basic_grads = sess.run(gradients_impl.gradients(packed_outputs, inputs))
+        basic_wgrads = sess.run(
+            gradients_impl.gradients(packed_outputs, basic_vars))
 
-      with tf.variable_scope("fused_static", initializer=initializer):
-        fused_cell = tf.contrib.rnn.FusedRNNCellAdaptor(cell)
-        outputs, state = fused_cell(inputs, dtype=tf.float64)
-        fused_static_vars = [v for v in tf.trainable_variables()
-                             if v.name.startswith("fused_static/")]
-        sess.run([tf.global_variables_initializer()])
+      with variable_scope.variable_scope(
+          "fused_static", initializer=initializer):
+        fused_cell = fused_rnn_cell.FusedRNNCellAdaptor(cell)
+        outputs, state = fused_cell(inputs, dtype=dtypes.float64)
+        fused_static_vars = [
+            v for v in variables.trainable_variables()
+            if v.name.startswith("fused_static/")
+        ]
+        sess.run([variables.global_variables_initializer()])
         fused_static_outputs, fused_static_state = sess.run([outputs, state])
-        fused_static_grads = sess.run(tf.gradients(outputs, inputs))
-        fused_static_wgrads = sess.run(tf.gradients(outputs, fused_static_vars))
+        fused_static_grads = sess.run(gradients_impl.gradients(outputs, inputs))
+        fused_static_wgrads = sess.run(
+            gradients_impl.gradients(outputs, fused_static_vars))
 
       self.assertAllClose(basic_outputs, fused_static_outputs)
       self.assertAllClose(basic_state, fused_static_state)
@@ -63,17 +89,21 @@ class FusedRnnCellTest(tf.test.TestCase):
       for basic, fused in zip(basic_wgrads, fused_static_wgrads):
         self.assertAllClose(basic, fused, rtol=1e-2, atol=1e-2)
 
-      with tf.variable_scope("fused_dynamic", initializer=initializer):
-        fused_cell = tf.contrib.rnn.FusedRNNCellAdaptor(
+      with variable_scope.variable_scope(
+          "fused_dynamic", initializer=initializer):
+        fused_cell = fused_rnn_cell.FusedRNNCellAdaptor(
             cell, use_dynamic_rnn=True)
-        outputs, state = fused_cell(inputs, dtype=tf.float64)
-        fused_dynamic_vars = [v for v in tf.trainable_variables()
-                              if v.name.startswith("fused_dynamic/")]
-        sess.run([tf.global_variables_initializer()])
+        outputs, state = fused_cell(inputs, dtype=dtypes.float64)
+        fused_dynamic_vars = [
+            v for v in variables.trainable_variables()
+            if v.name.startswith("fused_dynamic/")
+        ]
+        sess.run([variables.global_variables_initializer()])
         fused_dynamic_outputs, fused_dynamic_state = sess.run([outputs, state])
-        fused_dynamic_grads = sess.run(tf.gradients(outputs, inputs))
+        fused_dynamic_grads = sess.run(
+            gradients_impl.gradients(outputs, inputs))
         fused_dynamic_wgrads = sess.run(
-            tf.gradients(outputs, fused_dynamic_vars))
+            gradients_impl.gradients(outputs, fused_dynamic_vars))
 
       self.assertAllClose(basic_outputs, fused_dynamic_outputs)
       self.assertAllClose(basic_state, fused_dynamic_state)
@@ -83,41 +113,49 @@ class FusedRnnCellTest(tf.test.TestCase):
 
   def testTimeReversedFusedRNN(self):
     with self.test_session() as sess:
-      initializer = tf.random_uniform_initializer(-0.01, 0.01, seed=19890213)
-      cell = tf.contrib.rnn.BasicRNNCell(10)
+      initializer = init_ops.random_uniform_initializer(
+          -0.01, 0.01, seed=19890213)
+      cell = core_rnn_cell_impl.BasicRNNCell(10)
       batch_size = 5
       input_size = 20
       timelen = 15
-      inputs = tf.constant(np.random.randn(timelen, batch_size, input_size))
+      inputs = constant_op.constant(
+          np.random.randn(timelen, batch_size, input_size))
 
       # test bi-directional rnn
-      with tf.variable_scope("basic", initializer=initializer):
-        unpacked_inputs = tf.unstack(inputs)
-        outputs, fw_state, bw_state = tf.contrib.rnn.static_bidirectional_rnn(
-            cell, cell, unpacked_inputs, dtype=tf.float64)
-        packed_outputs = tf.stack(outputs)
-        basic_vars = [v for v in tf.trainable_variables()
-                      if v.name.startswith("basic/")]
-        sess.run([tf.global_variables_initializer()])
+      with variable_scope.variable_scope("basic", initializer=initializer):
+        unpacked_inputs = array_ops.unstack(inputs)
+        outputs, fw_state, bw_state = core_rnn.static_bidirectional_rnn(
+            cell, cell, unpacked_inputs, dtype=dtypes.float64)
+        packed_outputs = array_ops.stack(outputs)
+        basic_vars = [
+            v for v in variables.trainable_variables()
+            if v.name.startswith("basic/")
+        ]
+        sess.run([variables.global_variables_initializer()])
         basic_outputs, basic_fw_state, basic_bw_state = sess.run(
             [packed_outputs, fw_state, bw_state])
-        basic_grads = sess.run(tf.gradients(packed_outputs, inputs))
-        basic_wgrads = sess.run(tf.gradients(packed_outputs, basic_vars))
+        basic_grads = sess.run(gradients_impl.gradients(packed_outputs, inputs))
+        basic_wgrads = sess.run(
+            gradients_impl.gradients(packed_outputs, basic_vars))
 
-      with tf.variable_scope("fused", initializer=initializer):
-        fused_cell = tf.contrib.rnn.FusedRNNCellAdaptor(cell)
-        fused_bw_cell = tf.contrib.rnn.TimeReversedFusedRNN(fused_cell)
-        fw_outputs, fw_state = fused_cell(inputs, dtype=tf.float64, scope="fw")
+      with variable_scope.variable_scope("fused", initializer=initializer):
+        fused_cell = fused_rnn_cell.FusedRNNCellAdaptor(cell)
+        fused_bw_cell = fused_rnn_cell.TimeReversedFusedRNN(fused_cell)
+        fw_outputs, fw_state = fused_cell(
+            inputs, dtype=dtypes.float64, scope="fw")
         bw_outputs, bw_state = fused_bw_cell(
-            inputs, dtype=tf.float64, scope="bw")
-        outputs = tf.concat_v2([fw_outputs, bw_outputs], 2)
-        fused_vars = [v for v in tf.trainable_variables()
-                      if v.name.startswith("fused/")]
-        sess.run([tf.global_variables_initializer()])
+            inputs, dtype=dtypes.float64, scope="bw")
+        outputs = array_ops.concat_v2([fw_outputs, bw_outputs], 2)
+        fused_vars = [
+            v for v in variables.trainable_variables()
+            if v.name.startswith("fused/")
+        ]
+        sess.run([variables.global_variables_initializer()])
         fused_outputs, fused_fw_state, fused_bw_state = sess.run(
             [outputs, fw_state, bw_state])
-        fused_grads = sess.run(tf.gradients(outputs, inputs))
-        fused_wgrads = sess.run(tf.gradients(outputs, fused_vars))
+        fused_grads = sess.run(gradients_impl.gradients(outputs, inputs))
+        fused_wgrads = sess.run(gradients_impl.gradients(outputs, fused_vars))
 
       self.assertAllClose(basic_outputs, fused_outputs)
       self.assertAllClose(basic_fw_state, fused_fw_state)
@@ -128,4 +166,4 @@ class FusedRnnCellTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()
