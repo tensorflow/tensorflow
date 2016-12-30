@@ -72,10 +72,7 @@ config_setting(
 
 package_group(
     name = "internal",
-    packages = [
-        "//platforms/xla/...",
-        "//tensorflow/...",
-    ],
+    packages = ["//tensorflow/..."],
 )
 
 filegroup(
