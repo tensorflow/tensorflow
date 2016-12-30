@@ -1363,6 +1363,7 @@ cc_library(
         "platform/regexp.h",
     ],
     visibility = [
+        "//platforms/xla:__subpackages__",
         "//tensorflow/compiler:__subpackages__",
         "//tensorflow/tools/tfprof:__subpackages__",
     ],
@@ -1546,7 +1547,10 @@ cc_library(
     srcs = ["platform/test_main.cc"],
     copts = tf_copts(),
     linkopts = ["-lm"],
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//platforms/xla:__subpackages__",
+        "//tensorflow:internal",
+    ],
     deps = [
         ":lib",
         ":lib_internal",
