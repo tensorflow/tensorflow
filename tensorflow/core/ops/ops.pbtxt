@@ -21137,10 +21137,7 @@ op {
     name: "handle"
     type: DT_STRING
   }
-  deprecation {
-    version: 20
-    explanation: "Use TensorArrayCloseV3"
-  }
+  summary: "Deprecated. Use TensorArrayCloseV3"
 }
 op {
   name: "TensorArrayCloseV3"
@@ -21220,10 +21217,7 @@ op {
       }
     }
   }
-  deprecation {
-    version: 20
-    explanation: "Use TensorArrayConcatV3"
-  }
+  summary: "Deprecated. Use TensorArrayConcatV3"
 }
 op {
   name: "TensorArrayConcatV3"
@@ -21333,10 +21327,7 @@ op {
       }
     }
   }
-  deprecation {
-    version: 20
-    explanation: "Use TensorArrayGatherV3"
-  }
+  summary: "Deprecated. Use TensorArrayGatherV3"
 }
 op {
   name: "TensorArrayGatherV3"
@@ -21421,10 +21412,7 @@ op {
     name: "source"
     type: "string"
   }
-  deprecation {
-    version: 20
-    explanation: "Use TensorArrayGradV3"
-  }
+  summary: "Deprecated. Use TensorArrayGradV3"
   is_stateful: true
 }
 op {
@@ -21539,10 +21527,7 @@ op {
     name: "dtype"
     type: "type"
   }
-  deprecation {
-    version: 20
-    explanation: "Use TensorArrayReadV3"
-  }
+  summary: "Deprecated. Use TensorArrayReadV3"
 }
 op {
   name: "TensorArrayReadV3"
@@ -21630,10 +21615,7 @@ op {
     name: "T"
     type: "type"
   }
-  deprecation {
-    version: 20
-    explanation: "Use TensorArrayScatterV3"
-  }
+  summary: "Deprecated. Use TensorArrayScatterV3"
 }
 op {
   name: "TensorArrayScatterV3"
@@ -21703,10 +21685,7 @@ op {
     name: "size"
     type: DT_INT32
   }
-  deprecation {
-    version: 20
-    explanation: "Use TensorArraySizeV3"
-  }
+  summary: "Deprecated. Use TensorArraySizeV3"
 }
 op {
   name: "TensorArraySizeV3"
@@ -21785,10 +21764,7 @@ op {
     name: "T"
     type: "type"
   }
-  deprecation {
-    version: 20
-    explanation: "Use TensorArraySplitV3"
-  }
+  summary: "Deprecated. Use TensorArraySplitV3"
 }
 op {
   name: "TensorArraySplitV3"
@@ -21896,10 +21872,7 @@ op {
       s: ""
     }
   }
-  deprecation {
-    version: 20
-    explanation: "Use TensorArrayV3"
-  }
+  summary: "Deprecated. Use TensorArrayV3"
   is_stateful: true
 }
 op {
@@ -22020,10 +21993,7 @@ op {
     name: "T"
     type: "type"
   }
-  deprecation {
-    version: 20
-    explanation: "Use TensorArrayGradV3"
-  }
+  summary: "Deprecated. Use TensorArrayGradV3"
 }
 op {
   name: "TensorArrayWriteV3"
