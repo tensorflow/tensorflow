@@ -1763,6 +1763,8 @@ cuda_py_test(
     additional_deps = [
         ":array_grad",
         ":array_ops",
+        ":control_flow_grad",
+        ":control_flow_ops",
         ":data_flow_grad",
         ":data_flow_ops",
         ":framework_for_generated_wrappers",
@@ -1775,6 +1777,8 @@ cuda_py_test(
         ":nn_ops",
         ":platform_test",
         ":state_grad",
+        ":tensor_array_grad",
+        ":tensor_array_ops",
         ":test_ops",
         "//third_party/py/numpy",
     ],
