@@ -12,17 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for pandas_io."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
+
+# TODO: #6568 Remove this hack that makes dlopen() not crash.
+if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
+  import ctypes
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
+
 import numpy as np
-import tensorflow as tf
+
 from tensorflow.contrib.learn.python.learn.learn_io import pandas_io
 from tensorflow.python.framework import errors
+from tensorflow.python.platform import test
+from tensorflow.python.training import coordinator
+from tensorflow.python.training import queue_runner_impl
 
 # pylint: disable=g-import-not-at-top
 try:
@@ -32,7 +41,7 @@ except ImportError:
   HAS_PANDAS = False
 
 
-class PandasIoTest(tf.test.TestCase):
+class PandasIoTest(test.TestCase):
 
   def makeTestDataFrame(self):
     index = np.arange(100, 104)
@@ -44,8 +53,8 @@ class PandasIoTest(tf.test.TestCase):
 
   def callInputFnOnce(self, input_fn, session):
     results = input_fn()
-    coord = tf.train.Coordinator()
-    threads = tf.train.start_queue_runners(session, coord=coord)
+    coord = coordinator.Coordinator()
+    threads = queue_runner_impl.start_queue_runners(session, coord=coord)
     result_values = session.run(results)
     coord.request_stop()
     coord.join(threads)
@@ -101,8 +110,8 @@ class PandasIoTest(tf.test.TestCase):
 
   def assertInputsCallableNTimes(self, input_fn, session, n):
     inputs = input_fn()
-    coord = tf.train.Coordinator()
-    threads = tf.train.start_queue_runners(session, coord=coord)
+    coord = coordinator.Coordinator()
+    threads = queue_runner_impl.start_queue_runners(session, coord=coord)
     for _ in range(n):
       session.run(inputs)
     with self.assertRaises(errors.OutOfRangeError):
@@ -164,4 +173,4 @@ class PandasIoTest(tf.test.TestCase):
 
 
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

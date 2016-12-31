@@ -11,7 +11,6 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-
 """Example of DNNClassifier for Iris plant dataset, h5 format."""
 
 from __future__ import absolute_import
@@ -22,8 +21,9 @@ import numpy as np
 from sklearn import cross_validation
 from sklearn import metrics
 import tensorflow as tf
-from tensorflow.contrib import learn
 import h5py  # pylint: disable=g-bad-import-order
+
+learn = tf.contrib.learn
 
 
 def main(unused_argv):
@@ -56,6 +56,7 @@ def main(unused_argv):
   classifier.fit(x_train, y_train, steps=200)
   score = metrics.accuracy_score(y_test, classifier.predict(x_test))
   print('Accuracy: {0:f}'.format(score))
+
 
 if __name__ == '__main__':
   tf.app.run()

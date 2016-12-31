@@ -90,7 +90,10 @@ py_library(
     name = "tensor_format",
     srcs = ["cli/tensor_format.py"],
     srcs_version = "PY2AND3",
-    deps = [":debugger_cli_common"],
+    deps = [
+        ":debugger_cli_common",
+        "//third_party/py/numpy",
+    ],
 )
 
 py_library(
@@ -103,6 +106,7 @@ py_library(
         ":tensor_format",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:variables",
+        "//third_party/py/numpy",
         "@six_archive//:six",
     ],
 )
@@ -244,6 +248,7 @@ py_test(
         ":debug_data",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -262,6 +267,7 @@ py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
+        "//third_party/py/numpy",
         "@six_archive//:six",
     ],
 )
@@ -301,6 +307,7 @@ py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -329,7 +336,6 @@ py_library(
     deps = [
         ":debug_data",
         ":debug_utils",
-        "//tensorflow:tensorflow_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
@@ -340,7 +346,9 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:state_ops",
+        "//tensorflow/python:training",
         "//tensorflow/python:variables",
+        "//third_party/py/numpy",
         "@six_archive//:six",
     ],
 )
@@ -401,6 +409,7 @@ py_test(
         ":tensor_format",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
+        "//third_party/py/numpy",
         "@six_archive//:six",
     ],
 )
@@ -435,6 +444,7 @@ cuda_py_test(
         ":debug_data",
         ":debug_utils",
         ":debugger_cli_common",
+        "//third_party/py/numpy",
         "@six_archive//:six",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:client",

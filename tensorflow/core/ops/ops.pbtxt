@@ -21115,7 +21115,7 @@ op {
   }
   deprecation {
     version: 16
-    explanation: "Use TensorArrayV2"
+    explanation: "Use TensorArrayV3"
   }
   is_stateful: true
 }
@@ -21128,15 +21128,23 @@ op {
   }
   deprecation {
     version: 16
-    explanation: "Use TensorArrayCloseV2"
+    explanation: "Use TensorArrayCloseV3"
   }
 }
 op {
   name: "TensorArrayCloseV2"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray (output of TensorArray or TensorArrayGrad)."
     type: DT_STRING
+  }
+  summary: "Deprecated. Use TensorArrayCloseV3"
+}
+op {
+  name: "TensorArrayCloseV3"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray (output of TensorArray or TensorArrayGrad)."
+    type: DT_RESOURCE
   }
   summary: "Delete the TensorArray from its resource container.  This enables"
   description: "the user to close and release the resource in the middle of a step/run."
@@ -21175,15 +21183,48 @@ op {
   }
   deprecation {
     version: 16
-    explanation: "Use TensorArrayConcatV2"
+    explanation: "Use TensorArrayGradV3"
   }
 }
 op {
   name: "TensorArrayConcatV2"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray."
     type: DT_STRING
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "value"
+    type_attr: "dtype"
+  }
+  output_arg {
+    name: "lengths"
+    type: DT_INT64
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  attr {
+    name: "element_shape_except0"
+    type: "shape"
+    default_value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
+  summary: "Deprecated. Use TensorArrayConcatV3"
+}
+op {
+  name: "TensorArrayConcatV3"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_RESOURCE
   }
   input_arg {
     name: "flow_in"
@@ -21252,15 +21293,48 @@ op {
   }
   deprecation {
     version: 16
-    explanation: "Use TensorArrayGatherV2"
+    explanation: "Use TensorArrayGatherV3"
   }
 }
 op {
   name: "TensorArrayGatherV2"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray."
     type: DT_STRING
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "value"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  attr {
+    name: "element_shape"
+    type: "shape"
+    default_value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
+  summary: "Deprecated. Use TensorArrayGatherV3"
+}
+op {
+  name: "TensorArrayGatherV3"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_RESOURCE
   }
   input_arg {
     name: "indices"
@@ -21316,7 +21390,7 @@ op {
   }
   deprecation {
     version: 16
-    explanation: "Use TensorArrayGradV2"
+    explanation: "Use TensorArrayGradV3"
   }
   is_stateful: true
 }
@@ -21324,8 +21398,29 @@ op {
   name: "TensorArrayGradV2"
   input_arg {
     name: "handle"
-    description: "The handle to the forward TensorArray."
     type: DT_STRING
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "grad_handle"
+    type: DT_STRING
+  }
+  attr {
+    name: "source"
+    type: "string"
+  }
+  summary: "Deprecated. Use TensorArrayGradV3"
+  is_stateful: true
+}
+op {
+  name: "TensorArrayGradV3"
+  input_arg {
+    name: "handle"
+    description: "The handle to the forward TensorArray."
+    type: DT_RESOURCE
   }
   input_arg {
     name: "flow_in"
@@ -21334,7 +21429,11 @@ op {
   }
   output_arg {
     name: "grad_handle"
-    type: DT_STRING
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "flow_out"
+    type: DT_FLOAT
   }
   attr {
     name: "source"
@@ -21375,7 +21474,7 @@ op {
   }
   deprecation {
     version: 16
-    explanation: "Use TensorArrayGatherV2 with RangeOp"
+    explanation: "Use TensorArrayGatherV3 with RangeOp"
   }
 }
 op {
@@ -21403,15 +21502,39 @@ op {
   }
   deprecation {
     version: 16
-    explanation: "Use TensorArrayReadV2"
+    explanation: "Use TensorArrayReadV3"
   }
 }
 op {
   name: "TensorArrayReadV2"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray."
     type: DT_STRING
+  }
+  input_arg {
+    name: "index"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "value"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  summary: "Deprecated. Use TensorArrayReadV3"
+}
+op {
+  name: "TensorArrayReadV3"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_RESOURCE
   }
   input_arg {
     name: "index"
@@ -21462,16 +21585,44 @@ op {
     type: "type"
   }
   deprecation {
-    version: 16
-    explanation: "Use TensorArrayScatterV2"
+    version: 19
+    explanation: "Use TensorArrayGradV3"
   }
 }
 op {
   name: "TensorArrayScatterV2"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray."
     type: DT_STRING
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "value"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "flow_out"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Deprecated. Use TensorArrayScatterV3"
+}
+op {
+  name: "TensorArrayScatterV3"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_RESOURCE
   }
   input_arg {
     name: "indices"
@@ -21517,15 +21668,31 @@ op {
   }
   deprecation {
     version: 16
-    explanation: "Use TensorArraySizeV2"
+    explanation: "Use TensorArraySizeV3"
   }
 }
 op {
   name: "TensorArraySizeV2"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray (output of TensorArray or TensorArrayGrad)."
     type: DT_STRING
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "size"
+    type: DT_INT32
+  }
+  summary: "Deprecated. Use TensorArraySizeV3"
+}
+op {
+  name: "TensorArraySizeV3"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray (output of TensorArray or TensorArrayGrad)."
+    type: DT_RESOURCE
   }
   input_arg {
     name: "flow_in"
@@ -21568,15 +21735,43 @@ op {
   }
   deprecation {
     version: 16
-    explanation: "Use TensorArraySplitV2"
+    explanation: "Use TensorArraySplitV3"
   }
 }
 op {
   name: "TensorArraySplitV2"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray."
     type: DT_STRING
+  }
+  input_arg {
+    name: "value"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lengths"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "flow_out"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Deprecated. Use TensorArraySplitV3"
+}
+op {
+  name: "TensorArraySplitV3"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_RESOURCE
   }
   input_arg {
     name: "value"
@@ -21629,12 +21824,59 @@ op {
     type: "type"
   }
   deprecation {
-    version: 16
-    explanation: "Use TensorArrayScatterV2 with RangeOp"
+    version: 20
+    explanation: "Use TensorArrayScatterV3 with RangeOp"
   }
 }
 op {
   name: "TensorArrayV2"
+  input_arg {
+    name: "size"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "handle"
+    type: DT_STRING
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  attr {
+    name: "element_shape"
+    type: "shape"
+    default_value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
+  attr {
+    name: "dynamic_size"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "clear_after_read"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "tensor_array_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  summary: "Deprecated. Use TensorArrayV3"
+  is_stateful: true
+}
+op {
+  name: "TensorArrayV3"
   input_arg {
     name: "size"
     description: "The size of the array."
@@ -21643,7 +21885,12 @@ op {
   output_arg {
     name: "handle"
     description: "The handle to the TensorArray."
-    type: DT_STRING
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "flow"
+    description: "A scalar used to control gradient flow."
+    type: DT_FLOAT
   }
   attr {
     name: "dtype"
@@ -21717,15 +21964,43 @@ op {
   }
   deprecation {
     version: 16
-    explanation: "Use TensorArrayWriteV2"
+    explanation: "Use TensorArrayWriteV3"
   }
 }
 op {
   name: "TensorArrayWriteV2"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray."
     type: DT_STRING
+  }
+  input_arg {
+    name: "index"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "value"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "flow_out"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Deprecated. Use TensorArrayGradV3"
+}
+op {
+  name: "TensorArrayWriteV3"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_RESOURCE
   }
   input_arg {
     name: "index"
