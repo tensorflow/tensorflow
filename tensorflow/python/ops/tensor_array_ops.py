@@ -196,6 +196,26 @@ class TensorArray(object):
     """The reference to the TensorArray."""
     return self._handle
 
+  def _merge_element_shape(self, shape):
+    """Changes the element shape of the array given a shape to merge with.
+
+    Args:
+      shape: A `TensorShape` object to merge with.
+
+    Raises:
+      ValueError: if the provided shape is incompatible with the current
+          element shape of the `TensorArray`.
+    """
+
+    if self._element_shape:
+      if not shape.is_compatible_with(self._element_shape[0]):
+        raise ValueError(
+            "Inconsistent shapes: saw %s but expected %s "
+            "(and infer_shape=True)" % (shape, self._element_shape[0]))
+      self._element_shape[0] = self._element_shape[0].merge_with(shape)
+    else:
+      self._element_shape.append(shape)
+
   def grad(self, source, flow=None, name=None):
     # tensor_array_grad requires a flow input when forward
     # TensorArrays are dynamically sized.  This forces the creation
@@ -267,14 +287,7 @@ class TensorArray(object):
       ta._infer_shape = self._infer_shape
       ta._element_shape = self._element_shape
       if ta._infer_shape:
-        val_shape = value.get_shape()
-        if ta._element_shape:
-          if not val_shape == ta._element_shape[0]:
-            raise ValueError("Inconsistent shapes: saw %s but expected %s "
-                             "(and infer_shape=True)" %
-                             (val_shape, ta._element_shape[0]))
-        else:
-          ta._element_shape.append(val_shape)
+        ta._merge_element_shape(value.get_shape())
       return ta
 
   def stack(self, name=None):
@@ -423,13 +436,7 @@ class TensorArray(object):
         element_shape = tensor_shape.unknown_shape()
         if val_shape.dims is not None:
           element_shape = tensor_shape.TensorShape(val_shape.dims[1:])
-        if ta._element_shape:
-          if not element_shape == ta._element_shape[0]:
-            raise ValueError("Inconsistent shapes: saw %s but expected %s "
-                             "(and infer_shape=True)" %
-                             (element_shape, ta._element_shape[0]))
-        else:
-          ta._element_shape.append(element_shape)
+        ta._merge_element_shape(element_shape)
       return ta
 
   def split(self, value, lengths, name=None):
@@ -471,13 +478,7 @@ class TensorArray(object):
           if clengths is not None and clengths.max() == clengths.min():
             element_shape = tensor_shape.TensorShape([clengths[0]] +
                                                      val_shape.dims[1:])
-        if ta._element_shape:
-          if not element_shape == ta._element_shape[0]:
-            raise ValueError("Inconsistent shapes: saw %s but expected %s "
-                             "(and infer_shape=True)" %
-                             (element_shape, ta._element_shape[0]))
-        else:
-          ta._element_shape.append(element_shape)
+        ta._merge_element_shape(element_shape)
       return ta
 
   def size(self, name=None):
