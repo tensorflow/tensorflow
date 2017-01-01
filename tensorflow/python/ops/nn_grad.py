@@ -214,6 +214,7 @@ def _BiasAddGrad(op, received_grad):
   return (received_grad, gen_nn_ops.bias_add_grad(out_backprop=received_grad,
                                                   data_format=data_format))
 
+
 @ops.RegisterGradient("BiasAddGrad")
 def _BiasAddGradGrad(op, received_grad):
   """Gradient for the BiasAddGrad op.
@@ -438,6 +439,17 @@ def _AvgPoolGrad(op, grad):
       data_format=op.get_attr("data_format"))
 
 
+@ops.RegisterGradient("AvgPoolGrad")
+def _AvgPoolGradGrad(op, grad):
+  return gen_nn_ops._avg_pool(
+      array_ops.shape(op.inputs[0]),
+      grad,
+      op.get_attr("ksize"),
+      op.get_attr("strides"),
+      op.get_attr("padding"),
+      data_format=op.get_attr("data_format"))
+
+
 @ops.RegisterGradient("MaxPool")
 def _MaxPoolGrad(op, grad):
   return gen_nn_ops._max_pool_grad(op.inputs[0],
@@ -447,6 +459,19 @@ def _MaxPoolGrad(op, grad):
                                    op.get_attr("strides"),
                                    padding=op.get_attr("padding"),
                                    data_format=op.get_attr("data_format"))
+
+
+@ops.RegisterGradient("MaxPoolGrad")
+def _MaxPoolGradGrad(op, grad):
+  return (array_ops.zeros(shape = array_ops.shape(op.inputs[0]), dtype = op.inputs[0].dtype),
+          array_ops.zeros(shape = array_ops.shape(op.inputs[1]), dtype = op.inputs[1].dtype),
+          gen_nn_ops._max_pool_grad_grad(op.inputs[0],
+                                         op.inputs[1],
+                                         grad,
+                                         op.get_attr("ksize"),
+                                         op.get_attr("strides"),
+                                         padding=op.get_attr("padding"),
+                                         data_format=op.get_attr("data_format")))
 
 
 @ops.RegisterGradient("FractionalMaxPool")
