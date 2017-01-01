@@ -38,6 +38,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 class PadOp : public OpKernel {
@@ -198,5 +201,31 @@ REGISTER_KERNEL_BUILDER(Name("Pad")
                             .HostMemory("output"),
                         PadOp<CPUDevice, int32>);
 #endif
+
+#ifdef TENSORFLOW_USE_SYCL
+// Registration of the GPU implementations.
+#define REGISTER_SYCL_KERNEL(T)                                   \
+  REGISTER_KERNEL_BUILDER(Name("Pad")                             \
+                              .Device(DEVICE_SYCL)                \
+                              .TypeConstraint<T>("T")             \
+                              .TypeConstraint<int32>("Tpaddings") \
+                              .HostMemory("paddings"),            \
+                          PadOp<SYCLDevice, T>)
+
+REGISTER_SYCL_KERNEL(float);
+REGISTER_SYCL_KERNEL(double);
+
+// A special GPU kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
+REGISTER_KERNEL_BUILDER(Name("Pad")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32>("Tpaddings")
+                            .HostMemory("input")
+                            .HostMemory("paddings")
+                            .HostMemory("output"),
+                        PadOp<CPUDevice, int32>);
+#endif // TENSORFLOW_USE_SYCL
 
 }  // end namespace tensorflow

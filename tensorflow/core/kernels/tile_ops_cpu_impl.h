@@ -71,6 +71,7 @@ typedef Eigen::SyclDevice SYCLDevice;
 
 TF_CALL_float(DEFINE_TYPE);
 TF_CALL_double(DEFINE_TYPE);
+TF_CALL_int32(DEFINE_TYPE);
 
 #undef DEFINE_DIM
 #undef DEFINE_TYPE
@@ -83,6 +84,7 @@ TF_CALL_double(DEFINE_TYPE);
 
 TF_CALL_float(DEFINE_TYPE);
 TF_CALL_double(DEFINE_TYPE);
+TF_CALL_int32(DEFINE_TYPE);
 
 #undef DEFINE_DIM
 #undef DEFINE_TYPE

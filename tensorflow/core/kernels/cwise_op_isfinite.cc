@@ -27,6 +27,7 @@ REGISTER3(UnaryOp, CPU, "IsFinite", functor::isfinite, float, Eigen::half,
                           .TypeConstraint<TYPE>("T"),                 \
                           UnaryOp<SYCLDevice, functor::isfinite<TYPE>>);
 REGISTER_SYCL_KERNEL(float);
+REGISTER_SYCL_KERNEL(double);
 #undef REGISTER_SYCL_KERNEL
 #endif // TENSORFLOW_USE_SYCL
 

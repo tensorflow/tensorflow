@@ -28,7 +28,15 @@ REGISTER5(BinaryOp, CPU, "Mul", functor::mul, float, Eigen::half, double,
                           .TypeConstraint<TYPE>("T"),                 \
                           BinaryOp<SYCLDevice, functor::mul<TYPE>>);
 REGISTER_SYCL_KERNEL(float)
+REGISTER_SYCL_KERNEL(double)
 #undef REGISTER_SYCL_KERNEL
+REGISTER_KERNEL_BUILDER(Name("Mul")
+                            .Device(DEVICE_SYCL)
+                            .HostMemory("x")
+                            .HostMemory("y")
+                            .HostMemory("z")
+                            .TypeConstraint<int32>("T"),
+                        BinaryOp<CPUDevice, functor::mul<int32>>);
 #endif // TENSORFLOW_USE_SYCL
 #if GOOGLE_CUDA
 REGISTER4(BinaryOp, GPU, "Mul", functor::mul, float, Eigen::half, double,

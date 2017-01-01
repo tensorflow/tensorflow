@@ -35,6 +35,9 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 #if GOOGLE_CUDA
 typedef Eigen::GpuDevice GPUDevice;
 #endif  // GOOGLE_CUDA
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif // TENSORFLOW_USE_SYCL
 
 enum AxisArgumentName { NAME_IS_AXIS, NAME_IS_CONCAT_DIM };
 
@@ -293,4 +296,12 @@ REGISTER_KERNEL_BUILDER(Name("ConcatOffset")
                             .HostMemory("offset"),
                         ConcatOffsetOp);
 
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("ConcatOffset")
+                            .Device(DEVICE_SYCL)
+                            .HostMemory("concat_dim")
+                            .HostMemory("shape")
+                            .HostMemory("offset"),
+                        ConcatOffsetOp);
+#endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

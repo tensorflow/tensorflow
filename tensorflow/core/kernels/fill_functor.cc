@@ -62,6 +62,8 @@ void SetZeroFunctor<Eigen::SyclDevice, T>::operator()(
 #define DEFINE_SETZERO_SYCL(T) \
   template struct SetZeroFunctor<Eigen::SyclDevice, T>;
 DEFINE_SETZERO_SYCL(float);
+DEFINE_SETZERO_SYCL(bool);
+DEFINE_SETZERO_SYCL(double);
 #undef DEFINE_SETZERO_SYCL
 #endif  // TENSORFLOW_USE_SYCL
 

@@ -27,6 +27,7 @@ REGISTER5(UnaryOp, CPU, "Cos", functor::cos, float, Eigen::half, double,
                           .TypeConstraint<TYPE>("T"),                 \
                           UnaryOp<SYCLDevice, functor::cos<TYPE>>);
 REGISTER_SYCL_KERNEL(float);
+REGISTER_SYCL_KERNEL(double);
 #undef REGISTER_SYCL_KERNEL
 #endif // TENSORFLOW_USE_SYCL
 

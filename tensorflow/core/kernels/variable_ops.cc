@@ -58,8 +58,9 @@ REGISTER_KERNEL_BUILDER(Name("IsVariableInitialized").Device(DEVICE_CPU),
                           IsVariableInitializedOp);
 
 REGISTER_SYCL_KERNEL(float);
+REGISTER_SYCL_KERNEL(double);
 #undef REGISTER_SYCL_KERNEL
-#endif
+#endif // TENSORFLOW_USE_SYCL
 
 #if GOOGLE_CUDA
 // Only register 'Variable' on GPU for the subset of types also supported by

@@ -27,6 +27,7 @@ REGISTER7(UnaryOp, CPU, "Square", functor::square, float, Eigen::half, double,
                           .TypeConstraint<TYPE>("T"),                 \
                           UnaryOp<SYCLDevice, functor::square<TYPE>>);
 REGISTER_SYCL_KERNEL(float);
+REGISTER_SYCL_KERNEL(double);
 #undef REGISTER_SYCL_KERNEL
 #endif // TENSORFLOW_USE_SYC
 

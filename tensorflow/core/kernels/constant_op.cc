@@ -57,7 +57,9 @@ REGISTER_KERNEL_BUILDER(Name("Const").Device(DEVICE_CPU), ConstantOp);
   REGISTER_KERNEL_BUILDER(                                             \
       Name("Const").Device(DEVICE_SYCL).TypeConstraint<TYPE>("dtype"), \
       ConstantOp);
-TF_CALL_NUMBER_TYPES(REGISTER_SYCL_KERNEL);
+REGISTER_SYCL_KERNEL(float);
+REGISTER_SYCL_KERNEL(double);
+REGISTER_SYCL_KERNEL(bool);
 #undef REGISTER_SYCL_KERNEL
 #endif
 
@@ -111,6 +113,17 @@ REGISTER_KERNEL_BUILDER(Name("Const")
                             .TypeConstraint<int32>("dtype"),
                         HostConstantOp);
 #endif
+
+#ifdef TENSORFLOW_USE_SYCL
+// A special GPU kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
+REGISTER_KERNEL_BUILDER(Name("Const")
+                            .Device(DEVICE_SYCL)
+                            .HostMemory("output")
+                            .TypeConstraint<int32>("dtype"),
+                        HostConstantOp);
+#endif // TENSORFLOW_USE_SYCL
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
@@ -186,6 +199,7 @@ REGISTER_KERNEL(CPU, quint8);
 
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL(SYCL, float)
+REGISTER_KERNEL(SYCL, double)
 REGISTER_KERNEL_BUILDER(Name("Fill")
                             .Device(DEVICE_SYCL)
                             .TypeConstraint<int32>("T")
@@ -245,6 +259,7 @@ TF_CALL_POD_STRING_TYPES(REGISTER_CPU);
 
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL(float, SYCL);
+REGISTER_KERNEL(bool, SYCL);
 REGISTER_KERNEL_BUILDER(Name("ZerosLike")
                             .Device(DEVICE_SYCL)
                             .TypeConstraint<int32>("T")

@@ -160,6 +160,7 @@ REGISTER_KERNEL_BUILDER(Name("Unpack")
       UnpackOp<SYCLDevice, type>)
 
 REGISTER_SYCL(float);
+REGISTER_SYCL(double);
 #undef REGISTER_SYCL
 
 // A special SYCL kernel for int32.

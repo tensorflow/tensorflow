@@ -26,6 +26,7 @@ REGISTER2(UnaryOp, CPU, "Tan", functor::tan, float, double);
                           .TypeConstraint<TYPE>("T"),                 \
                           UnaryOp<SYCLDevice, functor::tan<TYPE>>);
 REGISTER_SYCL_KERNEL(float);
+REGISTER_SYCL_KERNEL(double);
 #undef REGISTER_SYCL_KERNEL
 #endif // TENSORFLOW_USE_SYC
 
