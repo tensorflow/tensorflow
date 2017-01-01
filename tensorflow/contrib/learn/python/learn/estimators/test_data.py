@@ -19,33 +19,38 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+from tensorflow.contrib.learn.python.learn.datasets import base
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 
 
 def get_quantile_based_buckets(feature_values, num_buckets):
   quantiles = np.percentile(
-      np.array(feature_values), ([100 * (i + 1.) / (num_buckets + 1.)
-                                  for i in range(num_buckets)]))
+      np.array(feature_values),
+      ([100 * (i + 1.) / (num_buckets + 1.) for i in range(num_buckets)]))
   return list(quantiles)
 
 
 def prepare_iris_data_for_logistic_regression():
   # Converts iris data to a logistic regression problem.
-  iris = tf.contrib.learn.datasets.load_iris()
+  iris = base.load_iris()
   ids = np.where((iris.target == 0) | (iris.target == 1))
-  return tf.contrib.learn.datasets.base.Dataset(data=iris.data[ids],
-                                                target=iris.target[ids])
+  return base.Dataset(data=iris.data[ids], target=iris.target[ids])
 
 
 def iris_input_multiclass_fn():
-  iris = tf.contrib.learn.datasets.load_iris()
+  iris = base.load_iris()
   return {
-      'feature': tf.constant(iris.data, dtype=tf.float32)
-  }, tf.constant(iris.target, shape=(150, 1), dtype=tf.int32)
+      'feature': constant_op.constant(
+          iris.data, dtype=dtypes.float32)
+  }, constant_op.constant(
+      iris.target, shape=(150, 1), dtype=dtypes.int32)
 
 
 def iris_input_logistic_fn():
   iris = prepare_iris_data_for_logistic_regression()
   return {
-      'feature': tf.constant(iris.data, dtype=tf.float32)
-  }, tf.constant(iris.target, shape=(100, 1), dtype=tf.int32)
+      'feature': constant_op.constant(
+          iris.data, dtype=dtypes.float32)
+  }, constant_op.constant(
+      iris.target, shape=(100, 1), dtype=dtypes.int32)

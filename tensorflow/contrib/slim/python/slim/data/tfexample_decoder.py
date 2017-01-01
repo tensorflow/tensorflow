@@ -4,7 +4,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-# http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -206,8 +206,13 @@ class Tensor(ItemHandler):
 class SparseTensor(ItemHandler):
   """An ItemHandler for SparseTensors."""
 
-  def __init__(self, indices_key=None, values_key=None, shape_key=None,
-               shape=None, densify=False, default_value=0):
+  def __init__(self,
+               indices_key=None,
+               values_key=None,
+               shape_key=None,
+               shape=None,
+               densify=False,
+               default_value=0):
     """Initializes the Tensor handler.
 
     Args:
@@ -264,8 +269,7 @@ class SparseTensor(ItemHandler):
 class Image(ItemHandler):
   """An ItemHandler that decodes a parsed Tensor as an image."""
 
-  def __init__(self, image_key=None, format_key=None, shape=None,
-               channels=3):
+  def __init__(self, image_key=None, format_key=None, shape=None, channels=3):
     """Initializes the image.
 
     Args:
@@ -308,26 +312,32 @@ class Image(ItemHandler):
       A tensor that represents decoded image of self._shape, or
       (?, ?, self._channels) if self._shape is not specified.
     """
+
     def decode_png():
       return image_ops.decode_png(image_buffer, self._channels)
+
     def decode_raw():
       return parsing_ops.decode_raw(image_buffer, dtypes.uint8)
+
     def decode_jpg():
       return image_ops.decode_jpeg(image_buffer, self._channels)
 
     # For RGBA images JPEG is not a valid decoder option.
     if self._channels > 3:
       pred_fn_pairs = {
-        math_ops.logical_or(math_ops.equal(image_format, 'raw'),
-                            math_ops.equal(image_format, 'RAW')): decode_raw,
+          math_ops.logical_or(
+              math_ops.equal(image_format, 'raw'),
+              math_ops.equal(image_format, 'RAW')): decode_raw,
       }
       default_decoder = decode_png
     else:
       pred_fn_pairs = {
-        math_ops.logical_or(math_ops.equal(image_format, 'png'),
-                            math_ops.equal(image_format, 'PNG')): decode_png,
-        math_ops.logical_or(math_ops.equal(image_format, 'raw'),
-                            math_ops.equal(image_format, 'RAW')): decode_raw,
+          math_ops.logical_or(
+              math_ops.equal(image_format, 'png'),
+              math_ops.equal(image_format, 'PNG')): decode_png,
+          math_ops.logical_or(
+              math_ops.equal(image_format, 'raw'),
+              math_ops.equal(image_format, 'RAW')): decode_raw,
       }
       default_decoder = decode_jpg
 
@@ -389,9 +399,8 @@ class TFExampleDecoder(data_decoder.DataDecoder):
     Returns:
       the decoded items, a list of tensor.
     """
-    example = parsing_ops.parse_single_example(
-        serialized_example,
-        self._keys_to_features)
+    example = parsing_ops.parse_single_example(serialized_example,
+                                               self._keys_to_features)
 
     # Reshape non-sparse elements just once:
     for k in self._keys_to_features:

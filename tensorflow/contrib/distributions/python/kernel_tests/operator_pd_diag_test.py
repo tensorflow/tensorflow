@@ -20,10 +20,11 @@ from __future__ import print_function
 import abc
 import numpy as np
 import six
-import tensorflow as tf
 
 from tensorflow.contrib.distributions.python.ops import operator_pd_diag
 from tensorflow.contrib.distributions.python.ops import operator_test_util
+from tensorflow.python.ops import array_ops
+from tensorflow.python.platform import test
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -75,24 +76,24 @@ class OperatorPDDiagBaseTest(object):
       operator.to_dense().eval()  # Should not raise
 
 
-class OperatorPDDiagTest(
-    OperatorPDDiagBaseTest, operator_test_util.OperatorPDDerivedClassTest):
+class OperatorPDDiagTest(OperatorPDDiagBaseTest,
+                         operator_test_util.OperatorPDDerivedClassTest):
   """Most tests done in the base classes."""
 
   def _diag_to_matrix(self, diag):
-    return tf.matrix_diag(diag).eval()
+    return array_ops.matrix_diag(diag).eval()
 
   @property
   def operator_class(self):
     return operator_pd_diag.OperatorPDDiag
 
 
-class OperatorPDSqrtDiagTest(
-    OperatorPDDiagBaseTest, operator_test_util.OperatorPDDerivedClassTest):
+class OperatorPDSqrtDiagTest(OperatorPDDiagBaseTest,
+                             operator_test_util.OperatorPDDerivedClassTest):
   """Most tests done in the base classes."""
 
   def _diag_to_matrix(self, diag):
-    return tf.matrix_diag(diag**2).eval()
+    return array_ops.matrix_diag(diag**2).eval()
 
   @property
   def operator_class(self):
@@ -100,4 +101,4 @@ class OperatorPDSqrtDiagTest(
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

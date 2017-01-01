@@ -17,20 +17,22 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-
 from tensorflow.contrib.input_pipeline.python.ops import input_pipeline_ops
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
 
 
-class InputPipelineOpsTest(tf.test.TestCase):
+class InputPipelineOpsTest(test.TestCase):
 
   def testObtainNext(self):
     with self.test_session():
-      var = state_ops.variable_op([], tf.int64)
-      tf.assign(var, -1).op.run()
-      c = tf.constant(["a", "b"])
+      var = state_ops.variable_op([], dtypes.int64)
+      state_ops.assign(var, -1).op.run()
+      c = constant_op.constant(["a", "b"])
       sample1 = input_pipeline_ops.obtain_next(c, var)
       self.assertEqual(b"a", sample1.eval())
       self.assertEqual(0, var.eval())
@@ -45,7 +47,7 @@ class InputPipelineOpsTest(tf.test.TestCase):
     string_list = ["a", "b", "c"]
     with self.test_session() as session:
       elem = input_pipeline_ops.seek_next(string_list)
-      session.run([tf.global_variables_initializer()])
+      session.run([variables.global_variables_initializer()])
       self.assertEqual(b"a", session.run(elem))
       self.assertEqual(b"b", session.run(elem))
       self.assertEqual(b"c", session.run(elem))
@@ -65,18 +67,23 @@ class InputPipelineOpsTest(tf.test.TestCase):
     string_list = ["a", "b", "c"]
     with self.test_session() as session:
       elem = input_pipeline_ops.seek_next(string_list, num_epochs=1)
-      session.run(
-          [tf.local_variables_initializer(), tf.global_variables_initializer()])
+      session.run([
+          variables.local_variables_initializer(),
+          variables.global_variables_initializer()
+      ])
       self._assert_output([b"a", b"b", b"c"], session, elem)
 
   def testSeekNextLimitEpochsTwo(self):
     string_list = ["a", "b", "c"]
     with self.test_session() as session:
       elem = input_pipeline_ops.seek_next(string_list, num_epochs=2)
-      session.run(
-          [tf.local_variables_initializer(), tf.global_variables_initializer()])
+      session.run([
+          variables.local_variables_initializer(),
+          variables.global_variables_initializer()
+      ])
       # Expect to see [a, b, c] two times.
       self._assert_output([b"a", b"b", b"c"] * 2, session, elem)
 
+
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

@@ -670,15 +670,17 @@ class CursesUI(object):
       # redrawn.
       return self.CLI_TERMINATOR_KEY
     elif x == curses.KEY_MOUSE and self._mouse_enabled:
-      _, mouse_x, mouse_y, _, mouse_event_type = self._screen_getmouse()
+      try:
+        _, mouse_x, mouse_y, _, mouse_event_type = self._screen_getmouse()
+      except curses.error:
+        mouse_event_type = None
+
       if mouse_event_type == curses.BUTTON1_RELEASED:
         command = self._fetch_hyperlink_command(mouse_x, mouse_y)
         if command:
           self._auto_key_in(command)
           self._textbox_curr_terminator = x
           return self.CLI_TERMINATOR_KEY
-      # TODO(cais): Add support for mouse wheel events to support easier
-      # scrolling than PgDn/PgUp keys.
     else:
       # Mark the pending command as modified.
       self._textbox_pending_command_changed = True
@@ -946,11 +948,17 @@ class CursesUI(object):
               prefix="| ", divider=" | ", enabled_item_attrs=["underline"])
 
       self._main_menu_pad = self._screen_new_output_pad(1, self._max_x - 1)
+
+      # The unwrapped menu line may exceed screen width, in which case it needs
+      # to be cut off.
+      wrapped_menu, _ = debugger_cli_common.wrap_rich_text_lines(
+          self._main_menu, self._max_x - 2)
       self._screen_add_line_to_output_pad(
           self._main_menu_pad,
           0,
-          self._main_menu.lines[0],
-          color_segments=self._main_menu.font_attr_segs[0])
+          wrapped_menu.lines[0],
+          color_segments=(wrapped_menu.font_attr_segs[0]
+                          if 0 in wrapped_menu.font_attr_segs else None))
     else:
       self._main_menu = None
       self._main_menu_pad = None
@@ -1016,7 +1024,7 @@ class CursesUI(object):
 
     # Finally, draw all the segments.
     for segment, color_pair in zip(all_segments, all_color_pairs):
-      if segment[1] < self._max_x - 1:
+      if segment[1] < self._max_x:
         pad.addstr(row, segment[0], txt[segment[0]:segment[1]], color_pair)
 
   def _screen_scroll_output_pad(self, pad, viewport_top, viewport_left,

@@ -24,7 +24,6 @@ import tempfile
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
-import tensorflow as tf
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
@@ -42,6 +41,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
+from tensorflow.python.training import gradient_descent
 
 
 class SessionDebugTestBase(test_util.TensorFlowTestCase):
@@ -66,7 +66,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     self._dump_root = tempfile.mkdtemp()
 
   def tearDown(self):
-    tf.reset_default_graph()
+    ops.reset_default_graph()
 
     # Tear down temporary dump directory.
     if os.path.isdir(self._dump_root):
@@ -123,8 +123,9 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
           self._dump_root, partition_graphs=run_metadata.partition_graphs)
 
     simple_add_results = collections.namedtuple("SimpleAddResults", [
-        "u_init_val", "v_init_val", "u", "v", "w", "u_name", "v_name",
-        "w_name", "dump"])
+        "u_init_val", "v_init_val", "u", "v", "w", "u_name", "v_name", "w_name",
+        "dump"
+    ])
     return simple_add_results(u_init_val, v_init_val, u, v, w, u_name, v_name,
                               w_name, dump)
 
@@ -203,10 +204,12 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
       self.assertEqual(2, dump.size)
 
-      self.assertEqual([str1_init_val], dump.get_tensors("%s/read" % str1_name,
-                                                         0, "DebugIdentity"))
-      self.assertEqual([str2_init_val], dump.get_tensors("%s/read" % str2_name,
-                                                         0, "DebugIdentity"))
+      self.assertEqual([str1_init_val],
+                       dump.get_tensors("%s/read" % str1_name, 0,
+                                        "DebugIdentity"))
+      self.assertEqual([str2_init_val],
+                       dump.get_tensors("%s/read" % str2_name, 0,
+                                        "DebugIdentity"))
 
       self.assertGreaterEqual(
           dump.get_rel_timestamps("%s/read" % str1_name, 0, "DebugIdentity")[0],
@@ -345,10 +348,11 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       self.assertEqual(1 + 1 + num_iter + num_iter, dump.size)
 
       # Verify tensor values.
-      self.assertAllClose([u_init_val], dump.get_tensors(u_name, 0,
-                                                         "DebugIdentity"))
-      self.assertAllClose([v_init_val], dump.get_tensors("%s/read" % v_name, 0,
-                                                         "DebugIdentity"))
+      self.assertAllClose([u_init_val],
+                          dump.get_tensors(u_name, 0, "DebugIdentity"))
+      self.assertAllClose([v_init_val],
+                          dump.get_tensors("%s/read" % v_name, 0,
+                                           "DebugIdentity"))
 
       while_id_tensors = dump.get_tensors("while/Identity", 0, "DebugIdentity")
       self.assertEqual(10, len(while_id_tensors))
@@ -568,8 +572,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     self.assertEqual(
         set([u_name, u_read_name]), set(dump.transitive_inputs(v_name)))
     self.assertEqual(
-        set([u_name, u_read_name, v_name]),
-        set(dump.transitive_inputs(w_name)))
+        set([u_name, u_read_name, v_name]), set(dump.transitive_inputs(w_name)))
 
     with self.assertRaisesRegexp(ValueError,
                                  "does not exist in partition graphs"):
@@ -662,7 +665,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       w_name = "oneOfTwoSlots/w"
       y_name = "oneOfTwoSlots/y"
 
-      x = variables.Variable([1, 3, 3, 7], dtype=tf.int32, name=x_name)
+      x = variables.Variable([1, 3, 3, 7], dtype=dtypes.int32, name=x_name)
       sess.run(x.initializer)
 
       unique_x, indices, _ = array_ops.unique_with_counts(x, name=u_name)
@@ -739,8 +742,9 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       w = math_ops.multiply(u, v, name="gdo/w")
       # gdo stands for GradientDescentOptimizer.
 
-      train_op = tf.train.GradientDescentOptimizer(learning_rate=0.1).minimize(
-          w, name="gdo/train")
+      train_op = gradient_descent.GradientDescentOptimizer(
+          learning_rate=0.1).minimize(
+              w, name="gdo/train")
 
       u.initializer.run()
       v.initializer.run()
@@ -792,8 +796,8 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
       # The UniqueOp (tf.unique) has two output slots. Use only slot 0 in the
       # graph. Let the debugger watch the unused slot 1.
-      unique_x, _ = tf.unique(x, name="unconnected/unique_x")
-      y = tf.add(unique_x, [0, 1, 2], name="unconnected/y")
+      unique_x, _ = array_ops.unique(x, name="unconnected/unique_x")
+      y = math_ops.add(unique_x, [0, 1, 2], name="unconnected/y")
 
       x.initializer.run()
 
@@ -848,8 +852,8 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     """Test the debug tensor dumping when error occurs in graph runtime."""
 
     with session.Session() as sess:
-      ph = tf.placeholder(tf.float32, name="mismatch/ph")
-      x = tf.transpose(ph, name="mismatch/x")
+      ph = array_ops.placeholder(dtypes.float32, name="mismatch/ph")
+      x = array_ops.transpose(ph, name="mismatch/x")
       m = constant_op.constant(
           np.array(
               [[1.0, 2.0]], dtype=np.float32), name="mismatch/m")
@@ -937,10 +941,10 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
       # DebugNumericSummary output should reflect the uninitialized state of
       # the watched tensor.
-      numeric_summary = dump.get_tensors(
-          "numeric_summary_uninit/a", 0, "DebugNumericSummary")[0]
-      self.assertAllClose(
-          [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], numeric_summary[0:8])
+      numeric_summary = dump.get_tensors("numeric_summary_uninit/a", 0,
+                                         "DebugNumericSummary")[0]
+      self.assertAllClose([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                          numeric_summary[0:8])
       self.assertTrue(np.isinf(numeric_summary[8]))
       self.assertGreater(numeric_summary[8], 0.0)
       self.assertTrue(np.isinf(numeric_summary[9]))
@@ -978,8 +982,8 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
       # After setting the Python graph, attempts to look up nonexistent nodes
       # should lead to exceptions.
-      with self.assertRaisesRegexp(
-          KeyError, r"Cannot find node \"foo\" in Python graph"):
+      with self.assertRaisesRegexp(KeyError,
+                                   r"Cannot find node \"foo\" in Python graph"):
         dump.node_traceback("foo")
 
       # Lookup should work with node name input.

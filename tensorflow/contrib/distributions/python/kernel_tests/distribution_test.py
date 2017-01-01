@@ -16,39 +16,39 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+from tensorflow.contrib import distributions
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import random_ops
+from tensorflow.python.platform import test
 
-dists = tf.contrib.distributions
+dists = distributions
 
 
-class DistributionTest(tf.test.TestCase):
+class DistributionTest(test.TestCase):
 
   def testParamShapesAndFromParams(self):
     classes = [
-        dists.Normal,
-        dists.Bernoulli,
-        dists.Beta,
-        dists.Chi2,
-        dists.Exponential,
-        dists.Gamma,
-        dists.InverseGamma,
-        dists.Laplace,
-        dists.StudentT,
-        dists.Uniform]
+        dists.Normal, dists.Bernoulli, dists.Beta, dists.Chi2,
+        dists.Exponential, dists.Gamma, dists.InverseGamma, dists.Laplace,
+        dists.StudentT, dists.Uniform
+    ]
 
     sample_shapes = [(), (10,), (10, 20, 30)]
     with self.test_session():
       for cls in classes:
         for sample_shape in sample_shapes:
           param_shapes = cls.param_shapes(sample_shape)
-          params = dict([(name, tf.random_normal(shape))
+          params = dict([(name, random_ops.random_normal(shape))
                          for name, shape in param_shapes.items()])
           dist = cls(**params)
-          self.assertAllEqual(sample_shape, tf.shape(dist.sample()).eval())
+          self.assertAllEqual(sample_shape,
+                              array_ops.shape(dist.sample()).eval())
           dist_copy = dist.copy()
           self.assertAllEqual(sample_shape,
-                              tf.shape(dist_copy.sample()).eval())
+                              array_ops.shape(dist_copy.sample()).eval())
           self.assertEqual(dist.parameters, dist_copy.parameters)
 
   def testCopyExtraArgs(self):
@@ -57,8 +57,8 @@ class DistributionTest(tf.test.TestCase):
       # different initialization arguments. We therefore spot test a few.
       normal = dists.Normal(mu=1., sigma=2., validate_args=True)
       self.assertEqual(normal.parameters, normal.copy().parameters)
-      wishart = dists.WishartFull(df=2, scale=[[1., 2], [2, 5]],
-                                  validate_args=True)
+      wishart = dists.WishartFull(
+          df=2, scale=[[1., 2], [2, 5]], validate_args=True)
       self.assertEqual(wishart.parameters, wishart.copy().parameters)
 
   def testCopyOverride(self):
@@ -67,8 +67,8 @@ class DistributionTest(tf.test.TestCase):
       normal_copy = normal.copy(validate_args=False)
       base_params = normal.parameters.copy()
       copy_params = normal.copy(validate_args=False).parameters.copy()
-      self.assertNotEqual(base_params.pop("validate_args"),
-                          copy_params.pop("validate_args"))
+      self.assertNotEqual(
+          base_params.pop("validate_args"), copy_params.pop("validate_args"))
       self.assertEqual(base_params, copy_params)
 
   def testIsScalar(self):
@@ -76,23 +76,19 @@ class DistributionTest(tf.test.TestCase):
       mu = 1.
       sigma = 2.
 
-      normal = dists.Normal(mu, sigma,
-                            validate_args=True)
+      normal = dists.Normal(mu, sigma, validate_args=True)
       self.assertTrue(tensor_util.constant_value(normal.is_scalar_event))
       self.assertTrue(tensor_util.constant_value(normal.is_scalar_batch))
 
-      normal = dists.Normal([mu], [sigma],
-                            validate_args=True)
+      normal = dists.Normal([mu], [sigma], validate_args=True)
       self.assertTrue(tensor_util.constant_value(normal.is_scalar_event))
       self.assertFalse(tensor_util.constant_value(normal.is_scalar_batch))
 
-      mvn = dists.MultivariateNormalDiag([mu], [sigma],
-                                         validate_args=True)
+      mvn = dists.MultivariateNormalDiag([mu], [sigma], validate_args=True)
       self.assertFalse(tensor_util.constant_value(mvn.is_scalar_event))
       self.assertTrue(tensor_util.constant_value(mvn.is_scalar_batch))
 
-      mvn = dists.MultivariateNormalDiag([[mu]], [[sigma]],
-                                         validate_args=True)
+      mvn = dists.MultivariateNormalDiag([[mu]], [[sigma]], validate_args=True)
       self.assertFalse(tensor_util.constant_value(mvn.is_scalar_event))
       self.assertFalse(tensor_util.constant_value(mvn.is_scalar_batch))
 
@@ -100,24 +96,27 @@ class DistributionTest(tf.test.TestCase):
       # function.
 
       # Test case 1, 2.
-      x = tf.placeholder(dtype=tf.int32, shape=[])
+      x = array_ops.placeholder(dtype=dtypes.int32, shape=[])
       # None would fire an exception were it actually executed.
       self.assertTrue(normal._is_scalar_helper(x.get_shape, lambda: None))
-      self.assertTrue(normal._is_scalar_helper(lambda: tf.TensorShape(None),
-                                               lambda: tf.shape(x)))
+      self.assertTrue(
+          normal._is_scalar_helper(lambda: tensor_shape.TensorShape(None),
+                                   lambda: array_ops.shape(x)))
 
-      x = tf.placeholder(dtype=tf.int32, shape=[1])
+      x = array_ops.placeholder(dtype=dtypes.int32, shape=[1])
       # None would fire an exception were it actually executed.
       self.assertFalse(normal._is_scalar_helper(x.get_shape, lambda: None))
-      self.assertFalse(normal._is_scalar_helper(lambda: tf.TensorShape(None),
-                                                lambda: tf.shape(x)))
+      self.assertFalse(
+          normal._is_scalar_helper(lambda: tensor_shape.TensorShape(None),
+                                   lambda: array_ops.shape(x)))
 
       # Test case 3.
-      x = tf.placeholder(dtype=tf.int32)
-      is_scalar = normal._is_scalar_helper(x.get_shape, lambda: tf.shape(x))
+      x = array_ops.placeholder(dtype=dtypes.int32)
+      is_scalar = normal._is_scalar_helper(x.get_shape,
+                                           lambda: array_ops.shape(x))
       self.assertTrue(is_scalar.eval(feed_dict={x: 1}))
       self.assertFalse(is_scalar.eval(feed_dict={x: [1]}))
 
 
-if __name__ == '__main__':
-  tf.test.main()
+if __name__ == "__main__":
+  test.main()
