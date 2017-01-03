@@ -359,3 +359,27 @@ tf_cuda_cc_test(
         "@grpc//:grpc++_unsecure",
     ],
 )
+
+tf_cuda_cc_test(
+    name = "rpcbench_test",
+    size = "small",
+    srcs = ["rpcbench_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/distributed_runtime:server_lib",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_session",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_testlib_ops",
+        "//tensorflow/core/kernels:aggregate_ops",
+        "//tensorflow/core/kernels:array",
+    ],
+)
