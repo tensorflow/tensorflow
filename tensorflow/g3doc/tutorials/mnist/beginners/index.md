@@ -223,7 +223,7 @@ More compactly, we can just write:
 
 $$y = \text{softmax}(Wx + b)$$
 
-Now let's turn that into something that Tensorflow can use.
+Now let's turn that into something that TensorFlow can use.
 
 ## Implementing the Regression
 
