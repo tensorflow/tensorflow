@@ -177,7 +177,7 @@ class TextFileLineIterator
       return;
     }
     if (next_id_ >= vocab_size_) {
-      LOG(WARNING) << "Truncated " << filename_ << " before it's end at "
+      LOG(WARNING) << "Truncated " << filename_ << " before its end at "
                    << vocab_size_ << " records.";
       LOG(WARNING) << "next_id_  : " << next_id_;
       status_ = errors::OutOfRange("Finished reading ", vocab_size_,
