@@ -4,7 +4,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-# http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,10 +18,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+from tensorflow.contrib import layers
+from tensorflow.contrib.framework.python.ops import arg_scope
+from tensorflow.contrib.layers.python.layers import layers as layers_lib
+from tensorflow.contrib.layers.python.layers import regularizers
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import variable_scope
 
-slim = tf.contrib.slim
-trunc_normal = lambda stddev: tf.truncated_normal_initializer(0.0, stddev)
+trunc_normal = lambda stddev: init_ops.truncated_normal_initializer(0.0, stddev)
 
 
 def inception_v3_base(inputs,
@@ -94,343 +101,411 @@ def inception_v3_base(inputs,
     raise ValueError('depth_multiplier is not greater than zero.')
   depth = lambda d: max(int(d * depth_multiplier), min_depth)
 
-  with tf.variable_scope(scope, 'InceptionV3', [inputs]):
-    with slim.arg_scope([slim.conv2d, slim.max_pool2d, slim.avg_pool2d],
-                        stride=1, padding='VALID'):
+  with variable_scope.variable_scope(scope, 'InceptionV3', [inputs]):
+    with arg_scope(
+        [layers.conv2d, layers_lib.max_pool2d, layers_lib.avg_pool2d],
+        stride=1,
+        padding='VALID'):
       # 299 x 299 x 3
       end_point = 'Conv2d_1a_3x3'
-      net = slim.conv2d(inputs, depth(32), [3, 3], stride=2, scope=end_point)
+      net = layers.conv2d(inputs, depth(32), [3, 3], stride=2, scope=end_point)
       end_points[end_point] = net
-      if end_point == final_endpoint: return net, end_points
+      if end_point == final_endpoint:
+        return net, end_points
       # 149 x 149 x 32
       end_point = 'Conv2d_2a_3x3'
-      net = slim.conv2d(net, depth(32), [3, 3], scope=end_point)
+      net = layers.conv2d(net, depth(32), [3, 3], scope=end_point)
       end_points[end_point] = net
-      if end_point == final_endpoint: return net, end_points
+      if end_point == final_endpoint:
+        return net, end_points
       # 147 x 147 x 32
       end_point = 'Conv2d_2b_3x3'
-      net = slim.conv2d(net, depth(64), [3, 3], padding='SAME', scope=end_point)
+      net = layers.conv2d(
+          net, depth(64), [3, 3], padding='SAME', scope=end_point)
       end_points[end_point] = net
-      if end_point == final_endpoint: return net, end_points
+      if end_point == final_endpoint:
+        return net, end_points
       # 147 x 147 x 64
       end_point = 'MaxPool_3a_3x3'
-      net = slim.max_pool2d(net, [3, 3], stride=2, scope=end_point)
+      net = layers_lib.max_pool2d(net, [3, 3], stride=2, scope=end_point)
       end_points[end_point] = net
-      if end_point == final_endpoint: return net, end_points
+      if end_point == final_endpoint:
+        return net, end_points
       # 73 x 73 x 64
       end_point = 'Conv2d_3b_1x1'
-      net = slim.conv2d(net, depth(80), [1, 1], scope=end_point)
+      net = layers.conv2d(net, depth(80), [1, 1], scope=end_point)
       end_points[end_point] = net
-      if end_point == final_endpoint: return net, end_points
+      if end_point == final_endpoint:
+        return net, end_points
       # 73 x 73 x 80.
       end_point = 'Conv2d_4a_3x3'
-      net = slim.conv2d(net, depth(192), [3, 3], scope=end_point)
+      net = layers.conv2d(net, depth(192), [3, 3], scope=end_point)
       end_points[end_point] = net
-      if end_point == final_endpoint: return net, end_points
+      if end_point == final_endpoint:
+        return net, end_points
       # 71 x 71 x 192.
       end_point = 'MaxPool_5a_3x3'
-      net = slim.max_pool2d(net, [3, 3], stride=2, scope=end_point)
+      net = layers_lib.max_pool2d(net, [3, 3], stride=2, scope=end_point)
       end_points[end_point] = net
-      if end_point == final_endpoint: return net, end_points
+      if end_point == final_endpoint:
+        return net, end_points
       # 35 x 35 x 192.
 
     # Inception blocks
-    with slim.arg_scope([slim.conv2d, slim.max_pool2d, slim.avg_pool2d],
-                        stride=1, padding='SAME'):
+    with arg_scope(
+        [layers.conv2d, layers_lib.max_pool2d, layers_lib.avg_pool2d],
+        stride=1,
+        padding='SAME'):
       # mixed: 35 x 35 x 256.
       end_point = 'Mixed_5b'
-      with tf.variable_scope(end_point):
-        with tf.variable_scope('Branch_0'):
-          branch_0 = slim.conv2d(net, depth(64), [1, 1], scope='Conv2d_0a_1x1')
-        with tf.variable_scope('Branch_1'):
-          branch_1 = slim.conv2d(net, depth(48), [1, 1], scope='Conv2d_0a_1x1')
-          branch_1 = slim.conv2d(branch_1, depth(64), [5, 5],
-                                 scope='Conv2d_0b_5x5')
-        with tf.variable_scope('Branch_2'):
-          branch_2 = slim.conv2d(net, depth(64), [1, 1], scope='Conv2d_0a_1x1')
-          branch_2 = slim.conv2d(branch_2, depth(96), [3, 3],
-                                 scope='Conv2d_0b_3x3')
-          branch_2 = slim.conv2d(branch_2, depth(96), [3, 3],
-                                 scope='Conv2d_0c_3x3')
-        with tf.variable_scope('Branch_3'):
-          branch_3 = slim.avg_pool2d(net, [3, 3], scope='AvgPool_0a_3x3')
-          branch_3 = slim.conv2d(branch_3, depth(32), [1, 1],
-                                 scope='Conv2d_0b_1x1')
-        net = tf.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
+      with variable_scope.variable_scope(end_point):
+        with variable_scope.variable_scope('Branch_0'):
+          branch_0 = layers.conv2d(
+              net, depth(64), [1, 1], scope='Conv2d_0a_1x1')
+        with variable_scope.variable_scope('Branch_1'):
+          branch_1 = layers.conv2d(
+              net, depth(48), [1, 1], scope='Conv2d_0a_1x1')
+          branch_1 = layers.conv2d(
+              branch_1, depth(64), [5, 5], scope='Conv2d_0b_5x5')
+        with variable_scope.variable_scope('Branch_2'):
+          branch_2 = layers.conv2d(
+              net, depth(64), [1, 1], scope='Conv2d_0a_1x1')
+          branch_2 = layers.conv2d(
+              branch_2, depth(96), [3, 3], scope='Conv2d_0b_3x3')
+          branch_2 = layers.conv2d(
+              branch_2, depth(96), [3, 3], scope='Conv2d_0c_3x3')
+        with variable_scope.variable_scope('Branch_3'):
+          branch_3 = layers_lib.avg_pool2d(net, [3, 3], scope='AvgPool_0a_3x3')
+          branch_3 = layers.conv2d(
+              branch_3, depth(32), [1, 1], scope='Conv2d_0b_1x1')
+        net = array_ops.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
       end_points[end_point] = net
-      if end_point == final_endpoint: return net, end_points
+      if end_point == final_endpoint:
+        return net, end_points
 
       # mixed_1: 35 x 35 x 288.
       end_point = 'Mixed_5c'
-      with tf.variable_scope(end_point):
-        with tf.variable_scope('Branch_0'):
-          branch_0 = slim.conv2d(net, depth(64), [1, 1], scope='Conv2d_0a_1x1')
-        with tf.variable_scope('Branch_1'):
-          branch_1 = slim.conv2d(net, depth(48), [1, 1], scope='Conv2d_0b_1x1')
-          branch_1 = slim.conv2d(branch_1, depth(64), [5, 5],
-                                 scope='Conv_1_0c_5x5')
-        with tf.variable_scope('Branch_2'):
-          branch_2 = slim.conv2d(net, depth(64), [1, 1],
-                                 scope='Conv2d_0a_1x1')
-          branch_2 = slim.conv2d(branch_2, depth(96), [3, 3],
-                                 scope='Conv2d_0b_3x3')
-          branch_2 = slim.conv2d(branch_2, depth(96), [3, 3],
-                                 scope='Conv2d_0c_3x3')
-        with tf.variable_scope('Branch_3'):
-          branch_3 = slim.avg_pool2d(net, [3, 3], scope='AvgPool_0a_3x3')
-          branch_3 = slim.conv2d(branch_3, depth(64), [1, 1],
-                                 scope='Conv2d_0b_1x1')
-        net = tf.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
+      with variable_scope.variable_scope(end_point):
+        with variable_scope.variable_scope('Branch_0'):
+          branch_0 = layers.conv2d(
+              net, depth(64), [1, 1], scope='Conv2d_0a_1x1')
+        with variable_scope.variable_scope('Branch_1'):
+          branch_1 = layers.conv2d(
+              net, depth(48), [1, 1], scope='Conv2d_0b_1x1')
+          branch_1 = layers.conv2d(
+              branch_1, depth(64), [5, 5], scope='Conv_1_0c_5x5')
+        with variable_scope.variable_scope('Branch_2'):
+          branch_2 = layers.conv2d(
+              net, depth(64), [1, 1], scope='Conv2d_0a_1x1')
+          branch_2 = layers.conv2d(
+              branch_2, depth(96), [3, 3], scope='Conv2d_0b_3x3')
+          branch_2 = layers.conv2d(
+              branch_2, depth(96), [3, 3], scope='Conv2d_0c_3x3')
+        with variable_scope.variable_scope('Branch_3'):
+          branch_3 = layers_lib.avg_pool2d(net, [3, 3], scope='AvgPool_0a_3x3')
+          branch_3 = layers.conv2d(
+              branch_3, depth(64), [1, 1], scope='Conv2d_0b_1x1')
+        net = array_ops.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
       end_points[end_point] = net
-      if end_point == final_endpoint: return net, end_points
+      if end_point == final_endpoint:
+        return net, end_points
 
       # mixed_2: 35 x 35 x 288.
       end_point = 'Mixed_5d'
-      with tf.variable_scope(end_point):
-        with tf.variable_scope('Branch_0'):
-          branch_0 = slim.conv2d(net, depth(64), [1, 1], scope='Conv2d_0a_1x1')
-        with tf.variable_scope('Branch_1'):
-          branch_1 = slim.conv2d(net, depth(48), [1, 1], scope='Conv2d_0a_1x1')
-          branch_1 = slim.conv2d(branch_1, depth(64), [5, 5],
-                                 scope='Conv2d_0b_5x5')
-        with tf.variable_scope('Branch_2'):
-          branch_2 = slim.conv2d(net, depth(64), [1, 1], scope='Conv2d_0a_1x1')
-          branch_2 = slim.conv2d(branch_2, depth(96), [3, 3],
-                                 scope='Conv2d_0b_3x3')
-          branch_2 = slim.conv2d(branch_2, depth(96), [3, 3],
-                                 scope='Conv2d_0c_3x3')
-        with tf.variable_scope('Branch_3'):
-          branch_3 = slim.avg_pool2d(net, [3, 3], scope='AvgPool_0a_3x3')
-          branch_3 = slim.conv2d(branch_3, depth(64), [1, 1],
-                                 scope='Conv2d_0b_1x1')
-        net = tf.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
+      with variable_scope.variable_scope(end_point):
+        with variable_scope.variable_scope('Branch_0'):
+          branch_0 = layers.conv2d(
+              net, depth(64), [1, 1], scope='Conv2d_0a_1x1')
+        with variable_scope.variable_scope('Branch_1'):
+          branch_1 = layers.conv2d(
+              net, depth(48), [1, 1], scope='Conv2d_0a_1x1')
+          branch_1 = layers.conv2d(
+              branch_1, depth(64), [5, 5], scope='Conv2d_0b_5x5')
+        with variable_scope.variable_scope('Branch_2'):
+          branch_2 = layers.conv2d(
+              net, depth(64), [1, 1], scope='Conv2d_0a_1x1')
+          branch_2 = layers.conv2d(
+              branch_2, depth(96), [3, 3], scope='Conv2d_0b_3x3')
+          branch_2 = layers.conv2d(
+              branch_2, depth(96), [3, 3], scope='Conv2d_0c_3x3')
+        with variable_scope.variable_scope('Branch_3'):
+          branch_3 = layers_lib.avg_pool2d(net, [3, 3], scope='AvgPool_0a_3x3')
+          branch_3 = layers.conv2d(
+              branch_3, depth(64), [1, 1], scope='Conv2d_0b_1x1')
+        net = array_ops.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
       end_points[end_point] = net
-      if end_point == final_endpoint: return net, end_points
+      if end_point == final_endpoint:
+        return net, end_points
 
       # mixed_3: 17 x 17 x 768.
       end_point = 'Mixed_6a'
-      with tf.variable_scope(end_point):
-        with tf.variable_scope('Branch_0'):
-          branch_0 = slim.conv2d(net, depth(384), [3, 3], stride=2,
-                                 padding='VALID', scope='Conv2d_1a_1x1')
-        with tf.variable_scope('Branch_1'):
-          branch_1 = slim.conv2d(net, depth(64), [1, 1], scope='Conv2d_0a_1x1')
-          branch_1 = slim.conv2d(branch_1, depth(96), [3, 3],
-                                 scope='Conv2d_0b_3x3')
-          branch_1 = slim.conv2d(branch_1, depth(96), [3, 3], stride=2,
-                                 padding='VALID', scope='Conv2d_1a_1x1')
-        with tf.variable_scope('Branch_2'):
-          branch_2 = slim.max_pool2d(net, [3, 3], stride=2, padding='VALID',
-                                     scope='MaxPool_1a_3x3')
-        net = tf.concat_v2([branch_0, branch_1, branch_2], 3)
+      with variable_scope.variable_scope(end_point):
+        with variable_scope.variable_scope('Branch_0'):
+          branch_0 = layers.conv2d(
+              net,
+              depth(384), [3, 3],
+              stride=2,
+              padding='VALID',
+              scope='Conv2d_1a_1x1')
+        with variable_scope.variable_scope('Branch_1'):
+          branch_1 = layers.conv2d(
+              net, depth(64), [1, 1], scope='Conv2d_0a_1x1')
+          branch_1 = layers.conv2d(
+              branch_1, depth(96), [3, 3], scope='Conv2d_0b_3x3')
+          branch_1 = layers.conv2d(
+              branch_1,
+              depth(96), [3, 3],
+              stride=2,
+              padding='VALID',
+              scope='Conv2d_1a_1x1')
+        with variable_scope.variable_scope('Branch_2'):
+          branch_2 = layers_lib.max_pool2d(
+              net, [3, 3], stride=2, padding='VALID', scope='MaxPool_1a_3x3')
+        net = array_ops.concat_v2([branch_0, branch_1, branch_2], 3)
       end_points[end_point] = net
-      if end_point == final_endpoint: return net, end_points
+      if end_point == final_endpoint:
+        return net, end_points
 
       # mixed4: 17 x 17 x 768.
       end_point = 'Mixed_6b'
-      with tf.variable_scope(end_point):
-        with tf.variable_scope('Branch_0'):
-          branch_0 = slim.conv2d(net, depth(192), [1, 1], scope='Conv2d_0a_1x1')
-        with tf.variable_scope('Branch_1'):
-          branch_1 = slim.conv2d(net, depth(128), [1, 1], scope='Conv2d_0a_1x1')
-          branch_1 = slim.conv2d(branch_1, depth(128), [1, 7],
-                                 scope='Conv2d_0b_1x7')
-          branch_1 = slim.conv2d(branch_1, depth(192), [7, 1],
-                                 scope='Conv2d_0c_7x1')
-        with tf.variable_scope('Branch_2'):
-          branch_2 = slim.conv2d(net, depth(128), [1, 1], scope='Conv2d_0a_1x1')
-          branch_2 = slim.conv2d(branch_2, depth(128), [7, 1],
-                                 scope='Conv2d_0b_7x1')
-          branch_2 = slim.conv2d(branch_2, depth(128), [1, 7],
-                                 scope='Conv2d_0c_1x7')
-          branch_2 = slim.conv2d(branch_2, depth(128), [7, 1],
-                                 scope='Conv2d_0d_7x1')
-          branch_2 = slim.conv2d(branch_2, depth(192), [1, 7],
-                                 scope='Conv2d_0e_1x7')
-        with tf.variable_scope('Branch_3'):
-          branch_3 = slim.avg_pool2d(net, [3, 3], scope='AvgPool_0a_3x3')
-          branch_3 = slim.conv2d(branch_3, depth(192), [1, 1],
-                                 scope='Conv2d_0b_1x1')
-        net = tf.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
+      with variable_scope.variable_scope(end_point):
+        with variable_scope.variable_scope('Branch_0'):
+          branch_0 = layers.conv2d(
+              net, depth(192), [1, 1], scope='Conv2d_0a_1x1')
+        with variable_scope.variable_scope('Branch_1'):
+          branch_1 = layers.conv2d(
+              net, depth(128), [1, 1], scope='Conv2d_0a_1x1')
+          branch_1 = layers.conv2d(
+              branch_1, depth(128), [1, 7], scope='Conv2d_0b_1x7')
+          branch_1 = layers.conv2d(
+              branch_1, depth(192), [7, 1], scope='Conv2d_0c_7x1')
+        with variable_scope.variable_scope('Branch_2'):
+          branch_2 = layers.conv2d(
+              net, depth(128), [1, 1], scope='Conv2d_0a_1x1')
+          branch_2 = layers.conv2d(
+              branch_2, depth(128), [7, 1], scope='Conv2d_0b_7x1')
+          branch_2 = layers.conv2d(
+              branch_2, depth(128), [1, 7], scope='Conv2d_0c_1x7')
+          branch_2 = layers.conv2d(
+              branch_2, depth(128), [7, 1], scope='Conv2d_0d_7x1')
+          branch_2 = layers.conv2d(
+              branch_2, depth(192), [1, 7], scope='Conv2d_0e_1x7')
+        with variable_scope.variable_scope('Branch_3'):
+          branch_3 = layers_lib.avg_pool2d(net, [3, 3], scope='AvgPool_0a_3x3')
+          branch_3 = layers.conv2d(
+              branch_3, depth(192), [1, 1], scope='Conv2d_0b_1x1')
+        net = array_ops.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
       end_points[end_point] = net
-      if end_point == final_endpoint: return net, end_points
+      if end_point == final_endpoint:
+        return net, end_points
 
       # mixed_5: 17 x 17 x 768.
       end_point = 'Mixed_6c'
-      with tf.variable_scope(end_point):
-        with tf.variable_scope('Branch_0'):
-          branch_0 = slim.conv2d(net, depth(192), [1, 1], scope='Conv2d_0a_1x1')
-        with tf.variable_scope('Branch_1'):
-          branch_1 = slim.conv2d(net, depth(160), [1, 1], scope='Conv2d_0a_1x1')
-          branch_1 = slim.conv2d(branch_1, depth(160), [1, 7],
-                                 scope='Conv2d_0b_1x7')
-          branch_1 = slim.conv2d(branch_1, depth(192), [7, 1],
-                                 scope='Conv2d_0c_7x1')
-        with tf.variable_scope('Branch_2'):
-          branch_2 = slim.conv2d(net, depth(160), [1, 1], scope='Conv2d_0a_1x1')
-          branch_2 = slim.conv2d(branch_2, depth(160), [7, 1],
-                                 scope='Conv2d_0b_7x1')
-          branch_2 = slim.conv2d(branch_2, depth(160), [1, 7],
-                                 scope='Conv2d_0c_1x7')
-          branch_2 = slim.conv2d(branch_2, depth(160), [7, 1],
-                                 scope='Conv2d_0d_7x1')
-          branch_2 = slim.conv2d(branch_2, depth(192), [1, 7],
-                                 scope='Conv2d_0e_1x7')
-        with tf.variable_scope('Branch_3'):
-          branch_3 = slim.avg_pool2d(net, [3, 3], scope='AvgPool_0a_3x3')
-          branch_3 = slim.conv2d(branch_3, depth(192), [1, 1],
-                                 scope='Conv2d_0b_1x1')
-        net = tf.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
+      with variable_scope.variable_scope(end_point):
+        with variable_scope.variable_scope('Branch_0'):
+          branch_0 = layers.conv2d(
+              net, depth(192), [1, 1], scope='Conv2d_0a_1x1')
+        with variable_scope.variable_scope('Branch_1'):
+          branch_1 = layers.conv2d(
+              net, depth(160), [1, 1], scope='Conv2d_0a_1x1')
+          branch_1 = layers.conv2d(
+              branch_1, depth(160), [1, 7], scope='Conv2d_0b_1x7')
+          branch_1 = layers.conv2d(
+              branch_1, depth(192), [7, 1], scope='Conv2d_0c_7x1')
+        with variable_scope.variable_scope('Branch_2'):
+          branch_2 = layers.conv2d(
+              net, depth(160), [1, 1], scope='Conv2d_0a_1x1')
+          branch_2 = layers.conv2d(
+              branch_2, depth(160), [7, 1], scope='Conv2d_0b_7x1')
+          branch_2 = layers.conv2d(
+              branch_2, depth(160), [1, 7], scope='Conv2d_0c_1x7')
+          branch_2 = layers.conv2d(
+              branch_2, depth(160), [7, 1], scope='Conv2d_0d_7x1')
+          branch_2 = layers.conv2d(
+              branch_2, depth(192), [1, 7], scope='Conv2d_0e_1x7')
+        with variable_scope.variable_scope('Branch_3'):
+          branch_3 = layers_lib.avg_pool2d(net, [3, 3], scope='AvgPool_0a_3x3')
+          branch_3 = layers.conv2d(
+              branch_3, depth(192), [1, 1], scope='Conv2d_0b_1x1')
+        net = array_ops.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
       end_points[end_point] = net
-      if end_point == final_endpoint: return net, end_points
+      if end_point == final_endpoint:
+        return net, end_points
       # mixed_6: 17 x 17 x 768.
       end_point = 'Mixed_6d'
-      with tf.variable_scope(end_point):
-        with tf.variable_scope('Branch_0'):
-          branch_0 = slim.conv2d(net, depth(192), [1, 1], scope='Conv2d_0a_1x1')
-        with tf.variable_scope('Branch_1'):
-          branch_1 = slim.conv2d(net, depth(160), [1, 1], scope='Conv2d_0a_1x1')
-          branch_1 = slim.conv2d(branch_1, depth(160), [1, 7],
-                                 scope='Conv2d_0b_1x7')
-          branch_1 = slim.conv2d(branch_1, depth(192), [7, 1],
-                                 scope='Conv2d_0c_7x1')
-        with tf.variable_scope('Branch_2'):
-          branch_2 = slim.conv2d(net, depth(160), [1, 1], scope='Conv2d_0a_1x1')
-          branch_2 = slim.conv2d(branch_2, depth(160), [7, 1],
-                                 scope='Conv2d_0b_7x1')
-          branch_2 = slim.conv2d(branch_2, depth(160), [1, 7],
-                                 scope='Conv2d_0c_1x7')
-          branch_2 = slim.conv2d(branch_2, depth(160), [7, 1],
-                                 scope='Conv2d_0d_7x1')
-          branch_2 = slim.conv2d(branch_2, depth(192), [1, 7],
-                                 scope='Conv2d_0e_1x7')
-        with tf.variable_scope('Branch_3'):
-          branch_3 = slim.avg_pool2d(net, [3, 3], scope='AvgPool_0a_3x3')
-          branch_3 = slim.conv2d(branch_3, depth(192), [1, 1],
-                                 scope='Conv2d_0b_1x1')
-        net = tf.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
+      with variable_scope.variable_scope(end_point):
+        with variable_scope.variable_scope('Branch_0'):
+          branch_0 = layers.conv2d(
+              net, depth(192), [1, 1], scope='Conv2d_0a_1x1')
+        with variable_scope.variable_scope('Branch_1'):
+          branch_1 = layers.conv2d(
+              net, depth(160), [1, 1], scope='Conv2d_0a_1x1')
+          branch_1 = layers.conv2d(
+              branch_1, depth(160), [1, 7], scope='Conv2d_0b_1x7')
+          branch_1 = layers.conv2d(
+              branch_1, depth(192), [7, 1], scope='Conv2d_0c_7x1')
+        with variable_scope.variable_scope('Branch_2'):
+          branch_2 = layers.conv2d(
+              net, depth(160), [1, 1], scope='Conv2d_0a_1x1')
+          branch_2 = layers.conv2d(
+              branch_2, depth(160), [7, 1], scope='Conv2d_0b_7x1')
+          branch_2 = layers.conv2d(
+              branch_2, depth(160), [1, 7], scope='Conv2d_0c_1x7')
+          branch_2 = layers.conv2d(
+              branch_2, depth(160), [7, 1], scope='Conv2d_0d_7x1')
+          branch_2 = layers.conv2d(
+              branch_2, depth(192), [1, 7], scope='Conv2d_0e_1x7')
+        with variable_scope.variable_scope('Branch_3'):
+          branch_3 = layers_lib.avg_pool2d(net, [3, 3], scope='AvgPool_0a_3x3')
+          branch_3 = layers.conv2d(
+              branch_3, depth(192), [1, 1], scope='Conv2d_0b_1x1')
+        net = array_ops.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
       end_points[end_point] = net
-      if end_point == final_endpoint: return net, end_points
+      if end_point == final_endpoint:
+        return net, end_points
 
       # mixed_7: 17 x 17 x 768.
       end_point = 'Mixed_6e'
-      with tf.variable_scope(end_point):
-        with tf.variable_scope('Branch_0'):
-          branch_0 = slim.conv2d(net, depth(192), [1, 1], scope='Conv2d_0a_1x1')
-        with tf.variable_scope('Branch_1'):
-          branch_1 = slim.conv2d(net, depth(192), [1, 1], scope='Conv2d_0a_1x1')
-          branch_1 = slim.conv2d(branch_1, depth(192), [1, 7],
-                                 scope='Conv2d_0b_1x7')
-          branch_1 = slim.conv2d(branch_1, depth(192), [7, 1],
-                                 scope='Conv2d_0c_7x1')
-        with tf.variable_scope('Branch_2'):
-          branch_2 = slim.conv2d(net, depth(192), [1, 1], scope='Conv2d_0a_1x1')
-          branch_2 = slim.conv2d(branch_2, depth(192), [7, 1],
-                                 scope='Conv2d_0b_7x1')
-          branch_2 = slim.conv2d(branch_2, depth(192), [1, 7],
-                                 scope='Conv2d_0c_1x7')
-          branch_2 = slim.conv2d(branch_2, depth(192), [7, 1],
-                                 scope='Conv2d_0d_7x1')
-          branch_2 = slim.conv2d(branch_2, depth(192), [1, 7],
-                                 scope='Conv2d_0e_1x7')
-        with tf.variable_scope('Branch_3'):
-          branch_3 = slim.avg_pool2d(net, [3, 3], scope='AvgPool_0a_3x3')
-          branch_3 = slim.conv2d(branch_3, depth(192), [1, 1],
-                                 scope='Conv2d_0b_1x1')
-        net = tf.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
+      with variable_scope.variable_scope(end_point):
+        with variable_scope.variable_scope('Branch_0'):
+          branch_0 = layers.conv2d(
+              net, depth(192), [1, 1], scope='Conv2d_0a_1x1')
+        with variable_scope.variable_scope('Branch_1'):
+          branch_1 = layers.conv2d(
+              net, depth(192), [1, 1], scope='Conv2d_0a_1x1')
+          branch_1 = layers.conv2d(
+              branch_1, depth(192), [1, 7], scope='Conv2d_0b_1x7')
+          branch_1 = layers.conv2d(
+              branch_1, depth(192), [7, 1], scope='Conv2d_0c_7x1')
+        with variable_scope.variable_scope('Branch_2'):
+          branch_2 = layers.conv2d(
+              net, depth(192), [1, 1], scope='Conv2d_0a_1x1')
+          branch_2 = layers.conv2d(
+              branch_2, depth(192), [7, 1], scope='Conv2d_0b_7x1')
+          branch_2 = layers.conv2d(
+              branch_2, depth(192), [1, 7], scope='Conv2d_0c_1x7')
+          branch_2 = layers.conv2d(
+              branch_2, depth(192), [7, 1], scope='Conv2d_0d_7x1')
+          branch_2 = layers.conv2d(
+              branch_2, depth(192), [1, 7], scope='Conv2d_0e_1x7')
+        with variable_scope.variable_scope('Branch_3'):
+          branch_3 = layers_lib.avg_pool2d(net, [3, 3], scope='AvgPool_0a_3x3')
+          branch_3 = layers.conv2d(
+              branch_3, depth(192), [1, 1], scope='Conv2d_0b_1x1')
+        net = array_ops.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
       end_points[end_point] = net
-      if end_point == final_endpoint: return net, end_points
+      if end_point == final_endpoint:
+        return net, end_points
 
       # mixed_8: 8 x 8 x 1280.
       end_point = 'Mixed_7a'
-      with tf.variable_scope(end_point):
-        with tf.variable_scope('Branch_0'):
-          branch_0 = slim.conv2d(net, depth(192), [1, 1], scope='Conv2d_0a_1x1')
-          branch_0 = slim.conv2d(branch_0, depth(320), [3, 3], stride=2,
-                                 padding='VALID', scope='Conv2d_1a_3x3')
-        with tf.variable_scope('Branch_1'):
-          branch_1 = slim.conv2d(net, depth(192), [1, 1], scope='Conv2d_0a_1x1')
-          branch_1 = slim.conv2d(branch_1, depth(192), [1, 7],
-                                 scope='Conv2d_0b_1x7')
-          branch_1 = slim.conv2d(branch_1, depth(192), [7, 1],
-                                 scope='Conv2d_0c_7x1')
-          branch_1 = slim.conv2d(branch_1, depth(192), [3, 3], stride=2,
-                                 padding='VALID', scope='Conv2d_1a_3x3')
-        with tf.variable_scope('Branch_2'):
-          branch_2 = slim.max_pool2d(net, [3, 3], stride=2, padding='VALID',
-                                     scope='MaxPool_1a_3x3')
-        net = tf.concat_v2([branch_0, branch_1, branch_2], 3)
+      with variable_scope.variable_scope(end_point):
+        with variable_scope.variable_scope('Branch_0'):
+          branch_0 = layers.conv2d(
+              net, depth(192), [1, 1], scope='Conv2d_0a_1x1')
+          branch_0 = layers.conv2d(
+              branch_0,
+              depth(320), [3, 3],
+              stride=2,
+              padding='VALID',
+              scope='Conv2d_1a_3x3')
+        with variable_scope.variable_scope('Branch_1'):
+          branch_1 = layers.conv2d(
+              net, depth(192), [1, 1], scope='Conv2d_0a_1x1')
+          branch_1 = layers.conv2d(
+              branch_1, depth(192), [1, 7], scope='Conv2d_0b_1x7')
+          branch_1 = layers.conv2d(
+              branch_1, depth(192), [7, 1], scope='Conv2d_0c_7x1')
+          branch_1 = layers.conv2d(
+              branch_1,
+              depth(192), [3, 3],
+              stride=2,
+              padding='VALID',
+              scope='Conv2d_1a_3x3')
+        with variable_scope.variable_scope('Branch_2'):
+          branch_2 = layers_lib.max_pool2d(
+              net, [3, 3], stride=2, padding='VALID', scope='MaxPool_1a_3x3')
+        net = array_ops.concat_v2([branch_0, branch_1, branch_2], 3)
       end_points[end_point] = net
-      if end_point == final_endpoint: return net, end_points
+      if end_point == final_endpoint:
+        return net, end_points
       # mixed_9: 8 x 8 x 2048.
       end_point = 'Mixed_7b'
-      with tf.variable_scope(end_point):
-        with tf.variable_scope('Branch_0'):
-          branch_0 = slim.conv2d(net, depth(320), [1, 1], scope='Conv2d_0a_1x1')
-        with tf.variable_scope('Branch_1'):
-          branch_1 = slim.conv2d(net, depth(384), [1, 1], scope='Conv2d_0a_1x1')
-          branch_1 = tf.concat_v2(
+      with variable_scope.variable_scope(end_point):
+        with variable_scope.variable_scope('Branch_0'):
+          branch_0 = layers.conv2d(
+              net, depth(320), [1, 1], scope='Conv2d_0a_1x1')
+        with variable_scope.variable_scope('Branch_1'):
+          branch_1 = layers.conv2d(
+              net, depth(384), [1, 1], scope='Conv2d_0a_1x1')
+          branch_1 = array_ops.concat_v2(
               [
-                  slim.conv2d(
+                  layers.conv2d(
                       branch_1, depth(384), [1, 3], scope='Conv2d_0b_1x3'),
-                  slim.conv2d(
+                  layers.conv2d(
                       branch_1, depth(384), [3, 1], scope='Conv2d_0b_3x1')
               ],
               3)
-        with tf.variable_scope('Branch_2'):
-          branch_2 = slim.conv2d(net, depth(448), [1, 1], scope='Conv2d_0a_1x1')
-          branch_2 = slim.conv2d(
+        with variable_scope.variable_scope('Branch_2'):
+          branch_2 = layers.conv2d(
+              net, depth(448), [1, 1], scope='Conv2d_0a_1x1')
+          branch_2 = layers.conv2d(
               branch_2, depth(384), [3, 3], scope='Conv2d_0b_3x3')
-          branch_2 = tf.concat_v2(
+          branch_2 = array_ops.concat_v2(
               [
-                  slim.conv2d(
+                  layers.conv2d(
                       branch_2, depth(384), [1, 3], scope='Conv2d_0c_1x3'),
-                  slim.conv2d(
+                  layers.conv2d(
                       branch_2, depth(384), [3, 1], scope='Conv2d_0d_3x1')
               ],
               3)
-        with tf.variable_scope('Branch_3'):
-          branch_3 = slim.avg_pool2d(net, [3, 3], scope='AvgPool_0a_3x3')
-          branch_3 = slim.conv2d(
+        with variable_scope.variable_scope('Branch_3'):
+          branch_3 = layers_lib.avg_pool2d(net, [3, 3], scope='AvgPool_0a_3x3')
+          branch_3 = layers.conv2d(
               branch_3, depth(192), [1, 1], scope='Conv2d_0b_1x1')
-        net = tf.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
+        net = array_ops.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
       end_points[end_point] = net
-      if end_point == final_endpoint: return net, end_points
+      if end_point == final_endpoint:
+        return net, end_points
 
       # mixed_10: 8 x 8 x 2048.
       end_point = 'Mixed_7c'
-      with tf.variable_scope(end_point):
-        with tf.variable_scope('Branch_0'):
-          branch_0 = slim.conv2d(net, depth(320), [1, 1], scope='Conv2d_0a_1x1')
-        with tf.variable_scope('Branch_1'):
-          branch_1 = slim.conv2d(net, depth(384), [1, 1], scope='Conv2d_0a_1x1')
-          branch_1 = tf.concat_v2(
+      with variable_scope.variable_scope(end_point):
+        with variable_scope.variable_scope('Branch_0'):
+          branch_0 = layers.conv2d(
+              net, depth(320), [1, 1], scope='Conv2d_0a_1x1')
+        with variable_scope.variable_scope('Branch_1'):
+          branch_1 = layers.conv2d(
+              net, depth(384), [1, 1], scope='Conv2d_0a_1x1')
+          branch_1 = array_ops.concat_v2(
               [
-                  slim.conv2d(
+                  layers.conv2d(
                       branch_1, depth(384), [1, 3], scope='Conv2d_0b_1x3'),
-                  slim.conv2d(
+                  layers.conv2d(
                       branch_1, depth(384), [3, 1], scope='Conv2d_0c_3x1')
               ],
               3)
-        with tf.variable_scope('Branch_2'):
-          branch_2 = slim.conv2d(net, depth(448), [1, 1], scope='Conv2d_0a_1x1')
-          branch_2 = slim.conv2d(
+        with variable_scope.variable_scope('Branch_2'):
+          branch_2 = layers.conv2d(
+              net, depth(448), [1, 1], scope='Conv2d_0a_1x1')
+          branch_2 = layers.conv2d(
               branch_2, depth(384), [3, 3], scope='Conv2d_0b_3x3')
-          branch_2 = tf.concat_v2(
+          branch_2 = array_ops.concat_v2(
               [
-                  slim.conv2d(
+                  layers.conv2d(
                       branch_2, depth(384), [1, 3], scope='Conv2d_0c_1x3'),
-                  slim.conv2d(
+                  layers.conv2d(
                       branch_2, depth(384), [3, 1], scope='Conv2d_0d_3x1')
               ],
               3)
-        with tf.variable_scope('Branch_3'):
-          branch_3 = slim.avg_pool2d(net, [3, 3], scope='AvgPool_0a_3x3')
-          branch_3 = slim.conv2d(
+        with variable_scope.variable_scope('Branch_3'):
+          branch_3 = layers_lib.avg_pool2d(net, [3, 3], scope='AvgPool_0a_3x3')
+          branch_3 = layers.conv2d(
               branch_3, depth(192), [1, 1], scope='Conv2d_0b_1x1')
-        net = tf.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
+        net = array_ops.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
       end_points[end_point] = net
-      if end_point == final_endpoint: return net, end_points
+      if end_point == final_endpoint:
+        return net, end_points
     raise ValueError('Unknown final endpoint %s' % final_endpoint)
 
 
@@ -440,7 +515,7 @@ def inception_v3(inputs,
                  dropout_keep_prob=0.8,
                  min_depth=16,
                  depth_multiplier=1.0,
-                 prediction_fn=slim.softmax,
+                 prediction_fn=layers_lib.softmax,
                  spatial_squeeze=True,
                  reuse=None,
                  scope='InceptionV3'):
@@ -490,57 +565,79 @@ def inception_v3(inputs,
     raise ValueError('depth_multiplier is not greater than zero.')
   depth = lambda d: max(int(d * depth_multiplier), min_depth)
 
-  with tf.variable_scope(scope, 'InceptionV3', [inputs, num_classes],
-                         reuse=reuse) as scope:
-    with slim.arg_scope([slim.batch_norm, slim.dropout],
-                        is_training=is_training):
+  with variable_scope.variable_scope(
+      scope, 'InceptionV3', [inputs, num_classes], reuse=reuse) as scope:
+    with arg_scope(
+        [layers_lib.batch_norm, layers_lib.dropout], is_training=is_training):
       net, end_points = inception_v3_base(
-          inputs, scope=scope, min_depth=min_depth,
+          inputs,
+          scope=scope,
+          min_depth=min_depth,
           depth_multiplier=depth_multiplier)
 
       # Auxiliary Head logits
-      with slim.arg_scope([slim.conv2d, slim.max_pool2d, slim.avg_pool2d],
-                          stride=1, padding='SAME'):
+      with arg_scope(
+          [layers.conv2d, layers_lib.max_pool2d, layers_lib.avg_pool2d],
+          stride=1,
+          padding='SAME'):
         aux_logits = end_points['Mixed_6e']
-        with tf.variable_scope('AuxLogits'):
-          aux_logits = slim.avg_pool2d(
-              aux_logits, [5, 5], stride=3, padding='VALID',
+        with variable_scope.variable_scope('AuxLogits'):
+          aux_logits = layers_lib.avg_pool2d(
+              aux_logits, [5, 5],
+              stride=3,
+              padding='VALID',
               scope='AvgPool_1a_5x5')
-          aux_logits = slim.conv2d(aux_logits, depth(128), [1, 1],
-                                   scope='Conv2d_1b_1x1')
+          aux_logits = layers.conv2d(
+              aux_logits, depth(128), [1, 1], scope='Conv2d_1b_1x1')
 
           # Shape of feature map before the final layer.
-          kernel_size = _reduced_kernel_size_for_small_input(
-              aux_logits, [5, 5])
-          aux_logits = slim.conv2d(
-              aux_logits, depth(768), kernel_size,
+          kernel_size = _reduced_kernel_size_for_small_input(aux_logits, [5, 5])
+          aux_logits = layers.conv2d(
+              aux_logits,
+              depth(768),
+              kernel_size,
               weights_initializer=trunc_normal(0.01),
-              padding='VALID', scope='Conv2d_2a_{}x{}'.format(*kernel_size))
-          aux_logits = slim.conv2d(
-              aux_logits, num_classes, [1, 1], activation_fn=None,
-              normalizer_fn=None, weights_initializer=trunc_normal(0.001),
+              padding='VALID',
+              scope='Conv2d_2a_{}x{}'.format(*kernel_size))
+          aux_logits = layers.conv2d(
+              aux_logits,
+              num_classes, [1, 1],
+              activation_fn=None,
+              normalizer_fn=None,
+              weights_initializer=trunc_normal(0.001),
               scope='Conv2d_2b_1x1')
           if spatial_squeeze:
-            aux_logits = tf.squeeze(aux_logits, [1, 2], name='SpatialSqueeze')
+            aux_logits = array_ops.squeeze(
+                aux_logits, [1, 2], name='SpatialSqueeze')
           end_points['AuxLogits'] = aux_logits
 
       # Final pooling and prediction
-      with tf.variable_scope('Logits'):
+      with variable_scope.variable_scope('Logits'):
         kernel_size = _reduced_kernel_size_for_small_input(net, [8, 8])
-        net = slim.avg_pool2d(net, kernel_size, padding='VALID',
-                              scope='AvgPool_1a_{}x{}'.format(*kernel_size))
+        net = layers_lib.avg_pool2d(
+            net,
+            kernel_size,
+            padding='VALID',
+            scope='AvgPool_1a_{}x{}'.format(*kernel_size))
         # 1 x 1 x 2048
-        net = slim.dropout(net, keep_prob=dropout_keep_prob, scope='Dropout_1b')
+        net = layers_lib.dropout(
+            net, keep_prob=dropout_keep_prob, scope='Dropout_1b')
         end_points['PreLogits'] = net
         # 2048
-        logits = slim.conv2d(net, num_classes, [1, 1], activation_fn=None,
-                             normalizer_fn=None, scope='Conv2d_1c_1x1')
+        logits = layers.conv2d(
+            net,
+            num_classes, [1, 1],
+            activation_fn=None,
+            normalizer_fn=None,
+            scope='Conv2d_1c_1x1')
         if spatial_squeeze:
-          logits = tf.squeeze(logits, [1, 2], name='SpatialSqueeze')
+          logits = array_ops.squeeze(logits, [1, 2], name='SpatialSqueeze')
         # 1000
       end_points['Logits'] = logits
       end_points['Predictions'] = prediction_fn(logits, scope='Predictions')
   return logits, end_points
+
+
 inception_v3.default_image_size = 299
 
 
@@ -559,7 +656,8 @@ def _reduced_kernel_size_for_small_input(input_tensor, kernel_size):
 
   TODO(jrru): Make this function work with unknown shapes. Theoretically, this
   can be done with the code below. Problems are two-fold: (1) If the shape was
-  known, it will be lost. (2) inception.slim.ops._two_element_tuple cannot
+  known, it will be lost. (2) inception.tf.contrib.slim.ops._two_element_tuple
+  cannot
   handle tensors that define the kernel size.
       shape = tf.shape(input_tensor)
       return = tf.stack([tf.minimum(shape[1], kernel_size[0]),
@@ -570,8 +668,9 @@ def _reduced_kernel_size_for_small_input(input_tensor, kernel_size):
   if shape[1] is None or shape[2] is None:
     kernel_size_out = kernel_size
   else:
-    kernel_size_out = [min(shape[1], kernel_size[0]),
-                       min(shape[2], kernel_size[1])]
+    kernel_size_out = [
+        min(shape[1], kernel_size[0]), min(shape[2], kernel_size[1])
+    ]
   return kernel_size_out
 
 
@@ -595,7 +694,7 @@ def inception_v3_arg_scope(weight_decay=0.00004,
       # epsilon to prevent 0s in variance.
       'epsilon': 0.001,
       # collection containing update_ops.
-      'updates_collections': tf.GraphKeys.UPDATE_OPS,
+      'updates_collections': ops.GraphKeys.UPDATE_OPS,
       # collection containing the moving mean and moving variance.
       'variables_collections': {
           'beta': None,
@@ -606,12 +705,14 @@ def inception_v3_arg_scope(weight_decay=0.00004,
   }
 
   # Set weight_decay for weights in Conv and FC layers.
-  with slim.arg_scope([slim.conv2d, slim.fully_connected],
-                      weights_regularizer=slim.l2_regularizer(weight_decay)):
-    with slim.arg_scope(
-        [slim.conv2d],
-        weights_initializer=tf.truncated_normal_initializer(stddev=stddev),
-        activation_fn=tf.nn.relu,
-        normalizer_fn=slim.batch_norm,
+  with arg_scope(
+      [layers.conv2d, layers_lib.fully_connected],
+      weights_regularizer=regularizers.l2_regularizer(weight_decay)):
+    with arg_scope(
+        [layers.conv2d],
+        weights_initializer=init_ops.truncated_normal_initializer(
+            stddev=stddev),
+        activation_fn=nn_ops.relu,
+        normalizer_fn=layers_lib.batch_norm,
         normalizer_params=batch_norm_params) as sc:
       return sc

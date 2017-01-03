@@ -500,13 +500,8 @@ For NVidia GPU support install latest NVidia drivers and
 $ nvidia-docker run -it -p 8888:8888 gcr.io/tensorflow/tensorflow:latest-gpu
 ```
 
-Note: If you have a problem running `nvidia-docker`, you may try the old way
-we have used. But it is not recomended. If you find a bug in `nvidia-docker`, report
-it there please and try using the `nvidia-docker` as described above.
-
-    $ export CUDA_SO=$(\ls /usr/lib/x86_64-linux-gnu/libcuda.* | xargs -I{} echo '-v {}:{}')
-    $ export DEVICES=$(\ls /dev/nvidia* | xargs -I{} echo '--device {}:{}')
-    $ docker run -it -p 8888:8888 $CUDA_SO $DEVICES gcr.io/tensorflow/tensorflow:latest-gpu
+If you run into a problem running `nvidia-docker`, Please report an issue
+[here](https://github.com/NVIDIA/nvidia-docker/issues). 
 
 For more details see [TensorFlow docker
 readme](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/docker).

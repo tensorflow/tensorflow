@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """A simple script for inspect checkpoint files."""
 from __future__ import absolute_import
 from __future__ import division
@@ -20,13 +19,15 @@ from __future__ import print_function
 
 import sys
 
-import tensorflow as tf
+from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.platform import app
+from tensorflow.python.platform import flags
 
-FLAGS = tf.app.flags.FLAGS
-tf.app.flags.DEFINE_string("file_name", "", "Checkpoint filename")
-tf.app.flags.DEFINE_string("tensor_name", "", "Name of the tensor to inspect")
-tf.app.flags.DEFINE_bool("all_tensors", "False",
-                         "If True, print the values of all the tensors.")
+FLAGS = flags.FLAGS
+flags.DEFINE_string("file_name", "", "Checkpoint filename")
+flags.DEFINE_string("tensor_name", "", "Name of the tensor to inspect")
+flags.DEFINE_bool("all_tensors", "False",
+                  "If True, print the values of all the tensors.")
 
 
 def print_tensors_in_checkpoint_file(file_name, tensor_name):
@@ -42,7 +43,7 @@ def print_tensors_in_checkpoint_file(file_name, tensor_name):
     tensor_name: Name of the tensor in the checkpoint file to print.
   """
   try:
-    reader = tf.train.NewCheckpointReader(file_name)
+    reader = pywrap_tensorflow.NewCheckpointReader(file_name)
     if FLAGS.all_tensors:
       var_to_shape_map = reader.get_variable_to_shape_map()
       for key in var_to_shape_map:
@@ -68,5 +69,6 @@ def main(unused_argv):
   else:
     print_tensors_in_checkpoint_file(FLAGS.file_name, FLAGS.tensor_name)
 
+
 if __name__ == "__main__":
-  tf.app.run()
+  app.run()

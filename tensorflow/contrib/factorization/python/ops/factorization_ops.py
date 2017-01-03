@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Ops for matrix factorization."""
 
 from __future__ import absolute_import
@@ -23,14 +22,27 @@ import collections
 import numbers
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
-import tensorflow as tf
 
 # pylint: disable=wildcard-import,undefined-variable
-from tensorflow.contrib.factorization.python.ops.gen_factorization_ops import *
 # pylint: enable=wildcard-import
+
+from tensorflow.contrib.factorization.python.ops.gen_factorization_ops import *
 from tensorflow.contrib.util import loader
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import embedding_ops
+from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import resource_loader
 
 _factorization_ops = loader.load_op_library(
@@ -206,34 +218,28 @@ class WALSModel(object):
     self._num_col_shards = num_col_shards
     self._n_components = n_components
     self._unobserved_weight = unobserved_weight
-    self._regularization = (tf.diag(tf.constant(regularization,
-                                                shape=[self._n_components],
-                                                dtype=tf.float32))
+    self._regularization = (array_ops.diag(
+        constant_op.constant(
+            regularization, shape=[self._n_components], dtype=dtypes.float32))
                             if regularization is not None else None)
     assert (row_weights is None) == (col_weights is None)
-    self._row_weights = WALSModel._create_weights(row_weights,
-                                                  self._input_rows,
+    self._row_weights = WALSModel._create_weights(row_weights, self._input_rows,
                                                   self._num_row_shards,
                                                   "row_weights")
-    self._col_weights = WALSModel._create_weights(col_weights,
-                                                  self._input_cols,
+    self._col_weights = WALSModel._create_weights(col_weights, self._input_cols,
                                                   self._num_col_shards,
                                                   "col_weights")
     self._use_factors_weights_cache = use_factors_weights_cache
     self._row_factors = self._create_factors(self._input_rows,
                                              self._n_components,
-                                             self._num_row_shards,
-                                             row_init,
+                                             self._num_row_shards, row_init,
                                              "row_factors")
     self._col_factors = self._create_factors(self._input_cols,
                                              self._n_components,
-                                             self._num_col_shards,
-                                             col_init,
+                                             self._num_col_shards, col_init,
                                              "col_factors")
-    self._row_gramian = self._create_gramian(self._n_components,
-                                             "row_gramian")
-    self._col_gramian = self._create_gramian(self._n_components,
-                                             "col_gramian")
+    self._row_gramian = self._create_gramian(self._n_components, "row_gramian")
+    self._col_gramian = self._create_gramian(self._n_components, "col_gramian")
     self._row_update_prep_gramian = self._prepare_gramian(self._col_factors,
                                                           self._col_gramian)
     self._col_update_prep_gramian = self._prepare_gramian(self._row_factors,
@@ -268,7 +274,7 @@ class WALSModel(object):
     if self._row_weights is not None:
       assert self._col_weights is not None
       all_vars.extend(self._row_weights + self._col_weights)
-    return tf.variables_initializer(all_vars)
+    return variables.variables_initializer(all_vars)
 
   @classmethod
   def _shard_sizes(cls, dims, num_shards):
@@ -292,20 +298,21 @@ class WALSModel(object):
     assert len(sizes) == num_shards
 
     def make_initializer(i, size):
+
       def initializer():
         if init == "random":
-          return tf.random_normal([size, cols])
+          return random_ops.random_normal([size, cols])
         else:
           return init[i]
+
       return initializer
 
     for i, size in enumerate(sizes):
       var_name = "%s_shard_%d" % (name, i)
       var_init = make_initializer(i, size)
-      sharded_matrix.append(tf.Variable(
-          var_init,
-          dtype=tf.float32,
-          name=var_name))
+      sharded_matrix.append(
+          variables.Variable(
+              var_init, dtype=dtypes.float32, name=var_name))
 
     return sharded_matrix
 
@@ -349,21 +356,22 @@ class WALSModel(object):
     assert len(sizes) == num_shards
 
     def make_wt_initializer(i, size):
+
       def initializer():
         if init_mode == "scalar":
-          return wt_init * tf.ones([size])
+          return wt_init * array_ops.ones([size])
         else:
           return wt_init[i]
+
       return initializer
 
     sharded_weight = []
     for i, size in enumerate(sizes):
       var_name = "%s_shard_%d" % (name, i)
       var_init = make_wt_initializer(i, size)
-      sharded_weight.append(tf.Variable(
-          var_init,
-          dtype=tf.float32,
-          name=var_name))
+      sharded_weight.append(
+          variables.Variable(
+              var_init, dtype=dtypes.float32, name=var_name))
 
     return sharded_weight
 
@@ -379,18 +387,20 @@ class WALSModel(object):
     Returns:
       A gramian Tensor with shape of [n_components, n_components].
     """
-    return tf.Variable(tf.zeros([n_components, n_components]),
-                       dtype=tf.float32,
-                       name=name)
+    return variables.Variable(
+        array_ops.zeros([n_components, n_components]),
+        dtype=dtypes.float32,
+        name=name)
 
   @staticmethod
   def _transient_var(name):
     """Helper function to create a Variable."""
-    return tf.Variable(1.0,
-                       trainable=False,
-                       collections=[tf.GraphKeys.LOCAL_VARIABLES],
-                       validate_shape=False,
-                       name=name)
+    return variables.Variable(
+        1.0,
+        trainable=False,
+        collections=[ops.GraphKeys.LOCAL_VARIABLES],
+        validate_shape=False,
+        name=name)
 
   def _prepare_gramian(self, factors, gramian):
     """Helper function to create ops to prepare/calculate gramian.
@@ -406,10 +416,11 @@ class WALSModel(object):
     partial_gramians = []
     for f in factors:
       with ops.colocate_with(f):
-        partial_gramians.append(tf.matmul(f, f, transpose_a=True))
+        partial_gramians.append(math_ops.matmul(f, f, transpose_a=True))
 
     with ops.colocate_with(gramian):
-      prep_gramian = tf.assign(gramian, tf.add_n(partial_gramians)).op
+      prep_gramian = state_ops.assign(gramian,
+                                      math_ops.add_n(partial_gramians)).op
 
     return prep_gramian
 
@@ -440,28 +451,30 @@ class WALSModel(object):
       return None, None, None
     elif pass_through:
       cache = var
-      cache_init = tf.no_op()
-      cache_reset = tf.no_op()
-    elif isinstance(var, tf.Variable):
+      cache_init = control_flow_ops.no_op()
+      cache_reset = control_flow_ops.no_op()
+    elif isinstance(var, variables.Variable):
       cache = WALSModel._transient_var(name=name)
       with ops.colocate_with(cache):
-        cache_init = tf.assign(cache, var, validate_shape=False)
-        cache_reset = tf.assign(cache, 1.0, validate_shape=False)
+        cache_init = state_ops.assign(cache, var, validate_shape=False)
+        cache_reset = state_ops.assign(cache, 1.0, validate_shape=False)
     else:
       assert isinstance(var, list)
       assert var
-      cache = [WALSModel._transient_var(name='%s_shard_%d' % (name, i))
-               for i in xrange(len(var))]
+      cache = [
+          WALSModel._transient_var(name="%s_shard_%d" % (name, i))
+          for i in xrange(len(var))
+      ]
       reset_ops = []
       for i, c in enumerate(cache):
         with ops.colocate_with(c):
           if i == 0:
-            cache_init = tf.assign(c, var[i], validate_shape=False)
+            cache_init = state_ops.assign(c, var[i], validate_shape=False)
           else:
             with ops.control_dependencies([cache_init]):
-              cache_init = tf.assign(c, var[i], validate_shape=False)
-          reset_ops.append(tf.assign(c, 1.0, validate_shape=False))
-      cache_reset = tf.group(*reset_ops)
+              cache_init = state_ops.assign(c, var[i], validate_shape=False)
+          reset_ops.append(state_ops.assign(c, 1.0, validate_shape=False))
+      cache_reset = control_flow_ops.group(*reset_ops)
 
     return cache, cache_init, cache_reset
 
@@ -475,57 +488,48 @@ class WALSModel(object):
     use_factors_weights_cache is True.
     """
 
-    (self._row_factors_cache,
-     row_factors_cache_init,
+    (self._row_factors_cache, row_factors_cache_init,
      row_factors_cache_reset) = self._cached_copy(
          self._row_factors,
          "row_factors_cache",
          pass_through=not self._use_factors_weights_cache)
-    (self._col_factors_cache,
-     col_factors_cache_init,
+    (self._col_factors_cache, col_factors_cache_init,
      col_factors_cache_reset) = self._cached_copy(
          self._col_factors,
          "col_factors_cache",
          pass_through=not self._use_factors_weights_cache)
-    (self._row_wt_cache,
-     row_wt_cache_init,
-     _) = self._cached_copy(self._row_weights,
-                            "row_wt_cache",
-                            pass_through=not self._use_factors_weights_cache)
+    (self._row_wt_cache, row_wt_cache_init, _) = self._cached_copy(
+        self._row_weights,
+        "row_wt_cache",
+        pass_through=not self._use_factors_weights_cache)
 
-    (self._col_wt_cache,
-     col_wt_cache_init,
-     _) = self._cached_copy(self._col_weights,
-                            "col_wt_cache",
-                            pass_through=not self._use_factors_weights_cache)
+    (self._col_wt_cache, col_wt_cache_init, _) = self._cached_copy(
+        self._col_weights,
+        "col_wt_cache",
+        pass_through=not self._use_factors_weights_cache)
 
-    (self._row_gramian_cache,
-     row_gramian_cache_init,
-     row_gramian_cache_reset) = self._cached_copy(self._row_gramian,
-                                                  "row_gramian_cache",
-                                                  pass_through=False)
-    (self._col_gramian_cache,
-     col_gramian_cache_init,
-     col_gramian_cache_reset) = self._cached_copy(self._col_gramian,
-                                                  "col_gramian_cache",
-                                                  pass_through=False)
+    (self._row_gramian_cache, row_gramian_cache_init,
+     row_gramian_cache_reset) = self._cached_copy(
+         self._row_gramian, "row_gramian_cache", pass_through=False)
+    (self._col_gramian_cache, col_gramian_cache_init,
+     col_gramian_cache_reset) = self._cached_copy(
+         self._col_gramian, "col_gramian_cache", pass_through=False)
 
-    self._row_updates_init = tf.group(col_factors_cache_init,
-                                      row_factors_cache_reset,
-                                      col_gramian_cache_init,
-                                      row_gramian_cache_reset)
-    self._col_updates_init = tf.group(row_factors_cache_init,
-                                      col_factors_cache_reset,
-                                      row_gramian_cache_init,
-                                      col_gramian_cache_reset)
+    self._row_updates_init = control_flow_ops.group(col_factors_cache_init,
+                                                    row_factors_cache_reset,
+                                                    col_gramian_cache_init,
+                                                    row_gramian_cache_reset)
+    self._col_updates_init = control_flow_ops.group(row_factors_cache_init,
+                                                    col_factors_cache_reset,
+                                                    row_gramian_cache_init,
+                                                    col_gramian_cache_reset)
 
     if self._row_wt_cache is not None:
       assert self._col_wt_cache is not None
-      self._worker_init = tf.group(row_wt_cache_init,
-                                   col_wt_cache_init,
-                                   name="worker_init")
+      self._worker_init = control_flow_ops.group(
+          row_wt_cache_init, col_wt_cache_init, name="worker_init")
     else:
-      self._worker_init = tf.no_op(name="worker_init")
+      self._worker_init = control_flow_ops.no_op(name="worker_init")
 
   @property
   def worker_init(self):
@@ -550,7 +554,6 @@ class WALSModel(object):
     """
     return self._col_update_prep_gramian
 
-
   @property
   def initialize_row_update_op(self):
     """Op to initialize worker state before starting row updates."""
@@ -564,17 +567,20 @@ class WALSModel(object):
   @staticmethod
   def _get_sharding_func(size, num_shards):
     """Create sharding function for scatter update."""
+
     def func(ids):
       if num_shards == 1:
         return None, ids
       else:
         ids_per_shard = size // num_shards
         extras = size % num_shards
-        assignments = tf.maximum(ids // (ids_per_shard + 1),
-                                 (ids - extras) // ids_per_shard)
-        new_ids = tf.where(assignments < extras, ids % (ids_per_shard + 1),
-                           (ids - extras) % ids_per_shard)
+        assignments = math_ops.maximum(ids // (ids_per_shard + 1),
+                                       (ids - extras) // ids_per_shard)
+        new_ids = array_ops.where(assignments < extras,
+                                  ids % (ids_per_shard + 1),
+                                  (ids - extras) % ids_per_shard)
         return assignments, new_ids
+
     return func
 
   @classmethod
@@ -584,20 +590,22 @@ class WALSModel(object):
     if len(factor) == 1:
       with ops.colocate_with(factor[0]):
         # TODO(agarwal): assign instead of scatter update for full batch update.
-        return tf.scatter_update(factor[0], indices, values).op
+        return state_ops.scatter_update(factor[0], indices, values).op
     else:
       num_shards = len(factor)
       assignments, new_ids = sharding_func(indices)
       assert assignments is not None
-      assignments = tf.cast(assignments, tf.int32)
-      sharded_ids = tf.dynamic_partition(new_ids, assignments, num_shards)
-      sharded_values = tf.dynamic_partition(values, assignments, num_shards)
+      assignments = math_ops.cast(assignments, dtypes.int32)
+      sharded_ids = data_flow_ops.dynamic_partition(new_ids, assignments,
+                                                    num_shards)
+      sharded_values = data_flow_ops.dynamic_partition(values, assignments,
+                                                       num_shards)
       updates = []
       for i in xrange(num_shards):
-        updates.append(tf.scatter_update(factor[i],
-                                         sharded_ids[i],
-                                         sharded_values[i]))
-      return tf.group(*updates)
+        updates.append(
+            state_ops.scatter_update(factor[i], sharded_ids[i], sharded_values[
+                i]))
+      return control_flow_ops.group(*updates)
 
   def update_row_factors(self, sp_input=None, transpose_input=False):
     """Updates the row factors.
@@ -615,8 +623,8 @@ class WALSModel(object):
       update_op: An op that assigns the newly computed values to the row
         factors.
     """
-    return self._process_input_helper(True, sp_input=sp_input,
-                                      transpose_input=transpose_input)
+    return self._process_input_helper(
+        True, sp_input=sp_input, transpose_input=transpose_input)
 
   def update_col_factors(self, sp_input=None, transpose_input=False):
     """Updates the column factors.
@@ -634,10 +642,12 @@ class WALSModel(object):
       update_op: An op that assigns the newly computed values to the column
         factors.
     """
-    return self._process_input_helper(False, sp_input=sp_input,
-                                      transpose_input=transpose_input)
+    return self._process_input_helper(
+        False, sp_input=sp_input, transpose_input=transpose_input)
 
-  def project_row_factors(self, sp_input=None, transpose_input=False,
+  def project_row_factors(self,
+                          sp_input=None,
+                          transpose_input=False,
                           projection_weights=None):
     """Projects the row factors.
 
@@ -662,11 +672,15 @@ class WALSModel(object):
     """
     if projection_weights is None:
       projection_weights = 1
-    return self._process_input_helper(True, sp_input=sp_input,
-                                      transpose_input=transpose_input,
-                                      row_weights=projection_weights)[0]
+    return self._process_input_helper(
+        True,
+        sp_input=sp_input,
+        transpose_input=transpose_input,
+        row_weights=projection_weights)[0]
 
-  def project_col_factors(self, sp_input=None, transpose_input=False,
+  def project_col_factors(self,
+                          sp_input=None,
+                          transpose_input=False,
                           projection_weights=None):
     """Projects the column factors.
 
@@ -691,12 +705,16 @@ class WALSModel(object):
     """
     if projection_weights is None:
       projection_weights = 1
-    return self._process_input_helper(False, sp_input=sp_input,
-                                      transpose_input=transpose_input,
-                                      row_weights=projection_weights)[0]
+    return self._process_input_helper(
+        False,
+        sp_input=sp_input,
+        transpose_input=transpose_input,
+        row_weights=projection_weights)[0]
 
-  def _process_input_helper(self, update_row_factors,
-                            sp_input=None, transpose_input=False,
+  def _process_input_helper(self,
+                            update_row_factors,
+                            sp_input=None,
+                            transpose_input=False,
                             row_weights=None):
     """Creates the graph for processing a sparse slice of input.
 
@@ -721,7 +739,7 @@ class WALSModel(object):
       update_op: An op that assigns the newly computed values to the row/column
         factors.
     """
-    assert isinstance(sp_input, tf.SparseTensor)
+    assert isinstance(sp_input, sparse_tensor.SparseTensor)
 
     if update_row_factors:
       left = self._row_factors
@@ -746,32 +764,38 @@ class WALSModel(object):
     # We use tf.unique to achieve this reindexing. Note that this is done so
     # that the downstream kernel can assume that the input is "dense" along the
     # row dimension.
-    row_ids, col_ids = tf.split(
+    row_ids, col_ids = array_ops.split(
         value=sp_input.indices, num_or_size_splits=2, axis=1)
-    update_row_indices, all_row_ids = tf.unique(row_ids[:, 0])
-    update_col_indices, all_col_ids = tf.unique(col_ids[:, 0])
-    col_ids = tf.expand_dims(tf.cast(all_col_ids, tf.int64), 1)
-    row_ids = tf.expand_dims(tf.cast(all_row_ids, tf.int64), 1)
+    update_row_indices, all_row_ids = array_ops.unique(row_ids[:, 0])
+    update_col_indices, all_col_ids = array_ops.unique(col_ids[:, 0])
+    col_ids = array_ops.expand_dims(math_ops.cast(all_col_ids, dtypes.int64), 1)
+    row_ids = array_ops.expand_dims(math_ops.cast(all_row_ids, dtypes.int64), 1)
 
     if transpose_input:
       update_indices = update_col_indices
-      row_shape = [tf.cast(tf.shape(update_row_indices)[0], tf.int64)]
+      row_shape = [
+          math_ops.cast(array_ops.shape(update_row_indices)[0], dtypes.int64)
+      ]
       gather_indices = update_row_indices
     else:
       update_indices = update_row_indices
-      row_shape = [tf.cast(tf.shape(update_col_indices)[0], tf.int64)]
+      row_shape = [
+          math_ops.cast(array_ops.shape(update_col_indices)[0], dtypes.int64)
+      ]
       gather_indices = update_col_indices
 
-    num_rows = tf.cast(tf.shape(update_indices)[0], tf.int64)
+    num_rows = math_ops.cast(array_ops.shape(update_indices)[0], dtypes.int64)
     col_shape = [num_rows]
-    right = embedding_ops.embedding_lookup(right_factors, gather_indices,
-                                           partition_strategy='div')
-    new_sp_indices = tf.concat_v2([row_ids, col_ids], 1)
-    new_sp_shape = (tf.concat_v2([row_shape, col_shape], 0) if transpose_input
-                    else tf.concat_v2([col_shape, row_shape], 0))
-    new_sp_input = tf.SparseTensor(indices=new_sp_indices,
-                                   values=sp_input.values,
-                                   dense_shape=new_sp_shape)
+    right = embedding_ops.embedding_lookup(
+        right_factors, gather_indices, partition_strategy="div")
+    new_sp_indices = array_ops.concat_v2([row_ids, col_ids], 1)
+    new_sp_shape = (array_ops.concat_v2([row_shape, col_shape], 0) if
+                    transpose_input else
+                    array_ops.concat_v2([col_shape, row_shape], 0))
+    new_sp_input = sparse_tensor.SparseTensor(
+        indices=new_sp_indices,
+        values=sp_input.values,
+        dense_shape=new_sp_shape)
 
     # Compute lhs and rhs of the normal equations
     total_lhs = (self._unobserved_weight * gramian)
@@ -780,30 +804,30 @@ class WALSModel(object):
     if self._row_weights is None:
       # Special case of ALS. Use a much simpler update rule.
       total_rhs = (self._unobserved_weight *
-                   tf.sparse_tensor_dense_matmul(new_sp_input, right,
-                                                 adjoint_a=transpose_input))
+                   sparse_ops.sparse_tensor_dense_matmul(
+                       new_sp_input, right, adjoint_a=transpose_input))
       # TODO(rmlarsen): handle transposing in tf.matrix_solve instead of
       # transposing explicitly.
       # TODO(rmlarsen): multi-thread tf.matrix_solve.
-      new_left_values = tf.transpose(tf.matrix_solve(total_lhs,
-                                                     tf.transpose(total_rhs)))
+      new_left_values = array_ops.transpose(
+          linalg_ops.matrix_solve(total_lhs, array_ops.transpose(total_rhs)))
     else:
       if row_weights is None:
         # TODO(yifanchen): Add special handling for single shard without using
         # embedding_lookup and perform benchmarks for those cases. Same for
         # col_weights lookup below.
         row_weights_slice = embedding_ops.embedding_lookup(
-            row_wt, update_indices, partition_strategy='div')
+            row_wt, update_indices, partition_strategy="div")
       else:
         with ops.control_dependencies(
-            [tf.assert_less_equal(tf.rank(row_weights), 1)]):
-          row_weights_slice = tf.cond(tf.equal(tf.rank(row_weights), 0),
-                                      lambda: (tf.ones([tf.shape(
-                                          update_indices)[0]]) * row_weights),
-                                      lambda: tf.cast(row_weights, tf.float32))
+            [check_ops.assert_less_equal(array_ops.rank(row_weights), 1)]):
+          row_weights_slice = control_flow_ops.cond(
+              math_ops.equal(array_ops.rank(row_weights), 0),
+              lambda: (array_ops.ones([array_ops.shape(update_indices)[0]]) * row_weights),
+              lambda: math_ops.cast(row_weights, dtypes.float32))
 
       col_weights = embedding_ops.embedding_lookup(
-          col_wt, gather_indices, partition_strategy='div')
+          col_wt, gather_indices, partition_strategy="div")
       partial_lhs, total_rhs = wals_compute_partial_lhs_and_rhs(
           right,
           col_weights,
@@ -814,11 +838,11 @@ class WALSModel(object):
           num_rows,
           transpose_input,
           name="wals_compute_partial_lhs_rhs")
-      total_lhs = tf.expand_dims(total_lhs, 0) + partial_lhs
-      total_rhs = tf.expand_dims(total_rhs, -1)
-      new_left_values = tf.squeeze(tf.matrix_solve(total_lhs, total_rhs), [2])
+      total_lhs = array_ops.expand_dims(total_lhs, 0) + partial_lhs
+      total_rhs = array_ops.expand_dims(total_rhs, -1)
+      new_left_values = array_ops.squeeze(
+          linalg_ops.matrix_solve(total_lhs, total_rhs), [2])
 
-    return (new_left_values, self.scatter_update(left,
-                                                 update_indices,
+    return (new_left_values, self.scatter_update(left, update_indices,
                                                  new_left_values,
                                                  sharding_func))

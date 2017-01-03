@@ -41,27 +41,25 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-
+from tensorflow.python.framework import dtypes
+from tensorflow.python.platform import app
+from tensorflow.python.platform import flags
 from tensorflow.python.tools import strip_unused_lib
 
-
-FLAGS = tf.app.flags.FLAGS
-tf.app.flags.DEFINE_string("input_graph", "",
-                           """TensorFlow 'GraphDef' file to load.""")
-tf.app.flags.DEFINE_boolean("input_binary", False,
-                            """Whether the input files are in binary format.""")
-tf.app.flags.DEFINE_string("output_graph", "",
-                           """Output 'GraphDef' file name.""")
-tf.app.flags.DEFINE_boolean("output_binary", True,
-                            """Whether to write a binary format graph.""")
-tf.app.flags.DEFINE_string("input_node_names", "",
-                           """The name of the input nodes, comma separated.""")
-tf.app.flags.DEFINE_string("output_node_names", "",
-                           """The name of the output nodes, comma separated.""")
-tf.app.flags.DEFINE_integer("placeholder_type_enum",
-                            tf.float32.as_datatype_enum,
-                            """The AttrValue enum to use for placeholders.""")
+FLAGS = flags.FLAGS
+flags.DEFINE_string("input_graph", "",
+                    """TensorFlow 'GraphDef' file to load.""")
+flags.DEFINE_boolean("input_binary", False,
+                     """Whether the input files are in binary format.""")
+flags.DEFINE_string("output_graph", "", """Output 'GraphDef' file name.""")
+flags.DEFINE_boolean("output_binary", True,
+                     """Whether to write a binary format graph.""")
+flags.DEFINE_string("input_node_names", "",
+                    """The name of the input nodes, comma separated.""")
+flags.DEFINE_string("output_node_names", "",
+                    """The name of the output nodes, comma separated.""")
+flags.DEFINE_integer("placeholder_type_enum", dtypes.float32.as_datatype_enum,
+                     """The AttrValue enum to use for placeholders.""")
 
 
 def main(unused_args):
@@ -73,5 +71,6 @@ def main(unused_args):
                                            FLAGS.output_node_names,
                                            FLAGS.placeholder_type_enum)
 
+
 if __name__ == "__main__":
-  tf.app.run()
+  app.run()

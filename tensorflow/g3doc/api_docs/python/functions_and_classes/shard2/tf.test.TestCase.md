@@ -751,7 +751,15 @@ Fail immediately, with the given message.
 
 #### `tf.test.TestCase.get_temp_dir()` {#TestCase.get_temp_dir}
 
+Returns a unique temporary directory for the test to use.
 
+Across different test runs, this method will return a different folder.
+This will ensure that across different runs tests will not be able to
+pollute each others environment.
+
+##### Returns:
+
+  string, the path to the unique temporary directory created for this test.
 
 
 - - -

@@ -48,6 +48,12 @@ JNIEXPORT jint JNICALL TENSORFLOW_METHOD(initializeTensorFlow)(
 JNIEXPORT jint JNICALL TENSORFLOW_METHOD(runInference)(
     JNIEnv* env, jobject thiz, jobjectArray output_name_strings);
 
+JNIEXPORT void JNICALL TENSORFLOW_METHOD(enableStatLogging)(
+    JNIEnv* env, jobject thiz, jboolean enableStatLogging);
+
+JNIEXPORT jstring JNICALL TENSORFLOW_METHOD(getStatString)(JNIEnv* env,
+                                                           jobject thiz);
+
 JNIEXPORT jint JNICALL TENSORFLOW_METHOD(close)(JNIEnv* env, jobject thiz);
 
 FILL_NODE_SIGNATURE(Float, float);

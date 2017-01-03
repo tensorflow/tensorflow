@@ -4,7 +4,7 @@ set -e
 set -o pipefail
 
 # Find out the absolute path to where ./configure resides
-pushd `dirname $0` #> /dev/null
+pushd `dirname $0` > /dev/null
 SOURCE_BASE_DIR=`pwd -P`
 popd > /dev/null
 

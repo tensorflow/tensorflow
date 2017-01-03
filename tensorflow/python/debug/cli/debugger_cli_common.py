@@ -235,7 +235,8 @@ class RichTextLines(object):
     """
 
     self._lines.append(line)
-    self._font_attr_segs[len(self._lines) - 1] = font_attr_segs
+    if font_attr_segs:
+      self._font_attr_segs[len(self._lines) - 1] = font_attr_segs
 
   def prepend(self, line, font_attr_segs=None):
     """Prepend (i.e., add to the front) a single line of text.
@@ -261,6 +262,9 @@ class RichTextLines(object):
     with gfile.Open(file_path, "w") as f:
       for line in self._lines:
         f.write(line + "\n")
+
+  # TODO(cais): Add a method to allow appending to a line in RichTextLines with
+  # both text and font_attr_segs.
 
 
 def regex_find(orig_screen_output, regex, font_attr):

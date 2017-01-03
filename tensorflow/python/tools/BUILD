@@ -13,10 +13,7 @@ py_library(
     name = "freeze_graph_lib",
     srcs = ["freeze_graph.py"],
     srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:platform",
-    ],
+    deps = ["//tensorflow:tensorflow_py"],
 )
 
 py_binary(
@@ -24,9 +21,12 @@ py_binary(
     srcs = ["freeze_graph.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform",
+        "//tensorflow/python:training",
+        "@six_archive//:six",
     ],
 )
 
@@ -44,8 +44,6 @@ py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:session",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],
@@ -55,7 +53,10 @@ py_binary(
     name = "inspect_checkpoint",
     srcs = ["inspect_checkpoint.py"],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow:tensorflow_py"],
+    deps = [
+        "//tensorflow/python:platform",
+        "//tensorflow/python:pywrap_tensorflow",
+    ],
 )
 
 py_library(
@@ -63,7 +64,7 @@ py_library(
     srcs = ["strip_unused_lib.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform",
     ],
@@ -75,8 +76,9 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         ":strip_unused_lib",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
+        "@six_archive//:six",
     ],
 )
 
@@ -94,8 +96,6 @@ py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:session",
     ],
 )
 
@@ -106,9 +106,12 @@ py_library(
     deps = [
         ":strip_unused",
         ":strip_unused_lib",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
@@ -118,8 +121,11 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         ":optimize_for_inference_lib",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
+        "@six_archive//:six",
     ],
 )
 
@@ -135,12 +141,11 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:image_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:nn_ops_gen",
-        "//tensorflow/python:platform_test",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -149,7 +154,7 @@ py_binary(
     srcs = ["print_selective_registration_header.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = ["//tensorflow:tensorflow_py"],
+    deps = ["//tensorflow/python:platform"],
 )
 
 py_test(

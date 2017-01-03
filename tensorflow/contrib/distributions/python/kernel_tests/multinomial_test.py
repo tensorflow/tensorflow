@@ -17,12 +17,16 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+from tensorflow.contrib import distributions
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
 
-ds = tf.contrib.distributions
+ds = distributions
 
 
-class MultinomialTest(tf.test.TestCase):
+class MultinomialTest(test.TestCase):
 
   def setUp(self):
     self._rng = np.random.RandomState(42)
@@ -33,8 +37,8 @@ class MultinomialTest(tf.test.TestCase):
       dist = ds.Multinomial(n=1., p=p)
       self.assertEqual(3, dist.event_shape().eval())
       self.assertAllEqual([], dist.batch_shape().eval())
-      self.assertEqual(tf.TensorShape([3]), dist.get_event_shape())
-      self.assertEqual(tf.TensorShape([]), dist.get_batch_shape())
+      self.assertEqual(tensor_shape.TensorShape([3]), dist.get_event_shape())
+      self.assertEqual(tensor_shape.TensorShape([]), dist.get_batch_shape())
 
   def testComplexShapes(self):
     with self.test_session():
@@ -43,8 +47,8 @@ class MultinomialTest(tf.test.TestCase):
       dist = ds.Multinomial(n=n, p=p)
       self.assertEqual(2, dist.event_shape().eval())
       self.assertAllEqual([3, 2], dist.batch_shape().eval())
-      self.assertEqual(tf.TensorShape([2]), dist.get_event_shape())
-      self.assertEqual(tf.TensorShape([3, 2]), dist.get_batch_shape())
+      self.assertEqual(tensor_shape.TensorShape([2]), dist.get_event_shape())
+      self.assertEqual(tensor_shape.TensorShape([3, 2]), dist.get_batch_shape())
 
   def testN(self):
     p = [[0.1, 0.2, 0.7], [0.2, 0.3, 0.5]]
@@ -76,8 +80,7 @@ class MultinomialTest(tf.test.TestCase):
     p = [[0.1, 0.2, 0.7]]
     n = [[5.]]
     with self.test_session():
-      dist = ds.Multinomial(
-          n=n, p=p, validate_args=True)
+      dist = ds.Multinomial(n=n, p=p, validate_args=True)
       dist.pmf([2., 3, 0]).eval()
       dist.pmf([3., 0, 2]).eval()
       with self.assertRaisesOpError("Condition x >= 0.*"):
@@ -90,8 +93,7 @@ class MultinomialTest(tf.test.TestCase):
     n = [[5.]]
     with self.test_session():
       # No errors with integer n.
-      multinom = ds.Multinomial(
-          n=n, p=p, validate_args=True)
+      multinom = ds.Multinomial(n=n, p=p, validate_args=True)
       multinom.pmf([2., 1, 2]).eval()
       multinom.pmf([3., 0, 2]).eval()
       # Counts don't sum to n.
@@ -101,8 +103,7 @@ class MultinomialTest(tf.test.TestCase):
       with self.assertRaisesOpError("Condition x == y.*"):
         multinom.pmf([1.0, 2.5, 1.5]).eval()
 
-      multinom = ds.Multinomial(
-          n=n, p=p, validate_args=False)
+      multinom = ds.Multinomial(n=n, p=p, validate_args=False)
       multinom.pmf([1., 2., 2.]).eval()
       # Non-integer arguments work.
       multinom.pmf([1.0, 2.5, 1.5]).eval()
@@ -124,7 +125,7 @@ class MultinomialTest(tf.test.TestCase):
       dist = ds.Multinomial(n=5., p=p)
       pmf = dist.pmf(counts)
       # 5 choose 3 = 5 choose 2 = 10. 10 * (.9)^2 * (.1)^3 = 81/10000.
-      self.assertAllClose(81./10000, pmf.eval())
+      self.assertAllClose(81. / 10000, pmf.eval())
       self.assertEqual((), pmf.get_shape())
 
   def testPmfPStretchedInBroadcastWhenSameRank(self):
@@ -194,8 +195,9 @@ class MultinomialTest(tf.test.TestCase):
       n = 5.
       p = [0.1, 0.2, 0.7]
       dist = ds.Multinomial(n=n, p=p)
-      expected_variances = [
-          [9./20, -1/10, -7/20], [-1/10, 4/5, -7/10], [-7/20, -7/10, 21/20]]
+      expected_variances = [[9. / 20, -1 / 10, -7 / 20],
+                            [-1 / 10, 4 / 5, -7 / 10],
+                            [-7 / 20, -7 / 10, 21 / 20]]
       self.assertEqual((3, 3), dist.variance().get_shape())
       self.assertAllClose(expected_variances, dist.variance().eval())
 
@@ -207,7 +209,7 @@ class MultinomialTest(tf.test.TestCase):
       p = [[[0.1, 0.9]], [[0.1, 0.9]]] * 2
       dist = ds.Multinomial(n=n, p=p)
       # Shape [2, 2]
-      inner_var = [[9./20, -9/20], [-9/20, 9/20]]
+      inner_var = [[9. / 20, -9 / 20], [-9 / 20, 9 / 20]]
       # Shape [4, 2, 2, 2]
       expected_variances = [[inner_var, inner_var]] * 4
       self.assertEqual((4, 2, 2, 2), dist.variance().get_shape())
@@ -234,13 +236,15 @@ class MultinomialTest(tf.test.TestCase):
   def testSampleUnbiasedNonScalarBatch(self):
     with self.test_session() as sess:
       dist = ds.Multinomial(
-          n=5., logits=tf.log(2. * self._rng.rand(4, 3, 2).astype(np.float32)))
+          n=5.,
+          logits=math_ops.log(2. * self._rng.rand(4, 3, 2).astype(np.float32)))
       n = int(3e3)
       x = dist.sample(n, seed=0)
-      sample_mean = tf.reduce_mean(x, 0)
+      sample_mean = math_ops.reduce_mean(x, 0)
       # Cyclically rotate event dims left.
-      x_centered = tf.transpose(x - sample_mean, [1, 2, 3, 0])
-      sample_covariance = tf.matmul(x_centered, x_centered, adjoint_b=True) / n
+      x_centered = array_ops.transpose(x - sample_mean, [1, 2, 3, 0])
+      sample_covariance = math_ops.matmul(
+          x_centered, x_centered, adjoint_b=True) / n
       [
           sample_mean_,
           sample_covariance_,
@@ -253,21 +257,21 @@ class MultinomialTest(tf.test.TestCase):
           dist.variance(),
       ])
       self.assertAllEqual([4, 3, 2], sample_mean.get_shape())
-      self.assertAllClose(actual_mean_, sample_mean_,
-                          atol=0., rtol=0.07)
+      self.assertAllClose(actual_mean_, sample_mean_, atol=0., rtol=0.07)
       self.assertAllEqual([4, 3, 2, 2], sample_covariance.get_shape())
-      self.assertAllClose(actual_covariance_, sample_covariance_,
-                          atol=0., rtol=0.10)
+      self.assertAllClose(
+          actual_covariance_, sample_covariance_, atol=0., rtol=0.10)
 
   def testSampleUnbiasedScalarBatch(self):
     with self.test_session() as sess:
       dist = ds.Multinomial(
-          n=5., logits=tf.log(2. * self._rng.rand(4).astype(np.float32)))
+          n=5., logits=math_ops.log(2. * self._rng.rand(4).astype(np.float32)))
       n = int(5e3)
       x = dist.sample(n, seed=0)
-      sample_mean = tf.reduce_mean(x, 0)
+      sample_mean = math_ops.reduce_mean(x, 0)
       x_centered = x - sample_mean  # Already transposed to [n, 2].
-      sample_covariance = tf.matmul(x_centered, x_centered, adjoint_a=True) / n
+      sample_covariance = math_ops.matmul(
+          x_centered, x_centered, adjoint_a=True) / n
       [
           sample_mean_,
           sample_covariance_,
@@ -280,12 +284,11 @@ class MultinomialTest(tf.test.TestCase):
           dist.variance(),
       ])
       self.assertAllEqual([4], sample_mean.get_shape())
-      self.assertAllClose(actual_mean_, sample_mean_,
-                          atol=0., rtol=0.07)
+      self.assertAllClose(actual_mean_, sample_mean_, atol=0., rtol=0.07)
       self.assertAllEqual([4, 4], sample_covariance.get_shape())
-      self.assertAllClose(actual_covariance_, sample_covariance_,
-                          atol=0., rtol=0.10)
+      self.assertAllClose(
+          actual_covariance_, sample_covariance_, atol=0., rtol=0.10)
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

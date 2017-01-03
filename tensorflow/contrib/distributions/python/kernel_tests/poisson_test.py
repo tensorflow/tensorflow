@@ -19,37 +19,43 @@ from __future__ import print_function
 
 import numpy as np
 from scipy import stats
-import tensorflow as tf
+from tensorflow.contrib.distributions.python.ops import poisson as poisson_lib
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.platform import test
 
 
-class PoissonTest(tf.test.TestCase):
+class PoissonTest(test.TestCase):
 
   def testPoissonShape(self):
     with self.test_session():
-      lam = tf.constant([3.0] * 5)
-      poisson = tf.contrib.distributions.Poisson(lam=lam)
+      lam = constant_op.constant([3.0] * 5)
+      poisson = poisson_lib.Poisson(lam=lam)
 
       self.assertEqual(poisson.batch_shape().eval(), (5,))
-      self.assertEqual(poisson.get_batch_shape(), tf.TensorShape([5]))
+      self.assertEqual(poisson.get_batch_shape(), tensor_shape.TensorShape([5]))
       self.assertAllEqual(poisson.event_shape().eval(), [])
-      self.assertEqual(poisson.get_event_shape(), tf.TensorShape([]))
+      self.assertEqual(poisson.get_event_shape(), tensor_shape.TensorShape([]))
 
   def testInvalidLam(self):
-    invalid_lams = [-.01, 0, -2.,]
+    invalid_lams = [
+        -.01,
+        0,
+        -2.,
+    ]
     for lam in invalid_lams:
       with self.test_session():
         with self.assertRaisesOpError("Condition x > 0"):
-          poisson = tf.contrib.distributions.Poisson(
-              lam=lam, validate_args=True)
+          poisson = poisson_lib.Poisson(lam=lam, validate_args=True)
           poisson.lam.eval()
 
   def testPoissonLogPmf(self):
     with self.test_session():
       batch_size = 6
-      lam = tf.constant([3.0] * batch_size)
+      lam = constant_op.constant([3.0] * batch_size)
       lam_v = 3.0
       x = [2., 3., 4., 5., 6., 7.]
-      poisson = tf.contrib.distributions.Poisson(lam=lam)
+      poisson = poisson_lib.Poisson(lam=lam)
       log_pmf = poisson.log_pmf(x)
       self.assertEqual(log_pmf.get_shape(), (6,))
       self.assertAllClose(log_pmf.eval(), stats.poisson.logpmf(x, lam_v))
@@ -61,9 +67,9 @@ class PoissonTest(tf.test.TestCase):
   def testPoissonLogPmfValidateArgs(self):
     with self.test_session():
       batch_size = 6
-      lam = tf.constant([3.0] * batch_size)
+      lam = constant_op.constant([3.0] * batch_size)
       x = [2.5, 3.2, 4.3, 5.1, 6., 7.]
-      poisson = tf.contrib.distributions.Poisson(lam=lam, validate_args=True)
+      poisson = poisson_lib.Poisson(lam=lam, validate_args=True)
 
       # Non-integer
       with self.assertRaisesOpError("x has non-integer components"):
@@ -74,7 +80,7 @@ class PoissonTest(tf.test.TestCase):
         log_pmf = poisson.log_pmf([-1.])
         log_pmf.eval()
 
-      poisson = tf.contrib.distributions.Poisson(lam=lam, validate_args=False)
+      poisson = poisson_lib.Poisson(lam=lam, validate_args=False)
       log_pmf = poisson.log_pmf(x)
       self.assertEqual(log_pmf.get_shape(), (6,))
       pmf = poisson.pmf(x)
@@ -83,11 +89,11 @@ class PoissonTest(tf.test.TestCase):
   def testPoissonLogPmfMultidimensional(self):
     with self.test_session():
       batch_size = 6
-      lam = tf.constant([[2.0, 4.0, 5.0]] * batch_size)
+      lam = constant_op.constant([[2.0, 4.0, 5.0]] * batch_size)
       lam_v = [2.0, 4.0, 5.0]
       x = np.array([[2., 3., 4., 5., 6., 7.]], dtype=np.float32).T
 
-      poisson = tf.contrib.distributions.Poisson(lam=lam)
+      poisson = poisson_lib.Poisson(lam=lam)
       log_pmf = poisson.log_pmf(x)
       self.assertEqual(log_pmf.get_shape(), (6, 3))
       self.assertAllClose(log_pmf.eval(), stats.poisson.logpmf(x, lam_v))
@@ -99,11 +105,11 @@ class PoissonTest(tf.test.TestCase):
   def testPoissonCDF(self):
     with self.test_session():
       batch_size = 6
-      lam = tf.constant([3.0] * batch_size)
+      lam = constant_op.constant([3.0] * batch_size)
       lam_v = 3.0
       x = [2.2, 3.1, 4., 5.5, 6., 7.]
 
-      poisson = tf.contrib.distributions.Poisson(lam=lam)
+      poisson = poisson_lib.Poisson(lam=lam)
       log_cdf = poisson.log_cdf(x)
       self.assertEqual(log_cdf.get_shape(), (6,))
       self.assertAllClose(log_cdf.eval(), stats.poisson.logcdf(x, lam_v))
@@ -115,11 +121,11 @@ class PoissonTest(tf.test.TestCase):
   def testPoissonCdfMultidimensional(self):
     with self.test_session():
       batch_size = 6
-      lam = tf.constant([[2.0, 4.0, 5.0]] * batch_size)
+      lam = constant_op.constant([[2.0, 4.0, 5.0]] * batch_size)
       lam_v = [2.0, 4.0, 5.0]
       x = np.array([[2.2, 3.1, 4., 5.5, 6., 7.]], dtype=np.float32).T
 
-      poisson = tf.contrib.distributions.Poisson(lam=lam)
+      poisson = poisson_lib.Poisson(lam=lam)
       log_cdf = poisson.log_cdf(x)
       self.assertEqual(log_cdf.get_shape(), (6, 3))
       self.assertAllClose(log_cdf.eval(), stats.poisson.logcdf(x, lam_v))
@@ -131,7 +137,7 @@ class PoissonTest(tf.test.TestCase):
   def testPoissonMean(self):
     with self.test_session():
       lam_v = [1.0, 3.0, 2.5]
-      poisson = tf.contrib.distributions.Poisson(lam=lam_v)
+      poisson = poisson_lib.Poisson(lam=lam_v)
       self.assertEqual(poisson.mean().get_shape(), (3,))
       self.assertAllClose(poisson.mean().eval(), stats.poisson.mean(lam_v))
       self.assertAllClose(poisson.mean().eval(), lam_v)
@@ -139,7 +145,7 @@ class PoissonTest(tf.test.TestCase):
   def testPoissonVariance(self):
     with self.test_session():
       lam_v = [1.0, 3.0, 2.5]
-      poisson = tf.contrib.distributions.Poisson(lam=lam_v)
+      poisson = poisson_lib.Poisson(lam=lam_v)
       self.assertEqual(poisson.variance().get_shape(), (3,))
       self.assertAllClose(poisson.variance().eval(), stats.poisson.var(lam_v))
       self.assertAllClose(poisson.variance().eval(), lam_v)
@@ -147,7 +153,7 @@ class PoissonTest(tf.test.TestCase):
   def testPoissonStd(self):
     with self.test_session():
       lam_v = [1.0, 3.0, 2.5]
-      poisson = tf.contrib.distributions.Poisson(lam=lam_v)
+      poisson = poisson_lib.Poisson(lam=lam_v)
       self.assertEqual(poisson.std().get_shape(), (3,))
       self.assertAllClose(poisson.std().eval(), stats.poisson.std(lam_v))
       self.assertAllClose(poisson.std().eval(), np.sqrt(lam_v))
@@ -155,14 +161,14 @@ class PoissonTest(tf.test.TestCase):
   def testPoissonMode(self):
     with self.test_session():
       lam_v = [1.0, 3.0, 2.5, 3.2, 1.1, 0.05]
-      poisson = tf.contrib.distributions.Poisson(lam=lam_v)
+      poisson = poisson_lib.Poisson(lam=lam_v)
       self.assertEqual(poisson.mode().get_shape(), (6,))
       self.assertAllClose(poisson.mode().eval(), np.floor(lam_v))
 
   def testPoissonMultipleMode(self):
     with self.test_session():
       lam_v = [1.0, 3.0, 2.0, 4.0, 5.0, 10.0]
-      poisson = tf.contrib.distributions.Poisson(lam=lam_v)
+      poisson = poisson_lib.Poisson(lam=lam_v)
       # For the case where lam is an integer, the modes are: lam and lam - 1.
       # In this case, we get back the larger of the two modes.
       self.assertEqual((6,), poisson.mode().get_shape())
@@ -170,4 +176,4 @@ class PoissonTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()
