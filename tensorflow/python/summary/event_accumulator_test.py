@@ -351,6 +351,32 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
         wall_time=2, step=12, compressed_histogram_values=expected_vals2)
     self.assertEqual(acc.CompressedHistograms('hst2'), [expected_cmphst2])
 
+  def testCompressedHistogramsWithEmptyHistogram(self):
+    gen = _EventGenerator()
+    acc = ea.EventAccumulator(gen, compression_bps=(0, 2500, 5000, 7500, 10000))
+
+    gen.AddHistogram(
+        'hst1',
+        wall_time=1,
+        step=10,
+        hmin=None,
+        hmax=None,
+        hnum=0,
+        hsum=0,
+        hsum_squares=0,
+        hbucket_limit=[1, 2, 3],
+        hbucket=[0, 0, 0])
+    acc.Reload()
+
+    # Create the expected values after compressing hst1
+    expected_vals1 = [
+        ea.CompressedHistogramValue(bp, val)
+        for bp, val in [(0, 0.0), (2500, 0), (5000, 0), (7500, 0), (10000, 0)]
+    ]
+    expected_cmphst1 = ea.CompressedHistogramEvent(
+        wall_time=1, step=10, compressed_histogram_values=expected_vals1)
+    self.assertEqual(acc.CompressedHistograms('hst1'), [expected_cmphst1])
+
   def testCompressHistogram_uglyHistogram(self):
     bps = (0, 668, 1587, 3085, 5000, 6915, 8413, 9332, 10000)
     histogram_values = ea.HistogramValue(
