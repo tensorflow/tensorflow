@@ -749,6 +749,7 @@ class BaseEstimator(
           supervisor_save_model_steps=self._config.save_checkpoints_steps,
           supervisor_save_summaries_steps=self._config.save_summary_steps,
           keep_checkpoint_max=self._config.keep_checkpoint_max,
+          keep_checkpoint_every_n_hours=self._config.keep_checkpoint_every_n_hours,
           feed_fn=feed_fn,
           steps=steps,
           fail_on_nan_loss=fail_on_nan_loss,

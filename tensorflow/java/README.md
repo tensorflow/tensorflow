@@ -32,12 +32,31 @@ Java bindings for TensorFlow.
 
 ## Installation
 
-Build the Java Archive and native library:
+Build the Java Archive (JAR) and native library:
 
 ```sh
 bazel build -c opt \
-  //tensorflow/java:libtensorflow.jar \
+  //tensorflow/java:tensorflow \
   //tensorflow/java:libtensorflow-jni
+```
+
+To use the library in an external Java project, publish the library to a Maven repository.  For example,
+publish the library to the local Maven repository using the `mvn` tool (installed separately):
+
+```sh
+mvn install:install-file \
+  -Dfile=bazel-bin/tensorflow/java/libtensorflow.jar \
+  -DpomFile=tensorflow/java/pom.xml
+```
+
+Refer to the library using Maven coordinates.  For example, if you're using Maven then place this dependency into your `pom.xml` file:
+
+```xml
+<dependency>
+  <groupId>org.tensorflow</groupId>
+  <artifactId>libtensorflow</artifactId>
+  <version>0.12.0-SNAPSHOT</version>
+</dependency>
 ```
 
 ## Example

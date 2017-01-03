@@ -5,6 +5,8 @@ licenses(["notice"])  # custom notice-style license, see LICENSE.md
 
 exports_files(["LICENSE.md"])
 
+load("@//third_party:common.bzl", "template_rule")
+
 libjpegturbo_nocopts = "-[W]error"
 
 libjpegturbo_copts = select({
@@ -274,50 +276,118 @@ cc_library(
     nocopts = libjpegturbo_nocopts,
 )
 
+template_rule(
+    name = "jconfig_win",
+    src = "win/jconfig.h.in",
+    out = "jconfig_win.h",
+    substitutions = {
+        "@JPEG_LIB_VERSION@": "62",
+        "@VERSION@": "1.5.1",
+        "@LIBJPEG_TURBO_VERSION_NUMBER@": "1005001",
+        "cmakedefine": "define",
+        "@BITS_IN_JSAMPLE@": "8",
+    },
+)
+
+template_rule(
+    name = "jconfigint_win",
+    src = "win/jconfigint.h.in",
+    out = "jconfigint_win.h",
+    substitutions = {
+        "@VERSION@": "1.5.1",
+        "@BUILD@": "20161115",
+        "@CMAKE_PROJECT_NAME@": "libjpeg-turbo",
+    },
+)
+
+JCONFIG_NOWIN_COMMON_SUBSTITUTIONS = {
+    "LIBJPEG_TURBO_VERSION 0": "LIBJPEG_TURBO_VERSION 1.5.1",
+    "LIBJPEG_TURBO_VERSION_NUMBER 0": "LIBJPEG_TURBO_VERSION_NUMBER 1005001",
+    "#undef C_ARITH_CODING_SUPPORTED": "#define C_ARITH_CODING_SUPPORTED 1",
+    "#undef D_ARITH_CODING_SUPPORTED": "#define D_ARITH_CODING_SUPPORTED 1",
+    "#undef HAVE_LOCALE_H": "#define HAVE_LOCALE_H 1",
+    "#undef HAVE_STDDEF_H": "#define HAVE_STDDEF_H 1",
+    "#undef HAVE_STDLIB_H": "#define HAVE_STDLIB_H 1",
+    "#undef HAVE_UNSIGNED_CHAR": "#define HAVE_UNSIGNED_CHAR 1",
+    "#undef HAVE_UNSIGNED_SHORT": "#define HAVE_UNSIGNED_SHORT 1",
+    "#undef INCOMPLETE_TYPES_BROKEN": "",
+    "#undef MEM_SRCDST_SUPPORTED": "#define MEM_SRCDST_SUPPORTED 1",
+    "#undef NEED_BSD_STRINGS": "",
+    "#undef NEED_SYS_TYPES_H": "#define NEED_SYS_TYPES_H 1",
+    "#undef __CHAR_UNSIGNED__": "",
+    "#undef const": "",
+    "#undef size_t": "",
+    "#undef RIGHT_SHIFT_IS_UNSIGNED": "",
+}
+
+JCONFIG_NOWIN_SIMD_SUBSTITUTIONS = JCONFIG_NOWIN_COMMON_SUBSTITUTIONS + {
+    "#undef WITH_SIMD": "#define WITH_SIMD 1",
+}
+
+JCONFIG_NOWIN_NOSIMD_SUBSTITUTIONS = JCONFIG_NOWIN_COMMON_SUBSTITUTIONS + {
+    "#undef WITH_SIMD": "",
+}
+
+template_rule(
+    name = "jconfig_nowin_nosimd",
+    src = "jconfig.h.in",
+    out = "jconfig_nowin_nosimd.h",
+    substitutions = JCONFIG_NOWIN_NOSIMD_SUBSTITUTIONS,
+)
+
+template_rule(
+    name = "jconfig_nowin_simd",
+    src = "jconfig.h.in",
+    out = "jconfig_nowin_simd.h",
+    substitutions = JCONFIG_NOWIN_SIMD_SUBSTITUTIONS,
+)
+
+template_rule(
+    name = "jconfigint_nowin",
+    src = "jconfigint.h.in",
+    out = "jconfigint_nowin.h",
+    substitutions = {
+        "#undef BUILD": "#define BUILD \"20161115\"",
+        "#undef inline": "",
+        "#undef INLINE": "#define INLINE inline __attribute__((always_inline))",
+        "#undef PACKAGE_NAME": "#define PACKAGE_NAME \"libjpeg-turbo\"",
+        "#undef VERSION": "#define VERSION \"1.5.1\"",
+        "#undef SIZEOF_SIZE_T": "#if (__WORDSIZE==64 && !defined(__native_client__))\n" +
+                                "#define SIZEOF_SIZE_T 8\n" +
+                                "#else\n" +
+                                "#define SIZEOF_SIZE_T 4\n" +
+                                "#endif\n",
+    },
+)
+
 genrule(
     name = "configure",
+    srcs = [
+        "jconfig_win.h",
+        "jconfig_nowin_nosimd.h",
+        "jconfig_nowin_simd.h",
+    ],
     outs = ["jconfig.h"],
-    cmd = "cat <<'EOF' >$@\n" +
-          "#define JPEG_LIB_VERSION 62\n" +
-          "#define LIBJPEG_TURBO_VERSION 1.5.1\n" +
-          "#define LIBJPEG_TURBO_VERSION_NUMBER 1005001\n" +
-          "#define C_ARITH_CODING_SUPPORTED 1\n" +
-          "#define D_ARITH_CODING_SUPPORTED 1\n" +
-          "#define BITS_IN_JSAMPLE 8\n" +
-          "#define HAVE_LOCALE_H 1\n" +
-          "#define HAVE_STDDEF_H 1\n" +
-          "#define HAVE_STDLIB_H 1\n" +
-          "#define HAVE_UNSIGNED_CHAR 1\n" +
-          "#define HAVE_UNSIGNED_SHORT 1\n" +
-          "#define MEM_SRCDST_SUPPORTED 1\n" +
-          "#define NEED_SYS_TYPES_H 1\n" +
-          select({
-              ":k8": "#define WITH_SIMD 1\n",
-              ":armeabi-v7a": "#define WITH_SIMD 1\n",
-              ":arm64-v8a": "#define WITH_SIMD 1\n",
-              "//conditions:default": "",
-          }) +
-          "EOF",
+    cmd = select({
+        ":windows": "cp $(location jconfig_win.h) $@",
+        ":k8": "cp $(location jconfig_nowin_simd.h) $@",
+        ":armeabi-v7a": "cp $(location jconfig_nowin_simd.h) $@",
+        ":arm64-v8a": "cp $(location jconfig_nowin_simd.h) $@",
+        "//conditions:default": "cp $(location jconfig_nowin_nosimd.h) $@",
+    }),
 )
 
 genrule(
     name = "configure_internal",
+    srcs = [
+        "jconfigint_win.h",
+        "jconfigint_nowin.h",
+    ],
     outs = ["jconfigint.h"],
-    cmd = "cat <<'EOF' >$@\n" +
-          "#define BUILD \"20161115\"\n" +
-          "#ifdef _MSC_VER  /* Windows */\n" +
-          "#define INLINE __inline\n" +
-          "#else\n" +
-          "#define INLINE inline __attribute__((always_inline))\n" +
-          "#endif\n" +
-          "#define PACKAGE_NAME \"libjpeg-turbo\"\n" +
-          "#define VERSION \"1.5.1\"\n" +
-          "#if (__WORDSIZE==64 && !defined(__native_client__)) || defined(_WIN64)\n" +
-          "#define SIZEOF_SIZE_T 8\n" +
-          "#else\n" +
-          "#define SIZEOF_SIZE_T 4\n" +
-          "#endif\n" +
-          "EOF",
+    cmd = select({
+        ":windows": "cp $(location jconfigint_win.h) $@",
+        "//conditions:default": "cp $(location jconfigint_nowin.h) $@",
+    }),
 )
 
 # jiminy cricket the way this file is generated is completely outrageous

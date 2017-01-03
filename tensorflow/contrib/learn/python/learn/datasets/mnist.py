@@ -42,7 +42,7 @@ def extract_images(f):
     f: A file object that can be passed into a gzip reader.
 
   Returns:
-    data: A 4D unit8 numpy array [index, y, x, depth].
+    data: A 4D uint8 numpy array [index, y, x, depth].
 
   Raises:
     ValueError: If the bytestream does not start with 2051.
@@ -81,7 +81,7 @@ def extract_labels(f, one_hot=False, num_classes=10):
     num_classes: Number of classes for the one hot encoding.
 
   Returns:
-    labels: a 1D unit8 numpy array.
+    labels: a 1D uint8 numpy array.
 
   Raises:
     ValueError: If the bystream doesn't start with 2049.
