@@ -277,6 +277,22 @@ class EstimatorTest(test.TestCase):
         config=expected_config)
     est.fit(input_fn=boston_input_fn, steps=1)
 
+  def testModelFnWithModelDir(self):
+    expected_param = {'some_param': 'some_value'}
+    expected_model_dir = tempfile.mkdtemp()
+    def _argument_checker(features, labels, mode, params, config=None,
+                          model_dir=None):
+      _, _, _ = features, labels, config
+      self.assertEqual(model_fn.ModeKeys.TRAIN, mode)
+      self.assertEqual(expected_param, params)
+      self.assertEqual(model_dir, expected_model_dir)
+      return constant_op.constant(0.), constant_op.constant(
+          0.), constant_op.constant(0.)
+    est = estimator.Estimator(model_fn=_argument_checker,
+                              params=expected_param,
+                              model_dir=expected_model_dir)
+    est.fit(input_fn=boston_input_fn, steps=1)
+
   def testInvalidModelFn_no_train_op(self):
 
     def _invalid_model_fn(features, labels):
