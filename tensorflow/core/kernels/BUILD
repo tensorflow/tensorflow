@@ -18,7 +18,7 @@ licenses(["notice"])  # Apache 2.0
 package_group(
     name = "friends",
     packages = [
-        "//learning/deepmind/tensorflow/...",
+        "//learning/deepmind/...",
         "//tensorflow/...",
     ],
 )
