@@ -247,10 +247,10 @@ def absolute_difference(
       if the shape of `weights` is invalid.
   """
   with ops.name_scope(scope, "absolute_difference",
-                      [predictions, labels, weights]) as scope:
-    predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+                      (predictions, labels, weights)) as scope:
     predictions = math_ops.to_float(predictions)
     labels = math_ops.to_float(labels)
+    predictions.get_shape().assert_is_compatible_with(labels.get_shape())
     losses = math_ops.abs(math_ops.subtract(predictions, labels))
     return compute_weighted_loss(losses, weights, scope, loss_collection)
 
@@ -288,11 +288,10 @@ def cosine_distance(
   if dim is None:
     raise ValueError("`dim` cannot be None.")
   with ops.name_scope(scope, "cosine_distance_loss",
-                      [predictions, labels, weights]) as scope:
-    predictions.get_shape().assert_is_compatible_with(labels.get_shape())
-
+                      (predictions, labels, weights)) as scope:
     predictions = math_ops.to_float(predictions)
     labels = math_ops.to_float(labels)
+    predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
     radial_diffs = math_ops.multiply(predictions, labels)
     losses = 1 - math_ops.reduce_sum(radial_diffs, reduction_indices=[dim,])
@@ -324,10 +323,11 @@ def hinge_loss(labels, logits, weights=1.0, scope=None,
   Raises:
     ValueError: If the shapes of `logits` and `labels` don't match.
   """
-  with ops.name_scope(scope, "hinge_loss", [logits, labels]) as scope:
+  with ops.name_scope(scope, "hinge_loss", (logits, labels)) as scope:
+    logits = math_ops.to_float(logits)
+    labels = math_ops.to_float(labels)
     logits.get_shape().assert_is_compatible_with(labels.get_shape())
     # We first need to convert binary labels to -1/1 labels (as floats).
-    labels = math_ops.to_float(labels)
     all_ones = array_ops.ones_like(labels)
     labels = math_ops.subtract(2 * labels, all_ones)
     losses = nn_ops.relu(
@@ -370,10 +370,10 @@ def log_loss(labels, predictions, weights=1.0, epsilon=1e-7, scope=None,
       if the shape of `weights` is invalid.
   """
   with ops.name_scope(scope, "log_loss",
-                      [predictions, labels, weights]) as scope:
-    predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+                      (predictions, labels, weights)) as scope:
     predictions = math_ops.to_float(predictions)
     labels = math_ops.to_float(labels)
+    predictions.get_shape().assert_is_compatible_with(labels.get_shape())
     losses = -math_ops.multiply(
         labels,
         math_ops.log(predictions + epsilon)) - math_ops.multiply(
@@ -424,10 +424,10 @@ def mean_pairwise_squared_error(labels, predictions, weights=1.0, scope=None,
       if the shape of `weights` is invalid.
   """
   with ops.name_scope(scope, "mean_pairwise_squared_error",
-                      [predictions, labels, weights]) as scope:
-    predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+                      (predictions, labels, weights)) as scope:
     predictions = math_ops.to_float(predictions)
     labels = math_ops.to_float(labels)
+    predictions.get_shape().assert_is_compatible_with(labels.get_shape())
     weights = math_ops.to_float(ops.convert_to_tensor(weights))
 
     diffs = math_ops.subtract(predictions, labels)
@@ -496,10 +496,10 @@ def mean_squared_error(labels, predictions, weights=1.0, scope=None,
       if the shape of `weights` is invalid.
   """
   with ops.name_scope(scope, "mean_squared_error",
-                      [predictions, labels, weights]) as scope:
-    predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+                      (predictions, labels, weights)) as scope:
     predictions = math_ops.to_float(predictions)
     labels = math_ops.to_float(labels)
+    predictions.get_shape().assert_is_compatible_with(labels.get_shape())
     losses = math_ops.square(math_ops.subtract(predictions, labels))
     return compute_weighted_loss(losses, weights, scope, loss_collection)
 
@@ -544,10 +544,10 @@ def sigmoid_cross_entropy(
       `weights` is None.
   """
   with ops.name_scope(scope, "sigmoid_cross_entropy_loss",
-                      [logits, multi_class_labels, weights]) as scope:
-    logits.get_shape().assert_is_compatible_with(multi_class_labels.get_shape())
-
+                      (logits, multi_class_labels, weights)) as scope:
+    logits = ops.convert_to_tensor(logits)
     multi_class_labels = math_ops.cast(multi_class_labels, logits.dtype)
+    logits.get_shape().assert_is_compatible_with(multi_class_labels.get_shape())
 
     if label_smoothing > 0:
       multi_class_labels = (multi_class_labels * (1 - label_smoothing) +
@@ -595,10 +595,10 @@ def softmax_cross_entropy(
       or if the shape of `weights` is invalid or if `weights` is None.
   """
   with ops.name_scope(scope, "softmax_cross_entropy_loss",
-                      [logits, onehot_labels, weights]) as scope:
-    logits.get_shape().assert_is_compatible_with(onehot_labels.get_shape())
-
+                      (logits, onehot_labels, weights)) as scope:
+    logits = ops.convert_to_tensor(logits)
     onehot_labels = math_ops.cast(onehot_labels, logits.dtype)
+    logits.get_shape().assert_is_compatible_with(onehot_labels.get_shape())
 
     if label_smoothing > 0:
       num_classes = math_ops.cast(
