@@ -197,6 +197,12 @@ def compute_weighted_loss(
           "Invalid weights shape %s can not be broadcast to losses %s." % (
               weights_shape, losses_shape))
     for i in range(len(weights_dims)):
+      if ((losses_dims[i] is not None) and (losses_dims[i] == 1) and
+          (weights_dims[i] is not None) and (weights_dims[i] != 1)):
+        raise ValueError(
+            "Invalid weights shape %s can not be broadcast to losses %s." % (
+                weights_shape, losses_shape))
+    for i in range(len(weights_dims)):
       if ((losses_dims[i] is not None) and (losses_dims[i] != 1) and
           (weights_dims[i] is not None) and (weights_dims[i] == 1)):
         logging.warn(
@@ -646,8 +652,9 @@ def sparse_softmax_cross_entropy(labels, logits, weights=1.0, scope=None,
   with ops.name_scope(scope, "sparse_softmax_cross_entropy_loss",
                       [logits, labels, weights]) as scope:
     labels = array_ops.reshape(labels, shape=[array_ops.shape(labels)[0]])
-    weights = array_ops.squeeze(weights)
 
     losses = nn.sparse_softmax_cross_entropy_with_logits(logits, labels,
                                                          name="xentropy")
+    # Reshape losses to [batch_size, 1] to be consistent with weights.
+    losses = array_ops.reshape(losses, shape=[array_ops.shape(losses)[0], 1])
     return compute_weighted_loss(losses, weights, scope, loss_collection)

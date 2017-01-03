@@ -296,6 +296,46 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
                                                  constant_op.constant(weights))
       self.assertAlmostEqual(weights * 10.0, loss.eval(), 3)
 
+  # TODO(b/33556118): Bug: this should be averaged across all dimensions, not
+  # summed across dim 0.
+  def testNonZeroLossWith1DTensorWeight(self):
+    logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
+                                   [0.0, 0.0, 10.0]])
+    labels = constant_op.constant([[2], [0], [1]])
+    weights = 2.3
+    with self.test_session():
+      loss = losses.sparse_softmax_cross_entropy(
+          labels, logits, constant_op.constant(weights, shape=(1,)))
+      self.assertAlmostEqual(weights * 3.0 * 10.0, loss.eval(), 2)
+
+  def testNonZeroLossWithPlaceholderForWeights(self):
+    logits = constant_op.constant([[10.0, 0.0, 0.0],
+                                   [0.0, 10.0, 0.0],
+                                   [0.0, 0.0, 10.0]])
+    labels = constant_op.constant([[2], [0], [1]])
+    weights = array_ops.placeholder(dtypes.float32, shape=(None,))
+    with self.test_session() as sess:
+      loss = losses.sparse_softmax_cross_entropy(labels, logits, weights)
+      loss_val = sess.run(loss,
+                          feed_dict={weights: [1.2, 3.4, 5.6]})
+      self.assertAlmostEqual((1.2 + 3.4 + 5.6) * 10.0 / 3.0, loss_val, 3)
+
+  def testNonZeroLossWithPlaceholderForLogitsLabelsAndWeights(self):
+    logits = array_ops.placeholder(dtypes.float32, shape=(None, 3))
+    labels = array_ops.placeholder(dtypes.int32, shape=(None, 1))
+    weights = array_ops.placeholder(dtypes.float32, shape=(None,))
+    with self.test_session() as sess:
+      loss = losses.sparse_softmax_cross_entropy(labels, logits, weights)
+      loss_val = sess.run(loss,
+                          feed_dict={
+                              logits: [[10.0, 0.0, 0.0],
+                                       [0.0, 10.0, 0.0],
+                                       [0.0, 0.0, 10.0]],
+                              labels: [[2], [0], [1]],
+                              weights: [1.2, 3.4, 5.6],
+                          })
+      self.assertAlmostEqual((1.2 + 3.4 + 5.6) * 10.0 / 3.0, loss_val, 3)
+
   def testNonZeroLossWithOneDimBatchSpecificWeights(self):
     logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
                                    [0.0, 0.0, 10.0]])
@@ -1166,6 +1206,13 @@ class ComputeWeightedLossTest(test.TestCase):
       with self.assertRaisesRegexp(ValueError, 'Invalid weights shape'):
         losses.compute_weighted_loss(
             self._raw_losses, weights=np.zeros(shape=(2, 2, 2, 2)))
+
+  def testInvalid4DWeight2(self):
+    with ops.Graph().as_default():
+      raw_losses = array_ops.reshape(self._raw_losses, shape=(3, 2, 4, 1))
+      weights = np.ones(shape=(3, 2, 4, 2))
+      with self.assertRaisesRegexp(ValueError, 'Invalid weights shape'):
+        losses.compute_weighted_loss(raw_losses, weights=weights)
 
   def test3Weight(self):
     with ops.Graph().as_default():
