@@ -248,11 +248,11 @@ class StreamingMeanTest(test.TestCase):
 
       # Create the queue that populates the weighted labels.
       weights_queue = data_flow_ops.FIFOQueue(
-          4, dtypes=dtypes_lib.float32, shapes=(1, 1))
-      _enqueue_vector(sess, weights_queue, [1])
-      _enqueue_vector(sess, weights_queue, [0])
-      _enqueue_vector(sess, weights_queue, [0])
-      _enqueue_vector(sess, weights_queue, [1])
+          4, dtypes=dtypes_lib.float32, shapes=(1,))
+      _enqueue_vector(sess, weights_queue, 1, shape=(1,))
+      _enqueue_vector(sess, weights_queue, 0, shape=(1,))
+      _enqueue_vector(sess, weights_queue, 0, shape=(1,))
+      _enqueue_vector(sess, weights_queue, 1, shape=(1,))
       weights = weights_queue.dequeue()
 
       mean, update_op = metrics.streaming_mean(values, weights)
@@ -297,11 +297,11 @@ class StreamingMeanTest(test.TestCase):
 
       # Create the queue that populates the weighted labels.
       weights_queue = data_flow_ops.FIFOQueue(
-          4, dtypes=dtypes_lib.float32, shapes=(1, 2))
-      _enqueue_vector(sess, weights_queue, [1, 1])
-      _enqueue_vector(sess, weights_queue, [1, 0])
-      _enqueue_vector(sess, weights_queue, [0, 1])
-      _enqueue_vector(sess, weights_queue, [0, 0])
+          4, dtypes=dtypes_lib.float32, shapes=(2,))
+      _enqueue_vector(sess, weights_queue, [1, 1], shape=(2,))
+      _enqueue_vector(sess, weights_queue, [1, 0], shape=(2,))
+      _enqueue_vector(sess, weights_queue, [0, 1], shape=(2,))
+      _enqueue_vector(sess, weights_queue, [0, 0], shape=(2,))
       weights = weights_queue.dequeue()
 
       mean, update_op = metrics.streaming_mean(values, weights)
@@ -685,7 +685,7 @@ class StreamingTruePositivesTest(test.TestCase):
                                    (1, 0, 0, 0),
                                    (0, 0, 0, 0)))
     tp, tp_update_op = metrics.streaming_true_positives(
-        predictions, labels, weights=(37.0,))
+        predictions, labels, weights=37.0)
 
     with self.test_session() as sess:
       sess.run(variables.local_variables_initializer())
@@ -818,7 +818,7 @@ class StreamingTrueNegativesTest(test.TestCase):
                                    (1, 0, 0, 0),
                                    (0, 0, 0, 0)))
     tn, tn_update_op = metrics.streaming_true_negatives(
-        predictions, labels, weights=(0.0, 2.0, 3.0, 5.0))
+        predictions, labels, weights=((0.0, 2.0, 3.0, 5.0),))
 
     with self.test_session() as sess:
       sess.run(variables.local_variables_initializer())
@@ -862,7 +862,7 @@ class StreamingTruePositivesAtThresholdsTest(test.TestCase):
                                    (1, 0, 0, 0),
                                    (0, 0, 0, 0)))
     tp, tp_update_op = metrics.streaming_true_positives_at_thresholds(
-        predictions, labels, weights=(37.0,), thresholds=(0.15, 0.5, 0.85))
+        predictions, labels, weights=37.0, thresholds=(0.15, 0.5, 0.85))
 
     with self.test_session() as sess:
       sess.run(variables.local_variables_initializer())
@@ -1007,7 +1007,7 @@ class StreamingTrueNegativesAtThresholdsTest(test.TestCase):
     tn, tn_update_op = metrics.streaming_true_negatives_at_thresholds(
         predictions,
         labels,
-        weights=(0.0, 2.0, 3.0, 5.0),
+        weights=((0.0, 2.0, 3.0, 5.0),),
         thresholds=(0.15, 0.5, 0.85))
 
     with self.test_session() as sess:
@@ -2261,7 +2261,7 @@ class StreamingSparsePrecisionTest(test.TestCase):
       # Fails without initialized vars.
       self.assertRaises(errors_impl.OpError, metric.eval)
       self.assertRaises(errors_impl.OpError, update.eval)
-      variables.initialize_variables(variables.local_variables()).run()
+      variables.variables_initializer(variables.local_variables()).run()
 
       # Run per-step op and assert expected values.
       if math.isnan(expected):
@@ -2290,7 +2290,7 @@ class StreamingSparsePrecisionTest(test.TestCase):
       # Fails without initialized vars.
       self.assertRaises(errors_impl.OpError, metric.eval)
       self.assertRaises(errors_impl.OpError, update.eval)
-      variables.initialize_variables(variables.local_variables()).run()
+      variables.variables_initializer(variables.local_variables()).run()
 
       # Run per-step op and assert expected values.
       if math.isnan(expected):
@@ -2324,7 +2324,7 @@ class StreamingSparsePrecisionTest(test.TestCase):
       self.assertRaises(errors_impl.OpError, metric.eval)
       self.assertRaises(errors_impl.OpError, update.eval)
       local_variables = variables.local_variables()
-      variables.initialize_variables(local_variables).run()
+      variables.variables_initializer(local_variables).run()
 
       # Run per-step op and assert expected values.
       if math.isnan(expected):
@@ -2348,7 +2348,7 @@ class StreamingSparsePrecisionTest(test.TestCase):
             top_k_predictions=constant_op.constant(top_k_predictions,
                                                    dtypes_lib.int64),
             labels=sp_labels)
-        variables.initialize_variables(variables.local_variables()).run()
+        variables.variables_initializer(variables.local_variables()).run()
         precision.eval()
 
   def test_average_precision(self):
@@ -2858,7 +2858,7 @@ class StreamingSparsePrecisionTest(test.TestCase):
           labels=_binary_2d_label_to_sparse_value(labels),
           k=1)
 
-      variables.initialize_variables(variables.local_variables()).run()
+      variables.variables_initializer(variables.local_variables()).run()
 
       self.assertEqual(expected_precision, precision.eval())
 
@@ -2885,7 +2885,7 @@ class StreamingSparseRecallTest(test.TestCase):
       # Fails without initialized vars.
       self.assertRaises(errors_impl.OpError, metric.eval)
       self.assertRaises(errors_impl.OpError, update.eval)
-      variables.initialize_variables(variables.local_variables()).run()
+      variables.variables_initializer(variables.local_variables()).run()
 
       # Run per-step op and assert expected values.
       if math.isnan(expected):
@@ -3302,7 +3302,7 @@ class StreamingSparseRecallTest(test.TestCase):
           labels=_binary_2d_label_to_sparse_value(labels),
           k=1)
 
-      variables.initialize_variables(variables.local_variables()).run()
+      variables.variables_initializer(variables.local_variables()).run()
 
       self.assertEqual(expected_recall, recall.eval())
 
