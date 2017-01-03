@@ -10,7 +10,7 @@ This folder contains examples of how to build applications for iOS devices using
    [tensorflow/contrib/makefile](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/makefile)
    under "iOS" to compile a static library containing the core TensorFlow code.
 
- - Download
+ - From the root of the Tensorflow folder, download
    [Inception v1](https://storage.googleapis.com/download.tensorflow.org/models/inception5h.zip),
    and extract the label and graph files into the data folders inside both the
    simple and camera examples:
@@ -41,10 +41,9 @@ cp ~/graphs/inception5h/* tensorflow/contrib/ios_examples/simple/data/
 
 If you're hitting problems, here's a checklist of common things to investigate:
 
- - Make sure that you've run the `download_dependencies.sh` and
-   `compile_ios_protobuf.sh` scripts before you run `compile_ios_tensorflow`.
-   (These should be called by `build_all_ios.sh` if you are using it, but check
-   if they have run successful.)
+ - Make sure that you've run the `build_all_ios.sh` script 
+   This will run `download_dependencies.sh`,`compile_ios_protobuf.sh` and `compile_ios_tensorflow.sh`.
+   (check each one if they have run successful.)
  
  - Check that you have version 7.3 of Xcode.
  

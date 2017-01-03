@@ -77,9 +77,17 @@ public class TensorFlowInferenceInterface {
   public native int runInference(String[] outputNames);
 
   /**
+   * Whether to collect and log stats to logcat during inference via StepStats and StatSummarizer.
+   * This should only be enabled when needed, as it will add overhead.
+   */
+  public native void enableStatLogging(boolean enabled);
+
+  /** Returns the last stat summary string if logging is enabled. */
+  public native String getStatString();
+
+  /**
    * Cleans up the native variables associated with this Object. initializeTensorFlow() can then
    * be called again to initialize a new session.
-   *
    */
   public native void close();
 

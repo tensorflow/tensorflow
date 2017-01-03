@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -79,6 +80,12 @@ extern "C" {
 
 // --------------------------------------------------------------------------
 const char* TF_Version() { return TF_VERSION_STRING; }
+
+// --------------------------------------------------------------------------
+size_t TF_DataTypeSize(TF_DataType dt) {
+  return static_cast<size_t>(
+      tensorflow::DataTypeSize(static_cast<DataType>(dt)));
+}
 
 // --------------------------------------------------------------------------
 struct TF_Status {
@@ -1650,6 +1657,20 @@ void TF_ImportGraphDefOptionsSetPrefix(TF_ImportGraphDefOptions* opts,
   opts->opts.prefix = prefix;
 }
 
+static void GraphImportGraphDefLocked(TF_Graph* graph, const GraphDef& def,
+                                      const TF_ImportGraphDefOptions* opts,
+                                      TF_Status* status)
+    EXCLUSIVE_LOCKS_REQUIRED(graph->mu) {
+  const int last_node_id = graph->graph.num_node_ids();
+  status->status = tensorflow::ImportGraphDef(opts->opts, def, &graph->graph,
+                                              &graph->refiner);
+  if (!status->status.ok()) return;
+  for (int i = last_node_id; i < graph->graph.num_node_ids(); ++i) {
+    auto* node = graph->graph.FindNodeId(i);
+    if (node != nullptr) graph->name_map[node->name()] = node;
+  }
+}
+
 void TF_GraphImportGraphDef(TF_Graph* graph, const TF_Buffer* graph_def,
                             const TF_ImportGraphDefOptions* opts,
                             TF_Status* status) {
@@ -1659,14 +1680,7 @@ void TF_GraphImportGraphDef(TF_Graph* graph, const TF_Buffer* graph_def,
     return;
   }
   mutex_lock l(graph->mu);
-  const int last_node_id = graph->graph.num_node_ids();
-  status->status = tensorflow::ImportGraphDef(opts->opts, def, &graph->graph,
-                                              &graph->refiner);
-  if (!status->status.ok()) return;
-  for (int i = last_node_id; i < graph->graph.num_node_ids(); ++i) {
-    auto* node = graph->graph.FindNodeId(i);
-    if (node != nullptr) graph->name_map[node->name()] = node;
-  }
+  GraphImportGraphDefLocked(graph, def, opts, status);
 }
 
 // TF_Session functions ----------------------------------------------
@@ -1685,6 +1699,60 @@ TF_Session* TF_NewSession(TF_Graph* graph, const TF_SessionOptions* opt,
     DCHECK_EQ(nullptr, session);
     return NULL;
   }
+}
+
+TF_Session* TF_LoadSessionFromSavedModel(
+    const TF_SessionOptions* session_options, const TF_Buffer* run_options,
+    const char* export_dir, const char* const* tags, int tags_len,
+    TF_Graph* graph, TF_Buffer* meta_graph_def, TF_Status* status) {
+  mutex_lock l(graph->mu);
+
+  if (!graph->name_map.empty()) {
+    status->status = InvalidArgument("Graph is non-empty.");
+    return nullptr;
+  }
+
+  RunOptions run_options_proto;
+  if (run_options != nullptr &&
+      !run_options_proto.ParseFromArray(run_options->data,
+                                        run_options->length)) {
+    status->status = InvalidArgument("Unparseable RunOptions proto");
+    return nullptr;
+  }
+
+  std::unordered_set<tensorflow::string> tag_set;
+  for (int i = 0; i < tags_len; i++) {
+    tag_set.insert(tensorflow::string(tags[i]));
+  }
+
+  tensorflow::SavedModelBundle bundle;
+  status->status =
+      tensorflow::LoadSavedModel(session_options->options, run_options_proto,
+                                 export_dir, tag_set, &bundle);
+  if (!status->status.ok()) return nullptr;
+
+  // Create a TF_Graph from the MetaGraphDef. This is safe as long as Session
+  // extends using GraphDefs. The Graph instance is different, but equivalent
+  // to the one used to create the session.
+  //
+  // TODO(jhseu): When Session is modified to take Graphs instead of
+  // GraphDefs, return the Graph generated in LoadSavedModel().
+  TF_ImportGraphDefOptions* import_opts = TF_NewImportGraphDefOptions();
+  GraphImportGraphDefLocked(graph, bundle.meta_graph_def.graph_def(),
+                            import_opts, status);
+  TF_DeleteImportGraphDefOptions(import_opts);
+  if (TF_GetCode(status) != TF_OK) return nullptr;
+
+  if (meta_graph_def != nullptr) {
+    status->status = MessageToBuffer(bundle.meta_graph_def, meta_graph_def);
+    if (!status->status.ok()) return nullptr;
+  }
+
+  TF_Session* session = new TF_Session(bundle.session.release(), graph);
+
+  graph->num_sessions += 1;
+  session->last_num_graph_nodes = graph->graph.num_node_ids();
+  return session;
 }
 
 void TF_CloseSession(TF_Session* s, TF_Status* status) {

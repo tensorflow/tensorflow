@@ -773,8 +773,9 @@ def _AggregatedGrads(grads, op, loop_state, aggregation_method=None):
             array_ops.concat_v2([x.values for x in out_grad], 0),
             array_ops.concat_v2([x.indices for x in out_grad], 0),
             out_grad[0].dense_shape)
-    else:
-      out_grads[i] = []
+    else:  # not out_grad
+      # out_grads[i] is [], thus its aggregation is simply None.
+      out_grads[i] = None
   return out_grads
 
 
@@ -823,7 +824,7 @@ def _hessian_vector_product(ys, xs, v):
 
   assert len(grads) == length
   elemwise_products = [
-      math_ops.mul(grad_elem, array_ops.stop_gradient(v_elem))
+      math_ops.multiply(grad_elem, array_ops.stop_gradient(v_elem))
       for grad_elem, v_elem in zip(grads, v) if grad_elem is not None
   ]
 
@@ -886,7 +887,7 @@ def hessians(ys, xs, name="hessians", colocate_gradients_with_ops=False,
       _gradients = gradients(ys, x, **kwargs)[0]
       # Unpack the gradients into a list so we can take derivatives with
       # respect to each element
-      _gradients = array_ops.unpack(_gradients)
+      _gradients = array_ops.unstack(_gradients)
     with ops.name_scope(name + '_second_derivative'):
       # Compute the partial derivatives with respect to each element of the list
       _hess = [gradients(_gradient, x, **kwargs)[0] for _gradient in _gradients]

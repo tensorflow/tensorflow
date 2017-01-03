@@ -18,13 +18,23 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
+
+# TODO: #6568 Remove this hack that makes dlopen() not crash.
+if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
+  import ctypes
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
+
 import numpy as np
-import tensorflow as tf
+
 from tensorflow.contrib.learn.python.learn.learn_io import numpy_io
 from tensorflow.python.framework import errors
+from tensorflow.python.platform import test
+from tensorflow.python.training import coordinator
+from tensorflow.python.training import queue_runner_impl
 
 
-class NumpyIoTest(tf.test.TestCase):
+class NumpyIoTest(test.TestCase):
 
   def testNumpyInputFn(self):
     a = np.arange(4) * 1.0
@@ -37,8 +47,8 @@ class NumpyIoTest(tf.test.TestCase):
           x, y, batch_size=2, shuffle=False, num_epochs=1)
       features, target = input_fn()
 
-      coord = tf.train.Coordinator()
-      threads = tf.train.start_queue_runners(session, coord=coord)
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(session, coord=coord)
 
       res = session.run([features, target])
       self.assertAllEqual(res[0]['a'], [0, 1])
@@ -48,6 +58,28 @@ class NumpyIoTest(tf.test.TestCase):
       session.run([features, target])
       with self.assertRaises(errors.OutOfRangeError):
         session.run([features, target])
+
+      coord.request_stop()
+      coord.join(threads)
+
+  def testNumpyInputFnWithDifferentDimensionsOfFeatures(self):
+    a = np.array([[1, 2], [3, 4]])
+    b = np.array([5, 6])
+    x = {'a': a, 'b': b}
+    y = np.arange(-32, -30)
+
+    with self.test_session() as session:
+      input_fn = numpy_io.numpy_input_fn(
+          x, y, batch_size=2, shuffle=False, num_epochs=1)
+      features, target = input_fn()
+
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(session, coord=coord)
+
+      res = session.run([features, target])
+      self.assertAllEqual(res[0]['a'], [[1, 2], [3, 4]])
+      self.assertAllEqual(res[0]['b'], [5, 6])
+      self.assertAllEqual(res[1], [-32, -31])
 
       coord.request_stop()
       coord.join(threads)
@@ -81,12 +113,14 @@ class NumpyIoTest(tf.test.TestCase):
     y_longer_length = np.arange(10)
 
     with self.test_session():
-      with self.assertRaisesRegexp(ValueError, 'Shape of x and y are mismatch'):
+      with self.assertRaisesRegexp(
+          ValueError, 'Length of tensors in x and y is mismatched.'):
         failing_input_fn = numpy_io.numpy_input_fn(
             x, y_longer_length, batch_size=2, shuffle=False, num_epochs=1)
         failing_input_fn()
 
-      with self.assertRaisesRegexp(ValueError, 'Shape of x and y are mismatch'):
+      with self.assertRaisesRegexp(
+          ValueError, 'Length of tensors in x and y is mismatched.'):
         failing_input_fn = numpy_io.numpy_input_fn(
             x=x_mismatch_length,
             y=None,
@@ -97,4 +131,4 @@ class NumpyIoTest(tf.test.TestCase):
 
 
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

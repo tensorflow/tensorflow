@@ -187,6 +187,32 @@ Status TransposeGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Transpose", TransposeGrad);
 
+Status ReverseSequenceGrad(const Scope& scope, const Operation& op,
+                           const std::vector<Output>& grad_inputs,
+                           std::vector<Output>* grad_outputs) {
+  auto seq_lengths = op.input(1);
+  int batch_dim;
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->def(), "batch_dim", &batch_dim));
+  int seq_dim;
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->def(), "seq_dim", &seq_dim));
+  grad_outputs->push_back(
+      ReverseSequence(scope, grad_inputs[0], seq_lengths, seq_dim,
+                      ReverseSequence::BatchDim(batch_dim)));
+  grad_outputs->push_back(NoGradient());
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("ReverseSequence", ReverseSequenceGrad);
+
+Status ReverseGrad(const Scope& scope, const Operation& op,
+                   const std::vector<Output>& grad_inputs,
+                   std::vector<Output>* grad_outputs) {
+  auto reverse_dims = op.input(1);
+  grad_outputs->push_back(Reverse(scope, grad_inputs[0], reverse_dims));
+  grad_outputs->push_back(NoGradient());
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Reverse", ReverseGrad);
+
 }  // anonymous namespace
 }  // namespace ops
 }  // namespace tensorflow

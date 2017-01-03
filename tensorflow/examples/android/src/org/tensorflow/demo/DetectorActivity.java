@@ -24,6 +24,7 @@ import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Paint.Style;
 import android.graphics.RectF;
+import android.graphics.Typeface;
 import android.media.Image;
 import android.media.Image.Plane;
 import android.media.ImageReader;
@@ -33,7 +34,6 @@ import android.os.Trace;
 import android.util.Size;
 import android.util.TypedValue;
 import android.view.Display;
-import java.io.IOException;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Vector;
@@ -68,7 +68,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
   private static final boolean MAINTAIN_ASPECT = false;
 
-  private static final float TEXT_SIZE_DIP = 18;
+  private static final float TEXT_SIZE_DIP = 10;
 
   private Integer sensorOrientation;
 
@@ -104,23 +104,30 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
         TypedValue.applyDimension(
             TypedValue.COMPLEX_UNIT_DIP, TEXT_SIZE_DIP, getResources().getDisplayMetrics());
     borderedText = new BorderedText(textSizePx);
+    borderedText.setTypeface(Typeface.MONOSPACE);
 
     tracker = new MultiBoxTracker(getResources().getDisplayMetrics());
 
     detector = new TensorFlowMultiBoxDetector();
+
     try {
-      detector.initializeTensorFlow(
-          getAssets(),
-          MODEL_FILE,
-          LOCATION_FILE,
-          NUM_LOCATIONS,
-          INPUT_SIZE,
-          IMAGE_MEAN,
-          IMAGE_STD,
-          INPUT_NAME,
-          OUTPUT_NAMES);
-    } catch (final IOException e) {
-      LOGGER.e(e, "Exception!");
+      final int initStatus =
+          detector.initializeTensorFlow(
+              getAssets(),
+              MODEL_FILE,
+              LOCATION_FILE,
+              NUM_LOCATIONS,
+              INPUT_SIZE,
+              IMAGE_MEAN,
+              IMAGE_STD,
+              INPUT_NAME,
+              OUTPUT_NAMES);
+      if (initStatus != 0) {
+        LOGGER.e("TF init status != 0: %d", initStatus);
+        throw new RuntimeException();
+      }
+    } catch (final Exception e) {
+      throw new RuntimeException("Error initializing TensorFlow!", e);
     }
 
     previewWidth = size.getWidth();
@@ -172,21 +179,21 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
               canvas.drawBitmap(copy, matrix, new Paint());
 
               final Vector<String> lines = new Vector<String>();
+              if (detector != null) {
+                String statString = detector.getStatString();
+                String[] statLines = statString.split("\n");
+                for (String line : statLines) {
+                  lines.add(line);
+                }
+              }
+
               lines.add("Frame: " + previewWidth + "x" + previewHeight);
               lines.add("Crop: " + copy.getWidth() + "x" + copy.getHeight());
               lines.add("View: " + canvas.getWidth() + "x" + canvas.getHeight());
               lines.add("Rotation: " + sensorOrientation);
               lines.add("Inference time: " + lastProcessingTimeMs + "ms");
 
-              int lineNum = 0;
-              for (final String line : lines) {
-                borderedText.drawText(
-                    canvas,
-                    10,
-                    canvas.getHeight() - 10 - borderedText.getTextSize() * lineNum,
-                    line);
-                ++lineNum;
-              }
+              borderedText.drawLines(canvas, 10, canvas.getHeight() - 10, lines);
             }
           }
         });
@@ -314,5 +321,10 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
   @Override
   protected int getDesiredPreviewFrameSize() {
     return INPUT_SIZE;
+  }
+
+  @Override
+  public void onSetDebug(boolean debug) {
+    detector.enableStatLogging(debug);
   }
 }

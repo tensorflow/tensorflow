@@ -13,15 +13,21 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tf.contrib.tensor_forest.ops.count_extremely_random_stats."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import sys
+
+# TODO: #6568 Remove this hack that makes dlopen() not crash.
+if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
+  import ctypes
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 from tensorflow.contrib.tensor_forest.python import constants
 from tensorflow.contrib.tensor_forest.python.ops import tensor_forest_ops
-
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
 
@@ -88,10 +94,8 @@ class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
            num_classes=5,
            regression=False))
 
-      self.assertAllEqual(
-          [[10.5, 1.5, 2., 3., 4.],
-           [3.5, 1.5, 2., 0., 0.], [7., 0., 0., 3., 4.]],
-          pcw_node_sums.eval())
+      self.assertAllEqual([[10.5, 1.5, 2., 3., 4.], [3.5, 1.5, 2., 0., 0.],
+                           [7., 0., 0., 3., 4.]], pcw_node_sums.eval())
       self.assertAllEqual([[0, 0, 0], [0, 0, 1]], pcw_splits_indices.eval())
       self.assertAllEqual([1.5, 1.5], pcw_splits_sums.eval())
       self.assertAllEqual([[0, 2], [0, 0], [0, 1]], pcw_totals_indices.eval())
@@ -156,12 +160,13 @@ class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
            num_classes=5,
            regression=False))
 
-      self.assertAllEqual(
-          [[4., 1., 1., 1., 1.],
-           [2., 0., 0., 1., 1.],
-           [2., 1., 1., 0., 0.]],
-          pcw_node_sums.eval())
-      self.assertAllEqual([[0, 0, 4], [0, 0, 0], [0, 0, 3]],
+      self.assertAllEqual([[4., 1., 1., 1., 1.],
+                           [2., 0., 0., 1., 1.],
+                           [2., 1., 1., 0., 0.]],
+                          pcw_node_sums.eval())
+      self.assertAllEqual([[0, 0, 4],
+                           [0, 0, 0],
+                           [0, 0, 3]],
                           pcw_splits_indices.eval())
       self.assertAllEqual([1., 2., 1.], pcw_splits_sums.eval())
       self.assertAllEqual([[0, 4], [0, 0], [0, 3]], pcw_totals_indices.eval())
@@ -195,7 +200,7 @@ class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
 
   def testThreaded(self):
     with self.test_session(
-        config=tf.ConfigProto(intra_op_parallelism_threads=2)):
+        config=config_pb2.ConfigProto(intra_op_parallelism_threads=2)):
       (pcw_node_sums, _, pcw_splits_indices, pcw_splits_sums, _,
        pcw_totals_indices, pcw_totals_sums, _,
        leaves) = (tensor_forest_ops.count_extremely_random_stats(
@@ -213,8 +218,7 @@ class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
            regression=False))
 
       self.assertAllEqual([[4., 1., 1., 1., 1.], [2., 1., 1., 0., 0.],
-                           [2., 0., 0., 1., 1.]],
-                          pcw_node_sums.eval())
+                           [2., 0., 0., 1., 1.]], pcw_node_sums.eval())
       self.assertAllEqual([[0, 0, 0], [0, 0, 1]], pcw_splits_indices.eval())
       self.assertAllEqual([1., 1.], pcw_splits_sums.eval())
       self.assertAllEqual([[0, 2], [0, 0], [0, 1]], pcw_totals_indices.eval())
@@ -239,8 +243,7 @@ class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
            regression=False))
 
       self.assertAllEqual([[4., 1., 1., 1., 1.], [2., 1., 1., 0., 0.],
-                           [2., 0., 0., 1., 1.]],
-                          pcw_node_sums.eval())
+                           [2., 0., 0., 1., 1.]], pcw_node_sums.eval())
       self.assertEquals((0, 3), pcw_splits_indices.eval().shape)
       self.assertAllEqual([], pcw_splits_sums.eval())
       self.assertEquals((0, 2), pcw_totals_indices.eval().shape)
@@ -306,10 +309,9 @@ class CountExtremelyRandomStatsRegressionTest(test_util.TensorFlowTestCase):
            num_classes=2,
            regression=True))
 
-      self.assertAllEqual(
-          [[4., 14.], [2., 9.], [2., 5.]], pcw_node_sums.eval())
-      self.assertAllEqual(
-          [[4., 58.], [2., 45.], [2., 13.]], pcw_node_squares.eval())
+      self.assertAllEqual([[4., 14.], [2., 9.], [2., 5.]], pcw_node_sums.eval())
+      self.assertAllEqual([[4., 58.], [2., 45.], [2., 13.]],
+                          pcw_node_squares.eval())
       self.assertAllEqual([[0, 0]], pcw_splits_indices.eval())
       self.assertAllEqual([[1., 3.]], pcw_splits_sums.eval())
       self.assertAllEqual([[1., 9.]], pcw_splits_squares.eval())

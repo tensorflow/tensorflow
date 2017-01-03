@@ -128,6 +128,7 @@ def _monitored_train(graph,
                      supervisor_save_model_secs=600,
                      supervisor_save_model_steps=None,
                      keep_checkpoint_max=5,
+                     keep_checkpoint_every_n_hours=10000.0,
                      supervisor_save_summaries_secs=None,
                      supervisor_save_summaries_steps=100,
                      feed_fn=None,
@@ -176,6 +177,13 @@ def _monitored_train(graph,
       keep. As new files are created, older files are deleted. If None or 0,
       all checkpoint files are kept. This is simply passed as the max_to_keep
       arg to `tf.Saver` constructor.
+    keep_checkpoint_every_n_hours: In addition to keeping the most recent
+      `keep_checkpoint_max` checkpoint files, you might want to keep one checkpoint file
+      for every N hours of training.  This can be useful if you want to later
+      analyze how a model progressed during a long training session.  For
+      example, passing `keep_checkpoint_every_n_hours=2` ensures that you keep
+      one checkpoint file for every 2 hours of training.  The default value of
+      10,000 hours effectively disables the feature.
     supervisor_save_summaries_secs: Save summaries every
       `supervisor_save_summaries_secs` seconds when training.
     supervisor_save_summaries_steps: Save summaries every
@@ -248,7 +256,10 @@ def _monitored_train(graph,
 
     def make_saver():
       return tf_saver.Saver(
-          sharded=True, max_to_keep=keep_checkpoint_max, defer_build=True)
+          sharded=True,
+          max_to_keep=keep_checkpoint_max,
+          keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours,
+          defer_build=True)
 
     scaffold = monitored_session.Scaffold(
         init_op=init_op,
@@ -711,11 +722,14 @@ def evaluate(graph,
     # Create or get summary op, global_step and saver.
     saver = _get_saver()
     local_init_op = _get_local_init_op()
+    ready_for_local_init_op = _get_first_op_from_collection(
+        ops.GraphKeys.READY_FOR_LOCAL_INIT_OP)
     ready_op = _get_ready_op()
 
     session_manager = session_manager_lib.SessionManager(
         local_init_op=local_init_op,
-        ready_op=ready_op)
+        ready_op=ready_op,
+        ready_for_local_init_op=ready_for_local_init_op)
     session, initialized = session_manager.recover_session(
         master=supervisor_master,
         saver=saver,

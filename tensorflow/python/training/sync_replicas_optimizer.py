@@ -35,7 +35,7 @@ from tensorflow.python.training import queue_runner
 # rate according to the number of replicas. This change is introduced to be
 # consistent with how gradients are aggregated (averaged) within a batch in a
 # replica.
-class SyncReplicasOptimizerV2(optimizer.Optimizer):
+class SyncReplicasOptimizer(optimizer.Optimizer):
   """Class to synchronize, aggregate gradients and pass them to the optimizer.
 
   In a typical asynchronous training environment, it's common to have some
@@ -96,8 +96,8 @@ class SyncReplicasOptimizerV2(optimizer.Optimizer):
   # Note that if you want to have 2 backup replicas, you can change
   # total_num_replicas=52 and make sure this number matches how many physical
   # replicas you started in your job.
-  opt = tf.SyncReplicasOptimizerV2(opt, replicas_to_aggregate=50,
-                                   total_num_replicas=50)
+  opt = tf.SyncReplicasOptimizer(opt, replicas_to_aggregate=50,
+                                 total_num_replicas=50)
 
   # Some models have startup_delays to help stabilize the model but when using
   # sync_replicas training, set it to 0.
@@ -182,7 +182,7 @@ class SyncReplicasOptimizerV2(optimizer.Optimizer):
     if total_num_replicas is None:
       total_num_replicas = replicas_to_aggregate
 
-    super(SyncReplicasOptimizerV2, self).__init__(use_locking, name)
+    super(SyncReplicasOptimizer, self).__init__(use_locking, name)
     logging.info(
         "SyncReplicasV2: replicas_to_aggregate=%s; total_num_replicas=%s",
         replicas_to_aggregate, total_num_replicas)
@@ -310,6 +310,7 @@ class SyncReplicasOptimizerV2(optimizer.Optimizer):
             data_flow_ops.FIFOQueue(-1,
                                     global_step.dtype.base_dtype,
                                     shapes=(),
+                                    name="sync_token_q",
                                     shared_name="sync_token_q"))
         self._sync_token_queue = sync_token_queue
 
@@ -320,6 +321,7 @@ class SyncReplicasOptimizerV2(optimizer.Optimizer):
             data_flow_ops.FIFOQueue(1,
                                     types_pb2.DT_INT32,
                                     shapes=(),
+                                    name="dummy_queue",
                                     shared_name="dummy_queue"))
 
       with ops.device(global_step.device), ops.name_scope(""):

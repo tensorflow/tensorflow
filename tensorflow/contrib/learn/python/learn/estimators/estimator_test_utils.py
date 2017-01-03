@@ -20,11 +20,6 @@ from __future__ import print_function
 
 import inspect
 
-import tensorflow as tf
-
-
-FLAGS = tf.flags.FLAGS
-
 
 def assert_estimator_contract(tester, estimator_class):
   """Asserts whether given estimator satisfies the expected contract.

@@ -195,5 +195,22 @@ TEST_F(ArrayGradTest, TransposeGrad) {
   RunTest(x, x_shape, y, y_shape);
 }
 
+TEST_F(ArrayGradTest, ReverseSequenceGrad) {
+  TensorShape shape({5, 2, 5});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto seq_lengths = Const(scope_, {1, 2, 3, 4, 5});
+  // batch_dim defaults to 0.
+  auto y = ReverseSequence(scope_, x, seq_lengths, /* seq_dim */ 2);
+  RunTest(x, shape, y, shape);
+}
+
+TEST_F(ArrayGradTest, ReverseGrad) {
+  TensorShape shape({5, 2, 5});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto reverse_dims = Const(scope_, {true, false, true});
+  auto y = Reverse(scope_, x, reverse_dims);
+  RunTest(x, shape, y, shape);
+}
+
 }  // namespace
 }  // namespace tensorflow

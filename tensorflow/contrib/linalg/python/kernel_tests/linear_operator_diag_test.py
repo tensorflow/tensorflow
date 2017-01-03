@@ -17,13 +17,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-
+from tensorflow.contrib import linalg as linalg_lib
 from tensorflow.contrib.linalg.python.ops import linear_operator_test_util
+from tensorflow.python.framework import random_seed
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
+from tensorflow.python.platform import test
 
-
-linalg = tf.contrib.linalg
-tf.set_random_seed(23)
+linalg = linalg_lib
+random_seed.set_random_seed(23)
 
 
 class LinearOperatorDiagTest(
@@ -34,7 +38,7 @@ class LinearOperatorDiagTest(
     diag = linear_operator_test_util.random_sign_uniform(
         shape[:-1], minval=1., maxval=2., dtype=dtype)
     if use_placeholder:
-      diag_ph = tf.placeholder(dtype=dtype)
+      diag_ph = array_ops.placeholder(dtype=dtype)
       # Evaluate the diag here because (i) you cannot feed a tensor, and (ii)
       # diag is random and we want the same value used for both mat and
       # feed_dict.
@@ -45,7 +49,7 @@ class LinearOperatorDiagTest(
       operator = linalg.LinearOperatorDiag(diag)
       feed_dict = None
 
-    mat = tf.matrix_diag(diag)
+    mat = array_ops.matrix_diag(diag)
 
     return operator, mat, feed_dict
 
@@ -64,7 +68,7 @@ class LinearOperatorDiagTest(
     with self.test_session():
       diag_x = [1.0, -2.0]
       diag_y = [0., 0.]  # Imaginary eigenvalues should not matter.
-      diag = tf.complex(diag_x, diag_y)
+      diag = math_ops.complex(diag_x, diag_y)
       operator = linalg.LinearOperatorDiag(diag)
 
       # is_self_adjoint should not be auto-set for complex diag.
@@ -76,7 +80,7 @@ class LinearOperatorDiagTest(
     with self.test_session():
       x = [1., 2.]
       y = [1., 0.]
-      diag = tf.complex(x, y)  # Re[diag] > 0.
+      diag = math_ops.complex(x, y)  # Re[diag] > 0.
       # Should not fail
       linalg.LinearOperatorDiag(diag).assert_positive_definite().run()
 
@@ -92,7 +96,7 @@ class LinearOperatorDiagTest(
     with self.test_session():
       x = [1., 0.]
       y = [0., 1.]
-      diag = tf.complex(x, y)
+      diag = math_ops.complex(x, y)
       # Should not raise.
       linalg.LinearOperatorDiag(diag).assert_non_singular().run()
 
@@ -100,7 +104,7 @@ class LinearOperatorDiagTest(
     with self.test_session():
       x = [1., 0.]
       y = [0., 1.]
-      diag = tf.complex(x, y)
+      diag = math_ops.complex(x, y)
       operator = linalg.LinearOperatorDiag(diag)
       with self.assertRaisesOpError("imaginary.*not self-adjoint"):
         operator.assert_self_adjoint().run()
@@ -109,7 +113,7 @@ class LinearOperatorDiagTest(
     with self.test_session():
       x = [1., 0.]
       y = [0., 0.]
-      diag = tf.complex(x, y)
+      diag = math_ops.complex(x, y)
       operator = linalg.LinearOperatorDiag(diag)
       # Should not raise
       operator.assert_self_adjoint().run()
@@ -119,29 +123,29 @@ class LinearOperatorDiagTest(
     # test shapes that tf.matmul cannot handle.
     # In particular, tf.matmul does not broadcast.
     with self.test_session() as sess:
-      x = tf.random_normal(shape=(2, 2, 3, 4))
+      x = random_ops.random_normal(shape=(2, 2, 3, 4))
 
       # This LinearOperatorDiag will be brodacast to (2, 2, 3, 3) during solve
       # and apply with 'x' as the argument.
-      diag = tf.random_uniform(shape=(2, 1, 3))
+      diag = random_ops.random_uniform(shape=(2, 1, 3))
       operator = linalg.LinearOperatorDiag(diag, is_self_adjoint=True)
       self.assertAllEqual((2, 1, 3, 3), operator.shape)
 
       # Create a batch matrix with the broadcast shape of operator.
-      diag_broadcast = tf.concat_v2((diag, diag), 1)
-      mat = tf.matrix_diag(diag_broadcast)
+      diag_broadcast = array_ops.concat_v2((diag, diag), 1)
+      mat = array_ops.matrix_diag(diag_broadcast)
       self.assertAllEqual((2, 2, 3, 3), mat.get_shape())  # being pedantic.
 
       operator_apply = operator.apply(x)
-      mat_apply = tf.matmul(mat, x)
+      mat_apply = math_ops.matmul(mat, x)
       self.assertAllEqual(operator_apply.get_shape(), mat_apply.get_shape())
       self.assertAllClose(*sess.run([operator_apply, mat_apply]))
 
       operator_solve = operator.solve(x)
-      mat_solve = tf.matrix_solve(mat, x)
+      mat_solve = linalg_ops.matrix_solve(mat, x)
       self.assertAllEqual(operator_solve.get_shape(), mat_solve.get_shape())
       self.assertAllClose(*sess.run([operator_solve, mat_solve]))
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

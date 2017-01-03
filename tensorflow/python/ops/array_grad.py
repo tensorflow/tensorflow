@@ -34,7 +34,7 @@ from tensorflow.python.ops import sparse_ops
 @ops.RegisterGradient("Pack")
 def _PackGrad(op, grad):
   """Gradient for pack op."""
-  return array_ops.unpack(grad, num=op.get_attr("N"), axis=op.get_attr("axis"))
+  return array_ops.unstack(grad, num=op.get_attr("N"), axis=op.get_attr("axis"))
 
 
 @ops.RegisterGradient("Unpack")
@@ -355,8 +355,8 @@ def _GatherGrad(op, grad):
 @ops.RegisterGradient("GatherNd")
 def _GatherNdGrad(op, grad):
   ref = op.inputs[0]
-  ref_shape = array_ops.shape(ref)
   indices = op.inputs[1]
+  ref_shape = array_ops.shape(ref, out_type=indices.dtype)
   ref_grad = array_ops.scatter_nd(indices, grad, ref_shape)
   return [ref_grad, None]
 

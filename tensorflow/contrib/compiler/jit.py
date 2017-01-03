@@ -20,7 +20,8 @@ from __future__ import print_function
 
 import contextlib
 
-import tensorflow as tf
+from tensorflow.core.framework import attr_value_pb2
+from tensorflow.python.framework import ops
 
 
 @contextlib.contextmanager
@@ -43,8 +44,8 @@ def experimental_jit_scope(compile_ops=True):
     The current scope, enabling or disabling compilation.
 
   """
-  attrs = {"_XlaCompile": tf.AttrValue(b=compile_ops)}
+  attrs = {"_XlaCompile": attr_value_pb2.AttrValue(b=compile_ops)}
   # pylint: disable=protected-access
-  with tf.get_default_graph()._attr_scope(attrs):
+  with ops.get_default_graph()._attr_scope(attrs):
     yield
   # pylint: enable=protected-access

@@ -11,7 +11,7 @@ In this tutorial we will show how to train a recurrent neural network on
 a challenging task of language modeling. The goal of the problem is to fit a
 probabilistic model which assigns probabilities to sentences. It does so by
 predicting next words in a text given a history of previous words. For this
-purpose we will use the [Penn Tree Bank](http://www.cis.upenn.edu/~treebank/)
+purpose we will use the [Penn Tree Bank](https://catalog.ldc.upenn.edu/ldc99t42)
 (PTB) dataset, which is a popular benchmark for measuring quality of these
 models, whilst being small and relatively fast to train.
 
@@ -26,7 +26,7 @@ on the PTB dataset.
 
 ## Tutorial Files
 
-This tutorial references the following files from `models/rnn/ptb`:
+This tutorial references the following files from `models/tutorials/rnn/ptb` in the [TensorFlow models repo](https://github.com/tensorflow/models):
 
 File | Purpose
 --- | ---

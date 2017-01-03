@@ -144,7 +144,8 @@ Status GrpcServer::Init() {
   builder.SetMaxMessageSize(std::numeric_limits<int32>::max());
   master_impl_.reset(new Master(&master_env_, 0.0));
   master_service_ = NewGrpcMasterService(master_impl_.get(), &builder);
-  worker_service_ = NewGrpcWorkerService(&worker_env_, &builder);
+  worker_impl_.reset(NewGrpcWorker(&worker_env_));
+  worker_service_ = NewGrpcWorkerService(worker_impl_.get(), &builder);
   server_ = builder.BuildAndStart();
 
   if (!server_) {
@@ -180,7 +181,8 @@ Status GrpcServer::Init() {
     return errors::Internal("Could not parse port for local server from \"",
                             channel_cache->TranslateTask(name_prefix), "\".");
   }
-  worker_env_.worker_cache = NewGrpcWorkerCache(channel_cache.release());
+  worker_env_.worker_cache = NewGrpcWorkerCacheWithLocalWorker(
+      channel_cache.release(), worker_impl_.get(), name_prefix);
 
   // Finish setting up master environment.
   master_env_.ops = OpRegistry::Global();

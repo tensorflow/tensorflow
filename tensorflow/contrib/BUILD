@@ -38,6 +38,7 @@ py_library(
         "//tensorflow/contrib/losses:losses_py",
         "//tensorflow/contrib/metrics:metrics_py",
         "//tensorflow/contrib/ndlstm",
+        "//tensorflow/contrib/nn:nn_py",
         "//tensorflow/contrib/opt:opt_py",
         "//tensorflow/contrib/quantization:quantization_py",
         "//tensorflow/contrib/rnn:rnn_py",
@@ -47,8 +48,8 @@ py_library(
         "//tensorflow/contrib/solvers:solvers_py",
         "//tensorflow/contrib/specs",
         "//tensorflow/contrib/stat_summarizer:stat_summarizer_py",
-        "//tensorflow/contrib/tensor_forest:tensor_forest_py",
-        "//tensorflow/contrib/tensor_forest/hybrid:ops_lib",
+        "//tensorflow/contrib/tensor_forest:init_py",
+        "//tensorflow/contrib/tensor_forest/hybrid:ops_lib",  # XXX: no ref but need for pip
         "//tensorflow/contrib/tensorboard",
         "//tensorflow/contrib/testing:testing_py",
         "//tensorflow/contrib/tfprof",

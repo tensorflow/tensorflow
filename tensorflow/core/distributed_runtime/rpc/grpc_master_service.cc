@@ -104,6 +104,7 @@ class GrpcMasterService : public AsyncServiceInterface {
     ENQUEUE_REQUEST(CreateSession, true);
     ENQUEUE_REQUEST(ExtendSession, false);
     for (int i = 0; i < 100; ++i) {
+      ENQUEUE_REQUEST(PartialRunSetup, false);
       ENQUEUE_REQUEST(RunStep, true);
     }
     ENQUEUE_REQUEST(CloseSession, false);
@@ -156,6 +157,16 @@ class GrpcMasterService : public AsyncServiceInterface {
                                   call->SendResponse(ToGrpcStatus(status));
                                 });
     ENQUEUE_REQUEST(ExtendSession, false);
+  }
+
+  // RPC handler for setting up a partial run call.
+  void PartialRunSetupHandler(
+      MasterCall<PartialRunSetupRequest, PartialRunSetupResponse>* call) {
+    master_impl_->PartialRunSetup(&call->request, &call->response,
+                                  [call](const Status& status) {
+                                    call->SendResponse(ToGrpcStatus(status));
+                                  });
+    ENQUEUE_REQUEST(PartialRunSetup, false);
   }
 
   // RPC handler for running one step in a session.

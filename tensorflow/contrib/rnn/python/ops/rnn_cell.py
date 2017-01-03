@@ -22,6 +22,8 @@ import collections
 import math
 
 from tensorflow.contrib.layers.python.layers import layers
+from tensorflow.contrib.rnn.python.ops import core_rnn_cell
+from tensorflow.contrib.rnn.python.ops import core_rnn_cell_impl
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -29,11 +31,10 @@ from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
-from tensorflow.python.ops import rnn_cell
-from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
+
 
 def _get_concat_variable(name, shape, dtype, num_shards):
   """Get a sharded variable concatenated into one tensor."""
@@ -71,7 +72,7 @@ def _get_sharded_variable(name, shape, dtype, num_shards):
   return shards
 
 
-class CoupledInputForgetGateLSTMCell(rnn_cell.RNNCell):
+class CoupledInputForgetGateLSTMCell(core_rnn_cell.RNNCell):
   """Long short-term memory unit (LSTM) recurrent network cell.
 
   The default non-peephole implementation is based on:
@@ -145,12 +146,12 @@ class CoupledInputForgetGateLSTMCell(rnn_cell.RNNCell):
 
     if num_proj:
       self._state_size = (
-          rnn_cell.LSTMStateTuple(num_units, num_proj)
+          core_rnn_cell.LSTMStateTuple(num_units, num_proj)
           if state_is_tuple else num_units + num_proj)
       self._output_size = num_proj
     else:
       self._state_size = (
-          rnn_cell.LSTMStateTuple(num_units, num_units)
+          core_rnn_cell.LSTMStateTuple(num_units, num_units)
           if state_is_tuple else 2 * num_units)
       self._output_size = num_units
 
@@ -247,12 +248,12 @@ class CoupledInputForgetGateLSTMCell(rnn_cell.RNNCell):
           m = clip_ops.clip_by_value(m, -self._proj_clip, self._proj_clip)
           # pylint: enable=invalid-unary-operand-type
 
-    new_state = (rnn_cell.LSTMStateTuple(c, m) if self._state_is_tuple else
-                 array_ops.concat_v2([c, m], 1))
+    new_state = (core_rnn_cell.LSTMStateTuple(c, m) if self._state_is_tuple
+                 else array_ops.concat_v2([c, m], 1))
     return m, new_state
 
 
-class TimeFreqLSTMCell(rnn_cell.RNNCell):
+class TimeFreqLSTMCell(core_rnn_cell.RNNCell):
   """Time-Frequency Long short-term memory unit (LSTM) recurrent network cell.
 
   This implementation is based on:
@@ -416,7 +417,7 @@ class TimeFreqLSTMCell(rnn_cell.RNNCell):
     return freq_inputs
 
 
-class GridLSTMCell(rnn_cell.RNNCell):
+class GridLSTMCell(core_rnn_cell.RNNCell):
   """Grid Long short-term memory unit (LSTM) recurrent network cell.
 
   The default is based on:
@@ -1008,11 +1009,11 @@ class BidirectionalGridLSTMCell(GridLSTMCell):
 
 
 # pylint: disable=protected-access
-_linear = rnn_cell_impl._linear
+_linear = core_rnn_cell_impl._linear
 # pylint: enable=protected-access
 
 
-class AttentionCellWrapper(rnn_cell.RNNCell):
+class AttentionCellWrapper(core_rnn_cell.RNNCell):
   """Basic attention cell wrapper.
 
   Implementation based on https://arxiv.org/abs/1409.0473.
@@ -1042,7 +1043,7 @@ class AttentionCellWrapper(rnn_cell.RNNCell):
       ValueError: if cell returns a state tuple but the flag
           `state_is_tuple` is `False` or if attn_length is zero or less.
     """
-    if not isinstance(cell, rnn_cell.RNNCell):
+    if not isinstance(cell, core_rnn_cell.RNNCell):
       raise TypeError("The parameter cell is not RNNCell.")
     if nest.is_sequence(cell.state_size) and not state_is_tuple:
       raise ValueError("Cell returns tuple of states, but the flag "
@@ -1139,7 +1140,7 @@ class AttentionCellWrapper(rnn_cell.RNNCell):
       return new_attns, new_attn_states
 
 
-class LayerNormBasicLSTMCell(rnn_cell.RNNCell):
+class LayerNormBasicLSTMCell(core_rnn_cell.RNNCell):
   """LSTM unit with layer normalization and recurrent dropout.
 
   This class adds layer normalization and recurrent dropout to a
@@ -1195,7 +1196,7 @@ class LayerNormBasicLSTMCell(rnn_cell.RNNCell):
 
   @property
   def state_size(self):
-    return rnn_cell.LSTMStateTuple(self._num_units, self._num_units)
+    return core_rnn_cell.LSTMStateTuple(self._num_units, self._num_units)
 
   @property
   def output_size(self):
@@ -1247,5 +1248,5 @@ class LayerNormBasicLSTMCell(rnn_cell.RNNCell):
         new_c = self._norm(new_c, "state")
       new_h = self._activation(new_c) * math_ops.sigmoid(o)
 
-      new_state = rnn_cell.LSTMStateTuple(new_c, new_h)
+      new_state = core_rnn_cell.LSTMStateTuple(new_c, new_h)
       return new_h, new_state

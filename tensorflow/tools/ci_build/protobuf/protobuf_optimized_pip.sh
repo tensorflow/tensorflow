@@ -15,12 +15,13 @@
 # ==============================================================================
 
 PROTOBUF_VERSION="3.1.0"
-DIR=/workspace/protobuf
+PYTHON_BIN=${PYTHON_BIN:-python}
+DIR=${PWD}/protobuf
 
 set -ex
 
-mkdir -p $DIR
-cd $DIR
+mkdir -p ${DIR}
+cd ${DIR}
 curl -SsL -O https://github.com/google/protobuf/archive/v${PROTOBUF_VERSION}.tar.gz
 tar xzf v${PROTOBUF_VERSION}.tar.gz
 cd $DIR/protobuf-${PROTOBUF_VERSION}
@@ -29,4 +30,4 @@ CXXFLAGS="-fPIC -g -O2" ./configure
 make -j8
 export PROTOC=$DIR/src/protoc
 cd python
-python setup.py bdist_wheel --cpp_implementation --compile_static_extension
+$PYTHON_BIN setup.py bdist_wheel --cpp_implementation --compile_static_extension

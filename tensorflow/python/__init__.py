@@ -22,7 +22,6 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
-
 """
 
 import ctypes
@@ -30,6 +29,19 @@ import importlib
 import inspect
 import sys
 import traceback
+
+
+# TODO(drpng): write up instructions for editing this file in a doc and point to
+# the doc instead.
+# If you want to edit this file to expose modules in public tensorflow API, you
+# need to follow these steps:
+# 1. Consult with tensorflow team and get approval for adding a new API to the
+#    public interface.
+# 2. Document the module in the gen_docs_combined.py.
+# 3. Import the module in the main tensorflow namespace by adding an import
+#    statement in this file.
+# 4. Sanitize the entry point by making sure that your module does not expose
+#    transitively imported modules used for implementation, such as os, sys.
 
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import,g-bad-import-order,g-import-not-at-top
@@ -87,7 +99,7 @@ from tensorflow.python.ops import metrics
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import sdca_ops as sdca
 from tensorflow.python.ops import image_ops as image
-from tensorflow.python.ops import losses
+from tensorflow.python.ops.losses import losses
 from tensorflow.python.ops import sets
 from tensorflow.python.user_ops import user_ops
 from tensorflow.python.util import compat

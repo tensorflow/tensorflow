@@ -186,7 +186,7 @@ std::unordered_set<string> Scope::GetColocationConstraints(
 void Scope::UpdateStatus(const Status s) const {
   status_->Update(s);
   if (exit_on_error_ && !status_->ok()) {
-    LOG(FATAL) << status_;
+    LOG(FATAL) << *status_;
   }
 }
 

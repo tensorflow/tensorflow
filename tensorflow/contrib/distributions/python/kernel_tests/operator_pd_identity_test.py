@@ -18,12 +18,15 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
 
+from tensorflow.contrib import distributions as distributions_lib
 from tensorflow.contrib.distributions.python.ops import operator_pd_identity
 from tensorflow.contrib.distributions.python.ops import operator_test_util
+from tensorflow.python.framework import constant_op
+from tensorflow.python.ops import array_ops
+from tensorflow.python.platform import test
 
-distributions = tf.contrib.distributions
+distributions = distributions_lib
 
 
 class OperatorPDIdentityTest(operator_test_util.OperatorPDDerivedClassTest):
@@ -35,9 +38,9 @@ class OperatorPDIdentityTest(operator_test_util.OperatorPDDerivedClassTest):
     batch_shape = list(batch_shape)
     diag_shape = batch_shape + [k]
     matrix_shape = batch_shape + [k, k]
-    diag = tf.ones(diag_shape, dtype=dtype)
-    scale = tf.constant(2.0, dtype=dtype)
-    scaled_identity_matrix = scale * tf.matrix_diag(diag)
+    diag = array_ops.ones(diag_shape, dtype=dtype)
+    scale = constant_op.constant(2.0, dtype=dtype)
+    scaled_identity_matrix = scale * array_ops.matrix_diag(diag)
     operator = operator_pd_identity.OperatorPDIdentity(
         matrix_shape, dtype, scale=scale)
     return operator, scaled_identity_matrix.eval()
@@ -114,4 +117,4 @@ class OperatorPDIdentityTest(operator_test_util.OperatorPDDerivedClassTest):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

@@ -24,8 +24,7 @@ import time
 
 import numpy as np
 
-# TODO(mrry): Remove this hack which makes dlopen() in
-#             sparse_feature_cross_op.py not crash in the open source world.
+# TODO: #6568 Remove this hack that makes dlopen() not crash.
 if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
   import ctypes
   sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)

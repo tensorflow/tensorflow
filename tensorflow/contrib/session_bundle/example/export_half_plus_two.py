@@ -57,7 +57,7 @@ def Export():
     x = tf.identity(tf_example["x"], name="x")
 
     # Calculate, y = a*x + b
-    y = tf.add(tf.mul(a, x), b, name="y")
+    y = tf.add(tf.multiply(a, x), b, name="y")
 
     # Setup a standard Saver for our variables.
     save = tf.train.Saver(

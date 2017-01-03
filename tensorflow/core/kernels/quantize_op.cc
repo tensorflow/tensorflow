@@ -41,11 +41,12 @@ template <typename Device, typename T>
 class QuantizeV2Op : public OpKernel {
  public:
   explicit QuantizeV2Op(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    half_range_ = !std::is_signed<T>::value
-                      ? 0.0f
-                      : (std::numeric_limits<T>::max() -
-                         std::numeric_limits<T>::min() + 1) /
-                            2.0f;
+    half_range_ =
+        !std::is_signed<T>::value
+            ? 0.0f
+            : (static_cast<double>(std::numeric_limits<T>::max()) -
+               static_cast<double>(std::numeric_limits<T>::min()) + 1) /
+                  2.0f;
     string mode_string;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("mode", &mode_string));
     OP_REQUIRES(ctx,
@@ -90,7 +91,8 @@ class QuantizeV2Op : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input.shape(), &output));
     if (mode_ == QUANTIZE_MODE_MIN_COMBINED) {
       const float scale_factor =
-          (std::numeric_limits<T>::max() - std::numeric_limits<T>::min()) /
+          (static_cast<double>(std::numeric_limits<T>::max()) -
+           static_cast<double>(std::numeric_limits<T>::min())) /
           (max_range - min_range);
 
       // Quantize:
@@ -162,5 +164,8 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("QuantizeV2").Device(DEVICE_CPU).TypeConstraint<qint16>("T"),
     QuantizeV2Op<CPUDevice, qint16>);
+REGISTER_KERNEL_BUILDER(
+    Name("QuantizeV2").Device(DEVICE_CPU).TypeConstraint<qint32>("T"),
+    QuantizeV2Op<CPUDevice, qint32>);
 
 }  // namespace tensorflow

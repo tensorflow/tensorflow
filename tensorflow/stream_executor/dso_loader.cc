@@ -92,8 +92,13 @@ string GetCudnnVersion() { return TF_CUDNN_VERSION; }
                       dso_handle);
 }
 
+static mutex& GetRpathMutex() {
+  static mutex* mu = new mutex;
+  return *mu;
+}
+
 /* static */ void DsoLoader::RegisterRpath(port::StringPiece path) {
-  mutex_lock lock{rpath_mutex_};
+  mutex_lock lock{GetRpathMutex()};
   GetRpaths()->push_back(path.ToString());
 }
 
@@ -138,7 +143,6 @@ static std::vector<string>* CreatePrimordialRpaths() {
   return rpaths;
 }
 
-/* static */ mutex DsoLoader::rpath_mutex_{LINKER_INITIALIZED};
 /* static */ std::vector<string>* DsoLoader::GetRpaths() {
   static std::vector<string>* rpaths = CreatePrimordialRpaths();
   return rpaths;
@@ -172,7 +176,7 @@ static std::vector<string>* CreatePrimordialRpaths() {
   // Otherwise, try binary-plus-rpath locations.
   string binary_directory =
       GetBinaryDirectory(true /* = strip_executable_name */);
-  mutex_lock lock{rpath_mutex_};
+  mutex_lock lock{GetRpathMutex()};
   for (const string& rpath : *GetRpaths()) {
     candidate =
         port::Join(StringPieces{binary_directory, rpath, library_name}, "/");

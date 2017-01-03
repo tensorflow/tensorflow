@@ -124,7 +124,7 @@ def tf_copts():
   return (["-DEIGEN_AVOID_STL_ARRAY",
            "-Iexternal/gemmlowp",
            "-Wno-sign-compare",
-           "-fno-exceptions"] +
+           "-fno-exceptions",] +
           if_cuda(["-DGOOGLE_CUDA=1"]) +
           if_android_arm(["-mfpu=neon"]) +
           if_x86(["-msse4.1"]) +

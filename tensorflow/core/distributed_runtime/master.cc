@@ -102,6 +102,7 @@ void Master::GC() {
                        << "on a staggered delay, session_gc_seconds may need "
                        << "to be raised.";
           sess->Close();
+          sess->Unref();
         });
       }
     }
@@ -111,6 +112,17 @@ void Master::GC() {
 
 class DeviceFinder {
  public:
+  static Status GetRemoteDevices(
+      const protobuf::RepeatedPtrField<string>& device_filters, MasterEnv* env,
+      std::vector<Device*>* out_remote) {
+    DeviceFinder finder(device_filters, env);
+    finder.Start();
+    TF_RETURN_IF_ERROR(finder.Wait());
+    finder.GetRemoteDevices(env->local_devices, out_remote);
+    return Status::OK();
+  }
+
+ private:
   explicit DeviceFinder(
       const protobuf::RepeatedPtrField<string>& device_filters, MasterEnv* env)
       : env_(env) {
@@ -125,6 +137,20 @@ class DeviceFinder {
     for (const string& filter : device_filters) {
       process_filter(filter);
     }
+    // Enumerates all known workers' target. A target name is a
+    // prefix of a device name. E.g., /job:mnist/replica:0/task:10.
+    std::vector<string> workers;
+    env_->worker_cache->ListWorkers(&workers);
+    if (filters_.empty()) {
+      std::swap(workers, targets_);
+    } else {
+      for (const string& name : workers) {
+        if (MatchFilters(name)) {
+          targets_.push_back(name);
+        }
+      }
+    }
+    seen_targets_.assign(targets_.size(), false);
   }
 
   ~DeviceFinder() {
@@ -132,23 +158,9 @@ class DeviceFinder {
   }
 
   void Start() {
-    // Enumerates all known workers' target. A target name is a
-    // prefix of a device name. E.g., /job:mnist/replica:0/task:10.
-    std::vector<string> workers;
-    env_->worker_cache->ListWorkers(&workers);
-    std::vector<string> targets;
-    if (filters_.empty()) {
-      swap(workers, targets);
-    } else {
-      for (const string& name : workers) {
-        if (MatchFilters(name)) {
-          targets.push_back(name);
-        }
-      }
-    }
     {
       mutex_lock l(mu_);
-      num_pending_ = targets.size();
+      num_pending_ = targets_.size();
       if (num_pending_ == 0) {
         pending_zero_.notify_all();
       }
@@ -156,17 +168,36 @@ class DeviceFinder {
     // Talk to all workers to get the list of available devices.
     using std::placeholders::_1;
     using std::placeholders::_2;
-    for (size_t i = 0; i < targets.size(); ++i) {
-      NewRemoteDevices(env_->env, env_->worker_cache, targets[i],
-                       std::bind(&ME::WhenFound, this, _1, _2));
+    for (size_t i = 0; i < targets_.size(); ++i) {
+      // TODO(mrry): Propagate a timeout here, since `this->WhenFound()` may
+      // never be called.
+      NewRemoteDevices(env_->env, env_->worker_cache, targets_[i],
+                       std::bind(&ME::WhenFound, this, i, _1, _2));
     }
   }
 
-  void Wait() {
+  // Every `kLoggingPeriodMs`, while the DeviceFinder is still waiting
+  // to hear from workers, log a list of the workers who have not
+  // responded.
+  const int32 kLoggingPeriodMs = 10 * 1000;
+
+  Status Wait() {
     mutex_lock l(mu_);
+    // TODO(mrry): Propagate a timeout here, since `num_pending_` may
+    // never become zero.
     while (num_pending_ != 0) {
-      pending_zero_.wait(l);
+      pending_zero_.wait_for(l, std::chrono::milliseconds(kLoggingPeriodMs));
+      if (num_pending_ != 0) {
+        for (int i = 0; i < targets_.size(); ++i) {
+          if (!seen_targets_[i]) {
+            LOG(INFO)
+                << "CreateSession still waiting for response from worker: "
+                << targets_[i];
+          }
+        }
+      }
     }
+    return status_;
   }
 
   // The caller takes the ownership of returned remote devices.
@@ -186,7 +217,6 @@ class DeviceFinder {
     found_.clear();
   }
 
- private:
   typedef DeviceFinder ME;
   const MasterEnv* env_;
   std::vector<DeviceNameUtils::ParsedName> filters_;
@@ -195,11 +225,20 @@ class DeviceFinder {
   int num_pending_ GUARDED_BY(mu_);
   condition_variable pending_zero_;
   std::vector<Device*> found_ GUARDED_BY(mu_);
+  // List of targets to be contacted by this DeviceFinder. The
+  // respective `bool` in `seen_targets_` indicates whether we have
+  // heard from this target or not.
+  std::vector<string> targets_;
+  std::vector<bool> seen_targets_ GUARDED_BY(mu_);
+  Status status_;
 
-  void WhenFound(const Status& s, std::vector<Device*>* devices) {
+  void WhenFound(int target_index, const Status& s,
+                 std::vector<Device*>* devices) {
     mutex_lock l(mu_);
+    seen_targets_[target_index] = true;
     if (!s.ok()) {
       LOG(ERROR) << "Master init: " << s;
+      status_.Update(s);
     } else {
       found_.insert(found_.end(), devices->begin(), devices->end());
       devices->clear();
@@ -243,11 +282,13 @@ void Master::CreateSession(const CreateSessionRequest* req,
     if (status.ok()) {
       // Ping all the workers and build the list of devices that the
       // session will use.
-      DeviceFinder finder(req->config().device_filters(), env_);
-      finder.Start();
-      finder.Wait();
       std::vector<Device*> remote_devices;
-      finder.GetRemoteDevices(env_->local_devices, &remote_devices);
+      status = DeviceFinder::GetRemoteDevices(req->config().device_filters(),
+                                              env_, &remote_devices);
+      if (!status.ok()) {
+        done(status);
+        return;
+      }
       SessionOptions options;
       options.config = req->config();
       MasterSession* session =
@@ -256,13 +297,13 @@ void Master::CreateSession(const CreateSessionRequest* req,
           const_cast<CreateSessionRequest*>(req)->mutable_graph_def();
       Status create_status = session->Create(gdef);
       if (!create_status.ok()) {
-        // Takes ownership of `session` (and destroys it).
         session->Close();
+        session->Unref();
         done(create_status);
         return;
       }
       resp->set_session_handle(session->handle());
-      // Insert into the session map.
+      // Insert into the session map, which takes ownership of the session.
       {
         mutex_lock l(mu_);
         CHECK(sessions_.insert({session->handle(), session}).second);
@@ -282,6 +323,7 @@ void Master::ExtendSession(const ExtendSessionRequest* req,
     done(errors::Aborted("Session ", req->session_handle(), " is not found."));
     return;
   }
+  session->Ref();
   mu_.unlock();
 
   SchedClosure([session, req, resp, done]() {
@@ -289,6 +331,7 @@ void Master::ExtendSession(const ExtendSessionRequest* req,
     if (status.ok()) {
       status = session->Extend(req, resp);
     }
+    session->Unref();
     done(status);
   });
 }
@@ -302,10 +345,13 @@ void Master::PartialRunSetup(const PartialRunSetupRequest* req,
     done(errors::Aborted("Session ", req->session_handle(), " is not found."));
     return;
   }
+  session->Ref();
   mu_.unlock();
 
   SchedClosure([this, session, req, resp, done]() {
-    done(session->PartialRunSetup(req, resp));
+    Status s = session->PartialRunSetup(req, resp);
+    session->Unref();
+    done(s);
   });
 }
 
@@ -319,10 +365,12 @@ void Master::RunStep(CallOptions* opts, const RunStepRequest* req,
     done(errors::Aborted("Session ", req->session_handle(), " is not found."));
     return;
   }
+  session->Ref();
   mu_.unlock();
 
   SchedClosure([this, start_time, session, opts, req, resp, done]() {
     Status status = session->Run(opts, req, resp);
+    session->Unref();
     uint64 done_time = env_->env->NowMicros();
     done(status);
     mutex_lock l(mu_);
@@ -344,6 +392,8 @@ void Master::CloseSession(const CloseSessionRequest* req,
           " is not found. Possibly, this master has restarted."));
       return;
     }
+    // NOTE(mrry): One reference to the session is transferred from
+    // `sessions_[req->session_handle()]` to `session`.
     session = iter->second;
     sessions_.erase(iter);
     mu_.unlock();
@@ -353,6 +403,7 @@ void Master::CloseSession(const CloseSessionRequest* req,
   // delete it in non-critical thread.
   SchedClosure([session, done]() {
     Status s = session->Close();
+    session->Unref();
     done(s);
   });
 }
@@ -360,19 +411,18 @@ void Master::CloseSession(const CloseSessionRequest* req,
 void Master::ListDevices(const ListDevicesRequest* req,
                          ListDevicesResponse* resp, MyClosure done) {
   SchedClosure([this, req, resp, done]() {
-    DeviceFinder finder({}, env_);
-    finder.Start();
-    finder.Wait();
     std::vector<Device*> remote_devices;
-    finder.GetRemoteDevices(env_->local_devices, &remote_devices);
-    for (Device* dev : env_->local_devices) {
-      *(resp->add_local_device()) = dev->attributes();
+    Status s = DeviceFinder::GetRemoteDevices({}, env_, &remote_devices);
+    if (s.ok()) {
+      for (Device* dev : env_->local_devices) {
+        *(resp->add_local_device()) = dev->attributes();
+      }
+      for (Device* dev : remote_devices) {
+        *(resp->add_remote_device()) = dev->attributes();
+        delete dev;
+      }
     }
-    for (Device* dev : remote_devices) {
-      *(resp->add_remote_device()) = dev->attributes();
-      delete dev;
-    }
-    done(Status::OK());
+    done(s);
   });
 }
 
@@ -387,13 +437,15 @@ void Master::CleanupWorkers(const ResetRequest& reset) {
     std::vector<CleanupAllResponse> resp(num_workers);
     int c = 0;
     for (int i = 0; i < num_workers; ++i) {
-      auto worker = env_->worker_cache->CreateWorker(worker_names[i]);
+      const string& worker_name = worker_names[i];
+      auto worker = env_->worker_cache->CreateWorker(worker_name);
       if (worker) {
-        worker->CleanupAllAsync(&req, &resp[i], [&n, worker, c](Status s) {
-          TF_CHECK_OK(s);
-          delete worker;
-          n[c].Notify();
-        });
+        worker->CleanupAllAsync(
+            &req, &resp[i], [this, &n, worker_name, worker, c](Status s) {
+              TF_CHECK_OK(s);
+              env_->worker_cache->ReleaseWorker(worker_name, worker);
+              n[c].Notify();
+            });
       } else {
         n[c].Notify();
       }
@@ -409,21 +461,24 @@ void Master::Reset(const ResetRequest* req, ResetResponse* resp,
                    MyClosure done) {
   // Vector to hold the session pointers present in the sessions_
   // (string->Session*) map.
-  std::vector<MasterSession*> sessions;
+  std::vector<MasterSession*> sessions_to_close;
   {
     mutex_lock l(mu_);
+    // NOTE(mrry): Transfer one reference to each session from the
+    // `sessions_` map to the `sessions_to_close` vector.
     for (const auto& entry : sessions_) {
-      sessions.push_back(entry.second);
+      sessions_to_close.push_back(entry.second);
     }
     sessions_.clear();
   }
 
   CleanupWorkers(*req);
 
-  SchedClosure([sessions, done]() {
+  SchedClosure([sessions_to_close, done]() {
     Status s;
-    for (MasterSession* session : sessions) {
+    for (MasterSession* session : sessions_to_close) {
       s.Update(session->Close());
+      session->Unref();
     }
     done(s);
   });

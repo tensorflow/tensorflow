@@ -33,6 +33,8 @@ types in your graph.
 TensorFlow provides several operations that you can use to determine the shape
 of a tensor and change the shape of a tensor.
 
+@@broadcast_dynamic_shape
+@@broadcast_static_shape
 @@shape
 @@shape_n
 @@size
@@ -203,6 +205,36 @@ def setdiff1d(x, y, index_dtype=dtypes.int32, name=None):
   return gen_array_ops._list_diff(x, y, index_dtype, name)
 setdiff1d.__doc__ = gen_array_ops._list_diff.__doc__
 # pylint: enable=protected-access
+
+
+def broadcast_dynamic_shape(shape_x, shape_y):
+  # pylint: disable=protected-access
+  """Returns the broadcasted dynamic shape between `shape_x` and `shape_y`.
+
+  Args:
+    shape_x: A rank 1 integer `Tensor`, representing the shape of x.
+    shape_y: A rank 1 integer `Tensor`, representing the shape of x.
+  Returns:
+    A rank 1 integer `Tensor` representing the broadcasted shape.
+  """
+  return gen_array_ops._broadcast_args(shape_x, shape_y)
+  # pylint: enable=protected-access
+
+
+def broadcast_static_shape(shape_x, shape_y):
+  """Returns the broadcasted static shape between `shape_x` and `shape_y`.
+
+  Args:
+    shape_x: A `TensorShape`
+    shape_y: A `TensorShape`
+
+  Returns:
+    A `TensorShape` representing the broadcasted shape.
+
+  Raises:
+    ValueError: If the two shapes can not be broadcasted.
+  """
+  return common_shapes.broadcast_shape(shape_x, shape_y)
 
 
 def shape(input, name=None, out_type=dtypes.int32):
@@ -1182,7 +1214,7 @@ def boolean_mask(tensor, mask, name="boolean_mask"):
     leading_size = gen_math_ops._prod(shape(tensor)[:ndims_mask], [0])
     tensor = reshape(
         tensor,
-        concat(0, [[leading_size], shape(tensor)[ndims_mask:]]))
+        concat_v2([[leading_size], shape(tensor)[ndims_mask:]], 0))
     first_dim = shape_tensor[:ndims_mask].num_elements()
     tensor.set_shape(
         tensor_shape.as_shape([first_dim])
@@ -1256,7 +1288,7 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
   tf.shape(split1) ==> [5, 15]
   tf.shape(split2) ==> [5, 11]
   # Split 'value' into 3 tensors along dimension 1
-  split0, split1, split2 = tf.split(value=1, num_or_size_splits=3, axis=value)
+  split0, split1, split2 = tf.split(value, num_or_size_splits=3, axis=1)
   tf.shape(split0) ==> [5, 10]
   ```
 
@@ -1406,8 +1438,8 @@ def matrix_transpose(a, name="matrix_transpose"):
       perm = list(range(ndims - 2)) + [ndims - 1] + [ndims - 2]
     else:
       a_rank = rank(a)
-      perm = concat(
-          0, (gen_math_ops._range(0, a_rank - 2, 1), [a_rank - 1, a_rank - 2]))
+      perm = concat_v2(
+          (gen_math_ops._range(0, a_rank - 2, 1), [a_rank - 1, a_rank - 2]), 0)
 
     return transpose(a, perm=perm)
 # pylint: enable=invalid-name

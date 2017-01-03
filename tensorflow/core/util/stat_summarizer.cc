@@ -29,7 +29,12 @@ limitations under the License.
 
 namespace tensorflow {
 
-StatSummarizer::StatSummarizer(const tensorflow::GraphDef& tensorflow_graph) {
+StatSummarizer::StatSummarizer(const tensorflow::GraphDef& tensorflow_graph)
+    : StatSummarizer(tensorflow_graph, StatSummarizerOptions()) {}
+
+StatSummarizer::StatSummarizer(const tensorflow::GraphDef& tensorflow_graph,
+                               const StatSummarizerOptions& options)
+    : options_(options) {
   LOG(INFO) << "StatSummarizer found " << tensorflow_graph.node_size()
             << " nodes";
   for (const auto& node : tensorflow_graph.node()) {
@@ -200,7 +205,8 @@ void StatSummarizer::OrderNodesByMetric(
   for (const auto& det : details_) {
     const Detail* detail = &(det.second);
     std::stringstream stream;
-    stream << std::setw(20) << std::right << std::setprecision(10);
+    stream << std::setw(20) << std::right << std::setprecision(10)
+           << std::fixed;
 
     int definition_index = 0;
     auto it = std::find(nodes_in_def_order_.begin(), nodes_in_def_order_.end(),
@@ -358,17 +364,24 @@ std::string StatSummarizer::GetStatsByMetric(const string& title,
 
 std::string StatSummarizer::GetOutputString() const {
   std::stringstream stream;
-
-  // TODO(andrewharp): Allow sorting metrics to be specified externally, e.g.
-  // on command line.
-  stream << GetStatsByMetric("Run Order", BY_RUN_ORDER, 0);
-  stream << GetStatsByMetric("Top by Computation Time", BY_TIME, 10);
-  stream << GetStatsByMetric("Top by Memory Use", BY_MEMORY, 10);
-
-  stream << GetStatsByNodeType();
-
-  stream << ShortSummary() << std::endl;
-
+  if (options_.show_run_order) {
+    stream << GetStatsByMetric("Run Order", BY_RUN_ORDER,
+                               options_.run_order_limit);
+  }
+  if (options_.show_time) {
+    stream << GetStatsByMetric("Top by Computation Time", BY_TIME,
+                               options_.time_limit);
+  }
+  if (options_.show_memory) {
+    stream << GetStatsByMetric("Top by Memory Use", BY_MEMORY,
+                               options_.memory_limit);
+  }
+  if (options_.show_type) {
+    stream << GetStatsByNodeType();
+  }
+  if (options_.show_summary) {
+    stream << ShortSummary() << std::endl;
+  }
   return stream.str();
 }
 
