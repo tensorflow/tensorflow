@@ -141,12 +141,10 @@ from __future__ import print_function
 import time
 
 from tensorflow.contrib.framework.python.ops import variables
-from tensorflow.core.protobuf import saver_pb2
-from tensorflow.python import summary
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.summary import summary
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.training import session_run_hook
@@ -195,9 +193,7 @@ def wait_for_new_checkpoint(checkpoint_dir,
       return checkpoint_path
 
 
-def checkpoints_iterator(checkpoint_dir,
-                         min_interval_secs=0,
-                         timeout=None):
+def checkpoints_iterator(checkpoint_dir, min_interval_secs=0, timeout=None):
   """Continuously yield new checkpoint files as they appear.
 
   The iterator only checks for new checkpoints when control flow has been
@@ -245,8 +241,7 @@ def get_or_create_eval_step():
   if len(eval_steps) == 1:
     return eval_steps[0]
   elif len(eval_steps) > 1:
-    raise ValueError(
-        'Multiple tensors added to tf.GraphKeys.EVAL_STEP')
+    raise ValueError('Multiple tensors added to tf.GraphKeys.EVAL_STEP')
   else:
     counter = variables.local_variable(0.0, name='eval_step')
     graph.add_to_collection(ops.GraphKeys.EVAL_STEP, counter)
@@ -254,7 +249,7 @@ def get_or_create_eval_step():
 
 
 class StopAfterNEvalsHook(session_run_hook.SessionRunHook):
-  """A run hook used by the evaluation routines to run the `eval_ops` N times."""
+  """Run hook used by the evaluation routines to run the `eval_ops` N times."""
 
   def __init__(self, num_evals):
     """Constructs the run hook.
@@ -269,11 +264,13 @@ class StopAfterNEvalsHook(session_run_hook.SessionRunHook):
     self._evals_completed = get_or_create_eval_step()
 
   def before_run(self, run_context):
-    return session_run_hook.SessionRunArgs(
-        {'evals_completed': self._evals_completed})
+    return session_run_hook.SessionRunArgs({
+        'evals_completed': self._evals_completed
+    })
 
   def after_run(self, run_context, run_values):
     evals_completed = run_values.results['evals_completed']
+    logging.info('Evaluation [%d/%d]', evals_completed, self._num_evals)
     if evals_completed >= self._num_evals:
       run_context.request_stop()
 
@@ -299,7 +296,7 @@ class _FinalOpsHook(session_run_hook.SessionRunHook):
     return self._final_ops_values
 
   def end(self, session):
-    if self._final_ops:
+    if self._final_ops is not None:
       self._final_ops_values = session.run(self._final_ops,
                                            feed_dict=self._final_ops_feed_dict)
 
@@ -345,6 +342,7 @@ def _scaffold_with_init(scaffold, saver, checkpoint_path):
     A scaffold with an init_fn that loads the given checkpoint. If the scaffold
     provided already has an init_fn, the scaffold is returned unchanged.
   """
+
   def restore_checkpoint(_, session):
     saver.restore(session, checkpoint_path)
 
@@ -360,17 +358,15 @@ def _scaffold_with_init(scaffold, saver, checkpoint_path):
   return scaffold
 
 
-def evaluate_once(
-    checkpoint_path,
-    master='',
-    scaffold=None,
-    eval_ops=None,
-    feed_dict=None,
-    final_ops=None,
-    final_ops_feed_dict=None,
-    variables_to_restore=None,
-    hooks=None,
-    config=None):
+def evaluate_once(checkpoint_path,
+                  master='',
+                  scaffold=None,
+                  eval_ops=None,
+                  feed_dict=None,
+                  final_ops=None,
+                  final_ops_feed_dict=None,
+                  hooks=None,
+                  config=None):
   """Evaluates the model at the given checkpoint path.
 
   During a single evaluation, the `eval_ops` is run until the session is
@@ -379,14 +375,14 @@ def evaluate_once(
   the requested number of times.
 
   Optionally, a user can pass in `final_ops`, a single `Tensor`, a list of
-  `Tensors` or a dictionary from names to `Tensors`. The `final_ops` is evaluated
-  a single time after `eval_ops` has finished running and the fetched values of
-  `final_ops` are returned. If `final_ops` is left as `None`, then `None` is
-  returned.
+  `Tensors` or a dictionary from names to `Tensors`. The `final_ops` is
+  evaluated a single time after `eval_ops` has finished running and the fetched
+  values of `final_ops` are returned. If `final_ops` is left as `None`, then
+  `None` is returned.
 
   One may also consider using a `tf.contrib.training.SummaryAtEndHook` to record
-  summaries after the `eval_ops` have run. If `eval_ops` is `None`, the summaries
-  run immedietly after the model checkpoint has been restored.
+  summaries after the `eval_ops` have run. If `eval_ops` is `None`, the
+  summaries run immedietly after the model checkpoint has been restored.
 
   Note that `evaluate_once` creates a local variable used to track the number of
   evaluations run via `tf.contrib.training.get_or_create_eval_step`.
@@ -400,15 +396,13 @@ def evaluate_once(
       restoring variables. Note that `scaffold.init_fn` is used by the function
       to restore the checkpoint. If you supply a custom init_fn, then it must
       also take care of restoring the model from its checkpoint.
-    eval_ops: A operation which is run until the session is requested to stop,
+    eval_ops: A single `Tensor`, a list of `Tensors` or a dictionary of names
+      to `Tensors`, which is run until the session is requested to stop,
       commonly done by a `tf.contrib.training.StopAfterNEvalsHook`.
     feed_dict: The feed dictionary to use when executing the `eval_ops`.
-    final_ops: A single `Tensor`, a list of `Tensors` or a dictionary of names to
-      `Tensors`.
+    final_ops: A single `Tensor`, a list of `Tensors` or a dictionary of names
+      to `Tensors`.
     final_ops_feed_dict: A feed dictionary to use when evaluating `final_ops`.
-    variables_to_restore: A list of TensorFlow variables to restore during
-      evaluation. If the argument is left as `None` then
-      tf.contrib.framework.get_variables_to_restore() is used.
     hooks: List of `tf.train.SessionRunHook` callbacks which are run inside the
       evaluation loop.
     config: An instance of `tf.ConfigProto` that will be used to
@@ -420,20 +414,14 @@ def evaluate_once(
   eval_step = get_or_create_eval_step()
 
   if eval_ops is not None:
-    eval_ops = control_flow_ops.with_dependencies(
-        [eval_ops],
-        state_ops.assign_add(eval_step, 1))
+    update_eval_step = state_ops.assign_add(eval_step, 1)
 
-  # Must come before the scaffold check.
-  if scaffold and scaffold.saver:
-    saver = scaffold.saver
-  else:
-    saver = tf_saver.Saver(
-        variables_to_restore or variables.get_variables_to_restore(),
-        write_version=saver_pb2.SaverDef.V2)
-
-  scaffold = scaffold or monitored_session.Scaffold()
-  scaffold = _scaffold_with_init(scaffold, saver, checkpoint_path)
+    if isinstance(eval_ops, dict):
+      eval_ops['update_eval_step'] = update_eval_step
+    elif isinstance(eval_ops, (tuple, list)):
+      eval_ops = list(eval_ops) + [update_eval_step]
+    else:
+      eval_ops = [eval_ops, update_eval_step]
 
   logging.info('Starting evaluation at ' + time.strftime('%Y-%m-%d-%H:%M:%S',
                                                          time.gmtime()))
@@ -441,7 +429,7 @@ def evaluate_once(
   # Prepare the session creator.
   session_creator = monitored_session.ChiefSessionCreator(
       scaffold=scaffold,
-      checkpoint_dir=None,
+      checkpoint_filename_with_path=checkpoint_path,
       master=master,
       config=config)
 
@@ -462,20 +450,18 @@ def evaluate_once(
   return final_ops_hook.final_ops_values
 
 
-def evaluate_repeatedly(
-    checkpoint_dir,
-    master='',
-    scaffold=None,
-    eval_ops=None,
-    feed_dict=None,
-    final_ops=None,
-    final_ops_feed_dict=None,
-    variables_to_restore=None,
-    eval_interval_secs=60,
-    hooks=None,
-    config=None,
-    max_number_of_evaluations=None,
-    timeout=None):
+def evaluate_repeatedly(checkpoint_dir,
+                        master='',
+                        scaffold=None,
+                        eval_ops=None,
+                        feed_dict=None,
+                        final_ops=None,
+                        final_ops_feed_dict=None,
+                        eval_interval_secs=60,
+                        hooks=None,
+                        config=None,
+                        max_number_of_evaluations=None,
+                        timeout=None):
   """Repeatedly searches for a checkpoint in `checkpoint_dir` and evaluates it.
 
   During a single evaluation, the `eval_ops` is run until the session is
@@ -484,14 +470,14 @@ def evaluate_repeatedly(
   the requested number of times.
 
   Optionally, a user can pass in `final_ops`, a single `Tensor`, a list of
-  `Tensors` or a dictionary from names to `Tensors`. The `final_ops` is evaluated
-  a single time after `eval_ops` has finished running and the fetched values of
-  `final_ops` are returned. If `final_ops` is left as `None`, then `None` is
-  returned.
+  `Tensors` or a dictionary from names to `Tensors`. The `final_ops` is
+  evaluated a single time after `eval_ops` has finished running and the fetched
+  values of `final_ops` are returned. If `final_ops` is left as `None`, then
+  `None` is returned.
 
   One may also consider using a `tf.contrib.training.SummaryAtEndHook` to record
-  summaries after the `eval_ops` have run. If `eval_ops` is `None`, the summaries
-  run immedietly after the model checkpoint has been restored.
+  summaries after the `eval_ops` have run. If `eval_ops` is `None`, the
+  summaries run immedietly after the model checkpoint has been restored.
 
   Note that `evaluate_once` creates a local variable used to track the number of
   evaluations run via `tf.contrib.training.get_or_create_eval_step`.
@@ -505,15 +491,13 @@ def evaluate_repeatedly(
       restoring variables. Note that `scaffold.init_fn` is used by the function
       to restore the checkpoint. If you supply a custom init_fn, then it must
       also take care of restoring the model from its checkpoint.
-    eval_ops: A operation which is run until the session is requested to stop,
+    eval_ops: A single `Tensor`, a list of `Tensors` or a dictionary of names
+      to `Tensors`, which is run until the session is requested to stop,
       commonly done by a `tf.contrib.training.StopAfterNEvalsHook`.
     feed_dict: The feed dictionary to use when executing the `eval_ops`.
-    final_ops: A single `Tensor`, a list of `Tensors` or a dictionary of names to
-      `Tensors`.
+    final_ops: A single `Tensor`, a list of `Tensors` or a dictionary of names
+      to `Tensors`.
     final_ops_feed_dict: A feed dictionary to use when evaluating `final_ops`.
-    variables_to_restore: A list of TensorFlow variables to restore during
-      evaluation. If the argument is left as `None` then
-      tf.contrib.framework.get_variables_to_restore() is used.
     eval_interval_secs: The minimum number of seconds between evaluations.
     hooks: List of `tf.train.SessionRunHook` callbacks which are run inside the
       evaluation loop.
@@ -530,18 +514,14 @@ def evaluate_repeatedly(
   eval_step = get_or_create_eval_step()
 
   if eval_ops is not None:
-    eval_ops = control_flow_ops.with_dependencies(
-        [eval_ops],
-        state_ops.assign_add(eval_step, 1))
+    update_eval_step = state_ops.assign_add(eval_step, 1)
 
-  # Must come before the scaffold check.
-  if scaffold and scaffold.saver:
-    saver = scaffold.saver
-  else:
-    saver = tf_saver.Saver(
-        variables_to_restore or variables.get_variables_to_restore())
-
-  scaffold = scaffold or monitored_session.Scaffold()
+    if isinstance(eval_ops, dict):
+      eval_ops['update_eval_step'] = update_eval_step
+    elif isinstance(eval_ops, (tuple, list)):
+      eval_ops = list(eval_ops) + [update_eval_step]
+    else:
+      eval_ops = [eval_ops, update_eval_step]
 
   # Prepare the run hooks.
   hooks = hooks or []
@@ -550,29 +530,29 @@ def evaluate_repeatedly(
   hooks.append(final_ops_hook)
 
   num_evaluations = 0
-  for checkpoint_path in checkpoints_iterator(
-      checkpoint_dir, eval_interval_secs, timeout):
+  for checkpoint_path in checkpoints_iterator(checkpoint_dir,
+                                              eval_interval_secs, timeout):
 
     session_creator = monitored_session.ChiefSessionCreator(
-        scaffold=_scaffold_with_init(scaffold, saver, checkpoint_path),
-        checkpoint_dir=None,
+        scaffold=scaffold,
+        checkpoint_filename_with_path=checkpoint_path,
         master=master,
         config=config)
 
     with monitored_session.MonitoredSession(
         session_creator=session_creator, hooks=hooks) as session:
-      logging.info(
-          'Starting evaluation at ' + time.strftime('%Y-%m-%d-%H:%M:%S',
-                                                    time.gmtime()))
+      logging.info('Starting evaluation at ' + time.strftime(
+          '%Y-%m-%d-%H:%M:%S', time.gmtime()))
       if eval_ops is not None:
         while not session.should_stop():
           session.run(eval_ops, feed_dict)
 
-      logging.info(
-          'Finished evaluation at ' + time.strftime('%Y-%m-%d-%H:%M:%S',
-                                                    time.gmtime()))
+      logging.info('Finished evaluation at ' + time.strftime(
+          '%Y-%m-%d-%H:%M:%S', time.gmtime()))
     num_evaluations += 1
-    if num_evaluations >= max_number_of_evaluations:
+
+    reached_max = num_evaluations >= max_number_of_evaluations
+    if max_number_of_evaluations and reached_max:
       return final_ops_hook.final_ops_values
 
   logging.info('Timed-out waiting for a checkpoint.')

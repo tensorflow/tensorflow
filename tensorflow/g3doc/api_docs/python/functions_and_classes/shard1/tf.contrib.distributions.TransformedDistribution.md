@@ -11,14 +11,18 @@ A `Bijector` is expected to implement the following functions:
 - `inverse_log_det_jacobian`.
 The semantics of these functions are outlined in the `Bijector` documentation.
 
-Shapes, type, and reparameterization are taken from the base distribution.
+We now describe how a `TransformedDistribution` alters the input/outputs of a
+`Distribution` associated with a random variable (rv) `X`.
 
-Write `P(Y=y)` for cumulative density function of random variable (rv) `Y` and
-`p` for its derivative wrt to `Y`.  Assume that `Y=g(X)` where `g` is
-continuous and `X=g^{-1}(Y)`. Write `J` for the Jacobian (of some function).
+Write `cdf(Y=y)` for an absolutely continuous cumulative distribution function
+of random variable `Y`; write the probability density function `pdf(Y=y) :=
+d^k / (dy_1,...,dy_k) cdf(Y=y)` for its derivative wrt to `Y` evaluated at
+`y`.  Assume that `Y = g(X)` where `g` is a deterministic diffeomorphism,
+i.e., a non-random, continuous, differentiable, and invertible function.
+Write the inverse of `g` as `X = g^{-1}(Y)` and `(J o g)(x)` for the Jacobian
+of `g` evaluated at `x`.
 
-A `TransformedDistribution` alters the input/outputs of a `Distribution`
-associated with rv `X` in the following ways:
+A `TransformedDistribution` implements the following operations:
 
   * `sample`:
 
@@ -39,14 +43,15 @@ associated with rv `X` in the following ways:
     Mathematically:
 
     ```none
-    (log o p o g^{-1})(y) + (log o det o J o g^{-1})(y)
+    (log o pdf)(Y=y) = (log o pdf o g^{-1})(y) +
+                         (log o abs o det o J o g^{-1})(y)
     ```
 
     Programmatically:
 
     ```python
-    return (bijector.inverse_log_det_jacobian(x) +
-            distribution.log_prob(bijector.inverse(x))
+    return (distribution.log_prob(bijector.inverse(x)) +
+            bijector.inverse_log_det_jacobian(x))
     ```
 
   * `log_cdf`:
@@ -54,13 +59,13 @@ associated with rv `X` in the following ways:
     Mathematically:
 
     ```none
-    (log o P o g^{-1})(y)
+    (log o cdf)(Y=y) = (log o cdf o g^{-1})(y)
     ```
 
     Programmatically:
 
     ```python
-    return distribution.log_prob(bijector.inverse(x))
+    return distribution.log_cdf(bijector.inverse(x))
     ```
 
   * and similarly for: `cdf`, `prob`, `log_survival_function`,
@@ -87,7 +92,7 @@ log_normal = ds.TransformedDistribution(
     forward_fn=tf.exp,
     inverse_fn=tf.log,
     inverse_log_det_jacobian_fn=(
-      lambda y: -tf.reduce_sum(tf.log(x), reduction_indices=-1)),
+      lambda y: -tf.reduce_sum(tf.log(y), reduction_indices=-1)),
   name="LogNormalTransformedDistribution")
 ```
 
@@ -100,20 +105,51 @@ normal = ds.TransformedDistribution(
   bijector=ds.bijector.ScaleAndShift(loc=mu, scale=sigma, event_ndims=0),
   name="NormalTransformedDistribution")
 ```
+
+A `TransformedDistribution`'s batch- and event-shape are implied by the base
+distribution unless explicitly overridden by `batch_shape` or `event_shape`
+arguments.  Specifying an overriding `batch_shape` (`event_shape`) is
+permitted only if the base distribution has scalar batch-shape (event-shape).
+The bijector is applied to the distribution as if the distribution possessed
+the overridden shape(s). The following example demonstrates how to construct a
+multivariate Normal as a `TransformedDistribution`.
+
+```python
+bs = tf.contrib.distributions.bijector
+ds = tf.contrib.distributions
+# We will create two MVNs with batch_shape = event_shape = 2.
+mean = [[-1., 0],      # batch:0
+        [0., 1]]       # batch:1
+chol_cov = [[[1., 0],
+             [0, 1]],  # batch:0
+            [[1, 0],
+             [2, 2]]]  # batch:1
+mvn1 = ds.TransformedDistribution(
+    distribution=ds.Normal(mu=0., sigma=1.),
+    bijector=bs.Affine(shift=mean, tril=chol_cov),
+    batch_shape=[2],  # Valid because base_distribution.batch_shape == [].
+    event_shape=[2])  # Valid because base_distribution.event_shape == [].
+mvn2 = ds.MultivariateNormalCholesky(mu=mean, chol=chol_cov)
+# mvn1.log_prob(x) == mvn2.log_prob(x)
+```
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.__init__(distribution, bijector, validate_args=False, name=None)` {#TransformedDistribution.__init__}
+#### `tf.contrib.distributions.TransformedDistribution.__init__(distribution, bijector=None, batch_shape=None, event_shape=None, validate_args=False, name=None)` {#TransformedDistribution.__init__}
 
 Construct a Transformed Distribution.
 
 ##### Args:
 
 
-*  <b>`distribution`</b>: The base distribution class to transform. Typically an
+*  <b>`distribution`</b>: The base distribution instance to transform. Typically an
     instance of `Distribution`.
 *  <b>`bijector`</b>: The object responsible for calculating the transformation.
-    Typically an instance of `Bijector`.
-*  <b>`validate_args`</b>: Python boolean.  Whether to validate input with asserts.
+    Typically an instance of `Bijector`. `None` means `Identity()`.
+*  <b>`batch_shape`</b>: `integer` vector `Tensor` which overrides `distribution`
+    `batch_shape`; valid only if `distribution.is_scalar_batch`.
+*  <b>`event_shape`</b>: `integer` vector `Tensor` which overrides `distribution`
+    `event_shape`; valid only if `distribution.is_scalar_event`.
+*  <b>`validate_args`</b>: Python Boolean.  Whether to validate input with asserts.
     If `validate_args` is `False`, and the inputs are invalid,
     correct behavior is not guaranteed.
 *  <b>`name`</b>: The name for the distribution. Default:
@@ -183,10 +219,10 @@ cdf(x) := P[X <= x]
 
 Additional documentation from `TransformedDistribution`:
 
-##### <b>`condition_kwargs`</b>:
+##### `condition_kwargs`:
 
-*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
-*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
+*  `bijector_kwargs`: Python dictionary of arg names/values forwarded to the bijector.
+*  `distribution_kwargs`: Python dictionary of arg names/values forwarded to the distribution.
 
 ##### Args:
 
@@ -307,6 +343,20 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.TransformedDistribution.is_scalar_batch` {#TransformedDistribution.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.TransformedDistribution.is_scalar_event` {#TransformedDistribution.is_scalar_event}
+
+Indicates that `event_shape==[]`.
+
+
+- - -
+
 #### `tf.contrib.distributions.TransformedDistribution.log_cdf(value, name='log_cdf', **condition_kwargs)` {#TransformedDistribution.log_cdf}
 
 Log cumulative distribution function.
@@ -324,10 +374,10 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 Additional documentation from `TransformedDistribution`:
 
-##### <b>`condition_kwargs`</b>:
+##### `condition_kwargs`:
 
-*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
-*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
+*  `bijector_kwargs`: Python dictionary of arg names/values forwarded to the bijector.
+*  `distribution_kwargs`: Python dictionary of arg names/values forwarded to the distribution.
 
 ##### Args:
 
@@ -402,16 +452,16 @@ Log probability density/mass function (depending on `is_continuous`).
 
 Additional documentation from `TransformedDistribution`:
 
-Implements `(log o p o g^{-1})(y) + (log o det o J o g^{-1})(y)`,
+Implements `(log o p o g^{-1})(y) + (log o abs o det o J o g^{-1})(y)`,
       where `g^{-1}` is the inverse of `transform`.
 
       Also raises a `ValueError` if `inverse` was not provided to the
       distribution and `y` was not returned from `sample`.
 
-##### <b>`condition_kwargs`</b>:
+##### `condition_kwargs`:
 
-*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
-*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
+*  `bijector_kwargs`: Python dictionary of arg names/values forwarded to the bijector.
+*  `distribution_kwargs`: Python dictionary of arg names/values forwarded to the distribution.
 
 ##### Args:
 
@@ -447,10 +497,10 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 Additional documentation from `TransformedDistribution`:
 
-##### <b>`condition_kwargs`</b>:
+##### `condition_kwargs`:
 
-*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
-*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
+*  `bijector_kwargs`: Python dictionary of arg names/values forwarded to the bijector.
+*  `distribution_kwargs`: Python dictionary of arg names/values forwarded to the distribution.
 
 ##### Args:
 
@@ -600,10 +650,10 @@ Implements `p(g^{-1}(y)) det|J(g^{-1}(y))|`, where `g^{-1}` is the
       Also raises a `ValueError` if `inverse` was not provided to the
       distribution and `y` was not returned from `sample`.
 
-##### <b>`condition_kwargs`</b>:
+##### `condition_kwargs`:
 
-*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
-*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
+*  `bijector_kwargs`: Python dictionary of arg names/values forwarded to the bijector.
+*  `distribution_kwargs`: Python dictionary of arg names/values forwarded to the distribution.
 
 ##### Args:
 
@@ -654,10 +704,10 @@ Additional documentation from `TransformedDistribution`:
 Samples from the base distribution and then passes through
       the bijector's forward transform.
 
-##### <b>`condition_kwargs`</b>:
+##### `condition_kwargs`:
 
-*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
-*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
+*  `bijector_kwargs`: Python dictionary of arg names/values forwarded to the bijector.
+*  `distribution_kwargs`: Python dictionary of arg names/values forwarded to the distribution.
 
 ##### Args:
 
@@ -703,10 +753,10 @@ survival_function(x) = P[X > x]
 
 Additional documentation from `TransformedDistribution`:
 
-##### <b>`condition_kwargs`</b>:
+##### `condition_kwargs`:
 
-*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
-*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
+*  `bijector_kwargs`: Python dictionary of arg names/values forwarded to the bijector.
+*  `distribution_kwargs`: Python dictionary of arg names/values forwarded to the distribution.
 
 ##### Args:
 

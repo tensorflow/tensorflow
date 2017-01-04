@@ -38,6 +38,9 @@ from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework import deprecated_args
 from tensorflow.contrib.framework import list_variables
 from tensorflow.contrib.framework import load_variable
+from tensorflow.contrib.framework.python.framework import experimental
+from tensorflow.contrib.framework.python.ops import ops as contrib_ops
+from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import graph_actions
 from tensorflow.contrib.learn.python.learn import metric_spec
@@ -51,14 +54,25 @@ from tensorflow.contrib.learn.python.learn.estimators import tensor_signature
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedError
 from tensorflow.contrib.learn.python.learn.learn_io import data_feeder
 from tensorflow.contrib.learn.python.learn.utils import export
-
+from tensorflow.contrib.learn.python.learn.utils import saved_model_export_utils
+from tensorflow.python.client import session as tf_session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import builder as saved_model_builder
+from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import device_setter
+from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver
+from tensorflow.python.training import session_run_hook
+from tensorflow.python.training import summary_io
+from tensorflow.python.util import compat
 
 
 AS_ITERABLE_DATE = '2016-09-15'
@@ -178,7 +192,7 @@ def _get_replica_device_setter(config):
     A replica device setter, or None.
   """
   ps_ops = [
-      'Variable', 'AutoReloadVariable', 'MutableHashTable',
+      'Variable', 'VariableV2', 'AutoReloadVariable', 'MutableHashTable',
       'MutableHashTableOfTensors', 'MutableDenseHashTable'
   ]
 
@@ -331,7 +345,8 @@ class BaseEstimator(
     return copy.deepcopy(self._config)
 
   @deprecated_args(
-      SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, 'x', 'y', 'batch_size'
+      SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, ('x', None),
+      ('y', None), ('batch_size', None)
   )
   def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
           monitors=None, max_steps=None):
@@ -357,7 +372,8 @@ class BaseEstimator(
     return self
 
   @deprecated_args(
-      SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, 'x', 'y', 'batch_size'
+      SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, ('x', None),
+      ('y', None), ('batch_size', None)
   )
   def partial_fit(
       self, x=None, y=None, input_fn=None, steps=1, batch_size=None,
@@ -401,11 +417,12 @@ class BaseEstimator(
                     batch_size=batch_size, monitors=monitors)
 
   @deprecated_args(
-      SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, 'x', 'y', 'batch_size'
+      SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, ('x', None),
+      ('y', None), ('batch_size', None)
   )
   def evaluate(
       self, x=None, y=None, input_fn=None, feed_fn=None, batch_size=None,
-      steps=None, metrics=None, name=None):
+      steps=None, metrics=None, name=None, checkpoint_path=None):
     # pylint: disable=g-doc-args,g-doc-return-or-yield
     """See `Evaluable`.
 
@@ -420,18 +437,20 @@ class BaseEstimator(
     if metrics is not None and not isinstance(metrics, dict):
       raise ValueError('Metrics argument should be None or dict. '
                        'Got %s.' % metrics)
-    eval_results, global_step = self._evaluate_model(input_fn=input_fn,
-                                                     feed_fn=feed_fn,
-                                                     steps=steps,
-                                                     metrics=metrics,
-                                                     name=name)
+    eval_results, global_step = self._evaluate_model(
+        input_fn=input_fn,
+        feed_fn=feed_fn,
+        steps=steps,
+        metrics=metrics,
+        name=name,
+        checkpoint_path=checkpoint_path)
     if eval_results is not None:
       eval_results.update({'global_step': global_step})
     return eval_results
 
   @deprecated_args(
-      SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, 'x', 'batch_size',
-      'as_iterable'
+      SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, ('x', None),
+      ('batch_size', None), ('as_iterable', True)
   )
   def predict(
       self, x=None, input_fn=None, batch_size=None, outputs=None,
@@ -553,13 +572,12 @@ class BaseEstimator(
         use_deprecated_input_fn=use_deprecated_input_fn,
         default_batch_size=default_batch_size,
         exports_to_keep=exports_to_keep)
-    # pylint: enable=protected-access
 
   @abc.abstractproperty
   def _get_train_ops(self, features, labels):
     """Method that builds model graph and returns trainer ops.
 
-    Expected to be overriden by sub-classes that require custom support.
+    Expected to be overridden by sub-classes that require custom support.
 
     Args:
       features: `Tensor` or `dict` of `Tensor` objects.
@@ -700,14 +718,19 @@ class BaseEstimator(
       if isinstance(train_ops, model_fn_lib.ModelFnOps):  # Default signature
         train_op = train_ops.train_op
         loss_op = train_ops.loss
+        if self.config.is_chief:
+          hooks = train_ops.training_chief_hooks + train_ops.training_hooks
+        else:
+          hooks = train_ops.training_hooks
       else:  # Legacy signature
         if len(train_ops) != 2:
           raise ValueError('Expected a tuple of train_op and loss, got {}'.
                            format(train_ops))
         train_op = train_ops[0]
         loss_op = train_ops[1]
+        hooks = []
 
-      hooks = monitor_lib.replace_monitors_with_hooks(monitors, self)
+      hooks += monitor_lib.replace_monitors_with_hooks(monitors, self)
 
       ops.add_to_collection(ops.GraphKeys.LOSSES, loss_op)
       return graph_actions._monitored_train(  # pylint: disable=protected-access
@@ -726,6 +749,7 @@ class BaseEstimator(
           supervisor_save_model_steps=self._config.save_checkpoints_steps,
           supervisor_save_summaries_steps=self._config.save_summary_steps,
           keep_checkpoint_max=self._config.keep_checkpoint_max,
+          keep_checkpoint_every_n_hours=self._config.keep_checkpoint_every_n_hours,
           feed_fn=feed_fn,
           steps=steps,
           fail_on_nan_loss=fail_on_nan_loss,
@@ -761,18 +785,21 @@ class BaseEstimator(
                       steps,
                       feed_fn=None,
                       metrics=None,
-                      name=''):
+                      name='',
+                      checkpoint_path=None):
     # TODO(wicke): Remove this once Model and associated code are gone.
     if (hasattr(self._config, 'execution_mode') and
         self._config.execution_mode not in ('all', 'evaluate', 'eval_evalset')):
       return None, None
 
-    # Check that model has been trained.
-    checkpoint_path = self._model_dir
-    latest_path = saver.latest_checkpoint(checkpoint_path)
-    if not latest_path:
-      raise NotFittedError("Couldn't find trained model at %s."
-                           % checkpoint_path)
+    # Check that model has been trained (if nothing has been set explicitly).
+    if not checkpoint_path:
+      latest_path = saver.latest_checkpoint(self._model_dir)
+      if not latest_path:
+        raise NotFittedError("Couldn't find trained model at %s."
+                             % self._model_dir)
+      checkpoint_path = self._model_dir
+
     # Setup output directory.
     eval_dir = os.path.join(self._model_dir, 'eval' if not name else
                             'eval_' + name)
@@ -906,7 +933,15 @@ class BaseEstimator(
   def _infer_model_as_iterable(
       self, checkpoint_path, predictions, feed_fn, return_dict):
     if feed_fn is None:
-      feed_dicts = itertools.repeat(None)
+      # If there are no queue_runners, the input `predictions` is a
+      # constant, and we should stop after the first epoch.  If,
+      # instead, there are queue_runners, eventually they should throw
+      # an `OutOfRangeError`.
+      graph = contrib_ops.get_graph_from_inputs(predictions.values())
+      if graph.get_collection(ops.GraphKeys.QUEUE_RUNNERS):
+        feed_dicts = itertools.repeat(None)
+      else:
+        feed_dicts = [None]
     else:
       def _feed_fn():
         while True:
@@ -961,9 +996,12 @@ class Estimator(BaseEstimator):
                  `labels=None`.
           * `mode` specifies if this training, evaluation or
                  prediction. See `ModeKeys`.
-          * `params` is a `dict` of hyperparameters. Will receive what
+          * `params` is a `dict` of hyperparameters.  Will receive what
                  is passed to Estimator in `params` parameter. This allows
                  to configure Estimators from hyper parameter tuning.
+          * `config` is a Configuration object. Will receive what is passed to
+                 Estimator in `config` parameter. This allows updating things in
+                 your model_fn based on configuration such as num_ps_replicas.
 
         * Returns:
           `ModelFnOps`
@@ -981,6 +1019,8 @@ class Estimator(BaseEstimator):
           * `(features, labels) -> (predictions, loss, train_op)`
           * `(features, labels, mode) -> (predictions, loss, train_op)`
           * `(features, labels, mode, params) -> (predictions, loss, train_op)`
+          * `(features, labels, mode, params, config) ->
+             (predictions, loss, train_op)`
 
       model_dir: Directory to save model parameters, graph and etc. This can
         also be used to load checkpoints from the directory into a estimator to
@@ -1031,14 +1071,14 @@ class Estimator(BaseEstimator):
     """
     features, labels = self._feature_engineering_fn(features, labels)
     model_fn_args = _get_arguments(self._model_fn)
+    kwargs = {}
     if 'mode' in model_fn_args:
-      if 'params' in model_fn_args:
-        model_fn_results = self._model_fn(features, labels, mode=mode,
-                                          params=self.params)
-      else:
-        model_fn_results = self._model_fn(features, labels, mode=mode)
-    else:
-      model_fn_results = self._model_fn(features, labels)
+      kwargs['mode'] = mode
+    if 'params' in model_fn_args:
+      kwargs['params'] = self.params
+    if 'config' in model_fn_args:
+      kwargs['config'] = self.config
+    model_fn_results = self._model_fn(features, labels, **kwargs)
 
     if isinstance(model_fn_results, model_fn_lib.ModelFnOps):
       return model_fn_results
@@ -1068,6 +1108,17 @@ class Estimator(BaseEstimator):
       `ModelFnOps` object.
     """
     return self._call_model_fn(features, labels, model_fn_lib.ModeKeys.TRAIN)
+
+  # TODO(ispir): delete this function after converting all legacy usages.
+  def _call_legacy_get_train_ops(self, features, labels):
+    train_ops = self._get_train_ops(features, labels)
+    if isinstance(train_ops, model_fn_lib.ModelFnOps):  # Default signature
+      return train_ops
+    return model_fn_lib.ModelFnOps(
+        mode=model_fn_lib.ModeKeys.TRAIN,
+        predictions=None,
+        loss=train_ops[1],
+        train_op=train_ops[0])
 
   def _get_eval_ops(self, features, labels, metrics):
     """Method that builds model graph and returns evaluation ops.
@@ -1126,6 +1177,225 @@ class Estimator(BaseEstimator):
         self._labels_info[model_fn_lib.ModeKeys.INFER])
     return self._call_model_fn(features, labels, model_fn_lib.ModeKeys.INFER)
 
+  @experimental
+  def export_savedmodel(
+      self, export_dir_base, input_fn,
+      default_output_alternative_key=None,
+      assets_extra=None,
+      as_text=False,
+      exports_to_keep=None):
+    """Exports inference graph as a SavedModel into given dir.
+
+    Args:
+      export_dir_base: A string containing a directory to write the exported
+        graph and checkpoints.
+      input_fn: A function that takes no argument and
+        returns an `InputFnOps`.
+      default_output_alternative_key: the name of the head to serve when none is
+        specified.
+      assets_extra: A dict specifying how to populate the assets.extra directory
+        within the exported SavedModel.  Each key should give the destination
+        path (including the filename) relative to the assets.extra directory.
+        The corresponding value gives the full path of the source file to be
+        copied.  For example, the simple case of copying a single file without
+        renaming it is specified as
+        `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
+      as_text: whether to write the SavedModel proto in text format.
+      exports_to_keep: Number of exports to keep.
+
+    Returns:
+      The string path to the exported directory.
+
+    Raises:
+      ValueError: if an unrecognized export_type is requested.
+    """
+    if input_fn is None:
+      raise ValueError('input_fn must be defined.')
+
+    with ops.Graph().as_default() as g:
+      contrib_variables.create_global_step(g)
+
+      # Call the input_fn and collect the input alternatives.
+      input_ops = input_fn()
+      input_alternatives, features = (
+          saved_model_export_utils.get_input_alternatives(input_ops))
+
+      # Call the model_fn and collect the output alternatives.
+      model_fn_ops = self._call_model_fn(features, None,
+                                         model_fn_lib.ModeKeys.INFER)
+      output_alternatives, actual_default_output_alternative_key = (
+          saved_model_export_utils.get_output_alternatives(
+              model_fn_ops, default_output_alternative_key))
+
+      # Build the SignatureDefs from all pairs of input and output signatures
+      signature_def_map = saved_model_export_utils.build_all_signature_defs(
+          input_alternatives, output_alternatives,
+          actual_default_output_alternative_key)
+
+      # Locate the latest checkpoint
+      # TODO(soergel): does it help that we know we have one from this step?
+      checkpoint_path = saver.latest_checkpoint(self._model_dir)
+      if not checkpoint_path:
+        raise NotFittedError("Couldn't find trained model at %s."
+                             % self._model_dir)
+
+      export_dir = saved_model_export_utils.get_timestamped_export_dir(
+          export_dir_base)
+
+      with tf_session.Session('') as session:
+        variables.initialize_local_variables()
+        data_flow_ops.initialize_all_tables()
+        saver_for_restore = saver.Saver(
+            variables.global_variables(),
+            sharded=True)
+        saver_for_restore.restore(session, checkpoint_path)
+
+        init_op = control_flow_ops.group(
+            variables.local_variables_initializer(),
+            data_flow_ops.initialize_all_tables())
+
+        # Perform the export
+        builder = saved_model_builder.SavedModelBuilder(export_dir)
+        builder.add_meta_graph_and_variables(
+            session, [tag_constants.SERVING],
+            signature_def_map=signature_def_map,
+            assets_collection=ops.get_collection(
+                ops.GraphKeys.ASSET_FILEPATHS),
+            legacy_init_op=init_op)
+        builder.save(as_text)
+
+      # Add the extra assets
+      if assets_extra:
+        assets_extra_path = os.path.join(compat.as_bytes(export_dir),
+                                         compat.as_bytes('assets.extra'))
+        for dest_relative, source in assets_extra.items():
+          dest_absolute = os.path.join(compat.as_bytes(assets_extra_path),
+                                       compat.as_bytes(dest_relative))
+          dest_path = os.path.dirname(dest_absolute)
+          gfile.MakeDirs(dest_path)
+          gfile.Copy(source, dest_absolute)
+
+      return export_dir
+
+  @deprecated_args(SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, 'x', 'y',
+                   'batch_size')
+  def fit(self,
+          x=None,
+          y=None,
+          input_fn=None,
+          steps=None,
+          batch_size=None,
+          monitors=None,
+          max_steps=None):
+    # pylint: disable=g-doc-args,g-doc-return-or-yield
+    """See `Trainable`.
+
+    Raises:
+      ValueError: If `x` or `y` are not `None` while `input_fn` is not `None`.
+      ValueError: If both `steps` and `max_steps` are not `None`.
+    """
+    if (steps is not None) and (max_steps is not None):
+      raise ValueError('Can not provide both steps and max_steps.')
+    if max_steps is not None:
+      try:
+        start_step = load_variable(self._model_dir, ops.GraphKeys.GLOBAL_STEP)
+        if max_steps <= start_step:
+          logging.info('Skipping training since max_steps has already saved.')
+          return None
+      except:  # pylint: disable=bare-except
+        pass
+
+    hooks = monitor_lib.replace_monitors_with_hooks(monitors, self)
+    if steps is not None or max_steps is not None:
+      hooks.append(basic_session_run_hooks.StopAtStepHook(steps, max_steps))
+
+    input_fn, feed_fn = _get_input_fn(
+        x,
+        y,
+        input_fn,
+        feed_fn=None,
+        batch_size=batch_size,
+        shuffle=True,
+        epochs=None)
+    if feed_fn:
+      hooks.append(_FeedFnHook(feed_fn))
+    loss = self._train_model_v2(input_fn=input_fn, hooks=hooks)
+    logging.info('Loss for final step: %s.', loss)
+    return self
+
+  def _train_model_v2(self, input_fn, hooks):
+    all_hooks = []
+    self._graph = ops.Graph()
+    with self._graph.as_default() as g, g.device(self._device_fn):
+      random_seed.set_random_seed(self._config.tf_random_seed)
+      global_step = contrib_framework.create_global_step(g)
+      features, labels = input_fn()
+      self._check_inputs(features, labels)
+      model_fn_ops = self._call_legacy_get_train_ops(features, labels)
+      ops.add_to_collection(ops.GraphKeys.LOSSES, model_fn_ops.loss)
+      all_hooks.extend([
+          basic_session_run_hooks.NanTensorHook(model_fn_ops.loss),
+          basic_session_run_hooks.LoggingTensorHook(
+              {
+                  'loss': model_fn_ops.loss,
+                  'step': global_step
+              },
+              every_n_iter=100)
+      ])
+      all_hooks.extend(hooks)
+
+      scaffold = model_fn_ops.training_scaffold or monitored_session.Scaffold()
+      if not (scaffold.saver or ops.get_collection(ops.GraphKeys.SAVERS)):
+        ops.add_to_collection(
+            ops.GraphKeys.SAVERS,
+            saver.Saver(
+                sharded=True,
+                max_to_keep=self._config.keep_checkpoint_max,
+                defer_build=True))
+
+      chief_hooks = []
+      if (self._config.save_checkpoints_secs or
+          self._config.save_checkpoints_steps):
+        saver_hook_exists = any([
+            isinstance(h, basic_session_run_hooks.CheckpointSaverHook)
+            for h in (all_hooks + model_fn_ops.training_hooks + chief_hooks +
+                      model_fn_ops.training_chief_hooks)
+        ])
+        if not saver_hook_exists:
+          chief_hooks = [
+              basic_session_run_hooks.CheckpointSaverHook(
+                  self._model_dir,
+                  save_secs=self._config.save_checkpoints_secs,
+                  save_steps=self._config.save_checkpoints_steps,
+                  scaffold=scaffold)
+          ]
+      with monitored_session.MonitoredTrainingSession(
+          master=self._config.master,
+          is_chief=self._config.is_chief,
+          checkpoint_dir=self._model_dir,
+          scaffold=scaffold,
+          hooks=all_hooks + model_fn_ops.training_hooks,
+          chief_only_hooks=chief_hooks + model_fn_ops.training_chief_hooks,
+          save_checkpoint_secs=0,  # Saving is handled by a hook.
+          save_summaries_steps=self._config.save_summary_steps,
+          config=None) as mon_sess:
+        loss = None
+        while not mon_sess.should_stop():
+          _, loss = mon_sess.run([model_fn_ops.train_op, model_fn_ops.loss])
+      summary_io.SummaryWriterCache.clear()
+      return loss
+
+
+class _FeedFnHook(session_run_hook.SessionRunHook):
+  """Runs feed_fn and sets the feed_dict accordingly."""
+
+  def __init__(self, feed_fn):
+    self.feed_fn = feed_fn
+
+  def before_run(self, run_context):  # pylint: disable=unused-argument
+    return session_run_hook.SessionRunArgs(
+        fetches=None, feed_dict=self.feed_fn())
+
 
 # For time of deprecation x,y from Estimator allow direct access
 # pylint: disable=protected-access
@@ -1137,19 +1407,19 @@ class SKCompat(sklearn.BaseEstimator):
 
   def fit(self, x, y, batch_size=128, steps=None, max_steps=None,
           monitors=None):
-    if (steps is not None) and (max_steps is not None):
-      raise ValueError('Can not provide both steps and max_steps.')
-
     input_fn, feed_fn = _get_input_fn(x, y, input_fn=None, feed_fn=None,
                                       batch_size=batch_size, shuffle=True,
                                       epochs=None)
-    loss = self._estimator._train_model(
-        input_fn=input_fn,
-        feed_fn=feed_fn,
-        steps=steps,
-        monitors=monitors,
-        max_steps=max_steps)
-    logging.info('Loss for final step: %s.', loss)
+    all_monitors = []
+    if feed_fn:
+      all_monitors = [_FeedFnHook(feed_fn)]
+    if monitors:
+      all_monitors.extend(monitors)
+
+    self._estimator.fit(input_fn=input_fn,
+                        steps=steps,
+                        max_steps=max_steps,
+                        monitors=all_monitors)
     return self
 
   def score(self, x, y, batch_size=128, steps=None, metrics=None):

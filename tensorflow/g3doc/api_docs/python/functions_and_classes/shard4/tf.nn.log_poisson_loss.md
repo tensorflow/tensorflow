@@ -1,4 +1,4 @@
-### `tf.nn.log_poisson_loss(log_input, targets, compute_full_loss=False, name=None)` {#log_poisson_loss}
+### `tf.nn.log_poisson_loss(targets, log_input, compute_full_loss=False, name=None)` {#log_poisson_loss}
 
 Computes log Poisson loss given `log_input`.
 
@@ -26,8 +26,8 @@ loss is
 ##### Args:
 
 
-*  <b>`log_input`</b>: A `Tensor` of type `float32` or `float64`.
 *  <b>`targets`</b>: A `Tensor` of the same type and shape as `log_input`.
+*  <b>`log_input`</b>: A `Tensor` of type `float32` or `float64`.
 *  <b>`compute_full_loss`</b>: whether to compute the full loss. If false, a constant
     term is dropped in favor of more efficient optimization.
 *  <b>`name`</b>: A name for the operation (optional).

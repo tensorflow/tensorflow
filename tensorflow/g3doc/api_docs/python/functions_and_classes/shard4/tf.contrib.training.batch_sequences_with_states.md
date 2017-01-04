@@ -42,7 +42,7 @@ batch_size = 32
 num_unroll = 20
 num_enqueue_threads = 3
 lstm_size = 8
-cell = tf.nn.rnn_cell.BasicLSTMCell(num_units=lstm_size)
+cell = tf.contrib.rnn.BasicLSTMCell(num_units=lstm_size)
 
 key, sequences, context = my_parser(raw_data)
 initial_state_values = tf.zeros((state_size,), dtype=tf.float32)
@@ -60,10 +60,10 @@ batch = tf.batch_sequences_with_states(
 inputs = batch.sequences["input"]
 context_label = batch.context["label"]
 
-inputs_by_time = tf.split(1, num_unroll, inputs)
+inputs_by_time = tf.split(value=inputs, num_or_size_splits=num_unroll, axis=1)
 assert len(inputs_by_time) == num_unroll
 
-lstm_output, _ = tf.nn.state_saving_rnn(
+lstm_output, _ = tf.contrib.rnn.static_state_saving_rnn(
   cell,
   inputs_by_time,
   state_saver=batch,

@@ -12,9 +12,10 @@ py_binary(
     srcs = ["serialize_tensorboard.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow:tensorflow_py",
         "//tensorflow/python:platform",
+        "//tensorflow/python:summary",
         "//tensorflow/tensorboard/backend:server",
+        "@six_archive//:six",
     ],
 )
 
@@ -23,8 +24,14 @@ py_binary(
     srcs = ["generate_testdata.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client",
+        "//tensorflow/python:logging_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:summary",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 

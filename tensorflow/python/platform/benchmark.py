@@ -29,8 +29,6 @@ import six
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.util import test_log_pb2
-# timeline is outside of the platform target, but is brought in by the target
-# ":platform_test", which also brings in ":platform" (and thus this library).
 from tensorflow.python.client import timeline
 from tensorflow.python.platform import app
 from tensorflow.python.platform import gfile
@@ -131,7 +129,7 @@ class Benchmark(six.with_metaclass(_BenchmarkRegistrar, object)):
     # mro: (_BenchmarkRegistrar, Benchmark) means this is Benchmark
     return len(cls.mro()) <= 2
 
-  def _get_name(self, overwrite_name):
+  def _get_name(self, overwrite_name=None):
     """Returns full name of class and method calling report_benchmark."""
 
     # Find the caller method (outermost Benchmark class)

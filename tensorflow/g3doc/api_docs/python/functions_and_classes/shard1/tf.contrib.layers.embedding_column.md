@@ -1,4 +1,4 @@
-### `tf.contrib.layers.embedding_column(sparse_id_column, dimension, combiner=None, initializer=None, ckpt_to_load_from=None, tensor_name_in_ckpt=None)` {#embedding_column}
+### `tf.contrib.layers.embedding_column(sparse_id_column, dimension, combiner=None, initializer=None, ckpt_to_load_from=None, tensor_name_in_ckpt=None, max_norm=None)` {#embedding_column}
 
 Creates an `_EmbeddingColumn` for feeding sparse data into a DNN.
 
@@ -26,6 +26,8 @@ Creates an `_EmbeddingColumn` for feeding sparse data into a DNN.
 *  <b>`tensor_name_in_ckpt`</b>: (Optional). Name of the `Tensor` in the provided
     checkpoint from which to restore the column weights. Required if
     `ckpt_to_load_from` is not None.
+*  <b>`max_norm`</b>: (Optional). If not None, embedding values are l2-normalized to
+    the value of max_norm.
 
 ##### Returns:
 

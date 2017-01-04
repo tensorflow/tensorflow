@@ -24,7 +24,6 @@ import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -112,11 +111,12 @@ class Laplace(distribution.Distribution):
     return self._scale
 
   def _batch_shape(self):
-    return array_ops.shape(self.loc + self.scale)
+    return array_ops.broadcast_dynamic_shape(
+        array_ops.shape(self.loc), array_ops.shape(self.scale))
 
   def _get_batch_shape(self):
-    return common_shapes.broadcast_shape(self.loc.get_shape(),
-                                         self.scale.get_shape())
+    return array_ops.broadcast_static_shape(
+        self.loc.get_shape(), self.scale.get_shape())
 
   def _event_shape(self):
     return constant_op.constant([], dtype=dtypes.int32)
@@ -125,7 +125,7 @@ class Laplace(distribution.Distribution):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):
-    shape = array_ops.concat(0, ([n], self.batch_shape()))
+    shape = array_ops.concat_v2(([n], self.batch_shape()), 0)
     # Sample uniformly-at-random from the open-interval (-1, 1).
     uniform_samples = random_ops.random_uniform(
         shape=shape,

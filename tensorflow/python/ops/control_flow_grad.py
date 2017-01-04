@@ -55,14 +55,19 @@ def _SwitchGrad(op, *grad):
         control_flow_ops._AddNextAndBackEdge(merge_grad, grad[1])
         # pylint: enable=protected-access
       return None, None
-    else:
-      # This is the first time this Switch is visited. It always comes from
+    elif grad[0] is not None:
+      # This is the first time this Switch is visited. It comes from
       # the Exit branch, which is grad[0]. grad[1] is empty at this point.
       # Use grad[0] for both inputs to merge for now, but update the second
       # input of merge when we see this Switch the second time.
       merge_grad = merge([grad[0], grad[0]], name="b_switch")[0]
       grad_ctxt.grad_state.switch_map[op] = merge_grad
       return merge_grad, None
+    else:
+      # This is the first time this Switch is visited. It comes from the
+      # Identity branch. Such a Switch has `None` gradient for the Exit branch,
+      # meaning the output is not differentiable.
+      return None, None
   elif isinstance(op_ctxt, CondContext):
     good_grad = grad[op_ctxt.branch]
     zero_grad = grad[1 - op_ctxt.branch]
@@ -84,7 +89,7 @@ def _MergeGrad(op, grad, _):
   input_op = op.inputs[0].op
   graph = ops.get_default_graph()
   # pylint: disable=protected-access
-  op_ctxt = input_op._get_control_flow_context()
+  op_ctxt = control_flow_ops._GetOutputContext(input_op)
   grad_ctxt = graph._get_control_flow_context()
   # pylint: enable=protected-access
   if isinstance(op_ctxt, WhileContext):
@@ -154,10 +159,7 @@ def _ExitGrad(op, grad):
       raise TypeError("Type %s not supported" % type(grad))
     grad_ctxt.AddName(grad.values.name)
     grad_ctxt.AddName(grad.indices.name)
-    if isinstance(grad, ops.IndexedSlices):
-      dense_shape = grad.dense_shape
-    else:
-      dense_shape = grad.shape
+    dense_shape = grad.dense_shape
     if dense_shape is not None:
       grad_ctxt.AddName(dense_shape.name)
   enter_fn = control_flow_ops._Enter  # pylint: disable=protected-access

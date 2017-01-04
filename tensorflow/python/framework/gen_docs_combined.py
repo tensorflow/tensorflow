@@ -25,6 +25,7 @@ import sys
 import tensorflow as tf
 
 from tensorflow.contrib import ffmpeg
+from tensorflow.python import debug as tf_debug
 from tensorflow.python.client import client_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import docs
@@ -50,7 +51,6 @@ def module_names():
       "tf.errors",
       "tf.image",
       "tf.nn",
-      "tf.nn.rnn_cell",
       "tf.train",
       "tf.python_io",
       "tf.summary",
@@ -71,12 +71,16 @@ def module_names():
       "tf.contrib.layers",
       "tf.contrib.learn",
       "tf.contrib.learn.monitors",
+      "tf.contrib.legacy_seq2seq",
+      "tf.contrib.linalg",
       "tf.contrib.losses",
       "tf.contrib.metrics",
+      "tf.contrib.opt",
       "tf.contrib.rnn",
       "tf.contrib.solvers",
       "tf.contrib.training",
       "tf.contrib.util",
+      "tf_debug",
   ]
 
 
@@ -87,6 +91,8 @@ def find_module(base_module, name):
   # to size concerns.
   elif name == "tf.contrib.ffmpeg":
     return ffmpeg
+  elif name == "tf_debug":
+    return tf_debug
   elif name.startswith("tf."):
     subname = name[3:]
     subnames = subname.split(".")
@@ -183,7 +189,6 @@ def all_libraries(module_to_name, members, documented):
                                "batch_norm_with_global_normalization_grad",
                                "all_candidate_sampler", "seq2seq"],
               prefix=PREFIX_TEXT),
-      library("rnn_cell", "Neural Network RNN Cells", tf.nn.rnn_cell),
       library("client", "Running Graphs", client_lib),
       library("train",
               "Training",
@@ -213,7 +218,7 @@ def all_libraries(module_to_name, members, documented):
               "BayesFlow Variational Inference (contrib)",
               tf.contrib.bayesflow.variational_inference),
       library("contrib.crf", "CRF (contrib)", tf.contrib.crf),
-      library("contrib.distributions", "Statistical distributions (contrib)",
+      library("contrib.distributions", "Statistical Distributions (contrib)",
               tf.contrib.distributions),
       library("contrib.distributions.bijector",
               "Random variable transformations (contrib)",
@@ -227,13 +232,19 @@ def all_libraries(module_to_name, members, documented):
       library("contrib.learn", "Learn (contrib)", tf.contrib.learn),
       library("contrib.learn.monitors", "Monitors (contrib)",
               tf.contrib.learn.monitors),
+      library("contrib.legacy_seq2seq", "Sequence to Sequence (contrib)",
+              tf.contrib.legacy_seq2seq),
+      library("contrib.linalg", "Linear Algebra (contrib)",
+              tf.contrib.linalg),
       library("contrib.losses", "Losses (contrib)", tf.contrib.losses),
-      library("contrib.rnn", "RNN (contrib)", tf.contrib.rnn),
+      library("contrib.opt", "Optimization (contrib)", tf.contrib.opt),
+      library("contrib.rnn", "RNN and Cells (contrib)", tf.contrib.rnn),
       library("contrib.metrics", "Metrics (contrib)", tf.contrib.metrics),
       library("contrib.training", "Training (contrib)", tf.contrib.training),
       library("contrib.util", "Utilities (contrib)", tf.contrib.util),
       library("contrib.copy_graph", "Copying Graph Elements (contrib)",
               tf.contrib.copy_graph),
+      library("tf_debug", "TensorFlow Debugger", tf_debug),
   ])
 
 _hidden_symbols = ["Event", "LogMessage", "Summary", "SessionLog", "xrange",
@@ -256,7 +267,8 @@ EXCLUDE = frozenset(["tf.contrib.learn.monitors.NanLossDuringTrainingError",
                      "tf.contrib.framework.assert_global_step",
                      "tf.contrib.framework.get_global_step",
                      "tf.contrib.learn.NanLossDuringTrainingError",
-                     "tf.contrib.layers.stack"])
+                     "tf.contrib.layers.stack",
+                     "tf.confusion_matrix"])
 
 
 def main(unused_argv):

@@ -20,23 +20,29 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
 import sys
 import numpy as np
-import tensorflow as tf
 
+from tensorflow.core.framework import graph_pb2
+from tensorflow.python.client import session
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_util
+from tensorflow.python.framework import importer
+from tensorflow.python.framework import ops as ops_lib
+from tensorflow.python.platform import flags as flags_lib
+from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging
 from tensorflow.tools.quantization import quantize_graph
 
-flags = tf.app.flags
+flags = flags_lib
 FLAGS = flags.FLAGS
 
 
 def run_graph_def(graph_def, input_map, outputs):
-  graph = tf.Graph()
+  graph = ops_lib.Graph()
   with graph.as_default():
-    tf.import_graph_def(graph_def, input_map={}, name="")
-  with tf.Session(graph=graph) as sess:
+    importer.import_graph_def(graph_def, input_map={}, name="")
+  with session.Session(graph=graph) as sess:
     results = sess.run(outputs, feed_dict=input_map)
   return results
 
@@ -47,20 +53,16 @@ def test_mat_mul(m, n, k, a, b):
   b_constant_name = "b_constant"
   mat_mul_name = "mat_mul"
 
-  float_graph_def = tf.GraphDef()
-  a_constant = quantize_graph.create_constant_node(a_constant_name,
-                                                   value=a,
-                                                   dtype=tf.float32,
-                                                   shape=[m, k])
+  float_graph_def = graph_pb2.GraphDef()
+  a_constant = quantize_graph.create_constant_node(
+      a_constant_name, value=a, dtype=dtypes.float32, shape=[m, k])
   float_graph_def.node.extend([a_constant])
-  b_constant = quantize_graph.create_constant_node(b_constant_name,
-                                                   value=b,
-                                                   dtype=tf.float32,
-                                                   shape=[k, n])
+  b_constant = quantize_graph.create_constant_node(
+      b_constant_name, value=b, dtype=dtypes.float32, shape=[k, n])
   float_graph_def.node.extend([b_constant])
   mat_mul_node = quantize_graph.create_node("MatMul", mat_mul_name,
                                             [a_constant_name, b_constant_name])
-  quantize_graph.set_attr_dtype(mat_mul_node, "T", tf.float32)
+  quantize_graph.set_attr_dtype(mat_mul_node, "T", dtypes.float32)
   quantize_graph.set_attr_bool(mat_mul_node, "transpose_a", False)
   quantize_graph.set_attr_bool(mat_mul_node, "transpose_b", False)
   float_graph_def.node.extend([mat_mul_node])
@@ -75,27 +77,22 @@ def test_conv(depth, image_width, image_height, image_batch_count, filter_size,
   filter_constant_name = "filter_constant"
   conv_name = "conv"
 
-  float_graph_def = tf.GraphDef()
+  float_graph_def = graph_pb2.GraphDef()
   input_constant = quantize_graph.create_constant_node(
       input_constant_name,
       value=input_values,
-      dtype=tf.float32,
-      shape=[
-          image_batch_count, image_height, image_width, depth
-      ])
+      dtype=dtypes.float32,
+      shape=[image_batch_count, image_height, image_width, depth])
   float_graph_def.node.extend([input_constant])
   filter_constant = quantize_graph.create_constant_node(
       filter_constant_name,
       value=filter_values,
-      dtype=tf.float32,
-      shape=[
-          filter_size, filter_size, depth, filter_count
-      ])
+      dtype=dtypes.float32,
+      shape=[filter_size, filter_size, depth, filter_count])
   float_graph_def.node.extend([filter_constant])
-  conv_node = quantize_graph.create_node("Conv2D", conv_name,
-                                         [input_constant_name,
-                                          filter_constant_name])
-  quantize_graph.set_attr_dtype(conv_node, "T", tf.float32)
+  conv_node = quantize_graph.create_node(
+      "Conv2D", conv_name, [input_constant_name, filter_constant_name])
+  quantize_graph.set_attr_dtype(conv_node, "T", dtypes.float32)
   quantize_graph.set_attr_int_list(conv_node, "strides", [1, stride, stride, 1])
   quantize_graph.set_attr_string(conv_node, "padding", padding)
   float_graph_def.node.extend([conv_node])
@@ -122,8 +119,8 @@ def are_tensors_near(a, b, tolerance):
   flat_a = a.flatten()
   flat_b = b.flatten()
   if len(flat_a) != len(flat_b):
-    print("Tensors are different sizes: " + str(len(flat_a)) + " vs " +
-          str(len(flat_b)))
+    print("Tensors are different sizes: " + str(len(flat_a)) + " vs " + str(
+        len(flat_b)))
     return False
   value_count = len(flat_a)
   how_many_different = 0
@@ -162,9 +159,9 @@ def get_top_value(input_values):
 
 def test_graph(float_graph_def, input_map, output_names, log_graph=False):
   """Runs the float graph through the rewriter and tests the results."""
-  float_results = run_graph_def(float_graph_def, input_map,
-                                [output_name + ":0"
-                                 for output_name in output_names])
+  float_results = run_graph_def(
+      float_graph_def, input_map,
+      [output_name + ":0" for output_name in output_names])
   # TODO(petewarden): round test is currently failing because there is no
   # RoundToSteps op available.
   # round_rewriter = quantize_graph.GraphRewriter(float_graph_def, "round")
@@ -175,17 +172,17 @@ def test_graph(float_graph_def, input_map, output_names, log_graph=False):
   #
   # TODO(petewarden): Add test for "quantize" mode.
 
-  eightbit_rewriter = quantize_graph.GraphRewriter(float_graph_def, "eightbit",
-                                                   quantized_input_range=None)
+  eightbit_rewriter = quantize_graph.GraphRewriter(
+      float_graph_def, "eightbit", quantized_input_range=None)
   eightbit_graph_def = eightbit_rewriter.rewrite(output_names)
-  eightbit_results = run_graph_def(eightbit_graph_def, input_map,
-                                   [output_name + ":0"
-                                    for output_name in output_names])
+  eightbit_results = run_graph_def(
+      eightbit_graph_def, input_map,
+      [output_name + ":0" for output_name in output_names])
   for expected, result in zip(float_results, eightbit_results):
     assert are_tensors_near(expected, result, 1.0)
 
   if log_graph:
-    tf.logging.info("8bit:\n%s", str(eightbit_graph_def))
+    tf_logging.info("8bit:\n%s", str(eightbit_graph_def))
 
   # Test the weights_rounded mode. This uses the default bit_depth.
   weights_rounded_rewriter = quantize_graph.GraphRewriter(
@@ -198,12 +195,12 @@ def test_graph(float_graph_def, input_map, output_names, log_graph=False):
     assert are_tensors_near(expected, result, 1.0)
 
 
-class QuantizeGraphTest(tf.test.TestCase):
+class QuantizeGraphTest(test.TestCase):
 
   def test_negative_const_problem(self):
     shape_constant_name = "shape_constant"
     shape_constant = quantize_graph.create_constant_node(
-        shape_constant_name, value=-0.8, dtype=tf.float32, shape=[1])
+        shape_constant_name, value=-0.8, dtype=dtypes.float32, shape=[1])
     quantization_result = quantize_graph.quantize_weight_eightbit(
         shape_constant, b"MIN_COMBINED")
     self.assertEqual(4, len(quantization_result))
@@ -235,43 +232,48 @@ class QuantizeGraphTest(tf.test.TestCase):
 
   def test_reshape(self):
     """Tests that MatMul->Reshape->MatMul avoids extra quantize/dequantize."""
+
     def make_matmul(name, a, b):
       n = quantize_graph.create_node("MatMul", name, [a.name, b.name])
-      quantize_graph.set_attr_dtype(n, "T", tf.float32)
+      quantize_graph.set_attr_dtype(n, "T", dtypes.float32)
       quantize_graph.set_attr_bool(n, "transpose_a", False)
       quantize_graph.set_attr_bool(n, "transpose_b", False)
       return n
 
     # matmul_1 = input*weight_1
     input_node = quantize_graph.create_constant_node(
-        "input", value=[0, 1, 2, 3], dtype=tf.float32, shape=[4, 1])
+        "input", value=[0, 1, 2, 3], dtype=dtypes.float32, shape=[4, 1])
     weight_1_node = quantize_graph.create_constant_node(
-        "weight_1", value=[.5, .6, .7, .8, .9], dtype=tf.float32, shape=[1, 5])
+        "weight_1",
+        value=[.5, .6, .7, .8, .9],
+        dtype=dtypes.float32,
+        shape=[1, 5])
     matmul_1_node = make_matmul("matmul_1", input_node, weight_1_node)
 
     # Reshape 4x5 to 10x2.
     new_shape_node = quantize_graph.create_constant_node(
-        "new_shape_node", value=[10, 2], dtype=tf.int32, shape=[2])
+        "new_shape_node", value=[10, 2], dtype=dtypes.int32, shape=[2])
     reshape_node = quantize_graph.create_node(
         "Reshape", "reshape", [matmul_1_node.name, new_shape_node.name])
-    quantize_graph.set_attr_dtype(reshape_node, "T", tf.float32)
+    quantize_graph.set_attr_dtype(reshape_node, "T", dtypes.float32)
 
     # matmul_2_node = reshape*weight_2
     weight_2_node = quantize_graph.create_constant_node(
-        "weight_2", value=[1.5, 2.5], dtype=tf.float32, shape=[2, 1])
+        "weight_2", value=[1.5, 2.5], dtype=dtypes.float32, shape=[2, 1])
     matmul_2_node = make_matmul("matmul_2", reshape_node, weight_2_node)
 
-    g = tf.GraphDef()
-    g.node.extend([input_node, weight_1_node, matmul_1_node,
-                   new_shape_node, reshape_node, weight_2_node,
-                   matmul_2_node])
+    g = graph_pb2.GraphDef()
+    g.node.extend([
+        input_node, weight_1_node, matmul_1_node, new_shape_node, reshape_node,
+        weight_2_node, matmul_2_node
+    ])
 
     # Test the graph
     test_graph(g, {}, ["matmul_2"])
 
     # Verify there is only one Quantize and one Requantize op.
-    eightbit_rewriter = quantize_graph.GraphRewriter(g, "eightbit",
-                                                     quantized_input_range=None)
+    eightbit_rewriter = quantize_graph.GraphRewriter(
+        g, "eightbit", quantized_input_range=None)
     eightbit_graph_def = eightbit_rewriter.rewrite(["matmul_2"])
 
     ops = [node.op for node in eightbit_graph_def.node]
@@ -284,8 +286,8 @@ class QuantizeGraphTest(tf.test.TestCase):
 
   def test_quantize_array(self):
     # Test invalid parameters (empty array, or 0 buckets.
-    self.assertRaises(ValueError, quantize_graph.quantize_array,
-                      np.array([]), 2)
+    self.assertRaises(ValueError, quantize_graph.quantize_array, np.array([]),
+                      2)
     self.assertRaises(ValueError, quantize_graph.quantize_array,
                       np.array([1, 2]), 0)
     # Test input array of length 1.
@@ -309,33 +311,39 @@ class QuantizeGraphTest(tf.test.TestCase):
 
   def test_non_float_concat(self):
     concat_dim = quantize_graph.create_constant_node(
-        "concat_dim", value=0, dtype=tf.int32, shape=[])
+        "concat_dim", value=0, dtype=dtypes.int32, shape=[])
     a = quantize_graph.create_constant_node(
-        "a", value=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
-        dtype=tf.int32, shape=[2, 2, 3])
+        "a",
+        value=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        dtype=dtypes.int32,
+        shape=[2, 2, 3])
     b = quantize_graph.create_constant_node(
-        "b", value=[13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24],
-        dtype=tf.int32, shape=[2, 2, 3])
-    concat = quantize_graph.create_node(
-        "Concat", "concat", [concat_dim.name, a.name, b.name])
+        "b",
+        value=[13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24],
+        dtype=dtypes.int32,
+        shape=[2, 2, 3])
+    concat = quantize_graph.create_node("Concat", "concat",
+                                        [concat_dim.name, a.name, b.name])
     quantize_graph.set_attr_int(concat, "N", 2)
-    quantize_graph.set_attr_dtype(concat, "T", tf.int32)
+    quantize_graph.set_attr_dtype(concat, "T", dtypes.int32)
 
-    g = tf.GraphDef()
+    g = graph_pb2.GraphDef()
     g.node.extend([concat_dim, a, b, concat])
     test_graph(g, {}, [concat.name])
 
   def test_non_float_reshape(self):
     a = quantize_graph.create_constant_node(
-        "a", value=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
-        dtype=tf.int32, shape=[2, 2, 3])
+        "a",
+        value=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        dtype=dtypes.int32,
+        shape=[2, 2, 3])
     shape = quantize_graph.create_constant_node(
-        "shape", value=[12], dtype=tf.int32, shape=[1])
-    reshape = quantize_graph.create_node(
-        "Reshape", "reshape", [a.name, shape.name])
-    quantize_graph.set_attr_dtype(reshape, "T", tf.int32)
+        "shape", value=[12], dtype=dtypes.int32, shape=[1])
+    reshape = quantize_graph.create_node("Reshape", "reshape",
+                                         [a.name, shape.name])
+    quantize_graph.set_attr_dtype(reshape, "T", dtypes.int32)
 
-    g = tf.GraphDef()
+    g = graph_pb2.GraphDef()
     g.node.extend([a, shape, reshape])
     test_graph(g, {}, [reshape.name])
 
@@ -345,30 +353,27 @@ class QuantizeGraphTest(tf.test.TestCase):
     b_constant_name = "b_constant"
     concat_name = "concat"
 
-    float_graph_def = tf.GraphDef()
-    shape_constant = quantize_graph.create_constant_node(shape_constant_name,
-                                                         value=0,
-                                                         dtype=tf.int32,
-                                                         shape=[])
+    float_graph_def = graph_pb2.GraphDef()
+    shape_constant = quantize_graph.create_constant_node(
+        shape_constant_name, value=0, dtype=dtypes.int32, shape=[])
     float_graph_def.node.extend([shape_constant])
-    a_constant = quantize_graph.create_constant_node(a_constant_name,
-                                                     value=[1, 2, 3, 4, 5, 6, 7,
-                                                            8, 9, 10, 11, 12],
-                                                     dtype=tf.float32,
-                                                     shape=[2, 2, 3])
+    a_constant = quantize_graph.create_constant_node(
+        a_constant_name,
+        value=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        dtype=dtypes.float32,
+        shape=[2, 2, 3])
     float_graph_def.node.extend([a_constant])
-    b_constant = quantize_graph.create_constant_node(b_constant_name,
-                                                     value=[13, 14, 15, 16, 17,
-                                                            18, 19, 20, 21, 22,
-                                                            23, 24],
-                                                     dtype=tf.float32,
-                                                     shape=[2, 2, 3])
+    b_constant = quantize_graph.create_constant_node(
+        b_constant_name,
+        value=[13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24],
+        dtype=dtypes.float32,
+        shape=[2, 2, 3])
     float_graph_def.node.extend([b_constant])
-    concat_node = quantize_graph.create_node("Concat", concat_name,
-                                             [shape_constant_name,
-                                              a_constant_name, b_constant_name])
+    concat_node = quantize_graph.create_node(
+        "Concat", concat_name,
+        [shape_constant_name, a_constant_name, b_constant_name])
     quantize_graph.set_attr_int(concat_node, "N", 2)
-    quantize_graph.set_attr_dtype(concat_node, "T", tf.float32)
+    quantize_graph.set_attr_dtype(concat_node, "T", dtypes.float32)
     float_graph_def.node.extend([concat_node])
 
     test_graph(float_graph_def, {}, [concat_name])
@@ -388,36 +393,29 @@ class QuantizeGraphTest(tf.test.TestCase):
     concat_constant_name = "concat_constant"
     concat_name = "concat"
 
-    float_graph_def = tf.GraphDef()
-    input_constant = quantize_graph.create_constant_node(input_constant_name,
-                                                         value=[1, 2, 3, 4, 5,
-                                                                6, 7, 8, 9, 10,
-                                                                11, 12],
-                                                         dtype=tf.float32,
-                                                         shape=[2, 6])
+    float_graph_def = graph_pb2.GraphDef()
+    input_constant = quantize_graph.create_constant_node(
+        input_constant_name,
+        value=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        dtype=dtypes.float32,
+        shape=[2, 6])
     float_graph_def.node.extend([input_constant])
-    split_constant = quantize_graph.create_constant_node(split_constant_name,
-                                                         value=1,
-                                                         dtype=tf.int32,
-                                                         shape=[])
+    split_constant = quantize_graph.create_constant_node(
+        split_constant_name, value=1, dtype=dtypes.int32, shape=[])
     float_graph_def.node.extend([split_constant])
-    split_node = quantize_graph.create_node("Split", split_name,
-                                            [split_constant_name,
-                                             input_constant_name])
+    split_node = quantize_graph.create_node(
+        "Split", split_name, [split_constant_name, input_constant_name])
     quantize_graph.set_attr_int(split_node, "num_split", 2)
-    quantize_graph.set_attr_dtype(split_node, "T", tf.float32)
+    quantize_graph.set_attr_dtype(split_node, "T", dtypes.float32)
     float_graph_def.node.extend([split_node])
-    concat_constant = quantize_graph.create_constant_node(concat_constant_name,
-                                                          value=1,
-                                                          dtype=tf.int32,
-                                                          shape=[])
+    concat_constant = quantize_graph.create_constant_node(
+        concat_constant_name, value=1, dtype=dtypes.int32, shape=[])
     float_graph_def.node.extend([concat_constant])
-    concat_node = quantize_graph.create_node("Concat", concat_name,
-                                             [concat_constant_name,
-                                              split_name + ":0",
-                                              split_name + ":1"])
+    concat_node = quantize_graph.create_node(
+        "Concat", concat_name,
+        [concat_constant_name, split_name + ":0", split_name + ":1"])
     quantize_graph.set_attr_int(concat_node, "N", 2)
-    quantize_graph.set_attr_dtype(concat_node, "T", tf.float32)
+    quantize_graph.set_attr_dtype(concat_node, "T", dtypes.float32)
     float_graph_def.node.extend([concat_node])
 
     test_graph(float_graph_def, {}, [concat_name])
@@ -433,23 +431,22 @@ class QuantizeGraphTest(tf.test.TestCase):
   def test_identity(self):
     input_constant_name = "input_constant"
     identity_name = "identity"
-    float_graph_def = tf.GraphDef()
-    input_constant = quantize_graph.create_constant_node(input_constant_name,
-                                                         value=[1, 2, 3, 4, 5,
-                                                                6, 7, 8, 9, 10,
-                                                                11, 12],
-                                                         dtype=tf.float32,
-                                                         shape=[2, 6])
+    float_graph_def = graph_pb2.GraphDef()
+    input_constant = quantize_graph.create_constant_node(
+        input_constant_name,
+        value=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        dtype=dtypes.float32,
+        shape=[2, 6])
     float_graph_def.node.extend([input_constant])
     identity_node = quantize_graph.create_node("Identity", identity_name,
                                                [input_constant_name])
-    quantize_graph.set_attr_dtype(identity_node, "T", tf.float32)
+    quantize_graph.set_attr_dtype(identity_node, "T", dtypes.float32)
     float_graph_def.node.extend([identity_node])
 
     mul_name = "mul"
     mul_node = quantize_graph.create_node("Mul", mul_name,
                                           [identity_name, identity_name])
-    quantize_graph.set_attr_dtype(mul_node, "T", tf.float32)
+    quantize_graph.set_attr_dtype(mul_node, "T", dtypes.float32)
     float_graph_def.node.extend([mul_node])
 
     test_graph(float_graph_def, {}, [mul_name])
@@ -463,61 +460,48 @@ class QuantizeGraphTest(tf.test.TestCase):
     a_identity_name = "a_identity"
     b_identity_name = "b_identity"
     add_name = "add"
-    graph_def = tf.GraphDef()
+    graph_def = graph_pb2.GraphDef()
     no_op = quantize_graph.create_node("NoOp", no_op_name, [])
     graph_def.node.extend([no_op])
-    a_constant = quantize_graph.create_constant_node(a_constant_name,
-                                                     value=1,
-                                                     dtype=tf.float32,
-                                                     shape=[])
+    a_constant = quantize_graph.create_constant_node(
+        a_constant_name, value=1, dtype=dtypes.float32, shape=[])
     graph_def.node.extend([a_constant])
     a_check_node = quantize_graph.create_node("CheckNumerics", a_check_name,
                                               [a_constant_name])
     graph_def.node.extend([a_check_node])
-    a_identity_node = quantize_graph.create_node("Identity", a_identity_name,
-                                                 [a_constant_name,
-                                                  "^" + a_check_name,
-                                                  "^" + no_op_name])
+    a_identity_node = quantize_graph.create_node(
+        "Identity", a_identity_name,
+        [a_constant_name, "^" + a_check_name, "^" + no_op_name])
     graph_def.node.extend([a_identity_node])
-    b_constant = quantize_graph.create_constant_node(b_constant_name,
-                                                     value=1,
-                                                     dtype=tf.float32,
-                                                     shape=[])
+    b_constant = quantize_graph.create_constant_node(
+        b_constant_name, value=1, dtype=dtypes.float32, shape=[])
     graph_def.node.extend([b_constant])
     b_check_node = quantize_graph.create_node("CheckNumerics", b_check_name,
                                               [b_constant_name])
     graph_def.node.extend([b_check_node])
-    b_identity_node = quantize_graph.create_node("Identity", b_identity_name,
-                                                 [b_constant_name,
-                                                  "^" + b_check_name])
+    b_identity_node = quantize_graph.create_node(
+        "Identity", b_identity_name, [b_constant_name, "^" + b_check_name])
     graph_def.node.extend([b_identity_node])
     add_node = quantize_graph.create_node("Add", add_name,
-                                          [a_identity_name,
-                                           b_identity_name])
-    quantize_graph.set_attr_dtype(add_node, "T", tf.float32)
+                                          [a_identity_name, b_identity_name])
+    quantize_graph.set_attr_dtype(add_node, "T", dtypes.float32)
     graph_def.node.extend([add_node])
 
-    expected_output = tf.GraphDef()
+    expected_output = graph_pb2.GraphDef()
     no_op = quantize_graph.create_node("NoOp", no_op_name, [])
     expected_output.node.extend([no_op])
-    a_constant = quantize_graph.create_constant_node(a_constant_name,
-                                                     value=1,
-                                                     dtype=tf.float32,
-                                                     shape=[])
+    a_constant = quantize_graph.create_constant_node(
+        a_constant_name, value=1, dtype=dtypes.float32, shape=[])
     expected_output.node.extend([a_constant])
-    a_identity_node = quantize_graph.create_node("Identity", a_identity_name,
-                                                 [a_constant_name,
-                                                  "^" + no_op_name])
+    a_identity_node = quantize_graph.create_node(
+        "Identity", a_identity_name, [a_constant_name, "^" + no_op_name])
     expected_output.node.extend([a_identity_node])
-    b_constant = quantize_graph.create_constant_node(b_constant_name,
-                                                     value=1,
-                                                     dtype=tf.float32,
-                                                     shape=[])
+    b_constant = quantize_graph.create_constant_node(
+        b_constant_name, value=1, dtype=dtypes.float32, shape=[])
     expected_output.node.extend([b_constant])
     add_node = quantize_graph.create_node("Add", add_name,
-                                          [a_identity_name,
-                                           b_constant_name])
-    quantize_graph.set_attr_dtype(add_node, "T", tf.float32)
+                                          [a_identity_name, b_constant_name])
+    quantize_graph.set_attr_dtype(add_node, "T", dtypes.float32)
     expected_output.node.extend([add_node])
 
     output = graph_util.remove_training_nodes(graph_def)
@@ -531,37 +515,34 @@ class QuantizeGraphTest(tf.test.TestCase):
     beta_constant_name = "beta_constant"
     gamma_constant_name = "gamma_constant"
     batch_norm_name = "batch_norm"
-    float_graph_def = tf.GraphDef()
-    input_constant = quantize_graph.create_constant_node(input_constant_name,
-                                                         value=[1, 4, 2, 5, 3,
-                                                                6, -1, -4, -2,
-                                                                -5, -3, -6],
-                                                         dtype=tf.float32,
-                                                         shape=[1, 1, 6, 2])
+    float_graph_def = graph_pb2.GraphDef()
+    input_constant = quantize_graph.create_constant_node(
+        input_constant_name,
+        value=[1, 4, 2, 5, 3, 6, -1, -4, -2, -5, -3, -6],
+        dtype=dtypes.float32,
+        shape=[1, 1, 6, 2])
     float_graph_def.node.extend([input_constant])
-    mean_constant = quantize_graph.create_constant_node(mean_constant_name,
-                                                        value=[10, 20],
-                                                        dtype=tf.float32,
-                                                        shape=[2])
+    mean_constant = quantize_graph.create_constant_node(
+        mean_constant_name, value=[10, 20], dtype=dtypes.float32, shape=[2])
     float_graph_def.node.extend([mean_constant])
     variance_constant = quantize_graph.create_constant_node(
-        variance_constant_name, value=[0.25, 0.5], dtype=tf.float32, shape=[2])
+        variance_constant_name,
+        value=[0.25, 0.5],
+        dtype=dtypes.float32,
+        shape=[2])
     float_graph_def.node.extend([variance_constant])
-    beta_constant = quantize_graph.create_constant_node(beta_constant_name,
-                                                        value=[0.1, 0.6],
-                                                        dtype=tf.float32,
-                                                        shape=[2])
+    beta_constant = quantize_graph.create_constant_node(
+        beta_constant_name, value=[0.1, 0.6], dtype=dtypes.float32, shape=[2])
     float_graph_def.node.extend([beta_constant])
-    gamma_constant = quantize_graph.create_constant_node(gamma_constant_name,
-                                                         value=[0, 0],
-                                                         dtype=tf.float32,
-                                                         shape=[2])
+    gamma_constant = quantize_graph.create_constant_node(
+        gamma_constant_name, value=[0, 0], dtype=dtypes.float32, shape=[2])
     float_graph_def.node.extend([gamma_constant])
     batch_norm_node = quantize_graph.create_node(
-        "BatchNormWithGlobalNormalization", batch_norm_name,
-        [input_constant_name, mean_constant_name, variance_constant_name,
-         beta_constant_name, gamma_constant_name])
-    quantize_graph.set_attr_dtype(batch_norm_node, "T", tf.float32)
+        "BatchNormWithGlobalNormalization", batch_norm_name, [
+            input_constant_name, mean_constant_name, variance_constant_name,
+            beta_constant_name, gamma_constant_name
+        ])
+    quantize_graph.set_attr_dtype(batch_norm_node, "T", dtypes.float32)
     quantize_graph.set_attr_bool(batch_norm_node, "scale_after_normalization",
                                  False)
     quantize_graph.set_attr_float(batch_norm_node, "variance_epsilon", 0.001)
@@ -571,13 +552,12 @@ class QuantizeGraphTest(tf.test.TestCase):
   def test_max_pool(self):
     input_constant_name = "input_constant"
     max_pool_name = "max_pool"
-    float_graph_def = tf.GraphDef()
-    input_constant = quantize_graph.create_constant_node(input_constant_name,
-                                                         value=[1, 2, 3, 4, 5,
-                                                                6, 7, 8, 9, 10,
-                                                                11, 12],
-                                                         dtype=tf.float32,
-                                                         shape=[1, 2, 6, 1])
+    float_graph_def = graph_pb2.GraphDef()
+    input_constant = quantize_graph.create_constant_node(
+        input_constant_name,
+        value=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        dtype=dtypes.float32,
+        shape=[1, 2, 6, 1])
     float_graph_def.node.extend([input_constant])
     max_pool_node = quantize_graph.create_node("MaxPool", max_pool_name,
                                                [input_constant_name])
@@ -590,17 +570,16 @@ class QuantizeGraphTest(tf.test.TestCase):
   def test_avg_pool(self):
     input_constant_name = "input_constant"
     avg_pool_name = "avg_pool"
-    float_graph_def = tf.GraphDef()
-    input_constant = quantize_graph.create_constant_node(input_constant_name,
-                                                         value=[1, 2, 3, 4, 5,
-                                                                6, 7, 8, 9, 10,
-                                                                11, 12],
-                                                         dtype=tf.float32,
-                                                         shape=[1, 2, 6, 1])
+    float_graph_def = graph_pb2.GraphDef()
+    input_constant = quantize_graph.create_constant_node(
+        input_constant_name,
+        value=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        dtype=dtypes.float32,
+        shape=[1, 2, 6, 1])
     float_graph_def.node.extend([input_constant])
     avg_pool_node = quantize_graph.create_node("AvgPool", avg_pool_name,
                                                [input_constant_name])
-    quantize_graph.set_attr_dtype(avg_pool_node, "T", tf.float32)
+    quantize_graph.set_attr_dtype(avg_pool_node, "T", dtypes.float32)
     quantize_graph.set_attr_int_list(avg_pool_node, "ksize", [1, 2, 2, 1])
     quantize_graph.set_attr_int_list(avg_pool_node, "strides", [1, 1, 1, 1])
     quantize_graph.set_attr_string(avg_pool_node, "padding", b"SAME")
@@ -610,45 +589,44 @@ class QuantizeGraphTest(tf.test.TestCase):
   def test_relu(self):
     input_constant_name = "input_constant"
     relu_name = "relu"
-    float_graph_def = tf.GraphDef()
-    input_constant = quantize_graph.create_constant_node(input_constant_name,
-                                                         value=[1, 2, 3, 4, 5,
-                                                                6, 7, 8, 9, 10,
-                                                                11, 12],
-                                                         dtype=tf.float32,
-                                                         shape=[1, 2, 6, 1])
+    float_graph_def = graph_pb2.GraphDef()
+    input_constant = quantize_graph.create_constant_node(
+        input_constant_name,
+        value=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        dtype=dtypes.float32,
+        shape=[1, 2, 6, 1])
     float_graph_def.node.extend([input_constant])
     relu_node = quantize_graph.create_node("Relu", relu_name,
                                            [input_constant_name])
-    quantize_graph.set_attr_dtype(relu_node, "T", tf.float32)
+    quantize_graph.set_attr_dtype(relu_node, "T", dtypes.float32)
     float_graph_def.node.extend([relu_node])
     test_graph(float_graph_def, {}, [relu_name])
 
   def test_relu_w_fake_quant_w_min_max_vars(self):
     input_node = quantize_graph.create_constant_node(
-        "input", value=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
-        dtype=tf.float32, shape=[1, 2, 6, 1])
-    relu_node = quantize_graph.create_node("Relu", "relu",
-                                           [input_node.name])
-    quantize_graph.set_attr_dtype(relu_node, "T", tf.float32)
+        "input",
+        value=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        dtype=dtypes.float32,
+        shape=[1, 2, 6, 1])
+    relu_node = quantize_graph.create_node("Relu", "relu", [input_node.name])
+    quantize_graph.set_attr_dtype(relu_node, "T", dtypes.float32)
 
     min_node = quantize_graph.create_constant_node(
-        "min_bias_add", value=0, dtype=tf.float32, shape=[])
+        "min_bias_add", value=0, dtype=dtypes.float32, shape=[])
     max_node = quantize_graph.create_constant_node(
-        "max_bias_add", value=12, dtype=tf.float32, shape=[])
+        "max_bias_add", value=12, dtype=dtypes.float32, shape=[])
     fake_quant_node = quantize_graph.create_node(
         "FakeQuantWithMinMaxVars", "fake_quant",
         [relu_node.name, min_node.name, max_node.name])
 
-    float_graph_def = tf.GraphDef()
-    float_graph_def.node.extend([input_node, relu_node, min_node, max_node,
-                                 fake_quant_node])
+    float_graph_def = graph_pb2.GraphDef()
+    float_graph_def.node.extend(
+        [input_node, relu_node, min_node, max_node, fake_quant_node])
     test_graph(float_graph_def, {}, [fake_quant_node.name], log_graph=True)
 
     # Verify there is only one Quantize and one Requantize op.
-    eightbit_rewriter = quantize_graph.GraphRewriter(float_graph_def,
-                                                     "eightbit",
-                                                     quantized_input_range=None)
+    eightbit_rewriter = quantize_graph.GraphRewriter(
+        float_graph_def, "eightbit", quantized_input_range=None)
     eightbit_graph_def = eightbit_rewriter.rewrite([fake_quant_node.name])
 
     ops = [node.op for node in eightbit_graph_def.node]
@@ -661,17 +639,16 @@ class QuantizeGraphTest(tf.test.TestCase):
   def test_relu6(self):
     input_constant_name = "input_constant"
     relu6_name = "relu6"
-    float_graph_def = tf.GraphDef()
-    input_constant = quantize_graph.create_constant_node(input_constant_name,
-                                                         value=[1, 2, 3, 4, 5,
-                                                                6, 7, 8, 9, 10,
-                                                                11, 12],
-                                                         dtype=tf.float32,
-                                                         shape=[1, 2, 6, 1])
+    float_graph_def = graph_pb2.GraphDef()
+    input_constant = quantize_graph.create_constant_node(
+        input_constant_name,
+        value=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        dtype=dtypes.float32,
+        shape=[1, 2, 6, 1])
     float_graph_def.node.extend([input_constant])
     relu6_node = quantize_graph.create_node("Relu6", relu6_name,
                                             [input_constant_name])
-    quantize_graph.set_attr_dtype(relu6_node, "T", tf.float32)
+    quantize_graph.set_attr_dtype(relu6_node, "T", dtypes.float32)
     float_graph_def.node.extend([relu6_node])
     test_graph(float_graph_def, {}, [relu6_name])
 
@@ -679,83 +656,82 @@ class QuantizeGraphTest(tf.test.TestCase):
     input_constant_name = "input_constant"
     offset_constant_name = "offset_constant"
     bias_add_name = "bias_add"
-    float_graph_def = tf.GraphDef()
-    input_constant = quantize_graph.create_constant_node(input_constant_name,
-                                                         value=[1, 2, 3, 4, 5,
-                                                                6, 7, 8, 9, 10,
-                                                                11, 12],
-                                                         dtype=tf.float32,
-                                                         shape=[1, 1, 2, 6])
+    float_graph_def = graph_pb2.GraphDef()
+    input_constant = quantize_graph.create_constant_node(
+        input_constant_name,
+        value=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        dtype=dtypes.float32,
+        shape=[1, 1, 2, 6])
     float_graph_def.node.extend([input_constant])
-    offset_constant = quantize_graph.create_constant_node(offset_constant_name,
-                                                          value=[1, 2, 3, 4, 5,
-                                                                 6],
-                                                          dtype=tf.float32,
-                                                          shape=[6])
+    offset_constant = quantize_graph.create_constant_node(
+        offset_constant_name,
+        value=[1, 2, 3, 4, 5, 6],
+        dtype=dtypes.float32,
+        shape=[6])
     float_graph_def.node.extend([offset_constant])
-    bias_add_node = quantize_graph.create_node("BiasAdd", bias_add_name,
-                                               [input_constant_name,
-                                                offset_constant_name])
-    quantize_graph.set_attr_dtype(bias_add_node, "T", tf.float32)
+    bias_add_node = quantize_graph.create_node(
+        "BiasAdd", bias_add_name, [input_constant_name, offset_constant_name])
+    quantize_graph.set_attr_dtype(bias_add_node, "T", dtypes.float32)
     float_graph_def.node.extend([bias_add_node])
     test_graph(float_graph_def, {}, [bias_add_name])
 
   def test_quantized_input_range_errors(self):
     with self.assertRaises(ValueError):
       # Invalid mode.
-      quantize_graph.GraphRewriter(tf.GraphDef(), "weights_rounded", [0, 1])
+      quantize_graph.GraphRewriter(graph_pb2.GraphDef(), "weights_rounded",
+                                   [0, 1])
     with self.assertRaises(ValueError):
       # Invalid range.
-      quantize_graph.GraphRewriter(tf.GraphDef(), "eightbit", [0, -1])
+      quantize_graph.GraphRewriter(graph_pb2.GraphDef(), "eightbit", [0, -1])
 
   def test_quantized_input_range_bias_add(self):
     input_shape = [1, 1, 2, 6]
-    input_n = quantize_graph.create_node(
-        "PlaceholderV2", "input", [])
-    quantize_graph.set_attr_dtype(input_n, "dtype", tf.float32)
+    input_n = quantize_graph.create_node("PlaceholderV2", "input", [])
+    quantize_graph.set_attr_dtype(input_n, "dtype", dtypes.float32)
     quantize_graph.set_attr_shape(input_n, "shape", input_shape)
-    offset_n = quantize_graph.create_constant_node("offset",
-                                                   value=[1, 2, 3, 4, 5, 6],
-                                                   dtype=tf.float32,
-                                                   shape=[6])
+    offset_n = quantize_graph.create_constant_node(
+        "offset", value=[1, 2, 3, 4, 5, 6], dtype=dtypes.float32, shape=[6])
     bias_add_n = quantize_graph.create_node("BiasAdd", "bias_add",
                                             [input_n.name, offset_n.name])
-    quantize_graph.set_attr_dtype(bias_add_n, "T", tf.float32)
+    quantize_graph.set_attr_dtype(bias_add_n, "T", dtypes.float32)
 
-    float_graph_def = tf.GraphDef()
+    float_graph_def = graph_pb2.GraphDef()
     float_graph_def.node.extend([input_n, offset_n, bias_add_n])
 
-    input_map = {input_n.name + ":0":
-                 np.reshape([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
-                            input_shape)}
-    self._RunTestsForQuantizedInputRange(
-        float_graph_def, input_map, [bias_add_n.name], [-1, 20.])
-    self._RunTestsForQuantizedInputRange(
-        float_graph_def, input_map, [bias_add_n.name], [0, 12.])
+    input_map = {
+        input_n.name + ":0":
+            np.reshape([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], input_shape)
+    }
+    self._RunTestsForQuantizedInputRange(float_graph_def, input_map,
+                                         [bias_add_n.name], [-1, 20.])
+    self._RunTestsForQuantizedInputRange(float_graph_def, input_map,
+                                         [bias_add_n.name], [0, 12.])
 
   def test_quantized_input_range_mat_mul(self):
     shapes = [[3, 2], [2, 4]]
     inputs = []
     for i, shape in enumerate(shapes):
       node = quantize_graph.create_node("PlaceholderV2", "input_%s" % i, [])
-      quantize_graph.set_attr_dtype(node, "dtype", tf.float32)
+      quantize_graph.set_attr_dtype(node, "dtype", dtypes.float32)
       quantize_graph.set_attr_shape(node, "shape", shape)
       inputs.append(node)
     mat_mul_node = quantize_graph.create_node("MatMul", "mat_mul",
                                               [n.name for n in inputs])
-    quantize_graph.set_attr_dtype(mat_mul_node, "T", tf.float32)
+    quantize_graph.set_attr_dtype(mat_mul_node, "T", dtypes.float32)
 
-    float_graph_def = tf.GraphDef()
+    float_graph_def = graph_pb2.GraphDef()
     float_graph_def.node.extend(inputs + [mat_mul_node])
 
-    input_map = {inputs[0].name + ":0":
-                     np.reshape([1, 2, 3, 4, 5, 6], shapes[0]),
-                 inputs[1].name + ":0":
-                     np.reshape([.8, .7, .6, .5, .4, .3, .2, .1], shapes[1])}
-    self._RunTestsForQuantizedInputRange(
-        float_graph_def, input_map, [mat_mul_node.name], [-1, 20.])
-    self._RunTestsForQuantizedInputRange(
-        float_graph_def, input_map, [mat_mul_node.name], [0, 6.])
+    input_map = {
+        inputs[0].name + ":0":
+            np.reshape([1, 2, 3, 4, 5, 6], shapes[0]),
+        inputs[1].name + ":0":
+            np.reshape([.8, .7, .6, .5, .4, .3, .2, .1], shapes[1])
+    }
+    self._RunTestsForQuantizedInputRange(float_graph_def, input_map,
+                                         [mat_mul_node.name], [-1, 20.])
+    self._RunTestsForQuantizedInputRange(float_graph_def, input_map,
+                                         [mat_mul_node.name], [0, 6.])
 
   def _RunTestsForQuantizedInputRange(self, float_graph_def, input_map,
                                       output_names, input_range):
@@ -766,11 +742,13 @@ class QuantizeGraphTest(tf.test.TestCase):
     quantized_input_map = {}
     for k, v in input_map.items():
       arr = [
-          int(round((n-input_range[0])*255/(input_range[1]-input_range[0])))
-          for n in v.flat]
+          int(
+              round((n - input_range[0]) * 255 / (input_range[1] - input_range[
+                  0]))) for n in v.flat
+      ]
       arr = np.array(arr, np.uint8)
       arr = arr.reshape(v.shape)
-      arr = arr.astype(tf.quint8.as_numpy_dtype)
+      arr = arr.astype(dtypes.quint8.as_numpy_dtype)
       quantized_input_map[k] = arr
     output_tensors = [output_name + ":0" for output_name in output_names]
     float_results = run_graph_def(float_graph_def, input_map, output_tensors)
@@ -787,45 +765,51 @@ class QuantizeGraphTest(tf.test.TestCase):
     self.assertEqual(len(output_names), ops.count("Dequantize"))
 
     # Quantize without treating input as quantized.
-    rewriter = quantize_graph.GraphRewriter(float_graph_def, "eightbit",
-                                            quantized_input_range=None)
+    rewriter = quantize_graph.GraphRewriter(
+        float_graph_def, "eightbit", quantized_input_range=None)
     graph_def = rewriter.rewrite(output_names)
     results = run_graph_def(graph_def, input_map, output_tensors)
     for expected, result in zip(float_results, results):
       assert are_tensors_near(expected, result, .5)
     ops = [node.op for node in graph_def.node]
-    self.assertEqual(len(input_map),
-                     ops.count("QuantizeV2") + ops.count("Quantize"))
+    self.assertEqual(
+        len(input_map), ops.count("QuantizeV2") + ops.count("Quantize"))
     self.assertEqual(len(output_names), ops.count("Dequantize"))
 
   def test_bias_add_w_fake_quant_w_min_max_vars(self):
     input_node = quantize_graph.create_constant_node(
-        "input", value=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-        dtype=tf.float32, shape=[1, 1, 2, 5])
+        "input",
+        value=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        dtype=dtypes.float32,
+        shape=[1, 1, 2, 5])
     offset_node = quantize_graph.create_constant_node(
-        "offset", value=[1, 2, 3, 4, 5], dtype=tf.float32, shape=[5])
+        "offset", value=[1, 2, 3, 4, 5], dtype=dtypes.float32, shape=[5])
     bias_add_node = quantize_graph.create_node(
         "BiasAdd", "bias_add", [input_node.name, offset_node.name])
-    quantize_graph.set_attr_dtype(bias_add_node, "T", tf.float32)
+    quantize_graph.set_attr_dtype(bias_add_node, "T", dtypes.float32)
 
     min_node = quantize_graph.create_constant_node(
-        "min_bias_add", value=-.5, dtype=tf.float32, shape=[])
+        "min_bias_add", value=-.5, dtype=dtypes.float32, shape=[])
     max_node = quantize_graph.create_constant_node(
-        "max_bias_add", value=15.5, dtype=tf.float32, shape=[])
+        "max_bias_add", value=15.5, dtype=dtypes.float32, shape=[])
     fake_quant_node = quantize_graph.create_node(
         "FakeQuantWithMinMaxVars", "fake_quant",
         [bias_add_node.name, min_node.name, max_node.name])
 
-    float_graph_def = tf.GraphDef()
-    float_graph_def.node.extend([input_node, offset_node, bias_add_node,
-                                 min_node, max_node, fake_quant_node])
+    float_graph_def = graph_pb2.GraphDef()
+    float_graph_def.node.extend([
+        input_node, offset_node, bias_add_node, min_node, max_node,
+        fake_quant_node
+    ])
     test_graph(float_graph_def, {}, [fake_quant_node.name], log_graph=True)
 
     # Verify there is only one Quantize and one Requantize op.
     # Pass in fallback_quantization_range, although it will have no effect
     # because the FakeQuantWithMinMaxVars are used instead.
     eightbit_rewriter = quantize_graph.GraphRewriter(
-        float_graph_def, "eightbit", quantized_input_range=None,
+        float_graph_def,
+        "eightbit",
+        quantized_input_range=None,
         fallback_quantization_range=[-100, 100])
     eightbit_graph_def = eightbit_rewriter.rewrite([fake_quant_node.name])
 
@@ -843,22 +827,26 @@ class QuantizeGraphTest(tf.test.TestCase):
 
   def test_bias_add_w_fallback_min_max_vars(self):
     input_node = quantize_graph.create_constant_node(
-        "input", value=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-        dtype=tf.float32, shape=[1, 1, 2, 5])
+        "input",
+        value=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        dtype=dtypes.float32,
+        shape=[1, 1, 2, 5])
     offset_node = quantize_graph.create_constant_node(
-        "offset", value=[1, 2, 3, 4, 5], dtype=tf.float32, shape=[5])
+        "offset", value=[1, 2, 3, 4, 5], dtype=dtypes.float32, shape=[5])
     bias_add_node = quantize_graph.create_node(
         "BiasAdd", "bias_add", [input_node.name, offset_node.name])
-    quantize_graph.set_attr_dtype(bias_add_node, "T", tf.float32)
+    quantize_graph.set_attr_dtype(bias_add_node, "T", dtypes.float32)
 
-    float_graph_def = tf.GraphDef()
+    float_graph_def = graph_pb2.GraphDef()
     float_graph_def.node.extend([input_node, offset_node, bias_add_node])
     test_graph(float_graph_def, {}, [bias_add_node.name], log_graph=True)
 
     # Verify there is only one Quantize, one Requantize op, and no
     # RequantizationRange op.
     eightbit_rewriter = quantize_graph.GraphRewriter(
-        float_graph_def, "eightbit", quantized_input_range=None,
+        float_graph_def,
+        "eightbit",
+        quantized_input_range=None,
         fallback_quantization_range=[-.5, 15.5])
     eightbit_graph_def = eightbit_rewriter.rewrite([bias_add_node.name])
 
@@ -889,124 +877,86 @@ class QuantizeGraphTest(tf.test.TestCase):
     b_dequantize_name = "b_dequantize"
     b_quantize_name = "b_quantize"
     mat_mul_name = "mat_mul"
-    graph_def = tf.GraphDef()
-    a_constant = quantize_graph.create_constant_node(a_constant_name,
-                                                     value=(0,),
-                                                     dtype=tf.quint8,
-                                                     shape=[])
+    graph_def = graph_pb2.GraphDef()
+    a_constant = quantize_graph.create_constant_node(
+        a_constant_name, value=(0,), dtype=dtypes.quint8, shape=[])
     graph_def.node.extend([a_constant])
-    a_constant_min = quantize_graph.create_constant_node(a_constant_min_name,
-                                                         value=2,
-                                                         dtype=tf.float32,
-                                                         shape=[])
+    a_constant_min = quantize_graph.create_constant_node(
+        a_constant_min_name, value=2, dtype=dtypes.float32, shape=[])
     graph_def.node.extend([a_constant_min])
-    a_constant_max = quantize_graph.create_constant_node(a_constant_max_name,
-                                                         value=2,
-                                                         dtype=tf.float32,
-                                                         shape=[])
+    a_constant_max = quantize_graph.create_constant_node(
+        a_constant_max_name, value=2, dtype=dtypes.float32, shape=[])
     graph_def.node.extend([a_constant_max])
-    a_dequantize_node = quantize_graph.create_node("Dequantize",
-                                                   a_dequantize_name,
-                                                   [a_constant_name,
-                                                    a_constant_min_name,
-                                                    a_constant_max_name])
-    quantize_graph.set_attr_dtype(a_dequantize_node, "T", tf.uint8)
+    a_dequantize_node = quantize_graph.create_node(
+        "Dequantize", a_dequantize_name,
+        [a_constant_name, a_constant_min_name, a_constant_max_name])
+    quantize_graph.set_attr_dtype(a_dequantize_node, "T", dtypes.uint8)
     graph_def.node.extend([a_dequantize_node])
-    a_quantize_node = quantize_graph.create_node("QuantizeV2",
-                                                 a_quantize_name,
-                                                 [a_dequantize_name,
-                                                  a_dequantize_name + ":1",
-                                                  a_dequantize_name + ":2"])
-    quantize_graph.set_attr_dtype(a_quantize_node, "T", tf.uint8)
+    a_quantize_node = quantize_graph.create_node(
+        "QuantizeV2", a_quantize_name,
+        [a_dequantize_name, a_dequantize_name + ":1", a_dequantize_name + ":2"])
+    quantize_graph.set_attr_dtype(a_quantize_node, "T", dtypes.uint8)
     graph_def.node.extend([a_quantize_node])
-    b_constant = quantize_graph.create_constant_node(b_constant_name,
-                                                     value=(0,),
-                                                     dtype=tf.quint8,
-                                                     shape=[])
+    b_constant = quantize_graph.create_constant_node(
+        b_constant_name, value=(0,), dtype=dtypes.quint8, shape=[])
     graph_def.node.extend([b_constant])
-    b_constant_min = quantize_graph.create_constant_node(b_constant_min_name,
-                                                         value=3,
-                                                         dtype=tf.float32,
-                                                         shape=[])
+    b_constant_min = quantize_graph.create_constant_node(
+        b_constant_min_name, value=3, dtype=dtypes.float32, shape=[])
     graph_def.node.extend([b_constant_min])
-    b_constant_max = quantize_graph.create_constant_node(b_constant_max_name,
-                                                         value=3,
-                                                         dtype=tf.float32,
-                                                         shape=[])
+    b_constant_max = quantize_graph.create_constant_node(
+        b_constant_max_name, value=3, dtype=dtypes.float32, shape=[])
     graph_def.node.extend([b_constant_max])
-    b_dequantize_node = quantize_graph.create_node("Dequantize",
-                                                   b_dequantize_name,
-                                                   [b_constant_name,
-                                                    b_constant_min_name,
-                                                    b_constant_max_name])
-    quantize_graph.set_attr_dtype(b_dequantize_node, "T", tf.uint8)
+    b_dequantize_node = quantize_graph.create_node(
+        "Dequantize", b_dequantize_name,
+        [b_constant_name, b_constant_min_name, b_constant_max_name])
+    quantize_graph.set_attr_dtype(b_dequantize_node, "T", dtypes.uint8)
     graph_def.node.extend([b_dequantize_node])
-    b_quantize_node = quantize_graph.create_node("QuantizeV2",
-                                                 b_quantize_name,
-                                                 [b_dequantize_name,
-                                                  b_dequantize_name + ":1",
-                                                  b_dequantize_name + ":2"])
-    quantize_graph.set_attr_dtype(b_quantize_node, "T", tf.uint8)
+    b_quantize_node = quantize_graph.create_node(
+        "QuantizeV2", b_quantize_name,
+        [b_dequantize_name, b_dequantize_name + ":1", b_dequantize_name + ":2"])
+    quantize_graph.set_attr_dtype(b_quantize_node, "T", dtypes.uint8)
     graph_def.node.extend([b_quantize_node])
-    mat_mul_node = quantize_graph.create_node("QuantizedMatMul", mat_mul_name,
-                                              [a_quantize_name,
-                                               b_quantize_name,
-                                               a_quantize_name + ":1",
-                                               a_quantize_name + ":2",
-                                               b_quantize_name + ":1",
-                                               b_quantize_name + ":2"])
-    quantize_graph.set_attr_dtype(mat_mul_node, "T1", tf.uint8)
-    quantize_graph.set_attr_dtype(mat_mul_node, "T2", tf.int32)
+    mat_mul_node = quantize_graph.create_node("QuantizedMatMul", mat_mul_name, [
+        a_quantize_name, b_quantize_name, a_quantize_name + ":1",
+        a_quantize_name + ":2", b_quantize_name + ":1", b_quantize_name + ":2"
+    ])
+    quantize_graph.set_attr_dtype(mat_mul_node, "T1", dtypes.uint8)
+    quantize_graph.set_attr_dtype(mat_mul_node, "T2", dtypes.int32)
     graph_def.node.extend([mat_mul_node])
 
-    expected_output = tf.GraphDef()
-    a_constant = quantize_graph.create_constant_node(a_constant_name,
-                                                     value=(0,),
-                                                     dtype=tf.quint8,
-                                                     shape=[])
+    expected_output = graph_pb2.GraphDef()
+    a_constant = quantize_graph.create_constant_node(
+        a_constant_name, value=(0,), dtype=dtypes.quint8, shape=[])
     expected_output.node.extend([a_constant])
-    a_constant_min = quantize_graph.create_constant_node(a_constant_min_name,
-                                                         value=2,
-                                                         dtype=tf.float32,
-                                                         shape=[])
+    a_constant_min = quantize_graph.create_constant_node(
+        a_constant_min_name, value=2, dtype=dtypes.float32, shape=[])
     expected_output.node.extend([a_constant_min])
-    a_constant_max = quantize_graph.create_constant_node(a_constant_max_name,
-                                                         value=2,
-                                                         dtype=tf.float32,
-                                                         shape=[])
+    a_constant_max = quantize_graph.create_constant_node(
+        a_constant_max_name, value=2, dtype=dtypes.float32, shape=[])
     expected_output.node.extend([a_constant_max])
-    b_constant = quantize_graph.create_constant_node(b_constant_name,
-                                                     value=(0,),
-                                                     dtype=tf.quint8,
-                                                     shape=[])
+    b_constant = quantize_graph.create_constant_node(
+        b_constant_name, value=(0,), dtype=dtypes.quint8, shape=[])
     expected_output.node.extend([b_constant])
-    b_constant_min = quantize_graph.create_constant_node(b_constant_min_name,
-                                                         value=3,
-                                                         dtype=tf.float32,
-                                                         shape=[])
+    b_constant_min = quantize_graph.create_constant_node(
+        b_constant_min_name, value=3, dtype=dtypes.float32, shape=[])
     expected_output.node.extend([b_constant_min])
-    b_constant_max = quantize_graph.create_constant_node(b_constant_max_name,
-                                                         value=3,
-                                                         dtype=tf.float32,
-                                                         shape=[])
+    b_constant_max = quantize_graph.create_constant_node(
+        b_constant_max_name, value=3, dtype=dtypes.float32, shape=[])
     expected_output.node.extend([b_constant_max])
-    mat_mul_node = quantize_graph.create_node("QuantizedMatMul", mat_mul_name,
-                                              [a_constant_name,
-                                               b_constant_name,
-                                               a_constant_min_name,
-                                               a_constant_max_name,
-                                               b_constant_min_name,
-                                               b_constant_max_name])
-    quantize_graph.set_attr_dtype(mat_mul_node, "T1", tf.uint8)
-    quantize_graph.set_attr_dtype(mat_mul_node, "T2", tf.int32)
+    mat_mul_node = quantize_graph.create_node("QuantizedMatMul", mat_mul_name, [
+        a_constant_name, b_constant_name, a_constant_min_name,
+        a_constant_max_name, b_constant_min_name, b_constant_max_name
+    ])
+    quantize_graph.set_attr_dtype(mat_mul_node, "T1", dtypes.uint8)
+    quantize_graph.set_attr_dtype(mat_mul_node, "T2", dtypes.int32)
     expected_output.node.extend([mat_mul_node])
 
-    rewriter = quantize_graph.GraphRewriter(graph_def, [mat_mul_name],
-                                            quantized_input_range=None)
+    rewriter = quantize_graph.GraphRewriter(
+        graph_def, [mat_mul_name], quantized_input_range=None)
     output = rewriter.remove_redundant_quantization(graph_def)
     stripped_output = graph_util.extract_sub_graph(output, [mat_mul_name])
     self.assertProtoEquals(expected_output, stripped_output)
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

@@ -12,13 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Sampling functions."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python import summary
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -30,17 +28,25 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.summary import summary
 from tensorflow.python.training import input as input_ops
 from tensorflow.python.training import queue_runner
 
+__all__ = [
+    'rejection_sample',
+    'stratified_sample',
+]
 
-__all__ = ['rejection_sample',
-           'stratified_sample',]
 
-
-def rejection_sample(tensors, accept_prob_fn, batch_size, queue_threads=1,
-                     enqueue_many=False, prebatch_capacity=16,
-                     prebatch_threads=1, runtime_checks=False, name=None):
+def rejection_sample(tensors,
+                     accept_prob_fn,
+                     batch_size,
+                     queue_threads=1,
+                     enqueue_many=False,
+                     prebatch_capacity=16,
+                     prebatch_threads=1,
+                     runtime_checks=False,
+                     name=None):
   """Stochastically creates batches by rejection sampling.
 
   Each list of non-batched tensors is evaluated by `accept_prob_fn`, to produce
@@ -98,28 +104,37 @@ def rejection_sample(tensors, accept_prob_fn, batch_size, queue_threads=1,
 
       # Make a single queue to hold input examples. Reshape output so examples
       # don't have singleton batch dimension.
-      batched = input_ops.batch(tensor_list,
-                                batch_size=1,
-                                num_threads=prebatch_threads,
-                                capacity=prebatch_capacity,
-                                enqueue_many=True)
+      batched = input_ops.batch(
+          tensor_list,
+          batch_size=1,
+          num_threads=prebatch_threads,
+          capacity=prebatch_capacity,
+          enqueue_many=True)
       tensor_list = [array_ops.squeeze(x, [0]) for x in batched]
 
     # Set up a queue containing batches that have the distribution.
     cur_prob = accept_prob_fn(tensor_list)
     if runtime_checks:
-      cur_prob = array_ops.identity(control_flow_ops.with_dependencies(
-          [check_ops.assert_less_equal(0.0, cur_prob),
-           check_ops.assert_less_equal(cur_prob, 1.0)],
-          cur_prob), name='prob_with_checks')
+      cur_prob = array_ops.identity(
+          control_flow_ops.with_dependencies([
+              check_ops.assert_less_equal(0.0, cur_prob),
+              check_ops.assert_less_equal(cur_prob, 1.0)
+          ], cur_prob),
+          name='prob_with_checks')
     keep_input = random_ops.random_uniform([]) < cur_prob
     return _conditional_batch(
         tensor_list, keep_input, batch_size, num_threads=queue_threads)
 
 
-def stratified_sample(tensors, labels, target_probs, batch_size,
-                      init_probs=None, enqueue_many=False, queue_capacity=16,
-                      threads_per_queue=1, name=None):
+def stratified_sample(tensors,
+                      labels,
+                      target_probs,
+                      batch_size,
+                      init_probs=None,
+                      enqueue_many=False,
+                      queue_capacity=16,
+                      threads_per_queue=1,
+                      name=None):
   """Stochastically creates batches based on per-class probabilities.
 
   This method discards examples. Internally, it creates one queue to amortize
@@ -194,11 +209,14 @@ def stratified_sample(tensors, labels, target_probs, batch_size,
     # Check that all zero initial probabilities also have zero target
     # probabilities.
     assert_op = control_flow_ops.Assert(
-        math_ops.reduce_all(math_ops.logical_or(
-            math_ops.not_equal(init_probs, 0),
-            math_ops.equal(target_probs, 0))),
-        ['All classes with zero initial probability must also have zero target '
-         'probability: ', init_probs, target_probs])
+        math_ops.reduce_all(
+            math_ops.logical_or(
+                math_ops.not_equal(init_probs, 0),
+                math_ops.equal(target_probs, 0))),
+        [
+            'All classes with zero initial probability must also have zero target '
+            'probability: ', init_probs, target_probs
+        ])
     init_probs = control_flow_ops.with_dependencies([assert_op], init_probs)
 
     # Calculate acceptance sampling probabilities.
@@ -214,11 +232,12 @@ def stratified_sample(tensors, labels, target_probs, batch_size,
 
     # Make a single queue to hold input examples. Reshape output so examples
     # don't have singleton batch dimension.
-    batched = input_ops.batch(tensor_list + [labels],
-                              batch_size=1,
-                              num_threads=threads_per_queue,
-                              capacity=queue_capacity,
-                              enqueue_many=True)
+    batched = input_ops.batch(
+        tensor_list + [labels],
+        batch_size=1,
+        num_threads=threads_per_queue,
+        capacity=queue_capacity,
+        enqueue_many=True)
     val_list = [array_ops.squeeze(x, [0]) for x in batched[:-1]]
     label = array_ops.squeeze(batched[-1], [0])
 
@@ -242,13 +261,16 @@ def _estimate_data_distribution(labels, num_classes, smoothing_constant=10):
   if smoothing_constant <= 0:
     raise ValueError('smoothing_constant must be nonzero.')
   num_examples_per_class_seen = variables.Variable(
-      initial_value=[smoothing_constant] * num_classes, trainable=False,
-      name='class_count', dtype=dtypes.int64)
+      initial_value=[smoothing_constant] * num_classes,
+      trainable=False,
+      name='class_count',
+      dtype=dtypes.int64)
 
   # Update the class-count based on what labels are seen in batch.
   num_examples_per_class_seen = num_examples_per_class_seen.assign_add(
-      math_ops.reduce_sum(array_ops.one_hot(labels, num_classes,
-                                            dtype=dtypes.int64), 0))
+      math_ops.reduce_sum(
+          array_ops.one_hot(
+              labels, num_classes, dtype=dtypes.int64), 0))
 
   # Normalize count into a probability.
   # NOTE: Without the `+= 0` line below, the test
@@ -296,11 +318,11 @@ def _verify_input(tensor_list, labels, probs_list):
     # Probabilities must be nonnegative and sum to one.
     tol = 1e-6
     prob_sum = math_ops.reduce_sum(probs)
-    checked_probs = control_flow_ops.with_dependencies(
-        [check_ops.assert_non_negative(probs),
-         check_ops.assert_less(prob_sum, 1.0 + tol),
-         check_ops.assert_less(1.0 - tol, prob_sum)],
-        probs)
+    checked_probs = control_flow_ops.with_dependencies([
+        check_ops.assert_non_negative(probs),
+        check_ops.assert_less(prob_sum, 1.0 + tol),
+        check_ops.assert_less(1.0 - tol, prob_sum)
+    ], probs)
     checked_probs_list.append(checked_probs)
 
   # All probabilities should be the same length.
@@ -326,17 +348,18 @@ def _verify_input(tensor_list, labels, probs_list):
 
   # Make each tensor depend on its own checks.
   labels = control_flow_ops.with_dependencies([lbl_assert], labels)
-  tensor_list = [control_flow_ops.with_dependencies(
-      [lbl_assert,
-       check_ops.assert_equal(array_ops.shape(x)[0], labels_batch_size)],
-      x) for x in tensor_list]
+  tensor_list = [
+      control_flow_ops.with_dependencies([
+          lbl_assert,
+          check_ops.assert_equal(array_ops.shape(x)[0], labels_batch_size)
+      ], x) for x in tensor_list
+  ]
 
   # Label's classes must be integers 0 <= x < num_classes.
-  labels = control_flow_ops.with_dependencies(
-      [check_ops.assert_integer(labels),
-       check_ops.assert_non_negative(labels),
-       check_ops.assert_less(labels, math_ops.cast(prob_length, labels.dtype))],
-      labels)
+  labels = control_flow_ops.with_dependencies([
+      check_ops.assert_integer(labels), check_ops.assert_non_negative(labels),
+      check_ops.assert_less(labels, math_ops.cast(prob_length, labels.dtype))
+  ], labels)
 
   return tensor_list, labels, checked_probs_list
 
@@ -387,9 +410,8 @@ def _calculate_acceptance_probabilities(init_probs, target_probs):
   ratio_l = target_probs / init_probs
 
   # Replace NaNs with 0s.
-  ratio_l = math_ops.select(math_ops.is_nan(ratio_l),
-                            array_ops.zeros_like(ratio_l),
-                            ratio_l)
+  ratio_l = array_ops.where(
+      math_ops.is_nan(ratio_l), array_ops.zeros_like(ratio_l), ratio_l)
 
   # Calculate list of acceptance probabilities.
   max_ratio = math_ops.reduce_max(ratio_l)
@@ -423,20 +445,20 @@ def _conditional_batch(tensors, keep_input, batch_size, num_threads=10):
     shapes_list.append(cur_shape)
     dtypes_list.append(tensor.dtype)
 
-  final_q = data_flow_ops.FIFOQueue(capacity=batch_size,
-                                    shapes=shapes_list,
-                                    dtypes=dtypes_list,
-                                    name='batched_queue')
+  final_q = data_flow_ops.FIFOQueue(
+      capacity=batch_size,
+      shapes=shapes_list,
+      dtypes=dtypes_list,
+      name='batched_queue')
   summary.scalar('queue/%s/size' % final_q.name, final_q.size())
 
   # Conditionally enqueue.
   # Reshape enqueue op to match no_op's shape.
-  conditional_enqueue = control_flow_ops.cond(
-      keep_input,
-      lambda: final_q.enqueue(tensors),
-      control_flow_ops.no_op)
-  queue_runner.add_queue_runner(queue_runner.QueueRunner(
-      final_q, [conditional_enqueue] * num_threads))
+  conditional_enqueue = control_flow_ops.cond(keep_input,
+                                              lambda: final_q.enqueue(tensors),
+                                              control_flow_ops.no_op)
+  queue_runner.add_queue_runner(
+      queue_runner.QueueRunner(final_q, [conditional_enqueue] * num_threads))
 
   out_tensor = final_q.dequeue_many(batch_size)
   # Queues return a single tensor if the list of enqued tensors is one. Since we

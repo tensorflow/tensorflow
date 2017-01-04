@@ -82,11 +82,8 @@ class PendingCounts {
   }
   void mark_started(int id) {
     if (IsLarge(id)) {
-      auto& pending = overflow_[id].pending;
-      DCHECK_EQ(pending, 0);
-      pending = -1;
+      overflow_[id].pending = -1;
     } else {
-      DCHECK_EQ(counts_[id].pending, 0);
       DCHECK_EQ(counts_[id].has_started, 0);
       counts_[id].has_started = 1;
     }
@@ -97,7 +94,6 @@ class PendingCounts {
       DCHECK_EQ(pending, -1);
       pending = -2;
     } else {
-      DCHECK_EQ(counts_[id].pending, 0);
       DCHECK_EQ(counts_[id].has_started, 1);
       counts_[id].pending = 1;
     }

@@ -83,15 +83,51 @@ export interface DataProvider {
   retrieveSpriteAndMetadata(run: string, tensorName: string,
       callback: (r: SpriteAndMetadataInfo) => void): void;
 
-  /**
-   * Returns the name of the tensor that should be fetched by default.
-   * Used in demo mode to load a tensor when the app starts. Returns null if no
-   * default tensor exists.
-   */
-  getDefaultTensor(run: string, callback: (tensorName: string) => void): void;
-
   getBookmarks(run: string, tensorName: string, callback: (r: State[]) => void):
       void;
+}
+
+export function retrieveTensorAsBytes(
+    dp: DataProvider, embedding: EmbeddingInfo, run: string, tensorName: string,
+    tensorsPath: string, callback: (ds: DataSet) => void) {
+  // Get the tensor.
+  logging.setModalMessage('Fetching tensor values...', TENSORS_MSG_ID);
+  let xhr = new XMLHttpRequest();
+  xhr.open('GET', tensorsPath);
+  xhr.responseType = 'arraybuffer';
+  xhr.onprogress = (ev) => {
+    if (ev.lengthComputable) {
+      let percent = (ev.loaded * 100 / ev.total).toFixed(1);
+      logging.setModalMessage(
+          'Fetching tensor values: ' + percent + '%', TENSORS_MSG_ID);
+    }
+  };
+  xhr.onload = () => {
+    if (xhr.status !== 200) {
+      let msg = String.fromCharCode.apply(null, new Uint8Array(xhr.response));
+      logging.setErrorMessage(msg, 'fetching tensors');
+      return;
+    }
+    let data: Float32Array;
+    try {
+      data = new Float32Array(xhr.response);
+    } catch (e) {
+      logging.setErrorMessage(e, 'parsing tensor bytes');
+      return;
+    }
+
+    let dim = embedding.tensorShape[1];
+    let N = data.length / dim;
+    if (embedding.tensorShape[0] > N) {
+      logging.setWarningMessage(
+          `Showing the first ${N.toLocaleString()}` +
+          ` of ${embedding.tensorShape[0].toLocaleString()} data points`);
+    }
+    parseTensorsFromFloat32Array(data, dim).then(dataPoints => {
+      callback(new DataSet(dataPoints));
+    });
+  };
+  xhr.send();
 }
 
 export function parseRawTensors(
@@ -220,12 +256,9 @@ export function analyzeMetadata(
     });
   });
   columnStats.forEach((stats, colIndex) => {
-    let map = mapOfValues[colIndex];
-    if (!stats.tooManyUniqueValues) {
-      stats.uniqueEntries = map.entries().map(e => {
-        return {label: e.key, count: e.value};
-      });
-    }
+    stats.uniqueEntries = mapOfValues[colIndex].entries().map(e => {
+      return {label: e.key, count: e.value};
+    });
   });
   return columnStats;
 }
@@ -268,6 +301,7 @@ export function fetchImage(url: string): Promise<HTMLImageElement> {
     let image = new Image();
     image.onload = () => resolve(image);
     image.onerror = (err) => reject(err);
+    image.crossOrigin = '';
     image.src = url;
   });
 }
@@ -281,7 +315,7 @@ export function retrieveSpriteAndMetadataInfo(metadataPath: string,
       logging.setModalMessage('Fetching metadata...', METADATA_MSG_ID);
       d3.text(metadataPath, (err: any, rawMetadata: string) => {
         if (err) {
-          logging.setErrorMessage(err.responseText);
+          logging.setErrorMessage(err.responseText, 'fetching metadata');
           reject(err);
           return;
         }

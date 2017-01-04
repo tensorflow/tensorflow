@@ -23,7 +23,6 @@ import time
 
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.util.event_pb2 import SessionLog
-from tensorflow.python import summary as _summary
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
@@ -31,6 +30,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.summary import summary as _summary
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import saver as saver_mod
 from tensorflow.python.training import session_manager as session_manager_mod
@@ -152,7 +152,7 @@ class Supervisor(object):
     ...
     sv = Supervisor(logdir='/tmp/mydir')
     with sv.managed_session(FLAGS.master) as sess:
-      sv.loop(60, print_loss, (sess))
+      sv.loop(60, print_loss, (sess, ))
       while not sv.should_stop():
         sess.run(my_train_op)
     ```
@@ -248,7 +248,7 @@ class Supervisor(object):
         ready to run the local_init_op.
         The model is considered ready if it returns an empty array.  Defaults to
         the tensor returned from
-        `tf.report_uninitialized_variables(tf.all_variables())`. If `None`, the
+        `tf.report_uninitialized_variables(tf.global_variables())`. If `None`, the
         model is not checked for readiness before running local_init_op.
       is_chief: If True, create a chief supervisor in charge of initializing
         and restoring the model.  If False, create a supervisor that relies
@@ -890,7 +890,7 @@ class Supervisor(object):
     # In that case all Variables must have their device set.
     if not self._is_chief:
       for op in self._graph.get_operations():
-        if op.type == "Variable" and not op.device:
+        if op.type in ["Variable", "VariableV2"] and not op.device:
           raise ValueError("When using replicas, all Variables must have "
                            "their device set: %s" % op)
 

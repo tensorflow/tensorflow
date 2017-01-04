@@ -12,61 +12,78 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import sys
+
+# TODO: #6568 Remove this hack that makes dlopen() not crash.
+if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
+  import ctypes
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
+
+from tensorflow.contrib.copy_graph.python.util import copy_elements
+from tensorflow.contrib.tfprof.python.tools.tfprof import tfprof_logger
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.client import session
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
 
 
-class TFProfLoggerTest(tf.test.TestCase):
+class TFProfLoggerTest(test.TestCase):
 
   def _BuildSmallPlaceholderlModel(self):
-    a = tf.placeholder(tf.int32, [2, 2])
-    b = tf.placeholder(tf.int32, [2, 2])
-    y = tf.matmul(a, b)
+    a = array_ops.placeholder(dtypes.int32, [2, 2])
+    b = array_ops.placeholder(dtypes.int32, [2, 2])
+    y = math_ops.matmul(a, b)
     return a, b, y
 
   def _BuildSmallModel(self):
-    a = tf.constant([[1, 2], [3, 4]])
-    b = tf.constant([[1, 2], [3, 4]])
-    return tf.matmul(a, b)
+    a = constant_op.constant([[1, 2], [3, 4]])
+    b = constant_op.constant([[1, 2], [3, 4]])
+    return math_ops.matmul(a, b)
 
   def testFillMissingShape(self):
     a, b, y = self._BuildSmallPlaceholderlModel()
-    run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-    run_metadata = tf.RunMetadata()
-    sess = tf.Session()
+    run_options = config_pb2.RunOptions(
+        trace_level=config_pb2.RunOptions.FULL_TRACE)
+    run_metadata = config_pb2.RunMetadata()
+    sess = session.Session()
     sess.run(y,
              options=run_options,
              run_metadata=run_metadata,
              feed_dict={a: [[1, 2], [2, 3]],
                         b: [[1, 2], [2, 3]]})
 
-    graph2 = tf.Graph()
+    graph2 = ops.Graph()
     # Use copy_op_to_graph to remove shape information.
-    y2 = tf.contrib.copy_graph.copy_op_to_graph(y, graph2, [])
+    y2 = copy_elements.copy_op_to_graph(y, graph2, [])
     self.assertEquals('<unknown>', str(y2.get_shape()))
 
-    tf.contrib.tfprof.tfprof_logger._fill_missing_graph_shape(graph2,
-                                                              run_metadata)
+    tfprof_logger._fill_missing_graph_shape(graph2, run_metadata)
     self.assertEquals('(2, 2)', str(y2.get_shape()))
 
   def testFailedFillMissingShape(self):
     y = self._BuildSmallModel()
-    run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-    run_metadata = tf.RunMetadata()
-    sess = tf.Session()
+    run_options = config_pb2.RunOptions(
+        trace_level=config_pb2.RunOptions.FULL_TRACE)
+    run_metadata = config_pb2.RunMetadata()
+    sess = session.Session()
     sess.run(y, options=run_options, run_metadata=run_metadata)
 
-    graph2 = tf.Graph()
-    y2 = tf.contrib.copy_graph.copy_op_to_graph(y, graph2, [])
+    graph2 = ops.Graph()
+    y2 = copy_elements.copy_op_to_graph(y, graph2, [])
     self.assertEquals('<unknown>', str(y2.get_shape()))
     # run_metadata has special name for MatMul, hence failed to fill shape.
-    tf.contrib.tfprof.tfprof_logger._fill_missing_graph_shape(graph2,
-                                                              run_metadata)
+    tfprof_logger._fill_missing_graph_shape(graph2, run_metadata)
     self.assertEquals('<unknown>', str(y2.get_shape()))
 
 
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

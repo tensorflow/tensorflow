@@ -36,7 +36,22 @@ tf_proto_library_cc(
     has_services = 1,
     cc_api_version = 2,
     cc_grpc_version = 1,
-    cc_libs = ["//tensorflow/core:protos_all_cc"],
+    protodeps = ["//tensorflow/core:protos_all"],
+)
+
+# Depending on this target causes a concrete DebuggerState implementation
+# to be registered at initialization time.  For details, please see
+# core/common_runtime/debugger_state_interface.h.
+cc_library(
+    name = "debug",
+    srcs = ["debug.cc"],
+    copts = tf_copts(),
+    linkstatic = 1,
+    deps = [
+        ":debug_graph_utils",
+        "//tensorflow/core:core_cpu_internal",
+    ],
+    alwayslink = 1,
 )
 
 tf_cuda_library(
@@ -46,6 +61,7 @@ tf_cuda_library(
     copts = tf_copts(),
     linkstatic = 1,
     deps = [
+        ":debug",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:direct_session_internal",
         "//tensorflow/core:framework",
@@ -65,6 +81,7 @@ tf_cuda_library(
     copts = tf_copts(),
     linkstatic = 1,
     deps = [
+        ":debug_io_utils",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -82,15 +99,49 @@ tf_cuda_library(
     copts = tf_copts(),
     linkstatic = 1,
     deps = [
-        ":debug_service_proto_cc",  # TODO(cais): Confirm safe.
+        ":debug_service_proto_cc",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
+        "@grpc//:grpc++_unsecure",
     ],
     alwayslink = 1,
+)
+
+tf_cuda_library(
+    name = "debug_grpc_testlib",
+    srcs = ["debug_grpc_testlib.cc"],
+    hdrs = ["debug_grpc_testlib.h"],
+    copts = tf_copts(),
+    linkstatic = 1,
+    deps = [
+        ":debug_graph_utils",
+        ":debug_io_utils",
+        ":debug_service_proto_cc",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "@grpc//:grpc++_unsecure",
+    ],
+    alwayslink = 1,
+)
+
+cc_binary(
+    name = "debug_test_server_main",
+    srcs = [
+        "debug_test_server_main.cc",
+    ],
+    deps = [
+        ":debug_grpc_testlib",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@grpc//:grpc++_unsecure",
+    ],
 )
 
 tf_cc_test_gpu(
@@ -101,6 +152,7 @@ tf_cc_test_gpu(
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["nomac"],
     deps = [
+        ":debug",
         ":debug_gateway_internal",
         ":debug_graph_utils",
         "//tensorflow/cc:cc_ops",
@@ -129,6 +181,7 @@ tf_cc_test(
     srcs = ["debug_io_utils_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
+        ":debug_grpc_testlib",
         ":debug_io_utils",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
@@ -143,14 +196,42 @@ tf_cc_test(
     ],
 )
 
-filegroup(
-    name = "android_srcs",
-    srcs = [
-        "debug_graph_utils.cc",
-        "debug_graph_utils.h",
+tf_cc_test(
+    name = "debug_grpc_io_utils_test",
+    size = "small",
+    srcs = ["debug_grpc_io_utils_test.cc"],
+    data = [
+        ":debug_test_server_main",
     ],
-    visibility = ["//visibility:public"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":debug_graph_utils",
+        ":debug_grpc_testlib",
+        ":debug_io_utils",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
 )
+
+# TODO(cais): Add the following back in when tfdbg is supported on Android.
+# filegroup(
+#     name = "android_srcs",
+#     srcs = [
+#         "debug_graph_utils.cc",
+#         "debug_graph_utils.h",
+#         "debug_io_utils.cc",
+#         "debug_io_utils.h",
+#     ],
+#     visibility = ["//visibility:public"],
+# )
 
 # -----------------------------------------------------------------------------
 # Google-internal targets.  These must be at the end for syncrepo.

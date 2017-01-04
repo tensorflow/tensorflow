@@ -20,8 +20,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_SYCL_SYCL_DEVICE_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_SYCL_SYCL_DEVICE_H_
 
-#define EIGEN_USE_SYCL
-
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/common_runtime/sycl/sycl_allocator.h"
 #include "tensorflow/core/common_runtime/sycl/sycl_device_context.h"
@@ -29,25 +27,29 @@ limitations under the License.
 
 namespace tensorflow {
 
-
 class SYCLDevice : public LocalDevice {
-public:
+ public:
   template <typename SYCLSelector>
   SYCLDevice(const SessionOptions &options, const string &name,
              Bytes memory_limit, const DeviceLocality &locality,
              const string &physical_device_desc, SYCLSelector sycl_selector,
              Allocator *cpu_allocator)
       : LocalDevice(options, Device::BuildDeviceAttributes(
-                    name, DEVICE_SYCL, memory_limit, locality,
-                    physical_device_desc), nullptr),
+                                 name, DEVICE_SYCL, memory_limit, locality,
+                                 physical_device_desc),
+                    nullptr),
         cpu_allocator_(cpu_allocator),
-        sycl_device_(new Eigen::SyclDevice(sycl_selector)),
-        sycl_allocator_(new SYCLAllocator(sycl_device_)),
+        sycl_queue_(new Eigen::QueueInterface(sycl_selector)),
+        sycl_device_(new Eigen::SyclDevice(sycl_queue_)),
+        sycl_allocator_(new SYCLAllocator(sycl_queue_)),
         device_context_(new SYCLDeviceContext()) {
     set_eigen_sycl_device(sycl_device_);
+    RegisterDevice();
   }
 
   ~SYCLDevice() override;
+
+  void EnterLameDuckMode();
 
   void Compute(OpKernel *op_kernel, OpKernelContext *context) override;
   Allocator *GetAllocator(AllocatorAttributes attr) override;
@@ -58,19 +60,22 @@ public:
   Status FillContextMap(const Graph *graph,
                         DeviceContextMap *device_context_map) override;
 
-  Status Sync() override { return Status::OK(); }
+  Status Sync() override;
   static string GetShortDeviceDescription(/*int device_id,
                                           const DeviceDescription& desc*/) {
     return strings::StrCat("device: 0, name SYCL, pci bus id: 0");
   }
 
-private:
-  Allocator *cpu_allocator_;         // owned
-  Eigen::SyclDevice* sycl_device_;   // owned
-  SYCLAllocator *sycl_allocator_;    // owned
+ private:
+  void RegisterDevice();
+
+  Allocator *cpu_allocator_;           // owned
+  Eigen::QueueInterface *sycl_queue_;  // owned
+  Eigen::SyclDevice *sycl_device_;     // owned
+  SYCLAllocator *sycl_allocator_;      // owned
   SYCLDeviceContext *device_context_;
 };
 
-} // namespace tensorflow
+}  // namespace tensorflow
 
-#endif // TENSORFLOW_CORE_COMMON_RUNTIME_SYCL_SYCL_DEVICE_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_SYCL_SYCL_DEVICE_H_

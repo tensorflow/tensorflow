@@ -1,5 +1,6 @@
 # array_ops
 BatchToSpace
+BroadcastArgs
 BroadcastGradientArgs
 ConcatOffset
 Concat
@@ -15,6 +16,7 @@ Pack
 Pad
 Placeholder
 RefIdentity
+Reverse
 SpaceToBatch
 Split
 SplitV
@@ -105,6 +107,18 @@ TensorArraySizeV2
 TensorArraySplitV2
 TensorArrayUnpackV2
 TensorArrayWriteV2
+TensorArrayV3
+TensorArrayCloseV3
+TensorArrayConcatV3
+TensorArrayGatherV3
+TensorArrayGradV3
+TensorArrayReadV3
+TensorArrayPackV3
+TensorArrayScatterV3
+TensorArraySizeV3
+TensorArraySplitV3
+TensorArrayUnpackV3
+TensorArrayWriteV3
 GetSessionHandle
 GetSessionTensor
 DeleteSessionTensor
@@ -183,13 +197,18 @@ BatchIFFT
 BatchIFFT2D
 BatchIFFT3D
 Complex
+ComplexAbs
 Conj
+FloorDiv
+FloorMod
 Max
 Mean
 Min
 Pow
 Prod
 Range
+RealDiv
+Select
 SparseMatMul
 Sum
 MatMul
@@ -201,11 +220,14 @@ InvGrad
 ReciprocalGrad
 SqrtGrad
 RsqrtGrad
+TruncateDiv
+TruncateMod
 
 # nn_ops
 AvgPoolGrad  # "*Grad" accessible through nn_grad instead of nn_ops.
 BatchNormWithGlobalNormalization
 BatchNormWithGlobalNormalizationGrad
+FusedBatchNorm
 SoftmaxCrossEntropyWithLogits
 SparseSoftmaxCrossEntropyWithLogits
 LRNGrad
@@ -252,6 +274,7 @@ SdcaShrinkL1
 
 # state_ops
 Variable
+VariableV2
 TemporaryVariable
 DestroyTemporaryVariable
 
@@ -281,3 +304,7 @@ Fact
 
 # training_ops
 # (None)
+
+# word2vec deprecated ops
+NegTrain
+Skipgram

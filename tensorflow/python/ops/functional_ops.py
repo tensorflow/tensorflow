@@ -106,7 +106,7 @@ def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     elems_ta = tensor_array_ops.TensorArray(dtype=elems.dtype, size=n,
                                             dynamic_size=False,
                                             infer_shape=True)
-    elems_ta = elems_ta.unpack(elems)
+    elems_ta = elems_ta.unstack(elems)
 
     if initializer is None:
       a = elems_ta.read(0)
@@ -186,7 +186,7 @@ def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     elems_ta = tensor_array_ops.TensorArray(dtype=elems.dtype, size=n,
                                             dynamic_size=False,
                                             infer_shape=True)
-    elems_ta = elems_ta.unpack(elems)
+    elems_ta = elems_ta.unstack(elems)
 
     if initializer is None:
       i = n - 1
@@ -239,13 +239,14 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
   expressible as TensorFlow ops, use
 
   ```python
-    result = SparseTensor(input.indices, fn(input.values), input.shape)
+    result = SparseTensor(input.indices, fn(input.values), input.dense_shape)
   ```
 
   If, however, the function is not expressible as a TensorFlow op, then use
 
   ```python
-  result = SparseTensor(input.indices, map_fn(fn, input.values), input.shape)
+  result = SparseTensor(
+    input.indices, map_fn(fn, input.values), input.dense_shape)
   ```
 
   instead.
@@ -304,8 +305,9 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
   if isinstance(elems, sparse_tensor.SparseTensor):
     raise TypeError(
         "To perform a map on the values of a sparse tensor use either "
-        " SparseTensor(input.indices, fn(input.values), input.shape) or "
-        " SparseTensor(input.indices, map_fn(fn, input.values), input.shape)")
+        " SparseTensor(input.indices, fn(input.values), input.dense_shape) or "
+        " SparseTensor(input.indices, map_fn(fn, input.values), "
+        "input.dense_shape)")
 
   input_is_sequence = nest.is_sequence(elems)
   input_flatten = lambda x: nest.flatten(x) if input_is_sequence else [x]
@@ -352,7 +354,7 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
         for elem in elems_flat]
     # Unpack elements
     elems_ta = [
-        elem_ta.unpack(elem) for elem_ta, elem in zip(elems_ta, elems_flat)]
+        elem_ta.unstack(elem) for elem_ta, elem in zip(elems_ta, elems_flat)]
 
     i = constant_op.constant(0)
 
@@ -388,7 +390,7 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
         parallel_iterations=parallel_iterations,
         back_prop=back_prop,
         swap_memory=swap_memory)
-    results_flat = [r.pack() for r in r_a]
+    results_flat = [r.stack() for r in r_a]
 
     n_static = elems_flat[0].get_shape().with_rank_at_least(1)[0]
     for elem in elems_flat[1:]:
@@ -534,7 +536,7 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
         for elem in elems_flat]
     # Unpack elements
     elems_ta = [
-        elem_ta.unpack(elem) for elem_ta, elem in zip(elems_ta, elems_flat)]
+        elem_ta.unstack(elem) for elem_ta, elem in zip(elems_ta, elems_flat)]
 
     if initializer is None:
       a_flat = [elem.read(0) for elem in elems_ta]
@@ -584,7 +586,7 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
         parallel_iterations=parallel_iterations,
         back_prop=back_prop, swap_memory=swap_memory)
 
-    results_flat = [r.pack() for r in r_a]
+    results_flat = [r.stack() for r in r_a]
 
     n_static = elems_flat[0].get_shape().with_rank_at_least(1)[0]
     for elem in elems_flat[1:]:

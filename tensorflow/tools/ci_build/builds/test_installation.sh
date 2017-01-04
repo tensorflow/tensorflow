@@ -97,17 +97,20 @@ PY_TEST_BLACKLIST="${PY_TEST_BLACKLIST}:"\
 "tensorflow/contrib/quantization/python/dequantize_op_test.py:"\
 "tensorflow/contrib/quantization/python/quantized_conv_ops_test.py:"\
 "tensorflow/contrib/quantization/tools/quantize_graph_test.py:"\
+"tensorflow/contrib/session_bundle/bundle_shim_test.py:"\
 "tensorflow/contrib/session_bundle/exporter_test.py:"\
 "tensorflow/contrib/session_bundle/session_bundle_test.py:"\
 "tensorflow/python/platform/default/_resource_loader_test.py:"\
 "tensorflow/python/platform/default/flags_test.py:"\
 "tensorflow/python/platform/default/logging_test.py:"\
+"tensorflow/python/saved_model/saved_model_test.py:"\
 "tensorflow/contrib/learn/nonlinear_test.py:"
 
 # Test blacklist: GPU-only
 PY_TEST_GPU_BLACKLIST="${PY_TEST_GPU_BLACKLIST}:"\
 "tensorflow/python/client/session_test.py:"\
 "tensorflow/python/framework/function_test.py:"\
+"tensorflow/contrib/integrate/python/ops/odes_test.py:"\
 "tensorflow/contrib/tensor_forest/python/kernel_tests/scatter_add_ndim_op_test.py"
 
 # Tests that should be run in the exclusive mode (i.e., not parallel with

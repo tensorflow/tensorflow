@@ -89,7 +89,7 @@ class Exponential(gamma.Gamma):
     return self._lam
 
   def _sample_n(self, n, seed=None):
-    shape = array_ops.concat(0, ([n], array_ops.shape(self._lam)))
+    shape = array_ops.concat_v2(([n], array_ops.shape(self._lam)), 0)
     # Sample uniformly-at-random from the open-interval (0, 1).
     sampled = random_ops.random_uniform(
         shape,

@@ -6,48 +6,45 @@ gradients will be applied to the variables N times independently. Depending
 on each replica's training speed, some gradients might be calculated from
 copies of the variable from several steps back (N-1 steps on average). This
 optimizer avoids stale gradients by collecting gradients from all replicas,
-summing them, then applying them to the variables in one shot, after
+averaging them, then applying them to the variables in one shot, after
 which replicas can fetch the new variables and continue.
 
-The following queues are created:
+The following accumulators/queue are created:
 <empty line>
-* N `gradient` queues, one per variable to train. Gradients are pushed to
-  these queues and the chief worker will dequeue_many and then sum them
-  before applying to variables.
+* N `gradient accumulators`, one per variable to train. Gradients are pushed
+  to them and the chief worker will wait until enough gradients are collected
+  and then average them before applying to variables. The accumulator will
+  drop all stale gradients (more details in the accumulator op).
 * 1 `token` queue where the optimizer pushes the new global_step value after
-  all gradients have been applied.
+  all variables are updated.
 
-The following variables are created:
-* N `local_step`, one per replica. Compared against global step to check for
-  staleness of the gradients.
+The following local variable is created:
+* `sync_rep_local_step`, one per replica. Compared against the global_step in
+  each accumulator to check for staleness of the gradients.
 
-This adds nodes to the graph to collect gradients and pause the trainers until
-variables are updated.
-For the PS:
+The optimizer adds nodes to the graph to collect gradients and pause the
+trainers until variables are updated.
+For the Parameter Server job:
 <empty line>
-1. A queue is created for each variable, and each replica now pushes the
-  gradients into the queue instead of directly applying them to the
-  variables.
-2. For each gradient_queue, pop and sum the gradients once enough
-  replicas (replicas_to_aggregate) have pushed gradients to the queue.
-3. Apply the aggregated gradients to the variables.
+1. An accumulator is created for each variable, and each replica pushes the
+   gradients into the accumulators instead of directly applying them to the
+   variables.
+2. Each accumulator averages once enough gradients (replicas_to_aggregate)
+   have been accumulated.
+3. Apply the averaged gradients to the variables.
 4. Only after all variables have been updated, increment the global step.
-5. Only after step 4, clear all the gradients in the queues as they are
-  stale now (could happen when replicas are restarted and push to the queues
-  multiple times, or from the backup replicas).
-6. Only after step 5, pushes `global_step` in the `token_queue`, once for
-  each worker replica. The workers can now fetch it to its local_step variable
-  and start the next batch.
+5. Only after step 4, pushes `global_step` in the `token_queue`, once for
+   each worker replica. The workers can now fetch the global step, use it to
+   update its local_step variable and start the next batch.
 
 For the replicas:
 <empty line>
 1. Start a step: fetch variables and compute gradients.
-2. Once the gradients have been computed, push them into `gradient_queue` only
-  if local_step equals global_step, otherwise the gradients are just dropped.
-  This avoids stale gradients.
+2. Once the gradients have been computed, push them into gradient
+   accumulators. Each accumulator will check the staleness and drop the stale.
 3. After pushing all the gradients, dequeue an updated value of global_step
-  from the token queue and record that step to its local_step variable. Note
-  that this is effectively a barrier.
+   from the token queue and record that step to its local_step variable. Note
+   that this is effectively a barrier.
 4. Start the next batch.
 
 ### Usage
@@ -58,11 +55,11 @@ opt = GradientDescentOptimizer(learning_rate=0.1)
 
 # Wrap the optimizer with sync_replicas_optimizer with 50 replicas: at each
 # step the optimizer collects 50 gradients before applying to variables.
-opt = tf.SyncReplicasOptimizer(opt, replicas_to_aggregate=50,
-          replica_id=task_id, total_num_replicas=50)
 # Note that if you want to have 2 backup replicas, you can change
 # total_num_replicas=52 and make sure this number matches how many physical
 # replicas you started in your job.
+opt = tf.SyncReplicasOptimizer(opt, replicas_to_aggregate=50,
+                               total_num_replicas=50)
 
 # Some models have startup_delays to help stabilize the model but when using
 # sync_replicas training, set it to 0.
@@ -74,16 +71,32 @@ grads = opt.minimize(total_loss, global_step=self.global_step)
 
 # You can now call get_init_tokens_op() and get_chief_queue_runner().
 # Note that get_init_tokens_op() must be called before creating session
-# because it modifies the graph.
+# because it modifies the graph by adding new nodes.
 init_token_op = opt.get_init_tokens_op()
 chief_queue_runner = opt.get_chief_queue_runner()
 ```
 
 In the training program, every worker will run the train_op as if not
 synchronized. But one worker (usually the chief) will need to execute the
-chief_queue_runner and get_init_tokens_op generated from this optimizer.
+chief_queue_runner and get_init_tokens_op from this optimizer.
 
 ```python
+# When you create the supervisor, you need to add the local_init_op and
+# ready_for_local_init_op to make sure the local_step is initialized to the
+# global_step. Here is an example:
+if is_chief:
+  local_init_op = opt.chief_init_op
+else:
+  local_init_op = opt.local_step_init_op
+ready_for_local_init_op = opt.ready_for_local_init_op
+sv = tf.Supervisor(graph=g,
+                   is_chief=is_chief,
+                   # This initialize local step.
+                   local_init_op=local_init_op,
+                   # This makes sure global step is initialized before using.
+                   ready_for_local_init_op=ready_for_local_init_op,
+                   saver=model.saver)
+
 # After the session is created by the Supervisor and before the main while
 # loop:
 if is_chief and FLAGS.sync_replicas:
@@ -94,7 +107,7 @@ if is_chief and FLAGS.sync_replicas:
 
 - - -
 
-#### `tf.train.SyncReplicasOptimizer.__init__(opt, replicas_to_aggregate, variable_averages=None, variables_to_average=None, replica_id=None, total_num_replicas=0, use_locking=False, name='sync_replicas')` {#SyncReplicasOptimizer.__init__}
+#### `tf.train.SyncReplicasOptimizer.__init__(opt, replicas_to_aggregate, total_num_replicas=None, variable_averages=None, variables_to_average=None, use_locking=False, name='sync_replicas')` {#SyncReplicasOptimizer.__init__}
 
 Construct a sync_replicas optimizer.
 
@@ -105,20 +118,17 @@ Construct a sync_replicas optimizer.
     gradients. Must be one of the Optimizer classes.
 *  <b>`replicas_to_aggregate`</b>: number of replicas to aggregate for each variable
     update.
-*  <b>`variable_averages`</b>: Optional `ExponentialMovingAverage` object, used to
-    maintain moving averages for the variables passed in
-    `variables_to_average`.
-*  <b>`variables_to_average`</b>: a list of variables that need to be averaged. Only
-    needed if variable_averages is passed in.
-*  <b>`replica_id`</b>: This is the task/worker/replica ID. Needed as index to access
-    local_steps to check staleness. Must be in the interval:
-    [0, total_num_replicas)
 *  <b>`total_num_replicas`</b>: Total number of tasks/workers/replicas, could be
     different from replicas_to_aggregate.
     If total_num_replicas > replicas_to_aggregate: it is backup_replicas +
     replicas_to_aggregate.
     If total_num_replicas < replicas_to_aggregate: Replicas compute
     multiple batches per update to variables.
+*  <b>`variable_averages`</b>: Optional `ExponentialMovingAverage` object, used to
+    maintain moving averages for the variables passed in
+    `variables_to_average`.
+*  <b>`variables_to_average`</b>: a list of variables that need to be averaged. Only
+    needed if variable_averages is passed in.
 *  <b>`use_locking`</b>: If True use locks for update operation.
 *  <b>`name`</b>: string. Optional name of the returned operation.
 
@@ -232,28 +242,6 @@ variable update. Make sure:
 
 
 #### Other Methods
-- - -
-
-#### `tf.train.SyncReplicasOptimizer.get_clean_up_op()` {#SyncReplicasOptimizer.get_clean_up_op}
-
-Returns the clean up op for the chief to execute before exit.
-
-This includes the operation to abort the device with the token queue so all
-other replicas can also restart. This can avoid potential hang when chief
-restarts.
-
-Note that this can only be called after calling apply_gradients().
-
-##### Returns:
-
-  A clean_up_op for chief to execute before exits.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If this is called before apply_gradients().
-
-
 - - -
 
 #### `tf.train.SyncReplicasOptimizer.get_slot(*args, **kwargs)` {#SyncReplicasOptimizer.get_slot}

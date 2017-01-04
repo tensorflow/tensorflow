@@ -48,6 +48,7 @@ tf_cc_test(
         ":saved_model_half_plus_two",
     ],
     linkstatic = 1,
+    tags = ["manual"],
     deps = [
         ":constants",
         ":loader",
@@ -61,11 +62,12 @@ tf_cc_test(
     ],
 )
 
+# TODO(b/32673259): add a test to continuously validate these files.
 filegroup(
     name = "saved_model_half_plus_two",
     srcs = glob([
         "testdata/half_plus_two_pbtxt/**",
-        "testdata/half_plus_two_sharded/**",
+        "testdata/half_plus_two/**",
     ]),
 )
 

@@ -122,7 +122,7 @@ class _DistributionMeta(abc.ABCMeta):
 
     Raises:
       TypeError: If `Distribution` is not a subclass of `BaseDistribution`, or
-        the the new class is derived via multiple inheritance and the first
+        the new class is derived via multiple inheritance and the first
         parent class is not a subclass of `BaseDistribution`.
       AttributeError:  If `Distribution` does not implement e.g. `log_prob`.
       ValueError:  If a `Distribution` public method lacks a docstring.
@@ -130,7 +130,10 @@ class _DistributionMeta(abc.ABCMeta):
     if not baseclasses:  # Nothing to be done for Distribution
       raise TypeError("Expected non-empty baseclass.  Does Distribution "
                       "not subclass _BaseDistribution?")
-    base = baseclasses[0]
+    which_base = [
+        base for base in baseclasses
+        if base == _BaseDistribution or issubclass(base, Distribution)]
+    base = which_base[0]
     if base == _BaseDistribution:  # Nothing to be done for Distribution
       return abc.ABCMeta.__new__(mcs, classname, baseclasses, attrs)
     if not issubclass(base, Distribution):
@@ -472,6 +475,10 @@ class Distribution(_BaseDistribution):
       batch_shape: `Tensor`.
     """
     with self._name_scope(name):
+      if self.get_batch_shape().is_fully_defined():
+        return ops.convert_to_tensor(self.get_batch_shape().as_list(),
+                                     dtype=dtypes.int32,
+                                     name="batch_shape")
       return self._batch_shape()
 
   def _get_batch_shape(self):
@@ -500,6 +507,10 @@ class Distribution(_BaseDistribution):
       event_shape: `Tensor`.
     """
     with self._name_scope(name):
+      if self.get_event_shape().is_fully_defined():
+        return ops.convert_to_tensor(self.get_event_shape().as_list(),
+                                     dtype=dtypes.int32,
+                                     name="event_shape")
       return self._event_shape()
 
   def _get_event_shape(self):
@@ -514,6 +525,20 @@ class Distribution(_BaseDistribution):
       event_shape: `TensorShape`, possibly unknown.
     """
     return self._get_event_shape()
+
+  @property
+  def is_scalar_event(self):
+    """Indicates that `event_shape==[]`."""
+    return ops.convert_to_tensor(
+        self._is_scalar_helper(self.get_event_shape, self.event_shape),
+        name="is_scalar_event")
+
+  @property
+  def is_scalar_batch(self):
+    """Indicates that `batch_shape==[]`."""
+    return ops.convert_to_tensor(
+        self._is_scalar_helper(self.get_batch_shape, self.batch_shape),
+        name="is_scalar_batch")
 
   def _sample_n(self, n, seed=None):
     raise NotImplementedError("sample_n is not implemented")
@@ -541,8 +566,9 @@ class Distribution(_BaseDistribution):
         return self.sample_n(sample_shape, seed, **condition_kwargs)
       sample_shape, total = self._expand_sample_shape(sample_shape)
       samples = self.sample_n(total, seed, **condition_kwargs)
-      output_shape = array_ops.concat(0, [sample_shape, array_ops.slice(
-          array_ops.shape(samples), [1], [-1])])
+      output_shape = array_ops.concat_v2(
+          [sample_shape, array_ops.slice(array_ops.shape(samples), [1], [-1])],
+          0)
       output = array_ops.reshape(samples, output_shape)
       output.set_shape(tensor_util.constant_value_as_shape(
           sample_shape).concatenate(samples.get_shape()[1:]))
@@ -939,3 +965,16 @@ class Distribution(_BaseDistribution):
       total = np.prod(sample_shape_static_val,
                       dtype=dtypes.int32.as_numpy_dtype())
     return sample_shape, total
+
+  def _is_scalar_helper(self, static_shape_fn, dynamic_shape_fn):
+    """Implementation for `is_scalar_batch` and `is_scalar_event`."""
+    if static_shape_fn().ndims is not None:
+      return static_shape_fn().ndims == 0
+    shape = dynamic_shape_fn()
+    if (shape.get_shape().ndims is not None and
+        shape.get_shape()[0].value is not None):
+      # If the static_shape_fn is correctly written then we should never execute
+      # this branch. We keep it just in case there's some unimagined corner
+      # case.
+      return shape.get_shape().as_list() == [0]
+    return math_ops.equal(array_ops.shape(shape)[0], 0)

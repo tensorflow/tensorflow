@@ -14,6 +14,7 @@
 
 package tensorflow
 
+// #include <stdlib.h>
 // #include <string.h>
 // #include "tensorflow/c/c_api.h"
 import "C"
@@ -70,11 +71,13 @@ func NewTensor(value interface{}) (*Tensor, error) {
 	if err != nil {
 		return nil, err
 	}
+	nflattened := numElements(shape)
+	nbytes := typeOf(dataType, nil).Size() * uintptr(nflattened)
 	if dataType == String {
-		// TODO(ashankar): Handle this
-		return nil, fmt.Errorf("String Tensors are not currently supported")
+		// TF_STRING tensors are encoded as an array of 8-byte offsets
+		// followed by string data. See c_api.h.
+		nbytes = uintptr(nflattened*8) + byteSizeOfEncodedStrings(value)
 	}
-	nbytes := byteSizeOf(dataType, shape)
 	var shapePtr *C.int64_t
 	if len(shape) > 0 {
 		shapePtr = (*C.int64_t)(unsafe.Pointer(&shape[0]))
@@ -86,11 +89,50 @@ func NewTensor(value interface{}) (*Tensor, error) {
 	runtime.SetFinalizer(t, (*Tensor).finalize)
 	raw := tensorData(t.c)
 	buf := bytes.NewBuffer(raw[:0:len(raw)])
-	if err := encodeTensor(buf, val); err != nil {
+	if dataType != String {
+		if err := encodeTensor(buf, val); err != nil {
+			return nil, err
+		}
+		if uintptr(buf.Len()) != nbytes {
+			return nil, bug("NewTensor incorrectly calculated the size of a tensor with type %v and shape %v as %v bytes instead of %v", dataType, shape, nbytes, buf.Len())
+		}
+	} else {
+		e := stringEncoder{offsets: buf, data: raw[nflattened*8 : len(raw)], status: newStatus()}
+		if e.encode(reflect.ValueOf(value)); err != nil {
+			return nil, err
+		}
+		if int64(buf.Len()) != nflattened*8 {
+			return nil, bug("invalid offset encoding for TF_STRING tensor with shape %v (got %v, want %v)", shape, buf.Len(), nflattened*8)
+		}
+	}
+	return t, nil
+}
+
+// ReadTensor constructs a Tensor with the provided type and shape from the
+// serialized tensor contents in r.
+//
+// See also WriteContentsTo.
+func ReadTensor(dataType DataType, shape []int64, r io.Reader) (*Tensor, error) {
+	if err := isTensorSerializable(dataType); err != nil {
 		return nil, err
 	}
-	if uintptr(buf.Len()) != nbytes {
-		return nil, fmt.Errorf("BUG: Please report at https://github.com/tensorflow/tensorflow/issues with the note: NewTensor incorrectly calculated the size of a tensor with type %v and shape %v as %v bytes instead of %v bytes, version %v", dataType, shape, nbytes, buf.Len(), Version())
+	nbytes := typeOf(dataType, nil).Size() * uintptr(numElements(shape))
+	var shapePtr *C.int64_t
+	if len(shape) > 0 {
+		shapePtr = (*C.int64_t)(unsafe.Pointer(&shape[0]))
+	}
+	t := &Tensor{
+		c:     C.TF_AllocateTensor(C.TF_DataType(dataType), shapePtr, C.int(len(shape)), C.size_t(nbytes)),
+		shape: shape,
+	}
+	runtime.SetFinalizer(t, (*Tensor).finalize)
+	raw := tensorData(t.c)
+	n, err := r.Read(raw)
+	if err != nil {
+		return nil, err
+	}
+	if uintptr(n) != nbytes {
+		return nil, fmt.Errorf("expected serialized tensor to be %v bytes, read %v", nbytes, n)
 	}
 	return t, nil
 }
@@ -126,15 +168,36 @@ func (t *Tensor) Shape() []int64 { return t.shape }
 // Tensor(int64, 0): int64
 // Tensor(float64, 3): [][][]float64
 func (t *Tensor) Value() interface{} {
-	typ, err := typeOf(t.DataType(), t.Shape())
-	if err != nil {
-		panic(err)
-	}
+	typ := typeOf(t.DataType(), t.Shape())
 	val := reflect.New(typ)
-	if err := decodeTensor(bytes.NewReader(tensorData(t.c)), t.Shape(), typ, val); err != nil {
-		panic(err)
+	raw := tensorData(t.c)
+	if t.DataType() != String {
+		if err := decodeTensor(bytes.NewReader(raw), t.Shape(), typ, val); err != nil {
+			panic(bug("unable to decode Tensor of type %v and shape %v - %v", t.DataType(), t.Shape(), err))
+		}
+	} else {
+		nflattened := numElements(t.Shape())
+		d := stringDecoder{offsets: bytes.NewReader(raw[0 : 8*nflattened]), data: raw[8*nflattened:], status: newStatus()}
+		if err := d.decode(val, t.Shape()); err != nil {
+			panic(bug("unable to decode String tensor with shape %v - %v", t.Shape(), err))
+		}
 	}
 	return reflect.Indirect(val).Interface()
+}
+
+// WriteContentsTo writes the serialized contents of t to w.
+//
+// Returns the number of bytes written. See ReadTensor for
+// reconstructing a Tensor from the serialized form.
+//
+// WARNING: WriteContentsTo is not comprehensive and will fail
+// if t.DataType() is non-numeric (e.g., String). See
+// https://github.com/tensorflow/tensorflow/issues/6003.
+func (t *Tensor) WriteContentsTo(w io.Writer) (int64, error) {
+	if err := isTensorSerializable(t.DataType()); err != nil {
+		return 0, err
+	}
+	return io.Copy(w, bytes.NewReader(tensorData(t.c)))
 }
 
 func tensorData(c *C.TF_Tensor) []byte {
@@ -194,7 +257,7 @@ func shapeAndDataTypeOf(val reflect.Value) (shape []int64, dt DataType, err erro
 }
 
 // typeOf converts from a DataType and Shape to the equivalent Go type.
-func typeOf(dt DataType, shape []int64) (reflect.Type, error) {
+func typeOf(dt DataType, shape []int64) reflect.Type {
 	var ret reflect.Type
 	for _, t := range types {
 		if dt == DataType(t.dataType) {
@@ -203,32 +266,39 @@ func typeOf(dt DataType, shape []int64) (reflect.Type, error) {
 		}
 	}
 	if ret == nil {
-		return nil, fmt.Errorf("DataType %v unsupported", dt)
+		panic(bug("DataType %v is not supported", dt))
 	}
 	for _ = range shape {
 		ret = reflect.SliceOf(ret)
 	}
-	return ret, nil
+	return ret
 }
 
-// byteSizeOf returns the size (in bytes) of the raw encoding of a tensor with
-// the given shape and DataType. Only meant for non-String tensors.
-func byteSizeOf(dt DataType, shape []int64) uintptr {
-	var size uintptr
-	for _, t := range types {
-		if DataType(t.dataType) == dt {
-			size = t.typ.Size()
-			break
-		}
-	}
+func numElements(shape []int64) int64 {
+	n := int64(1)
 	for _, d := range shape {
-		size *= uintptr(d)
+		n *= d
+	}
+	return n
+}
+
+// byteSizeOfEncodedStrings returns the size of the encoded strings in val.
+// val MUST be a string, or a container (array/slice etc.) of strings.
+func byteSizeOfEncodedStrings(val interface{}) uintptr {
+	if s, ok := val.(string); ok {
+		return uintptr(C.TF_StringEncodedSize(C.size_t(len(s))))
+	}
+	// Otherwise must be an array or slice.
+	var size uintptr
+	v := reflect.ValueOf(val)
+	for i := 0; i < v.Len(); i++ {
+		size += byteSizeOfEncodedStrings(v.Index(i).Interface())
 	}
 	return size
 }
 
 // encodeTensor writes v to the specified buffer using the format specified in
-// c_api.h.
+// c_api.h. Use stringEncoder for String tensors.
 func encodeTensor(w io.Writer, v reflect.Value) error {
 	switch v.Kind() {
 	case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint8, reflect.Uint16, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
@@ -262,7 +332,7 @@ func encodeTensor(w io.Writer, v reflect.Value) error {
 }
 
 // decodeTensor decodes the Tensor from the buffer to ptr using the format
-// specified in c_api.h
+// specified in c_api.h. Use stringDecoder for String tensors.
 func decodeTensor(r io.Reader, shape []int64, typ reflect.Type, ptr reflect.Value) error {
 	switch typ.Kind() {
 	case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint8, reflect.Uint16, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
@@ -283,6 +353,97 @@ func decodeTensor(r io.Reader, shape []int64, typ reflect.Type, ptr reflect.Valu
 		return fmt.Errorf("unsupported type %v", typ)
 	}
 	return nil
+}
+
+type stringEncoder struct {
+	offsets io.Writer
+	data    []byte
+	offset  uint64
+	status  *status
+}
+
+func (e *stringEncoder) encode(v reflect.Value) error {
+	if v.Kind() == reflect.String {
+		if err := binary.Write(e.offsets, nativeEndian, e.offset); err != nil {
+			return err
+		}
+		var (
+			s      = v.Interface().(string)
+			src    = C.CString(s)
+			srcLen = C.size_t(len(s))
+			dst    = (*C.char)(unsafe.Pointer(&e.data[e.offset]))
+			dstLen = C.size_t(uint64(len(e.data)) - e.offset)
+		)
+		e.offset += uint64(C.TF_StringEncode(src, srcLen, dst, dstLen, e.status.c))
+		C.free(unsafe.Pointer(src))
+		return e.status.Err()
+	}
+	for i := 0; i < v.Len(); i++ {
+		if err := e.encode(v.Index(i)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+type stringDecoder struct {
+	offsets io.Reader
+	data    []byte
+	status  *status
+}
+
+func (d *stringDecoder) decode(ptr reflect.Value, shape []int64) error {
+	if len(shape) == 0 {
+		var offset uint64
+		if err := binary.Read(d.offsets, nativeEndian, &offset); err != nil {
+			return err
+		}
+		var (
+			src    = (*C.char)(unsafe.Pointer(&d.data[offset]))
+			srcLen = C.size_t(len(d.data)) - C.size_t(offset)
+			dst    *C.char
+			dstLen C.size_t
+		)
+		if offset > uint64(len(d.data)) {
+			return fmt.Errorf("invalid offsets in String Tensor")
+		}
+		C.TF_StringDecode(src, srcLen, &dst, &dstLen, d.status.c)
+		if err := d.status.Err(); err != nil {
+			return err
+		}
+		s := ptr.Interface().(*string)
+		*s = C.GoStringN(dst, C.int(dstLen))
+		return nil
+	}
+	val := reflect.Indirect(ptr)
+	val.Set(reflect.MakeSlice(typeOf(String, shape), int(shape[0]), int(shape[0])))
+	for i := 0; i < val.Len(); i++ {
+		if err := d.decode(val.Index(i).Addr(), shape[1:]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func bug(format string, args ...interface{}) error {
+	return fmt.Errorf("BUG: Please report at https://github.com/tensorflow/tensorflow/issues with the note: Go TensorFlow %v: %v", Version(), fmt.Sprintf(format, args...))
+}
+
+func isTensorSerializable(dataType DataType) error {
+	// For numeric types, the serialized Tensor matches the in-memory
+	// representation.  See the implementation of Tensor::AsProtoContent in
+	// https://www.tensorflow.org/code/tensorflow/core/framework/tensor.cc
+	//
+	// The more appropriate way to be in sync with Tensor::AsProtoContent
+	// would be to have the TensorFlow C library export functions for
+	// serialization and deserialization of Tensors.  Till then capitalize
+	// on knowledge of the implementation for numeric types.
+	switch dataType {
+	case Float, Double, Int32, Uint8, Int16, Int8, Complex, Int64, Bool, Quint8, Qint32, Bfloat16, Qint16, Quint16, Uint16, Complex128, Half:
+		return nil
+	default:
+		return fmt.Errorf("serialization of tensors with the DataType %d is not yet supported, see https://github.com/tensorflow/tensorflow/issues/6003", dataType)
+	}
 }
 
 // nativeEndian is the byte order for the local platform. Used to send back and

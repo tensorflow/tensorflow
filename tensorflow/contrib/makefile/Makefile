@@ -138,7 +138,7 @@ $(shell mkdir -p $(DEPDIR) >/dev/null)
 # Settings for the target compiler.
 CXX := $(CC_PREFIX) gcc
 OPTFLAGS := -O2
-CXXFLAGS := --std=c++11 -DIS_SLIM_BUILD -fno-exceptions -DNDEBUG -DNOTFDBG $(OPTFLAGS)
+CXXFLAGS := --std=c++11 -DIS_SLIM_BUILD -fno-exceptions -DNDEBUG $(OPTFLAGS)
 LDFLAGS := \
 -L/usr/local/lib
 DEPFLAGS = -MT $@ -MMD -MP -MF $(DEPDIR)/$*.Td
@@ -204,6 +204,7 @@ ifeq ($(TARGET),PI)
 endif
 
 # Set up Android building
+# LINT.IfChange
 ifeq ($(TARGET),ANDROID)
 # Override NDK_ROOT on the command line with your own NDK location, e.g.
 # make -f tensorflow/contrib/makefile/Makefile TARGET=ANDROID \
@@ -276,6 +277,7 @@ ifeq ($(TARGET),ANDROID)
 	endif
 
 endif  # ANDROID
+# LINT.ThenChange(//tensorflow/contrib/android/cmake/CMakeLists.txt)
 
 # Settings for iOS.
 ifeq ($(TARGET),IOS)

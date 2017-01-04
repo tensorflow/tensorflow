@@ -19,10 +19,11 @@ from __future__ import division
 from __future__ import print_function
 
 import inspect
-from tensorflow.python.platform import googletest
+
+from tensorflow.python.platform import test
 
 
-class ContribTest(googletest.TestCase):
+class ContribTest(test.TestCase):
 
   def testContrib(self):
     # pylint: disable=g-import-not-at-top
@@ -40,5 +41,6 @@ class ContribTest(googletest.TestCase):
     import tensorflow as tf
     assert inspect.ismodule(tf.contrib.linear_optimizer)
 
+
 if __name__ == '__main__':
-  googletest.main()
+  test.main()

@@ -48,6 +48,16 @@ Status Coordinator::RegisterRunner(std::unique_ptr<RunnerInterface> runner) {
   return Status::OK();
 }
 
+bool Coordinator::AllRunnersStopped() {
+  mutex_lock l(runners_lock_);
+  for (const auto& runner : runners_) {
+    if (runner->IsRunning()) {
+      return false;
+    }
+  }
+  return true;
+}
+
 Status Coordinator::RequestStop() {
   mutex_lock l(mu_);
   if (should_stop_) {

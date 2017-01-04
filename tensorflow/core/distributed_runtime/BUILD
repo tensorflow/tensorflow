@@ -27,6 +27,7 @@ filegroup(
     ]),
 )
 
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
 
 # For platform specific build config
@@ -62,6 +63,21 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:worker_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "worker",
+    srcs = ["worker.cc"],
+    hdrs = [
+        "worker.h",
+    ],
+    deps = [
+        ":graph_mgr",
+        ":rendezvous_mgr_interface",
+        ":worker_interface",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:lib_internal",
     ],
 )
 
@@ -172,6 +188,17 @@ cc_library(
 )
 
 cc_library(
+    name = "local_master",
+    srcs = ["local_master.cc"],
+    hdrs = ["local_master.h"],
+    deps = [
+        ":master",
+        ":master_interface",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "rendezvous_mgr_interface",
     srcs = [],
     hdrs = ["rendezvous_mgr_interface.h"],
@@ -268,6 +295,7 @@ cc_library(
 # TODO(mrry): Move executor_test.cc to ../common_runtime when once it no longer depends
 # on grpc_testlib.
 tf_cuda_cc_tests(
+    name = "executor_tests",
     size = "medium",
     srcs = [
         "executor_test.cc",
@@ -303,11 +331,10 @@ tf_cuda_cc_tests(
     ],
 )
 
-tf_cuda_cc_tests(
+tf_cuda_cc_test(
+    name = "remote_device_test",
     size = "small",
-    srcs = [
-        "remote_device_test.cc",
-    ],
+    srcs = ["remote_device_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["manual"],
     deps = [

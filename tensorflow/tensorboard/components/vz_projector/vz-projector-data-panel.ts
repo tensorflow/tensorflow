@@ -14,7 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 import {ColorOption, ColumnStats, SpriteAndMetadataInfo} from './data';
-import {ProjectorConfig, DataProvider, parseRawMetadata, parseRawTensors, EmbeddingInfo} from './data-provider';
+import {DataProvider, EmbeddingInfo, parseRawMetadata, parseRawTensors, ProjectorConfig} from './data-provider';
+import * as util from './util';
 import {Projector} from './vz-projector';
 import {ColorLegendRenderInfo, ColorLegendThreshold} from './vz-projector-legend';
 // tslint:disable-next-line:no-unused-variable
@@ -32,17 +33,20 @@ export let DataPanelPolymer = PolymerElement({
     },
     selectedLabelOption:
         {type: String, notify: true, observer: '_selectedLabelOptionChanged'},
-    normalizeData: Boolean
+    normalizeData: Boolean,
+    showForceCategoricalColorsCheckbox: Boolean
   }
 });
 
 export class DataPanel extends DataPanelPolymer {
   selectedLabelOption: string;
   selectedColorOptionName: string;
+  showForceCategoricalColorsCheckbox: boolean;
 
   private normalizeData: boolean;
   private labelOptions: string[];
   private colorOptions: ColorOption[];
+  forceCategoricalColoring: boolean = false;
   private dom: d3.Selection<any>;
 
   private selectedTensor: string;
@@ -53,6 +57,8 @@ export class DataPanel extends DataPanelPolymer {
   private projector: Projector;
   private projectorConfig: ProjectorConfig;
   private colorLegendRenderInfo: ColorLegendRenderInfo;
+  private spriteAndMetadata: SpriteAndMetadataInfo;
+  private metadataFile: string;
 
   ready() {
     this.dom = d3.select(this);
@@ -72,6 +78,13 @@ export class DataPanel extends DataPanelPolymer {
           this.projector.setNormalizeData(this.normalizeData);
         });
 
+    let forceCategoricalColoringCheckbox =
+        this.querySelector('#force-categorical-checkbox');
+    forceCategoricalColoringCheckbox.addEventListener('change', () => {
+      this.setForceCategoricalColoring(
+          (forceCategoricalColoringCheckbox as HTMLInputElement).checked);
+    });
+
     // Get all the runs.
     this.dataProvider.retrieveRuns(runs => {
       this.runNames = runs;
@@ -82,13 +95,30 @@ export class DataPanel extends DataPanelPolymer {
     });
   }
 
+  setForceCategoricalColoring(forceCategoricalColoring: boolean) {
+    this.forceCategoricalColoring = forceCategoricalColoring;
+    (this.querySelector('#force-categorical-checkbox') as HTMLInputElement)
+        .checked = this.forceCategoricalColoring;
+
+    this.updateMetadataUI(this.spriteAndMetadata.stats, this.metadataFile);
+
+    // The selected color option name doesn't change when we switch to using
+    // categorical coloring for stats with too many unique values, so we
+    // manually call this polymer observer so that we update the UI.
+    this._selectedColorOptionNameChanged();
+  }
+
   getSeparatorClass(isSeparator: boolean): string {
     return isSeparator ? 'separator' : null;
   }
 
-  metadataChanged(spriteAndMetadata: SpriteAndMetadataInfo,
-      metadataFile: string) {
-    this.updateMetadataUI(spriteAndMetadata.stats, metadataFile);
+  metadataChanged(
+      spriteAndMetadata: SpriteAndMetadataInfo, metadataFile: string) {
+    this.spriteAndMetadata = spriteAndMetadata;
+    this.metadataFile = metadataFile;
+
+    this.updateMetadataUI(this.spriteAndMetadata.stats, this.metadataFile);
+    this.selectedColorOptionName = this.colorOptions[0].name;
   }
 
   private addWordBreaks(longString: string): string {
@@ -129,7 +159,9 @@ export class DataPanel extends DataPanelPolymer {
               let map: (v: string|number) => string;
               let items: {label: string, count: number}[];
               let thresholds: ColorLegendThreshold[];
-              if (!stats.tooManyUniqueValues) {
+              let isCategorical =
+                  this.forceCategoricalColoring || !stats.tooManyUniqueValues;
+              if (isCategorical) {
                 let scale = d3.scale.category20();
                 let range = scale.range();
                 // Re-order the range.
@@ -149,20 +181,26 @@ export class DataPanel extends DataPanelPolymer {
                           .domain(thresholds.map(t => t.value))
                           .range(thresholds.map(t => t.color));
               }
-              let desc = stats.tooManyUniqueValues ?
-                  'gradient' :
-                  stats.uniqueEntries.length +
+              let desc = !isCategorical ? 'gradient' :
+                                          stats.uniqueEntries.length +
                       ((stats.uniqueEntries.length > 20) ? ' non-unique' : '') +
                       ' colors';
-              return {name: stats.name, desc, map, items, thresholds};
+              return {
+                name: stats.name,
+                desc: desc,
+                map: map,
+                items: items,
+                thresholds: thresholds,
+                tooManyUniqueValues: stats.tooManyUniqueValues
+              };
             });
+
     if (metadataColorOption.length > 0) {
       // Add a separator line between built-in color maps
       // and those based on metadata columns.
       standardColorOption.push({name: 'Metadata', isSeparator: true});
     }
     this.colorOptions = standardColorOption.concat(metadataColorOption);
-    this.selectedColorOptionName = this.colorOptions[0].name;
   }
 
   setNormalizeData(normalizeData: boolean) {
@@ -170,18 +208,19 @@ export class DataPanel extends DataPanelPolymer {
   }
 
   _selectedTensorChanged() {
+    this.projector.updateDataSet(null, null, null);
     if (this.selectedTensor == null) {
       return;
     }
     this.dataProvider.retrieveTensor(
         this.selectedRun, this.selectedTensor, ds => {
-      let metadataFile =
-          this.getEmbeddingInfoByName(this.selectedTensor).metadataPath;
-      this.dataProvider.retrieveSpriteAndMetadata(this.selectedRun,
-          this.selectedTensor, metadata => {
-        this.projector.updateDataSet(ds, metadata, metadataFile);
-      });
-    });
+          let metadataFile =
+              this.getEmbeddingInfoByName(this.selectedTensor).metadataPath;
+          this.dataProvider.retrieveSpriteAndMetadata(
+              this.selectedRun, this.selectedTensor, metadata => {
+                this.projector.updateDataSet(ds, metadata, metadataFile);
+              });
+        });
     this.projector.setSelectedTensor(
         this.selectedRun, this.getEmbeddingInfoByName(this.selectedTensor));
   }
@@ -196,36 +235,50 @@ export class DataPanel extends DataPanelPolymer {
                 return shape.length === 2 && shape[0] > 1 && shape[1] > 1;
               })
               .sort((a, b) => {
-                let sizeA = this.getEmbeddingInfoByName(a).tensorShape[0];
-                let sizeB = this.getEmbeddingInfoByName(b).tensorShape[0];
-                if (sizeA === sizeB) {
-                  // If the same dimension, sort alphabetically by tensor
-                  // name.
-                  return a <= b ? -1 : 1;
+                let embA = this.getEmbeddingInfoByName(a);
+                let embB = this.getEmbeddingInfoByName(b);
+
+                // Prefer tensors with metadata.
+                if (util.xor(!!embA.metadataPath, !!embB.metadataPath)) {
+                  return embA.metadataPath ? -1 : 1;
                 }
-                // Sort by first tensor dimension.
-                return sizeB - sizeA;
+
+                // Prefer non-generated tensors.
+                let isGenA = util.tensorIsGenerated(a);
+                let isGenB = util.tensorIsGenerated(b);
+                if (util.xor(isGenA, isGenB)) {
+                  return isGenB ? -1 : 1;
+                }
+
+                // Prefer bigger tensors.
+                let sizeA = embA.tensorShape[0];
+                let sizeB = embB.tensorShape[0];
+                if (sizeA !== sizeB) {
+                  return sizeB - sizeA;
+                }
+
+                // Sort alphabetically by tensor name.
+                return a <= b ? -1 : 1;
               });
       this.tensorNames = names.map(name => {
-        return {
-          name,
-          shape: this.getEmbeddingInfoByName(name).tensorShape
-        };
+        return {name, shape: this.getEmbeddingInfoByName(name).tensorShape};
       });
       let wordBreakablePath =
           this.addWordBreaks(this.projectorConfig.modelCheckpointPath);
       this.dom.select('#checkpoint-file')
           .html(wordBreakablePath)
           .attr('title', this.projectorConfig.modelCheckpointPath);
-      this.dataProvider.getDefaultTensor(this.selectedRun, defaultTensor => {
-        if (this.selectedTensor === defaultTensor) {
-          // Explicitly call the observer. Polymer won't call it if the previous
-          // string matches the current string.
-          this._selectedTensorChanged();
-        } else {
-          this.selectedTensor = defaultTensor;
-        }
-      });
+      // If in demo mode, let the order decide which tensor to load by default.
+      let defaultTensor = this.projector.servingMode === 'demo' ?
+          this.projectorConfig.embeddings[0].tensorName :
+          names[0];
+      if (this.selectedTensor === defaultTensor) {
+        // Explicitly call the observer. Polymer won't call it if the previous
+        // string matches the current string.
+        this._selectedTensorChanged();
+      } else {
+        this.selectedTensor = defaultTensor;
+      }
     });
   }
 
@@ -244,6 +297,8 @@ export class DataPanel extends DataPanelPolymer {
     if (!colorOption) {
       return;
     }
+
+    this.showForceCategoricalColorsCheckbox = !!colorOption.tooManyUniqueValues;
 
     if (colorOption.map == null) {
       this.colorLegendRenderInfo = null;
@@ -306,8 +361,9 @@ export class DataPanel extends DataPanelPolymer {
     });
 
     let uploadButton = this.dom.select('#upload-tensors');
-    uploadButton.on(
-        'click', () => { (fileInput.node() as HTMLInputElement).click(); });
+    uploadButton.on('click', () => {
+      (fileInput.node() as HTMLInputElement).click();
+    });
 
     // Show and setup the upload metadata button.
     let fileMetadataInput = this.dom.select('#file-metadata');

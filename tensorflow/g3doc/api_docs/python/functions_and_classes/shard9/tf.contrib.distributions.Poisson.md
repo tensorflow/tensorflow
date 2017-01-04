@@ -195,6 +195,20 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.Poisson.is_scalar_batch` {#Poisson.is_scalar_batch}
+
+Indicates that `batch_shape==[]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Poisson.is_scalar_event` {#Poisson.is_scalar_event}
+
+Indicates that `event_shape==[]`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Poisson.lam` {#Poisson.lam}
 
 Rate parameter.

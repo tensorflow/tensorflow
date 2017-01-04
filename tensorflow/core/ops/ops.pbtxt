@@ -8,7 +8,14 @@ op {
     }
     description: "A string which is the message associated with the exception."
   }
-  summary: "Raise a exception to abort the process when called."
+  attr {
+    name: "exit_without_error"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  summary: "Raise a exception to abort the process when called. If exit_without_error is true, the process will exit normally, otherwise it will exit with a SIGABORT signal."
   description: "Returns nothing but an exception."
 }
 op {
@@ -3422,6 +3429,36 @@ op {
   description: "Given a tensor `input`, this operation returns a tensor that has the same buffer\ndata as `input` with datatype `type`.\n\nIf the input datatype `T` is larger than the output datatype `type` then the\nshape changes from [...] to [..., sizeof(`T`)/sizeof(`type`)].\n\nIf `T` is smaller than `type`, the operator requires that the rightmost\ndimension be equal to sizeof(`type`)/sizeof(`T`). The shape then goes from\n[..., sizeof(`type`)/sizeof(`T`)] to [...].\n\n*NOTE*: Bitcast is implemented as a low-level cast, so machines with different\nendian orderings will give different results."
 }
 op {
+  name: "BroadcastArgs"
+  input_arg {
+    name: "s0"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "s1"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "r0"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Return the shape of s0 op s1 with broadcast."
+  description: "Given `s0` and `s1`, tensors that represent shapes, compute `r0`, the\nbroadcasted shape. `s0`, `s1` and `r0` are all integer vectors."
+}
+op {
   name: "BroadcastGradientArgs"
   input_arg {
     name: "s0"
@@ -3816,7 +3853,7 @@ op {
     }
   }
   summary: "Computes the complex absolute value of a tensor."
-  description: "Given a tensor `x` of complex numbers, this operation returns a tensor of type\n`float` or `double` that is the absolute value of each element in `x`. All\nelements in `x` must be complex numbers of the form \\\\(a + bj\\\\). The absolute\nvalue is computed as \\\\( \\sqrt{a^2 + b^2}\\\\).\n\nFor example:\n\n```\n# tensor \'x\' is [[-2.25 + 4.75j], [-3.25 + 5.75j]]\ntf.complex_abs(x) ==> [5.25594902, 6.60492229]\n```"
+  description: "Given a tensor `x` of complex numbers, this operation returns a tensor of type\n`float` or `double` that is the absolute value of each element in `x`. All\nelements in `x` must be complex numbers of the form \\\\(a + bj\\\\). The absolute\nvalue is computed as \\\\( \\sqrt{a^2 + b^2}\\\\)."
 }
 op {
   name: "ComputeAccidentalHits"
@@ -5135,6 +5172,43 @@ op {
   allows_uninitialized_input: true
 }
 op {
+  name: "DebugNumericSummary"
+  input_arg {
+    name: "input"
+    description: "Input tensor, non-Reference type, float or double."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "A double tensor of shape [12], the elements of which are:\n  [0]: is initialized (1.0) or not (0.0).\n  [1]: total number of elements\n  [2]: -inf count\n  [3]: negative element count (excluding -inf)\n  [4]: zero element count\n  [5]: positive element count (excluding +inf)\n  [6]: +inf element count\n  [7]: NaN element count\nOutput elements [1:8] are all zero, if the tensor is uninitialized.\n  [8]: minimum of all non-inf and non-NaN elements.\n       If uninitialized or no such element exists: +inf.\n  [9]: maximum of all non-inf and non-NaN elements.\n       If uninitialized or no such element exists: -inf.\n  [10]: mean of all non-inf and non-NaN elements.\n        If uninitialized or no such element exists: NaN.\n  [11]: variance of all non-inf and non-NaN elements.\n        If uninitialized or no such element exists: NaN."
+    type: DT_DOUBLE
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "tensor_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "Name of the input tensor."
+  }
+  attr {
+    name: "debug_urls"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+    description: "List of URLs to debug targets, e.g.,\nfile:///foo/tfdbg_dump, grpc:://localhost:11011"
+  }
+  summary: "Debug Numeric Summary Op."
+  description: "Provide a basic summary of numeric value types, range and distribution."
+  allows_uninitialized_input: true
+}
+op {
   name: "DecodeBase64"
   input_arg {
     name: "input"
@@ -5273,6 +5347,14 @@ op {
     }
     description: "The minimum required fraction of lines before a truncated\ninput is accepted."
   }
+  attr {
+    name: "dct_method"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "string specifying a hint about the algorithm used for\ndecompression.  Defaults to \"\" which maps to a system-specific\ndefault.  Currently valid values are [\"INTEGER_FAST\",\n\"INTEGER_ACCURATE\"].  The hint may be ignored (e.g., the internal\njpeg library changes to a version that does not have that specific\noption.)"
+  }
   summary: "Decode a JPEG-encoded image to a uint8 tensor."
   description: "The attr `channels` indicates the desired number of color channels for the\ndecoded image.\n\nAccepted values are:\n\n*   0: Use the number of channels in the JPEG-encoded image.\n*   1: output a grayscale image.\n*   3: output an RGB image.\n\nIf needed, the JPEG-encoded image is transformed to match the requested number\nof color channels.\n\nThe attr `ratio` allows downscaling the image by an integer factor during\ndecoding.  Allowed values are: 1, 2, 4, and 8.  This is much faster than\ndownscaling the image later."
 }
@@ -5358,6 +5440,128 @@ op {
     type: DT_STRING
   }
   summary: "Delete the tensor specified by its handle in the session."
+}
+op {
+  name: "DenseToDenseSetOperation"
+  input_arg {
+    name: "set1"
+    description: "`Tensor` with rank `n`. 1st `n-1` dimensions must be the same as `set2`.\nDimension `n` contains values in a set, duplicates are allowed but ignored."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "set2"
+    description: "`Tensor` with rank `n`. 1st `n-1` dimensions must be the same as `set1`.\nDimension `n` contains values in a set, duplicates are allowed but ignored."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "result_indices"
+    description: "2D indices of a `SparseTensor`."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "result_values"
+    description: "1D values of a `SparseTensor`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "result_shape"
+    description: "1D `Tensor` shape of a `SparseTensor`. `result_shape[0...n-1]` is\nthe same as the 1st `n-1` dimensions of `set1` and `set2`, `result_shape[n]`\nis the max result set size across all `0...n-1` dimensions."
+    type: DT_INT64
+  }
+  attr {
+    name: "set_operation"
+    type: "string"
+  }
+  attr {
+    name: "validate_indices"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_STRING
+      }
+    }
+  }
+  summary: "Applies set operation along last dimension of 2 `Tensor` inputs."
+  description: "See SetOperationOp::SetOperationFromContext for values of `set_operation`.\n\nOutput `result` is a `SparseTensor` represented by `result_indices`,\n`result_values`, and `result_shape`. For `set1` and `set2` ranked `n`, this\nhas rank `n` and the same 1st `n-1` dimensions as `set1` and `set2`. The `nth`\ndimension contains the result of `set_operation` applied to the corresponding\n`[0...n-1]` dimension of `set`."
+}
+op {
+  name: "DenseToSparseSetOperation"
+  input_arg {
+    name: "set1"
+    description: "`Tensor` with rank `n`. 1st `n-1` dimensions must be the same as `set2`.\nDimension `n` contains values in a set, duplicates are allowed but ignored."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "set2_indices"
+    description: "2D `Tensor`, indices of a `SparseTensor`. Must be in row-major\norder."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "set2_values"
+    description: "1D `Tensor`, values of a `SparseTensor`. Must be in row-major\norder."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "set2_shape"
+    description: "1D `Tensor`, shape of a `SparseTensor`. `set2_shape[0...n-1]` must\nbe the same as the 1st `n-1` dimensions of `set1`, `result_shape[n]` is the\nmax set size across `n-1` dimensions."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "result_indices"
+    description: "2D indices of a `SparseTensor`."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "result_values"
+    description: "1D values of a `SparseTensor`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "result_shape"
+    description: "1D `Tensor` shape of a `SparseTensor`. `result_shape[0...n-1]` is\nthe same as the 1st `n-1` dimensions of `set1` and `set2`, `result_shape[n]`\nis the max result set size across all `0...n-1` dimensions."
+    type: DT_INT64
+  }
+  attr {
+    name: "set_operation"
+    type: "string"
+  }
+  attr {
+    name: "validate_indices"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_STRING
+      }
+    }
+  }
+  summary: "Applies set operation along last dimension of `Tensor` and `SparseTensor`."
+  description: "See SetOperationOp::SetOperationFromContext for values of `set_operation`.\n\nInput `set2` is a `SparseTensor` represented by `set2_indices`, `set2_values`,\nand `set2_shape`. For `set2` ranked `n`, 1st `n-1` dimensions must be the same\nas `set1`. Dimension `n` contains values in a set, duplicates are allowed but\nignored.\n\nIf `validate_indices` is `True`, this op validates the order and range of `set2`\nindices.\n\nOutput `result` is a `SparseTensor` represented by `result_indices`,\n`result_values`, and `result_shape`. For `set1` and `set2` ranked `n`, this\nhas rank `n` and the same 1st `n-1` dimensions as `set1` and `set2`. The `nth`\ndimension contains the result of `set_operation` applied to the corresponding\n`[0...n-1]` dimension of `set`."
 }
 op {
   name: "DepthToSpace"
@@ -6512,6 +6716,32 @@ op {
   }
   summary: "Inserts a dimension of 1 into a tensor\'s shape."
   description: "Given a tensor `input`, this operation inserts a dimension of 1 at the\ndimension index `dim` of `input`\'s shape. The dimension index `dim` starts at\nzero; if you specify a negative number for `dim` it is counted backward from\nthe end.\n\nThis operation is useful if you want to add a batch dimension to a single\nelement. For example, if you have a single image of shape `[height, width,\nchannels]`, you can make it a batch of 1 image with `expand_dims(image, 0)`,\nwhich will make the shape `[1, height, width, channels]`.\n\nOther examples:\n\n```prettyprint\n# \'t\' is a tensor of shape [2]\nshape(expand_dims(t, 0)) ==> [1, 2]\nshape(expand_dims(t, 1)) ==> [2, 1]\nshape(expand_dims(t, -1)) ==> [2, 1]\n\n# \'t2\' is a tensor of shape [2, 3, 5]\nshape(expand_dims(t2, 0)) ==> [1, 2, 3, 5]\nshape(expand_dims(t2, 2)) ==> [2, 3, 1, 5]\nshape(expand_dims(t2, 3)) ==> [2, 3, 5, 1]\n```\n\nThis operation requires that:\n\n`-1-input.dims() <= dim <= input.dims()`\n\nThis operation is related to `squeeze()`, which removes dimensions of\nsize 1."
+}
+op {
+  name: "Expm1"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Computes exponential of x - 1 element-wise."
+  description: "I.e., \\\\(y = (\\exp x) - 1\\\\)."
 }
 op {
   name: "ExtractGlimpse"
@@ -10945,6 +11175,10 @@ op {
     description: "Number of negative samples per example."
   }
   summary: "Training via negative sampling."
+  deprecation {
+    version: 19
+    explanation: "Moving word2vec into tensorflow_models/tutorials and deprecating its ops here as a result"
+  }
   is_stateful: true
 }
 op {
@@ -11733,6 +11967,23 @@ op {
   description: "Given a tensor `x` and a tensor `y`, this operation computes \\\\(x^y\\\\) for\ncorresponding elements in `x` and `y`. For example:\n\n```\n# tensor \'x\' is [[2, 2]], [3, 3]]\n# tensor \'y\' is [[8, 16], [2, 3]]\ntf.pow(x, y) ==> [[256, 65536], [9, 27]]\n```"
 }
 op {
+  name: "PreventGradient"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "An identity op that triggers an error if a gradient is requested."
+  description: "When executed in a graph, this op outputs its input tensor as-is.\n\nWhen building ops to compute gradients, the TensorFlow gradient system\nwill return an error when trying to lookup the gradient of this op,\nbecause no gradient must ever be registered for this function.  This\nop exists to prevent subtle bugs from silently returning unimplemented\ngradients in some corner cases."
+}
+op {
   name: "Print"
   input_arg {
     name: "input"
@@ -11960,6 +12211,46 @@ op {
     has_minimum: true
   }
   summary: "A stateless version of PyFunc."
+}
+op {
+  name: "Qr"
+  input_arg {
+    name: "input"
+    description: "A tensor of shape `[..., M, N]` whose inner-most 2 dimensions\nform matrices of size `[M, N]`. Let `P` be the minimum of `M` and `N`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "q"
+    description: "Orthonormal basis for range of `a`. If `full_matrices` is `False` then\nshape is `[..., M, P]`; if `full_matrices` is `True` then shape is\n`[..., M, M]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "r"
+    description: "Triangular factor. If `full_matrices` is `False` then shape is\n`[..., P, N]`. If `full_matrices` is `True` then shape is `[..., M, N]`."
+    type_attr: "T"
+  }
+  attr {
+    name: "full_matrices"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If true, compute full-sized `q` and `r`. If false\n(the default), compute only the leading `P` columns of `q`."
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Computes the QR decompositions of one or more matrices."
+  description: "Computes the QR decomposition of each inner matrix in `tensor` such that\n`tensor[..., :, :] = q[..., :, :] * r[..., :,:])`\n\n```prettyprint\n# a is a tensor.\n# q is a tensor of orthonormal matrices.\n# r is a tensor of upper triangular matrices.\nq, r = qr(a)\nq_full, r_full = qr(a, full_matrices=True)\n```"
 }
 op {
   name: "QuantizeAndDequantize"
@@ -12587,6 +12878,93 @@ op {
   description: "The inputs are quantized tensors where the lowest value represents the real\nnumber of the associated minimum, and the highest represents the maximum.\nThis means that you can only interpret the quantized output in the same way, by\ntaking the returned minimum and maximum values into account."
 }
 op {
+  name: "QuantizedInstanceNorm"
+  input_arg {
+    name: "x"
+    description: "A 4D input Tensor."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "x_min"
+    description: "The value represented by the lowest quantized input."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "x_max"
+    description: "The value represented by the highest quantized input."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "y"
+    description: "A 4D Tensor."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y_min"
+    description: "The value represented by the lowest quantized output."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "y_max"
+    description: "The value represented by the highest quantized output."
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "output_range_given"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If True, `given_y_min` and `given_y_min`\nand `given_y_max` are used as the output range. Otherwise,\nthe implementation computes the output range."
+  }
+  attr {
+    name: "given_y_min"
+    type: "float"
+    default_value {
+      f: 0
+    }
+    description: "Output in `y_min` if `output_range_given` is True."
+  }
+  attr {
+    name: "given_y_max"
+    type: "float"
+    default_value {
+      f: 0
+    }
+    description: "Output in `y_max` if `output_range_given` is True."
+  }
+  attr {
+    name: "variance_epsilon"
+    type: "float"
+    default_value {
+      f: 1e-05
+    }
+    description: "A small float number to avoid dividing by 0."
+  }
+  attr {
+    name: "min_separation"
+    type: "float"
+    default_value {
+      f: 0.001
+    }
+    description: "Minimum value of `y_max - y_min`"
+  }
+  summary: "Quantized Instance normalization."
+}
+op {
   name: "QuantizedMatMul"
   input_arg {
     name: "a"
@@ -12689,6 +13067,23 @@ op {
       b: false
     }
     description: "If true, `b` is transposed before multiplication."
+  }
+  attr {
+    name: "Tactivation"
+    type: "type"
+    default_value {
+      type: DT_QUINT8
+    }
+    description: "The type of output produced by activation function\nfollowing this operation."
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
   }
   summary: "Perform a quantized matrix multiplication of  `a` by the matrix `b`."
   description: "The inputs must be two-dimensional matrices and the inner dimension of\n`a` (after being transposed if `transpose_a` is non-zero) must match the\nouter dimension of `b` (after being transposed if `transposed_b` is\nnon-zero)."
@@ -14966,7 +15361,7 @@ op {
     }
   }
   summary: "Reverses specific dimensions of a tensor."
-  description: "Given a `tensor`, and a `int32` tensor `axis` representing the set of\ndimensions of `tensor` to reverse. This operation reverses each dimension\n`i` for which there exists `j` s.t. `axis[j] == i`.\n\n`tensor` can have up to 8 dimensions. The number of dimensions specified\nin `axis` may be 0 or more entries. If an index is specified more than\nonce, a InvalidArgument error is raised.\n\nFor example:\n\n```prettyprint\n# tensor \'t\' is [[[[ 0,  1,  2,  3],\n#                  [ 4,  5,  6,  7],\n#                  [ 8,  9, 10, 11]],\n#                 [[12, 13, 14, 15],\n#                  [16, 17, 18, 19],\n#                  [20, 21, 22, 23]]]]\n# tensor \'t\' shape is [1, 2, 3, 4]\n\n# \'dims\' is [3] or \'dims\' is -1\nreverse(t, dims) ==> [[[[ 3,  2,  1,  0],\n                        [ 7,  6,  5,  4],\n                        [ 11, 10, 9, 8]],\n                       [[15, 14, 13, 12],\n                        [19, 18, 17, 16],\n                        [23, 22, 21, 20]]]]\n\n# \'dims\' is \'[1]\' (or \'dims\' is \'[-3]\')\nreverse(t, dims) ==> [[[[12, 13, 14, 15],\n                        [16, 17, 18, 19],\n                        [20, 21, 22, 23]\n                       [[ 0,  1,  2,  3],\n                        [ 4,  5,  6,  7],\n                        [ 8,  9, 10, 11]]]]\n\n# \'dims\' is \'[2]\' (or \'dims\' is \'[-2]\')\nreverse(t, dims) ==> [[[[8, 9, 10, 11],\n                        [4, 5, 6, 7],\n                        [0, 1, 2, 3]]\n                       [[20, 21, 22, 23],\n                        [16, 17, 18, 19],\n                        [12, 13, 14, 15]]]]\n```"
+  description: "NOTE `tf.reverse` has now changed behavior in preparation for 1.0.\n`tf.reverse_v2` is currently an alias that will be deprecated before TF 1.0.\n\nGiven a `tensor`, and a `int32` tensor `axis` representing the set of\ndimensions of `tensor` to reverse. This operation reverses each dimension\n`i` for which there exists `j` s.t. `axis[j] == i`.\n\n`tensor` can have up to 8 dimensions. The number of dimensions specified\nin `axis` may be 0 or more entries. If an index is specified more than\nonce, a InvalidArgument error is raised.\n\nFor example:\n\n```prettyprint\n# tensor \'t\' is [[[[ 0,  1,  2,  3],\n#                  [ 4,  5,  6,  7],\n#                  [ 8,  9, 10, 11]],\n#                 [[12, 13, 14, 15],\n#                  [16, 17, 18, 19],\n#                  [20, 21, 22, 23]]]]\n# tensor \'t\' shape is [1, 2, 3, 4]\n\n# \'dims\' is [3] or \'dims\' is -1\nreverse(t, dims) ==> [[[[ 3,  2,  1,  0],\n                        [ 7,  6,  5,  4],\n                        [ 11, 10, 9, 8]],\n                       [[15, 14, 13, 12],\n                        [19, 18, 17, 16],\n                        [23, 22, 21, 20]]]]\n\n# \'dims\' is \'[1]\' (or \'dims\' is \'[-3]\')\nreverse(t, dims) ==> [[[[12, 13, 14, 15],\n                        [16, 17, 18, 19],\n                        [20, 21, 22, 23]\n                       [[ 0,  1,  2,  3],\n                        [ 4,  5,  6,  7],\n                        [ 8,  9, 10, 11]]]]\n\n# \'dims\' is \'[2]\' (or \'dims\' is \'[-2]\')\nreverse(t, dims) ==> [[[[8, 9, 10, 11],\n                        [4, 5, 6, 7],\n                        [0, 1, 2, 3]]\n                       [[20, 21, 22, 23],\n                        [16, 17, 18, 19],\n                        [12, 13, 14, 15]]]]\n```"
 }
 op {
   name: "Rint"
@@ -15137,7 +15532,7 @@ op {
     default_value {
       f: 0.1
     }
-    description: "The cropped area of the image must contain at least this\nfraction of any bounding box supplied."
+    description: "The cropped area of the image must contain at least this\nfraction of any bounding box supplied. The value of this parameter should be\nnon-negative. In the case of 0, the cropped area does not need to overlap\nany of the bounding boxes supplied."
   }
   attr {
     name: "aspect_ratio_range"
@@ -15843,7 +16238,7 @@ op {
     description: "If True, the assignment will be protected by a lock;\notherwise the behavior is undefined, but may exhibit less contention."
   }
   summary: "Applies sparse updates to a variable reference."
-  description: "This operation computes\n\n    # Scalar indices\n    ref[indices, ...] = updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] = updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] = updates[i, ..., j, ...]\n\nThis operation outputs `ref` after the update is done.\nThis makes it easier to chain operations that need to use the reset value.\n\nIf values in `ref` is to be updated more than once, because there are\nduplicate entires in `indices`, the order at which the updates happen\nfor each value is undefined.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/ScatterUpdate.png\" alt>\n</div>"
+  description: "This operation computes\n\n    # Scalar indices\n    ref[indices, ...] = updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] = updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] = updates[i, ..., j, ...]\n\nThis operation outputs `ref` after the update is done.\nThis makes it easier to chain operations that need to use the reset value.\n\nIf values in `ref` is to be updated more than once, because there are\nduplicate entries in `indices`, the order at which the updates happen\nfor each value is undefined.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/ScatterUpdate.png\" alt>\n</div>"
 }
 op {
   name: "SdcaFprint"
@@ -16419,6 +16814,53 @@ op {
   summary: "Serialize a `SparseTensor` into a string 3-vector (1-D `Tensor`) object."
 }
 op {
+  name: "SetSize"
+  input_arg {
+    name: "set_indices"
+    description: "2D `Tensor`, indices of a `SparseTensor`."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "set_values"
+    description: "1D `Tensor`, values of a `SparseTensor`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "set_shape"
+    description: "1D `Tensor`, shape of a `SparseTensor`."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "size"
+    description: "For `set` ranked `n`, this is a `Tensor` with rank `n-1`, and the same 1st\n`n-1` dimensions as `set`. Each value is the number of unique elements in\nthe corresponding `[0...n-1]` dimension of `set`."
+    type: DT_INT32
+  }
+  attr {
+    name: "validate_indices"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_STRING
+      }
+    }
+  }
+  summary: "Number of unique elements along last dimension of input `set`."
+  description: "Input `set` is a `SparseTensor` represented by `set_indices`, `set_values`,\nand `set_shape`. The last dimension contains values in a set, duplicates are\nallowed but ignored.\n\nIf `validate_indices` is `True`, this op validates the order and range of `set`\nindices."
+}
+op {
   name: "Shape"
   input_arg {
     name: "input"
@@ -16734,6 +17176,10 @@ op {
     description: "Threshold for word occurrence. Words that appear with higher\nfrequency will be randomly down-sampled. Set to 0 to disable."
   }
   summary: "Parses a text file and creates a batch of examples."
+  deprecation {
+    version: 19
+    explanation: "Moving word2vec into tensorflow_models/tutorials and deprecating its ops here as a result"
+  }
   is_stateful: true
 }
 op {
@@ -19384,6 +19830,82 @@ op {
   description: "Builds an array `dense` with shape `output_shape` such that\n\n```prettyprint\n# If sparse_indices is scalar\ndense[i] = (i == sparse_indices ? sparse_values : default_value)\n\n# If sparse_indices is a vector, then for each i\ndense[sparse_indices[i]] = sparse_values[i]\n\n# If sparse_indices is an n by d matrix, then for each i in [0, n)\ndense[sparse_indices[i][0], ..., sparse_indices[i][d-1]] = sparse_values[i]\n```\n\nAll other values in `dense` are set to `default_value`.  If `sparse_values` is a\nscalar, all sparse indices are set to this single value.\n\nIndices should be sorted in lexicographic order, and indices must not\ncontain any repeats. If `validate_indices` is true, these properties\nare checked during execution."
 }
 op {
+  name: "SparseToSparseSetOperation"
+  input_arg {
+    name: "set1_indices"
+    description: "2D `Tensor`, indices of a `SparseTensor`. Must be in row-major\norder."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "set1_values"
+    description: "1D `Tensor`, values of a `SparseTensor`. Must be in row-major\norder."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "set1_shape"
+    description: "1D `Tensor`, shape of a `SparseTensor`. `set1_shape[0...n-1]` must\nbe the same as `set2_shape[0...n-1]`, `set1_shape[n]` is the\nmax set size across `0...n-1` dimensions."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "set2_indices"
+    description: "2D `Tensor`, indices of a `SparseTensor`. Must be in row-major\norder."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "set2_values"
+    description: "1D `Tensor`, values of a `SparseTensor`. Must be in row-major\norder."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "set2_shape"
+    description: "1D `Tensor`, shape of a `SparseTensor`. `set2_shape[0...n-1]` must\nbe the same as `set1_shape[0...n-1]`, `set2_shape[n]` is the\nmax set size across `0...n-1` dimensions."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "result_indices"
+    description: "2D indices of a `SparseTensor`."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "result_values"
+    description: "1D values of a `SparseTensor`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "result_shape"
+    description: "1D `Tensor` shape of a `SparseTensor`. `result_shape[0...n-1]` is\nthe same as the 1st `n-1` dimensions of `set1` and `set2`, `result_shape[n]`\nis the max result set size across all `0...n-1` dimensions."
+    type: DT_INT64
+  }
+  attr {
+    name: "set_operation"
+    type: "string"
+  }
+  attr {
+    name: "validate_indices"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_STRING
+      }
+    }
+  }
+  summary: "Applies set operation along last dimension of 2 `SparseTensor` inputs."
+  description: "See SetOperationOp::SetOperationFromContext for values of `set_operation`.\n\nIf `validate_indices` is `True`, `SparseToSparseSetOperation` validates the\norder and range of `set1` and `set2` indices.\n\nInput `set1` is a `SparseTensor` represented by `set1_indices`, `set1_values`,\nand `set1_shape`. For `set1` ranked `n`, 1st `n-1` dimensions must be the same\nas `set2`. Dimension `n` contains values in a set, duplicates are allowed but\nignored.\n\nInput `set2` is a `SparseTensor` represented by `set2_indices`, `set2_values`,\nand `set2_shape`. For `set2` ranked `n`, 1st `n-1` dimensions must be the same\nas `set1`. Dimension `n` contains values in a set, duplicates are allowed but\nignored.\n\nIf `validate_indices` is `True`, this op validates the order and range of `set1`\nand `set2` indices.\n\nOutput `result` is a `SparseTensor` represented by `result_indices`,\n`result_values`, and `result_shape`. For `set1` and `set2` ranked `n`, this\nhas rank `n` and the same 1st `n-1` dimensions as `set1` and `set2`. The `nth`\ndimension contains the result of `set_operation` applied to the corresponding\n`[0...n-1]` dimension of `set`."
+}
+op {
   name: "Split"
   input_arg {
     name: "split_dim"
@@ -19989,7 +20511,7 @@ op {
   }
   input_arg {
     name: "delimiter"
-    description: "0-D. Delimiter character, or empty string."
+    description: "0-D. Delimiter characters (bytes), or empty string."
     type: DT_STRING
   }
   output_arg {
@@ -20008,7 +20530,7 @@ op {
     type: DT_INT64
   }
   summary: "Split elements of `input` based on `delimiter` into a `SparseTensor`."
-  description: "Let N be the size of source (typically N will be the batch size). Split each\nelement of `input` based on `delimiter` and return a `SparseTensor`\ncontaining the splitted tokens. Empty tokens are ignored.\n\n`delimiter` can be empty or a single-byte character. If `delimiter` is an empty\n string, each element of `input` is split into individual single-byte character\n strings, including splitting of UTF-8 multibyte sequences.\n\nFor example:\n  N = 2, input[0] is \'hello world\' and input[1] is \'a b c\', then the output\n  will be\n\n  indices = [0, 0;\n             0, 1;\n             1, 0;\n             1, 1;\n             1, 2]\n  shape = [2, 3]\n  values = [\'hello\', \'world\', \'a\', \'b\', \'c\']"
+  description: "Let N be the size of source (typically N will be the batch size). Split each\nelement of `input` based on `delimiter` and return a `SparseTensor`\ncontaining the splitted tokens. Empty tokens are ignored.\n\n`delimiter` can be empty, or a string of split characters. If `delimiter` is an\n empty string, each element of `input` is split into individual single-byte\n character strings, including splitting of UTF-8 multibyte sequences. Otherwise\n every character of `delimiter` is a potential split point.\n\nFor example:\n  N = 2, input[0] is \'hello world\' and input[1] is \'a b c\', then the output\n  will be\n\n  indices = [0, 0;\n             0, 1;\n             1, 0;\n             1, 1;\n             1, 2]\n  shape = [2, 3]\n  values = [\'hello\', \'world\', \'a\', \'b\', \'c\']"
 }
 op {
   name: "StringToHashBucket"
@@ -20252,12 +20774,12 @@ op {
   }
   output_arg {
     name: "u"
-    description: "Left singular vectors. If `full_matrices` is `False` then shape is\n`[..., M, M]`; if `full_matrices` is `True` then shape is\n`[..., M, P]`. Undefined if `compute_uv` is `False`."
+    description: "Left singular vectors. If `full_matrices` is `False` then shape is\n`[..., M, P]`; if `full_matrices` is `True` then shape is\n`[..., M, M]`. Undefined if `compute_uv` is `False`."
     type_attr: "T"
   }
   output_arg {
     name: "v"
-    description: "Left singular vectors. If `full_matrices` is `False` then shape is\n`[..., N, N]`. If `full_matrices` is `True` then shape is `[..., N, P]`.\nUndefined if `compute_uv` is false."
+    description: "Left singular vectors. If `full_matrices` is `False` then shape is\n`[..., N, P]`. If `full_matrices` is `True` then shape is `[..., N, N]`.\nUndefined if `compute_uv` is false."
     type_attr: "T"
   }
   attr {
@@ -20582,9 +21104,18 @@ op {
       s: ""
     }
   }
+  attr {
+    name: "element_shape"
+    type: "shape"
+    default_value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
   deprecation {
     version: 16
-    explanation: "Use TensorArrayV2"
+    explanation: "Use TensorArrayV3"
   }
   is_stateful: true
 }
@@ -20597,15 +21128,23 @@ op {
   }
   deprecation {
     version: 16
-    explanation: "Use TensorArrayCloseV2"
+    explanation: "Use TensorArrayCloseV3"
   }
 }
 op {
   name: "TensorArrayCloseV2"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray (output of TensorArray or TensorArrayGrad)."
     type: DT_STRING
+  }
+  summary: "Deprecated. Use TensorArrayCloseV3"
+}
+op {
+  name: "TensorArrayCloseV3"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray (output of TensorArray or TensorArrayGrad)."
+    type: DT_RESOURCE
   }
   summary: "Delete the TensorArray from its resource container.  This enables"
   description: "the user to close and release the resource in the middle of a step/run."
@@ -20644,15 +21183,48 @@ op {
   }
   deprecation {
     version: 16
-    explanation: "Use TensorArrayConcatV2"
+    explanation: "Use TensorArrayGradV3"
   }
 }
 op {
   name: "TensorArrayConcatV2"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray."
     type: DT_STRING
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "value"
+    type_attr: "dtype"
+  }
+  output_arg {
+    name: "lengths"
+    type: DT_INT64
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  attr {
+    name: "element_shape_except0"
+    type: "shape"
+    default_value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
+  summary: "Deprecated. Use TensorArrayConcatV3"
+}
+op {
+  name: "TensorArrayConcatV3"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_RESOURCE
   }
   input_arg {
     name: "flow_in"
@@ -20721,15 +21293,48 @@ op {
   }
   deprecation {
     version: 16
-    explanation: "Use TensorArrayGatherV2"
+    explanation: "Use TensorArrayGatherV3"
   }
 }
 op {
   name: "TensorArrayGatherV2"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray."
     type: DT_STRING
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "value"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  attr {
+    name: "element_shape"
+    type: "shape"
+    default_value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
+  summary: "Deprecated. Use TensorArrayGatherV3"
+}
+op {
+  name: "TensorArrayGatherV3"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_RESOURCE
   }
   input_arg {
     name: "indices"
@@ -20785,7 +21390,7 @@ op {
   }
   deprecation {
     version: 16
-    explanation: "Use TensorArrayGradV2"
+    explanation: "Use TensorArrayGradV3"
   }
   is_stateful: true
 }
@@ -20793,8 +21398,29 @@ op {
   name: "TensorArrayGradV2"
   input_arg {
     name: "handle"
-    description: "The handle to the forward TensorArray."
     type: DT_STRING
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "grad_handle"
+    type: DT_STRING
+  }
+  attr {
+    name: "source"
+    type: "string"
+  }
+  summary: "Deprecated. Use TensorArrayGradV3"
+  is_stateful: true
+}
+op {
+  name: "TensorArrayGradV3"
+  input_arg {
+    name: "handle"
+    description: "The handle to the forward TensorArray."
+    type: DT_RESOURCE
   }
   input_arg {
     name: "flow_in"
@@ -20803,7 +21429,11 @@ op {
   }
   output_arg {
     name: "grad_handle"
-    type: DT_STRING
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "flow_out"
+    type: DT_FLOAT
   }
   attr {
     name: "source"
@@ -20844,7 +21474,7 @@ op {
   }
   deprecation {
     version: 16
-    explanation: "Use TensorArrayGatherV2 with RangeOp"
+    explanation: "Use TensorArrayGatherV3 with RangeOp"
   }
 }
 op {
@@ -20872,15 +21502,39 @@ op {
   }
   deprecation {
     version: 16
-    explanation: "Use TensorArrayReadV2"
+    explanation: "Use TensorArrayReadV3"
   }
 }
 op {
   name: "TensorArrayReadV2"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray."
     type: DT_STRING
+  }
+  input_arg {
+    name: "index"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "value"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  summary: "Deprecated. Use TensorArrayReadV3"
+}
+op {
+  name: "TensorArrayReadV3"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_RESOURCE
   }
   input_arg {
     name: "index"
@@ -20931,16 +21585,44 @@ op {
     type: "type"
   }
   deprecation {
-    version: 16
-    explanation: "Use TensorArrayScatterV2"
+    version: 19
+    explanation: "Use TensorArrayGradV3"
   }
 }
 op {
   name: "TensorArrayScatterV2"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray."
     type: DT_STRING
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "value"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "flow_out"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Deprecated. Use TensorArrayScatterV3"
+}
+op {
+  name: "TensorArrayScatterV3"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_RESOURCE
   }
   input_arg {
     name: "indices"
@@ -20986,15 +21668,31 @@ op {
   }
   deprecation {
     version: 16
-    explanation: "Use TensorArraySizeV2"
+    explanation: "Use TensorArraySizeV3"
   }
 }
 op {
   name: "TensorArraySizeV2"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray (output of TensorArray or TensorArrayGrad)."
     type: DT_STRING
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "size"
+    type: DT_INT32
+  }
+  summary: "Deprecated. Use TensorArraySizeV3"
+}
+op {
+  name: "TensorArraySizeV3"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray (output of TensorArray or TensorArrayGrad)."
+    type: DT_RESOURCE
   }
   input_arg {
     name: "flow_in"
@@ -21037,15 +21735,43 @@ op {
   }
   deprecation {
     version: 16
-    explanation: "Use TensorArraySplitV2"
+    explanation: "Use TensorArraySplitV3"
   }
 }
 op {
   name: "TensorArraySplitV2"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray."
     type: DT_STRING
+  }
+  input_arg {
+    name: "value"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lengths"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "flow_out"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Deprecated. Use TensorArraySplitV3"
+}
+op {
+  name: "TensorArraySplitV3"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_RESOURCE
   }
   input_arg {
     name: "value"
@@ -21098,12 +21824,59 @@ op {
     type: "type"
   }
   deprecation {
-    version: 16
-    explanation: "Use TensorArrayScatterV2 with RangeOp"
+    version: 20
+    explanation: "Use TensorArrayScatterV3 with RangeOp"
   }
 }
 op {
   name: "TensorArrayV2"
+  input_arg {
+    name: "size"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "handle"
+    type: DT_STRING
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  attr {
+    name: "element_shape"
+    type: "shape"
+    default_value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
+  attr {
+    name: "dynamic_size"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "clear_after_read"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "tensor_array_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  summary: "Deprecated. Use TensorArrayV3"
+  is_stateful: true
+}
+op {
+  name: "TensorArrayV3"
   input_arg {
     name: "size"
     description: "The size of the array."
@@ -21112,12 +21885,27 @@ op {
   output_arg {
     name: "handle"
     description: "The handle to the TensorArray."
-    type: DT_STRING
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "flow"
+    description: "A scalar used to control gradient flow."
+    type: DT_FLOAT
   }
   attr {
     name: "dtype"
     type: "type"
     description: "The type of the elements on the tensor_array."
+  }
+  attr {
+    name: "element_shape"
+    type: "shape"
+    default_value {
+      shape {
+        unknown_rank: true
+      }
+    }
+    description: "The expected shape of an element, if known. Used to\nvalidate the shapes of TensorArray elements. If this shape is not\nfully specified, gathering zero-size TensorArrays is an error."
   }
   attr {
     name: "dynamic_size"
@@ -21176,15 +21964,43 @@ op {
   }
   deprecation {
     version: 16
-    explanation: "Use TensorArrayWriteV2"
+    explanation: "Use TensorArrayWriteV3"
   }
 }
 op {
   name: "TensorArrayWriteV2"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray."
     type: DT_STRING
+  }
+  input_arg {
+    name: "index"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "value"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "flow_out"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Deprecated. Use TensorArrayGradV3"
+}
+op {
+  name: "TensorArrayWriteV3"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_RESOURCE
   }
   input_arg {
     name: "index"
@@ -21911,6 +22727,38 @@ op {
 }
 op {
   name: "Variable"
+  output_arg {
+    name: "ref"
+    type_attr: "dtype"
+    is_ref: true
+  }
+  attr {
+    name: "shape"
+    type: "shape"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  summary: "Use VariableV2 instead."
+  is_stateful: true
+}
+op {
+  name: "VariableV2"
   output_arg {
     name: "ref"
     description: "A reference to the variable tensor."

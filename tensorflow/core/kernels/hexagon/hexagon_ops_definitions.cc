@@ -21,6 +21,7 @@ limitations under the License.
 
 namespace tensorflow {
 
+// HVX internal supported ops names
 enum class SupportedOpType {
   INPUT,
   OUTPUT,
@@ -69,26 +70,28 @@ enum class SupportedOpType {
   SUPPORTED_OP_TYPE_COUNT,
 };
 
-static const std::unordered_map<string, SupportedOpType>
-    OP_NAME_TO_SOC_OP_TYPE_MAP{
-        // Custom Op name
-        {IGraphTransferOpsDefinitions::INPUT_OP_NAME, SupportedOpType::INPUT},
-        {IGraphTransferOpsDefinitions::OUTPUT_OP_NAME, SupportedOpType::OUTPUT},
-        // Tensorflow op name
-        {"QuantizedConv2D", SupportedOpType::QUANTIZEDCONV2D_8X8TO32},
-        {"QuantizedMatMul", SupportedOpType::QUANTIZEDMATMUL_8X8TO32},
-        {"QuantizeDownAndShrinkRange",
-         SupportedOpType::QUANTIZEDOWNANDSHRINKRANGE_32TO8},
-        {"QuantizedRelu", SupportedOpType::QUANTIZEDRELU_8},
-        {"QuantizedReluX", SupportedOpType::QUANTIZEDRELUX_8},
-        {"QuantizedMaxPool", SupportedOpType::QUANTIZEDMAXPOOL_8},
-        {"QuantizedAvgPool", SupportedOpType::QUANTIZEDAVGPOOL_8},
-        {"QuantizedConcat", SupportedOpType::QUANTIZEDCONCAT_8},
-        {"QuantizedBiasAdd", SupportedOpType::QUANTIZEDBIASADD_8P8TO32},
-        {"Min", SupportedOpType::MIN_F},
-        {"Max", SupportedOpType::MAX_F},
-        {"QuantizeV2", SupportedOpType::QUANTIZE},
-    };
+const std::unordered_map<string, SupportedOpType> OP_NAME_TO_SOC_OP_TYPE_MAP{
+    // Custom Op name
+    {IGraphTransferOpsDefinitions::INPUT_OP_NAME, SupportedOpType::INPUT},
+    {IGraphTransferOpsDefinitions::OUTPUT_OP_NAME, SupportedOpType::OUTPUT},
+    {"NoOp", SupportedOpType::NOP},
+    {IGraphTransferOpsDefinitions::FLATTEN_OP_NAME, SupportedOpType::FLATTEN},
+    // Tensorflow op name
+    {"QuantizedConv2D", SupportedOpType::QUANTIZEDCONV2D_8X8TO32},
+    {"QuantizedMatMul", SupportedOpType::QUANTIZEDMATMUL_8X8TO32},
+    {"QuantizeDownAndShrinkRange",
+     SupportedOpType::QUANTIZEDOWNANDSHRINKRANGE_32TO8},
+    {"QuantizedRelu", SupportedOpType::QUANTIZEDRELU_8},
+    {"QuantizedReluX", SupportedOpType::QUANTIZEDRELUX_8},
+    {"QuantizedMaxPool", SupportedOpType::QUANTIZEDMAXPOOL_8},
+    {"QuantizedAvgPool", SupportedOpType::QUANTIZEDAVGPOOL_8},
+    {"QuantizedConcat", SupportedOpType::QUANTIZEDCONCAT_8},
+    {"QuantizedBiasAdd", SupportedOpType::QUANTIZEDBIASADD_8P8TO32},
+    {"Min", SupportedOpType::MIN_F},
+    {"Max", SupportedOpType::MAX_F},
+    {"QuantizeV2", SupportedOpType::QUANTIZE},
+    {"Dequantize", SupportedOpType::DEQUANTIZE},
+};
 
 /* static */ const IGraphTransferOpsDefinitions&
 HexagonOpsDefinitions::getInstance() {

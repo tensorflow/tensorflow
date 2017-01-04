@@ -27,11 +27,12 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.util.Size;
-import android.view.MotionEvent;
+import android.view.KeyEvent;
 import android.view.WindowManager;
 import android.widget.Toast;
 import java.nio.ByteBuffer;
 import org.tensorflow.demo.env.Logger;
+import org.tensorflow.demo.R;
 
 public abstract class CameraActivity extends Activity implements OnImageAvailableListener {
   private static final Logger LOGGER = new Logger();
@@ -178,16 +179,6 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
     }
   }
 
-  @Override
-  public boolean onTouchEvent(final MotionEvent event) {
-    if (event.getAction() == MotionEvent.ACTION_DOWN) {
-      debug = !debug;
-      requestRender();
-    }
-
-    return false;
-  }
-
   public boolean isDebug() {
     return debug;
   }
@@ -199,11 +190,24 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
     }
   }
 
-  public void addCallback(OverlayView.DrawCallback callback) {
+  public void addCallback(final OverlayView.DrawCallback callback) {
     final OverlayView overlay = (OverlayView) findViewById(R.id.overlay);
     if (overlay != null) {
       overlay.addCallback(callback);
     }
+  }
+
+  public void onSetDebug(boolean debug) {}
+
+  @Override
+  public boolean onKeyDown(final int keyCode, final KeyEvent event) {
+    if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+      debug = !debug;
+      requestRender();
+      onSetDebug(debug);
+      return true;
+    }
+    return super.onKeyDown(keyCode, event);
   }
 
   protected abstract void onPreviewSizeChosen(final Size size, final int rotation);

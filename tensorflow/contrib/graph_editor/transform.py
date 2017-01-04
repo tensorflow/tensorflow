@@ -93,8 +93,7 @@ def assign_renamed_collections_handler(info, elem, elem_):
     elem_: the transformed element
   """
   # TODO(fkp): handle known special cases
-  for name, collection in iteritems(
-      elem.graph._collections):  # pylint: disable=protected-access
+  for name, collection in iteritems(info.collections):
     if elem not in collection:
       continue
     collection_name_ = info.transformer.new_name(name)
@@ -238,6 +237,9 @@ class Transformer(object):
       self.scope_ = dst_scope
       self.transformed_ops = {}
       self.transformed_ts = {}
+      self.collections = dict((key, self.graph.get_collection(key))
+                              for key in self.graph.get_all_collection_keys())
+
 
   class ResultInfo(object):
     """"Contains information about the result of a transform operation."""
@@ -446,10 +448,7 @@ class Transformer(object):
     # without any outputs. So the walk is now finalized from those roots.
     remaining_ops = [op for op in self._info.sgv.ops
                      if op not in self._info.transformed_ops]
-    remaining_roots = [
-        op for op in remaining_ops
-        if not op.outputs and not self._info.control_outputs.get(op)
-    ]
+    remaining_roots = [op for op in remaining_ops if not op.outputs]
     for op in remaining_roots:
       self._transform_op(op)
 

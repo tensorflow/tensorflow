@@ -24,7 +24,6 @@ from tensorflow.contrib.bayesflow.python.ops import special_math
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import kullback_leibler
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -144,10 +143,11 @@ class Normal(distribution.Distribution):
     return self._sigma
 
   def _batch_shape(self):
-    return array_ops.shape(self.mu + self.sigma)
+    return array_ops.broadcast_dynamic_shape(
+        array_ops.shape(self.mu), array_ops.shape(self.sigma))
 
   def _get_batch_shape(self):
-    return common_shapes.broadcast_shape(
+    return array_ops.broadcast_static_shape(
         self._mu.get_shape(), self.sigma.get_shape())
 
   def _event_shape(self):
@@ -157,7 +157,7 @@ class Normal(distribution.Distribution):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):
-    shape = array_ops.concat(0, ([n], array_ops.shape(self.mean())))
+    shape = array_ops.concat_v2(([n], array_ops.shape(self.mean())), 0)
     sampled = random_ops.random_normal(
         shape=shape, mean=0, stddev=1, dtype=self.mu.dtype, seed=seed)
     return sampled * self.sigma + self.mu

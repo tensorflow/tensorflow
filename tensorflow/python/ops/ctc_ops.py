@@ -28,7 +28,7 @@ from tensorflow.python.ops.nn_grad import _BroadcastMul
 
 
 # pylint: disable=protected-access, invalid-name
-def ctc_loss(inputs, labels, sequence_length,
+def ctc_loss(labels, inputs, sequence_length,
              preprocess_collapse_repeated=False,
              ctc_merge_repeated=True, time_major=True):
   """Computes the CTC (Connectionist Temporal Classification) Loss.
@@ -97,17 +97,17 @@ def ctc_loss(inputs, labels, sequence_length,
     Untested.  Very likely will not learn to output repeated classes.
 
   Args:
+    labels: An `int32` `SparseTensor`.
+      `labels.indices[i, :] == [b, t]` means `labels.values[i]` stores
+      the id for (batch b, time t).
+      `labels.values[i]` must take on values in `[0, num_labels)`.
+      See `core/ops/ctc_ops.cc` for more details.
     inputs: 3-D `float` `Tensor`.
       If time_major == False, this will be a `Tensor` shaped:
         `[batch_size x max_time x num_classes]`.
       If time_major == True (default), this will be a `Tensor` shaped:
         `[max_time x batch_size x num_classes]`.
       The logits.
-    labels: An `int32` `SparseTensor`.
-      `labels.indices[i, :] == [b, t]` means `labels.values[i]` stores
-      the id for (batch b, time t).
-      `labels.values[i]` must take on values in `[0, num_labels)`.
-      See `core/ops/ctc_ops.cc` for more details.
     sequence_length: 1-D `int32` vector, size `[batch_size]`.
       The sequence lengths.
     preprocess_collapse_repeated: Boolean.  Default: False.
@@ -130,7 +130,7 @@ def ctc_loss(inputs, labels, sequence_length,
   # The second, third, etc output tensors contain the gradients.  We use it in
   # _CTCLossGrad() below.
   if not isinstance(labels, sparse_tensor.SparseTensor):
-    raise TypeError("Expected labels to be a SparseTensor")
+    raise TypeError("Expected labels (first argument) to be a SparseTensor")
 
   # For internal calculations, we transpose to [time, batch, num_classes]
   if not time_major:
@@ -213,8 +213,8 @@ def ctc_beam_search_decoder(inputs, sequence_length, beam_width=100,
   """Performs beam search decoding on the logits given in input.
 
   **Note** The `ctc_greedy_decoder` is a special case of the
-  `ctc_beam_search_decoder` with `top_paths=1` (but that decoder is faster
-  for this special case).
+  `ctc_beam_search_decoder` with `top_paths=1` and `beam_width=1` (but
+  that decoder is faster for this special case).
 
   If `merge_repeated` is `True`, merge repeated classes in the output beams.
   This means that if consecutive entries in a beam are the same,

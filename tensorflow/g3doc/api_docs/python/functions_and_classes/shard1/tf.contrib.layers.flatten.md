@@ -18,5 +18,5 @@ Flattens the input while maintaining the batch_size.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if inputs.shape is wrong.
+*  <b>`ValueError`</b>: if inputs.dense_shape is wrong.
 

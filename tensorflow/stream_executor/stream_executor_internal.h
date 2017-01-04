@@ -184,7 +184,7 @@ class StreamExecutorInterface {
   }
   virtual bool Launch(Stream *stream, const ThreadDim &thread_dims,
                       const BlockDim &block_dims, const KernelBase &k,
-                      const std::vector<KernelArg> &args) {
+                      const KernelArgsArrayBase &args) {
     return false;
   }
   virtual void *Allocate(uint64 size) = 0;
@@ -257,9 +257,6 @@ class StreamExecutorInterface {
   // Creates a new DeviceDescription object. Ownership is transferred to the
   // caller.
   virtual DeviceDescription *PopulateDeviceDescription() const = 0;
-
-  virtual KernelArg DeviceMemoryToKernelArg(
-      const DeviceMemoryBase &gpu_mem) const = 0;
 
   // Attempts to register the provided TraceListener with the device-specific
   // Executor implementation. When this is called, the PIMPL interface has

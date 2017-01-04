@@ -30,6 +30,7 @@ load(
     "tf_cuda_library",
     "tf_cc_test",
 )
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
 
 # For platform specific build config
@@ -163,6 +164,7 @@ tf_cuda_library(
         "//tensorflow/core:worker_proto_cc",
         "//tensorflow/core/distributed_runtime:graph_mgr",
         "//tensorflow/core/distributed_runtime:rendezvous_mgr_interface",
+        "//tensorflow/core/distributed_runtime:worker",
         "//tensorflow/core/distributed_runtime:worker_cache",
         "//tensorflow/core/distributed_runtime:worker_env",
         "@grpc//:grpc++_unsecure",
@@ -266,6 +268,8 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime:graph_mgr",
+        "//tensorflow/core/distributed_runtime:local_master",
+        "//tensorflow/core/distributed_runtime:master",
         "//tensorflow/core/distributed_runtime:master_env",
         "//tensorflow/core/distributed_runtime:master_session",
         "//tensorflow/core/distributed_runtime:server_lib",
@@ -362,12 +366,14 @@ cc_library(
         "//tensorflow/core:master_proto_cc",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/distributed_runtime:call_options",
+        "//tensorflow/core/distributed_runtime:local_master",
         "//tensorflow/core/distributed_runtime:master_interface",
     ],
     alwayslink = 1,
 )
 
 tf_cuda_cc_tests(
+    name = "rpc_tests",
     size = "small",
     srcs = [
         "grpc_channel_test.cc",
@@ -418,11 +424,10 @@ tf_cc_test(
     ],
 )
 
-tf_cuda_cc_tests(
+tf_cuda_cc_test(
+    name = "grpc_session_test",
     size = "medium",
-    srcs = [
-        "grpc_session_test.cc",
-    ],
+    srcs = ["grpc_session_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["manual"],
     deps = [

@@ -17,19 +17,21 @@
 This module is used as an environment for evaluating expressions
 in the "specs" DSL.
 """
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
-import tensorflow as tf
+from tensorflow.contrib.layers.python.layers import layers
 from tensorflow.contrib.ndlstm.python import lstm1d
 from tensorflow.contrib.ndlstm.python import lstm2d
 from tensorflow.contrib.specs.python import specs_lib
-
-
-slim = tf.contrib.slim
-
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
+from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import variable_scope
 
 # The following assignments don't appear to follow Google naming
 # conventions, but that's because these are functions defined by
@@ -60,15 +62,15 @@ class Conc(specs_lib.Composable):
 
   def funcall(self, x):
     outputs = [f.funcall(x) for f in self.funs]
-    return tf.concat(self.dim, outputs)
+    return array_ops.concat_v2(outputs, self.dim)
 
 
 External = specs_lib.External
 Import = specs_lib.Import
 Fun = specs_lib.Function
 debug = specs_lib.debug
-Print = Fun(tf.Print)
-Id = Fun(tf.identity)
+Print = Fun(logging_ops.Print)
+Id = Fun(array_ops.identity)
 
 # TODO(tmb) add Assert
 
@@ -77,48 +79,48 @@ Id = Fun(tf.identity)
 # 2D Convolutional layers with nonlinearities (s/t/r/m/l)
 # TODO(tmb) add Cbs, Fbs etc. for batch norms
 
-Cx = Fun(slim.conv2d)
-Cs = Fun(slim.conv2d, activation_fn=tf.nn.sigmoid)
-Ct = Fun(slim.conv2d, activation_fn=tf.nn.tanh)
-Cr = Fun(slim.conv2d, activation_fn=tf.nn.relu)
-Cm = Fun(slim.conv2d, activation_fn=tf.nn.softmax)
-Cl = Fun(slim.conv2d, activation_fn=None)
+Cx = Fun(layers.conv2d)
+Cs = Fun(layers.conv2d, activation_fn=math_ops.sigmoid)
+Ct = Fun(layers.conv2d, activation_fn=math_ops.tanh)
+Cr = Fun(layers.conv2d, activation_fn=nn_ops.relu)
+Cm = Fun(layers.conv2d, activation_fn=nn_ops.softmax)
+Cl = Fun(layers.conv2d, activation_fn=None)
 
 # Fully connected slim with nonlinearities (s/t/r/m/l)
 
-Fx = Fun(slim.fully_connected)
-Fs = Fun(slim.fully_connected, activation_fn=tf.nn.sigmoid)
-Ft = Fun(slim.fully_connected, activation_fn=tf.nn.tanh)
-Fr = Fun(slim.fully_connected, activation_fn=tf.nn.relu)
-Fm = Fun(slim.fully_connected, activation_fn=tf.nn.softmax)
-Fl = Fun(slim.fully_connected, activation_fn=None)
+Fx = Fun(layers.fully_connected)
+Fs = Fun(layers.fully_connected, activation_fn=math_ops.sigmoid)
+Ft = Fun(layers.fully_connected, activation_fn=math_ops.tanh)
+Fr = Fun(layers.fully_connected, activation_fn=nn_ops.relu)
+Fm = Fun(layers.fully_connected, activation_fn=nn_ops.softmax)
+Fl = Fun(layers.fully_connected, activation_fn=None)
 
 # Pooling
 
-Mp = Fun(slim.max_pool2d)
-Ap = Fun(slim.avg_pool2d)
+Mp = Fun(layers.max_pool2d)
+Ap = Fun(layers.avg_pool2d)
 
 # Batch manipulations
 
-Do = Fun(slim.dropout)
-Bn = Fun(slim.batch_norm)
-Lrn = Fun(tf.nn.local_response_normalization)
-Unit = Fun(slim.unit_norm)
+Do = Fun(layers.dropout)
+Bn = Fun(layers.batch_norm)
+Lrn = Fun(nn.local_response_normalization)
+Unit = Fun(layers.unit_norm)
 
 # Shape changes
 
-Flat = Fun(slim.flatten)
-Reshape = Fun(tf.reshape)
-Transpose = Fun(tf.transpose)
-Squeeze = Fun(tf.squeeze)
-Expand = Fun(tf.expand_dims)
+Flat = Fun(layers.flatten)
+Reshape = Fun(array_ops.reshape)
+Transpose = Fun(array_ops.transpose)
+Squeeze = Fun(array_ops.squeeze)
+Expand = Fun(array_ops.expand_dims)
 
 # Nonlinearities (rarely needed on their own)
 
-Relu = Fun(tf.nn.relu)
-Sig = Fun(tf.nn.sigmoid)
-Tanh = Fun(tf.nn.tanh)
-Smax = Fun(tf.nn.softmax)
+Relu = Fun(nn_ops.relu)
+Sig = Fun(math_ops.sigmoid)
+Tanh = Fun(math_ops.tanh)
+Smax = Fun(nn_ops.softmax)
 
 # 2D LSTM
 
@@ -140,6 +142,7 @@ def Dws(n):
 def Dwm(n):
   """Depth-wise convolution + softmax (used after LSTM)."""
   return Cm(n, [1, 1])
+
 
 # 1D LSTM
 
@@ -165,8 +168,10 @@ def Var(name, *args, **kw):
   Returns:
       A specs object for generating a variable.
   """
+
   def var(_):
-    return tf.get_variable(name, *args, **kw)
+    return variable_scope.get_variable(name, *args, **kw)
+
   return specs_lib.Callable(var)
 
 
@@ -204,7 +209,8 @@ class Shared(specs_lib.Composable):
         ValueError: Scope is not of type tf.Scope, name is not
         of type string, or both scope and name are given together.
     """
-    if scope is not None and not isinstance(scope, tf.VariableScope):
+    if scope is not None and not isinstance(scope,
+                                            variable_scope.VariableScope):
       raise ValueError("scope must be None or a VariableScope")
     if name is not None and not isinstance(scope, str):
       raise ValueError("name must be None or a string")
@@ -229,17 +235,9 @@ class Shared(specs_lib.Composable):
         The output tensor from invoking the subnet constructor.
     """
     if self.scope is None:
-      with tf.variable_scope(self.name, values=[x]) as scope:
+      with variable_scope.variable_scope(self.name, values=[x]) as scope:
         self.scope = scope
         return self.subnet.funcall(x)
     else:
-      with tf.variable_scope(self.scope, values=[x], reuse=True):
+      with variable_scope.variable_scope(self.scope, values=[x], reuse=True):
         return self.subnet.funcall(x)
-
-# AutoFunction bindings of some existing modules
-
-TF = specs_lib.AutoFunction(tf)
-NN = specs_lib.AutoFunction(tf.nn)
-SL = specs_lib.AutoFunction(slim)
-
-# pylint: enable=invalid-name

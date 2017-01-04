@@ -20,10 +20,10 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Args:
 
 
-*  <b>`predictions`</b>: A tensor of prediction results for semantic labels, whose
+*  <b>`predictions`</b>: A `Tensor` of prediction results for semantic labels, whose
     shape is [batch size] and type `int32` or `int64`. The tensor will be
     flattened, if its rank > 1.
-*  <b>`labels`</b>: A tensor of ground truth labels with shape [batch size] and of
+*  <b>`labels`</b>: A `Tensor` of ground truth labels with shape [batch size] and of
     type `int32` or `int64`. The tensor will be flattened, if its rank > 1.
 *  <b>`num_classes`</b>: The possible number of labels the prediction task can
     have. This value must be provided, since a confusion matrix of
@@ -38,7 +38,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Returns:
 
 
-*  <b>`mean_iou`</b>: A tensor representing the mean intersection-over-union.
+*  <b>`mean_iou`</b>: A `Tensor` representing the mean intersection-over-union.
 *  <b>`update_op`</b>: An operation that increments the confusion matrix.
 
 ##### Raises:

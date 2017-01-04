@@ -25,8 +25,8 @@ converting the `SparseTensor` to a dense one and using `tf.matmul` with
 `sp_a=True`.
 
 This operation tends to perform well when A is more sparse, if the column size
-of the product is small (e.g. matrix-vector multiplication), if sp_a.shape
-takes on large values.
+of the product is small (e.g. matrix-vector multiplication), if
+`sp_a.dense_shape` takes on large values.
 
 Below is a rough speed comparison between sparse_tensor_dense_matmul,
 labelled 'sparse', and matmul(sp_a=True), labelled 'dense'.  For purposes of

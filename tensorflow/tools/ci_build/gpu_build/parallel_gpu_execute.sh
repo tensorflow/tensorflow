@@ -37,8 +37,9 @@ for i in `seq 0 $((TF_GPU_COUNT-1))`; do
       echo "Running test $@ on GPU $CUDA_VISIBLE_DEVICES"
       $@
     )
+    return_code=$?
     flock -u "$lock_fd"
-    exit 0
+    exit $return_code
   fi
 done
 

@@ -416,24 +416,49 @@ REGISTER_OP("SplitV")
     .Attr("T: type")
     .Attr("Tlen: {int32, int64} = DT_INT64")
     .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle unused;
+      DimensionHandle split_dimension;
+      TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(2, &split_dimension));
       int32 num_outputs = c->num_outputs();
-      // Return unknown shapes with the same rank as the input
-      // or unknown rank if input's rank isn't known
-      // can't determine exact shapes until runtime because
-      // we don't know where the tensor containing the split sizes
-      // is located
-      int32 rank = c->Rank(c->input(0));
+      ShapeHandle input = c->input(0);
+      int32 rank = c->Rank(input);
       ShapeHandle output_shape;
+      const Tensor* size_splits = c->input_tensor(1);
       if (rank == InferenceContext::kUnknownRank) {
+        // If the rank of input tensor is unknown, then return unkown shapes.
         output_shape = c->UnknownShape();
+        for (int i = 0; i < num_outputs; ++i) {
+          c->set_output(i, output_shape);
+        }
       } else if (rank == 0) {
+        // Throw error if input is a scalar.
         return errors::InvalidArgument("Can't split scalars");
-      } else {
+      } else if (size_splits == nullptr || !c->ValueKnown(split_dimension)) {
+        // If split dimension or tensor containing the split sizes is unkown,
+        // then return unknown shapes of same rank as input.
         output_shape = c->UnknownShapeOfRank(rank);
-      }
-      for (int i = 0; i < num_outputs; ++i) {
-        c->set_output(i, output_shape);
+        for (int i = 0; i < num_outputs; ++i) {
+          c->set_output(i, output_shape);
+        }
+      } else {
+        // Determine the output shape if split dimension and split sizes are known
+        int64 split_dim = c->Value(split_dimension);
+        TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, split_dim + 1, &input));
+        std::vector<int64> data;
+        if (size_splits->dtype() == DT_INT32) {
+          data = AsInt64<int32>(size_splits, size_splits->shape().dim_size(0));
+        } else {
+          data = AsInt64<int64>(size_splits, size_splits->shape().dim_size(0));
+        }
+        if (num_outputs != data.size()) {
+          return errors::InvalidArgument(
+            "Length of size_splits should be equal to num_outputs");
+        }
+        for (int i = 0; i < num_outputs; ++i) {
+          output_shape = c->UnknownShapeOfRank(rank);
+          TF_RETURN_IF_ERROR(
+              c->ReplaceDim(input, split_dim, c->MakeDim(data[i]), &output_shape));
+          c->set_output(i, output_shape);
+        }
       }
 
       return Status::OK();
@@ -936,6 +961,9 @@ REGISTER_OP("ReverseV2")
     .Doc(R"Doc(
 Reverses specific dimensions of a tensor.
 
+NOTE `tf.reverse` has now changed behavior in preparation for 1.0.
+`tf.reverse_v2` is currently an alias that will be deprecated before TF 1.0.
+
 Given a `tensor`, and a `int32` tensor `axis` representing the set of
 dimensions of `tensor` to reverse. This operation reverses each dimension
 `i` for which there exists `j` s.t. `axis[j] == i`.
@@ -1365,6 +1393,23 @@ to pretend that the value was a constant. Some examples include:
    through the graph that generated the samples from the model.
 *  Adversarial training, where no backprop should happen through the adversarial
    example generation process.
+)Doc");
+
+REGISTER_OP("PreventGradient")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"Doc(
+An identity op that triggers an error if a gradient is requested.
+
+When executed in a graph, this op outputs its input tensor as-is.
+
+When building ops to compute gradients, the TensorFlow gradient system
+will return an error when trying to lookup the gradient of this op,
+because no gradient must ever be registered for this function.  This
+op exists to prevent subtle bugs from silently returning unimplemented
+gradients in some corner cases.
 )Doc");
 
 // --------------------------------------------------------------------------
@@ -2317,6 +2362,39 @@ where(input) ==> [[0, 0, 0],
                   [2, 1, 1]]
 ```
 
+)doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("BroadcastArgs")
+    .Input("s0: T")
+    .Input("s1: T")
+    .Output("r0: T")
+    .Attr("T: {int32, int64} = DT_INT32")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      ShapeHandle shape_x = c->input(0);
+      ShapeHandle shape_y = c->input(1);
+      TF_RETURN_IF_ERROR(c->WithRank(shape_x, 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(shape_y, 1, &unused));
+
+      if (!c->ValueKnown(c->Dim(shape_x, 0)) ||
+          !c->ValueKnown(c->Dim(shape_y, 0))) {
+        c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
+        return Status::OK();
+      }
+
+      int64 x_dim = c->Value(c->Dim(shape_x, 0));
+      int64 y_dim = c->Value(c->Dim(shape_y, 0));
+
+      // Broadcasted shape is going to be as large as the largest dimension.
+      c->set_output(0, c->Vector(std::max(x_dim, y_dim)));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Return the shape of s0 op s1 with broadcast.
+
+Given `s0` and `s1`, tensors that represent shapes, compute `r0`, the
+broadcasted shape. `s0`, `s1` and `r0` are all integer vectors.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -4152,7 +4230,7 @@ input_min: If range is given, this is the min of the range.
 input_max: If range is given, this is the max of the range.
 )doc");
 
-// EXPERIMENTAL: tfdb debugger-inserted ops.
+// EXPERIMENTAL: tfdbg debugger-inserted ops.
 REGISTER_OP("Copy")
     .Input("input: T")
     .Output("output: T")
@@ -4224,6 +4302,43 @@ Counts number of NaNs in the input tensor, for debugging.
 
 input: Input tensor, non-Reference type.
 output: An integer output tensor that is the number of NaNs in the input.
+tensor_name: Name of the input tensor.
+debug_urls: List of URLs to debug targets, e.g.,
+            file:///foo/tfdbg_dump, grpc:://localhost:11011
+)doc");
+
+REGISTER_OP("DebugNumericSummary")
+    .Input("input: T")
+    .Output("output: double")
+    .Attr("T: type")
+    .Attr("tensor_name: string = ''")
+    .Attr("debug_urls: list(string) = []")
+    .SetAllowsUninitializedInput()
+    .Doc(R"doc(
+Debug Numeric Summary Op.
+
+Provide a basic summary of numeric value types, range and distribution.
+
+input: Input tensor, non-Reference type, float or double.
+output: A double tensor of shape [12], the elements of which are:
+  [0]: is initialized (1.0) or not (0.0).
+  [1]: total number of elements
+  [2]: -inf count
+  [3]: negative element count (excluding -inf)
+  [4]: zero element count
+  [5]: positive element count (excluding +inf)
+  [6]: +inf element count
+  [7]: NaN element count
+Output elements [1:8] are all zero, if the tensor is uninitialized.
+  [8]: minimum of all non-inf and non-NaN elements.
+       If uninitialized or no such element exists: +inf.
+  [9]: maximum of all non-inf and non-NaN elements.
+       If uninitialized or no such element exists: -inf.
+  [10]: mean of all non-inf and non-NaN elements.
+        If uninitialized or no such element exists: NaN.
+  [11]: variance of all non-inf and non-NaN elements.
+        If uninitialized or no such element exists: NaN.
+
 tensor_name: Name of the input tensor.
 debug_urls: List of URLs to debug targets, e.g.,
             file:///foo/tfdbg_dump, grpc:://localhost:11011
@@ -4429,6 +4544,51 @@ input_max: The maximum value of the input.
 output_min: This value is copied from input_min.
 output_max: This value is copied from input_max.
 )Doc");
+
+REGISTER_OP("QuantizedInstanceNorm")
+    .Input("x: T")
+    .Input("x_min: float")
+    .Input("x_max: float")
+    .Output("y: T")
+    .Output("y_min: float")
+    .Output("y_max: float")
+    .Attr("T: quantizedtype")
+    .Attr("output_range_given: bool = false")
+    .Attr("given_y_min: float = 0")
+    .Attr("given_y_max: float = 0")
+    .Attr("variance_epsilon: float = 1e-5")
+    .Attr("min_separation: float = 1e-3")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // x should be a rank 4 tensor.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &unused));
+      // Assert x_min and x_max are scalars (rank 0).
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      // y has the same shape as x.
+      TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
+      // y_min and y_max are scalars.
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Quantized Instance normalization.
+
+x: A 4D input Tensor.
+x_min: The value represented by the lowest quantized input.
+x_max: The value represented by the highest quantized input.
+y: A 4D Tensor.
+y_min: The value represented by the lowest quantized output.
+y_max: The value represented by the highest quantized output.
+output_range_given: If True, `given_y_min` and `given_y_min`
+  and `given_y_max` are used as the output range. Otherwise,
+  the implementation computes the output range.
+given_y_min: Output in `y_min` if `output_range_given` is True.
+given_y_max: Output in `y_max` if `output_range_given` is True.
+variance_epsilon: A small float number to avoid dividing by 0.
+min_separation: Minimum value of `y_max - y_min`
+)doc");
 
 namespace {
 

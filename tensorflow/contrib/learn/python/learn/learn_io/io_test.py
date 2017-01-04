@@ -19,18 +19,24 @@ from __future__ import division
 from __future__ import print_function
 
 import random
+import sys
 
-import tensorflow as tf
+# TODO: #6568 Remove this hack that makes dlopen() not crash.
+if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
+  import ctypes
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
+# pylint: disable=wildcard-import
 from tensorflow.contrib.learn.python import learn
 from tensorflow.contrib.learn.python.learn import datasets
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import accuracy_score
-# pylint: disable=wildcard-import
 from tensorflow.contrib.learn.python.learn.learn_io import *
+from tensorflow.python.platform import test
+
 # pylint: enable=wildcard-import
 
 
-class IOTest(tf.test.TestCase):
+class IOTest(test.TestCase):
   # pylint: disable=undefined-variable
   """tf.learn IO operation tests."""
 
@@ -78,8 +84,10 @@ class IOTest(tf.test.TestCase):
       import dask.dataframe as dd  # pylint: disable=g-import-not-at-top
       # test dask.dataframe
       df = pd.DataFrame(
-          dict(a=list("aabbcc"), b=list(range(6))),
-          index=pd.date_range(start="20100101", periods=6))
+          dict(
+              a=list("aabbcc"), b=list(range(6))),
+          index=pd.date_range(
+              start="20100101", periods=6))
       ddf = dd.from_pandas(df, npartitions=3)
       extracted_ddf = extract_dask_data(ddf)
       self.assertEqual(
@@ -120,4 +128,4 @@ class IOTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

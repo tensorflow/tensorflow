@@ -105,7 +105,7 @@ string tensor.
 
 - - -
 
-### `tf.reduce_join(inputs, reduction_indices, keep_dims=None, separator=None, name=None)` {#reduce_join}
+### `tf.reduce_join(inputs, axis=None, keep_dims=False, separator='', name=None, reduction_indices=None)` {#reduce_join}
 
 Joins a string Tensor across the given dimensions.
 
@@ -113,7 +113,7 @@ Computes the string join across dimensions in the given string Tensor of shape
 `[d_0, d_1, ..., d_n-1]`.  Returns a new Tensor created by joining the input
 strings with the given separator (default: empty string).  Negative indices are
 counted backwards from the end, with `-1` being equivalent to `n - 1`.  Passing
-an empty `reduction_indices` joins all strings in linear index order and outputs
+an empty `axis` joins all strings in linear index order and outputs
 a scalar string.
 
 
@@ -138,9 +138,9 @@ tf.reduce_join(a, []) ==> ["abcd"]
 
 *  <b>`inputs`</b>: A `Tensor` of type `string`.
     The input to be joined.  All reduced indices must have non-zero size.
-*  <b>`reduction_indices`</b>: A `Tensor` of type `int32`.
+*  <b>`axis`</b>: A `Tensor` of type `int32`.
     The dimensions to reduce over.  Dimensions are reduced in the
-    order specified.  Omitting `reduction_indices` is equivalent to passing
+    order specified.  Omitting `axis` is equivalent to passing
     `[n-1, n-2, ..., 0]`.  Negative indices from `-n` to `-1` are supported.
 *  <b>`keep_dims`</b>: An optional `bool`. Defaults to `False`.
     If `True`, retain reduced dimensions with length `1`.
@@ -194,7 +194,8 @@ containing the splitted tokens. Empty tokens are ignored.
 
 If `delimiter` is an empty string, each element of the `source` is split
 into individual strings, each containing one byte. (This includes splitting
-multibyte sequences of UTF-8.)
+multibyte sequences of UTF-8.) If delimiter contains multiple bytes, it is
+treated as a set of delimiters with each considered a potential split point.
 
 For example:
 N = 2, source[0] is 'hello world' and source[1] is 'a b c', then the output
@@ -215,16 +216,16 @@ st.values = ['hello', 'world', 'a', 'b', 'c']
 *  <b>`delimiter`</b>: `0-D` string `Tensor`, the delimiter character, the string should
     be length 0 or 1.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If delimiter is not a string.
+
 ##### Returns:
 
   A `SparseTensor` of rank `2`, the strings split according to the delimiter.
   The first column of the indices corresponds to the row in `source` and the
   second column corresponds to the index of the split component in this row.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If delimiter is not a single-byte character.
 
 
 - - -

@@ -39,56 +39,6 @@ using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
-REGISTER_OP("TreePredictions")
-    .Attr("valid_leaf_threshold: float")
-    .Input("input_data: float")
-    .Input("sparse_input_indices: int64")
-    .Input("sparse_input_values: float")
-    .Input("sparse_input_shape: int64")
-    .Input("input_spec: int32")
-
-    .Input("tree: int32")
-    .Input("tree_thresholds: float")
-    .Input("node_per_class_weights: float")
-
-    .Output("predictions: float")
-    .SetShapeFn([](InferenceContext* c) {
-      // The output of TreePredictions is
-      // [node_pcw(evaluate_tree(x), c) for c in classes for x in input_data].
-      DimensionHandle num_points = c->Dim(c->input(0), 0);
-      DimensionHandle num_classes = c->Dim(c->input(7), 1);
-
-      if (c->RankKnown(c->input(3)) && c->Rank(c->input(3)) > 0) {
-        num_points = c->UnknownDim();
-      }
-
-      TF_RETURN_IF_ERROR(c->Subtract(num_classes, 1, &num_classes));
-
-      c->set_output(0, c->Matrix(num_points, num_classes));
-      return Status::OK();
-    })
-    .Doc(R"doc(
-  Returns the per-class probabilities for each input.
-
-  input_data: The training batch's features as a 2-d tensor; `input_data[i][j]`
-   gives the j-th feature of the i-th input.
-  sparse_input_indices: The indices tensor from the SparseTensor input.
-  sparse_input_values: The values tensor from the SparseTensor input.
-  sparse_input_shape: The shape tensor from the SparseTensor input.
-  input_spec: A 1-D tensor containing the type of each column in input_data,
-     (e.g. continuous float, categorical).
-  tree:= A 2-d int32 tensor.  `tree[i][0]` gives the index of the left child
-   of the i-th node, `tree[i][0] + 1` gives the index of the right child of
-   the i-th node, and `tree[i][1]` gives the index of the feature used to
-   split the i-th node.
-  tree_thresholds: `tree_thresholds[i]` is the value used to split the i-th
-   node.
-  node_per_class_weights: `node_per_class_weights[n][c]` records how many
-   training examples have class c and have ended up in node n.
-  predictions: `predictions[i][j]` is the probability that input i is class j.
-  valid_leaf_threshold: Minimum number of samples that have arrived to a leaf
-    to be considered a valid leaf, otherwise use the parent.
-)doc");
 
 class TreePredictions : public OpKernel {
  public:
@@ -214,26 +164,15 @@ class TreePredictions : public OpKernel {
                     errors::InvalidArgument("node_index not in valid range."))
         const int32 left_child = tree(node_index, CHILDREN_INDEX);
         if (left_child == LEAF_NODE) {
-          float sum = node_pcw(node_index, 0);
-          float parent_weight = 0.0;
-          if (sum < valid_leaf_threshold_ && parent >= 0) {
-            VLOG(1) << "not enough samples at leaf, including parent counts."
-                    << "child sum = " << sum;
-            float parent_sum = node_pcw(parent, 0);
-            // Weight the parent's counts just enough so that the new sum is
-            // valid_leaf_threshold_, but never give any counts a weight of
-            // more than 1.
-            parent_weight = std::min(1.0f,
-                                (valid_leaf_threshold_ - sum) / parent_sum);
-            sum += parent_weight * parent_sum;
-            VLOG(1) << "Sum w/ parent included = " << sum;
-          }
+          const int32 flat_leaf_index = node_index * num_classes + 1;
+          const int32 flat_parent_index = parent * num_classes + 1;
+          std::vector<float> means(num_classes - 1);
+          tensorforest::GetParentWeightedMean(
+              node_pcw(node_index, 0), node_pcw.data() + flat_leaf_index,
+              node_pcw(parent, 0), node_pcw.data() + flat_parent_index,
+              valid_leaf_threshold_, num_classes - 1, &means);
           for (int c = 1; c < num_classes; c++) {
-            float w = node_pcw(node_index, c);
-            if (parent_weight > 0.0) {
-              w += parent_weight * node_pcw(parent, c);
-            }
-            out(i, c - 1) = w / sum;
+            out(i, c - 1) = means[c - 1];
           }
           break;
         } else if (left_child == FREE_NODE) {

@@ -12,19 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tensorflow.ops.argmax_op."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
 
-class ArgMaxTest(tf.test.TestCase):
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
 
-  def _testArg(self, method, x, dimension,
-               expected_values, use_gpu=False, expected_err_re=None):
+
+class ArgMaxTest(test.TestCase):
+
+  def _testArg(self,
+               method,
+               x,
+               dimension,
+               expected_values,
+               use_gpu=False,
+               expected_err_re=None):
     with self.test_session(use_gpu=use_gpu):
       ans = method(x, dimension=dimension)
       if expected_err_re is None:
@@ -35,28 +42,30 @@ class ArgMaxTest(tf.test.TestCase):
         with self.assertRaisesOpError(expected_err_re):
           ans.eval()
 
-  def _testBothArg(self, method, x, dimension,
-                   expected_values, expected_err_re=None):
-    self._testArg(method, x, dimension,
-                  expected_values, True, expected_err_re)
-    self._testArg(method, x, dimension,
-                  expected_values, False, expected_err_re)
+  def _testBothArg(self,
+                   method,
+                   x,
+                   dimension,
+                   expected_values,
+                   expected_err_re=None):
+    self._testArg(method, x, dimension, expected_values, True, expected_err_re)
+    self._testArg(method, x, dimension, expected_values, False, expected_err_re)
 
   def _testBasic(self, dtype):
-    x = np.asarray(100*np.random.randn(200), dtype=dtype)
+    x = np.asarray(100 * np.random.randn(200), dtype=dtype)
 
     # Check that argmin and argmax match numpy along the primary
     # dimension
-    self._testBothArg(tf.argmax, x, 0, x.argmax())
-    self._testBothArg(tf.argmin, x, 0, x.argmin())
+    self._testBothArg(math_ops.argmax, x, 0, x.argmax())
+    self._testBothArg(math_ops.argmin, x, 0, x.argmin())
 
   def _testDim(self, dtype):
-    x = np.asarray(100*np.random.randn(3, 2, 4, 5, 6), dtype=dtype)
+    x = np.asarray(100 * np.random.randn(3, 2, 4, 5, 6), dtype=dtype)
 
     # Check that argmin and argmax match numpy along all dimensions
-    for dim in range(5):
-      self._testBothArg(tf.argmax, x, dim, x.argmax(dim))
-      self._testBothArg(tf.argmin, x, dim, x.argmin(dim))
+    for dim in range(-5, 5):
+      self._testBothArg(math_ops.argmax, x, dim, x.argmax(dim))
+      self._testBothArg(math_ops.argmin, x, dim, x.argmin(dim))
 
   def testFloat(self):
     self._testBasic(np.float32)
@@ -76,11 +85,11 @@ class ArgMaxTest(tf.test.TestCase):
 
   def testEmpty(self):
     with self.test_session():
-      for op in tf.argmin, tf.argmax:
+      for op in math_ops.argmin, math_ops.argmax:
         with self.assertRaisesOpError(
             r"Reduction axis 0 is empty in shape \[0\]"):
           op([], 0).eval()
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

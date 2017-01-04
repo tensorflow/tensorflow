@@ -154,6 +154,13 @@ Same meaning as `inverse_event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.bijector.SoftmaxCentered.graph_parents` {#SoftmaxCentered.graph_parents}
+
+Returns this `Bijector`'s graph_parents as a Python list.
+
+
+- - -
+
 #### `tf.contrib.distributions.bijector.SoftmaxCentered.inverse(y, name='inverse', **condition_kwargs)` {#SoftmaxCentered.inverse}
 
 Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
@@ -277,13 +284,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.SoftmaxCentered.name` {#SoftmaxCentered.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.SoftmaxCentered.parameters` {#SoftmaxCentered.parameters}
-
-Returns this `Bijector`'s parameters as a name/value dictionary.
 
 
 - - -

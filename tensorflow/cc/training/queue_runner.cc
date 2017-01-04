@@ -33,6 +33,16 @@ Status QueueRunner::New(const QueueRunnerDef& queue_runner_def,
   return (*result)->Init(queue_runner_def);
 }
 
+void QueueRunner::AddErrorCallback(const std::function<void(Status)>& cb) {
+  mutex_lock l(cb_mu_);
+  callbacks_.push_back(cb);
+}
+
+void QueueRunner::ClearErrorCallbacks() {
+  mutex_lock l(cb_mu_);
+  callbacks_.clear();
+}
+
 Status QueueRunner::Init(const QueueRunnerDef& queue_runner_def) {
   queue_name_ = queue_runner_def.queue_name();
   enqueue_op_names_.clear();
@@ -100,14 +110,13 @@ Status QueueRunner::Start(Session* sess, int wait_for) {
 }
 
 void QueueRunner::Stop(Session* sess) {
-  DCHECK(coord_ != nullptr);
-  if (cancel_op_name_.empty()) {
-    return;
-  }
   if (coord_ != nullptr) {
     coord_->WaitForStop();
   }
-  UpdateStatus(sess->Run({}, {}, {cancel_op_name_}, nullptr));
+  if (!cancel_op_name_.empty()) {
+    UpdateStatus(sess->Run({}, {}, {cancel_op_name_}, nullptr));
+  }
+  stopped_ = true;
 }
 
 Status QueueRunner::Join() {
@@ -126,6 +135,10 @@ void QueueRunner::UpdateStatus(const Status& status) {
   }
   if (coord_) {
     coord_->ReportStatus(status);
+  }
+  mutex_lock l(cb_mu_);
+  for (auto& cb : callbacks_) {
+    cb(status);
   }
 }
 
@@ -153,7 +166,9 @@ void QueueRunner::Run(Session* sess, const string& enqueue_op) {
     last_run = (runs_ == 0);
   }
 
-  if (IsQueueClosed(status)) {
+  // Close the queue unless the coordinator is shutting down since the cancel op
+  // will be run anway in this case.
+  if (IsQueueClosed(status) && (!coord_ || !coord_->ShouldStop())) {
     if (last_run && !close_op_name_.empty()) {
       UpdateStatus(sess->Run({}, {}, {close_op_name_}, nullptr));
     }

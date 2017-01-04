@@ -2,12 +2,14 @@
 
 Computes recall@k of the predictions with respect to sparse labels.
 
-If `class_id` is specified, we calculate recall by considering only the
-    entries in the batch for which `class_id` is in the label, and computing
-    the fraction of them for which `class_id` is in the top-k `predictions`.
-If `class_id` is not specified, we'll calculate recall as how often on
-    average a class among the labels of a batch entry is in the top-k
-    `predictions`.
+If `class_id` is not specified, we'll calculate recall as the ratio of true
+    positives (i.e., correct predictions, items in the top `k` highest
+    `predictions` that are found in the corresponding row in `labels`) to
+    actual positives (the full `labels` row).
+If `class_id` is specified, we calculate recall by considering only the rows
+    in the batch for which `class_id` is in `labels`, and computing the
+    fraction of them for which `class_id` is in the corresponding row in
+    `labels`.
 
 `streaming_sparse_recall_at_k` creates two local variables,
 `true_positive_at_<k>` and `false_negative_at_<k>`, that are used to compute
@@ -44,7 +46,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 *  <b>`class_id`</b>: Integer class ID for which we want binary metrics. This should be
     in range [0, num_classes), where num_classes is the last dimension of
     `predictions`. If class_id is outside this range, the method returns NAN.
-*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to the the first
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to the first
     [D1, ... DN] dimensions of `predictions` and `labels`.
 *  <b>`metrics_collections`</b>: An optional list of collections that values should
     be added to.

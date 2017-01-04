@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tensorflow.contrib.graph_editor."""
 from __future__ import absolute_import
 from __future__ import division
@@ -20,26 +19,29 @@ from __future__ import print_function
 
 import re
 
-import tensorflow as tf
 from tensorflow.contrib import graph_editor as ge
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops as ops_lib
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
 
 
-class SelectTest(tf.test.TestCase):
+class SelectTest(test.TestCase):
 
   def setUp(self):
-    self.graph = tf.Graph()
+    self.graph = ops_lib.Graph()
     with self.graph.as_default():
-      self.a = tf.constant([1., 1.], shape=[2], name="a")
-      with tf.name_scope("foo"):
-        self.b = tf.constant([2., 2.], shape=[2], name="b")
-        self.c = tf.add(self.a, self.b, name="c")
-        self.d = tf.constant([3., 3.], shape=[2], name="d")
-        with tf.name_scope("bar"):
-          self.e = tf.add(self.c, self.d, name="e")
-          self.f = tf.add(self.c, self.d, name="f")
-          self.g = tf.add(self.c, self.a, name="g")
-          with tf.control_dependencies([self.c.op]):
-            self.h = tf.add(self.f, self.g, name="h")
+      self.a = constant_op.constant([1., 1.], shape=[2], name="a")
+      with ops_lib.name_scope("foo"):
+        self.b = constant_op.constant([2., 2.], shape=[2], name="b")
+        self.c = math_ops.add(self.a, self.b, name="c")
+        self.d = constant_op.constant([3., 3.], shape=[2], name="d")
+        with ops_lib.name_scope("bar"):
+          self.e = math_ops.add(self.c, self.d, name="e")
+          self.f = math_ops.add(self.c, self.d, name="f")
+          self.g = math_ops.add(self.c, self.a, name="g")
+          with ops_lib.control_dependencies([self.c.op]):
+            self.h = math_ops.add(self.f, self.g, name="h")
 
   def test_regex(self):
     """Test for ge.select.can_be_regex and ge.select.make_regex."""
@@ -58,10 +60,12 @@ class SelectTest(tf.test.TestCase):
     # TODO(fkp): parameterise
     self.assertEqual(len(ge.select.filter_ops(self.graph, True)), 8)
     self.assertEqual(
-        len(ge.select.filter_ops(self.graph,
+        len(
+            ge.select.filter_ops(self.graph,
                                  lambda op: op.node_def.op == "Const")), 3)
     self.assertEqual(
-        len(ge.select.filter_ops(self.graph,
+        len(
+            ge.select.filter_ops(self.graph,
                                  lambda op: op.node_def.op == "Add")), 5)
     self.assertEqual(
         len(ge.select.filter_ops_from_regex(self.graph, r"^.*\b[abc]$")), 3)
@@ -78,12 +82,12 @@ class SelectTest(tf.test.TestCase):
     """Test for ge.select.get_ops_ios."""
     control_outputs = ge.util.ControlOutputs(self.graph)
     self.assertEqual(
-        len(ge.select.get_ops_ios(self.h.op,
-                                  control_ios=control_outputs)), 3)
+        len(ge.select.get_ops_ios(
+            self.h.op, control_ios=control_outputs)), 3)
     self.assertEqual(len(ge.select.get_ops_ios(self.h.op)), 2)
     self.assertEqual(
-        len(ge.select.get_ops_ios(self.c.op,
-                                  control_ios=control_outputs)), 6)
+        len(ge.select.get_ops_ios(
+            self.c.op, control_ios=control_outputs)), 6)
     self.assertEqual(len(ge.select.get_ops_ios(self.c.op)), 5)
 
   def test_compute_boundary_ts_0(self):
@@ -101,6 +105,19 @@ class SelectTest(tf.test.TestCase):
     self.assertEqual(list(output_ts), [self.h])
     self.assertEqual(list(inside_ts), [self.g])
 
+  def test_compute_boundary_ts_2(self):
+    """Test for ge.select.compute_boundary_ts."""
+    graph = ops_lib.Graph()
+    with graph.as_default():
+      a = constant_op.constant(1, name="a")
+      b = constant_op.constant(1, name="b")
+      c = math_ops.add(a, b, name="c")
+      _ = a + c
+    input_ts, output_ts, inside_ts = ge.select.compute_boundary_ts([a.op, c.op])
+    self.assertEqual(list(input_ts), [b])
+    self.assertEqual(list(output_ts), [a, c])
+    self.assertEqual(list(inside_ts), [a])
+
   def test_get_within_boundary_ops_0(self):
     """Test for test_get_within_boundary_ops."""
     control_outputs = ge.util.ControlOutputs(self.graph)
@@ -115,9 +132,7 @@ class SelectTest(tf.test.TestCase):
   def test_get_within_boundary_ops_1(self):
     """Test for ge.select.test_get_within_boundary_ops."""
     ops = ge.select.get_within_boundary_ops(
-        ops=self.graph,
-        seed_ops=self.h.op,
-        boundary_ops=[self.f.op, self.g.op])
+        ops=self.graph, seed_ops=self.h.op, boundary_ops=[self.f.op, self.g.op])
     self.assertEqual(len(ops), 3)
 
   def test_get_walks_intersection(self):
@@ -134,8 +149,7 @@ class SelectTest(tf.test.TestCase):
     parameters = (
         (("^foo/",), 7),
         (("^foo/bar/",), 4),
-        (("^foo/bar/", "a"), 5),
-    )
+        (("^foo/bar/", "a"), 5),)
     for param, length in parameters:
       ops = ge.select.select_ops(*param, graph=self.graph)
       self.assertEqual(len(ops), length)
@@ -143,8 +157,7 @@ class SelectTest(tf.test.TestCase):
   def test_select_ts(self):
     parameters = (
         (".*:0", 8),
-        (r".*/bar/\w+:0", 4),
-    )
+        (r".*/bar/\w+:0", 4),)
     for regex, length in parameters:
       ts = ge.select.select_ts(regex, graph=self.graph)
       self.assertEqual(len(ts), length)
@@ -152,12 +165,12 @@ class SelectTest(tf.test.TestCase):
   def test_select_ops_and_ts(self):
     parameters = (
         (("^foo/.*",), 7, 0),
-        (("^foo/.*", "(?#ts)^foo/bar/.*"), 7, 4),
-    )
+        (("^foo/.*", "(?#ts)^foo/bar/.*"), 7, 4),)
     for param, l0, l1 in parameters:
       ops, ts = ge.select.select_ops_and_ts(*param, graph=self.graph)
       self.assertEqual(len(ops), l0)
       self.assertEqual(len(ts), l1)
 
+
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

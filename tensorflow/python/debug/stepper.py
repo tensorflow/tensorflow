@@ -17,10 +17,39 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
+
+import six
+
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.debug import debug_data
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import session_ops
+
+
+# TODO(cais): Use nest.flatten once it handles nest Dicts correctly.
+def _flatten_fetches(fetches):
+  """Flatten list, tuple of fetches, or a single fetch into a list of fetches.
+
+  Args:
+    fetches: The fetches to flatten: Can be a single Tensor, Op, or a
+      potentially nested list, tuple or dict of such individual fetches.
+
+  Returns:
+    The fetches flattened to a list.
+  """
+
+  flattened = []
+  if isinstance(fetches, (list, tuple)):
+    for fetch in fetches:
+      flattened.extend(_flatten_fetches(fetch))
+  elif isinstance(fetches, dict):
+    for key in fetches:
+      flattened.extend(_flatten_fetches(fetches[key]))
+  else:
+    flattened.append(fetches)
+
+  return flattened
 
 
 class NodeStepper(object):
@@ -52,7 +81,7 @@ class NodeStepper(object):
     a = tf.Variable(1.0, name="a")
     b = tf.Variable(2.0, anme="b")
     c = tf.add(a, b, name="c")
-    d = tf.mul(a, c, name="d")
+    d = tf.multiply(a, c, name="d")
 
     sess = tf.Session()
     sess.run(tf.initialize_all_varialbes())
@@ -71,33 +100,22 @@ class NodeStepper(object):
   # the stepper is capable of using dumped intermediate tensors.
   FEED_TYPE_INTERMEDIATE = "intermediate"
 
-  def __init__(self, sess, fetch, feed_dict=None):
+  def __init__(self, sess, fetches, feed_dict=None):
     """Constructor for Debugger.
 
     Args:
       sess: (Session) the TensorFlow Session to step in.
-      fetch: (str or TensorFlow graph element) A single fetched Tensor or Op,
-        or a name (str) representing the Tensor or Op. In the case of a name
-        str, the graph will be searched to find the corresponding Tensor or Op.
-      feed_dict: (dict or None) feed dict to be used in this stepper instance.
-
-    TODO(cais): Currently the stepper supports a single fetch. Support list,
-      tuple or dict of feeds, as in the Session run() interface.
+      fetches: Same as the fetches input argument to `Session.run()`.
+      feed_dict: Same as the feed_dict input argument to `Session.run()`.
     """
 
     self._sess = sess
 
-    if isinstance(fetch, str):
-      # Fetch target is a string. Assume it is the name of the Tensor or Op and
-      # will attempt to find it in the Session's graph.
-      self._fetch_name = fetch
-    elif isinstance(fetch, list) or isinstance(fetch, tuple) or isinstance(
-        fetch, dict):
-      raise NotImplementedError(
-          "list, tuple or dict fetches are not supported yet.")
-    else:
-      self._fetch_name = fetch.name
-    self._fetch = self._sess.graph.as_graph_element(self._fetch_name)
+    self._fetches = fetches
+    flattened_fetches = _flatten_fetches(fetches)
+
+    self._fetch_names, self._fetch_list = self._get_fetch_and_name_lists(
+        flattened_fetches)
 
     # A map from Variable name to initializer op.
     self._variable_initializers = {}
@@ -110,9 +128,10 @@ class NodeStepper(object):
     self._non_control_output_targets = {}
 
     # Sorted transitive closure of the fetched node.
-    self._sorted_transitive_closure = self._dfs_visit(self._sess.graph,
-                                                      self._fetch)
-    self._transitive_closure_set = set(self._sorted_transitive_closure)
+    self._sorted_nodes, self._closure_elements = self._dfs_visit(
+        self._sess.graph, self._fetch_list)
+
+    self._transitive_closure_set = set(self._sorted_nodes)
 
     # A map from Variable name to the old values (before any cont() calls).
     self._cached_variable_values = {}
@@ -128,9 +147,13 @@ class NodeStepper(object):
     self._tensor_handles = {}
 
     # Feed dict from the client.
-    self._client_feed_dict = feed_dict
-    if not self._client_feed_dict:
-      self._client_feed_dict = {}
+    self._client_feed_dict = {}
+    if feed_dict:
+      for key in feed_dict:
+        if isinstance(key, ops.Tensor):
+          self._client_feed_dict[key.name] = feed_dict[key]
+        else:
+          self._client_feed_dict[key] = feed_dict[key]
 
     # Overriding tensor values.
     self._override_tensors = {}
@@ -138,7 +161,31 @@ class NodeStepper(object):
     # What the feed types were used by the last cont() call.
     self._last_feed_types = {}
 
-  def _dfs_visit(self, graph, elem):
+  def _get_fetch_and_name_lists(self, flattened_fetches):
+    """Get the lists of fetches and their names.
+
+    Args:
+      flattened_fetches: A list of fetches or their names. Can mix fetches and
+        names.
+
+    Returns:
+      (list of str): A list of the names of the fetches.
+      (list): A list of the fetches.
+    """
+
+    fetch_names = []
+    fetch_list = []
+    for fetch in flattened_fetches:
+      if isinstance(fetch, six.string_types):
+        fetch_names.append(fetch)
+        fetch_list.append(self._sess.graph.as_graph_element(fetch))
+      else:
+        fetch_names.append(fetch.name)
+        fetch_list.append(fetch)
+
+    return fetch_names, fetch_list
+
+  def _dfs_visit(self, graph, elem_list):
     """Trace back the input of a graph element, using depth-first search.
 
     Uses non-recursive implementation to prevent stack overflow for deep
@@ -151,22 +198,27 @@ class NodeStepper(object):
 
     Args:
       graph: A TF graph instance.
-      elem: A graph element: a Tensor or an Operation.
+      elem_list: list of graph elements: a Tensor or an Operation.
 
     Returns:
-      (list of str) A topologically-sorted list of all graph element names
-        in the transitive closure of elem. Obviously, the topological sort is
-        not unique in general. The return value here is just an arbitrary one
-        of potentially many possible topological sorts.
+      (list of str) A topologically-sorted list of all nodes (not tensors)
+        in the transitive closure of elem_list. Obviously, the topological sort
+         is not unique in general. The return value here is just an arbitrary
+         one of potentially many possible topological sorts.
+      (list of str) A list of all graph elements (nodes and/or tensors) in the
+        transitive closure.
     """
 
     # These set should hold only strings, i.e, names of the nodes.
-    done = set()  # Keep track of visited nodes.
+    done = set()  # Keep track of visited graph elements.
 
     # A list of str: Names of the topologically-sorted graph elements.
-    sorted_node_list = [elem.name]
+    node_inputs = dict()  # New: Input map of nodes in the transitive closure.
 
-    elem_stack = [elem]
+    elem_stack = copy.copy(elem_list)
+
+    # Graph elements in the transitive closure, including the nodes and tensors.
+    closure_elements = [elem.name for elem in elem_list]
 
     while elem_stack:
       curr_elem = elem_stack.pop()
@@ -177,6 +229,12 @@ class NodeStepper(object):
       non_control_inputs = [inp for inp in curr_node.inputs]
       control_inputs = [inp for inp in curr_node.control_inputs]
       all_inputs = set(non_control_inputs + control_inputs)
+
+      if curr_node.name not in node_inputs:
+        all_input_nodes = set()
+        for inp in all_inputs:
+          all_input_nodes.add(self._get_node(inp).name)
+        node_inputs[curr_node.name] = all_input_nodes
 
       # Iterate through the (non-control) inputs.
       for inp in all_inputs:
@@ -189,7 +247,7 @@ class NodeStepper(object):
           else:
             self._non_control_output_targets[inp.name].add(curr_elem.name)
 
-          if (inp.op.type == "Variable" and
+          if (inp.op.type in ["Variable", "VariableV2"] and
               inp.name not in self._variable_initializers):
             # Obtain the initializer op of the variable, in case the Variable's
             # value needs to be restored later.
@@ -203,20 +261,81 @@ class NodeStepper(object):
           continue
 
         elem_stack.append(inp)
-        sorted_node_list.append(inp.name)
+        closure_elements.append(inp.name)
 
-    sorted_node_list.reverse()
-    return sorted_node_list
+    # Now that we have traversed the transitive closure and obtained the
+    # node-input map, we can topologically sort them.
+    sorted_nodes = []
+    stack = []
+    for node in node_inputs:
+      if not node_inputs[node]:
+        stack.append(node)
+    for node in stack:
+      del node_inputs[node]
 
-  def sorted_transitive_closure(self):
-    """Get a sorted list of transitive inputs to the fetch of the stepper.
+    while stack:
+      curr_node = stack.pop()
+      sorted_nodes.append(curr_node)
+
+      # Iterate through the node-input map and remove the child.
+      pushes = []
+      for node in node_inputs:
+        if curr_node in node_inputs[node]:
+          node_inputs[node].remove(curr_node)
+          if not node_inputs[node]:
+            pushes.append(node)
+
+      # Delete new pushes from node-input map.
+      for node in pushes:
+        del node_inputs[node]
+
+      stack.extend(pushes)
+
+    return sorted_nodes, closure_elements
+
+  def sorted_nodes(self):
+    """Get a topologically-sorted list of node names of the stepper.
+
+    These are the names of the nodes (i.e., not Tensors) in the transitive
+    closure of the stepper, in a topologically-sorted order.
 
     Returns:
       (list of str): Sorted transitive inputs to the fetch of the stepper
         instance. The fetch itself is included in the list.
     """
 
-    return self._sorted_transitive_closure
+    return self._sorted_nodes
+
+  def closure_elements(self):
+    """Get a name list of the graph elements of the stepper.
+
+    Returns:
+      (list of str): names of the graph elements (i.e., nodes and tensors) in
+    the transitive closure of the stepper, in a random order.
+    """
+
+    return self._closure_elements
+
+  def output_slots_in_closure(self, node_name):
+    """Get the output tensors in the transitive closure from node.
+
+    Args:
+      node_name: (str) Name of the node in question.
+
+    Returns:
+      (list of int) Output slots of the output tensors of the node that are in
+        the transitive closure of the stepper.
+    """
+
+    node = self._sess.graph.as_graph_element(node_name)
+
+    tensor_slots = []
+    for i, _ in enumerate(node.outputs):
+      tensor_name = node_name + ":%d" % i
+      if tensor_name in self._closure_elements:
+        tensor_slots.append(i)
+
+    return tensor_slots
 
   def is_feedable(self, name):
     """Determine if a graph element if feedable.
@@ -228,7 +347,7 @@ class NodeStepper(object):
       (bool) whether the graph element is feedable.
     """
 
-    if not isinstance(name, str):
+    if not isinstance(name, six.string_types):
       raise TypeError("Expected type str; got type %s" % type(name))
 
     elem = self._sess.graph.as_graph_element(name)
@@ -246,13 +365,15 @@ class NodeStepper(object):
         tree to the fetched graph element of this stepper instance.
     """
 
-    if not isinstance(tensor_name, str):
+    if not isinstance(tensor_name, six.string_types):
       raise TypeError("Expected type str; got type %s" % type(tensor_name))
 
-    if tensor_name not in self._transitive_closure_set:
+    node_name = self._get_node_name(tensor_name)
+    if node_name not in self._transitive_closure_set:
       raise ValueError(
           "Cannot override tensor \"%s\" because it does not exist in the "
-          "input tree to the fetch \"%s\"" % (tensor_name, self._fetch_name))
+          "input tree to the fetch \"%s\"" %
+          (tensor_name, repr(self._fetch_names)))
 
     self._override_tensors[tensor_name] = overriding_val
 
@@ -320,7 +441,10 @@ class NodeStepper(object):
 
     self._last_feed_types = {}
 
-    if isinstance(target, str):
+    # The feeds to be used in the Session.run() call.
+    feeds = {}
+
+    if isinstance(target, six.string_types):
       # Fetch target is a string. Assume it is the name of the Tensor or Op and
       # will attempt to find it in the Session's graph.
       target_name = target
@@ -328,16 +452,42 @@ class NodeStepper(object):
       target_name = target.name
 
     graph_element = self._sess.graph.as_graph_element(target_name)
+    # Any additional tensor handles to obtain in this cont() action.
+    additional_handle_requests = []
+
     if (isinstance(graph_element, ops.Tensor) and
         graph_element.op.type == "Placeholder"):
-      raise ValueError("Should not call cont() on a Placeholder")
+      self._last_feed_types[graph_element.name] = self.FEED_TYPE_CLIENT
+      return self._client_feed_dict[graph_element.name]
+    elif (isinstance(graph_element, ops.Operation) and
+          graph_element.type == "Placeholder"):
+      tensor_name = graph_element.name + ":0"
+      self._last_feed_types[tensor_name] = self.FEED_TYPE_CLIENT
+      return self._client_feed_dict[tensor_name]
+
+    if isinstance(graph_element, ops.Operation) and graph_element.outputs:
+      # Check if this op has any output tensors that also fall into this
+      # stepper's transitive closure.
+      node_outputs = [
+          output.name for output in graph_element.outputs
+          if output.name in self._closure_elements
+      ]
+      if node_outputs:
+        # The target is an op with at least one output within the transitive
+        # closure. The cont() action will amount to using the 0-th
+        # output Tensor as the target, as well as obtaining handles to it
+        # and to the rest of the outputs tensors in the transitive closure
+        # (if any).
+        target_name = node_outputs[0]
+        additional_handle_requests = node_outputs[1:]
 
     # Verify that the target is in the transitive closure of the stepper's
     # fetch.
-    if target_name not in self._transitive_closure_set:
+    target_node_name = self._get_node_name(target_name)
+    if target_node_name not in self._transitive_closure_set:
       raise ValueError(
           "Target \"%s\" is not in the transitive closure for the fetch of the "
-          "stepper: \"%s\"." % (target_name, self._fetch_name))
+          "stepper: \"%s\"." % (target_name, repr(self._fetch_names)))
 
     # Check if a cached tensor handle can be used on the fetch directly.
     if use_tensor_handles and target_name in self._tensor_handles:
@@ -349,9 +499,6 @@ class NodeStepper(object):
       # Override is available. Return the value right away.
       self._last_feed_types[target_name] = self.FEED_TYPE_OVERRIDE
       return self._override_tensors[target_name]
-
-    # The feeds to be used in the Session.run() call.
-    feeds = {}
 
     # Keep track of which variables are restored in this cont() call.
     restored_variables = set()
@@ -408,7 +555,7 @@ class NodeStepper(object):
         # the recipient node is not Identity. In that case, the Variable
         # needs to be marked as dirty and its current value recorded, due to
         # the fact that the receiving op may mutate the value of the Variable.
-        if (is_inp_ref and inp.op.type == "Variable" and
+        if (is_inp_ref and inp.op.type in ["Variable", "VariableV2"] and
             curr_node.type != "Identity"):
           # Mark the variable as dirty.
           touched_variables.add(inp.name)
@@ -432,9 +579,9 @@ class NodeStepper(object):
           # Tensor handle found in cache.
           feeds[inp] = self._tensor_handles[inp.name].eval()
           self._last_feed_types[inp.name] = self.FEED_TYPE_HANDLE
-        elif inp in self._client_feed_dict:
+        elif inp.name in self._client_feed_dict:
           # This input is available in the client feed_dict.
-          feeds[inp] = self._client_feed_dict[inp]
+          feeds[inp] = self._client_feed_dict[inp.name]
           self._last_feed_types[inp.name] = self.FEED_TYPE_CLIENT
         else:
           # There is no feed available for this input. So keep tracing its
@@ -465,16 +612,30 @@ class NodeStepper(object):
       # No return value for a run of an Operation
     else:
       # This is a Tensor: Will get tensor handle and cache it.
-      target_handle = self._sess.run(session_ops.get_session_handle(fetched),
-                                     feed_dict=feeds,
-                                     options=run_options)
-      self._tensor_handles[target_name] = target_handle
+      # Will also get the additional requested tensor handles (if any).
+      tensors_to_get_handles_for = [fetched]
+      handle_names = [target_name]
 
-      return target_handle.eval()
+      tensors_to_get_handles_for.extend([
+          self._sess.graph.as_graph_element(h)
+          for h in additional_handle_requests
+      ])
+      handle_names.extend(additional_handle_requests)
+
+      for handle_name, tensor in zip(handle_names, tensors_to_get_handles_for):
+        handle = self._sess.run(session_ops.get_session_handle(tensor),
+                                feed_dict=feeds,
+                                options=run_options)
+        self._tensor_handles[handle_name] = handle
+
+      return self._tensor_handles[target_name].eval()
 
     # Invalidate caches at the end.
     for touched_variable in touched_variables:
       self._invalidate_transitively_outgoing_cache(touched_variable)
+
+  def _get_node_name(self, graph_element_name):
+    return graph_element_name.split(":")[0]
 
   def _invalidate_transitively_outgoing_cache(self, source_element):
     """Invalidate the cached tensor handles by tracing output.
@@ -498,10 +659,14 @@ class NodeStepper(object):
 
     # First, use cached invalidation paths to eliminate some cached tensor
     # handles.
+    to_delete = []
     for handle_name in self._tensor_handles:
       if (handle_name in self._cached_invalidation_path and
           source_element in self._cached_invalidation_path[handle_name]):
-        del self._tensor_handles[handle_name]
+        to_delete.append(handle_name)
+
+    for handle_name in to_delete:
+      del self._tensor_handles[handle_name]
 
     if not self._tensor_handles:
       return
@@ -540,11 +705,22 @@ class NodeStepper(object):
       The same return value as self.cont() as called on the final fetch.
     """
 
-    return self.cont(
-        self._fetch,
-        use_tensor_handles=False,
-        use_overrides=False,
-        restore_variable_values=True)
+    self.restore_variable_values()
+    return self._sess.run(self._fetches, feed_dict=self._client_feed_dict)
+
+  def restore_variable_values(self):
+    """Restore variables to the initial values.
+
+    "Initial value" refers to the value when this NodeStepper instance was
+    first constructed.
+    """
+
+    for var_name in self._dirty_variables:
+      self._sess.run(self._variable_initializers[var_name],
+                     feed_dict={
+                         self._variable_initial_values[var_name]:
+                             self._cached_variable_values[var_name]
+                     })
 
   def handle_names(self):
     """Return names of the TensorHandles that the debugger is holding.
@@ -552,7 +728,17 @@ class NodeStepper(object):
     Returns:
       (list of str) Name of the tensors for which TensorHandle is available.
     """
+
     return [name for name in self._tensor_handles]
+
+  def handle_node_names(self):
+    """Get list of names of the nodes for which handles are available.
+
+    Returns:
+      (set of str) List of names of the nodes.
+    """
+
+    return set([self._get_node_name(name) for name in self._tensor_handles])
 
   def dirty_variables(self):
     """Get the set of variables that are currently "dirty".
@@ -568,6 +754,47 @@ class NodeStepper(object):
 
     return self._dirty_variables
 
+  def is_placeholder(self, graph_element_name):
+    """Check whether a graph element is a Placeholder, by name.
+
+    Args:
+      graph_element_name: (str) Name of the tensor or op to be tested.
+
+    Returns:
+      (bool) Whether the graph element of the specified name is a Placeholder
+        op or the output Tensor of a Placeholder op.
+
+    Raises:
+      ValueError: If graph_element_name is not in the transitive closure of the
+        stepper instance.
+    """
+
+    node_name = self._get_node_name(graph_element_name)
+    if node_name not in self.sorted_nodes():
+      raise ValueError(
+          "%s is not in the transitive closure of this NodeStepper "
+          "instance" % graph_element_name)
+
+    graph_element = self._sess.graph.as_graph_element(graph_element_name)
+    if not isinstance(graph_element, ops.Operation):
+      graph_element = graph_element.op
+    return graph_element.type == "Placeholder"
+
+  def placeholders(self):
+    """Get the list of Placeholder Tensors in the transitive closure.
+
+    Returns:
+      (list of str) A list of Placeholder Tensors or ops in the transitive
+        closure.
+    """
+
+    placeholders = []
+    for item in self.sorted_nodes():
+      if self.is_placeholder(item):
+        placeholders.append(item)
+
+    return placeholders
+
   def get_tensor_value(self, tensor_name):
     """Get the value of a tensor that the stepper has access to.
 
@@ -582,7 +809,11 @@ class NodeStepper(object):
         or through a TensorHandle.
     """
 
-    if tensor_name in self._override_tensors:
+    if self.is_placeholder(tensor_name):
+      if ":" not in tensor_name:
+        tensor_name += ":0"
+      return self._client_feed_dict[tensor_name]
+    elif tensor_name in self._override_tensors:
       return self._override_tensors[tensor_name]
     elif tensor_name in self._tensor_handles:
       return self._tensor_handles[tensor_name].eval()
@@ -590,9 +821,6 @@ class NodeStepper(object):
       raise ValueError(
           "This stepper instance does not have access to the value of "
           "tensor \"%s\"" % tensor_name)
-
-  def get_fetch_result(self):
-    return self.get_tensor_value(self._fetch_name)
 
   def override_names(self):
     """Return names of the TensorHandles that the debugger is holding.

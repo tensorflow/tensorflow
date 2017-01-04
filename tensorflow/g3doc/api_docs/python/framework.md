@@ -785,18 +785,23 @@ with g.colocate_with(a):
 `b` and `c` will always be colocated with `a`, no matter where `a`
 is eventually placed.
 
+**NOTE** Using a colocation scope resets any existing device constraints.
+
+If `op` is `None` then `ignore_existing` must be `True` and the new
+scope resets all colocation and device constraints.
+
 ##### Args:
 
 
-*  <b>`op`</b>: The op to colocate all created ops with.
+*  <b>`op`</b>: The op to colocate all created ops with, or `None`.
 *  <b>`ignore_existing`</b>: If true, only applies colocation of this op within
     the context, rather than applying all colocation properties
-    on the stack.
+    on the stack.  If `op` is `None`, this value must be `True`.
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if op is None.
+*  <b>`ValueError`</b>: if op is None but ignore_existing is False.
 
 ##### Yields:
 
@@ -1082,6 +1087,13 @@ regular expression:
 
 - - -
 
+#### `tf.Operation.__repr__()` {#Operation.__repr__}
+
+
+
+
+- - -
+
 #### `tf.Operation.__str__()` {#Operation.__str__}
 
 
@@ -1249,6 +1261,13 @@ available, or `session` must be specified explicitly.
 
 #### `tf.Tensor.get_shape()` {#Tensor.get_shape}
 
+Alias of Tensor.shape.
+
+
+- - -
+
+#### `tf.Tensor.shape` {#Tensor.shape}
+
 Returns the `TensorShape` that represents the shape of this tensor.
 
 The shape is computed using shape inference functions that are
@@ -1264,12 +1283,12 @@ example:
 ```python
 c = tf.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
 
-print(c.get_shape())
+print(c.shape)
 ==> TensorShape([Dimension(2), Dimension(3)])
 
 d = tf.constant([[1.0, 0.0], [0.0, 1.0], [1.0, 0.0], [0.0, 1.0]])
 
-print(d.get_shape())
+print(d.shape)
 ==> TensorShape([Dimension(4), Dimension(2)])
 
 # Raises a ValueError, because `c` and `d` do not have compatible
@@ -1278,7 +1297,7 @@ e = tf.matmul(c, d)
 
 f = tf.matmul(c, d, transpose_a=True, transpose_b=True)
 
-print(f.get_shape())
+print(f.shape)
 ==> TensorShape([Dimension(3), Dimension(4)])
 ```
 
@@ -1310,12 +1329,12 @@ image = tf.image.decode_png(image_data, channels=3)
 
 # The height and width dimensions of `image` are data dependent, and
 # cannot be computed without executing the op.
-print(image.get_shape())
+print(image.shape)
 ==> TensorShape([Dimension(None), Dimension(None), Dimension(3)])
 
 # We know that each image in this dataset is 28 x 28 pixels.
 image.set_shape([28, 28, 3])
-print(image.get_shape())
+print(image.shape)
 ==> TensorShape([Dimension(28), Dimension(28), Dimension(3)])
 ```
 
@@ -1343,10 +1362,6 @@ Given a tensor of real numbers `x`, this operation returns a tensor
 containing the absolute value of each element in `x`. For example, if x is
 an input element and y is an output element, this operation computes
 \\(y = |x|\\).
-
-See [`tf.complex_abs()`](#tf_complex_abs) to compute the absolute value of a
-complex
-number.
 
 ##### Args:
 
@@ -1433,21 +1448,18 @@ dynamic condition of the `Tensor`.
 
 #### `tf.Tensor.__div__(x, y)` {#Tensor.__div__}
 
-Returns x / y element-wise.
-
-*NOTE*: `Div` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+Divide two values using Python 2 semantics. Used for Tensor.__div__.
 
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`x`</b>: `Tensor` numerator of real numeric type.
+*  <b>`y`</b>: `Tensor` denominator of real numeric type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  `x / y` returns the quotient of x and y.
 
 
 - - -
@@ -1701,9 +1713,12 @@ Returns the truth value of (x < y) element-wise.
 
 #### `tf.Tensor.__mod__(x, y)` {#Tensor.__mod__}
 
-Returns element-wise remainder of division.
+Returns element-wise remainder of division. When `x < 0` xor `y < 0` is
 
-*NOTE*: `Mod` supports broadcasting. More about broadcasting
+true, this follows Python semantics in that the result here is consistent
+with a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.
+
+*NOTE*: `FloorMod` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
@@ -1853,21 +1868,18 @@ Returns the truth value of x AND y element-wise.
 
 #### `tf.Tensor.__rdiv__(y, x)` {#Tensor.__rdiv__}
 
-Returns x / y element-wise.
-
-*NOTE*: `Div` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+Divide two values using Python 2 semantics. Used for Tensor.__div__.
 
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`x`</b>: `Tensor` numerator of real numeric type.
+*  <b>`y`</b>: `Tensor` denominator of real numeric type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  `x / y` returns the quotient of x and y.
 
 
 - - -
@@ -1916,9 +1928,12 @@ as well.
 
 #### `tf.Tensor.__rmod__(y, x)` {#Tensor.__rmod__}
 
-Returns element-wise remainder of division.
+Returns element-wise remainder of division. When `x < 0` xor `y < 0` is
 
-*NOTE*: `Mod` supports broadcasting. More about broadcasting
+true, this follows Python semantics in that the result here is consistent
+with a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.
+
+*NOTE*: `FloorMod` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
@@ -2015,34 +2030,7 @@ Returns x - y element-wise.
 
 #### `tf.Tensor.__rtruediv__(y, x)` {#Tensor.__rtruediv__}
 
-Divides x / y elementwise, always producing floating point results.
 
-The same as `tf.div` for floating point arguments, but casts integer arguments
-to floating point before dividing so that the result is always floating point.
-This op is generated by normal `x / y` division in Python 3 and in Python 2.7
-with `from __future__ import division`.  If you want integer division that
-rounds down, use `x // y` or `tf.floordiv`.
-
-`x` and `y` must have the same numeric type.  If the inputs are floating
-point, the output will have the same type.  If the inputs are integral, the
-inputs are cast to `float32` for `int8` and `int16` and `float64` for `int32`
-and `int64` (matching the behavior of Numpy).
-
-##### Args:
-
-
-*  <b>`x`</b>: `Tensor` numerator of numeric type.
-*  <b>`y`</b>: `Tensor` denominator of numeric type.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  `x / y` evaluated in floating point.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: If `x` and `y` have different dtypes.
 
 
 - - -
@@ -2084,34 +2072,7 @@ Returns x - y element-wise.
 
 #### `tf.Tensor.__truediv__(x, y)` {#Tensor.__truediv__}
 
-Divides x / y elementwise, always producing floating point results.
 
-The same as `tf.div` for floating point arguments, but casts integer arguments
-to floating point before dividing so that the result is always floating point.
-This op is generated by normal `x / y` division in Python 3 and in Python 2.7
-with `from __future__ import division`.  If you want integer division that
-rounds down, use `x // y` or `tf.floordiv`.
-
-`x` and `y` must have the same numeric type.  If the inputs are floating
-point, the output will have the same type.  If the inputs are integral, the
-inputs are cast to `float32` for `int8` and `int16` and `float64` for `int32`
-and `int64` (matching the behavior of Numpy).
-
-##### Args:
-
-
-*  <b>`x`</b>: `Tensor` numerator of numeric type.
-*  <b>`y`</b>: `Tensor` denominator of numeric type.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  `x / y` evaluated in floating point.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: If `x` and `y` have different dtypes.
 
 
 - - -
@@ -2212,6 +2173,13 @@ Returns a non-reference `DType` based on this `DType`.
 #### `tf.DType.real_dtype` {#DType.real_dtype}
 
 Returns the dtype correspond to this dtype's real part.
+
+
+- - -
+
+#### `tf.DType.is_bool` {#DType.is_bool}
+
+Returns whether this is a boolean data type
 
 
 - - -
@@ -2518,7 +2486,7 @@ for more details.
 
 - - -
 
-### `tf.convert_to_tensor(value, dtype=None, name=None, as_ref=False, preferred_dtype=None)` {#convert_to_tensor}
+### `tf.convert_to_tensor(value, dtype=None, name=None, preferred_dtype=None)` {#convert_to_tensor}
 
 Converts the given `value` to a `Tensor`.
 
@@ -2552,8 +2520,6 @@ and scalars in addition to `Tensor` objects.
 *  <b>`dtype`</b>: Optional element type for the returned tensor. If missing, the
     type is inferred from the type of `value`.
 *  <b>`name`</b>: Optional name to use if a new `Tensor` is created.
-*  <b>`as_ref`</b>: True if we want the result as a ref tensor. Only used if a new
-    `Tensor` is created.
 *  <b>`preferred_dtype`</b>: Optional element type for the returned tensor,
     used when dtype is None. In some cases, a caller may not have a
     dtype in mind when converting to a tensor, so preferred_dtype
@@ -2562,7 +2528,7 @@ and scalars in addition to `Tensor` objects.
 
 ##### Returns:
 
-  A `Tensor` based on `value`.
+  An `Output` based on `value`.
 
 ##### Raises:
 
@@ -2573,7 +2539,7 @@ and scalars in addition to `Tensor` objects.
 
 - - -
 
-### `tf.convert_to_tensor_or_indexed_slices(value, dtype=None, name=None, as_ref=False)` {#convert_to_tensor_or_indexed_slices}
+### `tf.convert_to_tensor_or_indexed_slices(value, dtype=None, name=None)` {#convert_to_tensor_or_indexed_slices}
 
 Converts the given object to a `Tensor` or an `IndexedSlices`.
 
@@ -2589,7 +2555,6 @@ unmodified. Otherwise, it is converted to a `Tensor` using
 *  <b>`dtype`</b>: (Optional.) The required `DType` of the returned `Tensor` or
     `IndexedSlices`.
 *  <b>`name`</b>: (Optional.) A name to use if a new `Tensor` is created.
-*  <b>`as_ref`</b>: True if the caller wants the results as ref tensors.
 
 ##### Returns:
 
@@ -2599,6 +2564,31 @@ unmodified. Otherwise, it is converted to a `Tensor` using
 
 
 *  <b>`ValueError`</b>: If `dtype` does not match the element type of `value`.
+
+
+- - -
+
+### `tf.convert_to_tensor_or_sparse_tensor(value, dtype=None, name=None)` {#convert_to_tensor_or_sparse_tensor}
+
+Converts value to a `SparseTensor` or `Tensor`.
+
+##### Args:
+
+
+*  <b>`value`</b>: A `SparseTensor`, `SparseTensorValue`, or an object whose type has a
+    registered `Tensor` conversion function.
+*  <b>`dtype`</b>: Optional element type for the returned tensor. If missing, the
+    type is inferred from the type of `value`.
+*  <b>`name`</b>: Optional name to use if a new `Tensor` is created.
+
+##### Returns:
+
+  A `SparseTensor` or `Tensor` based on `value`.
+
+##### Raises:
+
+
+*  <b>`RuntimeError`</b>: If result type is incompatible with `dtype`.
 
 
 - - -
@@ -2847,7 +2837,7 @@ The following standard keys are defined:
   for more details.
 * `SUMMARIES`: the summary `Tensor` objects that have been created in the
   graph. See
-  [`tf.merge_all_summaries()`](../../api_docs/python/train.md#merge_all_summaries)
+  [`tf.summary.merge_all()`](../../api_docs/python/summary.md#merge_all)
   for more details.
 * `QUEUE_RUNNERS`: the `QueueRunner` objects that are used to
   produce input for a computation. See
@@ -2886,7 +2876,7 @@ following gradient function would be registered:
 ```python
 @tf.RegisterGradient("Sub")
 def _sub_grad(unused_op, grad):
-  return grad, tf.neg(grad)
+  return grad, tf.negative(grad)
 ```
 
 The decorator argument `op_type` is the string type of an
@@ -2984,29 +2974,6 @@ an attempt to request its gradient is made.
 
 
 *  <b>`TypeError`</b>: If `op_type` is not a string.
-
-
-- - -
-
-### `class tf.RegisterShape` {#RegisterShape}
-
-A decorator for registering the shape function for an op type.
-
-Soon to be removed.  Shape functions should be registered via
-the SetShapeFn on the original Op specification in C++.
-- - -
-
-#### `tf.RegisterShape.__call__(f)` {#RegisterShape.__call__}
-
-Registers "f" as the shape function for "op_type".
-
-
-- - -
-
-#### `tf.RegisterShape.__init__(op_type)` {#RegisterShape.__init__}
-
-Saves the `op_type` as the `Operation` type.
-
 
 
 - - -

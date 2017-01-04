@@ -21,66 +21,23 @@ from __future__ import print_function
 
 import contextlib
 import math
+import os
 import time
 
 from tensorflow.contrib.framework import deprecated
-from tensorflow.contrib.framework import deprecated_arg_values
+from tensorflow.contrib.framework import deprecated_args
 from tensorflow.contrib.learn.python.learn import evaluable
+from tensorflow.contrib.learn.python.learn import export_strategy
 from tensorflow.contrib.learn.python.learn import monitors
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import run_config
-from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedError
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import basic_session_run_hooks
+from tensorflow.python.training import saver
 from tensorflow.python.training import server_lib
-from tensorflow.python.training import session_run_hook
-from tensorflow.python.training import training_util
-
+from tensorflow.python.util import compat
 
 __all__ = ["Experiment"]
-
-
-class _GlobalStepWaiterHook(session_run_hook.SessionRunHook):
-  """Delay execution until global step reaches to wait_until_step."""
-
-  def __init__(self, wait_until_step):
-    """Create a _GlobalStepWaiterHook.
-
-    This hook delays execution until global step reaches to wait_until_step. It
-    is used to gradually start workers in distributed settings.
-
-    Args:
-      wait_until_step: an `int` shows until which global step should we wait.
-    """
-    self._wait_until_step = wait_until_step
-
-  def begin(self):
-    self._worker_is_started = False
-    self._global_step_tensor = training_util.get_global_step()
-    if self._global_step_tensor is None:
-      raise RuntimeError(
-          "Global step should be created to use _GlobalStepWaiterHook.")
-
-  def before_run(self, run_context):
-    if self._worker_is_started:
-      return None
-
-    if self._wait_until_step <= 0:
-      self._worker_is_started = True
-      return None
-
-    logging.info("Waiting for global step %d before starting training.",
-                 self._wait_until_step)
-    last_logged_step = 0
-    while True:
-      current_step = run_context.session.run(self._global_step_tensor)
-      if current_step >= self._wait_until_step:
-        self._worker_is_started = True
-        return None
-      if current_step - last_logged_step > 10000:
-        logging.info("Waiting for global step %d before starting training. "
-                     "Current step is %d.", self._wait_until_step, current_step)
-        last_logged_step = current_step
-      time.sleep(0.5)
 
 
 class Experiment(object):
@@ -93,7 +50,7 @@ class Experiment(object):
 
   # TODO(ispir): remove delay_workers_by_global_step and make global step based
   # waiting as only behaviour.
-  @deprecated_arg_values(
+  @deprecated_args(
       "2016-10-23",
       "local_eval_frequency is deprecated as local_run will be renamed to "
       "train_and_evaluate. Use min_eval_frequency and call train_and_evaluate "
@@ -102,7 +59,7 @@ class Experiment(object):
       "available. In contrast, the default for local_eval_frequency is None, "
       "resulting in evaluation occurring only after training has completed. "
       "min_eval_frequency is ignored when calling the deprecated local_run.",
-      local_eval_frequency=None)
+      "local_eval_frequency")
   def __init__(self,
                estimator,
                train_input_fn,
@@ -115,7 +72,8 @@ class Experiment(object):
                eval_delay_secs=120,
                continuous_eval_throttle_secs=60,
                min_eval_frequency=1,
-               delay_workers_by_global_step=False):
+               delay_workers_by_global_step=False,
+               export_strategies=None):
     """Constructor for `Experiment`.
 
     Creates an Experiment instance. None of the functions passed to this
@@ -148,9 +106,11 @@ class Experiment(object):
         occur if no new snapshot is available, hence, this is the minimum.
       delay_workers_by_global_step: if `True` delays training workers
         based on global step instead of time.
+      export_strategies: A list of `ExportStrategy`s, or a single one, or None.
 
     Raises:
-      ValueError: if `estimator` does not implement `Evaluable` and `Trainable`.
+      ValueError: if `estimator` does not implement `Evaluable` and `Trainable`,
+        or if export_strategies has the wrong type.
     """
     if not isinstance(estimator, evaluable.Evaluable):
       raise ValueError("`estimator` must implement `Evaluable`.")
@@ -169,6 +129,16 @@ class Experiment(object):
     self._continuous_eval_throttle_secs = continuous_eval_throttle_secs
     self._min_eval_frequency = min_eval_frequency
     self._delay_workers_by_global_step = delay_workers_by_global_step
+
+    if export_strategies is None:
+      self._export_strategies = []
+    elif isinstance(export_strategies, list):
+      self._export_strategies = export_strategies
+    elif isinstance(export_strategies, export_strategy.ExportStrategy):
+      self._export_strategies = [export_strategies]
+    else:
+      raise ValueError("`export_strategies` must be an ExportStrategy, "
+                       "a list of ExportStrategies, or None.")
 
   @property
   def estimator(self):
@@ -205,7 +175,8 @@ class Experiment(object):
         # Wait 5500 global steps for the second worker. Each worker waits more
         # then previous one but with a diminishing number of steps.
         extra_hooks.append(
-            _GlobalStepWaiterHook(int(8000.0*math.log(task_id+1))))
+            basic_session_run_hooks.GlobalStepWaiterHook(
+                int(8000.0 * math.log(task_id + 1))))
         delay_secs = 0
       else:
         # Wait 5 secs more for each new worker up to 60 secs.
@@ -263,7 +234,8 @@ class Experiment(object):
                        input_fn,
                        name,
                        delay_secs,
-                       throttle_delay_secs):
+                       throttle_delay_secs,
+                       evaluate_checkpoint_only_once=True):
     """Run continuous eval.
 
     Runs infinite eval on the evaluation data set. This function starts
@@ -279,6 +251,8 @@ class Experiment(object):
       throttle_delay_secs: Do not re-evaluate unless the last evaluation was
         started at least this many seconds ago. If None, defaults to
         self._continuous_eval_throttle_secs.
+      evaluate_checkpoint_only_once: Whether to skip evaluation of checkpoints
+        that have already been evaluated. Default is `True`.
     """
     if delay_secs is None:
       delay_secs = self._eval_delay_secs
@@ -289,21 +263,37 @@ class Experiment(object):
       logging.info("Waiting %f secs before starting eval.", delay_secs)
       time.sleep(delay_secs)
 
-    last_fitted_error_time = 0
+    previous_path = None
+    last_warning_time = 0
     while True:
       start = time.time()
-      try:
-        self._estimator.evaluate(input_fn=input_fn,
-                                 steps=self._eval_steps,
-                                 metrics=self._eval_metrics,
-                                 name=name)
-      except NotFittedError:
+
+      error_msg = None
+      latest_path = saver.latest_checkpoint(self._estimator.model_dir)
+      if not latest_path:
+        error_msg = ("Estimator is not fitted yet. "
+                     "Will start an evaluation when a checkpoint is ready.")
+      elif evaluate_checkpoint_only_once and latest_path == previous_path:
+        error_msg = "No new checkpoint ready for evaluation."
+
+      if error_msg:
         # Print warning message every 10 mins.
-        if time.time() - last_fitted_error_time > 600:
-          logging.warning(
-              "Estimator is not fitted yet. "
-              "Will start an evaluation when a checkpoint will be ready.")
-          last_fitted_error_time = time.time()
+        if time.time() - last_warning_time > 600:
+          logging.warning(error_msg)
+          last_warning_time = time.time()
+      else:
+        eval_result = self._estimator.evaluate(input_fn=input_fn,
+                                               steps=self._eval_steps,
+                                               metrics=self._eval_metrics,
+                                               name=name,
+                                               checkpoint_path=latest_path)
+
+        # TODO(soergel): further throttle how often export happens?
+        self._maybe_export(eval_result)
+
+        # Clear warning timer and update last evaluated checkpoint
+        last_warning_time = 0
+        previous_path = latest_path
 
       duration = time.time() - start
       if duration < throttle_delay_secs:
@@ -312,11 +302,14 @@ class Experiment(object):
                      difference)
         time.sleep(difference)
 
-  def continuous_eval(self, delay_secs=None, throttle_delay_secs=None):
-    self._continuous_eval(self._eval_input_fn,
-                          name="continuous",
-                          delay_secs=delay_secs,
-                          throttle_delay_secs=throttle_delay_secs)
+  def continuous_eval(self, delay_secs=None, throttle_delay_secs=None,
+                      evaluate_checkpoint_only_once=True):
+    self._continuous_eval(
+        self._eval_input_fn,
+        name="continuous",
+        delay_secs=delay_secs,
+        throttle_delay_secs=throttle_delay_secs,
+        evaluate_checkpoint_only_once=evaluate_checkpoint_only_once)
 
   def continuous_eval_on_train_data(self,
                                     delay_secs=None,
@@ -367,11 +360,32 @@ class Experiment(object):
         )]
       self.train(delay_secs=0)
 
-    return self._estimator.evaluate(input_fn=self._eval_input_fn,
-                                    steps=self._eval_steps,
-                                    metrics=self._eval_metrics,
-                                    name=eval_dir_suffix)
+    eval_result = self._estimator.evaluate(input_fn=self._eval_input_fn,
+                                           steps=self._eval_steps,
+                                           metrics=self._eval_metrics,
+                                           name=eval_dir_suffix)
+    export_results = self._maybe_export(eval_result)
+    return eval_result, export_results
 
+  def _maybe_export(self, eval_result):  # pylint: disable=unused-argument
+    """Export the Estimator using export_fn, if defined."""
+    export_dir_base = os.path.join(
+        compat.as_bytes(self._estimator.model_dir),
+        compat.as_bytes("export"))
+
+    export_results = []
+    for strategy in self._export_strategies:
+      # TODO(soergel): possibly, allow users to decide whether to export here
+      # based on the eval_result (e.g., to keep the best export).
+
+      export_results.append(
+          strategy.export(
+              self._estimator,
+              os.path.join(
+                  compat.as_bytes(export_dir_base),
+                  compat.as_bytes(strategy.name))))
+
+    return export_results
 
   def run_std_server(self):
     """Starts a TensorFlow server and joins the serving thread.
@@ -424,7 +438,14 @@ def _new_attr_context(obj, attr):
   This creates a context in which an object's attribute can be changed.
   Once the context is exited, the attribute reverts to its original value.
 
-  Example usage:
+  Args:
+    obj: An object whose attribute to restore at the end of the context.
+    attr: An attribute to remember and restore at the end of the context.
+
+  Yields:
+    Context.
+
+  Example:
     my_obj.x = 1
     with _new_attr_context(my_obj, "x"):
       my_obj.x = 2

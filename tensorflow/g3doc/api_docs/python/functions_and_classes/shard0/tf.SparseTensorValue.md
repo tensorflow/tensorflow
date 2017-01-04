@@ -1,4 +1,4 @@
-SparseTensorValue(indices, values, shape)
+SparseTensorValue(indices, values, dense_shape)
 - - -
 
 #### `tf.SparseTensorValue.__getnewargs__()` {#SparseTensorValue.__getnewargs__}
@@ -15,9 +15,9 @@ Exclude the OrderedDict from pickling
 
 - - -
 
-#### `tf.SparseTensorValue.__new__(_cls, indices, values, shape)` {#SparseTensorValue.__new__}
+#### `tf.SparseTensorValue.__new__(_cls, indices, values, dense_shape)` {#SparseTensorValue.__new__}
 
-Create new instance of SparseTensorValue(indices, values, shape)
+Create new instance of SparseTensorValue(indices, values, dense_shape)
 
 
 - - -
@@ -29,16 +29,16 @@ Return a nicely formatted representation string
 
 - - -
 
-#### `tf.SparseTensorValue.indices` {#SparseTensorValue.indices}
+#### `tf.SparseTensorValue.dense_shape` {#SparseTensorValue.dense_shape}
 
-Alias for field number 0
+Alias for field number 2
 
 
 - - -
 
-#### `tf.SparseTensorValue.shape` {#SparseTensorValue.shape}
+#### `tf.SparseTensorValue.indices` {#SparseTensorValue.indices}
 
-Alias for field number 2
+Alias for field number 0
 
 
 - - -

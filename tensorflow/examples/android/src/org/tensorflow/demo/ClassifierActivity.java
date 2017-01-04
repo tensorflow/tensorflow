@@ -21,6 +21,7 @@ import android.graphics.Bitmap.Config;
 import android.graphics.Canvas;
 import android.graphics.Matrix;
 import android.graphics.Paint;
+import android.graphics.Typeface;
 import android.media.Image;
 import android.media.Image.Plane;
 import android.media.ImageReader;
@@ -30,13 +31,13 @@ import android.os.Trace;
 import android.util.Size;
 import android.util.TypedValue;
 import android.view.Display;
-import java.io.IOException;
 import java.util.List;
 import java.util.Vector;
 import org.tensorflow.demo.OverlayView.DrawCallback;
 import org.tensorflow.demo.env.BorderedText;
 import org.tensorflow.demo.env.ImageUtils;
 import org.tensorflow.demo.env.Logger;
+import org.tensorflow.demo.R;
 
 public class ClassifierActivity extends CameraActivity implements OnImageAvailableListener {
   private static final Logger LOGGER = new Logger();
@@ -97,7 +98,7 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
     return INPUT_SIZE;
   }
 
-  private static final float TEXT_SIZE_DIP = 18;
+  private static final float TEXT_SIZE_DIP = 10;
 
   @Override
   public void onPreviewSizeChosen(final Size size, final int rotation) {
@@ -105,14 +106,28 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
         TypedValue.COMPLEX_UNIT_DIP, TEXT_SIZE_DIP,
         getResources().getDisplayMetrics());
     borderedText = new BorderedText(textSizePx);
+    borderedText.setTypeface(Typeface.MONOSPACE);
 
     classifier = new TensorFlowImageClassifier();
+
     try {
-      classifier.initializeTensorFlow(
-        getAssets(), MODEL_FILE, LABEL_FILE, NUM_CLASSES, INPUT_SIZE, IMAGE_MEAN, IMAGE_STD,
-        INPUT_NAME, OUTPUT_NAME);
-    } catch (final IOException e) {
-      LOGGER.e(e, "Exception!");
+      final int initStatus =
+          classifier.initializeTensorFlow(
+              getAssets(),
+              MODEL_FILE,
+              LABEL_FILE,
+              NUM_CLASSES,
+              INPUT_SIZE,
+              IMAGE_MEAN,
+              IMAGE_STD,
+              INPUT_NAME,
+              OUTPUT_NAME);
+      if (initStatus != 0) {
+        LOGGER.e("TF init status != 0: %d", initStatus);
+        throw new RuntimeException();
+      }
+    } catch (final Exception e) {
+      throw new RuntimeException("Error initializing TensorFlow!", e);
     }
 
     resultsView = (ResultsView) findViewById(R.id.results);
@@ -224,7 +239,12 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
     Trace.endSection();
   }
 
-  private void renderDebug(Canvas canvas) {
+  @Override
+  public void onSetDebug(boolean debug) {
+    classifier.enableStatLogging(debug);
+  }
+
+  private void renderDebug(final Canvas canvas) {
     if (!isDebug()) {
       return;
     }
@@ -239,18 +259,21 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
       canvas.drawBitmap(copy, matrix, new Paint());
 
       final Vector<String> lines = new Vector<String>();
+      if (classifier != null) {
+        String statString = classifier.getStatString();
+        String[] statLines = statString.split("\n");
+        for (String line : statLines) {
+          lines.add(line);
+        }
+      }
+
       lines.add("Frame: " + previewWidth + "x" + previewHeight);
       lines.add("Crop: " + copy.getWidth() + "x" + copy.getHeight());
       lines.add("View: " + canvas.getWidth() + "x" + canvas.getHeight());
       lines.add("Rotation: " + sensorOrientation);
       lines.add("Inference time: " + lastProcessingTimeMs + "ms");
 
-      int lineNum = 0;
-      for (final String line : lines) {
-        borderedText.drawText(canvas, 10,
-            canvas.getHeight() - 10 - borderedText.getTextSize() * lineNum, line);
-        ++lineNum;
-      }
+      borderedText.drawLines(canvas, 10, canvas.getHeight() - 10, lines);
     }
   }
 }

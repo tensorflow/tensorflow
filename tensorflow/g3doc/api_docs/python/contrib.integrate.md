@@ -17,11 +17,11 @@ sigma = 10.0
 beta = 8.0/3.0
 
 def lorenz_equation(state, t):
-  x, y, z = tf.unpack(state)
+  x, y, z = tf.unstack(state)
   dx = sigma * (y - x)
   dy = x * (rho - z) - y
   dz = x * y - beta * z
-  return tf.pack([dx, dy, dz])
+  return tf.stack([dx, dy, dz])
 
 init_state = tf.constant([0, 2, 20], dtype=tf.float64)
 t = np.linspace(0, 50, num=5000)

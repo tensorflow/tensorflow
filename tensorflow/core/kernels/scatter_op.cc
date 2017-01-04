@@ -27,6 +27,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif // TENSORFLOW_USE_SYCL
 
 // Check whether updates.shape = indices.shape + params.shape[1:]
 static bool ValidShapes(const Tensor& params, const Tensor& updates,
@@ -169,6 +172,20 @@ TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ARITHEMTIC_GPU);
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_UPDATE_GPU);
 
 #endif  // GOOGLE_CUDA
+
+// Registers GPU kernels.
+#if TENSORFLOW_USE_SYCL
+#define REGISTER_SCATTER_ARITHEMTIC_SYCL(type) \
+  REGISTER_SCATTER_ARITHEMTIC(type, SYCL);
+
+#define REGISTER_SCATTER_UPDATE_SYCL(type) REGISTER_SCATTER_UPDATE(type, SYCL);
+
+REGISTER_SCATTER_ARITHEMTIC_SYCL(float);
+REGISTER_SCATTER_UPDATE_SYCL(float);
+
+#undef REGISTER_SCATTER_ARITHEMTIC_SYCL
+#undef REGISTER_SCATTER_UPDATE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 #undef REGISTER_SCATTER_ARITHEMTIC
 #undef REGISTER_SCATTER_ARITHEMTIC_CPU

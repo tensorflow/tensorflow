@@ -16,17 +16,18 @@ limitations under the License.
 #include "tensorflow/core/debug/debug_graph_utils.h"
 
 #include "tensorflow/core/common_runtime/memory_types.h"
+#include "tensorflow/core/debug/debug_io_utils.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/protobuf/debug.pb.h"
 
 namespace tensorflow {
 
-DebuggerState::DebuggerState(
-    const protobuf::RepeatedPtrField<DebugTensorWatch>& watches)
-    : watches(watches), debug_urls_() {
+DebuggerState::DebuggerState(const DebugOptions& debug_options)
+    : watches(debug_options.debug_tensor_watch_opts()), debug_urls_() {
   for (const DebugTensorWatch& watch : watches) {
     for (const string& url : watch.debug_urls()) {
       debug_urls_.insert(url);
@@ -35,8 +36,9 @@ DebuggerState::DebuggerState(
 }
 
 DebuggerState::~DebuggerState() {
-  // TODO(cais): This is currently no-op. For gRPC debug URLs in debug_urls_,
-  // add cleanup actions such as closing streams.
+  for (const string& debug_url : debug_urls_) {
+    DebugIO::CloseDebugURL(debug_url);
+  }
 }
 
 const string DebuggerState::SummarizeDebugTensorWatches() {
@@ -62,8 +64,15 @@ const string DebuggerState::SummarizeDebugTensorWatches() {
   return oss.str();
 }
 
-Status DebuggerState::InsertNodes(Graph* graph, Device* device) {
-  return DebugNodeInserter::InsertNodes(watches, graph, device);
+Status DebuggerState::DecorateGraphForDebug(Graph* graph, Device* device) {
+  Status status;
+
+  status.Update(DebugNodeInserter::InsertNodes(watches, graph, device));
+  if (status.ok()) {
+    status.Update(DebugIO::PublishGraph(*graph, debug_urls_));
+  }
+
+  return status;
 }
 
 // static

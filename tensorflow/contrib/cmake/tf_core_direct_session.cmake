@@ -4,8 +4,6 @@
 file(GLOB tf_core_direct_session_srcs
    "${tensorflow_source_dir}/tensorflow/core/common_runtime/direct_session.cc"
    "${tensorflow_source_dir}/tensorflow/core/common_runtime/direct_session.h"
-   "${tensorflow_source_dir}/tensorflow/core/debug/*.h"
-   "${tensorflow_source_dir}/tensorflow/core/debug/*.cc"
 )
 
 file(GLOB_RECURSE tf_core_direct_session_test_srcs

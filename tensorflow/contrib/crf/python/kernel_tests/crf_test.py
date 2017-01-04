@@ -19,12 +19,23 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
+import sys
 
 import numpy as np
-import tensorflow as tf
+
+# TODO: #6568 Remove this hack that makes dlopen() not crash.
+if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
+  import ctypes
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
+
+from tensorflow.contrib.crf.python.ops import crf
+from tensorflow.python.framework import constant_op
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
 
 
-class CrfTest(tf.test.TestCase):
+class CrfTest(test.TestCase):
 
   def testCrfSequenceScore(self):
     inputs = np.array(
@@ -34,12 +45,12 @@ class CrfTest(tf.test.TestCase):
         [[-3, 5, -2], [3, 4, 1], [1, 2, 1]], dtype=np.float32)
     sequence_lengths = np.array(3, dtype=np.int32)
     with self.test_session() as sess:
-      sequence_score = tf.contrib.crf.crf_sequence_score(
-          inputs=tf.expand_dims(inputs, 0),
-          tag_indices=tf.expand_dims(tag_indices, 0),
-          sequence_lengths=tf.expand_dims(sequence_lengths, 0),
-          transition_params=tf.constant(transition_params))
-      sequence_score = tf.squeeze(sequence_score, [0])
+      sequence_score = crf.crf_sequence_score(
+          inputs=array_ops.expand_dims(inputs, 0),
+          tag_indices=array_ops.expand_dims(tag_indices, 0),
+          sequence_lengths=array_ops.expand_dims(sequence_lengths, 0),
+          transition_params=constant_op.constant(transition_params))
+      sequence_score = array_ops.squeeze(sequence_score, [0])
       tf_sequence_score = sess.run(sequence_score)
       expected_unary_score = sum(inputs[i][tag_indices[i]]
                                  for i in range(sequence_lengths))
@@ -55,11 +66,11 @@ class CrfTest(tf.test.TestCase):
     tag_indices = np.array([1, 2, 1, 0], dtype=np.int32)
     sequence_lengths = np.array(3, dtype=np.int32)
     with self.test_session() as sess:
-      unary_score = tf.contrib.crf.crf_unary_score(
-          tag_indices=tf.expand_dims(tag_indices, 0),
-          sequence_lengths=tf.expand_dims(sequence_lengths, 0),
-          inputs=tf.expand_dims(inputs, 0))
-      unary_score = tf.squeeze(unary_score, [0])
+      unary_score = crf.crf_unary_score(
+          tag_indices=array_ops.expand_dims(tag_indices, 0),
+          sequence_lengths=array_ops.expand_dims(sequence_lengths, 0),
+          inputs=array_ops.expand_dims(inputs, 0))
+      unary_score = array_ops.squeeze(unary_score, [0])
       tf_unary_score = sess.run(unary_score)
       expected_unary_score = sum(inputs[i][tag_indices[i]]
                                  for i in range(sequence_lengths))
@@ -71,11 +82,11 @@ class CrfTest(tf.test.TestCase):
         [[-3, 5, -2], [3, 4, 1], [1, 2, 1]], dtype=np.float32)
     sequence_lengths = np.array(3, dtype=np.int32)
     with self.test_session() as sess:
-      binary_score = tf.contrib.crf.crf_binary_score(
-          tag_indices=tf.expand_dims(tag_indices, 0),
-          sequence_lengths=tf.expand_dims(sequence_lengths, 0),
-          transition_params=tf.constant(transition_params))
-      binary_score = tf.squeeze(binary_score, [0])
+      binary_score = crf.crf_binary_score(
+          tag_indices=array_ops.expand_dims(tag_indices, 0),
+          sequence_lengths=array_ops.expand_dims(sequence_lengths, 0),
+          transition_params=constant_op.constant(transition_params))
+      binary_score = array_ops.squeeze(binary_score, [0])
       tf_binary_score = sess.run(binary_score)
       expected_binary_score = sum(
           transition_params[tag_indices[i], tag_indices[i + 1]]
@@ -99,18 +110,18 @@ class CrfTest(tf.test.TestCase):
         tag_indices = list(tag_indices)
         tag_indices.extend([0] * (num_words - sequence_lengths))
         all_sequence_scores.append(
-            tf.contrib.crf.crf_sequence_score(
-                inputs=tf.expand_dims(inputs, 0),
-                tag_indices=tf.expand_dims(tag_indices, 0),
-                sequence_lengths=tf.expand_dims(sequence_lengths, 0),
-                transition_params=tf.constant(transition_params)))
+            crf.crf_sequence_score(
+                inputs=array_ops.expand_dims(inputs, 0),
+                tag_indices=array_ops.expand_dims(tag_indices, 0),
+                sequence_lengths=array_ops.expand_dims(sequence_lengths, 0),
+                transition_params=constant_op.constant(transition_params)))
 
-      brute_force_log_norm = tf.reduce_logsumexp(all_sequence_scores)
-      log_norm = tf.contrib.crf.crf_log_norm(
-          inputs=tf.expand_dims(inputs, 0),
-          sequence_lengths=tf.expand_dims(sequence_lengths, 0),
-          transition_params=tf.constant(transition_params))
-      log_norm = tf.squeeze(log_norm, [0])
+      brute_force_log_norm = math_ops.reduce_logsumexp(all_sequence_scores)
+      log_norm = crf.crf_log_norm(
+          inputs=array_ops.expand_dims(inputs, 0),
+          sequence_lengths=array_ops.expand_dims(sequence_lengths, 0),
+          transition_params=constant_op.constant(transition_params))
+      log_norm = array_ops.squeeze(log_norm, [0])
       tf_brute_force_log_norm, tf_log_norm = sess.run(
           [brute_force_log_norm, log_norm])
 
@@ -132,13 +143,14 @@ class CrfTest(tf.test.TestCase):
           range(num_tags), repeat=sequence_lengths):
         tag_indices = list(tag_indices)
         tag_indices.extend([0] * (num_words - sequence_lengths))
-        sequence_log_likelihood, _ = tf.contrib.crf.crf_log_likelihood(
-            inputs=tf.expand_dims(inputs, 0),
-            tag_indices=tf.expand_dims(tag_indices, 0),
-            sequence_lengths=tf.expand_dims(sequence_lengths, 0),
-            transition_params=tf.constant(transition_params))
+        sequence_log_likelihood, _ = crf.crf_log_likelihood(
+            inputs=array_ops.expand_dims(inputs, 0),
+            tag_indices=array_ops.expand_dims(tag_indices, 0),
+            sequence_lengths=array_ops.expand_dims(sequence_lengths, 0),
+            transition_params=constant_op.constant(transition_params))
         all_sequence_log_likelihoods.append(sequence_log_likelihood)
-      total_log_likelihood = tf.reduce_logsumexp(all_sequence_log_likelihoods)
+      total_log_likelihood = math_ops.reduce_logsumexp(
+          all_sequence_log_likelihoods)
       tf_total_log_likelihood = sess.run(total_log_likelihood)
       self.assertAllClose(tf_total_log_likelihood, 0.0)
 
@@ -146,9 +158,7 @@ class CrfTest(tf.test.TestCase):
     with self.test_session() as sess:
       sequence_lengths = [4, 1, 8, 2]
       max_sequence_length = max(sequence_lengths)
-
-      mask = tf.contrib.crf._lengths_to_masks(sequence_lengths,
-                                              max_sequence_length)
+      mask = crf._lengths_to_masks(sequence_lengths, max_sequence_length)
       tf_mask = sess.run(mask)
       self.assertEqual(len(tf_mask), len(sequence_lengths))
       for m, l in zip(tf_mask, sequence_lengths):
@@ -174,12 +184,12 @@ class CrfTest(tf.test.TestCase):
         tag_indices = list(tag_indices)
         tag_indices.extend([0] * (num_words - sequence_lengths))
         all_sequences.append(tag_indices)
-        sequence_score = tf.contrib.crf.crf_sequence_score(
-            inputs=tf.expand_dims(inputs, 0),
-            tag_indices=tf.expand_dims(tag_indices, 0),
-            sequence_lengths=tf.expand_dims(sequence_lengths, 0),
-            transition_params=tf.constant(transition_params))
-        sequence_score = tf.squeeze(sequence_score, [0])
+        sequence_score = crf.crf_sequence_score(
+            inputs=array_ops.expand_dims(inputs, 0),
+            tag_indices=array_ops.expand_dims(tag_indices, 0),
+            sequence_lengths=array_ops.expand_dims(sequence_lengths, 0),
+            transition_params=constant_op.constant(transition_params))
+        sequence_score = array_ops.squeeze(sequence_score, [0])
         all_sequence_scores.append(sequence_score)
 
       tf_all_sequence_scores = sess.run(all_sequence_scores)
@@ -188,7 +198,7 @@ class CrfTest(tf.test.TestCase):
       expected_max_sequence = all_sequences[expected_max_sequence_index]
       expected_max_score = tf_all_sequence_scores[expected_max_sequence_index]
 
-      actual_max_sequence, actual_max_score = tf.contrib.crf.viterbi_decode(
+      actual_max_sequence, actual_max_score = crf.viterbi_decode(
           inputs[:sequence_lengths], transition_params)
 
       self.assertAllClose(actual_max_score, expected_max_score)
@@ -197,4 +207,4 @@ class CrfTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

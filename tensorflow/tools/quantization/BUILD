@@ -11,10 +11,7 @@ py_library(
     name = "quantize_graph_lib",
     srcs = ["quantize_graph.py"],
     srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:platform",
-    ],
+    deps = ["//tensorflow:tensorflow_py"],
 )
 
 py_binary(
@@ -22,8 +19,14 @@ py_binary(
     srcs = ["quantize_graph.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
@@ -37,8 +40,13 @@ py_test(
     tags = ["nomsan"],  # http://b/32242946
     deps = [
         ":quantize_graph",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -49,9 +57,7 @@ py_binary(
     ],
     main = "graph_to_dot.py",
     srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
+    deps = ["//tensorflow/python:platform"],
 )
 
 filegroup(

@@ -289,15 +289,19 @@ bool BestSplitDominatesClassificationBootstrap(const Tensor& total_counts,
     p = p * 2;
   }
 
+  int worst_g1 = 0;
   for (int i = 0; i < bootstrap_samples; i++) {
     int g1 = BootstrapGini(n1, 2 * num_classes, ds1, rand);
-    int g2 = BootstrapGini(n2, 2 * num_classes, ds2, rand);
-    if (g2 <= g1) {
-      return false;
-    }
+    worst_g1 = std::max(worst_g1, g1);
   }
 
-  return true;
+  int best_g2 = 99;
+  for (int i = 0; i < bootstrap_samples; i++) {
+    int g2 = BootstrapGini(n2, 2 * num_classes, ds2, rand);
+    best_g2 = std::min(best_g2, g2);
+  }
+
+  return worst_g1 < best_g2;
 }
 
 bool BestSplitDominatesClassificationHoeffding(const Tensor& total_counts,
@@ -555,6 +559,31 @@ bool IsAllInitialized(const Tensor& features) {
   return feature_vec(feature_vec.size() - 1) >= 0;
 }
 
+void GetParentWeightedMean(float leaf_sum, const float* leaf_data,
+                           float parent_sum, const float* parent_data,
+                           float valid_leaf_threshold, int num_outputs,
+                           std::vector<float>* mean) {
+  float parent_weight = 0.0;
+  if (leaf_sum < valid_leaf_threshold && parent_sum >= 0) {
+    VLOG(1) << "not enough samples at leaf, including parent counts."
+            << "child sum = " << leaf_sum;
+    // Weight the parent's counts just enough so that the new sum is
+    // valid_leaf_threshold_, but never give any counts a weight of
+    // more than 1.
+    parent_weight =
+        std::min(1.0f, (valid_leaf_threshold - leaf_sum) / parent_sum);
+    leaf_sum += parent_weight * parent_sum;
+    VLOG(1) << "Sum w/ parent included = " << leaf_sum;
+  }
+
+  for (int c = 0; c < num_outputs; c++) {
+    float w = leaf_data[c];
+    if (parent_weight > 0.0) {
+      w += parent_weight * parent_data[c];
+    }
+    (*mean)[c] = w / leaf_sum;
+  }
+}
 
 }  // namespace tensorforest
 }  // namespace tensorflow

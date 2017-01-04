@@ -17,7 +17,7 @@ for k in 0..in_channels-1
                         filter[di, dj, k, q]
 
 Must have `strides[0] = strides[3] = 1`.  For the most common case of the same
-horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
+horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
 
 ##### Args:
 

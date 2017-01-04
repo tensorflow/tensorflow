@@ -34,25 +34,3 @@ py_binary(
         "//tensorflow/contrib/session_bundle:exporter",
     ],
 )
-
-genrule(
-    name = "half_plus_two",
-    outs = [
-        "half_plus_two/00000123/export.meta",
-        "half_plus_two/00000123/export-00000-of-00001",
-        "half_plus_two_ckpt_v2/00000123/export.meta",
-        "half_plus_two_ckpt_v2/00000123/export.index",
-        "half_plus_two_ckpt_v2/00000123/export.data-00000-of-00001",
-    ],
-    cmd =
-        "rm -rf /tmp/half_plus_two; " +
-        "$(PYTHON_BIN_PATH) $(locations :export_half_plus_two); " +
-        "cp -r /tmp/half_plus_two/* $(@D)/half_plus_two; " +
-        "rm -rf /tmp/half_plus_two_ckpt_v2; " +
-        "$(PYTHON_BIN_PATH) $(locations :export_half_plus_two)  --export_dir=/tmp/half_plus_two_ckpt_v2 --use_checkpoint_v2=true; " +
-        "cp -r /tmp/half_plus_two_ckpt_v2/* $(@D)/half_plus_two_ckpt_v2",
-    tools = [
-        ":export_half_plus_two",
-    ],
-    visibility = ["//visibility:public"],
-)

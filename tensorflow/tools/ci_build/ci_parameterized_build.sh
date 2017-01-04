@@ -18,7 +18,7 @@
 #   ci_parameterized_build.sh
 #
 # The script obeys the following required environment variables:
-#   TF_BUILD_CONTAINER_TYPE:   (CPU | GPU | ANDROID)
+#   TF_BUILD_CONTAINER_TYPE:   (CPU | GPU | ANDROID | ANDROID_FULL)
 #   TF_BUILD_PYTHON_VERSION:   (PYTHON2 | PYTHON3 | PYTHON3.5)
 #   TF_BUILD_IS_PIP:           (NO_PIP | PIP | BOTH)
 #
@@ -127,6 +127,7 @@ PIP_CMD="${CI_BUILD_DIR}/builds/pip.sh"
 PIP_TEST_TUTORIALS_FLAG="--test_tutorials"
 PIP_INTEGRATION_TESTS_FLAG="--integration_tests"
 ANDROID_CMD="${CI_BUILD_DIR}/builds/android.sh"
+ANDROID_FULL_CMD="${CI_BUILD_DIR}/builds/android_full.sh"
 
 TF_GPU_COUNT=${TF_GPU_COUNT:-8}
 PARALLEL_GPU_TEST_CMD='//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute'
@@ -236,7 +237,7 @@ elif [[ ${CTYPE} == "gpu" ]]; then
       echo ""
     fi
   fi
-elif [[ ${CTYPE} == "android" ]]; then
+elif [[ ${CTYPE} == "android" ]] || [[ ${CTYPE} == "android_full" ]]; then
   :
 else
   die "Unrecognized value in TF_BUILD_CONTAINER_TYPE: "\
@@ -292,6 +293,9 @@ else
     MAVX)
       OPT_FLAG="${OPT_FLAG} -c opt --copt=-mavx"
       ;;
+    MAVXDBG)
+      OPT_FLAG="${OPT_FLAG} -c opt --copt=-g --copt=-mavx"
+      ;;
     MAVX2)
       OPT_FLAG="${OPT_FLAG} -c opt --copt=-mavx2"
       ;;
@@ -340,6 +344,9 @@ if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]] ||
   elif [[ ${CTYPE} == "android" ]]; then
     # Run android specific script for android build.
     NO_PIP_MAIN_CMD="${ANDROID_CMD} ${OPT_FLAG} "
+  elif [[ ${CTYPE} == "android_full" ]]; then
+    # Run android specific script for full android build.
+    NO_PIP_MAIN_CMD="${ANDROID_full_CMD} ${OPT_FLAG} "
   fi
 
 fi
@@ -494,6 +501,13 @@ fi
 
 chmod +x ${TMP_SCRIPT}
 
+# Map TF_BUILD container types to containers we actually have.
+if [[ "${CTYPE}" == "android_full" ]]; then
+  CONTAINER="android"
+else
+  CONTAINER=${CTYPE}
+fi
+
 FAILURE=0
 if [[ ! -z "${TF_BUILD_DRY_RUN}" ]] && [[ ${TF_BUILD_DRY_RUN} != "0" ]]; then
   # Do a dry run: just print the final command
@@ -501,7 +515,7 @@ if [[ ! -z "${TF_BUILD_DRY_RUN}" ]] && [[ ${TF_BUILD_DRY_RUN} != "0" ]]; then
 else
   # Actually run the command
   if [[ "${DO_DOCKER}" == "1" ]]; then
-    ${DOCKER_MAIN_CMD} ${CTYPE} ${DOCKERFILE_FLAG} /tmp/tf_build.sh
+    ${DOCKER_MAIN_CMD} ${CONTAINER} ${DOCKERFILE_FLAG} /tmp/tf_build.sh
   else
     ${TMP_SCRIPT}
   fi

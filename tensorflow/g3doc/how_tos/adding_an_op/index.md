@@ -37,7 +37,7 @@ any [attrs](#attrs) the Op might require.
 
 To see how this works, suppose you'd like to create an Op that takes a tensor of
 `int32`s and outputs a copy of the tensor, with all but the first element set to
-zero. Create file [`tensorflow/core/user_ops`][user_ops]`/zero_out.cc` and
+zero. Create file `tensorflow/core/user_ops/zero_out.cc` and
 add a call to the `REGISTER_OP` macro that defines the interface for such an Op:
 
 ```c++
@@ -321,11 +321,10 @@ using the `Attr` method, which expects a spec of the form:
 
 where `<name>` begins with a letter and can be composed of alphanumeric
 characters and underscores, and `<attr-type-expr>` is a type expression of the
-form [described below](#attr-types)
+form [described below](#attr-types).
 
 For example, if you'd like the `ZeroOut` Op to preserve a user-specified index,
 instead of only the 0th element, you can register the Op like so:
-
 <code class="lang-c++"><pre>
 REGISTER\_OP("ZeroOut")
     <b>.Attr("preserve\_index: int")</b>
@@ -335,7 +334,6 @@ REGISTER\_OP("ZeroOut")
 
 Your kernel can then access this attr in its constructor via the `context`
 parameter:
-
 <code class="lang-c++"><pre>
 class ZeroOutOp : public OpKernel {
  public:
@@ -357,7 +355,6 @@ class ZeroOutOp : public OpKernel {
 </pre></code>
 
 which can then be used in the `Compute` method:
-
 <code class="lang-c++"><pre>
   void Compute(OpKernelContext\* context) override {
     // ...
@@ -512,7 +509,6 @@ you would then register an `OpKernel` for each supported type.
 
 For instance, if you'd like the `ZeroOut` Op to work on `float`s
 in addition to `int32`s, your Op registration might look like:
-
 <code class="lang-c++"><pre>
 REGISTER\_OP("ZeroOut")
     <b>.Attr("T: {float, int32}")</b>
@@ -632,7 +628,6 @@ REGISTER\_KERNEL\_BUILDER(
 > </pre></code>
 
 Lets say you wanted to add more types, say `double`:
-
 <code class="lang-c++"><pre>
 REGISTER\_OP("ZeroOut")
     <b>.Attr("T: {float, <b>double,</b> int32}")</b>
@@ -643,7 +638,6 @@ REGISTER\_OP("ZeroOut")
 Instead of writing another `OpKernel` with redundant code as above, often you
 will be able to use a C++ template instead.  You will still have one kernel
 registration (`REGISTER_KERNEL_BUILDER` call) per overload.
-
 <code class="lang-c++"><pre>
 <b>template &lt;typename T&gt;</b>
 class ZeroOutOp : public OpKernel {
@@ -1071,7 +1065,7 @@ def _zero_out_grad(op, grad):
   shape = array_ops.shape(to_zero)
   index = array_ops.zeros_like(shape)
   first_grad = array_ops.reshape(grad, [-1])[0]
-  to_zero_grad = sparse_ops.sparse_to_dense(index, shape, first_grad, 0)
+  to_zero_grad = sparse_ops.sparse_to_dense([index], shape, first_grad, 0)
   return [to_zero_grad]  # List of one Tensor, since we have one input
 ```
 
