@@ -17,16 +17,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import argparse
 import sys
 
 # Google-internal import(s).
-
 from tensorflow.python.debug import debug_data
 from tensorflow.python.debug.cli import analyzer_cli
 from tensorflow.python.platform import app
+from tensorflow.python.platform import flags
 
-FLAGS = None
+FLAGS = flags.FLAGS
+flags.DEFINE_string("dump_dir", "", "tfdbg dump directory to load")
+flags.DEFINE_boolean(
+    "log_usage", True, "Whether the usage of this tool is to be logged")
+flags.DEFINE_boolean(
+    "validate_graph", True,
+    "Whether the dumped tensors will be validated against the GraphDefs")
 
 
 def main(_):
@@ -50,25 +55,4 @@ def main(_):
 
 
 if __name__ == "__main__":
-  parser = argparse.ArgumentParser()
-  parser.register("type", "bool", lambda v: v.lower() == "true")
-  parser.add_argument(
-      "--dump_dir", type=str, default="", help="tfdbg dump directory to load")
-  parser.add_argument(
-      "--log_usage",
-      type="bool",
-      nargs="?",
-      const=True,
-      default=True,
-      help="Whether the usage of this tool is to be logged")
-  parser.add_argument(
-      "--validate_graph",
-      nargs="?",
-      const=True,
-      type="bool",
-      default=True,
-      help="""\
-      Whether the dumped tensors will be validated against the GraphDefs\
-      """)
-  FLAGS, unparsed = parser.parse_known_args()
-  app.run(main=main, argv=[sys.argv[0]] + unparsed)
+  app.run()

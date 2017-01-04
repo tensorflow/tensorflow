@@ -31,10 +31,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import argparse
 import os
-import sys
-
 import tensorflow as tf
 
 from tensorflow.core.protobuf import meta_graph_pb2
@@ -45,7 +42,13 @@ from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.util import compat
 
-FLAGS = None
+tf.app.flags.DEFINE_string("output_dir", "/tmp/saved_model_half_plus_two",
+                           "Directory where to ouput SavedModel.")
+tf.app.flags.DEFINE_string("output_dir_pbtxt",
+                           "/tmp/saved_model_half_plus_two_pbtxt",
+                           "Directory where to ouput the text format of "
+                           "SavedModel.")
+FLAGS = tf.flags.FLAGS
 
 
 def _write_assets(assets_directory, assets_filename):
@@ -169,16 +172,4 @@ def main(_):
 
 
 if __name__ == "__main__":
-  parser = argparse.ArgumentParser()
-  parser.add_argument(
-      "--output_dir",
-      type=str,
-      default="/tmp/saved_model_half_plus_two",
-      help="Directory where to ouput SavedModel.")
-  parser.add_argument(
-      "--output_dir_pbtxt",
-      type=str,
-      default="/tmp/saved_model_half_plus_two_pbtxt",
-      help="Directory where to ouput the text format of SavedModel.")
-  FLAGS, unparsed = parser.parse_known_args()
-  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+  tf.app.run()

@@ -24,15 +24,20 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import argparse
-import sys
-
 import tensorflow as tf
 
 from tensorflow.examples.tutorials.mnist import input_data
 from tensorflow.python import debug as tf_debug
 
-FLAGS = None
+flags = tf.app.flags
+FLAGS = flags.FLAGS
+flags.DEFINE_integer("max_steps", 10, "Number of steps to run trainer.")
+flags.DEFINE_integer("train_batch_size", 100,
+                     "Batch size used during training.")
+flags.DEFINE_float("learning_rate", 0.025, "Initial learning rate.")
+flags.DEFINE_string("data_dir", "/tmp/mnist_data", "Directory for storing data")
+flags.DEFINE_boolean("debug", False,
+                     "Use debugger to track down bad values during training")
 
 IMAGE_SIZE = 28
 HIDDEN_SIZE = 500
@@ -130,33 +135,4 @@ def main(_):
 
 
 if __name__ == "__main__":
-  parser = argparse.ArgumentParser()
-  parser.add_argument(
-      "--max_steps",
-      type=int,
-      default=10,
-      help="Number of steps to run trainer.")
-  parser.add_argument(
-      "--train_batch_size",
-      type=int,
-      default=100,
-      help="Batch size used during training.")
-  parser.add_argument(
-      "--learning_rate",
-      type=float,
-      default=0.025,
-      help="Initial learning rate.")
-  parser.add_argument(
-      "--data_dir",
-      type=str,
-      default="/tmp/mnist_data",
-      help="Directory for storing data")
-  parser.add_argument(
-      "--debug",
-      type="bool",
-      nargs="?",
-      const=True,
-      default=False,
-      help="Use debugger to track down bad values during training")
-  FLAGS, unparsed = parser.parse_known_args()
-  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+  tf.app.run()
