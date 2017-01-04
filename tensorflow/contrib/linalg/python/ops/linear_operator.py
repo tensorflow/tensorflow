@@ -21,6 +21,7 @@ from __future__ import print_function
 import contextlib
 
 from tensorflow.contrib import framework as contrib_framework
+from tensorflow.contrib.linalg.python.ops import linear_operator_util
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
@@ -258,7 +259,12 @@ class LinearOperator(object):
     with self._name_scope(name):
       # Be clean by avoiding adding shape Ops to the graph too many times.
       if self._cached_shape_dynamic is None:
-        self._cached_shape_dynamic = self._shape_dynamic()
+        # Prefer to use statically defined shape if available.
+        if self.shape.is_fully_defined():
+          self._cached_shape_dynamic = linear_operator_util.shape_tensor(
+              self.shape.as_list())
+        else:
+          self._cached_shape_dynamic = self._shape_dynamic()
       return self._cached_shape_dynamic
 
   @property
@@ -291,8 +297,12 @@ class LinearOperator(object):
     # Derived classes get this "for free" once .shape() is implemented.
     with self._name_scope(name):
       if self._cached_batch_shape_dynamic is None:
-        self._cached_batch_shape_dynamic = array_ops.slice(
-            self.shape_dynamic(), [0], [self.tensor_rank_dynamic() - 2])
+        # Prefer to use statically defined shape if available.
+        if self.batch_shape.is_fully_defined():
+          self._cached_batch_shape_dynamic = linear_operator_util.shape_tensor(
+              self.batch_shape.as_list(), name="batch_shape")
+        else:
+          self._cached_batch_shape_dynamic = self.shape_dynamic()[:-2]
       return self._cached_batch_shape_dynamic
 
   @property
@@ -327,7 +337,13 @@ class LinearOperator(object):
     # Derived classes get this "for free" once .shape() is implemented.
     with self._name_scope(name):
       if self._cached_tensor_rank_dynamic is None:
-        self._cached_tensor_rank_dynamic = array_ops.size(self.shape_dynamic())
+        # Prefer to use statically defined shape if available.
+        if self.tensor_rank is not None:
+          self._cached_tensor_rank_dynamic = ops.convert_to_tensor(
+              self.tensor_rank)
+        else:
+          self._cached_tensor_rank_dynamic = array_ops.size(
+              self.shape_dynamic())
       return self._cached_tensor_rank_dynamic
 
   @property
@@ -360,8 +376,12 @@ class LinearOperator(object):
     # Derived classes get this "for free" once .shape() is implemented.
     with self._name_scope(name):
       if self._cached_domain_dimension_dynamic is None:
-        self._cached_domain_dimension_dynamic = array_ops.gather(
-            self.shape_dynamic(), self.tensor_rank_dynamic() - 1)
+        # Prefer to use statically defined shape if available.
+        if self.domain_dimension.value is not None:
+          self._cached_domain_dimension_dynamic = ops.convert_to_tensor(
+              self.domain_dimension.value)
+        else:
+          self._cached_domain_dimension_dynamic = self.shape_dynamic()[-1]
       return self._cached_domain_dimension_dynamic
 
   @property
@@ -394,8 +414,12 @@ class LinearOperator(object):
     # Derived classes get this "for free" once .shape() is implemented.
     with self._name_scope(name):
       if self._cached_range_dimension_dynamic is None:
-        self._cached_range_dimension_dynamic = array_ops.gather(
-            self.shape_dynamic(), self.tensor_rank_dynamic() - 2)
+        # Prefer to use statically defined shape if available.
+        if self.range_dimension.value is not None:
+          self._cached_range_dimension_dynamic = ops.convert_to_tensor(
+              self.range_dimension.value)
+        else:
+          self._cached_range_dimension_dynamic = self.shape_dynamic()[-2]
       return self._cached_range_dimension_dynamic
 
   def _assert_non_singular(self):
