@@ -780,7 +780,7 @@ Trains a model given training data `x` predictions and `y` labels.
 Interface for objects that are evaluatable by, e.g., `Experiment`.
 - - -
 
-#### `tf.contrib.learn.Evaluable.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None)` {#Evaluable.evaluate}
+#### `tf.contrib.learn.Evaluable.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None, hooks=None)` {#Evaluable.evaluate}
 
 Evaluates given model with provided evaluation data.
 
@@ -839,6 +839,8 @@ for which this evaluation was performed.
     different data sets, such as on training data vs test data.
 *  <b>`checkpoint_path`</b>: Path of a specific checkpoint to evaluate. If `None`, the
     latest checkpoint in `model_dir` is used.
+*  <b>`hooks`</b>: List of `SessionRunHook` subclass instances. Used for callbacks
+    inside the evaluation call.
 
 ##### Returns:
 
@@ -996,7 +998,7 @@ This method will be removed after the deprecation date. To inspect variables, us
 
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None)` {#DNNClassifier.evaluate}
+#### `tf.contrib.learn.DNNClassifier.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None, hooks=None)` {#DNNClassifier.evaluate}
 
 See evaluable.Evaluable. Note: Labels must be integer class indices.
 
@@ -1241,7 +1243,7 @@ Initializes a `DNNRegressor` instance.
 
 - - -
 
-#### `tf.contrib.learn.DNNRegressor.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None)` {#DNNRegressor.evaluate}
+#### `tf.contrib.learn.DNNRegressor.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None, hooks=None)` {#DNNRegressor.evaluate}
 
 See evaluable.Evaluable.
 
@@ -1458,7 +1460,7 @@ This method will be removed after the deprecation date. To inspect variables, us
 
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None)` {#LinearClassifier.evaluate}
+#### `tf.contrib.learn.LinearClassifier.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None, hooks=None)` {#LinearClassifier.evaluate}
 
 See evaluable.Evaluable. Note: Labels must be integer class indices.
 
@@ -1657,7 +1659,7 @@ This method will be removed after the deprecation date. To inspect variables, us
 
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None)` {#LinearRegressor.evaluate}
+#### `tf.contrib.learn.LinearRegressor.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None, hooks=None)` {#LinearRegressor.evaluate}
 
 See evaluable.Evaluable.
 
