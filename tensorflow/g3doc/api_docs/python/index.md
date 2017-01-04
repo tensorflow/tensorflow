@@ -1032,6 +1032,7 @@
   * [`LinearOperator`](../../api_docs/python/contrib.linalg.md#LinearOperator)
   * [`LinearOperatorComposition`](../../api_docs/python/contrib.linalg.md#LinearOperatorComposition)
   * [`LinearOperatorDiag`](../../api_docs/python/contrib.linalg.md#LinearOperatorDiag)
+  * [`LinearOperatorIdentity`](../../api_docs/python/contrib.linalg.md#LinearOperatorIdentity)
   * [`LinearOperatorMatrix`](../../api_docs/python/contrib.linalg.md#LinearOperatorMatrix)
   * [`LinearOperatorTriL`](../../api_docs/python/contrib.linalg.md#LinearOperatorTriL)
 
