@@ -425,7 +425,11 @@ void RandomShuffleQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
 }
 
 Status RandomShuffleQueue::MatchesNodeDef(const NodeDef& node_def) {
-  TF_RETURN_IF_ERROR(MatchesNodeDefOp(node_def, "RandomShuffleQueue"));
+  if (!MatchesNodeDefOp(node_def, "RandomShuffleQueue").ok() &&
+      !MatchesNodeDefOp(node_def, "RandomShuffleQueueV2").ok()) {
+    return errors::InvalidArgument("Expected RandomShuffleQueue, found ",
+                                   node_def.op());
+  }
   TF_RETURN_IF_ERROR(MatchesNodeDefCapacity(node_def, capacity_));
 
   int32 min_after_dequeue = -1;
@@ -496,6 +500,8 @@ class RandomShuffleQueueOp : public TypedQueueOp {
 };
 
 REGISTER_KERNEL_BUILDER(Name("RandomShuffleQueue").Device(DEVICE_CPU),
+                        RandomShuffleQueueOp);
+REGISTER_KERNEL_BUILDER(Name("RandomShuffleQueueV2").Device(DEVICE_CPU),
                         RandomShuffleQueueOp);
 
 }  // namespace tensorflow
