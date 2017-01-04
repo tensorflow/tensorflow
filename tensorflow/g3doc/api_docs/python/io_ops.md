@@ -54,7 +54,7 @@ with tf.Session() as sess:
 
 ### `tf.placeholder_with_default(input, shape, name=None)` {#placeholder_with_default}
 
-A placeholder op that passes though `input` when its output is not fed.
+A placeholder op that passes through `input` when its output is not fed.
 
 ##### Args:
 
