@@ -132,6 +132,9 @@
   * [`zeros_initializer`](../../api_docs/python/state_ops.md#zeros_initializer)
 
 * **[Tensor Transformations](../../api_docs/python/array_ops.md)**:
+  * [`alias_inplace_add`](../../api_docs/python/array_ops.md#alias_inplace_add)
+  * [`alias_inplace_subtract`](../../api_docs/python/array_ops.md#alias_inplace_subtract)
+  * [`alias_inplace_update`](../../api_docs/python/array_ops.md#alias_inplace_update)
   * [`batch_to_space`](../../api_docs/python/array_ops.md#batch_to_space)
   * [`batch_to_space_nd`](../../api_docs/python/array_ops.md#batch_to_space_nd)
   * [`bitcast`](../../api_docs/python/array_ops.md#bitcast)
@@ -145,6 +148,8 @@
   * [`dequantize`](../../api_docs/python/array_ops.md#dequantize)
   * [`dynamic_partition`](../../api_docs/python/array_ops.md#dynamic_partition)
   * [`dynamic_stitch`](../../api_docs/python/array_ops.md#dynamic_stitch)
+  * [`empty`](../../api_docs/python/array_ops.md#empty)
+  * [`empty_like`](../../api_docs/python/array_ops.md#empty_like)
   * [`expand_dims`](../../api_docs/python/array_ops.md#expand_dims)
   * [`extract_image_patches`](../../api_docs/python/array_ops.md#extract_image_patches)
   * [`fake_quant_with_min_max_args`](../../api_docs/python/array_ops.md#fake_quant_with_min_max_args)
@@ -159,6 +164,7 @@
   * [`one_hot`](../../api_docs/python/array_ops.md#one_hot)
   * [`pack`](../../api_docs/python/array_ops.md#pack)
   * [`pad`](../../api_docs/python/array_ops.md#pad)
+  * [`parallel_stack`](../../api_docs/python/array_ops.md#parallel_stack)
   * [`quantize_v2`](../../api_docs/python/array_ops.md#quantize_v2)
   * [`quantized_concat`](../../api_docs/python/array_ops.md#quantized_concat)
   * [`rank`](../../api_docs/python/array_ops.md#rank)
