@@ -463,17 +463,6 @@ class MaxPoolingGradGradOp : public OpKernel {
     OP_REQUIRES(context, out_grad_backprop.dims() == 4,
                 errors::InvalidArgument("out_grad_backprop must be 4-dimensional"));
 
-    const TensorShape& output_shape = tensor_out.shape();
-
-    Tensor tensor_out_dup;
-    OP_REQUIRES_OK(context,
-                   context->allocate_temp(DataTypeToEnum<T>::v(),
-                                          output_shape, &tensor_out_dup));
-    Tensor tensor_out_arg_max;
-    OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<int64>::v(),
-                                                   output_shape,
-                                                   &tensor_out_arg_max));
-
     PoolParameters params{context,  ksize_,      stride_,
                           padding_, FORMAT_NHWC, tensor_in.shape()};
     if (!context->status().ok()) {
@@ -481,14 +470,122 @@ class MaxPoolingGradGradOp : public OpKernel {
     }
 
     Tensor* output = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(0, tensor_out.shape(), &output));
 
-    SpatialMaxPoolWithArgMaxHelper<CPUDevice, T>(
-        context, &tensor_out_dup, &tensor_out_arg_max, output, tensor_in,
-        out_grad_backprop, params, padding_);
+    SpatialMaxPoolGradGrad(context, output, tensor_in, tensor_out,
+                           out_grad_backprop, params, padding_);
   }
 
  private:
+  void SpatialMaxPoolGradGrad(OpKernelContext* context, Tensor* bottom_diff,
+                              const Tensor& tensor_in, const Tensor& tensor_out,
+                              const Tensor& top_diff,
+                              const PoolParameters& params,
+                              const Padding& padding) {
+    typedef Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
+      ConstEigenMatrixMap;
+    typedef Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
+      EigenMatrixMap;
+
+    ConstEigenMatrixMap in_mat(
+        tensor_in.flat<T>().data(), params.depth,
+        params.tensor_in_cols * params.tensor_in_rows * params.tensor_in_batch);
+    ConstEigenMatrixMap out_mat(
+        tensor_out.flat<T>().data(), params.depth,
+        params.out_width * params.out_height * params.tensor_in_batch);
+    ConstEigenMatrixMap top_diff_mat(
+        top_diff.flat<T>().data(), params.depth,
+        params.tensor_in_cols * params.tensor_in_rows * params.tensor_in_batch);
+    EigenMatrixMap bottom_diff_mat(
+        bottom_diff->flat<T>().data(), params.depth,
+        params.out_width * params.out_height * params.tensor_in_batch);
+
+    const DeviceBase::CpuWorkerThreads& worker_threads =
+      *(context->device()->tensorflow_cpu_worker_threads());
+
+    // The following code basically does the following:
+    // 1. Flattens the input, output, top_diff and bottom_diff tensors into
+    //    two dimensional arrays.
+    //    tensor_in_as_matrix:
+    //      depth by (tensor_in_cols * tensor_in_rows * tensor_in_batch)
+    //    tensor_out_as_matrix:
+    //      depth by (out_width * out_height * tensor_in_batch)
+    //    top_diff_as_matrix:
+    //      depth by (tensor_in_cols * tensor_in_rows * tensor_in_batch)
+    //    bottom_diff_as_matrix:
+    //      depth by (out_width * out_height * tensor_in_batch)
+    //
+    // 2. Walks through the set of columns in the flattened
+    //    tensor_in_as_matrix, tensor_out_as_matrix, top_diff_as_matrix
+    //    and updates the column(s) corresponding to the maximum values in
+    //    tensor_out_as_matrix with the corresponding values in
+    //    top_diff_as_matrix.
+    auto shard = [&params, &in_mat, &out_mat, &top_diff_mat, &bottom_diff_mat](int64 start, int64 limit) {
+
+      const int32 depth = params.depth;
+      const int32 in_rows = params.tensor_in_rows;
+      const int32 in_cols = params.tensor_in_cols;
+      const int32 pad_rows = params.pad_rows;
+      const int32 pad_cols = params.pad_cols;
+      const int32 window_rows = params.window_rows;
+      const int32 window_cols = params.window_cols;
+      const int32 row_stride = params.row_stride;
+      const int32 col_stride = params.col_stride;
+      const int32 out_height = params.out_height;
+      const int32 out_width = params.out_width;
+
+      {
+        // Initializes the output grad backprop tensor with 0.
+        const int32 output_image_size = out_height * out_width * params.depth;
+        EigenMatrixMap bottom_diff_shard(bottom_diff_mat.data() + start * output_image_size,
+                                         1, (limit - start) * output_image_size);
+        bottom_diff_shard.setZero();
+      }
+
+      for (int32 b = start; b < limit; ++b) {
+        for (int32 h = 0; h < in_rows; ++h) {
+          for (int32 w = 0; w < in_cols; ++w) {
+            // (h_start, h_end) * (w_start, w_end) is the range that the input
+            // vector projects to.
+            const int32 hpad = h + pad_rows;
+            const int32 wpad = w + pad_cols;
+            const int h_start =
+              (hpad < window_rows) ? 0 : (hpad - window_rows) / row_stride + 1;
+            const int h_end = std::min(hpad / row_stride + 1, out_height);
+            const int w_start =
+              (wpad < window_cols) ? 0 : (wpad - window_cols) / col_stride + 1;
+            const int w_end = std::min(wpad / col_stride + 1, out_width);
+            // compute elementwise max
+            const int in_index = (b * in_rows + h) * in_cols + w;
+            for (int32 ph = h_start; ph < h_end; ++ph) {
+              const int out_index_base = (b * out_height + ph) * out_width;
+              for (int32 pw = w_start; pw < w_end; ++pw) {
+                const int out_index = out_index_base + pw;
+                /// NOTES(aam_at): not using the eigen matrix operation for
+                /// now.
+                for (int d = 0; d < depth; ++d) {
+                  const T& input_ref = in_mat.coeffRef(d, in_index);
+                  const T& output_ref = out_mat.coeffRef(d, out_index);
+                  if (output_ref == input_ref) {
+                    T& bottom_diff_ref = bottom_diff_mat.coeffRef(d, out_index);
+                    bottom_diff_ref += top_diff_mat.coeffRef(d, in_index);
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    };
+
+    const int64 shard_cost = params.out_width * params.out_height *
+                              params.depth * params.window_rows *
+                              params.window_cols;
+    Shard(worker_threads.num_threads, worker_threads.workers,
+          params.tensor_in_batch, shard_cost, shard);
+  }
+
   std::vector<int32> ksize_;
   std::vector<int32> stride_;
   Padding padding_;
