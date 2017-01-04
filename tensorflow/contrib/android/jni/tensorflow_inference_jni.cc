@@ -272,7 +272,7 @@ JNIEXPORT jint JNICALL TENSORFLOW_METHOD(close)(JNIEnv* env, jobject thiz) {
 }
 
 // TODO(andrewharp): Use memcpy to fill/read nodes.
-#define FILL_NODE_METHOD(DTYPE, JAVA_DTYPE, TENSOR_DTYPE)                  \
+#define FILL_NODE_METHOD(DTYPE, JAVA_DTYPE, CTYPE, TENSOR_DTYPE)           \
   FILL_NODE_SIGNATURE(DTYPE, JAVA_DTYPE) {                                 \
     SessionVariables* vars = GetSessionVars(env, thiz);                    \
     jboolean iCopied = JNI_FALSE;                                          \
@@ -284,7 +284,7 @@ JNIEXPORT jint JNICALL TENSORFLOW_METHOD(close)(JNIEnv* env, jobject thiz) {
     }                                                                      \
     env->ReleaseIntArrayElements(dims, dim_vals, JNI_ABORT);               \
     tensorflow::Tensor input_tensor(TENSOR_DTYPE, shape);                  \
-    auto tensor_mapped = input_tensor.flat<JAVA_DTYPE>();                  \
+    auto tensor_mapped = input_tensor.flat<CTYPE>();                       \
     j##JAVA_DTYPE* values = env->Get##DTYPE##ArrayElements(arr, &iCopied); \
     j##JAVA_DTYPE* value_ptr = values;                                     \
     const int array_size = env->GetArrayLength(arr);                       \
@@ -300,14 +300,14 @@ JNIEXPORT jint JNICALL TENSORFLOW_METHOD(close)(JNIEnv* env, jobject thiz) {
     vars->input_tensors[input_name] = input_pair;                          \
   }
 
-#define READ_NODE_METHOD(DTYPE, JAVA_DTYPE)                                \
+#define READ_NODE_METHOD(DTYPE, JAVA_DTYPE, CTYPE)                         \
   READ_NODE_SIGNATURE(DTYPE, JAVA_DTYPE) {                                 \
     SessionVariables* vars = GetSessionVars(env, thiz);                    \
     Tensor* t = GetTensor(env, thiz, node_name_jstring);                   \
     if (t == nullptr) {                                                    \
       return -1;                                                           \
     }                                                                      \
-    auto tensor_mapped = t->flat<JAVA_DTYPE>();                            \
+    auto tensor_mapped = t->flat<CTYPE>();                                 \
     jboolean iCopied = JNI_FALSE;                                          \
     j##JAVA_DTYPE* values = env->Get##DTYPE##ArrayElements(arr, &iCopied); \
     j##JAVA_DTYPE* value_ptr = values;                                     \
@@ -320,10 +320,12 @@ JNIEXPORT jint JNICALL TENSORFLOW_METHOD(close)(JNIEnv* env, jobject thiz) {
     return 0;                                                              \
   }
 
-FILL_NODE_METHOD(Float, float, tensorflow::DT_FLOAT)
-FILL_NODE_METHOD(Int, int, tensorflow::DT_INT32)
-FILL_NODE_METHOD(Double, double, tensorflow::DT_DOUBLE)
+FILL_NODE_METHOD(Float, float, float, tensorflow::DT_FLOAT)
+FILL_NODE_METHOD(Int, int, int, tensorflow::DT_INT32)
+FILL_NODE_METHOD(Double, double, double, tensorflow::DT_DOUBLE)
+FILL_NODE_METHOD(Byte, byte, uint8_t, tensorflow::DT_UINT8)
 
-READ_NODE_METHOD(Float, float)
-READ_NODE_METHOD(Int, int)
-READ_NODE_METHOD(Double, double)
+READ_NODE_METHOD(Float, float, float)
+READ_NODE_METHOD(Int, int, int)
+READ_NODE_METHOD(Double, double, double)
+READ_NODE_METHOD(Byte, byte, uint8_t)
