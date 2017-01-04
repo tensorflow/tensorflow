@@ -189,7 +189,7 @@ class BenchmarkTest(test.TestCase):
       full_trace = read_benchmark_3.extras["full_trace_chrome_format"]
       json_trace = json.loads(full_trace.string_value)
       self.assertTrue(isinstance(json_trace, dict))
-      self.assertTrue("traceEvents" in json_trace.keys())
+      self.assertTrue("traceEvents" in json_trace)
 
     finally:
       gfile.DeleteRecursively(tempdir)
