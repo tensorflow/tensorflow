@@ -384,11 +384,11 @@ sess = tf_debug.LocalCLIDebugWrapperSession(sess)
 ```none
 # Debugging shape mismatch during matrix multiplication.
 python $(python -c "import tensorflow as tf; import os; print(os.path.dirname(tf.__file__));")/python/debug/examples/debug_errors.py \
-    -error shape_mismatch --debug
+    --error shape_mismatch --debug
 
 # Debugging uninitialized variable.
 python $(python -c "import tensorflow as tf; import os; print(os.path.dirname(tf.__file__));")/python/debug/examples/debug_errors.py \
-    -error uninitialized_variable --debug
+    --error uninitialized_variable --debug
 ```
 
 **Q**: _Why can't I select text in the tfdbg CLI?_
