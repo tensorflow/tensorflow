@@ -6994,6 +6994,57 @@ op {
   is_stateful: true
 }
 op {
+  name: "FIFOQueueV2"
+  output_arg {
+    name: "handle"
+    description: "The handle to the queue."
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "component_types"
+    type: "list(type)"
+    description: "The type of each component in a value."
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "shapes"
+    type: "list(shape)"
+    default_value {
+      list {
+      }
+    }
+    description: "The shape of each component in a value. The length of this attr must\nbe either 0 or the same as the length of component_types. If the length of\nthis attr is 0, the shapes of queue elements are not constrained, and\nonly one element may be dequeued at a time."
+    has_minimum: true
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "The upper bound on the number of elements in this queue.\nNegative numbers mean no limit."
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this queue is placed in the given container.\nOtherwise, a default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this queue will be shared under the given name\nacross multiple sessions."
+  }
+  summary: "A queue that produces elements in first-in first-out order."
+  is_stateful: true
+}
+op {
   name: "Fact"
   output_arg {
     name: "fact"
@@ -7178,6 +7229,20 @@ op {
   summary: "Compute gradients for a FakeQuantWithMinMaxVarsPerChannel operation."
 }
 op {
+  name: "FakeQueue"
+  input_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  summary: "Deprecated. Do not use."
+  is_stateful: true
+}
+op {
   name: "Fill"
   input_arg {
     name: "dims"
@@ -7207,6 +7272,50 @@ op {
     description: "The handle to reference the Reader."
     type: DT_STRING
     is_ref: true
+  }
+  attr {
+    name: "header_bytes"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "record_bytes"
+    type: "int"
+  }
+  attr {
+    name: "footer_bytes"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this reader is named in the given bucket\nwith this shared_name. Otherwise, the node name is used instead."
+  }
+  summary: "A Reader that outputs fixed-length records from a file."
+  is_stateful: true
+}
+op {
+  name: "FixedLengthRecordReaderV2"
+  output_arg {
+    name: "reader_handle"
+    description: "The handle to reference the Reader."
+    type: DT_RESOURCE
   }
   attr {
     name: "header_bytes"
@@ -8422,6 +8531,33 @@ op {
     description: "The handle to reference the Reader."
     type: DT_STRING
     is_ref: true
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this reader is named in the given bucket\nwith this shared_name. Otherwise, the node name is used instead."
+  }
+  summary: "A Reader that outputs the queued work as both the key and value."
+  description: "To use, enqueue strings in a Queue.  ReaderRead will take the front\nwork string and output (work, work)."
+  is_stateful: true
+}
+op {
+  name: "IdentityReaderV2"
+  output_arg {
+    name: "reader_handle"
+    description: "The handle to reference the Reader."
+    type: DT_RESOURCE
   }
   attr {
     name: "container"
@@ -11622,6 +11758,58 @@ op {
   is_stateful: true
 }
 op {
+  name: "PaddingFIFOQueueV2"
+  output_arg {
+    name: "handle"
+    description: "The handle to the queue."
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "component_types"
+    type: "list(type)"
+    description: "The type of each component in a value."
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "shapes"
+    type: "list(shape)"
+    default_value {
+      list {
+      }
+    }
+    description: "The shape of each component in a value. The length of this attr must\nbe either 0 or the same as the length of component_types.\nShapes of fixed rank but variable size are allowed by setting\nany shape dimension to -1.  In this case, the inputs\' shape may vary along\nthe given dimension, and DequeueMany will pad the given dimension with\nzeros up to the maximum shape of all elements in the given batch.\nIf the length of this attr is 0, different queue elements may have\ndifferent ranks and shapes, but only one element may be dequeued at a time."
+    has_minimum: true
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "The upper bound on the number of elements in this queue.\nNegative numbers mean no limit."
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this queue is placed in the given container.\nOtherwise, a default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this queue will be shared under the given name\nacross multiple sessions."
+  }
+  summary: "A queue that produces elements in first-in first-out order."
+  description: "Variable-size shapes are allowed by setting the corresponding shape dimensions\nto 0 in the shape attr.  In this case DequeueMany will pad up to the maximum\nsize of any given element in the minibatch.  See below for details."
+  is_stateful: true
+}
+op {
   name: "ParameterizedTruncatedNormal"
   input_arg {
     name: "shape"
@@ -12212,6 +12400,57 @@ op {
     description: "The handle to the queue."
     type: DT_STRING
     is_ref: true
+  }
+  attr {
+    name: "component_types"
+    type: "list(type)"
+    default_value {
+      list {
+      }
+    }
+    description: "The type of each component in a value."
+    has_minimum: true
+  }
+  attr {
+    name: "shapes"
+    type: "list(shape)"
+    description: "The shape of each component in a value. The length of this attr must\nbe either 0 or the same as the length of component_types. If the length of\nthis attr is 0, the shapes of queue elements are not constrained, and\nonly one element may be dequeued at a time."
+    has_minimum: true
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "The upper bound on the number of elements in this queue.\nNegative numbers mean no limit."
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this queue is placed in the given container.\nOtherwise, a default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this queue will be shared under the given name\nacross multiple sessions."
+  }
+  summary: "A queue that produces elements sorted by the first component value."
+  description: "Note that the PriorityQueue requires the first component of any element\nto be a scalar int64, in addition to the other elements declared by\ncomponent_types.  Therefore calls to Enqueue and EnqueueMany (resp. Dequeue\nand DequeueMany) on a PriorityQueue will all require (resp. output) one extra\nentry in their input (resp. output) lists."
+  is_stateful: true
+}
+op {
+  name: "PriorityQueueV2"
+  output_arg {
+    name: "handle"
+    description: "The handle to the queue."
+    type: DT_RESOURCE
   }
   attr {
     name: "component_types"
@@ -13587,6 +13826,24 @@ op {
   description: "This operation signals that no more elements will be enqueued in the\ngiven queue. Subsequent Enqueue(Many) operations will fail.\nSubsequent Dequeue(Many) operations will continue to succeed if\nsufficient elements remain in the queue. Subsequent Dequeue(Many)\noperations that would block will fail immediately."
 }
 op {
+  name: "QueueCloseV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a queue."
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "cancel_pending_enqueues"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If true, all pending enqueue requests that are\nblocked on the given queue will be cancelled."
+  }
+  summary: "Closes the given queue."
+  description: "This operation signals that no more elements will be enqueued in the\ngiven queue. Subsequent Enqueue(Many) operations will fail.\nSubsequent Dequeue(Many) operations will continue to succeed if\nsufficient elements remain in the queue. Subsequent Dequeue(Many)\noperations that would block will fail immediately."
+}
+op {
   name: "QueueDequeue"
   input_arg {
     name: "handle"
@@ -13654,6 +13911,41 @@ op {
   description: "If the queue is closed and there are fewer than n elements, then an\nOutOfRange error is returned.\n\nThis operation concatenates queue-element component tensors along the\n0th dimension to make a single component tensor.  All of the components\nin the dequeued tuple will have size n in the 0th dimension.\n\nThis operation has k outputs, where k is the number of components in\nthe tuples stored in the given queue, and output i is the ith\ncomponent of the dequeued tuple.\n\nN.B. If the queue is empty, this operation will block until n elements\nhave been dequeued (or \'timeout_ms\' elapses, if specified)."
 }
 op {
+  name: "QueueDequeueManyV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a queue."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "n"
+    description: "The number of tuples to dequeue."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "components"
+    description: "One or more tensors that were dequeued as a tuple."
+    type_list_attr: "component_types"
+  }
+  attr {
+    name: "component_types"
+    type: "list(type)"
+    description: "The type of each component in a tuple."
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "timeout_ms"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "If the queue has fewer than n elements, this operation\nwill block for up to timeout_ms milliseconds.\nNote: This option is not supported yet."
+  }
+  summary: "Dequeues n tuples of one or more tensors from the given queue."
+  description: "If the queue is closed and there are fewer than n elements, then an\nOutOfRange error is returned.\n\nThis operation concatenates queue-element component tensors along the\n0th dimension to make a single component tensor.  All of the components\nin the dequeued tuple will have size n in the 0th dimension.\n\nThis operation has k outputs, where k is the number of components in\nthe tuples stored in the given queue, and output i is the ith\ncomponent of the dequeued tuple.\n\nN.B. If the queue is empty, this operation will block until n elements\nhave been dequeued (or \'timeout_ms\' elapses, if specified)."
+}
+op {
   name: "QueueDequeueUpTo"
   input_arg {
     name: "handle"
@@ -13688,6 +13980,71 @@ op {
   }
   summary: "Dequeues n tuples of one or more tensors from the given queue."
   description: "This operation is not supported by all queues.  If a queue does not support\nDequeueUpTo, then an Unimplemented error is returned.\n\nIf the queue is closed and there are more than 0 but less than n elements\nremaining, then instead of returning an OutOfRange error like\nQueueDequeueMany, less than `n` elements are returned immediately.  If the queue\nis closed and there are 0 elements left in the queue, then an OutOfRange\nerror is returned just like in QueueDequeueMany.  Otherwise the behavior\nis identical to QueueDequeueMany:\n\nThis operation concatenates queue-element component tensors along the\n0th dimension to make a single component tensor.  All of the components\nin the dequeued tuple will have size n in the 0th dimension.\n\nThis operation has k outputs, where k is the number of components in\nthe tuples stored in the given queue, and output i is the ith\ncomponent of the dequeued tuple."
+}
+op {
+  name: "QueueDequeueUpToV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a queue."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "n"
+    description: "The number of tuples to dequeue."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "components"
+    description: "One or more tensors that were dequeued as a tuple."
+    type_list_attr: "component_types"
+  }
+  attr {
+    name: "component_types"
+    type: "list(type)"
+    description: "The type of each component in a tuple."
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "timeout_ms"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "If the queue has fewer than n elements, this operation\nwill block for up to timeout_ms milliseconds.\nNote: This option is not supported yet."
+  }
+  summary: "Dequeues n tuples of one or more tensors from the given queue."
+  description: "This operation is not supported by all queues.  If a queue does not support\nDequeueUpTo, then an Unimplemented error is returned.\n\nIf the queue is closed and there are more than 0 but less than n elements\nremaining, then instead of returning an OutOfRange error like\nQueueDequeueMany, less than `n` elements are returned immediately.  If the queue\nis closed and there are 0 elements left in the queue, then an OutOfRange\nerror is returned just like in QueueDequeueMany.  Otherwise the behavior\nis identical to QueueDequeueMany:\n\nThis operation concatenates queue-element component tensors along the\n0th dimension to make a single component tensor.  All of the components\nin the dequeued tuple will have size n in the 0th dimension.\n\nThis operation has k outputs, where k is the number of components in\nthe tuples stored in the given queue, and output i is the ith\ncomponent of the dequeued tuple."
+}
+op {
+  name: "QueueDequeueV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a queue."
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "components"
+    description: "One or more tensors that were dequeued as a tuple."
+    type_list_attr: "component_types"
+  }
+  attr {
+    name: "component_types"
+    type: "list(type)"
+    description: "The type of each component in a tuple."
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "timeout_ms"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "If the queue is empty, this operation will block for up to\ntimeout_ms milliseconds.\nNote: This option is not supported yet."
+  }
+  summary: "Dequeues a tuple of one or more tensors from the given queue."
+  description: "This operation has k outputs, where k is the number of components\nin the tuples stored in the given queue, and output i is the ith\ncomponent of the dequeued tuple.\n\nN.B. If the queue is empty, this operation will block until an element\nhas been dequeued (or \'timeout_ms\' elapses, if specified)."
 }
 op {
   name: "QueueEnqueue"
@@ -13750,12 +14107,84 @@ op {
   description: "This operation slices each component tensor along the 0th dimension to\nmake multiple queue elements. All of the tuple components must have the\nsame size in the 0th dimension.\n\nThe components input has k elements, which correspond to the components of\ntuples stored in the given queue.\n\nN.B. If the queue is full, this operation will block until the given\nelements have been enqueued (or \'timeout_ms\' elapses, if specified)."
 }
 op {
+  name: "QueueEnqueueManyV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a queue."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "components"
+    description: "One or more tensors from which the enqueued tensors should\nbe taken."
+    type_list_attr: "Tcomponents"
+  }
+  attr {
+    name: "Tcomponents"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "timeout_ms"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "If the queue is too full, this operation will block for up\nto timeout_ms milliseconds.\nNote: This option is not supported yet."
+  }
+  summary: "Enqueues zero or more tuples of one or more tensors in the given queue."
+  description: "This operation slices each component tensor along the 0th dimension to\nmake multiple queue elements. All of the tuple components must have the\nsame size in the 0th dimension.\n\nThe components input has k elements, which correspond to the components of\ntuples stored in the given queue.\n\nN.B. If the queue is full, this operation will block until the given\nelements have been enqueued (or \'timeout_ms\' elapses, if specified)."
+}
+op {
+  name: "QueueEnqueueV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a queue."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "components"
+    description: "One or more tensors from which the enqueued tensors should be taken."
+    type_list_attr: "Tcomponents"
+  }
+  attr {
+    name: "Tcomponents"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "timeout_ms"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "If the queue is full, this operation will block for up to\ntimeout_ms milliseconds.\nNote: This option is not supported yet."
+  }
+  summary: "Enqueues a tuple of one or more tensors in the given queue."
+  description: "The components input has k elements, which correspond to the components of\ntuples stored in the given queue.\n\nN.B. If the queue is full, this operation will block until the given\nelement has been enqueued (or \'timeout_ms\' elapses, if specified)."
+}
+op {
   name: "QueueSize"
   input_arg {
     name: "handle"
     description: "The handle to a queue."
     type: DT_STRING
     is_ref: true
+  }
+  output_arg {
+    name: "size"
+    description: "The number of elements in the given queue."
+    type: DT_INT32
+  }
+  summary: "Computes the number of elements in the given queue."
+}
+op {
+  name: "QueueSizeV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a queue."
+    type: DT_RESOURCE
   }
   output_arg {
     name: "size"
@@ -13949,6 +14378,81 @@ op {
     description: "The handle to the queue."
     type: DT_STRING
     is_ref: true
+  }
+  attr {
+    name: "component_types"
+    type: "list(type)"
+    description: "The type of each component in a value."
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "shapes"
+    type: "list(shape)"
+    default_value {
+      list {
+      }
+    }
+    description: "The shape of each component in a value. The length of this attr must\nbe either 0 or the same as the length of component_types. If the length of\nthis attr is 0, the shapes of queue elements are not constrained, and\nonly one element may be dequeued at a time."
+    has_minimum: true
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "The upper bound on the number of elements in this queue.\nNegative numbers mean no limit."
+  }
+  attr {
+    name: "min_after_dequeue"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "Dequeue will block unless there would be this\nmany elements after the dequeue or the queue is closed. This\nensures a minimum level of mixing of elements."
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "If either seed or seed2 is set to be non-zero, the random number\ngenerator is seeded by the given seed.  Otherwise, a random seed is used."
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "A second seed to avoid seed collision."
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this queue is placed in the given container.\nOtherwise, a default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this queue will be shared under the given name\nacross multiple sessions."
+  }
+  summary: "A queue that randomizes the order of elements."
+  is_stateful: true
+}
+op {
+  name: "RandomShuffleQueueV2"
+  output_arg {
+    name: "handle"
+    description: "The handle to the queue."
+    type: DT_RESOURCE
   }
   attr {
     name: "component_types"
@@ -14273,12 +14777,39 @@ op {
   description: "This is the same as the number of ReaderRead executions that have\nsucceeded."
 }
 op {
+  name: "ReaderNumRecordsProducedV2"
+  input_arg {
+    name: "reader_handle"
+    description: "Handle to a Reader."
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "records_produced"
+    type: DT_INT64
+  }
+  summary: "Returns the number of records this Reader has produced."
+  description: "This is the same as the number of ReaderRead executions that have\nsucceeded."
+}
+op {
   name: "ReaderNumWorkUnitsCompleted"
   input_arg {
     name: "reader_handle"
     description: "Handle to a Reader."
     type: DT_STRING
     is_ref: true
+  }
+  output_arg {
+    name: "units_completed"
+    type: DT_INT64
+  }
+  summary: "Returns the number of work units this Reader has finished processing."
+}
+op {
+  name: "ReaderNumWorkUnitsCompletedV2"
+  input_arg {
+    name: "reader_handle"
+    description: "Handle to a Reader."
+    type: DT_RESOURCE
   }
   output_arg {
     name: "units_completed"
@@ -14346,12 +14877,76 @@ op {
   description: "Will dequeue from the input queue if necessary (e.g. when the\nReader needs to start reading from a new file since it has finished\nwith the previous file).\nIt may return less than `num_records` even before the last batch."
 }
 op {
+  name: "ReaderReadUpToV2"
+  input_arg {
+    name: "reader_handle"
+    description: "Handle to a `Reader`."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "queue_handle"
+    description: "Handle to a `Queue`, with string work items."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "num_records"
+    description: "number of records to read from `Reader`."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "keys"
+    description: "A 1-D tensor."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "values"
+    description: "A 1-D tensor."
+    type: DT_STRING
+  }
+  summary: "Returns up to `num_records` (key, value) pairs produced by a Reader."
+  description: "Will dequeue from the input queue if necessary (e.g. when the\nReader needs to start reading from a new file since it has finished\nwith the previous file).\nIt may return less than `num_records` even before the last batch."
+}
+op {
+  name: "ReaderReadV2"
+  input_arg {
+    name: "reader_handle"
+    description: "Handle to a Reader."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "queue_handle"
+    description: "Handle to a Queue, with string work items."
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "key"
+    description: "A scalar."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "value"
+    description: "A scalar."
+    type: DT_STRING
+  }
+  summary: "Returns the next record (key, value pair) produced by a Reader."
+  description: "Will dequeue from the input queue if necessary (e.g. when the\nReader needs to start reading from a new file since it has finished\nwith the previous file)."
+}
+op {
   name: "ReaderReset"
   input_arg {
     name: "reader_handle"
     description: "Handle to a Reader."
     type: DT_STRING
     is_ref: true
+  }
+  summary: "Restore a Reader to its initial clean state."
+}
+op {
+  name: "ReaderResetV2"
+  input_arg {
+    name: "reader_handle"
+    description: "Handle to a Reader."
+    type: DT_RESOURCE
   }
   summary: "Restore a Reader to its initial clean state."
 }
@@ -14372,12 +14967,41 @@ op {
   description: "Not all Readers support being restored, so this can produce an\nUnimplemented error."
 }
 op {
+  name: "ReaderRestoreStateV2"
+  input_arg {
+    name: "reader_handle"
+    description: "Handle to a Reader."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "state"
+    description: "Result of a ReaderSerializeState of a Reader with type\nmatching reader_handle."
+    type: DT_STRING
+  }
+  summary: "Restore a reader to a previously saved state."
+  description: "Not all Readers support being restored, so this can produce an\nUnimplemented error."
+}
+op {
   name: "ReaderSerializeState"
   input_arg {
     name: "reader_handle"
     description: "Handle to a Reader."
     type: DT_STRING
     is_ref: true
+  }
+  output_arg {
+    name: "state"
+    type: DT_STRING
+  }
+  summary: "Produce a string tensor that encodes the state of a Reader."
+  description: "Not all Readers support being serialized, so this can produce an\nUnimplemented error."
+}
+op {
+  name: "ReaderSerializeStateV2"
+  input_arg {
+    name: "reader_handle"
+    description: "Handle to a Reader."
+    type: DT_RESOURCE
   }
   output_arg {
     name: "state"
@@ -21077,6 +21701,39 @@ op {
   is_stateful: true
 }
 op {
+  name: "TFRecordReaderV2"
+  output_arg {
+    name: "reader_handle"
+    description: "The handle to reference the Reader."
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this reader is named in the given bucket\nwith this shared_name. Otherwise, the node name is used instead."
+  }
+  attr {
+    name: "compression_type"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  summary: "A Reader that outputs the records from a TensorFlow Records file."
+  is_stateful: true
+}
+op {
   name: "TakeManySparseFromTensorsMap"
   input_arg {
     name: "sparse_handles"
@@ -22273,6 +22930,40 @@ op {
   is_stateful: true
 }
 op {
+  name: "TextLineReaderV2"
+  output_arg {
+    name: "reader_handle"
+    description: "The handle to reference the Reader."
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "skip_header_lines"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "Number of lines to skip from the beginning of every file."
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this reader is named in the given bucket\nwith this shared_name. Otherwise, the node name is used instead."
+  }
+  summary: "A Reader that outputs the lines of a file delimited by \'\\n\'."
+  is_stateful: true
+}
+op {
   name: "ThreadUnsafeUnigramCandidateSampler"
   input_arg {
     name: "true_classes"
@@ -22982,6 +23673,33 @@ op {
     description: "The handle to reference the Reader."
     type: DT_STRING
     is_ref: true
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this reader is named in the given bucket\nwith this shared_name. Otherwise, the node name is used instead."
+  }
+  summary: "A Reader that outputs the entire contents of a file as a value."
+  description: "To use, enqueue filenames in a Queue.  The output of ReaderRead will\nbe a filename (key) and the contents of that file (value)."
+  is_stateful: true
+}
+op {
+  name: "WholeFileReaderV2"
+  output_arg {
+    name: "reader_handle"
+    description: "The handle to reference the Reader."
+    type: DT_RESOURCE
   }
   attr {
     name: "container"
