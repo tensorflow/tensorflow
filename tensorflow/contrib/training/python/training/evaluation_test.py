@@ -47,10 +47,6 @@ from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import saver as saver_lib
 
-# from tensorflow.python.platform import flags
-
-FLAGS = tf.flags.FLAGS
-
 
 class CheckpointIteratorTest(test.TestCase):
 

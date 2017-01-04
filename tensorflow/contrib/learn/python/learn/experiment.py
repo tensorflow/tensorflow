@@ -68,6 +68,7 @@ class Experiment(object):
                train_steps=None,
                eval_steps=100,
                train_monitors=None,
+               evaluate_hooks=None,
                local_eval_frequency=None,
                eval_delay_secs=120,
                continuous_eval_throttle_secs=60,
@@ -94,6 +95,8 @@ class Experiment(object):
         is raised), or for `eval_steps` steps, if specified.
       train_monitors: A list of monitors to pass to the `Estimator`'s `fit`
         function.
+      evaluate_hooks: A list of `SessionRunHook` hooks to pass to the
+        `Estimator`'s `evaluate` function.
       local_eval_frequency: Frequency of running eval in steps,
         when running locally. If `None`, runs evaluation only at the end of
         training.
@@ -124,6 +127,7 @@ class Experiment(object):
     self._train_steps = train_steps
     self._eval_steps = eval_steps
     self._train_monitors = train_monitors or []
+    self._evaluate_hooks = evaluate_hooks
     self._local_eval_frequency = local_eval_frequency
     self._eval_delay_secs = eval_delay_secs
     self._continuous_eval_throttle_secs = continuous_eval_throttle_secs
@@ -218,7 +222,8 @@ class Experiment(object):
     return self._estimator.evaluate(input_fn=self._eval_input_fn,
                                     steps=self._eval_steps,
                                     metrics=self._eval_metrics,
-                                    name="one_pass")
+                                    name="one_pass",
+                                    hooks=self._evaluate_hooks)
 
   @deprecated(
       "2016-10-23",

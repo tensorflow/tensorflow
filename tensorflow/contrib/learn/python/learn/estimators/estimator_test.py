@@ -751,11 +751,27 @@ class EstimatorTest(test.TestCase):
     with self.assertRaises(ValueError):
       est.fit(input_fn=other_input_fn, steps=1)
 
-  def testMonitors(self):
+  def testMonitorsForFit(self):
     est = estimator.Estimator(model_fn=linear_model_fn)
     est.fit(input_fn=boston_input_fn,
             steps=21,
             monitors=[CheckCallsMonitor(expect_calls=21)])
+
+  def testHooksForEvaluate(self):
+    class CheckCallHook(session_run_hook.SessionRunHook):
+
+      def __init__(self):
+        self.run_count = 0
+
+      def before_run(self, run_context):
+        self.run_count += 1
+
+    est = learn.Estimator(model_fn=linear_model_fn)
+    est.fit(input_fn=boston_input_fn, steps=1)
+    hook = CheckCallHook()
+    est.evaluate(input_fn=boston_eval_fn, steps=3, hooks=[hook])
+
+    self.assertEqual(3, hook.run_count)
 
   def testSummaryWriting(self):
     est = estimator.Estimator(model_fn=linear_model_fn)
