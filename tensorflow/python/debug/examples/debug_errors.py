@@ -17,17 +17,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
+import sys
+
 import numpy as np
 import tensorflow as tf
 
 from tensorflow.python import debug as tf_debug
 
-flags = tf.app.flags
-FLAGS = flags.FLAGS
-flags.DEFINE_string("error", "shape_mismatch", "Type of the error to generate "
-                    "(shape_mismatch | uninitialized_variable | no_error).")
-flags.DEFINE_boolean("debug", False,
-                     "Use debugger to track down bad values during training")
+FLAGS = None
 
 
 def main(_):
@@ -58,4 +56,22 @@ def main(_):
 
 
 if __name__ == "__main__":
-  tf.app.run()
+  parser = argparse.ArgumentParser()
+  parser.register("type", "bool", lambda v: v.lower() == "true")
+  parser.add_argument(
+      "--error",
+      type=str,
+      default="shape_mismatch",
+      help="""\
+      Type of the error to generate (shape_mismatch | uninitialized_variable |
+      no_error).\
+      """)
+  parser.add_argument(
+      "--debug",
+      type="bool",
+      nargs="?",
+      const=True,
+      default=False,
+      help="Use debugger to track down bad values during training")
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

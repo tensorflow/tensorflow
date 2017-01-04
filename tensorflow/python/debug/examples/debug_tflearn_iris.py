@@ -17,7 +17,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import os
+import sys
 import tempfile
 
 import numpy as np
@@ -26,31 +28,27 @@ import tensorflow as tf
 
 from tensorflow.python import debug as tf_debug
 
-flags = tf.app.flags
-FLAGS = flags.FLAGS
-flags.DEFINE_string("data_dir", "/tmp/iris_data",
-                    "Directory to save the training and test data in.")
-flags.DEFINE_string("model_dir", "", "Directory to save the trained model in.")
-flags.DEFINE_integer("train_steps", 10, "Number of steps to run trainer.")
-flags.DEFINE_boolean("debug", False,
-                     "Use debugger to track down bad values during training")
+FLAGS = None
 
 # URLs to download data sets from, if necessary.
 IRIS_TRAINING_DATA_URL = "https://raw.githubusercontent.com/tensorflow/tensorflow/master/tensorflow/examples/tutorials/monitors/iris_training.csv"
 IRIS_TEST_DATA_URL = "https://raw.githubusercontent.com/tensorflow/tensorflow/master/tensorflow/examples/tutorials/monitors/iris_test.csv"
 
 
-def maybe_download_data():
+def maybe_download_data(data_dir):
   """Download data sets if necessary.
+
+  Args:
+    data_dir: Path to where data should be downloaded.
 
   Returns:
     Paths to the training and test data files.
   """
 
-  if not os.path.isdir(FLAGS.data_dir):
-    os.makedirs(FLAGS.data_dir)
+  if not os.path.isdir(data_dir):
+    os.makedirs(data_dir)
 
-  training_data_path = os.path.join(FLAGS.data_dir,
+  training_data_path = os.path.join(data_dir,
                                     os.path.basename(IRIS_TRAINING_DATA_URL))
   if not os.path.isfile(training_data_path):
     train_file = open(training_data_path, "wt")
@@ -59,7 +57,7 @@ def maybe_download_data():
 
     print("Training data are downloaded to %s" % train_file.name)
 
-  test_data_path = os.path.join(FLAGS.data_dir,
+  test_data_path = os.path.join(data_dir,
                                 os.path.basename(IRIS_TEST_DATA_URL))
   if not os.path.isfile(test_data_path):
     test_file = open(test_data_path, "wt")
@@ -72,7 +70,7 @@ def maybe_download_data():
 
 
 def main(_):
-  training_data_path, test_data_path = maybe_download_data()
+  training_data_path, test_data_path = maybe_download_data(FLAGS.data_dir)
 
   # Load datasets.
   training_set = tf.contrib.learn.datasets.base.load_csv_with_header(
@@ -112,4 +110,29 @@ def main(_):
 
 
 if __name__ == "__main__":
-  tf.app.run()
+  parser = argparse.ArgumentParser()
+  parser.register("type", "bool", lambda v: v.lower() == "true")
+  parser.add_argument(
+      "--data_dir",
+      type=str,
+      default="/tmp/iris_data",
+      help="Directory to save the training and test data in.")
+  parser.add_argument(
+      "--model_dir",
+      type=str,
+      default="",
+      help="Directory to save the trained model in.")
+  parser.add_argument(
+      "--train_steps",
+      type=int,
+      default=10,
+      help="Number of steps to run trainer.")
+  parser.add_argument(
+      "--debug",
+      type="bool",
+      nargs="?",
+      const=True,
+      default=False,
+      help="Use debugger to track down bad values during training")
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
