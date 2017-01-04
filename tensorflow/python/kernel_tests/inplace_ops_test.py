@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.client import session
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import array_ops
@@ -170,6 +171,22 @@ class InplaceOpsTest(test.TestCase):
 
         val = array_ops.empty((1, 2), dtypes.string, init=False).eval()
         self.assertEqual(val.tolist(), [[b"", b""]])
+
+  def testEmptyStateful(self):
+    with session.Session("") as sess:
+      v1 = array_ops.placeholder(dtypes.float32, shape=[])
+      v2 = array_ops.placeholder(dtypes.float32, shape=[])
+
+      a = array_ops.empty((1,), dtypes.float32, init=False)
+      b = array_ops.empty((1,), dtypes.float32, init=False)
+
+      a = array_ops.alias_inplace_update(a, 0, v1)
+      b = array_ops.alias_inplace_update(b, 0, v2)
+
+      res1, res2 = sess.run([a, b], feed_dict={v1: 1, v2: 2})
+      self.assertEqual(res1, 1)
+      self.assertEqual(res2, 2)
+
 
 if __name__ == "__main__":
   test.main()

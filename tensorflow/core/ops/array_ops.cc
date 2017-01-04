@@ -1166,6 +1166,7 @@ REGISTER_OP("Empty")
     .Attr("dtype: type")
     .Attr("Tshape: {int32, int64} = DT_INT32")
     .Attr("init: bool = false")
+    .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle out;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
