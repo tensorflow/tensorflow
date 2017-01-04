@@ -2828,7 +2828,7 @@ REGISTER_OP("PlaceholderWithDefault")
       return Status::OK();
     })
     .Doc(R"doc(
-A placeholder op that passes though `input` when its output is not fed.
+A placeholder op that passes through `input` when its output is not fed.
 
 input: The default value to produce when `output` is not fed.
 output: A placeholder tensor that defaults to `input` if it is not fed.
