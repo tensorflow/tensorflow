@@ -289,7 +289,11 @@ while true; do
       echo "libcudnn.dylib resolves to libcudnn${TF_CUDNN_EXT}"
     fi
   else
-    TF_CUDNN_EXT=".$TF_CUDNN_VERSION"
+    if [ "$OSNAME" == "Darwin" ]; then
+      TF_CUDNN_EXT=".${TF_CUDNN_VERSION}.dylib"
+    else
+      TF_CUDNN_EXT=".$TF_CUDNN_VERSION"
+    fi
   fi
 
   if is_windows; then
