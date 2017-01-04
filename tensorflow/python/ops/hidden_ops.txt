@@ -208,12 +208,14 @@ FloorMod
 Max
 Mean
 Min
+Mul
 Pow
 Prod
 Range
 RealDiv
 Select
 SparseMatMul
+Sub
 Sum
 MatMul
 Sigmoid
