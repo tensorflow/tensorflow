@@ -492,7 +492,7 @@ then compares them using self._AssertProtoEqual().
 
 - - -
 
-#### `tf.test.TestCase.assertProtoEqualsVersion(expected, actual, producer=19, min_consumer=0)` {#TestCase.assertProtoEqualsVersion}
+#### `tf.test.TestCase.assertProtoEqualsVersion(expected, actual, producer=20, min_consumer=0)` {#TestCase.assertProtoEqualsVersion}
 
 
 
@@ -791,7 +791,15 @@ Fail immediately, with the given message.
 
 #### `tf.test.TestCase.get_temp_dir()` {#TestCase.get_temp_dir}
 
+Returns a unique temporary directory for the test to use.
 
+Across different test runs, this method will return a different folder.
+This will ensure that across different runs tests will not be able to
+pollute each others environment.
+
+##### Returns:
+
+  string, the path to the unique temporary directory created for this test.
 
 
 - - -
@@ -974,6 +982,13 @@ Returns whether TensorFlow can access a GPU.
 ##### Returns:
 
   True iff a gpu device of the requested kind is available.
+
+
+- - -
+
+### `tf.test.gpu_device_name()` {#gpu_device_name}
+
+Returns the name of a GPU device if available or the empty string.
 
 
 

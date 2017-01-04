@@ -67,6 +67,21 @@ cc_library(
 )
 
 cc_library(
+    name = "worker",
+    srcs = ["worker.cc"],
+    hdrs = [
+        "worker.h",
+    ],
+    deps = [
+        ":graph_mgr",
+        ":rendezvous_mgr_interface",
+        ":worker_interface",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+cc_library(
     name = "call_options",
     srcs = ["call_options.cc"],
     hdrs = ["call_options.h"],

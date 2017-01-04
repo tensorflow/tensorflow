@@ -8,7 +8,7 @@ some input and generate a meaningful response? For example, could we train
 a neural network to translate from English to French? It turns out that
 the answer is *yes*.
 
-This tutorial will show you how to build and train such a system end-to-end. Clone the [TensorFlow models repo](https://github.com/tensorflow/models) from GitHub. You can then start by running the translate program:
+This tutorial will show you how to build and train such a system end-to-end. Clone the [TensorFlow main repo](https://github.com/tensorflow/tensorflow) and the [TensorFlow models repo](https://github.com/tensorflow/models) from GitHub. You can then start by running the translate program:
 
 ```
 cd models/tutorials/rnn/translate
@@ -25,10 +25,10 @@ This tutorial references the following files.
 
 File | What's in it?
 --- | ---
-`python/ops/seq2seq.py` | Library for building sequence-to-sequence models.
-`models/rnn/translate/seq2seq_model.py` | Neural translation sequence-to-sequence model.
-`models/rnn/translate/data_utils.py` | Helper functions for preparing translation data.
-`models/rnn/translate/translate.py` | Binary that trains and runs the translation model.
+`tensorflow/tensorflow/python/ops/seq2seq.py` | Library for building sequence-to-sequence models.
+`models/tutorials/rnn/translate/seq2seq_model.py` | Neural translation sequence-to-sequence model.
+`models/tutorials/rnn/translate/data_utils.py` | Helper functions for preparing translation data.
+`models/tutorials/rnn/translate/translate.py` | Binary that trains and runs the translation model.
 
 
 ## Sequence-to-sequence basics
@@ -70,7 +70,7 @@ attention mechanism in the decoder looks like this.
 As you can see above, there are many different sequence-to-sequence
 models. Each of these models can use different RNN cells, but all
 of them accept encoder inputs and decoder inputs. This motivates
-the interfaces in the TensorFlow seq2seq library (`python/ops/seq2seq.py`).
+the interfaces in the TensorFlow seq2seq library (`tensorflow/tensorflow/python/ops/seq2seq.py`).
 The basic RNN encoder-decoder sequence-to-sequence model works as follows.
 
 ```python
@@ -147,9 +147,9 @@ have similar interfaces, so we will not describe them in detail. We will use
 ## Neural translation model
 
 While the core of the sequence-to-sequence model is constructed by
-the functions in `python/ops/seq2seq.py`, there are still a few tricks
+the functions in `tensorflow/tensorflow/python/ops/seq2seq.py`, there are still a few tricks
 that are worth mentioning that are used in our translation model in
-`models/rnn/translate/seq2seq_model.py`.
+`models/tutorials/rnn/translate/seq2seq_model.py`.
 
 ### Sampled softmax and output projection
 

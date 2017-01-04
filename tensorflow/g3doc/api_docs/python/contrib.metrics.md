@@ -1087,13 +1087,16 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
 Computes precision@k of the predictions with respect to sparse labels.
 
+If `class_id` is not specified, we calculate precision as the ratio of true
+    positives (i.e., correct predictions, items in the top `k` highest
+    `predictions` that are found in the corresponding row in `labels`) to
+    positives (all top `k` `predictions`).
 If `class_id` is specified, we calculate precision by considering only the
-    entries in the batch for which `class_id` is in the top-k highest
+    rows in the batch for which `class_id` is in the top `k` highest
     `predictions`, and computing the fraction of them for which `class_id` is
-    indeed a correct label.
-If `class_id` is not specified, we'll calculate precision as how often on
-    average a class among the top-k classes with the highest predicted values
-    of a batch entry is correct and can be found in the label for that entry.
+    in the corresponding row in `labels`.
+
+We expect precision to decrease as `k` increases.
 
 `streaming_sparse_precision_at_k` creates two local variables,
 `true_positive_at_<k>` and `false_positive_at_<k>`, that are used to compute
@@ -1162,13 +1165,16 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
 Computes precision@k of top-k predictions with respect to sparse labels.
 
+If `class_id` is not specified, we calculate precision as the ratio of
+    true positives (i.e., correct predictions, items in `top_k_predictions`
+    that are found in the corresponding row in `labels`) to positives (all
+    `top_k_predictions`).
 If `class_id` is specified, we calculate precision by considering only the
-    entries in the batch for which `class_id` is in the top-k highest
+    rows in the batch for which `class_id` is in the top `k` highest
     `predictions`, and computing the fraction of them for which `class_id` is
-    indeed a correct label.
-If `class_id` is not specified, we'll calculate precision as how often on
-    average a class among the top-k classes with the highest predicted values
-    of a batch entry is correct and can be found in the label for that entry.
+    in the corresponding row in `labels`.
+
+We expect precision to decrease as `k` increases.
 
 `streaming_sparse_precision_at_top_k` creates two local variables,
 `true_positive_at_k` and `false_positive_at_k`, that are used to compute
@@ -1235,12 +1241,14 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
 Computes recall@k of the predictions with respect to sparse labels.
 
-If `class_id` is specified, we calculate recall by considering only the
-    entries in the batch for which `class_id` is in the label, and computing
-    the fraction of them for which `class_id` is in the top-k `predictions`.
-If `class_id` is not specified, we'll calculate recall as how often on
-    average a class among the labels of a batch entry is in the top-k
-    `predictions`.
+If `class_id` is not specified, we'll calculate recall as the ratio of true
+    positives (i.e., correct predictions, items in the top `k` highest
+    `predictions` that are found in the corresponding row in `labels`) to
+    actual positives (the full `labels` row).
+If `class_id` is specified, we calculate recall by considering only the rows
+    in the batch for which `class_id` is in `labels`, and computing the
+    fraction of them for which `class_id` is in the corresponding row in
+    `labels`.
 
 `streaming_sparse_recall_at_k` creates two local variables,
 `true_positive_at_<k>` and `false_negative_at_<k>`, that are used to compute
@@ -1718,8 +1726,9 @@ Compute set difference of elements in last dimension of `a` and `b`.
 
 All but the last dimension of `a` and `b` must match.
 
-##### Example:
+Example:
 
+```python
   a = [
     [
       [
@@ -1756,6 +1765,7 @@ All but the last dimension of `a` and `b` must match.
       ],
     ],
   ]
+```
 
 ##### Args:
 
@@ -1783,8 +1793,9 @@ Compute set intersection of elements in last dimension of `a` and `b`.
 
 All but the last dimension of `a` and `b` must match.
 
-##### Example:
+Example:
 
+```python
   a = [
     [
       [
@@ -1821,6 +1832,7 @@ All but the last dimension of `a` and `b` must match.
       ],
     ],
   ]
+```
 
 ##### Args:
 
@@ -1872,8 +1884,9 @@ Compute set union of elements in last dimension of `a` and `b`.
 
 All but the last dimension of `a` and `b` must match.
 
-##### Example:
+Example:
 
+```python
   a = [
     [
       [
@@ -1910,6 +1923,7 @@ All but the last dimension of `a` and `b` must match.
       ],
     ],
   ]
+```
 
 ##### Args:
 

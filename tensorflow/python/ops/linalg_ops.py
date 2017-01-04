@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -26,6 +28,7 @@ from tensorflow.python.ops import math_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_linalg_ops import *
+
 # pylint: enable=wildcard-import
 
 # Names below are lower_case.
@@ -66,7 +69,7 @@ def cholesky_solve(chol, rhs, name=None):
   # To solve C C^* x = rhs, we
   # 1. Solve C y = rhs for y, thus y = C^* x
   # 2. Solve C^* x = y for x
-  with ops.name_scope(name, "cholesky_solve", [chol, rhs]):
+  with ops.name_scope(name, 'cholesky_solve', [chol, rhs]):
     y = gen_linalg_ops.matrix_triangular_solve(
         chol, rhs, adjoint=False, lower=True)
     x = gen_linalg_ops.matrix_triangular_solve(
@@ -74,12 +77,11 @@ def cholesky_solve(chol, rhs, name=None):
     return x
 
 
-def eye(
-    num_rows,
-    num_columns=None,
-    batch_shape=None,
-    dtype=dtypes.float32,
-    name=None):
+def eye(num_rows,
+        num_columns=None,
+        batch_shape=None,
+        dtype=dtypes.float32,
+        name=None):
   """Construct an identity matrix, or a batch of matrices.
 
   ```python
@@ -112,11 +114,11 @@ def eye(
     A `Tensor` of shape `batch_shape + [num_rows, num_columns]`
   """
   with ops.name_scope(
-      name, default_name="eye", values=[num_rows, num_columns, batch_shape]):
+      name, default_name='eye', values=[num_rows, num_columns, batch_shape]):
 
     batch_shape = [] if batch_shape is None else batch_shape
     batch_shape = ops.convert_to_tensor(
-        batch_shape, name="shape", dtype=dtypes.int32)
+        batch_shape, name='shape', dtype=dtypes.int32)
 
     if num_columns is None:
       diag_size = num_rows
@@ -238,13 +240,13 @@ def svd(tensor, full_matrices=False, compute_uv=True, name=None):
   # a is a tensor.
   # s is a tensor of singular values.
   # u is a tensor of left singular vectors.
-  # v is a tensor of right singular vectors.
+  #v is a tensor of right singular vectors.
   s, u, v = svd(a)
   s = svd(a, compute_uv=False)
   ```
 
   Args:
-    matrix: `Tensor` of shape `[..., M, N]`. Let `P` be the minimum of `M` and
+    tensor: `Tensor` of shape `[..., M, N]`. Let `P` be the minimum of `M` and
       `N`.
     full_matrices: If true, compute full-sized `u` and `v`. If false
       (the default), compute only the leading `P` singular vectors.
@@ -266,9 +268,124 @@ def svd(tensor, full_matrices=False, compute_uv=True, name=None):
   # pylint: disable=protected-access
   s, u, v = gen_linalg_ops._svd(
       tensor, compute_uv=compute_uv, full_matrices=full_matrices)
+  # pylint: enable=protected-access
   if compute_uv:
     return math_ops.real(s), u, v
   else:
     return math_ops.real(s)
 
-# pylint: enable=invalid-name
+
+# pylint: disable=redefined-builtin
+def norm(tensor, ord='euclidean', axis=None, keep_dims=False, name=None):
+  r"""Computes the norm of vectors, matrices, and tensors.
+
+  This function can compute 3 different matrix norms (Frobenius, 1-norm, and
+  inf-norm) and up to 9218868437227405311 different vectors norms.
+
+  Args:
+    tensor: `Tensor` of types `float32`, `float64`, `complex64`, `complex128`
+    ord: Order of the norm. Supported values are 'fro', 'euclidean', `0`,
+      `1, `2`, `np.inf` and any positive real number yielding the corresponding
+      p-norm. Default is 'euclidean' which is equivalent to Frobenius norm if
+      `tensor` is a matrix and equivalent to 2-norm for vectors.
+      Some restrictions apply,
+        a) The Frobenius norm `fro` is not defined for vectors,
+        b) If axis is a 2-tuple (matrix-norm), only 'euclidean', 'fro', `1`,
+           `np.inf` are supported.
+      See the description of `axis` on how to compute norms for a batch of
+      vectors or matrices stored in a tensor.
+    axis: If `axis` is `None` (the default), the input is considered a vector
+      and a single vector norm is computed over the entire set of values in the
+      tensor, i.e. `norm(tensor, ord=ord)` is equivalent to
+      `norm(reshape(tensor, [-1]), ord=ord)`.
+      If `axis` is a Python integer, the input is considered a batch of vectors,
+      and `axis`t determines the axis in `tensor` over which to compute vector
+      norms.
+      If `axis` is a 2-tuple of Python integers it is considered a batch of
+      matrices and `axis` determines the axes in `tensor` over which to compute
+      a matrix norm.
+      Negative indices are supported. Example: If you are passing a tensor that
+      can be either a matrix or a batch of matrices at runtime, pass
+      `axis=[-2,-1]` instead of `axis=None` to make sure that matrix norms are
+      computed.
+    keep_dims: If True, the axis indicated in `axis` are kept with size 1.
+      Otherwise, the dimensions in `axis` are removed from the output shape.
+    name: The name of the op.
+
+  Returns:
+    output: A `Tensor` of the same type as tensor, containing the vector or
+      matrix norms. If `keep_dims` is True then the rank of output is equal to
+      the rank of `tensor`. Otherwise, if `axis` is none the output is a scalar,
+      if `axis` is an integer, the rank of `output` is one less than the rank
+      of `tensor`, if `axis` is a 2-tuple the rank of `output` is two less
+      than the rank of `tensor`.
+
+  Raises:
+    ValueError: If `ord` or `axis` is invalid.
+
+  @compatibility(numpy)
+  Mostly equivalent to np.linalg.norm.
+  Not supported: ord <= 0, 2-norm for matrices, nuclear norm.
+  Other differences:
+    a) If axis is `None`, treats the the flattened `tensor` as a vector
+     regardless of rank.
+    b) Explicitly supports 'euclidean' norm as the default, including for
+     higher order tensors.
+  @end_compatibility
+  """
+
+  is_matrix_norm = ((isinstance(axis, tuple) or isinstance(axis, list)) and
+                    len(axis) == 2)
+  if is_matrix_norm:
+    axis = tuple(axis)
+    if (not isinstance(axis[0], int) or not isinstance(axis[1], int) or
+        axis[0] == axis[1]):
+      raise ValueError(
+          "'axis' must be None, an integer, or a tuple of 2 unique integers")
+    # TODO(rmlarsen): Implement matrix 2-norm using tf.svd().
+    supported_matrix_norms = ['euclidean', 'fro', 1, np.inf]
+    if ord not in supported_matrix_norms:
+      raise ValueError("'ord' must be a supported matrix norm in %s, got %s" %
+                       (supported_matrix_norms, ord))
+  else:
+    if not (isinstance(axis, int) or axis is None):
+      raise ValueError(
+          "'axis' must be None, an integer, or a tuple of 2 unique integers")
+
+    supported_vector_norms = ['euclidean', 1, 2, np.inf]
+    if (not np.isreal(ord) or ord <= 0) and ord not in supported_vector_norms:
+      raise ValueError("'ord' must be a supported vector norm, got %s" % ord)
+    if axis is not None:
+      axis = (axis,)
+
+  with ops.name_scope(name, 'norm', [tensor]):
+    tensor = ops.convert_to_tensor(tensor)
+    if ord in ['fro', 'euclidean', 2, 2.0]:
+      # TODO(rmlarsen): Move 2-norm to a separate clause once we support it for
+      # matrices.
+      result = math_ops.sqrt(
+          math_ops.reduce_sum(
+              math_ops.square(tensor), axis, keep_dims=True))
+    else:
+      result = math_ops.abs(tensor)
+      if ord == 1:
+        sum_axis = None if axis is None else axis[0]
+        result = math_ops.reduce_sum(result, sum_axis, keep_dims=True)
+        if is_matrix_norm:
+          result = math_ops.reduce_max(result, axis[-1], keep_dims=True)
+      elif ord == np.inf:
+        if is_matrix_norm:
+          result = math_ops.reduce_sum(result, axis[1], keep_dims=True)
+        max_axis = None if axis is None else axis[0]
+        result = math_ops.reduce_max(result, max_axis, keep_dims=True)
+      else:
+        # General p-norms (positive p only)
+        result = math_ops.pow(math_ops.reduce_sum(
+            math_ops.pow(result, ord), axis, keep_dims=True),
+                              1.0 / ord)
+    if not keep_dims:
+      result = array_ops.squeeze(result, axis)
+    return result
+
+
+# pylint: enable=invalid-name,redefined-builtin

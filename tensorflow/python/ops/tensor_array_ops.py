@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """TensorArray operations.
 
 ## Classes containing dynamically sized arrays of Tensors.
@@ -25,8 +24,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -70,19 +67,29 @@ class TensorArray(object):
   @@read
   @@gather
   @@pack
+  @@stack
   @@concat
 
   @@write
   @@scatter
   @@unpack
+  @@unstack
   @@split
 
   @@grad
   """
 
-  def __init__(self, dtype, size=None, dynamic_size=None,
-               clear_after_read=None, tensor_array_name=None, handle=None,
-               flow=None, infer_shape=True, element_shape=None, name=None):
+  def __init__(self,
+               dtype,
+               size=None,
+               dynamic_size=None,
+               clear_after_read=None,
+               tensor_array_name=None,
+               handle=None,
+               flow=None,
+               infer_shape=True,
+               element_shape=None,
+               name=None):
     """Construct a new TensorArray or wrap an existing TensorArray handle.
 
     A note about the parameter `name`:
@@ -157,29 +164,22 @@ class TensorArray(object):
     with ops.name_scope(name, "TensorArray", [handle, size, flow]) as scope:
       if handle is not None:
         self._handle = handle
-      else:
-        if flow is not None:
-          with ops.colocate_with(flow):
-            self._handle = gen_data_flow_ops._tensor_array_v2(
-                dtype=dtype, size=size, element_shape=element_shape,
-                dynamic_size=dynamic_size,
-                clear_after_read=clear_after_read,
-                tensor_array_name=tensor_array_name, name=scope)
-        else:
-          # Construct the TensorArray with an empty device.  The first
-          # write into the TensorArray from a Tensor with a set device
-          # will retroactively set the device value of this op.
-          with ops.device(None), ops.colocate_with(None, ignore_existing=True):
-            self._handle = gen_data_flow_ops._tensor_array_v2(
-                dtype=dtype, size=size, element_shape=element_shape,
-                dynamic_size=dynamic_size,
-                clear_after_read=clear_after_read,
-                tensor_array_name=tensor_array_name, name=scope)
-      if flow is not None:
+        if flow is None:
+          raise ValueError("flow must not be None if handle is not None.")
         self._flow = flow
       else:
-        with ops.colocate_with(self._handle):
-          self._flow = constant_op.constant(0, dtype=_dtypes.float32)
+        # Construct the TensorArray with an empty device.  The first
+        # write into the TensorArray from a Tensor with a set device
+        # will retroactively set the device value of this op.
+        with ops.device(None), ops.colocate_with(None, ignore_existing=True):
+          self._handle, self._flow = gen_data_flow_ops._tensor_array_v3(
+              dtype=dtype,
+              size=size,
+              element_shape=element_shape,
+              dynamic_size=dynamic_size,
+              clear_after_read=clear_after_read,
+              tensor_array_name=tensor_array_name,
+              name=scope)
 
   @property
   def flow(self):
@@ -196,6 +196,26 @@ class TensorArray(object):
     """The reference to the TensorArray."""
     return self._handle
 
+  def _merge_element_shape(self, shape):
+    """Changes the element shape of the array given a shape to merge with.
+
+    Args:
+      shape: A `TensorShape` object to merge with.
+
+    Raises:
+      ValueError: if the provided shape is incompatible with the current
+          element shape of the `TensorArray`.
+    """
+
+    if self._element_shape:
+      if not shape.is_compatible_with(self._element_shape[0]):
+        raise ValueError(
+            "Inconsistent shapes: saw %s but expected %s "
+            "(and infer_shape=True)" % (shape, self._element_shape[0]))
+      self._element_shape[0] = self._element_shape[0].merge_with(shape)
+    else:
+      self._element_shape.append(shape)
+
   def grad(self, source, flow=None, name=None):
     # tensor_array_grad requires a flow input when forward
     # TensorArrays are dynamically sized.  This forces the creation
@@ -205,12 +225,15 @@ class TensorArray(object):
       flow = self.flow
     with ops.name_scope(name, "TensorArrayGrad", [self._handle]):
       with ops.colocate_with(self._handle):
-        g_handle = gen_data_flow_ops._tensor_array_grad_v2(
+        g_handle, unused_flow = gen_data_flow_ops._tensor_array_grad_v3(
             handle=self._handle, source=source, flow_in=flow, name=name)
         with ops.control_dependencies([g_handle]):
           flow = array_ops.identity(flow, name="gradient_flow")
-        g = TensorArray(dtype=self._dtype, handle=g_handle, flow=flow,
-                        infer_shape=self._infer_shape)
+        g = TensorArray(
+            dtype=self._dtype,
+            handle=g_handle,
+            flow=flow,
+            infer_shape=self._infer_shape)
         g._element_shape = self._element_shape
         return g
 
@@ -225,9 +248,12 @@ class TensorArray(object):
       The tensor at index `index`.
     """
     with ops.colocate_with(self._handle):
-      value = gen_data_flow_ops._tensor_array_read_v2(
-          handle=self._handle, index=index, flow_in=self._flow,
-          dtype=self._dtype, name=name)
+      value = gen_data_flow_ops._tensor_array_read_v3(
+          handle=self._handle,
+          index=index,
+          flow_in=self._flow,
+          dtype=self._dtype,
+          name=name)
       if self._element_shape:
         value.set_shape(self._element_shape[0].dims)
       return value
@@ -251,22 +277,17 @@ class TensorArray(object):
       value = ops.convert_to_tensor(value, name="value")
       _maybe_set_device(self._handle.op, value)
       with ops.colocate_with(self._handle):
-        flow_out = gen_data_flow_ops._tensor_array_write_v2(
-            handle=self._handle, index=index, value=value, flow_in=self._flow,
+        flow_out = gen_data_flow_ops._tensor_array_write_v3(
+            handle=self._handle,
+            index=index,
+            value=value,
+            flow_in=self._flow,
             name=name)
-      ta = TensorArray(dtype=self._dtype, handle=self._handle)
-      ta._flow = flow_out
+      ta = TensorArray(dtype=self._dtype, handle=self._handle, flow=flow_out)
       ta._infer_shape = self._infer_shape
       ta._element_shape = self._element_shape
       if ta._infer_shape:
-        val_shape = value.get_shape()
-        if ta._element_shape:
-          if not val_shape == ta._element_shape[0]:
-            raise ValueError(
-                "Inconsistent shapes: saw %s but expected %s "
-                "(and infer_shape=True)" % (val_shape, ta._element_shape[0]))
-        else:
-          ta._element_shape.append(val_shape)
+        ta._merge_element_shape(value.get_shape())
       return ta
 
   def stack(self, name=None):
@@ -285,12 +306,12 @@ class TensorArray(object):
       with ops.name_scope(name, "TensorArrayStack", [self._handle]):
         return self.gather(math_ops.range(0, self.size()), name=name)
 
-  @deprecated(
-      "2016-12-12",
-      "This op will be removed after the deprecation date. "
-      "Please switch to tf.stack.")
+  @deprecated("2016-12-12",
+              "This op will be removed after the deprecation date. "
+              "Please switch to tf.stack.")
   def pack(self, name=None):
     return self.stack(name)
+
   pack.__doc__ = stack.__doc__
 
   def gather(self, indices, name=None):
@@ -312,7 +333,7 @@ class TensorArray(object):
         element_shape = self._element_shape[0]
       else:
         element_shape = tensor_shape.TensorShape(None)
-      value = gen_data_flow_ops._tensor_array_gather_v2(
+      value = gen_data_flow_ops._tensor_array_gather_v3(
           handle=self._handle,
           indices=indices,
           flow_in=self._flow,
@@ -341,7 +362,7 @@ class TensorArray(object):
     else:
       element_shape_except0 = tensor_shape.TensorShape(None)
     with ops.colocate_with(self._handle):
-      value, _ = gen_data_flow_ops._tensor_array_concat_v2(
+      value, _ = gen_data_flow_ops._tensor_array_concat_v3(
           handle=self._handle,
           flow_in=self._flow,
           dtype=self._dtype,
@@ -372,12 +393,12 @@ class TensorArray(object):
       return self.scatter(
           indices=math_ops.range(0, num_elements), value=value, name=name)
 
-  @deprecated(
-      "2016-12-12",
-      "This op will be removed after the deprecation date. "
-      "Please switch to tf.unstack.")
+  @deprecated("2016-12-12",
+              "This op will be removed after the deprecation date. "
+              "Please switch to tf.unstack.")
   def unpack(self, value, name=None):
     return self.unstack(value, name)
+
   unpack.__doc__ = unstack.__doc__
 
   def scatter(self, indices, value, name=None):
@@ -401,11 +422,13 @@ class TensorArray(object):
       value = ops.convert_to_tensor(value, name="value")
       _maybe_set_device(self._handle.op, value)
       with ops.colocate_with(self._handle):
-        flow_out = gen_data_flow_ops._tensor_array_scatter_v2(
-            handle=self._handle, indices=indices, value=value,
-            flow_in=self._flow, name=name)
-      ta = TensorArray(dtype=self._dtype, handle=self._handle)
-      ta._flow = flow_out
+        flow_out = gen_data_flow_ops._tensor_array_scatter_v3(
+            handle=self._handle,
+            indices=indices,
+            value=value,
+            flow_in=self._flow,
+            name=name)
+      ta = TensorArray(dtype=self._dtype, handle=self._handle, flow=flow_out)
       ta._infer_shape = self._infer_shape
       ta._element_shape = self._element_shape
       if ta._infer_shape:
@@ -413,14 +436,7 @@ class TensorArray(object):
         element_shape = tensor_shape.unknown_shape()
         if val_shape.dims is not None:
           element_shape = tensor_shape.TensorShape(val_shape.dims[1:])
-        if ta._element_shape:
-          if not element_shape == ta._element_shape[0]:
-            raise ValueError(
-                "Inconsistent shapes: saw %s but expected %s "
-                "(and infer_shape=True)"
-                % (element_shape, ta._element_shape[0]))
-        else:
-          ta._element_shape.append(element_shape)
+        ta._merge_element_shape(element_shape)
       return ta
 
   def split(self, value, lengths, name=None):
@@ -445,11 +461,13 @@ class TensorArray(object):
       _maybe_set_device(self._handle.op, value)
       lengths_64 = math_ops.to_int64(lengths)
       with ops.colocate_with(self._handle):
-        flow_out = gen_data_flow_ops._tensor_array_split_v2(
-            handle=self._handle, value=value, lengths=lengths_64,
-            flow_in=self._flow, name=name)
-      ta = TensorArray(dtype=self._dtype, handle=self._handle)
-      ta._flow = flow_out
+        flow_out = gen_data_flow_ops._tensor_array_split_v3(
+            handle=self._handle,
+            value=value,
+            lengths=lengths_64,
+            flow_in=self._flow,
+            name=name)
+      ta = TensorArray(dtype=self._dtype, handle=self._handle, flow=flow_out)
       ta._infer_shape = self._infer_shape
       ta._element_shape = self._element_shape
       if ta._infer_shape:
@@ -458,28 +476,21 @@ class TensorArray(object):
         element_shape = tensor_shape.unknown_shape()
         if val_shape.dims is not None:
           if clengths is not None and clengths.max() == clengths.min():
-            element_shape = tensor_shape.TensorShape(
-                [clengths[0]] + val_shape.dims[1:])
-        if ta._element_shape:
-          if not element_shape == ta._element_shape[0]:
-            raise ValueError(
-                "Inconsistent shapes: saw %s but expected %s "
-                "(and infer_shape=True)"
-                % (element_shape, ta._element_shape[0]))
-        else:
-          ta._element_shape.append(element_shape)
+            element_shape = tensor_shape.TensorShape([clengths[0]] +
+                                                     val_shape.dims[1:])
+        ta._merge_element_shape(element_shape)
       return ta
 
   def size(self, name=None):
     """Return the size of the TensorArray."""
     with ops.colocate_with(self._handle):
-      return gen_data_flow_ops._tensor_array_size_v2(
+      return gen_data_flow_ops._tensor_array_size_v3(
           handle=self._handle, flow_in=self.flow, name=name)
 
   def close(self, name=None):
     """Close the current TensorArray."""
     with ops.colocate_with(self._handle):
-      return gen_data_flow_ops._tensor_array_close_v2(
+      return gen_data_flow_ops._tensor_array_close_v3(
           handle=self._handle, name=name)
 
 # pylint: enable=protected-access

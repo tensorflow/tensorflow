@@ -637,9 +637,9 @@ def add_input_distortions(flip_left_right, random_crop, random_scale,
   resize_scale_value = tf.random_uniform(tensor_shape.scalar(),
                                          minval=1.0,
                                          maxval=resize_scale)
-  scale_value = tf.mul(margin_scale_value, resize_scale_value)
-  precrop_width = tf.mul(scale_value, MODEL_INPUT_WIDTH)
-  precrop_height = tf.mul(scale_value, MODEL_INPUT_HEIGHT)
+  scale_value = tf.multiply(margin_scale_value, resize_scale_value)
+  precrop_width = tf.multiply(scale_value, MODEL_INPUT_WIDTH)
+  precrop_height = tf.multiply(scale_value, MODEL_INPUT_HEIGHT)
   precrop_shape = tf.stack([precrop_height, precrop_width])
   precrop_shape_as_int = tf.cast(precrop_shape, dtype=tf.int32)
   precropped_image = tf.image.resize_bilinear(decoded_image_4d,
@@ -657,7 +657,7 @@ def add_input_distortions(flip_left_right, random_crop, random_scale,
   brightness_value = tf.random_uniform(tensor_shape.scalar(),
                                        minval=brightness_min,
                                        maxval=brightness_max)
-  brightened_image = tf.mul(flipped_image, brightness_value)
+  brightened_image = tf.multiply(flipped_image, brightness_value)
   distort_result = tf.expand_dims(brightened_image, 0, name='DistortResult')
   return jpeg_data, distort_result
 

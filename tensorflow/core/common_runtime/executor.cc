@@ -2021,6 +2021,7 @@ void ExecutorState::DeleteFrame(FrameState* frame, TaggedNodeSeq* ready) {
               (parent_iter_state->decrement_pending(dst_pending_id, 1) == 0);
         }
         if (dst_ready) {
+          if (IsControlTrigger(dst_node)) dst_dead = false;
           ready->push_back(
               TaggedNode(dst_node, parent_frame, parent_iter, dst_dead));
           parent_iter_state->outstanding_ops++;
@@ -2138,7 +2139,7 @@ void ExecutorState::FrameState::ActivateNodes(const Node* node,
 
     // Add dst to the ready queue if it's ready
     if (dst_ready) {
-      dst_dead = dst_dead && !IsControlTrigger(dst_node);
+      if (IsControlTrigger(dst_node)) dst_dead = false;
       ready->push_back(TaggedNode(dst_node, this, iter, dst_dead));
       iter_state->outstanding_ops++;
     }

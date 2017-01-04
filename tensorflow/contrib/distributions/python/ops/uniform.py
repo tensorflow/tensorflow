@@ -22,7 +22,6 @@ import math
 
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -123,10 +122,11 @@ class Uniform(distribution.Distribution):
       return self.b - self.a
 
   def _batch_shape(self):
-    return array_ops.shape(self._a + self._b)
+    return array_ops.broadcast_dynamic_shape(
+        array_ops.shape(self._a), array_ops.shape(self._b))
 
   def _get_batch_shape(self):
-    return common_shapes.broadcast_shape(
+    return array_ops.broadcast_static_shape(
         self._a.get_shape(), self._b.get_shape())
 
   def _event_shape(self):

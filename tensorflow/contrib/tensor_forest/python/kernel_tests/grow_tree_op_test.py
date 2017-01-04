@@ -13,25 +13,32 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tf.contrib.tensor_forest.ops.grow_tree_op."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import sys
+
+# TODO: #6568 Remove this hack that makes dlopen() not crash.
+if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
+  import ctypes
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 from tensorflow.contrib.tensor_forest.python.ops import tensor_forest_ops
-
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
 
 class GrowTreeTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
-    self.tree = tf.Variable([[1, 0], [-1, 0], [-1, 0],
-                             [-2, 0], [-2, 0], [-2, 0], [-2, 0]])
-    self.tree_thresholds = tf.Variable([0., 0., 0., 0., 0., 0., 0.])
-    self.eot = tf.Variable([3])
+    self.tree = variables.Variable([[1, 0], [-1, 0], [-1, 0], [-2, 0], [-2, 0],
+                                    [-2, 0], [-2, 0]])
+    self.tree_thresholds = variables.Variable([0., 0., 0., 0., 0., 0., 0.])
+    self.eot = variables.Variable([3])
     self.node_map = [-1, 0, 1, -1, -1, -1, -1]
     self.finished = [1, 2]
     self.best_splits = [2, 3]
@@ -40,7 +47,7 @@ class GrowTreeTest(test_util.TensorFlowTestCase):
 
   def testSimple(self):
     with self.test_session():
-      tf.global_variables_initializer().run()
+      variables.global_variables_initializer().run()
       update_list, tree_updates, threshold_updates, new_eot = (
           tensor_forest_ops.grow_tree(self.eot, self.node_map, self.finished,
                                       self.best_splits, self.split_features,
@@ -56,9 +63,9 @@ class GrowTreeTest(test_util.TensorFlowTestCase):
 
   def testNoRoomToGrow(self):
     with self.test_session():
-      tf.global_variables_initializer().run()
+      variables.global_variables_initializer().run()
       # Even though there's one free node, there needs to be 2 to grow.
-      tf.assign(self.eot, [6]).eval()
+      state_ops.assign(self.eot, [6]).eval()
 
       update_list, tree_updates, threshold_updates, new_eot = (
           tensor_forest_ops.grow_tree(self.eot, self.node_map, self.finished,
@@ -72,7 +79,7 @@ class GrowTreeTest(test_util.TensorFlowTestCase):
 
   def testNoFinished(self):
     with self.test_session():
-      tf.global_variables_initializer().run()
+      variables.global_variables_initializer().run()
 
       update_list, tree_updates, threshold_updates, new_eot = (
           tensor_forest_ops.grow_tree(self.eot, self.node_map, [], [],
@@ -86,7 +93,7 @@ class GrowTreeTest(test_util.TensorFlowTestCase):
 
   def testBadInput(self):
     with self.test_session():
-      tf.global_variables_initializer().run()
+      variables.global_variables_initializer().run()
       with self.assertRaisesOpError(
           'Number of finished nodes should be the same in finished and '
           'best_splits.'):

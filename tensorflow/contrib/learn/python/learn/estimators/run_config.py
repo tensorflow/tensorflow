@@ -20,10 +20,10 @@ from __future__ import print_function
 
 import json
 import os
+
 from tensorflow.contrib.framework import deprecated
-from tensorflow.python import ConfigProto
-from tensorflow.python import GPUOptions
-from tensorflow.python.training.server_lib import ClusterSpec
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.training import server_lib
 
 
 class Environment(object):
@@ -84,7 +84,7 @@ class ClusterConfig(object):
                  'worker': ['host3:2222', 'host4:2222', 'host5:2222']}
       os.environ['TF_CONFIG'] = json.dumps({
           {'cluster': cluster,
-           'task_id': {'type': 'worker', 'index': 1}}})
+           'task': {'type': 'worker', 'index': 1}}})
       config = ClusterConfig()
       assert config.master == 'host4:2222'
       assert config.task_id == 1
@@ -108,7 +108,7 @@ class ClusterConfig(object):
     self._task_type = task_env.get('type', None)
     self._task_id = self.get_task_id()
 
-    self._cluster_spec = ClusterSpec(config.get('cluster', {}))
+    self._cluster_spec = server_lib.ClusterSpec(config.get('cluster', {}))
     self._master = (master if master is not None else
                     _get_master(self._cluster_spec, self._task_type,
                                 self._task_id) or '')
@@ -234,9 +234,9 @@ class RunConfig(ClusterConfig):
     super(RunConfig, self).__init__(
         master=master, evaluation_master=evaluation_master)
 
-    gpu_options = GPUOptions(
+    gpu_options = config_pb2.GPUOptions(
         per_process_gpu_memory_fraction=gpu_memory_fraction)
-    self._tf_config = ConfigProto(
+    self._tf_config = config_pb2.ConfigProto(
         log_device_placement=log_device_placement,
         inter_op_parallelism_threads=num_cores,
         intra_op_parallelism_threads=num_cores,

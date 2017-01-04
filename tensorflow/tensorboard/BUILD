@@ -68,17 +68,9 @@ py_library(
         ":base_plugin",
         "//tensorflow/contrib/tensorboard:projector",
         "//tensorflow/contrib/tensorboard:protos_all_py",
+        "//tensorflow/python:errors",
         "//tensorflow/python:lib",
+        "//tensorflow/python:platform",
         "//tensorflow/python:training",
-    ],
-)
-
-py_library(
-    name = "plugins",
-    srcs = ["plugins/__init__.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        # All registered plugins go in here.
-        ":projector",
     ],
 )

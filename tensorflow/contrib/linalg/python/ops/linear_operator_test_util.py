@@ -21,13 +21,20 @@ from __future__ import print_function
 import abc
 import numpy as np
 import six
-import tensorflow as tf
 
 from tensorflow.contrib.framework import tensor_util as contrib_tensor_util
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
+from tensorflow.python.platform import test
 
 
 @six.add_metaclass(abc.ABCMeta)  # pylint: disable=no-init
-class LinearOperatorDerivedClassTest(tf.test.TestCase):
+class LinearOperatorDerivedClassTest(test.TestCase):
   """Tests for derived classes.
 
   Subclasses should implement every abstractmethod, and this will enable all
@@ -36,15 +43,23 @@ class LinearOperatorDerivedClassTest(tf.test.TestCase):
 
   # Absolute/relative tolerance for tests.
   _atol = {
-      tf.float16: 1e-3, tf.float32: 1e-6, tf.float64: 1e-12, tf.complex64: 1e-6,
-      tf.complex128: 1e-12}
+      dtypes.float16: 1e-3,
+      dtypes.float32: 1e-6,
+      dtypes.float64: 1e-12,
+      dtypes.complex64: 1e-6,
+      dtypes.complex128: 1e-12
+  }
   _rtol = {
-      tf.float16: 1e-3, tf.float32: 1e-6, tf.float64: 1e-12, tf.complex64: 1e-6,
-      tf.complex128: 1e-12}
+      dtypes.float16: 1e-3,
+      dtypes.float32: 1e-6,
+      dtypes.float64: 1e-12,
+      dtypes.complex64: 1e-6,
+      dtypes.complex128: 1e-12
+  }
 
   def assertAC(self, x, y):
     """Derived classes can set _atol, _rtol to get different tolerance."""
-    dtype = tf.as_dtype(x.dtype)
+    dtype = dtypes.as_dtype(x.dtype)
     atol = self._atol[dtype]
     rtol = self._rtol[dtype]
     self.assertAllClose(x, y, atol=atol, rtol=rtol)
@@ -52,7 +67,7 @@ class LinearOperatorDerivedClassTest(tf.test.TestCase):
   @property
   def _dtypes_to_test(self):
     # TODO(langmore) Test tf.float16 once tf.matrix_solve works in 16bit.
-    return [tf.float32, tf.float64, tf.complex64, tf.complex128]
+    return [dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
 
   @abc.abstractproperty
   def _shapes_to_test(self):
@@ -152,7 +167,8 @@ class LinearOperatorDerivedClassTest(tf.test.TestCase):
             if not use_placeholder:
               self.assertAllEqual(shape[:-2], op_det.get_shape())
             op_det_v, mat_det_v = sess.run(
-                [op_det, tf.matrix_determinant(mat)], feed_dict=feed_dict)
+                [op_det, linalg_ops.matrix_determinant(mat)],
+                feed_dict=feed_dict)
             self.assertAC(op_det_v, mat_det_v)
 
   def test_apply(self):
@@ -166,11 +182,11 @@ class LinearOperatorDerivedClassTest(tf.test.TestCase):
                   shape, dtype, use_placeholder=use_placeholder)
               x = self._make_x(operator, adjoint=adjoint)
               op_apply = operator.apply(x, adjoint=adjoint)
-              mat_apply = tf.matmul(mat, x, adjoint_a=adjoint)
+              mat_apply = math_ops.matmul(mat, x, adjoint_a=adjoint)
               if not use_placeholder:
                 self.assertAllEqual(op_apply.get_shape(), mat_apply.get_shape())
-              op_apply_v, mat_apply_v = sess.run(
-                  [op_apply, mat_apply], feed_dict=feed_dict)
+              op_apply_v, mat_apply_v = sess.run([op_apply, mat_apply],
+                                                 feed_dict=feed_dict)
               self.assertAC(op_apply_v, mat_apply_v)
 
   def test_solve(self):
@@ -184,11 +200,11 @@ class LinearOperatorDerivedClassTest(tf.test.TestCase):
                   shape, dtype, use_placeholder=use_placeholder)
               rhs = self._make_rhs(operator, adjoint=adjoint)
               op_solve = operator.solve(rhs, adjoint=adjoint)
-              mat_solve = tf.matrix_solve(mat, rhs, adjoint=adjoint)
+              mat_solve = linalg_ops.matrix_solve(mat, rhs, adjoint=adjoint)
               if not use_placeholder:
                 self.assertAllEqual(op_solve.get_shape(), mat_solve.get_shape())
-              op_solve_v, mat_solve_v = sess.run(
-                  [op_solve, mat_solve], feed_dict=feed_dict)
+              op_solve_v, mat_solve_v = sess.run([op_solve, mat_solve],
+                                                 feed_dict=feed_dict)
               self.assertAC(op_solve_v, mat_solve_v)
 
   def test_add_to_tensor(self):
@@ -204,8 +220,8 @@ class LinearOperatorDerivedClassTest(tf.test.TestCase):
             if not use_placeholder:
               self.assertAllEqual(shape, op_plus_2mat.get_shape())
 
-            op_plus_2mat_v, mat_v = sess.run(
-                [op_plus_2mat, mat], feed_dict=feed_dict)
+            op_plus_2mat_v, mat_v = sess.run([op_plus_2mat, mat],
+                                             feed_dict=feed_dict)
 
             self.assertAC(op_plus_2mat_v, 3 * mat_v)
 
@@ -242,7 +258,7 @@ class SquareLinearOperatorDerivedClassTest(LinearOperatorDerivedClassTest):
     else:
       batch_shape = operator.batch_shape_dynamic()
       n = operator.domain_dimension_dynamic()
-      x_shape = tf.concat_v2((batch_shape, [n, r]), 0)
+      x_shape = array_ops.concat_v2((batch_shape, [n, r]), 0)
 
     return random_normal(x_shape, dtype=operator.dtype)
 
@@ -299,7 +315,7 @@ class NonSquareLinearOperatorDerivedClassTest(LinearOperatorDerivedClassTest):
         n = operator.range_dimension_dynamic()
       else:
         n = operator.domain_dimension_dynamic()
-      x_shape = tf.concat_v2((batch_shape, [n, r]), 0)
+      x_shape = array_ops.concat_v2((batch_shape, [n, r]), 0)
 
     return random_normal(x_shape, dtype=operator.dtype)
 
@@ -324,20 +340,22 @@ def random_positive_definite_matrix(shape, dtype, force_well_conditioned=False):
   Returns:
     `Tensor` with desired shape and dtype.
   """
-  dtype = tf.as_dtype(dtype)
+  dtype = dtypes.as_dtype(dtype)
   if not contrib_tensor_util.is_tensor(shape):
-    shape = tf.TensorShape(shape)
+    shape = tensor_shape.TensorShape(shape)
     # Matrix must be square.
     shape[-1].assert_is_compatible_with(shape[-2])
 
-  with tf.name_scope("random_positive_definite_matrix"):
+  with ops.name_scope("random_positive_definite_matrix"):
     tril = random_tril_matrix(
         shape, dtype, force_well_conditioned=force_well_conditioned)
-    return tf.matmul(tril, tril, adjoint_b=True)
+    return math_ops.matmul(tril, tril, adjoint_b=True)
 
 
-def random_tril_matrix(
-    shape, dtype, force_well_conditioned=False, remove_upper=True):
+def random_tril_matrix(shape,
+                       dtype,
+                       force_well_conditioned=False,
+                       remove_upper=True):
   """[batch] lower triangular matrix.
 
   Args:
@@ -354,23 +372,23 @@ def random_tril_matrix(
   Returns:
     `Tensor` with desired shape and dtype.
   """
-  with tf.name_scope("random_tril_matrix"):
+  with ops.name_scope("random_tril_matrix"):
     # Totally random matrix.  Has no nice properties.
     tril = random_normal(shape, dtype=dtype)
     if remove_upper:
-      tril = tf.matrix_band_part(tril, -1, 0)
+      tril = array_ops.matrix_band_part(tril, -1, 0)
 
     # Create a diagonal with entries having modulus in [1, 2].
     if force_well_conditioned:
-      maxval = tf.convert_to_tensor(np.sqrt(2.), dtype=dtype.real_dtype)
+      maxval = ops.convert_to_tensor(np.sqrt(2.), dtype=dtype.real_dtype)
       diag = random_sign_uniform(
           shape[:-1], dtype=dtype, minval=1., maxval=maxval)
-      tril = tf.matrix_set_diag(tril, diag)
+      tril = array_ops.matrix_set_diag(tril, diag)
 
     return tril
 
 
-def random_normal(shape, mean=0.0, stddev=1.0, dtype=tf.float32, seed=None):
+def random_normal(shape, mean=0.0, stddev=1.0, dtype=dtypes.float32, seed=None):
   """Tensor with (possibly complex) Gaussian entries.
 
   Samples are distributed like
@@ -390,22 +408,25 @@ def random_normal(shape, mean=0.0, stddev=1.0, dtype=tf.float32, seed=None):
   Returns:
     `Tensor` with desired shape and dtype.
   """
-  dtype = tf.as_dtype(dtype)
+  dtype = dtypes.as_dtype(dtype)
 
-  with tf.name_scope("random_normal"):
-    samples = tf.random_normal(
+  with ops.name_scope("random_normal"):
+    samples = random_ops.random_normal(
         shape, mean=mean, stddev=stddev, dtype=dtype.real_dtype, seed=seed)
     if dtype.is_complex:
       if seed is not None:
         seed += 1234
-      more_samples = tf.random_normal(
+      more_samples = random_ops.random_normal(
           shape, mean=mean, stddev=stddev, dtype=dtype.real_dtype, seed=seed)
-      samples = tf.complex(samples, more_samples)
+      samples = math_ops.complex(samples, more_samples)
     return samples
 
 
-def random_uniform(
-    shape, minval=None, maxval=None, dtype=tf.float32, seed=None):
+def random_uniform(shape,
+                   minval=None,
+                   maxval=None,
+                   dtype=dtypes.float32,
+                   seed=None):
   """Tensor with (possibly complex) Uniform entries.
 
   Samples are distributed like
@@ -425,26 +446,29 @@ def random_uniform(
   Returns:
     `Tensor` with desired shape and dtype.
   """
-  dtype = tf.as_dtype(dtype)
+  dtype = dtypes.as_dtype(dtype)
 
-  with tf.name_scope("random_uniform"):
-    samples = tf.random_uniform(
+  with ops.name_scope("random_uniform"):
+    samples = random_ops.random_uniform(
         shape, dtype=dtype.real_dtype, minval=minval, maxval=maxval, seed=seed)
     if dtype.is_complex:
       if seed is not None:
         seed += 12345
-      more_samples = tf.random_uniform(
+      more_samples = random_ops.random_uniform(
           shape,
           dtype=dtype.real_dtype,
           minval=minval,
           maxval=maxval,
           seed=seed)
-      samples = tf.complex(samples, more_samples)
+      samples = math_ops.complex(samples, more_samples)
     return samples
 
 
-def random_sign_uniform(
-    shape, minval=None, maxval=None, dtype=tf.float32, seed=None):
+def random_sign_uniform(shape,
+                        minval=None,
+                        maxval=None,
+                        dtype=dtypes.float32,
+                        seed=None):
   """Tensor with (possibly complex) random entries from a "sign Uniform".
 
   Letting `Z` be a random variable equal to `-1` and `1` with equal probability,
@@ -465,12 +489,14 @@ def random_sign_uniform(
   Returns:
     `Tensor` with desired shape and dtype.
   """
-  dtype = tf.as_dtype(dtype)
+  dtype = dtypes.as_dtype(dtype)
 
-  with tf.name_scope("random_sign_uniform"):
+  with ops.name_scope("random_sign_uniform"):
     unsigned_samples = random_uniform(
         shape, minval=minval, maxval=maxval, dtype=dtype, seed=seed)
     if seed is not None:
       seed += 12
-    signs = tf.sign(tf.random_uniform(shape, minval=-1., maxval=1., seed=seed))
-    return unsigned_samples * tf.cast(signs, unsigned_samples.dtype)
+    signs = math_ops.sign(
+        random_ops.random_uniform(
+            shape, minval=-1., maxval=1., seed=seed))
+    return unsigned_samples * math_ops.cast(signs, unsigned_samples.dtype)

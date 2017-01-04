@@ -23,7 +23,6 @@ import numpy as np
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -131,11 +130,12 @@ class Gamma(distribution.Distribution):
     return self._beta
 
   def _batch_shape(self):
-    return array_ops.shape(self.alpha + self.beta)
+    return array_ops.broadcast_dynamic_shape(
+        array_ops.shape(self.alpha), array_ops.shape(self.beta))
 
   def _get_batch_shape(self):
-    return common_shapes.broadcast_shape(self.alpha.get_shape(),
-                                         self.beta.get_shape())
+    return array_ops.broadcast_static_shape(
+        self.alpha.get_shape(), self.beta.get_shape())
 
   def _event_shape(self):
     return constant_op.constant([], dtype=dtypes.int32)

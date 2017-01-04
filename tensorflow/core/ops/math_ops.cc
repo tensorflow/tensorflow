@@ -175,13 +175,6 @@ Given a tensor `x` of complex numbers, this operation returns a tensor of type
 `float` or `double` that is the absolute value of each element in `x`. All
 elements in `x` must be complex numbers of the form \\(a + bj\\). The absolute
 value is computed as \\( \sqrt{a^2 + b^2}\\).
-
-For example:
-
-```
-# tensor 'x' is [[-2.25 + 4.75j], [-3.25 + 5.75j]]
-tf.complex_abs(x) ==> [5.25594902, 6.60492229]
-```
 )doc");
 
 // Declares cwise unary operations signature: 't -> 't
@@ -210,9 +203,7 @@ tf.complex_abs(x) ==> [5.25594902, 6.60492229]
       .Attr("T: {half, float, double, complex64, complex128}") \
       .SetShapeFn(shape_inference::UnchangedShape)
 
-REGISTER_OP("Neg")
-    .UNARY()
-    .Doc(R"doc(
+REGISTER_OP("Neg").UNARY().Doc(R"doc(
 Computes numerical negative value element-wise.
 I.e., \\(y = -x\\).
 )doc");
@@ -247,16 +238,12 @@ Specifically, `grad = -dy * y*y`, where `y = 1/x`, and `dy`
 is the corresponding input gradient.
 )doc");
 
-REGISTER_OP("Square")
-    .UNARY()
-    .Doc(R"doc(
+REGISTER_OP("Square").UNARY().Doc(R"doc(
 Computes square of x element-wise.
 I.e., \\(y = x * x = x^2\\).
 )doc");
 
-REGISTER_OP("Sqrt")
-    .UNARY_COMPLEX()
-    .Doc(R"doc(
+REGISTER_OP("Sqrt").UNARY_COMPLEX().Doc(R"doc(
 Computes square root of x element-wise.
 I.e., \\(y = \sqrt{x} = x^{1/2}\\).
 )doc");
@@ -268,9 +255,7 @@ Specifically, `grad = dy * 0.5 / y`, where `y = sqrt(x)`, and `dy`
 is the corresponding input gradient.
 )doc");
 
-REGISTER_OP("Rsqrt")
-    .UNARY_COMPLEX()
-    .Doc(R"doc(
+REGISTER_OP("Rsqrt").UNARY_COMPLEX().Doc(R"doc(
 Computes reciprocal of square root of x element-wise.
 I.e., \\(y = 1 / \sqrt{x}\\).
 )doc");
@@ -289,29 +274,26 @@ Specifically, `grad = dy * -0.5 * y^3`, where `y = rsqrt(x)`, and `dy`
 is the corresponding input gradient.
 )doc");
 
-REGISTER_OP("Exp")
-    .UNARY_COMPLEX()
-    .Doc(R"doc(
+REGISTER_OP("Exp").UNARY_COMPLEX().Doc(R"doc(
 Computes exponential of x element-wise.  \\(y = e^x\\).
 )doc");
 
-REGISTER_OP("Log")
-    .UNARY_COMPLEX()
-    .Doc(R"doc(
+REGISTER_OP("Expm1").UNARY_COMPLEX().Doc(R"doc(
+Computes exponential of x - 1 element-wise.
+I.e., \\(y = (\exp x) - 1\\).
+)doc");
+
+REGISTER_OP("Log").UNARY_COMPLEX().Doc(R"doc(
 Computes natural logarithm of x element-wise.
 I.e., \\(y = \log_e x\\).
 )doc");
 
-REGISTER_OP("Log1p")
-    .UNARY_COMPLEX()
-    .Doc(R"doc(
+REGISTER_OP("Log1p").UNARY_COMPLEX().Doc(R"doc(
 Computes natural logarithm of (1 + x) element-wise.
 I.e., \\(y = \log_e (1 + x)\\).
 )doc");
 
-REGISTER_OP("Tanh")
-    .UNARY_COMPLEX()
-    .Doc(R"doc(
+REGISTER_OP("Tanh").UNARY_COMPLEX().Doc(R"doc(
 Computes hyperbolic tangent of `x` element-wise.
 )doc");
 
@@ -322,34 +304,24 @@ Specifically, `grad = dy * (1 - y*y)`, where `y = tanh(x)`, and `dy`
 is the corresponding input gradient.
 )doc");
 
-REGISTER_OP("Lgamma")
-    .UNARY_REAL()
-    .Doc(R"doc(
+REGISTER_OP("Lgamma").UNARY_REAL().Doc(R"doc(
 Computes the log of the absolute value of `Gamma(x)` element-wise.
 )doc");
 
-REGISTER_OP("Digamma")
-    .UNARY_REAL()
-    .Doc(R"doc(
+REGISTER_OP("Digamma").UNARY_REAL().Doc(R"doc(
 Computes Psi, the derivative of Lgamma (the log of the absolute value of
 `Gamma(x)`), element-wise.
 )doc");
 
-REGISTER_OP("Erf")
-    .UNARY_REAL()
-    .Doc(R"doc(
+REGISTER_OP("Erf").UNARY_REAL().Doc(R"doc(
 Computes the Gauss error function of `x` element-wise.
 )doc");
 
-REGISTER_OP("Erfc")
-    .UNARY_REAL()
-    .Doc(R"doc(
+REGISTER_OP("Erfc").UNARY_REAL().Doc(R"doc(
 Computes the complementary error function of `x` element-wise.
 )doc");
 
-REGISTER_OP("Sigmoid")
-    .UNARY_COMPLEX()
-    .Doc(R"doc(
+REGISTER_OP("Sigmoid").UNARY_COMPLEX().Doc(R"doc(
 Computes sigmoid of `x` element-wise.
 
 Specifically, `y = 1 / (1 + exp(-x))`.
@@ -362,39 +334,27 @@ Specifically, `grad = dy * y * (1 - y)`, where `y = sigmoid(x)`, and
 `dy` is the corresponding input gradient.
 )doc");
 
-REGISTER_OP("Sin")
-    .UNARY_COMPLEX()
-    .Doc(R"doc(
+REGISTER_OP("Sin").UNARY_COMPLEX().Doc(R"doc(
 Computes sin of x element-wise.
 )doc");
 
-REGISTER_OP("Cos")
-    .UNARY_COMPLEX()
-    .Doc(R"doc(
+REGISTER_OP("Cos").UNARY_COMPLEX().Doc(R"doc(
 Computes cos of x element-wise.
 )doc");
 
-REGISTER_OP("Tan")
-    .UNARY()
-    .Doc(R"doc(
+REGISTER_OP("Tan").UNARY().Doc(R"doc(
 Computes tan of x element-wise.
 )doc");
 
-REGISTER_OP("Asin")
-    .UNARY()
-    .Doc(R"doc(
+REGISTER_OP("Asin").UNARY().Doc(R"doc(
 Computes asin of x element-wise.
 )doc");
 
-REGISTER_OP("Acos")
-    .UNARY()
-    .Doc(R"doc(
+REGISTER_OP("Acos").UNARY().Doc(R"doc(
 Computes acos of x element-wise.
 )doc");
 
-REGISTER_OP("Atan")
-    .UNARY()
-    .Doc(R"doc(
+REGISTER_OP("Atan").UNARY().Doc(R"doc(
 Computes atan of x element-wise.
 )doc");
 
@@ -493,9 +453,10 @@ rint([-1.7, -1.5, -0.2, 0.2, 1.5, 1.7, 2.0]) ==> [-2., -2., -0., 0., 2., 2., 2.]
 
 // Declares cwise binary operations signature: 't, 't -> 't.
 
-#define BINARY_MORE()                              \
-  Input("x: T").Input("y: T").Output("z: T").Attr( \
-      "T: {half, float, double, uint8, int8, uint16, int16, int32, int64, complex64, complex128}")
+#define BINARY_MORE()                                                       \
+  Input("x: T").Input("y: T").Output("z: T").Attr(                          \
+      "T: {half, float, double, uint8, int8, uint16, int16, int32, int64, " \
+      "complex64, complex128}")
 
 #define BINARY_FEWER()                             \
   Input("x: T").Input("y: T").Output("z: T").Attr( \
@@ -838,36 +799,28 @@ beta function.
       .Attr("T: realnumbertype") \
       .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
 
-REGISTER_OP("Less")
-    .COMPARISON()
-    .Doc(R"doc(
+REGISTER_OP("Less").COMPARISON().Doc(R"doc(
 Returns the truth value of (x < y) element-wise.
 
 *NOTE*: `Less` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
-REGISTER_OP("LessEqual")
-    .COMPARISON()
-    .Doc(R"doc(
+REGISTER_OP("LessEqual").COMPARISON().Doc(R"doc(
 Returns the truth value of (x <= y) element-wise.
 
 *NOTE*: `LessEqual` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
-REGISTER_OP("Greater")
-    .COMPARISON()
-    .Doc(R"doc(
+REGISTER_OP("Greater").COMPARISON().Doc(R"doc(
 Returns the truth value of (x > y) element-wise.
 
 *NOTE*: `Greater` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
-REGISTER_OP("GreaterEqual")
-    .COMPARISON()
-    .Doc(R"doc(
+REGISTER_OP("GreaterEqual").COMPARISON().Doc(R"doc(
 Returns the truth value of (x >= y) element-wise.
 
 *NOTE*: `GreaterEqual` supports broadcasting. More about broadcasting
@@ -889,18 +842,14 @@ Returns the truth value of (x >= y) element-wise.
           "quint8, qint8, qint32, string, bool, complex128}")           \
       .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
 
-REGISTER_OP("Equal")
-    .EQUALITY_COMPARISON()
-    .Doc(R"doc(
+REGISTER_OP("Equal").EQUALITY_COMPARISON().Doc(R"doc(
 Returns the truth value of (x == y) element-wise.
 
 *NOTE*: `Equal` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
-REGISTER_OP("NotEqual")
-    .EQUALITY_COMPARISON()
-    .Doc(R"doc(
+REGISTER_OP("NotEqual").EQUALITY_COMPARISON().Doc(R"doc(
 Returns the truth value of (x != y) element-wise.
 
 *NOTE*: `NotEqual` supports broadcasting. More about broadcasting
@@ -926,18 +875,14 @@ Returns the truth value of NOT x element-wise.
       .SetIsCommutative() \
       .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
 
-REGISTER_OP("LogicalAnd")
-    .BINARY_LOGICAL()
-    .Doc(R"doc(
+REGISTER_OP("LogicalAnd").BINARY_LOGICAL().Doc(R"doc(
 Returns the truth value of x AND y element-wise.
 
 *NOTE*: `LogicalAnd` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
-REGISTER_OP("LogicalOr")
-    .BINARY_LOGICAL()
-    .Doc(R"doc(
+REGISTER_OP("LogicalOr").BINARY_LOGICAL().Doc(R"doc(
 Returns the truth value of x OR y element-wise.
 
 *NOTE*: `LogicalOr` supports broadcasting. More about broadcasting
@@ -987,7 +932,7 @@ REGISTER_OP("Select")
       const int32 cond_rank = c->Rank(cond);
       const int32 data_rank = c->Rank(data);
 
-      if (cond_rank == 0){
+      if (cond_rank == 0) {
         // The rank of 'cond' is a scalar.
         // t and e can have any shape.
         c->set_output(0, data);
@@ -1270,10 +1215,10 @@ Status ArgOpShape(shape_inference::InferenceContext* c) {
 
   int64 axis = dimension_val < 0 ? dimension_val + input_rank : dimension_val;
   if (axis < 0 || axis >= input_rank) {
-    return errors::InvalidArgument("Dimension (", dimension_val,
-                                   ") must be in the range [", -input_rank, 
-                                   ", ", input_rank, "), where ", input_rank, 
-                                   " is the number of dimensions in the input.");
+    return errors::InvalidArgument(
+        "Dimension (", dimension_val, ") must be in the range [", -input_rank,
+        ", ", input_rank, "), where ", input_rank,
+        " is the number of dimensions in the input.");
   }
 
   // Return the input shape without the dimension being reduced.

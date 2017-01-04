@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/function.h"
 
-#include <unordered_set>
+#include <unordered_map>
 #include <vector>
 
 #include "tensorflow/core/framework/function.pb_text.h"
@@ -650,7 +650,7 @@ string Print(const FunctionDef& fdef) {
     strings::StrAppend(&out, Print(sig.output_arg(i)));
   }
   strings::StrAppend(&out, ") {\n");
-  if (fdef.node_def_size() > 0) {
+  if (fdef.node_def_size() > 0 || fdef.ret_size() > 0) {
     for (const auto& n : fdef.node_def()) {
       strings::StrAppend(&out, "  ", Print(n), "\n");
     }
@@ -772,7 +772,7 @@ Status InstantiateFunction(const FunctionDef& fdef,
   // Makes a copy of all attrs in fdef and substitutes placeholders.
   // After this step, every attr is bound to a concrete value.
   std::vector<InstantiateAttrValueMap> node_attrs;
-  if (fdef.node_def_size() > 0) {
+  if (fdef.node_def_size() > 0 || fdef.ret_size() > 0) {
     node_attrs.resize(fdef.node_def_size());
     for (int i = 0; i < fdef.node_def_size(); ++i) {
       for (auto attr : fdef.node_def(i).attr()) {
@@ -1110,35 +1110,17 @@ FunctionDefHelper::AttrValueWrapper FunctionDefHelper::FunctionRef(
   return ret;
 }
 
-FunctionDef::Node FunctionDefHelper::Node::ToProto() const {
-  FunctionDef::Node n;
-  for (const string& r : this->ret) {
-    n.add_ret(r);
-  }
-  n.set_op(this->op);
-  for (const string& a : arg) {
-    n.add_arg(a);
-  }
-  for (const auto& a : this->attr) {
-    n.mutable_attr()->insert({a.first, a.second.proto});
-  }
-  for (const string& d : dep) {
-    n.add_dep(d);
-  }
-  return n;
-}
-
 NodeDef FunctionDefHelper::Node::ToNodeDef() const {
   NodeDef n;
   n.set_op(this->op);
   n.set_name(this->ret[0]);
-  for (const string& a : arg) {
-    n.add_input(a);
-  }
   for (const auto& a : this->attr) {
     n.mutable_attr()->insert({a.first, a.second.proto});
   }
-  for (const string& d : dep) {
+  for (const string& a : this->arg) {
+    n.add_input(a);
+  }
+  for (const string& d : this->dep) {
     n.add_input(strings::StrCat("^", d));
   }
   return n;
@@ -1189,8 +1171,56 @@ FunctionDef FunctionDefHelper::Define(const string& name,
   OpRegistrationData op_reg_data;
   TF_CHECK_OK(b.Finalize(&op_reg_data));
   fdef.mutable_signature()->Swap(&op_reg_data.op_def);
-  for (const auto& n : node_def) {
-    *(fdef.add_node()) = n.ToProto();
+
+  // Mapping from legacy output names to NodeDef outputs.
+  std::unordered_map<string, string> ret_index;
+  for (const auto& a : fdef.signature().input_arg()) {
+    ret_index[a.name()] = a.name();
+  }
+
+  // For looking up OpDefs
+  auto* op_def_registry = OpRegistry::Global();
+
+  // Function body
+  for (const auto& src : node_def) {
+    NodeDef* n = fdef.add_node_def();
+    n->set_op(src.op);
+    n->set_name(src.ret[0]);
+    for (const auto& a : src.attr) {
+      n->mutable_attr()->insert({a.first, a.second.proto});
+    }
+    for (const string& a : src.arg) {
+      const auto iter = ret_index.find(a);
+      CHECK(iter != ret_index.end()) << "Node input '" << a << "' in '"
+                                     << src.ret[0] << "' of " << name;
+      n->add_input(iter->second);
+    }
+    for (const string& d : src.dep) {
+      n->add_input(strings::StrCat("^", d));
+    }
+
+    // Add the outputs of this node to ret_index.
+    const OpDef* op_def = nullptr;
+    TF_CHECK_OK(op_def_registry->LookUpOpDef(n->op(), &op_def)) << n->op();
+    CHECK(op_def != nullptr) << n->op();
+    NameRangeMap output_names;
+    TF_CHECK_OK(NameRangesForNode(*n, *op_def, nullptr, &output_names));
+    for (const auto& o : output_names) {
+      CHECK_LE(o.second.second, src.ret.size())
+          << "Missing ret for output '" << o.first << "' in '" << src.ret[0]
+          << "' of " << name;
+      for (int i = o.second.first; i < o.second.second; ++i) {
+        ret_index[src.ret[i]] =
+            strings::StrCat(src.ret[0], ":", o.first, ":", i - o.second.first);
+      }
+    }
+  }
+
+  // Returns
+  for (const auto& r : fdef.signature().output_arg()) {
+    const auto iter = ret_index.find(r.name());
+    CHECK(iter != ret_index.end()) << "Return '" << r.name() << "' in " << name;
+    fdef.mutable_ret()->insert({r.name(), iter->second});
   }
   return fdef;
 }

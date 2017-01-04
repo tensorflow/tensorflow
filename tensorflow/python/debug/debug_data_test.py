@@ -209,5 +209,19 @@ class DebugDumpDirTest(test_util.TensorFlowTestCase):
     self.assertEqual([], dump_dir.dumped_tensor_data)
 
 
+class GetNodeNameAndOutputSlotTest(test_util.TensorFlowTestCase):
+
+  def testParseTensorNameInputWorks(self):
+    self.assertEqual("a", debug_data.get_node_name("a:0"))
+    self.assertEqual(0, debug_data.get_output_slot("a:0"))
+
+    self.assertEqual("_b", debug_data.get_node_name("_b:1"))
+    self.assertEqual(1, debug_data.get_output_slot("_b:1"))
+
+  def testParseNodeNameInputWorks(self):
+    self.assertEqual("a", debug_data.get_node_name("a"))
+    self.assertEqual(0, debug_data.get_output_slot("a"))
+
+
 if __name__ == "__main__":
   googletest.main()

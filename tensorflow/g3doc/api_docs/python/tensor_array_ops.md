@@ -95,6 +95,25 @@ If input shapes have rank-`R`, then output shape will have rank-`(R+1)`.
 
 - - -
 
+#### `tf.TensorArray.stack(name=None)` {#TensorArray.stack}
+
+Return the values in the TensorArray as a stacked `Tensor`.
+
+All of the values must have been written and their shapes must all match.
+If input shapes have rank-`R`, then output shape will have rank-`(R+1)`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  All the tensors in the TensorArray stacked into one tensor.
+
+
+- - -
+
 #### `tf.TensorArray.concat(name=None)` {#TensorArray.concat}
 
 Return the values in the TensorArray as a concatenated `Tensor`.
@@ -165,6 +184,32 @@ Scatter the values of a `Tensor` in specific indices of a `TensorArray`.
 - - -
 
 #### `tf.TensorArray.unpack(*args, **kwargs)` {#TensorArray.unpack}
+
+Unstack the values of a `Tensor` in the TensorArray.
+
+If input value shapes have rank-`R`, then the output TensorArray will
+contain elements whose shapes are rank-`(R-1)`.
+
+##### Args:
+
+
+*  <b>`value`</b>: (N+1)-D.  Tensor of type `dtype`.  The Tensor to unstack.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A new TensorArray object with flow that ensures the unstack occurs.
+  Use this object all for subsequent operations.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if the shape inference fails.
+
+
+- - -
+
+#### `tf.TensorArray.unstack(value, name=None)` {#TensorArray.unstack}
 
 Unstack the values of a `Tensor` in the TensorArray.
 
@@ -287,51 +332,6 @@ The data type of this TensorArray.
 #### `tf.TensorArray.size(name=None)` {#TensorArray.size}
 
 Return the size of the TensorArray.
-
-
-- - -
-
-#### `tf.TensorArray.stack(name=None)` {#TensorArray.stack}
-
-Return the values in the TensorArray as a stacked `Tensor`.
-
-All of the values must have been written and their shapes must all match.
-If input shapes have rank-`R`, then output shape will have rank-`(R+1)`.
-
-##### Args:
-
-
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  All the tensors in the TensorArray stacked into one tensor.
-
-
-- - -
-
-#### `tf.TensorArray.unstack(value, name=None)` {#TensorArray.unstack}
-
-Unstack the values of a `Tensor` in the TensorArray.
-
-If input value shapes have rank-`R`, then the output TensorArray will
-contain elements whose shapes are rank-`(R-1)`.
-
-##### Args:
-
-
-*  <b>`value`</b>: (N+1)-D.  Tensor of type `dtype`.  The Tensor to unstack.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A new TensorArray object with flow that ensures the unstack occurs.
-  Use this object all for subsequent operations.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: if the shape inference fails.
 
 
 

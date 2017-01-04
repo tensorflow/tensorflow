@@ -4,7 +4,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-# http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -123,8 +123,9 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.training.python.training import evaluation
-from tensorflow.python import summary
+from tensorflow.python.summary import summary
 from tensorflow.python.training import monitored_session
+from tensorflow.python.training import saver as tf_saver
 
 __all__ = [
     'evaluate_once',
@@ -135,7 +136,6 @@ __all__ = [
 
 wait_for_new_checkpoint = evaluation.wait_for_new_checkpoint
 checkpoints_iterator = evaluation.checkpoints_iterator
-
 
 _USE_DEFAULT = 0
 
@@ -184,25 +184,25 @@ def evaluate_once(master,
   if summary_op == _USE_DEFAULT:
     summary_op = summary.merge_all()
 
-  hooks = [
-      evaluation.StopAfterNEvalsHook(num_evals),
-  ]
+  hooks = [evaluation.StopAfterNEvalsHook(num_evals),]
 
   if summary_op is not None:
     hooks.append(
         evaluation.SummaryAtEndHook(logdir, summary_op, summary_op_feed_dict))
 
+  saver = None
+  if variables_to_restore is not None:
+    saver = tf_saver.Saver(variables_to_restore)
+
   return evaluation.evaluate_once(
       checkpoint_path,
       master=master,
       scaffold=monitored_session.Scaffold(
-          init_op=initial_op,
-          init_feed_dict=initial_op_feed_dict),
+          init_op=initial_op, init_feed_dict=initial_op_feed_dict, saver=saver),
       eval_ops=eval_op,
       feed_dict=eval_op_feed_dict,
       final_ops=final_op,
       final_ops_feed_dict=final_op_feed_dict,
-      variables_to_restore=variables_to_restore,
       hooks=hooks,
       config=session_config)
 
@@ -259,25 +259,25 @@ def evaluation_loop(master,
   if summary_op == _USE_DEFAULT:
     summary_op = summary.merge_all()
 
-  hooks = [
-      evaluation.StopAfterNEvalsHook(num_evals),
-  ]
+  hooks = [evaluation.StopAfterNEvalsHook(num_evals),]
 
   if summary_op is not None:
     hooks.append(
         evaluation.SummaryAtEndHook(logdir, summary_op, summary_op_feed_dict))
 
+  saver = None
+  if variables_to_restore is not None:
+    saver = tf_saver.Saver(variables_to_restore)
+
   return evaluation.evaluate_repeatedly(
       checkpoint_dir,
       master=master,
       scaffold=monitored_session.Scaffold(
-          init_op=initial_op,
-          init_feed_dict=initial_op_feed_dict),
+          init_op=initial_op, init_feed_dict=initial_op_feed_dict, saver=saver),
       eval_ops=eval_op,
       feed_dict=eval_op_feed_dict,
       final_ops=final_op,
       final_ops_feed_dict=final_op_feed_dict,
-      variables_to_restore=variables_to_restore,
       eval_interval_secs=eval_interval_secs,
       hooks=hooks,
       config=session_config,

@@ -88,8 +88,8 @@ string DataTypeString(DataType dtype) {
     case DT_RESOURCE:
       return "resource";
     default:
-      LOG(FATAL) << "Unrecognized DataType enum value " << dtype;
-      return "";
+      LOG(ERROR) << "Unrecognized DataType enum value " << dtype;
+      return strings::StrCat("unknown dtype enum (", dtype, ")");
   }
 }
 

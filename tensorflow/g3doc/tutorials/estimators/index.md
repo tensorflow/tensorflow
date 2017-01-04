@@ -106,8 +106,6 @@ import urllib
 
 import numpy as np
 import tensorflow as tf
-
-tf.logging.set_verbosity(tf.logging.INFO)
 ```
 
 Then define flags to allow users to optionally specify CSV files for training,

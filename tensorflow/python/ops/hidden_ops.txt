@@ -1,5 +1,6 @@
 # array_ops
 BatchToSpace
+BroadcastArgs
 BroadcastGradientArgs
 ConcatOffset
 Concat
@@ -106,6 +107,18 @@ TensorArraySizeV2
 TensorArraySplitV2
 TensorArrayUnpackV2
 TensorArrayWriteV2
+TensorArrayV3
+TensorArrayCloseV3
+TensorArrayConcatV3
+TensorArrayGatherV3
+TensorArrayGradV3
+TensorArrayReadV3
+TensorArrayPackV3
+TensorArrayScatterV3
+TensorArraySizeV3
+TensorArraySplitV3
+TensorArrayUnpackV3
+TensorArrayWriteV3
 GetSessionHandle
 GetSessionTensor
 DeleteSessionTensor
@@ -184,6 +197,7 @@ BatchIFFT
 BatchIFFT2D
 BatchIFFT3D
 Complex
+ComplexAbs
 Conj
 FloorDiv
 FloorMod

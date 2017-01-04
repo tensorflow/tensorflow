@@ -102,11 +102,11 @@ class NodeStepperSimpleGraphTest(test_util.TensorFlowTestCase):
     self.b = variables.Variable(20.0, name="b")
 
     self.c = math_ops.add(self.a, self.b, name="c")  # Should be 30.0.
-    self.d = math_ops.sub(self.a, self.c, name="d")  # Should be -20.0.
-    self.e = math_ops.mul(self.c, self.d, name="e")  # Should be -600.0.
+    self.d = math_ops.subtract(self.a, self.c, name="d")  # Should be -20.0.
+    self.e = math_ops.multiply(self.c, self.d, name="e")  # Should be -600.0.
 
     self.ph = array_ops.placeholder(dtypes.float32, shape=(2, 2), name="ph")
-    self.f = math_ops.mul(self.e, self.ph, name="f")
+    self.f = math_ops.multiply(self.e, self.ph, name="f")
 
     self.opt = gradient_descent.GradientDescentOptimizer(0.1).minimize(
         self.e, name="opt")

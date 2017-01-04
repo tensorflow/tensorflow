@@ -26,6 +26,8 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
@@ -35,9 +37,16 @@ cuda_py_test(
     srcs = ["python/kernel_tests/entropy_test.py"],
     additional_deps = [
         ":bayesflow_py",
-        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+        "//tensorflow/contrib/distributions:distributions_py",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_ops",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -47,9 +56,17 @@ cuda_py_test(
     srcs = ["python/kernel_tests/stochastic_variables_test.py"],
     additional_deps = [
         ":bayesflow_py",
-        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+        "//tensorflow/contrib/distributions:distributions_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -59,8 +76,13 @@ cuda_py_test(
     srcs = ["python/kernel_tests/monte_carlo_test.py"],
     additional_deps = [
         ":bayesflow_py",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/distributions:distributions_py",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
     ],
 )
@@ -71,9 +93,13 @@ cuda_py_test(
     srcs = ["python/kernel_tests/special_math_test.py"],
     additional_deps = [
         ":bayesflow_py",
-        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:gradients",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -83,8 +109,14 @@ cuda_py_test(
     srcs = ["python/kernel_tests/stochastic_graph_test.py"],
     additional_deps = [
         ":bayesflow_py",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/distributions:distributions_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
     ],
 )
@@ -95,9 +127,15 @@ cuda_py_test(
     srcs = ["python/kernel_tests/variational_inference_test.py"],
     additional_deps = [
         ":bayesflow_py",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/distributions:distributions_py",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -107,7 +145,11 @@ cuda_py_test(
     srcs = ["python/kernel_tests/stochastic_tensor_test.py"],
     additional_deps = [
         ":bayesflow_py",
-        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+        "//tensorflow/contrib/distributions:distributions_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
@@ -119,9 +161,15 @@ cuda_py_test(
     srcs = ["python/kernel_tests/stochastic_gradient_estimators_test.py"],
     additional_deps = [
         ":bayesflow_py",
-        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+        "//tensorflow/contrib/distributions:distributions_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:variables",
     ],
 )
 

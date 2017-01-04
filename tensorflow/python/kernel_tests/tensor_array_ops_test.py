@@ -344,7 +344,7 @@ class TensorArrayTest(test.TestCase):
         r1_0 = g_ta_1.read(0)
 
       t_g_ta_0, t_g_ta_1, d_r1_0 = session.run(
-          [g_ta_0.handle, g_ta_1.handle, r1_0])
+          [g_ta_0.handle.op, g_ta_1.handle.op, r1_0])
       self.assertAllEqual(t_g_ta_0, t_g_ta_1)
       self.assertAllEqual([[4.0, 5.0]], d_r1_0)
 
@@ -378,7 +378,7 @@ class TensorArrayTest(test.TestCase):
       w0 = ta.write(0, [[4.0, 5.0]])
 
       # Test reading wrong datatype
-      r0_bad = gen_data_flow_ops._tensor_array_read_v2(
+      r0_bad = gen_data_flow_ops._tensor_array_read_v3(
           handle=w0.handle, index=0, dtype=dtypes.float64, flow_in=w0.flow)
       with self.assertRaisesOpError(
           "TensorArray dtype is float but Op requested dtype double."):
@@ -530,23 +530,6 @@ class TensorArrayTest(test.TestCase):
       r2 = w2.read(0)
       r = r1 + r2
       self.assertAllClose(9.0, r.eval())
-
-  def testDuplicateTensorArrayHasDifferentName(self):
-    with self.test_session(use_gpu=True) as session:
-      h1 = tensor_array_ops.TensorArray(
-          size=1, dtype=dtypes.float32, tensor_array_name="foo")
-      c1 = h1.write(0, 4.0)
-      h2 = tensor_array_ops.TensorArray(
-          size=1, dtype=dtypes.float32, tensor_array_name="foo")
-      c2 = h2.write(0, 5.0)
-      _, _, c1h, c2h = session.run([c1.flow, c2.flow, c1.handle, c2.handle])
-      c1h = [x.decode("ascii") for x in c1h]
-      c2h = [x.decode("ascii") for x in c2h]
-      self.assertEqual(c1h[0], "_tensor_arrays")
-      self.assertEqual(c2h[0], "_tensor_arrays")
-      self.assertTrue(c1h[1].startswith("foo_"))
-      self.assertTrue(c2h[1].startswith("foo_"))
-      self.assertNotEqual(c1h[1], c2h[1])
 
   def _testTensorArrayGradientWriteReadType(self, dtype):
     with self.test_session(use_gpu=True) as session:
@@ -863,7 +846,7 @@ class TensorArrayTest(test.TestCase):
       def b(i, acc):
         x1 = control_flow_ops.cond(
             math_ops.equal(i, 0), lambda: x,
-            lambda: math_ops.mul(acc.read(i - 1), 2.0))
+            lambda: math_ops.multiply(acc.read(i - 1), 2.0))
         return i + 1, acc.write(i, x1)
 
       i1, acc1 = control_flow_ops.while_loop(c, b, [i, acc])
@@ -976,6 +959,46 @@ class TensorArrayTest(test.TestCase):
       c2 = constant_op.constant([4.0, 5.0, 6.0])
       with self.assertRaises(ValueError):
         w0.write(0, c2)
+
+  def testPartlyUnknownShape(self):
+    with self.test_session():
+      ta = tensor_array_ops.TensorArray(
+          dtype=dtypes.float32, tensor_array_name="foo", size=6)
+
+      c0 = array_ops.placeholder(dtypes.float32, [None, None, None, 3])
+      w0 = ta.write(0, c0)
+      r0 = w0.read(0)
+      self.assertAllEqual([None, None, None, 3], r0.get_shape().as_list())
+
+      c1 = array_ops.placeholder(dtypes.float32, [None, None, None, 3])
+      w1 = w0.write(1, c1)
+      r1 = w1.read(0)
+      self.assertAllEqual([None, None, None, 3], r1.get_shape().as_list())
+
+      # Writing less specific shape (doesn't change type.)
+      c2 = array_ops.placeholder(dtypes.float32, [None, None, None, None])
+      w2 = w1.write(2, c2)
+      r2 = w2.read(0)
+      self.assertAllEqual([None, None, None, 3], r2.get_shape().as_list())
+
+      # Writing more specific shape in one dimension and less specific in
+      # another.
+      c3 = array_ops.placeholder(dtypes.float32, [None, None, 2, None])
+      w3 = w2.write(3, c3)
+      r3 = w3.read(0)
+      self.assertAllEqual([None, None, 2, 3], r3.get_shape().as_list())
+
+      # Writing partly defined shape using TensorArray.scatter.
+      c4 = array_ops.placeholder(dtypes.float32, [2, None, 4, 2, 3])
+      w4 = w3.scatter([4, 5], c4)
+      r4 = w4.read(0)
+      self.assertAllEqual([None, 4, 2, 3], r4.get_shape().as_list())
+
+      # Writing fully defined shape using TensorArray.split.
+      c5 = array_ops.placeholder(dtypes.float32, [10, 4, 2, 3])
+      w5 = w4.split(c5, constant_op.constant([5, 5]))
+      r5 = w5.read(0)
+      self.assertAllEqual([5, 4, 2, 3], r5.get_shape().as_list())
 
   def _testUnpackShape(self):
     with self.test_session():

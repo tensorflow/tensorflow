@@ -193,6 +193,7 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(z, np.sqrt, math_ops.sqrt)
     self._compareBoth(z, self._rsqrt, math_ops.rsqrt)
     self._compareBoth(x, np.exp, math_ops.exp)
+    self._compareBoth(x, np.expm1, math_ops.expm1)
     self._compareBoth(z, np.log, math_ops.log)
     self._compareBoth(z, np.log1p, math_ops.log1p)
     self._compareBoth(x, np.tanh, math_ops.tanh)
@@ -236,6 +237,7 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.sqrt, math_ops.sqrt)
     self._compareBoth(x, self._rsqrt, math_ops.rsqrt)
     self._compareBoth(x, np.exp, math_ops.exp)
+    self._compareBoth(x, np.expm1, math_ops.expm1)
     self._compareBoth(x, np.log, math_ops.log)
     self._compareBoth(x, np.log1p, math_ops.log1p)
     self._compareBoth(x, np.tanh, math_ops.tanh)
@@ -275,6 +277,7 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(z, np.sqrt, math_ops.sqrt)
     self._compareBoth(z, self._rsqrt, math_ops.rsqrt)
     self._compareBoth(x, np.exp, math_ops.exp)
+    self._compareBoth(x, np.expm1, math_ops.expm1)
     self._compareBoth(z, np.log, math_ops.log)
     self._compareBoth(z, np.log1p, math_ops.log1p)
     self._compareBoth(x, np.tanh, math_ops.tanh)
@@ -314,6 +317,7 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(z, np.sqrt, math_ops.sqrt)
     self._compareBoth(z, self._rsqrt, math_ops.rsqrt)
     self._compareBoth(x, np.exp, math_ops.exp)
+    self._compareBoth(x, np.expm1, math_ops.expm1)
     self._compareBoth(z, np.log, math_ops.log)
     self._compareBoth(z, np.log1p, math_ops.log1p)
     self._compareBoth(x, np.tanh, math_ops.tanh)
@@ -368,7 +372,7 @@ class UnaryOpTest(test.TestCase):
     x = np.complex(1, 1) * np.arange(-3, 3).reshape(1, 3,
                                                     2).astype(np.complex64)
     y = x + 0.5  # no zeros
-    self._compareCpu(x, np.abs, math_ops.complex_abs)
+    self._compareCpu(x, np.abs, math_ops.abs)
     self._compareCpu(x, np.abs, _ABS)
     self._compareCpu(x, np.negative, math_ops.neg)
     self._compareCpu(x, np.negative, _NEG)
@@ -377,6 +381,7 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(y, np.sqrt, math_ops.sqrt)
     self._compareCpu(y, self._rsqrt, math_ops.rsqrt)
     self._compareCpu(x, np.exp, math_ops.exp)
+    self._compareCpu(x, np.expm1, math_ops.expm1)
     self._compareCpu(y, np.log, math_ops.log)
     self._compareCpu(y, np.log1p, math_ops.log1p)
     self._compareCpu(x, np.tanh, math_ops.tanh)
@@ -410,6 +415,7 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(y, np.sqrt, math_ops.sqrt)
     self._compareCpu(y, self._rsqrt, math_ops.rsqrt)
     self._compareCpu(x, np.exp, math_ops.exp)
+    self._compareCpu(x, np.expm1, math_ops.expm1)
     self._compareCpu(y, np.log, math_ops.log)
     self._compareCpu(y, np.log1p, math_ops.log1p)
     self._compareCpu(x, np.tanh, math_ops.tanh)
@@ -1926,7 +1932,7 @@ class ComplexMakeRealImagTest(test.TestCase):
     epsilon = 1e-3
     with self.test_session():
       for args in [(x_, 0.), (0., x_)]:
-        z = math_ops.reduce_sum(math_ops.complex_abs(math_ops.complex(*args)))
+        z = math_ops.reduce_sum(math_ops.abs(math_ops.complex(*args)))
         jacob_t, jacob_n = gradient_checker.compute_gradient(
             x_, list(x.shape), z, [1], x_init_value=x, delta=epsilon)
         self.assertAllClose(jacob_t, jacob_n, rtol=epsilon, atol=epsilon)

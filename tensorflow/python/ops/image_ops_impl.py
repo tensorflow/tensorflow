@@ -105,7 +105,7 @@ def _ImageDimensions(image):
     return image.get_shape().as_list()
   else:
     static_shape = image.get_shape().with_rank(3).as_list()
-    dynamic_shape = array_ops.unpack(array_ops.shape(image), 3)
+    dynamic_shape = array_ops.unstack(array_ops.shape(image), 3)
     return [s if s is not None else d
             for s, d in zip(static_shape, dynamic_shape)]
 
@@ -735,7 +735,7 @@ def per_image_standardization(image):
   pixel_value_scale = math_ops.maximum(stddev, min_stddev)
   pixel_value_offset = image_mean
 
-  image = math_ops.sub(image, pixel_value_offset)
+  image = math_ops.subtract(image, pixel_value_offset)
   image = math_ops.div(image, pixel_value_scale)
   return image
 
@@ -968,7 +968,7 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
         else:
           cast = math_ops.cast(image, dtype)
         scale = (scale_out + 1) // (scale_in + 1)
-        return math_ops.mul(cast, scale, name=name)
+        return math_ops.multiply(cast, scale, name=name)
     elif image.dtype.is_floating and dtype.is_floating:
       # Both float: Just cast, no possible overflows in the allowed ranges.
       # Note: We're ignoreing float overflows. If your image dynamic range
@@ -979,11 +979,11 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
         # Converting to float: first cast, then scale. No saturation possible.
         cast = math_ops.cast(image, dtype)
         scale = 1. / image.dtype.max
-        return math_ops.mul(cast, scale, name=name)
+        return math_ops.multiply(cast, scale, name=name)
       else:
         # Converting from float: first scale, then cast
         scale = dtype.max + 0.5  # avoid rounding problems in the cast
-        scaled = math_ops.mul(image, scale)
+        scaled = math_ops.multiply(image, scale)
         if saturate:
           return math_ops.saturate_cast(scaled, dtype, name=name)
         else:

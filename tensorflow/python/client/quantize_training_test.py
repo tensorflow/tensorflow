@@ -12,28 +12,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for the SWIG-wrapped quantize training rewriting."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.client import session
+from tensorflow.python.framework import constant_op
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
 
 
-class PywrapQuantizeTrainingTest(tf.test.TestCase):
+class PywrapQuantizeTrainingTest(test.TestCase):
 
   # Mainly to verify the python interface is working.
   # More tests for this function can be found in the related c++ tests.
   def testQuantizeTraining(self):
-    with tf.Session() as sess:
-      a = tf.constant(6.0, shape=[1, 1])
-      b = tf.constant(7.0, shape=[1, 1])
-      c = tf.matmul(a, b, name='matmul')
+    with session.Session() as sess:
+      a = constant_op.constant(6.0, shape=[1, 1])
+      b = constant_op.constant(7.0, shape=[1, 1])
+      c = math_ops.matmul(a, b, name='matmul')
 
       self.assertEquals(len(sess.graph_def.node), 3)
 
-      result = tf.train.do_quantize_training_on_graphdef(
+      result = pywrap_tensorflow.do_quantize_training_on_graphdef(
           sess.graph_def, 8)
 
       # 2 convert ops are added so it should have 5 nodes now.
@@ -41,5 +45,6 @@ class PywrapQuantizeTrainingTest(tf.test.TestCase):
 
       self.assertEquals(c.eval(), 42)
 
+
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

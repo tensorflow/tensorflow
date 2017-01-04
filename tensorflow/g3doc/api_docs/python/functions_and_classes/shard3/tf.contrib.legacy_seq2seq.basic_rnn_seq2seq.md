@@ -11,7 +11,7 @@ Encoder and decoder use the same RNN cell type, but don't share parameters.
 
 *  <b>`encoder_inputs`</b>: A list of 2D Tensors [batch_size x input_size].
 *  <b>`decoder_inputs`</b>: A list of 2D Tensors [batch_size x input_size].
-*  <b>`cell`</b>: rnn_cell.RNNCell defining the cell function and size.
+*  <b>`cell`</b>: core_rnn_cell.RNNCell defining the cell function and size.
 *  <b>`dtype`</b>: The dtype of the initial state of the RNN cell (default: tf.float32).
 *  <b>`scope`</b>: VariableScope for the created subgraph; default: "basic_rnn_seq2seq".
 

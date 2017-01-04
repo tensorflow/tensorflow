@@ -192,8 +192,13 @@ Status AttrValueHasType(const AttrValue& attr_value, StringPiece type) {
         "AttrValue missing value with expected type '", type, "'");
   }
 
-  // Ref types and DT_INVALID are illegal.
+  // Ref types and DT_INVALID are illegal, and DataTypes must
+  // be a valid enum type.
   if (type == "type") {
+    if (!DataType_IsValid(attr_value.type())) {
+      return errors::InvalidArgument("AttrValue has invalid DataType enum: ",
+                                     attr_value.type());
+    }
     if (IsRefType(attr_value.type())) {
       return errors::InvalidArgument(
           "AttrValue must not have reference type value of ",
@@ -205,6 +210,10 @@ Status AttrValueHasType(const AttrValue& attr_value, StringPiece type) {
   } else if (type == "list(type)") {
     for (auto as_int : attr_value.list().type()) {
       const DataType dtype = static_cast<DataType>(as_int);
+      if (!DataType_IsValid(dtype)) {
+        return errors::InvalidArgument("AttrValue has invalid DataType enum: ",
+                                       as_int);
+      }
       if (IsRefType(dtype)) {
         return errors::InvalidArgument(
             "AttrValue must not have reference type value of ",

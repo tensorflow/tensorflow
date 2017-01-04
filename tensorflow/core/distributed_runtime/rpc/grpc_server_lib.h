@@ -32,6 +32,7 @@ limitations under the License.
 
 namespace tensorflow {
 
+class GrpcWorker;
 class Master;
 
 class GrpcServer : public ServerInterface {
@@ -99,6 +100,7 @@ class GrpcServer : public ServerInterface {
 
   // Implementation of a TensorFlow worker, and RPC polling thread.
   WorkerEnv worker_env_;
+  std::unique_ptr<GrpcWorker> worker_impl_;
   AsyncServiceInterface* worker_service_ = nullptr;
   std::unique_ptr<Thread> worker_thread_ GUARDED_BY(mu_);
 

@@ -18,14 +18,13 @@ licenses(["notice"])  # Apache 2.0
 package_group(
     name = "friends",
     packages = [
-        "//learning/deepmind/tensorflow/...",
+        "//learning/deepmind/...",
         "//tensorflow/...",
     ],
 )
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_not_windows",
     "tf_cc_test",
     "tf_cc_tests",
     "tf_copts",
@@ -42,12 +41,23 @@ load(
 )
 
 config_setting(
-    # Add "--define tensorflow_xsmm=1" to your build command to use libxsmm
-    # for convolutions (and possibly more in the future). You will also need
+    # Add "--define tensorflow_xsmm=1" to your build command to use libxsmm for
+    # convolutions (and possibly more in the future). You will also need
     # appropriate -mavx*, as required by specific op you use.
     name = "xsmm",
     values = {
         "define": "tensorflow_xsmm=1",
+    },
+)
+
+config_setting(
+    # Add "--define tensorflow_xsmm_backward=1" to your build command to use
+    # libxsmm for backward convolutions (and possibly more in the future). You
+    # will also need appropriate -mavx*, as required by specific op you use.
+    name = "xsmm_backward",
+    values = {
+        "define": "tensorflow_xsmm=1",
+        "define": "tensorflow_xsmm_backward=1",
     },
 )
 
@@ -679,6 +689,24 @@ tf_cc_test(
     srcs = ["batch_norm_op_test.cc"],
     deps = [
         ":batch_norm_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
+    name = "ops_testutil_test",
+    size = "small",
+    srcs = ["ops_testutil_test.cc"],
+    deps = [
+        ":identity_op",
         ":ops_testutil",
         ":ops_util",
         "//tensorflow/core:core_cpu",
@@ -1961,8 +1989,17 @@ cc_library(
 
 tf_kernel_library(
     name = "sparse_matmul_op",
+    defines = select({
+        ":xsmm": ["TENSORFLOW_USE_LIBXSMM"],
+        "//conditions:default": [],
+    }),
     prefix = "sparse_matmul_op",
-    deps = MATH_DEPS,
+    deps = MATH_DEPS + select({
+        ":xsmm": [
+            "@libxsmm_archive//:xsmm_avx",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(
@@ -2293,6 +2330,9 @@ tf_kernel_library(
     defines = select({
         ":xsmm": ["TENSORFLOW_USE_LIBXSMM"],
         "//conditions:default": [],
+    }) + select({
+        ":xsmm_backward": ["TENSORFLOW_USE_LIBXSMM_BACKWARD"],
+        "//conditions:default": [],
     }),
     prefix = "conv_ops",
     deps = [
@@ -2349,6 +2389,8 @@ cc_library(
         ":batch_norm_op",
         ":bias_op",
         ":conv_ops",
+        ":depthwise_conv_grad_op",
+        ":depthwise_conv_op",
         ":dilation_ops",
         ":fused_batch_norm_op",
         ":in_topk_op",
@@ -2360,10 +2402,7 @@ cc_library(
         ":softsign_op",
         ":topk_op",
         ":xent_op",
-    ] + if_not_windows([
-        ":depthwise_conv_grad_op",
-        ":depthwise_conv_op",
-    ]),
+    ],
 )
 
 NN_DEPS = [
@@ -3258,6 +3297,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:word2vec_ops",
     ],
 )
 

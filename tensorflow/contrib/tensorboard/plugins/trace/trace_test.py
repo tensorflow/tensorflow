@@ -19,27 +19,30 @@ from __future__ import division
 from __future__ import print_function
 
 import tempfile
-import tensorflow as tf
 
 from google.protobuf import json_format
+
 from tensorflow.contrib.tensorboard.plugins import trace
+from tensorflow.python.framework import constant_op
+from tensorflow.python.platform import gfile
+from tensorflow.python.platform import test
 
 
-class TraceTest(tf.test.TestCase):
+class TraceTest(test.TestCase):
 
   def setUp(self):
     self._temp_dir = tempfile.mkdtemp()
     self._temp_trace_json = self._temp_dir + 'trace.json'
 
   def tearDown(self):
-    tf.gfile.DeleteRecursively(self._temp_dir)
+    gfile.DeleteRecursively(self._temp_dir)
 
   def testEmptyGraph(self):
     trace_info = self._store_and_read_trace_info()
     self.assertEqual(len(trace_info.ops), 0)
 
   def testHasSourceCodeOfThisFile(self):
-    tf.constant(0)
+    constant_op.constant(0)
     trace_info = self._store_and_read_trace_info()
 
     self.assertTrue(trace_info.files)
@@ -49,7 +52,7 @@ class TraceTest(tf.test.TestCase):
     self.fail('trace_test file not found in the trace info json')
 
   def testHasTheConstantOp(self):
-    tf.constant(0)
+    constant_op.constant(0)
     trace_info = self._store_and_read_trace_info()
 
     self.assertTrue(trace_info.ops)
@@ -81,11 +84,12 @@ class TraceTest(tf.test.TestCase):
     trace.store_trace_info(self._temp_trace_json)
     trace_info = trace.TraceInfo()
 
-    with tf.gfile.Open(self._temp_trace_json) as f:
+    with gfile.Open(self._temp_trace_json) as f:
       text = f.read().decode('utf-8')
     json_format.Parse(text, trace_info)
 
     return trace_info
 
+
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

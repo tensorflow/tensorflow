@@ -18,6 +18,7 @@ py_binary(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
+        "//third_party/py/numpy",
     ],
 )
 
