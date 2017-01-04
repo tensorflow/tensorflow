@@ -51,6 +51,7 @@ CTRL_LABEL = "(Ctrl) "
 ELLIPSIS = "..."
 
 SORT_TENSORS_BY_TIMESTAMP = "timestamp"
+SORT_TENSORS_BY_DUMP_SIZE = "dump_size"
 SORT_TENSORS_BY_OP_TYPE = "op_type"
 SORT_TENSORS_BY_TENSOR_NAME = "tensor_name"
 
@@ -173,11 +174,9 @@ class DebugAnalyzer(object):
         dest="sort_by",
         type=str,
         default=SORT_TENSORS_BY_TIMESTAMP,
-        help=("the field to sort the data by: " +
-              "(%s | %s | %s)" %
-              (SORT_TENSORS_BY_TIMESTAMP,
-               SORT_TENSORS_BY_OP_TYPE,
-               SORT_TENSORS_BY_TENSOR_NAME)))
+        help=("the field to sort the data by: (%s | %s | %s | %s)" %
+              (SORT_TENSORS_BY_TIMESTAMP, SORT_TENSORS_BY_DUMP_SIZE,
+               SORT_TENSORS_BY_OP_TYPE, SORT_TENSORS_BY_TENSOR_NAME)))
     ap.add_argument(
         "-r",
         "--reverse",
@@ -431,7 +430,7 @@ class DebugAnalyzer(object):
 
     # TODO(cais): Implement filter by lambda on tensor value.
 
-    max_timestamp_width, max_op_type_width = (
+    max_timestamp_width, max_dump_size_width, max_op_type_width = (
         self._measure_tensor_list_column_widths(data_to_show))
 
     # Sort the data.
@@ -440,7 +439,7 @@ class DebugAnalyzer(object):
 
     output.extend(
         self._tensor_list_column_heads(parsed, max_timestamp_width,
-                                       max_op_type_width))
+                                       max_dump_size_width, max_op_type_width))
 
     dump_count = 0
     for dump in data_to_show:
@@ -453,13 +452,17 @@ class DebugAnalyzer(object):
           continue
 
       rel_time = (dump.timestamp - self._debug_dump.t0) / 1000.0
+      dump_size_str = cli_shared.bytes_to_readable_str(dump.dump_size_bytes)
       dumped_tensor_name = "%s:%d" % (dump.node_name, dump.output_slot)
       op_type = self._debug_dump.node_op_type(dump.node_name)
 
       line = "[%.3f]" % rel_time
       line += " " * (max_timestamp_width - len(line))
+      line += dump_size_str
+      line += " " * (max_timestamp_width + max_dump_size_width - len(line))
       line += op_type
-      line += " " * (max_timestamp_width + max_op_type_width - len(line))
+      line += " " * (max_timestamp_width + max_dump_size_width +
+                     max_op_type_width - len(line))
       line += " %s" % dumped_tensor_name
 
       output.append(
@@ -492,6 +495,7 @@ class DebugAnalyzer(object):
 
     Returns:
       (int) maximum width of the timestamp column. 0 if data is empty.
+      (int) maximum width of the dump size column. 0 if data is empty.
       (int) maximum width of the op type column. 0 if data is empty.
     """
 
@@ -500,13 +504,19 @@ class DebugAnalyzer(object):
       max_rel_time_ms = (data[-1].timestamp - self._debug_dump.t0) / 1000.0
       max_timestamp_width = len("[%.3f] " % max_rel_time_ms)
 
+    max_dump_size_width = 0
+    for dump in data:
+      dump_size_str = cli_shared.bytes_to_readable_str(dump.dump_size_bytes)
+      if len(dump_size_str) + 1 > max_dump_size_width:
+        max_dump_size_width = len(dump_size_str) + 1
+
     max_op_type_width = 0
     for dump in data:
       op_type = self._debug_dump.node_op_type(dump.node_name)
       if len(op_type) > max_op_type_width:
         max_op_type_width = len(op_type)
 
-    return max_timestamp_width, max_op_type_width
+    return max_timestamp_width, max_dump_size_width, max_op_type_width
 
   def _sort_dump_data_by(self, data, sort_by, reverse):
     """Sort a list of DebugTensorDatum in specified order.
@@ -528,6 +538,8 @@ class DebugAnalyzer(object):
           data,
           reverse=reverse,
           key=lambda x: x.timestamp)
+    elif sort_by == SORT_TENSORS_BY_DUMP_SIZE:
+      return sorted(data, reverse=reverse, key=lambda x: x.dump_size_bytes)
     elif sort_by == SORT_TENSORS_BY_OP_TYPE:
       return sorted(
           data,
@@ -542,12 +554,13 @@ class DebugAnalyzer(object):
       raise ValueError("Unsupported key to sort tensors by: %s" % sort_by)
 
   def _tensor_list_column_heads(self, parsed, max_timestamp_width,
-                                max_op_type_width):
+                                max_dump_size_width, max_op_type_width):
     """Generate a line containing the column heads of the tensor list.
 
     Args:
       parsed: Parsed arguments (by argparse) of the list_tensors command.
       max_timestamp_width: (int) maximum width of the timestamp column.
+      max_dump_size_width: (int) maximum width of the dump size column.
       max_op_type_width: (int) maximum width of the op type column.
 
     Returns:
@@ -564,30 +577,43 @@ class DebugAnalyzer(object):
 
     attr_segs = {0: []}
     row = "t (ms)"
-    command = "%s -s timestamp" % base_command
-    if parsed.sort_by == "timestamp" and not parsed.reverse:
+    command = "%s -s %s" % (base_command, SORT_TENSORS_BY_TIMESTAMP)
+    if parsed.sort_by == SORT_TENSORS_BY_TIMESTAMP and not parsed.reverse:
       command += " -r"
     attr_segs[0].append(
         (0, len(row), [debugger_cli_common.MenuItem(None, command), "bold"]))
     row += " " * (max_timestamp_width - len(row))
 
     prev_len = len(row)
-    row += "Op type"
-    command = "%s -s op_type" % base_command
-    if parsed.sort_by == "op_type" and not parsed.reverse:
+    row += "Size"
+    command = "%s -s %s" % (base_command, SORT_TENSORS_BY_DUMP_SIZE)
+    if parsed.sort_by == SORT_TENSORS_BY_DUMP_SIZE and not parsed.reverse:
       command += " -r"
     attr_segs[0].append((prev_len, len(row),
                          [debugger_cli_common.MenuItem(None, command), "bold"]))
-    row += " " * (max_op_type_width + max_timestamp_width - len(row))
+    row += " " * (max_dump_size_width + max_timestamp_width - len(row))
+
+    prev_len = len(row)
+    row += "Op type"
+    command = "%s -s %s" % (base_command, SORT_TENSORS_BY_OP_TYPE)
+    if parsed.sort_by == SORT_TENSORS_BY_OP_TYPE and not parsed.reverse:
+      command += " -r"
+    attr_segs[0].append((prev_len, len(row),
+                         [debugger_cli_common.MenuItem(None, command), "bold"]))
+    row += " " * (
+        max_op_type_width + max_dump_size_width + max_timestamp_width - len(row)
+    )
 
     prev_len = len(row)
     row += " Tensor name"
-    command = "%s -s tensor_name" % base_command
-    if parsed.sort_by == "tensor_name" and not parsed.reverse:
+    command = "%s -s %s" % (base_command, SORT_TENSORS_BY_TENSOR_NAME)
+    if parsed.sort_by == SORT_TENSORS_BY_TENSOR_NAME and not parsed.reverse:
       command += " -r"
     attr_segs[0].append((prev_len + 1, len(row),
                          [debugger_cli_common.MenuItem("", command), "bold"]))
-    row += " " * (max_op_type_width + max_timestamp_width - len(row))
+    row += " " * (
+        max_op_type_width + max_dump_size_width + max_timestamp_width - len(row)
+    )
 
     return debugger_cli_common.RichTextLines([row], font_attr_segs=attr_segs)
 
