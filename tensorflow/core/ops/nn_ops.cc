@@ -1454,11 +1454,7 @@ REGISTER_OP("MaxPoolGradGradWithArgmax")
     .Input("argmax: Targmax")
     .Output("output: T")
     .Attr("T: {float, half} = DT_FLOAT")
-    .SetShapeFn([](InferenceContext* c) {
-      TF_RETURN_IF_ERROR(shape_inference::MaxPoolShape(c));
-      c->set_output(1, c->output(0));
-      return Status::OK();
-    })
+    .SetShapeFn(shape_inference::MaxPoolShape)
     .Doc(R"doc(
 Computes gradients of the maxpooling backward function.
 
