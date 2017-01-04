@@ -31,12 +31,12 @@ from tensorflow.python.platform import app
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import gfile
 
-FLAGS = tf.flags.FLAGS
+FLAGS = flags.FLAGS
 
-tf.flags.DEFINE_string("graph", "", """TensorFlow 'GraphDef' file to load.""")
+flags.DEFINE_string("graph", "", """TensorFlow 'GraphDef' file to load.""")
 flags.DEFINE_bool("input_binary", True,
                   """Whether the input files are in binary format.""")
-tf.flags.DEFINE_string("dot_output", "", """Where to write the DOT output.""")
+flags.DEFINE_string("dot_output", "", """Where to write the DOT output.""")
 
 
 def main(unused_args):
