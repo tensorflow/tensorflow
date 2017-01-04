@@ -441,13 +441,12 @@ def _AvgPoolGrad(op, grad):
 
 @ops.RegisterGradient("AvgPoolGrad")
 def _AvgPoolGradGrad(op, grad):
-  return gen_nn_ops._avg_pool(
-      array_ops.shape(op.inputs[0]),
-      grad,
-      op.get_attr("ksize"),
-      op.get_attr("strides"),
-      op.get_attr("padding"),
-      data_format=op.get_attr("data_format"))
+  return (array_ops.stop_gradient(op.inputs[0]),
+          gen_nn_ops._avg_pool(grad,
+                               op.get_attr("ksize"),
+                               op.get_attr("strides"),
+                               op.get_attr("padding"),
+                               data_format=op.get_attr("data_format")))
 
 
 @ops.RegisterGradient("MaxPool")
@@ -463,8 +462,10 @@ def _MaxPoolGrad(op, grad):
 
 @ops.RegisterGradient("MaxPoolGrad")
 def _MaxPoolGradGrad(op, grad):
-  return (array_ops.zeros(shape = array_ops.shape(op.inputs[0]), dtype = op.inputs[0].dtype),
-          array_ops.zeros(shape = array_ops.shape(op.inputs[1]), dtype = op.inputs[1].dtype),
+  return (array_ops.zeros(shape=array_ops.shape(op.inputs[0]),
+                          dtype=op.inputs[0].dtype),
+          array_ops.zeros(shape=array_ops.shape(op.inputs[1]),
+                          dtype=op.inputs[1].dtype),
           gen_nn_ops._max_pool_grad_grad(op.inputs[0],
                                          op.inputs[1],
                                          grad,
@@ -472,6 +473,21 @@ def _MaxPoolGradGrad(op, grad):
                                          op.get_attr("strides"),
                                          padding=op.get_attr("padding"),
                                          data_format=op.get_attr("data_format")))
+
+
+@ops.RegisterGradient("MaxPoolGradGrad")
+def _MaxPoolGradGradGrad(op, grad):
+  return (array_ops.zeros(shape=array_ops.shape(op.inputs[0]),
+                          dtype=op.inputs[0].dtype),
+          array_ops.zeros(shape=array_ops.shape(op.inputs[1]),
+                          dtype=op.inputs[1].dtype),
+          gen_nn_ops._max_pool_grad(op.inputs[0],
+                                    op.inputs[1],
+                                    grad,
+                                    op.get_attr("ksize"),
+                                    op.get_attr("strides"),
+                                    padding=op.get_attr("padding"),
+                                    data_format=op.get_attr("data_format")))
 
 
 @ops.RegisterGradient("FractionalMaxPool")
