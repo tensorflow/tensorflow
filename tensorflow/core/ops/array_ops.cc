@@ -1160,6 +1160,151 @@ Equivalent to np.full
 )doc");
 
 // --------------------------------------------------------------------------
+REGISTER_OP("Empty")
+    .Input("shape: Tshape")
+    .Output("output: dtype")
+    .Attr("dtype: type")
+    .Attr("Tshape: {int32, int64} = DT_INT32")
+    .Attr("init: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle out;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
+      c->set_output(0, out);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Creates an empty Tensor with shape `shape` and type `dtype`.
+
+The memory can optionally be initialized. This is usually useful in
+conjunction with inplace operations.
+
+shape: 1-D `Tensor` indicating the shape of the output.
+dtype: The element type of the returned tensor.
+init: `bool` indicating whether or not to zero the allocated memory.
+output: An empty Tensor of the specified type.
+)doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("InplaceUpdate")
+    .Input("value: T")
+    .Input("loc: Tshape")
+    .Input("update: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("Tshape: {int32, int64} = DT_INT32")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Updates input `value` at `loc` with `update`.
+
+If `loc` is None, `value` and `update` must be the same size.
+```
+value = update
+```
+
+If `loc` is a scalar, `value` has rank 1 higher than `update`
+```
+value[i, :] = update
+```
+
+If `loc` is a vector, `value` has the same rank as `update`
+```
+value[loc, :] = update
+```
+
+If you use this function you will almost certainly want to add
+a control dependency as done in the implementation of parallel_stack to
+avoid race conditions.
+
+value: A `Tensor` object that will be updated in-place.
+loc: A scalar or 1-D `Tensor` indicating the indices of the first dimension
+     such that value[loc, :] is updated.
+update: A `Tensor` of rank one less than `value` if `loc` is a scalar,
+        otherwise of rank equal to `value` that contains the new values
+        for `value`.
+output: `value` that has been updated accordingly.
+)doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("InplaceAdd")
+    .Input("value: T")
+    .Input("loc: Tshape")
+    .Input("update: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("Tshape: {int32, int64} = DT_INT32")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Updates input `value` at `loc` by adding `update` elementwise.
+
+If `loc` is None, `value` and `update` must be the same size.
+```
+value += update
+```
+
+If `loc` is a scalar, `value` has rank 1 higher than `update`
+```
+value[i, :] += update
+```
+
+If `loc` is a vector, `value` has the same rank as `update`
+```
+value[loc, :] += update
+```
+
+If you use this function you will almost certainly want to add
+a control dependency as done in the implementation of parallel_stack to
+avoid race conditions.
+
+value: A `Tensor` object that will be updated in-place.
+loc: A scalar or 1-D `Tensor` indicating the indices of the first dimension
+     such that value[loc, :] is updated.
+update: A `Tensor` of rank one less than `value` if `loc` is a scalar,
+        otherwise of rank equal to `value` that contains the new values
+        that will be added to `value`.
+output: `value` where `update` has been added as appropriate.
+)doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("InplaceSubtract")
+    .Input("value: T")
+    .Input("loc: Tshape")
+    .Input("update: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("Tshape: {int32, int64} = DT_INT32")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Updates input `value` at `loc` by subtracting `update` elementwise.
+
+If `loc` is None, `value` and `update` must be the same size.
+```
+value -= update
+```
+
+If `loc` is a scalar, `value` has rank 1 higher than `update`
+```
+value[i, :] -= update
+```
+
+If `loc` is a vector, `value` has the same rank as `update`
+```
+value[loc, :] -= update
+```
+
+If you use this function you will almost certainly want to add
+a control dependency as done in the implementation of parallel_stack to
+avoid race conditions.
+
+value: A `Tensor` object that will be updated in-place.
+loc: A scalar or 1-D `Tensor` indicating the indices of the first dimension
+     such that value[loc, :] is updated.
+update: A `Tensor` of rank one less than `value` if `loc` is a scalar,
+        otherwise of rank equal to `value` that contains the new values
+        that will be subtracted from `value`.
+output: `value` where `update` has been subtracted as appropriate.
+)doc");
+
+// --------------------------------------------------------------------------
 REGISTER_OP("Gather")
     .Input("params: Tparams")
     .Input("indices: Tindices")

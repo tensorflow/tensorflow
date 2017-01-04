@@ -7,7 +7,11 @@ Concat
 ConcatV2
 Const
 EditDistance
+Empty
 ExpandDims
+InplaceUpdate
+InplaceAdd
+InplaceSubtract
 ListDiff
 MirrorPad
 MirrorPadGrad
