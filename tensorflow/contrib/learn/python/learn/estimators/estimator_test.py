@@ -38,6 +38,7 @@ from tensorflow.contrib import learn
 from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.layers.python.layers import feature_column as feature_column_lib
 from tensorflow.contrib.layers.python.layers import optimizers
+from tensorflow.contrib.learn.python.learn import experiment
 from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn import models
 from tensorflow.contrib.learn.python.learn import monitors as monitors_lib
@@ -257,6 +258,13 @@ class CheckCallsMonitor(monitors_lib.BaseMonitor):
 
 
 class EstimatorTest(test.TestCase):
+
+  def testExperimentIntegration(self):
+    exp = experiment.Experiment(
+        estimator=estimator.Estimator(model_fn=linear_model_fn),
+        train_input_fn=boston_input_fn,
+        eval_input_fn=boston_input_fn)
+    exp.test()
 
   def testModelFnArgs(self):
     expected_param = {'some_param': 'some_value'}

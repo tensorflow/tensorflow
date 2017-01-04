@@ -31,6 +31,7 @@ if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
 import numpy as np
 
 from tensorflow.contrib.layers.python.layers import feature_column
+from tensorflow.contrib.learn.python.learn import experiment
 from tensorflow.contrib.learn.python.learn.datasets import base
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn
 from tensorflow.contrib.learn.python.learn.estimators import dnn
@@ -131,6 +132,19 @@ class EmbeddingMultiplierTest(test.TestCase):
 
 
 class DNNClassifierTest(test.TestCase):
+
+  def testExperimentIntegration(self):
+    exp = experiment.Experiment(
+        estimator=dnn.DNNClassifier(
+            n_classes=3,
+            feature_columns=[
+                feature_column.real_valued_column(
+                    'feature', dimension=4)
+            ],
+            hidden_units=[3, 3]),
+        train_input_fn=test_data.iris_input_multiclass_fn,
+        eval_input_fn=test_data.iris_input_multiclass_fn)
+    exp.test()
 
   def _assertInRange(self, expected_min, expected_max, actual):
     self.assertLessEqual(expected_min, actual)
@@ -771,6 +785,18 @@ class DNNClassifierTest(test.TestCase):
 
 
 class DNNRegressorTest(test.TestCase):
+
+  def testExperimentIntegration(self):
+    exp = experiment.Experiment(
+        estimator=dnn.DNNRegressor(
+            feature_columns=[
+                feature_column.real_valued_column(
+                    'feature', dimension=4)
+            ],
+            hidden_units=[3, 3]),
+        train_input_fn=test_data.iris_input_logistic_fn,
+        eval_input_fn=test_data.iris_input_logistic_fn)
+    exp.test()
 
   def testEstimatorContract(self):
     estimator_test_utils.assert_estimator_contract(self, dnn.DNNRegressor)
