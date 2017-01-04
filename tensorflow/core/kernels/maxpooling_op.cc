@@ -659,8 +659,8 @@ class MaxPoolingGradGradOp<Eigen::GpuDevice, T> : public OpKernel {
                           padding_, data_format_, input_shape};
 
     MaxPoolGradBackwardNoMask(
-      tensor_in.flat<T>().data(), params.tensor_in_batch,
-      params.out_height, params.out_width, params.depth,
+      tensor_in.flat<T>().data(), tensor_out.flat<T>().data(),
+      params.tensor_in_batch, params.out_height, params.out_width, params.depth,
       params.tensor_in_rows, params.tensor_in_cols, params.window_rows,
       params.window_cols, params.row_stride, params.col_stride, params.pad_rows,
       params.pad_cols, out_grad_backprop.flat<T>().data(),

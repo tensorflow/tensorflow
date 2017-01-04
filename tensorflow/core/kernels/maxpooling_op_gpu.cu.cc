@@ -201,9 +201,9 @@ __global__ void MaxPoolBackward(const int nthreads, const dtype* top_diff,
 
 template <typename dtype>
 __global__ void MaxPoolGradBackwardNoMaskNHWC(
-    const int nthreads, const dtype* bottom_data, const int pooled_height,
-    const int pooled_width, const int channels, const int height,
-    const int width, const int kernel_h, const int kernel_w,
+    const int nthreads, const dtype* bottom_data, const dtype* output_data,
+    const int pooled_height, const int pooled_width, const int channels,
+    const int height, const int width, const int kernel_h, const int kernel_w,
     const int stride_h, const int stride_w, const int pad_t, const int pad_l,
     const dtype* top_diff, dtype* bottom_diff) {
   CUDA_1D_KERNEL_LOOP(index, nthreads) {
@@ -219,19 +219,18 @@ __global__ void MaxPoolGradBackwardNoMaskNHWC(
     int wend = min(wstart + kernel_w, width);
     hstart = max(hstart, 0);
     wstart = max(wstart, 0);
-    dtype maxval = Eigen::NumTraits<dtype>::lowest();
-    int maxidx = -1;
+    dtype gradient = dtype(0);
     const dtype* bottom_data_n = bottom_data + n * height * width * channels;
+    const dtype* top_diff_n = top_diff + n * height * width * channels;
     for (int h = hstart; h < hend; ++h) {
       for (int w = wstart; w < wend; ++w) {
         int idx = (h * width + w) * channels + c;
-        if (bottom_data_n[idx] > maxval) {
-          maxidx = idx;
-          maxval = bottom_data_n[idx];
+        if (output_data[index] == bottom_data_n[idx]) {
+          gradient += top_diff_n[idx];
         }
       }
     }
-    bottom_diff[index] = maxval;
+    bottom_diff[index] = gradient;
   }
 }
 
@@ -356,8 +355,8 @@ bool MaxPoolBackwardWithArgmax(const int output_size, const int input_size,
   return d.ok();
 }
 
-bool MaxPoolGradBackwardNoMask(const float* bottom_data, const int batch,
-                               const int pooled_height, const int pooled_width,
+bool MaxPoolGradBackwardNoMask(const float* bottom_data, const float* output_data,
+                               const int batch, const int pooled_height, const int pooled_width,
                                const int channels, const int height,
                                const int width, const int kernel_h,
                                const int kernel_w, const int stride_h,
@@ -366,19 +365,20 @@ bool MaxPoolGradBackwardNoMask(const float* bottom_data, const int batch,
                                const Eigen::GpuDevice& d) {
   const int kThreadsPerBlock = 1024;
   const int bottom_size = batch * channels * pooled_height * pooled_width;
-  const int top_size = batch * channels * height * width;
 
-  MaxPoolGradBackwardNoMaskNHWC<<<(top_size + kThreadsPerBlock - 1) /
+  SetZero<<<(bottom_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
+    kThreadsPerBlock, 0, d.stream()>>>(bottom_size, bottom_diff);
+  MaxPoolGradBackwardNoMaskNHWC<<<(bottom_size + kThreadsPerBlock - 1) /
                                   kThreadsPerBlock,
                                   kThreadsPerBlock, 0, d.stream()>>>(
-      top_size, bottom_data, height, width, channels, pooled_height,
-      pooled_width, kernel_h, kernel_w, stride_h, stride_w, pad_t, pad_l,
-      top_diff, bottom_diff);
+      bottom_size, bottom_data, output_data, pooled_height, pooled_width,
+      channels, height, width, kernel_h, kernel_w, stride_h, stride_w,
+      pad_t, pad_l, top_diff, bottom_diff);
   return d.ok();
 }
 
-bool MaxPoolGradBackwardNoMask(const Eigen::half* bottom_data, const int batch,
-                               const int pooled_height, const int pooled_width,
+bool MaxPoolGradBackwardNoMask(const Eigen::half* bottom_data, const Eigen::half* output_data,
+                               const int batch, const int pooled_height, const int pooled_width,
                                const int channels, const int height,
                                const int width, const int kernel_h,
                                const int kernel_w, const int stride_h,
@@ -387,14 +387,15 @@ bool MaxPoolGradBackwardNoMask(const Eigen::half* bottom_data, const int batch,
                                const Eigen::GpuDevice& d) {
   const int kThreadsPerBlock = 1024;
   const int bottom_size = batch * channels * pooled_height * pooled_width;
-  const int top_size = batch * channels * height * width;
 
-  MaxPoolGradBackwardNoMaskNHWC<<<(top_size + kThreadsPerBlock - 1) /
+  SetZero<<<(bottom_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
+    kThreadsPerBlock, 0, d.stream()>>>(bottom_size, bottom_diff);
+  MaxPoolGradBackwardNoMaskNHWC<<<(bottom_size + kThreadsPerBlock - 1) /
                                   kThreadsPerBlock,
                                   kThreadsPerBlock, 0, d.stream()>>>(
-      top_size, bottom_data, height, width, channels, pooled_height,
-      pooled_width, kernel_h, kernel_w, stride_h, stride_w, pad_t, pad_l,
-      top_diff, bottom_diff);
+      bottom_size, bottom_data, output_data, pooled_height, pooled_width,
+      channels, height, width, kernel_h, kernel_w, stride_h, stride_w,
+      pad_t, pad_l, top_diff, bottom_diff);
   return d.ok();
 }
 
