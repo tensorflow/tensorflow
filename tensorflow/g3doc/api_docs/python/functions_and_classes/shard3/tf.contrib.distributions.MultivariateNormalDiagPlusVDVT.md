@@ -267,16 +267,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.is_scalar_batch` {#MultivariateNormalDiagPlusVDVT.is_scalar_batch}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.is_scalar_batch(name='is_scalar_batch')` {#MultivariateNormalDiagPlusVDVT.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.is_scalar_event` {#MultivariateNormalDiagPlusVDVT.is_scalar_event}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.is_scalar_event(name='is_scalar_event')` {#MultivariateNormalDiagPlusVDVT.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -

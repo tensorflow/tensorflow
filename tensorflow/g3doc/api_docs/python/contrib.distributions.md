@@ -329,16 +329,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Distribution.is_scalar_batch` {#Distribution.is_scalar_batch}
+#### `tf.contrib.distributions.Distribution.is_scalar_batch(name='is_scalar_batch')` {#Distribution.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.Distribution.is_scalar_event` {#Distribution.is_scalar_event}
+#### `tf.contrib.distributions.Distribution.is_scalar_event(name='is_scalar_event')` {#Distribution.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -949,16 +969,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Binomial.is_scalar_batch` {#Binomial.is_scalar_batch}
+#### `tf.contrib.distributions.Binomial.is_scalar_batch(name='is_scalar_batch')` {#Binomial.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.Binomial.is_scalar_event` {#Binomial.is_scalar_event}
+#### `tf.contrib.distributions.Binomial.is_scalar_event(name='is_scalar_event')` {#Binomial.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -1562,16 +1602,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Bernoulli.is_scalar_batch` {#Bernoulli.is_scalar_batch}
+#### `tf.contrib.distributions.Bernoulli.is_scalar_batch(name='is_scalar_batch')` {#Bernoulli.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.Bernoulli.is_scalar_event` {#Bernoulli.is_scalar_event}
+#### `tf.contrib.distributions.Bernoulli.is_scalar_event(name='is_scalar_event')` {#Bernoulli.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -2118,16 +2178,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.is_scalar_batch` {#BernoulliWithSigmoidP.is_scalar_batch}
+#### `tf.contrib.distributions.BernoulliWithSigmoidP.is_scalar_batch(name='is_scalar_batch')` {#BernoulliWithSigmoidP.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.is_scalar_event` {#BernoulliWithSigmoidP.is_scalar_event}
+#### `tf.contrib.distributions.BernoulliWithSigmoidP.is_scalar_event(name='is_scalar_event')` {#BernoulliWithSigmoidP.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -2784,16 +2864,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Beta.is_scalar_batch` {#Beta.is_scalar_batch}
+#### `tf.contrib.distributions.Beta.is_scalar_batch(name='is_scalar_batch')` {#Beta.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.Beta.is_scalar_event` {#Beta.is_scalar_event}
+#### `tf.contrib.distributions.Beta.is_scalar_event(name='is_scalar_event')` {#Beta.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -3359,16 +3459,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.is_scalar_batch` {#BetaWithSoftplusAB.is_scalar_batch}
+#### `tf.contrib.distributions.BetaWithSoftplusAB.is_scalar_batch(name='is_scalar_batch')` {#BetaWithSoftplusAB.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.is_scalar_event` {#BetaWithSoftplusAB.is_scalar_event}
+#### `tf.contrib.distributions.BetaWithSoftplusAB.is_scalar_event(name='is_scalar_event')` {#BetaWithSoftplusAB.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -3973,16 +4093,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Categorical.is_scalar_batch` {#Categorical.is_scalar_batch}
+#### `tf.contrib.distributions.Categorical.is_scalar_batch(name='is_scalar_batch')` {#Categorical.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.Categorical.is_scalar_event` {#Categorical.is_scalar_event}
+#### `tf.contrib.distributions.Categorical.is_scalar_event(name='is_scalar_event')` {#Categorical.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -4581,16 +4721,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.is_scalar_batch` {#Chi2.is_scalar_batch}
+#### `tf.contrib.distributions.Chi2.is_scalar_batch(name='is_scalar_batch')` {#Chi2.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.is_scalar_event` {#Chi2.is_scalar_event}
+#### `tf.contrib.distributions.Chi2.is_scalar_event(name='is_scalar_event')` {#Chi2.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -5150,16 +5310,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Chi2WithAbsDf.is_scalar_batch` {#Chi2WithAbsDf.is_scalar_batch}
+#### `tf.contrib.distributions.Chi2WithAbsDf.is_scalar_batch(name='is_scalar_batch')` {#Chi2WithAbsDf.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.Chi2WithAbsDf.is_scalar_event` {#Chi2WithAbsDf.is_scalar_event}
+#### `tf.contrib.distributions.Chi2WithAbsDf.is_scalar_event(name='is_scalar_event')` {#Chi2WithAbsDf.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -5734,16 +5914,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Exponential.is_scalar_batch` {#Exponential.is_scalar_batch}
+#### `tf.contrib.distributions.Exponential.is_scalar_batch(name='is_scalar_batch')` {#Exponential.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.Exponential.is_scalar_event` {#Exponential.is_scalar_event}
+#### `tf.contrib.distributions.Exponential.is_scalar_event(name='is_scalar_event')` {#Exponential.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -6303,16 +6503,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.is_scalar_batch` {#ExponentialWithSoftplusLam.is_scalar_batch}
+#### `tf.contrib.distributions.ExponentialWithSoftplusLam.is_scalar_batch(name='is_scalar_batch')` {#ExponentialWithSoftplusLam.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.is_scalar_event` {#ExponentialWithSoftplusLam.is_scalar_event}
+#### `tf.contrib.distributions.ExponentialWithSoftplusLam.is_scalar_event(name='is_scalar_event')` {#ExponentialWithSoftplusLam.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -6921,16 +7141,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Gamma.is_scalar_batch` {#Gamma.is_scalar_batch}
+#### `tf.contrib.distributions.Gamma.is_scalar_batch(name='is_scalar_batch')` {#Gamma.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.Gamma.is_scalar_event` {#Gamma.is_scalar_event}
+#### `tf.contrib.distributions.Gamma.is_scalar_event(name='is_scalar_event')` {#Gamma.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -7483,16 +7723,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.is_scalar_batch` {#GammaWithSoftplusAlphaBeta.is_scalar_batch}
+#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.is_scalar_batch(name='is_scalar_batch')` {#GammaWithSoftplusAlphaBeta.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.is_scalar_event` {#GammaWithSoftplusAlphaBeta.is_scalar_event}
+#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.is_scalar_event(name='is_scalar_event')` {#GammaWithSoftplusAlphaBeta.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -8090,16 +8350,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGamma.is_scalar_batch` {#InverseGamma.is_scalar_batch}
+#### `tf.contrib.distributions.InverseGamma.is_scalar_batch(name='is_scalar_batch')` {#InverseGamma.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.InverseGamma.is_scalar_event` {#InverseGamma.is_scalar_event}
+#### `tf.contrib.distributions.InverseGamma.is_scalar_event(name='is_scalar_event')` {#InverseGamma.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -8662,16 +8942,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.is_scalar_batch` {#InverseGammaWithSoftplusAlphaBeta.is_scalar_batch}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.is_scalar_batch(name='is_scalar_batch')` {#InverseGammaWithSoftplusAlphaBeta.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.is_scalar_event` {#InverseGammaWithSoftplusAlphaBeta.is_scalar_event}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.is_scalar_event(name='is_scalar_event')` {#InverseGammaWithSoftplusAlphaBeta.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -9242,16 +9542,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Laplace.is_scalar_batch` {#Laplace.is_scalar_batch}
+#### `tf.contrib.distributions.Laplace.is_scalar_batch(name='is_scalar_batch')` {#Laplace.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.Laplace.is_scalar_event` {#Laplace.is_scalar_event}
+#### `tf.contrib.distributions.Laplace.is_scalar_event(name='is_scalar_event')` {#Laplace.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -9787,16 +10107,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.LaplaceWithSoftplusScale.is_scalar_batch` {#LaplaceWithSoftplusScale.is_scalar_batch}
+#### `tf.contrib.distributions.LaplaceWithSoftplusScale.is_scalar_batch(name='is_scalar_batch')` {#LaplaceWithSoftplusScale.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.LaplaceWithSoftplusScale.is_scalar_event` {#LaplaceWithSoftplusScale.is_scalar_event}
+#### `tf.contrib.distributions.LaplaceWithSoftplusScale.is_scalar_event(name='is_scalar_event')` {#LaplaceWithSoftplusScale.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -10396,16 +10736,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Normal.is_scalar_batch` {#Normal.is_scalar_batch}
+#### `tf.contrib.distributions.Normal.is_scalar_batch(name='is_scalar_batch')` {#Normal.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.Normal.is_scalar_event` {#Normal.is_scalar_event}
+#### `tf.contrib.distributions.Normal.is_scalar_event(name='is_scalar_event')` {#Normal.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -10941,16 +11301,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.is_scalar_batch` {#NormalWithSoftplusSigma.is_scalar_batch}
+#### `tf.contrib.distributions.NormalWithSoftplusSigma.is_scalar_batch(name='is_scalar_batch')` {#NormalWithSoftplusSigma.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.is_scalar_event` {#NormalWithSoftplusSigma.is_scalar_event}
+#### `tf.contrib.distributions.NormalWithSoftplusSigma.is_scalar_event(name='is_scalar_event')` {#NormalWithSoftplusSigma.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -11510,16 +11890,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Poisson.is_scalar_batch` {#Poisson.is_scalar_batch}
+#### `tf.contrib.distributions.Poisson.is_scalar_batch(name='is_scalar_batch')` {#Poisson.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.Poisson.is_scalar_event` {#Poisson.is_scalar_event}
+#### `tf.contrib.distributions.Poisson.is_scalar_event(name='is_scalar_event')` {#Poisson.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -12147,16 +12547,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.StudentT.is_scalar_batch` {#StudentT.is_scalar_batch}
+#### `tf.contrib.distributions.StudentT.is_scalar_batch(name='is_scalar_batch')` {#StudentT.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.StudentT.is_scalar_event` {#StudentT.is_scalar_event}
+#### `tf.contrib.distributions.StudentT.is_scalar_event(name='is_scalar_event')` {#StudentT.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -12715,16 +13135,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.is_scalar_batch` {#StudentTWithAbsDfSoftplusSigma.is_scalar_batch}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.is_scalar_batch(name='is_scalar_batch')` {#StudentTWithAbsDfSoftplusSigma.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.is_scalar_event` {#StudentTWithAbsDfSoftplusSigma.is_scalar_event}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.is_scalar_event(name='is_scalar_event')` {#StudentTWithAbsDfSoftplusSigma.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -13332,16 +13772,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Uniform.is_scalar_batch` {#Uniform.is_scalar_batch}
+#### `tf.contrib.distributions.Uniform.is_scalar_batch(name='is_scalar_batch')` {#Uniform.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.Uniform.is_scalar_event` {#Uniform.is_scalar_event}
+#### `tf.contrib.distributions.Uniform.is_scalar_event(name='is_scalar_event')` {#Uniform.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -13944,16 +14404,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.is_scalar_batch` {#MultivariateNormalDiag.is_scalar_batch}
+#### `tf.contrib.distributions.MultivariateNormalDiag.is_scalar_batch(name='is_scalar_batch')` {#MultivariateNormalDiag.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.is_scalar_event` {#MultivariateNormalDiag.is_scalar_event}
+#### `tf.contrib.distributions.MultivariateNormalDiag.is_scalar_event(name='is_scalar_event')` {#MultivariateNormalDiag.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -14596,16 +15076,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalFull.is_scalar_batch` {#MultivariateNormalFull.is_scalar_batch}
+#### `tf.contrib.distributions.MultivariateNormalFull.is_scalar_batch(name='is_scalar_batch')` {#MultivariateNormalFull.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalFull.is_scalar_event` {#MultivariateNormalFull.is_scalar_event}
+#### `tf.contrib.distributions.MultivariateNormalFull.is_scalar_event(name='is_scalar_event')` {#MultivariateNormalFull.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -15257,16 +15757,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalCholesky.is_scalar_batch` {#MultivariateNormalCholesky.is_scalar_batch}
+#### `tf.contrib.distributions.MultivariateNormalCholesky.is_scalar_batch(name='is_scalar_batch')` {#MultivariateNormalCholesky.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalCholesky.is_scalar_event` {#MultivariateNormalCholesky.is_scalar_event}
+#### `tf.contrib.distributions.MultivariateNormalCholesky.is_scalar_event(name='is_scalar_event')` {#MultivariateNormalCholesky.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -15944,16 +16464,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.is_scalar_batch` {#MultivariateNormalDiagPlusVDVT.is_scalar_batch}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.is_scalar_batch(name='is_scalar_batch')` {#MultivariateNormalDiagPlusVDVT.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.is_scalar_event` {#MultivariateNormalDiagPlusVDVT.is_scalar_event}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.is_scalar_event(name='is_scalar_event')` {#MultivariateNormalDiagPlusVDVT.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -16535,16 +17075,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.is_scalar_batch` {#MultivariateNormalDiagWithSoftplusStDev.is_scalar_batch}
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.is_scalar_batch(name='is_scalar_batch')` {#MultivariateNormalDiagWithSoftplusStDev.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.is_scalar_event` {#MultivariateNormalDiagWithSoftplusStDev.is_scalar_event}
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.is_scalar_event(name='is_scalar_event')` {#MultivariateNormalDiagWithSoftplusStDev.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -17230,16 +17790,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Dirichlet.is_scalar_batch` {#Dirichlet.is_scalar_batch}
+#### `tf.contrib.distributions.Dirichlet.is_scalar_batch(name='is_scalar_batch')` {#Dirichlet.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.Dirichlet.is_scalar_event` {#Dirichlet.is_scalar_event}
+#### `tf.contrib.distributions.Dirichlet.is_scalar_event(name='is_scalar_event')` {#Dirichlet.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -17897,16 +18477,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.is_scalar_batch` {#DirichletMultinomial.is_scalar_batch}
+#### `tf.contrib.distributions.DirichletMultinomial.is_scalar_batch(name='is_scalar_batch')` {#DirichletMultinomial.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.is_scalar_event` {#DirichletMultinomial.is_scalar_event}
+#### `tf.contrib.distributions.DirichletMultinomial.is_scalar_event(name='is_scalar_event')` {#DirichletMultinomial.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -18579,16 +19179,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Multinomial.is_scalar_batch` {#Multinomial.is_scalar_batch}
+#### `tf.contrib.distributions.Multinomial.is_scalar_batch(name='is_scalar_batch')` {#Multinomial.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.Multinomial.is_scalar_event` {#Multinomial.is_scalar_event}
+#### `tf.contrib.distributions.Multinomial.is_scalar_event(name='is_scalar_event')` {#Multinomial.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -19263,16 +19883,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.WishartCholesky.is_scalar_batch` {#WishartCholesky.is_scalar_batch}
+#### `tf.contrib.distributions.WishartCholesky.is_scalar_batch(name='is_scalar_batch')` {#WishartCholesky.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.WishartCholesky.is_scalar_event` {#WishartCholesky.is_scalar_event}
+#### `tf.contrib.distributions.WishartCholesky.is_scalar_event(name='is_scalar_event')` {#WishartCholesky.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -19918,16 +20558,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.WishartFull.is_scalar_batch` {#WishartFull.is_scalar_batch}
+#### `tf.contrib.distributions.WishartFull.is_scalar_batch(name='is_scalar_batch')` {#WishartFull.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.WishartFull.is_scalar_event` {#WishartFull.is_scalar_event}
+#### `tf.contrib.distributions.WishartFull.is_scalar_event(name='is_scalar_event')` {#WishartFull.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -20514,9 +21174,9 @@ Construct a Transformed Distribution.
 *  <b>`bijector`</b>: The object responsible for calculating the transformation.
     Typically an instance of `Bijector`. `None` means `Identity()`.
 *  <b>`batch_shape`</b>: `integer` vector `Tensor` which overrides `distribution`
-    `batch_shape`; valid only if `distribution.is_scalar_batch`.
+    `batch_shape`; valid only if `distribution.is_scalar_batch()`.
 *  <b>`event_shape`</b>: `integer` vector `Tensor` which overrides `distribution`
-    `event_shape`; valid only if `distribution.is_scalar_event`.
+    `event_shape`; valid only if `distribution.is_scalar_event()`.
 *  <b>`validate_args`</b>: Python Boolean.  Whether to validate input with asserts.
     If `validate_args` is `False`, and the inputs are invalid,
     correct behavior is not guaranteed.
@@ -20711,16 +21371,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.is_scalar_batch` {#TransformedDistribution.is_scalar_batch}
+#### `tf.contrib.distributions.TransformedDistribution.is_scalar_batch(name='is_scalar_batch')` {#TransformedDistribution.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.is_scalar_event` {#TransformedDistribution.is_scalar_event}
+#### `tf.contrib.distributions.TransformedDistribution.is_scalar_event(name='is_scalar_event')` {#TransformedDistribution.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -21398,16 +22078,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.QuantizedDistribution.is_scalar_batch` {#QuantizedDistribution.is_scalar_batch}
+#### `tf.contrib.distributions.QuantizedDistribution.is_scalar_batch(name='is_scalar_batch')` {#QuantizedDistribution.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.QuantizedDistribution.is_scalar_event` {#QuantizedDistribution.is_scalar_event}
+#### `tf.contrib.distributions.QuantizedDistribution.is_scalar_event(name='is_scalar_event')` {#QuantizedDistribution.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -22129,16 +22829,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Mixture.is_scalar_batch` {#Mixture.is_scalar_batch}
+#### `tf.contrib.distributions.Mixture.is_scalar_batch(name='is_scalar_batch')` {#Mixture.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.Mixture.is_scalar_event` {#Mixture.is_scalar_event}
+#### `tf.contrib.distributions.Mixture.is_scalar_event(name='is_scalar_event')` {#Mixture.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
