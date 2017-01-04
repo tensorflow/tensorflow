@@ -85,20 +85,20 @@ class DistributionTest(test.TestCase):
       sigma = 2.
 
       normal = ds.Normal(mu, sigma, validate_args=True)
-      self.assertTrue(tensor_util.constant_value(normal.is_scalar_event))
-      self.assertTrue(tensor_util.constant_value(normal.is_scalar_batch))
+      self.assertTrue(tensor_util.constant_value(normal.is_scalar_event()))
+      self.assertTrue(tensor_util.constant_value(normal.is_scalar_batch()))
 
       normal = ds.Normal([mu], [sigma], validate_args=True)
-      self.assertTrue(tensor_util.constant_value(normal.is_scalar_event))
-      self.assertFalse(tensor_util.constant_value(normal.is_scalar_batch))
+      self.assertTrue(tensor_util.constant_value(normal.is_scalar_event()))
+      self.assertFalse(tensor_util.constant_value(normal.is_scalar_batch()))
 
       mvn = ds.MultivariateNormalDiag([mu], [sigma], validate_args=True)
-      self.assertFalse(tensor_util.constant_value(mvn.is_scalar_event))
-      self.assertTrue(tensor_util.constant_value(mvn.is_scalar_batch))
+      self.assertFalse(tensor_util.constant_value(mvn.is_scalar_event()))
+      self.assertTrue(tensor_util.constant_value(mvn.is_scalar_batch()))
 
       mvn = ds.MultivariateNormalDiag([[mu]], [[sigma]], validate_args=True)
-      self.assertFalse(tensor_util.constant_value(mvn.is_scalar_event))
-      self.assertFalse(tensor_util.constant_value(mvn.is_scalar_batch))
+      self.assertFalse(tensor_util.constant_value(mvn.is_scalar_event()))
+      self.assertFalse(tensor_util.constant_value(mvn.is_scalar_batch()))
 
       # We now test every codepath within the underlying is_scalar_helper
       # function.

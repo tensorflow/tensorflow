@@ -526,19 +526,33 @@ class Distribution(_BaseDistribution):
     """
     return self._get_event_shape()
 
-  @property
-  def is_scalar_event(self):
-    """Indicates that `event_shape==[]`."""
-    return ops.convert_to_tensor(
-        self._is_scalar_helper(self.get_event_shape, self.event_shape),
-        name="is_scalar_event")
+  def is_scalar_event(self, name="is_scalar_event"):
+    """Indicates that `event_shape == []`.
 
-  @property
-  def is_scalar_batch(self):
-    """Indicates that `batch_shape==[]`."""
-    return ops.convert_to_tensor(
-        self._is_scalar_helper(self.get_batch_shape, self.batch_shape),
-        name="is_scalar_batch")
+    Args:
+      name: The name to give this op.
+
+    Returns:
+      is_scalar_event: `Boolean` `scalar` `Tensor`.
+    """
+    with self._name_scope(name):
+      return ops.convert_to_tensor(
+          self._is_scalar_helper(self.get_event_shape, self.event_shape),
+          name="is_scalar_event")
+
+  def is_scalar_batch(self, name="is_scalar_batch"):
+    """Indicates that `batch_shape == []`.
+
+    Args:
+      name: The name to give this op.
+
+    Returns:
+      is_scalar_batch: `Boolean` `scalar` `Tensor`.
+    """
+    with self._name_scope(name):
+      return ops.convert_to_tensor(
+          self._is_scalar_helper(self.get_batch_shape, self.batch_shape),
+          name="is_scalar_batch")
 
   def _sample_n(self, n, seed=None):
     raise NotImplementedError("sample_n is not implemented")
@@ -888,7 +902,7 @@ class Distribution(_BaseDistribution):
     """Helper function to standardize op scope."""
     with ops.name_scope(self.name):
       with ops.name_scope(name, values=(
-          (values or []) + self._graph_parents)) as scope:
+          ([] if values is None else values) + self._graph_parents)) as scope:
         yield scope
 
   def _expand_sample_shape_to_vector(self, x, name):
