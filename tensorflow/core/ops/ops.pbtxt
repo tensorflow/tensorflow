@@ -6391,6 +6391,7 @@ op {
   }
   summary: "Creates an empty Tensor with shape `shape` and type `dtype`."
   description: "The memory can optionally be initialized. This is usually useful in\nconjunction with inplace operations."
+  is_stateful: true
 }
 op {
   name: "EncodeBase64"
