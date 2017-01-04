@@ -12072,7 +12072,7 @@ op {
     type: "shape"
     description: "The (possibly partial) shape of the tensor."
   }
-  summary: "A placeholder op that passes though `input` when its output is not fed."
+  summary: "A placeholder op that passes through `input` when its output is not fed."
 }
 op {
   name: "Polygamma"
