@@ -236,7 +236,7 @@ class KMeansClustering(evaluable.Evaluable, trainable.Trainable):
     if isinstance(features, dict):
       keys = sorted(features.keys())
       with ops.colocate_with(features[keys[0]]):
-        features = array_ops.concat(1, [features[k] for k in keys])
+        features = array_ops.concat_v2([features[k] for k in keys], 1)
     return features
 
   def _get_model_function(self):

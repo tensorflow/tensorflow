@@ -122,7 +122,7 @@ def _maybe_expand_labels(labels, predictions):
               array_ops.size(labels.dense_shape) + 1),
           lambda: sparse_ops.sparse_reshape(  # pylint: disable=g-long-lambda
               labels,
-              shape=array_ops.concat(0, (labels.dense_shape, (1,))),
+              shape=array_ops.concat_v2((labels.dense_shape, (1,)), 0),
               name=scope),
           lambda: labels)
 
