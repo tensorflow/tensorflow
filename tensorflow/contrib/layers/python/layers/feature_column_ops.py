@@ -491,7 +491,8 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
         columns_to_tensors=columns_to_tensor,
         feature_columns=feature_columns,
         num_outputs=1)
-    loss = tf.nn.sigmoid_cross_entropy_with_logits(logits, labels)
+    loss = tf.nn.sigmoid_cross_entropy_with_logits(labels=labels,
+                                                   logits=logits)
     ```
 
   Args:

@@ -147,7 +147,7 @@ class Bernoulli(distribution.Distribution):
           distribution_util.same_dynamic_shape(logits, event),
           lambda: (logits, event),
           lambda: broadcast(logits, event))
-    return -nn.sigmoid_cross_entropy_with_logits(logits, event)
+    return -nn.sigmoid_cross_entropy_with_logits(labels=event, logits=logits)
 
   def _prob(self, event):
     return math_ops.exp(self._log_prob(event))
