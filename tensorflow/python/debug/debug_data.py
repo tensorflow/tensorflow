@@ -298,6 +298,8 @@ class DebugTensorDatum(object):
       self._node_name = namespace + "/" + node_base_name
 
     self._file_path = os.path.join(dump_root, debug_dump_rel_path)
+    self._dump_size_bytes = (gfile.Stat(self._file_path).length if
+                             gfile.Exists(self._file_path) else None)
 
   def __str__(self):
     return "{DebugTensorDatum: %s:%d @ %s @ %d}" % (self.node_name,
@@ -384,6 +386,19 @@ class DebugTensorDatum(object):
     """Path to the file which stores the value of the dumped tensor."""
 
     return self._file_path
+
+  @property
+  def dump_size_bytes(self):
+    """Size of the dump file.
+
+    Unit: byte.
+
+    Returns:
+      If the dump file exists, size of the dump file, in bytes.
+      If the dump file does not exist, None.
+    """
+
+    return self._dump_size_bytes
 
 
 class DebugDumpDir(object):
@@ -498,16 +513,22 @@ class DebugDumpDir(object):
 
     self._watch_key_to_datum = {}
     self._watch_key_to_rel_time = {}
+    self._watch_key_to_dump_size_bytes = {}
     for datum in self._dump_tensor_data:
       if datum.watch_key not in self._watch_key_to_datum:
         self._watch_key_to_datum[datum.watch_key] = [datum]
         self._watch_key_to_rel_time[datum.watch_key] = [
             datum.timestamp - self._t0
         ]
+        self._watch_key_to_dump_size_bytes[datum.watch_key] = [
+            datum.dump_size_bytes
+        ]
       else:
         self._watch_key_to_datum[datum.watch_key].append(datum)
         self._watch_key_to_rel_time[datum.watch_key].append(datum.timestamp -
                                                             self._t0)
+        self._watch_key_to_dump_size_bytes[datum.watch_key].append(
+            datum.dump_size_bytes)
 
   def set_python_graph(self, python_graph):
     """Provide Python `Graph` object to the wrapper.
@@ -1193,10 +1214,10 @@ class DebugDumpDir(object):
       debug_op: (`str`) name of the debug op.
 
     Returns:
-      (list of int) list of relative timestamps.
+      (`list` of `int`) list of relative timestamps.
 
     Raises:
-      ValueError: If the tensor does not exist in the debub dump data.
+      ValueError: If the tensor watch key does not exist in the debug dump data.
     """
 
     watch_key = _get_tensor_watch_key(node_name, output_slot, debug_op)
@@ -1205,6 +1226,30 @@ class DebugDumpDir(object):
                        watch_key)
 
     return self._watch_key_to_rel_time[watch_key]
+
+  def get_dump_sizes_bytes(self, node_name, output_slot, debug_op):
+    """Get the sizes of the dump files for a debug-dumped tensor.
+
+    Unit of the file size: byte.
+
+    Args:
+      node_name: (`str`) name of the node that the tensor is produced by.
+      output_slot: (`int`) output slot index of tensor.
+      debug_op: (`str`) name of the debug op.
+
+    Returns:
+      (`list` of `int`): list of dump file sizes in bytes.
+
+    Raises:
+      ValueError: If the tensor watch key does not exist in the debug dump data.
+    """
+
+    watch_key = _get_tensor_watch_key(node_name, output_slot, debug_op)
+    if watch_key not in self._watch_key_to_datum:
+      raise ValueError("Watch key \"%s\" does not exist in the debug dump" %
+                       watch_key)
+
+    return self._watch_key_to_dump_size_bytes[watch_key]
 
   def node_traceback(self, element_name):
     """Try to retrieve the Python traceback of node's construction.

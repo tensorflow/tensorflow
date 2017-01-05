@@ -110,6 +110,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":core",
+        "//tensorflow/contrib/nn:nn_py",
         "//tensorflow/python:nn",
     ],
 )

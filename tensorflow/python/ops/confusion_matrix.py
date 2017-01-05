@@ -136,7 +136,7 @@ def confusion_matrix(labels, predictions, num_classes=None, dtype=dtypes.int32,
       match `predictions`.
   """
   with ops.name_scope(name, 'confusion_matrix',
-                      [predictions, labels, num_classes]) as name:
+                      (predictions, labels, num_classes, weights)) as name:
     labels, predictions = remove_squeezable_dimensions(
         ops.convert_to_tensor(labels, name='labels'),
         ops.convert_to_tensor(

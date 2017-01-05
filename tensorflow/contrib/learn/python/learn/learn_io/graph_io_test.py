@@ -217,11 +217,11 @@ class GraphIOTest(test.TestCase):
       parse_example_queue_name = "%s/fifo_queue" % name
       op_nodes = test_util.assert_ops_in_graph({
           file_names_name: "Const",
-          file_name_queue_name: "FIFOQueue",
-          "%s/read/TFRecordReader" % name: "TFRecordReader",
-          example_queue_name: "FIFOQueue",
-          parse_example_queue_name: "FIFOQueue",
-          name: "QueueDequeueMany"
+          file_name_queue_name: "FIFOQueueV2",
+          "%s/read/TFRecordReaderV2" % name: "TFRecordReaderV2",
+          example_queue_name: "FIFOQueueV2",
+          parse_example_queue_name: "FIFOQueueV2",
+          name: "QueueDequeueManyV2"
       }, g)
       self.assertAllEqual(_FILE_NAMES, sess.run(["%s:0" % file_names_name])[0])
       self.assertEqual(queue_capacity,
@@ -250,10 +250,10 @@ class GraphIOTest(test.TestCase):
       example_queue_name = "%s/random_shuffle_queue" % name
       op_nodes = test_util.assert_ops_in_graph({
           file_names_name: "Const",
-          file_name_queue_name: "FIFOQueue",
-          "%s/read/TFRecordReader" % name: "TFRecordReader",
-          example_queue_name: "RandomShuffleQueue",
-          name: "QueueDequeueUpTo",
+          file_name_queue_name: "FIFOQueueV2",
+          "%s/read/TFRecordReaderV2" % name: "TFRecordReaderV2",
+          example_queue_name: "RandomShuffleQueueV2",
+          name: "QueueDequeueUpToV2",
           file_name_queue_limit_name: "VariableV2"
       }, g)
       self.assertEqual(
@@ -281,10 +281,10 @@ class GraphIOTest(test.TestCase):
       example_queue_name = "%s/random_shuffle_queue" % name
       op_nodes = test_util.assert_ops_in_graph({
           file_names_name: "Const",
-          file_name_queue_name: "FIFOQueue",
-          "%s/read/TFRecordReader" % name: "TFRecordReader",
-          example_queue_name: "RandomShuffleQueue",
-          name: "QueueDequeueMany"
+          file_name_queue_name: "FIFOQueueV2",
+          "%s/read/TFRecordReaderV2" % name: "TFRecordReaderV2",
+          example_queue_name: "RandomShuffleQueueV2",
+          name: "QueueDequeueManyV2"
       }, g)
       self.assertEqual(
           set(_FILE_NAMES), set(sess.run(["%s:0" % file_names_name])[0]))
@@ -427,10 +427,10 @@ class GraphIOTest(test.TestCase):
       example_queue_name = "%s/fifo_queue" % name
       test_util.assert_ops_in_graph({
           file_names_name: "Const",
-          file_name_queue_name: "FIFOQueue",
-          "%s/read/TextLineReader" % name: "TextLineReader",
-          example_queue_name: "FIFOQueue",
-          name: "QueueDequeueUpTo"
+          file_name_queue_name: "FIFOQueueV2",
+          "%s/read/TextLineReaderV2" % name: "TextLineReaderV2",
+          example_queue_name: "FIFOQueueV2",
+          name: "QueueDequeueUpToV2"
       }, g)
 
       self.assertAllEqual(session.run(inputs), [b"ABC"])
@@ -473,10 +473,10 @@ class GraphIOTest(test.TestCase):
       example_queue_name = "%s/fifo_queue" % name
       worker_file_name_queue_name = "%s/file_name_queue/fifo_queue" % name
       test_util.assert_ops_in_graph({
-          "%s/read/TextLineReader" % name: "TextLineReader",
-          example_queue_name: "FIFOQueue",
-          worker_file_name_queue_name: "FIFOQueue",
-          name: "QueueDequeueUpTo"
+          "%s/read/TextLineReaderV2" % name: "TextLineReaderV2",
+          example_queue_name: "FIFOQueueV2",
+          worker_file_name_queue_name: "FIFOQueueV2",
+          name: "QueueDequeueUpToV2"
       }, g)
 
       self.assertAllEqual(session.run(inputs), [b"ABC"])

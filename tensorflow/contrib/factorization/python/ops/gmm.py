@@ -23,16 +23,25 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.contrib import framework
 from tensorflow.contrib.factorization.python.ops import gmm_ops
 from tensorflow.contrib.framework.python.framework import checkpoint_utils
 from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import TransformerMixin
 from tensorflow.contrib.learn.python.learn.learn_io import data_feeder
+from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops.control_flow_ops import with_dependencies
+
+
+def _streaming_sum(scalar_tensor):
+  """Create a sum metric and update op."""
+  sum_metric = framework.local_variable(constant_op.constant(0.0))
+  sum_update = sum_metric.assign_add(scalar_tensor)
+  return sum_metric, sum_update
 
 
 class GMM(estimator.Estimator, TransformerMixin):
@@ -198,8 +207,14 @@ class GMM(estimator.Estimator, TransformerMixin):
     }
 
   def _get_eval_ops(self, features, _, unused_metrics):
-    (_, _, losses, _) = gmm_ops.gmm(
-        self._parse_tensor_or_dict(features), self._training_initial_clusters,
-        self._num_clusters, self._random_seed, self._covariance_type,
-        self._params)
-    return {GMM.SCORES: math_ops.reduce_sum(losses),}
+    (_,
+     _,
+     losses,
+     _) = gmm_ops.gmm(
+         self._parse_tensor_or_dict(features),
+         self._training_initial_clusters,
+         self._num_clusters,
+         self._random_seed,
+         self._covariance_type,
+         self._params)
+    return {GMM.SCORES: _streaming_sum(math_ops.reduce_sum(losses))}

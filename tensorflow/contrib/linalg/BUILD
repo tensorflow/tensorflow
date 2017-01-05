@@ -65,6 +65,23 @@ cuda_py_tests(
 )
 
 cuda_py_tests(
+    name = "linear_operator_identity_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/linear_operator_identity_test.py"],
+    additional_deps = [
+        ":linalg_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:random_ops",
+    ],
+    shard_count = 5,
+)
+
+cuda_py_tests(
     name = "linear_operator_matrix_test",
     size = "medium",
     srcs = ["python/kernel_tests/linear_operator_matrix_test.py"],

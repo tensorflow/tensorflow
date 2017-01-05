@@ -42,7 +42,7 @@ Returns x + y element-wise.
 
 Returns x - y element-wise.
 
-*NOTE*: `Sub` supports broadcasting. More about broadcasting
+*NOTE*: `tf.subtract` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
@@ -63,7 +63,7 @@ Returns x - y element-wise.
 
 Returns x * y element-wise.
 
-*NOTE*: `Mul` supports broadcasting. More about broadcasting
+*NOTE*: ``tf.multiply`` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
@@ -435,17 +435,18 @@ an input element and y is an output element, this operation computes
 
 Computes numerical negative value element-wise.
 
-I.e., \\(y = -x\\).
+I.e., \(y = -x\).
 
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+    `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
 
 
 - - -
@@ -3738,9 +3739,13 @@ Returns x * y element-wise.
 
 - - -
 
-### `tf.neg(x, name=None)` {#neg}
+### `tf.neg(*args, **kwargs)` {#neg}
 
-Computes numerical negative value element-wise.
+Computes numerical negative value element-wise. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
+Instructions for updating:
+`tf.neg(x)` is deprecated, please use `tf.negative(x)` or `-x`
 
 I.e., \(y = -x\).
 

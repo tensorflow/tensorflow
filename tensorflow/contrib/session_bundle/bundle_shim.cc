@@ -294,10 +294,5 @@ Status LoadSessionBundleOrSavedModelBundle(
                 "export location");
 }
 
-bool MaybeSessionBundleOrSavedModelDirectory(const string& export_dir) {
-  return IsPossibleExportDirectory(export_dir) ||
-         MaybeSavedModelDirectory(export_dir);
-}
-
 }  // namespace serving
 }  // namespace tensorflow

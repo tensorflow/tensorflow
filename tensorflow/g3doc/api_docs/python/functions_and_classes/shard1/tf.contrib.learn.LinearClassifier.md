@@ -127,7 +127,7 @@ This method will be removed after the deprecation date. To inspect variables, us
 
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None)` {#LinearClassifier.evaluate}
+#### `tf.contrib.learn.LinearClassifier.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None, hooks=None)` {#LinearClassifier.evaluate}
 
 See evaluable.Evaluable. Note: Labels must be integer class indices.
 

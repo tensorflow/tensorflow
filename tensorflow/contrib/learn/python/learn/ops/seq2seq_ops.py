@@ -47,7 +47,7 @@ def sequence_classifier(decoding, labels, sampling_decoding=None, name=None):
     predictions, xent_list = [], []
     for i, pred in enumerate(decoding):
       xent_list.append(nn.softmax_cross_entropy_with_logits(
-          pred, labels[i],
+          labels=labels[i], logits=pred,
           name="sequence_loss/xent_raw{0}".format(i)))
       if sampling_decoding:
         predictions.append(nn.softmax(sampling_decoding[i]))

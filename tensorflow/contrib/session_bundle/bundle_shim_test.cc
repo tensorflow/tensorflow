@@ -495,18 +495,6 @@ TEST(BundleShimTest, LoadSessionBundleError) {
                    .ok());
 }
 
-TEST(BundleShimTest, MaybeSessionBundleOrSavedModelDirectory) {
-  const string saved_model_export_dir =
-      io::JoinPath(testing::TensorFlowSrcRoot(), kSavedModelBundlePath);
-  const string session_bundle_export_dir =
-      test_util::TestSrcDirPath(kSessionBundlePath);
-  const string invalid_export_dir = testing::TensorFlowSrcRoot();
-  EXPECT_TRUE(MaybeSessionBundleOrSavedModelDirectory(saved_model_export_dir));
-  EXPECT_TRUE(
-      MaybeSessionBundleOrSavedModelDirectory(session_bundle_export_dir));
-  EXPECT_FALSE(MaybeSessionBundleOrSavedModelDirectory(invalid_export_dir));
-}
-
 }  // namespace
 }  // namespace internal
 }  // namespace serving

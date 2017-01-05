@@ -28,6 +28,7 @@ from tensorflow.python.client import session
 from tensorflow.python.debug import debug_data
 from tensorflow.python.debug import debug_utils
 from tensorflow.python.debug.cli import analyzer_cli
+from tensorflow.python.debug.cli import command_parser
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
@@ -135,37 +136,51 @@ def assert_listed_tensors(tst,
 
   # Verify the command shortcuts in the top row.
   attr_segs = out.font_attr_segs[line_counter]
-  tst.assertEqual(0, attr_segs[0][0])
-  tst.assertEqual(len("t (ms)"), attr_segs[0][1])
-  command = attr_segs[0][2][0].content
+  attr_seg = attr_segs[0]
+  tst.assertEqual(0, attr_seg[0])
+  tst.assertEqual(len("t (ms)"), attr_seg[1])
+  command = attr_seg[2][0].content
   tst.assertIn("-s timestamp", command)
   assert_column_header_command_shortcut(
       tst, command, reverse, node_name_regex, op_type_regex,
       tensor_filter_name)
-  tst.assertEqual("bold", attr_segs[0][2][1])
+  tst.assertEqual("bold", attr_seg[2][1])
+
+  idx0 = line.index("Size")
+  attr_seg = attr_segs[1]
+  tst.assertEqual(idx0, attr_seg[0])
+  tst.assertEqual(idx0 + len("Size"), attr_seg[1])
+  command = attr_seg[2][0].content
+  tst.assertIn("-s dump_size", command)
+  assert_column_header_command_shortcut(tst, command, reverse, node_name_regex,
+                                        op_type_regex, tensor_filter_name)
+  tst.assertEqual("bold", attr_seg[2][1])
 
   idx0 = line.index("Op type")
-  tst.assertEqual(idx0, attr_segs[1][0])
-  tst.assertEqual(idx0 + len("Op type"), attr_segs[1][1])
-  command = attr_segs[1][2][0].content
+  attr_seg = attr_segs[2]
+  tst.assertEqual(idx0, attr_seg[0])
+  tst.assertEqual(idx0 + len("Op type"), attr_seg[1])
+  command = attr_seg[2][0].content
   tst.assertIn("-s op_type", command)
   assert_column_header_command_shortcut(
       tst, command, reverse, node_name_regex, op_type_regex,
       tensor_filter_name)
-  tst.assertEqual("bold", attr_segs[1][2][1])
+  tst.assertEqual("bold", attr_seg[2][1])
 
   idx0 = line.index("Tensor name")
-  tst.assertEqual(idx0, attr_segs[2][0])
-  tst.assertEqual(idx0 + len("Tensor name"), attr_segs[2][1])
-  command = attr_segs[2][2][0].content
+  attr_seg = attr_segs[3]
+  tst.assertEqual(idx0, attr_seg[0])
+  tst.assertEqual(idx0 + len("Tensor name"), attr_seg[1])
+  command = attr_seg[2][0].content
   tst.assertIn("-s tensor_name", command)
   assert_column_header_command_shortcut(
       tst, command, reverse, node_name_regex, op_type_regex,
       tensor_filter_name)
-  tst.assertEqual("bold", attr_segs[2][2][1])
+  tst.assertEqual("bold", attr_seg[2][1])
 
   # Verify the listed tensors and their timestamps.
   tensor_timestamps = []
+  dump_sizes_bytes = []
   op_types = []
   tensor_names = []
   for line in line_iter:
@@ -176,8 +191,9 @@ def assert_listed_tensors(tst,
     tst.assertGreaterEqual(rel_time, 0.0)
 
     tensor_timestamps.append(rel_time)
-    op_types.append(items[1])
-    tensor_names.append(items[2])
+    dump_sizes_bytes.append(command_parser.parse_readable_size_str(items[1]))
+    op_types.append(items[2])
+    tensor_names.append(items[3])
 
   # Verify that the tensors should be listed in ascending order of their
   # timestamps.
@@ -186,6 +202,11 @@ def assert_listed_tensors(tst,
     if reverse:
       sorted_timestamps.reverse()
     tst.assertEqual(sorted_timestamps, tensor_timestamps)
+  elif sort_by == "dump_size":
+    sorted_dump_sizes_bytes = sorted(dump_sizes_bytes)
+    if reverse:
+      sorted_dump_sizes_bytes.reverse()
+    tst.assertEqual(sorted_dump_sizes_bytes, dump_sizes_bytes)
   elif sort_by == "op_type":
     sorted_op_types = sorted(op_types)
     if reverse:
@@ -353,7 +374,6 @@ def assert_node_attribute_lines(tst,
         while True:
           for i in range(5):
             line = next(line_iter)
-            print(line)
             if i == 0:
               tst.assertEqual(depth_counter, int(line.split(":")[0]))
             elif i == 1:
@@ -561,6 +581,33 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         ],
         ["VariableV2", "VariableV2", "Identity", "Identity", "MatMul", "Add"],
         sort_by="timestamp",
+        reverse=True)
+    check_main_menu(self, out, list_tensors_enabled=False)
+
+  def testListTensorsInDumpSizeOrderWorks(self):
+    out = self._registry.dispatch_command("lt", ["-s", "dump_size"])
+    assert_listed_tensors(
+        self,
+        out, [
+            "simple_mul_add/u:0", "simple_mul_add/v:0",
+            "simple_mul_add/u/read:0", "simple_mul_add/v/read:0",
+            "simple_mul_add/matmul:0", "simple_mul_add/add:0"
+        ],
+        ["VariableV2", "VariableV2", "Identity", "Identity", "MatMul", "Add"],
+        sort_by="dump_size")
+    check_main_menu(self, out, list_tensors_enabled=False)
+
+  def testListTensorsInReverseDumpSizeOrderWorks(self):
+    out = self._registry.dispatch_command("lt", ["-s", "dump_size", "-r"])
+    assert_listed_tensors(
+        self,
+        out, [
+            "simple_mul_add/u:0", "simple_mul_add/v:0",
+            "simple_mul_add/u/read:0", "simple_mul_add/v/read:0",
+            "simple_mul_add/matmul:0", "simple_mul_add/add:0"
+        ],
+        ["VariableV2", "VariableV2", "Identity", "Identity", "MatMul", "Add"],
+        sort_by="dump_size",
         reverse=True)
     check_main_menu(self, out, list_tensors_enabled=False)
 

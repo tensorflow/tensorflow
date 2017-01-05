@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/stats_publisher_interface.h"
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/master_env.h"
+#include "tensorflow/core/distributed_runtime/message_wrappers.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/master.pb.h"
@@ -78,7 +79,7 @@ class MasterSession : public core::RefCounted {
                          PartialRunSetupResponse* resp);
 
   // Run one step.
-  Status Run(CallOptions* opts, const RunStepRequest* req,
+  Status Run(CallOptions* opts, const RunStepRequestWrapper& req,
              RunStepResponse* resp);
 
   // Close this session and delete "*this". Returns OK if all known
@@ -174,9 +175,10 @@ class MasterSession : public core::RefCounted {
                    ReffedClientGraph** graph, bool is_partial);
   void ClearRunsTable(std::vector<ReffedClientGraph*>* to_unref,
                       RCGMap* rcg_map) EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  Status DoRunWithLocalExecution(CallOptions* opts, const RunStepRequest* req,
+  Status DoRunWithLocalExecution(CallOptions* opts,
+                                 const RunStepRequestWrapper& req,
                                  RunStepResponse* resp);
-  Status DoPartialRun(CallOptions* opts, const RunStepRequest* req,
+  Status DoPartialRun(CallOptions* opts, const RunStepRequestWrapper& req,
                       RunStepResponse* resp);
   void UpdateLastAccessTime();
 

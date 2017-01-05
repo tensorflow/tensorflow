@@ -59,6 +59,20 @@ Name of the debug op.
 
 - - -
 
+#### `tf_debug.DebugTensorDatum.dump_size_bytes` {#DebugTensorDatum.dump_size_bytes}
+
+Size of the dump file.
+
+Unit: byte.
+
+##### Returns:
+
+  If the dump file exists, size of the dump file, in bytes.
+  If the dump file does not exist, None.
+
+
+- - -
+
 #### `tf_debug.DebugTensorDatum.file_path` {#DebugTensorDatum.file_path}
 
 Path to the file which stores the value of the dumped tensor.

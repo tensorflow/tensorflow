@@ -44,34 +44,35 @@ def _swap_first_last_axes(array):
 
 @contextlib.contextmanager
 def _test_capture_mvndiag_sample_outputs():
-  """Use monkey-patching to capture the output of an MVNDiag sample_n."""
+  """Use monkey-patching to capture the output of an MVNDiag _sample_n."""
   data_container = []
-  true_mvndiag_sample = distributions_py.MultivariateNormalDiag.sample_n
+  true_mvndiag_sample_n = distributions_py.MultivariateNormalDiag._sample_n
 
-  def _capturing_mvndiag_sample(self, n, seed=None, name="sample_n"):
-    samples = true_mvndiag_sample(self, n=n, seed=seed, name=name)
+  def _capturing_mvndiag_sample_n(self, n, seed=None):
+    samples = true_mvndiag_sample_n(self, n=n, seed=seed)
     data_container.append(samples)
     return samples
 
-  distributions_py.MultivariateNormalDiag.sample_n = _capturing_mvndiag_sample
+  distributions_py.MultivariateNormalDiag._sample_n = (
+      _capturing_mvndiag_sample_n)
   yield data_container
-  distributions_py.MultivariateNormalDiag.sample_n = true_mvndiag_sample
+  distributions_py.MultivariateNormalDiag._sample_n = true_mvndiag_sample_n
 
 
 @contextlib.contextmanager
 def _test_capture_normal_sample_outputs():
-  """Use monkey-patching to capture the output of an Normal sample_n."""
+  """Use monkey-patching to capture the output of an Normal _sample_n."""
   data_container = []
-  true_normal_sample = distributions_py.Normal.sample_n
+  true_normal_sample_n = distributions_py.Normal._sample_n
 
-  def _capturing_normal_sample(self, n, seed=None, name="sample_n"):
-    samples = true_normal_sample(self, n=n, seed=seed, name=name)
+  def _capturing_normal_sample_n(self, n, seed=None):
+    samples = true_normal_sample_n(self, n=n, seed=seed)
     data_container.append(samples)
     return samples
 
-  distributions_py.Normal.sample_n = _capturing_normal_sample
+  distributions_py.Normal._sample_n = _capturing_normal_sample_n
   yield data_container
-  distributions_py.Normal.sample_n = true_normal_sample
+  distributions_py.Normal._sample_n = true_normal_sample_n
 
 
 def make_univariate_mixture(batch_shape, num_components):
@@ -346,10 +347,10 @@ class MixtureTest(test.TestCase):
           batch_shape=[], num_components=num_components)
       n = 4
       with _test_capture_normal_sample_outputs() as component_samples:
-        samples = dist.sample_n(n, seed=123)
+        samples = dist.sample(n, seed=123)
       self.assertEqual(samples.dtype, dtypes.float32)
       self.assertEqual((4,), samples.get_shape())
-      cat_samples = dist.cat.sample_n(n, seed=123)
+      cat_samples = dist.cat.sample(n, seed=123)
       sample_values, cat_sample_values, dist_sample_values = sess.run(
           [samples, cat_samples, component_samples])
       self.assertEqual((4,), sample_values.shape)
@@ -379,7 +380,7 @@ class MixtureTest(test.TestCase):
       cat = distributions_py.Categorical(
           logits, dtype=dtypes.int32, name="cat1")
       dist1 = distributions_py.Mixture(cat, components, name="mixture1")
-      samples1 = dist1.sample_n(n, seed=123456).eval()
+      samples1 = dist1.sample(n, seed=123456).eval()
 
       random_seed.set_random_seed(654321)
       components2 = [
@@ -389,7 +390,7 @@ class MixtureTest(test.TestCase):
       cat2 = distributions_py.Categorical(
           logits, dtype=dtypes.int32, name="cat2")
       dist2 = distributions_py.Mixture(cat2, components2, name="mixture2")
-      samples2 = dist2.sample_n(n, seed=123456).eval()
+      samples2 = dist2.sample(n, seed=123456).eval()
 
       self.assertAllClose(samples1, samples2)
 
@@ -400,10 +401,10 @@ class MixtureTest(test.TestCase):
           batch_shape=[], num_components=num_components, event_shape=[2])
       n = 4
       with _test_capture_mvndiag_sample_outputs() as component_samples:
-        samples = dist.sample_n(n, seed=123)
+        samples = dist.sample(n, seed=123)
       self.assertEqual(samples.dtype, dtypes.float32)
       self.assertEqual((4, 2), samples.get_shape())
-      cat_samples = dist.cat.sample_n(n, seed=123)
+      cat_samples = dist.cat.sample(n, seed=123)
       sample_values, cat_sample_values, dist_sample_values = sess.run(
           [samples, cat_samples, component_samples])
       self.assertEqual((4, 2), sample_values.shape)
@@ -421,10 +422,10 @@ class MixtureTest(test.TestCase):
           batch_shape=[2, 3], num_components=num_components)
       n = 4
       with _test_capture_normal_sample_outputs() as component_samples:
-        samples = dist.sample_n(n, seed=123)
+        samples = dist.sample(n, seed=123)
       self.assertEqual(samples.dtype, dtypes.float32)
       self.assertEqual((4, 2, 3), samples.get_shape())
-      cat_samples = dist.cat.sample_n(n, seed=123)
+      cat_samples = dist.cat.sample(n, seed=123)
       sample_values, cat_sample_values, dist_sample_values = sess.run(
           [samples, cat_samples, component_samples])
       self.assertEqual((4, 2, 3), sample_values.shape)
@@ -444,10 +445,10 @@ class MixtureTest(test.TestCase):
           batch_shape=[2, 3], num_components=num_components, event_shape=[4])
       n = 5
       with _test_capture_mvndiag_sample_outputs() as component_samples:
-        samples = dist.sample_n(n, seed=123)
+        samples = dist.sample(n, seed=123)
       self.assertEqual(samples.dtype, dtypes.float32)
       self.assertEqual((5, 2, 3, 4), samples.get_shape())
-      cat_samples = dist.cat.sample_n(n, seed=123)
+      cat_samples = dist.cat.sample(n, seed=123)
       sample_values, cat_sample_values, dist_sample_values = sess.run(
           [samples, cat_samples, component_samples])
       self.assertEqual((5, 2, 3, 4), sample_values.shape)

@@ -406,8 +406,8 @@ def _log_loss_with_two_classes(logits, target):
   # sigmoid_cross_entropy_with_logits requires [batch_size, 1] target.
   if len(target.get_shape()) == 1:
     target = array_ops.expand_dims(target, dim=[1])
-  loss_vec = nn.sigmoid_cross_entropy_with_logits(logits,
-                                                  math_ops.to_float(target))
+  loss_vec = nn.sigmoid_cross_entropy_with_logits(
+      labels=math_ops.to_float(target), logits=logits)
   return loss_vec
 
 
@@ -419,7 +419,8 @@ def _softmax_cross_entropy_loss(logits, target):
   # sparse_softmax_cross_entropy_with_logits requires [batch_size] target.
   if len(target.get_shape()) == 2:
     target = array_ops.squeeze(target, squeeze_dims=[1])
-  loss_vec = nn.sparse_softmax_cross_entropy_with_logits(logits, target)
+  loss_vec = nn.sparse_softmax_cross_entropy_with_logits(
+      labels=target, logits=logits)
   return loss_vec
 
 

@@ -244,7 +244,7 @@ class Mixture(distribution.Distribution):
       n = ops.convert_to_tensor(n, name="n")
       static_n = tensor_util.constant_value(n)
       n = int(static_n) if static_n is not None else n
-      cat_samples = self.cat.sample_n(n, seed=seed)
+      cat_samples = self.cat.sample(n, seed=seed)
 
       static_samples_shape = cat_samples.get_shape()
       if static_samples_shape.is_fully_defined():
@@ -308,7 +308,7 @@ class Mixture(distribution.Distribution):
       for c in range(self.num_components):
         n_class = array_ops.size(partitioned_samples_indices[c])
         seed = distribution_util.gen_new_seed(seed, "mixture")
-        samples_class_c = self.components[c].sample_n(n_class, seed=seed)
+        samples_class_c = self.components[c].sample(n_class, seed=seed)
 
         # Pull out the correct batch entries from each index.
         # To do this, we may have to flatten the batch shape.

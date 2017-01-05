@@ -245,30 +245,11 @@ class StudentTTest(test.TestCase):
       self.assertEqual(student.entropy().get_shape(), (3,))
       self.assertEqual(student.log_pdf(2.).get_shape(), (3,))
       self.assertEqual(student.pdf(2.).get_shape(), (3,))
-      self.assertEqual(
-          student.sample(
-              37, seed=123456).get_shape(), (
-                  37,
-                  3,))
+      self.assertEqual(student.sample(37, seed=123456).get_shape(), (37, 3,))
 
-    _check(ds.StudentT(
-        df=[
-            2.,
-            3.,
-            4.,
-        ], mu=2., sigma=1.))
-    _check(ds.StudentT(
-        df=7., mu=[
-            2.,
-            3.,
-            4.,
-        ], sigma=1.))
-    _check(ds.StudentT(
-        df=7., mu=3., sigma=[
-            2.,
-            3.,
-            4.,
-        ]))
+    _check(ds.StudentT(df=[2., 3., 4.,], mu=2., sigma=1.))
+    _check(ds.StudentT(df=7., mu=[2., 3., 4.,], sigma=1.))
+    _check(ds.StudentT(df=7., mu=3., sigma=[2., 3., 4.,]))
 
   def testBroadcastingPdfArgs(self):
 
@@ -285,24 +266,9 @@ class StudentTTest(test.TestCase):
       xs = xs.T
       _assert_shape(student, xs, (3, 3))
 
-    _check(ds.StudentT(
-        df=[
-            2.,
-            3.,
-            4.,
-        ], mu=2., sigma=1.))
-    _check(ds.StudentT(
-        df=7., mu=[
-            2.,
-            3.,
-            4.,
-        ], sigma=1.))
-    _check(ds.StudentT(
-        df=7., mu=3., sigma=[
-            2.,
-            3.,
-            4.,
-        ]))
+    _check(ds.StudentT(df=[2., 3., 4.,], mu=2., sigma=1.))
+    _check(ds.StudentT(df=7., mu=[2., 3., 4.,], sigma=1.))
+    _check(ds.StudentT(df=7., mu=3., sigma=[2., 3., 4.,]))
 
     def _check2d(student):
       _assert_shape(student, 2., (1, 3))
@@ -313,24 +279,9 @@ class StudentTTest(test.TestCase):
       xs = xs.T
       _assert_shape(student, xs, (3, 3))
 
-    _check2d(ds.StudentT(
-        df=[[
-            2.,
-            3.,
-            4.,
-        ]], mu=2., sigma=1.))
-    _check2d(ds.StudentT(
-        df=7., mu=[[
-            2.,
-            3.,
-            4.,
-        ]], sigma=1.))
-    _check2d(ds.StudentT(
-        df=7., mu=3., sigma=[[
-            2.,
-            3.,
-            4.,
-        ]]))
+    _check2d(ds.StudentT(df=[[2., 3., 4.,]], mu=2., sigma=1.))
+    _check2d(ds.StudentT(df=7., mu=[[2., 3., 4.,]], sigma=1.))
+    _check2d(ds.StudentT(df=7., mu=3., sigma=[[2., 3., 4.,]]))
 
     def _check2d_rows(student):
       _assert_shape(student, 2., (3, 1))
@@ -355,8 +306,8 @@ class StudentTTest(test.TestCase):
   def testMeanAllowNanStatsIsFalseRaisesWhenBatchMemberIsUndefined(self):
     with self.test_session():
       mu = [1., 3.3, 4.4]
-      student = ds.StudentT(
-          df=[0.5, 5., 7.], mu=mu, sigma=[3., 2., 1.], allow_nan_stats=False)
+      student = ds.StudentT(df=[0.5, 5., 7.], mu=mu, sigma=[3., 2., 1.],
+                            allow_nan_stats=False)
       with self.assertRaisesOpError("x < y"):
         student.mean().eval()
 
@@ -364,8 +315,8 @@ class StudentTTest(test.TestCase):
     with self.test_session():
       mu = [-2, 0., 1., 3.3, 4.4]
       sigma = [5., 4., 3., 2., 1.]
-      student = ds.StudentT(
-          df=[0.5, 1., 3., 5., 7.], mu=mu, sigma=sigma, allow_nan_stats=True)
+      student = ds.StudentT(df=[0.5, 1., 3., 5., 7.], mu=mu, sigma=sigma,
+                            allow_nan_stats=True)
       mean = student.mean().eval()
       self.assertAllClose([np.nan, np.nan, 1., 3.3, 4.4], mean)
 
@@ -503,15 +454,15 @@ class StudentTTest(test.TestCase):
 
   def testNegativeDofFails(self):
     with self.test_session():
-      student = ds.StudentT(
-          df=[2, -5.], mu=0., sigma=1., validate_args=True, name="S")
+      student = ds.StudentT(df=[2, -5.], mu=0., sigma=1.,
+                            validate_args=True, name="S")
       with self.assertRaisesOpError(r"Condition x > 0 did not hold"):
         student.mean().eval()
 
   def testNegativeScaleFails(self):
     with self.test_session():
-      student = ds.StudentT(
-          df=[5.], mu=0., sigma=[[3.], [-2.]], validate_args=True, name="S")
+      student = ds.StudentT(df=[5.], mu=0., sigma=[[3.], [-2.]],
+                            validate_args=True, name="S")
       with self.assertRaisesOpError(r"Condition x > 0 did not hold"):
         student.mean().eval()
 
