@@ -608,11 +608,6 @@ class MaxPoolingGradGradOp<Eigen::GpuDevice, T> : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
-    OP_REQUIRES(
-                context, data_format_ == FORMAT_NHWC,
-                errors::InvalidArgument("Default MaxPoolinGradGradOp only supports NHWC ",
-                                        "on device type ",
-                                        DeviceTypeString(context->device_type())));
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 4,
                 errors::InvalidArgument("Sliding window ksize field must "
@@ -656,7 +651,7 @@ class MaxPoolingGradGradOp<Eigen::GpuDevice, T> : public OpKernel {
                           padding_, data_format_, input_shape};
 
     MaxPoolGradBackwardNoMask(
-      tensor_in.flat<T>().data(), tensor_out.flat<T>().data(),
+      data_format_, tensor_in.flat<T>().data(), tensor_out.flat<T>().data(),
       params.tensor_in_batch, params.out_height, params.out_width, params.depth,
       params.tensor_in_rows, params.tensor_in_cols, params.window_rows,
       params.window_cols, params.row_stride, params.col_stride, params.pad_rows,

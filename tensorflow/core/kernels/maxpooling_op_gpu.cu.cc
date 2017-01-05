@@ -200,6 +200,46 @@ __global__ void MaxPoolBackward(const int nthreads, const dtype* top_diff,
 }
 
 template <typename dtype>
+__global__ void MaxPoolGradBackwardNoMaskNCHW(
+    const int nthreads, const dtype* bottom_data, const dtype* output_data,
+    const int pooled_height, const int pooled_width, const int channels,
+    const int height, const int width, const int kernel_h, const int kernel_w,
+    const int stride_h, const int stride_w, const int pad_t, const int pad_l,
+    const dtype* top_diff, dtype* bottom_diff) {
+  CUDA_1D_KERNEL_LOOP(index, nthreads) {
+    // First find out the index to the maximum, since we have no mask.
+    int pw = index % pooled_width;
+    int ph = (index / pooled_width) % pooled_height;
+    int c = (index / pooled_width / pooled_height) % channels;
+    int n = index / pooled_width / pooled_height / channels;
+    int hstart = ph * stride_h - pad_t;
+    int wstart = pw * stride_w - pad_l;
+    const int hend = min(hstart + kernel_h, height);
+    const int wend = min(wstart + kernel_w, width);
+    hstart = max(hstart, 0);
+    wstart = max(wstart, 0);
+    bool should_stop = false;
+    int maxidx = -1;
+    const dtype* bottom_data_n = bottom_data + n * channels * height * width;
+    // Propagate only first value from top_diff corresponding to the maximum.
+    for (int h = hstart; h < hend && !should_stop; ++h) {
+      for (int w = wstart; w < wend && !should_stop; ++w) {
+        int idx = c * height * width + h * width + w;
+        if (output_data[index] == bottom_data_n[idx]) {
+          maxidx = idx;
+          should_stop = true;
+        }
+      }
+    }
+    // Set the bottom diff (atomic is not necessary). The index could still be
+    // uninitialized, if all the bottom_data are NaN.
+    if (maxidx != -1) {
+      bottom_diff[index] = top_diff[n * channels * height * width + maxidx];
+    }
+  }
+}
+
+template <typename dtype>
 __global__ void MaxPoolGradBackwardNoMaskNHWC(
     const int nthreads, const dtype* bottom_data, const dtype* output_data,
     const int pooled_height, const int pooled_width, const int channels,
@@ -362,8 +402,9 @@ bool MaxPoolBackwardWithArgmax(const int output_size, const int input_size,
   return d.ok();
 }
 
-bool MaxPoolGradBackwardNoMask(const float* bottom_data, const float* output_data,
-                               const int batch, const int pooled_height, const int pooled_width,
+bool MaxPoolGradBackwardNoMask(TensorFormat data_format, const float* bottom_data,
+                               const float* output_data, const int batch,
+                               const int pooled_height, const int pooled_width,
                                const int channels, const int height,
                                const int width, const int kernel_h,
                                const int kernel_w, const int stride_h,
@@ -375,17 +416,28 @@ bool MaxPoolGradBackwardNoMask(const float* bottom_data, const float* output_dat
 
   SetZero<<<(bottom_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
     kThreadsPerBlock, 0, d.stream()>>>(bottom_size, bottom_diff);
-  MaxPoolGradBackwardNoMaskNHWC<<<(bottom_size + kThreadsPerBlock - 1) /
-                                  kThreadsPerBlock,
-                                  kThreadsPerBlock, 0, d.stream()>>>(
-      bottom_size, bottom_data, output_data, pooled_height, pooled_width,
-      channels, height, width, kernel_h, kernel_w, stride_h, stride_w,
-      pad_t, pad_l, top_diff, bottom_diff);
+  if (data_format == FORMAT_NHWC) {
+    MaxPoolGradBackwardNoMaskNHWC<<<(bottom_size + kThreadsPerBlock - 1) /
+                                    kThreadsPerBlock,
+                                    kThreadsPerBlock, 0, d.stream()>>>(
+        bottom_size, bottom_data, output_data, pooled_height, pooled_width,
+        channels, height, width, kernel_h, kernel_w, stride_h, stride_w,
+        pad_t, pad_l, top_diff, bottom_diff);
+  }
+  else {
+    MaxPoolGradBackwardNoMaskNCHW<<<(bottom_size + kThreadsPerBlock - 1) /
+                                    kThreadsPerBlock,
+                                    kThreadsPerBlock, 0, d.stream()>>>(
+        bottom_size, bottom_data, output_data, pooled_height, pooled_width,
+        channels, height, width, kernel_h, kernel_w, stride_h, stride_w,
+        pad_t, pad_l, top_diff, bottom_diff);
+  }
   return d.ok();
 }
 
-bool MaxPoolGradBackwardNoMask(const Eigen::half* bottom_data, const Eigen::half* output_data,
-                               const int batch, const int pooled_height, const int pooled_width,
+bool MaxPoolGradBackwardNoMask(TensorFormat data_format, const Eigen::half* bottom_data,
+                               const Eigen::half* output_data, const int batch,
+                               const int pooled_height, const int pooled_width,
                                const int channels, const int height,
                                const int width, const int kernel_h,
                                const int kernel_w, const int stride_h,
@@ -397,12 +449,22 @@ bool MaxPoolGradBackwardNoMask(const Eigen::half* bottom_data, const Eigen::half
 
   SetZero<<<(bottom_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
     kThreadsPerBlock, 0, d.stream()>>>(bottom_size, bottom_diff);
-  MaxPoolGradBackwardNoMaskNHWC<<<(bottom_size + kThreadsPerBlock - 1) /
-                                  kThreadsPerBlock,
-                                  kThreadsPerBlock, 0, d.stream()>>>(
-      bottom_size, bottom_data, output_data, pooled_height, pooled_width,
-      channels, height, width, kernel_h, kernel_w, stride_h, stride_w,
-      pad_t, pad_l, top_diff, bottom_diff);
+  if (data_format == FORMAT_NHWC) {
+    MaxPoolGradBackwardNoMaskNHWC<<<(bottom_size + kThreadsPerBlock - 1) /
+                                    kThreadsPerBlock,
+                                    kThreadsPerBlock, 0, d.stream()>>>(
+        bottom_size, bottom_data, output_data, pooled_height, pooled_width,
+        channels, height, width, kernel_h, kernel_w, stride_h, stride_w,
+        pad_t, pad_l, top_diff, bottom_diff);
+  }
+  else {
+    MaxPoolGradBackwardNoMaskNCHW<<<(bottom_size + kThreadsPerBlock - 1) /
+                                    kThreadsPerBlock,
+                                    kThreadsPerBlock, 0, d.stream()>>>(
+        bottom_size, bottom_data, output_data, pooled_height, pooled_width,
+        channels, height, width, kernel_h, kernel_w, stride_h, stride_w,
+        pad_t, pad_l, top_diff, bottom_diff);
+  }
   return d.ok();
 }
 

@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
 
@@ -84,8 +85,9 @@ bool MaxPoolGradBackwardWithArgmax(const int output_size, const int input_size,
                                    Eigen::half* bottom_diff,
                                    const Eigen::GpuDevice& d);
 
-bool MaxPoolGradBackwardNoMask(const float* bottom_data, const float* output_data,
-                               const int batch, const int pooled_height, const int pooled_width,
+bool MaxPoolGradBackwardNoMask(TensorFormat data_format, const float* bottom_data,
+                               const float* output_data, const int batch,
+                               const int pooled_height, const int pooled_width,
                                const int channels, const int height,
                                const int width, const int kernel_h,
                                const int kernel_w, const int stride_h,
@@ -93,8 +95,9 @@ bool MaxPoolGradBackwardNoMask(const float* bottom_data, const float* output_dat
                                const float* top_diff, float* bottom_diff,
                                const Eigen::GpuDevice& d);
 
-bool MaxPoolGradBackwardNoMask(const Eigen::half* bottom_data, const Eigen::half* output_data,
-                               const int batch, const int pooled_height, const int pooled_width,
+bool MaxPoolGradBackwardNoMask(TensorFormat data_format, const Eigen::half* bottom_data,
+                               const Eigen::half* output_data, const int batch,
+                               const int pooled_height, const int pooled_width,
                                const int channels, const int height,
                                const int width, const int kernel_h,
                                const int kernel_w, const int stride_h,
