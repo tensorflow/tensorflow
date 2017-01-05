@@ -52,7 +52,7 @@ done
 
 # Build Jar and also demo containing native libs for all architectures.
 # Enable sandboxing so that zip archives don't get incorrectly packaged
-# in assets/ dir.
+# in assets/ dir (see https://github.com/bazelbuild/bazel/issues/2334)
 echo "========== Building TensorFlow Android Jar and Demo =========="
 bazel --bazelrc=/dev/null build -c opt --fat_apk_cpu=${CPUS} \
     --spawn_strategy=sandboxed --genrule_strategy=sandboxed \
