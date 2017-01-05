@@ -785,14 +785,12 @@ Status SimplePlacer::Run() {
 
     // Heuristic A application.
     if (IsGeneratorNode(node)) {
-      EdgeSet::const_iterator it(node->out_edges().begin());
-
-      const Node* output = (*it)->dst();
+      const Node* output = (*node->out_edges().begin())->dst();
       const string& output_device_name = output->assigned_device_name();
-      it++;
 
       bool same_device = std::all_of(
-          it, node->out_edges().end(), [output_device_name](const Edge* e) {
+          node->out_edges().begin(), node->out_edges().end(),
+          [output_device_name](const Edge* e) {
             return e->dst()->assigned_device_name() == output_device_name;
           });
 
