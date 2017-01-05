@@ -319,8 +319,6 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       actual = "@nanopb_git//:nanopb",
   )
 
-  # zlib permalinks including the current version are always in http://zlib.net/fossils/ 
-  # links in http://zlib.net/zlib-*.*.*.tar.gz are removed when no longer current.
   native.new_http_archive(
       name = "zlib_archive",
       urls = [
