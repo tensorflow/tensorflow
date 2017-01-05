@@ -219,18 +219,24 @@ __global__ void MaxPoolGradBackwardNoMaskNHWC(
     int wend = min(wstart + kernel_w, width);
     hstart = max(hstart, 0);
     wstart = max(wstart, 0);
-    dtype gradient = dtype(0);
+    bool should_stop = false;
+    int maxidx = -1;
     const dtype* bottom_data_n = bottom_data + n * height * width * channels;
-    const dtype* top_diff_n = top_diff + n * height * width * channels;
-    for (int h = hstart; h < hend; ++h) {
-      for (int w = wstart; w < wend; ++w) {
+    // Propagate only first value from top_diff corresponding to the maximum.
+    for (int h = hstart; h < hend && !should_stop; ++h) {
+      for (int w = wstart; w < wend && !should_stop; ++w) {
         int idx = (h * width + w) * channels + c;
         if (output_data[index] == bottom_data_n[idx]) {
-          gradient += top_diff_n[idx];
+          maxidx = idx;
+          should_stop = true;
         }
       }
     }
-    bottom_diff[index] = gradient;
+    // Set the bottom diff (atomic is not necessary). The index could still be
+    // uninitialized, if all the bottom_data are NaN.
+    if (maxidx != -1) {
+      bottom_diff[index] = top_diff[n * height * width * channels + maxidx];
+    }
   }
 }
 
@@ -239,7 +245,8 @@ __global__ void MaxPoolGradBackward(const int nthreads, const dtype* top_diff,
                                     const int64* mask, const int top_offset,
                                     const int bottom_offset, dtype* bottom_diff) {
   CUDA_1D_KERNEL_LOOP(index, nthreads) {
-    CudaAtomicAdd(bottom_diff + index, top_diff[mask[index]]);
+    int image_id = (index / bottom_offset);
+    CudaAtomicAdd(bottom_diff + index, top_diff[image_id * top_offset + mask[index]]);
   }
 }
 

@@ -543,33 +543,30 @@ class MaxPoolingGradGradOp : public OpKernel {
         bottom_diff_shard.setZero();
       }
 
-      for (int32 b = start; b < limit; ++b) {
-        for (int32 h = 0; h < in_rows; ++h) {
-          for (int32 w = 0; w < in_cols; ++w) {
+      for (int b = start; b < limit; ++b) {
+        for (int ph = 0; ph < out_height; ++ph) {
+          for (int pw = 0; pw < out_width; ++pw) {
             // (h_start, h_end) * (w_start, w_end) is the range that the input
             // vector projects to.
-            const int32 hpad = h + pad_rows;
-            const int32 wpad = w + pad_cols;
-            const int h_start =
-              (hpad < window_rows) ? 0 : (hpad - window_rows) / row_stride + 1;
-            const int h_end = std::min(hpad / row_stride + 1, out_height);
-            const int w_start =
-              (wpad < window_cols) ? 0 : (wpad - window_cols) / col_stride + 1;
-            const int w_end = std::min(wpad / col_stride + 1, out_width);
-            // compute elementwise max
-            const int in_index = (b * in_rows + h) * in_cols + w;
-            for (int32 ph = h_start; ph < h_end; ++ph) {
-              const int out_index_base = (b * out_height + ph) * out_width;
-              for (int32 pw = w_start; pw < w_end; ++pw) {
-                const int out_index = out_index_base + pw;
-                /// NOTES(aam_at): not using the eigen matrix operation for
-                /// now.
-                for (int d = 0; d < depth; ++d) {
+            int h_start = ph * row_stride - pad_rows;
+            const int h_end = std::min(h_start + window_rows, in_rows);
+            int w_start = pw * col_stride - pad_cols;
+            const int w_end = std::min(w_start + window_cols, in_cols);
+            h_start = std::max(h_start, 0);
+            w_start = std::max(w_start, 0);
+            const int out_index = (b * out_height + ph) * out_width + pw;
+            // Find value corresponding to the input maximum in top_diff.
+            for (int d = 0; d < depth; ++d) {
+              const T& output_ref = out_mat.coeffRef(d, out_index);
+              bool should_stop = false;
+              for (int h = h_start; h < h_end && !should_stop; ++h) {
+                for (int w = w_start; w < w_end && !should_stop; ++w) {
+                  const int in_index = (b * in_rows + h) * in_cols + w;
                   const T& input_ref = in_mat.coeffRef(d, in_index);
-                  const T& output_ref = out_mat.coeffRef(d, out_index);
                   if (output_ref == input_ref) {
                     T& bottom_diff_ref = bottom_diff_mat.coeffRef(d, out_index);
-                    bottom_diff_ref += top_diff_mat.coeffRef(d, in_index);
+                    bottom_diff_ref = top_diff_mat.coeffRef(d, in_index);
+                    should_stop = true;
                   }
                 }
               }
