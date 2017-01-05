@@ -89,7 +89,7 @@ REGISTER_OP("AvgPool")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
-    .Attr("T: {float, half, double}")
+    .Attr("T: realnumbertype")
     .SetShapeFn(shape_inference::AvgPoolShape)
     .Doc(R"doc(
 Performs average pooling on the input.
@@ -117,7 +117,7 @@ REGISTER_OP("AvgPoolGrad")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
-    .Attr("T: {float, half, double}")
+    .Attr("T: realnumbertype")
     .SetShapeFn([](InferenceContext* c) {
       // NOTE(mrry): We could in principle work out the shape from the
       // gradients and the attrs, but if we do not know orig_input_shape
@@ -1186,8 +1186,8 @@ data_format: The data format of the input and output data. With the
 )doc");
 
 REGISTER_OP("MaxPool3DGrad")
-    .Input("orig_input: float")
-    .Input("orig_output: float")
+    .Input("orig_input: T")
+    .Input("orig_output: T")
     .Input("grad: T")
     .Output("output: T")
     .Attr("ksize: list(int) >= 5 ")
@@ -1217,14 +1217,14 @@ data_format: The data format of the input and output data. With the
 )doc");
 
 REGISTER_OP("MaxPool3DGradGrad")
-    .Input("orig_input: float")
-    .Input("orig_output: float")
+    .Input("orig_input: T")
+    .Input("orig_output: T")
     .Input("grad: T")
     .Output("output: T")
     .Attr("ksize: list(int) >= 5 ")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
-    .Attr("T: numbertype")
+    .Attr("T: realnumbertype")
     .SetShapeFn(shape_inference::Pool3DShape)
     .Doc(R"doc(
 Computes gradients of the maxpooling backward function.
@@ -1327,7 +1327,7 @@ output: The gradients for LRN.
 // --------------------------------------------------------------------------
 
 REGISTER_OP("MaxPool")
-    .Attr("T: {float, half} = DT_FLOAT")
+    .Attr("T: realnumbertype")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
@@ -1360,7 +1360,7 @@ REGISTER_OP("MaxPoolGrad")
     .Input("orig_output: T")
     .Input("grad: T")
     .Output("output: T")
-    .Attr("T: {float, half} = DT_FLOAT")
+    .Attr("T: realnumbertype")
     .SetShapeFn([](InferenceContext* c) {
       return UnchangedShapeWithRank(c, 4);
     })
@@ -1391,7 +1391,7 @@ REGISTER_OP("MaxPoolGradGrad")
     .Input("orig_output: T")
     .Input("grad: T")
     .Output("output: T")
-    .Attr("T: {float, half} = DT_FLOAT")
+    .Attr("T: realnumbertype")
     .SetShapeFn(shape_inference::MaxPoolShape)
     .Doc(R"doc(
 Computes gradients of the maxpooling backward function.
@@ -1419,7 +1419,7 @@ REGISTER_OP("MaxPoolWithArgmax")
     .Input("input: T")
     .Output("output: T")
     .Output("argmax: Targmax")
-    .Attr("T: {float, half} = DT_FLOAT")
+    .Attr("T: realnumbertype")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::MaxPoolShape(c));
       c->set_output(1, c->output(0));
@@ -1450,7 +1450,7 @@ REGISTER_OP("MaxPoolGradWithArgmax")
     .Input("grad: T")
     .Input("argmax: Targmax")
     .Output("output: T")
-    .Attr("T: {float, half} = DT_FLOAT")
+    .Attr("T: realnumbertype")
     .SetShapeFn([](InferenceContext* c) {
       return UnchangedShapeWithRank(c, 4);
     })
@@ -1477,7 +1477,7 @@ REGISTER_OP("MaxPoolGradGradWithArgmax")
     .Input("grad: T")
     .Input("argmax: Targmax")
     .Output("output: T")
-    .Attr("T: {float, half} = DT_FLOAT")
+    .Attr("T: realnumbertype")
     .SetShapeFn(shape_inference::MaxPoolShape)
     .Doc(R"doc(
 Computes gradients of the maxpooling backward function.
