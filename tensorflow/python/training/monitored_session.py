@@ -301,12 +301,12 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
     all_hooks.append(
         basic_session_run_hooks.StepCounterHook(output_dir=checkpoint_dir))
 
-    if save_summaries_steps > 0:
+    if save_summaries_steps and save_summaries_steps > 0:
       all_hooks.append(basic_session_run_hooks.SummarySaverHook(
           scaffold=scaffold,
           save_steps=save_summaries_steps,
           output_dir=checkpoint_dir))
-    if save_checkpoint_secs > 0:
+    if save_checkpoint_secs and save_checkpoint_secs > 0:
       all_hooks.append(basic_session_run_hooks.CheckpointSaverHook(
           checkpoint_dir, save_secs=save_checkpoint_secs, scaffold=scaffold))
 
