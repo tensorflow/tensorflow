@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import itertools
 import os
+import shutil
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -41,9 +42,17 @@ from tensorflow.python.util import compat
 
 class MatchFilenamesOnceTest(test_lib.TestCase):
 
+  def tearDown():
+    if os.path.isdir(self.get_temp_dir()):
+      shutil.rmtree(self.get_temp_dir())
+
   def test(self):
     temp_dir = self.get_temp_dir()
+    print("temp_dir = %s" % temp_dir)
+
     filenames = [os.path.join(temp_dir, n) for n in os.listdir(temp_dir)]
+    print("file_names = %s" % repr(file_names))
+
     additional = [
         os.path.join(temp_dir, "match_filenames.%d" % i)
         for i in range(3)
@@ -51,6 +60,11 @@ class MatchFilenamesOnceTest(test_lib.TestCase):
     for name in additional:
       with open(name, "w") as f:
         f.write("Some contents")
+
+    import glob
+    print("glob results")
+    print(glob.glob(os.path.join(temp_dir, "*")))
+    print(glob.glob(os.path.join(temp_dir, "*")))
 
     filenames = list(set(filenames + additional))
     with self.test_session():
