@@ -25,11 +25,11 @@ is a conjunction of a base layer and the activation. For example, `Fs`
 represents a fully connected layer followed by a sigmoid, whereas `Ft`
 represents a fully connected layer followed by a Tanh.
 
- - `Fx` = slim.fully_connected; x = activation function, one of s/t/r/l/m
- - `Cx` = slim.conv2d; x = activation function, one of s/t/r/l/m
- - `Mp` = slim.max_pool2d
- - `Ap` = slim.avg_pool2d
- - `Bn` = slim.batch_norm
+ - `Fx` = tf.contrib.layers.fully_connected; x = activation function, one of s/t/r/l/m
+ - `Cx` = tf.contrib.layers.conv2d; x = activation function, one of s/t/r/l/m
+ - `Mp` = tf.contrib.layers.max_pool2d
+ - `Ap` = tf.contrib.layers.avg_pool2d
+ - `Bn` = tf.contrib.layers.batch_norm
 
 Nonlinearities (suffixes for C/F, so Cs = convolutional layer + sigmoid):
 
@@ -73,9 +73,9 @@ there will be other modeling primitives.
 Other:
 
  - `Id` = identity
- - `Do` = slim.dropout
+ - `Do` = tf.contrib.layers.dropout
  - `Lrn` = tf.nn.local_response_normalization
- - `Unit` = slim.unit_norm
+ - `Unit` = tf.contrib.layers.unit_norm
  - `Conc` is roughly tf.nn.concat
 
 Binding external functions:

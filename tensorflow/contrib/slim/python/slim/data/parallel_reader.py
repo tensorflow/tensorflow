@@ -4,7 +4,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-# http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,13 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python import summary
 from tensorflow.python.framework import dtypes as tf_dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import gfile
+from tensorflow.python.summary import summary
 from tensorflow.python.training import input as tf_input
 from tensorflow.python.training import queue_runner
 
@@ -220,8 +220,8 @@ def parallel_read(data_sources,
           seed=seed,
           name='common_queue')
     else:
-      common_queue = data_flow_ops.FIFOQueue(capacity=capacity, dtypes=dtypes,
-                                             name='common_queue')
+      common_queue = data_flow_ops.FIFOQueue(
+          capacity=capacity, dtypes=dtypes, name='common_queue')
 
     summary.scalar('fraction_of_%d_full' % capacity,
                    math_ops.to_float(common_queue.size()) * (1. / capacity))

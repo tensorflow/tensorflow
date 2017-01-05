@@ -49,8 +49,10 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
     in range [0, num_classes], where num_classes is the last dimension of
     `predictions`. If `class_id` is outside this range, the method returns
     NAN.
-*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to the first
-    [D1, ... DN] dimensions of `predictions` and `labels`.
+*  <b>`weights`</b>: `Tensor` whose rank is either 0, or n-1, where n is the rank of
+    `labels`. If the latter, it must be broadcastable to `labels` (i.e., all
+    dimensions must be either `1`, or the same as the corresponding `labels`
+    dimension).
 *  <b>`metrics_collections`</b>: An optional list of collections that values should
     be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that updates should

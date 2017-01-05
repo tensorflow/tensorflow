@@ -267,7 +267,7 @@ class MiniMNISTTest(test.TestCase):
           dtype=dtypes.float64,
           name="labels")
       cost = nn_ops.softmax_cross_entropy_with_logits(
-          logits, labels, name="cost")
+          labels=labels, logits=logits, name="cost")
 
       # Test the gradients.
       err = gradient_checker.compute_gradient_error(

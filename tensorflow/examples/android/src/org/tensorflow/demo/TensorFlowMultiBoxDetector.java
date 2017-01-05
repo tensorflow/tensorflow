@@ -211,6 +211,14 @@ public class TensorFlowMultiBoxDetector implements Classifier {
     return recognitions;
   }
 
+  public void enableStatLogging(boolean debug) {
+    inferenceInterface.enableStatLogging(debug);
+  }
+
+  public String getStatString() {
+    return inferenceInterface.getStatString();
+  }
+
   @Override
   public void close() {
     inferenceInterface.close();

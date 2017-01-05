@@ -271,16 +271,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.WishartCholesky.is_scalar_batch` {#WishartCholesky.is_scalar_batch}
+#### `tf.contrib.distributions.WishartCholesky.is_scalar_batch(name='is_scalar_batch')` {#WishartCholesky.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.WishartCholesky.is_scalar_event` {#WishartCholesky.is_scalar_event}
+#### `tf.contrib.distributions.WishartCholesky.is_scalar_event(name='is_scalar_event')` {#WishartCholesky.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -588,32 +608,6 @@ sample.
 
 
 *  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
-
-
-- - -
-
-#### `tf.contrib.distributions.WishartCholesky.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#WishartCholesky.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
 
 
 - - -

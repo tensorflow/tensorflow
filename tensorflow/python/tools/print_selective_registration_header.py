@@ -29,21 +29,25 @@ from __future__ import print_function
 
 import sys
 
-import tensorflow as tf
 from google.protobuf import text_format
+
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.platform import app
+from tensorflow.python.platform import flags
+from tensorflow.python.platform import gfile
+from tensorflow.python.platform import tf_logging
 
-FLAGS = tf.app.flags.FLAGS
+FLAGS = flags.FLAGS
 
-tf.app.flags.DEFINE_string('proto_fileformat', 'rawproto',
-                           'Format of proto file, either textproto or rawproto')
+flags.DEFINE_string('proto_fileformat', 'rawproto',
+                    'Format of proto file, either textproto or rawproto')
 
-tf.app.flags.DEFINE_string(
+flags.DEFINE_string(
     'graphs', '',
     'Comma-separated list of paths to model files to be analyzed.')
 
-tf.app.flags.DEFINE_string(
+flags.DEFINE_string(
     'default_ops', 'NoOp:NoOp,_Recv:RecvOp,_Send:SendOp',
     'Default operator:kernel pairs to always include implementation for. '
     'Pass "all" to have all operators and kernels included; note that this '
@@ -57,9 +61,9 @@ def get_ops_and_kernels(proto_fileformat, proto_files, default_ops_str):
   ops = set()
 
   for proto_file in proto_files:
-    tf.logging.info('Loading proto file %s', proto_file)
+    tf_logging.info('Loading proto file %s', proto_file)
     # Load GraphDef.
-    file_data = tf.gfile.GFile(proto_file).read()
+    file_data = gfile.GFile(proto_file).read()
     if proto_fileformat == 'rawproto':
       graph_def = graph_pb2.GraphDef.FromString(file_data)
     else:
@@ -156,4 +160,4 @@ def main(unused_argv):
 
 
 if __name__ == '__main__':
-  tf.app.run()
+  app.run()

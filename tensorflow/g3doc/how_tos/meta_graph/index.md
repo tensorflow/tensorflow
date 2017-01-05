@@ -227,9 +227,8 @@ Here are some of the typical usage models:
     onehot_labels = tf.sparse_to_dense(
         concated, tf.pack([batch_size, 10]), 1.0, 0.0)
     logits = tf.get_collection("logits")[0]
-    cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits,
-                                                            onehot_labels,
-                                                            name="xentropy")
+    cross_entropy = tf.nn.softmax_cross_entropy_with_logits(
+        labels=onehot_labels, logits=logits, name="xentropy")
     loss = tf.reduce_mean(cross_entropy, name="xentropy_mean")
 
     tf.summary.scalar('loss', loss)

@@ -88,6 +88,7 @@ tensorflow/core/kernels/maxpooling_op.cc
 tensorflow/core/kernels/matmul_op.cc
 tensorflow/core/kernels/lrn_op.cc
 tensorflow/core/kernels/logging_ops.cc
+tensorflow/core/kernels/inplace_ops.cc
 tensorflow/core/kernels/in_topk_op.cc
 tensorflow/core/kernels/immutable_constant_op.cc
 tensorflow/core/kernels/identity_op.cc

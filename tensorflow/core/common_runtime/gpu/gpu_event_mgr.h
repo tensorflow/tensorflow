@@ -83,7 +83,7 @@ class EventMgr {
     ToFreeVector to_free;
     {
       mutex_lock l(mu_);
-      QueueFunc(stream, func);
+      QueueFunc(stream, std::move(func));
       PollEvents(false, &to_free);
     }
     FreeMemory(to_free);
@@ -147,7 +147,7 @@ class EventMgr {
 
   void QueueFunc(perftools::gputools::Stream* stream,
                  std::function<void()> func) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    QueueInUse(stream, {nullptr, nullptr, BufRec(), func});
+    QueueInUse(stream, {nullptr, nullptr, BufRec(), std::move(func)});
   }
 
   // This function should be called at roughly the same tempo as

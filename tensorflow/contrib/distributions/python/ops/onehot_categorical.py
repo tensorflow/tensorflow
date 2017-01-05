@@ -215,7 +215,8 @@ class _OneHotCategorical(distribution.Distribution):
     else:
       logits_2d = array_ops.reshape(logits, [-1, self.num_classes])
       x_2d = array_ops.reshape(x, [-1, self.num_classes])
-    ret = -nn_ops.softmax_cross_entropy_with_logits(logits_2d, x_2d)
+    ret = -nn_ops.softmax_cross_entropy_with_logits(labels=x_2d,
+                                                    logits=logits_2d)
     ret = array_ops.reshape(ret, logits_shape)
     return ret
 
@@ -229,7 +230,8 @@ class _OneHotCategorical(distribution.Distribution):
       logits_2d = array_ops.reshape(self.logits, [-1, self.num_classes])
     histogram_2d = nn_ops.softmax(logits_2d)
     ret = array_ops.reshape(
-        nn_ops.softmax_cross_entropy_with_logits(logits_2d, histogram_2d),
+        nn_ops.softmax_cross_entropy_with_logits(labels=histogram_2d,
+                                                 logits=logits_2d),
         self.batch_shape())
     ret.set_shape(self.get_batch_shape())
     return ret

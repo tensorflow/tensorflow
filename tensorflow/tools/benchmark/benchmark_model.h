@@ -29,10 +29,10 @@ struct InputLayerInfo {
   TensorShape shape;
 };
 
-// Loads a model from disk into a new session, and sets up the stats collection.
+// Loads a model from disk into a new session.
 Status InitializeSession(int num_threads, const string& graph,
                          std::unique_ptr<Session>* session,
-                         std::unique_ptr<StatSummarizer>* stats);
+                         std::unique_ptr<GraphDef>* graph_def);
 
 // Does a single run of the model that's been loaded into the given session.
 Status RunBenchmark(const std::vector<InputLayerInfo>& inputs,

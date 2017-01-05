@@ -22,19 +22,25 @@ import math
 
 import numpy as np
 from scipy import stats
-import tensorflow as tf
+from tensorflow.contrib import distributions
+from tensorflow.contrib.distributions.python.ops import student_t
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import random_seed
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
+from tensorflow.python.platform import test
 
-ds = tf.contrib.distributions
+ds = distributions
 
 
-class StudentTTest(tf.test.TestCase):
+class StudentTTest(test.TestCase):
 
   def testStudentPDFAndLogPDF(self):
     with self.test_session():
       batch_size = 6
-      df = tf.constant([3.] * batch_size)
-      mu = tf.constant([7.] * batch_size)
-      sigma = tf.constant([8.] * batch_size)
+      df = constant_op.constant([3.] * batch_size)
+      mu = constant_op.constant([7.] * batch_size)
+      sigma = constant_op.constant([8.] * batch_size)
       df_v = 3.
       mu_v = 7.
       sigma_v = 8.
@@ -58,9 +64,10 @@ class StudentTTest(tf.test.TestCase):
   def testStudentLogPDFMultidimensional(self):
     with self.test_session():
       batch_size = 6
-      df = tf.constant([[1.5, 7.2]] * batch_size)
-      mu = tf.constant([[3., -3.]] * batch_size)
-      sigma = tf.constant([[math.sqrt(10.), math.sqrt(15.)]] * batch_size)
+      df = constant_op.constant([[1.5, 7.2]] * batch_size)
+      mu = constant_op.constant([[3., -3.]] * batch_size)
+      sigma = constant_op.constant([[math.sqrt(10.), math.sqrt(15.)]] *
+                                   batch_size)
       df_v = np.array([1.5, 7.2])
       mu_v = np.array([3., -3.])
       sigma_v = np.array([np.sqrt(10.), np.sqrt(15.)])
@@ -82,14 +89,14 @@ class StudentTTest(tf.test.TestCase):
   def testStudentCDFAndLogCDF(self):
     with self.test_session():
       batch_size = 6
-      df = tf.constant([3.] * batch_size)
-      mu = tf.constant([7.] * batch_size)
-      sigma = tf.constant([8.] * batch_size)
+      df = constant_op.constant([3.] * batch_size)
+      mu = constant_op.constant([7.] * batch_size)
+      sigma = constant_op.constant([8.] * batch_size)
       df_v = 3.
       mu_v = 7.
       sigma_v = 8.
       t = np.array([-2.5, 2.5, 8., 0., -1., 2.], dtype=np.float32)
-      student = tf.contrib.distributions.StudentT(df, mu=mu, sigma=sigma)
+      student = student_t.StudentT(df, mu=mu, sigma=sigma)
 
       log_cdf = student.log_cdf(t)
       self.assertEquals(log_cdf.get_shape(), (6,))
@@ -101,9 +108,11 @@ class StudentTTest(tf.test.TestCase):
       expected_log_cdf = stats.t.logcdf(t, df_v, loc=mu_v, scale=sigma_v)
       expected_cdf = stats.t.cdf(t, df_v, loc=mu_v, scale=sigma_v)
       self.assertAllClose(expected_log_cdf, log_cdf_values, atol=0., rtol=1e-5)
-      self.assertAllClose(np.log(expected_cdf), log_cdf_values, atol=0., rtol=1e-5)
+      self.assertAllClose(
+          np.log(expected_cdf), log_cdf_values, atol=0., rtol=1e-5)
       self.assertAllClose(expected_cdf, cdf_values, atol=0., rtol=1e-5)
-      self.assertAllClose(np.exp(expected_log_cdf), cdf_values, atol=0., rtol=1e-5)
+      self.assertAllClose(
+          np.exp(expected_log_cdf), cdf_values, atol=0., rtol=1e-5)
 
   def testStudentEntropy(self):
     df_v = np.array([[2., 3., 7.]])  # 1x3
@@ -128,37 +137,39 @@ class StudentTTest(tf.test.TestCase):
 
   def testStudentSample(self):
     with self.test_session():
-      df = tf.constant(4.)
-      mu = tf.constant(3.)
-      sigma = tf.constant(math.sqrt(10.))
+      df = constant_op.constant(4.)
+      mu = constant_op.constant(3.)
+      sigma = constant_op.constant(math.sqrt(10.))
       df_v = 4.
       mu_v = 3.
       sigma_v = np.sqrt(10.)
-      n = tf.constant(200000)
+      n = constant_op.constant(200000)
       student = ds.StudentT(df=df, mu=mu, sigma=sigma)
       samples = student.sample(n, seed=123456)
       sample_values = samples.eval()
       n_val = 200000
       self.assertEqual(sample_values.shape, (n_val,))
       self.assertAllClose(sample_values.mean(), mu_v, rtol=1e-2, atol=0)
-      self.assertAllClose(sample_values.var(),
-                          sigma_v**2 * df_v / (df_v - 2),
-                          rtol=1e-2, atol=0)
+      self.assertAllClose(
+          sample_values.var(),
+          sigma_v**2 * df_v / (df_v - 2),
+          rtol=1e-2,
+          atol=0)
       self._checkKLApprox(df_v, mu_v, sigma_v, sample_values)
 
   # Test that sampling with the same seed twice gives the same results.
   def testStudentSampleMultipleTimes(self):
     with self.test_session():
-      df = tf.constant(4.)
-      mu = tf.constant(3.)
-      sigma = tf.constant(math.sqrt(10.))
-      n = tf.constant(100)
+      df = constant_op.constant(4.)
+      mu = constant_op.constant(3.)
+      sigma = constant_op.constant(math.sqrt(10.))
+      n = constant_op.constant(100)
 
-      tf.set_random_seed(654321)
+      random_seed.set_random_seed(654321)
       student = ds.StudentT(df=df, mu=mu, sigma=sigma, name="student_t1")
       samples1 = student.sample(n, seed=123456).eval()
 
-      tf.set_random_seed(654321)
+      random_seed.set_random_seed(654321)
       student2 = ds.StudentT(df=df, mu=mu, sigma=sigma, name="student_t2")
       samples2 = student2.sample(n, seed=123456).eval()
 
@@ -167,8 +178,8 @@ class StudentTTest(tf.test.TestCase):
   def testStudentSampleSmallDfNoNan(self):
     with self.test_session():
       df_v = [1e-1, 1e-5, 1e-10, 1e-20]
-      df = tf.constant(df_v)
-      n = tf.constant(200000)
+      df = constant_op.constant(df_v)
+      n = constant_op.constant(200000)
       student = ds.StudentT(df=df, mu=1., sigma=1.)
       samples = student.sample(n, seed=123456)
       sample_values = samples.eval()
@@ -179,28 +190,33 @@ class StudentTTest(tf.test.TestCase):
   def testStudentSampleMultiDimensional(self):
     with self.test_session():
       batch_size = 7
-      df = tf.constant([[3., 7.]] * batch_size)
-      mu = tf.constant([[3., -3.]] * batch_size)
-      sigma = tf.constant([[math.sqrt(10.), math.sqrt(15.)]] * batch_size)
+      df = constant_op.constant([[3., 7.]] * batch_size)
+      mu = constant_op.constant([[3., -3.]] * batch_size)
+      sigma = constant_op.constant([[math.sqrt(10.), math.sqrt(15.)]] *
+                                   batch_size)
       df_v = [3., 7.]
       mu_v = [3., -3.]
       sigma_v = [np.sqrt(10.), np.sqrt(15.)]
-      n = tf.constant(200000)
+      n = constant_op.constant(200000)
       student = ds.StudentT(df=df, mu=mu, sigma=sigma)
       samples = student.sample(n, seed=123456)
       sample_values = samples.eval()
       self.assertEqual(samples.get_shape(), (200000, batch_size, 2))
       self.assertAllClose(
           sample_values[:, 0, 0].mean(), mu_v[0], rtol=1e-2, atol=0)
-      self.assertAllClose(sample_values[:, 0, 0].var(),
-                          sigma_v[0]**2 * df_v[0] / (df_v[0] - 2),
-                          rtol=1e-1, atol=0)
+      self.assertAllClose(
+          sample_values[:, 0, 0].var(),
+          sigma_v[0]**2 * df_v[0] / (df_v[0] - 2),
+          rtol=1e-1,
+          atol=0)
       self._checkKLApprox(df_v[0], mu_v[0], sigma_v[0], sample_values[:, 0, 0])
       self.assertAllClose(
           sample_values[:, 0, 1].mean(), mu_v[1], rtol=1e-2, atol=0)
-      self.assertAllClose(sample_values[:, 0, 1].var(),
-                          sigma_v[1]**2 * df_v[1] / (df_v[1] - 2),
-                          rtol=1e-1, atol=0)
+      self.assertAllClose(
+          sample_values[:, 0, 1].var(),
+          sigma_v[1]**2 * df_v[1] / (df_v[1] - 2),
+          rtol=1e-1,
+          atol=0)
       self._checkKLApprox(df_v[0], mu_v[0], sigma_v[0], sample_values[:, 0, 1])
 
   def _checkKLApprox(self, df, mu, sigma, samples):
@@ -321,7 +337,8 @@ class StudentTTest(tf.test.TestCase):
       var[0] = np.inf
 
       expected_var = [
-          stats.t.var(d, loc=m, scale=s) for (d, m, s) in zip(df, mu, sigma)]
+          stats.t.var(d, loc=m, scale=s) for (d, m, s) in zip(df, mu, sigma)
+      ]
       self.assertAllClose(expected_var, var)
 
   def testVarianceAllowNanStatsFalseGivesCorrectValueForDefinedBatchMembers(
@@ -334,8 +351,9 @@ class StudentTTest(tf.test.TestCase):
       student = ds.StudentT(df=df, mu=mu, sigma=sigma)
       var = student.variance().eval()
 
-      expected_var = [stats.t.var(d, loc=m, scale=s)
-                      for (d, m, s) in zip(df, mu, sigma)]
+      expected_var = [
+          stats.t.var(d, loc=m, scale=s) for (d, m, s) in zip(df, mu, sigma)
+      ]
       self.assertAllClose(expected_var, var)
 
   def testVarianceAllowNanStatsFalseRaisesForUndefinedBatchMembers(self):
@@ -363,7 +381,8 @@ class StudentTTest(tf.test.TestCase):
       mu *= len(df)
 
       expected_std = [
-          stats.t.std(d, loc=m, scale=s) for (d, m, s) in zip(df, mu, sigma)]
+          stats.t.std(d, loc=m, scale=s) for (d, m, s) in zip(df, mu, sigma)
+      ]
       self.assertAllClose(expected_std, std)
 
   def testMode(self):
@@ -410,10 +429,14 @@ class StudentTTest(tf.test.TestCase):
       self.assertEqual(pdfs.get_shape(), (num, 2, 2))
       self.assertNear(5., np.mean(sample_vals[:, 0, :]), err=.03)
       self.assertNear(6., np.mean(sample_vals[:, 1, :]), err=.03)
-      self.assertNear(stats.t.var(7., loc=0., scale=3.),  # loc d.n. effect var
-                      np.var(sample_vals[:, :, 0]), err=.4)
-      self.assertNear(stats.t.var(11., loc=0., scale=3.),  # loc d.n. effect var
-                      np.var(sample_vals[:, :, 1]), err=.4)
+      self.assertNear(
+          stats.t.var(7., loc=0., scale=3.),  # loc d.n. effect var
+          np.var(sample_vals[:, :, 0]),
+          err=.4)
+      self.assertNear(
+          stats.t.var(11., loc=0., scale=3.),  # loc d.n. effect var
+          np.var(sample_vals[:, :, 1]),
+          err=.4)
       self._assertIntegral(sample_vals[:, 0, 0], pdf_vals[:, 0, 0], err=0.02)
       self._assertIntegral(sample_vals[:, 0, 1], pdf_vals[:, 0, 1], err=0.02)
       self._assertIntegral(sample_vals[:, 1, 0], pdf_vals[:, 1, 0], err=0.02)
@@ -445,13 +468,15 @@ class StudentTTest(tf.test.TestCase):
 
   def testStudentTWithAbsDfSoftplusSigma(self):
     with self.test_session():
-      df = tf.constant([-3.2, -4.6])
-      mu = tf.constant([-4.2, 3.4])
-      sigma = tf.constant([-6.4, -8.8])
+      df = constant_op.constant([-3.2, -4.6])
+      mu = constant_op.constant([-4.2, 3.4])
+      sigma = constant_op.constant([-6.4, -8.8])
       student = ds.StudentTWithAbsDfSoftplusSigma(df=df, mu=mu, sigma=sigma)
-      self.assertAllClose(tf.floor(tf.abs(df)).eval(), student.df.eval())
+      self.assertAllClose(
+          math_ops.floor(math_ops.abs(df)).eval(), student.df.eval())
       self.assertAllClose(mu.eval(), student.mu.eval())
-      self.assertAllClose(tf.nn.softplus(sigma).eval(), student.sigma.eval())
+      self.assertAllClose(nn_ops.softplus(sigma).eval(), student.sigma.eval())
+
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()
