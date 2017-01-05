@@ -189,25 +189,6 @@ static void SpatialMaxPoolWithArgMaxHelper(
         params.tensor_in_batch, shard_cost, shard);
 }
 
-#if GOOGLE_CUDA
-// Forward declarations for the functor specializations for GPU.
-namespace functor {
-#define DECLARE_GPU_SPEC(T)                                            \
-  template <>                                                          \
-  void SpatialMaxPooling<Eigen::GpuDevice, T>::operator()(             \
-      const Eigen::GpuDevice& d, typename TTypes<T, 4>::Tensor output, \
-      typename TTypes<T, 4>::ConstTensor input, int window_rows,       \
-      int window_cols, int row_stride, int col_stride,                 \
-      const Eigen::PaddingType& padding);                              \
-  extern template struct SpatialMaxPooling<Eigen::GpuDevice, T>;
-
-TF_CALL_float(DECLARE_GPU_SPEC);
-TF_CALL_half(DECLARE_GPU_SPEC);
-#undef DECLARE_GPU_SPEC
-}  // namespace functor
-
-#endif  // GOOGLE_CUDA
-
 // The operation to compute MaxPool gradients.
 // It takes three inputs:
 //   - The original input tensor
@@ -309,7 +290,7 @@ static void MaxPoolingBackwardCustomKernel(
     return;
   }
 
-  MaxPoolBackwardNoMask(
+  functor::MaxPoolBackwardNoMask<T>()(
       tensor_in->flat<T>().data(), params.tensor_in_batch,
       params.tensor_in_rows, params.tensor_in_cols, params.depth,
       params.out_height, params.out_width, params.window_rows,
@@ -616,7 +597,7 @@ class MaxPoolingGradGradOp<Eigen::GpuDevice, T> : public OpKernel {
     PoolParameters params{context, ksize_, stride_,
                           padding_, data_format_, input_shape};
 
-    MaxPoolGradBackwardNoMask(
+    functor::MaxPoolGradBackwardNoMask<T>()(
       data_format_, tensor_in.flat<T>().data(), tensor_out.flat<T>().data(),
       params.tensor_in_batch, params.out_height, params.out_width, params.depth,
       params.tensor_in_rows, params.tensor_in_cols, params.window_rows,
@@ -903,7 +884,7 @@ template <typename T>
 struct LaunchMaxPoolingNoMask<Eigen::GpuDevice, T> {
   static void launch(OpKernelContext* context, const PoolParameters& params,
                      const Tensor& input, Tensor* output) {
-    bool status = MaxPoolForwardWithOptionalArgmax(
+    bool status = functor::MaxPoolForwardWithOptionalArgmax<T>()(
         input.flat<T>().data(), params.tensor_in_batch, params.tensor_in_rows,
         params.tensor_in_cols, params.depth, params.out_height,
         params.out_width, params.window_rows, params.window_cols,
@@ -920,7 +901,7 @@ template <typename T>
 struct LaunchMaxPoolingWithArgmax<Eigen::GpuDevice, T> {
   static void launch(OpKernelContext* context, const PoolParameters& params,
                      const Tensor& input, Tensor* output, Tensor* argmax) {
-    bool status = MaxPoolForwardWithOptionalArgmax(
+    bool status = functor::MaxPoolForwardWithOptionalArgmax<T>()(
         input.flat<T>().data(), params.tensor_in_batch, params.tensor_in_rows,
         params.tensor_in_cols, params.depth, params.out_height,
         params.out_width, params.window_rows, params.window_cols,
@@ -947,7 +928,7 @@ struct LaunchMaxPoolingGradWithArgmax<Eigen::GpuDevice, T> {
     const int top_offset = params.out_height * params.out_width * params.depth;
     const int bottom_offset =
         params.tensor_in_rows * params.tensor_in_cols * params.depth;
-    bool status = MaxPoolBackwardWithArgmax(
+    bool status = functor::MaxPoolBackwardWithArgmax<T>()(
         output_size, input_size, grad_in.flat<T>().data(),
         reinterpret_cast<const int64*>(argmax.flat<int64>().data()), top_offset,
         bottom_offset, grad_out->flat<T>().data(), context->eigen_gpu_device());
@@ -970,7 +951,7 @@ struct LaunchMaxPoolingGradGradWithArgmax<Eigen::GpuDevice, T> {
     const int top_offset = params.tensor_in_rows * params.tensor_in_cols * params.depth;
     const int bottom_offset =
         params.out_width * params.out_height * params.depth;
-    bool status = MaxPoolGradBackwardWithArgmax(
+    bool status = functor::MaxPoolGradBackwardWithArgmax<T>()(
         output_size, input_size, grad_in.flat<T>().data(),
         reinterpret_cast<const int64*>(argmax.flat<int64>().data()), top_offset,
         bottom_offset, grad_out->flat<T>().data(), context->eigen_gpu_device());
@@ -1005,9 +986,23 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_MAX_POOL_KERNELS);
 
 #if GOOGLE_CUDA
 
+// Forward declarations for the functor specializations for GPU.
+namespace functor {
+#define DECLARE_GPU_SPEC(T)                                            \
+  template <>                                                          \
+  void SpatialMaxPooling<Eigen::GpuDevice, T>::operator()(             \
+      const Eigen::GpuDevice& d, typename TTypes<T, 4>::Tensor output, \
+      typename TTypes<T, 4>::ConstTensor input, int window_rows,       \
+      int window_cols, int row_stride, int col_stride,                 \
+      const Eigen::PaddingType& padding);                              \
+  extern template struct SpatialMaxPooling<Eigen::GpuDevice, T>;
+
+TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
+#undef DECLARE_GPU_SPEC
+}  // namespace functor
+
 #define REGISTER_GPU_MAX_POOL_KERNELS(T) REGISTER_MAX_POOL_KERNELS(GPU, T)
-TF_CALL_half(REGISTER_GPU_MAX_POOL_KERNELS);
-TF_CALL_float(REGISTER_GPU_MAX_POOL_KERNELS);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_MAX_POOL_KERNELS);
 #undef REGISTER_GPU_MAX_POOL_KERNELS
 
 // Below kernels currently implemented only for GPU device.
@@ -1043,8 +1038,7 @@ TF_CALL_float(REGISTER_GPU_MAX_POOL_KERNELS);
           .TypeConstraint<T>("T")                                \
           .TypeConstraint<int64>("Targmax"),                     \
       MaxPoolingGradGradWithArgmaxOp<GPUDevice, T>);
-TF_CALL_half(REGISTER_GPU_ONLY_POOL_KERNELS);
-TF_CALL_float(REGISTER_GPU_ONLY_POOL_KERNELS);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_ONLY_POOL_KERNELS);
 #undef REGISTER_GPU_ONLY_POOL_KERNELS
 
 #endif // GOOGLE_CUDA
