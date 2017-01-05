@@ -31,6 +31,7 @@ if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
 import numpy as np
 
 from tensorflow.contrib.layers.python.layers import feature_column as feature_column_lib
+from tensorflow.contrib.learn.python.learn import experiment
 from tensorflow.contrib.learn.python.learn.datasets import base
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn
 from tensorflow.contrib.learn.python.learn.estimators import estimator
@@ -61,6 +62,19 @@ def _prepare_iris_data_for_logistic_regression():
 
 
 class LinearClassifierTest(test.TestCase):
+
+  def testExperimentIntegration(self):
+    cont_features = [
+        feature_column_lib.real_valued_column(
+            'feature', dimension=4)
+    ]
+
+    exp = experiment.Experiment(
+        estimator=linear.LinearClassifier(
+            n_classes=3, feature_columns=cont_features),
+        train_input_fn=test_data.iris_input_multiclass_fn,
+        eval_input_fn=test_data.iris_input_multiclass_fn)
+    exp.test()
 
   def testEstimatorContract(self):
     estimator_test_utils.assert_estimator_contract(self,
@@ -877,6 +891,18 @@ class LinearClassifierTest(test.TestCase):
 
 
 class LinearRegressorTest(test.TestCase):
+
+  def testExperimentIntegration(self):
+    cont_features = [
+        feature_column_lib.real_valued_column(
+            'feature', dimension=4)
+    ]
+
+    exp = experiment.Experiment(
+        estimator=linear.LinearRegressor(feature_columns=cont_features),
+        train_input_fn=test_data.iris_input_logistic_fn,
+        eval_input_fn=test_data.iris_input_logistic_fn)
+    exp.test()
 
   def testEstimatorContract(self):
     estimator_test_utils.assert_estimator_contract(self, linear.LinearRegressor)

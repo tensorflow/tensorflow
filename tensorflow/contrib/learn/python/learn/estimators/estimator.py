@@ -55,6 +55,8 @@ from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedE
 from tensorflow.contrib.learn.python.learn.learn_io import data_feeder
 from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.contrib.learn.python.learn.utils import saved_model_export_utils
+from tensorflow.contrib.training.python.training import evaluation
+from tensorflow.core.framework import summary_pb2
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -286,6 +288,48 @@ def _make_metrics_ops(metrics, features, labels, predictions):
   return result
 
 
+def _dict_to_str(dictionary):
+  """Get a `str` representation of a `dict`.
+
+  Args:
+    dictionary: The `dict` to be represented as `str`.
+
+  Returns:
+    A `str` representing the `dictionary`.
+  """
+  return ', '.join('%s = %s' % (k, v) for k, v in sorted(dictionary.items()))
+
+
+def _write_dict_to_summary(output_dir,
+                           dictionary,
+                           current_global_step):
+  """Writes a `dict` into summary file in given output directory.
+
+  Args:
+    output_dir: `str`, directory to write the summary file in.
+    dictionary: the `dict` to be written to summary file.
+    current_global_step: `int`, the current global step.
+  """
+  logging.info(
+      'Saving dict for global step %d: %s' %
+      (current_global_step, _dict_to_str(dictionary)))
+  summary_writer = summary_io.SummaryWriterCache.get(output_dir)
+  summary_proto = summary_pb2.Summary()
+  for key in dictionary:
+    if dictionary[key] is None:
+      continue
+    value = summary_proto.value.add()
+    value.tag = key
+    if (isinstance(dictionary[key], np.float32) or
+        isinstance(dictionary[key], float)):
+      value.simple_value = float(dictionary[key])
+    else:
+      logging.warn('Skipping summary for %s, must be a float or np.float32.',
+                   key)
+  summary_writer.add_summary(summary_proto, current_global_step)
+  summary_writer.flush()
+
+
 class BaseEstimator(
     sklearn.BaseEstimator, evaluable.Evaluable, trainable.Trainable):
   """Abstract BaseEstimator class to train and evaluate TensorFlow models.
@@ -420,9 +464,17 @@ class BaseEstimator(
       SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, ('x', None),
       ('y', None), ('batch_size', None)
   )
-  def evaluate(
-      self, x=None, y=None, input_fn=None, feed_fn=None, batch_size=None,
-      steps=None, metrics=None, name=None, checkpoint_path=None):
+  def evaluate(self,
+               x=None,
+               y=None,
+               input_fn=None,
+               feed_fn=None,
+               batch_size=None,
+               steps=None,
+               metrics=None,
+               name=None,
+               checkpoint_path=None,
+               hooks=None):
     # pylint: disable=g-doc-args,g-doc-return-or-yield
     """See `Evaluable`.
 
@@ -443,7 +495,9 @@ class BaseEstimator(
         steps=steps,
         metrics=metrics,
         name=name,
-        checkpoint_path=checkpoint_path)
+        checkpoint_path=checkpoint_path,
+        hooks=hooks)
+
     if eval_results is not None:
       eval_results.update({'global_step': global_step})
     return eval_results
@@ -786,7 +840,8 @@ class BaseEstimator(
                       feed_fn=None,
                       metrics=None,
                       name='',
-                      checkpoint_path=None):
+                      checkpoint_path=None,
+                      hooks=None):
     # TODO(wicke): Remove this once Model and associated code are gone.
     if (hasattr(self._config, 'execution_mode') and
         self._config.execution_mode not in ('all', 'evaluate', 'eval_evalset')):
@@ -798,7 +853,7 @@ class BaseEstimator(
       if not latest_path:
         raise NotFittedError("Couldn't find trained model at %s."
                              % self._model_dir)
-      checkpoint_path = self._model_dir
+      checkpoint_path = latest_path
 
     # Setup output directory.
     eval_dir = os.path.join(self._model_dir, 'eval' if not name else
@@ -824,18 +879,29 @@ class BaseEstimator(
         eval_dict = eval_ops
 
       update_op, eval_dict = self._extract_metric_update_ops(eval_dict)
-      eval_results, current_global_step = graph_actions.evaluate(
-          graph=g,
-          output_dir=eval_dir,
-          checkpoint_path=checkpoint_path,
-          eval_dict=eval_dict,
-          update_op=update_op,
-          global_step_tensor=global_step,
-          supervisor_master=self._config.evaluation_master,
-          feed_fn=feed_fn,
-          max_steps=steps)
 
-      return eval_results, current_global_step
+      hooks = hooks or []
+      if feed_fn:
+        hooks.append(_FeedFnHook(feed_fn))
+      if steps:
+        hooks.append(evaluation.StopAfterNEvalsHook(steps))
+
+      global_step_key = 'global_step'
+      while global_step_key in eval_dict:
+        global_step_key = '_' + global_step_key
+      eval_dict[global_step_key] = global_step
+
+      eval_results = evaluation.evaluate_once(
+          checkpoint_path=checkpoint_path,
+          master=self._config.evaluation_master,
+          eval_ops=update_op,
+          final_ops=eval_dict,
+          hooks=hooks)
+      current_global_step = eval_results[global_step_key]
+
+      _write_dict_to_summary(eval_dir, eval_results, current_global_step)
+
+    return eval_results, current_global_step
 
   def _get_features_from_input_fn(self, input_fn):
     result = input_fn()
@@ -969,21 +1035,27 @@ class Estimator(BaseEstimator):
     Args:
       model_fn: Model function. Follows the signature:
         * Args:
-          * `features` are single `Tensor` or `dict` of `Tensor`s
+          * `features`: single `Tensor` or `dict` of `Tensor`s
                  (depending on data passed to `fit`),
-          * `labels` are `Tensor` or `dict` of `Tensor`s (for multi-head
+          * `labels`: `Tensor` or `dict` of `Tensor`s (for multi-head
                  models). If mode is `ModeKeys.INFER`, `labels=None` will be
                  passed. If the `model_fn`'s signature does not accept
                  `mode`, the `model_fn` must still be able to handle
                  `labels=None`.
-          * `mode` specifies if this training, evaluation or
+          * `mode`: Optional. Specifies if this training, evaluation or
                  prediction. See `ModeKeys`.
-          * `params` is a `dict` of hyperparameters.  Will receive what
+          * `params`: Optional `dict` of hyperparameters.  Will receive what
                  is passed to Estimator in `params` parameter. This allows
                  to configure Estimators from hyper parameter tuning.
-          * `config` is a Configuration object. Will receive what is passed to
-                 Estimator in `config` parameter. This allows updating things in
-                 your model_fn based on configuration such as num_ps_replicas.
+          * `config`: Optional configuration object. Will receive what is passed
+                 to Estimator in `config` parameter, or the default `config`.
+                 Allows updating things in your model_fn based on configuration
+                 such as `num_ps_replicas`.
+          * `model_dir`: Optional directory where model parameters, graph etc
+                 are saved. Will receive what is passed to Estimator in
+                 `model_dir` parameter, or the default `model_dir`. Allows
+                 updating things in your model_fn that expect model_dir, such as
+                 training hooks.
 
         * Returns:
           `ModelFnOps`
@@ -1002,6 +1074,8 @@ class Estimator(BaseEstimator):
           * `(features, labels, mode) -> (predictions, loss, train_op)`
           * `(features, labels, mode, params) -> (predictions, loss, train_op)`
           * `(features, labels, mode, params, config) ->
+             (predictions, loss, train_op)`
+          * `(features, labels, mode, params, config, model_dir) ->
              (predictions, loss, train_op)`
 
       model_dir: Directory to save model parameters, graph and etc. This can
@@ -1060,6 +1134,8 @@ class Estimator(BaseEstimator):
       kwargs['params'] = self.params
     if 'config' in model_fn_args:
       kwargs['config'] = self.config
+    if 'model_dir' in model_fn_args:
+      kwargs['model_dir'] = self.model_dir
     model_fn_results = self._model_fn(features, labels, **kwargs)
 
     if isinstance(model_fn_results, model_fn_lib.ModelFnOps):

@@ -117,8 +117,8 @@ class HybridModel(object):
     else:
       loss = math_ops.reduce_mean(
           nn_ops.sparse_softmax_cross_entropy_with_logits(
-              self.training_inference_graph(data),
-              array_ops.squeeze(math_ops.to_int32(labels))),
+              labels=array_ops.squeeze(math_ops.to_int32(labels)),
+              logits=self.training_inference_graph(data)),
           name="loss")
     if self.regularizer:
       loss += layers.apply_regularization(self.regularizer,

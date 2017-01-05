@@ -340,7 +340,8 @@ def sigmoid_cross_entropy(
       multi_class_labels = (multi_class_labels * (1 - label_smoothing) +
                             0.5 * label_smoothing)
 
-    losses = nn.sigmoid_cross_entropy_with_logits(logits, multi_class_labels,
+    losses = nn.sigmoid_cross_entropy_with_logits(labels=multi_class_labels,
+                                                  logits=logits,
                                                   name="xentropy")
     return compute_weighted_loss(losses, weights, scope=scope)
 
@@ -387,7 +388,8 @@ def softmax_cross_entropy(
       smooth_negatives = label_smoothing / num_classes
       onehot_labels = onehot_labels * smooth_positives + smooth_negatives
 
-    losses = nn.softmax_cross_entropy_with_logits(logits, onehot_labels,
+    losses = nn.softmax_cross_entropy_with_logits(labels=onehot_labels,
+                                                  logits=logits,
                                                   name="xentropy")
     return compute_weighted_loss(losses, weights, scope=scope)
 
@@ -421,7 +423,8 @@ def sparse_softmax_cross_entropy(logits, labels, weights=1.0, scope=None):
     labels = array_ops.reshape(labels, shape=[array_ops.shape(labels)[0]])
     weights = array_ops.squeeze(weights)
 
-    losses = nn.sparse_softmax_cross_entropy_with_logits(logits, labels,
+    losses = nn.sparse_softmax_cross_entropy_with_logits(labels=labels,
+                                                         logits=logits,
                                                          name="xentropy")
     return compute_weighted_loss(losses, weights, scope=scope)
 

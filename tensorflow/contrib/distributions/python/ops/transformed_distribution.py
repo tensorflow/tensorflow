@@ -22,6 +22,8 @@ import numpy as np
 from tensorflow.contrib.distributions.python.ops import bijector as bijectors
 from tensorflow.contrib.distributions.python.ops import distribution as distributions
 from tensorflow.contrib.distributions.python.ops import distribution_util
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -47,19 +49,46 @@ _condition_kwargs_dict = {
 # graph construction.
 
 
+def _static_value(x):
+  """Returns the static value of a `Tensor` or `None`."""
+  return tensor_util.constant_value(ops.convert_to_tensor(x))
+
+
+def _logical_and(*args):
+  """Convenience function which attempts to statically `reduce_all`."""
+  args_ = [_static_value(x) for x in args]
+  if any(x is not None and not bool(x) for x in args_):
+    return constant_op.constant(False)
+  if all(x is not None and bool(x) for x in args_):
+    return constant_op.constant(True)
+  if len(args) == 2:
+    return math_ops.logical_and(*args)
+  return math_ops.reduce_all(args)
+
+
+def _logical_equal(x, y):
+  """Convenience function which attempts to statically compute `x == y`."""
+  x_ = _static_value(x)
+  y_ = _static_value(y)
+  if x_ is None or y_ is None:
+    return math_ops.equal(x, y)
+  return constant_op.constant(np.array_equal(x_, y_))
+
+
 def _logical_not(x):
   """Convenience function which attempts to statically apply `logical_not`."""
-  if tensor_util.constant_value(x) is not None:
-    return not tensor_util.constant_value(x)
-  return math_ops.logical_not(x)
+  x_ = _static_value(x)
+  if x_ is None:
+    return math_ops.logical_not(x)
+  return constant_op.constant(np.logical_not(x_))
 
 
 def _concat_vectors(*args):
-  """Convenience function which flattens input vectors."""
-  vals = [tensor_util.constant_value(ops.convert_to_tensor(x)) for x in args]
-  if any(x is None for x in vals):
+  """Convenience function which concatenates input vectors."""
+  args_ = [_static_value(x) for x in args]
+  if any(x_ is None for x_ in args_):
     return array_ops.concat_v2(args, 0)
-  return [x for v in vals for x in v]
+  return constant_op.constant([x_ for vec_ in args_ for x_ in vec_])
 
 
 def _pick_scalar_condition(pred, cond_true, cond_false):
@@ -67,18 +96,34 @@ def _pick_scalar_condition(pred, cond_true, cond_false):
   # Note: This function is only valid if all of pred, cond_true, and cond_false
   # are scalars. This means its semantics are arguably more like tf.cond than
   # tf.select even though we use tf.select to implement it.
-  pred_static = tensor_util.constant_value(pred)
-  if pred_static is None:
-    return math_ops.select(pred, cond_true, cond_false)
-  return cond_true if pred_static else cond_false
+  pred_ = _static_value(pred)
+  if pred_ is None:
+    return array_ops.where(pred, cond_true, cond_false)
+  return cond_true if pred_ else cond_false
 
 
 def _ones_like(x):
   """Convenience function attempts to statically construct `ones_like`."""
   # Should only be used for small vectors.
   if x.get_shape().is_fully_defined():
-    return np.ones(x.get_shape().as_list(), dtype=x.dtype.as_numpy_dtype())
+    return array_ops.ones(x.get_shape().as_list(), dtype=x.dtype)
   return array_ops.ones_like(x)
+
+
+def _ndims_from_shape(shape):
+  """Returns `Tensor`'s `rank` implied by a `Tensor` shape."""
+  if shape.get_shape().ndims not in (None, 1):
+    raise ValueError("input is not a valid shape: not 1D")
+  if not shape.dtype.is_integer:
+    raise TypeError("input is not a valid shape: wrong dtype")
+  if shape.get_shape().is_fully_defined():
+    return constant_op.constant(shape.get_shape().as_list()[0])
+  return array_ops.shape(shape)[0]
+
+
+def _is_scalar_from_shape(shape):
+  """Returns `True` `Tensor` if `Tensor` shape implies a scalar."""
+  return _logical_equal(_ndims_from_shape(shape), 0)
 
 
 class TransformedDistribution(distributions.Distribution):
@@ -234,9 +279,9 @@ class TransformedDistribution(distributions.Distribution):
       bijector: The object responsible for calculating the transformation.
         Typically an instance of `Bijector`. `None` means `Identity()`.
       batch_shape: `integer` vector `Tensor` which overrides `distribution`
-        `batch_shape`; valid only if `distribution.is_scalar_batch`.
+        `batch_shape`; valid only if `distribution.is_scalar_batch()`.
       event_shape: `integer` vector `Tensor` which overrides `distribution`
-        `event_shape`; valid only if `distribution.is_scalar_event`.
+        `event_shape`; valid only if `distribution.is_scalar_event()`.
       validate_args: Python Boolean.  Whether to validate input with asserts.
         If `validate_args` is `False`, and the inputs are invalid,
         correct behavior is not guaranteed.
@@ -245,53 +290,55 @@ class TransformedDistribution(distributions.Distribution):
     """
     parameters = locals()
     parameters.pop("self")
-    if bijector is None:
-      bijector = bijectors.Identity(validate_args=validate_args)
-    name = name or bijector.name + distribution.name
+    name = name or (("" if bijector is None else bijector.name) +
+                    distribution.name)
     with ops.name_scope(name, values=[event_shape, batch_shape]):
-      if batch_shape is not None:
-        batch_shape = self._maybe_validate_shape_override(
-            ops.convert_to_tensor(batch_shape, name="batch_shape"),
-            distribution.is_scalar_batch, validate_args)
-      self._override_batch_shape = batch_shape
+      # For convenience we define some handy constants.
+      self._zero = constant_op.constant(0, dtype=dtypes.int32, name="zero")
+      self._empty = constant_op.constant([], dtype=dtypes.int32, name="empty")
 
-      if event_shape is not None:
-        event_shape = self._maybe_validate_shape_override(
-            ops.convert_to_tensor(event_shape, name="event_shape"),
-            distribution.is_scalar_event, validate_args)
-        self._override_event_ndims = (
-            event_shape.get_shape().ndims
-            if event_shape.get_shape().ndims is not None
-            else array_ops.rank(event_shape, name="event_ndims"))
-      else:
-        self._override_event_ndims = 0
-      self._override_event_shape = event_shape
+      if bijector is None:
+        bijector = bijectors.Identity(validate_args=validate_args)
+
+      # We will keep track of a static and dynamic version of
+      # self._is_{batch,event}_override. This way we can do more prior to graph
+      # execution, including possibly raising Python exceptions.
+
+      self._override_batch_shape = self._maybe_validate_shape_override(
+          batch_shape, distribution.is_scalar_batch(), validate_args,
+          "batch_shape")
+      self._is_batch_override = _logical_not(_logical_equal(
+          _ndims_from_shape(self._override_batch_shape), self._zero))
+      self._is_maybe_batch_override = bool(
+          tensor_util.constant_value(self._override_batch_shape) is None or
+          tensor_util.constant_value(self._override_batch_shape))
+
+      self._override_event_shape = self._maybe_validate_shape_override(
+          event_shape, distribution.is_scalar_event(), validate_args,
+          "event_shape")
+      self._is_event_override = _logical_not(_logical_equal(
+          _ndims_from_shape(self._override_event_shape), self._zero))
+      self._is_maybe_event_override = bool(
+          tensor_util.constant_value(self._override_event_shape) is None or
+          tensor_util.constant_value(self._override_event_shape))
 
       # To convert a scalar distribution into a multivariate distribution we
       # will draw dims from the sample dims, which are otherwise iid. This is
-      # easy to do except in the case that:
-      #   batch_shape is None and
-      #   event_shape is not None and
-      #   not distribution.is_scalar_batch.
-      # When that case happens the event dims will incorrectly be to the left of
-      # the batch dims. In this case we'll cyclically permute left the new dims.
-      if batch_shape is None and event_shape is not None:
-        self._needs_rotation = ops.convert_to_tensor(
-            _logical_not(distribution.is_scalar_batch), name="needs_rotation")
-        n = _pick_scalar_condition(self._needs_rotation,
-                                   self._override_event_ndims, 0)
-        # We'll be reducing the head dims (if at all), i.e., this will be []
-        # if we don't need to reduce.
-        self._reduce_event_indices = math_ops.range(
-            n - self._override_event_ndims, n)
-      else:
-        self._needs_rotation = ops.convert_to_tensor(False,
-                                                     name="needs_rotation")
-        # We'll be reducing the tail dims (if at all), i.e., this will be []
-        # if we don't need to reduce.
-        self._reduce_event_indices = (
-            math_ops.range(-self._override_event_ndims, 0)
-            if event_shape is not None else [])
+      # easy to do except in the case that the base distribution has batch dims
+      # and we're overriding event shape.  When that case happens the event dims
+      # will incorrectly be to the left of the batch dims. In this case we'll
+      # cyclically permute left the new dims.
+      self._needs_rotation = _logical_and(
+          self._is_event_override,
+          _logical_not(self._is_batch_override),
+          _logical_not(distribution.is_scalar_batch()))
+      override_event_ndims = _ndims_from_shape(self._override_event_shape)
+      self._rotate_ndims = _pick_scalar_condition(
+          self._needs_rotation, override_event_ndims, 0)
+      # We'll be reducing the head dims (if at all), i.e., this will be []
+      # if we don't need to reduce.
+      self._reduce_event_indices = math_ops.range(
+          self._rotate_ndims - override_event_ndims, self._rotate_ndims)
 
     self._distribution = distribution
     self._bijector = bijector
@@ -319,28 +366,29 @@ class TransformedDistribution(distributions.Distribution):
     return self._bijector
 
   def _event_shape(self):
-    return self.bijector.forward_event_shape(
-        self.distribution.event_shape()
-        if self._override_event_shape is None
-        else self._override_event_shape)
+    return self.bijector.forward_event_shape(distribution_util.pick_vector(
+        self._is_event_override,
+        self._override_event_shape,
+        self.distribution.event_shape()))
 
   def _get_event_shape(self):
+    static_override = tensor_util.constant_value(self._override_event_shape)
     return self.bijector.get_forward_event_shape(
         self.distribution.get_event_shape()
-        if self._override_event_shape is None
-        else tensor_shape.TensorShape(
-            tensor_util.constant_value(self._override_event_shape)))
+        if static_override is not None and not static_override
+        else tensor_shape.TensorShape(static_override))
 
   def _batch_shape(self):
-    if self._override_batch_shape is None:
-      return self.distribution.batch_shape()
-    return self._override_batch_shape
+    return distribution_util.pick_vector(
+        self._is_batch_override,
+        self._override_batch_shape,
+        self.distribution.batch_shape())
 
   def _get_batch_shape(self):
-    if self._override_batch_shape is None:
+    static_override = tensor_util.constant_value(self._override_batch_shape)
+    if static_override is not None and not static_override:
       return self.distribution.get_batch_shape()
-    return tensor_shape.TensorShape(tensor_util.constant_value(
-        self._override_batch_shape))
+    return tensor_shape.TensorShape(static_override)
 
   @distribution_util.AppendDocstring(
       """Samples from the base distribution and then passes through
@@ -350,20 +398,11 @@ class TransformedDistribution(distributions.Distribution):
                 bijector_kwargs=None, distribution_kwargs=None):
     bijector_kwargs = bijector_kwargs or {}
     distribution_kwargs = distribution_kwargs or {}
-    if (self._override_batch_shape is None and
-        self._override_event_shape is None):
-      sample_shape = [n]
-    else:
-      if (self._override_batch_shape is not None and
-          self._override_event_shape is not None):
-        sample_shape = [[n],
-                        self._override_batch_shape,
-                        self._override_event_shape]
-      elif self._override_batch_shape is not None:
-        sample_shape = [[n], self._override_batch_shape]
-      elif self._override_event_shape is not None:
-        sample_shape = [self._override_event_shape, [n]]
-      sample_shape = _concat_vectors(*sample_shape)
+    sample_shape = _concat_vectors(
+        distribution_util.pick_vector(self._needs_rotation, self._empty, [n]),
+        self._override_batch_shape,
+        self._override_event_shape,
+        distribution_util.pick_vector(self._needs_rotation, [n], self._empty))
     x = self.distribution.sample(sample_shape=sample_shape, seed=seed,
                                  **distribution_kwargs)
     x = self._maybe_rotate_dims(x)
@@ -383,7 +422,7 @@ class TransformedDistribution(distributions.Distribution):
         y, **bijector_kwargs)
     x = self._maybe_rotate_dims(x, rotate_right=True)
     log_prob = self.distribution.log_prob(x, **distribution_kwargs)
-    if self._override_event_shape is not None:
+    if self._is_maybe_event_override:
       log_prob = math_ops.reduce_sum(log_prob, self._reduce_event_indices)
     return ildj + log_prob
 
@@ -401,14 +440,14 @@ class TransformedDistribution(distributions.Distribution):
         y, **bijector_kwargs)
     x = self._maybe_rotate_dims(x, rotate_right=True)
     prob = self.distribution.prob(x, **distribution_kwargs)
-    if self._override_event_shape is not None:
+    if self._is_maybe_event_override:
       prob = math_ops.reduce_prod(prob, self._reduce_event_indices)
     return math_ops.exp(ildj) * prob
 
   @distribution_util.AppendDocstring(
       condition_kwargs_dict=_condition_kwargs_dict)
   def _log_cdf(self, y, bijector_kwargs=None, distribution_kwargs=None):
-    if self._override_event_shape is not None:
+    if self._is_maybe_event_override:
       raise NotImplementedError("log_cdf is not implemented when overriding "
                                 "event_shape")
     bijector_kwargs = bijector_kwargs or {}
@@ -419,7 +458,7 @@ class TransformedDistribution(distributions.Distribution):
   @distribution_util.AppendDocstring(
       condition_kwargs_dict=_condition_kwargs_dict)
   def _cdf(self, y, bijector_kwargs=None, distribution_kwargs=None):
-    if self._override_event_shape is not None:
+    if self._is_maybe_event_override:
       raise NotImplementedError("cdf is not implemented when overriding "
                                 "event_shape")
     bijector_kwargs = bijector_kwargs or {}
@@ -431,7 +470,7 @@ class TransformedDistribution(distributions.Distribution):
       condition_kwargs_dict=_condition_kwargs_dict)
   def _log_survival_function(self, y,
                              bijector_kwargs=None, distribution_kwargs=None):
-    if self._override_event_shape is not None:
+    if self._is_maybe_event_override:
       raise NotImplementedError("log_survival_function is not implemented when "
                                 "overriding event_shape")
     bijector_kwargs = bijector_kwargs or {}
@@ -443,7 +482,7 @@ class TransformedDistribution(distributions.Distribution):
       condition_kwargs_dict=_condition_kwargs_dict)
   def _survival_function(self, y,
                          bijector_kwargs=None, distribution_kwargs=None):
-    if self._override_event_shape is not None:
+    if self._is_maybe_event_override:
       raise NotImplementedError("survival_function is not implemented when "
                                 "overriding event_shape")
     bijector_kwargs = bijector_kwargs or {}
@@ -462,64 +501,77 @@ class TransformedDistribution(distributions.Distribution):
     #   E_X[(log o abs o det o J o g)(X)] = (log o abs o det o J o g)(c)
     # where c can by anything.
     entropy = self.distribution.entropy()
-    if self._override_event_shape is not None:
+    if self._is_maybe_event_override:
       # H[X] = sum_i H[X_i] if X_i are mutually independent.
       # This means that a reduce_sum is a simple rescaling.
       entropy *= math_ops.cast(math_ops.reduce_prod(self._override_event_shape),
                                dtype=entropy.dtype.base_dtype)
-    if self._override_batch_shape is not None:
-      entropy = array_ops.reshape(entropy,
-                                  _ones_like(self._override_batch_shape))
-      entropy = array_ops.tile(entropy, self._override_batch_shape)
+    if self._is_maybe_batch_override:
+      new_shape = array_ops.concat_v2([
+          _ones_like(self._override_batch_shape),
+          self.distribution.batch_shape()], 0)
+      entropy = array_ops.reshape(entropy, new_shape)
+      multiples = array_ops.concat_v2([
+          self._override_batch_shape,
+          _ones_like(self.distribution.batch_shape())], 0)
+      entropy = array_ops.tile(entropy, multiples)
     dummy = 0.
     return entropy - self.bijector.inverse_log_det_jacobian(dummy)
 
   def _maybe_validate_shape_override(self, override_shape, base_is_scalar,
-                                     validate_args):
+                                     validate_args, name):
     """Helper to __init__ which ensures override batch/event_shape are valid."""
+    if override_shape is None:
+      override_shape = []
+
+    override_shape = ops.convert_to_tensor(override_shape, dtype=dtypes.int32,
+                                           name=name)
+
     if not override_shape.dtype.is_integer:
       raise TypeError("shape override must be an integer")
+
+    override_is_scalar = _is_scalar_from_shape(override_shape)
+    if tensor_util.constant_value(override_is_scalar):
+      return self._empty
+
+    dynamic_assertions = []
 
     if override_shape.get_shape().ndims is not None:
       if override_shape.get_shape().ndims != 1:
         raise ValueError("shape override must be a vector")
     elif validate_args:
-      is_vector = check_ops.assert_rank(
+      dynamic_assertions += [check_ops.assert_rank(
           override_shape, 1,
-          message="shape override must be a vector")
-      override_shape = control_flow_ops.with_dependencies(
-          [is_vector], override_shape)
+          message="shape override must be a vector")]
 
-    if override_shape.get_shape().is_fully_defined():
-      if any(s <= 0 for s in override_shape.get_shape().as_list()):
+    if tensor_util.constant_value(override_shape) is not None:
+      if any(s <= 0 for s in tensor_util.constant_value(override_shape)):
         raise ValueError("shape override must have positive elements")
     elif validate_args:
-      is_positive = check_ops.assert_positive(
+      dynamic_assertions += [check_ops.assert_positive(
           override_shape,
-          message="shape override must have positive elements")
-      override_shape = control_flow_ops.with_dependencies(
-          [is_positive], override_shape)
+          message="shape override must have positive elements")]
 
-    if tensor_util.constant_value(base_is_scalar) is not None:
-      if not tensor_util.constant_value(base_is_scalar):
-        raise ValueError("shape override requires scalar distribution.")
+    is_both_nonscalar = _logical_and(_logical_not(base_is_scalar),
+                                     _logical_not(override_is_scalar))
+    if tensor_util.constant_value(is_both_nonscalar) is not None:
+      if tensor_util.constant_value(is_both_nonscalar):
+        raise ValueError("base distribution not scalar")
     elif validate_args:
-      is_scalar = check_ops.assert_equal(
-          base_is_scalar, True,
-          message="shape override requires scalar distribution.")
-      override_shape = control_flow_ops.with_dependencies(
-          [is_scalar], override_shape)
+      dynamic_assertions += [check_ops.assert_equal(
+          is_both_nonscalar, False,
+          message="base distribution not scalar")]
 
-    return override_shape
+    if not dynamic_assertions:
+      return override_shape
+    return control_flow_ops.with_dependencies(
+        dynamic_assertions, override_shape)
 
   def _maybe_rotate_dims(self, x, rotate_right=False):
     """Helper which rolls left event_dims left or right event_dims right."""
     if tensor_util.constant_value(self._needs_rotation) is False:
       return x
     ndims = array_ops.rank(x)
-    n = _pick_scalar_condition(self._needs_rotation,
-                               self._override_event_ndims, 0)
-    if rotate_right:
-      n = ndims - n
+    n = (ndims - self._rotate_ndims) if rotate_right else self._rotate_ndims
     return array_ops.transpose(
         x, _concat_vectors(math_ops.range(n, ndims), math_ops.range(0, n)))

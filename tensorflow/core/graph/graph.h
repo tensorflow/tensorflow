@@ -263,7 +263,7 @@ class Graph {
   explicit Graph(const OpRegistryInterface* registry);
   ~Graph();
 
-  static const int kControlSlot = -1;
+  static const int kControlSlot;
 
   // The GraphDef version range of this graph (see graph.proto).
   const VersionDef& versions() const { return versions_; }

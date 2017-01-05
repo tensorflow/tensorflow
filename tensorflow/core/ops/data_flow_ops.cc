@@ -251,6 +251,41 @@ shared_name: If non-empty, this queue will be shared under the given name
   across multiple sessions.
 )doc");
 
+REGISTER_OP("RandomShuffleQueueV2")
+    .Output("handle: resource")
+    .Attr("component_types: list(type) >= 1")
+    .Attr("shapes: list(shape) >= 0 = []")
+    .Attr("capacity: int = -1")
+    .Attr("min_after_dequeue: int = 0")
+    .Attr("seed: int = 0")
+    .Attr("seed2: int = 0")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+A queue that randomizes the order of elements.
+
+handle: The handle to the queue.
+component_types: The type of each component in a value.
+shapes: The shape of each component in a value. The length of this attr must
+  be either 0 or the same as the length of component_types. If the length of
+  this attr is 0, the shapes of queue elements are not constrained, and
+  only one element may be dequeued at a time.
+capacity: The upper bound on the number of elements in this queue.
+  Negative numbers mean no limit.
+min_after_dequeue: Dequeue will block unless there would be this
+  many elements after the dequeue or the queue is closed. This
+  ensures a minimum level of mixing of elements.
+seed: If either seed or seed2 is set to be non-zero, the random number
+  generator is seeded by the given seed.  Otherwise, a random seed is used.
+seed2: A second seed to avoid seed collision.
+container: If non-empty, this queue is placed in the given container.
+        Otherwise, a default container is used.
+shared_name: If non-empty, this queue will be shared under the given name
+  across multiple sessions.
+)doc");
+
 REGISTER_OP("FIFOQueue")
     .Output("handle: Ref(string)")
     .Attr("component_types: list(type) >= 1")
@@ -277,6 +312,32 @@ shared_name: If non-empty, this queue will be shared under the given name
   across multiple sessions.
 )doc");
 
+REGISTER_OP("FIFOQueueV2")
+    .Output("handle: resource")
+    .Attr("component_types: list(type) >= 1")
+    .Attr("shapes: list(shape) >= 0 = []")
+    .Attr("capacity: int = -1")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+A queue that produces elements in first-in first-out order.
+
+handle: The handle to the queue.
+component_types: The type of each component in a value.
+shapes: The shape of each component in a value. The length of this attr must
+  be either 0 or the same as the length of component_types. If the length of
+  this attr is 0, the shapes of queue elements are not constrained, and
+  only one element may be dequeued at a time.
+capacity: The upper bound on the number of elements in this queue.
+  Negative numbers mean no limit.
+container: If non-empty, this queue is placed in the given container.
+        Otherwise, a default container is used.
+shared_name: If non-empty, this queue will be shared under the given name
+  across multiple sessions.
+)doc");
+
 REGISTER_OP("PaddingFIFOQueue")
     .Output("handle: Ref(string)")
     .Attr("component_types: list(type) >= 1")
@@ -286,6 +347,40 @@ REGISTER_OP("PaddingFIFOQueue")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
     .SetShapeFn(TwoElementOutput)
+    .Doc(R"doc(
+A queue that produces elements in first-in first-out order.
+
+Variable-size shapes are allowed by setting the corresponding shape dimensions
+to 0 in the shape attr.  In this case DequeueMany will pad up to the maximum
+size of any given element in the minibatch.  See below for details.
+
+handle: The handle to the queue.
+component_types: The type of each component in a value.
+shapes: The shape of each component in a value. The length of this attr must
+  be either 0 or the same as the length of component_types.
+  Shapes of fixed rank but variable size are allowed by setting
+  any shape dimension to -1.  In this case, the inputs' shape may vary along
+  the given dimension, and DequeueMany will pad the given dimension with
+  zeros up to the maximum shape of all elements in the given batch.
+  If the length of this attr is 0, different queue elements may have
+  different ranks and shapes, but only one element may be dequeued at a time.
+capacity: The upper bound on the number of elements in this queue.
+  Negative numbers mean no limit.
+container: If non-empty, this queue is placed in the given container.
+  Otherwise, a default container is used.
+shared_name: If non-empty, this queue will be shared under the given name
+  across multiple sessions.
+)doc");
+
+REGISTER_OP("PaddingFIFOQueueV2")
+    .Output("handle: resource")
+    .Attr("component_types: list(type) >= 1")
+    .Attr("shapes: list(shape) >= 0 = []")
+    .Attr("capacity: int = -1")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 A queue that produces elements in first-in first-out order.
 
@@ -343,6 +438,45 @@ shared_name: If non-empty, this queue will be shared under the given name
   across multiple sessions.
 )doc");
 
+REGISTER_OP("PriorityQueueV2")
+    .Output("handle: resource")
+    .Attr("component_types: list(type) >= 0 = []")
+    .Attr("shapes: list(shape) >= 0")
+    .Attr("capacity: int = -1")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+A queue that produces elements sorted by the first component value.
+
+Note that the PriorityQueue requires the first component of any element
+to be a scalar int64, in addition to the other elements declared by
+component_types.  Therefore calls to Enqueue and EnqueueMany (resp. Dequeue
+and DequeueMany) on a PriorityQueue will all require (resp. output) one extra
+entry in their input (resp. output) lists.
+
+handle: The handle to the queue.
+component_types: The type of each component in a value.
+shapes: The shape of each component in a value. The length of this attr must
+  be either 0 or the same as the length of component_types. If the length of
+  this attr is 0, the shapes of queue elements are not constrained, and
+  only one element may be dequeued at a time.
+capacity: The upper bound on the number of elements in this queue.
+  Negative numbers mean no limit.
+container: If non-empty, this queue is placed in the given container.
+  Otherwise, a default container is used.
+shared_name: If non-empty, this queue will be shared under the given name
+  across multiple sessions.
+)doc");
+
+REGISTER_OP("FakeQueue")
+    .Input("resource: resource")
+    .Output("handle: Ref(string)")
+    .SetIsStateful()
+    .SetShapeFn(TwoElementOutput)
+    .Doc("Deprecated. Do not use.");
+
 REGISTER_OP("QueueEnqueue")
     .Input("handle: Ref(string)")
     .Input("components: Tcomponents")
@@ -365,8 +499,57 @@ timeout_ms: If the queue is full, this operation will block for up to
   Note: This option is not supported yet.
 )doc");
 
+REGISTER_OP("QueueEnqueueV2")
+    .Input("handle: resource")
+    .Input("components: Tcomponents")
+    .Attr("Tcomponents: list(type) >= 1")
+    .Attr("timeout_ms: int = -1")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(R"doc(
+Enqueues a tuple of one or more tensors in the given queue.
+
+The components input has k elements, which correspond to the components of
+tuples stored in the given queue.
+
+N.B. If the queue is full, this operation will block until the given
+element has been enqueued (or 'timeout_ms' elapses, if specified).
+
+handle: The handle to a queue.
+components: One or more tensors from which the enqueued tensors should be taken.
+timeout_ms: If the queue is full, this operation will block for up to
+  timeout_ms milliseconds.
+  Note: This option is not supported yet.
+)doc");
+
 REGISTER_OP("QueueEnqueueMany")
     .Input("handle: Ref(string)")
+    .Input("components: Tcomponents")
+    .Attr("Tcomponents: list(type) >= 1")
+    .Attr("timeout_ms: int = -1")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(R"doc(
+Enqueues zero or more tuples of one or more tensors in the given queue.
+
+This operation slices each component tensor along the 0th dimension to
+make multiple queue elements. All of the tuple components must have the
+same size in the 0th dimension.
+
+The components input has k elements, which correspond to the components of
+tuples stored in the given queue.
+
+N.B. If the queue is full, this operation will block until the given
+elements have been enqueued (or 'timeout_ms' elapses, if specified).
+
+handle: The handle to a queue.
+components: One or more tensors from which the enqueued tensors should
+  be taken.
+timeout_ms: If the queue is too full, this operation will block for up
+  to timeout_ms milliseconds.
+  Note: This option is not supported yet.
+)doc");
+
+REGISTER_OP("QueueEnqueueManyV2")
+    .Input("handle: resource")
     .Input("components: Tcomponents")
     .Attr("Tcomponents: list(type) >= 1")
     .Attr("timeout_ms: int = -1")
@@ -416,8 +599,65 @@ timeout_ms: If the queue is empty, this operation will block for up to
   Note: This option is not supported yet.
 )doc");
 
+REGISTER_OP("QueueDequeueV2")
+    .Input("handle: resource")
+    .Output("components: component_types")
+    .Attr("component_types: list(type) >= 1")
+    .Attr("timeout_ms: int = -1")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(R"doc(
+Dequeues a tuple of one or more tensors from the given queue.
+
+This operation has k outputs, where k is the number of components
+in the tuples stored in the given queue, and output i is the ith
+component of the dequeued tuple.
+
+N.B. If the queue is empty, this operation will block until an element
+has been dequeued (or 'timeout_ms' elapses, if specified).
+
+handle: The handle to a queue.
+components: One or more tensors that were dequeued as a tuple.
+component_types: The type of each component in a tuple.
+timeout_ms: If the queue is empty, this operation will block for up to
+  timeout_ms milliseconds.
+  Note: This option is not supported yet.
+)doc");
+
 REGISTER_OP("QueueDequeueMany")
     .Input("handle: Ref(string)")
+    .Input("n: int32")
+    .Output("components: component_types")
+    .Attr("component_types: list(type) >= 1")
+    .Attr("timeout_ms: int = -1")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(R"doc(
+Dequeues n tuples of one or more tensors from the given queue.
+
+If the queue is closed and there are fewer than n elements, then an
+OutOfRange error is returned.
+
+This operation concatenates queue-element component tensors along the
+0th dimension to make a single component tensor.  All of the components
+in the dequeued tuple will have size n in the 0th dimension.
+
+This operation has k outputs, where k is the number of components in
+the tuples stored in the given queue, and output i is the ith
+component of the dequeued tuple.
+
+N.B. If the queue is empty, this operation will block until n elements
+have been dequeued (or 'timeout_ms' elapses, if specified).
+
+handle: The handle to a queue.
+n: The number of tuples to dequeue.
+components: One or more tensors that were dequeued as a tuple.
+component_types: The type of each component in a tuple.
+timeout_ms: If the queue has fewer than n elements, this operation
+  will block for up to timeout_ms milliseconds.
+  Note: This option is not supported yet.
+)doc");
+
+REGISTER_OP("QueueDequeueManyV2")
+    .Input("handle: resource")
     .Input("n: int32")
     .Output("components: component_types")
     .Attr("component_types: list(type) >= 1")
@@ -486,9 +726,64 @@ timeout_ms: If the queue has fewer than n elements, this operation
   Note: This option is not supported yet.
 )doc");
 
+REGISTER_OP("QueueDequeueUpToV2")
+    .Input("handle: resource")
+    .Input("n: int32")
+    .Output("components: component_types")
+    .Attr("component_types: list(type) >= 1")
+    .Attr("timeout_ms: int = -1")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(R"doc(
+Dequeues n tuples of one or more tensors from the given queue.
+
+This operation is not supported by all queues.  If a queue does not support
+DequeueUpTo, then an Unimplemented error is returned.
+
+If the queue is closed and there are more than 0 but less than n elements
+remaining, then instead of returning an OutOfRange error like
+QueueDequeueMany, less than `n` elements are returned immediately.  If the queue
+is closed and there are 0 elements left in the queue, then an OutOfRange
+error is returned just like in QueueDequeueMany.  Otherwise the behavior
+is identical to QueueDequeueMany:
+
+This operation concatenates queue-element component tensors along the
+0th dimension to make a single component tensor.  All of the components
+in the dequeued tuple will have size n in the 0th dimension.
+
+This operation has k outputs, where k is the number of components in
+the tuples stored in the given queue, and output i is the ith
+component of the dequeued tuple.
+
+handle: The handle to a queue.
+n: The number of tuples to dequeue.
+components: One or more tensors that were dequeued as a tuple.
+component_types: The type of each component in a tuple.
+timeout_ms: If the queue has fewer than n elements, this operation
+  will block for up to timeout_ms milliseconds.
+  Note: This option is not supported yet.
+)doc");
+
 REGISTER_OP("QueueClose")
     .Input("handle: Ref(string)")
     .SetShapeFn(TwoElementVectorInputsAndScalarOutputs)
+    .Attr("cancel_pending_enqueues: bool = false")
+    .Doc(R"doc(
+Closes the given queue.
+
+This operation signals that no more elements will be enqueued in the
+given queue. Subsequent Enqueue(Many) operations will fail.
+Subsequent Dequeue(Many) operations will continue to succeed if
+sufficient elements remain in the queue. Subsequent Dequeue(Many)
+operations that would block will fail immediately.
+
+handle: The handle to a queue.
+cancel_pending_enqueues: If true, all pending enqueue requests that are
+  blocked on the given queue will be cancelled.
+)doc");
+
+REGISTER_OP("QueueCloseV2")
+    .Input("handle: resource")
+    .SetShapeFn(shape_inference::NoOutputs)
     .Attr("cancel_pending_enqueues: bool = false")
     .Doc(R"doc(
 Closes the given queue.
@@ -508,6 +803,17 @@ REGISTER_OP("QueueSize")
     .Input("handle: Ref(string)")
     .Output("size: int32")
     .SetShapeFn(TwoElementVectorInputsAndScalarOutputs)
+    .Doc(R"doc(
+Computes the number of elements in the given queue.
+
+handle: The handle to a queue.
+size: The number of elements in the given queue.
+)doc");
+
+REGISTER_OP("QueueSizeV2")
+    .Input("handle: resource")
+    .Output("size: int32")
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Computes the number of elements in the given queue.
 

@@ -205,8 +205,8 @@ class QueueBase(object):
     reduced_shapes = [
         six.moves.reduce(_shape_common, s) for s in zip(*queue_shapes)]
 
-    queue_refs = [x.queue_ref for x in queues]
-    selected_queue = control_flow_ops.ref_select(index, queue_refs)
+    queue_refs = array_ops.stack([x.queue_ref for x in queues])
+    selected_queue = array_ops.gather(queue_refs, index)
     return QueueBase(dtypes=dtypes, shapes=reduced_shapes, names=names,
                      queue_ref=selected_queue)
 
@@ -326,7 +326,12 @@ class QueueBase(object):
       for val, shape in zip(vals, self._shapes):
         val.get_shape().assert_is_compatible_with(shape)
 
-      return gen_data_flow_ops._queue_enqueue(self._queue_ref, vals, name=scope)
+      if self._queue_ref.dtype == _dtypes.resource:
+        return gen_data_flow_ops._queue_enqueue_v2(
+            self._queue_ref, vals, name=scope)
+      else:
+        return gen_data_flow_ops._queue_enqueue(
+            self._queue_ref, vals, name=scope)
 
   def enqueue_many(self, vals, name=None):
     """Enqueues zero or more elements to this queue.
@@ -367,7 +372,7 @@ class QueueBase(object):
             val.get_shape().with_rank_at_least(1)[0])
         val.get_shape()[1:].assert_is_compatible_with(shape)
 
-      return gen_data_flow_ops._queue_enqueue_many(
+      return gen_data_flow_ops._queue_enqueue_many_v2(
           self._queue_ref, vals, name=scope)
 
   def _dequeue_return_value(self, tensors):
@@ -415,8 +420,12 @@ class QueueBase(object):
     """
     if name is None:
       name = "%s_Dequeue" % self._name
-    ret = gen_data_flow_ops._queue_dequeue(
-        self._queue_ref, self._dtypes, name=name)
+    if self._queue_ref.dtype == _dtypes.resource:
+      ret = gen_data_flow_ops._queue_dequeue_v2(
+          self._queue_ref, self._dtypes, name=name)
+    else:
+      ret = gen_data_flow_ops._queue_dequeue(
+          self._queue_ref, self._dtypes, name=name)
 
     # NOTE(mrry): Not using a shape function because we need access to
     # the `QueueBase` object.
@@ -454,7 +463,7 @@ class QueueBase(object):
     if name is None:
       name = "%s_DequeueMany" % self._name
 
-    ret = gen_data_flow_ops._queue_dequeue_many(
+    ret = gen_data_flow_ops._queue_dequeue_many_v2(
         self._queue_ref, n=n, component_types=self._dtypes, name=name)
 
     # NOTE(mrry): Not using a shape function because we need access to
@@ -495,7 +504,7 @@ class QueueBase(object):
     if name is None:
       name = "%s_DequeueUpTo" % self._name
 
-    ret = gen_data_flow_ops._queue_dequeue_up_to(
+    ret = gen_data_flow_ops._queue_dequeue_up_to_v2(
         self._queue_ref, n=n, component_types=self._dtypes, name=name)
 
     # NOTE(mrry): Not using a shape function because we need access to
@@ -529,9 +538,14 @@ class QueueBase(object):
     """
     if name is None:
       name = "%s_Close" % self._name
-    return gen_data_flow_ops._queue_close(
-        self._queue_ref, cancel_pending_enqueues=cancel_pending_enqueues,
-        name=name)
+    if self._queue_ref.dtype == _dtypes.resource:
+      return gen_data_flow_ops._queue_close_v2(
+          self._queue_ref, cancel_pending_enqueues=cancel_pending_enqueues,
+          name=name)
+    else:
+      return gen_data_flow_ops._queue_close(
+          self._queue_ref, cancel_pending_enqueues=cancel_pending_enqueues,
+          name=name)
 
   def size(self, name=None):
     """Compute the number of elements in this queue.
@@ -544,7 +558,10 @@ class QueueBase(object):
     """
     if name is None:
       name = "%s_Size" % self._name
-    return gen_data_flow_ops._queue_size(self._queue_ref, name=name)
+    if self._queue_ref.dtype == _dtypes.resource:
+      return gen_data_flow_ops._queue_size_v2(self._queue_ref, name=name)
+    else:
+      return gen_data_flow_ops._queue_size(self._queue_ref, name=name)
 
 
 class RandomShuffleQueue(QueueBase):
@@ -614,7 +631,7 @@ class RandomShuffleQueue(QueueBase):
       # the id of the last op created.)
       string = (str(seed1) + shared_name).encode("utf-8")
       seed2 = int(hashlib.md5(string).hexdigest()[:8], 16) & 0x7FFFFFFF
-    queue_ref = gen_data_flow_ops._random_shuffle_queue(
+    queue_ref = gen_data_flow_ops._random_shuffle_queue_v2(
         component_types=dtypes, shapes=shapes, capacity=capacity,
         min_after_dequeue=min_after_dequeue, seed=seed1, seed2=seed2,
         shared_name=shared_name, name=name)
@@ -665,7 +682,7 @@ class FIFOQueue(QueueBase):
     dtypes = _as_type_list(dtypes)
     shapes = _as_shape_list(shapes, dtypes)
     names = _as_name_list(names, dtypes)
-    queue_ref = gen_data_flow_ops._fifo_queue(
+    queue_ref = gen_data_flow_ops._fifo_queue_v2(
         component_types=dtypes, shapes=shapes, capacity=capacity,
         shared_name=shared_name, name=name)
 
@@ -732,7 +749,7 @@ class PaddingFIFOQueue(QueueBase):
                        "but received %d dtypes and %d shapes."
                        % (len(dtypes), len(shapes)))
 
-    queue_ref = gen_data_flow_ops._padding_fifo_queue(
+    queue_ref = gen_data_flow_ops._padding_fifo_queue_v2(
         component_types=dtypes, shapes=shapes, capacity=capacity,
         shared_name=shared_name, name=name)
 
@@ -788,7 +805,7 @@ class PriorityQueue(QueueBase):
     types = _as_type_list(types)
     shapes = _as_shape_list(shapes, types)
 
-    queue_ref = gen_data_flow_ops._priority_queue(
+    queue_ref = gen_data_flow_ops._priority_queue_v2(
         component_types=types, shapes=shapes, capacity=capacity,
         shared_name=shared_name, name=name)
 

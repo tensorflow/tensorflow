@@ -338,21 +338,27 @@ Constructs an `Estimator` instance.
 
 *  <b>`model_fn`</b>: Model function. Follows the signature:
     * Args:
-      * `features` are single `Tensor` or `dict` of `Tensor`s
+      * `features`: single `Tensor` or `dict` of `Tensor`s
              (depending on data passed to `fit`),
-      * `labels` are `Tensor` or `dict` of `Tensor`s (for multi-head
+      * `labels`: `Tensor` or `dict` of `Tensor`s (for multi-head
              models). If mode is `ModeKeys.INFER`, `labels=None` will be
              passed. If the `model_fn`'s signature does not accept
              `mode`, the `model_fn` must still be able to handle
              `labels=None`.
-      * `mode` specifies if this training, evaluation or
+      * `mode`: Optional. Specifies if this training, evaluation or
              prediction. See `ModeKeys`.
-      * `params` is a `dict` of hyperparameters.  Will receive what
+      * `params`: Optional `dict` of hyperparameters.  Will receive what
              is passed to Estimator in `params` parameter. This allows
              to configure Estimators from hyper parameter tuning.
-      * `config` is a Configuration object. Will receive what is passed to
-             Estimator in `config` parameter. This allows updating things in
-             your model_fn based on configuration such as num_ps_replicas.
+      * `config`: Optional configuration object. Will receive what is passed
+             to Estimator in `config` parameter, or the default `config`.
+             Allows updating things in your model_fn based on configuration
+             such as `num_ps_replicas`.
+      * `model_dir`: Optional directory where model parameters, graph etc
+             are saved. Will receive what is passed to Estimator in
+             `model_dir` parameter, or the default `model_dir`. Allows
+             updating things in your model_fn that expect model_dir, such as
+             training hooks.
 
     * Returns:
       `ModelFnOps`
@@ -371,6 +377,8 @@ Constructs an `Estimator` instance.
       * `(features, labels, mode) -> (predictions, loss, train_op)`
       * `(features, labels, mode, params) -> (predictions, loss, train_op)`
       * `(features, labels, mode, params, config) ->
+         (predictions, loss, train_op)`
+      * `(features, labels, mode, params, config, model_dir) ->
          (predictions, loss, train_op)`
 
 
@@ -772,7 +780,7 @@ Trains a model given training data `x` predictions and `y` labels.
 Interface for objects that are evaluatable by, e.g., `Experiment`.
 - - -
 
-#### `tf.contrib.learn.Evaluable.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None)` {#Evaluable.evaluate}
+#### `tf.contrib.learn.Evaluable.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None, hooks=None)` {#Evaluable.evaluate}
 
 Evaluates given model with provided evaluation data.
 
@@ -831,6 +839,8 @@ for which this evaluation was performed.
     different data sets, such as on training data vs test data.
 *  <b>`checkpoint_path`</b>: Path of a specific checkpoint to evaluate. If `None`, the
     latest checkpoint in `model_dir` is used.
+*  <b>`hooks`</b>: List of `SessionRunHook` subclass instances. Used for callbacks
+    inside the evaluation call.
 
 ##### Returns:
 
@@ -988,7 +998,7 @@ This method will be removed after the deprecation date. To inspect variables, us
 
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None)` {#DNNClassifier.evaluate}
+#### `tf.contrib.learn.DNNClassifier.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None, hooks=None)` {#DNNClassifier.evaluate}
 
 See evaluable.Evaluable. Note: Labels must be integer class indices.
 
@@ -1233,7 +1243,7 @@ Initializes a `DNNRegressor` instance.
 
 - - -
 
-#### `tf.contrib.learn.DNNRegressor.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None)` {#DNNRegressor.evaluate}
+#### `tf.contrib.learn.DNNRegressor.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None, hooks=None)` {#DNNRegressor.evaluate}
 
 See evaluable.Evaluable.
 
@@ -1450,7 +1460,7 @@ This method will be removed after the deprecation date. To inspect variables, us
 
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None)` {#LinearClassifier.evaluate}
+#### `tf.contrib.learn.LinearClassifier.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None, hooks=None)` {#LinearClassifier.evaluate}
 
 See evaluable.Evaluable. Note: Labels must be integer class indices.
 
@@ -1649,7 +1659,7 @@ This method will be removed after the deprecation date. To inspect variables, us
 
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None)` {#LinearRegressor.evaluate}
+#### `tf.contrib.learn.LinearRegressor.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None, hooks=None)` {#LinearRegressor.evaluate}
 
 See evaluable.Evaluable.
 

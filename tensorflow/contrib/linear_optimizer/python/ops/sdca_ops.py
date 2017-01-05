@@ -456,10 +456,10 @@ class SdcaModel(object):
           dtypes.float64)
 
       if self._options['loss_type'] == 'logistic_loss':
-        return math_ops.reduce_sum(
-            math_ops.multiply(
-                sigmoid_cross_entropy_with_logits(predictions, labels),
-                weights)) / math_ops.reduce_sum(weights)
+        return math_ops.reduce_sum(math_ops.multiply(
+            sigmoid_cross_entropy_with_logits(labels=labels,
+                                              logits=predictions),
+            weights)) / math_ops.reduce_sum(weights)
 
       if self._options['loss_type'] in ['hinge_loss', 'smooth_hinge_loss']:
         # hinge_loss = max{0, 1 - y_i w*x} where y_i \in {-1, 1}. So, we need to

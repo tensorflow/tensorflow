@@ -466,7 +466,7 @@ def _log_loss_with_two_classes(logits, labels):
     if len(labels.get_shape()) == 1:
       labels = array_ops.expand_dims(labels, dim=(1,))
     return nn.sigmoid_cross_entropy_with_logits(
-        logits, math_ops.to_float(labels), name=name)
+        labels=math_ops.to_float(labels), logits=logits, name=name)
 
 
 def _one_class_to_two_class_logits(logits):
@@ -669,7 +669,7 @@ def _softmax_cross_entropy_loss(logits, labels):
     if len(labels.get_shape()) == 2:
       labels = array_ops.squeeze(labels, squeeze_dims=(1,))
     return nn.sparse_softmax_cross_entropy_with_logits(
-        logits, labels, name=name)
+        labels=labels, logits=logits, name=name)
 
 
 class _MultiClassHead(_Head):
@@ -1461,7 +1461,7 @@ def _sigmoid_cross_entropy_loss(logits, labels):
                       (logits, labels)) as name:
     # sigmoid_cross_entropy_with_logits requires [batch_size, n_classes] labels.
     return nn.sigmoid_cross_entropy_with_logits(
-        logits, math_ops.to_float(labels), name=name)
+        labels=math_ops.to_float(labels), logits=logits, name=name)
 
 
 def _float_weights_or_none(weights):

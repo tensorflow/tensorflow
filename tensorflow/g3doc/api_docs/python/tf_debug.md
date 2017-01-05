@@ -169,6 +169,20 @@ Name of the debug op.
 
 - - -
 
+#### `tf_debug.DebugTensorDatum.dump_size_bytes` {#DebugTensorDatum.dump_size_bytes}
+
+Size of the dump file.
+
+Unit: byte.
+
+##### Returns:
+
+  If the dump file exists, size of the dump file, in bytes.
+  If the dump file does not exist, None.
+
+
+- - -
+
 #### `tf_debug.DebugTensorDatum.file_path` {#DebugTensorDatum.file_path}
 
 Path to the file which stores the value of the dumped tensor.
@@ -350,6 +364,31 @@ Find dumped tensor data by a certain predicate.
 
 - - -
 
+#### `tf_debug.DebugDumpDir.get_dump_sizes_bytes(node_name, output_slot, debug_op)` {#DebugDumpDir.get_dump_sizes_bytes}
+
+Get the sizes of the dump files for a debug-dumped tensor.
+
+Unit of the file size: byte.
+
+##### Args:
+
+
+*  <b>`node_name`</b>: (`str`) name of the node that the tensor is produced by.
+*  <b>`output_slot`</b>: (`int`) output slot index of tensor.
+*  <b>`debug_op`</b>: (`str`) name of the debug op.
+
+##### Returns:
+
+  (`list` of `int`): list of dump file sizes in bytes.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If the tensor watch key does not exist in the debug dump data.
+
+
+- - -
+
 #### `tf_debug.DebugDumpDir.get_rel_timestamps(node_name, output_slot, debug_op)` {#DebugDumpDir.get_rel_timestamps}
 
 Get the relative timestamp from for a debug-dumped tensor.
@@ -368,12 +407,12 @@ relative timestamps (`numpy.ndarray`) is returned.
 
 ##### Returns:
 
-  (list of int) list of relative timestamps.
+  (`list` of `int`) list of relative timestamps.
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If the tensor does not exist in the debub dump data.
+*  <b>`ValueError`</b>: If the tensor watch key does not exist in the debug dump data.
 
 
 - - -

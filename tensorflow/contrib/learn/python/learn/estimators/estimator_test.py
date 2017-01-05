@@ -38,6 +38,7 @@ from tensorflow.contrib import learn
 from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.layers.python.layers import feature_column as feature_column_lib
 from tensorflow.contrib.layers.python.layers import optimizers
+from tensorflow.contrib.learn.python.learn import experiment
 from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn import models
 from tensorflow.contrib.learn.python.learn import monitors as monitors_lib
@@ -258,6 +259,13 @@ class CheckCallsMonitor(monitors_lib.BaseMonitor):
 
 class EstimatorTest(test.TestCase):
 
+  def testExperimentIntegration(self):
+    exp = experiment.Experiment(
+        estimator=estimator.Estimator(model_fn=linear_model_fn),
+        train_input_fn=boston_input_fn,
+        eval_input_fn=boston_input_fn)
+    exp.test()
+
   def testModelFnArgs(self):
     expected_param = {'some_param': 'some_value'}
     expected_config = run_config.RunConfig()
@@ -275,6 +283,22 @@ class EstimatorTest(test.TestCase):
         model_fn=_argument_checker,
         params=expected_param,
         config=expected_config)
+    est.fit(input_fn=boston_input_fn, steps=1)
+
+  def testModelFnWithModelDir(self):
+    expected_param = {'some_param': 'some_value'}
+    expected_model_dir = tempfile.mkdtemp()
+    def _argument_checker(features, labels, mode, params, config=None,
+                          model_dir=None):
+      _, _, _ = features, labels, config
+      self.assertEqual(model_fn.ModeKeys.TRAIN, mode)
+      self.assertEqual(expected_param, params)
+      self.assertEqual(model_dir, expected_model_dir)
+      return constant_op.constant(0.), constant_op.constant(
+          0.), constant_op.constant(0.)
+    est = estimator.Estimator(model_fn=_argument_checker,
+                              params=expected_param,
+                              model_dir=expected_model_dir)
     est.fit(input_fn=boston_input_fn, steps=1)
 
   def testInvalidModelFn_no_train_op(self):
@@ -727,11 +751,27 @@ class EstimatorTest(test.TestCase):
     with self.assertRaises(ValueError):
       est.fit(input_fn=other_input_fn, steps=1)
 
-  def testMonitors(self):
+  def testMonitorsForFit(self):
     est = estimator.Estimator(model_fn=linear_model_fn)
     est.fit(input_fn=boston_input_fn,
             steps=21,
             monitors=[CheckCallsMonitor(expect_calls=21)])
+
+  def testHooksForEvaluate(self):
+    class CheckCallHook(session_run_hook.SessionRunHook):
+
+      def __init__(self):
+        self.run_count = 0
+
+      def before_run(self, run_context):
+        self.run_count += 1
+
+    est = learn.Estimator(model_fn=linear_model_fn)
+    est.fit(input_fn=boston_input_fn, steps=1)
+    hook = CheckCallHook()
+    est.evaluate(input_fn=boston_eval_fn, steps=3, hooks=[hook])
+
+    self.assertEqual(3, hook.run_count)
 
   def testSummaryWriting(self):
     est = estimator.Estimator(model_fn=linear_model_fn)

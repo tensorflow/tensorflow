@@ -118,7 +118,7 @@ def expectation_importance_sampler(f,
       `tf.contrib.distributions.Distribution`.
       `float64` `dtype` recommended.
       `log_p` and `q` should be supported on the same set.
-    z:  `Tensor` of samples from `q`, produced by `q.sample_n`.
+    z:  `Tensor` of samples from `q`, produced by `q.sample` for some `n`.
     n:  Integer `Tensor`.  Number of samples to generate if `z` is not provided.
     seed:  Python integer to seed the random number generator.
     name:  A name to give this `Op`.
@@ -195,7 +195,7 @@ def expectation_importance_sampler_logspace(
       `tf.contrib.distributions.Distribution`.
       `float64` `dtype` recommended.
       `log_p` and `q` should be supported on the same set.
-    z:  `Tensor` of samples from `q`, produced by `q.sample_n`.
+    z:  `Tensor` of samples from `q`, produced by `q.sample` for some `n`.
     n:  Integer `Tensor`.  Number of samples to generate if `z` is not provided.
     seed:  Python integer to seed the random number generator.
     name:  A name to give this `Op`.
@@ -254,7 +254,7 @@ def expectation(f, p, z=None, n=None, seed=None, name='expectation'):
   Args:
     f: Callable mapping samples from `p` to `Tensors`.
     p:  `tf.contrib.distributions.Distribution`.
-    z:  `Tensor` of samples from `p`, produced by `p.sample_n`.
+    z:  `Tensor` of samples from `p`, produced by `p.sample` for some `n`.
     n:  Integer `Tensor`.  Number of samples to generate if `z` is not provided.
     seed:  Python integer to seed the random number generator.
     name:  A name to give this `Op`.
@@ -314,6 +314,6 @@ def _get_samples(dist, z, n, seed):
           'Must specify exactly one of arguments "n" and "z".  Found: '
           'n = %s, z = %s' % (n, z))
     if n is not None:
-      return dist.sample_n(n=n, seed=seed)
+      return dist.sample(n, seed=seed)
     else:
       return ops.convert_to_tensor(z, name='z')

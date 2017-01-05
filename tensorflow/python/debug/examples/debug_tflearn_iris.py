@@ -94,18 +94,18 @@ def main(_):
       n_classes=3,
       model_dir=model_dir)
 
-  monitors = [tf_debug.LocalCLIDebugHook()] if FLAGS.debug else None
+  hooks = [tf_debug.LocalCLIDebugHook()] if FLAGS.debug else None
 
   # Fit model.
   classifier.fit(x=training_set.data,
                  y=training_set.target,
                  steps=FLAGS.train_steps,
-                 monitors=monitors)
+                 monitors=hooks)
 
   # Evaluate accuracy.
-  accuracy_score = classifier.evaluate(
-      x=test_set.data, y=test_set.target)["accuracy"]
-  # TODO(cais): Add debug monitor for evaluate()
+  accuracy_score = classifier.evaluate(x=test_set.data,
+                                       y=test_set.target,
+                                       hooks=hooks)["accuracy"]
 
   print("After training %d steps, Accuracy = %f" %
         (FLAGS.train_steps, accuracy_score))

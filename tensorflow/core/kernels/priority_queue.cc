@@ -377,7 +377,11 @@ void PriorityQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
 }
 
 Status PriorityQueue::MatchesNodeDef(const NodeDef& node_def) {
-  TF_RETURN_IF_ERROR(MatchesNodeDefOp(node_def, "PriorityQueue"));
+  if (!MatchesNodeDefOp(node_def, "PriorityQueue").ok() &&
+      !MatchesNodeDefOp(node_def, "PriorityQueueV2").ok()) {
+    return errors::InvalidArgument("Expected PriorityQueue, found ",
+                                   node_def.op());
+  }
   TF_RETURN_IF_ERROR(MatchesNodeDefCapacity(node_def, capacity_));
   TF_RETURN_IF_ERROR(MatchesPriorityNodeDefTypes(node_def));
   TF_RETURN_IF_ERROR(MatchesPriorityNodeDefShapes(node_def));

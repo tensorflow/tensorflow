@@ -481,7 +481,7 @@ Returns the values captured so far.
 
 ### `class tf.contrib.learn.monitors.CheckpointSaver` {#CheckpointSaver}
 
-Saves checkpoints every N steps.
+Saves checkpoints every N steps or N seconds.
 - - -
 
 #### `tf.contrib.learn.monitors.CheckpointSaver.__init__(checkpoint_dir, save_secs=None, save_steps=None, saver=None, checkpoint_basename='model.ckpt', scaffold=None)` {#CheckpointSaver.__init__}

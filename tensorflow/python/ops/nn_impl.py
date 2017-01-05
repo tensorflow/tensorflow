@@ -96,7 +96,9 @@ def log_poisson_loss(targets, log_input, compute_full_loss=False, name=None):
     return result
 
 
-def sigmoid_cross_entropy_with_logits(logits, targets, name=None):
+def sigmoid_cross_entropy_with_logits(_sentinel=None,  # pylint: disable=invalid-name
+                                      labels=None, logits=None,
+                                      name=None):
   """Computes sigmoid cross entropy given `logits`.
 
   Measures the probability error in discrete classification tasks in which each
@@ -104,7 +106,7 @@ def sigmoid_cross_entropy_with_logits(logits, targets, name=None):
   perform multilabel classification where a picture can contain both an elephant
   and a dog at the same time.
 
-  For brevity, let `x = logits`, `z = targets`.  The logistic loss is
+  For brevity, let `x = logits`, `z = labels`.  The logistic loss is
 
         z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
       = z * -log(1 / (1 + exp(-x))) + (1 - z) * -log(exp(-x) / (1 + exp(-x)))
@@ -124,11 +126,12 @@ def sigmoid_cross_entropy_with_logits(logits, targets, name=None):
 
       max(x, 0) - x * z + log(1 + exp(-abs(x)))
 
-  `logits` and `targets` must have the same type and shape.
+  `logits` and `labels` must have the same type and shape.
 
   Args:
+    _sentinel: Used to prevent positional parameters. Internal, do not use.
+    labels: A `Tensor` of the same type and shape as `logits`.
     logits: A `Tensor` of type `float32` or `float64`.
-    targets: A `Tensor` of the same type and shape as `logits`.
     name: A name for the operation (optional).
 
   Returns:
@@ -136,16 +139,21 @@ def sigmoid_cross_entropy_with_logits(logits, targets, name=None):
     logistic losses.
 
   Raises:
-    ValueError: If `logits` and `targets` do not have the same shape.
+    ValueError: If `logits` and `labels` do not have the same shape.
   """
-  with ops.name_scope(name, "logistic_loss", [logits, targets]) as name:
+  # pylint: disable=protected-access
+  nn_ops._ensure_xent_args("sigmoid_cross_entropy_with_logits",
+                           _sentinel, labels, logits)
+  # pylint: enable=protected-access
+
+  with ops.name_scope(name, "logistic_loss", [logits, labels]) as name:
     logits = ops.convert_to_tensor(logits, name="logits")
-    targets = ops.convert_to_tensor(targets, name="targets")
+    labels = ops.convert_to_tensor(labels, name="labels")
     try:
-      targets.get_shape().merge_with(logits.get_shape())
+      labels.get_shape().merge_with(logits.get_shape())
     except ValueError:
-      raise ValueError("logits and targets must have the same shape (%s vs %s)"
-                       % (logits.get_shape(), targets.get_shape()))
+      raise ValueError("logits and labels must have the same shape (%s vs %s)"
+                       % (logits.get_shape(), labels.get_shape()))
 
     # The logistic loss formula from above is
     #   x - x * z + log(1 + exp(-x))
@@ -159,7 +167,7 @@ def sigmoid_cross_entropy_with_logits(logits, targets, name=None):
     cond = (logits >= zeros)
     relu_logits = array_ops.where(cond, logits, zeros)
     neg_abs_logits = array_ops.where(cond, -logits, logits)
-    return math_ops.add(relu_logits - logits * targets,
+    return math_ops.add(relu_logits - logits * labels,
                         math_ops.log1p(math_ops.exp(neg_abs_logits)),
                         name=name)
 
@@ -1095,7 +1103,7 @@ def nce_loss(weights,
       partition_strategy=partition_strategy,
       name=name)
   sampled_losses = sigmoid_cross_entropy_with_logits(
-      logits, labels, name="sampled_losses")
+      labels=labels, logits=logits, name="sampled_losses")
   # sampled_losses is batch_size x {true_loss, sampled_losses...}
   # We sum out true and sampled losses.
   return _sum_rows(sampled_losses)
@@ -1170,6 +1178,7 @@ def sampled_softmax_loss(weights,
       remove_accidental_hits=remove_accidental_hits,
       partition_strategy=partition_strategy,
       name=name)
-  sampled_losses = nn_ops.softmax_cross_entropy_with_logits(logits, labels)
+  sampled_losses = nn_ops.softmax_cross_entropy_with_logits(labels=labels,
+                                                            logits=logits)
   # sampled_losses is a [batch_size] tensor.
   return sampled_losses

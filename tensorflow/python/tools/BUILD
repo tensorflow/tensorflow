@@ -21,6 +21,7 @@ py_binary(
     srcs = ["freeze_graph.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
         "//tensorflow/python:framework",

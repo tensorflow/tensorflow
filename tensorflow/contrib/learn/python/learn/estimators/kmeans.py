@@ -166,16 +166,17 @@ class KMeansClustering(evaluable.Evaluable, trainable.Trainable):
                steps=None,
                metrics=None,
                name=None,
-               checkpoint_path=None):
+               checkpoint_path=None,
+               hooks=None):
     """See Evaluable.evaluate."""
-
     return self._estimator.evaluate(
         input_fn=input_fn,
         feed_fn=feed_fn,
         steps=steps,
         metrics=metrics,
         name=name,
-        checkpoint_path=checkpoint_path)
+        checkpoint_path=checkpoint_path,
+        hooks=hooks)
 
   def predict(self, input_fn=None, outputs=None, as_iterable=False):
     """See BaseEstimator.predict."""
@@ -235,7 +236,7 @@ class KMeansClustering(evaluable.Evaluable, trainable.Trainable):
     if isinstance(features, dict):
       keys = sorted(features.keys())
       with ops.colocate_with(features[keys[0]]):
-        features = array_ops.concat(1, [features[k] for k in keys])
+        features = array_ops.concat_v2([features[k] for k in keys], 1)
     return features
 
   def _get_model_function(self):

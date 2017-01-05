@@ -201,7 +201,7 @@ a = tf.constant([3.0, 3.0])
 x.initializer.run()
 
 # Add an op to subtract 'a' from 'x'.  Run it and print the result
-sub = tf.sub(x, a)
+sub = tf.subtract(x, a)
 print(sub.eval())
 # ==> [-2. -1.]
 
@@ -278,7 +278,7 @@ input1 = tf.constant([3.0])
 input2 = tf.constant([2.0])
 input3 = tf.constant([5.0])
 intermed = tf.add(input2, input3)
-mul = tf.mul(input1, intermed)
+mul = tf.multiply(input1, intermed)
 
 with tf.Session() as sess:
   result = sess.run([mul, intermed])
@@ -307,7 +307,7 @@ tf.placeholder() to create them:
 
 input1 = tf.placeholder(tf.float32)
 input2 = tf.placeholder(tf.float32)
-output = tf.mul(input1, input2)
+output = input1 * input2
 
 with tf.Session() as sess:
   print(sess.run([output], feed_dict={input1:[7.], input2:[2.]}))

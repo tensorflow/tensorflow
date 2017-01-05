@@ -143,7 +143,7 @@ def elbo_ratio(log_p,
       shape broadcastable to `q.batch_shape`.
       For example, `log_p` works "just like" `q.log_prob`.
     q:  `tf.contrib.distributions.Distribution`.
-    z:  `Tensor` of samples from `q`, produced by `q.sample_n`.
+    z:  `Tensor` of samples from `q`, produced by `q.sample(n)` for some `n`.
     n:  Integer `Tensor`.  Number of samples to generate if `z` is not provided.
     seed:  Python integer to seed the random number generator.
     form:  Either `ELBOForms.analytic_entropy` (use formula for entropy of `q`)
@@ -193,7 +193,7 @@ def entropy_shannon(p,
 
   Args:
     p:  `tf.contrib.distributions.Distribution`
-    z:  `Tensor` of samples from `p`, produced by `p.sample_n(n)` for some `n`.
+    z:  `Tensor` of samples from `p`, produced by `p.sample(n)` for some `n`.
     n:  Integer `Tensor`.  Number of samples to generate if `z` is not provided.
     seed:  Python integer to seed the random number generator.
     form:  Either `ELBOForms.analytic_entropy` (use formula for entropy of `q`)
@@ -326,7 +326,7 @@ def renyi_ratio(log_p, q, alpha, z=None, n=None, seed=None, name='renyi_ratio'):
        `float64` `dtype` recommended.
        `log_p` and `q` should be supported on the same set.
     alpha:  `Tensor` with shape `q.batch_shape` and values not equal to 1.
-    z:  `Tensor` of samples from `q`, produced by `q.sample_n`.
+    z:  `Tensor` of samples from `q`, produced by `q.sample` for some `n`.
     n:  Integer `Tensor`.  The number of samples to use if `z` is not provided.
       Note that this can be highly biased for small `n`, see docstring.
     seed:  Python integer to seed the random number generator.

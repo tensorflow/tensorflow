@@ -557,6 +557,9 @@ def parse_single_example(serialized, features, name=None, example_names=None):
   the first (`batch_size`) entry of the shape vector is removed (it is now a
   single element vector).
 
+  One might see performance advantages by batching `Example` protos with
+  `parse_example` instead of using this function directly.
+
   Args:
     serialized: A scalar string Tensor, a single serialized Example.
       See `_parse_single_example_raw` documentation for more details.
