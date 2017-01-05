@@ -355,7 +355,7 @@ void Master::PartialRunSetup(const PartialRunSetupRequest* req,
   });
 }
 
-void Master::RunStep(CallOptions* opts, const RunStepRequest* req,
+void Master::RunStep(CallOptions* opts, const RunStepRequestWrapper* req,
                      RunStepResponse* resp, MyClosure done) {
   mu_.lock();
   uint64 start_time = env_->env->NowMicros();
@@ -369,7 +369,7 @@ void Master::RunStep(CallOptions* opts, const RunStepRequest* req,
   mu_.unlock();
 
   SchedClosure([this, start_time, session, opts, req, resp, done]() {
-    Status status = session->Run(opts, req, resp);
+    Status status = session->Run(opts, *req, resp);
     session->Unref();
     uint64 done_time = env_->env->NowMicros();
     done(status);
