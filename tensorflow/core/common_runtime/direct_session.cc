@@ -410,7 +410,7 @@ Status DirectSession::Run(const RunOptions& run_options,
   // Create a run state and start execution.
   Executor::Args args;
   args.step_id = step_id_counter_.fetch_add(1);
-  RunState run_state(input_tensor_names, output_names, args.step_id, &devices_);
+  RunState run_state(args.step_id, &devices_);
   run_state.rendez = new IntraProcessRendezvous(device_mgr_.get());
   CancellationManager step_cancellation_manager;
 
@@ -1170,10 +1170,10 @@ Status DirectSession::CreateGraphs(
   return ::tensorflow::Status::OK();
 }
 
-DirectSession::RunState::RunState(const std::vector<string>& input_names,
-                                  const std::vector<string>& output_names,
-                                  int64 step_id,
-                                  const std::vector<Device*>* devices)
+DirectSession::RunState::RunState(
+    const std::vector<string>& pending_input_names,
+    const std::vector<string>& pending_output_names, int64 step_id,
+    const std::vector<Device*>* devices)
     : step_container(step_id, [devices](const string& name) {
         for (auto d : *devices) {
           if (!d->resource_manager()->Cleanup(name).ok()) {
@@ -1182,13 +1182,17 @@ DirectSession::RunState::RunState(const std::vector<string>& input_names,
         }
       }) {
   // Initially all the feeds and fetches are pending.
-  for (auto& name : input_names) {
+  for (auto& name : pending_input_names) {
     pending_inputs.emplace(name);
   }
-  for (auto& name : output_names) {
+  for (auto& name : pending_output_names) {
     pending_outputs.emplace(name);
   }
 }
+
+DirectSession::RunState::RunState(int64 step_id,
+                                  const std::vector<Device*>* devices)
+    : RunState({}, {}, step_id, devices) {}
 
 DirectSession::RunState::~RunState() {
   if (rendez != nullptr) {
