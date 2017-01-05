@@ -27,8 +27,8 @@ class LossTest(tf.test.TestCase):
 
   def testSequenceLoss(self):
     with self.test_session() as sess:
-      with tf.variable_scope("root", initializer=
-                             tf.constant_initializer(0.5)) as varscope:
+      with tf.variable_scope("root",
+          initializer=tf.constant_initializer(0.5)) as varscope:
         batch_size = 2
         sequence_length = 3
         number_of_classes = 5
