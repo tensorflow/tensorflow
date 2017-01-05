@@ -521,7 +521,7 @@ var TF;
          * @param demoMode {boolean} Whether to modify urls for filesystem demo usage.
          */
         function router(dataDir, demoMode) {
-            if (dataDir === void 0) { dataDir = 'data'; }
+            if (dataDir === void 0) { dataDir = '/data'; }
             if (demoMode === void 0) { demoMode = false; }
             var clean = demoMode ? Backend.demoify : function (x) { return x; };
             if (dataDir[dataDir.length - 1] === '/') {
