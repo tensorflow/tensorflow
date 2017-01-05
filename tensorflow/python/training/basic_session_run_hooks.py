@@ -619,6 +619,32 @@ class GlobalStepWaiterHook(session_run_hook.SessionRunHook):
       time.sleep(0.5)
 
 
+class FinalOpsHook(session_run_hook.SessionRunHook):
+  """A run hook which evaluates `Tensors` at the end of a session."""
+
+  def __init__(self, final_ops, final_ops_feed_dict=None):
+    """Constructs the FinalOpHook with ops to run at the end of the session.
+
+    Args:
+      final_ops: A single `Tensor`, a list of `Tensors` or a dictionary of
+        names to `Tensors`.
+      final_ops_feed_dict: A feed dictionary to use when running
+        `final_ops_dict`.
+    """
+    self._final_ops = final_ops
+    self._final_ops_feed_dict = final_ops_feed_dict
+    self._final_ops_values = None
+
+  @property
+  def final_ops_values(self):
+    return self._final_ops_values
+
+  def end(self, session):
+    if self._final_ops is not None:
+      self._final_ops_values = session.run(self._final_ops,
+                                           feed_dict=self._final_ops_feed_dict)
+
+
 def _as_graph_element(obj):
   """Retrieves Graph element."""
   graph = ops.get_default_graph()
