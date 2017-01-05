@@ -1146,8 +1146,10 @@ TEST_F(SimplePlacerTest, TestGeneratorNodeFollowsConsumerNode) {
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
 
     // A variable is only on CPU
-    Node* var1_cpu = ops::SourceOp("VariableCPU", b.opts().WithName("var1_cpu"));
-    Node* var2_cpu = ops::SourceOp("VariableCPU", b.opts().WithName("var2_cpu"));
+    Node* var1_cpu =
+        ops::SourceOp("VariableCPU", b.opts().WithName("var1_cpu"));
+    Node* var2_cpu =
+        ops::SourceOp("VariableCPU", b.opts().WithName("var2_cpu"));
 
     // The constant to be assigned can be on both GPU or CPU.
     //
@@ -1177,8 +1179,10 @@ TEST_F(SimplePlacerTest, TestGeneratorNodeDoesntFollowNonColocatedConsumers) {
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
 
     // A variable is only on CPU
-    Node* var1_cpu = ops::SourceOp("VariableCPU", b.opts().WithName("var1_cpu"));
-    Node* var2_cpu = ops::SourceOp("VariableCPU", b.opts().WithName("var2_cpu"));
+    Node* var1_cpu =
+        ops::SourceOp("VariableCPU", b.opts().WithName("var1_cpu"));
+    Node* var2_cpu =
+        ops::SourceOp("VariableCPU", b.opts().WithName("var2_cpu"));
 
     // The constant to be assigned can be on both GPU or CPU.
     //
@@ -1193,42 +1197,16 @@ TEST_F(SimplePlacerTest, TestGeneratorNodeDoesntFollowNonColocatedConsumers) {
     TF_EXPECT_OK(BuildGraph(b, &g));
 
     GetNodeByName(g, "var1_cpu")
-    ->set_assigned_device_name("/job:a/replica:0/task:0/cpu:1");
+        ->set_assigned_device_name("/job:a/replica:0/task:0/cpu:1");
 
     GetNodeByName(g, "var2_cpu")
-    ->set_assigned_device_name("/job:a/replica:0/task:0/cpu:2");
+        ->set_assigned_device_name("/job:a/replica:0/task:0/cpu:2");
   }
 
   TF_EXPECT_OK(Place(&g));
   EXPECT_COLOCATED(g, "assign1", "var1_cpu");
   EXPECT_COLOCATED(g, "assign2", "var2_cpu");
   EXPECT_DEVICE_TYPE(g, "in", DEVICE_GPU);
-}
-
-// Test that a generator node follows its consumer (where there is
-// only one consumer).
-TEST_F(SimplePlacerTest, TestGeneratorFollowsSingleConsumer) {
-  Graph g(OpRegistry::Global());
-  {  // Scope for temporary variables used to construct g.
-    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
-
-    // A variable is only on CPU
-    Node* var1_cpu = ops::SourceOp("VariableCPU", b.opts().WithName("var1_cpu"));
-
-    // The constant to be assigned can be on both GPU or CPU.
-    //
-    // Because of the heuristic, it will follow the Variable onto the CPU
-    Node* input = ops::SourceOp("TestCPUGPUOutput", b.opts().WithName("in"));
-
-    // The assign is bound to CPU by the reference edge.
-    ops::BinaryOp("TestAssign", var1_cpu, input, b.opts().WithName("assign1"));
-
-    TF_EXPECT_OK(BuildGraph(b, &g));
-  }
-
-  TF_EXPECT_OK(Place(&g));
-  EXPECT_COLOCATED(g, "assign1", "var1_cpu");
-  EXPECT_COLOCATED(g, "assign1", "in");
 }
 
 }  // namespace

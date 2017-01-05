@@ -791,17 +791,12 @@ Status SimplePlacer::Run() {
       const string& output_device_name = output->assigned_device_name();
       it++;
 
-      bool all_consumers_on_same_device(true);
-      while (it != node->out_edges().end()) {
-        if ((*it)->dst()->assigned_device_name() != output_device_name) {
-          all_consumers_on_same_device = false;
-          break;
-        }
-        it++;
-      }
+      bool same_device = std::all_of(
+          it, node->out_edges().end(), [output_device_name](const Edge* e) {
+            return e->dst()->assigned_device_name() == output_device_name;
+          });
 
-      if (all_consumers_on_same_device &&
-          CanAssignToDevice(output_device_name, devices)) {
+      if (same_device && CanAssignToDevice(output_device_name, devices)) {
         assigned_device = output_device_name;
       }
     }
