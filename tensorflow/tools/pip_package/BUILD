@@ -58,14 +58,15 @@ py_binary(
         "//tensorflow/contrib/specs:all_files",
         "//tensorflow/contrib/tensor_forest:all_files",
         "//tensorflow/contrib/tensor_forest/hybrid:all_files",
-        "//tensorflow/examples/tutorials/mnist:package",
         "//tensorflow/python:util_example_parser_configuration",
         "//tensorflow/python/debug:all_files",
         "//tensorflow/python/saved_model:all_files",
         "//tensorflow/python/tools:all_files",
-        # The following two targets have an issue when archiving them into
-        # the python zip, exclude them for now.
+        # The following target has an issue when archiving them into the python
+        # zip, exclude them for now.
         # "//tensorflow/tensorboard",
+        # This package does not build. Exclude it in windows for now.
+        # "//tensorflow/examples/tutorials/mnist:package",
     ],
     srcs_version = "PY2AND3",
     deps = ["//tensorflow:tensorflow_py"],
