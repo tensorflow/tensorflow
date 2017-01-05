@@ -172,13 +172,17 @@ class GrpcMasterService : public AsyncServiceInterface {
   // RPC handler for running one step in a session.
   void RunStepHandler(MasterCall<RunStepRequest, RunStepResponse>* call) {
     CallOptions* call_opts = new CallOptions;
+    RunStepRequestWrapper* wrapped_request =
+        new ProtoRunStepRequest(&call->request);
     call->SetCancelCallback([call_opts]() { call_opts->StartCancel(); });
-    master_impl_->RunStep(call_opts, &call->request, &call->response,
-                          [call, call_opts](const Status& status) {
-                            call->ClearCancelCallback();
-                            delete call_opts;
-                            call->SendResponse(ToGrpcStatus(status));
-                          });
+    master_impl_->RunStep(
+        call_opts, wrapped_request, &call->response,
+        [call, call_opts, wrapped_request](const Status& status) {
+          call->ClearCancelCallback();
+          delete call_opts;
+          delete wrapped_request;
+          call->SendResponse(ToGrpcStatus(status));
+        });
     ENQUEUE_REQUEST(RunStep, true);
   }
 

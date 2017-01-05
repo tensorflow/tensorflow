@@ -18,14 +18,13 @@ licenses(["notice"])  # Apache 2.0
 package_group(
     name = "friends",
     packages = [
-        "//learning/deepmind/tensorflow/...",
+        "//learning/deepmind/...",
         "//tensorflow/...",
     ],
 )
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_not_windows",
     "tf_cc_test",
     "tf_cc_tests",
     "tf_copts",
@@ -477,6 +476,7 @@ cc_library(
         ":gather_nd_op",
         ":gather_op",
         ":identity_op",
+        ":inplace_ops",
         ":listdiff_op",
         ":matrix_band_part_op",
         ":matrix_diag_op",
@@ -652,6 +652,12 @@ tf_kernel_library(
     gpu_srcs = ["cuda_device_array.h"],
     prefix = "split_v_op",
     deps = ARRAY_DEPS + [":split_lib"],
+)
+
+tf_kernel_library(
+    name = "inplace_ops",
+    prefix = "inplace_ops",
+    deps = ARRAY_DEPS,
 )
 
 tf_kernel_library(
@@ -2390,6 +2396,8 @@ cc_library(
         ":batch_norm_op",
         ":bias_op",
         ":conv_ops",
+        ":depthwise_conv_grad_op",
+        ":depthwise_conv_op",
         ":dilation_ops",
         ":fused_batch_norm_op",
         ":in_topk_op",
@@ -2401,10 +2409,7 @@ cc_library(
         ":softsign_op",
         ":topk_op",
         ":xent_op",
-    ] + if_not_windows([
-        ":depthwise_conv_grad_op",
-        ":depthwise_conv_op",
-    ]),
+    ],
 )
 
 NN_DEPS = [

@@ -21,51 +21,57 @@ from __future__ import print_function
 import math
 import numpy as np
 from scipy import special
-import tensorflow as tf
 
 from tensorflow.contrib.distributions.python.ops import distribution_util
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
 
 
-class AssertCloseTest(tf.test.TestCase):
+class AssertCloseTest(test.TestCase):
 
   def testAssertCloseIntegerDtype(self):
     x = [1, 5, 10, 15, 20]
     y = x
     z = [2, 5, 10, 15, 20]
     with self.test_session():
-      with tf.control_dependencies([distribution_util.assert_close(x, y)]):
-        tf.identity(x).eval()
+      with ops.control_dependencies([distribution_util.assert_close(x, y)]):
+        array_ops.identity(x).eval()
 
-      with tf.control_dependencies([distribution_util.assert_close(y, x)]):
-        tf.identity(x).eval()
-
-      with self.assertRaisesOpError("Condition x ~= y"):
-        with tf.control_dependencies([distribution_util.assert_close(x, z)]):
-          tf.identity(x).eval()
+      with ops.control_dependencies([distribution_util.assert_close(y, x)]):
+        array_ops.identity(x).eval()
 
       with self.assertRaisesOpError("Condition x ~= y"):
-        with tf.control_dependencies([distribution_util.assert_close(y, z)]):
-          tf.identity(y).eval()
+        with ops.control_dependencies([distribution_util.assert_close(x, z)]):
+          array_ops.identity(x).eval()
+
+      with self.assertRaisesOpError("Condition x ~= y"):
+        with ops.control_dependencies([distribution_util.assert_close(y, z)]):
+          array_ops.identity(y).eval()
 
   def testAssertCloseNonIntegerDtype(self):
     x = np.array([1., 5, 10, 15, 20], dtype=np.float32)
     y = x + 1e-8
     z = [2., 5, 10, 15, 20]
     with self.test_session():
-      with tf.control_dependencies([distribution_util.assert_close(x, y)]):
-        tf.identity(x).eval()
+      with ops.control_dependencies([distribution_util.assert_close(x, y)]):
+        array_ops.identity(x).eval()
 
-      with tf.control_dependencies([distribution_util.assert_close(y, x)]):
-        tf.identity(x).eval()
-
-      with self.assertRaisesOpError("Condition x ~= y"):
-        with tf.control_dependencies([distribution_util.assert_close(x, z)]):
-          tf.identity(x).eval()
+      with ops.control_dependencies([distribution_util.assert_close(y, x)]):
+        array_ops.identity(x).eval()
 
       with self.assertRaisesOpError("Condition x ~= y"):
-        with tf.control_dependencies([distribution_util.assert_close(y, z)]):
-          tf.identity(y).eval()
+        with ops.control_dependencies([distribution_util.assert_close(x, z)]):
+          array_ops.identity(x).eval()
+
+      with self.assertRaisesOpError("Condition x ~= y"):
+        with ops.control_dependencies([distribution_util.assert_close(y, z)]):
+          array_ops.identity(y).eval()
 
   def testAssertCloseEpsilon(self):
     x = [0., 5, 10, 15, 20]
@@ -74,16 +80,16 @@ class AssertCloseTest(tf.test.TestCase):
     # x = z
     z = [1e-8, 5, 10, 15, 20]
     with self.test_session():
-      with tf.control_dependencies([distribution_util.assert_close(x, z)]):
-        tf.identity(x).eval()
+      with ops.control_dependencies([distribution_util.assert_close(x, z)]):
+        array_ops.identity(x).eval()
 
       with self.assertRaisesOpError("Condition x ~= y"):
-        with tf.control_dependencies([distribution_util.assert_close(x, y)]):
-          tf.identity(x).eval()
+        with ops.control_dependencies([distribution_util.assert_close(x, y)]):
+          array_ops.identity(x).eval()
 
       with self.assertRaisesOpError("Condition x ~= y"):
-        with tf.control_dependencies([distribution_util.assert_close(y, z)]):
-          tf.identity(y).eval()
+        with ops.control_dependencies([distribution_util.assert_close(y, z)]):
+          array_ops.identity(y).eval()
 
   def testAssertIntegerForm(self):
     # This should only be detected as an integer.
@@ -94,26 +100,26 @@ class AssertCloseTest(tf.test.TestCase):
     # This shouldn"t be detected as an integer.
     w = [1e-8, 5, 10, 15, 20]
     with self.test_session():
-      with tf.control_dependencies([distribution_util.assert_integer_form(x)]):
-        tf.identity(x).eval()
+      with ops.control_dependencies([distribution_util.assert_integer_form(x)]):
+        array_ops.identity(x).eval()
 
       with self.assertRaisesOpError("x has non-integer components"):
-        with tf.control_dependencies([
-            distribution_util.assert_integer_form(y)]):
-          tf.identity(y).eval()
+        with ops.control_dependencies(
+            [distribution_util.assert_integer_form(y)]):
+          array_ops.identity(y).eval()
 
       with self.assertRaisesOpError("x has non-integer components"):
-        with tf.control_dependencies([
-            distribution_util.assert_integer_form(z)]):
-          tf.identity(z).eval()
+        with ops.control_dependencies(
+            [distribution_util.assert_integer_form(z)]):
+          array_ops.identity(z).eval()
 
       with self.assertRaisesOpError("x has non-integer components"):
-        with tf.control_dependencies([
-            distribution_util.assert_integer_form(w)]):
-          tf.identity(w).eval()
+        with ops.control_dependencies(
+            [distribution_util.assert_integer_form(w)]):
+          array_ops.identity(w).eval()
 
 
-class GetLogitsAndProbTest(tf.test.TestCase):
+class GetLogitsAndProbTest(test.TestCase):
 
   def testGetLogitsAndProbImproperArguments(self):
     with self.test_session():
@@ -235,7 +241,7 @@ class GetLogitsAndProbTest(tf.test.TestCase):
       prob.eval()
 
 
-class LogCombinationsTest(tf.test.TestCase):
+class LogCombinationsTest(test.TestCase):
 
   def testLogCombinationsBinomial(self):
     n = [2, 5, 12, 15]
@@ -261,90 +267,111 @@ class LogCombinationsTest(tf.test.TestCase):
       self.assertEqual([2, 2], log_binom.get_shape())
 
 
-class DynamicShapeTest(tf.test.TestCase):
+class DynamicShapeTest(test.TestCase):
 
   def testSameDynamicShape(self):
     with self.test_session():
-      scalar = tf.constant(2.0)
-      scalar1 = tf.placeholder(dtype=tf.float32)
+      scalar = constant_op.constant(2.0)
+      scalar1 = array_ops.placeholder(dtype=dtypes.float32)
 
       vector = [0.3, 0.4, 0.5]
-      vector1 = tf.placeholder(dtype=tf.float32, shape=[None])
-      vector2 = tf.placeholder(dtype=tf.float32, shape=[None])
+      vector1 = array_ops.placeholder(dtype=dtypes.float32, shape=[None])
+      vector2 = array_ops.placeholder(dtype=dtypes.float32, shape=[None])
 
       multidimensional = [[0.3, 0.4], [0.2, 0.6]]
-      multidimensional1 = tf.placeholder(dtype=tf.float32, shape=[None, None])
-      multidimensional2 = tf.placeholder(dtype=tf.float32, shape=[None, None])
+      multidimensional1 = array_ops.placeholder(
+          dtype=dtypes.float32, shape=[None, None])
+      multidimensional2 = array_ops.placeholder(
+          dtype=dtypes.float32, shape=[None, None])
 
       # Scalar
-      self.assertTrue(distribution_util.same_dynamic_shape(
-          scalar, scalar1).eval({
-              scalar1: 2.0}))
+      self.assertTrue(
+          distribution_util.same_dynamic_shape(scalar, scalar1).eval({
+              scalar1: 2.0
+          }))
 
       # Vector
 
-      self.assertTrue(distribution_util.same_dynamic_shape(
-          vector, vector1).eval({
-              vector1: [2.0, 3.0, 4.0]}))
-      self.assertTrue(distribution_util.same_dynamic_shape(
-          vector1, vector2).eval({
+      self.assertTrue(
+          distribution_util.same_dynamic_shape(vector, vector1).eval({
+              vector1: [2.0, 3.0, 4.0]
+          }))
+      self.assertTrue(
+          distribution_util.same_dynamic_shape(vector1, vector2).eval({
               vector1: [2.0, 3.0, 4.0],
-              vector2: [2.0, 3.5, 6.0]}))
+              vector2: [2.0, 3.5, 6.0]
+          }))
 
       # Multidimensional
-      self.assertTrue(distribution_util.same_dynamic_shape(
-          multidimensional, multidimensional1).eval({
-              multidimensional1: [[2.0, 3.0], [3.0, 4.0]]}))
-      self.assertTrue(distribution_util.same_dynamic_shape(
-          multidimensional1, multidimensional2).eval({
-              multidimensional1: [[2.0, 3.0], [3.0, 4.0]],
-              multidimensional2: [[1.0, 3.5], [6.3, 2.3]]}))
-
+      self.assertTrue(
+          distribution_util.same_dynamic_shape(
+              multidimensional, multidimensional1).eval({
+                  multidimensional1: [[2.0, 3.0], [3.0, 4.0]]
+              }))
+      self.assertTrue(
+          distribution_util.same_dynamic_shape(
+              multidimensional1, multidimensional2).eval({
+                  multidimensional1: [[2.0, 3.0], [3.0, 4.0]],
+                  multidimensional2: [[1.0, 3.5], [6.3, 2.3]]
+              }))
 
       # Scalar, X
-      self.assertFalse(distribution_util.same_dynamic_shape(
-          scalar, vector1).eval({
-              vector1: [2.0, 3.0, 4.0]}))
-      self.assertFalse(distribution_util.same_dynamic_shape(
-          scalar1, vector1).eval({
+      self.assertFalse(
+          distribution_util.same_dynamic_shape(scalar, vector1).eval({
+              vector1: [2.0, 3.0, 4.0]
+          }))
+      self.assertFalse(
+          distribution_util.same_dynamic_shape(scalar1, vector1).eval({
               scalar1: 2.0,
-              vector1: [2.0, 3.0, 4.0]}))
-      self.assertFalse(distribution_util.same_dynamic_shape(
-          scalar, multidimensional1).eval({
-              multidimensional1: [[2.0, 3.0], [3.0, 4.0]]}))
-      self.assertFalse(distribution_util.same_dynamic_shape(
-          scalar1, multidimensional1).eval({
-              scalar1: 2.0,
-              multidimensional1: [[2.0, 3.0], [3.0, 4.0]]}))
+              vector1: [2.0, 3.0, 4.0]
+          }))
+      self.assertFalse(
+          distribution_util.same_dynamic_shape(scalar, multidimensional1).eval({
+              multidimensional1: [[2.0, 3.0], [3.0, 4.0]]
+          }))
+      self.assertFalse(
+          distribution_util.same_dynamic_shape(scalar1, multidimensional1).eval(
+              {
+                  scalar1: 2.0,
+                  multidimensional1: [[2.0, 3.0], [3.0, 4.0]]
+              }))
 
       # Vector, X
-      self.assertFalse(distribution_util.same_dynamic_shape(
-          vector, vector1).eval({
-              vector1: [2.0, 3.0]}))
-      self.assertFalse(distribution_util.same_dynamic_shape(
-          vector1, vector2).eval({
+      self.assertFalse(
+          distribution_util.same_dynamic_shape(vector, vector1).eval({
+              vector1: [2.0, 3.0]
+          }))
+      self.assertFalse(
+          distribution_util.same_dynamic_shape(vector1, vector2).eval({
               vector1: [2.0, 3.0, 4.0],
-              vector2: [6.0]}))
-      self.assertFalse(distribution_util.same_dynamic_shape(
-          vector, multidimensional1).eval({
-              multidimensional1: [[2.0, 3.0], [3.0, 4.0]]}))
-      self.assertFalse(distribution_util.same_dynamic_shape(
-          vector1, multidimensional1).eval({
-              vector1: [2.0, 3.0, 4.0],
-              multidimensional1: [[2.0, 3.0], [3.0, 4.0]]}))
+              vector2: [6.0]
+          }))
+      self.assertFalse(
+          distribution_util.same_dynamic_shape(vector, multidimensional1).eval({
+              multidimensional1: [[2.0, 3.0], [3.0, 4.0]]
+          }))
+      self.assertFalse(
+          distribution_util.same_dynamic_shape(vector1, multidimensional1).eval(
+              {
+                  vector1: [2.0, 3.0, 4.0],
+                  multidimensional1: [[2.0, 3.0], [3.0, 4.0]]
+              }))
 
       # Multidimensional, X
-      self.assertFalse(distribution_util.same_dynamic_shape(
-          multidimensional, multidimensional1).eval({
-              multidimensional1: [[1.0, 3.5, 5.0], [6.3, 2.3, 7.1]]}))
-      self.assertFalse(distribution_util.same_dynamic_shape(
-          multidimensional1, multidimensional2).eval({
-              multidimensional1: [[2.0, 3.0], [3.0, 4.0]],
-              multidimensional2: [[1.0, 3.5, 5.0], [6.3, 2.3, 7.1]]}))
+      self.assertFalse(
+          distribution_util.same_dynamic_shape(
+              multidimensional, multidimensional1).eval({
+                  multidimensional1: [[1.0, 3.5, 5.0], [6.3, 2.3, 7.1]]
+              }))
+      self.assertFalse(
+          distribution_util.same_dynamic_shape(
+              multidimensional1, multidimensional2).eval({
+                  multidimensional1: [[2.0, 3.0], [3.0, 4.0]],
+                  multidimensional2: [[1.0, 3.5, 5.0], [6.3, 2.3, 7.1]]
+              }))
 
 
-
-class RotateTransposeTest(tf.test.TestCase):
+class RotateTransposeTest(test.TestCase):
 
   def _np_rotate_transpose(self, x, shift):
     if not isinstance(x, np.ndarray):
@@ -353,52 +380,51 @@ class RotateTransposeTest(tf.test.TestCase):
 
   def testRollStatic(self):
     with self.test_session():
-      with self.assertRaisesRegexp(
-          ValueError, "None values not supported."):
+      with self.assertRaisesRegexp(ValueError, "None values not supported."):
         distribution_util.rotate_transpose(None, 1)
       for x in (np.ones(1), np.ones((2, 1)), np.ones((3, 2, 1))):
         for shift in np.arange(-5, 5):
           y = distribution_util.rotate_transpose(x, shift)
-          self.assertAllEqual(self._np_rotate_transpose(x, shift),
-                              y.eval())
-          self.assertAllEqual(np.roll(x.shape, shift),
-                              y.get_shape().as_list())
+          self.assertAllEqual(self._np_rotate_transpose(x, shift), y.eval())
+          self.assertAllEqual(np.roll(x.shape, shift), y.get_shape().as_list())
 
   def testRollDynamic(self):
     with self.test_session() as sess:
-      x = tf.placeholder(tf.float32)
-      shift = tf.placeholder(tf.int32)
-      for x_value in (np.ones(1, dtype=x.dtype.as_numpy_dtype()),
-                      np.ones((2, 1), dtype=x.dtype.as_numpy_dtype()),
-                      np.ones((3, 2, 1), dtype=x.dtype.as_numpy_dtype())):
+      x = array_ops.placeholder(dtypes.float32)
+      shift = array_ops.placeholder(dtypes.int32)
+      for x_value in (np.ones(
+          1, dtype=x.dtype.as_numpy_dtype()), np.ones(
+              (2, 1), dtype=x.dtype.as_numpy_dtype()), np.ones(
+                  (3, 2, 1), dtype=x.dtype.as_numpy_dtype())):
         for shift_value in np.arange(-5, 5):
           self.assertAllEqual(
               self._np_rotate_transpose(x_value, shift_value),
               sess.run(distribution_util.rotate_transpose(x, shift),
-                       feed_dict={x: x_value, shift: shift_value}))
+                       feed_dict={x: x_value,
+                                  shift: shift_value}))
 
 
-class PickVectorTest(tf.test.TestCase):
+class PickVectorTest(test.TestCase):
 
   def testCorrectlyPicksVector(self):
     with self.test_session():
       x = np.arange(10, 12)
       y = np.arange(15, 18)
-      self.assertAllEqual(
-          x, distribution_util.pick_vector(
-              tf.less(0, 5), x, y).eval())
-      self.assertAllEqual(
-          y, distribution_util.pick_vector(
-              tf.less(5, 0), x, y).eval())
-      self.assertAllEqual(
-          x, distribution_util.pick_vector(
-              tf.constant(True), x, y))  # No eval.
-      self.assertAllEqual(
-          y, distribution_util.pick_vector(
-              tf.constant(False), x, y))  # No eval.
+      self.assertAllEqual(x,
+                          distribution_util.pick_vector(
+                              math_ops.less(0, 5), x, y).eval())
+      self.assertAllEqual(y,
+                          distribution_util.pick_vector(
+                              math_ops.less(5, 0), x, y).eval())
+      self.assertAllEqual(x,
+                          distribution_util.pick_vector(
+                              constant_op.constant(True), x, y))  # No eval.
+      self.assertAllEqual(y,
+                          distribution_util.pick_vector(
+                              constant_op.constant(False), x, y))  # No eval.
 
 
-class FillLowerTriangularTest(tf.test.TestCase):
+class FillLowerTriangularTest(test.TestCase):
 
   def setUp(self):
     self._rng = np.random.RandomState(42)
@@ -416,7 +442,7 @@ class FillLowerTriangularTest(tf.test.TestCase):
 
   def testCorrectlyMakes1x1LowerTril(self):
     with self.test_session():
-      x = tf.convert_to_tensor(self._rng.randn(3, 1))
+      x = ops.convert_to_tensor(self._rng.randn(3, 1))
       expected = self._fill_lower_triangular(tensor_util.constant_value(x))
       actual = distribution_util.fill_lower_triangular(x, validate_args=True)
       self.assertAllEqual(expected.shape, actual.get_shape())
@@ -424,28 +450,29 @@ class FillLowerTriangularTest(tf.test.TestCase):
 
   def testCorrectlyMakesNoBatchLowerTril(self):
     with self.test_session():
-      x = tf.convert_to_tensor(self._rng.randn(10))
+      x = ops.convert_to_tensor(self._rng.randn(10))
       expected = self._fill_lower_triangular(tensor_util.constant_value(x))
       actual = distribution_util.fill_lower_triangular(x, validate_args=True)
       self.assertAllEqual(expected.shape, actual.get_shape())
       self.assertAllEqual(expected, actual.eval())
-      g = tf.gradients(distribution_util.fill_lower_triangular(x), x)
+      g = gradients_impl.gradients(
+          distribution_util.fill_lower_triangular(x), x)
       self.assertAllEqual(np.tri(4).reshape(-1), g[0].values.eval())
 
   def testCorrectlyMakesBatchLowerTril(self):
     with self.test_session():
-      x = tf.convert_to_tensor(self._rng.randn(2, 2, 6))
+      x = ops.convert_to_tensor(self._rng.randn(2, 2, 6))
       expected = self._fill_lower_triangular(tensor_util.constant_value(x))
       actual = distribution_util.fill_lower_triangular(x, validate_args=True)
       self.assertAllEqual(expected.shape, actual.get_shape())
       self.assertAllEqual(expected, actual.eval())
       self.assertAllEqual(
           np.ones((2, 2, 6)),
-          tf.gradients(distribution_util.fill_lower_triangular(
-              x), x)[0].eval())
+          gradients_impl.gradients(
+              distribution_util.fill_lower_triangular(x), x)[0].eval())
 
 
-class GenNewSeedTest(tf.test.TestCase):
+class GenNewSeedTest(test.TestCase):
 
   def testOnlyNoneReturnsNone(self):
     self.assertFalse(distribution_util.gen_new_seed(0, "salt") is None)
@@ -453,4 +480,4 @@ class GenNewSeedTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

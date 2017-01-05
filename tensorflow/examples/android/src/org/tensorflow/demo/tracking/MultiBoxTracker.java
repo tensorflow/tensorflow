@@ -23,13 +23,13 @@ import android.graphics.Paint.Cap;
 import android.graphics.Paint.Join;
 import android.graphics.Paint.Style;
 import android.graphics.RectF;
+import android.text.TextUtils;
 import android.util.DisplayMetrics;
 import android.util.Pair;
 import android.util.TypedValue;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
-
 import org.tensorflow.demo.Classifier.Recognition;
 import org.tensorflow.demo.env.BorderedText;
 import org.tensorflow.demo.env.ImageUtils;
@@ -71,6 +71,7 @@ public class MultiBoxTracker {
     ObjectTracker.TrackedObject trackedObject;
     float detectionConfidence;
     int color;
+    String title;
   }
 
   private final List<TrackedRecognition> trackedObjects = new LinkedList<TrackedRecognition>();
@@ -178,7 +179,10 @@ public class MultiBoxTracker {
         final float cornerSize = Math.min(trackedPos.width(), trackedPos.height()) / 8.0f;
         canvas.drawRoundRect(trackedPos, cornerSize, cornerSize, boxPaint);
 
-        final String labelString = String.format("%.2f", recognition.detectionConfidence);
+        final String labelString =
+            !TextUtils.isEmpty(recognition.title)
+                ? String.format("%s %.2f", recognition.title, recognition.detectionConfidence)
+                : String.format("%.2f", recognition.detectionConfidence);
         borderedText.drawText(canvas, trackedPos.left + cornerSize, trackedPos.bottom, labelString);
       }
     }
@@ -221,7 +225,7 @@ public class MultiBoxTracker {
 
   private void processResults(
       final long timestamp, final List<Recognition> results, final byte[] originalFrame) {
-    final List<Pair<Float, RectF>> rectsToTrack = new LinkedList<Pair<Float, RectF>>();
+    final List<Pair<Float, Recognition>> rectsToTrack = new LinkedList<Pair<Float, Recognition>>();
 
     screenRects.clear();
     final Matrix rgbFrameToScreen = new Matrix(getFrameToCanvasMatrix());
@@ -245,7 +249,7 @@ public class MultiBoxTracker {
         continue;
       }
 
-      rectsToTrack.add(new Pair<Float, RectF>(result.getConfidence(), detectionFrameRect));
+      rectsToTrack.add(new Pair<Float, Recognition>(result.getConfidence(), result));
     }
 
     if (rectsToTrack.isEmpty()) {
@@ -259,15 +263,15 @@ public class MultiBoxTracker {
     }
 
     logger.i("%d rects to track", rectsToTrack.size());
-    for (final Pair<Float, RectF> potential : rectsToTrack) {
+    for (final Pair<Float, Recognition> potential : rectsToTrack) {
       handleDetection(originalFrame, timestamp, potential);
     }
   }
 
   private void handleDetection(
-      final byte[] frameCopy, final long timestamp, final Pair<Float, RectF> potential) {
+      final byte[] frameCopy, final long timestamp, final Pair<Float, Recognition> potential) {
     final ObjectTracker.TrackedObject potentialObject =
-        objectTracker.trackObject(potential.second, timestamp, frameCopy);
+        objectTracker.trackObject(potential.second.getLocation(), timestamp, frameCopy);
 
     final float potentialCorrelation = potentialObject.getCurrentCorrelation();
     logger.v(
@@ -367,11 +371,15 @@ public class MultiBoxTracker {
 
     // Finally safe to say we can track this object.
     logger.v(
-        "Tracking object %s with detection confidence %.2f at position %s",
-        potentialObject, potential.first, potential.second);
+        "Tracking object %s (%s) with detection confidence %.2f at position %s",
+        potentialObject,
+        potential.second.getTitle(),
+        potential.first,
+        potential.second.getLocation());
     final TrackedRecognition trackedRecognition = new TrackedRecognition();
     trackedRecognition.detectionConfidence = potential.first;
     trackedRecognition.trackedObject = potentialObject;
+    trackedRecognition.title = potential.second.getTitle();
 
     // Use the color from a replaced object before taking one from the color queue.
     trackedRecognition.color =

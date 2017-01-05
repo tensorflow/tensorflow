@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Deep Neural Network estimators."""
 
 from __future__ import absolute_import
@@ -37,11 +36,10 @@ from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
 from tensorflow.contrib.learn.python.learn.estimators import model_fn
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.contrib.learn.python.learn.utils import export
-from tensorflow.python import summary
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
-
+from tensorflow.python.summary import summary
 
 _CENTERED_BIAS_WEIGHT = "centered_bias_weight"
 
@@ -115,10 +113,8 @@ def _dnn_model_fn(features, labels, mode, params, config=None):
   features = _get_feature_dict(features)
   parent_scope = "dnn"
 
-  input_layer_partitioner = (
-      partitioned_variables.min_max_variable_partitioner(
-          max_partitions=num_ps_replicas,
-          min_slice_size=64 << 20))
+  input_layer_partitioner = (partitioned_variables.min_max_variable_partitioner(
+      max_partitions=num_ps_replicas, min_slice_size=64 << 20))
   input_layer_scope = parent_scope + "/input_from_feature_columns"
   with variable_scope.variable_scope(
       input_layer_scope,
@@ -145,9 +141,7 @@ def _dnn_model_fn(features, labels, mode, params, config=None):
           variables_collections=[parent_scope],
           scope=scope)
       if dropout is not None and mode == model_fn.ModeKeys.TRAIN:
-        net = layers.dropout(
-            net,
-            keep_prob=(1.0 - dropout))
+        net = layers.dropout(net, keep_prob=(1.0 - dropout))
     _add_hidden_layer_summary(net, scope.name)
 
   with variable_scope.variable_scope(
@@ -307,18 +301,31 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
                     n_classes,
                     weight_column_name=weight_column_name,
                     enable_centered_bias=enable_centered_bias),
-            "hidden_units": hidden_units,
-            "feature_columns": self._feature_columns,
-            "optimizer": optimizer,
-            "activation_fn": activation_fn,
-            "dropout": dropout,
-            "gradient_clip_norm": gradient_clip_norm,
-            "embedding_lr_multipliers": embedding_lr_multipliers,
+            "hidden_units":
+                hidden_units,
+            "feature_columns":
+                self._feature_columns,
+            "optimizer":
+                optimizer,
+            "activation_fn":
+                activation_fn,
+            "dropout":
+                dropout,
+            "gradient_clip_norm":
+                gradient_clip_norm,
+            "embedding_lr_multipliers":
+                embedding_lr_multipliers,
         },
         feature_engineering_fn=feature_engineering_fn)
 
-  def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
-          monitors=None, max_steps=None):
+  def fit(self,
+          x=None,
+          y=None,
+          input_fn=None,
+          steps=None,
+          batch_size=None,
+          monitors=None,
+          max_steps=None):
     """See trainable.Trainable. Note: Labels must be integer class indices."""
     # TODO(roumposg): Remove when deprecated monitors are removed.
     hooks = monitor_lib.replace_monitors_with_hooks(monitors, self)
@@ -331,17 +338,33 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
                         max_steps=max_steps)
     return self
 
-  def evaluate(self, x=None, y=None, input_fn=None, feed_fn=None,
-               batch_size=None, steps=None, metrics=None, name=None,
-               checkpoint_path=None):
+  def evaluate(self,
+               x=None,
+               y=None,
+               input_fn=None,
+               feed_fn=None,
+               batch_size=None,
+               steps=None,
+               metrics=None,
+               name=None,
+               checkpoint_path=None,
+               hooks=None):
     """See evaluable.Evaluable. Note: Labels must be integer class indices."""
     return self._estimator.evaluate(
-        x=x, y=y, input_fn=input_fn, feed_fn=feed_fn, batch_size=batch_size,
-        steps=steps, metrics=metrics, name=name,
-        checkpoint_path=checkpoint_path)
+        x=x,
+        y=y,
+        input_fn=input_fn,
+        feed_fn=feed_fn,
+        batch_size=batch_size,
+        steps=steps,
+        metrics=metrics,
+        name=name,
+        checkpoint_path=checkpoint_path,
+        hooks=hooks)
 
   @deprecated_arg_values(
-      estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
+      estimator.AS_ITERABLE_DATE,
+      estimator.AS_ITERABLE_INSTRUCTIONS,
       as_iterable=False)
   def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=True):
     """Returns predicted classes for given features.
@@ -361,18 +384,25 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
       represented by its class index (i.e. integer from 0 to n_classes-1).
     """
     key = prediction_key.PredictionKey.CLASSES
-    preds = self._estimator.predict(x=x, input_fn=input_fn,
-                                    batch_size=batch_size, outputs=[key],
-                                    as_iterable=as_iterable)
+    preds = self._estimator.predict(
+        x=x,
+        input_fn=input_fn,
+        batch_size=batch_size,
+        outputs=[key],
+        as_iterable=as_iterable)
     if as_iterable:
       return (pred[key] for pred in preds)
     return preds[key].reshape(-1)
 
   @deprecated_arg_values(
-      estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
+      estimator.AS_ITERABLE_DATE,
+      estimator.AS_ITERABLE_INSTRUCTIONS,
       as_iterable=False)
-  def predict_proba(
-      self, x=None, input_fn=None, batch_size=None, as_iterable=True):
+  def predict_proba(self,
+                    x=None,
+                    input_fn=None,
+                    batch_size=None,
+                    as_iterable=True):
     """Returns prediction probabilities for given features.
 
     Args:
@@ -389,10 +419,12 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
       (or an iterable of predicted probabilities if as_iterable is True).
     """
     key = prediction_key.PredictionKey.PROBABILITIES
-    preds = self._estimator.predict(x=x, input_fn=input_fn,
-                                    batch_size=batch_size,
-                                    outputs=[key],
-                                    as_iterable=as_iterable)
+    preds = self._estimator.predict(
+        x=x,
+        input_fn=input_fn,
+        batch_size=batch_size,
+        outputs=[key],
+        as_iterable=as_iterable)
     if as_iterable:
       return (pred[key] for pred in preds)
     return preds[key]
@@ -431,16 +463,18 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
              default_batch_size=1,
              exports_to_keep=None):
     """See BaseEstimator.export."""
+
     def default_input_fn(unused_estimator, examples):
-      return layers.parse_feature_columns_from_examples(
-          examples, self._feature_columns)
+      return layers.parse_feature_columns_from_examples(examples,
+                                                        self._feature_columns)
+
     return self._estimator.export(
         export_dir=export_dir,
         input_fn=input_fn or default_input_fn,
         input_feature_key=input_feature_key,
         use_deprecated_input_fn=use_deprecated_input_fn,
-        signature_fn=(
-            signature_fn or export.classification_signature_fn_with_prob),
+        signature_fn=(signature_fn or
+                      export.classification_signature_fn_with_prob),
         prediction_key=prediction_key.PredictionKey.PROBABILITIES,
         default_batch_size=default_batch_size,
         exports_to_keep=exports_to_keep)
@@ -614,22 +648,36 @@ class DNNRegressor(evaluable.Evaluable, trainable.Trainable):
         model_dir=model_dir,
         config=config,
         params={
-            "head": head_lib._regression_head(  # pylint: disable=protected-access
-                label_dimension=label_dimension,
-                weight_column_name=weight_column_name,
-                enable_centered_bias=enable_centered_bias),
-            "hidden_units": hidden_units,
-            "feature_columns": self._feature_columns,
-            "optimizer": optimizer,
-            "activation_fn": activation_fn,
-            "dropout": dropout,
-            "gradient_clip_norm": gradient_clip_norm,
-            "embedding_lr_multipliers": embedding_lr_multipliers,
+            "head":
+                head_lib._regression_head(  # pylint: disable=protected-access
+                    label_dimension=label_dimension,
+                    weight_column_name=weight_column_name,
+                    enable_centered_bias=enable_centered_bias),
+            "hidden_units":
+                hidden_units,
+            "feature_columns":
+                self._feature_columns,
+            "optimizer":
+                optimizer,
+            "activation_fn":
+                activation_fn,
+            "dropout":
+                dropout,
+            "gradient_clip_norm":
+                gradient_clip_norm,
+            "embedding_lr_multipliers":
+                embedding_lr_multipliers,
         },
         feature_engineering_fn=feature_engineering_fn)
 
-  def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
-          monitors=None, max_steps=None):
+  def fit(self,
+          x=None,
+          y=None,
+          input_fn=None,
+          steps=None,
+          batch_size=None,
+          monitors=None,
+          max_steps=None):
     """See trainable.Trainable."""
     # TODO(roumposg): Remove when deprecated monitors are removed.
     hooks = monitor_lib.replace_monitors_with_hooks(monitors, self)
@@ -642,9 +690,17 @@ class DNNRegressor(evaluable.Evaluable, trainable.Trainable):
                         max_steps=max_steps)
     return self
 
-  def evaluate(self, x=None, y=None, input_fn=None, feed_fn=None,
-               batch_size=None, steps=None, metrics=None, name=None,
-               checkpoint_path=None):
+  def evaluate(self,
+               x=None,
+               y=None,
+               input_fn=None,
+               feed_fn=None,
+               batch_size=None,
+               steps=None,
+               metrics=None,
+               name=None,
+               checkpoint_path=None,
+               hooks=None):
     """See evaluable.Evaluable."""
     # TODO(zakaria): remove once deprecation is finished (b/31229024)
     custom_metrics = {}
@@ -657,12 +713,20 @@ class DNNRegressor(evaluable.Evaluable, trainable.Trainable):
           custom_metrics[key] = metric
 
     return self._estimator.evaluate(
-        x=x, y=y, input_fn=input_fn, feed_fn=feed_fn, batch_size=batch_size,
-        steps=steps, metrics=custom_metrics, name=name,
-        checkpoint_path=checkpoint_path)
+        x=x,
+        y=y,
+        input_fn=input_fn,
+        feed_fn=feed_fn,
+        batch_size=batch_size,
+        steps=steps,
+        metrics=custom_metrics,
+        name=name,
+        checkpoint_path=checkpoint_path,
+        hooks=hooks)
 
   @deprecated_arg_values(
-      estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
+      estimator.AS_ITERABLE_DATE,
+      estimator.AS_ITERABLE_INSTRUCTIONS,
       as_iterable=False)
   def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=True):
     """Returns predicted scores for given features.
@@ -682,9 +746,12 @@ class DNNRegressor(evaluable.Evaluable, trainable.Trainable):
       is `[batch_size]`, otherwise the shape is `[batch_size, label_dimension]`.
     """
     key = prediction_key.PredictionKey.SCORES
-    preds = self._estimator.predict(x=x, input_fn=input_fn,
-                                    batch_size=batch_size, outputs=[key],
-                                    as_iterable=as_iterable)
+    preds = self._estimator.predict(
+        x=x,
+        input_fn=input_fn,
+        batch_size=batch_size,
+        outputs=[key],
+        as_iterable=as_iterable)
     if as_iterable:
       return (pred[key] for pred in preds)
     return preds[key]
@@ -723,9 +790,11 @@ class DNNRegressor(evaluable.Evaluable, trainable.Trainable):
              default_batch_size=1,
              exports_to_keep=None):
     """See BaseEstimator.export."""
+
     def default_input_fn(unused_estimator, examples):
-      return layers.parse_feature_columns_from_examples(
-          examples, self._feature_columns)
+      return layers.parse_feature_columns_from_examples(examples,
+                                                        self._feature_columns)
+
     return self._estimator.export(
         export_dir=export_dir,
         input_fn=input_fn or default_input_fn,

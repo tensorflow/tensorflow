@@ -30,7 +30,7 @@
         android:layout_alignParentTop="true" />
 
     <org.tensorflow.demo.OverlayView
-        android:id="@+id/overlay"
+        android:id="@+id/overlay_debug"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_alignParentBottom="true" />

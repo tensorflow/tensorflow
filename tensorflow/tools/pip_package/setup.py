@@ -157,6 +157,7 @@ else:
   EXTENSION_NAME = 'python/_pywrap_tensorflow.so'
 
 headers = (list(find_files('*.h', 'tensorflow/core')) +
+           list(find_files('*.h', 'tensorflow/stream_executor')) +
            list(find_files('*.h', 'google/protobuf/src')) +
            list(find_files('*', 'third_party/eigen3')) +
            list(find_files('*', 'external/eigen_archive')))

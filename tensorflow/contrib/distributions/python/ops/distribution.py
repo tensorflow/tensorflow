@@ -39,7 +39,7 @@ from tensorflow.python.ops import math_ops
 
 _DISTRIBUTION_PUBLIC_METHOD_WRAPPERS = [
     "batch_shape", "get_batch_shape", "event_shape", "get_event_shape",
-    "sample_n", "log_prob", "prob", "log_cdf", "cdf", "log_survival_function",
+    "sample", "log_prob", "prob", "log_cdf", "cdf", "log_survival_function",
     "survival_function", "entropy", "mean", "variance", "std", "mode"]
 
 
@@ -526,19 +526,33 @@ class Distribution(_BaseDistribution):
     """
     return self._get_event_shape()
 
-  @property
-  def is_scalar_event(self):
-    """Indicates that `event_shape==[]`."""
-    return ops.convert_to_tensor(
-        self._is_scalar_helper(self.get_event_shape, self.event_shape),
-        name="is_scalar_event")
+  def is_scalar_event(self, name="is_scalar_event"):
+    """Indicates that `event_shape == []`.
 
-  @property
-  def is_scalar_batch(self):
-    """Indicates that `batch_shape==[]`."""
-    return ops.convert_to_tensor(
-        self._is_scalar_helper(self.get_batch_shape, self.batch_shape),
-        name="is_scalar_batch")
+    Args:
+      name: The name to give this op.
+
+    Returns:
+      is_scalar_event: `Boolean` `scalar` `Tensor`.
+    """
+    with self._name_scope(name):
+      return ops.convert_to_tensor(
+          self._is_scalar_helper(self.get_event_shape, self.event_shape),
+          name="is_scalar_event")
+
+  def is_scalar_batch(self, name="is_scalar_batch"):
+    """Indicates that `batch_shape == []`.
+
+    Args:
+      name: The name to give this op.
+
+    Returns:
+      is_scalar_batch: `Boolean` `scalar` `Tensor`.
+    """
+    with self._name_scope(name):
+      return ops.convert_to_tensor(
+          self._is_scalar_helper(self.get_batch_shape, self.batch_shape),
+          name="is_scalar_batch")
 
   def _sample_n(self, n, seed=None):
     raise NotImplementedError("sample_n is not implemented")
@@ -562,61 +576,14 @@ class Distribution(_BaseDistribution):
     with self._name_scope(name, values=[sample_shape]):
       sample_shape = ops.convert_to_tensor(
           sample_shape, dtype=dtypes.int32, name="sample_shape")
-      if sample_shape.get_shape().ndims == 0:
-        return self.sample_n(sample_shape, seed, **condition_kwargs)
-      sample_shape, total = self._expand_sample_shape(sample_shape)
-      samples = self.sample_n(total, seed, **condition_kwargs)
-      output_shape = array_ops.concat_v2(
-          [sample_shape, array_ops.slice(array_ops.shape(samples), [1], [-1])],
-          0)
-      output = array_ops.reshape(samples, output_shape)
-      output.set_shape(tensor_util.constant_value_as_shape(
-          sample_shape).concatenate(samples.get_shape()[1:]))
-      return output
-
-  def sample_n(self, n, seed=None, name="sample_n", **condition_kwargs):
-    """Generate `n` samples.
-
-    Args:
-      n: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-        observations to sample.
-      seed: Python integer seed for RNG
-      name: name to give to the op.
-      **condition_kwargs: Named arguments forwarded to subclass implementation.
-
-    Returns:
-      samples: a `Tensor` with a prepended dimension (n,).
-
-    Raises:
-      TypeError: if `n` is not an integer type.
-    """
-    warnings.warn("Please use `sample` instead of `sample_n`. `sample_n` "
-                  "will be deprecated in December 2016.",
-                  PendingDeprecationWarning)
-    with self._name_scope(name, values=[n]):
-      n = ops.convert_to_tensor(n, name="n")
-      if not n.dtype.is_integer:
-        raise TypeError("n.dtype=%s is not an integer type" % n.dtype)
-      x = self._sample_n(n, seed, **condition_kwargs)
-
-      # Set shape hints.
-      sample_shape = tensor_shape.TensorShape(
-          tensor_util.constant_value(n))
-      batch_ndims = self.get_batch_shape().ndims
-      event_ndims = self.get_event_shape().ndims
-      if batch_ndims is not None and event_ndims is not None:
-        inferred_shape = sample_shape.concatenate(
-            self.get_batch_shape().concatenate(
-                self.get_event_shape()))
-        x.set_shape(inferred_shape)
-      elif x.get_shape().ndims is not None and x.get_shape().ndims > 0:
-        x.get_shape()[0].merge_with(sample_shape[0])
-        if batch_ndims is not None and batch_ndims > 0:
-          x.get_shape()[1:1+batch_ndims].merge_with(self.get_batch_shape())
-        if event_ndims is not None and event_ndims > 0:
-          x.get_shape()[-event_ndims:].merge_with(self.get_event_shape())
-
-      return x
+      sample_shape, n = self._expand_sample_shape_to_vector(
+          sample_shape, "sample_shape")
+      samples = self._sample_n(n, seed, **condition_kwargs)
+      batch_event_shape = array_ops.shape(samples)[1:]
+      final_shape = array_ops.concat_v2([sample_shape, batch_event_shape], 0)
+      samples = array_ops.reshape(samples, final_shape)
+      samples = self._set_sample_static_shape(samples, sample_shape)
+      return samples
 
   def _log_prob(self, value):
     raise NotImplementedError("log_prob is not implemented")
@@ -935,36 +902,82 @@ class Distribution(_BaseDistribution):
     """Helper function to standardize op scope."""
     with ops.name_scope(self.name):
       with ops.name_scope(name, values=(
-          (values or []) + self._graph_parents)) as scope:
+          ([] if values is None else values) + self._graph_parents)) as scope:
         yield scope
 
-  def _expand_sample_shape(self, sample_shape):
-    """Helper to `sample` which ensures sample_shape is 1D."""
-    sample_shape_static_val = tensor_util.constant_value(sample_shape)
-    ndims = sample_shape.get_shape().ndims
-    if sample_shape_static_val is None:
-      if ndims is None or not sample_shape.get_shape().is_fully_defined():
-        ndims = array_ops.rank(sample_shape)
+  def _expand_sample_shape_to_vector(self, x, name):
+    """Helper to `sample` which ensures input is 1D."""
+    x_static_val = tensor_util.constant_value(x)
+    if x_static_val is None:
+      prod = math_ops.reduce_prod(x)
+    else:
+      prod = np.prod(x_static_val, dtype=x.dtype.as_numpy_dtype())
+
+    ndims = x.get_shape().ndims  # != sample_ndims
+    if ndims is None:
+      # Maybe expand_dims.
+      ndims = array_ops.rank(x)
       expanded_shape = distribution_util.pick_vector(
           math_ops.equal(ndims, 0),
-          np.array((1,), dtype=dtypes.int32.as_numpy_dtype()),
-          array_ops.shape(sample_shape))
-      sample_shape = array_ops.reshape(sample_shape, expanded_shape)
-      total = math_ops.reduce_prod(sample_shape)  # reduce_prod([]) == 1
-    else:
-      if ndims is None:
-        raise ValueError(
-            "Shouldn't be here; ndims cannot be none when we have a "
-            "tf.constant shape.")
-      if ndims == 0:
-        sample_shape_static_val = np.reshape(sample_shape_static_val, [1])
-        sample_shape = ops.convert_to_tensor(
-            sample_shape_static_val,
-            dtype=dtypes.int32,
-            name="sample_shape")
-      total = np.prod(sample_shape_static_val,
-                      dtype=dtypes.int32.as_numpy_dtype())
-    return sample_shape, total
+          np.array([1], dtype=np.int32),
+          array_ops.shape(x))
+      x = array_ops.reshape(x, expanded_shape)
+    elif ndims == 0:
+      # Definitely expand_dims.
+      if x_static_val is not None:
+        x = ops.convert_to_tensor(
+            np.array([x_static_val], dtype=x.dtype.as_numpy_dtype()),
+            name=name)
+      else:
+        x = array_ops.reshape(x, [1])
+    elif ndims != 1:
+      raise ValueError("Input is neither scalar nor vector.")
+
+    return x, prod
+
+  def _set_sample_static_shape(self, x, sample_shape):
+    """Helper to `sample`; sets static shape info."""
+    # Set shape hints.
+    sample_shape = tensor_shape.TensorShape(
+        tensor_util.constant_value(sample_shape))
+
+    ndims = x.get_shape().ndims
+    sample_ndims = sample_shape.ndims
+    batch_ndims = self.get_batch_shape().ndims
+    event_ndims = self.get_event_shape().ndims
+
+    # Infer rank(x).
+    if (ndims is None and
+        sample_ndims is not None and
+        batch_ndims is not None and
+        event_ndims is not None):
+      ndims = sample_ndims + batch_ndims + event_ndims
+      x.set_shape([None] * ndims)
+
+    # Infer sample shape.
+    if ndims is not None and sample_ndims is not None:
+      shape = sample_shape.concatenate([None]*(ndims - sample_ndims))
+      x.set_shape(x.get_shape().merge_with(shape))
+
+    # Infer event shape.
+    if ndims is not None and event_ndims is not None:
+      shape = tensor_shape.TensorShape(
+          [None]*(ndims - event_ndims)).concatenate(self.get_event_shape())
+      x.set_shape(x.get_shape().merge_with(shape))
+
+    # Infer batch shape.
+    if batch_ndims is not None:
+      if ndims is not None:
+        if sample_ndims is None and event_ndims is not None:
+          sample_ndims = ndims - batch_ndims - event_ndims
+        elif event_ndims is None and sample_ndims is not None:
+          event_ndims = ndims - batch_ndims - sample_ndims
+      if sample_ndims is not None and event_ndims is not None:
+        shape = tensor_shape.TensorShape([None]*sample_ndims).concatenate(
+            self.get_batch_shape()).concatenate([None]*event_ndims)
+        x.set_shape(x.get_shape().merge_with(shape))
+
+    return x
 
   def _is_scalar_helper(self, static_shape_fn, dynamic_shape_fn):
     """Implementation for `is_scalar_batch` and `is_scalar_event`."""

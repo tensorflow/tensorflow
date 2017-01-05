@@ -47,7 +47,7 @@ namespace benchmark_model {
 
 Status InitializeSession(int num_threads, const string& graph,
                          std::unique_ptr<Session>* session,
-                         std::unique_ptr<StatSummarizer>* stats) {
+                         std::unique_ptr<GraphDef>* graph_def) {
   LOG(INFO) << "Loading TensorFlow.";
 
   tensorflow::SessionOptions options;
@@ -58,30 +58,26 @@ Status InitializeSession(int num_threads, const string& graph,
   LOG(INFO) << "Got config, " << config.device_count_size() << " devices";
 
   session->reset(tensorflow::NewSession(options));
+  graph_def->reset(new GraphDef());
   tensorflow::GraphDef tensorflow_graph;
-  Status s = ReadBinaryProto(Env::Default(), graph, &tensorflow_graph);
+  Status s = ReadBinaryProto(Env::Default(), graph, graph_def->get());
   if (!s.ok()) {
     LOG(ERROR) << "Could not create TensorFlow Graph: " << s;
     return s;
   }
 
-  stats->reset(new tensorflow::StatSummarizer(tensorflow_graph));
-
-  s = (*session)->Create(tensorflow_graph);
+  s = (*session)->Create(*(graph_def->get()));
   if (!s.ok()) {
     LOG(ERROR) << "Could not create TensorFlow Session: " << s;
     return s;
   }
 
-  // Clear the proto to save memory space.
-  tensorflow_graph.Clear();
   return Status::OK();
 }
 
-Status RunBenchmark(const std::vector<InputLayerInfo>& inputs,
-                    const std::vector<string>& outputs, Session* session,
-                    StatSummarizer* stats) {
-  std::vector<std::pair<string, tensorflow::Tensor> > input_tensors;
+void CreateTensorsFromInputInfo(
+    const std::vector<InputLayerInfo>& inputs,
+    std::vector<std::pair<string, tensorflow::Tensor> >* input_tensors) {
   for (const InputLayerInfo& input : inputs) {
     Tensor input_tensor(input.data_type, input.shape);
     switch (input.data_type) {
@@ -108,8 +104,92 @@ Status RunBenchmark(const std::vector<InputLayerInfo>& inputs,
       default:
         LOG(FATAL) << "Unsupported input type: " << input.data_type;
     }
-    input_tensors.push_back({input.name, input_tensor});
+    input_tensors->push_back({input.name, input_tensor});
   }
+}
+
+Status GetOutputShapes(const std::vector<InputLayerInfo>& inputs,
+                       const std::set<string>& wanted_shapes, Session* session,
+                       std::unordered_map<string, TensorShape>* node_shapes) {
+  std::vector<std::pair<string, tensorflow::Tensor> > input_tensors;
+  CreateTensorsFromInputInfo(inputs, &input_tensors);
+  std::vector<tensorflow::Tensor> output_tensors;
+  std::vector<string> output_tensor_names(wanted_shapes.begin(),
+                                          wanted_shapes.end());
+  TF_RETURN_IF_ERROR(
+      session->Run(input_tensors, output_tensor_names, {}, &output_tensors));
+  CHECK_EQ(output_tensors.size(), output_tensor_names.size());
+  for (int i = 0; i < output_tensor_names.size(); ++i) {
+    const string& wanted_shape_name = output_tensor_names[i];
+    const TensorShape& found_shape = output_tensors[i].shape();
+    (*node_shapes)[wanted_shape_name] = found_shape;
+  }
+  return Status::OK();
+}
+
+Status CalculateFlops(const GraphDef& graph,
+                      const std::vector<InputLayerInfo>& inputs,
+                      Session* session, int64* total_flops,
+                      std::unordered_map<string, int64>* flops_by_op) {
+  std::unordered_set<string> floppable_ops = {
+      "Conv2D", "MatMul", "QuantizedConv2D", "QuantizedMatMul"};
+
+  std::set<string> wanted_shapes;
+  for (const NodeDef& node : graph.node()) {
+    if (floppable_ops.count(node.op())) {
+      for (const string& input : node.input()) {
+        wanted_shapes.insert(input);
+      }
+      wanted_shapes.insert(node.name());
+    }
+  }
+  std::unordered_map<string, TensorShape> found_shapes;
+  TF_RETURN_IF_ERROR(
+      GetOutputShapes(inputs, wanted_shapes, session, &found_shapes));
+
+  *total_flops = 0;
+  for (const NodeDef& node : graph.node()) {
+    if (floppable_ops.count(node.op())) {
+      int64 current_flops = 0;
+      // This is a very crude approximation to FLOPs that only looks at a few
+      // op types that commonly form the bulk of the computation for many
+      // models. It's included here because getting even an approximate value
+      // for FLOPs is still very useful for estimating utilization, versus a
+      // device's theoretical maximum FLOPs/second.
+      if ((node.op() == "Conv2D") || (node.op() == "QuantizedConv2D")) {
+        const TensorShape& filter_shape = found_shapes[node.input(1)];
+        const TensorShape& output_shape = found_shapes[node.name()];
+        int64 filter_height = filter_shape.dim_size(0);
+        int64 filter_width = filter_shape.dim_size(1);
+        int64 filter_in_depth = filter_shape.dim_size(2);
+        int64 output_count = output_shape.num_elements();
+        current_flops =
+            output_count * filter_in_depth * filter_height * filter_width * 2;
+      } else if ((node.op() == "MatMul") || (node.op() == "QuantizedMatMul")) {
+        const bool transpose_a = node.attr().at("transpose_a").b();
+        const TensorShape& a_shape = found_shapes[node.input(0)];
+        const TensorShape& output_shape = found_shapes[node.name()];
+        int64 k;
+        if (transpose_a) {
+          k = a_shape.dim_size(0);
+        } else {
+          k = a_shape.dim_size(1);
+        }
+        int64 output_count = output_shape.num_elements();
+        current_flops = k * output_count * 2;
+      }
+      (*flops_by_op)[node.op()] += current_flops;
+      *total_flops += current_flops;
+    }
+  }
+  return Status::OK();
+}
+
+Status RunBenchmark(const std::vector<InputLayerInfo>& inputs,
+                    const std::vector<string>& outputs, Session* session,
+                    StatSummarizer* stats) {
+  std::vector<std::pair<string, tensorflow::Tensor> > input_tensors;
+  CreateTensorsFromInputInfo(inputs, &input_tensors);
 
   std::vector<tensorflow::Tensor> output_tensors;
 
@@ -175,6 +255,15 @@ int Main(int argc, char** argv) {
   string benchmark_name = "";
   string output_prefix = "";
   bool show_sizes = false;
+  bool show_run_order = true;
+  int run_order_limit = 0;
+  bool show_time = true;
+  int time_limit = 10;
+  bool show_memory = true;
+  int memory_limit = 10;
+  bool show_type = true;
+  bool show_summary = true;
+  bool show_flops = false;
 
   std::vector<Flag> flag_list = {
       Flag("graph", &graph, "graph file name"),
@@ -188,6 +277,19 @@ int Main(int argc, char** argv) {
       Flag("benchmark_name", &benchmark_name, "benchmark name"),
       Flag("output_prefix", &output_prefix, "benchmark output prefix"),
       Flag("show_sizes", &show_sizes, "whether to show sizes"),
+      Flag("show_run_order", &show_run_order,
+           "whether to list stats by run order"),
+      Flag("run_order_limit", &run_order_limit,
+           "how many items to show by run order"),
+      Flag("show_time", &show_time, "whether to list stats by time taken"),
+      Flag("time_limit", &time_limit, "how many items to show by time taken"),
+      Flag("show_memory", &show_memory, "whether to list stats by memory used"),
+      Flag("memory_limit", &memory_limit,
+           "how many items to show by memory used"),
+      Flag("show_type", &show_time, "whether to list stats by op type"),
+      Flag("show_summary", &show_time,
+           "whether to show a summary of the stats"),
+      Flag("show_flops", &show_flops, "whether to estimate the model's FLOPs"),
   };
   string usage = Flags::Usage(argv[0], flag_list);
   const bool parse_result = Flags::Parse(&argc, argv, flag_list);
@@ -239,11 +341,24 @@ int Main(int argc, char** argv) {
 
   std::unique_ptr<Session> session;
   std::unique_ptr<StatSummarizer> stats;
+  std::unique_ptr<GraphDef> graph_def;
   Status initialize_status =
-      InitializeSession(num_threads, graph, &session, &stats);
+      InitializeSession(num_threads, graph, &session, &graph_def);
   if (!initialize_status.ok()) {
     return -1;
   }
+
+  StatSummarizerOptions stats_options;
+  stats_options.show_run_order = show_run_order;
+  stats_options.run_order_limit = run_order_limit;
+  stats_options.show_time = show_time;
+  stats_options.time_limit = time_limit;
+  stats_options.show_memory = show_memory;
+  stats_options.memory_limit = memory_limit;
+  stats_options.show_type = show_type;
+  stats_options.show_summary = show_summary;
+  stats.reset(
+      new tensorflow::StatSummarizer(*(graph_def.get()), stats_options));
 
   const double sleep_seconds = std::strtod(run_delay.c_str(), nullptr);
 
@@ -278,6 +393,36 @@ int Main(int argc, char** argv) {
 
   if (show_sizes) {
     stats->PrintOutputs();
+  }
+
+  if (show_flops) {
+    int64 total_flops;
+    std::unordered_map<string, int64> flops_by_op;
+    Status flop_status = CalculateFlops(*graph_def, inputs, session.get(),
+                                        &total_flops, &flops_by_op);
+    if (!flop_status.ok()) {
+      LOG(ERROR) << "FLOPs calculation failed with " << flop_status;
+      return -1;
+    }
+    string pretty_flops;
+    if (total_flops < 1000) {
+      pretty_flops = strings::StrCat(total_flops, " FLOPs");
+    } else if (total_flops < (1000 * 1000)) {
+      const float rounded_flops = (total_flops / 1000.0f);
+      pretty_flops = strings::StrCat(rounded_flops, "k FLOPs");
+    } else if (total_flops < (1000 * 1000 * 1000)) {
+      const float rounded_flops = (std::round(total_flops / 1000.0f) / 1000.0f);
+      pretty_flops = strings::StrCat(rounded_flops, " million FLOPs");
+    } else {
+      const float rounded_flops =
+          (std::round(total_flops / (1000.0f * 1000.0f)) / 1000.0f);
+      pretty_flops = strings::StrCat(rounded_flops, " billion FLOPs");
+    }
+    LOG(INFO) << "FLOPs estimate: " << strings::HumanReadableNum(total_flops);
+    const double mean_run_time = wall_time / num_runs;
+    LOG(INFO) << "FLOPs/second: "
+              << strings::HumanReadableNum(
+                     static_cast<int64>(total_flops / mean_run_time));
   }
 
   if (!benchmark_name.empty() && !output_prefix.empty()) {

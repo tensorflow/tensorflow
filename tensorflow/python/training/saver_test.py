@@ -556,10 +556,12 @@ class SaverTest(test.TestCase):
       self.assertEqual(10.0, v0.eval())
       self.assertEqual(20.0, v1.eval())
 
+      error_msg_template = "Parent directory of {} doesn't exist, can't save."
+
       # Assert saving fails when parent dir of save path doesn't exist
       with self.assertRaisesWithPredicateMatch(
           ValueError,
-          lambda e: "Parent directory of {} doesn't exist, can't save.".format(save_path) in str(e)
+          lambda e: error_msg_template.format(save_path) in str(e)
       ):
         save.save(sess, save_path)
 
@@ -1394,8 +1396,7 @@ class MetaGraphTest(test.TestCase):
       save._add_collection_def(meta_graph_def, "int_collection")
       self.assertEqual(len(meta_graph_def.collection_def), 0)
 
-  def _testMultiSaverCollectionSave(self):
-    test_dir = _TestDir("saver_collection")
+  def _testMultiSaverCollectionSave(self, test_dir):
     filename = os.path.join(test_dir, "metafile")
     saver0_ckpt = os.path.join(test_dir, "saver0.ckpt")
     saver1_ckpt = os.path.join(test_dir, "saver1.ckpt")
@@ -1439,8 +1440,7 @@ class MetaGraphTest(test.TestCase):
       savers = getattr(collection_def, kind)
       self.assertEqual(2, len(savers.value))
 
-  def _testMultiSaverCollectionRestore(self):
-    test_dir = os.path.join(self.get_temp_dir(), "saver_collection")
+  def _testMultiSaverCollectionRestore(self, test_dir):
     filename = os.path.join(test_dir, "metafile")
     saver0_ckpt = os.path.join(test_dir, "saver0.ckpt")
     saver1_ckpt = os.path.join(test_dir, "saver1.ckpt")
@@ -1468,8 +1468,9 @@ class MetaGraphTest(test.TestCase):
       self.assertEqual(11.0, v1.eval())
 
   def testMultiSaverCollection(self):
-    self._testMultiSaverCollectionSave()
-    self._testMultiSaverCollectionRestore()
+    test_dir = _TestDir("saver_collection")
+    self._testMultiSaverCollectionSave(test_dir)
+    self._testMultiSaverCollectionRestore(test_dir)
 
   def testBinaryAndTextFormat(self):
     test_dir = _TestDir("binary_and_text")
@@ -1527,8 +1528,7 @@ class MetaGraphTest(test.TestCase):
       # It should be the same as the original.
       self.assertProtoEquals(meta_graph_def, new_meta_graph_def)
 
-  def _testGraphExtensionSave(self):
-    test_dir = _TestDir("graph_extension")
+  def _testGraphExtensionSave(self, test_dir):
     filename = os.path.join(test_dir, "metafile")
     saver0_ckpt = os.path.join(test_dir, "saver0.ckpt")
     # Creates an inference graph.
@@ -1593,8 +1593,7 @@ class MetaGraphTest(test.TestCase):
       # Generates MetaGraphDef.
       saver0.export_meta_graph(filename)
 
-  def _testGraphExtensionRestore(self):
-    test_dir = os.path.join(self.get_temp_dir(), "graph_extension")
+  def _testGraphExtensionRestore(self, test_dir):
     filename = os.path.join(test_dir, "metafile")
     train_filename = os.path.join(test_dir, "train_metafile")
     saver0_ckpt = os.path.join(test_dir, "saver0.ckpt")
@@ -1615,7 +1614,7 @@ class MetaGraphTest(test.TestCase):
           concated, array_ops.stack([batch_size, 10]), 1.0, 0.0)
       logits = ops_lib.get_collection("logits")[0]
       cross_entropy = nn_ops.softmax_cross_entropy_with_logits(
-          logits, onehot_labels, name="xentropy")
+          labels=onehot_labels, logits=logits, name="xentropy")
       loss = math_ops.reduce_mean(cross_entropy, name="xentropy_mean")
 
       summary.scalar("loss", loss)
@@ -1632,8 +1631,7 @@ class MetaGraphTest(test.TestCase):
       # Generates MetaGraphDef.
       saver_module.export_meta_graph(train_filename)
 
-  def _testRestoreFromTrainGraphWithControlContext(self):
-    test_dir = os.path.join(self.get_temp_dir(), "graph_extension")
+  def _testRestoreFromTrainGraphWithControlContext(self, test_dir):
     train_filename = os.path.join(test_dir, "train_metafile")
     saver0_ckpt = os.path.join(test_dir, "saver0.ckpt")
     with self.test_session(graph=ops_lib.Graph()) as sess:
@@ -1645,9 +1643,10 @@ class MetaGraphTest(test.TestCase):
       sess.run(train_op)
 
   def testGraphExtension(self):
-    self._testGraphExtensionSave()
-    self._testGraphExtensionRestore()
-    self._testRestoreFromTrainGraphWithControlContext()
+    test_dir = _TestDir("graph_extension")
+    self._testGraphExtensionSave(test_dir)
+    self._testGraphExtensionRestore(test_dir)
+    self._testRestoreFromTrainGraphWithControlContext(test_dir)
 
   def testStrippedOpListDef(self):
     with self.test_session():
@@ -1699,7 +1698,8 @@ class MetaGraphTest(test.TestCase):
       bias = variables.Variable(array_ops.zeros([10]), name="bias")
       logit = nn_ops.relu(math_ops.matmul(image, weights) + bias, name="logits")
       nn_ops.softmax(logit, name="prediction")
-      cost = nn_ops.softmax_cross_entropy_with_logits(logit, label, name="cost")
+      cost = nn_ops.softmax_cross_entropy_with_logits(labels=label,
+                                                      logits=logit, name="cost")
       adam.AdamOptimizer().minimize(cost, name="optimize")
       saver = saver_module.Saver()
       sess.run(variables.global_variables_initializer())
@@ -1727,7 +1727,8 @@ class MetaGraphTest(test.TestCase):
         bias = variables.Variable(array_ops.zeros([10]), name="bias")
         logit = nn_ops.relu(math_ops.matmul(image, weights) + bias)
         nn_ops.softmax(logit, name="prediction")
-        cost = nn_ops.softmax_cross_entropy_with_logits(logit, label)
+        cost = nn_ops.softmax_cross_entropy_with_logits(labels=label,
+                                                        logits=logit)
         adam.AdamOptimizer().minimize(cost, name="optimize")
       meta_graph_def = saver_module.export_meta_graph()
 
@@ -1759,7 +1760,8 @@ class MetaGraphTest(test.TestCase):
         bias = variables.Variable(array_ops.zeros([10]), name="bias")
         logit = nn_ops.relu(math_ops.matmul(image, weights) + bias)
         nn_ops.softmax(logit, name="prediction")
-        cost = nn_ops.softmax_cross_entropy_with_logits(logit, label)
+        cost = nn_ops.softmax_cross_entropy_with_logits(labels=label,
+                                                        logits=logit)
         adam.AdamOptimizer().minimize(cost, name="optimize")
       meta_graph_def = saver_module.export_meta_graph(clear_devices=True)
       graph_io.write_graph(meta_graph_def, "/tmp", "meta_graph.pbtxt")

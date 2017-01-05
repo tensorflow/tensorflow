@@ -19,11 +19,9 @@ from __future__ import print_function
 
 import collections
 
-
 from six.moves import range
 
 from tensorflow.contrib.linear_optimizer.python.ops.sharded_mutable_dense_hashtable import ShardedMutableDenseHashTable
-from tensorflow.python import summary
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.ops import internal_convert_to_tensor
@@ -36,6 +34,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables as var_ops
 from tensorflow.python.ops.nn import sigmoid_cross_entropy_with_logits
+from tensorflow.python.summary import summary
 
 __all__ = ['SdcaModel']
 
@@ -107,10 +106,7 @@ class SdcaModel(object):
     ```
   """
 
-  def __init__(self,
-               examples,
-               variables,
-               options):
+  def __init__(self, examples, variables, options):
     """Create a new sdca optimizer."""
 
     if not examples or not variables or not options:
@@ -121,8 +117,10 @@ class SdcaModel(object):
     if options['loss_type'] not in supported_losses:
       raise ValueError('Unsupported loss_type: ', options['loss_type'])
 
-    self._assertSpecified(['example_labels', 'example_weights', 'example_ids',
-                           'sparse_features', 'dense_features'], examples)
+    self._assertSpecified([
+        'example_labels', 'example_weights', 'example_ids', 'sparse_features',
+        'dense_features'
+    ], examples)
     self._assertList(['sparse_features', 'dense_features'], examples)
 
     self._assertSpecified(['sparse_features_weights', 'dense_features_weights'],
@@ -130,8 +128,10 @@ class SdcaModel(object):
     self._assertList(['sparse_features_weights', 'dense_features_weights'],
                      variables)
 
-    self._assertSpecified(['loss_type', 'symmetric_l2_regularization',
-                           'symmetric_l1_regularization'], options)
+    self._assertSpecified([
+        'loss_type', 'symmetric_l2_regularization',
+        'symmetric_l1_regularization'
+    ], options)
 
     for name in ['symmetric_l1_regularization', 'symmetric_l2_regularization']:
       value = options[name]
@@ -186,9 +186,10 @@ class SdcaModel(object):
         with ops.device(var.device):
           # TODO(andreasst): remove SDCAOptimizer suffix once bug 30843109 is
           # fixed
-          self._slots['unshrinked_' + name].append(var_ops.Variable(
-              array_ops.zeros_like(var.initialized_value(), dtypes.float32),
-              name=var.op.name + '_unshrinked/SDCAOptimizer'))
+          self._slots['unshrinked_' + name].append(
+              var_ops.Variable(
+                  array_ops.zeros_like(var.initialized_value(), dtypes.float32),
+                  name=var.op.name + '_unshrinked/SDCAOptimizer'))
 
   def _assertSpecified(self, items, check_in):
     for x in items:
@@ -249,8 +250,8 @@ class SdcaModel(object):
           'dense_features_weights'])
 
       for i in range(len(dense_variables)):
-        result += math_ops.matmul(dense_features[i], array_ops.expand_dims(
-            dense_variables[i], -1))
+        result += math_ops.matmul(dense_features[i],
+                                  array_ops.expand_dims(dense_variables[i], -1))
 
     # Reshaping to allow shape inference at graph construction time.
     return array_ops.reshape(result, [-1])
@@ -440,22 +441,24 @@ class SdcaModel(object):
     Raises:
       ValueError: if examples are not well defined.
     """
-    self._assertSpecified(['example_labels', 'example_weights',
-                           'sparse_features', 'dense_features'], examples)
+    self._assertSpecified([
+        'example_labels', 'example_weights', 'sparse_features', 'dense_features'
+    ], examples)
     self._assertList(['sparse_features', 'dense_features'], examples)
     with name_scope('sdca/unregularized_loss'):
       predictions = math_ops.cast(
           self._linear_predictions(examples), dtypes.float64)
       labels = math_ops.cast(
-          internal_convert_to_tensor(
-              examples['example_labels']), dtypes.float64)
+          internal_convert_to_tensor(examples['example_labels']),
+          dtypes.float64)
       weights = math_ops.cast(
-          internal_convert_to_tensor(
-              examples['example_weights']), dtypes.float64)
+          internal_convert_to_tensor(examples['example_weights']),
+          dtypes.float64)
 
       if self._options['loss_type'] == 'logistic_loss':
         return math_ops.reduce_sum(math_ops.multiply(
-            sigmoid_cross_entropy_with_logits(predictions, labels),
+            sigmoid_cross_entropy_with_logits(labels=labels,
+                                              logits=predictions),
             weights)) / math_ops.reduce_sum(weights)
 
       if self._options['loss_type'] in ['hinge_loss', 'smooth_hinge_loss']:
@@ -465,8 +468,9 @@ class SdcaModel(object):
         adjusted_labels = math_ops.subtract(2 * labels, all_ones)
         # Tensor that contains (unweighted) error (hinge loss) per
         # example.
-        error = nn_ops.relu(math_ops.subtract(
-            all_ones, math_ops.multiply(adjusted_labels, predictions)))
+        error = nn_ops.relu(
+            math_ops.subtract(all_ones,
+                              math_ops.multiply(adjusted_labels, predictions)))
         weighted_error = math_ops.multiply(error, weights)
         return math_ops.reduce_sum(weighted_error) / math_ops.reduce_sum(
             weights)
@@ -491,8 +495,9 @@ class SdcaModel(object):
     Raises:
       ValueError: if examples are not well defined.
     """
-    self._assertSpecified(['example_labels', 'example_weights',
-                           'sparse_features', 'dense_features'], examples)
+    self._assertSpecified([
+        'example_labels', 'example_weights', 'sparse_features', 'dense_features'
+    ], examples)
     self._assertList(['sparse_features', 'dense_features'], examples)
     with name_scope('sdca/regularized_loss'):
       weights = internal_convert_to_tensor(examples['example_weights'])

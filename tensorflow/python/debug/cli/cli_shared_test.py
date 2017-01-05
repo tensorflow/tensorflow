@@ -30,6 +30,46 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
 
+class BytesToReadableStrTest(test_util.TensorFlowTestCase):
+
+  def testNoneSizeWorks(self):
+    self.assertEqual(str(None), cli_shared.bytes_to_readable_str(None))
+
+  def testSizesBelowOneKiloByteWorks(self):
+    self.assertEqual("0", cli_shared.bytes_to_readable_str(0))
+    self.assertEqual("500", cli_shared.bytes_to_readable_str(500))
+    self.assertEqual("1023", cli_shared.bytes_to_readable_str(1023))
+
+  def testSizesBetweenOneKiloByteandOneMegaByteWorks(self):
+    self.assertEqual("1.00k", cli_shared.bytes_to_readable_str(1024))
+    self.assertEqual("2.40k", cli_shared.bytes_to_readable_str(int(1024 * 2.4)))
+    self.assertEqual("1023.00k", cli_shared.bytes_to_readable_str(1024 * 1023))
+
+  def testSizesBetweenOneMegaByteandOneGigaByteWorks(self):
+    self.assertEqual("1.00M", cli_shared.bytes_to_readable_str(1024**2))
+    self.assertEqual("2.40M",
+                     cli_shared.bytes_to_readable_str(int(1024**2 * 2.4)))
+    self.assertEqual("1023.00M",
+                     cli_shared.bytes_to_readable_str(1024**2 * 1023))
+
+  def testSizeAboveOneGigaByteWorks(self):
+    self.assertEqual("1.00G", cli_shared.bytes_to_readable_str(1024**3))
+    self.assertEqual("2000.00G",
+                     cli_shared.bytes_to_readable_str(1024**3 * 2000))
+
+  def testReadableStrIncludesBAtTheEndOnRequest(self):
+    self.assertEqual("0B", cli_shared.bytes_to_readable_str(0, include_b=True))
+    self.assertEqual(
+        "1.00kB", cli_shared.bytes_to_readable_str(
+            1024, include_b=True))
+    self.assertEqual(
+        "1.00MB", cli_shared.bytes_to_readable_str(
+            1024**2, include_b=True))
+    self.assertEqual(
+        "1.00GB", cli_shared.bytes_to_readable_str(
+            1024**3, include_b=True))
+
+
 class GetRunStartIntroAndDescriptionTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
