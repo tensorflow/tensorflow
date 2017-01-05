@@ -200,7 +200,7 @@ public class TensorFlowMultiBoxDetector implements Classifier {
               outputLocations[4 * i + 1] * inputSize,
               outputLocations[4 * i + 2] * inputSize,
               outputLocations[4 * i + 3] * inputSize);
-      pq.add(new Recognition("" + i, "" + i, outputScores[i], detection));
+      pq.add(new Recognition("" + i, null, outputScores[i], detection));
     }
 
     final ArrayList<Recognition> recognitions = new ArrayList<Recognition>();
