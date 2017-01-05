@@ -858,8 +858,11 @@ default and if you want to limit RAM usage you can add `--local_resources
 ```bash
 $ bazel build -c opt //tensorflow/tools/pip_package:build_pip_package
 
-# To build with GPU support:
+# To build with support for CUDA:
 $ bazel build -c opt --config=cuda //tensorflow/tools/pip_package:build_pip_package
+
+# Alternatively, to build with support for OpenCL:
+$ bazel build -c opt --config=sycl //tensorflow/tools/pip_package:build_pip_package
 
 $ bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/tensorflow_pkg
 
