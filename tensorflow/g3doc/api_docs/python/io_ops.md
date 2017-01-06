@@ -3176,7 +3176,8 @@ Note: if `num_epochs` is not `None`, this function creates local counter
 
 ##### Returns:
 
-  A list or dictionary of tensors with the same types as `tensors`.
+  A list or dictionary of tensors with the same types as `tensors` (except if
+  the input is a list of one element, then it returns a tensor, not a list).
 
 ##### Raises:
 
