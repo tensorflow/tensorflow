@@ -129,7 +129,7 @@ if __name__ == "__main__":
   parser.add_argument(
       "--ui_type",
       type=str,
-      default="curses"
+      default="curses",
       help="Command-line user interface type (curses | readline)")
   parser.add_argument(
       "--debug",
