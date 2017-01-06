@@ -12,15 +12,15 @@ py_test(
     data = [
         "//tensorflow/tools/api/golden:api_golden",
     ],
+    tags = [
+        "manual",
+        "notap",
+    ],
     deps = [
-        "@protobuf//:protobuf_python",
         "//tensorflow:tensorflow_py",
         "//tensorflow/tools/api/lib:python_object_to_proto_visitor",
         "//tensorflow/tools/common:public_api",
         "//tensorflow/tools/common:traverse",
-    ],
-    tags = [
-        "manual",
-        "notap",
+        "@protobuf//:protobuf_python",
     ],
 )
