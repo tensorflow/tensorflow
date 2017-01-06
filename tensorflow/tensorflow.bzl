@@ -46,7 +46,7 @@ load(
 load(
     "@local_config_cuda//cuda:build_defs.bzl",
     "if_cuda",
-    "cuda_path_flags"
+    "cuda_default_copts"
 )
 
 # List of proto files for android builds
@@ -390,29 +390,20 @@ def _cuda_copts():
     compiler.  If we're not doing CUDA compilation, returns an empty list.
 
     """
-    common_cuda_opts = ["-x", "cuda", "-DGOOGLE_CUDA=1"]
-    return select({
+    return cuda_default_copts() + select({
         "//conditions:default": [],
         "@local_config_cuda//cuda:using_nvcc": (
-            common_cuda_opts +
             [
                 "-nvcc_options=relaxed-constexpr",
                 "-nvcc_options=ftz=true",
             ]
         ),
         "@local_config_cuda//cuda:using_clang": (
-            common_cuda_opts +
             [
                 "-fcuda-flush-denormals-to-zero",
-                "--cuda-gpu-arch=sm_35",
             ]
         ),
-    }) + select({
-        # Pass -O3 when building CUDA code with clang; some important
-        # optimizations are not enabled at O2.
-        "@local_config_cuda//cuda:using_clang_opt": ["-O3"],
-        "//conditions:default": [],
-    }) + cuda_path_flags()
+    })
 
 # Build defs for TensorFlow kernels
 
