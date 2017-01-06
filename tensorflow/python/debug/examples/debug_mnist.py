@@ -36,6 +36,8 @@ flags.DEFINE_integer("train_batch_size", 100,
                      "Batch size used during training.")
 flags.DEFINE_float("learning_rate", 0.025, "Initial learning rate.")
 flags.DEFINE_string("data_dir", "/tmp/mnist_data", "Directory for storing data")
+flags.DEFINE_string("ui_type", "curses",
+                    "Command-line user interface type (curses | readline)")
 flags.DEFINE_boolean("debug", False,
                      "Use debugger to track down bad values during training")
 
@@ -122,7 +124,7 @@ def main(_):
   sess.run(tf.global_variables_initializer())
 
   if FLAGS.debug:
-    sess = tf_debug.LocalCLIDebugWrapperSession(sess)
+    sess = tf_debug.LocalCLIDebugWrapperSession(sess, ui_type=FLAGS.ui_type)
     sess.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
 
   # Add this point, sess is a debug wrapper around the actual Session if

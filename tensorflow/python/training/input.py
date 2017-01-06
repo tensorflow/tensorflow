@@ -851,7 +851,8 @@ def batch(tensors, batch_size, num_threads=1, capacity=32,
     name: (Optional) A name for the operations.
 
   Returns:
-    A list or dictionary of tensors with the same types as `tensors`.
+    A list or dictionary of tensors with the same types as `tensors` (except if
+    the input is a list of one element, then it returns a tensor, not a list).
 
   Raises:
     ValueError: If the `shapes` are not specified, and cannot be

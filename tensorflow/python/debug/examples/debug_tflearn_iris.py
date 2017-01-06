@@ -32,6 +32,8 @@ flags.DEFINE_string("data_dir", "/tmp/iris_data",
                     "Directory to save the training and test data in.")
 flags.DEFINE_string("model_dir", "", "Directory to save the trained model in.")
 flags.DEFINE_integer("train_steps", 10, "Number of steps to run trainer.")
+flags.DEFINE_string("ui_type", "curses",
+                    "Command-line user interface type (curses | readline)")
 flags.DEFINE_boolean("debug", False,
                      "Use debugger to track down bad values during training")
 
@@ -94,7 +96,8 @@ def main(_):
       n_classes=3,
       model_dir=model_dir)
 
-  hooks = [tf_debug.LocalCLIDebugHook()] if FLAGS.debug else None
+  hooks = ([tf_debug.LocalCLIDebugHook(ui_type=FLAGS.ui_type)] if FLAGS.debug
+           else None)
 
   # Fit model.
   classifier.fit(x=training_set.data,

@@ -17,9 +17,14 @@ Can be used as a monitor/hook for tf.train.MonitoredSession.
 
 - - -
 
-#### `tf_debug.LocalCLIDebugHook.__init__()` {#LocalCLIDebugHook.__init__}
+#### `tf_debug.LocalCLIDebugHook.__init__(ui_type='curses')` {#LocalCLIDebugHook.__init__}
 
 Create a local debugger command-line interface (CLI) hook.
+
+##### Args:
+
+
+*  <b>`ui_type`</b>: (str) user-interface type.
 
 
 - - -
