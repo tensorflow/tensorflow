@@ -334,8 +334,8 @@ class DNNComposableModel(_ComposableModel):
 
   def _add_hidden_layer_summary(self, value, tag):
     # TODO(zakaria): Move this code to tf.learn and add test.
-    summary.scalar("%s:fraction_of_zero_values" % tag, nn.zero_fraction(value))
-    summary.histogram("%s:activation" % tag, value)
+    summary.scalar("%s/fraction_of_zero_values" % tag, nn.zero_fraction(value))
+    summary.histogram("%s/activation" % tag, value)
 
   def build_model(self, features, feature_columns, is_training):
     """See base class."""
