@@ -65,9 +65,11 @@ class SparseFeature(
       be `dtype` and its length must always match that of the `index_key`
       feature.
     dtype: Data type of the `value_key` feature.
-    size: Each value in the `index_key` feature must be in `[0, size)`.
-    already_sorted: A boolean to specify whether the values in `index_key` are
-      already sorted. If so skip sorting, False by default (optional).
+    size: A Python int to specify a dimension of the dense shape. Each value in
+      the `index_key` feature must be in `[0, size)`.
+    already_sorted: A Python boolean to specify whether the values in
+      `index_key` are already sorted. If so skip sorting.
+      False by default (optional).
   """
   pass
 SparseFeature.__new__.__defaults__ = (False,)
@@ -225,8 +227,8 @@ def _construct_sparse_tensors_for_sparse_features(features, tensor_dict):
       tensor_dict[key] = sparse_ops.sparse_merge(
           sp_ids,
           sp_values,
-          feature.size,
-          feature.already_sorted)
+          vocab_size=feature.size,
+          already_sorted=feature.already_sorted)
   # Remove tensors from dictionary that were only used to construct
   # SparseTensors for SparseFeature.
   for key in set(tensor_dict.keys()) - set(features.keys()):
@@ -394,7 +396,8 @@ def parse_example(serialized, features, name=None, example_names=None):
   ```
   example_names: ["input0", "input1"],
   features: {
-      "sparse": SparseFeature("ix", "val", tf.float32, 100),
+      "sparse": SparseFeature(
+          index_key="ix", value_key="val", dtype=tf.float32, size=100),
   }
   ```
 

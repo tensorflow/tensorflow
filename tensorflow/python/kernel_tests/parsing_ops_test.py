@@ -363,7 +363,8 @@ class ParseExampleTest(test.TestCase):
             "sp1":
                 parsing_ops.SparseFeature("idx", "val1", dtypes.float32, 13),
             "sp2":
-                parsing_ops.SparseFeature("idx", "val2", dtypes.float32, 7)
+                parsing_ops.SparseFeature(
+                    "idx", "val2", dtypes.float32, size=7, already_sorted=True)
         }
     }, expected_output)
 
