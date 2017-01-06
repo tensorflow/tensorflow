@@ -166,6 +166,49 @@ class DNNClassifierTest(test.TestCase):
         embedding_language: 0.8
     }, classifier._estimator.params['embedding_lr_multipliers'])
 
+  def testInputPartitionSize(self):
+    def _input_fn_float_label(num_epochs=None):
+      features = {
+          'language':
+              sparse_tensor.SparseTensor(
+                  values=input_lib.limit_epochs(
+                      ['en', 'fr', 'zh'], num_epochs=num_epochs),
+                  indices=[[0, 0], [0, 1], [2, 0]],
+                  dense_shape=[3, 2])
+      }
+      labels = constant_op.constant([[0.8], [0.], [0.2]], dtype=dtypes.float32)
+      return features, labels
+
+    language_column = feature_column.sparse_column_with_hash_bucket(
+        'language', hash_bucket_size=20)
+    feature_columns = [
+        feature_column.embedding_column(language_column, dimension=1),
+    ]
+
+    # Set num_ps_replica to be 10 and the min slice size to be extremely small,
+    # so as to ensure that there'll be 10 partititions produced.
+    config = run_config.RunConfig(tf_random_seed=1)
+    config._num_ps_replicas = 10
+    classifier = dnn.DNNClassifier(
+        n_classes=2,
+        feature_columns=feature_columns,
+        hidden_units=[3, 3],
+        optimizer='Adagrad',
+        config=config,
+        input_layer_min_slice_size=1)
+
+    # Ensure the param is passed in.
+    self.assertEqual(1,
+                     classifier._estimator.params['input_layer_min_slice_size'])
+
+    # Ensure the partition count is 10.
+    classifier.fit(input_fn=_input_fn_float_label, steps=50)
+    partition_count = 0
+    for name in classifier.get_variable_names():
+      if 'language_embedding' in name and 'Adagrad' in name:
+        partition_count += 1
+    self.assertEqual(10, partition_count)
+
   def testLogisticRegression_MatrixData(self):
     """Tests binary classification using matrix data as input."""
     cont_features = [feature_column.real_valued_column('feature', dimension=4)]

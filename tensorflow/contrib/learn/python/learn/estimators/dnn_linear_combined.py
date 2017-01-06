@@ -155,8 +155,10 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
           clipped to their global norm with this clipping ratio.
       * num_ps_replicas: The number of parameter server replicas.
       * embedding_lr_multipliers: Optional. A dictionary from
-        `EmbeddingColumn` to a `float` multiplier. Multiplier will be used to
-        multiply with learning rate for the embedding variables.
+          `EmbeddingColumn` to a `float` multiplier. Multiplier will be used to
+          multiply with learning rate for the embedding variables.
+      * input_layer_min_slice_size: Optional. The min slice size of input layer
+          partitions. If not provided, will use the default of 64M.
     config: `RunConfig` object to configure the runtime settings.
 
   Returns:
@@ -176,6 +178,8 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
   dnn_activation_fn = params.get("dnn_activation_fn")
   dnn_dropout = params.get("dnn_dropout")
   gradient_clip_norm = params.get("gradient_clip_norm")
+  input_layer_min_slice_size = (
+      params.get("input_layer_min_slice_size") or 64 << 20)
   num_ps_replicas = config.num_ps_replicas if config else 0
   embedding_lr_multipliers = params.get("embedding_lr_multipliers", {})
 
@@ -194,7 +198,7 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
     input_layer_partitioner = (
         partitioned_variables.min_max_variable_partitioner(
             max_partitions=num_ps_replicas,
-            min_slice_size=64 << 20))
+            min_slice_size=input_layer_min_slice_size))
     input_layer_scope = dnn_parent_scope + "/input_from_feature_columns"
     with variable_scope.variable_scope(
         input_layer_scope,
@@ -480,7 +484,8 @@ class DNNLinearCombinedClassifier(evaluable.Evaluable, trainable.Trainable):
                enable_centered_bias=False,
                config=None,
                feature_engineering_fn=None,
-               embedding_lr_multipliers=None):
+               embedding_lr_multipliers=None,
+               input_layer_min_slice_size=None):
     """Constructs a DNNLinearCombinedClassifier instance.
 
     Args:
@@ -527,6 +532,8 @@ class DNNLinearCombinedClassifier(evaluable.Evaluable, trainable.Trainable):
       embedding_lr_multipliers: Optional. A dictionary from `EmbeddingColumn` to
           a `float` multiplier. Multiplier will be used to multiply with
           learning rate for the embedding variables.
+      input_layer_min_slice_size: Optional. The min slice size of input layer
+          partitions. If not provided, will use the default of 64M.
 
     Raises:
       ValueError: If `n_classes` < 2.
@@ -565,6 +572,7 @@ class DNNLinearCombinedClassifier(evaluable.Evaluable, trainable.Trainable):
             "dnn_dropout": dnn_dropout,
             "gradient_clip_norm": gradient_clip_norm,
             "embedding_lr_multipliers": embedding_lr_multipliers,
+            "input_layer_min_slice_size": input_layer_min_slice_size,
         },
         feature_engineering_fn=feature_engineering_fn)
 
@@ -875,7 +883,8 @@ class DNNLinearCombinedRegressor(evaluable.Evaluable, trainable.Trainable):
                label_dimension=1,
                config=None,
                feature_engineering_fn=None,
-               embedding_lr_multipliers=None):
+               embedding_lr_multipliers=None,
+               input_layer_min_slice_size=None):
     """Initializes a DNNLinearCombinedRegressor instance.
 
     Args:
@@ -919,6 +928,9 @@ class DNNLinearCombinedRegressor(evaluable.Evaluable, trainable.Trainable):
       embedding_lr_multipliers: Optional. A dictionary from `EmbeddingColumn` to
           a `float` multiplier. Multiplier will be used to multiply with
           learning rate for the embedding variables.
+      input_layer_min_slice_size: Optional. The min slice size of input layer
+          partitions. If not provided, will use the default of 64M.
+
 
     Raises:
       ValueError: If both linear_feature_columns and dnn_features_columns are
@@ -950,6 +962,7 @@ class DNNLinearCombinedRegressor(evaluable.Evaluable, trainable.Trainable):
             "dnn_dropout": dnn_dropout,
             "gradient_clip_norm": gradient_clip_norm,
             "embedding_lr_multipliers": embedding_lr_multipliers,
+            "input_layer_min_slice_size": input_layer_min_slice_size,
         },
         feature_engineering_fn=feature_engineering_fn)
 
