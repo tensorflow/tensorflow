@@ -973,25 +973,21 @@ def parallel_stack(values, name="parallel_stack"):
   Returns:
     output: A stacked `Tensor` with the same type as `values`.
   """
-  try:
-    # If the input is a constant list, it can be converted to a constant op
-    return ops.convert_to_tensor(values, name=name)
-  except (TypeError, ValueError):
-    pass  # Input list contains non-constant tensors
+  with ops.name_scope(name):
+    value_t = ops.convert_to_tensor(values[0])
+    value_shape = ops.convert_to_tensor(value_t).get_shape()
 
-  value_shape = ops.convert_to_tensor(values[0]).get_shape()
+    output_shape = tensor_shape.TensorShape([len(values)])
+    output_shape = output_shape.concatenate(value_shape)
 
-  output_shape = tensor_shape.TensorShape([len(values)])
-  output_shape = output_shape.concatenate(value_shape)
-
-  outputs = empty(output_shape, values[0].dtype)
-  output_ops = []
-  for i in range(len(values)):
-    output_op = alias_inplace_update(outputs, i, values[i])
-    output_ops.append(output_op)
-  with ops.control_dependencies(output_ops):
-    outputs = identity(outputs)
-  return outputs
+    outputs = empty(output_shape, value_t.dtype)
+    output_ops = []
+    for i in range(len(values)):
+      output_op = alias_inplace_update(outputs, i, values[i])
+      output_ops.append(output_op)
+    with ops.control_dependencies(output_ops):
+      outputs = identity(outputs)
+    return outputs
 
 
 def stack(values, axis=0, name="stack"):
