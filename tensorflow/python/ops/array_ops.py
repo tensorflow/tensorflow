@@ -57,11 +57,6 @@ or join multiple tensors together.
 @@concat
 @@concat_v2
 @@stack
-@@empty
-@@empty_like
-@@alias_inplace_update
-@@alias_inplace_add
-@@alias_inplace_subtract
 @@parallel_stack
 @@pack
 @@unstack
@@ -800,7 +795,7 @@ def _inplace_helper(value, loc, update, op):
   return op(value, loc, update)
 
 
-def empty(output_shape, dtype, init=False):
+def _empty(output_shape, dtype, init=False):
   """Creates an empty Tensor with shape `output_shape` and type `dtype`.
 
   The memory can optionally be initialized. This is usually useful in
@@ -817,7 +812,7 @@ def empty(output_shape, dtype, init=False):
   return gen_array_ops._empty(output_shape, dtype, init=init)
 
 
-def empty_like(value, init=None):
+def _empty_like(value, init=None):
   """Creates an empty Tensor with the same shape and type `dtype` as value.
 
   The memory can optionally be initialized. This op is usually useful in
@@ -835,7 +830,7 @@ def empty_like(value, init=None):
   return gen_array_ops._empty(shape(value), value.dtype, init=init)
 
 
-def alias_inplace_update(value, loc, update):
+def _alias_inplace_update(value, loc, update):
   """Updates input `value` at `loc` with `update`. Aliases value.
 
      If `loc` is None, `value` and `update` must be the same size.
@@ -869,7 +864,7 @@ def alias_inplace_update(value, loc, update):
   return _inplace_helper(value, loc, update, gen_array_ops._inplace_update)
 
 
-def alias_inplace_add(value, loc, update):
+def _alias_inplace_add(value, loc, update):
   """Updates input `value` at `loc` with `update`. Aliases value.
 
      If `loc` is None, `value` and `update` must be the same size.
@@ -903,7 +898,7 @@ def alias_inplace_add(value, loc, update):
   return _inplace_helper(value, loc, update, gen_array_ops._inplace_add)
 
 
-def alias_inplace_subtract(value, loc, update):
+def _alias_inplace_subtract(value, loc, update):
   """Updates input `value` at `loc` with `update`. Aliases value.
 
      If `loc` is None, `value` and `update` must be the same size.
@@ -980,15 +975,15 @@ def parallel_stack(values, name="parallel_stack"):
     output_shape = tensor_shape.TensorShape([len(values)])
     output_shape = output_shape.concatenate(value_shape)
 
-    outputs = empty(output_shape, value_t.dtype)
+    outputs = _empty(output_shape, values[0].dtype)
     output_ops = []
     for i in range(len(values)):
-      output_op = alias_inplace_update(outputs, i, values[i])
+      with ops.colocate_with(outputs):
+        output_op = _alias_inplace_update(outputs, i, values[i])
       output_ops.append(output_op)
     with ops.control_dependencies(output_ops):
       outputs = identity(outputs)
     return outputs
-
 
 def stack(values, axis=0, name="stack"):
   """Stacks a list of rank-`R` tensors into one rank-`(R+1)` tensor.
