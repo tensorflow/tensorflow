@@ -82,7 +82,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "benchmark_test",
     size = "small",
     srcs = ["benchmark_test.py"],
