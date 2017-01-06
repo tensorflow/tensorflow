@@ -764,19 +764,30 @@ class _RecoverableSession(_WrappedSession):
       sess_creator: A 'SessionCreator' to be wrapped by recoverable.
     """
     self._sess_creator = sess_creator
-    _WrappedSession.__init__(self, self._sess_creator.create_session())
+    _WrappedSession.__init__(self, self._create_session())
+
+  def _create_session(self):
+    while True:
+      try:
+        return self._sess_creator.create_session()
+      except errors.AbortedError:
+        logging.info('An AbortedError was raised during initialization. '
+                     'It\'s most likely due to a preemption in a connected '
+                     'worker/ps. A new session will be created.')
 
   def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
     while True:
       try:
         if not self._sess:
-          self._sess = self._sess_creator.create_session()
+          self._sess = self._create_session()
         return self._sess.run(fetches,
                               feed_dict=feed_dict,
                               options=options,
                               run_metadata=run_metadata)
       except errors.AbortedError:
         logging.info('An AbortedError was raised. Closing the current session. '
+                     'It\'s most likely due to a preemption in a connected '
+                     'worker/ps. '
                      'A new session will be created on the next session.run().')
         self.close()
         self._sess = None
