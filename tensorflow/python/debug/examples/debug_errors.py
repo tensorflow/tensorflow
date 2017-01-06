@@ -26,6 +26,8 @@ flags = tf.app.flags
 FLAGS = flags.FLAGS
 flags.DEFINE_string("error", "shape_mismatch", "Type of the error to generate "
                     "(shape_mismatch | uninitialized_variable | no_error).")
+flags.DEFINE_string("ui_type", "curses",
+                    "Command-line user interface type (curses | readline)")
 flags.DEFINE_boolean("debug", False,
                      "Use debugger to track down bad values during training")
 
@@ -45,7 +47,7 @@ def main(_):
   z = tf.matmul(m, v, name="z")
 
   if FLAGS.debug:
-    sess = tf_debug.LocalCLIDebugWrapperSession(sess)
+    sess = tf_debug.LocalCLIDebugWrapperSession(sess, ui_type=FLAGS.ui_type)
 
   if FLAGS.error == "shape_mismatch":
     print(sess.run(y, feed_dict={ph_float: np.array([[0.0], [1.0], [2.0]])}))

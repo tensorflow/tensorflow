@@ -27,6 +27,8 @@ from tensorflow.python.platform import flags
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string("dump_dir", "", "tfdbg dump directory to load")
+flags.DEFINE_string("ui_type", "curses",
+                    "Command-line user interface type (curses | readline)")
 flags.DEFINE_boolean(
     "log_usage", True, "Whether the usage of this tool is to be logged")
 flags.DEFINE_boolean(
@@ -46,9 +48,10 @@ def main(_):
 
   debug_dump = debug_data.DebugDumpDir(
       FLAGS.dump_dir, validate=FLAGS.validate_graph)
-  cli = analyzer_cli.create_analyzer_curses_cli(
+  cli = analyzer_cli.create_analyzer_ui(
       debug_dump,
-      tensor_filters={"has_inf_or_nan": debug_data.has_inf_or_nan})
+      tensor_filters={"has_inf_or_nan": debug_data.has_inf_or_nan},
+      ui_type=FLAGS.ui_type)
 
   title = "tfdbg offline @ %s" % FLAGS.dump_dir
   cli.run_ui(title=title, title_color="black_on_white", init_command="lt")
