@@ -1,0 +1,226 @@
+path: "tensorflow.losses"
+tf_module {
+  name: "tensorflow.python.ops.losses.losses"
+  member_methods {
+    name: "absolute_difference"
+    args {
+      arg_name: "labels"
+    }
+    args {
+      arg_name: "predictions"
+    }
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "scope"
+    }
+    args {
+      arg_name: "loss_collection"
+    }
+  }
+  member_methods {
+    name: "add_loss"
+    args {
+      arg_name: "loss"
+    }
+    args {
+      arg_name: "loss_collection"
+    }
+  }
+  member_methods {
+    name: "compute_weighted_loss"
+    args {
+      arg_name: "losses"
+    }
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "scope"
+    }
+    args {
+      arg_name: "loss_collection"
+    }
+  }
+  member_methods {
+    name: "cosine_distance"
+    args {
+      arg_name: "labels"
+    }
+    args {
+      arg_name: "predictions"
+    }
+    args {
+      arg_name: "dim"
+    }
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "scope"
+    }
+    args {
+      arg_name: "loss_collection"
+    }
+  }
+  member_methods {
+    name: "get_losses"
+    args {
+      arg_name: "scope"
+    }
+    args {
+      arg_name: "loss_collection"
+    }
+  }
+  member_methods {
+    name: "get_regularization_losses"
+    args {
+      arg_name: "scope"
+    }
+  }
+  member_methods {
+    name: "get_total_loss"
+    args {
+      arg_name: "add_regularization_losses"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "hinge_loss"
+    args {
+      arg_name: "labels"
+    }
+    args {
+      arg_name: "logits"
+    }
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "scope"
+    }
+    args {
+      arg_name: "loss_collection"
+    }
+  }
+  member_methods {
+    name: "log_loss"
+    args {
+      arg_name: "labels"
+    }
+    args {
+      arg_name: "predictions"
+    }
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "epsilon"
+    }
+    args {
+      arg_name: "scope"
+    }
+    args {
+      arg_name: "loss_collection"
+    }
+  }
+  member_methods {
+    name: "mean_pairwise_squared_error"
+    args {
+      arg_name: "labels"
+    }
+    args {
+      arg_name: "predictions"
+    }
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "scope"
+    }
+    args {
+      arg_name: "loss_collection"
+    }
+  }
+  member_methods {
+    name: "mean_squared_error"
+    args {
+      arg_name: "labels"
+    }
+    args {
+      arg_name: "predictions"
+    }
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "scope"
+    }
+    args {
+      arg_name: "loss_collection"
+    }
+  }
+  member_methods {
+    name: "sigmoid_cross_entropy"
+    args {
+      arg_name: "multi_class_labels"
+    }
+    args {
+      arg_name: "logits"
+    }
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "label_smoothing"
+    }
+    args {
+      arg_name: "scope"
+    }
+    args {
+      arg_name: "loss_collection"
+    }
+  }
+  member_methods {
+    name: "softmax_cross_entropy"
+    args {
+      arg_name: "onehot_labels"
+    }
+    args {
+      arg_name: "logits"
+    }
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "label_smoothing"
+    }
+    args {
+      arg_name: "scope"
+    }
+    args {
+      arg_name: "loss_collection"
+    }
+  }
+  member_methods {
+    name: "sparse_softmax_cross_entropy"
+    args {
+      arg_name: "labels"
+    }
+    args {
+      arg_name: "logits"
+    }
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "scope"
+    }
+    args {
+      arg_name: "loss_collection"
+    }
+  }
+}

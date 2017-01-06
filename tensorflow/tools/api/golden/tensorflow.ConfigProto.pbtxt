@@ -1,0 +1,269 @@
+path: "tensorflow.ConfigProto"
+tf_class {
+  name: "ConfigProto"
+  is_instance: "<class \'tensorflow.core.protobuf.config_pb2.ConfigProto\'>"
+  is_instance: "<class \'google.protobuf.message.Message\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "ALLOW_SOFT_PLACEMENT_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "DESCRIPTOR"
+    mtype: "<class \'google.protobuf.descriptor.Descriptor\'>"
+  }
+  members {
+    name: "DEVICE_COUNT_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "DEVICE_FILTERS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "DeviceCountEntry"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+  }
+  members {
+    name: "GPU_OPTIONS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "GRAPH_OPTIONS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "INTER_OP_PARALLELISM_THREADS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "INTRA_OP_PARALLELISM_THREADS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "LOG_DEVICE_PLACEMENT_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "OPERATION_TIMEOUT_IN_MS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "PLACEMENT_PERIOD_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "RPC_OPTIONS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "SESSION_INTER_OP_THREAD_POOL_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "USE_PER_SESSION_THREADS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "allow_soft_placement"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "device_count"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "device_filters"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "gpu_options"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "graph_options"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "inter_op_parallelism_threads"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "intra_op_parallelism_threads"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "log_device_placement"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "operation_timeout_in_ms"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "placement_period"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "rpc_options"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "session_inter_op_thread_pool"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "use_per_session_threads"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "ByteSize"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "Clear"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "ClearExtension"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "extension_handle"
+    }
+  }
+  member_methods {
+    name: "ClearField"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "field_name"
+    }
+  }
+  member_methods {
+    name: "CopyFrom"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "other_msg"
+    }
+  }
+  member_methods {
+    name: "DiscardUnknownFields"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "FindInitializationErrors"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "FromString"
+    args {
+      arg_name: "s"
+    }
+  }
+  member_methods {
+    name: "HasExtension"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "extension_handle"
+    }
+  }
+  member_methods {
+    name: "HasField"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "field_name"
+    }
+  }
+  member_methods {
+    name: "IsInitialized"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "errors"
+    }
+  }
+  member_methods {
+    name: "ListFields"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "MergeFrom"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "MergeFromString"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "serialized"
+    }
+  }
+  member_methods {
+    name: "ParseFromString"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "serialized"
+    }
+  }
+  member_methods {
+    name: "RegisterExtension"
+    args {
+      arg_name: "extension_handle"
+    }
+  }
+  member_methods {
+    name: "SerializePartialToString"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "SerializeToString"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "SetInParent"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "WhichOneof"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "oneof_name"
+    }
+  }
+}

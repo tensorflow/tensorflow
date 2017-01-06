@@ -1,0 +1,72 @@
+path: "tensorflow.core.framework"
+tf_module {
+  name: "tensorflow.core.framework"
+  members {
+    name: "allocation_description_pb2"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "attr_value_pb2"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "cost_graph_pb2"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "device_attributes_pb2"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "function_pb2"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "graph_pb2"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "node_def_pb2"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "op_def_pb2"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "resource_handle_pb2"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "step_stats_pb2"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "summary_pb2"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "tensor_description_pb2"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "tensor_pb2"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "tensor_shape_pb2"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "types_pb2"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "variable_pb2"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "versions_pb2"
+    mtype: "<type \'module\'>"
+  }
+}

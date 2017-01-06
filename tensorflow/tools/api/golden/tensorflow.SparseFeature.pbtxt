@@ -1,0 +1,34 @@
+path: "tensorflow.SparseFeature"
+tf_class {
+  name: "SparseFeature"
+  is_instance: "<class \'tensorflow.python.ops.parsing_ops.SparseFeature\'>"
+  is_instance: "<class \'tensorflow.python.ops.parsing_ops.SparseFeature\'>"
+  is_instance: "<type \'tuple\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "already_sorted"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "index_key"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "size"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "value_key"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "count"
+  }
+  member_methods {
+    name: "index"
+  }
+}

@@ -1,0 +1,17 @@
+path: "tensorflow.app"
+tf_module {
+  name: "tensorflow.python.platform.app"
+  members {
+    name: "flags"
+    mtype: "<type \'module\'>"
+  }
+  member_methods {
+    name: "run"
+    args {
+      arg_name: "main"
+    }
+    args {
+      arg_name: "argv"
+    }
+  }
+}

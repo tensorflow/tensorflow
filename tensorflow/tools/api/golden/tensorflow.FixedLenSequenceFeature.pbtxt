@@ -1,0 +1,26 @@
+path: "tensorflow.FixedLenSequenceFeature"
+tf_class {
+  name: "FixedLenSequenceFeature"
+  is_instance: "<class \'tensorflow.python.ops.parsing_ops.FixedLenSequenceFeature\'>"
+  is_instance: "<class \'tensorflow.python.ops.parsing_ops.FixedLenSequenceFeature\'>"
+  is_instance: "<type \'tuple\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "allow_missing"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "shape"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "count"
+  }
+  member_methods {
+    name: "index"
+  }
+}

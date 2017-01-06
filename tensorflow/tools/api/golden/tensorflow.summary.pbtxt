@@ -1,0 +1,128 @@
+path: "tensorflow.summary"
+tf_module {
+  name: "tensorflow.python.summary.summary"
+  members {
+    name: "Event"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+  }
+  members {
+    name: "FileWriter"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "FileWriterCache"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "SessionLog"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+  }
+  members {
+    name: "Summary"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+  }
+  members {
+    name: "SummaryDescription"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+  }
+  members {
+    name: "TaggedRunMetadata"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+  }
+  member_methods {
+    name: "audio"
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "tensor"
+    }
+    args {
+      arg_name: "sample_rate"
+    }
+    args {
+      arg_name: "max_outputs"
+    }
+    args {
+      arg_name: "collections"
+    }
+  }
+  member_methods {
+    name: "get_summary_description"
+    args {
+      arg_name: "node_def"
+    }
+  }
+  member_methods {
+    name: "histogram"
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "values"
+    }
+    args {
+      arg_name: "collections"
+    }
+  }
+  member_methods {
+    name: "image"
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "tensor"
+    }
+    args {
+      arg_name: "max_outputs"
+    }
+    args {
+      arg_name: "collections"
+    }
+  }
+  member_methods {
+    name: "merge"
+    args {
+      arg_name: "inputs"
+    }
+    args {
+      arg_name: "collections"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "merge_all"
+    args {
+      arg_name: "key"
+    }
+  }
+  member_methods {
+    name: "scalar"
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "tensor"
+    }
+    args {
+      arg_name: "collections"
+    }
+  }
+  member_methods {
+    name: "tensor_summary"
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "tensor"
+    }
+    args {
+      arg_name: "summary_description"
+    }
+    args {
+      arg_name: "collections"
+    }
+  }
+}

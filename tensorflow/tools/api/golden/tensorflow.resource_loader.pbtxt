@@ -1,0 +1,28 @@
+path: "tensorflow.resource_loader"
+tf_module {
+  name: "tensorflow.python.platform.resource_loader"
+  member_methods {
+    name: "get_data_files_path"
+  }
+  member_methods {
+    name: "get_path_to_datafile"
+    args {
+      arg_name: "path"
+    }
+  }
+  member_methods {
+    name: "load_resource"
+    args {
+      arg_name: "path"
+    }
+  }
+  member_methods {
+    name: "readahead_file_path"
+    args {
+      arg_name: "path"
+    }
+    args {
+      arg_name: "unused_readahead"
+    }
+  }
+}

@@ -1,0 +1,127 @@
+path: "tensorflow.train.Saver"
+tf_class {
+  name: "Saver"
+  is_instance: "<class \'tensorflow.python.training.saver.Saver\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "last_checkpoints"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "as_saver_def"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "build"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "export_meta_graph"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "filename"
+    }
+    args {
+      arg_name: "collection_list"
+    }
+    args {
+      arg_name: "as_text"
+    }
+    args {
+      arg_name: "export_scope"
+    }
+    args {
+      arg_name: "clear_devices"
+    }
+  }
+  member_methods {
+    name: "from_proto"
+    args {
+      arg_name: "saver_def"
+    }
+    args {
+      arg_name: "import_scope"
+    }
+  }
+  member_methods {
+    name: "recover_last_checkpoints"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "checkpoint_paths"
+    }
+  }
+  member_methods {
+    name: "restore"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "sess"
+    }
+    args {
+      arg_name: "save_path"
+    }
+  }
+  member_methods {
+    name: "save"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "sess"
+    }
+    args {
+      arg_name: "save_path"
+    }
+    args {
+      arg_name: "global_step"
+    }
+    args {
+      arg_name: "latest_filename"
+    }
+    args {
+      arg_name: "meta_graph_suffix"
+    }
+    args {
+      arg_name: "write_meta_graph"
+    }
+    args {
+      arg_name: "write_state"
+    }
+  }
+  member_methods {
+    name: "set_last_checkpoints"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "last_checkpoints"
+    }
+  }
+  member_methods {
+    name: "set_last_checkpoints_with_time"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "last_checkpoints_with_time"
+    }
+  }
+  member_methods {
+    name: "to_proto"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "export_scope"
+    }
+  }
+}

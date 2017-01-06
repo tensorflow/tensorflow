@@ -1,0 +1,5147 @@
+path: "tensorflow"
+tf_module {
+  name: "tensorflow"
+  members {
+    name: "AggregationMethod"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "AttrValue"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+  }
+  members {
+    name: "COMPILER_VERSION"
+    mtype: "<type \'str\'>"
+  }
+  members {
+    name: "ConditionalAccumulator"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "ConditionalAccumulatorBase"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "ConfigProto"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+  }
+  members {
+    name: "DType"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "DeviceSpec"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "Dimension"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "Event"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+  }
+  members {
+    name: "FIFOQueue"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "FixedLenFeature"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "FixedLenSequenceFeature"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "FixedLengthRecordReader"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "GIT_VERSION"
+    mtype: "<type \'str\'>"
+  }
+  members {
+    name: "GPUOptions"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+  }
+  members {
+    name: "GRAPH_DEF_VERSION"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "GRAPH_DEF_VERSION_MIN_CONSUMER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "GRAPH_DEF_VERSION_MIN_PRODUCER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "Graph"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "GraphDef"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+  }
+  members {
+    name: "GraphKeys"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "GraphOptions"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+  }
+  members {
+    name: "HistogramProto"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+  }
+  members {
+    name: "IdentityReader"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "IndexedSlices"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "InteractiveSession"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "LogMessage"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+  }
+  members {
+    name: "NameAttrList"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+  }
+  members {
+    name: "NodeDef"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+  }
+  members {
+    name: "OpError"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "Operation"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "OptimizerOptions"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+  }
+  members {
+    name: "PaddingFIFOQueue"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "PriorityQueue"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "QUANTIZED_DTYPES"
+    mtype: "<type \'frozenset\'>"
+  }
+  members {
+    name: "QueueBase"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "RandomShuffleQueue"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "ReaderBase"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "RegisterGradient"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "RunMetadata"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+  }
+  members {
+    name: "RunOptions"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+  }
+  members {
+    name: "Session"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "SessionLog"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+  }
+  members {
+    name: "SparseConditionalAccumulator"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "SparseFeature"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "SparseTensor"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "SparseTensorValue"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "Summary"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+  }
+  members {
+    name: "TFRecordReader"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "Tensor"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "TensorArray"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "TensorShape"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "TextLineReader"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "VERSION"
+    mtype: "<type \'str\'>"
+  }
+  members {
+    name: "VarLenFeature"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "Variable"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "VariableScope"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "WholeFileReader"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "absolute_import"
+    mtype: "<type \'instance\'>"
+  }
+  members {
+    name: "app"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "bfloat16"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  members {
+    name: "bool"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  members {
+    name: "compat"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "complex128"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  members {
+    name: "complex64"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  members {
+    name: "contrib"
+    mtype: "<class \'tensorflow._LazyContribLoader\'>"
+  }
+  members {
+    name: "core"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "division"
+    mtype: "<type \'instance\'>"
+  }
+  members {
+    name: "double"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  members {
+    name: "errors"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "flags"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "float16"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  members {
+    name: "float32"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  members {
+    name: "float64"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  members {
+    name: "gfile"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "graph_util"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "half"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  members {
+    name: "image"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "int16"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  members {
+    name: "int32"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  members {
+    name: "int64"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  members {
+    name: "int8"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  members {
+    name: "layers"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "logging"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "losses"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "metrics"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "newaxis"
+    mtype: "<type \'NoneType\'>"
+  }
+  members {
+    name: "nn"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "platform"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "print_function"
+    mtype: "<type \'instance\'>"
+  }
+  members {
+    name: "python"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "python_io"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "pywrap_tensorflow"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "qint16"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  members {
+    name: "qint32"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  members {
+    name: "qint8"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  members {
+    name: "quint16"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  members {
+    name: "quint8"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  members {
+    name: "resource"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  members {
+    name: "resource_loader"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "sdca"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "sets"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "string"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  members {
+    name: "summary"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "sysconfig"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "test"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "tools"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "train"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "uint16"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  members {
+    name: "uint8"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  members {
+    name: "user_ops"
+    mtype: "<type \'module\'>"
+  }
+  member_methods {
+    name: "Assert"
+    args {
+      arg_name: "condition"
+    }
+    args {
+      arg_name: "data"
+    }
+    args {
+      arg_name: "summarize"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "NoGradient"
+    args {
+      arg_name: "op_type"
+    }
+  }
+  member_methods {
+    name: "NotDifferentiable"
+    args {
+      arg_name: "op_type"
+    }
+  }
+  member_methods {
+    name: "Print"
+    args {
+      arg_name: "input_"
+    }
+    args {
+      arg_name: "data"
+    }
+    args {
+      arg_name: "message"
+    }
+    args {
+      arg_name: "first_n"
+    }
+    args {
+      arg_name: "summarize"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "abs"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "accumulate_n"
+    args {
+      arg_name: "inputs"
+    }
+    args {
+      arg_name: "shape"
+    }
+    args {
+      arg_name: "tensor_dtype"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "acos"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "add"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "add_check_numerics_ops"
+  }
+  member_methods {
+    name: "add_n"
+    args {
+      arg_name: "inputs"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "add_to_collection"
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "value"
+    }
+  }
+  member_methods {
+    name: "all_variables"
+  }
+  member_methods {
+    name: "arg_max"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "dimension"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "arg_min"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "dimension"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "argmax"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "axis"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "dimension"
+    }
+  }
+  member_methods {
+    name: "argmin"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "axis"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "dimension"
+    }
+  }
+  member_methods {
+    name: "as_dtype"
+    args {
+      arg_name: "type_value"
+    }
+  }
+  member_methods {
+    name: "as_string"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "precision"
+    }
+    args {
+      arg_name: "scientific"
+    }
+    args {
+      arg_name: "shortest"
+    }
+    args {
+      arg_name: "width"
+    }
+    args {
+      arg_name: "fill"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "asin"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "assert_equal"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "data"
+    }
+    args {
+      arg_name: "summarize"
+    }
+    args {
+      arg_name: "message"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "assert_greater"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "data"
+    }
+    args {
+      arg_name: "summarize"
+    }
+    args {
+      arg_name: "message"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "assert_greater_equal"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "data"
+    }
+    args {
+      arg_name: "summarize"
+    }
+    args {
+      arg_name: "message"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "assert_integer"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "message"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "assert_less"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "data"
+    }
+    args {
+      arg_name: "summarize"
+    }
+    args {
+      arg_name: "message"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "assert_less_equal"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "data"
+    }
+    args {
+      arg_name: "summarize"
+    }
+    args {
+      arg_name: "message"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "assert_negative"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "data"
+    }
+    args {
+      arg_name: "summarize"
+    }
+    args {
+      arg_name: "message"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "assert_non_negative"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "data"
+    }
+    args {
+      arg_name: "summarize"
+    }
+    args {
+      arg_name: "message"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "assert_non_positive"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "data"
+    }
+    args {
+      arg_name: "summarize"
+    }
+    args {
+      arg_name: "message"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "assert_positive"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "data"
+    }
+    args {
+      arg_name: "summarize"
+    }
+    args {
+      arg_name: "message"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "assert_proper_iterable"
+    args {
+      arg_name: "values"
+    }
+  }
+  member_methods {
+    name: "assert_rank"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "rank"
+    }
+    args {
+      arg_name: "data"
+    }
+    args {
+      arg_name: "summarize"
+    }
+    args {
+      arg_name: "message"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "assert_rank_at_least"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "rank"
+    }
+    args {
+      arg_name: "data"
+    }
+    args {
+      arg_name: "summarize"
+    }
+    args {
+      arg_name: "message"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "assert_type"
+    args {
+      arg_name: "tensor"
+    }
+    args {
+      arg_name: "tf_type"
+    }
+    args {
+      arg_name: "message"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "assert_variables_initialized"
+    args {
+      arg_name: "var_list"
+    }
+  }
+  member_methods {
+    name: "assign"
+    args {
+      arg_name: "ref"
+    }
+    args {
+      arg_name: "value"
+    }
+    args {
+      arg_name: "validate_shape"
+    }
+    args {
+      arg_name: "use_locking"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "assign_add"
+    args {
+      arg_name: "ref"
+    }
+    args {
+      arg_name: "value"
+    }
+    args {
+      arg_name: "use_locking"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "assign_sub"
+    args {
+      arg_name: "ref"
+    }
+    args {
+      arg_name: "value"
+    }
+    args {
+      arg_name: "use_locking"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "atan"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "batch_to_space"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "crops"
+    }
+    args {
+      arg_name: "block_size"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "batch_to_space_nd"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "block_shape"
+    }
+    args {
+      arg_name: "crops"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "betainc"
+    args {
+      arg_name: "a"
+    }
+    args {
+      arg_name: "b"
+    }
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "bitcast"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "type"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "boolean_mask"
+    args {
+      arg_name: "tensor"
+    }
+    args {
+      arg_name: "mask"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "broadcast_dynamic_shape"
+    args {
+      arg_name: "shape_x"
+    }
+    args {
+      arg_name: "shape_y"
+    }
+  }
+  member_methods {
+    name: "broadcast_static_shape"
+    args {
+      arg_name: "shape_x"
+    }
+    args {
+      arg_name: "shape_y"
+    }
+  }
+  member_methods {
+    name: "case"
+    args {
+      arg_name: "pred_fn_pairs"
+    }
+    args {
+      arg_name: "default"
+    }
+    args {
+      arg_name: "exclusive"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "cast"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "dtype"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "ceil"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "check_numerics"
+    args {
+      arg_name: "tensor"
+    }
+    args {
+      arg_name: "message"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "cholesky"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "cholesky_solve"
+    args {
+      arg_name: "chol"
+    }
+    args {
+      arg_name: "rhs"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "clip_by_average_norm"
+    args {
+      arg_name: "t"
+    }
+    args {
+      arg_name: "clip_norm"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "clip_by_global_norm"
+    args {
+      arg_name: "t_list"
+    }
+    args {
+      arg_name: "clip_norm"
+    }
+    args {
+      arg_name: "use_norm"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "clip_by_norm"
+    args {
+      arg_name: "t"
+    }
+    args {
+      arg_name: "clip_norm"
+    }
+    args {
+      arg_name: "axes"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "clip_by_value"
+    args {
+      arg_name: "t"
+    }
+    args {
+      arg_name: "clip_value_min"
+    }
+    args {
+      arg_name: "clip_value_max"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "complex"
+    args {
+      arg_name: "real"
+    }
+    args {
+      arg_name: "imag"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "concat"
+  }
+  member_methods {
+    name: "concat_v2"
+    args {
+      arg_name: "values"
+    }
+    args {
+      arg_name: "axis"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "cond"
+    args {
+      arg_name: "pred"
+    }
+    args {
+      arg_name: "fn1"
+    }
+    args {
+      arg_name: "fn2"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "confusion_matrix"
+    args {
+      arg_name: "labels"
+    }
+    args {
+      arg_name: "predictions"
+    }
+    args {
+      arg_name: "num_classes"
+    }
+    args {
+      arg_name: "dtype"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "weights"
+    }
+  }
+  member_methods {
+    name: "conj"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "constant"
+    args {
+      arg_name: "value"
+    }
+    args {
+      arg_name: "dtype"
+    }
+    args {
+      arg_name: "shape"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "verify_shape"
+    }
+  }
+  member_methods {
+    name: "constant_initializer"
+    args {
+      arg_name: "value"
+    }
+    args {
+      arg_name: "dtype"
+    }
+  }
+  member_methods {
+    name: "container"
+    args {
+      arg_name: "container_name"
+    }
+  }
+  member_methods {
+    name: "control_dependencies"
+    args {
+      arg_name: "control_inputs"
+    }
+  }
+  member_methods {
+    name: "convert_to_tensor"
+    args {
+      arg_name: "value"
+    }
+    args {
+      arg_name: "dtype"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "preferred_dtype"
+    }
+  }
+  member_methods {
+    name: "convert_to_tensor_or_indexed_slices"
+    args {
+      arg_name: "value"
+    }
+    args {
+      arg_name: "dtype"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "convert_to_tensor_or_sparse_tensor"
+    args {
+      arg_name: "value"
+    }
+    args {
+      arg_name: "dtype"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "cos"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "count_nonzero"
+    args {
+      arg_name: "input_tensor"
+    }
+    args {
+      arg_name: "axis"
+    }
+    args {
+      arg_name: "keep_dims"
+    }
+    args {
+      arg_name: "dtype"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "reduction_indices"
+    }
+  }
+  member_methods {
+    name: "count_up_to"
+    args {
+      arg_name: "ref"
+    }
+    args {
+      arg_name: "limit"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "create_partitioned_variables"
+    args {
+      arg_name: "shape"
+    }
+    args {
+      arg_name: "slicing"
+    }
+    args {
+      arg_name: "initializer"
+    }
+    args {
+      arg_name: "dtype"
+    }
+    args {
+      arg_name: "trainable"
+    }
+    args {
+      arg_name: "collections"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "reuse"
+    }
+  }
+  member_methods {
+    name: "cross"
+    args {
+      arg_name: "a"
+    }
+    args {
+      arg_name: "b"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "cumprod"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "axis"
+    }
+    args {
+      arg_name: "exclusive"
+    }
+    args {
+      arg_name: "reverse"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "cumsum"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "axis"
+    }
+    args {
+      arg_name: "exclusive"
+    }
+    args {
+      arg_name: "reverse"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "decode_base64"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "decode_csv"
+    args {
+      arg_name: "records"
+    }
+    args {
+      arg_name: "record_defaults"
+    }
+    args {
+      arg_name: "field_delim"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "decode_json_example"
+    args {
+      arg_name: "json_examples"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "decode_raw"
+    args {
+      arg_name: "bytes"
+    }
+    args {
+      arg_name: "out_type"
+    }
+    args {
+      arg_name: "little_endian"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "delete_session_tensor"
+    args {
+      arg_name: "handle"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "depth_to_space"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "block_size"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "dequantize"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "min_range"
+    }
+    args {
+      arg_name: "max_range"
+    }
+    args {
+      arg_name: "mode"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "deserialize_many_sparse"
+    args {
+      arg_name: "serialized_sparse"
+    }
+    args {
+      arg_name: "dtype"
+    }
+    args {
+      arg_name: "rank"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "device"
+    args {
+      arg_name: "device_name_or_function"
+    }
+  }
+  member_methods {
+    name: "diag"
+    args {
+      arg_name: "diagonal"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "diag_part"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "digamma"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "div"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "divide"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "dynamic_partition"
+    args {
+      arg_name: "data"
+    }
+    args {
+      arg_name: "partitions"
+    }
+    args {
+      arg_name: "num_partitions"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "dynamic_stitch"
+    args {
+      arg_name: "indices"
+    }
+    args {
+      arg_name: "data"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "edit_distance"
+    args {
+      arg_name: "hypothesis"
+    }
+    args {
+      arg_name: "truth"
+    }
+    args {
+      arg_name: "normalize"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "einsum"
+    args {
+      arg_name: "equation"
+    }
+  }
+  member_methods {
+    name: "encode_base64"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "pad"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "equal"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "erf"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "erfc"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "exp"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "expand_dims"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "axis"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "dim"
+    }
+  }
+  member_methods {
+    name: "expm1"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "extract_image_patches"
+    args {
+      arg_name: "images"
+    }
+    args {
+      arg_name: "ksizes"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "rates"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "eye"
+    args {
+      arg_name: "num_rows"
+    }
+    args {
+      arg_name: "num_columns"
+    }
+    args {
+      arg_name: "batch_shape"
+    }
+    args {
+      arg_name: "dtype"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "fake_quant_with_min_max_args"
+    args {
+      arg_name: "inputs"
+    }
+    args {
+      arg_name: "min"
+    }
+    args {
+      arg_name: "max"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "fake_quant_with_min_max_args_gradient"
+    args {
+      arg_name: "gradients"
+    }
+    args {
+      arg_name: "inputs"
+    }
+    args {
+      arg_name: "min"
+    }
+    args {
+      arg_name: "max"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "fake_quant_with_min_max_vars"
+    args {
+      arg_name: "inputs"
+    }
+    args {
+      arg_name: "min"
+    }
+    args {
+      arg_name: "max"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "fake_quant_with_min_max_vars_gradient"
+    args {
+      arg_name: "gradients"
+    }
+    args {
+      arg_name: "inputs"
+    }
+    args {
+      arg_name: "min"
+    }
+    args {
+      arg_name: "max"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "fake_quant_with_min_max_vars_per_channel"
+    args {
+      arg_name: "inputs"
+    }
+    args {
+      arg_name: "min"
+    }
+    args {
+      arg_name: "max"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "fake_quant_with_min_max_vars_per_channel_gradient"
+    args {
+      arg_name: "gradients"
+    }
+    args {
+      arg_name: "inputs"
+    }
+    args {
+      arg_name: "min"
+    }
+    args {
+      arg_name: "max"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "fft"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "fft2d"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "fft3d"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "fill"
+    args {
+      arg_name: "dims"
+    }
+    args {
+      arg_name: "value"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "fixed_size_partitioner"
+    args {
+      arg_name: "num_shards"
+    }
+    args {
+      arg_name: "axis"
+    }
+  }
+  member_methods {
+    name: "floor"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "floor_div"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "floordiv"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "floormod"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "foldl"
+    args {
+      arg_name: "fn"
+    }
+    args {
+      arg_name: "elems"
+    }
+    args {
+      arg_name: "initializer"
+    }
+    args {
+      arg_name: "parallel_iterations"
+    }
+    args {
+      arg_name: "back_prop"
+    }
+    args {
+      arg_name: "swap_memory"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "foldr"
+    args {
+      arg_name: "fn"
+    }
+    args {
+      arg_name: "elems"
+    }
+    args {
+      arg_name: "initializer"
+    }
+    args {
+      arg_name: "parallel_iterations"
+    }
+    args {
+      arg_name: "back_prop"
+    }
+    args {
+      arg_name: "swap_memory"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "gather"
+    args {
+      arg_name: "params"
+    }
+    args {
+      arg_name: "indices"
+    }
+    args {
+      arg_name: "validate_indices"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "gather_nd"
+    args {
+      arg_name: "params"
+    }
+    args {
+      arg_name: "indices"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "get_collection"
+    args {
+      arg_name: "key"
+    }
+    args {
+      arg_name: "scope"
+    }
+  }
+  member_methods {
+    name: "get_collection_ref"
+    args {
+      arg_name: "key"
+    }
+  }
+  member_methods {
+    name: "get_default_graph"
+  }
+  member_methods {
+    name: "get_default_session"
+  }
+  member_methods {
+    name: "get_local_variable"
+  }
+  member_methods {
+    name: "get_seed"
+    args {
+      arg_name: "op_seed"
+    }
+  }
+  member_methods {
+    name: "get_session_handle"
+    args {
+      arg_name: "data"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "get_session_tensor"
+    args {
+      arg_name: "handle"
+    }
+    args {
+      arg_name: "dtype"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "get_variable"
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "shape"
+    }
+    args {
+      arg_name: "dtype"
+    }
+    args {
+      arg_name: "initializer"
+    }
+    args {
+      arg_name: "regularizer"
+    }
+    args {
+      arg_name: "trainable"
+    }
+    args {
+      arg_name: "collections"
+    }
+    args {
+      arg_name: "caching_device"
+    }
+    args {
+      arg_name: "partitioner"
+    }
+    args {
+      arg_name: "validate_shape"
+    }
+    args {
+      arg_name: "custom_getter"
+    }
+  }
+  member_methods {
+    name: "get_variable_scope"
+  }
+  member_methods {
+    name: "global_norm"
+    args {
+      arg_name: "t_list"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "global_variables"
+  }
+  member_methods {
+    name: "global_variables_initializer"
+  }
+  member_methods {
+    name: "gradients"
+    args {
+      arg_name: "ys"
+    }
+    args {
+      arg_name: "xs"
+    }
+    args {
+      arg_name: "grad_ys"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "colocate_gradients_with_ops"
+    }
+    args {
+      arg_name: "gate_gradients"
+    }
+    args {
+      arg_name: "aggregation_method"
+    }
+  }
+  member_methods {
+    name: "greater"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "greater_equal"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "group"
+  }
+  member_methods {
+    name: "hessians"
+    args {
+      arg_name: "ys"
+    }
+    args {
+      arg_name: "xs"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "colocate_gradients_with_ops"
+    }
+    args {
+      arg_name: "gate_gradients"
+    }
+    args {
+      arg_name: "aggregation_method"
+    }
+  }
+  member_methods {
+    name: "histogram_fixed_width"
+    args {
+      arg_name: "values"
+    }
+    args {
+      arg_name: "value_range"
+    }
+    args {
+      arg_name: "nbins"
+    }
+    args {
+      arg_name: "dtype"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "identity"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "ifft"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "ifft2d"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "ifft3d"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "igamma"
+    args {
+      arg_name: "a"
+    }
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "igammac"
+    args {
+      arg_name: "a"
+    }
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "imag"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "import_graph_def"
+    args {
+      arg_name: "graph_def"
+    }
+    args {
+      arg_name: "input_map"
+    }
+    args {
+      arg_name: "return_elements"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "op_dict"
+    }
+    args {
+      arg_name: "producer_op_list"
+    }
+  }
+  member_methods {
+    name: "initialize_all_tables"
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "initialize_all_variables"
+  }
+  member_methods {
+    name: "initialize_local_variables"
+  }
+  member_methods {
+    name: "initialize_variables"
+  }
+  member_methods {
+    name: "invert_permutation"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "is_finite"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "is_inf"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "is_nan"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "is_non_decreasing"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "is_numeric_tensor"
+    args {
+      arg_name: "tensor"
+    }
+  }
+  member_methods {
+    name: "is_strictly_increasing"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "is_variable_initialized"
+    args {
+      arg_name: "variable"
+    }
+  }
+  member_methods {
+    name: "lbeta"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "less"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "less_equal"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "lgamma"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "lin_space"
+    args {
+      arg_name: "start"
+    }
+    args {
+      arg_name: "stop"
+    }
+    args {
+      arg_name: "num"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "linspace"
+    args {
+      arg_name: "start"
+    }
+    args {
+      arg_name: "stop"
+    }
+    args {
+      arg_name: "num"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "load_file_system_library"
+    args {
+      arg_name: "library_filename"
+    }
+  }
+  member_methods {
+    name: "load_op_library"
+    args {
+      arg_name: "library_filename"
+    }
+  }
+  member_methods {
+    name: "local_variables"
+  }
+  member_methods {
+    name: "local_variables_initializer"
+  }
+  member_methods {
+    name: "log"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "log1p"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "logical_and"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "logical_not"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "logical_or"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "logical_xor"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "make_template"
+    args {
+      arg_name: "name_"
+    }
+    args {
+      arg_name: "func_"
+    }
+    args {
+      arg_name: "create_scope_now_"
+    }
+    args {
+      arg_name: "unique_name_"
+    }
+    args {
+      arg_name: "custom_getter_"
+    }
+  }
+  member_methods {
+    name: "map_fn"
+    args {
+      arg_name: "fn"
+    }
+    args {
+      arg_name: "elems"
+    }
+    args {
+      arg_name: "dtype"
+    }
+    args {
+      arg_name: "parallel_iterations"
+    }
+    args {
+      arg_name: "back_prop"
+    }
+    args {
+      arg_name: "swap_memory"
+    }
+    args {
+      arg_name: "infer_shape"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "matching_files"
+    args {
+      arg_name: "pattern"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "matmul"
+    args {
+      arg_name: "a"
+    }
+    args {
+      arg_name: "b"
+    }
+    args {
+      arg_name: "transpose_a"
+    }
+    args {
+      arg_name: "transpose_b"
+    }
+    args {
+      arg_name: "adjoint_a"
+    }
+    args {
+      arg_name: "adjoint_b"
+    }
+    args {
+      arg_name: "a_is_sparse"
+    }
+    args {
+      arg_name: "b_is_sparse"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "matrix_band_part"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "num_lower"
+    }
+    args {
+      arg_name: "num_upper"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "matrix_determinant"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "matrix_diag"
+    args {
+      arg_name: "diagonal"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "matrix_diag_part"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "matrix_inverse"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "adjoint"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "matrix_set_diag"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "diagonal"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "matrix_solve"
+    args {
+      arg_name: "matrix"
+    }
+    args {
+      arg_name: "rhs"
+    }
+    args {
+      arg_name: "adjoint"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "matrix_solve_ls"
+    args {
+      arg_name: "matrix"
+    }
+    args {
+      arg_name: "rhs"
+    }
+    args {
+      arg_name: "l2_regularizer"
+    }
+    args {
+      arg_name: "fast"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "matrix_transpose"
+    args {
+      arg_name: "a"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "matrix_triangular_solve"
+    args {
+      arg_name: "matrix"
+    }
+    args {
+      arg_name: "rhs"
+    }
+    args {
+      arg_name: "lower"
+    }
+    args {
+      arg_name: "adjoint"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "maximum"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "meshgrid"
+  }
+  member_methods {
+    name: "min_max_variable_partitioner"
+    args {
+      arg_name: "max_partitions"
+    }
+    args {
+      arg_name: "axis"
+    }
+    args {
+      arg_name: "min_slice_size"
+    }
+    args {
+      arg_name: "bytes_per_string_element"
+    }
+  }
+  member_methods {
+    name: "minimum"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "mod"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "model_variables"
+  }
+  member_methods {
+    name: "moving_average_variables"
+  }
+  member_methods {
+    name: "mul"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "multinomial"
+    args {
+      arg_name: "logits"
+    }
+    args {
+      arg_name: "num_samples"
+    }
+    args {
+      arg_name: "seed"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "multiply"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "name_scope"
+  }
+  member_methods {
+    name: "neg"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "negative"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "no_op"
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "no_regularizer"
+    args {
+      arg_name: "_"
+    }
+  }
+  member_methods {
+    name: "norm"
+    args {
+      arg_name: "tensor"
+    }
+    args {
+      arg_name: "ord"
+    }
+    args {
+      arg_name: "axis"
+    }
+    args {
+      arg_name: "keep_dims"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "not_equal"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "one_hot"
+    args {
+      arg_name: "indices"
+    }
+    args {
+      arg_name: "depth"
+    }
+    args {
+      arg_name: "on_value"
+    }
+    args {
+      arg_name: "off_value"
+    }
+    args {
+      arg_name: "axis"
+    }
+    args {
+      arg_name: "dtype"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "ones"
+    args {
+      arg_name: "shape"
+    }
+    args {
+      arg_name: "dtype"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "ones_initializer"
+    args {
+      arg_name: "dtype"
+    }
+  }
+  member_methods {
+    name: "ones_like"
+    args {
+      arg_name: "tensor"
+    }
+    args {
+      arg_name: "dtype"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "optimize"
+    }
+  }
+  member_methods {
+    name: "op_scope"
+  }
+  member_methods {
+    name: "orthogonal_initializer"
+    args {
+      arg_name: "gain"
+    }
+    args {
+      arg_name: "dtype"
+    }
+    args {
+      arg_name: "seed"
+    }
+  }
+  member_methods {
+    name: "pack"
+  }
+  member_methods {
+    name: "pad"
+    args {
+      arg_name: "tensor"
+    }
+    args {
+      arg_name: "paddings"
+    }
+    args {
+      arg_name: "mode"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "parse_example"
+    args {
+      arg_name: "serialized"
+    }
+    args {
+      arg_name: "features"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "example_names"
+    }
+  }
+  member_methods {
+    name: "parse_single_example"
+    args {
+      arg_name: "serialized"
+    }
+    args {
+      arg_name: "features"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "example_names"
+    }
+  }
+  member_methods {
+    name: "parse_single_sequence_example"
+    args {
+      arg_name: "serialized"
+    }
+    args {
+      arg_name: "context_features"
+    }
+    args {
+      arg_name: "sequence_features"
+    }
+    args {
+      arg_name: "example_name"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "parse_tensor"
+    args {
+      arg_name: "serialized"
+    }
+    args {
+      arg_name: "out_type"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "placeholder"
+    args {
+      arg_name: "dtype"
+    }
+    args {
+      arg_name: "shape"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "placeholder_with_default"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "shape"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "polygamma"
+    args {
+      arg_name: "a"
+    }
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "pow"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "py_func"
+    args {
+      arg_name: "func"
+    }
+    args {
+      arg_name: "inp"
+    }
+    args {
+      arg_name: "Tout"
+    }
+    args {
+      arg_name: "stateful"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "qr"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "full_matrices"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "quantize_v2"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "min_range"
+    }
+    args {
+      arg_name: "max_range"
+    }
+    args {
+      arg_name: "T"
+    }
+    args {
+      arg_name: "mode"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "quantized_concat"
+    args {
+      arg_name: "concat_dim"
+    }
+    args {
+      arg_name: "values"
+    }
+    args {
+      arg_name: "input_mins"
+    }
+    args {
+      arg_name: "input_maxes"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "random_crop"
+    args {
+      arg_name: "value"
+    }
+    args {
+      arg_name: "size"
+    }
+    args {
+      arg_name: "seed"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "random_gamma"
+    args {
+      arg_name: "shape"
+    }
+    args {
+      arg_name: "alpha"
+    }
+    args {
+      arg_name: "beta"
+    }
+    args {
+      arg_name: "dtype"
+    }
+    args {
+      arg_name: "seed"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "random_normal"
+    args {
+      arg_name: "shape"
+    }
+    args {
+      arg_name: "mean"
+    }
+    args {
+      arg_name: "stddev"
+    }
+    args {
+      arg_name: "dtype"
+    }
+    args {
+      arg_name: "seed"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "random_normal_initializer"
+    args {
+      arg_name: "mean"
+    }
+    args {
+      arg_name: "stddev"
+    }
+    args {
+      arg_name: "seed"
+    }
+    args {
+      arg_name: "dtype"
+    }
+  }
+  member_methods {
+    name: "random_shuffle"
+    args {
+      arg_name: "value"
+    }
+    args {
+      arg_name: "seed"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "random_uniform"
+    args {
+      arg_name: "shape"
+    }
+    args {
+      arg_name: "minval"
+    }
+    args {
+      arg_name: "maxval"
+    }
+    args {
+      arg_name: "dtype"
+    }
+    args {
+      arg_name: "seed"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "random_uniform_initializer"
+    args {
+      arg_name: "minval"
+    }
+    args {
+      arg_name: "maxval"
+    }
+    args {
+      arg_name: "seed"
+    }
+    args {
+      arg_name: "dtype"
+    }
+  }
+  member_methods {
+    name: "range"
+    args {
+      arg_name: "start"
+    }
+    args {
+      arg_name: "limit"
+    }
+    args {
+      arg_name: "delta"
+    }
+    args {
+      arg_name: "dtype"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "rank"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "read_file"
+    args {
+      arg_name: "filename"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "real"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "realdiv"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "reciprocal"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "reduce_all"
+    args {
+      arg_name: "input_tensor"
+    }
+    args {
+      arg_name: "axis"
+    }
+    args {
+      arg_name: "keep_dims"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "reduction_indices"
+    }
+  }
+  member_methods {
+    name: "reduce_any"
+    args {
+      arg_name: "input_tensor"
+    }
+    args {
+      arg_name: "axis"
+    }
+    args {
+      arg_name: "keep_dims"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "reduction_indices"
+    }
+  }
+  member_methods {
+    name: "reduce_join"
+    args {
+      arg_name: "inputs"
+    }
+    args {
+      arg_name: "axis"
+    }
+    args {
+      arg_name: "keep_dims"
+    }
+    args {
+      arg_name: "separator"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "reduction_indices"
+    }
+  }
+  member_methods {
+    name: "reduce_logsumexp"
+    args {
+      arg_name: "input_tensor"
+    }
+    args {
+      arg_name: "axis"
+    }
+    args {
+      arg_name: "keep_dims"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "reduction_indices"
+    }
+  }
+  member_methods {
+    name: "reduce_max"
+    args {
+      arg_name: "input_tensor"
+    }
+    args {
+      arg_name: "axis"
+    }
+    args {
+      arg_name: "keep_dims"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "reduction_indices"
+    }
+  }
+  member_methods {
+    name: "reduce_mean"
+    args {
+      arg_name: "input_tensor"
+    }
+    args {
+      arg_name: "axis"
+    }
+    args {
+      arg_name: "keep_dims"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "reduction_indices"
+    }
+  }
+  member_methods {
+    name: "reduce_min"
+    args {
+      arg_name: "input_tensor"
+    }
+    args {
+      arg_name: "axis"
+    }
+    args {
+      arg_name: "keep_dims"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "reduction_indices"
+    }
+  }
+  member_methods {
+    name: "reduce_prod"
+    args {
+      arg_name: "input_tensor"
+    }
+    args {
+      arg_name: "axis"
+    }
+    args {
+      arg_name: "keep_dims"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "reduction_indices"
+    }
+  }
+  member_methods {
+    name: "reduce_sum"
+    args {
+      arg_name: "input_tensor"
+    }
+    args {
+      arg_name: "axis"
+    }
+    args {
+      arg_name: "keep_dims"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "reduction_indices"
+    }
+  }
+  member_methods {
+    name: "register_tensor_conversion_function"
+    args {
+      arg_name: "base_type"
+    }
+    args {
+      arg_name: "conversion_func"
+    }
+    args {
+      arg_name: "priority"
+    }
+  }
+  member_methods {
+    name: "report_uninitialized_variables"
+    args {
+      arg_name: "var_list"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "required_space_to_batch_paddings"
+    args {
+      arg_name: "input_shape"
+    }
+    args {
+      arg_name: "block_shape"
+    }
+    args {
+      arg_name: "base_paddings"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "reset_default_graph"
+  }
+  member_methods {
+    name: "reshape"
+    args {
+      arg_name: "tensor"
+    }
+    args {
+      arg_name: "shape"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "reverse"
+    args {
+      arg_name: "tensor"
+    }
+    args {
+      arg_name: "axis"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "reverse_sequence"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "seq_lengths"
+    }
+    args {
+      arg_name: "seq_axis"
+    }
+    args {
+      arg_name: "batch_axis"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "seq_dim"
+    }
+    args {
+      arg_name: "batch_dim"
+    }
+  }
+  member_methods {
+    name: "reverse_v2"
+    args {
+      arg_name: "tensor"
+    }
+    args {
+      arg_name: "axis"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "rint"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "round"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "rsqrt"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "saturate_cast"
+    args {
+      arg_name: "value"
+    }
+    args {
+      arg_name: "dtype"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "scalar_mul"
+    args {
+      arg_name: "scalar"
+    }
+    args {
+      arg_name: "x"
+    }
+  }
+  member_methods {
+    name: "scan"
+    args {
+      arg_name: "fn"
+    }
+    args {
+      arg_name: "elems"
+    }
+    args {
+      arg_name: "initializer"
+    }
+    args {
+      arg_name: "parallel_iterations"
+    }
+    args {
+      arg_name: "back_prop"
+    }
+    args {
+      arg_name: "swap_memory"
+    }
+    args {
+      arg_name: "infer_shape"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "scatter_add"
+    args {
+      arg_name: "ref"
+    }
+    args {
+      arg_name: "indices"
+    }
+    args {
+      arg_name: "updates"
+    }
+    args {
+      arg_name: "use_locking"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "scatter_div"
+    args {
+      arg_name: "ref"
+    }
+    args {
+      arg_name: "indices"
+    }
+    args {
+      arg_name: "updates"
+    }
+    args {
+      arg_name: "use_locking"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "scatter_mul"
+    args {
+      arg_name: "ref"
+    }
+    args {
+      arg_name: "indices"
+    }
+    args {
+      arg_name: "updates"
+    }
+    args {
+      arg_name: "use_locking"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "scatter_nd"
+    args {
+      arg_name: "indices"
+    }
+    args {
+      arg_name: "updates"
+    }
+    args {
+      arg_name: "shape"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "scatter_nd_add"
+    args {
+      arg_name: "ref"
+    }
+    args {
+      arg_name: "indices"
+    }
+    args {
+      arg_name: "updates"
+    }
+    args {
+      arg_name: "use_locking"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "scatter_nd_sub"
+    args {
+      arg_name: "ref"
+    }
+    args {
+      arg_name: "indices"
+    }
+    args {
+      arg_name: "updates"
+    }
+    args {
+      arg_name: "use_locking"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "scatter_nd_update"
+    args {
+      arg_name: "ref"
+    }
+    args {
+      arg_name: "indices"
+    }
+    args {
+      arg_name: "updates"
+    }
+    args {
+      arg_name: "use_locking"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "scatter_sub"
+    args {
+      arg_name: "ref"
+    }
+    args {
+      arg_name: "indices"
+    }
+    args {
+      arg_name: "updates"
+    }
+    args {
+      arg_name: "use_locking"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "scatter_update"
+    args {
+      arg_name: "ref"
+    }
+    args {
+      arg_name: "indices"
+    }
+    args {
+      arg_name: "updates"
+    }
+    args {
+      arg_name: "use_locking"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "segment_max"
+    args {
+      arg_name: "data"
+    }
+    args {
+      arg_name: "segment_ids"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "segment_mean"
+    args {
+      arg_name: "data"
+    }
+    args {
+      arg_name: "segment_ids"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "segment_min"
+    args {
+      arg_name: "data"
+    }
+    args {
+      arg_name: "segment_ids"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "segment_prod"
+    args {
+      arg_name: "data"
+    }
+    args {
+      arg_name: "segment_ids"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "segment_sum"
+    args {
+      arg_name: "data"
+    }
+    args {
+      arg_name: "segment_ids"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "self_adjoint_eig"
+    args {
+      arg_name: "tensor"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "self_adjoint_eigvals"
+    args {
+      arg_name: "tensor"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "sequence_mask"
+    args {
+      arg_name: "lengths"
+    }
+    args {
+      arg_name: "maxlen"
+    }
+    args {
+      arg_name: "dtype"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "serialize_many_sparse"
+    args {
+      arg_name: "sp_input"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "serialize_sparse"
+    args {
+      arg_name: "sp_input"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "set_random_seed"
+    args {
+      arg_name: "seed"
+    }
+  }
+  member_methods {
+    name: "setdiff1d"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "index_dtype"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "shape"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "out_type"
+    }
+  }
+  member_methods {
+    name: "shape_n"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "out_type"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "sigmoid"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "sign"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "sin"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "size"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "out_type"
+    }
+  }
+  member_methods {
+    name: "slice"
+    args {
+      arg_name: "input_"
+    }
+    args {
+      arg_name: "begin"
+    }
+    args {
+      arg_name: "size"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "space_to_batch"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "paddings"
+    }
+    args {
+      arg_name: "block_size"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "space_to_batch_nd"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "block_shape"
+    }
+    args {
+      arg_name: "paddings"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "space_to_depth"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "block_size"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "sparse_add"
+    args {
+      arg_name: "a"
+    }
+    args {
+      arg_name: "b"
+    }
+    args {
+      arg_name: "thresh"
+    }
+  }
+  member_methods {
+    name: "sparse_concat"
+    args {
+      arg_name: "axis"
+    }
+    args {
+      arg_name: "sp_inputs"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "expand_nonconcat_dim"
+    }
+    args {
+      arg_name: "concat_dim"
+    }
+  }
+  member_methods {
+    name: "sparse_fill_empty_rows"
+    args {
+      arg_name: "sp_input"
+    }
+    args {
+      arg_name: "default_value"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "sparse_mask"
+    args {
+      arg_name: "a"
+    }
+    args {
+      arg_name: "mask_indices"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "sparse_matmul"
+    args {
+      arg_name: "a"
+    }
+    args {
+      arg_name: "b"
+    }
+    args {
+      arg_name: "transpose_a"
+    }
+    args {
+      arg_name: "transpose_b"
+    }
+    args {
+      arg_name: "a_is_sparse"
+    }
+    args {
+      arg_name: "b_is_sparse"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "sparse_maximum"
+    args {
+      arg_name: "sp_a"
+    }
+    args {
+      arg_name: "sp_b"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "sparse_merge"
+    args {
+      arg_name: "sp_ids"
+    }
+    args {
+      arg_name: "sp_values"
+    }
+    args {
+      arg_name: "vocab_size"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "already_sorted"
+    }
+  }
+  member_methods {
+    name: "sparse_minimum"
+    args {
+      arg_name: "sp_a"
+    }
+    args {
+      arg_name: "sp_b"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "sparse_placeholder"
+    args {
+      arg_name: "dtype"
+    }
+    args {
+      arg_name: "shape"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "sparse_reduce_sum"
+    args {
+      arg_name: "sp_input"
+    }
+    args {
+      arg_name: "axis"
+    }
+    args {
+      arg_name: "keep_dims"
+    }
+    args {
+      arg_name: "reduction_axes"
+    }
+  }
+  member_methods {
+    name: "sparse_reduce_sum_sparse"
+    args {
+      arg_name: "sp_input"
+    }
+    args {
+      arg_name: "axis"
+    }
+    args {
+      arg_name: "keep_dims"
+    }
+    args {
+      arg_name: "reduction_axes"
+    }
+  }
+  member_methods {
+    name: "sparse_reorder"
+    args {
+      arg_name: "sp_input"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "sparse_reset_shape"
+    args {
+      arg_name: "sp_input"
+    }
+    args {
+      arg_name: "new_shape"
+    }
+  }
+  member_methods {
+    name: "sparse_reshape"
+    args {
+      arg_name: "sp_input"
+    }
+    args {
+      arg_name: "shape"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "sparse_retain"
+    args {
+      arg_name: "sp_input"
+    }
+    args {
+      arg_name: "to_retain"
+    }
+  }
+  member_methods {
+    name: "sparse_segment_mean"
+    args {
+      arg_name: "data"
+    }
+    args {
+      arg_name: "indices"
+    }
+    args {
+      arg_name: "segment_ids"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "sparse_segment_sqrt_n"
+    args {
+      arg_name: "data"
+    }
+    args {
+      arg_name: "indices"
+    }
+    args {
+      arg_name: "segment_ids"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "sparse_segment_sum"
+    args {
+      arg_name: "data"
+    }
+    args {
+      arg_name: "indices"
+    }
+    args {
+      arg_name: "segment_ids"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "sparse_softmax"
+    args {
+      arg_name: "sp_input"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "sparse_split"
+    args {
+      arg_name: "keyword_required"
+    }
+    args {
+      arg_name: "sp_input"
+    }
+    args {
+      arg_name: "num_split"
+    }
+    args {
+      arg_name: "axis"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "split_dim"
+    }
+  }
+  member_methods {
+    name: "sparse_tensor_dense_matmul"
+    args {
+      arg_name: "sp_a"
+    }
+    args {
+      arg_name: "b"
+    }
+    args {
+      arg_name: "adjoint_a"
+    }
+    args {
+      arg_name: "adjoint_b"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "sparse_tensor_to_dense"
+    args {
+      arg_name: "sp_input"
+    }
+    args {
+      arg_name: "default_value"
+    }
+    args {
+      arg_name: "validate_indices"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "sparse_to_dense"
+    args {
+      arg_name: "sparse_indices"
+    }
+    args {
+      arg_name: "output_shape"
+    }
+    args {
+      arg_name: "sparse_values"
+    }
+    args {
+      arg_name: "default_value"
+    }
+    args {
+      arg_name: "validate_indices"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "sparse_to_indicator"
+    args {
+      arg_name: "sp_input"
+    }
+    args {
+      arg_name: "vocab_size"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "sparse_transpose"
+    args {
+      arg_name: "sp_input"
+    }
+    args {
+      arg_name: "perm"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "split"
+    args {
+      arg_name: "value"
+    }
+    args {
+      arg_name: "num_or_size_splits"
+    }
+    args {
+      arg_name: "axis"
+    }
+    args {
+      arg_name: "num"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "sqrt"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "square"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "squared_difference"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "squeeze"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "axis"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "squeeze_dims"
+    }
+  }
+  member_methods {
+    name: "stack"
+    args {
+      arg_name: "values"
+    }
+    args {
+      arg_name: "axis"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "stop_gradient"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "strided_slice"
+    args {
+      arg_name: "input_"
+    }
+    args {
+      arg_name: "begin"
+    }
+    args {
+      arg_name: "end"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "begin_mask"
+    }
+    args {
+      arg_name: "end_mask"
+    }
+    args {
+      arg_name: "ellipsis_mask"
+    }
+    args {
+      arg_name: "new_axis_mask"
+    }
+    args {
+      arg_name: "shrink_axis_mask"
+    }
+    args {
+      arg_name: "var"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "string_join"
+    args {
+      arg_name: "inputs"
+    }
+    args {
+      arg_name: "separator"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "string_split"
+    args {
+      arg_name: "source"
+    }
+    args {
+      arg_name: "delimiter"
+    }
+  }
+  member_methods {
+    name: "string_to_hash_bucket"
+    args {
+      arg_name: "string_tensor"
+    }
+    args {
+      arg_name: "num_buckets"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "string_to_hash_bucket_fast"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "num_buckets"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "string_to_hash_bucket_strong"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "num_buckets"
+    }
+    args {
+      arg_name: "key"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "string_to_number"
+    args {
+      arg_name: "string_tensor"
+    }
+    args {
+      arg_name: "out_type"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "sub"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "substr"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "pos"
+    }
+    args {
+      arg_name: "len"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "subtract"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "svd"
+    args {
+      arg_name: "tensor"
+    }
+    args {
+      arg_name: "full_matrices"
+    }
+    args {
+      arg_name: "compute_uv"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "tan"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "tanh"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "tensordot"
+    args {
+      arg_name: "a"
+    }
+    args {
+      arg_name: "b"
+    }
+    args {
+      arg_name: "axes"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "tile"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "multiples"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "to_bfloat16"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "to_double"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "to_float"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "to_int32"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "to_int64"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "trace"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "trainable_variables"
+  }
+  member_methods {
+    name: "transpose"
+    args {
+      arg_name: "a"
+    }
+    args {
+      arg_name: "perm"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "truediv"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "truncated_normal"
+    args {
+      arg_name: "shape"
+    }
+    args {
+      arg_name: "mean"
+    }
+    args {
+      arg_name: "stddev"
+    }
+    args {
+      arg_name: "dtype"
+    }
+    args {
+      arg_name: "seed"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "truncated_normal_initializer"
+    args {
+      arg_name: "mean"
+    }
+    args {
+      arg_name: "stddev"
+    }
+    args {
+      arg_name: "seed"
+    }
+    args {
+      arg_name: "dtype"
+    }
+  }
+  member_methods {
+    name: "truncatediv"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "truncatemod"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "tuple"
+    args {
+      arg_name: "tensors"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "control_inputs"
+    }
+  }
+  member_methods {
+    name: "uniform_unit_scaling_initializer"
+    args {
+      arg_name: "factor"
+    }
+    args {
+      arg_name: "seed"
+    }
+    args {
+      arg_name: "dtype"
+    }
+  }
+  member_methods {
+    name: "unique"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "out_idx"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "unique_with_counts"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "out_idx"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "unpack"
+  }
+  member_methods {
+    name: "unsorted_segment_sum"
+    args {
+      arg_name: "data"
+    }
+    args {
+      arg_name: "segment_ids"
+    }
+    args {
+      arg_name: "num_segments"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "unstack"
+    args {
+      arg_name: "value"
+    }
+    args {
+      arg_name: "num"
+    }
+    args {
+      arg_name: "axis"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "variable_axis_size_partitioner"
+    args {
+      arg_name: "max_shard_bytes"
+    }
+    args {
+      arg_name: "axis"
+    }
+    args {
+      arg_name: "bytes_per_string_element"
+    }
+    args {
+      arg_name: "max_shards"
+    }
+  }
+  member_methods {
+    name: "variable_op_scope"
+  }
+  member_methods {
+    name: "variable_scope"
+  }
+  member_methods {
+    name: "variables_initializer"
+    args {
+      arg_name: "var_list"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "verify_tensor_all_finite"
+    args {
+      arg_name: "t"
+    }
+    args {
+      arg_name: "msg"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "where"
+    args {
+      arg_name: "condition"
+    }
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "while_loop"
+    args {
+      arg_name: "cond"
+    }
+    args {
+      arg_name: "body"
+    }
+    args {
+      arg_name: "loop_vars"
+    }
+    args {
+      arg_name: "shape_invariants"
+    }
+    args {
+      arg_name: "parallel_iterations"
+    }
+    args {
+      arg_name: "back_prop"
+    }
+    args {
+      arg_name: "swap_memory"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "write_file"
+    args {
+      arg_name: "filename"
+    }
+    args {
+      arg_name: "contents"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "zeros"
+    args {
+      arg_name: "shape"
+    }
+    args {
+      arg_name: "dtype"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "zeros_initializer"
+    args {
+      arg_name: "dtype"
+    }
+  }
+  member_methods {
+    name: "zeros_like"
+    args {
+      arg_name: "tensor"
+    }
+    args {
+      arg_name: "dtype"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "optimize"
+    }
+  }
+  member_methods {
+    name: "zeta"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "q"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+}

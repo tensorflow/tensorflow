@@ -1,0 +1,42 @@
+path: "tensorflow.train.ExponentialMovingAverage"
+tf_class {
+  name: "ExponentialMovingAverage"
+  is_instance: "<class \'tensorflow.python.training.moving_averages.ExponentialMovingAverage\'>"
+  is_instance: "<type \'object\'>"
+  member_methods {
+    name: "apply"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "var_list"
+    }
+  }
+  member_methods {
+    name: "average"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "var"
+    }
+  }
+  member_methods {
+    name: "average_name"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "var"
+    }
+  }
+  member_methods {
+    name: "variables_to_restore"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "moving_avg_variables"
+    }
+  }
+}

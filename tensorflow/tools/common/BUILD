@@ -15,6 +15,12 @@ py_library(
     srcs_version = "PY2AND3",
 )
 
+py_library(
+    name = "public_api",
+    srcs = ["public_api.py"],
+    srcs_version = "PY2AND3",
+)
+
 py_test(
     name = "traverse_test",
     srcs = ["traverse_test.py"],

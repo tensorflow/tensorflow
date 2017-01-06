@@ -1,0 +1,100 @@
+path: "tensorflow.SparseConditionalAccumulator"
+tf_class {
+  name: "SparseConditionalAccumulator"
+  is_instance: "<class \'tensorflow.python.ops.data_flow_ops.SparseConditionalAccumulator\'>"
+  is_instance: "<class \'tensorflow.python.ops.data_flow_ops.ConditionalAccumulatorBase\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "accumulator_ref"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "name"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "apply_grad"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "grad_indices"
+    }
+    args {
+      arg_name: "grad_values"
+    }
+    args {
+      arg_name: "grad_shape"
+    }
+    args {
+      arg_name: "local_step"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "apply_indexed_slices_grad"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "grad"
+    }
+    args {
+      arg_name: "local_step"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "num_accumulated"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "set_global_step"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "new_global_step"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "take_grad"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "num_required"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "take_indexed_slices_grad"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "num_required"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+}

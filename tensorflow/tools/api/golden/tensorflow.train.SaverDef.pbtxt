@@ -1,0 +1,233 @@
+path: "tensorflow.train.SaverDef"
+tf_class {
+  name: "SaverDef"
+  is_instance: "<class \'tensorflow.core.protobuf.saver_pb2.SaverDef\'>"
+  is_instance: "<class \'google.protobuf.message.Message\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "CheckpointFormatVersion"
+    mtype: "<class \'google.protobuf.internal.enum_type_wrapper.EnumTypeWrapper\'>"
+  }
+  members {
+    name: "DESCRIPTOR"
+    mtype: "<class \'google.protobuf.descriptor.Descriptor\'>"
+  }
+  members {
+    name: "FILENAME_TENSOR_NAME_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "KEEP_CHECKPOINT_EVERY_N_HOURS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "LEGACY"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "MAX_TO_KEEP_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "RESTORE_OP_NAME_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "SAVE_TENSOR_NAME_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "SHARDED_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "V1"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "V2"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "VERSION_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "filename_tensor_name"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "keep_checkpoint_every_n_hours"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "max_to_keep"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "restore_op_name"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "save_tensor_name"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "sharded"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "version"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "ByteSize"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "Clear"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "ClearExtension"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "extension_handle"
+    }
+  }
+  member_methods {
+    name: "ClearField"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "field_name"
+    }
+  }
+  member_methods {
+    name: "CopyFrom"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "other_msg"
+    }
+  }
+  member_methods {
+    name: "DiscardUnknownFields"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "FindInitializationErrors"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "FromString"
+    args {
+      arg_name: "s"
+    }
+  }
+  member_methods {
+    name: "HasExtension"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "extension_handle"
+    }
+  }
+  member_methods {
+    name: "HasField"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "field_name"
+    }
+  }
+  member_methods {
+    name: "IsInitialized"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "errors"
+    }
+  }
+  member_methods {
+    name: "ListFields"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "MergeFrom"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "MergeFromString"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "serialized"
+    }
+  }
+  member_methods {
+    name: "ParseFromString"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "serialized"
+    }
+  }
+  member_methods {
+    name: "RegisterExtension"
+    args {
+      arg_name: "extension_handle"
+    }
+  }
+  member_methods {
+    name: "SerializePartialToString"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "SerializeToString"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "SetInParent"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "WhichOneof"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "oneof_name"
+    }
+  }
+}

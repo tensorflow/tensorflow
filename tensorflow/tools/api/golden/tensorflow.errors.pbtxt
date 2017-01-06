@@ -1,0 +1,155 @@
+path: "tensorflow.errors"
+tf_module {
+  name: "tensorflow.python.framework.errors"
+  members {
+    name: "ABORTED"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "ALREADY_EXISTS"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "AbortedError"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "AlreadyExistsError"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "CANCELLED"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "CancelledError"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "DATA_LOSS"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "DEADLINE_EXCEEDED"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "DataLossError"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "DeadlineExceededError"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "FAILED_PRECONDITION"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "FailedPreconditionError"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "INTERNAL"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "INVALID_ARGUMENT"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "InternalError"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "InvalidArgumentError"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "NOT_FOUND"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "NotFoundError"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "OK"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "OUT_OF_RANGE"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "OpError"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "OutOfRangeError"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "PERMISSION_DENIED"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "PermissionDeniedError"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "RESOURCE_EXHAUSTED"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "ResourceExhaustedError"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "UNAUTHENTICATED"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "UNAVAILABLE"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "UNIMPLEMENTED"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "UNKNOWN"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "UnauthenticatedError"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "UnavailableError"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "UnimplementedError"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "UnknownError"
+    mtype: "<type \'type\'>"
+  }
+  member_methods {
+    name: "error_code_from_exception_type"
+    args {
+      arg_name: "cls"
+    }
+  }
+  member_methods {
+    name: "exception_type_from_error_code"
+    args {
+      arg_name: "error_code"
+    }
+  }
+  member_methods {
+    name: "raise_exception_on_not_ok_status"
+  }
+}

@@ -1,0 +1,37 @@
+path: "tensorflow.Dimension"
+tf_class {
+  name: "Dimension"
+  is_instance: "<class \'tensorflow.python.framework.tensor_shape.Dimension\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "value"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "assert_is_compatible_with"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "other"
+    }
+  }
+  member_methods {
+    name: "is_compatible_with"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "other"
+    }
+  }
+  member_methods {
+    name: "merge_with"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "other"
+    }
+  }
+}

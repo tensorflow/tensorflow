@@ -1,0 +1,24 @@
+path: "tensorflow.core"
+tf_module {
+  name: "tensorflow.core"
+  members {
+    name: "example"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "framework"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "lib"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "protobuf"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "util"
+    mtype: "<type \'module\'>"
+  }
+}

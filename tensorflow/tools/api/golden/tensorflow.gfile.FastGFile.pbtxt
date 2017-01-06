@@ -1,0 +1,84 @@
+path: "tensorflow.gfile.FastGFile"
+tf_class {
+  name: "FastGFile"
+  is_instance: "<class \'tensorflow.python.platform.gfile.FastGFile\'>"
+  is_instance: "<class \'tensorflow.python.lib.io.file_io.FileIO\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "mode"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "name"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "close"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "flush"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "next"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "read"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "n"
+    }
+  }
+  member_methods {
+    name: "readline"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "readlines"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "seek"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "position"
+    }
+  }
+  member_methods {
+    name: "size"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "tell"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "write"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "file_content"
+    }
+  }
+}

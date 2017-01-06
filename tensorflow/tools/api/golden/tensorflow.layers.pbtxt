@@ -1,0 +1,517 @@
+path: "tensorflow.layers"
+tf_module {
+  name: "tensorflow.python.layers.layers"
+  member_methods {
+    name: "average_pooling1d"
+    args {
+      arg_name: "inputs"
+    }
+    args {
+      arg_name: "pool_size"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "data_format"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "average_pooling2d"
+    args {
+      arg_name: "inputs"
+    }
+    args {
+      arg_name: "pool_size"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "data_format"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "average_pooling3d"
+    args {
+      arg_name: "inputs"
+    }
+    args {
+      arg_name: "pool_size"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "data_format"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "batch_normalization"
+    args {
+      arg_name: "inputs"
+    }
+    args {
+      arg_name: "axis"
+    }
+    args {
+      arg_name: "momentum"
+    }
+    args {
+      arg_name: "epsilon"
+    }
+    args {
+      arg_name: "center"
+    }
+    args {
+      arg_name: "scale"
+    }
+    args {
+      arg_name: "beta_initializer"
+    }
+    args {
+      arg_name: "gamma_initializer"
+    }
+    args {
+      arg_name: "moving_mean_initializer"
+    }
+    args {
+      arg_name: "moving_variance_initializer"
+    }
+    args {
+      arg_name: "beta_regularizer"
+    }
+    args {
+      arg_name: "gamma_regularizer"
+    }
+    args {
+      arg_name: "training"
+    }
+    args {
+      arg_name: "trainable"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "reuse"
+    }
+  }
+  member_methods {
+    name: "conv1d"
+    args {
+      arg_name: "inputs"
+    }
+    args {
+      arg_name: "filters"
+    }
+    args {
+      arg_name: "kernel_size"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "data_format"
+    }
+    args {
+      arg_name: "dilation_rate"
+    }
+    args {
+      arg_name: "activation"
+    }
+    args {
+      arg_name: "use_bias"
+    }
+    args {
+      arg_name: "kernel_initializer"
+    }
+    args {
+      arg_name: "bias_initializer"
+    }
+    args {
+      arg_name: "kernel_regularizer"
+    }
+    args {
+      arg_name: "bias_regularizer"
+    }
+    args {
+      arg_name: "activity_regularizer"
+    }
+    args {
+      arg_name: "trainable"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "reuse"
+    }
+  }
+  member_methods {
+    name: "conv2d"
+    args {
+      arg_name: "inputs"
+    }
+    args {
+      arg_name: "filters"
+    }
+    args {
+      arg_name: "kernel_size"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "data_format"
+    }
+    args {
+      arg_name: "dilation_rate"
+    }
+    args {
+      arg_name: "activation"
+    }
+    args {
+      arg_name: "use_bias"
+    }
+    args {
+      arg_name: "kernel_initializer"
+    }
+    args {
+      arg_name: "bias_initializer"
+    }
+    args {
+      arg_name: "kernel_regularizer"
+    }
+    args {
+      arg_name: "bias_regularizer"
+    }
+    args {
+      arg_name: "activity_regularizer"
+    }
+    args {
+      arg_name: "trainable"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "reuse"
+    }
+  }
+  member_methods {
+    name: "conv2d_transpose"
+    args {
+      arg_name: "inputs"
+    }
+    args {
+      arg_name: "filters"
+    }
+    args {
+      arg_name: "kernel_size"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "data_format"
+    }
+    args {
+      arg_name: "activation"
+    }
+    args {
+      arg_name: "use_bias"
+    }
+    args {
+      arg_name: "kernel_initializer"
+    }
+    args {
+      arg_name: "bias_initializer"
+    }
+    args {
+      arg_name: "kernel_regularizer"
+    }
+    args {
+      arg_name: "bias_regularizer"
+    }
+    args {
+      arg_name: "activity_regularizer"
+    }
+    args {
+      arg_name: "trainable"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "reuse"
+    }
+  }
+  member_methods {
+    name: "conv3d"
+    args {
+      arg_name: "inputs"
+    }
+    args {
+      arg_name: "filters"
+    }
+    args {
+      arg_name: "kernel_size"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "data_format"
+    }
+    args {
+      arg_name: "dilation_rate"
+    }
+    args {
+      arg_name: "activation"
+    }
+    args {
+      arg_name: "use_bias"
+    }
+    args {
+      arg_name: "kernel_initializer"
+    }
+    args {
+      arg_name: "bias_initializer"
+    }
+    args {
+      arg_name: "kernel_regularizer"
+    }
+    args {
+      arg_name: "bias_regularizer"
+    }
+    args {
+      arg_name: "activity_regularizer"
+    }
+    args {
+      arg_name: "trainable"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "reuse"
+    }
+  }
+  member_methods {
+    name: "dense"
+    args {
+      arg_name: "inputs"
+    }
+    args {
+      arg_name: "units"
+    }
+    args {
+      arg_name: "activation"
+    }
+    args {
+      arg_name: "use_bias"
+    }
+    args {
+      arg_name: "weights_initializer"
+    }
+    args {
+      arg_name: "bias_initializer"
+    }
+    args {
+      arg_name: "weights_regularizer"
+    }
+    args {
+      arg_name: "bias_regularizer"
+    }
+    args {
+      arg_name: "activity_regularizer"
+    }
+    args {
+      arg_name: "trainable"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "reuse"
+    }
+  }
+  member_methods {
+    name: "dropout"
+    args {
+      arg_name: "inputs"
+    }
+    args {
+      arg_name: "rate"
+    }
+    args {
+      arg_name: "noise_shape"
+    }
+    args {
+      arg_name: "seed"
+    }
+    args {
+      arg_name: "training"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "max_pooling1d"
+    args {
+      arg_name: "inputs"
+    }
+    args {
+      arg_name: "pool_size"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "data_format"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "max_pooling2d"
+    args {
+      arg_name: "inputs"
+    }
+    args {
+      arg_name: "pool_size"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "data_format"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "max_pooling3d"
+    args {
+      arg_name: "inputs"
+    }
+    args {
+      arg_name: "pool_size"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "data_format"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "separable_conv2d"
+    args {
+      arg_name: "inputs"
+    }
+    args {
+      arg_name: "filters"
+    }
+    args {
+      arg_name: "kernel_size"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "data_format"
+    }
+    args {
+      arg_name: "dilation_rate"
+    }
+    args {
+      arg_name: "depth_multiplier"
+    }
+    args {
+      arg_name: "activation"
+    }
+    args {
+      arg_name: "use_bias"
+    }
+    args {
+      arg_name: "depthwise_initializer"
+    }
+    args {
+      arg_name: "pointwise_initializer"
+    }
+    args {
+      arg_name: "bias_initializer"
+    }
+    args {
+      arg_name: "depthwise_regularizer"
+    }
+    args {
+      arg_name: "pointwise_regularizer"
+    }
+    args {
+      arg_name: "bias_regularizer"
+    }
+    args {
+      arg_name: "activity_regularizer"
+    }
+    args {
+      arg_name: "trainable"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "reuse"
+    }
+  }
+}

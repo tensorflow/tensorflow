@@ -1,0 +1,53 @@
+path: "tensorflow.compat"
+tf_module {
+  name: "tensorflow.python.util.compat"
+  members {
+    name: "bytes_or_text_types"
+    mtype: "<type \'tuple\'>"
+  }
+  members {
+    name: "complex_types"
+    mtype: "<type \'tuple\'>"
+  }
+  members {
+    name: "integral_types"
+    mtype: "<type \'tuple\'>"
+  }
+  members {
+    name: "real_types"
+    mtype: "<type \'tuple\'>"
+  }
+  member_methods {
+    name: "as_bytes"
+    args {
+      arg_name: "bytes_or_text"
+    }
+    args {
+      arg_name: "encoding"
+    }
+  }
+  member_methods {
+    name: "as_str"
+    args {
+      arg_name: "bytes_or_text"
+    }
+    args {
+      arg_name: "encoding"
+    }
+  }
+  member_methods {
+    name: "as_str_any"
+    args {
+      arg_name: "value"
+    }
+  }
+  member_methods {
+    name: "as_text"
+    args {
+      arg_name: "bytes_or_text"
+    }
+    args {
+      arg_name: "encoding"
+    }
+  }
+}

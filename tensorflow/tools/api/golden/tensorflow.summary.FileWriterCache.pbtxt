@@ -1,0 +1,15 @@
+path: "tensorflow.summary.FileWriterCache"
+tf_class {
+  name: "FileWriterCache"
+  is_instance: "<class \'tensorflow.python.summary.writer.writer_cache.FileWriterCache\'>"
+  is_instance: "<type \'object\'>"
+  member_methods {
+    name: "clear"
+  }
+  member_methods {
+    name: "get"
+    args {
+      arg_name: "logdir"
+    }
+  }
+}

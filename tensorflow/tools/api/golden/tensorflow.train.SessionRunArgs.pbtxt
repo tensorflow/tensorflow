@@ -1,0 +1,26 @@
+path: "tensorflow.train.SessionRunArgs"
+tf_class {
+  name: "SessionRunArgs"
+  is_instance: "<class \'tensorflow.python.training.session_run_hook.SessionRunArgs\'>"
+  is_instance: "<class \'tensorflow.python.training.session_run_hook.SessionRunArgs\'>"
+  is_instance: "<type \'tuple\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "feed_dict"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "fetches"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "options"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "count"
+  }
+  member_methods {
+    name: "index"
+  }
+}

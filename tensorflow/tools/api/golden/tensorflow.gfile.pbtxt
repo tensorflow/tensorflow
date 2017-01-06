@@ -1,0 +1,103 @@
+path: "tensorflow.gfile"
+tf_module {
+  name: "tensorflow.python.platform.gfile"
+  members {
+    name: "FastGFile"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "GFile"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "Open"
+    mtype: "<type \'type\'>"
+  }
+  member_methods {
+    name: "Copy"
+    args {
+      arg_name: "oldpath"
+    }
+    args {
+      arg_name: "newpath"
+    }
+    args {
+      arg_name: "overwrite"
+    }
+  }
+  member_methods {
+    name: "DeleteRecursively"
+    args {
+      arg_name: "dirname"
+    }
+  }
+  member_methods {
+    name: "Exists"
+    args {
+      arg_name: "filename"
+    }
+  }
+  member_methods {
+    name: "Glob"
+    args {
+      arg_name: "filename"
+    }
+  }
+  member_methods {
+    name: "IsDirectory"
+    args {
+      arg_name: "dirname"
+    }
+  }
+  member_methods {
+    name: "ListDirectory"
+    args {
+      arg_name: "dirname"
+    }
+  }
+  member_methods {
+    name: "MakeDirs"
+    args {
+      arg_name: "dirname"
+    }
+  }
+  member_methods {
+    name: "MkDir"
+    args {
+      arg_name: "dirname"
+    }
+  }
+  member_methods {
+    name: "Remove"
+    args {
+      arg_name: "filename"
+    }
+  }
+  member_methods {
+    name: "Rename"
+    args {
+      arg_name: "oldname"
+    }
+    args {
+      arg_name: "newname"
+    }
+    args {
+      arg_name: "overwrite"
+    }
+  }
+  member_methods {
+    name: "Stat"
+    args {
+      arg_name: "filename"
+    }
+  }
+  member_methods {
+    name: "Walk"
+    args {
+      arg_name: "top"
+    }
+    args {
+      arg_name: "in_order"
+    }
+  }
+}

@@ -1,0 +1,72 @@
+path: "tensorflow.Tensor"
+tf_class {
+  name: "Tensor"
+  is_instance: "<class \'tensorflow.python.framework.ops.Tensor\'>"
+  is_instance: "<class \'tensorflow.python.framework.ops._TensorLike\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "OVERLOADABLE_OPERATORS"
+    mtype: "<type \'set\'>"
+  }
+  members {
+    name: "device"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "graph"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "name"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "op"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "shape"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "value_index"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "consumers"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "eval"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "feed_dict"
+    }
+    args {
+      arg_name: "session"
+    }
+  }
+  member_methods {
+    name: "get_shape"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "set_shape"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "shape"
+    }
+  }
+}

@@ -1,0 +1,48 @@
+path: "tensorflow.DeviceSpec"
+tf_class {
+  name: "DeviceSpec"
+  is_instance: "<class \'tensorflow.python.framework.device.DeviceSpec\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "job"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "replica"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "task"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "from_string"
+    args {
+      arg_name: "spec"
+    }
+  }
+  member_methods {
+    name: "merge_from"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "dev"
+    }
+  }
+  member_methods {
+    name: "parse_from_string"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "spec"
+    }
+  }
+  member_methods {
+    name: "to_string"
+    args {
+      arg_name: "self"
+    }
+  }
+}

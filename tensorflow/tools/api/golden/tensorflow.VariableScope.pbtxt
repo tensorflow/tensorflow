@@ -1,0 +1,144 @@
+path: "tensorflow.VariableScope"
+tf_class {
+  name: "VariableScope"
+  is_instance: "<class \'tensorflow.python.ops.variable_scope.VariableScope\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "caching_device"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "custom_getter"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "initializer"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "name"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "original_name_scope"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "partitioner"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "regularizer"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "reuse"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "get_variable"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "var_store"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "shape"
+    }
+    args {
+      arg_name: "dtype"
+    }
+    args {
+      arg_name: "initializer"
+    }
+    args {
+      arg_name: "regularizer"
+    }
+    args {
+      arg_name: "trainable"
+    }
+    args {
+      arg_name: "collections"
+    }
+    args {
+      arg_name: "caching_device"
+    }
+    args {
+      arg_name: "partitioner"
+    }
+    args {
+      arg_name: "validate_shape"
+    }
+    args {
+      arg_name: "custom_getter"
+    }
+  }
+  member_methods {
+    name: "reuse_variables"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "set_caching_device"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "caching_device"
+    }
+  }
+  member_methods {
+    name: "set_custom_getter"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "custom_getter"
+    }
+  }
+  member_methods {
+    name: "set_dtype"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "dtype"
+    }
+  }
+  member_methods {
+    name: "set_initializer"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "initializer"
+    }
+  }
+  member_methods {
+    name: "set_partitioner"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "partitioner"
+    }
+  }
+  member_methods {
+    name: "set_regularizer"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "regularizer"
+    }
+  }
+}

@@ -1,0 +1,70 @@
+path: "tensorflow.train.QueueRunner"
+tf_class {
+  name: "QueueRunner"
+  is_instance: "<class \'tensorflow.python.training.queue_runner_impl.QueueRunner\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "cancel_op"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "close_op"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "enqueue_ops"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "exceptions_raised"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "name"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "queue"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "queue_closed_exception_types"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "create_threads"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "sess"
+    }
+    args {
+      arg_name: "coord"
+    }
+    args {
+      arg_name: "daemon"
+    }
+    args {
+      arg_name: "start"
+    }
+  }
+  member_methods {
+    name: "from_proto"
+    args {
+      arg_name: "queue_runner_def"
+    }
+    args {
+      arg_name: "import_scope"
+    }
+  }
+  member_methods {
+    name: "to_proto"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "export_scope"
+    }
+  }
+}

@@ -1,0 +1,61 @@
+path: "tensorflow.train.ClusterSpec"
+tf_class {
+  name: "ClusterSpec"
+  is_instance: "<class \'tensorflow.python.training.server_lib.ClusterSpec\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "jobs"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "as_cluster_def"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "as_dict"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "job_tasks"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "job_name"
+    }
+  }
+  member_methods {
+    name: "num_tasks"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "job_name"
+    }
+  }
+  member_methods {
+    name: "task_address"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "job_name"
+    }
+    args {
+      arg_name: "task_index"
+    }
+  }
+  member_methods {
+    name: "task_indices"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "job_name"
+    }
+  }
+}

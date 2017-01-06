@@ -1,0 +1,58 @@
+path: "tensorflow.SparseTensor"
+tf_class {
+  name: "SparseTensor"
+  is_instance: "<class \'tensorflow.python.framework.sparse_tensor.SparseTensor\'>"
+  is_instance: "<class \'tensorflow.python.framework.ops._TensorLike\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "dense_shape"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "graph"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "indices"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "op"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "values"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "eval"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "feed_dict"
+    }
+    args {
+      arg_name: "session"
+    }
+  }
+  member_methods {
+    name: "from_value"
+    args {
+      arg_name: "cls"
+    }
+    args {
+      arg_name: "sparse_tensor_value"
+    }
+  }
+  member_methods {
+    name: "get_shape"
+    args {
+      arg_name: "self"
+    }
+  }
+}

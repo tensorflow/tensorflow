@@ -1,0 +1,35 @@
+path: "tensorflow.train.queue_runner"
+tf_module {
+  name: "tensorflow.python.training.queue_runner"
+  members {
+    name: "QueueRunner"
+    mtype: "<type \'type\'>"
+  }
+  member_methods {
+    name: "add_queue_runner"
+    args {
+      arg_name: "qr"
+    }
+    args {
+      arg_name: "collection"
+    }
+  }
+  member_methods {
+    name: "start_queue_runners"
+    args {
+      arg_name: "sess"
+    }
+    args {
+      arg_name: "coord"
+    }
+    args {
+      arg_name: "daemon"
+    }
+    args {
+      arg_name: "start"
+    }
+    args {
+      arg_name: "collection"
+    }
+  }
+}

@@ -1,0 +1,225 @@
+path: "tensorflow.GraphOptions"
+tf_class {
+  name: "GraphOptions"
+  is_instance: "<class \'tensorflow.core.protobuf.config_pb2.GraphOptions\'>"
+  is_instance: "<class \'google.protobuf.message.Message\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "BUILD_COST_MODEL_AFTER_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "BUILD_COST_MODEL_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "DESCRIPTOR"
+    mtype: "<class \'google.protobuf.descriptor.Descriptor\'>"
+  }
+  members {
+    name: "ENABLE_BFLOAT16_SENDRECV_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "ENABLE_RECV_SCHEDULING_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "INFER_SHAPES_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "OPTIMIZER_OPTIONS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "PLACE_PRUNED_GRAPH_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "TIMELINE_STEP_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "build_cost_model"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "build_cost_model_after"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "enable_bfloat16_sendrecv"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "enable_recv_scheduling"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "infer_shapes"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "optimizer_options"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "place_pruned_graph"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "timeline_step"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "ByteSize"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "Clear"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "ClearExtension"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "extension_handle"
+    }
+  }
+  member_methods {
+    name: "ClearField"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "field_name"
+    }
+  }
+  member_methods {
+    name: "CopyFrom"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "other_msg"
+    }
+  }
+  member_methods {
+    name: "DiscardUnknownFields"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "FindInitializationErrors"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "FromString"
+    args {
+      arg_name: "s"
+    }
+  }
+  member_methods {
+    name: "HasExtension"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "extension_handle"
+    }
+  }
+  member_methods {
+    name: "HasField"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "field_name"
+    }
+  }
+  member_methods {
+    name: "IsInitialized"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "errors"
+    }
+  }
+  member_methods {
+    name: "ListFields"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "MergeFrom"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "MergeFromString"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "serialized"
+    }
+  }
+  member_methods {
+    name: "ParseFromString"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "serialized"
+    }
+  }
+  member_methods {
+    name: "RegisterExtension"
+    args {
+      arg_name: "extension_handle"
+    }
+  }
+  member_methods {
+    name: "SerializePartialToString"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "SerializeToString"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "SetInParent"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "WhichOneof"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "oneof_name"
+    }
+  }
+}

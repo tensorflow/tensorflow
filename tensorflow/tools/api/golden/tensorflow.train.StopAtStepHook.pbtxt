@@ -1,0 +1,52 @@
+path: "tensorflow.train.StopAtStepHook"
+tf_class {
+  name: "StopAtStepHook"
+  is_instance: "<class \'tensorflow.python.training.basic_session_run_hooks.StopAtStepHook\'>"
+  is_instance: "<class \'tensorflow.python.training.session_run_hook.SessionRunHook\'>"
+  is_instance: "<type \'object\'>"
+  member_methods {
+    name: "after_create_session"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "session"
+    }
+  }
+  member_methods {
+    name: "after_run"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "run_context"
+    }
+    args {
+      arg_name: "run_values"
+    }
+  }
+  member_methods {
+    name: "before_run"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "run_context"
+    }
+  }
+  member_methods {
+    name: "begin"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "end"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "session"
+    }
+  }
+}

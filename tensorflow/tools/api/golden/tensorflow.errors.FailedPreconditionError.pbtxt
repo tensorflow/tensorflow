@@ -1,0 +1,29 @@
+path: "tensorflow.errors.FailedPreconditionError"
+tf_class {
+  name: "FailedPreconditionError"
+  is_instance: "<class \'tensorflow.python.framework.errors_impl.FailedPreconditionError\'>"
+  is_instance: "<class \'tensorflow.python.framework.errors_impl.OpError\'>"
+  is_instance: "<type \'exceptions.Exception\'>"
+  is_instance: "<type \'exceptions.BaseException\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "args"
+    mtype: "<type \'getset_descriptor\'>"
+  }
+  members {
+    name: "error_code"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "message"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "node_def"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "op"
+    mtype: "<type \'property\'>"
+  }
+}

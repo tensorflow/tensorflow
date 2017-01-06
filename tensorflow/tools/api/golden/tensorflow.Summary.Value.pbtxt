@@ -1,0 +1,225 @@
+path: "tensorflow.Summary.Value"
+tf_class {
+  name: "Value"
+  is_instance: "<class \'tensorflow.core.framework.summary_pb2.Value\'>"
+  is_instance: "<class \'google.protobuf.message.Message\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "AUDIO_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "DESCRIPTOR"
+    mtype: "<class \'google.protobuf.descriptor.Descriptor\'>"
+  }
+  members {
+    name: "HISTO_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "IMAGE_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "NODE_NAME_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "OBSOLETE_OLD_STYLE_HISTOGRAM_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "SIMPLE_VALUE_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "TAG_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "TENSOR_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "audio"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "histo"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "image"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "node_name"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "obsolete_old_style_histogram"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "simple_value"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "tag"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "tensor"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "ByteSize"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "Clear"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "ClearExtension"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "extension_handle"
+    }
+  }
+  member_methods {
+    name: "ClearField"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "field_name"
+    }
+  }
+  member_methods {
+    name: "CopyFrom"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "other_msg"
+    }
+  }
+  member_methods {
+    name: "DiscardUnknownFields"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "FindInitializationErrors"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "FromString"
+    args {
+      arg_name: "s"
+    }
+  }
+  member_methods {
+    name: "HasExtension"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "extension_handle"
+    }
+  }
+  member_methods {
+    name: "HasField"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "field_name"
+    }
+  }
+  member_methods {
+    name: "IsInitialized"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "errors"
+    }
+  }
+  member_methods {
+    name: "ListFields"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "MergeFrom"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "MergeFromString"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "serialized"
+    }
+  }
+  member_methods {
+    name: "ParseFromString"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "serialized"
+    }
+  }
+  member_methods {
+    name: "RegisterExtension"
+    args {
+      arg_name: "extension_handle"
+    }
+  }
+  member_methods {
+    name: "SerializePartialToString"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "SerializeToString"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "SetInParent"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "WhichOneof"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "oneof_name"
+    }
+  }
+}

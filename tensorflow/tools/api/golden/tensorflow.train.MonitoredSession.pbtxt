@@ -1,0 +1,41 @@
+path: "tensorflow.train.MonitoredSession"
+tf_class {
+  name: "MonitoredSession"
+  is_instance: "<class \'tensorflow.python.training.monitored_session.MonitoredSession\'>"
+  is_instance: "<class \'tensorflow.python.training.monitored_session._MonitoredSession\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "graph"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "close"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "run"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "fetches"
+    }
+    args {
+      arg_name: "feed_dict"
+    }
+    args {
+      arg_name: "options"
+    }
+    args {
+      arg_name: "run_metadata"
+    }
+  }
+  member_methods {
+    name: "should_stop"
+    args {
+      arg_name: "self"
+    }
+  }
+}

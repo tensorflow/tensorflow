@@ -1,0 +1,70 @@
+path: "tensorflow.test.Benchmark"
+tf_class {
+  name: "TensorFlowBenchmark"
+  is_instance: "<class \'tensorflow.python.platform.benchmark.TensorFlowBenchmark\'>"
+  is_instance: "<class \'tensorflow.python.platform.benchmark.Benchmark\'>"
+  is_instance: "<type \'object\'>"
+  member_methods {
+    name: "is_abstract"
+    args {
+      arg_name: "cls"
+    }
+  }
+  member_methods {
+    name: "report_benchmark"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "iters"
+    }
+    args {
+      arg_name: "cpu_time"
+    }
+    args {
+      arg_name: "wall_time"
+    }
+    args {
+      arg_name: "throughput"
+    }
+    args {
+      arg_name: "extras"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "run_op_benchmark"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "sess"
+    }
+    args {
+      arg_name: "op_or_tensor"
+    }
+    args {
+      arg_name: "feed_dict"
+    }
+    args {
+      arg_name: "burn_iters"
+    }
+    args {
+      arg_name: "min_iters"
+    }
+    args {
+      arg_name: "store_trace"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "extras"
+    }
+    args {
+      arg_name: "mbs"
+    }
+  }
+}

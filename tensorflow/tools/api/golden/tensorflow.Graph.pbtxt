@@ -1,0 +1,254 @@
+path: "tensorflow.Graph"
+tf_class {
+  name: "Graph"
+  is_instance: "<class \'tensorflow.python.framework.ops.Graph\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "building_function"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "finalized"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "graph_def_versions"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "seed"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "version"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "add_to_collection"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "value"
+    }
+  }
+  member_methods {
+    name: "add_to_collections"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "names"
+    }
+    args {
+      arg_name: "value"
+    }
+  }
+  member_methods {
+    name: "as_default"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "as_graph_def"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "from_version"
+    }
+    args {
+      arg_name: "add_shapes"
+    }
+  }
+  member_methods {
+    name: "as_graph_element"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "obj"
+    }
+    args {
+      arg_name: "allow_tensor"
+    }
+    args {
+      arg_name: "allow_operation"
+    }
+  }
+  member_methods {
+    name: "clear_collection"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "colocate_with"
+  }
+  member_methods {
+    name: "container"
+  }
+  member_methods {
+    name: "control_dependencies"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "control_inputs"
+    }
+  }
+  member_methods {
+    name: "create_op"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "op_type"
+    }
+    args {
+      arg_name: "inputs"
+    }
+    args {
+      arg_name: "dtypes"
+    }
+    args {
+      arg_name: "input_types"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "attrs"
+    }
+    args {
+      arg_name: "op_def"
+    }
+    args {
+      arg_name: "compute_shapes"
+    }
+    args {
+      arg_name: "compute_device"
+    }
+  }
+  member_methods {
+    name: "device"
+  }
+  member_methods {
+    name: "finalize"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "get_all_collection_keys"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "get_collection"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "scope"
+    }
+  }
+  member_methods {
+    name: "get_collection_ref"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "get_operation_by_name"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "get_operations"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "get_tensor_by_name"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "gradient_override_map"
+  }
+  member_methods {
+    name: "is_feedable"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "tensor"
+    }
+  }
+  member_methods {
+    name: "is_fetchable"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "tensor_or_op"
+    }
+  }
+  member_methods {
+    name: "name_scope"
+  }
+  member_methods {
+    name: "prevent_feeding"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "tensor"
+    }
+  }
+  member_methods {
+    name: "prevent_fetching"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "op"
+    }
+  }
+  member_methods {
+    name: "unique_name"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "mark_as_used"
+    }
+  }
+}

@@ -1,0 +1,19 @@
+path: "tensorflow.Variable.SaveSliceInfo"
+tf_class {
+  name: "SaveSliceInfo"
+  is_instance: "<class \'tensorflow.python.ops.variables.SaveSliceInfo\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "spec"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "to_proto"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "export_scope"
+    }
+  }
+}

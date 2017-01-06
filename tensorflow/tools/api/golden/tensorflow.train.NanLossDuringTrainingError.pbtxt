@@ -1,0 +1,18 @@
+path: "tensorflow.train.NanLossDuringTrainingError"
+tf_class {
+  name: "NanLossDuringTrainingError"
+  is_instance: "<class \'tensorflow.python.training.basic_session_run_hooks.NanLossDuringTrainingError\'>"
+  is_instance: "<type \'exceptions.RuntimeError\'>"
+  is_instance: "<type \'exceptions.StandardError\'>"
+  is_instance: "<type \'exceptions.Exception\'>"
+  is_instance: "<type \'exceptions.BaseException\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "args"
+    mtype: "<type \'getset_descriptor\'>"
+  }
+  members {
+    name: "message"
+    mtype: "<type \'getset_descriptor\'>"
+  }
+}

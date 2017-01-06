@@ -1,0 +1,8 @@
+path: "tensorflow.core.lib.core"
+tf_module {
+  name: "tensorflow.core.lib.core"
+  members {
+    name: "error_codes_pb2"
+    mtype: "<type \'module\'>"
+  }
+}

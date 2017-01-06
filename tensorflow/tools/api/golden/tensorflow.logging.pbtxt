@@ -1,0 +1,153 @@
+path: "tensorflow.logging"
+tf_module {
+  name: "tensorflow.python.platform.tf_logging"
+  members {
+    name: "DEBUG"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "ERROR"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "FATAL"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "INFO"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "WARN"
+    mtype: "<type \'int\'>"
+  }
+  member_methods {
+    name: "TaskLevelStatusMessage"
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "debug"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "error"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "fatal"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "flush"
+  }
+  member_methods {
+    name: "get_verbosity"
+  }
+  member_methods {
+    name: "info"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "log"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "level"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "log_every_n"
+    args {
+      arg_name: "level"
+    }
+    args {
+      arg_name: "msg"
+    }
+    args {
+      arg_name: "n"
+    }
+  }
+  member_methods {
+    name: "log_first_n"
+    args {
+      arg_name: "level"
+    }
+    args {
+      arg_name: "msg"
+    }
+    args {
+      arg_name: "n"
+    }
+  }
+  member_methods {
+    name: "log_if"
+    args {
+      arg_name: "level"
+    }
+    args {
+      arg_name: "msg"
+    }
+    args {
+      arg_name: "condition"
+    }
+  }
+  member_methods {
+    name: "set_verbosity"
+    args {
+      arg_name: "verbosity"
+    }
+  }
+  member_methods {
+    name: "vlog"
+    args {
+      arg_name: "level"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "warn"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "warning"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+}

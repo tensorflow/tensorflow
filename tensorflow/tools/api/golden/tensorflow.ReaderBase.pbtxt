@@ -1,0 +1,89 @@
+path: "tensorflow.ReaderBase"
+tf_class {
+  name: "ReaderBase"
+  is_instance: "<class \'tensorflow.python.ops.io_ops.ReaderBase\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "reader_ref"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "supports_serialize"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "num_records_produced"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "num_work_units_completed"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "read"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "queue"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "read_up_to"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "queue"
+    }
+    args {
+      arg_name: "num_records"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "reset"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "restore_state"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "state"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "serialize_state"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+}

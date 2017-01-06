@@ -1,0 +1,156 @@
+path: "tensorflow.TensorArray"
+tf_class {
+  name: "TensorArray"
+  is_instance: "<class \'tensorflow.python.ops.tensor_array_ops.TensorArray\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "flow"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "handle"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "close"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "concat"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "gather"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "indices"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "grad"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "source"
+    }
+    args {
+      arg_name: "flow"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "pack"
+  }
+  member_methods {
+    name: "read"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "index"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "scatter"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "indices"
+    }
+    args {
+      arg_name: "value"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "size"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "split"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "value"
+    }
+    args {
+      arg_name: "lengths"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "stack"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "unpack"
+  }
+  member_methods {
+    name: "unstack"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "value"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "write"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "index"
+    }
+    args {
+      arg_name: "value"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+}
