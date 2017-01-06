@@ -26,8 +26,10 @@ limitations under the License.
 namespace tensorflow {
 
 const bool SHOW_DBG_IN_SOC = false;
-const bool DBG_DUMP_RESULT = true;
+const bool DBG_DUMP_RESULT = false;
 const bool DBG_USE_DUMMY_INPUT = false;
+const bool DBG_USE_SAMPLE_INPUT = false;
+const int64 FLAG_ENABLE_PANDA_BINARY_INPUT = 0x01;
 
 #ifdef USE_HEXAGON_LIBS
 int HexagonControlWrapper::GetVersion() {
@@ -36,6 +38,9 @@ int HexagonControlWrapper::GetVersion() {
 
 bool HexagonControlWrapper::Init() {
   soc_interface_SetLogLevel(SHOW_DBG_IN_SOC ? -1 /* debug */ : 0 /* info */);
+  if (DBG_USE_SAMPLE_INPUT) {
+    soc_interface_SetDebugFlag(FLAG_ENABLE_PANDA_BINARY_INPUT);
+  }
   return soc_interface_Init();
 }
 
@@ -179,15 +184,15 @@ bool HexagonControlWrapper::TeardownGraph() {
 bool HexagonControlWrapper::FillInputNode(const string node_name,
                                           const ByteArray bytes) {
   uint64 byte_size;
-  // TODO(satok): Use arguments instead of dummy input
+  const int x = 1;
+  const int y = 299;
+  const int z = 299;
+  const int d = 3;
   if (DBG_USE_DUMMY_INPUT) {
-    const int x = 1;
-    const int y = 299;
-    const int z = 299;
-    const int d = 3;
     const int array_length = x * y * z * d;
     byte_size = array_length * sizeof(float);
     dummy_input_float_.resize(array_length);
+    std::memset(dummy_input_float_.data(), 0, byte_size);
   } else {
     CHECK(std::get<2>(bytes) == DT_FLOAT);
     byte_size = std::get<1>(bytes);
@@ -195,7 +200,7 @@ bool HexagonControlWrapper::FillInputNode(const string node_name,
     std::memcpy(dummy_input_float_.data(), std::get<0>(bytes), byte_size);
   }
   return soc_interface_FillInputNodeFloat(
-      1, 299, 299, 3, reinterpret_cast<uint8 *>(dummy_input_float_.data()),
+      x, y, z, d, reinterpret_cast<uint8*>(dummy_input_float_.data()),
       byte_size);
 }
 
