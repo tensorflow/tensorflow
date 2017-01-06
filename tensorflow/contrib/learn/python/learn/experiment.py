@@ -120,33 +120,98 @@ class Experiment(object):
     if not isinstance(estimator, trainable.Trainable):
       raise ValueError("`estimator` must implement `Trainable`.")
     super(Experiment, self).__init__()
+    # Immutable fields.
     self._estimator = estimator
     self._train_input_fn = train_input_fn
     self._eval_input_fn = eval_input_fn
     self._eval_metrics = eval_metrics
     self._train_steps = train_steps
     self._eval_steps = eval_steps
-    self._train_monitors = train_monitors or []
-    self._evaluate_hooks = evaluate_hooks
     self._local_eval_frequency = local_eval_frequency
     self._eval_delay_secs = eval_delay_secs
     self._continuous_eval_throttle_secs = continuous_eval_throttle_secs
     self._min_eval_frequency = min_eval_frequency
     self._delay_workers_by_global_step = delay_workers_by_global_step
-
-    if export_strategies is None:
-      self._export_strategies = []
-    elif isinstance(export_strategies, list):
-      self._export_strategies = export_strategies
-    elif isinstance(export_strategies, export_strategy.ExportStrategy):
-      self._export_strategies = [export_strategies]
-    else:
-      raise ValueError("`export_strategies` must be an ExportStrategy, "
-                       "a list of ExportStrategies, or None.")
+    # Mutable fields, using the setters.
+    self.train_monitors = train_monitors
+    self.evaluate_hooks = evaluate_hooks
+    self.export_strategies = export_strategies
 
   @property
   def estimator(self):
     return self._estimator
+
+  @property
+  def train_input_fn(self):
+    return self._train_input_fn
+
+  @property
+  def eval_input_fn(self):
+    return self._eval_input_fn
+
+  @property
+  def eval_metrics(self):
+    return self._eval_metrics
+
+  @property
+  def train_steps(self):
+    return self._train_steps
+
+  @property
+  def eval_steps(self):
+    return self._eval_steps
+
+  @property
+  def train_monitors(self):
+    return self._train_monitors
+
+  @train_monitors.setter
+  def train_monitors(self, value):
+    self._train_monitors = value or []
+
+  @property
+  def evaluate_hooks(self):
+    return self._evaluate_hooks
+
+  @evaluate_hooks.setter
+  def evaluate_hooks(self, value):
+    self._evaluate_hooks = value or []
+
+  @property
+  def local_eval_frequency(self):
+    return self._local_eval_frequency
+
+  @property
+  def eval_delay_secs(self):
+    return self._eval_delay_secs
+
+  @property
+  def continuous_eval_throttle_secs(self):
+    return self._continuous_eval_throttle_secs
+
+  @property
+  def min_eval_frequency(self):
+    return self._min_eval_frequency
+
+  @property
+  def delay_workers_by_global_step(self):
+    return self._delay_workers_by_global_step
+
+  @property
+  def export_strategies(self):
+    return self._export_strategies
+
+  @export_strategies.setter
+  def export_strategies(self, value):
+    if value is None:
+      self._export_strategies = []
+    elif isinstance(value, list):
+      self._export_strategies = value
+    elif isinstance(value, export_strategy.ExportStrategy):
+      self._export_strategies = [value]
+    else:
+      raise ValueError("`export_strategies` must be an ExportStrategy, "
+                       "a list of ExportStrategies, or None.")
 
   def train(self, delay_secs=None):
     """Fit the estimator using the training data.
