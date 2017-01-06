@@ -346,7 +346,7 @@ if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]] ||
     NO_PIP_MAIN_CMD="${ANDROID_CMD} ${OPT_FLAG} "
   elif [[ ${CTYPE} == "android_full" ]]; then
     # Run android specific script for full android build.
-    NO_PIP_MAIN_CMD="${ANDROID_full_CMD} ${OPT_FLAG} "
+    NO_PIP_MAIN_CMD="${ANDROID_FULL_CMD} ${OPT_FLAG} "
   fi
 
 fi
