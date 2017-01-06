@@ -51,7 +51,7 @@ Input of `fit` and `evaluate` should have following features,
     whose `value` is a `Tensor`.
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.__init__(hidden_units, feature_columns, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=False, config=None, feature_engineering_fn=None, embedding_lr_multipliers=None)` {#DNNClassifier.__init__}
+#### `tf.contrib.learn.DNNClassifier.__init__(hidden_units, feature_columns, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=False, config=None, feature_engineering_fn=None, embedding_lr_multipliers=None, input_layer_min_slice_size=None)` {#DNNClassifier.__init__}
 
 Initializes a DNNClassifier instance.
 
@@ -94,6 +94,8 @@ Initializes a DNNClassifier instance.
 *  <b>`embedding_lr_multipliers`</b>: Optional. A dictionary from `EmbeddingColumn` to
       a `float` multiplier. Multiplier will be used to multiply with
       learning rate for the embedding variables.
+*  <b>`input_layer_min_slice_size`</b>: Optional. The min slice size of input layer
+      partitions. If not provided, will use the default of 64M.
 
 ##### Returns:
 
