@@ -1614,7 +1614,7 @@ class MetaGraphTest(test.TestCase):
           concated, array_ops.stack([batch_size, 10]), 1.0, 0.0)
       logits = ops_lib.get_collection("logits")[0]
       cross_entropy = nn_ops.softmax_cross_entropy_with_logits(
-          logits, onehot_labels, name="xentropy")
+          labels=onehot_labels, logits=logits, name="xentropy")
       loss = math_ops.reduce_mean(cross_entropy, name="xentropy_mean")
 
       summary.scalar("loss", loss)
@@ -1698,7 +1698,8 @@ class MetaGraphTest(test.TestCase):
       bias = variables.Variable(array_ops.zeros([10]), name="bias")
       logit = nn_ops.relu(math_ops.matmul(image, weights) + bias, name="logits")
       nn_ops.softmax(logit, name="prediction")
-      cost = nn_ops.softmax_cross_entropy_with_logits(logit, label, name="cost")
+      cost = nn_ops.softmax_cross_entropy_with_logits(labels=label,
+                                                      logits=logit, name="cost")
       adam.AdamOptimizer().minimize(cost, name="optimize")
       saver = saver_module.Saver()
       sess.run(variables.global_variables_initializer())
@@ -1726,7 +1727,8 @@ class MetaGraphTest(test.TestCase):
         bias = variables.Variable(array_ops.zeros([10]), name="bias")
         logit = nn_ops.relu(math_ops.matmul(image, weights) + bias)
         nn_ops.softmax(logit, name="prediction")
-        cost = nn_ops.softmax_cross_entropy_with_logits(logit, label)
+        cost = nn_ops.softmax_cross_entropy_with_logits(labels=label,
+                                                        logits=logit)
         adam.AdamOptimizer().minimize(cost, name="optimize")
       meta_graph_def = saver_module.export_meta_graph()
 
@@ -1758,7 +1760,8 @@ class MetaGraphTest(test.TestCase):
         bias = variables.Variable(array_ops.zeros([10]), name="bias")
         logit = nn_ops.relu(math_ops.matmul(image, weights) + bias)
         nn_ops.softmax(logit, name="prediction")
-        cost = nn_ops.softmax_cross_entropy_with_logits(logit, label)
+        cost = nn_ops.softmax_cross_entropy_with_logits(labels=label,
+                                                        logits=logit)
         adam.AdamOptimizer().minimize(cost, name="optimize")
       meta_graph_def = saver_module.export_meta_graph(clear_devices=True)
       graph_io.write_graph(meta_graph_def, "/tmp", "meta_graph.pbtxt")

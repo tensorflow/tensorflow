@@ -286,7 +286,7 @@ class MultiLabelModelHeadTest(test.TestCase):
         weight_column_name="label_weight",
         metric_class_ids=range(n_classes))
     with ops.Graph().as_default(), session.Session():
-      features = {"label_weight": constant_op.constant([.1])}
+      features = {"label_weight": constant_op.constant(.1)}
       logits = constant_op.constant([[1., 0., 0.]])
       labels = constant_op.constant([[0, 0, 1]])
       model_fn_ops = head.head_ops(
@@ -560,7 +560,7 @@ class MultiClassModelHeadTest(test.TestCase):
         metric_class_ids=range(n_classes))
     with ops.Graph().as_default(), session.Session():
       weight = .1
-      features = {"label_weight": constant_op.constant([weight])}
+      features = {"label_weight": constant_op.constant(weight)}
       logits = constant_op.constant(self._logits)
       labels = constant_op.constant(self._labels)
       # logloss: z:label, x:logit

@@ -56,6 +56,9 @@ class PackOpTest(test.TestCase):
         c = array_ops.stack(xs)
         self.assertAllEqual(c.eval(), data)
 
+        c = array_ops.parallel_stack(xs)
+        self.assertAllEqual(c.eval(), data)
+
   def testConst(self):
     np.random.seed(7)
     with self.test_session(use_gpu=True):
@@ -64,6 +67,10 @@ class PackOpTest(test.TestCase):
         # Pack back into a single tensorflow tensor directly using np array
         c = array_ops.pack(data)
         # This is implemented via a Const:
+        self.assertEqual(c.op.type, "Const")
+        self.assertAllEqual(c.eval(), data)
+
+        c = array_ops.parallel_stack(data)
         self.assertEqual(c.op.type, "Const")
         self.assertAllEqual(c.eval(), data)
 
@@ -78,12 +85,19 @@ class PackOpTest(test.TestCase):
           self.assertEqual(cl.op.type, "Const")
           self.assertAllEqual(cl.eval(), data)
 
+          cl = array_ops.parallel_stack(data_list)
+          self.assertEqual(cl.op.type, "Const")
+          self.assertAllEqual(cl.eval(), data)
+
       # Verify that shape induction works with shapes produced via const pack
       a = constant_op.constant([1, 2, 3, 4, 5, 6])
       b = array_ops.reshape(a, array_ops.pack([2, 3]))
       self.assertAllEqual(b.get_shape(), [2, 3])
 
       b = array_ops.reshape(a, array_ops.stack([2, 3]))
+      self.assertAllEqual(b.get_shape(), [2, 3])
+
+      b = array_ops.reshape(a, array_ops.parallel_stack([2, 3]))
       self.assertAllEqual(b.get_shape(), [2, 3])
 
   def testGradientsAxis0(self):
@@ -124,11 +138,14 @@ class PackOpTest(test.TestCase):
     # Verify that pack doesn't crash for zero size inputs
     with self.test_session(use_gpu=True):
       for shape in (0,), (3, 0), (0, 3):
-        x = np.zeros((2,) + shape)
+        x = np.zeros((2,) + shape).astype(np.int32)
         p = array_ops.pack(list(x)).eval()
         self.assertAllEqual(p, x)
 
         p = array_ops.stack(list(x)).eval()
+        self.assertAllEqual(p, x)
+
+        p = array_ops.parallel_stack(list(x)).eval()
         self.assertAllEqual(p, x)
 
   def testAxis0Default(self):
@@ -137,9 +154,11 @@ class PackOpTest(test.TestCase):
 
       packed = array_ops.pack(t).eval()
       stacked = array_ops.stack(t).eval()
+      parallel_stacked = array_ops.parallel_stack(t).eval()
 
     self.assertAllEqual(packed, np.array([[1, 2, 3], [4, 5, 6]]))
     self.assertAllEqual(stacked, np.array([[1, 2, 3], [4, 5, 6]]))
+    self.assertAllEqual(parallel_stacked, np.array([[1, 2, 3], [4, 5, 6]]))
 
   def testAgainstNumpy(self):
     # For 1 to 5 dimensions.
@@ -155,7 +174,7 @@ class PackOpTest(test.TestCase):
           self.assertEqual(expected.shape, actual_pack.get_shape())
           actual_pack = actual_pack.eval()
 
-          actual_stack = array_ops.pack(test_arrays, axis=j)
+          actual_stack = array_ops.stack(test_arrays, axis=j)
           self.assertEqual(expected.shape, actual_stack.get_shape())
           actual_stack = actual_stack.eval()
 

@@ -273,7 +273,6 @@ Status GraphConstructor::InitFromEdges() {
     }
     for (int i = 0; i < node_def.input_size(); ++i) {
       StringPiece input_name = node_def.input(i);
-      input_name.Consume("^");  // In case this is a control dependence.
       TensorId id(ParseTensorName(input_name));
       auto iter = name_index_.find(id.first);
       if (iter == name_index_.end()) {
@@ -434,7 +433,7 @@ Status GraphConstructor::Convert() {
     TF_RETURN_IF_ERROR(ValidateColocationConstraints(node_def));
     for (int i = 0; i < node_def.input_size(); ++i) {
       StringPiece input_name(node_def.input(i));
-      if (input_name.Consume("^")) {
+      if (input_name.starts_with("^")) {
         in_control_dependence = true;
       } else if (in_control_dependence) {
         return errors::InvalidArgument(
@@ -445,21 +444,17 @@ Status GraphConstructor::Convert() {
       auto iter = name_index_.find(id.first);
       DCHECK(iter != name_index_.end());
       Node* src_node = iter->second.node;
-      if (in_control_dependence) {
-        inputs.push_back(InputInfo(id.first, src_node, -1));
+      if (src_node == nullptr) {
+        has_data_back_edge = true;
+        inputs.push_back(InputInfo(id.first, src_node, id.second));
       } else {
-        if (src_node == nullptr) {
-          has_data_back_edge = true;
-          inputs.push_back(InputInfo(id.first, src_node, id.second));
-        } else {
-          if (id.second >= src_node->num_outputs()) {
-            return errors::InvalidArgument(
-                "Node '", node_def.name(), "': Connecting to invalid output ",
-                id.second, " of source node ", id.first, " which has ",
-                src_node->num_outputs(), " outputs");
-          }
-          inputs.push_back(InputInfo(id.first, src_node, id.second));
+        if (id.second >= src_node->num_outputs()) {
+          return errors::InvalidArgument(
+              "Node '", node_def.name(), "': Connecting to invalid output ",
+              id.second, " of source node ", id.first, " which has ",
+              src_node->num_outputs(), " outputs");
         }
+        inputs.push_back(InputInfo(id.first, src_node, id.second));
       }
     }
     if (has_data_back_edge && !IsMerge(node_def)) {

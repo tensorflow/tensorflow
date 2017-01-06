@@ -80,8 +80,7 @@ def rotate(images, angles):
                                     (image_width - 1) + math_ops.cos(angles) *
                                     (image_height - 1))) / 2.0
   num_angles = array_ops.shape(angles)[0]
-  transforms = array_ops.concat(
-      concat_dim=1,
+  transforms = array_ops.concat_v2(
       values=[
           math_ops.cos(angles)[:, None],
           -math_ops.sin(angles)[:, None],
@@ -90,7 +89,8 @@ def rotate(images, angles):
           math_ops.cos(angles)[:, None],
           y_offset[:, None],
           array_ops.zeros((num_angles, 2), dtypes.float32),
-      ])
+      ],
+      axis=1)
   # pylint: disable=protected-access
   output = transform(images, transforms)
   if len(image_or_images.get_shape()) == 2:

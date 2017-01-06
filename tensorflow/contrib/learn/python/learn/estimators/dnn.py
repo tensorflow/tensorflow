@@ -347,7 +347,8 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
                steps=None,
                metrics=None,
                name=None,
-               checkpoint_path=None):
+               checkpoint_path=None,
+               hooks=None):
     """See evaluable.Evaluable. Note: Labels must be integer class indices."""
     return self._estimator.evaluate(
         x=x,
@@ -358,7 +359,8 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
         steps=steps,
         metrics=metrics,
         name=name,
-        checkpoint_path=checkpoint_path)
+        checkpoint_path=checkpoint_path,
+        hooks=hooks)
 
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE,
@@ -697,7 +699,8 @@ class DNNRegressor(evaluable.Evaluable, trainable.Trainable):
                steps=None,
                metrics=None,
                name=None,
-               checkpoint_path=None):
+               checkpoint_path=None,
+               hooks=None):
     """See evaluable.Evaluable."""
     # TODO(zakaria): remove once deprecation is finished (b/31229024)
     custom_metrics = {}
@@ -718,7 +721,8 @@ class DNNRegressor(evaluable.Evaluable, trainable.Trainable):
         steps=steps,
         metrics=custom_metrics,
         name=name,
-        checkpoint_path=checkpoint_path)
+        checkpoint_path=checkpoint_path,
+        hooks=hooks)
 
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE,

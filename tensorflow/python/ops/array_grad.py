@@ -259,6 +259,7 @@ def _StridedSliceGradGrad(op, grad):
 def _SplitGrad(op, *grads):
   return None, array_ops.concat_v2(list(grads), op.inputs[0])
 
+
 @ops.RegisterGradient("SplitV")
 def _SplitVGrad(op, *grads):
   returnval = array_ops.concat_v2(list(grads), op.inputs[2])

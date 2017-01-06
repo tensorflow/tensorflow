@@ -32,6 +32,7 @@ import numpy as np
 
 from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.layers.python.layers import feature_column
+from tensorflow.contrib.learn.python.learn import experiment
 from tensorflow.contrib.learn.python.learn.datasets import base
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn
 from tensorflow.contrib.learn.python.learn.estimators import dnn_linear_combined
@@ -148,6 +149,18 @@ class DNNLinearCombinedClassifierTest(test.TestCase):
   def testEstimatorContract(self):
     estimator_test_utils.assert_estimator_contract(
         self, dnn_linear_combined.DNNLinearCombinedClassifier)
+
+  def testExperimentIntegration(self):
+    cont_features = [feature_column.real_valued_column('feature', dimension=4)]
+
+    exp = experiment.Experiment(
+        estimator=dnn_linear_combined.DNNLinearCombinedClassifier(
+            linear_feature_columns=cont_features,
+            dnn_feature_columns=cont_features,
+            dnn_hidden_units=[3, 3]),
+        train_input_fn=test_data.iris_input_logistic_fn,
+        eval_input_fn=test_data.iris_input_logistic_fn)
+    exp.test()
 
   def testNoFeatureColumns(self):
     with self.assertRaisesRegexp(
@@ -788,6 +801,18 @@ class DNNLinearCombinedClassifierTest(test.TestCase):
 
 
 class DNNLinearCombinedRegressorTest(test.TestCase):
+
+  def testExperimentIntegration(self):
+    cont_features = [feature_column.real_valued_column('feature', dimension=4)]
+
+    exp = experiment.Experiment(
+        estimator=dnn_linear_combined.DNNLinearCombinedRegressor(
+            linear_feature_columns=cont_features,
+            dnn_feature_columns=cont_features,
+            dnn_hidden_units=[3, 3]),
+        train_input_fn=test_data.iris_input_logistic_fn,
+        eval_input_fn=test_data.iris_input_logistic_fn)
+    exp.test()
 
   def testEstimatorContract(self):
     estimator_test_utils.assert_estimator_contract(

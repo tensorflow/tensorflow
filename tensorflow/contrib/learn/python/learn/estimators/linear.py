@@ -97,7 +97,7 @@ def _linear_model_fn(features, labels, mode, params, config=None):
       * feature_columns: An iterable containing all the feature columns used by
           the model.
       * optimizer: string, `Optimizer` object, or callable that defines the
-          optimizer to use for training.
+          optimizer to use for training. If `None`, will use a FTRL optimizer.
       * gradient_clip_norm: A float > 0. If provided, gradients are
           clipped to their global norm with this clipping ratio.
       * num_ps_replicas: The number of parameter server replicas.
@@ -115,7 +115,7 @@ def _linear_model_fn(features, labels, mode, params, config=None):
   """
   head = params["head"]
   feature_columns = params["feature_columns"]
-  optimizer = params["optimizer"]
+  optimizer = params.get("optimizer") or _get_default_optimizer(feature_columns)
   gradient_clip_norm = params.get("gradient_clip_norm", None)
   num_ps_replicas = config.num_ps_replicas if config else 0
   joint_weights = params.get("joint_weights", False)
@@ -153,7 +153,7 @@ def _linear_model_fn(features, labels, mode, params, config=None):
     grads = gradients.gradients(loss, my_vars)
     if gradient_clip_norm:
       grads, _ = clip_ops.clip_by_global_norm(grads, gradient_clip_norm)
-    return (optimizer.apply_gradients(
+    return (_get_optimizer(optimizer).apply_gradients(
         zip(grads, my_vars), global_step=global_step))
 
   return head.head_ops(features, labels, mode, _train_op_fn, logits)
@@ -381,9 +381,7 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
     #    requested for SDCA once its default changes to False.
     self._feature_columns = tuple(feature_columns or [])
     assert self._feature_columns
-    self._optimizer = _get_default_optimizer(feature_columns)
-    if optimizer:
-      self._optimizer = _get_optimizer(optimizer)
+    self._optimizer = optimizer
 
     chief_hook = None
     if (isinstance(optimizer, sdca_optimizer.SDCAOptimizer) and
@@ -398,7 +396,7 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
     params = {
         "head": head,
         "feature_columns": feature_columns,
-        "optimizer": self._optimizer,
+        "optimizer": optimizer,
     }
 
     if isinstance(optimizer, sdca_optimizer.SDCAOptimizer):
@@ -450,14 +448,29 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
                         max_steps=max_steps)
     return self
 
-  def evaluate(self, x=None, y=None, input_fn=None, feed_fn=None,
-               batch_size=None, steps=None, metrics=None, name=None,
-               checkpoint_path=None):
+  def evaluate(self,
+               x=None,
+               y=None,
+               input_fn=None,
+               feed_fn=None,
+               batch_size=None,
+               steps=None,
+               metrics=None,
+               name=None,
+               checkpoint_path=None,
+               hooks=None):
     """See evaluable.Evaluable. Note: Labels must be integer class indices."""
-    return self._estimator.evaluate(x=x, y=y, input_fn=input_fn,
-                                    feed_fn=feed_fn, batch_size=batch_size,
-                                    steps=steps, metrics=metrics, name=name,
-                                    checkpoint_path=checkpoint_path)
+    return self._estimator.evaluate(
+        x=x,
+        y=y,
+        input_fn=input_fn,
+        feed_fn=feed_fn,
+        batch_size=batch_size,
+        steps=steps,
+        metrics=metrics,
+        name=name,
+        checkpoint_path=checkpoint_path,
+        hooks=hooks)
 
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
@@ -545,7 +558,13 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
               "get_variable_value().")
   def weights_(self):
     values = {}
-    optimizer_regex = r".*/"+self._optimizer.get_name() + r"(_\d)?$"
+    if self._optimizer and not callable(self._optimizer):
+      optimizer_name = _get_optimizer(self._optimizer).get_name()
+    elif self._optimizer and callable(self._optimizer):
+      raise ValueError("Callable optimizer is not supported in this method.")
+    else:
+      optimizer_name = _get_default_optimizer(self._feature_columns).get_name()
+    optimizer_regex = r".*/" + optimizer_name + r"(_\d)?$"
     for name in self.get_variable_names():
       if (name.startswith("linear/") and
           name != "linear/bias_weight" and
@@ -660,10 +679,7 @@ class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
     """
     self._feature_columns = tuple(feature_columns or [])
     assert self._feature_columns
-    if optimizer:
-      self._optimizer = _get_optimizer(optimizer)
-    else:
-      self._optimizer = _get_default_optimizer(feature_columns)
+    self._optimizer = optimizer
 
     chief_hook = None
     if (isinstance(optimizer, sdca_optimizer.SDCAOptimizer) and
@@ -678,7 +694,7 @@ class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
     params = {
         "head": head,
         "feature_columns": feature_columns,
-        "optimizer": self._optimizer,
+        "optimizer": optimizer,
     }
 
     if isinstance(optimizer, sdca_optimizer.SDCAOptimizer):
@@ -727,14 +743,29 @@ class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
                         max_steps=max_steps)
     return self
 
-  def evaluate(self, x=None, y=None, input_fn=None, feed_fn=None,
-               batch_size=None, steps=None, metrics=None, name=None,
-               checkpoint_path=None):
+  def evaluate(self,
+               x=None,
+               y=None,
+               input_fn=None,
+               feed_fn=None,
+               batch_size=None,
+               steps=None,
+               metrics=None,
+               name=None,
+               checkpoint_path=None,
+               hooks=None):
     """See evaluable.Evaluable."""
-    return self._estimator.evaluate(x=x, y=y, input_fn=input_fn,
-                                    feed_fn=feed_fn, batch_size=batch_size,
-                                    steps=steps, metrics=metrics, name=name,
-                                    checkpoint_path=checkpoint_path)
+    return self._estimator.evaluate(
+        x=x,
+        y=y,
+        input_fn=input_fn,
+        feed_fn=feed_fn,
+        batch_size=batch_size,
+        steps=steps,
+        metrics=metrics,
+        name=name,
+        checkpoint_path=checkpoint_path,
+        hooks=hooks)
 
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
@@ -804,7 +835,13 @@ class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
               "get_variable_value().")
   def weights_(self):
     values = {}
-    optimizer_regex = r".*/"+self._optimizer.get_name() + r"(_\d)?$"
+    if self._optimizer and not callable(self._optimizer):
+      optimizer_name = _get_optimizer(self._optimizer).get_name()
+    elif self._optimizer and callable(self._optimizer):
+      raise ValueError("Callable optimizer is not supported in this method.")
+    else:
+      optimizer_name = _get_default_optimizer(self._feature_columns).get_name()
+    optimizer_regex = r".*/" + optimizer_name + r"(_\d)?$"
     for name in self.get_variable_names():
       if (name.startswith("linear/") and
           name != "linear/bias_weight" and

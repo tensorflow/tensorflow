@@ -145,7 +145,7 @@ while [ "$TF_NEED_CUDA" == "" ]; do
 done
 
 export TF_NEED_CUDA
-export TF_NEED_SYCL
+export TF_NEED_OPENCL
 if [[ "$TF_NEED_CUDA" == "0" ]] && [[ "$TF_NEED_OPENCL" == "0" ]]; then
   echo "Configuration finished"
   bazel_clean_and_fetch
@@ -465,7 +465,6 @@ while true; do
   COMPUTECPP_TOOLKIT_PATH=""
 done
 
-export TF_NEED_OPENCL
 # end of if "$TF_NEED_OPENCL" == "1"
 fi
 

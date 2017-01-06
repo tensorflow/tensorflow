@@ -119,7 +119,7 @@ def train():
     # So here we use tf.nn.softmax_cross_entropy_with_logits on the
     # raw outputs of the nn_layer above, and then average across
     # the batch.
-    diff = tf.nn.softmax_cross_entropy_with_logits(y, y_)
+    diff = tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y)
     with tf.name_scope('total'):
       cross_entropy = tf.reduce_mean(diff)
   tf.summary.scalar('cross_entropy', cross_entropy)

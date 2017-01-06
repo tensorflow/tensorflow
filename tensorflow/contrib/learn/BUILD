@@ -36,6 +36,7 @@ py_library(
         "//tensorflow/contrib/tensor_forest:data_ops_py",
         "//tensorflow/contrib/tensor_forest:eval_metrics",
         "//tensorflow/contrib/tensor_forest:tensor_forest_py",
+        "//tensorflow/contrib/training:training_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",

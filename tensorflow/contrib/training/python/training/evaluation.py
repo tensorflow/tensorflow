@@ -145,6 +145,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary
+from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.training import session_run_hook
@@ -273,32 +274,6 @@ class StopAfterNEvalsHook(session_run_hook.SessionRunHook):
     logging.info('Evaluation [%d/%d]', evals_completed, self._num_evals)
     if evals_completed >= self._num_evals:
       run_context.request_stop()
-
-
-class _FinalOpsHook(session_run_hook.SessionRunHook):
-  """A run hook, run after evaluation, which returns values of the session."""
-
-  def __init__(self, final_ops, final_ops_feed_dict=None):
-    """Constructs the FinalOpHook with an operation run after any `eval_ops`.
-
-    Args:
-      final_ops: A single `Tensor`, a list of `Tensors` or a dictionary of
-        names to `Tensors`.
-      final_ops_feed_dict: A feed dictionary to use when running
-        `final_ops_dict`.
-    """
-    self._final_ops = final_ops
-    self._final_ops_feed_dict = final_ops_feed_dict
-    self._final_ops_values = None
-
-  @property
-  def final_ops_values(self):
-    return self._final_ops_values
-
-  def end(self, session):
-    if self._final_ops is not None:
-      self._final_ops_values = session.run(self._final_ops,
-                                           feed_dict=self._final_ops_feed_dict)
 
 
 class SummaryAtEndHook(session_run_hook.SessionRunHook):
@@ -436,7 +411,8 @@ def evaluate_once(checkpoint_path,
   # Prepare the run hooks.
   hooks = hooks or []
 
-  final_ops_hook = _FinalOpsHook(final_ops, final_ops_feed_dict)
+  final_ops_hook = basic_session_run_hooks.FinalOpsHook(
+      final_ops, final_ops_feed_dict)
   hooks.append(final_ops_hook)
 
   with monitored_session.MonitoredSession(
@@ -526,7 +502,8 @@ def evaluate_repeatedly(checkpoint_dir,
   # Prepare the run hooks.
   hooks = hooks or []
 
-  final_ops_hook = _FinalOpsHook(final_ops, final_ops_feed_dict)
+  final_ops_hook = basic_session_run_hooks.FinalOpsHook(
+      final_ops, final_ops_feed_dict)
   hooks.append(final_ops_hook)
 
   num_evaluations = 0

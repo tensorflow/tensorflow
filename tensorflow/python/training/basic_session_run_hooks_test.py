@@ -29,8 +29,10 @@ from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.testing.python.framework import fake_summary_writer
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
@@ -759,6 +761,50 @@ class GlobalStepWaiterHookTest(test.TestCase):
         sess.run(state_ops.assign(gstep, 1100))
         time.sleep(1.2)
         self.assertFalse(waiter.is_alive())
+
+
+class FinalOpsHookTest(test.TestCase):
+
+  def test_final_ops_is_scalar_tensor(self):
+    with ops.Graph().as_default():
+      expected_value = 4
+      final_ops = constant_op.constant(expected_value)
+
+      hook = basic_session_run_hooks.FinalOpsHook(final_ops)
+      hook.begin()
+
+      with session_lib.Session() as session:
+        hook.end(session)
+        self.assertEqual(expected_value,
+                         hook.final_ops_values)
+
+  def test_final_ops_is_tensor(self):
+    with ops.Graph().as_default():
+      expected_values = [1, 6, 3, 5, 2, 4]
+      final_ops = constant_op.constant(expected_values)
+
+      hook = basic_session_run_hooks.FinalOpsHook(final_ops)
+      hook.begin()
+
+      with session_lib.Session() as session:
+        hook.end(session)
+        self.assertListEqual(expected_values,
+                             hook.final_ops_values.tolist())
+
+  def test_final_ops_with_dictionary(self):
+    with ops.Graph().as_default():
+      expected_values = [4, -3]
+      final_ops = array_ops.placeholder(dtype=dtypes.float32)
+      final_ops_feed_dict = {final_ops: expected_values}
+
+      hook = basic_session_run_hooks.FinalOpsHook(
+          final_ops, final_ops_feed_dict)
+      hook.begin()
+
+      with session_lib.Session() as session:
+        hook.end(session)
+        self.assertListEqual(expected_values,
+                             hook.final_ops_values.tolist())
 
 
 if __name__ == '__main__':

@@ -35,7 +35,6 @@ from tensorflow.python.training import adagrad
 from tensorflow.python.training import ftrl
 from tensorflow.python.training import server_lib
 
-FLAGS = tf.flags.FLAGS
 
 # Desired training steps, reported in benchmark. Actual steps might be slightly
 # more than this since supervisor training runs for a non-detrministic number of

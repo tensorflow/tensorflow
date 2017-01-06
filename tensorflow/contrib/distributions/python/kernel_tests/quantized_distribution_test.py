@@ -179,7 +179,7 @@ class QuantizedDistributionTest(test.TestCase):
       qdist = distributions.QuantizedDistribution(
           distribution=normal, lower_cutoff=0., upper_cutoff=None)
 
-      samps = qdist.sample_n(n=5000, seed=42)
+      samps = qdist.sample(5000, seed=42)
       samps_v = samps.eval()
 
       # With lower_cutoff = 0, the interval j=0 is (-infty, 0], which holds 1/2
@@ -207,7 +207,7 @@ class QuantizedDistributionTest(test.TestCase):
       qdist = distributions.QuantizedDistribution(
           distribution=distributions.Exponential(lam=0.01))
       # X ~ QuantizedExponential
-      x = qdist.sample_n(n=10000, seed=42)
+      x = qdist.sample(10000, seed=42)
       # Z = F(X), should be Uniform.
       z = qdist.cdf(x)
       # Compare the CDF of Z to that of a Uniform.
@@ -419,7 +419,7 @@ class QuantizedDistributionTest(test.TestCase):
       self.assertEqual((), qdist.get_event_shape())
       self.assertAllEqual((), qdist.event_shape().eval())
 
-      samps = qdist.sample_n(n=10)
+      samps = qdist.sample(10, seed=42)
       self.assertEqual((10,) + batch_shape, samps.get_shape())
       self.assertAllEqual((10,) + batch_shape, samps.eval().shape)
 

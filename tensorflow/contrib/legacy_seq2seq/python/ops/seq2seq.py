@@ -1062,7 +1062,7 @@ def sequence_loss_by_example(logits,
         # violates our general scalar strictness policy.
         target = array_ops.reshape(target, [-1])
         crossent = nn_ops.sparse_softmax_cross_entropy_with_logits(
-            logits=logit, labels=target)
+            labels=target, logits=logit)
       else:
         crossent = softmax_loss_function(target, logit)
       log_perp_list.append(crossent * weight)

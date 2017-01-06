@@ -28,7 +28,9 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 *  <b>`labels`</b>: A `Tensor` of dimension [batch_size] whose type is in `int32`,
     `int64`.
 *  <b>`k`</b>: The number of top elements to look at for computing recall.
-*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
+*  <b>`weights`</b>: `Tensor` whose rank is either 0, or the same rank as `labels`, and
+    must be broadcastable to `labels` (i.e., all dimensions must be either
+    `1`, or the same as the corresponding `labels` dimension).
 *  <b>`metrics_collections`</b>: An optional list of collections that `recall_at_k`
     should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections `update_op` should be
