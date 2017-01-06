@@ -763,7 +763,7 @@ class EstimatorTest(test.TestCase):
       def __init__(self):
         self.run_count = 0
 
-      def before_run(self, run_context):
+      def after_run(self, run_context, run_values):
         self.run_count += 1
 
     est = learn.Estimator(model_fn=linear_model_fn)
