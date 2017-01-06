@@ -21,4 +21,10 @@ source "${SCRIPT_DIR}/builds_common.sh"
 configure_android_workspace
 
 CPUS=armeabi-v7a,x86_64
-bazel build -c opt --fat_apk_cpu=${CPUS} //tensorflow/examples/android:tensorflow_demo
+
+# Enable sandboxing so that zip archives don't get incorrectly packaged
+# in assets/ dir (see https://github.com/bazelbuild/bazel/issues/2334)
+# TODO(gunan): remove extra flags once sandboxing is enabled for all builds.
+bazel --bazelrc=/dev/null build -c opt --fat_apk_cpu=${CPUS} \
+    --spawn_strategy=sandboxed --genrule_strategy=sandboxed \
+    //tensorflow/examples/android:tensorflow_demo
