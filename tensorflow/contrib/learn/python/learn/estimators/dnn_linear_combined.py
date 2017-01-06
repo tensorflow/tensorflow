@@ -29,13 +29,11 @@ from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.layers.python.layers import feature_column as feature_column_lib
-from tensorflow.contrib.layers.python.layers import feature_column_ops
 from tensorflow.contrib.layers.python.layers import optimizers
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn import monitors as monitor_lib
 from tensorflow.contrib.learn.python.learn import trainable
-from tensorflow.contrib.learn.python.learn.estimators import composable_model
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
 from tensorflow.contrib.learn.python.learn.estimators import model_fn
@@ -45,292 +43,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import nn
-from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import partitioned_variables
-from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.platform import tf_logging as logging
-
-
-class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
-  """An estimator for TensorFlow Linear and DNN joined training models.
-
-    Input of `fit`, `train`, and `evaluate` should have following features,
-      otherwise there will be a `KeyError`:
-        if `weight_column_name` is not `None`, a feature with
-          `key=weight_column_name` whose value is a `Tensor`.
-        for each `column` in `dnn_feature_columns` + `linear_feature_columns`:
-        - if `column` is a `SparseColumn`, a feature with `key=column.name`
-          whose `value` is a `SparseTensor`.
-        - if `column` is a `WeightedSparseColumn`, two features: the first with
-          `key` the id column name, the second with `key` the weight column
-          name. Both features' `value` must be a `SparseTensor`.
-        - if `column` is a `RealValuedColumn, a feature with `key=column.name`
-          whose `value` is a `Tensor`.
-  """
-
-  def __init__(self,  # _joint_linear_weights pylint: disable=invalid-name
-               head,
-               model_dir=None,
-               linear_feature_columns=None,
-               linear_optimizer=None,
-               _joint_linear_weights=False,
-               dnn_feature_columns=None,
-               dnn_optimizer=None,
-               dnn_hidden_units=None,
-               dnn_activation_fn=nn.relu,
-               dnn_dropout=None,
-               gradient_clip_norm=None,
-               config=None,
-               feature_engineering_fn=None,
-               default_prediction_key=None,
-               enable_centered_bias=False):
-    """Initializes a _DNNLinearCombinedBaseEstimator instance.
-
-    Args:
-      head: A _Head object.
-      model_dir: Directory to save model parameters, graph and etc. This can
-        also be used to load checkpoints from the directory into a estimator
-        to continue training a previously saved model.
-      linear_feature_columns: An iterable containing all the feature columns
-        used by linear part of the model. All items in the set should be
-        instances of classes derived from `FeatureColumn`.
-      linear_optimizer: An instance of `tf.Optimizer` used to apply gradients to
-        the linear part of the model. If `None`, will use a FTRL optimizer.
-      _joint_linear_weights: If True will use a single (possibly partitioned)
-        variable to store all weights for the linear model. More efficient if
-        there are many columns, however requires all columns are sparse and
-        have the 'sum' combiner.
-      dnn_feature_columns: An iterable containing all the feature columns used
-        by deep part of the model. All items in the set should be instances of
-        classes derived from `FeatureColumn`.
-      dnn_optimizer: An instance of `tf.Optimizer` used to apply gradients to
-        the deep part of the model. If `None`, will use an Adagrad optimizer.
-      dnn_hidden_units: List of hidden units per layer. All layers are fully
-        connected.
-      dnn_activation_fn: Activation function applied to each layer. If `None`,
-        will use `tf.nn.relu`.
-      dnn_dropout: When not None, the probability we will drop out
-        a given coordinate.
-      gradient_clip_norm: A float > 0. If provided, gradients are clipped
-        to their global norm with this clipping ratio. See
-        tf.clip_by_global_norm for more details.
-      config: RunConfig object to configure the runtime settings.
-      feature_engineering_fn: Feature engineering function. Takes features and
-                        labels which are the output of `input_fn` and
-                        returns features and labels which will be fed
-                        into the model.
-      default_prediction_key: Default prediction key to use with metrics.
-      enable_centered_bias: A bool. If True, estimator will learn a centered
-        bias variable for each class. Rest of the model structure learns the
-        residual after centered bias.
-
-    Raises:
-      ValueError: If both linear_feature_columns and dnn_features_columns are
-        empty at the same time.
-    """
-    if config is None:
-      config = estimator.BaseEstimator._Config()  # pylint: disable=protected-access
-      logging.info("Using default config.")
-    super(_DNNLinearCombinedBaseEstimator, self).__init__(
-        model_dir=model_dir, config=config)
-
-    num_ps_replicas = config.num_ps_replicas if config else 0
-
-    self._linear_model = composable_model.LinearComposableModel(
-        num_label_columns=head.logits_dimension,
-        optimizer=linear_optimizer,
-        _joint_weights=_joint_linear_weights,
-        gradient_clip_norm=gradient_clip_norm,
-        num_ps_replicas=num_ps_replicas)
-
-    self._dnn_model = composable_model.DNNComposableModel(
-        num_label_columns=head.logits_dimension,
-        hidden_units=dnn_hidden_units,
-        optimizer=dnn_optimizer,
-        activation_fn=dnn_activation_fn,
-        dropout=dnn_dropout,
-        gradient_clip_norm=gradient_clip_norm,
-        num_ps_replicas=num_ps_replicas) if dnn_hidden_units else None
-
-    self._linear_feature_columns = linear_feature_columns
-    self._linear_optimizer = linear_optimizer
-    self._dnn_feature_columns = dnn_feature_columns
-    self._dnn_hidden_units = dnn_hidden_units
-    self._head = head
-    self._default_prediction_key = default_prediction_key
-    self._feature_engineering_fn = (
-        feature_engineering_fn or
-        (lambda features, labels: (features, labels)))
-    self._enable_centered_bias = enable_centered_bias
-
-  @property
-  @deprecated("2016-10-30",
-              "This method will be removed after the deprecation date. "
-              "To inspect variables, use get_variable_names() and "
-              "get_variable_value().")
-  def linear_weights_(self):
-    """Returns weights per feature of the linear part."""
-    return self._linear_model.get_weights(model_dir=self._model_dir)
-
-  @property
-  @deprecated("2016-10-30",
-              "This method will be removed after the deprecation date. "
-              "To inspect variables, use get_variable_names() and "
-              "get_variable_value().")
-  def linear_bias_(self):
-    """Returns bias of the linear part."""
-    if not self._enable_centered_bias:
-      return self._linear_model.get_bias(model_dir=self._model_dir)
-    return (self._linear_model.get_bias(model_dir=self._model_dir) +
-            self.get_variable_value("centered_bias_weight"))
-
-  @property
-  @deprecated("2016-10-30",
-              "This method will be removed after the deprecation date. "
-              "To inspect variables, use get_variable_names() and "
-              "get_variable_value().")
-  def dnn_weights_(self):
-    """Returns weights of deep neural network part."""
-    return self._dnn_model.get_weights(model_dir=self._model_dir)
-
-  @property
-  @deprecated("2016-10-30",
-              "This method will be removed after the deprecation date. "
-              "To inspect variables, use get_variable_names() and "
-              "get_variable_value().")
-  def dnn_bias_(self):
-    """Returns bias of deep neural network part."""
-    if not self._enable_centered_bias:
-      return self._dnn_model.get_bias(model_dir=self._model_dir)
-    return (self._dnn_model.get_bias(model_dir=self._model_dir) +
-            [self._get_centered_bias_value()])
-
-  # TODO(zakaria): Remove this function once export. export_estimator is
-  #   obsolete.
-  def _create_signature_fn(self):
-    """Returns a function to create export signature of this Estimator."""
-    # pylint: disable=protected-access
-    return self._head._create_signature_fn()
-
-  def _get_feature_dict(self, features):
-    if isinstance(features, dict):
-      return features
-    return {"": features}
-
-  def _get_train_ops(self, features, labels):
-    """See base class."""
-
-    features = self._get_feature_dict(features)
-    features, labels = self._feature_engineering_fn(features, labels)
-    logits = self._logits(features, is_training=True)
-
-    def _make_training_op(training_loss):
-      global_step = contrib_variables.get_global_step()
-      assert global_step
-
-      linear_train_step = self._linear_model.get_train_step(training_loss)
-      dnn_train_step = (self._dnn_model.get_train_step(training_loss) if
-                        self._dnn_model else [])
-      with ops.control_dependencies(linear_train_step + dnn_train_step):
-        with ops.get_default_graph().colocate_with(global_step):
-          return state_ops.assign_add(global_step, 1).op
-
-    return self._head.head_ops(features, labels,
-                               model_fn.ModeKeys.TRAIN,
-                               _make_training_op,
-                               logits=logits)
-
-  def _get_eval_ops(self, features, labels, metrics=None):
-    """See base class."""
-    features = self._get_feature_dict(features)
-    features, labels = self._feature_engineering_fn(features, labels)
-    logits = self._logits(features)
-
-    eval_ops = self._head.head_ops(features, labels,
-                                   model_fn.ModeKeys.EVAL, None,
-                                   logits=logits)
-    custom_metrics = {}
-    if metrics:
-      for name, metric in six.iteritems(metrics):
-        # Apply default_prediction_key
-        if isinstance(metric, metric_spec.MetricSpec):
-          if not metric.prediction_key:
-            custom_metrics[name] = metric_spec.MetricSpec(
-                metric_fn=metric.metric_fn,
-                prediction_key=self._default_prediction_key,
-                label_key=metric.label_key,
-                weight_key=metric.weight_key)
-          else:
-            custom_metrics[name] = metric
-        # TODO(zakaria): remove once deprecation is finished (b/31229024)
-        elif not isinstance(name, tuple):
-          custom_metrics[(name, self._default_prediction_key)] = metric
-        else:
-          custom_metrics[name] = metric
-    # TODO(zakaria): Remove this once we refactor this class to delegate
-    #   to estimator.
-    eval_ops.eval_metric_ops.update(estimator._make_metrics_ops(  # pylint: disable=protected-access
-        custom_metrics, features, labels, eval_ops.predictions))
-    return eval_ops
-
-  def _get_predict_ops(self, features):
-    """See base class."""
-    features = self._get_feature_dict(features)
-    features, _ = self._feature_engineering_fn(features, None)
-    logits = self._logits(features)
-    return self._head.head_ops(features, None, model_fn.ModeKeys.INFER,
-                               None, logits=logits)
-
-  @deprecated(
-      "2016-09-23",
-      "The signature of the input_fn accepted by export is changing to be "
-      "consistent with what's used by tf.Learn Estimator's train/evaluate, "
-      "which makes this function useless. This will be removed after the "
-      "deprecation date.")
-  def _get_feature_ops_from_example(self, examples_batch):
-    column_types = layers.create_feature_spec_for_parsing((
-        self._get_linear_feature_columns() or []) + (
-            self._get_dnn_feature_columns() or []))
-    features = parsing_ops.parse_example(examples_batch, column_types)
-    return features
-
-  def _get_linear_feature_columns(self):
-    if not self._linear_feature_columns:
-      return None
-    feature_column_ops.check_feature_columns(self._linear_feature_columns)
-    return sorted(set(self._linear_feature_columns), key=lambda x: x.key)
-
-  def _get_dnn_feature_columns(self):
-    if not self._dnn_feature_columns:
-      return None
-    feature_column_ops.check_feature_columns(self._dnn_feature_columns)
-    return sorted(set(self._dnn_feature_columns), key=lambda x: x.key)
-
-  def _dnn_logits(self, features, is_training):
-    return self._dnn_model.build_model(
-        features, self._dnn_feature_columns, is_training)
-
-  def _linear_logits(self, features, is_training):
-    return self._linear_model.build_model(
-        features, self._linear_feature_columns, is_training)
-
-  def _logits(self, features, is_training=False):
-    linear_feature_columns = self._get_linear_feature_columns()
-    dnn_feature_columns = self._get_dnn_feature_columns()
-    if not (linear_feature_columns or dnn_feature_columns):
-      raise ValueError("Either linear_feature_columns or dnn_feature_columns "
-                       "should be defined.")
-
-    if linear_feature_columns and dnn_feature_columns:
-      logits = (self._linear_logits(features, is_training) +
-                self._dnn_logits(features, is_training))
-    elif dnn_feature_columns:
-      logits = self._dnn_logits(features, is_training)
-    else:
-      logits = self._linear_logits(features, is_training)
-
-    return logits
 
 
 _CENTERED_BIAS_WEIGHT = "centered_bias_weight"
@@ -422,14 +136,16 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
       * linear_feature_columns: An iterable containing all the feature columns
           used by the Linear model.
       * linear_optimizer: string, `Optimizer` object, or callable that defines
-          the optimizer to use for training the Linear model.
+          the optimizer to use for training the Linear model. Defaults to the
+          Ftrl optimizer.
       * joint_linear_weights: If True a single (possibly partitioned) variable
           will be used to store the linear model weights. It's faster, but
           requires all columns are sparse and have the 'sum' combiner.
       * dnn_feature_columns: An iterable containing all the feature columns used
           by the DNN model.
       * dnn_optimizer: string, `Optimizer` object, or callable that defines the
-          optimizer to use for training the DNN model.
+          optimizer to use for training the DNN model. Defaults to the Adagrad
+          optimizer.
       * dnn_hidden_units: List of hidden units per DNN layer.
       * dnn_activation_fn: Activation function applied to each DNN layer. If
           `None`, will use `tf.nn.relu`.
@@ -452,10 +168,10 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
   """
   head = params["head"]
   linear_feature_columns = params.get("linear_feature_columns")
-  linear_optimizer = params.get("linear_optimizer")
+  linear_optimizer = params.get("linear_optimizer") or "Ftrl"
   joint_linear_weights = params.get("joint_linear_weights")
   dnn_feature_columns = params.get("dnn_feature_columns")
-  dnn_optimizer = params.get("dnn_optimizer")
+  dnn_optimizer = params.get("dnn_optimizer") or "Adagrad"
   dnn_hidden_units = params.get("dnn_hidden_units")
   dnn_activation_fn = params.get("dnn_activation_fn")
   dnn_dropout = params.get("dnn_dropout")
@@ -594,6 +310,106 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
 
   return head.head_ops(
       features, labels, mode, _make_training_op, logits=logits)
+
+
+class _DNNLinearCombinedEstimator(estimator.Estimator):
+  """An estimator for TensorFlow Linear and DNN joined training models.
+
+    Input of `fit`, `train`, and `evaluate` should have following features,
+      otherwise there will be a `KeyError`:
+        if `weight_column_name` is not `None`, a feature with
+          `key=weight_column_name` whose value is a `Tensor`.
+        for each `column` in `dnn_feature_columns` + `linear_feature_columns`:
+        - if `column` is a `SparseColumn`, a feature with `key=column.name`
+          whose `value` is a `SparseTensor`.
+        - if `column` is a `WeightedSparseColumn`, two features: the first with
+          `key` the id column name, the second with `key` the weight column
+          name. Both features' `value` must be a `SparseTensor`.
+        - if `column` is a `RealValuedColumn, a feature with `key=column.name`
+          whose `value` is a `Tensor`.
+  """
+
+  def __init__(self,  # _joint_linear_weights pylint: disable=invalid-name
+               head,
+               model_dir=None,
+               linear_feature_columns=None,
+               linear_optimizer=None,
+               _joint_linear_weights=False,
+               dnn_feature_columns=None,
+               dnn_optimizer=None,
+               dnn_hidden_units=None,
+               dnn_activation_fn=nn.relu,
+               dnn_dropout=None,
+               gradient_clip_norm=None,
+               config=None,
+               feature_engineering_fn=None,
+               embedding_lr_multipliers=None):
+    """Initializes a _DNNLinearCombinedEstimator instance.
+
+    Args:
+      head: A _Head object.
+      model_dir: Directory to save model parameters, graph and etc. This can
+        also be used to load checkpoints from the directory into a estimator
+        to continue training a previously saved model.
+      linear_feature_columns: An iterable containing all the feature columns
+        used by linear part of the model. All items in the set should be
+        instances of classes derived from `FeatureColumn`.
+      linear_optimizer: An instance of `tf.Optimizer` used to apply gradients to
+        the linear part of the model. If `None`, will use a FTRL optimizer.
+      _joint_linear_weights: If True will use a single (possibly partitioned)
+        variable to store all weights for the linear model. More efficient if
+        there are many columns, however requires all columns are sparse and
+        have the 'sum' combiner.
+      dnn_feature_columns: An iterable containing all the feature columns used
+        by deep part of the model. All items in the set should be instances of
+        classes derived from `FeatureColumn`.
+      dnn_optimizer: An instance of `tf.Optimizer` used to apply gradients to
+        the deep part of the model. If `None`, will use an Adagrad optimizer.
+      dnn_hidden_units: List of hidden units per layer. All layers are fully
+        connected.
+      dnn_activation_fn: Activation function applied to each layer. If `None`,
+        will use `tf.nn.relu`.
+      dnn_dropout: When not None, the probability we will drop out
+        a given coordinate.
+      gradient_clip_norm: A float > 0. If provided, gradients are clipped
+        to their global norm with this clipping ratio. See
+        tf.clip_by_global_norm for more details.
+      config: RunConfig object to configure the runtime settings.
+      feature_engineering_fn: Feature engineering function. Takes features and
+                        labels which are the output of `input_fn` and
+                        returns features and labels which will be fed
+                        into the model.
+      embedding_lr_multipliers: Optional. A dictionary from `EmbeddingColumn` to
+          a `float` multiplier. Multiplier will be used to multiply with
+          learning rate for the embedding variables.
+
+    Raises:
+      ValueError: If both linear_feature_columns and dnn_features_columns are
+        empty at the same time.
+    """
+    linear_feature_columns = tuple(linear_feature_columns or [])
+    dnn_feature_columns = tuple(dnn_feature_columns or [])
+    if not linear_feature_columns + dnn_feature_columns:
+      raise ValueError("Either linear_feature_columns or dnn_feature_columns "
+                       "must be defined.")
+    super(_DNNLinearCombinedEstimator, self).__init__(
+        model_fn=_dnn_linear_combined_model_fn,
+        model_dir=model_dir,
+        config=config,
+        params={
+            "head": head,
+            "linear_feature_columns": linear_feature_columns,
+            "linear_optimizer": linear_optimizer,
+            "joint_linear_weights": _joint_linear_weights,
+            "dnn_feature_columns": dnn_feature_columns,
+            "dnn_optimizer": dnn_optimizer,
+            "dnn_hidden_units": dnn_hidden_units,
+            "dnn_activation_fn": dnn_activation_fn,
+            "dnn_dropout": dnn_dropout,
+            "gradient_clip_norm": gradient_clip_norm,
+            "embedding_lr_multipliers": embedding_lr_multipliers,
+        },
+        feature_engineering_fn=feature_engineering_fn)
 
 
 class DNNLinearCombinedClassifier(evaluable.Evaluable, trainable.Trainable):
@@ -743,7 +559,7 @@ class DNNLinearCombinedClassifier(evaluable.Evaluable, trainable.Trainable):
             "linear_optimizer": self._linear_optimizer,
             "joint_linear_weights": _joint_linear_weights,
             "dnn_feature_columns": dnn_feature_columns,
-            "dnn_optimizer": dnn_optimizer or "Adagrad",
+            "dnn_optimizer": dnn_optimizer,
             "dnn_hidden_units": dnn_hidden_units,
             "dnn_activation_fn": dnn_activation_fn,
             "dnn_dropout": dnn_dropout,
@@ -1125,10 +941,10 @@ class DNNLinearCombinedRegressor(evaluable.Evaluable, trainable.Trainable):
         params={
             "head": head,
             "linear_feature_columns": linear_feature_columns,
-            "linear_optimizer": linear_optimizer or "Ftrl",
+            "linear_optimizer": linear_optimizer,
             "joint_linear_weights": _joint_linear_weights,
             "dnn_feature_columns": dnn_feature_columns,
-            "dnn_optimizer": dnn_optimizer or "Adagrad",
+            "dnn_optimizer": dnn_optimizer,
             "dnn_hidden_units": dnn_hidden_units,
             "dnn_activation_fn": dnn_activation_fn,
             "dnn_dropout": dnn_dropout,

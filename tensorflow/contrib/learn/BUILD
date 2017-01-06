@@ -552,6 +552,7 @@ py_test(
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python/ops/losses",
         "//third_party/py/numpy",
     ],
 )

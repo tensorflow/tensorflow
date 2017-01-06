@@ -49,6 +49,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import test
 from tensorflow.python.training import adagrad
 from tensorflow.python.training import ftrl
@@ -63,6 +64,33 @@ def _assert_metrics_in_range(keys, metrics):
   for key in keys:
     estimator_test_utils.assert_in_range(0.0 - epsilon, 1.0 + epsilon, key,
                                          metrics)
+
+
+class _CheckCallsHead(head_lib._Head):  # pylint: disable=protected-access
+  """Head that checks whether head_ops is called."""
+
+  def __init__(self):
+    self._head_ops_called_times = 0
+
+  @property
+  def logits_dimension(self):
+    return 1
+
+  def head_ops(self, features, labels, mode, train_op_fn, logits=None,
+               logits_input=None, scope=None):
+    """See `_Head`."""
+    self._head_ops_called_times += 1
+    loss = losses.mean_squared_error(labels, logits)
+    return model_fn.ModelFnOps(
+        mode,
+        predictions={'loss': loss},
+        loss=loss,
+        train_op=train_op_fn(loss),
+        eval_metric_ops={'loss': loss})
+
+  @property
+  def head_ops_called_times(self):
+    return self._head_ops_called_times
 
 
 class EmbeddingMultiplierTest(test.TestCase):
@@ -142,6 +170,47 @@ class EmbeddingMultiplierTest(test.TestCase):
       initial_value = np.full_like(language_value, 0.1)
       self.assertTrue(np.all(np.isclose(language_value, initial_value)))
       self.assertFalse(np.all(np.isclose(wire_value, initial_value)))
+
+
+class DNNLinearCombinedEstimatorTest(test.TestCase):
+
+  def testEstimatorContract(self):
+    estimator_test_utils.assert_estimator_contract(
+        self, dnn_linear_combined._DNNLinearCombinedEstimator)
+
+  def testNoFeatureColumns(self):
+    with self.assertRaisesRegexp(
+        ValueError,
+        'Either linear_feature_columns or dnn_feature_columns must be defined'):
+      dnn_linear_combined._DNNLinearCombinedEstimator(
+          head=_CheckCallsHead(),
+          linear_feature_columns=None,
+          dnn_feature_columns=None,
+          dnn_hidden_units=[3, 3])
+
+  def testCheckCallsHead(self):
+    """Tests binary classification using matrix data as input."""
+    head = _CheckCallsHead()
+    iris = test_data.prepare_iris_data_for_logistic_regression()
+    cont_features = [
+        feature_column.real_valued_column('feature', dimension=4)]
+    bucketized_feature = [feature_column.bucketized_column(
+        cont_features[0], test_data.get_quantile_based_buckets(iris.data, 10))]
+
+    estimator = dnn_linear_combined._DNNLinearCombinedEstimator(
+        head,
+        linear_feature_columns=bucketized_feature,
+        dnn_feature_columns=cont_features,
+        dnn_hidden_units=[3, 3])
+
+    estimator.fit(input_fn=test_data.iris_input_multiclass_fn, steps=10)
+    self.assertEqual(1, head.head_ops_called_times)
+
+    estimator.evaluate(input_fn=test_data.iris_input_multiclass_fn, steps=10)
+    self.assertEqual(2, head.head_ops_called_times)
+
+    estimator.predict(input_fn=test_data.iris_input_multiclass_fn)
+    self.assertEqual(3, head.head_ops_called_times)
 
 
 class DNNLinearCombinedClassifierTest(test.TestCase):
