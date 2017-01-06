@@ -282,7 +282,8 @@ class FeederTest(test.TestCase):
 
         op_types_by_scope_and_device[scope][dev][op.type] += 1
 
-      expected_ops = collections.Counter({'QueueEnqueue': 1, 'FIFOQueue': 1})
+      expected_ops = collections.Counter(
+          {'QueueEnqueueV2': 1, 'FIFOQueueV2': 1})
       expected_enq_devices = [('replica_0', [
           '/job:consumer/replica:0/device:cpu:0',
           '/job:consumer/replica:1/device:cpu:0',

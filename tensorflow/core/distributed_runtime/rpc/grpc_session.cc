@@ -169,37 +169,34 @@ Status GrpcSession::RunHelper(
     const std::vector<string>& target_node_names, std::vector<Tensor>* outputs,
     RunMetadata* run_metadata, const string& prun_handle) {
   // Convert to proto
-  RunStepRequest req;
+  std::unique_ptr<MutableRunStepRequestWrapper> req(
+      master_->CreateRunStepRequest());
   RunStepResponse resp;
 
-  *req.mutable_options() = run_options;
+  *req->mutable_options() = run_options;
 
   if (!prun_handle.empty()) {
-    req.set_partial_run_handle(prun_handle);
+    req->set_partial_run_handle(prun_handle);
   }
 
   for (const auto& it : inputs) {
-    Tensor input_tensor = it.second;
-    auto feed = req.add_feed();
-    feed->set_name(it.first);
-    TensorProto* proto = feed->mutable_tensor();
-    input_tensor.AsProtoTensorContent(proto);
+    req->add_feed(it.first, it.second);
   }
 
   // Build an index from fetch tensor name to offset.
   std::unordered_map<string, int> output_name_to_offset;
   for (const string& output_name : output_tensor_names) {
-    req.add_fetch(output_name);
+    req->add_fetch(output_name);
     output_name_to_offset.insert(
         std::make_pair(output_name, output_name_to_offset.size()));
   }
   for (const string& target : target_node_names) {
-    req.add_target(target);
+    req->add_target(target);
   }
 
   CallOptions call_options;
   call_options.SetTimeout(run_options.timeout_in_ms());
-  TF_RETURN_IF_ERROR(RunProto(&call_options, &req, &resp));
+  TF_RETURN_IF_ERROR(RunProto(&call_options, req.get(), &resp));
 
   if (!output_tensor_names.empty()) {
     outputs->resize(output_tensor_names.size());
@@ -249,7 +246,8 @@ Status GrpcSession::Run(const std::vector<std::pair<string, Tensor>>& inputs,
              outputs, nullptr);
 }
 
-Status GrpcSession::RunProto(CallOptions* call_options, RunStepRequest* req,
+Status GrpcSession::RunProto(CallOptions* call_options,
+                             MutableRunStepRequestWrapper* req,
                              RunStepResponse* resp) {
   {
     mutex_lock l(mu_);

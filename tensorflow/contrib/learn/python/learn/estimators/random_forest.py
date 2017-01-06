@@ -225,17 +225,28 @@ class TensorForestEstimator(evaluable.Evaluable, trainable.Trainable):
     """See evaluable.Evaluable."""
     return self._estimator.model_dir
 
-  def evaluate(
-      self, x=None, y=None, input_fn=None, batch_size=None,
-      steps=None, metrics=None, name=None, checkpoint_path=None):
+  def evaluate(self,
+               x=None,
+               y=None,
+               input_fn=None,
+               batch_size=None,
+               steps=None,
+               metrics=None,
+               name=None,
+               checkpoint_path=None,
+               hooks=None):
     """See evaluable.Evaluable."""
     if x is not None and y is not None:
       return self._skcompat.score(x, y, batch_size=batch_size, steps=steps,
                                   metrics=metrics)
     elif input_fn is not None:
-      return self._estimator.evaluate(input_fn=input_fn, steps=steps,
-                                      metrics=metrics, name=name,
-                                      checkpoint_path=checkpoint_path)
+      return self._estimator.evaluate(
+          input_fn=input_fn,
+          steps=steps,
+          metrics=metrics,
+          name=name,
+          checkpoint_path=checkpoint_path,
+          hooks=hooks)
     else:
       raise ValueError(
           'evaluate: Must provide either both x and y or input_fn.')

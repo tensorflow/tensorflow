@@ -246,7 +246,7 @@ TEST(StrippedOpListForGraphTest, FlatTest) {
         FunctionDef* function_def = graph_def.mutable_library()->add_function();
         function_def->mutable_signature()->set_name("F");
         for (const string& op : graph_ops[order]) {
-          function_def->add_node()->set_op(op);
+          function_def->add_node_def()->set_op(op);
         }
         graph_def.add_node()->set_op("F");
       } else {
@@ -293,11 +293,11 @@ TEST(StrippedOpListForGraphTest, NestedFunctionTest) {
     FunctionDef* c = graph_def.mutable_library()->add_function();
     b->mutable_signature()->set_name("B");
     c->mutable_signature()->set_name("C");
-    b->add_node()->set_op("A");
-    c->add_node()->set_op("B");
+    b->add_node_def()->set_op("A");
+    c->add_node_def()->set_op("B");
     if (recursive) {
-      b->add_node()->set_op("B");
-      c->add_node()->set_op("C");
+      b->add_node_def()->set_op("B");
+      c->add_node_def()->set_op("C");
     }
 
     // Use C in the graph.

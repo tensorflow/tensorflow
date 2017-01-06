@@ -1,6 +1,10 @@
-### `tf.neg(x, name=None)` {#neg}
+### `tf.neg(*args, **kwargs)` {#neg}
 
-Computes numerical negative value element-wise.
+Computes numerical negative value element-wise. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
+Instructions for updating:
+`tf.neg(x)` is deprecated, please use `tf.negative(x)` or `-x`
 
 I.e., \(y = -x\).
 

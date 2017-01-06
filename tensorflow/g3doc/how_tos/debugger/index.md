@@ -40,9 +40,11 @@ three lines of code, which wrap the Session object with a debugger wrapper when
 the `--debug` flag is provided:
 
 ```python
-if FLAGS.debug:
-  sess = tf_debug.LocalCLIDebugWrapperSession(sess)
-  sess.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
+# Let your BUILD target depend on "//tensorflow/python/debug:debug_py"
+from tensorflow.python import debug as tf_debug
+
+sess = tf_debug.LocalCLIDebugWrapperSession(sess)
+sess.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
 ```
 
 This wrapper has the same interface as Session, so enabling debugging requires
@@ -357,7 +359,8 @@ for more details.
        [tfprof](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/tfprof)
        and other profiling tools for TensorFlow.
 
-**Q**: _How do I link tfdbg against my `Session` in Bazel?_
+**Q**: _How do I link tfdbg against my `Session` in Bazel? Why do I see an
+       error such as "ImportError: cannot import name debug"?_
 
 **A**: In your BUILD rule, declare dependencies:
        `"//tensorflow:tensorflow_py"` and `"//tensorflow/python/debug:debug_py"`.
@@ -381,11 +384,11 @@ sess = tf_debug.LocalCLIDebugWrapperSession(sess)
 ```none
 # Debugging shape mismatch during matrix multiplication.
 python $(python -c "import tensorflow as tf; import os; print(os.path.dirname(tf.__file__));")/python/debug/examples/debug_errors.py \
-    -error shape_mismatch --debug
+    --error shape_mismatch --debug
 
 # Debugging uninitialized variable.
 python $(python -c "import tensorflow as tf; import os; print(os.path.dirname(tf.__file__));")/python/debug/examples/debug_errors.py \
-    -error uninitialized_variable --debug
+    --error uninitialized_variable --debug
 ```
 
 **Q**: _Why can't I select text in the tfdbg CLI?_

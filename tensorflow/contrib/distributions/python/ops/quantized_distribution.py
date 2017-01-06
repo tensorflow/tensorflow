@@ -277,7 +277,7 @@ class QuantizedDistribution(distributions.Distribution):
     upper_cutoff = self._upper_cutoff
     with ops.name_scope("transform"):
       n = ops.convert_to_tensor(n, name="n")
-      x_samps = self.distribution.sample_n(n=n, seed=seed)
+      x_samps = self.distribution.sample(n, seed=seed)
       ones = array_ops.ones_like(x_samps)
 
       # Snap values to the intervals (j - 1, j].

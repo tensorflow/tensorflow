@@ -54,7 +54,7 @@ with tf.Session() as sess:
 
 ### `tf.placeholder_with_default(input, shape, name=None)` {#placeholder_with_default}
 
-A placeholder op that passes though `input` when its output is not fed.
+A placeholder op that passes through `input` when its output is not fed.
 
 ##### Args:
 
@@ -1754,6 +1754,9 @@ For `SparseTensor`s, the first (batch) column of the indices matrix is removed
 (the indices matrix is a column vector), the values vector is unchanged, and
 the first (`batch_size`) entry of the shape vector is removed (it is now a
 single element vector).
+
+One might see performance advantages by batching `Example` protos with
+`parse_example` instead of using this function directly.
 
 ##### Args:
 

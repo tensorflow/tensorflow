@@ -297,6 +297,8 @@ class DType(object):
 
   @property
   def size(self):
+    if self._type_enum == types_pb2.DT_RESOURCE:
+      return 1
     return np.dtype(self.as_numpy_dtype).itemsize
 
 # Define data type range of numpy dtype

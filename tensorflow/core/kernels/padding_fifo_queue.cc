@@ -276,7 +276,11 @@ Status PaddingFIFOQueue::CompatibleNodeDefShapes(
 }
 
 Status PaddingFIFOQueue::MatchesNodeDef(const NodeDef& node_def) {
-  TF_RETURN_IF_ERROR(MatchesNodeDefOp(node_def, "PaddingFIFOQueue"));
+  if (!MatchesNodeDefOp(node_def, "PaddingFIFOQueue").ok() &&
+      !MatchesNodeDefOp(node_def, "PaddingFIFOQueueV2").ok()) {
+    return errors::InvalidArgument("Expected PaddingFIFOQueue, found ",
+                                   node_def.op());
+  }
   TF_RETURN_IF_ERROR(MatchesNodeDefCapacity(node_def, capacity_));
   TF_RETURN_IF_ERROR(MatchesNodeDefTypes(node_def));
   TF_RETURN_IF_ERROR(CompatibleNodeDefShapes(node_def));

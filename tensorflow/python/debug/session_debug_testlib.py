@@ -150,6 +150,13 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
         results.dump.get_rel_timestamps("%s/read" % results.v_name, 0,
                                         "DebugIdentity")[0], 0)
 
+    self.assertGreater(
+        results.dump.get_dump_sizes_bytes("%s/read" % results.u_name, 0,
+                                          "DebugIdentity")[0], 0)
+    self.assertGreater(
+        results.dump.get_dump_sizes_bytes("%s/read" % results.v_name, 0,
+                                          "DebugIdentity")[0], 0)
+
   def testGetOpTypeWorks(self):
     results = self._generate_dump_from_simple_addition_graph()
 
@@ -217,6 +224,13 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       self.assertGreaterEqual(
           dump.get_rel_timestamps("%s/read" % str2_name, 0, "DebugIdentity")[0],
           0)
+
+      self.assertGreater(
+          dump.get_dump_sizes_bytes("%s/read" % str1_name, 0,
+                                    "DebugIdentity")[0], 0)
+      self.assertGreater(
+          dump.get_dump_sizes_bytes("%s/read" % str2_name, 0,
+                                    "DebugIdentity")[0], 0)
 
   def testDumpUninitializedVariable(self):
     op_namespace = "testDumpUninitializedVariable"
@@ -362,11 +376,17 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       # Verify ascending timestamps from the while loops.
       while_id_rel_timestamps = dump.get_rel_timestamps("while/Identity", 0,
                                                         "DebugIdentity")
+      while_id_dump_sizes_bytes = dump.get_dump_sizes_bytes("while/Identity", 0,
+                                                            "DebugIdentity")
       self.assertEqual(10, len(while_id_rel_timestamps))
       prev_rel_time = 0
-      for rel_time in while_id_rel_timestamps:
+      prev_dump_size_bytes = while_id_dump_sizes_bytes[0]
+      for rel_time, dump_size_bytes in zip(while_id_rel_timestamps,
+                                           while_id_dump_sizes_bytes):
         self.assertGreaterEqual(rel_time, prev_rel_time)
+        self.assertEqual(dump_size_bytes, prev_dump_size_bytes)
         prev_rel_time = rel_time
+        prev_dump_size_bytes = dump_size_bytes
 
       # Test querying debug watch keys from node name.
       watch_keys = dump.debug_watch_keys("while/Identity")

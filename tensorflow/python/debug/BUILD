@@ -441,6 +441,7 @@ cuda_py_test(
     ],
     additional_deps = [
         ":analyzer_cli",
+        ":command_parser",
         ":debug_data",
         ":debug_utils",
         ":debugger_cli_common",

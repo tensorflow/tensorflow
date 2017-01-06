@@ -132,7 +132,7 @@ class ExpectationTest(test.TestCase):
     with self.test_session():
       p = distributions.Normal(mu=[1.0, -1.0], sigma=[0.3, 0.5])
       # Compute E_p[X] and E_p[X^2].
-      z = p.sample_n(n=n)
+      z = p.sample(n, seed=42)
       e_x = monte_carlo.expectation(lambda x: x, p, z=z, seed=42)
       e_x2 = monte_carlo.expectation(math_ops.square, p, z=z, seed=0)
       var = e_x2 - math_ops.square(e_x)
@@ -161,7 +161,7 @@ class GetSamplesTest(test.TestCase):
   def test_raises_if_both_z_and_n_are_not_none(self):
     with self.test_session():
       dist = distributions.Normal(mu=0., sigma=1.)
-      z = dist.sample_n(n=1)
+      z = dist.sample(seed=42)
       n = 1
       seed = None
       with self.assertRaisesRegexp(ValueError, 'exactly one'):
@@ -179,7 +179,7 @@ class GetSamplesTest(test.TestCase):
   def test_returns_z_if_z_provided(self):
     with self.test_session():
       dist = distributions.Normal(mu=0., sigma=1.)
-      z = dist.sample_n(n=10)
+      z = dist.sample(10, seed=42)
       n = None
       seed = None
       z = monte_carlo._get_samples(dist, z, n, seed)

@@ -31,7 +31,6 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.training import input as input_lib
 
-FLAGS = tf.flags.FLAGS
 
 _METRIC_KEYS = {
     'accuracy',

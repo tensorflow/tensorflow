@@ -1077,6 +1077,214 @@ This is the opposite of unstack.  The numpy equivalent is
 
 - - -
 
+### `tf.empty(output_shape, dtype, init=False)` {#empty}
+
+Creates an empty Tensor with shape `output_shape` and type `dtype`.
+
+The memory can optionally be initialized. This is usually useful in
+conjunction with in-place operations.
+
+##### Args:
+
+
+*  <b>`output_shape`</b>: 1-D `Tensor` indicating the shape of the output.
+*  <b>`dtype`</b>: The element type of the returned tensor.
+*  <b>`init`</b>: `bool` indicating whether or not to zero the allocated memory.
+
+##### Returns:
+
+
+*  <b>`output`</b>: An empty Tensor of the specified type.
+
+
+- - -
+
+### `tf.empty_like(value, init=None)` {#empty_like}
+
+Creates an empty Tensor with the same shape and type `dtype` as value.
+
+The memory can optionally be initialized. This op is usually useful in
+conjunction with in-place operations.
+
+##### Args:
+
+
+*  <b>`value`</b>: A `Tensor` whose shape will be used.
+*  <b>`init`</b>: Initalize the returned tensor with the default value of
+    `value.dtype()` if True.  Otherwise do not initialize.
+
+##### Returns:
+
+
+*  <b>`output`</b>: An empty Tensor of the specified shape and type.
+
+
+- - -
+
+### `tf.alias_inplace_update(value, loc, update)` {#alias_inplace_update}
+
+Updates input `value` at `loc` with `update`. Aliases value.
+
+   If `loc` is None, `value` and `update` must be the same size.
+   ```
+   value = update
+   ```
+
+   If `loc` is a scalar, `value` has rank 1 higher than `update`
+   ```
+   value[i, :] = update
+   ```
+
+   If `loc` is a vector, `value` has the same rank as `update`
+   ```
+   value[loc, :] = update
+   ```
+
+   Warning: If you use this function you will almost certainly want to add
+   a control dependency as done in the implementation of parallel_stack to
+   avoid race conditions.
+
+##### Args:
+
+
+*  <b>`value`</b>: A `Tensor` object that will be updated in-place.
+*  <b>`loc`</b>: None, scalar or 1-D `Tensor`.
+*  <b>`update`</b>: A `Tensor` of rank one less than `value` if `loc` is a scalar,
+          otherwise of rank equal to `value` that contains the new values
+          for `value`.
+
+##### Returns:
+
+
+*  <b>`output`</b>: `value` that has been updated accordingly.
+
+
+- - -
+
+### `tf.alias_inplace_add(value, loc, update)` {#alias_inplace_add}
+
+Updates input `value` at `loc` with `update`. Aliases value.
+
+   If `loc` is None, `value` and `update` must be the same size.
+   ```
+   value += update
+   ```
+
+   If `loc` is a scalar, `value` has rank 1 higher than `update`
+   ```
+   value[i, :] += update
+   ```
+
+   If `loc` is a vector, `value` has the same rank as `update`
+   ```
+   value[loc, :] += update
+   ```
+
+   Warning: If you use this function you will almost certainly want to add
+   a control dependency as done in the implementation of parallel_stack to
+   avoid race conditions.
+
+##### Args:
+
+
+*  <b>`value`</b>: A `Tensor` object that will be updated in-place.
+*  <b>`loc`</b>: None, scalar or 1-D `Tensor`.
+*  <b>`update`</b>: A `Tensor` of rank one less than `value` if `loc` is a scalar,
+          otherwise of rank equal to `value` that contains the new values
+          for `value`.
+
+##### Returns:
+
+
+*  <b>`output`</b>: `value` that has been updated accordingly.
+
+
+- - -
+
+### `tf.alias_inplace_subtract(value, loc, update)` {#alias_inplace_subtract}
+
+Updates input `value` at `loc` with `update`. Aliases value.
+
+   If `loc` is None, `value` and `update` must be the same size.
+   ```
+   value -= update
+   ```
+
+   If `loc` is a scalar, `value` has rank 1 higher than `update`
+   ```
+   value[i, :] -= update
+   ```
+
+   If `loc` is a vector, `value` has the same rank as `update`
+   ```
+   value[loc, :] -= update
+   ```
+
+   Warning: If you use this function you will almost certainly want to add
+   a control dependency as done in the implementation of parallel_stack to
+   avoid race conditions.
+
+##### Args:
+
+
+*  <b>`value`</b>: A `Tensor` object that will be updated in-place.
+*  <b>`loc`</b>: None, Scalar or 1-D `Tensor`.
+*  <b>`update`</b>: A `Tensor` of rank one less than `value` if `loc` is a scalar,
+          otherwise of rank equal to `value` that contains the new values
+          for `value`.
+
+##### Returns:
+
+
+*  <b>`output`</b>: `value` that has been updated accordingly.
+
+
+- - -
+
+### `tf.parallel_stack(values, name='parallel_stack')` {#parallel_stack}
+
+Stacks a list of rank-`R` tensors into one rank-`(R+1)` tensor in parallel.
+
+Requires that the shape of inputs be known at graph construction time.
+
+Packs the list of tensors in `values` into a tensor with rank one higher than
+each tensor in `values`, by packing them along the first dimension.
+Given a list of length `N` of tensors of shape `(A, B, C)`; the `output`
+tensor will have the shape `(N, A, B, C)`.
+
+For example:
+
+```prettyprint
+# 'x' is [1, 4]
+# 'y' is [2, 5]
+# 'z' is [3, 6]
+parallel_stack([x, y, z]) => [[1, 4], [2, 5], [3, 6]]
+```
+
+The difference between stack and parallel_stack is that stack requires all
+of the inputs be computed before the operation will begin but doesn't require
+that the input shapes be known during graph construction.  Parallel stack
+will copy pieces of the input into the output as they become available, in
+some situations this can provide a performance benefit.
+
+This is the opposite of unstack.  The numpy equivalent is
+
+    tf.parallel_stack([x, y, z]) = np.asarray([x, y, z])
+
+##### Args:
+
+
+*  <b>`values`</b>: A list of `Tensor` objects with the same shape and type.
+*  <b>`name`</b>: A name for this operation (optional).
+
+##### Returns:
+
+
+*  <b>`output`</b>: A stacked `Tensor` with the same type as `values`.
+
+
+- - -
+
 ### `tf.pack(*args, **kwargs)` {#pack}
 
 Packs a list of rank-`R` tensors into one rank-`(R+1)` tensor. (deprecated)

@@ -1017,7 +1017,7 @@ class ExportMonitor(EveryN):
 
 
 class CheckpointSaver(BaseMonitor):
-  """Saves checkpoints every N steps."""
+  """Saves checkpoints every N steps or N seconds."""
 
   def __init__(self,
                checkpoint_dir,
