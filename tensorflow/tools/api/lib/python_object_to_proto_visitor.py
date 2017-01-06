@@ -13,7 +13,6 @@
 # limitations under the License.
 #
 # ==============================================================================
-
 """A visitor class that generates protobufs for each pyton object."""
 
 import inspect
