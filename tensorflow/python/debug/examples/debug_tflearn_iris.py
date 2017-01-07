@@ -26,6 +26,8 @@ import numpy as np
 from six.moves import urllib
 import tensorflow as tf
 
+from tensorflow.contrib.learn.python.learn import experiment
+from tensorflow.contrib.learn.python.learn.datasets import base
 from tensorflow.python import debug as tf_debug
 
 
@@ -67,6 +69,16 @@ def maybe_download_data(data_dir):
   return training_data_path, test_data_path
 
 
+_IRIS_INPUT_DIM = 4
+
+
+def iris_input_fn():
+  iris = base.load_iris()
+  features = tf.reshape(tf.constant(iris.data), [-1, _IRIS_INPUT_DIM])
+  labels = tf.reshape(tf.constant(iris.target), [-1])
+  return features, labels
+
+
 def main(_):
   training_data_path, test_data_path = maybe_download_data(FLAGS.data_dir)
 
@@ -93,16 +105,28 @@ def main(_):
   hooks = ([tf_debug.LocalCLIDebugHook(ui_type=FLAGS.ui_type)] if FLAGS.debug
            else None)
 
-  # Fit model.
-  classifier.fit(x=training_set.data,
-                 y=training_set.target,
-                 steps=FLAGS.train_steps,
-                 monitors=hooks)
+  if not FLAGS.use_experiment:
+    # Fit model.
+    classifier.fit(x=training_set.data,
+                   y=training_set.target,
+                   steps=FLAGS.train_steps,
+                   monitors=hooks)
 
-  # Evaluate accuracy.
-  accuracy_score = classifier.evaluate(x=test_set.data,
-                                       y=test_set.target,
-                                       hooks=hooks)["accuracy"]
+    # Evaluate accuracy.
+    accuracy_score = classifier.evaluate(x=test_set.data,
+                                         y=test_set.target,
+                                         hooks=hooks)["accuracy"]
+  else:
+    ex = experiment.Experiment(classifier,
+                               train_input_fn=iris_input_fn,
+                               eval_input_fn=iris_input_fn,
+                               train_steps=FLAGS.train_steps,
+                               eval_delay_secs=0,
+                               eval_steps=1,
+                               train_monitors=hooks,
+                               eval_hooks=hooks)
+    ex.train()
+    accuracy_score = ex.evaluate()["accuracy"]
 
   print("After training %d steps, Accuracy = %f" %
         (FLAGS.train_steps, accuracy_score))
@@ -126,6 +150,13 @@ if __name__ == "__main__":
       type=int,
       default=10,
       help="Number of steps to run trainer.")
+  parser.add_argument(
+      "--use_experiment",
+      type="bool",
+      nargs="?",
+      const=True,
+      default=False,
+      help="Use tf.contrib.learn Experiment to run training and evaluation")
   parser.add_argument(
       "--ui_type",
       type=str,

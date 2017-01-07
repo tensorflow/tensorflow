@@ -68,7 +68,7 @@ class Experiment(object):
                train_steps=None,
                eval_steps=100,
                train_monitors=None,
-               evaluate_hooks=None,
+               eval_hooks=None,
                local_eval_frequency=None,
                eval_delay_secs=120,
                continuous_eval_throttle_secs=60,
@@ -95,7 +95,7 @@ class Experiment(object):
         is raised), or for `eval_steps` steps, if specified.
       train_monitors: A list of monitors to pass to the `Estimator`'s `fit`
         function.
-      evaluate_hooks: A list of `SessionRunHook` hooks to pass to the
+      eval_hooks: A list of `SessionRunHook` hooks to pass to the
         `Estimator`'s `evaluate` function.
       local_eval_frequency: Frequency of running eval in steps,
         when running locally. If `None`, runs evaluation only at the end of
@@ -134,7 +134,7 @@ class Experiment(object):
     self._delay_workers_by_global_step = delay_workers_by_global_step
     # Mutable fields, using the setters.
     self.train_monitors = train_monitors
-    self.evaluate_hooks = evaluate_hooks
+    self.eval_hooks = eval_hooks
     self.export_strategies = export_strategies
 
   @property
@@ -170,12 +170,12 @@ class Experiment(object):
     self._train_monitors = value or []
 
   @property
-  def evaluate_hooks(self):
-    return self._evaluate_hooks
+  def eval_hooks(self):
+    return self._eval_hooks
 
-  @evaluate_hooks.setter
-  def evaluate_hooks(self, value):
-    self._evaluate_hooks = value or []
+  @eval_hooks.setter
+  def eval_hooks(self, value):
+    self._eval_hooks = value or []
 
   @property
   def local_eval_frequency(self):
@@ -288,7 +288,7 @@ class Experiment(object):
                                     steps=self._eval_steps,
                                     metrics=self._eval_metrics,
                                     name="one_pass",
-                                    hooks=self._evaluate_hooks)
+                                    hooks=self._eval_hooks)
 
   @deprecated(
       "2016-10-23",
