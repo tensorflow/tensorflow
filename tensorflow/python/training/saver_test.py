@@ -565,6 +565,51 @@ class SaverTest(test.TestCase):
       ):
         save.save(sess, save_path)
 
+  def testSaveToCurrentDirectory(self):
+
+    temp_dir = self.get_temp_dir()
+
+    # Store original current dir for later recovery, set current dir to temp_dir
+    old_current_dir = os.getcwd()
+    os.chdir(temp_dir)
+
+    try:    
+
+      # Save to current directory, no ./ prepended to path name
+      save_path = "variables"
+
+      with session.Session("", graph=ops_lib.Graph()) as sess:
+
+        one = variables.Variable(1.0)
+        twos = variables.Variable([2.0, 2.0, 2.0])
+        
+        init = variables.global_variables_initializer()
+        save = saver_module.Saver()
+
+        init.run()
+        save.save(sess, save_path)
+
+      with session.Session("", graph=ops_lib.Graph()) as sess:
+
+        one = variables.Variable(0.0)
+        twos = variables.Variable([0.0, 0.0, 0.0])
+
+        # Saver with no arg, defaults to 'all variables'.
+        save = saver_module.Saver()
+        save.restore(sess, save_path)
+
+        self.assertAllClose(1.0, one.eval())
+        self.assertAllClose([2.0, 2.0, 2.0], twos.eval())
+
+        # Go back to original current dir
+        os.chdir(old_current_dir)
+
+    except Exception as exception:
+
+      # Go back to original current dir and then bubble up the exception
+      os.chdir(old_current_dir)
+      raise exception
+
 
 class SaveRestoreShardedTest(test.TestCase):
 

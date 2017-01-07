@@ -1360,7 +1360,7 @@ class Saver(object):
             "'latest_filename' collides with 'save_path': '%s' and '%s'" %
             (latest_filename, save_path))
 
-    if not gfile.IsDirectory(os.path.abspath(os.path.dirname(save_path))):
+    if not gfile.IsDirectory(os.path.dirname(save_path)):
       raise ValueError(
           "Parent directory of {} doesn't exist, can't save.".format(save_path))
 
