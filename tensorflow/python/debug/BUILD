@@ -218,6 +218,7 @@ py_binary(
     deps = [
         ":analyzer_cli",
         ":debug_data",
+        "//tensorflow/python",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python:platform",
     ],
 )
