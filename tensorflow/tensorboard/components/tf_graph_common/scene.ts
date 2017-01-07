@@ -104,7 +104,7 @@ module tf.graph.scene {
     },
     {
       background_color: '#FF8D00',
-      label: '- ∞',
+      label: '-∞',
     },
     {
       background_color: '#EAEAEA',
@@ -120,7 +120,7 @@ module tf.graph.scene {
     },
     {
       background_color: '#003ED4',
-      label: '+ ∞',
+      label: '+∞',
     },
   ];
 
@@ -541,6 +541,10 @@ function _addHealthPill(
   // elements of various categories: -Inf, negative, 0, positive, Inf, and NaN.
   let lastHealthPillOverview = lastHealthPillData.slice(2, 8);
   let totalCount = lastHealthPillData[1];
+  const minVal = lastHealthPillData[8];
+  const maxVal = lastHealthPillData[9];
+  const meanVal = lastHealthPillData[10];
+  const stddevVal = Math.sqrt(lastHealthPillData[11]);
 
   let healthPillWidth = 60;
   let healthPillHeight = 10;
@@ -587,7 +591,7 @@ function _addHealthPill(
 
     // Include this number in the title that appears on hover.
     titleOnHoverTextEntries.push(
-        healthPillEntries[i].label + ': ' + lastHealthPillOverview[i]);
+        '#(' + healthPillEntries[i].label + '): ' + lastHealthPillOverview[i]);
   }
   healthPillDefs.appendChild(healthPillGradient);
 
@@ -600,7 +604,9 @@ function _addHealthPill(
 
   // Show a title with specific counts on hover.
   let titleSvg = document.createElementNS(svgNamespace, 'title');
-  titleSvg.textContent = titleOnHoverTextEntries.join(', ');
+  titleSvg.textContent = '#(elements): ' + totalCount + '\n\n' +
+      titleOnHoverTextEntries.join(', ') + '\n\nmin: ' + minVal +
+      ', max: ' + maxVal + '\nmean: ' + meanVal + ', stddev: ' + stddevVal;
   healthPillGroup.appendChild(titleSvg);
 
   // Center this health pill just right above the node for the op.
@@ -634,10 +640,8 @@ function _addHealthPill(
     }
 
     let statsSvg = document.createElementNS(svgNamespace, 'text');
-    const minString =
-        humanizeHealthPillStat(lastHealthPillData[8], shouldRoundOnesDigit);
-    const maxString =
-        humanizeHealthPillStat(lastHealthPillData[9], shouldRoundOnesDigit);
+    const minString = humanizeHealthPillStat(minVal, shouldRoundOnesDigit);
+    const maxString = humanizeHealthPillStat(maxVal, shouldRoundOnesDigit);
     statsSvg.textContent = minString + ' ~ ' + maxString;
     statsSvg.classList.add('health-pill-stats');
     statsSvg.setAttribute('x', String(healthPillWidth / 2));
