@@ -165,9 +165,17 @@ message HeapSimulatorTrace {
 
 // Serialization of BufferAssignment.
 message BufferAssignmentProto {
+  // Alias represents a source LogicalBuffer, and the buffer location that
+  // aliases it.
+  message BufferAlias {
+    int64 source_buffer_id = 1;
+    LogicalBufferProto.Location location = 2;
+  }
+
   repeated LogicalBufferProto logical_buffers = 1;
-  repeated BufferAllocationProto buffer_allocations = 2;
-  repeated HeapSimulatorTrace heap_simulator_traces = 3;
+  repeated BufferAlias buffer_aliases = 2;
+  repeated BufferAllocationProto buffer_allocations = 3;
+  repeated HeapSimulatorTrace heap_simulator_traces = 4;
 }
 
 // Grouping message that contains all of the information above.

@@ -57,7 +57,7 @@ Status DumpJsonToDirectory(const tensorflow::protobuf::Message& message,
 
   tensorflow::Env* env = tensorflow::Env::Default();
   TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(directory));
-  string safe_file_name = file_name;
+  string safe_file_name = file_name + ".json";
   for (char& c : safe_file_name) {
     if (c == '/' || c == '\\') {
       c = '_';

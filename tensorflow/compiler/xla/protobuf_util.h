@@ -35,7 +35,7 @@ extern bool ProtobufEquals(const tensorflow::protobuf::Message& m1,
 StatusOr<string> ToJson(const tensorflow::protobuf::Message& message);
 
 // Converts 'message' to JSON, and dumps it to the path formed by joining
-// 'directory' and 'file_name'. The 'directory' is recursively created if it
+// 'directory/file_name.json'. The 'directory' is recursively created if it
 // doesn't already exist, and the 'file_name' is sanitized by replacing illegal
 // characters with underscore '_'.
 Status DumpJsonToDirectory(const tensorflow::protobuf::Message& message,

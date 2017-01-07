@@ -399,12 +399,30 @@ string BufferAssignment::ToString() const {
 
 BufferAssignmentProto BufferAssignment::ToProto() const {
   BufferAssignmentProto proto;
+  // NOTE: TuplePointsToAnalysis state is serialized here in BufferAssigment,
+  // because we need to do the HasAllocation check for each buffer. Otherwise
+  // the buffer_size_ call might fail for some backends.
   const TuplePointsToAnalysis& points_to_analysis =
       liveness_->points_to_analysis();
   for (const auto& buffer : points_to_analysis.logical_buffers()) {
     if (HasAllocation(*buffer)) {
       LogicalBufferProto proto_buffer = buffer->ToProto(buffer_size_);
       proto.add_logical_buffers()->Swap(&proto_buffer);
+
+      // Fill buffer aliases.
+      for (const BufferAlias& alias :
+           points_to_analysis.GetBufferAliases(*buffer)) {
+        if (alias.instruction() == buffer->instruction() &&
+            alias.index() == buffer->index()) {
+          continue;  // skip self-aliases
+        }
+        BufferAssignmentProto::BufferAlias* proto_alias =
+            proto.add_buffer_aliases();
+        LogicalBufferProto::Location proto_alias_location =
+            LogicalBuffer::ToLocationProto(*alias.instruction(), alias.index());
+        proto_alias->set_source_buffer_id(buffer->id());
+        proto_alias->mutable_location()->Swap(&proto_alias_location);
+      }
     }
   }
   for (const BufferAllocation& allocation : Allocations()) {

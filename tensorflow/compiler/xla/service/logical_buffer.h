@@ -128,6 +128,11 @@ class LogicalBuffer {
   string ToString() const;
   LogicalBufferProto ToProto(const SizeFunction& size_fn) const;
 
+  // Returns the LogicalBufferProto::Location that serializes the given
+  // instruction and index.
+  static LogicalBufferProto::Location ToLocationProto(
+      const HloInstruction& instruction, const ShapeIndex& index);
+
  private:
   HloInstruction* instruction_;
   ShapeIndex index_;
