@@ -329,27 +329,20 @@ class CheckpointSaverHookTest(test.TestCase):
       with session_lib.Session() as sess:
         sess.run(self.scaffold.init_op)
         mon_sess = monitored_session._HookedSession(sess, [hook])
-        mon_sess.run(self.train_op)
-        mon_sess.run(self.train_op)
-        # Not saved
+        mon_sess.run(self.train_op)  # Saved.
+        mon_sess.run(self.train_op)  # Not saved.
         self.assertEqual(1,
                          checkpoint_utils.load_variable(self.model_dir,
                                                         self.global_step.name))
         time.sleep(2.5)
-        mon_sess.run(self.train_op)
-        # saved
-        self.assertEqual(3,
-                         checkpoint_utils.load_variable(self.model_dir,
-                                                        self.global_step.name))
-        mon_sess.run(self.train_op)
-        mon_sess.run(self.train_op)
-        # Not saved
+        mon_sess.run(self.train_op)  # Saved.
+        mon_sess.run(self.train_op)  # Not saved.
+        mon_sess.run(self.train_op)  # Not saved.
         self.assertEqual(3,
                          checkpoint_utils.load_variable(self.model_dir,
                                                         self.global_step.name))
         time.sleep(2.5)
-        mon_sess.run(self.train_op)
-        # saved
+        mon_sess.run(self.train_op)  # Saved.
         self.assertEqual(6,
                          checkpoint_utils.load_variable(self.model_dir,
                                                         self.global_step.name))
