@@ -9,10 +9,10 @@ licenses(["notice"])  # Apache 2.0
 py_test(
     name = "api_compatibility_test",
     srcs = ["api_compatibility_test.py"],
-    srcs_version = "PY2AND3",
     data = [
         "//tensorflow/tools/api/golden:api_golden",
     ],
+    srcs_version = "PY2AND3",
     tags = [
         "manual",
         "notap",
