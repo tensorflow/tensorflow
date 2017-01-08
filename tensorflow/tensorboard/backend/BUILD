@@ -47,6 +47,7 @@ py_library(
         ":handler",
         "//tensorflow/python:platform",
         "//tensorflow/python:summary",
+        "//tensorflow/tensorboard:projector",
         "@six_archive//:six",
     ],
 )
