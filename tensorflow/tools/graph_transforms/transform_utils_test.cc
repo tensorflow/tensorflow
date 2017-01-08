@@ -747,6 +747,71 @@ class TransformUtilsTest : public ::testing::Test {
     EXPECT_TRUE(IsGraphValid(valid_graph_def).ok());
   }
 
+  void TestGetInOutTypes() {
+    auto root = tensorflow::Scope::NewRootScope();
+    using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
+
+    const int width = 20;
+
+    Tensor float_data(DT_FLOAT, TensorShape({width}));
+    test::FillIota<float>(&float_data, 1.0f);
+    Output float_const =
+        Const(root.WithOpName("float_const"), Input::Initializer(float_data));
+
+    Tensor int_data(DT_INT32, TensorShape({width}));
+    test::FillIota<int32>(&int_data, 1);
+    Output int_const =
+        Const(root.WithOpName("int_const"), Input::Initializer(int_data));
+
+    Output float_relu = Relu(root.WithOpName("float_relu"), float_const);
+
+    Output int_relu = Relu(root.WithOpName("int_relu"), int_const);
+
+    GraphDef graph_def;
+    TF_ASSERT_OK(root.ToGraphDef(&graph_def));
+
+    std::map<string, const NodeDef*> node_map;
+    MapNamesToNodes(graph_def, &node_map);
+
+    const NodeDef* float_const_def = node_map.at("float_const");
+    DataTypeVector float_const_inputs;
+    DataTypeVector float_const_outputs;
+    TF_EXPECT_OK(GetInOutTypes(*float_const_def, &float_const_inputs,
+                               &float_const_outputs));
+    ASSERT_EQ(0, float_const_inputs.size());
+    ASSERT_EQ(1, float_const_outputs.size());
+    EXPECT_EQ(DT_FLOAT, float_const_outputs[0]);
+
+    const NodeDef* int_const_def = node_map.at("int_const");
+    DataTypeVector int_const_inputs;
+    DataTypeVector int_const_outputs;
+    TF_EXPECT_OK(
+        GetInOutTypes(*int_const_def, &int_const_inputs, &int_const_outputs));
+    ASSERT_EQ(0, int_const_inputs.size());
+    ASSERT_EQ(1, int_const_outputs.size());
+    EXPECT_EQ(DT_INT32, int_const_outputs[0]);
+
+    const NodeDef* float_relu_def = node_map.at("float_relu");
+    DataTypeVector float_relu_inputs;
+    DataTypeVector float_relu_outputs;
+    TF_EXPECT_OK(GetInOutTypes(*float_relu_def, &float_relu_inputs,
+                               &float_relu_outputs));
+    ASSERT_EQ(1, float_relu_inputs.size());
+    EXPECT_EQ(DT_FLOAT, float_relu_inputs[0]);
+    ASSERT_EQ(1, float_relu_outputs.size());
+    EXPECT_EQ(DT_FLOAT, float_relu_outputs[0]);
+
+    const NodeDef* int_relu_def = node_map.at("int_relu");
+    DataTypeVector int_relu_inputs;
+    DataTypeVector int_relu_outputs;
+    TF_EXPECT_OK(
+        GetInOutTypes(*int_relu_def, &int_relu_inputs, &int_relu_outputs));
+    ASSERT_EQ(1, int_relu_inputs.size());
+    EXPECT_EQ(DT_INT32, int_relu_inputs[0]);
+    ASSERT_EQ(1, int_relu_outputs.size());
+    EXPECT_EQ(DT_INT32, int_relu_outputs[0]);
+  }
+
   void TestCopyOriginalMatch() {
     NodeDef a;
     a.set_op("Relu");
@@ -938,6 +1003,8 @@ TEST_F(TransformUtilsTest, TestRenameNodeInputsWithWildcard) {
 TEST_F(TransformUtilsTest, TestFindInvalidInputs) { TestFindInvalidInputs(); }
 
 TEST_F(TransformUtilsTest, TestIsGraphValid) { TestIsGraphValid(); }
+
+TEST_F(TransformUtilsTest, TestGetInOutTypes) { TestGetInOutTypes(); }
 
 TEST_F(TransformUtilsTest, TestCopyOriginalMatch) { TestCopyOriginalMatch(); }
 

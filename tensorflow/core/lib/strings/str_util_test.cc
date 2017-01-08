@@ -301,6 +301,31 @@ TEST(SplitAndParseAsInts, Int64) {
   EXPECT_FALSE(str_util::SplitAndParseAsInts("13,abc,5", ',', &nums));
 }
 
+TEST(SplitAndParseAsFloats, Float) {
+  std::vector<float> nums;
+  EXPECT_TRUE(str_util::SplitAndParseAsFloats("", ',', &nums));
+  EXPECT_EQ(nums.size(), 0);
+
+  EXPECT_TRUE(str_util::SplitAndParseAsFloats("134.2323", ',', &nums));
+  ASSERT_EQ(nums.size(), 1);
+  EXPECT_NEAR(nums[0], 134.2323f, 1e-5f);
+
+  EXPECT_TRUE(str_util::SplitAndParseAsFloats("134.9,2.123,13.0000,-5.999,1e6",
+                                              ',', &nums));
+  ASSERT_EQ(nums.size(), 5);
+  EXPECT_NEAR(nums[0], 134.9f, 1e-5f);
+  EXPECT_NEAR(nums[1], 2.123f, 1e-5f);
+  EXPECT_NEAR(nums[2], 13.0f, 1e-5f);
+  EXPECT_NEAR(nums[3], -5.999f, 1e-5f);
+  EXPECT_NEAR(nums[4], 1e6f, 1e1f);
+
+  EXPECT_FALSE(str_util::SplitAndParseAsFloats("abc", ',', &nums));
+
+  EXPECT_FALSE(str_util::SplitAndParseAsFloats("-13.0,abc", ',', &nums));
+
+  EXPECT_FALSE(str_util::SplitAndParseAsFloats("13.0,abc,-5.999", ',', &nums));
+}
+
 TEST(Lowercase, Basic) {
   EXPECT_EQ("", str_util::Lowercase(""));
   EXPECT_EQ("hello", str_util::Lowercase("hello"));

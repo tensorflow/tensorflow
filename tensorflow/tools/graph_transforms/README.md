@@ -152,7 +152,7 @@ and optimized.
 
 The mobile version of TensorFlow is focused on inference, and so by default the
 list of supported ops (defined in
-[tensorflow/core/kernels/BUILD:android_extended_ops](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/kernels/BUILD#L2452)
+[tensorflow/core/kernels/BUILD:android_extended_ops](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/kernels/BUILD)
 for Bazel and
 [tensorflow/contrib/makefile/tf_op_files.txt](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/makefile/tf_op_files.txt)
 for make builds) doesn't include a lot that are training related. This can cause
@@ -199,7 +199,7 @@ very different bit patterns, and so these don't compress very well. If you round
 the weights so that nearby numbers are stored as exactly the same values, the
 resulting bit stream has a lot more repetition and so compresses down a lot more
 effectively. To try this technique on your model, run the
-[round_weights](#round_weights] transform.
+[round_weights](#round_weights) transform.
 
 ```bash
 bazel build tensorflow/tools/graph_transforms:transform_graph
@@ -286,11 +286,11 @@ strip_unused_nodes \
 '
 ```
 
-This process converts all the operations in the graph that have quantized
-equivalents, and leaves the rest in floating point. Only a subset of ops are
-supported, and on many platforms the quantized code may actually be slower than
-the float equivalents, but this is a way of increasing performance substantially
-when all the circumstances are right.
+This process converts all the operations in the graph that have eight-bit
+quantized equivalents, and leaves the rest in floating point. Only a subset of
+ops are supported, and on many platforms the quantized code may actually be
+slower than the float equivalents, but this is a way of increasing performance
+substantially when all the circumstances are right.
 
 A full guide to optimizing for quantization is beyond the scope of this guide,
 but one thing that can help is using the FakeQuantWithMinMaxVars op after Conv2D
@@ -300,7 +300,7 @@ calculated dynamically by RequantizationRange during inference.
 
 ## Transform Reference
 
-The transforms string is parsed as a series of transform names, each of which
+The --transforms string is parsed as a series of transform names, each of which
 can have multiple named arguments inside parentheses. Arguments are separated by
 commas, and double-quotes (") can be used to hold argument values if they
 themselves contain commas (for example shape definitions).
@@ -321,18 +321,20 @@ error.
 ### fold_batch_norms
 
 Args: None
+Prerequisites: [fold_constants](#fold_constants)
 
 This transform tries to optimize away the Mul that's introduced after a Conv2D
 when batch normalization has been used during training. It scans the graph for
 any channel-wise multiplies immediately after convolutions, and multiplies the
-convolution's weights with the mul instead so it can be omitted. You'll need to
-make sure you run [fold_constants](#fold_constants) first, since the pattern can
-only be spotted if the normal complex expression that's produced by training for
-the Mul input is collapsed down into a simple constant.
+convolution's weights with the Mul instead so this can be omitted at inference
+time. You'll need to make sure you run [fold_constants](#fold_constants) first,
+since the pattern can only be spotted if the normal complex expression that's
+produced by training for the Mul input is collapsed down into a simple constant.
 
 ### fold_constants
 
-Args: None
+Args: None\
+Prerequisites: None
 
 Looks for any sub-graphs within the model that always evaluate to constant
 expressions, and replaces them with those constants. This optimization is always
@@ -343,7 +345,8 @@ to continue on past transient errors, since this is just an optimization phase.
 
 ### fold_old_batch_norms
 
-Args: None
+Args: None\
+Prerequisites: None
 
 In the early days of TensorFlow, batch normalization was implemented using a
 single monolithic `BatchNormWithGlobalNormalization` op. In modern versions,
@@ -355,31 +358,34 @@ optimize those ops for inference, in the same way that the
 
 ### fuse_convolutions
 
-Args: None
+Args: None\
+Prerequisites: None
 
-For graphs that use ResizeBilinear or MirrorPad ops before convolutions,
-typically to scale up in the later stages of an image style transfer model for
-example, it can save on memory usage and latency to combine the spatial
+For graphs that use ResizeBilinear or MirrorPad ops before convolutions (e.g.
+to scale up in the later stages of an image style transfer model),
+it can improve memory usage and latency to combine the spatial
 transformations with the convolution's im2col patch generation. This transform
 looks out for that particular pattern of ops and replaces them with a fused
 version that combines the resizing and padding with the convolution.
 
 ### merge_duplicate_nodes
 
-Args: None
+Args: None\
+Prerequisites: None
 
 If there are Const nodes with the same types and contents, or nodes with the
 same inputs and attributes, this transform will merge them together. It can be
 useful when you want to cut down the number of nodes in a graph that has a lot
-of redundancy, and is always run as part of [quantize_nodes](#quantize_nodes)
-since the processing there can introduce duplicates of constants that are used
-in the quantize/dequantize process.
+of redundancy (e.g. this transform is always run as part of
+[quantize_nodes](#quantize_nodes) since the processing there can introduce
+duplicates of constants that are used in the quantize/dequantize process).
 
 ### obsfucate_names
 
-Args: None
+Args: None\
+Prerequisites: None
 
-Replaces all node's names with short generated ids, other than the inputs and
+Replaces all nodes' names with short generated ids, other than the inputs and
 outputs. This also updates all references within the graph so that the structure
 is preserved. This can be useful if you want to shrink the file size, or if you
 want to make it harder to understand the architecture of your model before
@@ -398,23 +404,26 @@ Args:
     layers.
 *   fallback_max: The highest float value to use for requantizing activation
     layers. If both fallback_min and fallback_max are set, then instead of using
-    RequantizationRange ops ro figure out the useful range dynamically when
+    RequantizationRange ops to figure out the useful range dynamically when
     converting the 32-bit output of ops like QuantizedConv2D and
     QuantizedBiasAdd, hardwired consts with these values will be used instead.
     This can help performance, if you know the range of your activation layers
     ahead of time.
 
-Replaces any calculation nodes with their eight-bit equivalents, and adds in
-conversion layers to allow remaining float operations to interoperate. This is
-one of the most complex transforms, and involves multiple passes and a lot of
-rewriting. It's also still an active area of research, so results may vary
-depending on the platform and operations you're using in your model. You should
-run [quantize_weights](#quantize_weights) first to ensure your Const ops are in
-eight-bit form.
+Prerequisites: [quantize_weights](#quantize_weights)
+
+Replaces any calculation nodes with their eight-bit equivalents (if available),
+and adds in conversion layers to allow remaining float operations to
+interoperate. This is one of the most complex transforms, and involves multiple
+passes and a lot of rewriting. It's also still an active area of research,
+so results may vary depending on the platform and operations you're using in
+your model. You should run quantize_weights first to ensure your Const ops are
+in eight-bit form.
 
 ### quantize_weights
 
-Args: None
+Args: None\
+Prerequisites: None
 
 Converts any large (more than 15 element) float Const op into an eight-bit
 equivalent, followed by a float conversion op so that the result is usable by
@@ -429,6 +438,8 @@ Args:
 *   attribute_name: Name of the attribute you want to remove.
 *   op_name: Optional name of a single op to restrict the removal to.
 
+Prerequisites: None
+
 Deletes the given attribute from either all nodes, or just the one specified in
 `op_name`. This can be a dangerous transform since it's easy to leave your graph
 in an invalid state if you remove a required attribute. It can be useful in
@@ -437,6 +448,7 @@ special circumstances though.
 ### remove_device
 
 Args: None
+Prerequisites: None
 
 All ops can have a hardware device specified. This can be a problem when you're
 loading a graph on a different system than the model was trained on, since some
@@ -450,6 +462,8 @@ Args:
 
 *   op: The name of the op you want to remove. Can be repeated to remove
     multiple ops.
+
+Prerequisites: None
 
 This is a potentially dangerous transform that looks for single-input,
 single-output ops with the given names, removes them from the graph, and rewires
@@ -469,6 +483,8 @@ Args:
 *   op_name: If this is set, only change attributes for a given op type,
     otherwise apply to all nodes with attribute names that match.
 
+Prerequisites: None
+
 Changes the name of the given attribute. This is often useful for upgrading
 graph files as op definitions change over versions, since the renaming is often
 enough to deal with minor changes.
@@ -480,6 +496,8 @@ Args:
 *   old_op_name: Current name of the operation.
 *   new_op_name: Name to change to.
 
+Prerequisites: None
+
 Finds all ops with the given name, and changes them to the new one. This can be
 useful for version upgrading if the changes between ops are minor apart from the
 name.
@@ -490,6 +508,8 @@ Args:
 
 *   num_steps: How many unique values to use in each buffer.
 
+Prerequisites: None
+
 Rounds all float values in large Const ops (more than 15 elements) to the given
 number of steps. The unique values are chosen per buffer by linearly allocating
 between the largest and smallest values present. This is useful when you'll be
@@ -498,7 +518,8 @@ deploying on mobile, and you want a model that will compress effectively. See
 
 ### sort_by_execution_order
 
-Args: None
+Args: None\
+Prerequisites: None
 
 Arranges the nodes in the GraphDef in topological order, so that the inputs of
 any given node are always earlier than the node itself. This is especially
@@ -519,6 +540,8 @@ Args:
 *   name: Identifier for the placeholder arguments.
 *   type_for_name: What type to use for the previously-given name.
 *   shape_for_name: What shape to use for the previously-given name.
+
+Prerequisites: None
 
 Removes all nodes not used in calculated the layers given in `--outputs`, fed by
 `--inputs`. This is often useful for removing training-only nodes like
@@ -611,6 +634,23 @@ The `rename_op` example only needs to look at a single node at a time, but one
 of the most common needs is to modify small sub-graphs within a model. To make
 this easy, the Graph Transform Tool provides the `OpTypePattern` syntax. This is
 a simple and compact way to specify patterns of nodes that you want to look for.
+The format is:
+
+```
+OP_TYPE_PATTERN ::= "{" OP "," INPUTS "}"
+INPUTS ::= OP_TYPE_PATTERN
+```
+
+The `OP` field can either contain a single "*", which means match any op type,
+one op type (for example "Const"), or a set of op types separated by `|` symbols
+(for example "Conv2D|MatMul|BiasAdd"). General regex patterns are not supported,
+just these special cases.
+
+You can think of these patterns as very limited regular expressions designed to
+pick out sub-trees in graphs. They are deliberately very constrained to the kind
+of things we commonly find ourselves needing to do, to make creating and
+debugging as straightforward as possible.
+
 For example, if you want all Conv2D nodes that have a constant as their second
 input, you would set up a pattern like this, using C++ initializer lists to
 populate the structure:
@@ -634,16 +674,6 @@ OpTypePattern conv_pattern({
 
 In plain English this is saying, a Conv2D op with two inputs, the first of which
 is any op type, and the second is a Const op.
-
-The op field can either contain a single "*", which means match any op type, one
-op type (for example "Const"), or a set of op types separated by `|` symbols
-(for example "Conv2D|MatMul|BiasAdd"). General regex patterns are not supported,
-just these special cases.
-
-You can think of these patterns as very limited regular expressions designed to
-pick out sub-trees in graphs. They are deliberately very constrained to the kind
-of things we commonly find ourselves needing to do, to make creating and
-debugging as straightforward as possible.
 
 Here's a much more complex example, from the [quantize_nodes](#quantize_nodes)
 transform:
@@ -680,8 +710,9 @@ transform:
 
 This is looking for QuantizeV2 nodes, with three inputs, the first of which is a
 Dequantize, the second is a Min that ultimately pulls from a Dequantize, and the
-third is a Max which does the same. We know the end result of this sub-graph is
-a no-op, since it's just turning an eight-bit buffer into float, and then
+third is a Max which does the same. Assuming we know the Dequantize ops are
+pulling from the same eight-bit buffer, the end result of this sub-graph is
+a no-op, since it's just turning the eight-bit buffer into float, and then
 immediately converting it back to eight-bits, so if we look for this pattern and
 remove it we can optimize the graph without changing the result.
 
@@ -767,9 +798,10 @@ There are a few things to know about the `ReplaceMatchingOpTypes` function:
     convenience call that will copy over all of the original nodes if you decide
     you don't actually want to modify a particular sub-graph.
 
-*   Nodes will never appear in more than one matched sub-graph. This is to
-    ensure that sub-trees are only replaced once, but it may mean that some
-    sub-graphs aren't spotted if they overlap with earlier matches.
+*   It is assumed that the same nodes will never appear in more than one matched
+    sub-graph. This is to ensure that sub-trees are only replaced once, but it
+    may mean that some sub-graphs aren't spotted if they overlap with earlier
+    matches.
 
 *   The calling framework tries to ensure that the graph remains sane, by
     looking at the new_nodes that are returned and making sure that no nodes
@@ -824,11 +856,11 @@ if (!strings::safe_strto32(StringPiece(num_steps_string), &num_steps)) {
 }
 ```
 
-Things to notice here are that you have to convert the string to an integer, and
-if the conversion fails you need to raise a meaningful error through the status
-result of the transform. We're also using a helper function which raises an
-error if the parameter is present multiple times, and uses a default if the user
-hasn't specified it.
+Something to notice here is that you have to convert the string to an integer,
+and if the conversion fails you need to raise a meaningful error through the
+status result of the transform. Also, we're using a helper function which raises
+an error if the parameter is present multiple times, and uses a default if the
+user hasn't specified it.
 
 ### Function Libraries
 

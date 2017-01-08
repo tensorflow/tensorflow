@@ -143,7 +143,11 @@ class EmptyOp : public OpKernel {
                             reinterpret_cast<const int32*>(dims.data()),
                             dims.size(), &out_shape));
     Tensor* out = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, out_shape, &out));
+    // We do not know whether the output will be used on GPU. Setting it to be
+    // gpu-compatible for now.
+    AllocatorAttributes attr;
+    attr.set_gpu_compatible(true);
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, out_shape, &out, attr));
 
     if (init_) {
       functor::SetZeroFunctor<Device, T>()(ctx->eigen_device<Device>(),

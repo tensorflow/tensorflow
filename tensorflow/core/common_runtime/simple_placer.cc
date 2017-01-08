@@ -51,13 +51,14 @@ std::vector<Device*> FilterSupportedDevices(
   }
 
   auto device_sort = [](const Device* a, const Device* b) {
-    // First sort by prioritized device type and then by device name.
-    return std::make_pair(
-               DeviceSet::DeviceTypeOrder(DeviceType(a->device_type())),
-               StringPiece(a->name())) <
-           std::make_pair(
-               DeviceSet::DeviceTypeOrder(DeviceType(b->device_type())),
-               StringPiece(b->name()));
+    auto a_priority = DeviceSet::DeviceTypeOrder(DeviceType(a->device_type()));
+    auto b_priority = DeviceSet::DeviceTypeOrder(DeviceType(b->device_type()));
+    // First sort by prioritized device type (higher is preferred) and
+    // then by device name (lexicographically).
+    if (a_priority != b_priority) {
+      return a_priority > b_priority;
+    }
+    return StringPiece(a->name()) < StringPiece(b->name());
   };
   std::sort(filtered_devices.begin(), filtered_devices.end(), device_sort);
   return filtered_devices;

@@ -19,6 +19,10 @@ filegroup(
         exclude = [
             "**/METADATA",
             "**/OWNERS",
+            # Exclude any .class files that might have been generated
+            # by manual invocations of javac as described in
+            # tensorflow/java/README.md
+            "**/*.class",
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
