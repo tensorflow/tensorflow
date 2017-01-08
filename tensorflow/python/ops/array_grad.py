@@ -65,7 +65,7 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
   def _CreateDenseMaskAndBegin(sizes, concat_dim):
     """Create variables for iteratively slicing a dense gradients tensor."""
     # Since shape is 1-D, shape_of_shape = [rank-of-inputs]
-    shape_of_shape = array_ops.shape(sizes[dim_index])
+    shape_of_shape = array_ops.shape(sizes[0])
     # Make a vector of length equal to the input's dimensions,
     # with 0's everywhere and 1 in the concat dim position.
     # Note: Can't use sparse_to_dense since it isn't GPU-capable (for now)
@@ -103,6 +103,10 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
 
   concat_dim = op.inputs[dim_index]
   input_values = op.inputs[start_value_index:end_value_index]
+  # Using mod here for convenience since concat_dim is already verified
+  # in concat implementation to be within the allowed [-rank, rank) range.
+  non_neg_concat_dim = concat_dim % array_ops.rank(input_values[0])
+
   out_grads = []
   if isinstance(grad, ops.Tensor):
     # Get the inputs' tensor shapes
@@ -117,10 +121,10 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
       sizes = array_ops.squeeze(
           array_ops.slice(
               array_ops.stack(
-                  sizes, axis=1), [concat_dim, 0], [1, -1]))
-      out_grads = array_ops.split(grad, sizes, concat_dim)
+                  sizes, axis=1), [non_neg_concat_dim, 0], [1, -1]))
+      out_grads = array_ops.split(grad, sizes, non_neg_concat_dim)
     else:
-      offset = gen_array_ops._concat_offset(concat_dim, sizes)
+      offset = gen_array_ops._concat_offset(non_neg_concat_dim, sizes)
       for (begin, size) in zip(offset, sizes):
         out_grads.append(array_ops.slice(grad, begin, size))
     # pylint: enable=protected-access
@@ -129,14 +133,22 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
     if concat_dim_static is None:
       raise ValueError("Can only compute IndexedSlices gradient with "
                        "statically-known concat_dim")
+    if concat_dim_static < 0:
+      rank = tensor_util.constant_value(array_ops.rank(input_values[0]))
+      if rank is None:
+        raise ValueError("Can only compute IndexedSlices gradient with "
+                         "negative concat_dim when first value rank is "
+                         "statically-known.")
+      concat_dim_static %= rank
     # Get the inputs' tensor shapes
     sizes = [array_ops.shape(x) for x in input_values]
     if concat_dim_static > 0:
-      # IndexedSlices, concat_dim > 0. Each input gets IndexedSlices gradients
-      # with all the indices, but with grad.values sliced accordingly. This
-      # is like the Tensor case, except shape(grad.values)[0] is not equal to
-      # shape(sizes[i])[0], since only a subset of the dim-0 values are stored.
-      mask, begin = _CreateDenseMaskAndBegin(sizes, concat_dim)
+      # IndexedSlices, non_neg_concat_dim > 0. Each input gets IndexedSlices
+      # gradients with all the indices, but with grad.values sliced accordingly.
+      # This is like the Tensor case, except shape(grad.values)[0] is not equal
+      # to shape(sizes[i])[0], since only a subset of the dim-0 values are
+      # stored.
+      mask, begin = _CreateDenseMaskAndBegin(sizes, non_neg_concat_dim)
       for size in sizes:
         new_values = array_ops.slice(
             grad.values,
@@ -152,7 +164,7 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
       # only for the relevant indices.
       start = constant_op.constant(0, dtype=grad.indices.dtype)
       for size in sizes:
-        size_concat_dim = array_ops.gather(size, concat_dim)
+        size_concat_dim = array_ops.gather(size, non_neg_concat_dim)
         if size_concat_dim.dtype != grad.indices.dtype:
           size_concat_dim = math_ops.cast(size_concat_dim,
                                           dtype=grad.indices.dtype)

@@ -324,7 +324,7 @@ Concatenates tensors along one dimension.
 values: List of `N` Tensors to concatenate. Their ranks and types must match,
   and their sizes must match in all dimensions except `concat_dim`.
 axis: 0-D.  The dimension along which to concatenate.  Must be in the
-  range [0, rank(values)).
+  range [-rank(values), rank(values)).
 output: A `Tensor` with the concatenation of values stacked along the
   `concat_dim` dimension.  This tensor's shape matches that of `values` except
   in `concat_dim` where it has the sum of the sizes.

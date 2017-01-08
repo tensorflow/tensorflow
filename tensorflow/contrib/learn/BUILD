@@ -552,6 +552,7 @@ py_test(
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python/ops/losses",
         "//third_party/py/numpy",
     ],
 )
@@ -1036,12 +1037,12 @@ py_test(
 
 py_binary(
     name = "inspect_checkpoint",
-    srcs = [
-        "python/learn/utils/inspect_checkpoint.py",
-    ],
+    srcs = ["python/learn/utils/inspect_checkpoint.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/python",  # TODO(b/34059704): remove when fixed
+        "//tensorflow/python:platform",
     ],
 )
 

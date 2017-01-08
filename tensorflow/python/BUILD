@@ -30,7 +30,16 @@ py_library(
     name = "python",
     srcs = ["__init__.py"],
     srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:__pkg__"],
+    visibility = [
+        "//tensorflow:__pkg__",
+        "//tensorflow/compiler/aot/tests:__pkg__",  # TODO(b/34059704): remove when fixed
+        "//tensorflow/contrib/learn:__pkg__",  # TODO(b/34059704): remove when fixed
+        "//tensorflow/contrib/learn/python/learn/datasets:__pkg__",  # TODO(b/34059704): remove when fixed
+        "//tensorflow/python/debug:__pkg__",  # TODO(b/34059704): remove when fixed
+        "//tensorflow/python/tools:__pkg__",  # TODO(b/34059704): remove when fixed
+        "//tensorflow/tensorboard/scripts:__pkg__",  # TODO(b/34059704): remove when fixed
+        "//tensorflow/tools/quantization:__pkg__",  # TODO(b/34059704): remove when fixed
+    ],
     deps = [
         ":array_ops",
         ":check_ops",
