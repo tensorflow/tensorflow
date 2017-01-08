@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import collections
 import os.path
 import sys
@@ -31,12 +32,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import docs
 from tensorflow.python.framework import framework_lib
 
-
-tf.flags.DEFINE_string("out_dir", None,
-                       "Directory to which docs should be written.")
-tf.flags.DEFINE_boolean("print_hidden_regex", False,
-                        "Dump a regular expression matching any hidden symbol")
-FLAGS = tf.flags.FLAGS
+FLAGS = None
 
 
 PREFIX_TEXT = """
@@ -309,4 +305,19 @@ def main(unused_argv):
 
 
 if __name__ == "__main__":
-  tf.app.run()
+  parser = argparse.ArgumentParser()
+  parser.register("type", "bool", lambda v: v.lower() == "true")
+  parser.add_argument(
+      "--out_dir",
+      type=str,
+      default=None,
+      help="Directory to which docs should be written.")
+  parser.add_argument(
+      "--print_hidden_regex",
+      type="bool",
+      nargs="?",
+      const=True,
+      default=False,
+      help="Dump a regular expression matching any hidden symbol")
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

@@ -46,7 +46,7 @@ public class MultiBoxTracker {
 
   // Maximum percentage of a box that can be overlapped by another box at detection time. Otherwise
   // the lower scored box (new or old) will be removed.
-  private static final float MAX_OVERLAP = 0.35f;
+  private static final float MAX_OVERLAP = 0.2f;
 
   private static final float MIN_SIZE = 16.0f;
 
@@ -167,24 +167,21 @@ public class MultiBoxTracker {
             (int) (multiplier * frameWidth),
             sensorOrientation,
             false);
-
     for (final TrackedRecognition recognition : trackedObjects) {
       final ObjectTracker.TrackedObject trackedObject = recognition.trackedObject;
 
       final RectF trackedPos = trackedObject.getTrackedPositionInPreviewFrame();
+      getFrameToCanvasMatrix().mapRect(trackedPos);
+      boxPaint.setColor(recognition.color);
 
-      if (getFrameToCanvasMatrix().mapRect(trackedPos)) {
-        boxPaint.setColor(recognition.color);
+      final float cornerSize = Math.min(trackedPos.width(), trackedPos.height()) / 8.0f;
+      canvas.drawRoundRect(trackedPos, cornerSize, cornerSize, boxPaint);
 
-        final float cornerSize = Math.min(trackedPos.width(), trackedPos.height()) / 8.0f;
-        canvas.drawRoundRect(trackedPos, cornerSize, cornerSize, boxPaint);
-
-        final String labelString =
-            !TextUtils.isEmpty(recognition.title)
-                ? String.format("%s %.2f", recognition.title, recognition.detectionConfidence)
-                : String.format("%.2f", recognition.detectionConfidence);
-        borderedText.drawText(canvas, trackedPos.left + cornerSize, trackedPos.bottom, labelString);
-      }
+      final String labelString =
+          !TextUtils.isEmpty(recognition.title)
+              ? String.format("%s %.2f", recognition.title, recognition.detectionConfidence)
+              : String.format("%.2f", recognition.detectionConfidence);
+      borderedText.drawText(canvas, trackedPos.left + cornerSize, trackedPos.bottom, labelString);
     }
   }
 
@@ -300,15 +297,14 @@ public class MultiBoxTracker {
       final RectF intersection = new RectF();
       final boolean intersects = intersection.setIntersect(a, b);
 
-      final float intersectAmount =
-          intersection.width()
-              * intersection.height()
-              / Math.min(a.width() * a.height(), b.width() * b.height());
+      final float intersectArea = intersection.width() * intersection.height();
+      final float totalArea = a.width() * a.height() + b.width() * b.height() - intersectArea;
+      final float intersectOverUnion = intersectArea / totalArea;
 
       // If there is an intersection with this currently tracked box above the maximum overlap
       // percentage allowed, either the new recognition needs to be dismissed or the old
       // recognition needs to be removed and possibly replaced with the new one.
-      if (intersects && intersectAmount > MAX_OVERLAP) {
+      if (intersects && intersectOverUnion > MAX_OVERLAP) {
         if (potential.first < trackedRecognition.detectionConfidence
             && trackedRecognition.trackedObject.getCurrentCorrelation() > MARGINAL_CORRELATION) {
           // If track for the existing object is still going strong and the detection score was
@@ -320,8 +316,8 @@ public class MultiBoxTracker {
 
           // Let the previously tracked object with max intersection amount donate its color to
           // the new object.
-          if (intersectAmount > maxIntersect) {
-            maxIntersect = intersectAmount;
+          if (intersectOverUnion > maxIntersect) {
+            maxIntersect = intersectOverUnion;
             recogToReplace = trackedRecognition;
           }
         }

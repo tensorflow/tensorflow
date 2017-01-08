@@ -92,6 +92,20 @@ cc_binary(
     deps = ["//tensorflow/java/src/main/native"],
 )
 
+genrule(
+    name = "pom",
+    outs = ["pom.xml"],
+    cmd = "$(location generate_pom) >$@",
+    output_to_bindir = 1,
+    tools = [":generate_pom"],
+)
+
+cc_binary(
+    name = "generate_pom",
+    srcs = ["generate_pom.cc"],
+    deps = ["//tensorflow/c:c_api"],
+)
+
 # System.loadLibrary() on OS X looks for ".dylib" or ".jnilib"
 # and no ".so". If and when https://github.com/bazelbuild/bazel/issues/914
 # is resolved, perhaps this workaround rule can be removed.
