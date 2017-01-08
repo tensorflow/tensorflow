@@ -314,7 +314,7 @@ class TransformerTest(test.TestCase):
         features=features, feature_columns=[weighted_ids])
     self.assertEqual(len(output), 1)
     self.assertIn(weighted_ids, output)
-    print(output)
+
     with self.test_session():
       data_flow_ops.initialize_all_tables().run()
       self.assertAllEqual(output[weighted_ids][0].dense_shape.eval(),
@@ -662,7 +662,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     with self.test_session():
       self.assertAllClose(output.eval(), expected)
 
-  def testOneHotColumnFromWeightedSparseColumnFails(self):
+  def testOneHotColumnFromWeightedSparseColumnSucceedsForDNN(self):
     ids_column = feature_column.sparse_column_with_keys(
         "ids", ["a", "b", "c", "unseen"])
     ids_tensor = sparse_tensor.SparseTensor(
@@ -677,14 +677,13 @@ class CreateInputLayersForDNNsTest(test.TestCase):
         dense_shape=[3, 2])
     features = {"ids": ids_tensor, "weights": weights_tensor}
     one_hot_column = feature_column.one_hot_column(weighted_ids_column)
+    output = feature_column_ops.input_from_feature_columns(features,
+                                                           [one_hot_column])
     with self.test_session():
       variables_lib.global_variables_initializer().run()
       data_flow_ops.initialize_all_tables().run()
-      with self.assertRaisesRegexp(
-          ValueError,
-          "one_hot_column does not yet support weighted_sparse_column"):
-        _ = feature_column_ops.input_from_feature_columns(features,
-                                                          [one_hot_column])
+      self.assertAllEqual([[0, 0, 10., 0], [0, 20., 0, 0], [30., 0, 40., 0]],
+                          output.eval())
 
   def testOneHotColumnFromSparseColumnWithKeysSucceedsForDNN(self):
     ids_column = feature_column.sparse_column_with_keys(

@@ -55,7 +55,6 @@ from tensorflow.python.platform import test
 from tensorflow.python.summary import event_multiplexer
 from tensorflow.python.summary.writer import writer as writer_lib
 from tensorflow.python.training import saver as saver_lib
-from tensorflow.tensorboard.backend import handler
 from tensorflow.tensorboard.backend import server
 
 
@@ -250,19 +249,12 @@ class TensorboardServerTest(test.TestCase):
                      [b'very_large_attr'])
 
   def testProjectorRunsWithEmbeddings(self):
-    """Test the format of /runs endpoint in projector."""
-    if 'projector' not in handler.REGISTERED_PLUGINS:
-      return
-
+    """Test the format of /runs endpoint of the projector plugin."""
     run_json = self._getJson('/data/plugin/projector/runs')
-
     self.assertEqual(run_json, ['run1'])
 
   def testProjectorInfo(self):
-    """Test the format of /info endpoint in projector."""
-    if 'projector' not in handler.REGISTERED_PLUGINS:
-      return
-
+    """Test the format of /info endpoint of the projector plugin."""
     info_json = self._getJson('/data/plugin/projector/info?run=run1')
     self.assertItemsEqual(info_json['embeddings'], [{
         'tensorShape': [1, 2],
@@ -276,10 +268,7 @@ class TensorboardServerTest(test.TestCase):
     }])
 
   def testProjectorTensor(self):
-    """Test the format of /tensor endpoint in projector."""
-    if 'projector' not in handler.REGISTERED_PLUGINS:
-      return
-
+    """Test the format of /tensor endpoint of the projector plugin."""
     url = '/data/plugin/projector/tensor?run=run1&name=var1'
     tensor_bytes = self._get(url).read()
     tensor = np.reshape(np.fromstring(tensor_bytes, dtype='float32'), [1, 2])
@@ -419,8 +408,8 @@ class TensorboardServerTest(test.TestCase):
     writer.flush()
     writer.close()
 
-    if 'projector' in handler.REGISTERED_PLUGINS:
-      self._GenerateProjectorTestData(run1_path)
+    # We assume that the projector is a registered plugin.
+    self._GenerateProjectorTestData(run1_path)
 
     return temp_dir
 

@@ -71,7 +71,6 @@ class PackOpTest(test.TestCase):
         self.assertAllEqual(c.eval(), data)
 
         c = array_ops.parallel_stack(data)
-        self.assertEqual(c.op.type, "Const")
         self.assertAllEqual(c.eval(), data)
 
         # Python lists also work for 1-D case:
@@ -86,7 +85,6 @@ class PackOpTest(test.TestCase):
           self.assertAllEqual(cl.eval(), data)
 
           cl = array_ops.parallel_stack(data_list)
-          self.assertEqual(cl.op.type, "Const")
           self.assertAllEqual(cl.eval(), data)
 
       # Verify that shape induction works with shapes produced via const pack
@@ -95,9 +93,6 @@ class PackOpTest(test.TestCase):
       self.assertAllEqual(b.get_shape(), [2, 3])
 
       b = array_ops.reshape(a, array_ops.stack([2, 3]))
-      self.assertAllEqual(b.get_shape(), [2, 3])
-
-      b = array_ops.reshape(a, array_ops.parallel_stack([2, 3]))
       self.assertAllEqual(b.get_shape(), [2, 3])
 
   def testGradientsAxis0(self):

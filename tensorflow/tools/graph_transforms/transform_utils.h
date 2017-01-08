@@ -124,6 +124,10 @@ void FindInvalidInputs(const GraphDef& graph_def,
 // graph.
 Status IsGraphValid(const GraphDef& graph_def);
 
+// Returns input and output types for a particular NodeDef.
+Status GetInOutTypes(const NodeDef& node_def, DataTypeVector* inputs,
+                     DataTypeVector* outputs);
+
 // This is used to spot particular subgraphs in a larger model. To use it,
 // create a pattern like:
 // OpTypePattern pattern({"Conv2D", {{"ResizeBilinear", {{"MirrorPad"}}}}});

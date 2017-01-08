@@ -3974,7 +3974,7 @@ op {
   }
   input_arg {
     name: "axis"
-    description: "0-D.  The dimension along which to concatenate.  Must be in the\nrange [0, rank(values))."
+    description: "0-D.  The dimension along which to concatenate.  Must be in the\nrange [-rank(values), rank(values))."
     type_attr: "Tidx"
   }
   output_arg {

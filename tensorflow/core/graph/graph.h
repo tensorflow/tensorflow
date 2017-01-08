@@ -70,6 +70,15 @@ class Node {
   int cost_id() const { return cost_id_; }
   const string& name() const { return props_->node_def_.name(); }
   const string& type_string() const { return props_->node_def_.op(); }
+  // def() provides the NodeDef the user supplied, but the specifics
+  // of this Node may have changed due to placement, optimization, etc.
+  // In particular:
+  // * def().name() will match name();
+  // * def().op() will match type_string() and op_def().name();
+  // * def().input() is not reliable, use "in_edges()" below instead;
+  // * def().device() is the "user's requested device" and may not match
+  //   the actual assigned device, see assigned_device_name() below;
+  // * def().attr() is authoritative.
   const NodeDef& def() const { return props_->node_def_; }
   const OpDef& op_def() const { return *props_->op_def_; }
 
@@ -86,8 +95,8 @@ class Node {
   // you want the device the user requested, use def().device() instead.
   // TODO(josh11b): Validate that the assigned_device, if not empty:
   // fully specifies a device, and satisfies def().device().
-  // TODO(josh11b): Move device_name outside of Node into a NodeId->DeviceName
-  // map.
+  // TODO(josh11b): Move assigned_device_name outside of Node into a
+  // NodeId->DeviceName map.
   string assigned_device_name() const { return assigned_device_name_; }
   void set_assigned_device_name(const string& device_name) {
     assigned_device_name_ = device_name;

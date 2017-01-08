@@ -40,22 +40,28 @@ bazel build -c opt \
   //tensorflow/java:libtensorflow-jni
 ```
 
-To use the library in an external Java project, publish the library to a Maven repository.  For example,
-publish the library to the local Maven repository using the `mvn` tool (installed separately):
+### Maven
+
+To use the library in an external Java project, publish the library to a Maven
+repository.  For example, publish the library to the local Maven repository
+using the `mvn` tool (installed separately):
 
 ```sh
+bazel build -c opt //tensorflow/java:pom
 mvn install:install-file \
-  -Dfile=bazel-bin/tensorflow/java/libtensorflow.jar \
-  -DpomFile=tensorflow/java/pom.xml
+  -Dfile=../../bazel-bin/tensorflow/java/libtensorflow.jar \
+  -DpomFile=../../bazel-bin/tensorflow/java/pom.xml
 ```
 
-Refer to the library using Maven coordinates.  For example, if you're using Maven then place this dependency into your `pom.xml` file:
+Refer to the library using Maven coordinates.  For example, if you're using
+Maven then place this dependency into your `pom.xml` file (replacing
+0.12.head with the version of the TensorFlow runtime you wish to use).
 
 ```xml
 <dependency>
   <groupId>org.tensorflow</groupId>
   <artifactId>libtensorflow</artifactId>
-  <version>0.12.0-SNAPSHOT</version>
+  <version>0.12.head</version>
 </dependency>
 ```
 
