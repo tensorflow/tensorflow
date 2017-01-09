@@ -1,7 +1,18 @@
-# Changes since the last release
+# Release 1.0.0-alpha
+
+## Major Features and Improvements
+* TensorFlow Debugger (tfdbg): command-line interface and API.
+* New python 3 docker images added.
+* Made pip packages pypi compliant. TensorFlow can now be installed by `pip
+  install tensorflow` command.
+* Android: person detection + tracking demo implementing Scalable Object
+  Detection using Deep Neural Networks.
+* Android: pre-built libs are now built nightly.
+* New (experimental) [Java API](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/java).
 
 ## Breaking Changes to the API
 
+* TensorFlow/models have been moved to a separate github repository.
 * Division and modulus operators (/, //, %) now match Python (flooring)
   semantics. This applies to `tf.div` and `tf.mod` as well. To obtain forced
   integer truncation based behaviors you can use `tf.truncatediv`
@@ -53,12 +64,80 @@
   made `tf.sparse_split` require keyword arguments.
 * Deprecated `tf.concat` operator. Please switch to use `tf.concat_v2` for now.
   In the Beta release, we will update `tf.concat` to match argument order of
-  `tf.concat_v2.
-* tf.image.decode_jpeg by default uses the faster DCT method, sacrificing
+  `tf.concat_v2`.
+* `tf.image.decode_jpeg` by default uses the faster DCT method, sacrificing
   a little fidelity for improved speed. One can revert to the old
-  behavior by specifying the attribute dct_method='INTEGER_ACCURATE'.
+  behavior by specifying the attribute `dct_method='INTEGER_ACCURATE'`.
 * `tf.complex_abs` has been removed from the Python interface. `tf.abs`
   supports complex tensors and should be used instead.
+* Template.`var_scope` property renamed to `.variable_scope`
+* SyncReplicasOptimizer is removed and SyncReplicasOptimizerV2 renamed to SyncReplicasOptimizer.
+* `tf.zeros_initializer()` and `tf.ones_initializer()` now return a callable
+  that must be called with initializer arguments, in your code replace
+  `tf.zeros_initializer` with `tf.zeros_initializer()`.
+* `SparseTensor.shape` has been renamed to `SparseTensor.dense_shape`.  Same for
+  `SparseTensorValue.shape`.
+* Remove old tf summary ops, like `tf.scalar_summary` and `tf.histogram_summary`.
+  Use `tf.summary.scalar` and `tf.summary.histogram` instead.
+* Remove tf.train.SummaryWriter and tf.train.SummaryWriterCache.
+* Removes RegisterShape from public API. Use C++ shape function registration
+  instead.
+* Deprecated `_ref` dtypes from the python API.
+
+## Bug Fixes and Other Changes
+* New op: `parallel_stack`.
+* Introducing common tf io compression options constants for
+  RecordReader/RecordWriter.
+* Add `sparse_column_with_vocabulary_file`, to specify a feature column that
+  transform string features to IDs, where the mapping is defined by a vocabulary
+  file.
+* Added `index_to_string_table` which returns a lookup table that maps indices to
+  strings.
+* Add `string_to_index_table`, which returns a lookup table that matches strings
+  to indices.
+* Add a `ParallelForWithWorkerId` function.
+* Add `string_to_index_table`, which returns a lookup table that matches strings
+  to indices.
+* Support restore session from checkpoint files in v2 in `contrib/session_bundle`.
+* Added a tf.contrib.image.rotate function for arbitrary angles.
+* Added `tf.contrib.framework.filter_variables` as a convenience function to
+  filter lists of variables based on regular expressions.
+* Remove old tf summary ops, like `tf.scalar_summary` and `tf.histogram_summary`.
+  Use `tf.summary.scalar` and `tf.summary.histogram` instead.
+* `make_template()` takes an optional `custom_getter_ param`.
+* Added comment about how existing directories are handled by
+  `recursive_create_dir`.
+* Added an op for QR factorizations.
+* Divides and mods in Python API now use flooring (Python) semantics.
+* Android: cmake/gradle build for TensorFlow Inference library under
+  `contrib/android/cmake`
+* Android: Much more robust Session initialization code.
+* Android: TF stats now exposed directly in demo and log when debug mode is
+  active
+* Android: new/better README.md documentation
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+Aaron Hu, Abhishek Aggarwal, Adam Michael, Adriano Carmezim, @AfirSraftGarrier,
+Alexander Novikov, Alexander Rosenberg Johansen, Andrew Gibiansky, Andrew Hundt,
+Anish Shah, Anton Loss, @b0noI, @BoyuanJiang, Carl Thomé, Chad Kennedy, Comic
+Chang, Connor Braa, Daniel N. Lang, Daniel Trebbien,
+@danielgordon10, Darcy Liu, Darren Garvey, Dmitri Lapin, Eron Wright, Evan
+Cofer, Fabrizio Milo, Finbarr Timbers, Franck Dernoncourt, Garrett Smith,
+@guschmue, Hao Wei, Henrik Holst, Huazuo Gao, @Ian, @Issac, Jacob Israel,
+Jangsoo Park, Jin Kim, Jingtian Peng, John Pope, Kye Bostelmann, Liangliang He,
+Ling Zhang, Luheng He, Luke Iwanski, @lvli, Michael Basilyan, Mihir Patel,
+Mikalai Drabovich, Morten Just, @newge, Nick Butlin, Nishant Shukla,
+Pengfei Ni, Przemyslaw Tredak, @rasbt, @Ronny, Rudolf Rosa, @RustingSword,
+Sam Abrahams, Sam Putnam, @SeongAhJo, Shi Jiaxin, @skavulya, Steffen MüLler,
+@TheUSER123, @tiriplicamihai, @vhasanov, Victor Costan, Vit Stepanovs,
+Wangda Tan, Wenjian Huang, Xingdong Zuo, Yaroslav Bulatov, Yota Toyama,
+Yuan (Terry) Tang, Yuxin Wu
+
+We are also grateful to all who filed issues or helped resolve them, asked and
+answered questions, and were part of inspiring discussions.
 
 # Release 0.12.0
 
@@ -98,15 +177,15 @@
 ## Breaking Changes to the API
 
 * `BusAdjacency` enum replaced with a protocol buffer `DeviceLocality`.  PCI bus
-  indexing now starts from 1 instead of 0, and bus_id==0 is used where
-  previously BUS_ANY was used.
+  indexing now starts from 1 instead of 0, and `bus_id==0` is used where
+  previously `BUS_ANY` was used.
 * `Env::FileExists` and `FileSystem::FileExists` now return a tensorflow::Status
   intead of a bool. Any callers to this function can be converted to a bool
   by adding .ok() to the call.
 * The C API type `TF_SessionWithGraph` has been renamed to `TF_Session`,
   indicating its preferred use in language bindings for TensorFlow.
   What was previously `TF_Session` has been renamed to `TF_DeprecatedSession`.
-* Renamed TF_Port to TF_Output in the C API.
+* Renamed `TF_Port` to `TF_Output` in the C API.
 * Removes RegisterShape from public API. Use C++ shape function registration instead.
   indexing now starts from 1 instead of 0, and `bus_id==0` is used where
   previously `BUS_ANY` was used.
@@ -141,7 +220,7 @@
   `tf.global_variables_initializer` respectively.
 * `tf.zeros_initializer()` and `tf.ones_initializer()` now return a callable
   that must be called with initializer arguments, in your code replace
-  tf.zeros_initializer with tf.zeros_initializer()
+  `tf.zeros_initializer` with `tf.zeros_initializer()`
 
 ## Bug Fixes and Other Changes
 
