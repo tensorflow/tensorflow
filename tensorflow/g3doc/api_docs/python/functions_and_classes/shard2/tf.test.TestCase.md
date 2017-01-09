@@ -175,6 +175,125 @@ Checks that for all elements of farray1 and farray2
 
 - - -
 
+#### `tf.test.TestCase.assertBetween(value, minv, maxv, msg=None)` {#TestCase.assertBetween}
+
+Asserts that value is between minv and maxv (inclusive).
+
+
+- - -
+
+#### `tf.test.TestCase.assertCommandFails(command, regexes, env=None, close_fds=True, msg=None)` {#TestCase.assertCommandFails}
+
+Asserts a shell command fails and the error matches a regex in a list.
+
+##### Args:
+
+
+*  <b>`command`</b>: List or string representing the command to run.
+*  <b>`regexes`</b>: the list of regular expression strings.
+*  <b>`env`</b>: Dictionary of environment variable settings.
+*  <b>`close_fds`</b>: Whether or not to close all open fd's in the child after
+    forking.
+*  <b>`msg`</b>: Optional message to report on failure.
+
+
+- - -
+
+#### `tf.test.TestCase.assertCommandSucceeds(command, regexes=('',), env=None, close_fds=True, msg=None)` {#TestCase.assertCommandSucceeds}
+
+Asserts that a shell command succeeds (i.e. exits with code 0).
+
+##### Args:
+
+
+*  <b>`command`</b>: List or string representing the command to run.
+*  <b>`regexes`</b>: List of regular expression byte strings that match success.
+*  <b>`env`</b>: Dictionary of environment variable settings.
+*  <b>`close_fds`</b>: Whether or not to close all open fd's in the child after
+    forking.
+*  <b>`msg`</b>: Optional message to report on failure.
+
+
+- - -
+
+#### `tf.test.TestCase.assertContainsExactSubsequence(container, subsequence, msg=None)` {#TestCase.assertContainsExactSubsequence}
+
+Assert that "container" contains "subsequence" as an exact subsequence.
+
+Asserts that "container" contains all the elements of "subsequence", in
+order, and without other elements interspersed. For example, [1, 2, 3] is an
+exact subsequence of [0, 0, 1, 2, 3, 0] but not of [0, 0, 1, 2, 0, 3, 0].
+
+##### Args:
+
+
+*  <b>`container`</b>: the list we're testing for subsequence inclusion.
+*  <b>`subsequence`</b>: the list we hope will be an exact subsequence of container.
+*  <b>`msg`</b>: Optional message to report on failure.
+
+
+- - -
+
+#### `tf.test.TestCase.assertContainsInOrder(strings, target, msg=None)` {#TestCase.assertContainsInOrder}
+
+Asserts that the strings provided are found in the target in order.
+
+This may be useful for checking HTML output.
+
+##### Args:
+
+
+*  <b>`strings`</b>: A list of strings, such as [ 'fox', 'dog' ]
+*  <b>`target`</b>: A target string in which to look for the strings, such as
+    'The quick brown fox jumped over the lazy dog'.
+*  <b>`msg`</b>: Optional message to report on failure.
+
+
+- - -
+
+#### `tf.test.TestCase.assertContainsSubsequence(container, subsequence, msg=None)` {#TestCase.assertContainsSubsequence}
+
+Assert that "container" contains "subsequence" as a subsequence.
+
+Asserts that "container" contains all the elements of "subsequence", in
+order, but possibly with other elements interspersed. For example, [1, 2, 3]
+is a subsequence of [0, 0, 1, 2, 0, 3, 0] but not of [0, 0, 1, 3, 0, 2, 0].
+
+##### Args:
+
+
+*  <b>`container`</b>: the list we're testing for subsequence inclusion.
+*  <b>`subsequence`</b>: the list we hope will be a subsequence of container.
+*  <b>`msg`</b>: Optional message to report on failure.
+
+
+- - -
+
+#### `tf.test.TestCase.assertContainsSubset(expected_subset, actual_set, msg=None)` {#TestCase.assertContainsSubset}
+
+Checks whether actual iterable is a superset of expected iterable.
+
+
+- - -
+
+#### `tf.test.TestCase.assertCountEqual(*args, **kwargs)` {#TestCase.assertCountEqual}
+
+An unordered sequence specific comparison.
+
+Equivalent to assertItemsEqual(). This method is a compatibility layer
+for Python 3k, since 2to3 does not convert assertItemsEqual() calls into
+assertCountEqual() calls.
+
+##### Args:
+
+
+*  <b>`expected_seq`</b>: A sequence containing elements we are expecting.
+*  <b>`actual_seq`</b>: The sequence that we are testing.
+*  <b>`msg`</b>: The message to be printed if the test fails.
+
+
+- - -
+
 #### `tf.test.TestCase.assertDeviceEqual(device1, device2)` {#TestCase.assertDeviceEqual}
 
 Asserts that the two given devices are the same.
@@ -195,9 +314,48 @@ Checks whether actual is a superset of expected.
 
 - - -
 
-#### `tf.test.TestCase.assertDictEqual(d1, d2, msg=None)` {#TestCase.assertDictEqual}
+#### `tf.test.TestCase.assertDictEqual(a, b, msg=None)` {#TestCase.assertDictEqual}
+
+Raises AssertionError if a and b are not equal dictionaries.
+
+##### Args:
 
 
+*  <b>`a`</b>: A dict, the expected value.
+*  <b>`b`</b>: A dict, the actual value.
+*  <b>`msg`</b>: An optional str, the associated message.
+
+##### Raises:
+
+
+*  <b>`AssertionError`</b>: if the dictionaries are not equal.
+
+
+- - -
+
+#### `tf.test.TestCase.assertEmpty(container, msg=None)` {#TestCase.assertEmpty}
+
+Assert that an object has zero length.
+
+##### Args:
+
+
+*  <b>`container`</b>: Anything that implements the collections.Sized interface.
+*  <b>`msg`</b>: Optional message to report on failure.
+
+
+- - -
+
+#### `tf.test.TestCase.assertEndsWith(actual, expected_end, msg=None)` {#TestCase.assertEndsWith}
+
+Assert that actual.endswith(expected_end) is True.
+
+##### Args:
+
+
+*  <b>`actual`</b>: str
+*  <b>`expected_end`</b>: str
+*  <b>`msg`</b>: Optional message to report on failure.
 
 
 - - -
@@ -282,10 +440,11 @@ Included for symmetry with assertIsNone.
 
 - - -
 
-#### `tf.test.TestCase.assertItemsEqual(expected_seq, actual_seq, msg=None)` {#TestCase.assertItemsEqual}
+#### `tf.test.TestCase.assertItemsEqual(*args, **kwargs)` {#TestCase.assertItemsEqual}
 
-An unordered sequence specific comparison. It asserts that
-actual_seq and expected_seq have the same element counts.
+An unordered sequence specific comparison.
+
+It asserts that actual_seq and expected_seq have the same element counts.
 Equivalent to::
 
     self.assertEqual(Counter(iter(actual_seq)),
@@ -297,6 +456,30 @@ Asserts that each element has the same count in both sequences.
 
     - [0, 1, 1] and [1, 0, 1] compare equal.
     - [0, 0, 1] and [0, 1] compare unequal.
+
+##### Args:
+
+
+*  <b>`expected_seq`</b>: A sequence containing elements we are expecting.
+*  <b>`actual_seq`</b>: The sequence that we are testing.
+*  <b>`msg`</b>: The message to be printed if the test fails.
+
+
+- - -
+
+#### `tf.test.TestCase.assertJsonEqual(first, second, msg=None)` {#TestCase.assertJsonEqual}
+
+Asserts that the JSON objects defined in two strings are equal.
+
+A summary of the differences will be included in the failure message
+using assertSameStructure.
+
+##### Args:
+
+
+*  <b>`first`</b>: A string contining JSON to decode and compare to second.
+*  <b>`second`</b>: A string contining JSON to decode and compare to first.
+*  <b>`msg`</b>: Additional text to include in the failure message.
 
 
 - - -
@@ -369,6 +552,13 @@ if not.
 
 - - -
 
+#### `tf.test.TestCase.assertNoCommonElements(expected_seq, actual_seq, msg=None)` {#TestCase.assertNoCommonElements}
+
+Checks whether actual iterable and expected iterable are disjoint.
+
+
+- - -
+
 #### `tf.test.TestCase.assertNotAlmostEqual(first, second, places=None, msg=None, delta=None)` {#TestCase.assertNotAlmostEqual}
 
 Fail if the two objects are equal as determined by their
@@ -395,6 +585,33 @@ Note that decimal places (from zero) are usually not the same
 as significant digits (measured from the most signficant digit).
 
 Objects that are equal automatically fail.
+
+
+- - -
+
+#### `tf.test.TestCase.assertNotEmpty(container, msg=None)` {#TestCase.assertNotEmpty}
+
+Assert that an object has non-zero length.
+
+##### Args:
+
+
+*  <b>`container`</b>: Anything that implements the collections.Sized interface.
+*  <b>`msg`</b>: Optional message to report on failure.
+
+
+- - -
+
+#### `tf.test.TestCase.assertNotEndsWith(actual, unexpected_end, msg=None)` {#TestCase.assertNotEndsWith}
+
+Assert that actual.endswith(unexpected_end) is False.
+
+##### Args:
+
+
+*  <b>`actual`</b>: str
+*  <b>`unexpected_end`</b>: str
+*  <b>`msg`</b>: Optional message to report on failure.
 
 
 - - -
@@ -432,6 +649,20 @@ Included for symmetry with assertIsInstance.
 #### `tf.test.TestCase.assertNotRegexpMatches(text, unexpected_regexp, msg=None)` {#TestCase.assertNotRegexpMatches}
 
 Fail the test if the text matches the regular expression.
+
+
+- - -
+
+#### `tf.test.TestCase.assertNotStartsWith(actual, unexpected_start, msg=None)` {#TestCase.assertNotStartsWith}
+
+Assert that actual.startswith(unexpected_start) is False.
+
+##### Args:
+
+
+*  <b>`actual`</b>: str
+*  <b>`unexpected_start`</b>: str
+*  <b>`msg`</b>: Optional message to report on failure.
 
 
 - - -
@@ -510,6 +741,38 @@ Asserts that the message in a raised exception matches a regexp.
 
 - - -
 
+#### `tf.test.TestCase.assertRaisesWithLiteralMatch(expected_exception, expected_exception_message, callable_obj=None, *args, **kwargs)` {#TestCase.assertRaisesWithLiteralMatch}
+
+Asserts that the message in a raised exception equals the given string.
+
+Unlike assertRaisesRegexp, this method takes a literal string, not
+a regular expression.
+
+with self.assertRaisesWithLiteralMatch(ExType, 'message'):
+  DoSomething()
+
+##### Args:
+
+
+*  <b>`expected_exception`</b>: Exception class expected to be raised.
+*  <b>`expected_exception_message`</b>: String message expected in the raised
+    exception.  For a raise exception e, expected_exception_message must
+    equal str(e).
+*  <b>`callable_obj`</b>: Function to be called, or None to return a context.
+*  <b>`args`</b>: Extra args.
+*  <b>`kwargs`</b>: Extra kwargs.
+
+##### Returns:
+
+  A context manager if callable_obj is None. Otherwise, None.
+
+##### Raises:
+
+  self.failureException if callable_obj does not raise a macthing exception.
+
+
+- - -
+
 #### `tf.test.TestCase.assertRaisesWithPredicateMatch(exception_type, expected_err_re_or_predicate)` {#TestCase.assertRaisesWithPredicateMatch}
 
 Returns a context manager to enclose code expected to raise an exception.
@@ -534,9 +797,147 @@ predicate search.
 
 - - -
 
+#### `tf.test.TestCase.assertRaisesWithRegexpMatch(expected_exception, expected_regexp, callable_obj=None, *args, **kwargs)` {#TestCase.assertRaisesWithRegexpMatch}
+
+Asserts that the message in a raised exception matches the given regexp.
+
+This is just a wrapper around assertRaisesRegexp. Please use
+assertRaisesRegexp instead of assertRaisesWithRegexpMatch.
+
+##### Args:
+
+
+*  <b>`expected_exception`</b>: Exception class expected to be raised.
+*  <b>`expected_regexp`</b>: Regexp (re pattern object or string) expected to be
+    found in error message.
+*  <b>`callable_obj`</b>: Function to be called, or None to return a context.
+*  <b>`args`</b>: Extra args.
+*  <b>`kwargs`</b>: Extra keyword args.
+
+##### Returns:
+
+  A context manager if callable_obj is None. Otherwise, None.
+
+##### Raises:
+
+  self.failureException if callable_obj does not raise a macthing exception.
+
+
+- - -
+
+#### `tf.test.TestCase.assertRegexMatch(actual_str, regexes, message=None)` {#TestCase.assertRegexMatch}
+
+Asserts that at least one regex in regexes matches str.
+
+    If possible you should use assertRegexpMatches, which is a simpler
+    version of this method. assertRegexpMatches takes a single regular
+    expression (a string or re compiled object) instead of a list.
+
+    Notes:
+    1. This function uses substring matching, i.e. the matching
+       succeeds if *any* substring of the error message matches *any*
+       regex in the list.  This is more convenient for the user than
+       full-string matching.
+
+    2. If regexes is the empty list, the matching will always fail.
+
+    3. Use regexes=[''] for a regex that will always pass.
+
+    4. '.' matches any single character *except* the newline.  To
+       match any character, use '(.|
+)'.
+
+    5. '^' matches the beginning of each line, not just the beginning
+       of the string.  Similarly, '$' matches the end of each line.
+
+    6. An exception will be thrown if regexes contains an invalid
+       regex.
+
+    Args:
+      actual_str:  The string we try to match with the items in regexes.
+      regexes:  The regular expressions we want to match against str.
+        See "Notes" above for detailed notes on how this is interpreted.
+      message:  The message to be printed if the test fails.
+
+
+- - -
+
 #### `tf.test.TestCase.assertRegexpMatches(text, expected_regexp, msg=None)` {#TestCase.assertRegexpMatches}
 
 Fail the test unless the text matches the regular expression.
+
+
+- - -
+
+#### `tf.test.TestCase.assertSameElements(expected_seq, actual_seq, msg=None)` {#TestCase.assertSameElements}
+
+Assert that two sequences have the same elements (in any order).
+
+This method, unlike assertItemsEqual, doesn't care about any
+duplicates in the expected and actual sequences.
+
+  >> assertSameElements([1, 1, 1, 0, 0, 0], [0, 1])
+  # Doesn't raise an AssertionError
+
+If possible, you should use assertItemsEqual instead of
+assertSameElements.
+
+##### Args:
+
+
+*  <b>`expected_seq`</b>: A sequence containing elements we are expecting.
+*  <b>`actual_seq`</b>: The sequence that we are testing.
+*  <b>`msg`</b>: The message to be printed if the test fails.
+
+
+- - -
+
+#### `tf.test.TestCase.assertSameStructure(a, b, aname='a', bname='b', msg=None)` {#TestCase.assertSameStructure}
+
+Asserts that two values contain the same structural content.
+
+The two arguments should be data trees consisting of trees of dicts and
+lists. They will be deeply compared by walking into the contents of dicts
+and lists; other items will be compared using the == operator.
+If the two structures differ in content, the failure message will indicate
+the location within the structures where the first difference is found.
+This may be helpful when comparing large structures.
+
+##### Args:
+
+
+*  <b>`a`</b>: The first structure to compare.
+*  <b>`b`</b>: The second structure to compare.
+*  <b>`aname`</b>: Variable name to use for the first structure in assertion messages.
+*  <b>`bname`</b>: Variable name to use for the second structure.
+*  <b>`msg`</b>: Additional text to include in the failure message.
+
+
+- - -
+
+#### `tf.test.TestCase.assertSequenceAlmostEqual(expected_seq, actual_seq, places=None, msg=None, delta=None)` {#TestCase.assertSequenceAlmostEqual}
+
+An approximate equality assertion for ordered sequences.
+
+Fail if the two sequences are unequal as determined by their value
+differences rounded to the given number of decimal places (default 7) and
+comparing to zero, or by comparing that the difference between each value
+in the two sequences is more than the given delta.
+
+Note that decimal places (from zero) are usually not the same as significant
+digits (measured from the most signficant digit).
+
+If the two sequences compare equal then they will automatically compare
+almost equal.
+
+##### Args:
+
+
+*  <b>`expected_seq`</b>: A sequence containing elements we are expecting.
+*  <b>`actual_seq`</b>: The sequence that we are testing.
+*  <b>`places`</b>: The number of decimal places to compare.
+*  <b>`msg`</b>: The message to be printed if the test fails.
+*  <b>`delta`</b>: The OK difference between compared values.
 
 
 - - -
@@ -557,6 +958,26 @@ which can be indexed, has a length, and has an equality operator.
             datatype should be enforced.
 *  <b>`msg`</b>: Optional message to use on failure instead of a list of
             differences.
+
+
+- - -
+
+#### `tf.test.TestCase.assertSequenceStartsWith(prefix, whole, msg=None)` {#TestCase.assertSequenceStartsWith}
+
+An equality assertion for the beginning of ordered sequences.
+
+If prefix is an empty sequence, it will raise an error unless whole is also
+an empty sequence.
+
+If prefix is not a sequence, it will raise an error if the first element of
+whole does not match.
+
+##### Args:
+
+
+*  <b>`prefix`</b>: A sequence expected at the beginning of the whole parameter.
+*  <b>`whole`</b>: The sequence in which to look for prefix.
+*  <b>`msg`</b>: Optional message to report on failure.
 
 
 - - -
@@ -612,6 +1033,51 @@ Assert that actual.startswith(expected_start) is True.
 
 - - -
 
+#### `tf.test.TestCase.assertTotallyOrdered(*groups, **kwargs)` {#TestCase.assertTotallyOrdered}
+
+Asserts that total ordering has been implemented correctly.
+
+For example, say you have a class A that compares only on its attribute x.
+Comparators other than __lt__ are omitted for brevity.
+
+class A(object):
+  def __init__(self, x, y):
+    self.x = x
+    self.y = y
+
+  def __hash__(self):
+    return hash(self.x)
+
+  def __lt__(self, other):
+    try:
+      return self.x < other.x
+    except AttributeError:
+      return NotImplemented
+
+assertTotallyOrdered will check that instances can be ordered correctly.
+For example,
+
+self.assertTotallyOrdered(
+  [None],  # None should come before everything else.
+  [1],     # Integers sort earlier.
+  [A(1, 'a')],
+  [A(2, 'b')],  # 2 is after 1.
+  [A(3, 'c'), A(3, 'd')],  # The second argument is irrelevant.
+  [A(4, 'z')],
+  ['foo'])  # Strings sort last.
+
+##### Args:
+
+
+*  <b>`*groups`</b>: A list of groups of elements.  Each group of elements is a list
+   of objects that are equal.  The elements in each group must be less than
+   the elements in the group after it.  For example, these groups are
+   totally ordered: [None], [1], [2, 2], [3].
+*  <b>`**kwargs`</b>: optional msg keyword argument can be passed.
+
+
+- - -
+
 #### `tf.test.TestCase.assertTrue(expr, msg=None)` {#TestCase.assertTrue}
 
 Check that the expression is true.
@@ -630,6 +1096,13 @@ A tuple-specific equality assertion.
 *  <b>`tuple2`</b>: The second tuple to compare.
 *  <b>`msg`</b>: Optional message to use on failure instead of a list of
             differences.
+
+
+- - -
+
+#### `tf.test.TestCase.assertUrlEqual(a, b, msg=None)` {#TestCase.assertUrlEqual}
+
+Asserts that urls are equal, ignoring ordering of query params.
 
 
 - - -
@@ -693,9 +1166,9 @@ tearDown.
 
 - - -
 
-#### `tf.test.TestCase.fail(msg=None)` {#TestCase.fail}
+#### `tf.test.TestCase.fail(msg=None, prefix=None)` {#TestCase.fail}
 
-Fail immediately, with the given message.
+Fail immediately with the given message, optionally prefixed.
 
 
 - - -
@@ -749,6 +1222,13 @@ Fail immediately, with the given message.
 
 - - -
 
+#### `tf.test.TestCase.getRecordedProperties()` {#TestCase.getRecordedProperties}
+
+Return any properties that the user has recorded.
+
+
+- - -
+
 #### `tf.test.TestCase.get_temp_dir()` {#TestCase.get_temp_dir}
 
 Returns a unique temporary directory for the test to use.
@@ -767,6 +1247,20 @@ pollute each others environment.
 #### `tf.test.TestCase.id()` {#TestCase.id}
 
 
+
+
+- - -
+
+#### `tf.test.TestCase.recordProperty(property_name, property_value)` {#TestCase.recordProperty}
+
+Record an arbitrary property for later use.
+
+##### Args:
+
+
+*  <b>`property_name`</b>: str, name of property to record; must be a valid XML
+    attribute name
+*  <b>`property_value`</b>: value of property; must be valid XML attribute value
 
 
 - - -
@@ -794,11 +1288,18 @@ Hook method for setting up class fixture before running tests in the class.
 
 #### `tf.test.TestCase.shortDescription()` {#TestCase.shortDescription}
 
-Returns a one-line description of the test, or None if no
-description has been provided.
+Format both the test method name and the first line of its docstring.
 
-The default implementation of this method returns the first line of
-the specified test method's docstring.
+If no docstring is given, only returns the method name.
+
+This method overrides unittest.TestCase.shortDescription(), which
+only returns the first line of the docstring, obscuring the name
+of the test upon failure.
+
+##### Returns:
+
+
+*  <b>`desc`</b>: A short description of a test method.
 
 
 - - -
