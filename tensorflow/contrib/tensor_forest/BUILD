@@ -121,6 +121,7 @@ py_library(
         ":constants",
         ":data_ops_py",
         ":eval_metrics",
+        ":random_forest",
         ":tensor_forest_ops_py",
         ":tensor_forest_py",
     ],
@@ -393,5 +394,36 @@ py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:session",
         "//tensorflow/python:variables",
+    ],
+)
+
+py_library(
+    name = "random_forest",
+    srcs = ["client/random_forest.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_lib",
+        ":data_ops_py",
+        "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/contrib/learn",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:state_ops",
+    ],
+)
+
+py_test(
+    name = "random_forest_test",
+    size = "medium",
+    srcs = ["client/random_forest_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":random_forest",
+        ":tensor_forest_py",
+        "//tensorflow/contrib/learn/python/learn/datasets",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//third_party/py/numpy",
     ],
 )

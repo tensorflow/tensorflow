@@ -28,7 +28,7 @@ if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
 import numpy as np
 
 from tensorflow.contrib.learn.python.learn.datasets import base
-from tensorflow.contrib.learn.python.learn.estimators import random_forest
+from tensorflow.contrib.tensor_forest.client import random_forest
 from tensorflow.contrib.tensor_forest.python import tensor_forest
 from tensorflow.python.platform import test
 
