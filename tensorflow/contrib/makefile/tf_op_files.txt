@@ -67,6 +67,7 @@ tensorflow/core/kernels/reduction_ops_min.cc
 tensorflow/core/kernels/reduction_ops_mean.cc
 tensorflow/core/kernels/reduction_ops_max.cc
 tensorflow/core/kernels/reduction_ops_common.cc
+tensorflow/core/kernels/reduction_ops_any.cc
 tensorflow/core/kernels/queue_ops.cc
 tensorflow/core/kernels/queue_base.cc
 tensorflow/core/kernels/pooling_ops_common.cc
@@ -122,6 +123,7 @@ tensorflow/core/kernels/cwise_op_mul_2.cc
 tensorflow/core/kernels/cwise_op_mul_1.cc
 tensorflow/core/kernels/cwise_op_minimum.cc
 tensorflow/core/kernels/cwise_op_maximum.cc
+tensorflow/core/kernels/cwise_op_logical_not.cc
 tensorflow/core/kernels/cwise_op_logical_and.cc
 tensorflow/core/kernels/cwise_op_log.cc
 tensorflow/core/kernels/cwise_op_less.cc
@@ -135,6 +137,7 @@ tensorflow/core/kernels/cwise_op_div.cc
 tensorflow/core/kernels/cwise_op_add_2.cc
 tensorflow/core/kernels/cwise_op_add_1.cc
 tensorflow/core/kernels/ctc_decoder_ops.cc
+tensorflow/core/kernels/crop_and_resize_op.cc
 tensorflow/core/kernels/conv_ops_using_gemm.cc
 tensorflow/core/kernels/conv_ops_fused.cc
 tensorflow/core/kernels/conv_ops.cc

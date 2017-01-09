@@ -229,6 +229,13 @@ class FeatureColumnTest(test.TestCase):
         expected_shape = (id_tensor_shape[:output_rank - 1] + [vocab_size])
         self.assertEquals(expected_shape, list(one_hot_value.shape))
 
+  def testOneHotColumnForWeightedSparseColumn(self):
+    ids = fc.sparse_column_with_keys("ids", ["marlo", "omar", "stringer"])
+    weighted_ids = fc.weighted_sparse_column(ids, "weights")
+    one_hot = fc.one_hot_column(weighted_ids)
+    self.assertEqual(one_hot.sparse_id_column.name, "ids_weighted_by_weights")
+    self.assertEqual(one_hot.length, 3)
+
   def testRealValuedColumn(self):
     a = fc.real_valued_column("aaa")
     self.assertEqual(a.name, "aaa")

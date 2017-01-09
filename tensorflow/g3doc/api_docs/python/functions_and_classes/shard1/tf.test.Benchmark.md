@@ -27,7 +27,7 @@ Report a benchmark.
 
 - - -
 
-#### `tf.test.Benchmark.run_op_benchmark(sess, op_or_tensor, feed_dict=None, burn_iters=2, min_iters=10, store_trace=False, name=None, extras=None, mbs=0)` {#Benchmark.run_op_benchmark}
+#### `tf.test.Benchmark.run_op_benchmark(sess, op_or_tensor, feed_dict=None, burn_iters=2, min_iters=10, store_trace=False, store_memory_usage=True, name=None, extras=None, mbs=0)` {#Benchmark.run_op_benchmark}
 
 Run an op or tensor in the given session.  Report the results.
 
@@ -44,6 +44,8 @@ Run an op or tensor in the given session.  Report the results.
     store the trace of iteration in the benchmark report.
     The trace will be stored as a string in Google Chrome trace format
     in the extras field "full_trace_chrome_format".
+*  <b>`store_memory_usage`</b>: Boolean, whether to run an extra untimed iteration,
+    calculate memory usage, and store that in extras fields.
 *  <b>`name`</b>: (optional) Override the BenchmarkEntry name with `name`.
     Otherwise it is inferred from the top-level method name.
 *  <b>`extras`</b>: (optional) Dict mapping string keys to additional benchmark info.

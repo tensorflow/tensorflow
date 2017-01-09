@@ -21,8 +21,8 @@ py_binary(
     srcs = ["freeze_graph.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python:client",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform",
@@ -55,6 +55,7 @@ py_binary(
     srcs = ["inspect_checkpoint.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/python",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python:platform",
         "//tensorflow/python:pywrap_tensorflow",
     ],
@@ -123,6 +124,7 @@ py_binary(
     deps = [
         ":optimize_for_inference_lib",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
@@ -155,7 +157,10 @@ py_binary(
     srcs = ["print_selective_registration_header.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = ["//tensorflow/python:platform"],
+    deps = [
+        "//tensorflow/python",  # TODO(b/34059704): remove when fixed
+        "//tensorflow/python:platform",
+    ],
 )
 
 py_test(

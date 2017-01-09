@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
 
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/public/session.h"
@@ -570,6 +572,14 @@ Status IsGraphValid(const GraphDef& graph_def) {
     return errors::Internal(
         "Invalid graph with inputs referring to nonexistent nodes");
   }
+  return Status::OK();
+}
+
+Status GetInOutTypes(const NodeDef& node_def, DataTypeVector* inputs,
+                     DataTypeVector* outputs) {
+  const OpDef* op_def;
+  TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUpOpDef(node_def.op(), &op_def));
+  TF_RETURN_IF_ERROR(InOutTypesForNode(node_def, *op_def, inputs, outputs));
   return Status::OK();
 }
 

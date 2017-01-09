@@ -33,13 +33,12 @@ py_library(
 
 py_binary(
     name = "produce_small_datasets",
-    srcs = [
-        "produce_small_datasets.py",
-    ],
+    srcs = ["produce_small_datasets.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":datasets",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python",  # TODO(b/34059704): remove when fixed
+        "//tensorflow/python:platform",
     ],
 )
 

@@ -46,8 +46,22 @@ std::unordered_map<string, FactoryItem>& device_factories() {
       new std::unordered_map<string, FactoryItem>;
   return *factories;
 }
+
 }  // namespace
 
+// static
+int32 DeviceFactory::DevicePriority(const string& device_type) {
+  mutex_lock l(*get_device_factory_lock());
+  std::unordered_map<string, FactoryItem>& factories = device_factories();
+  auto iter = factories.find(device_type);
+  if (iter != factories.end()) {
+    return iter->second.priority;
+  }
+
+  return -1;
+}
+
+// static
 void DeviceFactory::Register(const string& device_type, DeviceFactory* factory,
                              int priority) {
   mutex_lock l(*get_device_factory_lock());

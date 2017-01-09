@@ -2287,7 +2287,7 @@ every 60 seconds, so we launch it with `sv.loop()`.
   ...
   sv = Supervisor(logdir='/tmp/mydir')
   with sv.managed_session(FLAGS.master) as sess:
-    sv.loop(60, print_loss, (sess))
+    sv.loop(60, print_loss, (sess, ))
     while not sv.should_stop():
       sess.run(my_train_op)
   ```

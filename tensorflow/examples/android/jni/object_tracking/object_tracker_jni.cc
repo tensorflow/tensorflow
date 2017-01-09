@@ -37,7 +37,7 @@ namespace tf_tracking {
 #define OBJECT_TRACKER_METHOD(METHOD_NAME) \
   Java_org_tensorflow_demo_tracking_ObjectTracker_##METHOD_NAME  // NOLINT
 
-JniIntField object_tracker_field("nativeObjectTracker");
+JniLongField object_tracker_field("nativeObjectTracker");
 
 ObjectTracker* get_object_tracker(JNIEnv* env, jobject thiz) {
   ObjectTracker* const object_tracker =

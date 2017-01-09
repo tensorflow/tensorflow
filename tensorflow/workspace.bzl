@@ -4,6 +4,36 @@ load("//third_party/gpus:cuda_configure.bzl", "cuda_configure")
 load("//third_party/sycl:sycl_configure.bzl", "sycl_configure")
 
 
+# Parse the bazel version string from `native.bazel_version`.
+def _parse_bazel_version(bazel_version):
+  # Remove commit from version.
+  version = bazel_version.split(" ", 1)[0]
+
+  # Split into (release, date) parts and only return the release
+  # as a tuple of integers.
+  parts = version.split('-', 1)
+
+  # Turn "release" into a tuple of strings
+  version_tuple = ()
+  for number in parts[0].split('.'):
+    version_tuple += (str(number),)
+  return version_tuple
+
+# Check that a specific bazel version is being used.
+def check_version(bazel_version):
+  if "bazel_version" not in dir(native):
+    fail("\nCurrent Bazel version is lower than 0.2.1, expected at least %s\n" % bazel_version)
+  elif not native.bazel_version:
+    print("\nCurrent Bazel is not a release version, cannot check for compatibility.")
+    print("Make sure that you are running at least Bazel %s.\n" % bazel_version)
+  else:
+    current_bazel_version = _parse_bazel_version(native.bazel_version)
+    minimum_bazel_version = _parse_bazel_version(bazel_version)
+    if minimum_bazel_version > current_bazel_version:
+      fail("\nCurrent Bazel version is {}, expected at least {}\n".format(
+          native.bazel_version, bazel_version))
+  pass
+
 # If TensorFlow is linked as a submodule.
 # path_prefix and tf_repo_name are no longer used.
 def tf_workspace(path_prefix = "", tf_repo_name = ""):
@@ -269,11 +299,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.new_http_archive(
       name = "llvm",
       urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/llvm-mirror/llvm/archive/ad27fdae895df1b9ad11a93102de6622f63e1220.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/ad27fdae895df1b9ad11a93102de6622f63e1220.tar.gz",
+          "http://bazel-mirror.storage.googleapis.com/github.com/llvm-mirror/llvm/archive/4e9e4f277ad254e02a0cff33c61cd827e600da62.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/4e9e4f277ad254e02a0cff33c61cd827e600da62.tar.gz",
       ],
-      sha256 = "ce7abf076586f2ef13dcd1c4e7ba13604a0826a0f44fe0a6faceeb9bdffc8544",
-      strip_prefix = "llvm-ad27fdae895df1b9ad11a93102de6622f63e1220",
+      sha256 = "ec67c57dfd85c2bb857fd13011c5c2aa3f1dc9f40c0a5bac13e78e76d6b61aa6",
+      strip_prefix = "llvm-4e9e4f277ad254e02a0cff33c61cd827e600da62",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
   )
 
