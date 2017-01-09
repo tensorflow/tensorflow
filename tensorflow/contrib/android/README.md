@@ -15,7 +15,7 @@ Android app. Note that training is not supported through this interface; for
 that you will have to use one of the other APIs.
 
 For prebuilt libraries, see the
-[nightly Android build artifacts](https://ci.tensorflow.org/view/Nightly/job/nightly-matrix-android/TF_BUILD_CONTAINER_TYPE=ANDROID,TF_BUILD_IS_OPT=OPT,TF_BUILD_IS_PIP=NO_PIP,TF_BUILD_PYTHON_VERSION=PYTHON2,label=android-slave/)
+[nightly Android build artifacts](https://ci.tensorflow.org/view/Nightly/job/nightly-android/)
 page for a recent build.
 
 To build the inference libraries yourself (if, for example, you want to support
