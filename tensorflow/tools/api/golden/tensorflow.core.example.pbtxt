@@ -1,0 +1,12 @@
+path: "tensorflow.core.example"
+tf_module {
+  name: "tensorflow.core.example"
+  members {
+    name: "example_pb2"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "feature_pb2"
+    mtype: "<type \'module\'>"
+  }
+}

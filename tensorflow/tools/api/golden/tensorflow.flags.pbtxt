@@ -1,0 +1,68 @@
+path: "tensorflow.flags"
+tf_module {
+  name: "tensorflow.python.platform.flags"
+  members {
+    name: "FLAGS"
+    mtype: "<class \'tensorflow.python.platform.flags._FlagValues\'>"
+  }
+  member_methods {
+    name: "DEFINE_bool"
+    args {
+      arg_name: "flag_name"
+    }
+    args {
+      arg_name: "default_value"
+    }
+    args {
+      arg_name: "docstring"
+    }
+  }
+  member_methods {
+    name: "DEFINE_boolean"
+    args {
+      arg_name: "flag_name"
+    }
+    args {
+      arg_name: "default_value"
+    }
+    args {
+      arg_name: "docstring"
+    }
+  }
+  member_methods {
+    name: "DEFINE_float"
+    args {
+      arg_name: "flag_name"
+    }
+    args {
+      arg_name: "default_value"
+    }
+    args {
+      arg_name: "docstring"
+    }
+  }
+  member_methods {
+    name: "DEFINE_integer"
+    args {
+      arg_name: "flag_name"
+    }
+    args {
+      arg_name: "default_value"
+    }
+    args {
+      arg_name: "docstring"
+    }
+  }
+  member_methods {
+    name: "DEFINE_string"
+    args {
+      arg_name: "flag_name"
+    }
+    args {
+      arg_name: "default_value"
+    }
+    args {
+      arg_name: "docstring"
+    }
+  }
+}

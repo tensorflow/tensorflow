@@ -1,0 +1,134 @@
+path: "tensorflow.GraphKeys"
+tf_class {
+  name: "GraphKeys"
+  is_instance: "<class \'tensorflow.python.framework.ops.GraphKeys\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "ACTIVATIONS"
+    mtype: "<type \'str\'>"
+  }
+  members {
+    name: "ASSET_FILEPATHS"
+    mtype: "<type \'str\'>"
+  }
+  members {
+    name: "BIASES"
+    mtype: "<type \'str\'>"
+  }
+  members {
+    name: "CONCATENATED_VARIABLES"
+    mtype: "<type \'str\'>"
+  }
+  members {
+    name: "COND_CONTEXT"
+    mtype: "<type \'str\'>"
+  }
+  members {
+    name: "EVAL_STEP"
+    mtype: "<type \'str\'>"
+  }
+  members {
+    name: "GLOBAL_STEP"
+    mtype: "<type \'str\'>"
+  }
+  members {
+    name: "GLOBAL_VARIABLES"
+    mtype: "<type \'str\'>"
+  }
+  members {
+    name: "INIT_OP"
+    mtype: "<type \'str\'>"
+  }
+  members {
+    name: "LOCAL_INIT_OP"
+    mtype: "<type \'str\'>"
+  }
+  members {
+    name: "LOCAL_RESOURCES"
+    mtype: "<type \'str\'>"
+  }
+  members {
+    name: "LOCAL_VARIABLES"
+    mtype: "<type \'str\'>"
+  }
+  members {
+    name: "LOSSES"
+    mtype: "<type \'str\'>"
+  }
+  members {
+    name: "MODEL_VARIABLES"
+    mtype: "<type \'str\'>"
+  }
+  members {
+    name: "MOVING_AVERAGE_VARIABLES"
+    mtype: "<type \'str\'>"
+  }
+  members {
+    name: "QUEUE_RUNNERS"
+    mtype: "<type \'str\'>"
+  }
+  members {
+    name: "READY_FOR_LOCAL_INIT_OP"
+    mtype: "<type \'str\'>"
+  }
+  members {
+    name: "READY_OP"
+    mtype: "<type \'str\'>"
+  }
+  members {
+    name: "REGULARIZATION_LOSSES"
+    mtype: "<type \'str\'>"
+  }
+  members {
+    name: "RESOURCES"
+    mtype: "<type \'str\'>"
+  }
+  members {
+    name: "SAVEABLE_OBJECTS"
+    mtype: "<type \'str\'>"
+  }
+  members {
+    name: "SAVERS"
+    mtype: "<type \'str\'>"
+  }
+  members {
+    name: "SUMMARIES"
+    mtype: "<type \'str\'>"
+  }
+  members {
+    name: "SUMMARY_OP"
+    mtype: "<type \'str\'>"
+  }
+  members {
+    name: "TABLE_INITIALIZERS"
+    mtype: "<type \'str\'>"
+  }
+  members {
+    name: "TRAINABLE_RESOURCE_VARIABLES"
+    mtype: "<type \'str\'>"
+  }
+  members {
+    name: "TRAINABLE_VARIABLES"
+    mtype: "<type \'str\'>"
+  }
+  members {
+    name: "TRAIN_OP"
+    mtype: "<type \'str\'>"
+  }
+  members {
+    name: "UPDATE_OPS"
+    mtype: "<type \'str\'>"
+  }
+  members {
+    name: "VARIABLES"
+    mtype: "<type \'str\'>"
+  }
+  members {
+    name: "WEIGHTS"
+    mtype: "<type \'str\'>"
+  }
+  members {
+    name: "WHILE_CONTEXT"
+    mtype: "<type \'str\'>"
+  }
+}

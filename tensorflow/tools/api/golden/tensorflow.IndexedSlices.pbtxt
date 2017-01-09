@@ -1,0 +1,39 @@
+path: "tensorflow.IndexedSlices"
+tf_class {
+  name: "IndexedSlices"
+  is_instance: "<class \'tensorflow.python.framework.ops.IndexedSlices\'>"
+  is_instance: "<class \'tensorflow.python.framework.ops._TensorLike\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "dense_shape"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "device"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "graph"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "indices"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "name"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "op"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "values"
+    mtype: "<type \'property\'>"
+  }
+}

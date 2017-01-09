@@ -1,0 +1,56 @@
+path: "tensorflow.train.Scaffold"
+tf_class {
+  name: "Scaffold"
+  is_instance: "<class \'tensorflow.python.training.monitored_session.Scaffold\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "init_feed_dict"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "init_fn"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "init_op"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "local_init_op"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "ready_for_local_init_op"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "ready_op"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "saver"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "summary_op"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "finalize"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "get_or_default"
+    args {
+      arg_name: "arg_name"
+    }
+    args {
+      arg_name: "collection_key"
+    }
+    args {
+      arg_name: "default_constructor"
+    }
+  }
+}

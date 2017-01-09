@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package tensorflow.tools.api;
+
+message TFAPIMember {
+  string name = 1;
+  string mtype = 2;
+};
+
+message TFAPIMethodArgs {
+  string arg_name = 1;
+};
+
+message TFAPIMethod {
+  string name = 1;
+  string path = 2;  // or canonical_name
+  repeated TFAPIMethodArgs args = 3;
+};
+
+message TFAPIModule {
+  string name = 1;
+  repeated TFAPIMember members = 3;
+  repeated TFAPIMethod member_methods = 4;
+};
+
+message TFAPIClass {
+  string name = 1;
+  repeated string is_instance = 3;
+  repeated TFAPIMember members = 4;
+  repeated TFAPIMethod member_methods = 5;
+};
+
+message TFAPIObject {
+  string path = 1;
+  TFAPIModule tf_module = 2;
+  TFAPIClass tf_class = 3;
+};

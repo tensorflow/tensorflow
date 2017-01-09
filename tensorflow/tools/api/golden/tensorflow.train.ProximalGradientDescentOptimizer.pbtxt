@@ -1,0 +1,112 @@
+path: "tensorflow.train.ProximalGradientDescentOptimizer"
+tf_class {
+  name: "ProximalGradientDescentOptimizer"
+  is_instance: "<class \'tensorflow.python.training.proximal_gradient_descent.ProximalGradientDescentOptimizer\'>"
+  is_instance: "<class \'tensorflow.python.training.optimizer.Optimizer\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "GATE_GRAPH"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "GATE_NONE"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "GATE_OP"
+    mtype: "<type \'int\'>"
+  }
+  member_methods {
+    name: "apply_gradients"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "grads_and_vars"
+    }
+    args {
+      arg_name: "global_step"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "compute_gradients"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "loss"
+    }
+    args {
+      arg_name: "var_list"
+    }
+    args {
+      arg_name: "gate_gradients"
+    }
+    args {
+      arg_name: "aggregation_method"
+    }
+    args {
+      arg_name: "colocate_gradients_with_ops"
+    }
+    args {
+      arg_name: "grad_loss"
+    }
+  }
+  member_methods {
+    name: "get_name"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "get_slot"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "var"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "get_slot_names"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "minimize"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "loss"
+    }
+    args {
+      arg_name: "global_step"
+    }
+    args {
+      arg_name: "var_list"
+    }
+    args {
+      arg_name: "gate_gradients"
+    }
+    args {
+      arg_name: "aggregation_method"
+    }
+    args {
+      arg_name: "colocate_gradients_with_ops"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "grad_loss"
+    }
+  }
+}

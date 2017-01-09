@@ -1,0 +1,55 @@
+path: "tensorflow.graph_util"
+tf_module {
+  name: "tensorflow.python.framework.graph_util"
+  member_methods {
+    name: "convert_variables_to_constants"
+    args {
+      arg_name: "sess"
+    }
+    args {
+      arg_name: "input_graph_def"
+    }
+    args {
+      arg_name: "output_node_names"
+    }
+    args {
+      arg_name: "variable_names_whitelist"
+    }
+    args {
+      arg_name: "variable_names_blacklist"
+    }
+  }
+  member_methods {
+    name: "extract_sub_graph"
+    args {
+      arg_name: "graph_def"
+    }
+    args {
+      arg_name: "dest_nodes"
+    }
+  }
+  member_methods {
+    name: "must_run_on_cpu"
+    args {
+      arg_name: "node"
+    }
+    args {
+      arg_name: "pin_variables_on_cpu"
+    }
+  }
+  member_methods {
+    name: "remove_training_nodes"
+    args {
+      arg_name: "input_graph"
+    }
+  }
+  member_methods {
+    name: "tensor_shape_from_node_def_name"
+    args {
+      arg_name: "graph"
+    }
+    args {
+      arg_name: "input_name"
+    }
+  }
+}

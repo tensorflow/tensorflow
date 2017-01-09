@@ -1,0 +1,12 @@
+path: "tensorflow.core.util"
+tf_module {
+  name: "tensorflow.core.util"
+  members {
+    name: "event_pb2"
+    mtype: "<type \'module\'>"
+  }
+  members {
+    name: "test_log_pb2"
+    mtype: "<type \'module\'>"
+  }
+}

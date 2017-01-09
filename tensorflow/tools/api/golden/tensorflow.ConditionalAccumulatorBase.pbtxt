@@ -1,0 +1,39 @@
+path: "tensorflow.ConditionalAccumulatorBase"
+tf_class {
+  name: "ConditionalAccumulatorBase"
+  is_instance: "<class \'tensorflow.python.ops.data_flow_ops.ConditionalAccumulatorBase\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "accumulator_ref"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "name"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "num_accumulated"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "set_global_step"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "new_global_step"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+}

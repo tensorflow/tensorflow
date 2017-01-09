@@ -1,0 +1,125 @@
+path: "tensorflow.TensorShape"
+tf_class {
+  name: "TensorShape"
+  is_instance: "<class \'tensorflow.python.framework.tensor_shape.TensorShape\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "dims"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "ndims"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "as_list"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "as_proto"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "assert_has_rank"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "rank"
+    }
+  }
+  member_methods {
+    name: "assert_is_compatible_with"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "other"
+    }
+  }
+  member_methods {
+    name: "assert_is_fully_defined"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "assert_same_rank"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "other"
+    }
+  }
+  member_methods {
+    name: "concatenate"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "other"
+    }
+  }
+  member_methods {
+    name: "is_compatible_with"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "other"
+    }
+  }
+  member_methods {
+    name: "is_fully_defined"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "merge_with"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "other"
+    }
+  }
+  member_methods {
+    name: "num_elements"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "with_rank"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "rank"
+    }
+  }
+  member_methods {
+    name: "with_rank_at_least"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "rank"
+    }
+  }
+  member_methods {
+    name: "with_rank_at_most"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "rank"
+    }
+  }
+}

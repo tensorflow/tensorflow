@@ -1,0 +1,24 @@
+path: "tensorflow.train.SessionRunContext"
+tf_class {
+  name: "SessionRunContext"
+  is_instance: "<class \'tensorflow.python.training.session_run_hook.SessionRunContext\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "original_args"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "session"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "stop_requested"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "request_stop"
+    args {
+      arg_name: "self"
+    }
+  }
+}

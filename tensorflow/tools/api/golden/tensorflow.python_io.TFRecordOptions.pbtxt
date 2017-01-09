@@ -1,0 +1,19 @@
+path: "tensorflow.python_io.TFRecordOptions"
+tf_class {
+  name: "TFRecordOptions"
+  is_instance: "<class \'tensorflow.python.lib.io.tf_record.TFRecordOptions\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "compression_type_map"
+    mtype: "<type \'dict\'>"
+  }
+  member_methods {
+    name: "get_compression_type_string"
+    args {
+      arg_name: "cls"
+    }
+    args {
+      arg_name: "options"
+    }
+  }
+}

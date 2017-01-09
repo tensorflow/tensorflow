@@ -1,0 +1,52 @@
+path: "tensorflow.sets"
+tf_module {
+  name: "tensorflow.python.ops.sets"
+  member_methods {
+    name: "set_difference"
+    args {
+      arg_name: "a"
+    }
+    args {
+      arg_name: "b"
+    }
+    args {
+      arg_name: "aminusb"
+    }
+    args {
+      arg_name: "validate_indices"
+    }
+  }
+  member_methods {
+    name: "set_intersection"
+    args {
+      arg_name: "a"
+    }
+    args {
+      arg_name: "b"
+    }
+    args {
+      arg_name: "validate_indices"
+    }
+  }
+  member_methods {
+    name: "set_size"
+    args {
+      arg_name: "a"
+    }
+    args {
+      arg_name: "validate_indices"
+    }
+  }
+  member_methods {
+    name: "set_union"
+    args {
+      arg_name: "a"
+    }
+    args {
+      arg_name: "b"
+    }
+    args {
+      arg_name: "validate_indices"
+    }
+  }
+}

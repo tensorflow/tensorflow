@@ -1,0 +1,883 @@
+path: "tensorflow.test.TestCase"
+tf_class {
+  name: "TensorFlowTestCase"
+  is_instance: "<class \'tensorflow.python.framework.test_util.TensorFlowTestCase\'>"
+  is_instance: "<class \'unittest.case.TestCase\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "failureException"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "longMessage"
+    mtype: "<type \'bool\'>"
+  }
+  members {
+    name: "maxDiff"
+    mtype: "<type \'int\'>"
+  }
+  member_methods {
+    name: "addCleanup"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "function"
+    }
+  }
+  member_methods {
+    name: "addTypeEqualityFunc"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "typeobj"
+    }
+    args {
+      arg_name: "function"
+    }
+  }
+  member_methods {
+    name: "assertAllClose"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "a"
+    }
+    args {
+      arg_name: "b"
+    }
+    args {
+      arg_name: "rtol"
+    }
+    args {
+      arg_name: "atol"
+    }
+  }
+  member_methods {
+    name: "assertAllCloseAccordingToType"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "a"
+    }
+    args {
+      arg_name: "b"
+    }
+    args {
+      arg_name: "rtol"
+    }
+    args {
+      arg_name: "atol"
+    }
+  }
+  member_methods {
+    name: "assertAllEqual"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "a"
+    }
+    args {
+      arg_name: "b"
+    }
+  }
+  member_methods {
+    name: "assertAlmostEqual"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "first"
+    }
+    args {
+      arg_name: "second"
+    }
+    args {
+      arg_name: "places"
+    }
+    args {
+      arg_name: "msg"
+    }
+    args {
+      arg_name: "delta"
+    }
+  }
+  member_methods {
+    name: "assertAlmostEquals"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "first"
+    }
+    args {
+      arg_name: "second"
+    }
+    args {
+      arg_name: "places"
+    }
+    args {
+      arg_name: "msg"
+    }
+    args {
+      arg_name: "delta"
+    }
+  }
+  member_methods {
+    name: "assertArrayNear"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "farray1"
+    }
+    args {
+      arg_name: "farray2"
+    }
+    args {
+      arg_name: "err"
+    }
+  }
+  member_methods {
+    name: "assertDeviceEqual"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "device1"
+    }
+    args {
+      arg_name: "device2"
+    }
+  }
+  member_methods {
+    name: "assertDictContainsSubset"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "expected"
+    }
+    args {
+      arg_name: "actual"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "assertDictEqual"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "d1"
+    }
+    args {
+      arg_name: "d2"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "assertEqual"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "first"
+    }
+    args {
+      arg_name: "second"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "assertEquals"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "first"
+    }
+    args {
+      arg_name: "second"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "assertFalse"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "expr"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "assertGreater"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "a"
+    }
+    args {
+      arg_name: "b"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "assertGreaterEqual"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "a"
+    }
+    args {
+      arg_name: "b"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "assertIn"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "member"
+    }
+    args {
+      arg_name: "container"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "assertIs"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "expr1"
+    }
+    args {
+      arg_name: "expr2"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "assertIsInstance"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "obj"
+    }
+    args {
+      arg_name: "cls"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "assertIsNone"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "obj"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "assertIsNot"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "expr1"
+    }
+    args {
+      arg_name: "expr2"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "assertIsNotNone"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "obj"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "assertItemsEqual"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "expected_seq"
+    }
+    args {
+      arg_name: "actual_seq"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "assertLess"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "a"
+    }
+    args {
+      arg_name: "b"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "assertLessEqual"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "a"
+    }
+    args {
+      arg_name: "b"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "assertListEqual"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "list1"
+    }
+    args {
+      arg_name: "list2"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "assertMultiLineEqual"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "first"
+    }
+    args {
+      arg_name: "second"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "assertNDArrayNear"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "ndarray1"
+    }
+    args {
+      arg_name: "ndarray2"
+    }
+    args {
+      arg_name: "err"
+    }
+  }
+  member_methods {
+    name: "assertNear"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "f1"
+    }
+    args {
+      arg_name: "f2"
+    }
+    args {
+      arg_name: "err"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "assertNotAlmostEqual"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "first"
+    }
+    args {
+      arg_name: "second"
+    }
+    args {
+      arg_name: "places"
+    }
+    args {
+      arg_name: "msg"
+    }
+    args {
+      arg_name: "delta"
+    }
+  }
+  member_methods {
+    name: "assertNotAlmostEquals"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "first"
+    }
+    args {
+      arg_name: "second"
+    }
+    args {
+      arg_name: "places"
+    }
+    args {
+      arg_name: "msg"
+    }
+    args {
+      arg_name: "delta"
+    }
+  }
+  member_methods {
+    name: "assertNotEqual"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "first"
+    }
+    args {
+      arg_name: "second"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "assertNotEquals"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "first"
+    }
+    args {
+      arg_name: "second"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "assertNotIn"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "member"
+    }
+    args {
+      arg_name: "container"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "assertNotIsInstance"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "obj"
+    }
+    args {
+      arg_name: "cls"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "assertNotRegexpMatches"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "text"
+    }
+    args {
+      arg_name: "unexpected_regexp"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "assertProtoEquals"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "expected_message_maybe_ascii"
+    }
+    args {
+      arg_name: "message"
+    }
+  }
+  member_methods {
+    name: "assertProtoEqualsVersion"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "expected"
+    }
+    args {
+      arg_name: "actual"
+    }
+    args {
+      arg_name: "producer"
+    }
+    args {
+      arg_name: "min_consumer"
+    }
+  }
+  member_methods {
+    name: "assertRaises"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "excClass"
+    }
+    args {
+      arg_name: "callableObj"
+    }
+  }
+  member_methods {
+    name: "assertRaisesOpError"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "expected_err_re_or_predicate"
+    }
+  }
+  member_methods {
+    name: "assertRaisesRegexp"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "expected_exception"
+    }
+    args {
+      arg_name: "expected_regexp"
+    }
+    args {
+      arg_name: "callable_obj"
+    }
+  }
+  member_methods {
+    name: "assertRaisesWithPredicateMatch"
+  }
+  member_methods {
+    name: "assertRegexpMatches"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "text"
+    }
+    args {
+      arg_name: "expected_regexp"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "assertSequenceEqual"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "seq1"
+    }
+    args {
+      arg_name: "seq2"
+    }
+    args {
+      arg_name: "msg"
+    }
+    args {
+      arg_name: "seq_type"
+    }
+  }
+  member_methods {
+    name: "assertSetEqual"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "set1"
+    }
+    args {
+      arg_name: "set2"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "assertShapeEqual"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "np_array"
+    }
+    args {
+      arg_name: "tf_tensor"
+    }
+  }
+  member_methods {
+    name: "assertStartsWith"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "actual"
+    }
+    args {
+      arg_name: "expected_start"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "assertTrue"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "expr"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "assertTupleEqual"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "tuple1"
+    }
+    args {
+      arg_name: "tuple2"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "assert_"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "expr"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "checkedThread"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "target"
+    }
+    args {
+      arg_name: "args"
+    }
+    args {
+      arg_name: "kwargs"
+    }
+  }
+  member_methods {
+    name: "countTestCases"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "debug"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "defaultTestResult"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "doCleanups"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "fail"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "failIf"
+  }
+  member_methods {
+    name: "failIfAlmostEqual"
+  }
+  member_methods {
+    name: "failIfEqual"
+  }
+  member_methods {
+    name: "failUnless"
+  }
+  member_methods {
+    name: "failUnlessAlmostEqual"
+  }
+  member_methods {
+    name: "failUnlessEqual"
+  }
+  member_methods {
+    name: "failUnlessRaises"
+  }
+  member_methods {
+    name: "get_temp_dir"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "id"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "run"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "result"
+    }
+  }
+  member_methods {
+    name: "setUp"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "setUpClass"
+    args {
+      arg_name: "cls"
+    }
+  }
+  member_methods {
+    name: "shortDescription"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "skipTest"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "reason"
+    }
+  }
+  member_methods {
+    name: "tearDown"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "tearDownClass"
+    args {
+      arg_name: "cls"
+    }
+  }
+  member_methods {
+    name: "test_session"
+  }
+}

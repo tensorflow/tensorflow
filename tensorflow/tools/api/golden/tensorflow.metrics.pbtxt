@@ -1,0 +1,529 @@
+path: "tensorflow.metrics"
+tf_module {
+  name: "tensorflow.python.ops.metrics"
+  member_methods {
+    name: "accuracy"
+    args {
+      arg_name: "labels"
+    }
+    args {
+      arg_name: "predictions"
+    }
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "metrics_collections"
+    }
+    args {
+      arg_name: "updates_collections"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "auc"
+    args {
+      arg_name: "labels"
+    }
+    args {
+      arg_name: "predictions"
+    }
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "num_thresholds"
+    }
+    args {
+      arg_name: "metrics_collections"
+    }
+    args {
+      arg_name: "updates_collections"
+    }
+    args {
+      arg_name: "curve"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "false_negatives"
+    args {
+      arg_name: "labels"
+    }
+    args {
+      arg_name: "predictions"
+    }
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "metrics_collections"
+    }
+    args {
+      arg_name: "updates_collections"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "false_positives"
+    args {
+      arg_name: "labels"
+    }
+    args {
+      arg_name: "predictions"
+    }
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "metrics_collections"
+    }
+    args {
+      arg_name: "updates_collections"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "mean"
+    args {
+      arg_name: "values"
+    }
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "metrics_collections"
+    }
+    args {
+      arg_name: "updates_collections"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "mean_absolute_error"
+    args {
+      arg_name: "labels"
+    }
+    args {
+      arg_name: "predictions"
+    }
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "metrics_collections"
+    }
+    args {
+      arg_name: "updates_collections"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "mean_cosine_distance"
+    args {
+      arg_name: "labels"
+    }
+    args {
+      arg_name: "predictions"
+    }
+    args {
+      arg_name: "dim"
+    }
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "metrics_collections"
+    }
+    args {
+      arg_name: "updates_collections"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "mean_iou"
+    args {
+      arg_name: "labels"
+    }
+    args {
+      arg_name: "predictions"
+    }
+    args {
+      arg_name: "num_classes"
+    }
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "metrics_collections"
+    }
+    args {
+      arg_name: "updates_collections"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "mean_relative_error"
+    args {
+      arg_name: "labels"
+    }
+    args {
+      arg_name: "predictions"
+    }
+    args {
+      arg_name: "normalizer"
+    }
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "metrics_collections"
+    }
+    args {
+      arg_name: "updates_collections"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "mean_squared_error"
+    args {
+      arg_name: "labels"
+    }
+    args {
+      arg_name: "predictions"
+    }
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "metrics_collections"
+    }
+    args {
+      arg_name: "updates_collections"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "mean_tensor"
+    args {
+      arg_name: "values"
+    }
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "metrics_collections"
+    }
+    args {
+      arg_name: "updates_collections"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "percentage_below"
+    args {
+      arg_name: "values"
+    }
+    args {
+      arg_name: "threshold"
+    }
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "metrics_collections"
+    }
+    args {
+      arg_name: "updates_collections"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "precision"
+    args {
+      arg_name: "labels"
+    }
+    args {
+      arg_name: "predictions"
+    }
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "metrics_collections"
+    }
+    args {
+      arg_name: "updates_collections"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "precision_at_thresholds"
+    args {
+      arg_name: "labels"
+    }
+    args {
+      arg_name: "predictions"
+    }
+    args {
+      arg_name: "thresholds"
+    }
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "metrics_collections"
+    }
+    args {
+      arg_name: "updates_collections"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "recall"
+    args {
+      arg_name: "labels"
+    }
+    args {
+      arg_name: "predictions"
+    }
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "metrics_collections"
+    }
+    args {
+      arg_name: "updates_collections"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "recall_at_k"
+    args {
+      arg_name: "labels"
+    }
+    args {
+      arg_name: "predictions"
+    }
+    args {
+      arg_name: "k"
+    }
+    args {
+      arg_name: "class_id"
+    }
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "metrics_collections"
+    }
+    args {
+      arg_name: "updates_collections"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "recall_at_thresholds"
+    args {
+      arg_name: "labels"
+    }
+    args {
+      arg_name: "predictions"
+    }
+    args {
+      arg_name: "thresholds"
+    }
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "metrics_collections"
+    }
+    args {
+      arg_name: "updates_collections"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "root_mean_squared_error"
+    args {
+      arg_name: "labels"
+    }
+    args {
+      arg_name: "predictions"
+    }
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "metrics_collections"
+    }
+    args {
+      arg_name: "updates_collections"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "sensitivity_at_specificity"
+    args {
+      arg_name: "labels"
+    }
+    args {
+      arg_name: "predictions"
+    }
+    args {
+      arg_name: "specificity"
+    }
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "num_thresholds"
+    }
+    args {
+      arg_name: "metrics_collections"
+    }
+    args {
+      arg_name: "updates_collections"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "sparse_average_precision_at_k"
+    args {
+      arg_name: "labels"
+    }
+    args {
+      arg_name: "predictions"
+    }
+    args {
+      arg_name: "k"
+    }
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "metrics_collections"
+    }
+    args {
+      arg_name: "updates_collections"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "sparse_precision_at_k"
+    args {
+      arg_name: "labels"
+    }
+    args {
+      arg_name: "predictions"
+    }
+    args {
+      arg_name: "k"
+    }
+    args {
+      arg_name: "class_id"
+    }
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "metrics_collections"
+    }
+    args {
+      arg_name: "updates_collections"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "specificity_at_sensitivity"
+    args {
+      arg_name: "labels"
+    }
+    args {
+      arg_name: "predictions"
+    }
+    args {
+      arg_name: "sensitivity"
+    }
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "num_thresholds"
+    }
+    args {
+      arg_name: "metrics_collections"
+    }
+    args {
+      arg_name: "updates_collections"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "true_positives"
+    args {
+      arg_name: "labels"
+    }
+    args {
+      arg_name: "predictions"
+    }
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "metrics_collections"
+    }
+    args {
+      arg_name: "updates_collections"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+}

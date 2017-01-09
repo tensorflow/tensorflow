@@ -1,0 +1,6 @@
+path: "tensorflow.RegisterGradient"
+tf_class {
+  name: "RegisterGradient"
+  is_instance: "<class \'tensorflow.python.framework.ops.RegisterGradient\'>"
+  is_instance: "<type \'object\'>"
+}

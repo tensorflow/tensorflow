@@ -1,0 +1,8 @@
+path: "tensorflow.core.lib"
+tf_module {
+  name: "tensorflow.core.lib"
+  members {
+    name: "core"
+    mtype: "<type \'module\'>"
+  }
+}

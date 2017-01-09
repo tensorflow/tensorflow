@@ -1,0 +1,77 @@
+path: "tensorflow.InteractiveSession"
+tf_class {
+  name: "InteractiveSession"
+  is_instance: "<class \'tensorflow.python.client.session.InteractiveSession\'>"
+  is_instance: "<class \'tensorflow.python.client.session.BaseSession\'>"
+  is_instance: "<class \'tensorflow.python.client.session.SessionInterface\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "graph"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "graph_def"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "sess_str"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "as_default"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "close"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "partial_run"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "handle"
+    }
+    args {
+      arg_name: "fetches"
+    }
+    args {
+      arg_name: "feed_dict"
+    }
+  }
+  member_methods {
+    name: "partial_run_setup"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "fetches"
+    }
+    args {
+      arg_name: "feeds"
+    }
+  }
+  member_methods {
+    name: "run"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "fetches"
+    }
+    args {
+      arg_name: "feed_dict"
+    }
+    args {
+      arg_name: "options"
+    }
+    args {
+      arg_name: "run_metadata"
+    }
+  }
+}

@@ -1,0 +1,233 @@
+path: "tensorflow.summary.Event"
+tf_class {
+  name: "Event"
+  is_instance: "<class \'tensorflow.core.util.event_pb2.Event\'>"
+  is_instance: "<class \'google.protobuf.message.Message\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "DESCRIPTOR"
+    mtype: "<class \'google.protobuf.descriptor.Descriptor\'>"
+  }
+  members {
+    name: "FILE_VERSION_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "GRAPH_DEF_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "LOG_MESSAGE_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "META_GRAPH_DEF_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "SESSION_LOG_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "STEP_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "SUMMARY_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "TAGGED_RUN_METADATA_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "WALL_TIME_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "file_version"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "graph_def"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "log_message"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "meta_graph_def"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "session_log"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "step"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "summary"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "tagged_run_metadata"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "wall_time"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "ByteSize"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "Clear"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "ClearExtension"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "extension_handle"
+    }
+  }
+  member_methods {
+    name: "ClearField"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "field_name"
+    }
+  }
+  member_methods {
+    name: "CopyFrom"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "other_msg"
+    }
+  }
+  member_methods {
+    name: "DiscardUnknownFields"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "FindInitializationErrors"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "FromString"
+    args {
+      arg_name: "s"
+    }
+  }
+  member_methods {
+    name: "HasExtension"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "extension_handle"
+    }
+  }
+  member_methods {
+    name: "HasField"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "field_name"
+    }
+  }
+  member_methods {
+    name: "IsInitialized"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "errors"
+    }
+  }
+  member_methods {
+    name: "ListFields"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "MergeFrom"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "MergeFromString"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "serialized"
+    }
+  }
+  member_methods {
+    name: "ParseFromString"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "serialized"
+    }
+  }
+  member_methods {
+    name: "RegisterExtension"
+    args {
+      arg_name: "extension_handle"
+    }
+  }
+  member_methods {
+    name: "SerializePartialToString"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "SerializeToString"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "SetInParent"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "WhichOneof"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "oneof_name"
+    }
+  }
+}

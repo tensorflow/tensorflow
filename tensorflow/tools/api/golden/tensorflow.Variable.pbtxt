@@ -1,0 +1,167 @@
+path: "tensorflow.Variable"
+tf_class {
+  name: "Variable"
+  is_instance: "<class \'tensorflow.python.ops.variables.Variable\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "SaveSliceInfo"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "device"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "graph"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "initial_value"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "initializer"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "name"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "op"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "assign"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "value"
+    }
+    args {
+      arg_name: "use_locking"
+    }
+  }
+  member_methods {
+    name: "assign_add"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "delta"
+    }
+    args {
+      arg_name: "use_locking"
+    }
+  }
+  member_methods {
+    name: "assign_sub"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "delta"
+    }
+    args {
+      arg_name: "use_locking"
+    }
+  }
+  member_methods {
+    name: "count_up_to"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "limit"
+    }
+  }
+  member_methods {
+    name: "eval"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "session"
+    }
+  }
+  member_methods {
+    name: "from_proto"
+    args {
+      arg_name: "variable_def"
+    }
+    args {
+      arg_name: "import_scope"
+    }
+  }
+  member_methods {
+    name: "get_shape"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "initialized_value"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "load"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "value"
+    }
+    args {
+      arg_name: "session"
+    }
+  }
+  member_methods {
+    name: "read_value"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "scatter_sub"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "sparse_delta"
+    }
+    args {
+      arg_name: "use_locking"
+    }
+  }
+  member_methods {
+    name: "set_shape"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "shape"
+    }
+  }
+  member_methods {
+    name: "to_proto"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "export_scope"
+    }
+  }
+  member_methods {
+    name: "value"
+    args {
+      arg_name: "self"
+    }
+  }
+}

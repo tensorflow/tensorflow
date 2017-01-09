@@ -1,0 +1,106 @@
+path: "tensorflow.test"
+tf_module {
+  name: "tensorflow.python.platform.test"
+  members {
+    name: "Benchmark"
+    mtype: "<class \'tensorflow.python.platform.benchmark._BenchmarkRegistrar\'>"
+  }
+  members {
+    name: "TestCase"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "mock"
+    mtype: "<type \'module\'>"
+  }
+  member_methods {
+    name: "assert_equal_graph_def"
+    args {
+      arg_name: "actual"
+    }
+    args {
+      arg_name: "expected"
+    }
+    args {
+      arg_name: "checkpoint_v2"
+    }
+  }
+  member_methods {
+    name: "compute_gradient"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "x_shape"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "y_shape"
+    }
+    args {
+      arg_name: "x_init_value"
+    }
+    args {
+      arg_name: "delta"
+    }
+    args {
+      arg_name: "init_targets"
+    }
+    args {
+      arg_name: "extra_feed_dict"
+    }
+  }
+  member_methods {
+    name: "compute_gradient_error"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "x_shape"
+    }
+    args {
+      arg_name: "y"
+    }
+    args {
+      arg_name: "y_shape"
+    }
+    args {
+      arg_name: "x_init_value"
+    }
+    args {
+      arg_name: "delta"
+    }
+    args {
+      arg_name: "init_targets"
+    }
+    args {
+      arg_name: "extra_feed_dict"
+    }
+  }
+  member_methods {
+    name: "get_temp_dir"
+  }
+  member_methods {
+    name: "gpu_device_name"
+  }
+  member_methods {
+    name: "is_built_with_cuda"
+  }
+  member_methods {
+    name: "is_gpu_available"
+    args {
+      arg_name: "cuda_only"
+    }
+  }
+  member_methods {
+    name: "main"
+  }
+  member_methods {
+    name: "test_src_dir_path"
+    args {
+      arg_name: "relative_path"
+    }
+  }
+}

@@ -1,0 +1,79 @@
+path: "tensorflow.Operation"
+tf_class {
+  name: "Operation"
+  is_instance: "<class \'tensorflow.python.framework.ops.Operation\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "control_inputs"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "device"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "graph"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "inputs"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "name"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "node_def"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "op_def"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "outputs"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "traceback"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "type"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "colocation_groups"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "get_attr"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "run"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "feed_dict"
+    }
+    args {
+      arg_name: "session"
+    }
+  }
+  member_methods {
+    name: "values"
+    args {
+      arg_name: "self"
+    }
+  }
+}

@@ -1,0 +1,119 @@
+path: "tensorflow.train.LooperThread"
+tf_class {
+  name: "LooperThread"
+  is_instance: "<class \'tensorflow.python.training.coordinator.LooperThread\'>"
+  is_instance: "<class \'threading.Thread\'>"
+  is_instance: "<class \'threading._Verbose\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "daemon"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "ident"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "name"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "getName"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "isAlive"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "isDaemon"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "is_alive"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "join"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "timeout"
+    }
+  }
+  member_methods {
+    name: "loop"
+    args {
+      arg_name: "coord"
+    }
+    args {
+      arg_name: "timer_interval_secs"
+    }
+    args {
+      arg_name: "target"
+    }
+    args {
+      arg_name: "args"
+    }
+    args {
+      arg_name: "kwargs"
+    }
+  }
+  member_methods {
+    name: "run"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "run_loop"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "setDaemon"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "daemonic"
+    }
+  }
+  member_methods {
+    name: "setName"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "start"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "start_loop"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "stop_loop"
+    args {
+      arg_name: "self"
+    }
+  }
+}

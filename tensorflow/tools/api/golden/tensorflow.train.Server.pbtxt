@@ -1,0 +1,35 @@
+path: "tensorflow.train.Server"
+tf_class {
+  name: "Server"
+  is_instance: "<class \'tensorflow.python.training.server_lib.Server\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "server_def"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "target"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "create_local_server"
+    args {
+      arg_name: "config"
+    }
+    args {
+      arg_name: "start"
+    }
+  }
+  member_methods {
+    name: "join"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "start"
+    args {
+      arg_name: "self"
+    }
+  }
+}

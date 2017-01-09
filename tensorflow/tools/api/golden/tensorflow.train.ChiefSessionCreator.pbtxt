@@ -1,0 +1,13 @@
+path: "tensorflow.train.ChiefSessionCreator"
+tf_class {
+  name: "ChiefSessionCreator"
+  is_instance: "<class \'tensorflow.python.training.monitored_session.ChiefSessionCreator\'>"
+  is_instance: "<class \'tensorflow.python.training.monitored_session.SessionCreator\'>"
+  is_instance: "<type \'object\'>"
+  member_methods {
+    name: "create_session"
+    args {
+      arg_name: "self"
+    }
+  }
+}

@@ -1,0 +1,575 @@
+path: "tensorflow.image"
+tf_module {
+  name: "tensorflow.python.ops.image_ops"
+  members {
+    name: "ResizeMethod"
+    mtype: "<type \'type\'>"
+  }
+  member_methods {
+    name: "adjust_brightness"
+    args {
+      arg_name: "image"
+    }
+    args {
+      arg_name: "delta"
+    }
+  }
+  member_methods {
+    name: "adjust_contrast"
+    args {
+      arg_name: "images"
+    }
+    args {
+      arg_name: "contrast_factor"
+    }
+  }
+  member_methods {
+    name: "adjust_gamma"
+    args {
+      arg_name: "image"
+    }
+    args {
+      arg_name: "gamma"
+    }
+    args {
+      arg_name: "gain"
+    }
+  }
+  member_methods {
+    name: "adjust_hue"
+    args {
+      arg_name: "image"
+    }
+    args {
+      arg_name: "delta"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "adjust_saturation"
+    args {
+      arg_name: "image"
+    }
+    args {
+      arg_name: "saturation_factor"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "central_crop"
+    args {
+      arg_name: "image"
+    }
+    args {
+      arg_name: "central_fraction"
+    }
+  }
+  member_methods {
+    name: "convert_image_dtype"
+    args {
+      arg_name: "image"
+    }
+    args {
+      arg_name: "dtype"
+    }
+    args {
+      arg_name: "saturate"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "crop_and_resize"
+    args {
+      arg_name: "image"
+    }
+    args {
+      arg_name: "boxes"
+    }
+    args {
+      arg_name: "box_ind"
+    }
+    args {
+      arg_name: "crop_size"
+    }
+    args {
+      arg_name: "method"
+    }
+    args {
+      arg_name: "extrapolation_value"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "crop_to_bounding_box"
+    args {
+      arg_name: "image"
+    }
+    args {
+      arg_name: "offset_height"
+    }
+    args {
+      arg_name: "offset_width"
+    }
+    args {
+      arg_name: "target_height"
+    }
+    args {
+      arg_name: "target_width"
+    }
+  }
+  member_methods {
+    name: "decode_gif"
+    args {
+      arg_name: "contents"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "decode_image"
+    args {
+      arg_name: "contents"
+    }
+    args {
+      arg_name: "channels"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "decode_jpeg"
+    args {
+      arg_name: "contents"
+    }
+    args {
+      arg_name: "channels"
+    }
+    args {
+      arg_name: "ratio"
+    }
+    args {
+      arg_name: "fancy_upscaling"
+    }
+    args {
+      arg_name: "try_recover_truncated"
+    }
+    args {
+      arg_name: "acceptable_fraction"
+    }
+    args {
+      arg_name: "dct_method"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "decode_png"
+    args {
+      arg_name: "contents"
+    }
+    args {
+      arg_name: "channels"
+    }
+    args {
+      arg_name: "dtype"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "draw_bounding_boxes"
+    args {
+      arg_name: "images"
+    }
+    args {
+      arg_name: "boxes"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "encode_jpeg"
+    args {
+      arg_name: "image"
+    }
+    args {
+      arg_name: "format"
+    }
+    args {
+      arg_name: "quality"
+    }
+    args {
+      arg_name: "progressive"
+    }
+    args {
+      arg_name: "optimize_size"
+    }
+    args {
+      arg_name: "chroma_downsampling"
+    }
+    args {
+      arg_name: "density_unit"
+    }
+    args {
+      arg_name: "x_density"
+    }
+    args {
+      arg_name: "y_density"
+    }
+    args {
+      arg_name: "xmp_metadata"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "encode_png"
+    args {
+      arg_name: "image"
+    }
+    args {
+      arg_name: "compression"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "extract_glimpse"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "size"
+    }
+    args {
+      arg_name: "offsets"
+    }
+    args {
+      arg_name: "centered"
+    }
+    args {
+      arg_name: "normalized"
+    }
+    args {
+      arg_name: "uniform_noise"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "flip_left_right"
+    args {
+      arg_name: "image"
+    }
+  }
+  member_methods {
+    name: "flip_up_down"
+    args {
+      arg_name: "image"
+    }
+  }
+  member_methods {
+    name: "grayscale_to_rgb"
+    args {
+      arg_name: "images"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "hsv_to_rgb"
+    args {
+      arg_name: "images"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "non_max_suppression"
+    args {
+      arg_name: "boxes"
+    }
+    args {
+      arg_name: "scores"
+    }
+    args {
+      arg_name: "max_output_size"
+    }
+    args {
+      arg_name: "iou_threshold"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "pad_to_bounding_box"
+    args {
+      arg_name: "image"
+    }
+    args {
+      arg_name: "offset_height"
+    }
+    args {
+      arg_name: "offset_width"
+    }
+    args {
+      arg_name: "target_height"
+    }
+    args {
+      arg_name: "target_width"
+    }
+  }
+  member_methods {
+    name: "per_image_standardization"
+    args {
+      arg_name: "image"
+    }
+  }
+  member_methods {
+    name: "random_brightness"
+    args {
+      arg_name: "image"
+    }
+    args {
+      arg_name: "max_delta"
+    }
+    args {
+      arg_name: "seed"
+    }
+  }
+  member_methods {
+    name: "random_contrast"
+    args {
+      arg_name: "image"
+    }
+    args {
+      arg_name: "lower"
+    }
+    args {
+      arg_name: "upper"
+    }
+    args {
+      arg_name: "seed"
+    }
+  }
+  member_methods {
+    name: "random_flip_left_right"
+    args {
+      arg_name: "image"
+    }
+    args {
+      arg_name: "seed"
+    }
+  }
+  member_methods {
+    name: "random_flip_up_down"
+    args {
+      arg_name: "image"
+    }
+    args {
+      arg_name: "seed"
+    }
+  }
+  member_methods {
+    name: "random_hue"
+    args {
+      arg_name: "image"
+    }
+    args {
+      arg_name: "max_delta"
+    }
+    args {
+      arg_name: "seed"
+    }
+  }
+  member_methods {
+    name: "random_saturation"
+    args {
+      arg_name: "image"
+    }
+    args {
+      arg_name: "lower"
+    }
+    args {
+      arg_name: "upper"
+    }
+    args {
+      arg_name: "seed"
+    }
+  }
+  member_methods {
+    name: "resize_area"
+    args {
+      arg_name: "images"
+    }
+    args {
+      arg_name: "size"
+    }
+    args {
+      arg_name: "align_corners"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "resize_bicubic"
+    args {
+      arg_name: "images"
+    }
+    args {
+      arg_name: "size"
+    }
+    args {
+      arg_name: "align_corners"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "resize_bilinear"
+    args {
+      arg_name: "images"
+    }
+    args {
+      arg_name: "size"
+    }
+    args {
+      arg_name: "align_corners"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "resize_image_with_crop_or_pad"
+    args {
+      arg_name: "image"
+    }
+    args {
+      arg_name: "target_height"
+    }
+    args {
+      arg_name: "target_width"
+    }
+  }
+  member_methods {
+    name: "resize_images"
+    args {
+      arg_name: "images"
+    }
+    args {
+      arg_name: "size"
+    }
+    args {
+      arg_name: "method"
+    }
+    args {
+      arg_name: "align_corners"
+    }
+  }
+  member_methods {
+    name: "resize_nearest_neighbor"
+    args {
+      arg_name: "images"
+    }
+    args {
+      arg_name: "size"
+    }
+    args {
+      arg_name: "align_corners"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "rgb_to_grayscale"
+    args {
+      arg_name: "images"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "rgb_to_hsv"
+    args {
+      arg_name: "images"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "rot90"
+    args {
+      arg_name: "image"
+    }
+    args {
+      arg_name: "k"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "sample_distorted_bounding_box"
+    args {
+      arg_name: "image_size"
+    }
+    args {
+      arg_name: "bounding_boxes"
+    }
+    args {
+      arg_name: "seed"
+    }
+    args {
+      arg_name: "seed2"
+    }
+    args {
+      arg_name: "min_object_covered"
+    }
+    args {
+      arg_name: "aspect_ratio_range"
+    }
+    args {
+      arg_name: "area_range"
+    }
+    args {
+      arg_name: "max_attempts"
+    }
+    args {
+      arg_name: "use_image_if_no_bounding_boxes"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "transpose_image"
+    args {
+      arg_name: "image"
+    }
+  }
+}

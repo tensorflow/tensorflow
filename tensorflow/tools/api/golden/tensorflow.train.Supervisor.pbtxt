@@ -1,0 +1,297 @@
+path: "tensorflow.train.Supervisor"
+tf_class {
+  name: "Supervisor"
+  is_instance: "<class \'tensorflow.python.training.supervisor.Supervisor\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "USE_DEFAULT"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "coord"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "global_step"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "init_feed_dict"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "init_op"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "is_chief"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "ready_for_local_init_op"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "ready_op"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "save_model_secs"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "save_path"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "save_summaries_secs"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "saver"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "session_manager"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "summary_op"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "summary_writer"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "Loop"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "timer_interval_secs"
+    }
+    args {
+      arg_name: "target"
+    }
+    args {
+      arg_name: "args"
+    }
+    args {
+      arg_name: "kwargs"
+    }
+  }
+  member_methods {
+    name: "PrepareSession"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "master"
+    }
+    args {
+      arg_name: "config"
+    }
+    args {
+      arg_name: "wait_for_checkpoint"
+    }
+    args {
+      arg_name: "max_wait_secs"
+    }
+    args {
+      arg_name: "start_standard_services"
+    }
+  }
+  member_methods {
+    name: "RequestStop"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "ex"
+    }
+  }
+  member_methods {
+    name: "ShouldStop"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "StartQueueRunners"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "sess"
+    }
+    args {
+      arg_name: "queue_runners"
+    }
+  }
+  member_methods {
+    name: "StartStandardServices"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "sess"
+    }
+  }
+  member_methods {
+    name: "Stop"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "threads"
+    }
+    args {
+      arg_name: "close_summary_writer"
+    }
+  }
+  member_methods {
+    name: "StopOnException"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "SummaryComputed"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "sess"
+    }
+    args {
+      arg_name: "summary"
+    }
+    args {
+      arg_name: "global_step"
+    }
+  }
+  member_methods {
+    name: "WaitForStop"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "loop"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "timer_interval_secs"
+    }
+    args {
+      arg_name: "target"
+    }
+    args {
+      arg_name: "args"
+    }
+    args {
+      arg_name: "kwargs"
+    }
+  }
+  member_methods {
+    name: "managed_session"
+  }
+  member_methods {
+    name: "prepare_or_wait_for_session"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "master"
+    }
+    args {
+      arg_name: "config"
+    }
+    args {
+      arg_name: "wait_for_checkpoint"
+    }
+    args {
+      arg_name: "max_wait_secs"
+    }
+    args {
+      arg_name: "start_standard_services"
+    }
+  }
+  member_methods {
+    name: "request_stop"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "ex"
+    }
+  }
+  member_methods {
+    name: "should_stop"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "start_queue_runners"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "sess"
+    }
+    args {
+      arg_name: "queue_runners"
+    }
+  }
+  member_methods {
+    name: "start_standard_services"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "sess"
+    }
+  }
+  member_methods {
+    name: "stop"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "threads"
+    }
+    args {
+      arg_name: "close_summary_writer"
+    }
+  }
+  member_methods {
+    name: "stop_on_exception"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "summary_computed"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "sess"
+    }
+    args {
+      arg_name: "summary"
+    }
+    args {
+      arg_name: "global_step"
+    }
+  }
+  member_methods {
+    name: "wait_for_stop"
+    args {
+      arg_name: "self"
+    }
+  }
+}

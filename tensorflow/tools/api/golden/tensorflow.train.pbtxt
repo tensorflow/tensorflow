@@ -1,0 +1,978 @@
+path: "tensorflow.train"
+tf_module {
+  name: "tensorflow.python.training.training"
+  members {
+    name: "AdadeltaOptimizer"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "AdagradDAOptimizer"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "AdagradOptimizer"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "AdamOptimizer"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "BytesList"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+  }
+  members {
+    name: "CheckpointSaverHook"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "ChiefSessionCreator"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "ClusterDef"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+  }
+  members {
+    name: "ClusterSpec"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "Coordinator"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "Example"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+  }
+  members {
+    name: "ExponentialMovingAverage"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "Feature"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+  }
+  members {
+    name: "FeatureList"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+  }
+  members {
+    name: "FeatureLists"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+  }
+  members {
+    name: "Features"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+  }
+  members {
+    name: "FloatList"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+  }
+  members {
+    name: "FtrlOptimizer"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "GlobalStepWaiterHook"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "GradientDescentOptimizer"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "Int64List"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+  }
+  members {
+    name: "JobDef"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+  }
+  members {
+    name: "LoggingTensorHook"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "LooperThread"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "MomentumOptimizer"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "MonitoredSession"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "NanLossDuringTrainingError"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "NanTensorHook"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "Optimizer"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "ProximalAdagradOptimizer"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "ProximalGradientDescentOptimizer"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "QueueRunner"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "RMSPropOptimizer"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "Saver"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "SaverDef"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+  }
+  members {
+    name: "Scaffold"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "SequenceExample"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+  }
+  members {
+    name: "Server"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "ServerDef"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
+  }
+  members {
+    name: "SessionCreator"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "SessionManager"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "SessionRunArgs"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "SessionRunContext"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "SessionRunHook"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "SessionRunValues"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "SingularMonitoredSession"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "StepCounterHook"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "StopAtStepHook"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "SummarySaverHook"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "Supervisor"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "SyncReplicasOptimizer"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "WorkerSessionCreator"
+    mtype: "<type \'type\'>"
+  }
+  members {
+    name: "queue_runner"
+    mtype: "<type \'module\'>"
+  }
+  member_methods {
+    name: "MonitoredTrainingSession"
+    args {
+      arg_name: "master"
+    }
+    args {
+      arg_name: "is_chief"
+    }
+    args {
+      arg_name: "checkpoint_dir"
+    }
+    args {
+      arg_name: "scaffold"
+    }
+    args {
+      arg_name: "hooks"
+    }
+    args {
+      arg_name: "chief_only_hooks"
+    }
+    args {
+      arg_name: "save_checkpoint_secs"
+    }
+    args {
+      arg_name: "save_summaries_steps"
+    }
+    args {
+      arg_name: "config"
+    }
+  }
+  member_methods {
+    name: "NewCheckpointReader"
+    args {
+      arg_name: "filepattern"
+    }
+  }
+  member_methods {
+    name: "add_queue_runner"
+    args {
+      arg_name: "qr"
+    }
+    args {
+      arg_name: "collection"
+    }
+  }
+  member_methods {
+    name: "assert_global_step"
+    args {
+      arg_name: "global_step_tensor"
+    }
+  }
+  member_methods {
+    name: "basic_train_loop"
+    args {
+      arg_name: "supervisor"
+    }
+    args {
+      arg_name: "train_step_fn"
+    }
+    args {
+      arg_name: "args"
+    }
+    args {
+      arg_name: "kwargs"
+    }
+    args {
+      arg_name: "master"
+    }
+  }
+  member_methods {
+    name: "batch"
+    args {
+      arg_name: "tensors"
+    }
+    args {
+      arg_name: "batch_size"
+    }
+    args {
+      arg_name: "num_threads"
+    }
+    args {
+      arg_name: "capacity"
+    }
+    args {
+      arg_name: "enqueue_many"
+    }
+    args {
+      arg_name: "shapes"
+    }
+    args {
+      arg_name: "dynamic_pad"
+    }
+    args {
+      arg_name: "allow_smaller_final_batch"
+    }
+    args {
+      arg_name: "shared_name"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "batch_join"
+    args {
+      arg_name: "tensors_list"
+    }
+    args {
+      arg_name: "batch_size"
+    }
+    args {
+      arg_name: "capacity"
+    }
+    args {
+      arg_name: "enqueue_many"
+    }
+    args {
+      arg_name: "shapes"
+    }
+    args {
+      arg_name: "dynamic_pad"
+    }
+    args {
+      arg_name: "allow_smaller_final_batch"
+    }
+    args {
+      arg_name: "shared_name"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "checkpoint_exists"
+    args {
+      arg_name: "checkpoint_prefix"
+    }
+  }
+  member_methods {
+    name: "do_quantize_training_on_graphdef"
+    args {
+      arg_name: "input_graph"
+    }
+    args {
+      arg_name: "num_bits"
+    }
+  }
+  member_methods {
+    name: "exponential_decay"
+    args {
+      arg_name: "learning_rate"
+    }
+    args {
+      arg_name: "global_step"
+    }
+    args {
+      arg_name: "decay_steps"
+    }
+    args {
+      arg_name: "decay_rate"
+    }
+    args {
+      arg_name: "staircase"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "export_meta_graph"
+    args {
+      arg_name: "filename"
+    }
+    args {
+      arg_name: "meta_info_def"
+    }
+    args {
+      arg_name: "graph_def"
+    }
+    args {
+      arg_name: "saver_def"
+    }
+    args {
+      arg_name: "collection_list"
+    }
+    args {
+      arg_name: "as_text"
+    }
+    args {
+      arg_name: "graph"
+    }
+    args {
+      arg_name: "export_scope"
+    }
+    args {
+      arg_name: "clear_devices"
+    }
+  }
+  member_methods {
+    name: "generate_checkpoint_state_proto"
+    args {
+      arg_name: "save_dir"
+    }
+    args {
+      arg_name: "model_checkpoint_path"
+    }
+    args {
+      arg_name: "all_model_checkpoint_paths"
+    }
+  }
+  member_methods {
+    name: "get_checkpoint_mtimes"
+    args {
+      arg_name: "checkpoint_prefixes"
+    }
+  }
+  member_methods {
+    name: "get_checkpoint_state"
+    args {
+      arg_name: "checkpoint_dir"
+    }
+    args {
+      arg_name: "latest_filename"
+    }
+  }
+  member_methods {
+    name: "get_global_step"
+    args {
+      arg_name: "graph"
+    }
+  }
+  member_methods {
+    name: "global_step"
+    args {
+      arg_name: "sess"
+    }
+    args {
+      arg_name: "global_step_tensor"
+    }
+  }
+  member_methods {
+    name: "import_meta_graph"
+    args {
+      arg_name: "meta_graph_or_file"
+    }
+    args {
+      arg_name: "clear_devices"
+    }
+    args {
+      arg_name: "import_scope"
+    }
+  }
+  member_methods {
+    name: "input_producer"
+    args {
+      arg_name: "input_tensor"
+    }
+    args {
+      arg_name: "element_shape"
+    }
+    args {
+      arg_name: "num_epochs"
+    }
+    args {
+      arg_name: "shuffle"
+    }
+    args {
+      arg_name: "seed"
+    }
+    args {
+      arg_name: "capacity"
+    }
+    args {
+      arg_name: "shared_name"
+    }
+    args {
+      arg_name: "summary_name"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "cancel_op"
+    }
+  }
+  member_methods {
+    name: "inverse_time_decay"
+    args {
+      arg_name: "learning_rate"
+    }
+    args {
+      arg_name: "global_step"
+    }
+    args {
+      arg_name: "decay_steps"
+    }
+    args {
+      arg_name: "decay_rate"
+    }
+    args {
+      arg_name: "staircase"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "latest_checkpoint"
+    args {
+      arg_name: "checkpoint_dir"
+    }
+    args {
+      arg_name: "latest_filename"
+    }
+  }
+  member_methods {
+    name: "limit_epochs"
+    args {
+      arg_name: "tensor"
+    }
+    args {
+      arg_name: "num_epochs"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "match_filenames_once"
+    args {
+      arg_name: "pattern"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "maybe_batch"
+    args {
+      arg_name: "tensors"
+    }
+    args {
+      arg_name: "keep_input"
+    }
+    args {
+      arg_name: "batch_size"
+    }
+    args {
+      arg_name: "num_threads"
+    }
+    args {
+      arg_name: "capacity"
+    }
+    args {
+      arg_name: "enqueue_many"
+    }
+    args {
+      arg_name: "shapes"
+    }
+    args {
+      arg_name: "dynamic_pad"
+    }
+    args {
+      arg_name: "allow_smaller_final_batch"
+    }
+    args {
+      arg_name: "shared_name"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "maybe_batch_join"
+    args {
+      arg_name: "tensors_list"
+    }
+    args {
+      arg_name: "keep_input"
+    }
+    args {
+      arg_name: "batch_size"
+    }
+    args {
+      arg_name: "capacity"
+    }
+    args {
+      arg_name: "enqueue_many"
+    }
+    args {
+      arg_name: "shapes"
+    }
+    args {
+      arg_name: "dynamic_pad"
+    }
+    args {
+      arg_name: "allow_smaller_final_batch"
+    }
+    args {
+      arg_name: "shared_name"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "maybe_shuffle_batch"
+    args {
+      arg_name: "tensors"
+    }
+    args {
+      arg_name: "batch_size"
+    }
+    args {
+      arg_name: "capacity"
+    }
+    args {
+      arg_name: "min_after_dequeue"
+    }
+    args {
+      arg_name: "keep_input"
+    }
+    args {
+      arg_name: "num_threads"
+    }
+    args {
+      arg_name: "seed"
+    }
+    args {
+      arg_name: "enqueue_many"
+    }
+    args {
+      arg_name: "shapes"
+    }
+    args {
+      arg_name: "allow_smaller_final_batch"
+    }
+    args {
+      arg_name: "shared_name"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "maybe_shuffle_batch_join"
+    args {
+      arg_name: "tensors_list"
+    }
+    args {
+      arg_name: "batch_size"
+    }
+    args {
+      arg_name: "capacity"
+    }
+    args {
+      arg_name: "min_after_dequeue"
+    }
+    args {
+      arg_name: "keep_input"
+    }
+    args {
+      arg_name: "seed"
+    }
+    args {
+      arg_name: "enqueue_many"
+    }
+    args {
+      arg_name: "shapes"
+    }
+    args {
+      arg_name: "allow_smaller_final_batch"
+    }
+    args {
+      arg_name: "shared_name"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "natural_exp_decay"
+    args {
+      arg_name: "learning_rate"
+    }
+    args {
+      arg_name: "global_step"
+    }
+    args {
+      arg_name: "decay_steps"
+    }
+    args {
+      arg_name: "decay_rate"
+    }
+    args {
+      arg_name: "staircase"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "piecewise_constant"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "boundaries"
+    }
+    args {
+      arg_name: "values"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "polynomial_decay"
+    args {
+      arg_name: "learning_rate"
+    }
+    args {
+      arg_name: "global_step"
+    }
+    args {
+      arg_name: "decay_steps"
+    }
+    args {
+      arg_name: "end_learning_rate"
+    }
+    args {
+      arg_name: "power"
+    }
+    args {
+      arg_name: "cycle"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "range_input_producer"
+    args {
+      arg_name: "limit"
+    }
+    args {
+      arg_name: "num_epochs"
+    }
+    args {
+      arg_name: "shuffle"
+    }
+    args {
+      arg_name: "seed"
+    }
+    args {
+      arg_name: "capacity"
+    }
+    args {
+      arg_name: "shared_name"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "replica_device_setter"
+    args {
+      arg_name: "ps_tasks"
+    }
+    args {
+      arg_name: "ps_device"
+    }
+    args {
+      arg_name: "worker_device"
+    }
+    args {
+      arg_name: "merge_devices"
+    }
+    args {
+      arg_name: "cluster"
+    }
+    args {
+      arg_name: "ps_ops"
+    }
+    args {
+      arg_name: "ps_strategy"
+    }
+  }
+  member_methods {
+    name: "shuffle_batch"
+    args {
+      arg_name: "tensors"
+    }
+    args {
+      arg_name: "batch_size"
+    }
+    args {
+      arg_name: "capacity"
+    }
+    args {
+      arg_name: "min_after_dequeue"
+    }
+    args {
+      arg_name: "num_threads"
+    }
+    args {
+      arg_name: "seed"
+    }
+    args {
+      arg_name: "enqueue_many"
+    }
+    args {
+      arg_name: "shapes"
+    }
+    args {
+      arg_name: "allow_smaller_final_batch"
+    }
+    args {
+      arg_name: "shared_name"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "shuffle_batch_join"
+    args {
+      arg_name: "tensors_list"
+    }
+    args {
+      arg_name: "batch_size"
+    }
+    args {
+      arg_name: "capacity"
+    }
+    args {
+      arg_name: "min_after_dequeue"
+    }
+    args {
+      arg_name: "seed"
+    }
+    args {
+      arg_name: "enqueue_many"
+    }
+    args {
+      arg_name: "shapes"
+    }
+    args {
+      arg_name: "allow_smaller_final_batch"
+    }
+    args {
+      arg_name: "shared_name"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "slice_input_producer"
+    args {
+      arg_name: "tensor_list"
+    }
+    args {
+      arg_name: "num_epochs"
+    }
+    args {
+      arg_name: "shuffle"
+    }
+    args {
+      arg_name: "seed"
+    }
+    args {
+      arg_name: "capacity"
+    }
+    args {
+      arg_name: "shared_name"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "start_queue_runners"
+    args {
+      arg_name: "sess"
+    }
+    args {
+      arg_name: "coord"
+    }
+    args {
+      arg_name: "daemon"
+    }
+    args {
+      arg_name: "start"
+    }
+    args {
+      arg_name: "collection"
+    }
+  }
+  member_methods {
+    name: "string_input_producer"
+    args {
+      arg_name: "string_tensor"
+    }
+    args {
+      arg_name: "num_epochs"
+    }
+    args {
+      arg_name: "shuffle"
+    }
+    args {
+      arg_name: "seed"
+    }
+    args {
+      arg_name: "capacity"
+    }
+    args {
+      arg_name: "shared_name"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "cancel_op"
+    }
+  }
+  member_methods {
+    name: "summary_iterator"
+    args {
+      arg_name: "path"
+    }
+  }
+  member_methods {
+    name: "update_checkpoint_state"
+    args {
+      arg_name: "save_dir"
+    }
+    args {
+      arg_name: "model_checkpoint_path"
+    }
+    args {
+      arg_name: "all_model_checkpoint_paths"
+    }
+    args {
+      arg_name: "latest_filename"
+    }
+  }
+  member_methods {
+    name: "write_graph"
+    args {
+      arg_name: "graph_or_graph_def"
+    }
+    args {
+      arg_name: "logdir"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "as_text"
+    }
+  }
+}

@@ -1,0 +1,177 @@
+path: "tensorflow.train.JobDef.TasksEntry"
+tf_class {
+  name: "TasksEntry"
+  is_instance: "<class \'tensorflow.core.protobuf.tensorflow_server_pb2.TasksEntry\'>"
+  is_instance: "<class \'google.protobuf.message.Message\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "DESCRIPTOR"
+    mtype: "<class \'google.protobuf.descriptor.Descriptor\'>"
+  }
+  members {
+    name: "KEY_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "VALUE_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  members {
+    name: "key"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "value"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "ByteSize"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "Clear"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "ClearExtension"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "extension_handle"
+    }
+  }
+  member_methods {
+    name: "ClearField"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "field_name"
+    }
+  }
+  member_methods {
+    name: "CopyFrom"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "other_msg"
+    }
+  }
+  member_methods {
+    name: "DiscardUnknownFields"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "FindInitializationErrors"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "FromString"
+    args {
+      arg_name: "s"
+    }
+  }
+  member_methods {
+    name: "HasExtension"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "extension_handle"
+    }
+  }
+  member_methods {
+    name: "HasField"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "field_name"
+    }
+  }
+  member_methods {
+    name: "IsInitialized"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "errors"
+    }
+  }
+  member_methods {
+    name: "ListFields"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "MergeFrom"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "msg"
+    }
+  }
+  member_methods {
+    name: "MergeFromString"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "serialized"
+    }
+  }
+  member_methods {
+    name: "ParseFromString"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "serialized"
+    }
+  }
+  member_methods {
+    name: "RegisterExtension"
+    args {
+      arg_name: "extension_handle"
+    }
+  }
+  member_methods {
+    name: "SerializePartialToString"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "SerializeToString"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "SetInParent"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "WhichOneof"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "oneof_name"
+    }
+  }
+}

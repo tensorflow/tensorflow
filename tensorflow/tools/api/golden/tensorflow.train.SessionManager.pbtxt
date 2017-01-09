@@ -1,0 +1,84 @@
+path: "tensorflow.train.SessionManager"
+tf_class {
+  name: "SessionManager"
+  is_instance: "<class \'tensorflow.python.training.session_manager.SessionManager\'>"
+  is_instance: "<type \'object\'>"
+  member_methods {
+    name: "prepare_session"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "master"
+    }
+    args {
+      arg_name: "init_op"
+    }
+    args {
+      arg_name: "saver"
+    }
+    args {
+      arg_name: "checkpoint_dir"
+    }
+    args {
+      arg_name: "checkpoint_filename_with_path"
+    }
+    args {
+      arg_name: "wait_for_checkpoint"
+    }
+    args {
+      arg_name: "max_wait_secs"
+    }
+    args {
+      arg_name: "config"
+    }
+    args {
+      arg_name: "init_feed_dict"
+    }
+    args {
+      arg_name: "init_fn"
+    }
+  }
+  member_methods {
+    name: "recover_session"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "master"
+    }
+    args {
+      arg_name: "saver"
+    }
+    args {
+      arg_name: "checkpoint_dir"
+    }
+    args {
+      arg_name: "checkpoint_filename_with_path"
+    }
+    args {
+      arg_name: "wait_for_checkpoint"
+    }
+    args {
+      arg_name: "max_wait_secs"
+    }
+    args {
+      arg_name: "config"
+    }
+  }
+  member_methods {
+    name: "wait_for_session"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "master"
+    }
+    args {
+      arg_name: "config"
+    }
+    args {
+      arg_name: "max_wait_secs"
+    }
+  }
+}

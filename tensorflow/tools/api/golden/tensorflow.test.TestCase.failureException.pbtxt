@@ -1,0 +1,17 @@
+path: "tensorflow.test.TestCase.failureException"
+tf_class {
+  name: "AssertionError"
+  is_instance: "<type \'exceptions.AssertionError\'>"
+  is_instance: "<type \'exceptions.StandardError\'>"
+  is_instance: "<type \'exceptions.Exception\'>"
+  is_instance: "<type \'exceptions.BaseException\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "args"
+    mtype: "<type \'getset_descriptor\'>"
+  }
+  members {
+    name: "message"
+    mtype: "<type \'getset_descriptor\'>"
+  }
+}

@@ -1,0 +1,26 @@
+path: "tensorflow.FixedLenFeature"
+tf_class {
+  name: "FixedLenFeature"
+  is_instance: "<class \'tensorflow.python.ops.parsing_ops.FixedLenFeature\'>"
+  is_instance: "<class \'tensorflow.python.ops.parsing_ops.FixedLenFeature\'>"
+  is_instance: "<type \'tuple\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "default_value"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "shape"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "count"
+  }
+  member_methods {
+    name: "index"
+  }
+}

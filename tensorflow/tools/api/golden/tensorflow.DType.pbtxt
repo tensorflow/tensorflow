@@ -1,0 +1,79 @@
+path: "tensorflow.DType"
+tf_class {
+  name: "DType"
+  is_instance: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "as_datatype_enum"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "as_numpy_dtype"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "base_dtype"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "is_bool"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "is_complex"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "is_floating"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "is_integer"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "is_numpy_compatible"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "is_quantized"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "is_unsigned"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "limits"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "max"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "min"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "name"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "real_dtype"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "size"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "is_compatible_with"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "other"
+    }
+  }
+}

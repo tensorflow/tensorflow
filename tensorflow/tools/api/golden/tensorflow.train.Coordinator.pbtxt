@@ -1,0 +1,70 @@
+path: "tensorflow.train.Coordinator"
+tf_class {
+  name: "Coordinator"
+  is_instance: "<class \'tensorflow.python.training.coordinator.Coordinator\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "joined"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "clear_stop"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "join"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "threads"
+    }
+    args {
+      arg_name: "stop_grace_period_secs"
+    }
+  }
+  member_methods {
+    name: "raise_requested_exception"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "register_thread"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "thread"
+    }
+  }
+  member_methods {
+    name: "request_stop"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "ex"
+    }
+  }
+  member_methods {
+    name: "should_stop"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "stop_on_exception"
+  }
+  member_methods {
+    name: "wait_for_stop"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "timeout"
+    }
+  }
+}

@@ -1,0 +1,10 @@
+path: "tensorflow.sysconfig"
+tf_module {
+  name: "tensorflow.python.platform.sysconfig"
+  member_methods {
+    name: "get_include"
+  }
+  member_methods {
+    name: "get_lib"
+  }
+}

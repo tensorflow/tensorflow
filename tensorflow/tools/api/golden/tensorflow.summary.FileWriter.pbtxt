@@ -1,0 +1,106 @@
+path: "tensorflow.summary.FileWriter"
+tf_class {
+  name: "FileWriter"
+  is_instance: "<class \'tensorflow.python.summary.writer.writer.FileWriter\'>"
+  is_instance: "<class \'tensorflow.python.summary.writer.writer.SummaryToEventTransformer\'>"
+  is_instance: "<type \'object\'>"
+  member_methods {
+    name: "add_event"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "event"
+    }
+  }
+  member_methods {
+    name: "add_graph"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "graph"
+    }
+    args {
+      arg_name: "global_step"
+    }
+    args {
+      arg_name: "graph_def"
+    }
+  }
+  member_methods {
+    name: "add_meta_graph"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "meta_graph_def"
+    }
+    args {
+      arg_name: "global_step"
+    }
+  }
+  member_methods {
+    name: "add_run_metadata"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "run_metadata"
+    }
+    args {
+      arg_name: "tag"
+    }
+    args {
+      arg_name: "global_step"
+    }
+  }
+  member_methods {
+    name: "add_session_log"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "session_log"
+    }
+    args {
+      arg_name: "global_step"
+    }
+  }
+  member_methods {
+    name: "add_summary"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "summary"
+    }
+    args {
+      arg_name: "global_step"
+    }
+  }
+  member_methods {
+    name: "close"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "flush"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "get_logdir"
+    args {
+      arg_name: "self"
+    }
+  }
+  member_methods {
+    name: "reopen"
+    args {
+      arg_name: "self"
+    }
+  }
+}

@@ -1,0 +1,18 @@
+path: "tensorflow.VarLenFeature"
+tf_class {
+  name: "VarLenFeature"
+  is_instance: "<class \'tensorflow.python.ops.parsing_ops.VarLenFeature\'>"
+  is_instance: "<class \'tensorflow.python.ops.parsing_ops.VarLenFeature\'>"
+  is_instance: "<type \'tuple\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "count"
+  }
+  member_methods {
+    name: "index"
+  }
+}

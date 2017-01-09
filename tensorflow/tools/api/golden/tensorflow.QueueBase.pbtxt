@@ -1,0 +1,113 @@
+path: "tensorflow.QueueBase"
+tf_class {
+  name: "QueueBase"
+  is_instance: "<class \'tensorflow.python.ops.data_flow_ops.QueueBase\'>"
+  is_instance: "<type \'object\'>"
+  members {
+    name: "dtypes"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "name"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "names"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "queue_ref"
+    mtype: "<type \'property\'>"
+  }
+  members {
+    name: "shapes"
+    mtype: "<type \'property\'>"
+  }
+  member_methods {
+    name: "close"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "cancel_pending_enqueues"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "dequeue"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "dequeue_many"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "n"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "dequeue_up_to"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "n"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "enqueue"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "vals"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "enqueue_many"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "vals"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "from_list"
+    args {
+      arg_name: "index"
+    }
+    args {
+      arg_name: "queues"
+    }
+  }
+  member_methods {
+    name: "size"
+    args {
+      arg_name: "self"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+}

@@ -1,0 +1,1594 @@
+path: "tensorflow.nn"
+tf_module {
+  name: "tensorflow.python.ops.nn"
+  member_methods {
+    name: "all_candidate_sampler"
+    args {
+      arg_name: "true_classes"
+    }
+    args {
+      arg_name: "num_true"
+    }
+    args {
+      arg_name: "num_sampled"
+    }
+    args {
+      arg_name: "unique"
+    }
+    args {
+      arg_name: "seed"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "atrous_conv2d"
+    args {
+      arg_name: "value"
+    }
+    args {
+      arg_name: "filters"
+    }
+    args {
+      arg_name: "rate"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "atrous_conv2d_transpose"
+    args {
+      arg_name: "value"
+    }
+    args {
+      arg_name: "filters"
+    }
+    args {
+      arg_name: "output_shape"
+    }
+    args {
+      arg_name: "rate"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "avg_pool"
+    args {
+      arg_name: "value"
+    }
+    args {
+      arg_name: "ksize"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "data_format"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "avg_pool3d"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "ksize"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "batch_norm_with_global_normalization"
+    args {
+      arg_name: "t"
+    }
+    args {
+      arg_name: "m"
+    }
+    args {
+      arg_name: "v"
+    }
+    args {
+      arg_name: "beta"
+    }
+    args {
+      arg_name: "gamma"
+    }
+    args {
+      arg_name: "variance_epsilon"
+    }
+    args {
+      arg_name: "scale_after_normalization"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "batch_normalization"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "mean"
+    }
+    args {
+      arg_name: "variance"
+    }
+    args {
+      arg_name: "offset"
+    }
+    args {
+      arg_name: "scale"
+    }
+    args {
+      arg_name: "variance_epsilon"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "bias_add"
+    args {
+      arg_name: "value"
+    }
+    args {
+      arg_name: "bias"
+    }
+    args {
+      arg_name: "data_format"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "bidirectional_dynamic_rnn"
+    args {
+      arg_name: "cell_fw"
+    }
+    args {
+      arg_name: "cell_bw"
+    }
+    args {
+      arg_name: "inputs"
+    }
+    args {
+      arg_name: "sequence_length"
+    }
+    args {
+      arg_name: "initial_state_fw"
+    }
+    args {
+      arg_name: "initial_state_bw"
+    }
+    args {
+      arg_name: "dtype"
+    }
+    args {
+      arg_name: "parallel_iterations"
+    }
+    args {
+      arg_name: "swap_memory"
+    }
+    args {
+      arg_name: "time_major"
+    }
+    args {
+      arg_name: "scope"
+    }
+  }
+  member_methods {
+    name: "compute_accidental_hits"
+    args {
+      arg_name: "true_classes"
+    }
+    args {
+      arg_name: "sampled_candidates"
+    }
+    args {
+      arg_name: "num_true"
+    }
+    args {
+      arg_name: "seed"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "conv1d"
+    args {
+      arg_name: "value"
+    }
+    args {
+      arg_name: "filters"
+    }
+    args {
+      arg_name: "stride"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "use_cudnn_on_gpu"
+    }
+    args {
+      arg_name: "data_format"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "conv2d"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "filter"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "use_cudnn_on_gpu"
+    }
+    args {
+      arg_name: "data_format"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "conv2d_backprop_filter"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "filter_sizes"
+    }
+    args {
+      arg_name: "out_backprop"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "use_cudnn_on_gpu"
+    }
+    args {
+      arg_name: "data_format"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "conv2d_backprop_input"
+    args {
+      arg_name: "input_sizes"
+    }
+    args {
+      arg_name: "filter"
+    }
+    args {
+      arg_name: "out_backprop"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "use_cudnn_on_gpu"
+    }
+    args {
+      arg_name: "data_format"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "conv2d_transpose"
+    args {
+      arg_name: "value"
+    }
+    args {
+      arg_name: "filter"
+    }
+    args {
+      arg_name: "output_shape"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "data_format"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "conv3d"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "filter"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "conv3d_backprop_filter_v2"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "filter_sizes"
+    }
+    args {
+      arg_name: "out_backprop"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "conv3d_transpose"
+    args {
+      arg_name: "value"
+    }
+    args {
+      arg_name: "filter"
+    }
+    args {
+      arg_name: "output_shape"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "convolution"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "filter"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "dilation_rate"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "data_format"
+    }
+  }
+  member_methods {
+    name: "crelu"
+    args {
+      arg_name: "features"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "ctc_beam_search_decoder"
+    args {
+      arg_name: "inputs"
+    }
+    args {
+      arg_name: "sequence_length"
+    }
+    args {
+      arg_name: "beam_width"
+    }
+    args {
+      arg_name: "top_paths"
+    }
+    args {
+      arg_name: "merge_repeated"
+    }
+  }
+  member_methods {
+    name: "ctc_greedy_decoder"
+    args {
+      arg_name: "inputs"
+    }
+    args {
+      arg_name: "sequence_length"
+    }
+    args {
+      arg_name: "merge_repeated"
+    }
+  }
+  member_methods {
+    name: "ctc_loss"
+    args {
+      arg_name: "labels"
+    }
+    args {
+      arg_name: "inputs"
+    }
+    args {
+      arg_name: "sequence_length"
+    }
+    args {
+      arg_name: "preprocess_collapse_repeated"
+    }
+    args {
+      arg_name: "ctc_merge_repeated"
+    }
+    args {
+      arg_name: "time_major"
+    }
+  }
+  member_methods {
+    name: "depthwise_conv2d"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "filter"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "rate"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "depthwise_conv2d_native"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "filter"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "depthwise_conv2d_native_backprop_filter"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "filter_sizes"
+    }
+    args {
+      arg_name: "out_backprop"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "depthwise_conv2d_native_backprop_input"
+    args {
+      arg_name: "input_sizes"
+    }
+    args {
+      arg_name: "filter"
+    }
+    args {
+      arg_name: "out_backprop"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "dilation2d"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "filter"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "rates"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "dropout"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "keep_prob"
+    }
+    args {
+      arg_name: "noise_shape"
+    }
+    args {
+      arg_name: "seed"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "dynamic_rnn"
+    args {
+      arg_name: "cell"
+    }
+    args {
+      arg_name: "inputs"
+    }
+    args {
+      arg_name: "sequence_length"
+    }
+    args {
+      arg_name: "initial_state"
+    }
+    args {
+      arg_name: "dtype"
+    }
+    args {
+      arg_name: "parallel_iterations"
+    }
+    args {
+      arg_name: "swap_memory"
+    }
+    args {
+      arg_name: "time_major"
+    }
+    args {
+      arg_name: "scope"
+    }
+  }
+  member_methods {
+    name: "elu"
+    args {
+      arg_name: "features"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "embedding_lookup"
+    args {
+      arg_name: "params"
+    }
+    args {
+      arg_name: "ids"
+    }
+    args {
+      arg_name: "partition_strategy"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "validate_indices"
+    }
+    args {
+      arg_name: "max_norm"
+    }
+  }
+  member_methods {
+    name: "embedding_lookup_sparse"
+    args {
+      arg_name: "params"
+    }
+    args {
+      arg_name: "sp_ids"
+    }
+    args {
+      arg_name: "sp_weights"
+    }
+    args {
+      arg_name: "partition_strategy"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "combiner"
+    }
+    args {
+      arg_name: "max_norm"
+    }
+  }
+  member_methods {
+    name: "erosion2d"
+    args {
+      arg_name: "value"
+    }
+    args {
+      arg_name: "kernel"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "rates"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "fixed_unigram_candidate_sampler"
+    args {
+      arg_name: "true_classes"
+    }
+    args {
+      arg_name: "num_true"
+    }
+    args {
+      arg_name: "num_sampled"
+    }
+    args {
+      arg_name: "unique"
+    }
+    args {
+      arg_name: "range_max"
+    }
+    args {
+      arg_name: "vocab_file"
+    }
+    args {
+      arg_name: "distortion"
+    }
+    args {
+      arg_name: "num_reserved_ids"
+    }
+    args {
+      arg_name: "num_shards"
+    }
+    args {
+      arg_name: "shard"
+    }
+    args {
+      arg_name: "unigrams"
+    }
+    args {
+      arg_name: "seed"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "fractional_avg_pool"
+    args {
+      arg_name: "value"
+    }
+    args {
+      arg_name: "pooling_ratio"
+    }
+    args {
+      arg_name: "pseudo_random"
+    }
+    args {
+      arg_name: "overlapping"
+    }
+    args {
+      arg_name: "deterministic"
+    }
+    args {
+      arg_name: "seed"
+    }
+    args {
+      arg_name: "seed2"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "fractional_max_pool"
+    args {
+      arg_name: "value"
+    }
+    args {
+      arg_name: "pooling_ratio"
+    }
+    args {
+      arg_name: "pseudo_random"
+    }
+    args {
+      arg_name: "overlapping"
+    }
+    args {
+      arg_name: "deterministic"
+    }
+    args {
+      arg_name: "seed"
+    }
+    args {
+      arg_name: "seed2"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "fused_batch_norm"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "scale"
+    }
+    args {
+      arg_name: "offset"
+    }
+    args {
+      arg_name: "mean"
+    }
+    args {
+      arg_name: "variance"
+    }
+    args {
+      arg_name: "epsilon"
+    }
+    args {
+      arg_name: "data_format"
+    }
+    args {
+      arg_name: "is_training"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "in_top_k"
+    args {
+      arg_name: "predictions"
+    }
+    args {
+      arg_name: "targets"
+    }
+    args {
+      arg_name: "k"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "l2_loss"
+    args {
+      arg_name: "t"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "l2_normalize"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "dim"
+    }
+    args {
+      arg_name: "epsilon"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "learned_unigram_candidate_sampler"
+    args {
+      arg_name: "true_classes"
+    }
+    args {
+      arg_name: "num_true"
+    }
+    args {
+      arg_name: "num_sampled"
+    }
+    args {
+      arg_name: "unique"
+    }
+    args {
+      arg_name: "range_max"
+    }
+    args {
+      arg_name: "seed"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "local_response_normalization"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "depth_radius"
+    }
+    args {
+      arg_name: "bias"
+    }
+    args {
+      arg_name: "alpha"
+    }
+    args {
+      arg_name: "beta"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "log_poisson_loss"
+    args {
+      arg_name: "targets"
+    }
+    args {
+      arg_name: "log_input"
+    }
+    args {
+      arg_name: "compute_full_loss"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "log_softmax"
+    args {
+      arg_name: "logits"
+    }
+    args {
+      arg_name: "dim"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "log_uniform_candidate_sampler"
+    args {
+      arg_name: "true_classes"
+    }
+    args {
+      arg_name: "num_true"
+    }
+    args {
+      arg_name: "num_sampled"
+    }
+    args {
+      arg_name: "unique"
+    }
+    args {
+      arg_name: "range_max"
+    }
+    args {
+      arg_name: "seed"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "lrn"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "depth_radius"
+    }
+    args {
+      arg_name: "bias"
+    }
+    args {
+      arg_name: "alpha"
+    }
+    args {
+      arg_name: "beta"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "max_pool"
+    args {
+      arg_name: "value"
+    }
+    args {
+      arg_name: "ksize"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "data_format"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "max_pool3d"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "ksize"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "max_pool_with_argmax"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "ksize"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "Targmax"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "moments"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "axes"
+    }
+    args {
+      arg_name: "shift"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "keep_dims"
+    }
+  }
+  member_methods {
+    name: "nce_loss"
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "biases"
+    }
+    args {
+      arg_name: "labels"
+    }
+    args {
+      arg_name: "inputs"
+    }
+    args {
+      arg_name: "num_sampled"
+    }
+    args {
+      arg_name: "num_classes"
+    }
+    args {
+      arg_name: "num_true"
+    }
+    args {
+      arg_name: "sampled_values"
+    }
+    args {
+      arg_name: "remove_accidental_hits"
+    }
+    args {
+      arg_name: "partition_strategy"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "normalize_moments"
+    args {
+      arg_name: "counts"
+    }
+    args {
+      arg_name: "mean_ss"
+    }
+    args {
+      arg_name: "variance_ss"
+    }
+    args {
+      arg_name: "shift"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "pool"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "window_shape"
+    }
+    args {
+      arg_name: "pooling_type"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "dilation_rate"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "data_format"
+    }
+  }
+  member_methods {
+    name: "quantized_avg_pool"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "min_input"
+    }
+    args {
+      arg_name: "max_input"
+    }
+    args {
+      arg_name: "ksize"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "quantized_conv2d"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "filter"
+    }
+    args {
+      arg_name: "min_input"
+    }
+    args {
+      arg_name: "max_input"
+    }
+    args {
+      arg_name: "min_filter"
+    }
+    args {
+      arg_name: "max_filter"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "out_type"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "quantized_max_pool"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "min_input"
+    }
+    args {
+      arg_name: "max_input"
+    }
+    args {
+      arg_name: "ksize"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "quantized_relu_x"
+    args {
+      arg_name: "features"
+    }
+    args {
+      arg_name: "max_value"
+    }
+    args {
+      arg_name: "min_features"
+    }
+    args {
+      arg_name: "max_features"
+    }
+    args {
+      arg_name: "out_type"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "raw_rnn"
+    args {
+      arg_name: "cell"
+    }
+    args {
+      arg_name: "loop_fn"
+    }
+    args {
+      arg_name: "parallel_iterations"
+    }
+    args {
+      arg_name: "swap_memory"
+    }
+    args {
+      arg_name: "scope"
+    }
+  }
+  member_methods {
+    name: "relu"
+    args {
+      arg_name: "features"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "relu6"
+    args {
+      arg_name: "features"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "relu_layer"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "biases"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "sampled_softmax_loss"
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "biases"
+    }
+    args {
+      arg_name: "labels"
+    }
+    args {
+      arg_name: "inputs"
+    }
+    args {
+      arg_name: "num_sampled"
+    }
+    args {
+      arg_name: "num_classes"
+    }
+    args {
+      arg_name: "num_true"
+    }
+    args {
+      arg_name: "sampled_values"
+    }
+    args {
+      arg_name: "remove_accidental_hits"
+    }
+    args {
+      arg_name: "partition_strategy"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "separable_conv2d"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "depthwise_filter"
+    }
+    args {
+      arg_name: "pointwise_filter"
+    }
+    args {
+      arg_name: "strides"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "rate"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "sigmoid"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "sigmoid_cross_entropy_with_logits"
+    args {
+      arg_name: "logits"
+    }
+    args {
+      arg_name: "targets"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "softmax"
+    args {
+      arg_name: "logits"
+    }
+    args {
+      arg_name: "dim"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "softmax_cross_entropy_with_logits"
+    args {
+      arg_name: "logits"
+    }
+    args {
+      arg_name: "labels"
+    }
+    args {
+      arg_name: "dim"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "softplus"
+    args {
+      arg_name: "features"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "softsign"
+    args {
+      arg_name: "features"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "sparse_softmax_cross_entropy_with_logits"
+    args {
+      arg_name: "logits"
+    }
+    args {
+      arg_name: "labels"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "sufficient_statistics"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "axes"
+    }
+    args {
+      arg_name: "shift"
+    }
+    args {
+      arg_name: "keep_dims"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "tanh"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "top_k"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "k"
+    }
+    args {
+      arg_name: "sorted"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "uniform_candidate_sampler"
+    args {
+      arg_name: "true_classes"
+    }
+    args {
+      arg_name: "num_true"
+    }
+    args {
+      arg_name: "num_sampled"
+    }
+    args {
+      arg_name: "unique"
+    }
+    args {
+      arg_name: "range_max"
+    }
+    args {
+      arg_name: "seed"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "weighted_cross_entropy_with_logits"
+    args {
+      arg_name: "targets"
+    }
+    args {
+      arg_name: "logits"
+    }
+    args {
+      arg_name: "pos_weight"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "weighted_moments"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "axes"
+    }
+    args {
+      arg_name: "frequency_weights"
+    }
+    args {
+      arg_name: "name"
+    }
+    args {
+      arg_name: "keep_dims"
+    }
+  }
+  member_methods {
+    name: "with_space_to_batch"
+    args {
+      arg_name: "input"
+    }
+    args {
+      arg_name: "dilation_rate"
+    }
+    args {
+      arg_name: "padding"
+    }
+    args {
+      arg_name: "op"
+    }
+    args {
+      arg_name: "filter_shape"
+    }
+    args {
+      arg_name: "spatial_dims"
+    }
+  }
+  member_methods {
+    name: "xw_plus_b"
+    args {
+      arg_name: "x"
+    }
+    args {
+      arg_name: "weights"
+    }
+    args {
+      arg_name: "biases"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+  member_methods {
+    name: "zero_fraction"
+    args {
+      arg_name: "value"
+    }
+    args {
+      arg_name: "name"
+    }
+  }
+}
