@@ -40,7 +40,6 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import event_accumulator
 from tensorflow.tensorboard.backend import process_graph
 from tensorflow.tensorboard.lib.python import http
-from tensorflow.tensorboard.plugins.projector import plugin as projector_plugin
 
 DATA_PREFIX = '/data'
 LOGDIR_ROUTE = '/logdir'
@@ -56,10 +55,6 @@ INDIVIDUAL_AUDIO_ROUTE = '/individualAudio'
 GRAPH_ROUTE = '/' + event_accumulator.GRAPH
 RUN_METADATA_ROUTE = '/' + event_accumulator.RUN_METADATA
 TAB_ROUTES = ['', '/events', '/images', '/audio', '/graphs', '/histograms']
-
-REGISTERED_PLUGINS = {
-    'projector': projector_plugin.ProjectorPlugin(),
-}
 
 _IMGHDR_TO_MIMETYPE = {
     'bmp': 'image/bmp',
@@ -99,8 +94,9 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
   #                      responses using send_header.
   protocol_version = 'HTTP/1.1'
 
-  def __init__(self, multiplexer, logdir, *args):
+  def __init__(self, multiplexer, name_to_plugin_dict, logdir, *args):
     self._multiplexer = multiplexer
+    self._registered_plugins = name_to_plugin_dict
     self._logdir = logdir
     self._setup_data_handlers()
     BaseHTTPServer.BaseHTTPRequestHandler.__init__(self, *args)
@@ -125,9 +121,9 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     # Serve the routes from the registered plugins using their name as the route
     # prefix. For example if plugin z has two routes /a and /b, they will be
     # served as /data/plugin/z/a and /data/plugin/z/b.
-    for name in REGISTERED_PLUGINS:
+    for name in self._registered_plugins:
       try:
-        plugin = REGISTERED_PLUGINS[name]
+        plugin = self._registered_plugins[name]
         plugin_handlers = plugin.get_plugin_handlers(
             self._multiplexer.RunPaths(), self._logdir)
       except Exception as e:  # pylint: disable=broad-except

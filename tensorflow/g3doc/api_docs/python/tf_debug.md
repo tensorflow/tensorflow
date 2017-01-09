@@ -840,9 +840,14 @@ Can be used as a monitor/hook for tf.train.MonitoredSession.
 
 - - -
 
-#### `tf_debug.LocalCLIDebugHook.__init__()` {#LocalCLIDebugHook.__init__}
+#### `tf_debug.LocalCLIDebugHook.__init__(ui_type='curses')` {#LocalCLIDebugHook.__init__}
 
 Create a local debugger command-line interface (CLI) hook.
+
+##### Args:
+
+
+*  <b>`ui_type`</b>: (str) user-interface type.
 
 
 - - -
@@ -1090,7 +1095,7 @@ will launch the command-line interface (CLI) of tfdbg.
 
 - - -
 
-#### `tf_debug.LocalCLIDebugWrapperSession.__init__(sess, dump_root=None, log_usage=True)` {#LocalCLIDebugWrapperSession.__init__}
+#### `tf_debug.LocalCLIDebugWrapperSession.__init__(sess, dump_root=None, log_usage=True, ui_type='curses')` {#LocalCLIDebugWrapperSession.__init__}
 
 Constructor of LocalCLIDebugWrapperSession.
 
@@ -1103,6 +1108,8 @@ Constructor of LocalCLIDebugWrapperSession.
     does not exist, it will be created by the debugger core during debug
     `run()` calls and removed afterwards.
 *  <b>`log_usage`</b>: (`bool`) whether the usage of this class is to be logged.
+*  <b>`ui_type`</b>: (`str`) requested UI type. Currently supported:
+    (curses | readline)
 
 ##### Raises:
 

@@ -1232,6 +1232,52 @@ class QuantizeNodesTest : public ::testing::Test {
     EXPECT_EQ("add_op", node_map["mul_op1"]->input(0));
     EXPECT_EQ("c_op", node_map["mul_op1"]->input(1));
   }
+
+  void TestExcludeNonFloat() {
+    auto root = tensorflow::Scope::NewRootScope();
+    using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
+
+    Tensor int_constant_tensor(DT_INT32, TensorShape({4, 5}));
+    test::FillIota<int32>(&int_constant_tensor, 1);
+    Output int_constant = Const(root.WithOpName("int_constant"),
+                                Input::Initializer(int_constant_tensor));
+
+    Tensor float_constant_tensor(DT_FLOAT, TensorShape({4, 5}));
+    test::FillIota<float>(&float_constant_tensor, 2.0f);
+    Output float_constant = Const(root.WithOpName("float_constant"),
+                                  Input::Initializer(float_constant_tensor));
+
+    Output excluded_reshape_op =
+        Reshape(root.WithOpName("excluded_reshape_op"), int_constant, {10, 2});
+
+    Output included_reshape_op = Reshape(root.WithOpName("included_reshape_op"),
+                                         float_constant, {10, 2});
+
+    Output excluded_relu_op =
+        Relu(root.WithOpName("excluded_relu_op"), excluded_reshape_op);
+
+    Output excluded_float_caster = Cast(
+        root.WithOpName("excluded_float_caster"), excluded_relu_op, DT_FLOAT);
+
+    Output included_relu_op =
+        Relu(root.WithOpName("included_relu_op"), included_reshape_op);
+
+    GraphDef float_graph_def;
+    TF_ASSERT_OK(root.ToGraphDef(&float_graph_def));
+
+    GraphDef quantized_graph_def;
+    TestTransformedVersusFloatGraph(
+        QuantizeNodes, float_graph_def, {}, {},
+        {"excluded_float_caster", "included_relu_op"}, {}, 1.0,
+        &quantized_graph_def);
+
+    std::map<string, const NodeDef*> node_map;
+    MapNamesToNodes(quantized_graph_def, &node_map);
+    ASSERT_EQ(1, node_map.count("excluded_reshape_op"));
+    EXPECT_EQ("Reshape", node_map.at("excluded_reshape_op")->op());
+    ASSERT_EQ(1, node_map.count("included_reshape_op"));
+    EXPECT_EQ("Dequantize", node_map.at("included_reshape_op")->op());
+  }
 };
 
 TEST_F(QuantizeNodesTest, TestQuantizeMatMulTiny) { TestQuantizeMatMulTiny(); }
@@ -1316,6 +1362,8 @@ TEST_F(QuantizeNodesTest, TestMergeDuplicatesNested) {
 TEST_F(QuantizeNodesTest, TestMergeDuplicateInOut) {
   TestMergeDuplicatesInOut();
 }
+
+TEST_F(QuantizeNodesTest, TestExcludeNonFloat) { TestExcludeNonFloat(); }
 
 }  // namespace graph_transforms
 }  // namespace tensorflow

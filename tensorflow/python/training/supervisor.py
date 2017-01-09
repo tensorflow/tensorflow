@@ -34,7 +34,6 @@ from tensorflow.python.summary import summary as _summary
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import saver as saver_mod
 from tensorflow.python.training import session_manager as session_manager_mod
-from tensorflow.python.training import summary_io
 from tensorflow.python.training import training_util
 
 
@@ -341,7 +340,7 @@ class Supervisor(object):
         self._save_path = os.path.join(self._logdir, checkpoint_basename)
       if summary_writer is Supervisor.USE_DEFAULT:
         if self._logdir:
-          self._summary_writer = summary_io.SummaryWriter(self._logdir)
+          self._summary_writer = _summary.FileWriter(self._logdir)
       else:
         self._summary_writer = summary_writer
       self._graph_added_to_summary = False
