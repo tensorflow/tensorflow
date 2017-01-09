@@ -28,12 +28,10 @@ filegroup(
     srcs = glob(
         [
             "core/ops/*.cc",
-            "data/*.cc",
             "ops/*.cc",
         ],
         exclude = [
             "core/ops/*_test.cc",
-            "data/*_test.cc",
         ],
     ),
 )
@@ -70,11 +68,10 @@ py_library(
 py_library(
     name = "data_ops_py",
     srcs = [
-        "data/data_ops.py",
+        "python/ops/data_ops.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":constants",
         ":tensor_forest_ops_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
@@ -101,12 +98,12 @@ tf_custom_op_library(
         "core/ops/count_extremely_random_stats_op.cc",
         "core/ops/finished_nodes_op.cc",
         "core/ops/grow_tree_op.cc",
+        "core/ops/reinterpret_string_to_float_op.cc",
         "core/ops/sample_inputs_op.cc",
         "core/ops/scatter_add_ndim_op.cc",
         "core/ops/topn_ops.cc",
         "core/ops/tree_predictions_op.cc",
         "core/ops/update_fertile_slots_op.cc",
-        "data/reinterpret_string_to_float_op.cc",
         "ops/tensor_forest_ops.cc",
     ],
     deps = [":tree_utils"],
@@ -117,7 +114,6 @@ py_library(
     srcs = [
         "__init__.py",
         "client/__init__.py",
-        "data/__init__.py",
         "python/__init__.py",
     ],
     srcs_version = "PY2AND3",
@@ -190,6 +186,7 @@ cc_library(
     name = "tree_utils",
     srcs = ["core/ops/tree_utils.cc"],
     hdrs = [
+        "core/ops/data_spec.h",
         "core/ops/tree_utils.h",
     ],
     deps = [
@@ -218,7 +215,7 @@ py_test(
     srcs = ["python/kernel_tests/count_extremely_random_stats_op_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":constants",
+        ":data_ops_py",
         ":tensor_forest_ops_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_test_lib",
@@ -259,6 +256,7 @@ py_test(
     srcs = ["python/kernel_tests/sample_inputs_op_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":data_ops_py",
         ":tensor_forest_ops_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",

@@ -27,7 +27,6 @@ from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.utils import export
 
 from tensorflow.contrib.tensor_forest.client import eval_metrics
-from tensorflow.contrib.tensor_forest.data import data_ops
 from tensorflow.contrib.tensor_forest.python import tensor_forest
 
 from tensorflow.python.framework import dtypes
@@ -110,16 +109,12 @@ def get_model_fn(params, graph_builder_class, device_assigner,
       weights = features.pop(weights_name)
     if keys_name and keys_name in features:
       keys = features.pop(keys_name)
-    processed_features, spec = data_ops.ParseDataTensorOrDict(features)
-    _assert_float32(processed_features)
-    if labels is not None:
-      labels = data_ops.ParseLabelTensorOrDict(labels)
-      _assert_float32(labels)
 
     graph_builder = graph_builder_class(params, device_assigner=device_assigner)
-    inference = {eval_metrics.INFERENCE_PROB_NAME:
-                 graph_builder.inference_graph(processed_features,
-                                               data_spec=spec)}
+    inference = {
+        eval_metrics.INFERENCE_PROB_NAME:
+            graph_builder.inference_graph(features)
+    }
     if not params.regression:
       inference[eval_metrics.INFERENCE_PRED_NAME] = math_ops.argmax(
           inference[eval_metrics.INFERENCE_PROB_NAME], 1)
@@ -131,13 +126,11 @@ def get_model_fn(params, graph_builder_class, device_assigner,
     training_loss = None
     training_graph = None
     if labels is not None:
-      training_loss = graph_builder.training_loss(processed_features, labels,
-                                                  data_spec=spec,
-                                                  name=LOSS_NAME)
+      training_loss = graph_builder.training_loss(
+          features, labels, name=LOSS_NAME)
       training_graph = control_flow_ops.group(
           graph_builder.training_graph(
-              processed_features, labels, data_spec=spec,
-              input_weights=weights),
+              features, labels, input_weights=weights),
           state_ops.assign_add(contrib_framework.get_global_step(), 1))
     # Put weights back in
     if weights is not None:
