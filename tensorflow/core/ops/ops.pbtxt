@@ -446,6 +446,26 @@ op {
   description: "`images` is a tensor of at least 3 dimensions.  The last dimension is\ninterpretted as channels, and must be three.\n\nThe input image is considered in the RGB colorspace. Conceptually, the RGB\ncolors are first mapped into HSV. A delta is then applied all the hue values,\nand then remapped back to RGB colorspace."
 }
 op {
+  name: "AdjustSaturation"
+  input_arg {
+    name: "images"
+    description: "Images to adjust.  At least 3-D."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "scale"
+    description: "A float scale to add to the saturation."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output"
+    description: "The hue-adjusted image or images."
+    type: DT_FLOAT
+  }
+  summary: "Adjust the saturation of one or more images."
+  description: "`images` is a tensor of at least 3 dimensions.  The last dimension is\ninterpretted as channels, and must be three.\n\nThe input image is considered in the RGB colorspace. Conceptually, the RGB\ncolors are first mapped into HSV. A scale is then applied all the saturation\nvalues, and then remapped back to RGB colorspace."
+}
+op {
   name: "All"
   input_arg {
     name: "input"
