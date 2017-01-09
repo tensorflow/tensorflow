@@ -150,6 +150,9 @@ REGISTER_OP("TestCPUGPUOutput").Output("a: float");
 REGISTER_KERNEL_BUILDER(Name("TestCPUGPUOutput").Device("FakeCPU"), DummyOp);
 REGISTER_KERNEL_BUILDER(Name("TestCPUGPUOutput").Device("FakeGPU"), DummyOp);
 
+REGISTER_OP("TestGPUOutput").Output("a: float");
+REGISTER_KERNEL_BUILDER(Name("TestGPUOutput").Device("FakeGPU"), DummyOp);
+
 REGISTER_OP("TestDevice").Output("a: float").Output("b: float");
 REGISTER_KERNEL_BUILDER(Name("TestDevice").Device("FakeGPU"), DummyOp);
 
@@ -251,11 +254,12 @@ class SimplePlacerTest : public ::testing::Test {
               GetNodeByName(g_, (name_b))->assigned_device_name()); \
   } while (0)
 
-#define EXPECT_DEVICE_TYPE(g, name, expected_device_type)                   \
-  EXPECT_EQ(DeviceType(expected_device_type).type(),                        \
-            devices_.FindDeviceByName(                                      \
-                        GetNodeByName((g), (name))->assigned_device_name()) \
-                ->attributes()                                              \
+#define EXPECT_DEVICE_TYPE(g, name, expected_device_type)               \
+  EXPECT_EQ(DeviceType(expected_device_type).type(),                    \
+            devices_                                                    \
+                .FindDeviceByName(                                      \
+                    GetNodeByName((g), (name))->assigned_device_name()) \
+                ->attributes()                                          \
                 .device_type())
 
 #define EXPECT_DEVICE_CONTAINS(g, name, device_substr)                        \
@@ -327,7 +331,7 @@ TEST_F(SimplePlacerTest, TestMetadataColocatedWithInput) {
 // Heuristic A implements "Island fusing": if a node only generates
 // an output and it has only one consumer, we place the node
 // with its consumer.
-TEST_F(SimplePlacerTest, TestHeuristicA) {
+TEST_F(SimplePlacerTest, TestHeuristicGeneratorFollowsSingleConsumer) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -352,6 +356,65 @@ TEST_F(SimplePlacerTest, TestHeuristicA) {
   EXPECT_COLOCATED(g, "assign", "in");
 }
 
+TEST_F(SimplePlacerTest, TestIgnoreGeneratorHeuristicIfWrongDevice) {
+  Graph g(OpRegistry::Global());
+  {  // Scope for temporary variables used to construct g.
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+
+    // A variable is only on CPU
+    Node* var_cpu = ops::SourceOp("VariableCPU", b.opts().WithName("var_cpu"));
+
+    // The constant to be assigned can only be on GPU.
+    //
+    // The heuristic to place the generator with its consumer does
+    // not apply since the consumer's device is not in the list
+    // of valid devices for the generator.
+    Node* input = ops::SourceOp("TestGPUOutput", b.opts().WithName("in"));
+
+    // The assign is bound to CPU by the reference edge.
+    ops::BinaryOp("TestAssign", var_cpu, input, b.opts().WithName("assign"));
+
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+
+  TF_EXPECT_OK(Place(&g));
+  EXPECT_DEVICE_TYPE(g, "in", "FakeGPU");
+  EXPECT_DEVICE_TYPE(g, "var_cpu", "FakeCPU");
+  EXPECT_COLOCATED(g, "var_cpu", "assign");
+}
+
+TEST_F(SimplePlacerTest, TestIgnoreGeneratorHeuristicIfWrongPartialDevice) {
+  Graph g(OpRegistry::Global());
+  {  // Scope for temporary variables used to construct g.
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+
+    // A variable is only on CPU
+    Node* var_cpu = ops::SourceOp("VariableCPU", b.opts().WithName("var_cpu"));
+
+    // The constant to be assigned can be on CPU or GPU, but is explicitly
+    // placed on CPU:1.
+    //
+    // The heuristic to place the generator with its consumer does
+    // not apply since the consumer's device is not in the list
+    // of valid devices for the generator.
+    Node* input =
+        ops::SourceOp("TestCPUGPUOutput",
+                      b.opts().WithName("in").WithDevice("/device:fakecpu:1"));
+
+    // The assign is bound to CPU by the reference edge.
+    ops::BinaryOp("TestAssign", var_cpu, input, b.opts().WithName("assign"));
+
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+
+  TF_EXPECT_OK(Place(&g));
+  EXPECT_DEVICE_TYPE(g, "in", "FakeCPU");
+  EXPECT_DEVICE_CONTAINS(g, "in", "/device:fakecpu:1");
+  EXPECT_DEVICE_TYPE(g, "var_cpu", "FakeCPU");
+  EXPECT_COLOCATED(g, "var_cpu", "assign");
+  EXPECT_DEVICE_CONTAINS(g, "var_cpu", "/device:fakecpu:0");
+}
+
 // Test that a graph with partial device specifications on the ops
 // will successfully
 TEST_F(SimplePlacerTest, TestPartialSpec) {
@@ -371,7 +434,7 @@ TEST_F(SimplePlacerTest, TestPartialSpec) {
   EXPECT_DEVICE_CONTAINS(g, "var", "/job:a");
 }
 
-// Test that a node with an assigned device is not relocated.
+// Test that a node with a pre-assigned device is not relocated.
 TEST_F(SimplePlacerTest, TestAssignedDevicePreserved) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
@@ -666,9 +729,10 @@ TEST_F(SimplePlacerTest, TestMultipleColocationGroups) {
     Node* colocated_with_input = ops::UnaryOp(
         "TestRelu", input,
         b.opts().WithName("colocated_1").WithAttr("_class", {"loc:@in"}));
-    Node* colocated_with_input_and_other = ops::UnaryOp(
-        "TestRelu", input, b.opts().WithName("foo").WithAttr(
-                               "_class", {"loc:@in", "loc:@colocated_1"}));
+    Node* colocated_with_input_and_other =
+        ops::UnaryOp("TestRelu", input,
+                     b.opts().WithName("foo").WithAttr(
+                         "_class", {"loc:@in", "loc:@colocated_1"}));
     CHECK(colocated_with_input);
     CHECK(colocated_with_input_and_other);
     TF_EXPECT_OK(BuildGraph(b, &g));
@@ -687,9 +751,10 @@ TEST_F(SimplePlacerTest, TestInvalidMultipleColocationGroups) {
     Node* colocated_with_input = ops::UnaryOp(
         "ReluCPU", input,
         b.opts().WithName("colocated_1").WithAttr("_class", {"loc:@in"}));
-    Node* colocated_with_input_and_other = ops::UnaryOp(
-        "ReluGPU", input, b.opts().WithName("foo").WithAttr(
-                              "_class", {"loc:@in", "loc:@colocated_1"}));
+    Node* colocated_with_input_and_other =
+        ops::UnaryOp("ReluGPU", input,
+                     b.opts().WithName("foo").WithAttr(
+                         "_class", {"loc:@in", "loc:@colocated_1"}));
     CHECK(colocated_with_input);
     CHECK(colocated_with_input_and_other);
     TF_EXPECT_OK(BuildGraph(b, &g));

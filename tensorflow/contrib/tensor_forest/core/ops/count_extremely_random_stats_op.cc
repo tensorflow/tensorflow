@@ -21,8 +21,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include "tensorflow/contrib/tensor_forest/core/ops/data_spec.h"
 #include "tensorflow/contrib/tensor_forest/core/ops/tree_utils.h"
-
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -44,10 +44,10 @@ using tensorforest::LEAF_NODE;
 using tensorforest::FREE_NODE;
 
 using tensorforest::CheckTensorBounds;
-using tensorforest::DataColumnTypes;
+using tensorforest::DecideNode;
+using tensorforest::TensorForestDataSpec;
 using tensorforest::Initialize;
 using tensorforest::IsAllInitialized;
-using tensorforest::FeatureSpec;
 
 using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
@@ -69,9 +69,10 @@ struct InputDataResult {
 
 
 struct EvaluateParams {
-  std::function<bool(int, int, float,
-                    tensorforest::DataColumnTypes)> decide_function;
-  Tensor input_spec;
+  TensorForestDataSpec input_spec;
+  Tensor dense_input;
+  Tensor sparse_indices;
+  Tensor sparse_values;
   Tensor input_labels;
   Tensor tree_tensor;
   Tensor tree_thresholds;
@@ -103,11 +104,11 @@ void Evaluate(const EvaluateParams& params, int32 start, int32 end) {
     while (true) {
       params.results[i].node_indices.push_back(node_index);
       CHECK_LT(node_index, num_nodes);
-      int32 left_child = internal::SubtleMustCopy(
-          tree(node_index, CHILDREN_INDEX));
+      int32 left_child =
+          internal::SubtleMustCopy(tree(node_index, CHILDREN_INDEX));
       if (left_child == LEAF_NODE) {
-        const int32 accumulator = internal::SubtleMustCopy(
-            node_map(node_index));
+        const int32 accumulator =
+            internal::SubtleMustCopy(node_map(node_index));
         params.results[i].leaf_accumulator = accumulator;
         // If the leaf is not fertile or is not yet initialized, we don't
         // count it in the candidate/total split per-class-weights because
@@ -119,10 +120,10 @@ void Evaluate(const EvaluateParams& params, int32 start, int32 end) {
           params.results[i].splits_initialized = true;
           for (int split = 0; split < num_splits; split++) {
             const int32 feature = split_features(accumulator, split);
-
-            if (!params.decide_function(
-                    i, feature, split_thresholds(accumulator, split),
-                    FeatureSpec(feature, params.input_spec))) {
+            if (!DecideNode(params.dense_input, params.sparse_indices,
+                            params.sparse_values, i, feature,
+                            split_thresholds(accumulator, split),
+                            params.input_spec)) {
               params.results[i].split_adds.push_back(split);
             }
           }
@@ -135,13 +136,12 @@ void Evaluate(const EvaluateParams& params, int32 start, int32 end) {
       }
       const int32 feature = tree(node_index, FEATURE_INDEX);
       node_index =
-          left_child +
-          params.decide_function(i, feature, thresholds(node_index),
-                                 FeatureSpec(feature, params.input_spec));
+          left_child + DecideNode(params.dense_input, params.sparse_indices,
+                                  params.sparse_values, i, feature,
+                                  thresholds(node_index), params.input_spec);
     }
   }
 }
-
 
 class CountExtremelyRandomStats : public OpKernel {
  public:
@@ -151,6 +151,9 @@ class CountExtremelyRandomStats : public OpKernel {
         "num_classes", &num_classes_));
     OP_REQUIRES_OK(context, context->GetAttr(
         "regression", &regression_));
+    string serialized_proto;
+    OP_REQUIRES_OK(context, context->GetAttr("input_spec", &serialized_proto));
+    input_spec_.ParseFromString(serialized_proto);
   }
 
   void Compute(OpKernelContext* context) override {
@@ -158,22 +161,29 @@ class CountExtremelyRandomStats : public OpKernel {
     const Tensor& sparse_input_indices = context->input(1);
     const Tensor& sparse_input_values = context->input(2);
     const Tensor& sparse_input_shape = context->input(3);
-    const Tensor& input_spec = context->input(4);
-    const Tensor& input_labels = context->input(5);
-    const Tensor& input_weights = context->input(6);
-    const Tensor& tree_tensor = context->input(7);
-    const Tensor& tree_thresholds = context->input(8);
-    const Tensor& node_to_accumulator = context->input(9);
-    const Tensor& candidate_split_features = context->input(10);
-    const Tensor& candidate_split_thresholds = context->input(11);
-    const Tensor& birth_epochs = context->input(12);
-    const Tensor& current_epoch = context->input(13);
+    const Tensor& input_labels = context->input(4);
+    const Tensor& input_weights = context->input(5);
+    const Tensor& tree_tensor = context->input(6);
+    const Tensor& tree_thresholds = context->input(7);
+    const Tensor& node_to_accumulator = context->input(8);
+    const Tensor& candidate_split_features = context->input(9);
+    const Tensor& candidate_split_thresholds = context->input(10);
+    const Tensor& birth_epochs = context->input(11);
+    const Tensor& current_epoch = context->input(12);
 
     bool sparse_input = (sparse_input_indices.shape().dims() == 2);
     bool have_weights = (input_weights.shape().dim_size(0) > 0);
+    int32 num_data = -1;
 
     // Check inputs.
     if (sparse_input) {
+      const auto sparse_shape = sparse_input_shape.unaligned_flat<int64>();
+      // TODO(gilberth): This is because we can't figure out the shape
+      // of a sparse tensor at graph-build time, even if the dimension is
+      // actually known.
+      input_spec_.mutable_sparse(0)->set_size(sparse_shape(1));
+      num_data = sparse_shape(0);
+
       OP_REQUIRES(context, sparse_input_shape.shape().dims() == 1,
                   errors::InvalidArgument(
                       "sparse_input_shape should be one-dimensional"));
@@ -193,7 +203,17 @@ class CountExtremelyRandomStats : public OpKernel {
                   errors::InvalidArgument(
                       "sparse_input_indices and sparse_input_values should "
                       "agree on the number of non-zero values"));
-    } else {
+    }
+
+    if (input_data.shape().dim_size(0) > 0) {
+      const int32 dense_num_data =
+          static_cast<int32>(input_data.shape().dim_size(0));
+      if (num_data > 0) {
+        CHECK_EQ(num_data, dense_num_data)
+            << "number of examples must match for sparse + dense input.";
+      }
+      num_data = dense_num_data;
+
       OP_REQUIRES(context, input_data.shape().dims() == 2,
                   errors::InvalidArgument(
                       "input_data should be two-dimensional"));
@@ -279,33 +299,15 @@ class CountExtremelyRandomStats : public OpKernel {
 
     // Evaluate input data in parallel.
     const int32 epoch = current_epoch.unaligned_flat<int32>()(0);
-    int32 num_data;
-    std::function<bool(int, int, float,
-                      tensorforest::DataColumnTypes)> decide_function;
-    if (sparse_input) {
-      num_data = sparse_input_shape.unaligned_flat<int64>()(0);
-      decide_function = [&sparse_input_indices, &sparse_input_values](
-          int32 i, int32 feature, float bias, DataColumnTypes type) {
-        const auto sparse_indices = sparse_input_indices.matrix<int64>();
-        const auto sparse_values = sparse_input_values.vec<float>();
-        return tensorforest::DecideSparseNode(
-            sparse_indices, sparse_values, i, feature, bias, type);
-      };
-    } else {
-      num_data = static_cast<int32>(input_data.shape().dim_size(0));
-      decide_function = [&input_data](
-          int32 i, int32 feature, float bias, DataColumnTypes type) {
-        const auto input_matrix = input_data.matrix<float>();
-        return tensorforest::DecideDenseNode(
-            input_matrix, i, feature, bias, type);
-      };
-    }
+
     std::unique_ptr<InputDataResult[]> results(new InputDataResult[num_data]);
     auto worker_threads = context->device()->tensorflow_cpu_worker_threads();
     int num_threads = worker_threads->num_threads;
     EvaluateParams params;
-    params.decide_function = decide_function;
-    params.input_spec = input_spec;
+    params.dense_input = input_data;
+    params.sparse_indices = sparse_input_indices;
+    params.sparse_values = sparse_input_values;
+    params.input_spec = input_spec_;
     params.input_labels = input_labels;
     params.tree_tensor = tree_tensor;
     params.tree_thresholds = tree_thresholds;
@@ -689,6 +691,7 @@ class CountExtremelyRandomStats : public OpKernel {
 
   int32 num_classes_;
   bool regression_;
+  tensorforest::TensorForestDataSpec input_spec_;
 };
 
 

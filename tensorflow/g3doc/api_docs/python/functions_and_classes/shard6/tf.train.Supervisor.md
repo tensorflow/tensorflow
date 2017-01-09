@@ -91,7 +91,7 @@ following values for the --master flag:
   details.
 
 * Specifying `'grpc://hostname:port'` requests a session that uses
-  the RPC interface to a specific , and also allows the in-process
+  the RPC interface to a specific host, and also allows the in-process
   master to access remote tensorflow workers. Often, it is
   appropriate to pass `server.target` (for some `tf.train.Server`
   named `server).
@@ -174,8 +174,8 @@ Create a `Supervisor`.
     ready to run the local_init_op.
     The model is considered ready if it returns an empty array.  Defaults to
     the tensor returned from
-    `tf.report_uninitialized_variables(tf.global_variables())`. If `None`, the
-    model is not checked for readiness before running local_init_op.
+    `tf.report_uninitialized_variables(tf.global_variables())`. If `None`,
+    the model is not checked for readiness before running local_init_op.
 *  <b>`is_chief`</b>: If True, create a chief supervisor in charge of initializing
     and restoring the model.  If False, create a supervisor that relies
     on a chief supervisor for inits and restore.
