@@ -102,7 +102,7 @@ TEST(DirectSessionWithTrackingAllocTest, CostModelTest) {
         if (node->name() == y->name()) {
           EXPECT_EQ(5, cm->AllocationId(node, 0));
         } else {
-          EXPECT_EQ(7, cm->AllocationId(node, 0));
+          EXPECT_EQ(6, cm->AllocationId(node, 0));
         }
       }
       EXPECT_LE(0, cm->MaxExecutionTime(node));
