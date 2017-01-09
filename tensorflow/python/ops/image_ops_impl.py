@@ -1191,6 +1191,16 @@ def adjust_saturation(image, saturation_factor, name=None):
     orig_dtype = image.dtype
     flt_image = convert_image_dtype(image, dtypes.float32)
 
+    # TODO(zhengxq): we will switch to the fused version after we add a GPU
+    # kernel for that.
+    fused = os.environ.get('TF_ADJUST_SATURATION_FUSED', '')
+    fused = fused.lower() in ('true', 't', '1')
+
+    if fused:
+      return convert_image_dtype(
+          gen_image_ops.adjust_saturation(flt_image, saturation_factor),
+          orig_dtype)
+
     hsv = gen_image_ops.rgb_to_hsv(flt_image)
 
     hue = array_ops.slice(hsv, [0, 0, 0], [-1, -1, 1])

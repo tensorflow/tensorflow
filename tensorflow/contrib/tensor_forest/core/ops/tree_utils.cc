@@ -24,13 +24,23 @@ namespace tensorforest {
 
 using tensorflow::Tensor;
 
-DataColumnTypes FeatureSpec(int32 input_feature, const Tensor& spec) {
-  const int32 spec_feature =
-      (input_feature + 1 < spec.NumElements()) ? input_feature : 0;
-  CHECK(spec_feature >= 0) << "spec feature is not >= than zero: "
-                           << spec_feature;
-  return static_cast<DataColumnTypes>(
-      spec.unaligned_flat<int32>()(spec_feature));
+DataColumnTypes FindDenseFeatureSpec(
+    int32 input_feature, const tensorforest::TensorForestDataSpec& spec) {
+  return static_cast<DataColumnTypes>(spec.GetDenseFeatureType(input_feature));
+}
+
+DataColumnTypes FindSparseFeatureSpec(
+    int32 input_feature, const tensorforest::TensorForestDataSpec& spec) {
+  // TODO(thomaswc): Binary search here, especially when we start using more
+  // than one sparse column
+  int32 size_sum = spec.sparse(0).size();
+  int32 column_num = 0;
+  while (input_feature >= size_sum && column_num < spec.sparse_size()) {
+    ++column_num;
+    size_sum += spec.sparse(column_num).size();
+  }
+
+  return static_cast<DataColumnTypes>(spec.sparse(column_num).original_type());
 }
 
 void GetTwoBest(int max, std::function<float(int)> score_fn, float* best_score,
@@ -530,18 +540,25 @@ bool BestSplitDominatesClassificationChebyshev(const Tensor& total_counts,
   return dirichlet_bound > dominate_fraction;
 }
 
-bool DecideNode(const Tensor& point, int32 feature, float bias,
-                DataColumnTypes type) {
-  const auto p = point.unaligned_flat<float>();
-  CHECK_LT(feature, p.size());
-  return Decide(p(feature), bias, type);
+bool DecideNode(const Tensor& dense_features,
+                const Tensor& sparse_input_indices,
+                const Tensor& sparse_input_values, int32 i, int32 feature,
+                float bias, const tensorforest::TensorForestDataSpec& spec) {
+  if (feature < spec.dense_features_size()) {
+    const auto dense_input = dense_features.matrix<float>();
+    return DecideDenseNode(dense_input, i, feature, bias, spec);
+  } else {
+    const auto sparse_indices = sparse_input_indices.matrix<int64>();
+    const auto sparse_values = sparse_input_values.vec<float>();
+    return DecideSparseNode(sparse_indices, sparse_values, i,
+                            feature - spec.dense_features_size(), bias, spec);
+  }
 }
-
 
 bool Decide(float value, float bias, DataColumnTypes type) {
   switch (type) {
     case kDataFloat:
-      return value > bias;
+      return value >= bias;
 
     case kDataCategorical:
       // We arbitrarily define categorical equality as going left.

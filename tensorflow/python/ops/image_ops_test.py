@@ -35,6 +35,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import math_ops
@@ -423,18 +424,18 @@ class AdjustSaturationBenchmark(test.Benchmark):
         outputs = image_ops.adjust_saturation(inputs, delta)
         run_op = control_flow_ops.group(outputs)
         sess.run(variables.global_variables_initializer())
-        for i in xrange(warmup_rounds):
+        for _ in xrange(warmup_rounds):
           sess.run(run_op)
         start = time.time()
-        for i in xrange(benchmark_rounds):
+        for _ in xrange(benchmark_rounds):
           sess.run(run_op)
     end = time.time()
     step_time = (end - start) / benchmark_rounds
     tag = '%s' % (cpu_count) if cpu_count is not None else '_all'
-    print('benchmarkAdjustSaturation_299_299_3_cpu%s step_time: %.2f us' %
+    print('benchmarkAdjustSaturation_599_599_3_cpu%s step_time: %.2f us' %
           (tag, step_time * 1e6))
     self.report_benchmark(
-        name='benchmarkAdjustSaturation_299_299_3_cpu%s' % (tag),
+        name='benchmarkAdjustSaturation_599_599_3_cpu%s' % (tag),
         iters=benchmark_rounds,
         wall_time=step_time)
 
@@ -479,6 +480,100 @@ class AdjustSaturationTest(test_util.TensorFlowTestCase):
       y = image_ops.adjust_saturation(x, saturation_factor)
       y_tf = y.eval()
       self.assertAllEqual(y_tf, y_np)
+
+  def _adjust_saturation(self, image, saturation_factor):
+    image = ops.convert_to_tensor(image, name='image')
+    orig_dtype = image.dtype
+    flt_image = image_ops.convert_image_dtype(image, dtypes.float32)
+    saturation_adjusted_image = gen_image_ops.adjust_saturation(
+        flt_image, saturation_factor)
+    return image_ops.convert_image_dtype(saturation_adjusted_image,
+                                         orig_dtype)
+
+  def testHalfSaturationFused(self):
+    x_shape = [2, 2, 3]
+    x_rgb_data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
+    x_np = np.array(x_rgb_data, dtype=np.uint8).reshape(x_shape)
+
+    saturation_factor = 0.5
+    y_rgb_data = [6, 9, 13, 140, 180, 226, 135, 121, 234, 172, 255, 128]
+    y_np = np.array(y_rgb_data, dtype=np.uint8).reshape(x_shape)
+
+    with self.test_session(use_gpu=True):
+      x = constant_op.constant(x_np, shape=x_shape)
+      y = self._adjust_saturation(x, saturation_factor)
+      y_tf = y.eval()
+      self.assertAllEqual(y_tf, y_np)
+
+  def testTwiceSaturationFused(self):
+    x_shape = [2, 2, 3]
+    x_data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
+    x_np = np.array(x_data, dtype=np.uint8).reshape(x_shape)
+
+    saturation_factor = 2.0
+    y_data = [0, 5, 13, 0, 106, 226, 30, 0, 234, 89, 255, 0]
+    y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
+
+    with self.test_session(use_gpu=True):
+      x = constant_op.constant(x_np, shape=x_shape)
+      y = self._adjust_saturation(x, saturation_factor)
+      y_tf = y.eval()
+      self.assertAllEqual(y_tf, y_np)
+
+  def _adjustSaturationNp(self, x_np, scale):
+    self.assertEqual(x_np.shape[-1], 3)
+    x_v = x_np.reshape([-1, 3])
+    y_v = np.ndarray(x_v.shape, dtype=x_v.dtype)
+    channel_count = x_v.shape[0]
+    for i in xrange(channel_count):
+      r = x_v[i][0]
+      g = x_v[i][1]
+      b = x_v[i][2]
+      h, s, v = colorsys.rgb_to_hsv(r, g, b)
+      s *= scale
+      s = min(1.0, max(0.0, s))
+      r, g, b = colorsys.hsv_to_rgb(h, s, v)
+      y_v[i][0] = r
+      y_v[i][1] = g
+      y_v[i][2] = b
+    return y_v.reshape(x_np.shape)
+
+  def testAdjustRandomSaturation(self):
+    x_shapes = [
+        [2, 2, 3],
+        [4, 2, 3],
+        [2, 4, 3],
+        [2, 5, 3],
+        [1000, 1, 3],
+    ]
+    test_styles = [
+        'all_random',
+        'rg_same',
+        'rb_same',
+        'gb_same',
+        'rgb_same',
+    ]
+    with self.test_session():
+      for x_shape in x_shapes:
+        for test_style in test_styles:
+          x_np = np.random.rand(*x_shape) * 255.
+          scale = np.random.rand()
+          if test_style == 'all_random':
+            pass
+          elif test_style == 'rg_same':
+            x_np[..., 1] = x_np[..., 0]
+          elif test_style == 'rb_same':
+            x_np[..., 2] = x_np[..., 0]
+          elif test_style == 'gb_same':
+            x_np[..., 2] = x_np[..., 1]
+          elif test_style == 'rgb_same':
+            x_np[..., 1] = x_np[..., 0]
+            x_np[..., 2] = x_np[..., 0]
+          else:
+            raise AssertionError('Invalid test style: %s' % (test_style))
+          y_baseline = self._adjustSaturationNp(x_np, scale)
+          y_fused = self._adjust_saturation(x_np, scale).eval()
+          self.assertAllClose(y_fused, y_baseline, rtol=2e-5, atol=1e-5)
 
 
 class FlipTransposeRotateTest(test_util.TensorFlowTestCase):

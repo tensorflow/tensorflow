@@ -1450,6 +1450,7 @@ cc_library(
     deps = [
         ":adjust_contrast_op",
         ":adjust_hue_op",
+        ":adjust_saturation_op",
         ":attention_ops",
         ":colorspace_op",
         ":crop_and_resize_op",
@@ -1492,6 +1493,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "adjust_hue_op",
     prefix = "adjust_hue_op",
+    deps = IMAGE_DEPS,
+)
+
+tf_kernel_library(
+    name = "adjust_saturation_op",
+    prefix = "adjust_saturation_op",
     deps = IMAGE_DEPS,
 )
 

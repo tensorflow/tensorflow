@@ -39,13 +39,11 @@ float Convert(const string& in) {
 
 void Evaluate(const Tensor& input_data, Tensor output_data,
               int32 start, int32 end) {
-  auto out_data = output_data.tensor<float, 2>();
-  const auto in_data = input_data.tensor<string, 2>();
+  auto out_data = output_data.unaligned_flat<float>();
+  const auto in_data = input_data.unaligned_flat<string>();
 
   for (int32 i = start; i < end; ++i) {
-    for (int32 j = 0; j < output_data.dim_size(1); ++j) {
-      out_data(i, j) = Convert(in_data(i, j));
-    }
+    out_data(i) = Convert(in_data(i));
   }
 }
 
@@ -57,11 +55,6 @@ class ReinterpretStringToFloat : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& input_data = context->input(0);
 
-    // Check inputs.
-    OP_REQUIRES(context, input_data.shape().dims() == 2,
-                errors::InvalidArgument(
-                    "input_data should be two-dimensional"));
-
     // Check tensor bounds.
     if (!CheckTensorBounds(context, input_data)) return;
 
@@ -71,7 +64,7 @@ class ReinterpretStringToFloat : public OpKernel {
                                             &output_data));
 
     // Evaluate input data in parallel.
-    const int32 num_data = static_cast<int32>(input_data.shape().dim_size(0));
+    const int32 num_data = static_cast<int32>(input_data.NumElements());
     auto worker_threads = context->device()->tensorflow_cpu_worker_threads();
     int num_threads = worker_threads->num_threads;
     if (num_threads <= 1) {
