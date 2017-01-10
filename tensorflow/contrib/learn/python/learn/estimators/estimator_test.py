@@ -648,8 +648,8 @@ class EstimatorTest(test.TestCase):
     y_iter_eval = itertools.islice(iris.target, 100)
     score_result = estimator.SKCompat(est).score(x_iter_eval, y_iter_eval)
     print(score_result)
-    self.assertEqual(eval_result.keys(), score_result.keys())
-    self.assertAllEqual(score_result.keys(), ['global_step', 'loss'])
+    self.assertItemsEqual(eval_result.keys(), score_result.keys())
+    self.assertItemsEqual(['global_step', 'loss'], score_result.keys())
     predictions = estimator.SKCompat(est).predict(x=iris.data)['class']
     self.assertEqual(len(predictions), iris.target.shape[0])
 
