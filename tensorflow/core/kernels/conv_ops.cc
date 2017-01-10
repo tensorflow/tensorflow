@@ -196,8 +196,10 @@ class LaunchXsmmConvOp<CPUDevice, float> {
     desc.S = filter_cols;
     desc.u = stride_rows;
     desc.v = stride_cols;
-    desc.pad_h_in = pad_rows;  // ignored by libxsmm for now.
-    desc.pad_w_in = pad_cols;  // ignored by libxsmm for now.
+    desc.pad_h = pad_rows;
+    desc.pad_w = pad_cols;
+    desc.pad_h_in = pad_rows;  // libxsmm supports only physical padding for now
+    desc.pad_w_in = pad_cols;  // libxsmm supports only physical padding for now
     desc.pad_h_out = 0;
     desc.pad_w_out = 0;
     desc.threads = num_threads;
