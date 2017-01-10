@@ -46,7 +46,7 @@ from tensorflow.python.training.session_run_hook import SessionRunArgs
 from tensorflow.python.training.summary_io import SummaryWriterCache
 
 
-class _SecondOrStepTimer(object):
+class SecondOrStepTimer(object):
   """Timer that triggers at most once every N seconds or once every N steps.
   """
 
@@ -145,8 +145,8 @@ class LoggingTensorHook(session_run_hook.SessionRunHook):
     if not isinstance(tensors, dict):
       tensors = {item: item for item in tensors}
     self._tensors = tensors
-    self._timer = _SecondOrStepTimer(every_secs=every_n_secs,
-                                     every_steps=every_n_iter)
+    self._timer = SecondOrStepTimer(every_secs=every_n_secs,
+                                    every_steps=every_n_iter)
 
   def begin(self):
     self._iter_count = 0
@@ -317,8 +317,8 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
     self._summary_writer = SummaryWriterCache.get(checkpoint_dir)
     self._save_path = os.path.join(checkpoint_dir, checkpoint_basename)
     self._scaffold = scaffold
-    self._timer = _SecondOrStepTimer(every_secs=save_secs,
-                                     every_steps=save_steps)
+    self._timer = SecondOrStepTimer(every_secs=save_secs,
+                                    every_steps=save_steps)
     self._listeners = listeners or []
 
   def begin(self):
@@ -397,8 +397,8 @@ class StepCounterHook(session_run_hook.SessionRunHook):
     if (every_n_steps is None) == (every_n_secs is None):
       raise ValueError(
           "exactly one of every_n_steps and every_n_secs should be provided.")
-    self._timer = _SecondOrStepTimer(every_steps=every_n_steps,
-                                     every_secs=every_n_secs)
+    self._timer = SecondOrStepTimer(every_steps=every_n_steps,
+                                    every_secs=every_n_secs)
 
     self._summary_writer = summary_writer
     if summary_writer is None and output_dir:
@@ -507,8 +507,8 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
     if summary_writer is None and output_dir:
       self._summary_writer = SummaryWriterCache.get(output_dir)
     self._scaffold = scaffold
-    self._timer = _SecondOrStepTimer(every_secs=save_secs,
-                                     every_steps=save_steps)
+    self._timer = SecondOrStepTimer(every_secs=save_secs,
+                                    every_steps=save_steps)
     # TODO(mdan): Throw an error if output_dir and summary_writer are None.
 
   def begin(self):
