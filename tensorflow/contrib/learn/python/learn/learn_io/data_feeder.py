@@ -635,7 +635,7 @@ class StreamingDataFeeder(DataFeeder):
 
       def put_data_array(dest, index, source=None, n_classes=None):
         if source is None:
-          dest = dest[:index, :]
+          dest = dest[:index]
         elif n_classes is not None and n_classes > 1:
           if len(self.output_shape) == 2:
             dest.itemset((index, source), 1.0)
@@ -653,9 +653,12 @@ class StreamingDataFeeder(DataFeeder):
         if holder is None:
           return None
         if isinstance(holder, dict):
+          if data is None:
+            data = {k: None for k in holder.keys()}
           assert (isinstance(data, dict))
-          for k, v in list(holder.items()):
-            num_classes = n_classes[k] if (n_classes is not None and k in n_classes) else None
+          for k in holder.keys():
+            num_classes = n_classes[k] if (n_classes is not None and
+                                           k in n_classes) else None
             holder[k] = put_data_array(holder[k], index, data[k], num_classes)
         else:
           holder = put_data_array(holder, index, data, n_classes)
