@@ -583,29 +583,108 @@ Status GetInOutTypes(const NodeDef& node_def, DataTypeVector* inputs,
   return Status::OK();
 }
 
-int CountParameters(const TransformFuncContext& context, const string& name) {
-  if (context.params.count(name)) {
-    return context.params.at(name).size();
+Status LoadTextOrBinaryGraphFile(const string& file_name, GraphDef* graph_def) {
+  string file_data;
+  Status load_file_status =
+      ReadFileToString(Env::Default(), file_name, &file_data);
+  if (!load_file_status.ok()) {
+    errors::AppendToMessage(&load_file_status, " (for file ", file_name, ")");
+    return load_file_status;
+  }
+  // Try to load in binary format first, and then try ascii if that fails.
+  Status load_status = ReadBinaryProto(Env::Default(), file_name, graph_def);
+  if (!load_status.ok()) {
+    if (protobuf::TextFormat::ParseFromString(file_data, graph_def)) {
+      load_status = Status::OK();
+    } else {
+      errors::AppendToMessage(&load_status,
+                              " (both text and binary parsing failed for file ",
+                              file_name, ")");
+    }
+  }
+  return load_status;
+}
+
+int TransformFuncContext::CountParameters(const string& name) const {
+  if (params.count(name)) {
+    return params.at(name).size();
   } else {
     return 0;
   }
 }
 
-Status GetExactlyOneParameter(const TransformFuncContext& context,
-                              const string& name, const string& default_value,
-                              string* result) {
-  const int params_count = CountParameters(context, name);
+Status TransformFuncContext::GetOneStringParameter(const string& name,
+                                                   const string& default_value,
+                                                   string* result) const {
+  const int params_count = CountParameters(name);
   if (params_count == 0) {
     *result = default_value;
     return Status::OK();
   } else if (params_count == 1) {
-    *result = context.params.at(name).at(0);
+    *result = params.at(name).at(0);
     return Status::OK();
   } else {
     return errors::InvalidArgument("Expected a single '", name,
                                    "' parameter, but found ", params_count,
                                    " occurrences");
   }
+}
+
+Status TransformFuncContext::GetOneIntParameter(const string& name,
+                                                int64 default_value,
+                                                int64* result) const {
+  const int params_count = CountParameters(name);
+  if (params_count == 0) {
+    *result = default_value;
+    return Status::OK();
+  }
+  string string_value;
+  TF_RETURN_IF_ERROR(GetOneStringParameter(name, "", &string_value));
+  if (!strings::safe_strto64(StringPiece(string_value), result)) {
+    return errors::InvalidArgument("Couldn't interpret the ", name,
+                                   " argument as a number:", string_value);
+  }
+  return Status::OK();
+}
+
+Status TransformFuncContext::GetOneFloatParameter(const string& name,
+                                                  float default_value,
+                                                  float* result) const {
+  const int params_count = CountParameters(name);
+  if (params_count == 0) {
+    *result = default_value;
+    return Status::OK();
+  }
+  string string_value;
+  TF_RETURN_IF_ERROR(GetOneStringParameter(name, "", &string_value));
+  if (!strings::safe_strtof(string_value.c_str(), result)) {
+    return errors::InvalidArgument(
+        "Couldn't interpret the ", name,
+        " argument as a float number:", string_value);
+  }
+  return Status::OK();
+}
+
+Status TransformFuncContext::GetOneBoolParameter(const string& name,
+                                                 bool default_value,
+                                                 bool* result) const {
+  const int params_count = CountParameters(name);
+  if (params_count == 0) {
+    *result = default_value;
+    return Status::OK();
+  }
+  string string_value;
+  TF_RETURN_IF_ERROR(GetOneStringParameter(name, "", &string_value));
+  if (string_value == "true" || string_value == "1") {
+    *result = true;
+  } else if (string_value == "false" || string_value == "0") {
+    *result = false;
+  } else {
+    return errors::InvalidArgument("Couldn't interpret the ", name,
+                                   " argument as a boolean:", string_value,
+                                   " (expected true, false, 0 or 1)");
+  }
+  return Status::OK();
 }
 
 }  // namespace graph_transforms

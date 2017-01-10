@@ -2282,6 +2282,47 @@ Extracts numpy matrix from pandas DataFrame.
 
 - - -
 
+### `tf.contrib.learn.infer_real_valued_columns_from_input(x)` {#infer_real_valued_columns_from_input}
+
+Creates `FeatureColumn` objects for inputs defined by input `x`.
+
+This interprets all inputs as dense, fixed-length float values.
+
+##### Args:
+
+
+*  <b>`x`</b>: Real-valued matrix of shape [n_samples, n_features...]. Can be
+     iterator that returns arrays of features.
+
+##### Returns:
+
+  List of `FeatureColumn` objects.
+
+
+- - -
+
+### `tf.contrib.learn.infer_real_valued_columns_from_input_fn(input_fn)` {#infer_real_valued_columns_from_input_fn}
+
+Creates `FeatureColumn` objects for inputs defined by `input_fn`.
+
+This interprets all inputs as dense, fixed-length float values. This creates
+a local graph in which it calls `input_fn` to build the tensors, then discards
+it.
+
+##### Args:
+
+
+*  <b>`input_fn`</b>: Input function returning a tuple of:
+      features - Dictionary of string feature name to `Tensor` or `Tensor`.
+      labels - `Tensor` of label values.
+
+##### Returns:
+
+  List of `FeatureColumn` objects.
+
+
+- - -
+
 ### `tf.contrib.learn.read_batch_examples(file_pattern, batch_size, reader, randomize_input=True, num_epochs=None, queue_capacity=10000, num_threads=1, read_batch_size=1, parse_fn=None, name=None)` {#read_batch_examples}
 
 Adds operations to read, queue, batch `Example` protos.

@@ -642,9 +642,15 @@ class EstimatorTest(test.TestCase):
     est = estimator.Estimator(model_fn=logistic_model_no_mode_fn)
     x_iter = itertools.islice(iris.data, 100)
     y_iter = itertools.islice(iris.target, 100)
-    est.fit(x_iter, y_iter, steps=100)
-    _ = est.evaluate(input_fn=iris_input_fn, steps=1)
-    predictions = list(est.predict(x=iris.data))
+    estimator.SKCompat(est).fit(x_iter, y_iter, steps=20)
+    eval_result = est.evaluate(input_fn=iris_input_fn, steps=1)
+    x_iter_eval = itertools.islice(iris.data, 100)
+    y_iter_eval = itertools.islice(iris.target, 100)
+    score_result = estimator.SKCompat(est).score(x_iter_eval, y_iter_eval)
+    print(score_result)
+    self.assertEqual(eval_result.keys(), score_result.keys())
+    self.assertAllEqual(score_result.keys(), ['global_step', 'loss'])
+    predictions = estimator.SKCompat(est).predict(x=iris.data)['class']
     self.assertEqual(len(predictions), iris.target.shape[0])
 
   def testIrisIteratorArray(self):

@@ -214,7 +214,7 @@ class _VariableStore(object):
 
     If initializer is `None` (the default), the default initializer passed in
     the constructor is used. If that one is `None` too, we use a new
-    `uniform_unit_scaling_initializer`. If initializer is a Tensor, we use
+    `glorot_uniform_initializer`. If initializer is a Tensor, we use
     it as a value and derive the shape from the initializer.
 
     If a partitioner is provided, a `PartitionedVariable` is returned.
@@ -370,7 +370,7 @@ class _VariableStore(object):
 
     If initializer is `None` (the default), the default initializer passed in
     the constructor is used. If that one is `None` too, we use a new
-    `uniform_unit_scaling_initializer`. If initializer is a Tensor, we use
+    `glorot_uniform_initializer`. If initializer is a Tensor, we use
     it as a value and derive the shape from the initializer.
 
     If the initializer is a callable, then it will be called for each
@@ -715,7 +715,7 @@ class _VariableStore(object):
     """
     # If dtype is DT_FLOAT, provide a uniform unit scaling initializer
     if dtype.is_floating:
-      initializer = init_ops.uniform_unit_scaling_initializer()
+      initializer = init_ops.glorot_uniform_initializer()
       initializing_from_value = False
     # If dtype is DT_INT/DT_UINT, provide a default value `zero`
     # If dtype is DT_BOOL, provide a default value `FALSE`
@@ -1003,7 +1003,7 @@ with tf.variable_scope("foo", reuse=True)
 
 If initializer is `None` (the default), the default initializer passed in
 the variable scope will be used. If that one is `None` too, a
-`uniform_unit_scaling_initializer` will be used. The initializer can also be
+`glorot_uniform_initializer` will be used. The initializer can also be
 a Tensor, in which case the variable is initialized to this value and shape.
 
 Similarly, if the regularizer is `None` (the default), the default regularizer
@@ -1114,7 +1114,7 @@ def _get_partitioned_variable(name,
 
   If initializer is `None` (the default), the default initializer passed in
   the constructor is used. If that one is `None` too, we use a new
-  `uniform_unit_scaling_initializer`. If initializer is a Tensor, we use
+  `glorot_uniform_initializer`. If initializer is a Tensor, we use
   it as a value and derive the shape from the initializer.
 
   If the initializer is a callable, then it will be called for each
