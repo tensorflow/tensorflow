@@ -308,6 +308,25 @@ class ExperimentTest(test.TestCase):
             evaluate_checkpoint_only_once=False)
         self.assertAlmostEqual(5 * delay, sheep.total_time, delta=0.1)
 
+  def test_continuous_eval_predicate_fn(self):
+    est = TestEstimator()
+    est.fake_checkpoint()
+
+    def _predicate_fn(unused_eval_result):
+      return est.eval_count < 3
+
+    ex = experiment.Experiment(
+        est,
+        train_input_fn='train_input',
+        eval_input_fn='eval_input',
+        eval_metrics='eval_metrics',
+        eval_delay_secs=0,
+        continuous_eval_throttle_secs=0,
+        continuous_eval_predicate_fn=_predicate_fn)
+    ex.continuous_eval(evaluate_checkpoint_only_once=False)
+    self.assertEquals(3, est.eval_count)
+    self.assertEquals(0, est.fit_count)
+
   def test_run_local(self):
     est = TestEstimator()
     ex = experiment.Experiment(

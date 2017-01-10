@@ -706,8 +706,7 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-# Core sources. Should eventually become identical to open source
-# sources.
+# Core sources for Android builds.
 filegroup(
     name = "android_srcs",
     srcs = [

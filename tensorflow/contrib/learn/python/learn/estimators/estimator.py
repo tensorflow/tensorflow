@@ -475,7 +475,8 @@ class BaseEstimator(
                metrics=None,
                name=None,
                checkpoint_path=None,
-               hooks=None):
+               hooks=None,
+               log_progress=True):
     # pylint: disable=g-doc-args,g-doc-return-or-yield
     """See `Evaluable`.
 
@@ -497,7 +498,8 @@ class BaseEstimator(
         metrics=metrics,
         name=name,
         checkpoint_path=checkpoint_path,
-        hooks=hooks)
+        hooks=hooks,
+        log_progress=log_progress)
 
     if eval_results is not None:
       eval_results.update({'global_step': global_step})
@@ -842,7 +844,8 @@ class BaseEstimator(
                       metrics=None,
                       name='',
                       checkpoint_path=None,
-                      hooks=None):
+                      hooks=None,
+                      log_progress=True):
     # TODO(wicke): Remove this once Model and associated code are gone.
     if (hasattr(self._config, 'execution_mode') and
         self._config.execution_mode not in ('all', 'evaluate', 'eval_evalset')):
@@ -885,7 +888,9 @@ class BaseEstimator(
       if feed_fn:
         hooks.append(_FeedFnHook(feed_fn))
       if steps:
-        hooks.append(evaluation.StopAfterNEvalsHook(steps))
+        hooks.append(
+            evaluation.StopAfterNEvalsHook(
+                steps, log_progress=log_progress))
 
       global_step_key = 'global_step'
       while global_step_key in eval_dict:
