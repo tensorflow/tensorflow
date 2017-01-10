@@ -74,7 +74,8 @@ class Experiment(object):
                continuous_eval_throttle_secs=60,
                min_eval_frequency=1,
                delay_workers_by_global_step=False,
-               export_strategies=None):
+               export_strategies=None,
+               continuous_eval_predicate_fn=None):
     """Constructor for `Experiment`.
 
     Creates an Experiment instance. None of the functions passed to this
@@ -110,6 +111,12 @@ class Experiment(object):
       delay_workers_by_global_step: if `True` delays training workers
         based on global step instead of time.
       export_strategies: A list of `ExportStrategy`s, or a single one, or None.
+      continuous_eval_predicate_fn: A predicate function determining whether to
+        continue eval after each iteration. `predicate_fn` takes the evaluation
+        results as arguments. At the beginning of evaluation, the passed eval
+        results will be None so it's expected that the predicate function
+        handles that gracefully. When `predicate_fn` is not specified,
+        continuous eval will run in an infinite loop.
 
     Raises:
       ValueError: if `estimator` does not implement `Evaluable` and `Trainable`,
@@ -136,6 +143,7 @@ class Experiment(object):
     self.train_monitors = train_monitors
     self.eval_hooks = eval_hooks
     self.export_strategies = export_strategies
+    self.continuous_eval_predicate_fn = continuous_eval_predicate_fn
 
   @property
   def estimator(self):
@@ -196,6 +204,17 @@ class Experiment(object):
   @property
   def delay_workers_by_global_step(self):
     return self._delay_workers_by_global_step
+
+  @property
+  def continuous_eval_predicate_fn(self):
+    return self._continuous_eval_predicate_fn
+
+  @continuous_eval_predicate_fn.setter
+  def continuous_eval_predicate_fn(self, value):
+    if value is not None and not callable(value):
+      raise ValueError(
+          "`continuous_eval_predicate_fn` must be a callable, or None.")
+    self._continuous_eval_predicate_fn = value
 
   @property
   def export_strategies(self):
@@ -334,8 +353,10 @@ class Experiment(object):
       time.sleep(delay_secs)
 
     previous_path = None
+    eval_result = None
     last_warning_time = 0
-    while True:
+    while (not self.continuous_eval_predicate_fn or
+           self.continuous_eval_predicate_fn(eval_result)):
       start = time.time()
 
       error_msg = None
@@ -348,6 +369,7 @@ class Experiment(object):
 
       if error_msg:
         # Print warning message every 10 mins.
+        eval_result = {}
         if time.time() - last_warning_time > 600:
           logging.warning(error_msg)
           last_warning_time = time.time()
@@ -357,6 +379,9 @@ class Experiment(object):
                                                metrics=self._eval_metrics,
                                                name=name,
                                                checkpoint_path=latest_path)
+        # Ensure eval result is not None for next round of evaluation.
+        if not eval_result:
+          eval_result = {}
 
         # TODO(soergel): further throttle how often export happens?
         self._maybe_export(eval_result)
@@ -372,7 +397,9 @@ class Experiment(object):
                      difference)
         time.sleep(difference)
 
-  def continuous_eval(self, delay_secs=None, throttle_delay_secs=None,
+  def continuous_eval(self,
+                      delay_secs=None,
+                      throttle_delay_secs=None,
                       evaluate_checkpoint_only_once=True):
     self._continuous_eval(
         self._eval_input_fn,
@@ -384,10 +411,11 @@ class Experiment(object):
   def continuous_eval_on_train_data(self,
                                     delay_secs=None,
                                     throttle_delay_secs=None):
-    self._continuous_eval(self._train_input_fn,
-                          name="continuous_on_train_data",
-                          delay_secs=delay_secs,
-                          throttle_delay_secs=throttle_delay_secs)
+    self._continuous_eval(
+        self._train_input_fn,
+        name="continuous_on_train_data",
+        delay_secs=delay_secs,
+        throttle_delay_secs=throttle_delay_secs)
 
   def train_and_evaluate(self):
     """Interleaves training and evaluation.
