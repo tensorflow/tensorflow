@@ -423,7 +423,11 @@ def _compute_fans(shape):
   Returns:
     A tuple of scalars (fan_in, fan_out).
   """
-  if len(shape) == 2:
+  if len(shape) < 1:  # Just to avoid errors for constants.
+    fan_in = fan_out = 1
+  elif len(shape) == 1:
+    fan_in = fan_out = shape[0]
+  elif len(shape) == 2:
     fan_in = shape[0]
     fan_out = shape[1]
   else:
