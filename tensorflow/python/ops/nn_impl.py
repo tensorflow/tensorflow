@@ -580,6 +580,9 @@ def moments(x, axes, shift=None, name=None, keep_dims=False):
   across `axes`.  If `x` is 1-D and `axes = [0]` this is just the mean
   and variance of a vector.
 
+  Note: for numerical stability, when shift=None, the true mean
+  would be computed and used as shift.
+
   When using these moments for batch normalization (see
   `tf.nn.batch_normalization`):
 
@@ -592,8 +595,9 @@ def moments(x, axes, shift=None, name=None, keep_dims=False):
     axes: Array of ints.  Axes along which to compute mean and
       variance.
     shift: A `Tensor` containing the value by which to shift the data for
-      numerical stability, or `None` if no shift is to be performed. A shift
-      close to the true mean provides the most numerically stable results.
+      numerical stability, or `None` in which case the true mean of the data is
+      used as shift. A shift close to the true mean provides the most
+      numerically stable results.
     name: Name used to scope the operations that compute the moments.
     keep_dims: produce moments with the same dimensionality as the input.
 
@@ -605,10 +609,17 @@ def moments(x, axes, shift=None, name=None, keep_dims=False):
     # sufficient statistics. As a workaround we simply perform the operations
     # on 32-bit floats before converting the mean and variance back to fp16
     y = math_ops.cast(x, dtypes.float32) if x.dtype == dtypes.float16 else x
-    shift = math_ops.cast(shift, dtypes.float32) if (
-        shift is not None and x.dtype == dtypes.float16) else shift
+    if shift is None:
+      # Compute true mean while keeping the dims for proper broadcasting.
+      shift = array_ops.stop_gradient(
+          math_ops.reduce_mean(y, axes, keep_dims=True))
+    else:
+      shift = math_ops.cast(shift, y.dtype)
     counts, m_ss, v_ss, shift = sufficient_statistics(
         y, axes, shift=shift, keep_dims=keep_dims, name=name)
+    # Reshape shift as needed.
+    shift = array_ops.reshape(shift, array_ops.shape(m_ss))
+    shift.set_shape(m_ss.get_shape())
     with ops.control_dependencies([counts, m_ss, v_ss]):
       mean, variance = normalize_moments(counts, m_ss, v_ss, shift, name=name)
       if x.dtype == dtypes.float16:
