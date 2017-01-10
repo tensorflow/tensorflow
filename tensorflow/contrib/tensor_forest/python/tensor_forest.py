@@ -281,7 +281,7 @@ class ForestTrainingVariables(object):
                tree_variables_class=TreeTrainingVariables):
     self.variables = []
     for i in range(params.num_trees):
-      with ops.device(device_assigner.get_device(i)):
+      with ops.device(device_assigner.get_variable_device(i)):
         self.variables.append(tree_variables_class(params, i, training))
 
   def __setitem__(self, t, val):
@@ -301,13 +301,18 @@ class RandomForestDeviceAssigner(object):
 
   def __init__(self):
     self.cached = None
+    self.variables = None
+    self.params = None
 
-  def get_device(self, unused_tree_num):
+  def get_variable_device(self, unused_tree_num):
     if not self.cached:
       dummy = constant_op.constant(0)
       self.cached = dummy.device
-
     return self.cached
+
+  def get_device(self, tree_num):
+    # By default, colocate ops with variables.
+    return self.get_variable_device(tree_num)
 
 
 class RandomForestGraphs(object):
@@ -322,6 +327,7 @@ class RandomForestGraphs(object):
                training=True):
     self.params = params
     self.device_assigner = device_assigner or RandomForestDeviceAssigner()
+    self.device_assigner.params = self.params
     logging.info('Constructing forest with params = ')
     logging.info(self.params.__dict__)
     self.variables = variables or ForestTrainingVariables(
@@ -332,6 +338,7 @@ class RandomForestGraphs(object):
         tree_graph_class(self.variables[i], self.params, i)
         for i in range(self.params.num_trees)
     ]
+    self.device_assigner.variables = self.variables
 
   def _bag_features(self, tree_num, input_data):
     split_data = array_ops.split(
@@ -342,6 +349,8 @@ class RandomForestGraphs(object):
   def training_graph(self,
                      input_data,
                      input_labels,
+                     num_trainers=1,
+                     trainer_id=0,
                      **tree_kwargs):
     """Constructs a TF graph for training a random forest.
 
@@ -349,6 +358,8 @@ class RandomForestGraphs(object):
       input_data: A tensor or dict of string->Tensor for input data.
       input_labels: A tensor or placeholder for labels associated with
         input_data.
+      num_trainers: Number of parallel trainers to split trees among.
+      trainer_id: Which trainer this instance is.
       **tree_kwargs: Keyword arguments passed to each tree's training_graph.
 
     Returns:
@@ -366,7 +377,11 @@ class RandomForestGraphs(object):
     data_spec = data_spec or self.get_default_data_spec(input_data)
 
     tree_graphs = []
-    for i in range(self.params.num_trees):
+    trees_per_trainer = self.params.num_trees / num_trainers
+    tree_start = int(trainer_id * trees_per_trainer)
+    tree_end = int((trainer_id + 1) * trees_per_trainer)
+    for i in range(tree_start, tree_end):
+      logging.info('training graph for tree: %d' % i)
       with ops.device(self.device_assigner.get_device(i)):
         seed = self.params.base_random_seed
         if seed != 0:
