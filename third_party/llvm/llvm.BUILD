@@ -1584,6 +1584,7 @@ cc_library(
         "include/llvm/ExecutionEngine/RTDyldMemoryManager.h",
         "lib/ExecutionEngine/RuntimeDyld/*.h",
         "lib/ExecutionEngine/RuntimeDyld/Targets/*.h",
+        "lib/ExecutionEngine/RuntimeDyld/Targets/*.cpp",
         "lib/ExecutionEngine/RuntimeDyld/*.h",
     ]),
     hdrs = glob([

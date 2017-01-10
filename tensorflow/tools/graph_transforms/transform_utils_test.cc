@@ -19,7 +19,9 @@ limitations under the License.
 #include "tensorflow/cc/ops/nn_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/graph/equal_graph_def.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/public/session.h"
@@ -924,21 +926,130 @@ class TransformUtilsTest : public ::testing::Test {
     TransformFuncContext context;
     context.params.insert({"foo", {"a", "b"}});
     context.params.insert({"bar", {"c"}});
-    EXPECT_EQ(2, CountParameters(context, "foo"));
-    EXPECT_EQ(1, CountParameters(context, "bar"));
-    EXPECT_EQ(0, CountParameters(context, "not_present"));
+    EXPECT_EQ(2, context.CountParameters("foo"));
+    EXPECT_EQ(1, context.CountParameters("bar"));
+    EXPECT_EQ(0, context.CountParameters("not_present"));
   }
 
-  void TestGetExactlyOneParameter() {
+  void TestGetOneStringParameter() {
     TransformFuncContext context;
     context.params.insert({"foo", {"a", "b"}});
     context.params.insert({"bar", {"c"}});
     string value;
-    TF_EXPECT_OK(GetExactlyOneParameter(context, "bar", "d", &value));
+    TF_EXPECT_OK(context.GetOneStringParameter("bar", "d", &value));
     EXPECT_EQ("c", value);
-    EXPECT_FALSE(GetExactlyOneParameter(context, "foo", "d", &value).ok());
-    TF_EXPECT_OK(GetExactlyOneParameter(context, "not_present", "d", &value));
+    EXPECT_FALSE(context.GetOneStringParameter("foo", "d", &value).ok());
+    TF_EXPECT_OK(context.GetOneStringParameter("not_present", "d", &value));
     EXPECT_EQ("d", value);
+  }
+
+  void TestGetOneIntParameter() {
+    TransformFuncContext context;
+    context.params.insert({"foo", {"10", "20"}});
+    context.params.insert({"bar", {"-23"}});
+    context.params.insert({"not_a_number", {"not_numerical"}});
+    context.params.insert({"float", {"-23.232323"}});
+    int64 value;
+    TF_EXPECT_OK(context.GetOneIntParameter("bar", 0, &value));
+    EXPECT_EQ(-23, value);
+    EXPECT_FALSE(context.GetOneIntParameter("foo", 0, &value).ok());
+    TF_EXPECT_OK(context.GetOneIntParameter("not_present", 10, &value));
+    EXPECT_EQ(10, value);
+    EXPECT_FALSE(context.GetOneIntParameter("not_a_number", 0, &value).ok());
+    EXPECT_FALSE(context.GetOneIntParameter("float", 0, &value).ok());
+  }
+
+  void TestGetOneFloatParameter() {
+    TransformFuncContext context;
+    context.params.insert({"foo", {"10.0", "20.0"}});
+    context.params.insert({"bar", {"-23.2323"}});
+    context.params.insert({"not_a_number", {"not_numerical"}});
+    float value;
+    TF_EXPECT_OK(context.GetOneFloatParameter("bar", 0, &value));
+    EXPECT_NEAR(-23.2323f, value, 1e-5f);
+    EXPECT_FALSE(context.GetOneFloatParameter("foo", 0, &value).ok());
+    TF_EXPECT_OK(context.GetOneFloatParameter("not_present", 10.5f, &value));
+    EXPECT_NEAR(10.5f, value, 1e-5f);
+    EXPECT_FALSE(context.GetOneFloatParameter("not_a_number", 0, &value).ok());
+  }
+
+  void TestGetOneBoolParameter() {
+    TransformFuncContext context;
+    context.params.insert({"foo", {"true", "false"}});
+    context.params.insert({"true", {"true"}});
+    context.params.insert({"false", {"false"}});
+    context.params.insert({"one", {"1"}});
+    context.params.insert({"zero", {"0"}});
+    context.params.insert({"not_a_bool", {"not_boolean"}});
+
+    bool value;
+    EXPECT_FALSE(context.GetOneBoolParameter("foo", 0, &value).ok());
+
+    value = false;
+    TF_EXPECT_OK(context.GetOneBoolParameter("true", false, &value));
+    EXPECT_TRUE(value);
+
+    value = true;
+    TF_EXPECT_OK(context.GetOneBoolParameter("false", true, &value));
+    EXPECT_FALSE(value);
+
+    value = false;
+    TF_EXPECT_OK(context.GetOneBoolParameter("one", false, &value));
+    EXPECT_TRUE(value);
+
+    value = true;
+    TF_EXPECT_OK(context.GetOneBoolParameter("zero", true, &value));
+    EXPECT_FALSE(value);
+
+    EXPECT_FALSE(context.GetOneBoolParameter("not_a_bool", false, &value).ok());
+
+    value = false;
+    TF_EXPECT_OK(context.GetOneBoolParameter("not_present", true, &value));
+    EXPECT_TRUE(value);
+  }
+
+  void TestLoadTextOrBinaryGraphFile() {
+    using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
+    const int width = 10;
+
+    auto root = tensorflow::Scope::NewRootScope();
+    Tensor a_data(DT_FLOAT, TensorShape({width}));
+    test::FillIota<float>(&a_data, 1.0f);
+    Output a_const = Const(root.WithOpName("a"), Input::Initializer(a_data));
+    GraphDef graph_def;
+    TF_ASSERT_OK(root.ToGraphDef(&graph_def));
+
+    const string text_file =
+        io::JoinPath(testing::TmpDir(), "text_graph.pbtxt");
+    TF_ASSERT_OK(WriteTextProto(Env::Default(), text_file, graph_def));
+
+    const string binary_file =
+        io::JoinPath(testing::TmpDir(), "binary_graph.pb");
+    TF_ASSERT_OK(WriteBinaryProto(Env::Default(), binary_file, graph_def));
+
+    const string bogus_file = io::JoinPath(testing::TmpDir(), "bogus_graph.pb");
+    TF_ASSERT_OK(
+        WriteStringToFile(Env::Default(), bogus_file, "Not a !{ proto..."));
+
+    GraphDef text_graph_def;
+    TF_EXPECT_OK(LoadTextOrBinaryGraphFile(text_file, &text_graph_def));
+    string text_diff;
+    EXPECT_TRUE(EqualGraphDef(text_graph_def, graph_def, &text_diff))
+        << text_diff;
+
+    GraphDef binary_graph_def;
+    TF_EXPECT_OK(LoadTextOrBinaryGraphFile(binary_file, &binary_graph_def));
+    string binary_diff;
+    EXPECT_TRUE(EqualGraphDef(binary_graph_def, graph_def, &binary_diff))
+        << binary_diff;
+
+    GraphDef no_graph_def;
+    EXPECT_FALSE(
+        LoadTextOrBinaryGraphFile("____non_existent_file_____", &no_graph_def)
+            .ok());
+
+    GraphDef bogus_graph_def;
+    EXPECT_FALSE(LoadTextOrBinaryGraphFile(bogus_file, &bogus_graph_def).ok());
   }
 };
 
@@ -1012,8 +1123,22 @@ TEST_F(TransformUtilsTest, TestHashNodeDef) { TestHashNodeDef(); }
 
 TEST_F(TransformUtilsTest, TestCountParameters) { TestCountParameters(); }
 
-TEST_F(TransformUtilsTest, TestGetExactlyOneParameter) {
-  TestGetExactlyOneParameter();
+TEST_F(TransformUtilsTest, TestGetOneStringParameter) {
+  TestGetOneStringParameter();
+}
+
+TEST_F(TransformUtilsTest, TestGetOneIntParameter) { TestGetOneIntParameter(); }
+
+TEST_F(TransformUtilsTest, TestGetOneFloatParameter) {
+  TestGetOneFloatParameter();
+}
+
+TEST_F(TransformUtilsTest, TestGetOneBoolParameter) {
+  TestGetOneBoolParameter();
+}
+
+TEST_F(TransformUtilsTest, TestLoadTextOrBinaryGraphFile) {
+  TestLoadTextOrBinaryGraphFile();
 }
 
 }  // namespace graph_transforms
