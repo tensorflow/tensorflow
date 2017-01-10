@@ -48,6 +48,16 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
   // INPUT_NAME = "Mul:0", and OUTPUT_NAME = "final_result:0".
   // You'll also need to update the MODEL_FILE and LABEL_FILE paths to point to
   // the ones you produced.
+  //
+  // To use v3 Inception model, strip the DecodeJpeg Op from your retrained
+  // model first:
+  //
+  // python strip_unused.py
+  // --input_graph=<retrained-pb-file> \
+  // --output_graph=<your-stripped-pb-file> \
+  // --input_node_names="Mul" \
+  // --output_node_names="final_result" \
+  // --input_binary=true
   private static final int NUM_CLASSES = 1001;
   private static final int INPUT_SIZE = 224;
   private static final int IMAGE_MEAN = 117;
