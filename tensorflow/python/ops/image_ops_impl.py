@@ -1262,7 +1262,7 @@ def decode_image(contents, channels=None, name=None):
 
 
 def total_variation(images, name=None):
-  """Calculate and return the Total Variation for one or more images.
+  """Calculate and return the total variation for one or more images.
 
   The total variation is the sum of the absolute differences for neighboring
   pixel-values in the input images. This measures how much noise is in the
