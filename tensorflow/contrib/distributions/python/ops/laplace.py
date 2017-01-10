@@ -188,7 +188,7 @@ class LaplaceWithSoftplusScale(Laplace):
     with ops.name_scope(name, values=[loc, scale]) as ns:
       super(LaplaceWithSoftplusScale, self).__init__(
           loc=loc,
-          scale=nn.softplus(scale),
+          scale=nn.softplus(scale, name="softplus_scale"),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           name=ns)

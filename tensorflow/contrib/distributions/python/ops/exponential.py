@@ -113,7 +113,7 @@ class ExponentialWithSoftplusLam(Exponential):
     parameters.pop("self")
     with ops.name_scope(name, values=[lam]) as ns:
       super(ExponentialWithSoftplusLam, self).__init__(
-          lam=nn.softplus(lam),
+          lam=nn.softplus(lam, name="softplus_lam"),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           name=ns)

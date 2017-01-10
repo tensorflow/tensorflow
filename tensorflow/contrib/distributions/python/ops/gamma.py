@@ -234,8 +234,8 @@ class GammaWithSoftplusAlphaBeta(Gamma):
     parameters.pop("self")
     with ops.name_scope(name, values=[alpha, beta]) as ns:
       super(GammaWithSoftplusAlphaBeta, self).__init__(
-          alpha=nn.softplus(alpha),
-          beta=nn.softplus(beta),
+          alpha=nn.softplus(alpha, name="softplus_alpha"),
+          beta=nn.softplus(beta, name="softplus_beta"),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           name=ns)

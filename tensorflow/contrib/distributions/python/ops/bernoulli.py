@@ -183,7 +183,7 @@ class BernoulliWithSigmoidP(Bernoulli):
     parameters.pop("self")
     with ops.name_scope(name) as ns:
       super(BernoulliWithSigmoidP, self).__init__(
-          p=nn.sigmoid(p),
+          p=nn.sigmoid(p, name="sigmoid_p"),
           dtype=dtype,
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,

@@ -333,7 +333,7 @@ class StudentTWithAbsDfSoftplusSigma(StudentT):
       super(StudentTWithAbsDfSoftplusSigma, self).__init__(
           df=math_ops.floor(math_ops.abs(df)),
           mu=mu,
-          sigma=nn.softplus(sigma),
+          sigma=nn.softplus(sigma, name="softplus_sigma"),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           name=ns)
