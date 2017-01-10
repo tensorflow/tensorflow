@@ -121,7 +121,7 @@ py_test(
 
 py_test(
     name = "feeder_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/training/feeder_test.py"],
     srcs_version = "PY2AND3",
     deps = [
