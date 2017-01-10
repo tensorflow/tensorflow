@@ -400,6 +400,7 @@ cross_entropy = tf.reduce_mean(
 train_step = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy)
 correct_prediction = tf.equal(tf.argmax(y_conv,1), tf.argmax(y_,1))
 accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+
 sess.run(tf.global_variables_initializer())
 for i in range(20000):
   batch = mnist.train.next_batch(50)
@@ -409,8 +410,14 @@ for i in range(20000):
     print("step %d, training accuracy %g"%(i, train_accuracy))
   train_step.run(feed_dict={x: batch[0], y_: batch[1], keep_prob: 0.5})
 
-print("test accuracy %g"%accuracy.eval(feed_dict={
-    x: mnist.test.images, y_: mnist.test.labels, keep_prob: 1.0}))
+acc = 0 
+num_batch = mnist.test.num_examples/50
+for i in range(num_batch):
+    batch = mnist.test.next_batch(50)
+    acc += accuracy.eval(feed_dict={x: batch[0], y_: batch[1], keep_prob: 1.0})
+
+acc /= num_batch
+print("test accuracy %g"%acc)
 ```
 
 The final test set accuracy after running this code should be approximately 99.2%.
