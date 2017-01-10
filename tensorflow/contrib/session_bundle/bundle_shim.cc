@@ -283,9 +283,15 @@ Status LoadSessionBundleOrSavedModelBundle(
     const std::unordered_set<string>& saved_model_tags,
     SavedModelBundle* saved_model_bundle) {
   if (MaybeSavedModelDirectory(export_dir)) {
+    LOG(INFO)
+        << "Attempting to load native SavedModelBundle in bundle-shim from: "
+        << export_dir;
     return LoadSavedModel(session_options, run_options, export_dir,
                           saved_model_tags, saved_model_bundle);
   } else if (IsPossibleExportDirectory(export_dir)) {
+    LOG(INFO) << "Attempting to up-convert SessionBundle to SavedModelBundle "
+                 "in bundle-shim from: "
+              << export_dir;
     return LoadSavedModelFromLegacySessionBundlePath(
         session_options, run_options, export_dir, saved_model_bundle);
   }

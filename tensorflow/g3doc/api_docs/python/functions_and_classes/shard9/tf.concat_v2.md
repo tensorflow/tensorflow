@@ -36,7 +36,7 @@ Note: If you are concatenating along a new axis consider using pack.
 E.g.
 
 ```python
-tf.concat(axis, [tf.expand_dims(t, axis) for t in tensors])
+tf.concat_v2([tf.expand_dims(t, axis) for t in tensors], axis)
 ```
 
 can be rewritten as

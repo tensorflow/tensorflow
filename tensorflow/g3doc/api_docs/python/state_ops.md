@@ -1949,7 +1949,7 @@ with tf.variable_scope("foo", reuse=True)
 
 If initializer is `None` (the default), the default initializer passed in
 the variable scope will be used. If that one is `None` too, a
-`uniform_unit_scaling_initializer` will be used. The initializer can also be
+`glorot_uniform_initializer` will be used. The initializer can also be
 a Tensor, in which case the variable is initialized to this value and shape.
 
 Similarly, if the regularizer is `None` (the default), the default regularizer
@@ -2038,7 +2038,7 @@ with tf.variable_scope("foo", reuse=True)
 
 If initializer is `None` (the default), the default initializer passed in
 the variable scope will be used. If that one is `None` too, a
-`uniform_unit_scaling_initializer` will be used. The initializer can also be
+`glorot_uniform_initializer` will be used. The initializer can also be
 a Tensor, in which case the variable is initialized to this value and shape.
 
 Similarly, if the regularizer is `None` (the default), the default regularizer

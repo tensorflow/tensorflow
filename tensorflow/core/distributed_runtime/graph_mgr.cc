@@ -153,7 +153,12 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
 
     // Find the device.
     s = worker_env_->device_mgr->LookupDevice(device_name, &unit->device);
-    if (!s.ok()) break;
+    if (!s.ok()) {
+      // Remove the empty unit from the item as the item destructor wants all
+      // units to have valid devices.
+      item->units.pop_back();
+      break;
+    }
 
     // Construct the subgraph.
     Graph* subgraph = new Graph(item->lib_def);
