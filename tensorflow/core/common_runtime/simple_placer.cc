@@ -716,8 +716,14 @@ Status SimplePlacer::Run() {
     if (!node->IsOp()) {
       continue;
     }
-    // Skip nodes that already have an assigned name.
+
+    // The graph may have come pre-populated by the framework with assigned
+    // devices (e.g., for stateful placements), so the placer should not try to
+    // place nodes that are already placed.
     if (!node->assigned_device_name().empty()) {
+      // Although the device is already assigned, we run this function to
+      // possibly log pre-assigned placements.
+      AssignAndLog(node->assigned_device_name(), node);
       continue;
     }
 
@@ -806,17 +812,17 @@ Status SimplePlacer::Run() {
   return Status::OK();
 }
 
-bool SimplePlacer::CanAssignToDevice(const string& candidate_device_name,
-                                     const std::vector<Device*> devices) const {
+bool SimplePlacer::CanAssignToDevice(
+    const string& candidate_device_name,
+    const std::vector<Device*>& devices) const {
   if (!candidate_device_name.empty()) {
-    // Can we assign to the same device?  Check by validating that
-    // the device type of 'candidate_device_name' is present
-    // in 'devices'.
+    // 'devices' lists the set of devices that the placer or the user has
+    // constrained the operation to.  "candidate_device_name" must
+    // refer to a concrete Device that is in the list of 'devices'.
     const Device* other_device =
         devices_->FindDeviceByName(candidate_device_name);
-    if (std::any_of(devices.begin(), devices.end(), [other_device](Device* d) {
-          return d->device_type() == other_device->device_type();
-        })) {
+    if (std::find(devices.begin(), devices.end(), other_device) !=
+        devices.end()) {
       return true;
     }
   }
@@ -829,10 +835,10 @@ void SimplePlacer::AssignAndLog(const string& assigned_device,
   node->set_assigned_device_name(assigned_device);
   // Log placement if log_device_placement is set.
   if (options_ && options_->config.log_device_placement()) {
-    printf("%s: (%s): %s\n", node->name().c_str(),
-           node->type_string().c_str(),
+    printf("%s: (%s): %s\n", node->name().c_str(), node->type_string().c_str(),
            node->assigned_device_name().c_str());
-    LOG(INFO) << node->name() << ": " << "(" << node->type_string() << ")" 
+    LOG(INFO) << node->name() << ": "
+              << "(" << node->type_string() << ")"
               << node->assigned_device_name();
   }
 }

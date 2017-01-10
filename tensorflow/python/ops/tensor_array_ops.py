@@ -63,6 +63,7 @@ class TensorArray(object):
 
   @@handle
   @@flow
+  @@dtype
 
   @@read
   @@gather
@@ -75,6 +76,8 @@ class TensorArray(object):
   @@unpack
   @@unstack
   @@split
+
+  @@identity
 
   @@grad
   """
@@ -215,6 +218,20 @@ class TensorArray(object):
       self._element_shape[0] = self._element_shape[0].merge_with(shape)
     else:
       self._element_shape.append(shape)
+
+  def identity(self):
+    """Returns a TensorArray with the same content and properties.
+
+    Returns:
+      A new TensorArray object with flow that ensures the control dependencies
+      from the contexts will become control dependencies for writes, reads, etc.
+      Use this object all for subsequent operations.
+    """
+    flow = array_ops.identity(self._flow)
+    ta = TensorArray(dtype=self._dtype, handle=self._handle, flow=flow,
+                     infer_shape=self._infer_shape)
+    ta._element_shape = self._element_shape
+    return ta
 
   def grad(self, source, flow=None, name=None):
     # tensor_array_grad requires a flow input when forward

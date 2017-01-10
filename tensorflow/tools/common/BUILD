@@ -10,6 +10,22 @@ package(
 )
 
 py_library(
+    name = "public_api",
+    srcs = ["public_api.py"],
+    srcs_version = "PY2AND3",
+)
+
+py_test(
+    name = "public_api_test",
+    srcs = ["public_api_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":public_api",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+py_library(
     name = "traverse",
     srcs = ["traverse.py"],
     srcs_version = "PY2AND3",

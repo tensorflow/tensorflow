@@ -32,10 +32,6 @@ py_library(
         "//tensorflow/contrib/rnn:rnn_py",
         "//tensorflow/contrib/session_bundle:exporter",
         "//tensorflow/contrib/session_bundle:gc",
-        "//tensorflow/contrib/tensor_forest:client_lib",
-        "//tensorflow/contrib/tensor_forest:data_ops_py",
-        "//tensorflow/contrib/tensor_forest:eval_metrics",
-        "//tensorflow/contrib/tensor_forest:tensor_forest_py",
         "//tensorflow/contrib/training:training_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -670,21 +666,6 @@ py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:training",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
-    name = "random_forest_test",
-    size = "medium",
-    srcs = ["python/learn/estimators/random_forest_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":learn",
-        "//tensorflow/contrib/learn/python/learn/datasets",
-        "//tensorflow/contrib/tensor_forest:tensor_forest_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
         "//third_party/py/numpy",
     ],
 )

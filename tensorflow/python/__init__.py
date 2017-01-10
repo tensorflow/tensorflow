@@ -189,7 +189,6 @@ _allowed_symbols.extend([
 
 # This is needed temporarily because we import it explicitly.
 _allowed_symbols.extend([
-    'platform',  ## This is included by the tf.learn main template.
     'pywrap_tensorflow',
 ])
 

@@ -45,7 +45,7 @@ class StudentTTest(test.TestCase):
       mu_v = 7.
       sigma_v = 8.
       t = np.array([-2.5, 2.5, 8., 0., -1., 2.], dtype=np.float32)
-      student = ds.StudentT(df, mu=mu, sigma=sigma)
+      student = ds.StudentT(df, mu=mu, sigma=-sigma)
 
       log_pdf = student.log_pdf(t)
       self.assertEquals(log_pdf.get_shape(), (6,))
@@ -66,7 +66,7 @@ class StudentTTest(test.TestCase):
       batch_size = 6
       df = constant_op.constant([[1.5, 7.2]] * batch_size)
       mu = constant_op.constant([[3., -3.]] * batch_size)
-      sigma = constant_op.constant([[math.sqrt(10.), math.sqrt(15.)]] *
+      sigma = constant_op.constant([[-math.sqrt(10.), math.sqrt(15.)]] *
                                    batch_size)
       df_v = np.array([1.5, 7.2])
       mu_v = np.array([3., -3.])
@@ -91,7 +91,7 @@ class StudentTTest(test.TestCase):
       batch_size = 6
       df = constant_op.constant([3.] * batch_size)
       mu = constant_op.constant([7.] * batch_size)
-      sigma = constant_op.constant([8.] * batch_size)
+      sigma = constant_op.constant([-8.] * batch_size)
       df_v = 3.
       mu_v = 7.
       sigma_v = 8.
@@ -117,7 +117,7 @@ class StudentTTest(test.TestCase):
   def testStudentEntropy(self):
     df_v = np.array([[2., 3., 7.]])  # 1x3
     mu_v = np.array([[1., -1, 0]])  # 1x3
-    sigma_v = np.array([[1., 2., 3.]]).T  # transposed => 3x1
+    sigma_v = np.array([[1., -2., 3.]]).T  # transposed => 3x1
     with self.test_session():
       student = ds.StudentT(df=df_v, mu=mu_v, sigma=sigma_v)
       ent = student.entropy()
@@ -125,7 +125,7 @@ class StudentTTest(test.TestCase):
 
     # Help scipy broadcast to 3x3
     ones = np.array([[1, 1, 1]])
-    sigma_bc = sigma_v * ones
+    sigma_bc = np.abs(sigma_v) * ones
     mu_bc = ones.T * mu_v
     df_bc = ones.T * df_v
     expected_entropy = stats.t.entropy(
@@ -139,7 +139,7 @@ class StudentTTest(test.TestCase):
     with self.test_session():
       df = constant_op.constant(4.)
       mu = constant_op.constant(3.)
-      sigma = constant_op.constant(math.sqrt(10.))
+      sigma = constant_op.constant(-math.sqrt(10.))
       df_v = 4.
       mu_v = 3.
       sigma_v = np.sqrt(10.)
@@ -455,13 +455,6 @@ class StudentTTest(test.TestCase):
   def testNegativeDofFails(self):
     with self.test_session():
       student = ds.StudentT(df=[2, -5.], mu=0., sigma=1.,
-                            validate_args=True, name="S")
-      with self.assertRaisesOpError(r"Condition x > 0 did not hold"):
-        student.mean().eval()
-
-  def testNegativeScaleFails(self):
-    with self.test_session():
-      student = ds.StudentT(df=[5.], mu=0., sigma=[[3.], [-2.]],
                             validate_args=True, name="S")
       with self.assertRaisesOpError(r"Condition x > 0 did not hold"):
         student.mean().eval()
