@@ -277,6 +277,16 @@ class DataFeederTest(test.TestCase):
             y_iter(True),
             n_classes=self._wrap_dict(0, 'out'),
             batch_size=2))
+    # Test non-full batches.
+    func(
+        data_feeder.StreamingDataFeeder(
+            x_iter(), y_iter(), n_classes=0, batch_size=10))
+    func(
+        data_feeder.StreamingDataFeeder(
+            x_iter(True),
+            y_iter(True),
+            n_classes=self._wrap_dict(0, 'out'),
+            batch_size=10))
 
   def test_dask_data_feeder(self):
     if HAS_PANDAS and HAS_DASK:

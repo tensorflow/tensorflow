@@ -157,22 +157,8 @@ Status ExtractRangeFromParams(const TransformFuncContext& context,
     return errors::InvalidArgument("You must pass both ", min_name, " and ",
                                    max_name, " into quantize_nodes");
   }
-  std::vector<string> min_strings = context.params.at(min_name);
-  std::vector<string> max_strings = context.params.at(max_name);
-  if ((min_strings.size() != 1) || (max_strings.size() != 1)) {
-    return errors::InvalidArgument("You must pass a single ", min_name,
-                                   " and single ", max_name,
-                                   " value into "
-                                   "quantize_nodes");
-  }
-  if (!strings::safe_strtof(min_strings[0].c_str(), min_value)) {
-    return errors::InvalidArgument("Couldn't decode ", min_name,
-                                   " as a number: ", min_strings[0]);
-  }
-  if (!strings::safe_strtof(max_strings[0].c_str(), max_value)) {
-    return errors::InvalidArgument("Couldn't decode ", max_name,
-                                   " as a number: ", max_strings[0]);
-  }
+  TF_RETURN_IF_ERROR(context.GetOneFloatParameter(min_name, 0.0f, min_value));
+  TF_RETURN_IF_ERROR(context.GetOneFloatParameter(max_name, 0.0f, max_value));
   return Status::OK();
 }
 

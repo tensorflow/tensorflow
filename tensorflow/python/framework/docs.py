@@ -317,7 +317,13 @@ class Library(Document):
       for arg, default in zip(
           argspec.args[first_arg_with_default:], argspec.defaults):
         if callable(default):
-          args_list.append("%s=%s" % (arg, default.__name__))
+          if hasattr(default, "__name__"):
+            args_list.append("%s=%s" % (arg, default.__name__))
+          else:
+            # A callable may be a class instance.
+            # TODO(fchollet): handle case with non-default constructor
+            # arguments (currently not present in the TF codebase).
+            args_list.append("%s=%s()" % (arg, default.__class__.__name__))
         else:
           args_list.append("%s=%r" % (arg, default))
     if argspec.varargs:

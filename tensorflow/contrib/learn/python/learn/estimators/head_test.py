@@ -726,7 +726,6 @@ class MultiHeadTest(test.TestCase):
     self.assertTrue(model_fn_ops.loss is not None)
     self.assertTrue(model_fn_ops.train_op is not None)
     self.assertFalse(model_fn_ops.eval_metric_ops)
-    self.assertEquals(None, model_fn_ops.signature_fn)
     self.assertEquals(None, model_fn_ops.output_alternatives)
 
     with session.Session() as sess:
@@ -754,7 +753,6 @@ class MultiHeadTest(test.TestCase):
     self.assertTrue(model_fn_ops.loss is not None)
     self.assertTrue(model_fn_ops.train_op is not None)
     self.assertFalse(model_fn_ops.eval_metric_ops)
-    self.assertEquals(None, model_fn_ops.signature_fn)
     self.assertEquals(None, model_fn_ops.output_alternatives)
 
     with session.Session() as sess:
@@ -783,7 +781,6 @@ class MultiHeadTest(test.TestCase):
     self.assertEquals(None, model_fn_ops.loss)
     self.assertEquals(None, model_fn_ops.train_op)
     self.assertFalse(model_fn_ops.eval_metric_ops)
-    self.assertEquals(None, model_fn_ops.signature_fn)
     self.assertTrue(len(model_fn_ops.output_alternatives) == 2)
 
     # Tests predictions keys
@@ -832,7 +829,6 @@ class MultiHeadTest(test.TestCase):
     self.assertTrue(model_fn_ops.loss is not None)
     self.assertEquals(None, model_fn_ops.train_op)
     self.assertTrue(model_fn_ops.eval_metric_ops)
-    self.assertEquals(None, model_fn_ops.signature_fn)
     self.assertEquals(None, model_fn_ops.output_alternatives)
 
     metric_ops = model_fn_ops.eval_metric_ops

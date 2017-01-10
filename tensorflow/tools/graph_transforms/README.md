@@ -12,6 +12,7 @@
     *   [Shrinking File Size](#shrinking-file-size)
     *   [Eight-bit Calculations](#eight-bit-calculations)
 *   [Transform Reference](#transform-reference)
+    *   [add_default_attributes](#add_default_attributes)
     *   [fold_batch_norms](#fold_batch_norms)
     *   [fold_constants](#fold_constants)
     *   [fold_old_batch_norms](#fold_old_batch_norms)
@@ -26,6 +27,7 @@
     *   [rename_attribute](#rename_attribute)
     *   [rename_op](#rename_op)
     *   [round_weights](#round_weights)
+    *   [set_device](#set_device)
     *   [sort_by_execution_order](#sort_by_execution_order)
     *   [strip_unused_nodes](#strip_unused_nodes)
 *   [Writing Your Own Transforms](#writing-your-own-transforms)
@@ -318,6 +320,18 @@ logged and the transform skipped. This is especially useful for optional
 transforms where version errors or other unimportant problems may trigger an
 error.
 
+### add_default_attributes
+
+Args: None
+
+When attributes are added to ops in new versions of TensorFlow, they often have
+defaults to ensure backwards compatible behavior with their original versions.
+These defaults usually get added when the graph is loaded by the runtime, but if
+your model is going to be processed outside of the main TensorFlow framework it
+can be useful to run this update process as a transform. This process finds any
+op attributes that are defined in the current TensorFlow list of ops but not
+within the saved model, and sets them to the defined default for that attribute.
+
 ### fold_batch_norms
 
 Args: None
@@ -515,6 +529,22 @@ number of steps. The unique values are chosen per buffer by linearly allocating
 between the largest and smallest values present. This is useful when you'll be
 deploying on mobile, and you want a model that will compress effectively. See
 [shrinking file size](#shrinking-file-size) for more details.
+
+### set_device
+
+Args:
+
+*   device: What device to assign to ops.
+*   if_default: If this is true, only assign to ops with empty existing devices.
+
+Updates nodes to use the specified device. A device is a way to tell the code
+that executes the graph which piece of hardware it should run particular nodes
+on. The right assignment to use may change between training and deployment, so
+this transform (and [remove_device](#remove_device)) provide a way of updating
+the placement. If the `is_default` parameter is set, then only ops that don't
+have a device assigned already will be updated. This is mostly useful for
+preprocessing of graphs for other stages that expect all ops to have an explicit
+device assigned.
 
 ### sort_by_execution_order
 
@@ -844,23 +874,13 @@ Here's an example of how [round_weights](#round_weights) reads its `num_steps`
 parameter:
 
 ```C++
-string num_steps_string;
-TF_RETURN_IF_ERROR(
-    GetExactlyOneParameter(context, "num_steps", "256", &num_steps_string));
-int32 num_steps;
-if (!strings::safe_strto32(StringPiece(num_steps_string), &num_steps)) {
-  return errors::InvalidArgument(
-      "Couldn't interpret the num_steps argument to round_weights as a "
-      "number:",
-      num_steps_string);
-}
+TF_RETURN_IF_ERROR(context.GetOneIntParameter("num_steps", 256, &num_steps));
 ```
 
-Something to notice here is that you have to convert the string to an integer,
-and if the conversion fails you need to raise a meaningful error through the
-status result of the transform. Also, we're using a helper function which raises
-an error if the parameter is present multiple times, and uses a default if the
-user hasn't specified it.
+If the conversion fails or the parameter occurs more than once the helper
+function will raise a meaningful error through the status result of the
+transform. If the parameter isn't specified at all then the default will be
+used.
 
 ### Function Libraries
 
