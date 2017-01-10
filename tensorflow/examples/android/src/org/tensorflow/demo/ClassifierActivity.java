@@ -52,7 +52,7 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
   // To use v3 Inception model, strip the DecodeJpeg Op from your retrained
   // model first:
   //
-  // python strip_unused.py
+  // python strip_unused.py \
   // --input_graph=<retrained-pb-file> \
   // --output_graph=<your-stripped-pb-file> \
   // --input_node_names="Mul" \
