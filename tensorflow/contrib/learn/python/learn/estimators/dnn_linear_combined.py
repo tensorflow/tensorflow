@@ -91,9 +91,9 @@ def _linear_learning_rate(num_linear_feature_columns):
 
 
 def _add_hidden_layer_summary(value, tag):
-  logging_ops.scalar_summary("%s:fraction_of_zero_values" % tag,
+  logging_ops.scalar_summary("%s/fraction_of_zero_values" % tag,
                              nn.zero_fraction(value))
-  logging_ops.histogram_summary("%s:activation" % tag, value)
+  logging_ops.histogram_summary("%s/activation" % tag, value)
 
 
 def _get_embedding_variable(column, collection_key, input_layer_scope):

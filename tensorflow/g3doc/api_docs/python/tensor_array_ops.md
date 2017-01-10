@@ -35,6 +35,13 @@ The reference to the TensorArray.
 The flow `Tensor` forcing ops leading to this TensorArray state.
 
 
+- - -
+
+#### `tf.TensorArray.dtype` {#TensorArray.dtype}
+
+The data type of this TensorArray.
+
+
 
 - - -
 
@@ -261,6 +268,20 @@ Split the values of a `Tensor` into the TensorArray.
 
 - - -
 
+#### `tf.TensorArray.identity()` {#TensorArray.identity}
+
+Returns a TensorArray with the same content and properties.
+
+##### Returns:
+
+  A new TensorArray object with flow that ensures the control dependencies
+  from the contexts will become control dependencies for writes, reads, etc.
+  Use this object all for subsequent operations.
+
+
+
+- - -
+
 #### `tf.TensorArray.grad(source, flow=None, name=None)` {#TensorArray.grad}
 
 
@@ -318,13 +339,6 @@ is created within a `while_loop`.
 #### `tf.TensorArray.close(name=None)` {#TensorArray.close}
 
 Close the current TensorArray.
-
-
-- - -
-
-#### `tf.TensorArray.dtype` {#TensorArray.dtype}
-
-The data type of this TensorArray.
 
 
 - - -

@@ -6,6 +6,7 @@ load("@protobuf//:protobuf.bzl", "py_proto_library")
 # configure may change the following lines to True
 WITH_GCP_SUPPORT = False
 WITH_HDFS_SUPPORT = False
+WITH_XLA_SUPPORT = False
 
 # Appends a suffix to a list of deps.
 def tf_deps(deps, suffix):
@@ -184,4 +185,13 @@ def tf_additional_lib_deps():
   return deps
 
 def tf_additional_plugin_deps():
-  return []
+  deps = []
+  if WITH_XLA_SUPPORT:
+    deps.append("//tensorflow/compiler/jit")
+  return deps
+
+def tf_additional_license_deps():
+  licenses = []
+  if WITH_XLA_SUPPORT:
+    licenses.append("@llvm//:LICENSE.TXT")
+  return licenses
