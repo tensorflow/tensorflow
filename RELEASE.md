@@ -5,6 +5,7 @@
 * New python 3 docker images added.
 * Made pip packages pypi compliant. TensorFlow can now be installed by `pip
   install tensorflow` command.
+* Several python API calls have been changed to resemble NumPy more closely.
 * Android: person detection + tracking demo implementing Scalable Object
   Detection using Deep Neural Networks.
 * Android: pre-built libs are now built nightly.
