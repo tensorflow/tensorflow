@@ -156,7 +156,6 @@
   * [`gather_nd`](../../api_docs/python/array_ops.md#gather_nd)
   * [`meshgrid`](../../api_docs/python/array_ops.md#meshgrid)
   * [`one_hot`](../../api_docs/python/array_ops.md#one_hot)
-  * [`pack`](../../api_docs/python/array_ops.md#pack)
   * [`pad`](../../api_docs/python/array_ops.md#pad)
   * [`parallel_stack`](../../api_docs/python/array_ops.md#parallel_stack)
   * [`quantize_v2`](../../api_docs/python/array_ops.md#quantize_v2)
@@ -191,7 +190,6 @@
   * [`to_int64`](../../api_docs/python/array_ops.md#to_int64)
   * [`transpose`](../../api_docs/python/array_ops.md#transpose)
   * [`unique_with_counts`](../../api_docs/python/array_ops.md#unique_with_counts)
-  * [`unpack`](../../api_docs/python/array_ops.md#unpack)
   * [`unstack`](../../api_docs/python/array_ops.md#unstack)
 
 * **[Math](../../api_docs/python/math_ops.md)**:
@@ -366,11 +364,9 @@
 * **[TensorArray Operations](../../api_docs/python/tensor_array_ops.md)**:
   * [`gather`](../../api_docs/python/tensor_array_ops.md#gather)
   * [`identity`](../../api_docs/python/tensor_array_ops.md#identity)
-  * [`pack`](../../api_docs/python/tensor_array_ops.md#pack)
   * [`split`](../../api_docs/python/tensor_array_ops.md#split)
   * [`stack`](../../api_docs/python/tensor_array_ops.md#stack)
   * [`TensorArray`](../../api_docs/python/tensor_array_ops.md#TensorArray)
-  * [`unpack`](../../api_docs/python/tensor_array_ops.md#unpack)
   * [`unstack`](../../api_docs/python/tensor_array_ops.md#unstack)
 
 * **[Tensor Handle Operations](../../api_docs/python/session_ops.md)**:
