@@ -11,7 +11,6 @@ exports_files(["LICENSE"])
 libxsmm_interface_arguments = "0 1"
 
 # Arguments to ./scripts/libxsmm_config.py, see that file for detailed description.
-libxsmm_config_arguments = "0 0 64 1 0 1 1 0 1 1"
 #  ilp64: no
 #  big: no
 #  offload: no
@@ -91,7 +90,7 @@ cc_library(
         # Generated:
         "include/libxsmm.h",
         "include/libxsmm_config.h",
-	"include/libxsmm_dispatch.h",
+        "include/libxsmm_dispatch.h",
     ],
     copts = [
         "-mavx",  # JIT does not work without avx anyway, and this silences some CRC32 warnings.
