@@ -128,6 +128,10 @@ Status IsGraphValid(const GraphDef& graph_def);
 Status GetInOutTypes(const NodeDef& node_def, DataTypeVector* inputs,
                      DataTypeVector* outputs);
 
+// First tries to load the file as a text protobuf, if that fails tries to parse
+// it as a binary protobuf, and returns an error if both fail.
+Status LoadTextOrBinaryGraphFile(const string& file_name, GraphDef* graph);
+
 // This is used to spot particular subgraphs in a larger model. To use it,
 // create a pattern like:
 // OpTypePattern pattern({"Conv2D", {{"ResizeBilinear", {{"MirrorPad"}}}}});
@@ -213,15 +217,32 @@ struct TransformFuncContext {
   std::vector<string> input_names;
   std::vector<string> output_names;
   TransformFuncParameters params;
+
+  // Returns how many occurrences of the given parameter are present.
+  int CountParameters(const string& name) const;
+
+  // Gets a single instance of a parameter, using a default if it's not present.
+  Status GetOneStringParameter(const string& name, const string& default_value,
+                               string* result) const;
+
+  // Gets a single occurrence of a parameter as an integer, falling back to a
+  // default if it isn't present and returning an error if it isn't convertible
+  // to a number.
+  Status GetOneIntParameter(const string& name, int64 default_value,
+                            int64* result) const;
+
+  // Gets a single occurrence of a parameter as a floating point number, falling
+  // back to a default if it isn't present and returning an error if it isn't
+  // convertible to a number.
+  Status GetOneFloatParameter(const string& name, float default_value,
+                              float* result) const;
+
+  // Gets a single occurrence of a parameter as a boolean, falling back to a
+  // default if it isn't present and returning an error if it's not one of
+  // "true", "1", "false", or "0".
+  Status GetOneBoolParameter(const string& name, bool default_value,
+                             bool* result) const;
 };
-
-// Returns how many occurrences of the given parameter are present.
-int CountParameters(const TransformFuncContext& context, const string& name);
-
-// Gets a simple occurrence of a parameter, using a default if it isn't present.
-Status GetExactlyOneParameter(const TransformFuncContext& context,
-                              const string& name, const string& default_value,
-                              string* result);
 
 // This is the function API for all graph transformations, taking an input
 // GraphDef and other arguments, and returning a transformed GraphDef.

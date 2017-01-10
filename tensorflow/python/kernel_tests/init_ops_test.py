@@ -27,7 +27,6 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -333,14 +332,6 @@ class UniformUnitScalingInitializationTest(test.TestCase):
         ValueError,
         init_ops.uniform_unit_scaling_initializer,
         dtype=dtypes.string)
-
-
-class RandomWalkShapeTest(test.TestCase):
-
-  def testRandomWalk(self):
-    # Fully known shape.
-    rnd1 = init_ops._random_walk([1, 2], nn_ops.relu)
-    self.assertEqual([1, 2], rnd1.get_shape())
 
 
 # TODO(vrv): move to sequence_ops_test?
