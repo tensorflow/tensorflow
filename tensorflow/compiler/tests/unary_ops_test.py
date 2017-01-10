@@ -324,7 +324,7 @@ class UnaryOpsTest(XLATestCase):
 
   def testUnpack(self):
     self._testUnary(
-        array_ops.unpack,
+        array_ops.unstack,
         np.array([[1., 2.], [3., 4.], [5., 6.]], dtype=np.float32),
         expected=[
             np.array([1., 2.], dtype=np.float32),

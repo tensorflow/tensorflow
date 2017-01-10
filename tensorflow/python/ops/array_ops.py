@@ -57,9 +57,7 @@ or join multiple tensors together.
 @@concat_v2
 @@stack
 @@parallel_stack
-@@pack
 @@unstack
-@@unpack
 @@reverse_sequence
 @@reverse
 @@reverse_v2
@@ -492,7 +490,7 @@ def _SliceHelper(tensor, slice_spec, var=None):
       shrink_axis_mask |= (1 << index)
     index += 1
 
-  # pack possibly involves no tensors, so we must use op_scope correct graph.
+  # stack possibly involves no tensors, so we must use op_scope correct graph.
   with ops.name_scope(None, "strided_slice",
                       [tensor] + begin + end + strides) as name:
     if begin:
@@ -1039,50 +1037,6 @@ def stack(values, axis=0, name="stack"):
   return gen_array_ops._pack(values, axis=axis, name=name)
 
 
-@deprecated(
-    "2016-12-14",
-    "This op will be removed after the deprecation date. "
-    "Please switch to tf.stack().")
-def pack(values, axis=0, name="pack"):
-  """Packs a list of rank-`R` tensors into one rank-`(R+1)` tensor.
-
-  Packs the list of tensors in `values` into a tensor with rank one higher than
-  each tensor in `values`, by packing them along the `axis` dimension.
-  Given a list of length `N` of tensors of shape `(A, B, C)`;
-
-  if `axis == 0` then the `output` tensor will have the shape `(N, A, B, C)`.
-  if `axis == 1` then the `output` tensor will have the shape `(A, N, B, C)`.
-  Etc.
-
-  For example:
-
-  ```prettyprint
-  # 'x' is [1, 4]
-  # 'y' is [2, 5]
-  # 'z' is [3, 6]
-  pack([x, y, z]) => [[1, 4], [2, 5], [3, 6]]  # Pack along first dim.
-  pack([x, y, z], axis=1) => [[1, 2, 3], [4, 5, 6]]
-  ```
-
-  This is the opposite of unpack.  The numpy equivalent is
-
-      tf.pack([x, y, z]) = np.asarray([x, y, z])
-
-  Args:
-    values: A list of `Tensor` objects with the same shape and type.
-    axis: An `int`. The axis to pack along. Defaults to the first dimension.
-      Supports negative indexes.
-    name: A name for this operation (optional).
-
-  Returns:
-    output: A packed `Tensor` with the same type as `values`.
-
-  Raises:
-    ValueError: If `axis` is out of the range [-(R+1), R+1).
-  """
-  return stack(values, axis, name)
-
-
 # pylint: disable=invalid-name
 def _autopacking_helper(list_or_tuple, dtype, name):
   """Converts the given list or tuple to a tensor by packing.
@@ -1220,49 +1174,6 @@ def unstack(value, num=None, axis=0, name="unstack"):
   return gen_array_ops._unpack(value, num=num, axis=axis, name=name)
 
 
-@deprecated(
-    "2016-12-14",
-    "This op will be removed after the deprecation date. "
-    "Please switch to tf.unstack().")
-def unpack(value, num=None, axis=0, name="unpack"):
-  """Unpacks the given dimension of a rank-`R` tensor into rank-`(R-1)` tensors.
-
-  Unpacks `num` tensors from `value` by chipping it along the `axis` dimension.
-  If `num` is not specified (the default), it is inferred from `value`'s shape.
-  If `value.shape[axis]` is not known, `ValueError` is raised.
-
-  For example, given a tensor of shape `(A, B, C, D)`;
-
-  If `axis == 0` then the i'th tensor in `output` is the slice
-    `value[i, :, :, :]` and each tensor in `output` will have shape `(B, C, D)`.
-    (Note that the dimension unpacked along is gone, unlike `split`).
-
-  If `axis == 1` then the i'th tensor in `output` is the slice
-    `value[:, i, :, :]` and each tensor in `output` will have shape `(A, C, D)`.
-  Etc.
-
-  This is the opposite of pack.  The numpy equivalent is
-
-      tf.unpack(x, n) = list(x)
-
-  Args:
-    value: A rank `R > 0` `Tensor` to be unpacked.
-    num: An `int`. The length of the dimension `axis`. Automatically inferred
-      if `None` (the default).
-    axis: An `int`. The axis to unpack along. Defaults to the first
-      dimension. Supports negative indexes.
-    name: A name for the operation (optional).
-
-  Returns:
-    The list of `Tensor` objects unpacked from `value`.
-
-  Raises:
-    ValueError: If `num` is unspecified and cannot be inferred.
-    ValueError: If `axis` is out of the range [-R, R).
-  """
-  return unstack(value, num, axis, name)
-
-
 def concat_v2(values, axis, name="concat_v2"):
   """Concatenates tensors along one dimension.
 
@@ -1296,7 +1207,7 @@ def concat_v2(values, axis, name="concat_v2"):
   tf.shape(tf.concat_v2([t3, t4], 1)) ==> [2, 6]
   ```
 
-  Note: If you are concatenating along a new axis consider using pack.
+  Note: If you are concatenating along a new axis consider using stack.
   E.g.
 
   ```python
@@ -1306,7 +1217,7 @@ def concat_v2(values, axis, name="concat_v2"):
   can be rewritten as
 
   ```python
-  tf.pack(tensors, axis=axis)
+  tf.stack(tensors, axis=axis)
   ```
 
   Args:

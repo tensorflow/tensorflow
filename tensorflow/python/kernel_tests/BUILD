@@ -1417,9 +1417,9 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "pack_op_test",
+    name = "stack_op_test",
     size = "small",
-    srcs = ["pack_op_test.py"],
+    srcs = ["stack_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
@@ -1880,9 +1880,9 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "unpack_op_test",
+    name = "unstack_op_test",
     size = "small",
-    srcs = ["unpack_op_test.py"],
+    srcs = ["unstack_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
