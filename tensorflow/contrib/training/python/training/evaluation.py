@@ -260,9 +260,10 @@ class StopAfterNEvalsHook(session_run_hook.SessionRunHook):
     """
     # The number of evals to run for.
     self._num_evals = num_evals
+    self._evals_completed = None
 
-  def begin(self):
-    self._evals_completed = get_or_create_eval_step()
+  def _set_evals_completed_tensor(self, updated_eval_step):
+    self._evals_completed = updated_eval_step
 
   def before_run(self, run_context):
     return session_run_hook.SessionRunArgs({
@@ -388,8 +389,15 @@ def evaluate_once(checkpoint_path,
   """
   eval_step = get_or_create_eval_step()
 
+  # Prepare the run hooks.
+  hooks = hooks or []
+
   if eval_ops is not None:
     update_eval_step = state_ops.assign_add(eval_step, 1)
+
+    for h in hooks:
+      if isinstance(h, StopAfterNEvalsHook):
+        h._set_evals_completed_tensor(update_eval_step)  # pylint: disable=protected-access
 
     if isinstance(eval_ops, dict):
       eval_ops['update_eval_step'] = update_eval_step
@@ -407,9 +415,6 @@ def evaluate_once(checkpoint_path,
       checkpoint_filename_with_path=checkpoint_path,
       master=master,
       config=config)
-
-  # Prepare the run hooks.
-  hooks = hooks or []
 
   final_ops_hook = basic_session_run_hooks.FinalOpsHook(
       final_ops, final_ops_feed_dict)
@@ -489,8 +494,15 @@ def evaluate_repeatedly(checkpoint_dir,
   """
   eval_step = get_or_create_eval_step()
 
+  # Prepare the run hooks.
+  hooks = hooks or []
+
   if eval_ops is not None:
     update_eval_step = state_ops.assign_add(eval_step, 1)
+
+    for h in hooks:
+      if isinstance(h, StopAfterNEvalsHook):
+        h._set_evals_completed_tensor(update_eval_step)  # pylint: disable=protected-access
 
     if isinstance(eval_ops, dict):
       eval_ops['update_eval_step'] = update_eval_step
@@ -498,9 +510,6 @@ def evaluate_repeatedly(checkpoint_dir,
       eval_ops = list(eval_ops) + [update_eval_step]
     else:
       eval_ops = [eval_ops, update_eval_step]
-
-  # Prepare the run hooks.
-  hooks = hooks or []
 
   final_ops_hook = basic_session_run_hooks.FinalOpsHook(
       final_ops, final_ops_feed_dict)
