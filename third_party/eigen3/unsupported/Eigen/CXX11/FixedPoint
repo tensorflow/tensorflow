@@ -32,14 +32,12 @@
 
 // Use optimized implementations whenever available
 #ifdef EIGEN_VECTORIZE_AVX512
-#include "src/Tensor/TensorContractionThreadPool.h"
 #include "src/FixedPoint/PacketMathAVX512.h"
 #include "src/FixedPoint/TypeCastingAVX512.h"
 
 #elif defined EIGEN_VECTORIZE_AVX2
 #define EIGEN_USE_OPTIMIZED_INT8_UINT8_MAT_MAT_PRODUCT
 #define EIGEN_USE_OPTIMIZED_INT16_INT16_MAT_MAT_PRODUCT
-#include "src/Tensor/TensorContractionThreadPool.h"
 #include "src/FixedPoint/PacketMathAVX2.h"
 #include "src/FixedPoint/MatMatProductAVX2.h"
 #include "src/FixedPoint/TypeCastingAVX2.h"
