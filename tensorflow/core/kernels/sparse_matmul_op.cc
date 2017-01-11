@@ -1386,7 +1386,7 @@ void wrapper_libxsmm_spmdm_compute_generic_thread(
     float* C, int block_id, int tid, int nthreads) {
   return libxsmm_spmdm_compute_bfloat16_thread(
       handle, transA, transB, reinterpret_cast<const uint16*>(alpha), A_sparse,
-      reinterpret_cast<const uint16*>(B), reinterpret_cast<const uint16*>(beta),
+      reinterpret_cast<const uint16*>(B), 'N', reinterpret_cast<const uint16*>(beta),
       C, block_id, tid, nthreads);
 }
 void wrapper_libxsmm_spmdm_compute_generic_thread(
@@ -1395,7 +1395,7 @@ void wrapper_libxsmm_spmdm_compute_generic_thread(
     const float* B, const float* beta, float* C, int block_id, int tid,
     int nthreads) {
   return libxsmm_spmdm_compute_fp32_thread(handle, transA, transB, alpha,
-                                           A_sparse, B, beta, C, block_id, tid,
+                                           A_sparse, B, 'N', beta, C, block_id, tid,
                                            nthreads);
 }
 
