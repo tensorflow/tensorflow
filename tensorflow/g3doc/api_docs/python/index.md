@@ -139,6 +139,7 @@
   * [`broadcast_dynamic_shape`](../../api_docs/python/array_ops.md#broadcast_dynamic_shape)
   * [`broadcast_static_shape`](../../api_docs/python/array_ops.md#broadcast_static_shape)
   * [`cast`](../../api_docs/python/array_ops.md#cast)
+  * [`concat`](../../api_docs/python/array_ops.md#concat)
   * [`concat_v2`](../../api_docs/python/array_ops.md#concat_v2)
   * [`depth_to_space`](../../api_docs/python/array_ops.md#depth_to_space)
   * [`dequantize`](../../api_docs/python/array_ops.md#dequantize)
@@ -362,6 +363,7 @@
   * [`scan`](../../api_docs/python/functional_ops.md#scan)
 
 * **[TensorArray Operations](../../api_docs/python/tensor_array_ops.md)**:
+  * [`concat`](../../api_docs/python/tensor_array_ops.md#concat)
   * [`gather`](../../api_docs/python/tensor_array_ops.md#gather)
   * [`identity`](../../api_docs/python/tensor_array_ops.md#identity)
   * [`split`](../../api_docs/python/tensor_array_ops.md#split)

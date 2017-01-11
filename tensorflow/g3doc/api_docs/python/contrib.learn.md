@@ -1973,9 +1973,13 @@ variable.
 
 - - -
 
-### `tf.contrib.learn.evaluate(graph, output_dir, checkpoint_path, eval_dict, update_op=None, global_step_tensor=None, supervisor_master='', log_every_steps=10, feed_fn=None, max_steps=None)` {#evaluate}
+### `tf.contrib.learn.evaluate(*args, **kwargs)` {#evaluate}
 
-Evaluate a model loaded from a checkpoint.
+Evaluate a model loaded from a checkpoint. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2017-02-15.
+Instructions for updating:
+graph_actions.py will be deleted. Use tf.train.* utilities instead. You can use learn/estimators/estimator.py as an example.
 
 Given `graph`, a directory to write summaries to (`output_dir`), a checkpoint
 to restore variables from, and a `dict` of `Tensor`s to evaluate, run an eval
@@ -2029,9 +2033,13 @@ and written to `output_dir`.
 
 - - -
 
-### `tf.contrib.learn.infer(restore_checkpoint_path, output_dict, feed_dict=None)` {#infer}
+### `tf.contrib.learn.infer(*args, **kwargs)` {#infer}
 
-Restore graph from `restore_checkpoint_path` and run `output_dict` tensors.
+Restore graph from `restore_checkpoint_path` and run `output_dict` tensors. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2017-02-15.
+Instructions for updating:
+graph_actions.py will be deleted. Use tf.train.* utilities instead. You can use learn/estimators/estimator.py as an example.
 
 If `restore_checkpoint_path` is supplied, restore from checkpoint. Otherwise,
 init all variables.
@@ -2061,14 +2069,22 @@ init all variables.
 
 ### `tf.contrib.learn.run_feeds(*args, **kwargs)` {#run_feeds}
 
-See run_feeds_iter(). Returns a `list` instead of an iterator.
+See run_feeds_iter(). Returns a `list` instead of an iterator. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2017-02-15.
+Instructions for updating:
+graph_actions.py will be deleted. Use tf.train.* utilities instead. You can use learn/estimators/estimator.py as an example.
 
 
 - - -
 
-### `tf.contrib.learn.run_n(output_dict, feed_dict=None, restore_checkpoint_path=None, n=1)` {#run_n}
+### `tf.contrib.learn.run_n(*args, **kwargs)` {#run_n}
 
-Run `output_dict` tensors `n` times, with the same `feed_dict` each run.
+Run `output_dict` tensors `n` times, with the same `feed_dict` each run. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2017-02-15.
+Instructions for updating:
+graph_actions.py will be deleted. Use tf.train.* utilities instead. You can use learn/estimators/estimator.py as an example.
 
 ##### Args:
 
@@ -2088,9 +2104,13 @@ Run `output_dict` tensors `n` times, with the same `feed_dict` each run.
 
 - - -
 
-### `tf.contrib.learn.train(graph, output_dir, train_op, loss_op, global_step_tensor=None, init_op=None, init_feed_dict=None, init_fn=None, log_every_steps=10, supervisor_is_chief=True, supervisor_master='', supervisor_save_model_secs=600, keep_checkpoint_max=5, supervisor_save_summaries_steps=100, feed_fn=None, steps=None, fail_on_nan_loss=True, monitors=None, max_steps=None)` {#train}
+### `tf.contrib.learn.train(*args, **kwargs)` {#train}
 
-Train a model.
+Train a model. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2017-02-15.
+Instructions for updating:
+graph_actions.py will be deleted. Use tf.train.* utilities instead. You can use learn/estimators/estimator.py as an example.
 
 Given `graph`, a directory to write outputs to (`output_dir`), and some ops,
 run a training loop. The given `train_op` performs one step of training on the

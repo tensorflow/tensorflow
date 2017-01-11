@@ -904,7 +904,7 @@ pad(t, paddings, "SYMMETRIC") ==> [[2, 1, 1, 2, 3, 3, 2],
 
 - - -
 
-### `tf.concat_v2(values, axis, name='concat_v2')` {#concat_v2}
+### `tf.concat(values, axis, name='concat')` {#concat}
 
 Concatenates tensors along one dimension.
 
@@ -929,20 +929,20 @@ For example:
 ```python
 t1 = [[1, 2, 3], [4, 5, 6]]
 t2 = [[7, 8, 9], [10, 11, 12]]
-tf.concat_v2([t1, t2], 0) ==> [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]]
-tf.concat_v2([t1, t2], 1) ==> [[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]]
+tf.concat([t1, t2], 0) ==> [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]]
+tf.concat([t1, t2], 1) ==> [[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]]
 
 # tensor t3 with shape [2, 3]
 # tensor t4 with shape [2, 3]
-tf.shape(tf.concat_v2([t3, t4], 0)) ==> [4, 3]
-tf.shape(tf.concat_v2([t3, t4], 1)) ==> [2, 6]
+tf.shape(tf.concat([t3, t4], 0)) ==> [4, 3]
+tf.shape(tf.concat([t3, t4], 1)) ==> [2, 6]
 ```
 
 Note: If you are concatenating along a new axis consider using stack.
 E.g.
 
 ```python
-tf.concat_v2([tf.expand_dims(t, axis) for t in tensors], axis)
+tf.concat([tf.expand_dims(t, axis) for t in tensors], axis)
 ```
 
 can be rewritten as
@@ -3129,5 +3129,14 @@ Compute gradients for a FakeQuantWithMinMaxVarsPerChannel operation.
     `sum_per_d(gradients * (inputs < min))`.
 *  <b>`backprop_wrt_max`</b>: A `Tensor` of type `float32`. Backpropagated gradients w.r.t. max parameter, shape `[d]`:
     `sum_per_d(gradients * (inputs > max))`.
+
+
+
+## Other Functions and Classes
+- - -
+
+### `tf.concat_v2(values, axis, name='concat_v2')` {#concat_v2}
+
+
 
 
