@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 #if defined(PLATFORM_WINDOWS)
+#include "tensorflow/core/platform/windows/cpu_info.h"
 #include "tensorflow/core/platform/windows/intrinsics_port.h"
 #endif
 
@@ -31,11 +32,11 @@ namespace internal {
 template <typename Packet>
 EIGEN_DEVICE_FUNC inline Packet pexpand_bf16_l(const Packet& from) {
   tensorflow::uint32 tmp;  
-  if ( __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ ) {  
-       tmp = (reinterpret_cast<const tensorflow::uint32&>(from) ) & 0xffff0000;  
-  } else {  
-       tmp = (reinterpret_cast<const tensorflow::uint32&>(from) << 16) & 0xffff0000;  
-  }  
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    tmp = (reinterpret_cast<const tensorflow::uint32&>(from) ) & 0xffff0000;  
+#else    
+    tmp = (reinterpret_cast<const tensorflow::uint32&>(from) << 16) & 0xffff0000;  
+#endif
   return reinterpret_cast<const float&>(tmp);
 }
 
@@ -44,11 +45,11 @@ EIGEN_DEVICE_FUNC inline Packet pexpand_bf16_l(const Packet& from) {
 template <typename Packet>
 EIGEN_DEVICE_FUNC inline Packet pexpand_bf16_u(const Packet& from) {
   tensorflow::uint32 tmp;  
-  if ( __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ ) {  
-       tmp = (reinterpret_cast<const tensorflow::uint32&>(from) << 16 ) & 0xffff0000;  
-  } else {  
-       tmp = (reinterpret_cast<const tensorflow::uint32&>(from)) & 0xffff0000;  
-  } 
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    tmp = (reinterpret_cast<const tensorflow::uint32&>(from) << 16 ) & 0xffff0000;  
+#else
+    tmp = (reinterpret_cast<const tensorflow::uint32&>(from)) & 0xffff0000;  
+#endif 
   return reinterpret_cast<const float&>(tmp);
 }
 

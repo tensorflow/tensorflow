@@ -240,6 +240,7 @@ cc_library(
         "lib/strings/strcat.h",
         "lib/strings/stringprintf.h",
         "platform/cpu_info.h",
+        "platform/windows/cpu_info.h",
         "platform/dynamic_annotations.h",
         "platform/env.h",
         "platform/file_system.h",

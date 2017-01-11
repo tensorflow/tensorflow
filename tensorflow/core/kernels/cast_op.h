@@ -102,7 +102,7 @@ struct scalar_cast_op<::tensorflow::bfloat16, float> {
     p[0] = a.value;  
     p[1] = 0;  
 #else  
-    static_assert(::tensorflow::port::kLittleEndian, "");  
+    static_assert(::tensorflow::port::kLittleEndian, "Not a little endian system!");  
     p[0] = 0;
     p[1] = a.value;
 #endif
@@ -125,7 +125,7 @@ struct scalar_cast_op<float, ::tensorflow::bfloat16> {
     const uint16_t* p = reinterpret_cast<const uint16_t*>(&a);  
     return ::tensorflow::bfloat16(p[0]);  
 #else 
-    static_assert(::tensorflow::port::kLittleEndian, "");
+    static_assert(::tensorflow::port::kLittleEndian, "Not a little endian system!");
     const uint16_t* p = reinterpret_cast<const uint16_t*>(&a);
     return ::tensorflow::bfloat16(p[1]);
 #endif 
