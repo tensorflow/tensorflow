@@ -80,7 +80,7 @@ def rotate(images, angles):
                                     (image_width - 1) + math_ops.cos(angles) *
                                     (image_height - 1))) / 2.0
   num_angles = array_ops.shape(angles)[0]
-  transforms = array_ops.concat_v2(
+  transforms = array_ops.concat(
       values=[
           math_ops.cos(angles)[:, None],
           -math_ops.sin(angles)[:, None],

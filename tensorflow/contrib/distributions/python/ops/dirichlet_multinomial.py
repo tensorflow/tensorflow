@@ -235,7 +235,7 @@ class DirichletMultinomial(distribution.Distribution):
         seed=distribution_util.gen_new_seed(seed, salt="dirichlet_multinomial"))
     x = math_ops.reduce_sum(array_ops.one_hot(draws, depth=k),
                             reduction_indices=-2)
-    final_shape = array_ops.concat_v2([[n], self.batch_shape(), [k]], 0)
+    final_shape = array_ops.concat([[n], self.batch_shape(), [k]], 0)
     return array_ops.reshape(x, final_shape)
 
   @distribution_util.AppendDocstring(_dirichlet_multinomial_prob_note)

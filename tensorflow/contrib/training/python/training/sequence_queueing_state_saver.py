@@ -1079,7 +1079,7 @@ class SequenceQueueingStateSaver(object):
                     sequence_count, width=5, fill="0"), ":", self._key
         ],
         name="StringJoinCurrentKeys")
-    next_keys = array_ops.concat_v2(
+    next_keys = array_ops.concat(
         [
             array_ops.slice(current_keys, [1], [-1]), array_ops.expand_dims(
                 string_ops.string_join(
@@ -1094,7 +1094,7 @@ class SequenceQueueingStateSaver(object):
             # Reshape sequences to sequence_count rows
             array_ops.reshape(
                 v,
-                array_ops.concat_v2(
+                array_ops.concat(
                     [
                         array_ops.expand_dims(sequence_count, 0),
                         array_ops.expand_dims(self._num_unroll, 0),
@@ -1114,7 +1114,7 @@ class SequenceQueueingStateSaver(object):
                 # Copy context to be sequence_count rows
                 array_ops.tile(
                     array_ops.expand_dims(v, 0),
-                    array_ops.concat_v2(
+                    array_ops.concat(
                         [
                             array_ops.expand_dims(sequence_count, 0),
                             [1] * v.get_shape().ndims
@@ -1515,12 +1515,12 @@ def _padding(sequences, num_unroll):
     # the shape of the paddings that we concat with the original value will be
     # [num_paddings, tf.shape(value)[1], tf.shape(value)[2], ...,
     #  tf.shape(value)[tf.rank(value) - 1])]
-    padding_shape = array_ops.concat_v2((num_paddings,
-                                         array_ops.shape(value)[1:]), 0)
+    padding_shape = array_ops.concat((num_paddings, array_ops.shape(value)[1:]),
+                                     0)
     # 2. fill padding shape with dummies
     dummy = array_ops.constant(
         "" if value.dtype == dtypes.string else 0, dtype=value.dtype)
     paddings = array_ops.fill(dims=padding_shape, value=dummy)
     # 3. concat values with paddings
-    padded_sequences[key] = array_ops.concat_v2([value, paddings], 0)
+    padded_sequences[key] = array_ops.concat([value, paddings], 0)
   return length, padded_sequences

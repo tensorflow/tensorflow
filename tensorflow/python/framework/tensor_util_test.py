@@ -642,18 +642,18 @@ class ConstantValueTest(test.TestCase):
 
   def testConcat(self):
     np_val = np.random.rand(3, 4, 7).astype(np.float32)
-    tf_val = array_ops.concat_v2(
+    tf_val = array_ops.concat(
         [np_val[0:1, :, :], np_val[1:2, :, :], np_val[2:3, :, :]], 0)
     c_val = tensor_util.constant_value(tf_val)
     self.assertAllClose(np_val, c_val)
 
-    tf_val = array_ops.concat_v2(
+    tf_val = array_ops.concat(
         [np_val[0, :, :], np_val[1, :, :], np_val[2, :, :]],
         array_ops.placeholder(dtypes.int32))
     c_val = tensor_util.constant_value(tf_val)
     self.assertIs(None, c_val)
 
-    tf_val = array_ops.concat_v2([
+    tf_val = array_ops.concat([
         np_val[0, :, :], array_ops.placeholder(dtypes.float32), np_val[2, :, :]
     ], 1)
     c_val = tensor_util.constant_value(tf_val)
@@ -698,13 +698,13 @@ class ConstantValueAsShapeTest(test.TestCase):
     self.assertEqual([16, 37, None], c_val.as_list())
 
   def testConcat(self):
-    tf_val = array_ops.concat_v2(
+    tf_val = array_ops.concat(
         [[16, 37], array_ops.placeholder(
             dtypes.int32, shape=(2,))], 0)
     c_val = tensor_util.constant_value_as_shape(tf_val)
     self.assertEqual([16, 37, None, None], c_val.as_list())
 
-    tf_val = array_ops.concat_v2(
+    tf_val = array_ops.concat(
         [[16, 37], array_ops.placeholder(
             dtypes.int32, shape=(1,)), [48]], 0)
     c_val = tensor_util.constant_value_as_shape(tf_val)

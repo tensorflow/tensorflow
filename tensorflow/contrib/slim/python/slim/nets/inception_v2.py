@@ -170,7 +170,7 @@ def inception_v2_base(inputs,
               depth(32), [1, 1],
               weights_initializer=trunc_normal(0.1),
               scope='Conv2d_0b_1x1')
-        net = array_ops.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
+        net = array_ops.concat([branch_0, branch_1, branch_2, branch_3], 3)
         end_points[end_point] = net
         if end_point == final_endpoint:
           return net, end_points
@@ -205,7 +205,7 @@ def inception_v2_base(inputs,
               depth(64), [1, 1],
               weights_initializer=trunc_normal(0.1),
               scope='Conv2d_0b_1x1')
-        net = array_ops.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
+        net = array_ops.concat([branch_0, branch_1, branch_2, branch_3], 3)
         end_points[end_point] = net
         if end_point == final_endpoint:
           return net, end_points
@@ -233,7 +233,7 @@ def inception_v2_base(inputs,
         with variable_scope.variable_scope('Branch_2'):
           branch_2 = layers_lib.max_pool2d(
               net, [3, 3], stride=2, scope='MaxPool_1a_3x3')
-        net = array_ops.concat_v2([branch_0, branch_1, branch_2], 3)
+        net = array_ops.concat([branch_0, branch_1, branch_2], 3)
         end_points[end_point] = net
         if end_point == final_endpoint:
           return net, end_points
@@ -268,7 +268,7 @@ def inception_v2_base(inputs,
               depth(128), [1, 1],
               weights_initializer=trunc_normal(0.1),
               scope='Conv2d_0b_1x1')
-        net = array_ops.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
+        net = array_ops.concat([branch_0, branch_1, branch_2, branch_3], 3)
         end_points[end_point] = net
         if end_point == final_endpoint:
           return net, end_points
@@ -303,7 +303,7 @@ def inception_v2_base(inputs,
               depth(128), [1, 1],
               weights_initializer=trunc_normal(0.1),
               scope='Conv2d_0b_1x1')
-        net = array_ops.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
+        net = array_ops.concat([branch_0, branch_1, branch_2, branch_3], 3)
         end_points[end_point] = net
         if end_point == final_endpoint:
           return net, end_points
@@ -338,7 +338,7 @@ def inception_v2_base(inputs,
               depth(96), [1, 1],
               weights_initializer=trunc_normal(0.1),
               scope='Conv2d_0b_1x1')
-        net = array_ops.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
+        net = array_ops.concat([branch_0, branch_1, branch_2, branch_3], 3)
         end_points[end_point] = net
         if end_point == final_endpoint:
           return net, end_points
@@ -374,7 +374,7 @@ def inception_v2_base(inputs,
               depth(96), [1, 1],
               weights_initializer=trunc_normal(0.1),
               scope='Conv2d_0b_1x1')
-        net = array_ops.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
+        net = array_ops.concat([branch_0, branch_1, branch_2, branch_3], 3)
         end_points[end_point] = net
         if end_point == final_endpoint:
           return net, end_points
@@ -402,7 +402,7 @@ def inception_v2_base(inputs,
         with variable_scope.variable_scope('Branch_2'):
           branch_2 = layers_lib.max_pool2d(
               net, [3, 3], stride=2, scope='MaxPool_1a_3x3')
-        net = array_ops.concat_v2([branch_0, branch_1, branch_2], 3)
+        net = array_ops.concat([branch_0, branch_1, branch_2], 3)
         end_points[end_point] = net
         if end_point == final_endpoint:
           return net, end_points
@@ -437,7 +437,7 @@ def inception_v2_base(inputs,
               depth(128), [1, 1],
               weights_initializer=trunc_normal(0.1),
               scope='Conv2d_0b_1x1')
-        net = array_ops.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
+        net = array_ops.concat([branch_0, branch_1, branch_2, branch_3], 3)
         end_points[end_point] = net
         if end_point == final_endpoint:
           return net, end_points
@@ -473,7 +473,7 @@ def inception_v2_base(inputs,
               depth(128), [1, 1],
               weights_initializer=trunc_normal(0.1),
               scope='Conv2d_0b_1x1')
-        net = array_ops.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
+        net = array_ops.concat([branch_0, branch_1, branch_2, branch_3], 3)
         end_points[end_point] = net
         if end_point == final_endpoint:
           return net, end_points

@@ -188,7 +188,7 @@ class BasicLSTMCell(RNNCell):
       if self._state_is_tuple:
         new_state = LSTMStateTuple(new_c, new_h)
       else:
-        new_state = array_ops.concat_v2([new_c, new_h], 1)
+        new_state = array_ops.concat([new_c, new_h], 1)
       return new_h, new_state
 
 
@@ -382,7 +382,7 @@ class LSTMCell(RNNCell):
           # pylint: enable=invalid-unary-operand-type
 
     new_state = (LSTMStateTuple(c, m) if self._state_is_tuple else
-                 array_ops.concat_v2([c, m], 1))
+                 array_ops.concat([c, m], 1))
     return m, new_state
 
 
@@ -655,7 +655,7 @@ class MultiRNNCell(RNNCell):
           cur_inp, new_state = cell(cur_inp, cur_state)
           new_states.append(new_state)
     new_states = (tuple(new_states) if self._state_is_tuple else
-                  array_ops.concat_v2(new_states, 1))
+                  array_ops.concat(new_states, 1))
     return cur_inp, new_states
 
 
@@ -748,7 +748,7 @@ def _linear(args, output_size, bias, bias_start=0.0, scope=None):
     if len(args) == 1:
       res = math_ops.matmul(args[0], weights)
     else:
-      res = math_ops.matmul(array_ops.concat_v2(args, 1), weights)
+      res = math_ops.matmul(array_ops.concat(args, 1), weights)
     if not bias:
       return res
     with vs.variable_scope(outer_scope) as inner_scope:

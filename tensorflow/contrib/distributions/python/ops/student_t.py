@@ -196,7 +196,7 @@ class StudentT(distribution.Distribution):
     #   Y = X / sqrt(Z / df)
     # then:
     #   Y ~ StudentT(df).
-    shape = array_ops.concat_v2([[n], self.batch_shape()], 0)
+    shape = array_ops.concat([[n], self.batch_shape()], 0)
     normal_sample = random_ops.random_normal(shape, dtype=self.dtype, seed=seed)
     df = self.df * array_ops.ones(self.batch_shape(), dtype=self.dtype)
     gamma_sample = random_ops.random_gamma(
@@ -235,7 +235,7 @@ class StudentT(distribution.Distribution):
   def _entropy(self):
     v = array_ops.ones(self.batch_shape(), dtype=self.dtype)[..., None]
     u = v * self.df[..., None]
-    beta_arg = array_ops.concat_v2([u, v], -1) / 2.
+    beta_arg = array_ops.concat([u, v], -1) / 2.
     return (math_ops.log(math_ops.abs(self.sigma)) +
             0.5 * math_ops.log(self.df) +
             special_math_ops.lbeta(beta_arg) +

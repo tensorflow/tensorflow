@@ -2334,12 +2334,12 @@ def tensordot(a, b, axes, name=None):
       axes_dims = array_ops.gather(shape_a, axes)
       prod_free_dims = reduce_prod(free_dims)
       prod_axes_dims = reduce_prod(axes_dims)
-      perm = array_ops.concat_v2([axes_dims, free_dims], 0)
+      perm = array_ops.concat([axes_dims, free_dims], 0)
       if flipped:
-        perm = array_ops.concat_v2([axes, free], 0)
+        perm = array_ops.concat([axes, free], 0)
         new_shape = array_ops.stack([prod_axes_dims, prod_free_dims])
       else:
-        perm = array_ops.concat_v2([free, axes], 0)
+        perm = array_ops.concat([free, axes], 0)
         new_shape = array_ops.stack([prod_free_dims, prod_axes_dims])
       reshaped_a = array_ops.reshape(array_ops.transpose(a, perm), new_shape)
       return reshaped_a, free_dims
@@ -2384,5 +2384,4 @@ def tensordot(a, b, axes, name=None):
       a_free_dims = ops.convert_to_tensor(a_free_dims)
       b_free_dims = ops.convert_to_tensor(b_free_dims)
       return array_ops.reshape(
-          ab_matmul, array_ops.concat_v2([a_free_dims, b_free_dims], 0),
-          name=name)
+          ab_matmul, array_ops.concat([a_free_dims, b_free_dims], 0), name=name)

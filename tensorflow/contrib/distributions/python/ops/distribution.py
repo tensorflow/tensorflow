@@ -580,7 +580,7 @@ class Distribution(_BaseDistribution):
           sample_shape, "sample_shape")
       samples = self._sample_n(n, seed, **condition_kwargs)
       batch_event_shape = array_ops.shape(samples)[1:]
-      final_shape = array_ops.concat_v2([sample_shape, batch_event_shape], 0)
+      final_shape = array_ops.concat([sample_shape, batch_event_shape], 0)
       samples = array_ops.reshape(samples, final_shape)
       samples = self._set_sample_static_shape(samples, sample_shape)
       return samples

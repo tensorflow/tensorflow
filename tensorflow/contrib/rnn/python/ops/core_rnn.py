@@ -349,7 +349,7 @@ def static_bidirectional_rnn(cell_fw, cell_bw, inputs,
   flat_output_bw = nest.flatten(output_bw)
 
   flat_outputs = tuple(
-      array_ops.concat_v2([fw, bw], 1)
+      array_ops.concat([fw, bw], 1)
       for fw, bw in zip(flat_output_fw, flat_output_bw))
 
   outputs = nest.pack_sequence_as(structure=output_fw,

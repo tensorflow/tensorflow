@@ -61,7 +61,7 @@ def LSTMCell(weights, m_prev, c_prev, x, pad):
   """
   # Apply weights to the input and previous hidden state.
   # The matmul here is the "big" operation.
-  xm = array_ops.concat_v2([x, m_prev], 1)
+  xm = array_ops.concat([x, m_prev], 1)
   xmw = math_ops.matmul(xm, weights)
 
   # Element-wise ops for the standard LSTM cell, with clipped activations.

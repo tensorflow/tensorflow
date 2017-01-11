@@ -168,15 +168,15 @@ _allowed_symbols_array_ops = [
     ##  documentation section to reference.
     ## For re-exporting to tf.*:
     "constant",
-    "edit_distance",   # to-doc
+    "edit_distance",  # to-doc
     # From gen_array_ops:
-    "copy_host",       # to-doc
+    "copy_host",  # to-doc
     "immutable_const",  # to-doc
     "invert_permutation",  # to-doc
     "quantize_and_dequantize",  # to-doc
 
     # TODO(drpng): legacy symbols to be removed.
-    "list_diff",   # Use tf.listdiff instead.
+    "list_diff",  # Use tf.listdiff instead.
     "batch_matrix_diag",
     "batch_matrix_band_part",
     "batch_matrix_diag_part",
