@@ -37,6 +37,40 @@ namespace tensorflow {
 
 // Xsmm*Conv2D are wrappers for libxsmm direct convolutions.
 
+// Returns true if convolution can be computed efficiently by XsmmConv2D,
+// returns false otherwise.
+bool CanUseXsmmConv2D(const libxsmm_dnn_conv_desc& desc,
+                      TensorFormat data_format) {
+  int VECTOR_SIZE;
+  int arch = libxsmm_cpuid_x86();
+
+  if (arch == LIBXSMM_X86_AVX512_CORE) {
+    VECTOR_SIZE = 16;
+  } else if (arch == LIBXSMM_X86_AVX2) {
+    VECTOR_SIZE = 8;
+  } else {
+    VLOG(1) << "Cannot use XSMM convolutions: unsupported architecture!";
+    return false;
+  }
+
+  if (data_format != FORMAT_NHWC) {
+    VLOG(1) << "Cannot use XSMM convolutions: unsupported format!";
+    return false;
+  }
+  if (desc.pad_h_in != 0 || desc.pad_w_in != 0) {
+    VLOG(1) << "Cannot use XSMM convolutions: unsupported padding!";
+    return false;
+  }
+  if (desc.K % VECTOR_SIZE != 0) {
+    VLOG(1) << "Cannot use XSMM convolutions: output features count not"
+               " divisible by vector size!";
+    return false;
+  }
+  VLOG(2) << "Can use XSMM convolutions.";
+  return true;
+}
+
+
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
 namespace functor {
