@@ -182,19 +182,12 @@ implementing **between-graph replication** and **asynchronous training**. It
 includes the code for the parameter server and worker tasks.
 
 ```python
+import argparse
+import sys
+
 import tensorflow as tf
 
-# Flags for defining the tf.train.ClusterSpec
-tf.app.flags.DEFINE_string("ps_hosts", "",
-                           "Comma-separated list of hostname:port pairs")
-tf.app.flags.DEFINE_string("worker_hosts", "",
-                           "Comma-separated list of hostname:port pairs")
-
-# Flags for defining the tf.train.Server
-tf.app.flags.DEFINE_string("job_name", "", "One of 'ps', 'worker'")
-tf.app.flags.DEFINE_integer("task_index", 0, "Index of task within the job")
-
-FLAGS = tf.app.flags.FLAGS
+FLAGS = None
 
 
 def main(_):
@@ -253,7 +246,36 @@ def main(_):
     sv.stop()
 
 if __name__ == "__main__":
-  tf.app.run()
+  parser = argparse.ArgumentParser()
+  parser.register("type", "bool", lambda v: v.lower() == "true")
+  # Flags for defining the tf.train.ClusterSpec
+  parser.add_argument(
+      "--ps_hosts",
+      type=str,
+      default="",
+      help="Comma-separated list of hostname:port pairs"
+  )
+  parser.add_argument(
+      "--worker_hosts",
+      type=str,
+      default="",
+      help="Comma-separated list of hostname:port pairs"
+  )
+  parser.add_argument(
+      "--job_name",
+      type=str,
+      default="",
+      help="One of 'ps', 'worker'"
+  )
+  # Flags for defining the tf.train.Server
+  parser.add_argument(
+      "--task_index",
+      type=int,
+      default=0,
+      help="Index of task within the job"
+  )
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
 ```
 
 To start the trainer with two parameter servers and two workers, use the
