@@ -319,9 +319,37 @@ def abs(x, name=None):
 # pylint: enable=g-docstring-has-escape
 
 
+class DivideDelegateWithName(object):
+  """Use Python2/Python3 division delegation to implement divide for tensors."""
+
+  def __init__(self, x, name):
+    """Construct DivideDelegateWithName.
+
+    Args:
+      x: Tensor to use as left operand in operator overloads
+      name: The name that is preferred for the op created.
+    """
+    self.x = x
+    self.name = name
+
+  def __truediv__(self, y):
+    return _truediv_python3(self.x, y, self.name)
+
+  def __floordiv__(self, y):
+    return floordiv(self.x, y, self.name)
+
+  def __div__(self, y):
+    return _div_python2(self.x, y, self.name)
+
+
 def divide(x, y, name=None):
   """Computes Python style division of `x` by `y`."""
-  with ops.name_scope(name, "Divide", [x]) as name:
+
+  if name is not None:
+    # Cannot use tensors operator overload, because it has no way to track
+    # override names. Use a dummy class to track the runtime division behavior
+    return DivideDelegateWithName(x, name) / y
+  else:
     return x / y
 
 
