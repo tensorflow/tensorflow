@@ -1096,7 +1096,7 @@ def define_unary_op(op_name, elementwise_function):
 
 
 abs_function = define_unary_op('abs', math_ops.abs)
-neg = define_unary_op('neg', math_ops.neg)
+neg = define_unary_op('neg', math_ops.negative)
 sign = define_unary_op('sign', math_ops.sign)
 reciprocal = define_unary_op('reciprocal', math_ops.reciprocal)
 square = define_unary_op('square', math_ops.square)
@@ -1171,8 +1171,8 @@ def define_binary_op(op_name, elementwise_function):
 
 
 add = define_binary_op('add', math_ops.add)
-sub = define_binary_op('sub', math_ops.sub)
-mul = define_binary_op('mul', math_ops.mul)
+sub = define_binary_op('sub', math_ops.subtract)
+mul = define_binary_op('mul', math_ops.multiply)
 div = define_binary_op('div', math_ops.div)
 mod = define_binary_op('mod', math_ops.mod)
 pow_function = define_binary_op('pow', math_ops.pow)

@@ -2381,7 +2381,7 @@ def _sparse_false_positive_at_k(labels,
     if weights is not None:
       with ops.control_dependencies((_assert_weights_rank(weights, fp),)):
         weights = math_ops.to_double(weights)
-        fp = math_ops.mul(fp, weights)
+        fp = math_ops.multiply(fp, weights)
     return fp
 
 

@@ -2306,8 +2306,8 @@ def streaming_covariance(predictions,
     else:
       weights = _broadcast_weights(weights, labels)
       batch_count = math_ops.reduce_sum(weights)  # n_B in eqn
-      weighted_predictions = math_ops.mul(predictions, weights)
-      weighted_labels = math_ops.mul(labels, weights)
+      weighted_predictions = math_ops.multiply(predictions, weights)
+      weighted_labels = math_ops.multiply(labels, weights)
 
     update_count = state_ops.assign_add(count, batch_count)  # n_AB in eqn
     prev_count = update_count - batch_count  # n_A in update equation

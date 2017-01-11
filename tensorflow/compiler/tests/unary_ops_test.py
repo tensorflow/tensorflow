@@ -216,7 +216,7 @@ class UnaryOpsTest(XLATestCase):
           expected=np.array([[2, 1]], dtype=dtype))
 
       self._testUnary(
-          math_ops.neg,
+          math_ops.negative,
           np.array([[-1, 1]], dtype=dtype),
           expected=np.array([[1, -1]], dtype=dtype))
 

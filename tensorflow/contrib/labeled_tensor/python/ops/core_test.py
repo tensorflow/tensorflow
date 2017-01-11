@@ -703,7 +703,7 @@ class CoreUnaryOpsTest(Base, DocStringCheckMixin, UnaryOpsTestsMixin):
 
     self.ops = [
         ('abs', operator.abs, math_ops.abs, core.abs_function),
-        ('neg', operator.neg, math_ops.neg, core.neg),
+        ('neg', operator.neg, math_ops.negative, core.neg),
         # TODO(shoyer): add unary + to core TensorFlow
         ('pos', None, None, None),
         ('sign', None, math_ops.sign, core.sign),
@@ -780,8 +780,8 @@ class CoreBinaryOpsTest(Base, DocStringCheckMixin, BinaryOpsTestsMixin):
     # elementwise for LabeledTensor, either.
     self.ops = [
         ('add', operator.add, math_ops.add, core.add),
-        ('sub', operator.sub, math_ops.sub, core.sub),
-        ('mul', operator.mul, math_ops.mul, core.mul),
+        ('sub', operator.sub, math_ops.subtract, core.sub),
+        ('mul', operator.mul, math_ops.multiply, core.mul),
         ('div', operator.truediv, math_ops.div, core.div),
         ('mod', operator.mod, math_ops.mod, core.mod),
         ('pow', operator.pow, math_ops.pow, core.pow_function),

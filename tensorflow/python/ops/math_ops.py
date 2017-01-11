@@ -359,9 +359,9 @@ multiply.__doc__ = gen_math_ops._mul.__doc__.replace("Mul", "`tf.multiply`")
 
 
 # TODO(aselle): put deprecation in after another round of global code changes
-# @deprecated(
-#     "2016-12-30",
-#     "`tf.mul(x, y)` is deprecated, please use `tf.negative(x, y)` or `x * y`")
+@deprecated(
+    "2016-12-30",
+    "`tf.mul(x, y)` is deprecated, please use `tf.multiply(x, y)` or `x * y`")
 def mul(x, y, name=None):
   return gen_math_ops._mul(x, y, name)
 mul.__doc__ = (gen_math_ops._mul.__doc__
@@ -374,9 +374,9 @@ subtract.__doc__ = gen_math_ops._sub.__doc__.replace("`Sub`", "`tf.subtract`")
 
 
 # TODO(aselle): put deprecation in after another round of global code changes
-# @deprecated(
-#     "2016-12-30",
-#     "`tf.mul(x, y)` is deprecated, please use `tf.negative(x, y)` or `x * y`")
+@deprecated(
+    "2016-12-30",
+    "`tf.sub(x, y)` is deprecated, please use `tf.subtract(x, y)` or `x - y`")
 def sub(x, y, name=None):
   return gen_math_ops._sub(x, y, name)
 sub.__doc__ = (gen_math_ops._sub.__doc__
