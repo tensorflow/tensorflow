@@ -137,7 +137,7 @@ class CustomOptimizer(test.TestCase):
         optimizer=custom_optimizer,
         config=learn.RunConfig(tf_random_seed=1))
     classifier.fit(x_train, y_train, steps=400)
-    predictions = np.array(list(classifier.predict(x_test)))
+    predictions = np.array(list(classifier.predict_classes(x_test)))
     score = accuracy_score(y_test, predictions)
 
     self.assertGreater(score, 0.65, "Failed with score = {0}".format(score))

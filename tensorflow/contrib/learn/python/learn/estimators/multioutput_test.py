@@ -45,7 +45,7 @@ class MultiOutputTest(test.TestCase):
         feature_columns=learn.infer_real_valued_columns_from_input(x),
         label_dimension=2)
     regressor.fit(x, y, steps=100)
-    score = mean_squared_error(np.array(list(regressor.predict(x))), y)
+    score = mean_squared_error(np.array(list(regressor.predict_scores(x))), y)
     self.assertLess(score, 10, "Failed with score = {0}".format(score))
 
 
