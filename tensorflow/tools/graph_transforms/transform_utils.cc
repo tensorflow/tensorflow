@@ -469,6 +469,7 @@ Status ReplaceMatchingOpTypes(
 
 Status RenameNodeInputs(const GraphDef& input_graph_def,
                         const std::map<string, string>& inputs_to_rename,
+                        const std::unordered_set<string>& nodes_to_ignore,
                         GraphDef* output_graph_def) {
   std::map<string, std::vector<std::pair<string, string>>>
       canonical_inputs_to_rename;
@@ -494,6 +495,9 @@ Status RenameNodeInputs(const GraphDef& input_graph_def,
               input_node_name);
         }
         already_visited.insert(input_node_name);
+        if (nodes_to_ignore.count(node.name())) {
+          break;
+        }
         bool any_match_found = false;
         for (const std::pair<string, string>& input_to_rename :
              canonical_inputs_to_rename.at(input_node_name)) {
@@ -630,9 +634,26 @@ Status TransformFuncContext::GetOneStringParameter(const string& name,
   }
 }
 
-Status TransformFuncContext::GetOneIntParameter(const string& name,
-                                                int64 default_value,
-                                                int64* result) const {
+Status TransformFuncContext::GetOneInt32Parameter(const string& name,
+                                                  int32 default_value,
+                                                  int32* result) const {
+  const int params_count = CountParameters(name);
+  if (params_count == 0) {
+    *result = default_value;
+    return Status::OK();
+  }
+  string string_value;
+  TF_RETURN_IF_ERROR(GetOneStringParameter(name, "", &string_value));
+  if (!strings::safe_strto32(StringPiece(string_value), result)) {
+    return errors::InvalidArgument("Couldn't interpret the ", name,
+                                   " argument as a number:", string_value);
+  }
+  return Status::OK();
+}
+
+Status TransformFuncContext::GetOneInt64Parameter(const string& name,
+                                                  int64 default_value,
+                                                  int64* result) const {
   const int params_count = CountParameters(name);
   if (params_count == 0) {
     *result = default_value;

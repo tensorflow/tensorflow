@@ -159,17 +159,17 @@ class BinaryOpsTest(XLATestCase):
           expected=np.array([[8], [9]], dtype=dtype))
 
       self._testBinary(
-          math_ops.sub,
+          math_ops.subtract,
           np.array([1, 2], dtype=dtype),
           np.array([10, 20], dtype=dtype),
           expected=np.array([-9, -18], dtype=dtype))
       self._testBinary(
-          math_ops.sub,
+          math_ops.subtract,
           dtype(5),
           np.array([1, 2], dtype=dtype),
           expected=np.array([4, 3], dtype=dtype))
       self._testBinary(
-          math_ops.sub,
+          math_ops.subtract,
           np.array([[1], [2]], dtype=dtype),
           dtype(7),
           expected=np.array([[-6], [-5]], dtype=dtype))
@@ -207,17 +207,17 @@ class BinaryOpsTest(XLATestCase):
           expected=np.array([[7], [2]], dtype=dtype))
 
       self._testBinary(
-          math_ops.mul,
+          math_ops.multiply,
           np.array([1, 20], dtype=dtype),
           np.array([10, 2], dtype=dtype),
           expected=np.array([10, 40], dtype=dtype))
       self._testBinary(
-          math_ops.mul,
+          math_ops.multiply,
           dtype(5),
           np.array([1, 20], dtype=dtype),
           expected=np.array([5, 100], dtype=dtype))
       self._testBinary(
-          math_ops.mul,
+          math_ops.multiply,
           np.array([[10], [2]], dtype=dtype),
           dtype(7),
           expected=np.array([[70], [14]], dtype=dtype))

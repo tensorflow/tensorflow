@@ -343,7 +343,7 @@ class RandomForestGraphs(object):
   def _bag_features(self, tree_num, input_data):
     split_data = array_ops.split(
         value=input_data, num_or_size_splits=self.params.num_features, axis=1)
-    return array_ops.concat_v2(
+    return array_ops.concat(
         [split_data[ind] for ind in self.params.bagged_features[tree_num]], 1)
 
   def training_graph(self,
@@ -858,7 +858,7 @@ class RandomTreeGraphs(object):
         state_ops.scatter_update(self.variables.accumulator_to_node_map,
                                  a2n_map_updates[0], a2n_map_updates[1]))
 
-    cleared_and_allocated_accumulators = array_ops.concat_v2(
+    cleared_and_allocated_accumulators = array_ops.concat(
         [accumulators_cleared, accumulators_allocated], 0)
 
     # Calculate values to put into scatter update for candidate counts.
@@ -889,7 +889,7 @@ class RandomTreeGraphs(object):
             array_ops.zeros_like(accumulators_allocated,
                                  dtype=dtypes.float32), 1),
         [1, self.params.num_output_columns])
-    accumulator_updates = array_ops.concat_v2([total_cleared, total_reset], 0)
+    accumulator_updates = array_ops.concat([total_cleared, total_reset], 0)
     updates.append(state_ops.scatter_update(
         self.variables.accumulator_sums,
         cleared_and_allocated_accumulators, accumulator_updates))

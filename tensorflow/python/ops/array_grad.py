@@ -69,13 +69,10 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
     # Make a vector of length equal to the input's dimensions,
     # with 0's everywhere and 1 in the concat dim position.
     # Note: Can't use sparse_to_dense since it isn't GPU-capable (for now)
-    mask = array_ops.concat_v2(
-        [array_ops.fill(
-            array_ops.expand_dims(concat_dim, 0), 0),
-         [1],
-         array_ops.fill(
-             shape_of_shape - concat_dim - 1, 0)],
-        0)
+    mask = array_ops.concat([
+        array_ops.fill(array_ops.expand_dims(concat_dim, 0), 0), [1],
+        array_ops.fill(shape_of_shape - concat_dim - 1, 0)
+    ], 0)
     begin = array_ops.fill(shape_of_shape, 0)
     return mask, begin
 
@@ -151,10 +148,8 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
       mask, begin = _CreateDenseMaskAndBegin(sizes, non_neg_concat_dim)
       for size in sizes:
         new_values = array_ops.slice(
-            grad.values,
-            begin,
-            array_ops.concat_v2(
-                [[-1], array_ops.slice(size, [1], [-1])], 0))
+            grad.values, begin,
+            array_ops.concat([[-1], array_ops.slice(size, [1], [-1])], 0))
         out_grads.append(
             ops.IndexedSlices(new_values, grad.indices, size))
         # Lint complains begin = begin + ...
@@ -223,7 +218,7 @@ def _SliceGrad(op, grad):
   before_pad = array_ops.reshape(begin_vec, shape)
   after_pad = array_ops.reshape(
       array_ops.shape(input_vec) - slice_size - begin_vec, shape)
-  paddings = array_ops.concat_v2([before_pad, after_pad], 1)
+  paddings = array_ops.concat([before_pad, after_pad], 1)
   return array_ops.pad(grad, paddings), None, None
 
 
@@ -269,12 +264,12 @@ def _StridedSliceGradGrad(op, grad):
 
 @ops.RegisterGradient("Split")
 def _SplitGrad(op, *grads):
-  return None, array_ops.concat_v2(list(grads), op.inputs[0])
+  return None, array_ops.concat(list(grads), op.inputs[0])
 
 
 @ops.RegisterGradient("SplitV")
 def _SplitVGrad(op, *grads):
-  returnval = array_ops.concat_v2(list(grads), op.inputs[2])
+  returnval = array_ops.concat(list(grads), op.inputs[2])
   returnval = [returnval] + [None,] * (len(op.inputs) - 1)
   print(returnval)
   return returnval
@@ -321,7 +316,7 @@ def _MatrixSetDiagGrad(op, grad):
       batch_shape = array_ops.slice(grad_shape, [0], [grad_rank - 2])
       matrix_shape = array_ops.slice(grad_shape, [grad_rank - 2], [2])
       min_dim = math_ops.reduce_min(matrix_shape)
-      diag_shape = array_ops.concat_v2([batch_shape, [min_dim]], 0)
+      diag_shape = array_ops.concat([batch_shape, [min_dim]], 0)
   grad_input = array_ops.matrix_set_diag(
       grad, array_ops.zeros(
           diag_shape, dtype=grad.dtype))
@@ -359,7 +354,7 @@ def _GatherGrad(op, grad):
   # Build appropriately shaped IndexedSlices
   indices = op.inputs[1]
   size = array_ops.expand_dims(array_ops.size(indices), 0)
-  values_shape = array_ops.concat_v2([size, params_shape[1:]], 0)
+  values_shape = array_ops.concat([size, params_shape[1:]], 0)
   values = array_ops.reshape(grad, values_shape)
   indices = array_ops.reshape(indices, size)
   return [ops.IndexedSlices(values, indices, params_shape), None]

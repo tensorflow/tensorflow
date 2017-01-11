@@ -238,6 +238,22 @@ std::unique_ptr<Derived> unique_ptr_static_cast(std::unique_ptr<Base> ptr) {
   return std::unique_ptr<Derived>(static_cast<Derived*>(ptr.release()));
 }
 
+int64 Product(tensorflow::gtl::ArraySlice<int64> xs);
+
+// Returns the start indices of consecutive non-overlapping subsequences of `a`
+// and `b` with the same product, i.e. `(i, j)` so
+// • a = {a[0 = i_0], ..., a[i_1 - 1], a[i_1], ... , a[i_2 - 1], ...}
+// • b = {b[0 = j_0], ..., b[j_1 - 1], b[j_1], ... , b[j_2 - 1], ...}
+// • ∀ k . 0 <= k < CommonFactors(a, b).size - 1 =>
+//         a[i_k] × a[i_k + 1] × ... × a[i_(k+1) - 1] =
+//         b[j_k] × b[j_k + 1] × ... × b[j_(k+1) - 1]
+// where `CommonFactors(a, b)[CommonFactors(a, b).size - 1] = (a.size, b.size)`
+//
+// If the given shapes have non-zero size, returns the bounds of the shortest
+// possible such subsequences; else, returns `{(0, 0), (a.size, b.size)}`.
+std::vector<std::pair<int64, int64>> CommonFactors(
+    tensorflow::gtl::ArraySlice<int64> a, tensorflow::gtl::ArraySlice<int64> b);
+
 }  // namespace xla
 
 #define XLA_LOG_LINES(SEV, STRING) LogLines(SEV, STRING, __FILE__, __LINE__)
