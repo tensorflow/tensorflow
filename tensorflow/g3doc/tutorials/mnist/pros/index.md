@@ -413,8 +413,8 @@ for i in range(20000):
 acc = 0 
 num_batch = mnist.test.num_examples/50
 for i in range(num_batch):
-    batch = mnist.test.next_batch(50)
-    acc += accuracy.eval(feed_dict={x: batch[0], y_: batch[1], keep_prob: 1.0})
+  batch = mnist.test.next_batch(50)
+  acc += accuracy.eval(feed_dict={x: batch[0], y_: batch[1], keep_prob: 1.0})
 
 acc /= num_batch
 print("test accuracy %g"%acc)
