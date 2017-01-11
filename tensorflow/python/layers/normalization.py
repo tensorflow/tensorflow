@@ -55,7 +55,8 @@ class BatchNormalization(base._Layer):  # pylint: disable=protected-access
       `data_format="channels_first"`, set `axis=1` in `BatchNormalization`.
     momentum: Momentum for the moving average.
     epsilon: Small float added to variance to avoid dividing by zero.
-    center: If True, subtract `beta`. If False, `beta` is ignored.
+    center: If True, add offset of `beta` to normalized tensor. If False, `beta`
+      is ignored.
     scale: If True, multiply by `gamma`. If False, `gamma` is
       not used. When the next layer is linear (also e.g. `nn.relu`), this can be
       disabled since the scaling can be done by the next layer.
@@ -276,7 +277,8 @@ def batch_normalization(inputs,
       `data_format="channels_first"`, set `axis=1` in `BatchNormalization`.
     momentum: Momentum for the moving average.
     epsilon: Small float added to variance to avoid dividing by zero.
-    center: If True, subtract `beta`. If False, `beta` is ignored.
+    center: If True, add offset of `beta` to normalized tensor. If False, `beta`
+      is ignored.
     scale: If True, multiply by `gamma`. If False, `gamma` is
       not used. When the next layer is linear (also e.g. `nn.relu`), this can be
       disabled since the scaling can be done by the next layer.
