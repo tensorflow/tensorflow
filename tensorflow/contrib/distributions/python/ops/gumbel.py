@@ -158,7 +158,7 @@ class _Gumbel(distribution.Distribution):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):
-    shape = array_ops.concat_v2(([n], array_ops.shape(self.mean())), 0)
+    shape = array_ops.concat(([n], array_ops.shape(self.mean())), 0)
     np_dtype = self.dtype.as_numpy_dtype()
     minval = np.nextafter(np_dtype(0), np_dtype(1))
     uniform = random_ops.random_uniform(shape=shape,

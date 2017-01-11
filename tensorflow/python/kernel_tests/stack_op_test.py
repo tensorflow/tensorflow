@@ -39,7 +39,7 @@ def np_split_squeeze(array, axis):
   ]
 
 
-class PackOpTest(test.TestCase):
+class StackOpTest(test.TestCase):
 
   def testSimple(self):
     np.random.seed(7)
@@ -50,9 +50,6 @@ class PackOpTest(test.TestCase):
         # TODO(irving): Remove list() once we handle maps correctly
         xs = list(map(constant_op.constant, data))
         # Pack back into a single tensorflow tensor
-        c = array_ops.pack(xs)
-        self.assertAllEqual(c.eval(), data)
-
         c = array_ops.stack(xs)
         self.assertAllEqual(c.eval(), data)
 
@@ -65,7 +62,7 @@ class PackOpTest(test.TestCase):
       for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
         data = np.random.randn(*shape).astype(np.float32)
         # Pack back into a single tensorflow tensor directly using np array
-        c = array_ops.pack(data)
+        c = array_ops.stack(data)
         # This is implemented via a Const:
         self.assertEqual(c.op.type, "Const")
         self.assertAllEqual(c.eval(), data)
@@ -76,10 +73,6 @@ class PackOpTest(test.TestCase):
         # Python lists also work for 1-D case:
         if len(shape) == 1:
           data_list = list(data)
-          cl = array_ops.pack(data_list)
-          self.assertEqual(cl.op.type, "Const")
-          self.assertAllEqual(cl.eval(), data)
-
           cl = array_ops.stack(data_list)
           self.assertEqual(cl.op.type, "Const")
           self.assertAllEqual(cl.eval(), data)
@@ -87,11 +80,8 @@ class PackOpTest(test.TestCase):
           cl = array_ops.parallel_stack(data_list)
           self.assertAllEqual(cl.eval(), data)
 
-      # Verify that shape induction works with shapes produced via const pack
+      # Verify that shape induction works with shapes produced via const stack
       a = constant_op.constant([1, 2, 3, 4, 5, 6])
-      b = array_ops.reshape(a, array_ops.pack([2, 3]))
-      self.assertAllEqual(b.get_shape(), [2, 3])
-
       b = array_ops.reshape(a, array_ops.stack([2, 3]))
       self.assertAllEqual(b.get_shape(), [2, 3])
 
@@ -103,10 +93,6 @@ class PackOpTest(test.TestCase):
       with self.test_session(use_gpu=True):
         # TODO(irving): Remove list() once we handle maps correctly
         xs = list(map(constant_op.constant, data))
-        c = array_ops.pack(xs)
-        err = gradient_checker.compute_gradient_error(xs, shapes, c, shape)
-        self.assertLess(err, 1e-6)
-
         c = array_ops.stack(xs)
         err = gradient_checker.compute_gradient_error(xs, shapes, c, shape)
         self.assertLess(err, 1e-6)
@@ -121,22 +107,15 @@ class PackOpTest(test.TestCase):
       with self.test_session(use_gpu=True):
         # TODO(irving): Remove list() once we handle maps correctly
         xs = list(map(constant_op.constant, data))
-        c = array_ops.pack(xs, axis=1)
-        err = gradient_checker.compute_gradient_error(xs, shapes, c, out_shape)
-        self.assertLess(err, 1e-6)
-
         c = array_ops.stack(xs, axis=1)
         err = gradient_checker.compute_gradient_error(xs, shapes, c, out_shape)
         self.assertLess(err, 1e-6)
 
   def testZeroSize(self):
-    # Verify that pack doesn't crash for zero size inputs
+    # Verify that stack doesn't crash for zero size inputs
     with self.test_session(use_gpu=True):
       for shape in (0,), (3, 0), (0, 3):
         x = np.zeros((2,) + shape).astype(np.int32)
-        p = array_ops.pack(list(x)).eval()
-        self.assertAllEqual(p, x)
-
         p = array_ops.stack(list(x)).eval()
         self.assertAllEqual(p, x)
 
@@ -146,12 +125,9 @@ class PackOpTest(test.TestCase):
   def testAxis0Default(self):
     with self.test_session(use_gpu=True):
       t = [constant_op.constant([1, 2, 3]), constant_op.constant([4, 5, 6])]
-
-      packed = array_ops.pack(t).eval()
       stacked = array_ops.stack(t).eval()
       parallel_stacked = array_ops.parallel_stack(t).eval()
 
-    self.assertAllEqual(packed, np.array([[1, 2, 3], [4, 5, 6]]))
     self.assertAllEqual(stacked, np.array([[1, 2, 3], [4, 5, 6]]))
     self.assertAllEqual(parallel_stacked, np.array([[1, 2, 3], [4, 5, 6]]))
 
@@ -165,7 +141,7 @@ class PackOpTest(test.TestCase):
         test_arrays = np_split_squeeze(expected, j)
 
         with self.test_session(use_gpu=True):
-          actual_pack = array_ops.pack(test_arrays, axis=j)
+          actual_pack = array_ops.stack(test_arrays, axis=j)
           self.assertEqual(expected.shape, actual_pack.get_shape())
           actual_pack = actual_pack.eval()
 
@@ -173,20 +149,15 @@ class PackOpTest(test.TestCase):
           self.assertEqual(expected.shape, actual_stack.get_shape())
           actual_stack = actual_stack.eval()
 
-        self.assertNDArrayNear(expected, actual_pack, 1e-6)
         self.assertNDArrayNear(expected, actual_stack, 1e-6)
 
   def testDimOutOfRange(self):
     t = [constant_op.constant([1, 2, 3]), constant_op.constant([4, 5, 6])]
     with self.assertRaisesRegexp(ValueError, r"axis = 2 not in \[-2, 2\)"):
-      array_ops.pack(t, axis=2)
-    with self.assertRaisesRegexp(ValueError, r"axis = 2 not in \[-2, 2\)"):
       array_ops.stack(t, axis=2)
 
   def testDimOutOfNegativeRange(self):
     t = [constant_op.constant([1, 2, 3]), constant_op.constant([4, 5, 6])]
-    with self.assertRaisesRegexp(ValueError, r"axis = -3 not in \[-2, 2\)"):
-      array_ops.pack(t, axis=-3)
     with self.assertRaisesRegexp(ValueError, r"axis = -3 not in \[-2, 2\)"):
       array_ops.stack(t, axis=-3)
 

@@ -235,4 +235,50 @@ void LogLines(int sev, tensorflow::StringPiece text, const char* fname,
   }
 }
 
+int64 Product(tensorflow::gtl::ArraySlice<int64> xs) {
+  return std::accumulate(xs.begin(), xs.end(), 1, std::multiplies<int64>());
+}
+
+std::vector<std::pair<int64, int64>> CommonFactors(
+    tensorflow::gtl::ArraySlice<int64> a,
+    tensorflow::gtl::ArraySlice<int64> b) {
+  CHECK_EQ(Product(a), Product(b));
+  if (0 == Product(a)) {
+    return {std::make_pair(0, 0), std::make_pair(a.size(), b.size())};
+  }
+
+  std::vector<std::pair<int64, int64>> bounds;
+  for (int64 i = 0, j = 0, prior_i = -1, prior_j = -1, partial_size_a = 1,
+             partial_size_b = 1;
+       ;) {
+    if (partial_size_a == partial_size_b && (i > prior_i || j > prior_j)) {
+      std::tie(prior_i, prior_j) = std::make_pair(i, j);
+      bounds.emplace_back(i, j);
+      continue;
+    }
+    bool in_bounds_i = i < a.size();
+    bool in_bounds_j = j < b.size();
+    if (!(in_bounds_i || in_bounds_j)) {
+      break;
+    }
+    bool next_a =
+        partial_size_a < partial_size_b ||
+        (in_bounds_i &&
+         (!in_bounds_j || (partial_size_a == partial_size_b && a[i] <= b[j])));
+    bool next_b =
+        partial_size_b < partial_size_a ||
+        (in_bounds_j &&
+         (!in_bounds_i || (partial_size_b == partial_size_a && b[j] <= a[i])));
+    if (next_a) {
+      partial_size_a *= a[i];
+      ++i;
+    }
+    if (next_b) {
+      partial_size_b *= b[j];
+      ++j;
+    }
+  }
+  return bounds;
+}
+
 }  // namespace xla

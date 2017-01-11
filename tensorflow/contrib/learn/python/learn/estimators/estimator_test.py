@@ -123,7 +123,7 @@ def boston_eval_fn():
       constant_op.constant(boston.data), [n_examples, _BOSTON_INPUT_DIM])
   labels = array_ops.reshape(
       constant_op.constant(boston.target), [n_examples, 1])
-  return array_ops.concat_v2([features, features], 0), array_ops.concat_v2(
+  return array_ops.concat([features, features], 0), array_ops.concat(
       [labels, labels], 0)
 
 

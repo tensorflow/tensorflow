@@ -118,7 +118,7 @@ class Bernoulli(distribution.Distribution):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):
-    new_shape = array_ops.concat_v2(([n], self.batch_shape()), 0)
+    new_shape = array_ops.concat(([n], self.batch_shape()), 0)
     uniform = random_ops.random_uniform(
         new_shape, seed=seed, dtype=self.p.dtype)
     sample = math_ops.less(uniform, self.p)
@@ -183,7 +183,7 @@ class BernoulliWithSigmoidP(Bernoulli):
     parameters.pop("self")
     with ops.name_scope(name) as ns:
       super(BernoulliWithSigmoidP, self).__init__(
-          p=nn.sigmoid(p),
+          p=nn.sigmoid(p, name="sigmoid_p"),
           dtype=dtype,
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,

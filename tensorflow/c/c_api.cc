@@ -1344,6 +1344,7 @@ TF_AttrMetadata TF_OperationGetAttrMetadata(TF_Operation* oper,
                   metadata.total_size += s.unknown_rank() ? 0 : s.dim_size();
                 });
       LIST_CASE(tensor, TF_ATTR_TENSOR);
+      LIST_CASE(tensor, TF_ATTR_FUNC);
 #undef LIST_CASE
       // All lists empty, determine the type from the OpDef.
       if (metadata.list_size == 0) {
@@ -1365,6 +1366,8 @@ TF_AttrMetadata TF_OperationGetAttrMetadata(TF_Operation* oper,
             metadata.type = TF_ATTR_SHAPE;
           } else if (typestr == "list(tensor)") {
             metadata.type = TF_ATTR_TENSOR;
+          } else if (typestr == "list(func)") {
+            metadata.type = TF_ATTR_FUNC;
           } else {
             status->status = InvalidArgument(
                 "Attribute '", attr_name,

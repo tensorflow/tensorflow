@@ -258,7 +258,7 @@ class SquareLinearOperatorDerivedClassTest(LinearOperatorDerivedClassTest):
     else:
       batch_shape = operator.batch_shape_dynamic()
       n = operator.domain_dimension_dynamic()
-      x_shape = array_ops.concat_v2((batch_shape, [n, r]), 0)
+      x_shape = array_ops.concat((batch_shape, [n, r]), 0)
 
     return random_normal(x_shape, dtype=operator.dtype)
 
@@ -315,7 +315,7 @@ class NonSquareLinearOperatorDerivedClassTest(LinearOperatorDerivedClassTest):
         n = operator.range_dimension_dynamic()
       else:
         n = operator.domain_dimension_dynamic()
-      x_shape = array_ops.concat_v2((batch_shape, [n, r]), 0)
+      x_shape = array_ops.concat((batch_shape, [n, r]), 0)
 
     return random_normal(x_shape, dtype=operator.dtype)
 

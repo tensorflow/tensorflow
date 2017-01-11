@@ -3277,14 +3277,14 @@ class MeanIOUTest(test.TestCase):
       self.assertAlmostEqual(desired_output, miou.eval())
 
   def testUpdateOpEvalIsAccumulatedConfusionMatrix(self):
-    predictions = array_ops.concat_v2(
+    predictions = array_ops.concat(
         [
             constant_op.constant(
                 0, shape=[5]), constant_op.constant(
                     1, shape=[5])
         ],
         0)
-    labels = array_ops.concat_v2(
+    labels = array_ops.concat(
         [
             constant_op.constant(
                 0, shape=[3]), constant_op.constant(
@@ -3321,14 +3321,14 @@ class MeanIOUTest(test.TestCase):
       self.assertEqual(0., miou.eval())
 
   def testResultsWithSomeMissing(self):
-    predictions = array_ops.concat_v2(
+    predictions = array_ops.concat(
         [
             constant_op.constant(
                 0, shape=[5]), constant_op.constant(
                     1, shape=[5])
         ],
         0)
-    labels = array_ops.concat_v2(
+    labels = array_ops.concat(
         [
             constant_op.constant(
                 0, shape=[3]), constant_op.constant(
@@ -3336,7 +3336,7 @@ class MeanIOUTest(test.TestCase):
         ],
         0)
     num_classes = 2
-    weights = array_ops.concat_v2(
+    weights = array_ops.concat(
         [
             constant_op.constant(
                 0, shape=[1]), constant_op.constant(

@@ -122,7 +122,7 @@ def _maybe_expand_labels(labels, predictions):
               array_ops.size(labels.dense_shape) + 1),
           lambda: sparse_ops.sparse_reshape(  # pylint: disable=g-long-lambda
               labels,
-              shape=array_ops.concat_v2((labels.dense_shape, (1,)), 0),
+              shape=array_ops.concat((labels.dense_shape, (1,)), 0),
               name=scope),
           lambda: labels)
 
@@ -2090,7 +2090,7 @@ def _expand_and_tile(tensor, multiple, dim=0, name=None):
             array_ops.size(tensor.dense_shape) + dim, [1])
       else:
         expand_dims = [dim]
-      expanded_shape = array_ops.concat_v2(
+      expanded_shape = array_ops.concat(
           (array_ops.slice(tensor.dense_shape, [0], expand_dims), [1],
            array_ops.slice(tensor.dense_shape, expand_dims, [-1])),
           0,
@@ -2108,7 +2108,7 @@ def _expand_and_tile(tensor, multiple, dim=0, name=None):
     if multiple == 1:
       return expanded
     ones = array_ops.ones_like(array_ops.shape(tensor))
-    tile_multiples = array_ops.concat_v2(
+    tile_multiples = array_ops.concat(
         (ones[:dim], (multiple,), ones[dim:]), 0, name='multiples')
     return array_ops.tile(expanded, tile_multiples, name=scope)
 
@@ -2381,7 +2381,7 @@ def _sparse_false_positive_at_k(labels,
     if weights is not None:
       with ops.control_dependencies((_assert_weights_rank(weights, fp),)):
         weights = math_ops.to_double(weights)
-        fp = math_ops.mul(fp, weights)
+        fp = math_ops.multiply(fp, weights)
     return fp
 
 

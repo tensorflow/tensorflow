@@ -430,11 +430,11 @@ int Main(int argc, char** argv) {
       const float rounded_flops = (total_flops / 1000.0f);
       pretty_flops = strings::StrCat(rounded_flops, "k FLOPs");
     } else if (total_flops < (1000 * 1000 * 1000)) {
-      const float rounded_flops = (std::round(total_flops / 1000.0f) / 1000.0f);
+      const float rounded_flops = round(total_flops / 1000.0f) / 1000.0f;
       pretty_flops = strings::StrCat(rounded_flops, " million FLOPs");
     } else {
       const float rounded_flops =
-          (std::round(total_flops / (1000.0f * 1000.0f)) / 1000.0f);
+          round(total_flops / (1000.0f * 1000.0f)) / 1000.0f;
       pretty_flops = strings::StrCat(rounded_flops, " billion FLOPs");
     }
     LOG(INFO) << "FLOPs estimate: " << strings::HumanReadableNum(total_flops);

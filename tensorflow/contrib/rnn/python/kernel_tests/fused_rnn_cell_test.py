@@ -146,7 +146,7 @@ class FusedRnnCellTest(test.TestCase):
             inputs, dtype=dtypes.float64, scope="fw")
         bw_outputs, bw_state = fused_bw_cell(
             inputs, dtype=dtypes.float64, scope="bw")
-        outputs = array_ops.concat_v2([fw_outputs, bw_outputs], 2)
+        outputs = array_ops.concat([fw_outputs, bw_outputs], 2)
         fused_vars = [
             v for v in variables.trainable_variables()
             if v.name.startswith("fused/")

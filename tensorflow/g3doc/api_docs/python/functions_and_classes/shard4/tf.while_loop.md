@@ -109,7 +109,7 @@ Example using shape_invariants:
   i0 = tf.constant(0)
   m0 = tf.ones([2, 2])
   c = lambda i, m: i < 10
-  b = lambda i, m: [i+1, tf.concat_v2([m, m], axis=0)]
+  b = lambda i, m: [i+1, tf.concat([m, m], axis=0)]
   tf.while_loop(
       c, b, loop_vars=[i0, m0],
       shape_invariants=[i0.get_shape(), tf.TensorShape([None, 2])])

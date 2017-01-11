@@ -713,7 +713,7 @@ class UnrollLSTMTest(test.TestCase):
   # Helper to construct a LSTM cell graph.
   @classmethod
   def LSTMCell(cls, x, mprev, cprev, weights):
-    xm = array_ops.concat_v2([x, mprev], 1)
+    xm = array_ops.concat([x, mprev], 1)
     i_i, i_g, f_g, o_g = array_ops.split(
         value=math_ops.matmul(xm, weights), num_or_size_splits=4, axis=1)
     new_c = math_ops.sigmoid(f_g) * cprev + math_ops.sigmoid(
