@@ -1173,4 +1173,3 @@ def sampled_softmax_loss(weights,
   sampled_losses = nn_ops.softmax_cross_entropy_with_logits(logits, labels)
   # sampled_losses is a [batch_size] tensor.
   return sampled_losses
-  
