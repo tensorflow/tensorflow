@@ -314,7 +314,6 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
       raise ValueError("Exactly one of saver or scaffold must be provided.")
     self._saver = saver
     self._checkpoint_dir = checkpoint_dir
-    self._summary_writer = SummaryWriterCache.get(checkpoint_dir)
     self._save_path = os.path.join(checkpoint_dir, checkpoint_basename)
     self._scaffold = scaffold
     self._timer = SecondOrStepTimer(every_secs=save_secs,
@@ -322,6 +321,7 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
     self._listeners = listeners or []
 
   def begin(self):
+    self._summary_writer = SummaryWriterCache.get(self._checkpoint_dir)
     self._global_step_tensor = training_util.get_global_step()
     if self._global_step_tensor is None:
       raise RuntimeError(
@@ -401,10 +401,11 @@ class StepCounterHook(session_run_hook.SessionRunHook):
                                     every_secs=every_n_secs)
 
     self._summary_writer = summary_writer
-    if summary_writer is None and output_dir:
-      self._summary_writer = SummaryWriterCache.get(output_dir)
+    self._output_dir = output_dir
 
   def begin(self):
+    if self._summary_writer is None and self._output_dir:
+      self._summary_writer = SummaryWriterCache.get(self._output_dir)
     self._global_step_tensor = training_util.get_global_step()
     if self._global_step_tensor is None:
       raise RuntimeError(
@@ -504,14 +505,15 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
           "Exactly one of scaffold or summary_op must be provided.")
     self._summary_op = summary_op
     self._summary_writer = summary_writer
-    if summary_writer is None and output_dir:
-      self._summary_writer = SummaryWriterCache.get(output_dir)
+    self._output_dir = output_dir
     self._scaffold = scaffold
     self._timer = SecondOrStepTimer(every_secs=save_secs,
                                     every_steps=save_steps)
     # TODO(mdan): Throw an error if output_dir and summary_writer are None.
 
   def begin(self):
+    if self._summary_writer is None and self._output_dir:
+      self._summary_writer = SummaryWriterCache.get(self._output_dir)
     self._next_step = None
     self._global_step_tensor = training_util.get_global_step()
     if self._global_step_tensor is None:
