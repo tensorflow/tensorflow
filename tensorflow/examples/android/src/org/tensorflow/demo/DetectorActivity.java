@@ -74,7 +74,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
   private static final int YOLO_BLOCK_SIZE = 32;
 
   // Default to the included multibox model.
-  private static final boolean USE_YOLO = true;
+  private static final boolean USE_YOLO = false;
 
   private static final int CROP_SIZE = USE_YOLO ? YOLO_INPUT_SIZE : MB_INPUT_SIZE;
 
