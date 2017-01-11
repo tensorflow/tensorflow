@@ -1041,7 +1041,7 @@ def grayscale_to_rgb(images, name=None):
     shape_list = (
         [array_ops.ones(rank_1,
                         dtype=dtypes.int32)] + [array_ops.expand_dims(3, 0)])
-    multiples = array_ops.concat_v2(shape_list, 0)
+    multiples = array_ops.concat(shape_list, 0)
     rgb = array_ops.tile(images, multiples, name=name)
     rgb.set_shape(images.get_shape()[:-1].concatenate([3]))
     return rgb
@@ -1124,7 +1124,7 @@ def adjust_hue(image, delta, name=None):
       # floating point number since delta is [-0.5, 0.5].
       hue = math_ops.mod(hue + (delta + 1.), 1.)
 
-      hsv_altered = array_ops.concat_v2([hue, saturation, value], 2)
+      hsv_altered = array_ops.concat([hue, saturation, value], 2)
       rgb_altered = gen_image_ops.hsv_to_rgb(hsv_altered)
     else:
       rgb_altered = gen_image_ops.adjust_hue(flt_image, delta)
@@ -1210,7 +1210,7 @@ def adjust_saturation(image, saturation_factor, name=None):
     saturation *= saturation_factor
     saturation = clip_ops.clip_by_value(saturation, 0.0, 1.0)
 
-    hsv_altered = array_ops.concat_v2([hue, saturation, value], 2)
+    hsv_altered = array_ops.concat([hue, saturation, value], 2)
     rgb_altered = gen_image_ops.hsv_to_rgb(hsv_altered)
 
     return convert_image_dtype(rgb_altered, orig_dtype)

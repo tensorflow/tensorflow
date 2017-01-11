@@ -1354,7 +1354,7 @@ class BidirectionalRNNTest(test.TestCase):
         dtype=dtypes.float32,
         time_major=use_time_major,
         scope=scope)
-    outputs = array_ops.concat_v2(outputs, 2)
+    outputs = array_ops.concat(outputs, 2)
     state_fw, state_bw = states
     outputs_shape = [None, max_length, 2 * num_units]
     if use_shape:

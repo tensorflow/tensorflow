@@ -53,9 +53,12 @@
 #                      additional flag --copt=-mavx or --copt=-mavx2, to
 #                      perform AVX or AVX2 builds, respectively. This requires
 #                      AVX- or AVX2-compatible CPUs.
+#   TF_BUILD_ENABLE_XLA:
+#                      If it is set to any non-empty value that is not "0",
+#                      will enable XLA and run XLA tests.
 #   TF_BUILD_BAZEL_TARGET:
 #                      Used to override the default bazel build target:
-#                      //tensorflow/...
+#                      //tensorflow/... -//tensorflow/compiler
 #   TF_BUILD_BAZEL_CLEAN:
 #                      Will perform "bazel clean", if and only if this variable
 #                      is set to any non-empty and non-0 value
@@ -134,7 +137,12 @@ PARALLEL_GPU_TEST_CMD='//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execut
 
 BENCHMARK_CMD="${CI_BUILD_DIR}/builds/benchmark.sh"
 
-BAZEL_TARGET="//tensorflow/..."
+export TF_BUILD_ENABLE_XLA=${TF_BUILD_ENABLE_XLA:-0}
+if [[ -z $TF_BUILD_ENABLE_XLA ]] || [ $TF_BUILD_ENABLE_XLA == 0 ]; then
+  BAZEL_TARGET="//tensorflow/... -//tensorflow/compiler/..."
+else
+  BAZEL_TARGET="//tensorflow/compiler/..."
+fi
 
 TUT_TEST_DATA_DIR="/tmp/tf_tutorial_test_data"
 
@@ -153,6 +161,7 @@ TF_BUILD_IS_PIP=$(to_lower ${TF_BUILD_IS_PIP})
 if [[ ! -z "${TF_BUILD_MAVX}" ]]; then
   TF_BUILD_MAVX=$(to_lower ${TF_BUILD_MAVX})
 fi
+
 
 # Print parameter values
 echo "Required build parameters:"
@@ -334,13 +343,13 @@ if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]] ||
   if [[ ${CTYPE} == "cpu" ]] || \
      [[ ${CTYPE} == "debian.jessie.cpu" ]]; then
     # CPU only command, fully parallel.
-    NO_PIP_MAIN_CMD="${MAIN_CMD} ${BAZEL_CMD} ${OPT_FLAG} ${EXTRA_ARGS} "\
+    NO_PIP_MAIN_CMD="${MAIN_CMD} ${BAZEL_CMD} ${OPT_FLAG} ${EXTRA_ARGS} -- "\
 "${BAZEL_TARGET}"
   elif [[ ${CTYPE} == "gpu" ]]; then
     # GPU only command, run as many jobs as the GPU count only.
     NO_PIP_MAIN_CMD="${BAZEL_CMD} ${OPT_FLAG} "\
 "--local_test_jobs=${TF_GPU_COUNT} "\
-"--run_under=${PARALLEL_GPU_TEST_CMD} ${EXTRA_ARGS} ${BAZEL_TARGET}"
+"--run_under=${PARALLEL_GPU_TEST_CMD} ${EXTRA_ARGS} -- ${BAZEL_TARGET}"
   elif [[ ${CTYPE} == "android" ]]; then
     # Run android specific script for android build.
     NO_PIP_MAIN_CMD="${ANDROID_CMD} ${OPT_FLAG} "

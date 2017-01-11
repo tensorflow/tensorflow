@@ -27,11 +27,7 @@ import six
 from tensorflow.contrib import layers
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
-from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
-from tensorflow.contrib.learn.python.learn import evaluable
-from tensorflow.contrib.learn.python.learn import monitors as monitor_lib
-from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
@@ -234,7 +230,12 @@ def sdca_model_fn(features, labels, mode, params):
       update_weights_hook.set_parameters(sdca_model, train_op)
     return train_op
 
-  return head.head_ops(features, labels, mode, _train_op_fn, logits)
+  model_fn_ops = head.head_ops(features, labels, mode, _train_op_fn, logits)
+  if update_weights_hook is not None:
+    return model_fn_ops._replace(
+        training_chief_hooks=(model_fn_ops.training_chief_hooks +
+                              [update_weights_hook]))
+  return model_fn_ops
 
 
 # Ensures consistency with LinearComposableModel.
@@ -265,7 +266,7 @@ class _SdcaUpdateWeightsHook(session_run_hook.SessionRunHook):
     return session_run_hook.SessionRunArgs(self._update_op)
 
 
-class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
+class LinearClassifier(estimator.Estimator):
   """Linear classifier model.
 
   Train a linear model to classify instances into one of multiple possible
@@ -419,66 +420,32 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
           "joint_weights": _joint_weight,
       })
 
-    self._estimator = estimator.Estimator(
+    super(LinearClassifier, self).__init__(
         model_fn=model_fn,
         model_dir=model_dir,
         config=config,
         params=params,
         feature_engineering_fn=feature_engineering_fn)
 
-    self._additional_run_hook = (chief_hook if self._estimator.config.is_chief
-                                 else None)
-
-  def get_estimator(self):
-    return self._estimator
-
-  def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
-          monitors=None, max_steps=None):
-    """See trainable.Trainable. Note: Labels must be integer class indices."""
-    # TODO(roumposg): Remove when deprecated monitors are removed.
-    hooks = monitor_lib.replace_monitors_with_hooks(monitors, self)
-    if self._additional_run_hook:
-      hooks.append(self._additional_run_hook)
-    self._estimator.fit(x=x,
-                        y=y,
-                        input_fn=input_fn,
-                        steps=steps,
-                        batch_size=batch_size,
-                        monitors=hooks,
-                        max_steps=max_steps)
-    return self
-
-  def evaluate(self,
-               x=None,
-               y=None,
-               input_fn=None,
-               feed_fn=None,
-               batch_size=None,
-               steps=None,
-               metrics=None,
-               name=None,
-               checkpoint_path=None,
-               hooks=None):
-    """See evaluable.Evaluable. Note: Labels must be integer class indices."""
-    return self._estimator.evaluate(
-        x=x,
-        y=y,
-        input_fn=input_fn,
-        feed_fn=feed_fn,
-        batch_size=batch_size,
-        steps=steps,
-        metrics=metrics,
-        name=name,
-        checkpoint_path=checkpoint_path,
-        hooks=hooks)
-
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
       as_iterable=False)
   def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=True):
     """Runs inference to determine the predicted class (i.e. class index)."""
+    return self.predict_classes(
+        x=x,
+        input_fn=input_fn,
+        batch_size=batch_size,
+        as_iterable=as_iterable)
+
+  @deprecated_arg_values(
+      estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
+      as_iterable=False)
+  def predict_classes(self, x=None, input_fn=None, batch_size=None,
+                      as_iterable=True):
+    """Runs inference to determine the predicted class (i.e. class index)."""
     key = prediction_key.PredictionKey.CLASSES
-    preds = self._estimator.predict(
+    preds = super(LinearClassifier, self).predict(
         x=x,
         input_fn=input_fn,
         batch_size=batch_size,
@@ -495,7 +462,7 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
                     as_iterable=True):
     """Runs inference to determine the class probability predictions."""
     key = prediction_key.PredictionKey.PROBABILITIES
-    preds = self._estimator.predict(
+    preds = super(LinearClassifier, self).predict(
         x=x,
         input_fn=input_fn,
         batch_size=batch_size,
@@ -504,12 +471,6 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
     if as_iterable:
       return _as_iterable(preds, output=key)
     return preds[key]
-
-  def get_variable_names(self):
-    return self._estimator.get_variable_names()
-
-  def get_variable_value(self, name):
-    return self._estimator.get_variable_value(name)
 
   def export(self,
              export_dir,
@@ -524,7 +485,7 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
       return layers.parse_feature_columns_from_examples(
           examples, self._feature_columns)
 
-    return self._estimator.export(
+    return super(LinearClassifier, self).export(
         export_dir=export_dir,
         input_fn=input_fn or default_input_fn,
         input_feature_key=input_feature_key,
@@ -533,22 +494,6 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
                       export.classification_signature_fn_with_prob),
         prediction_key=prediction_key.PredictionKey.PROBABILITIES,
         default_batch_size=default_batch_size,
-        exports_to_keep=exports_to_keep)
-
-  @experimental
-  def export_savedmodel(self,
-                        export_dir_base,
-                        input_fn,
-                        default_output_alternative_key=None,
-                        assets_extra=None,
-                        as_text=False,
-                        exports_to_keep=None):
-    return self._estimator.export_savedmodel(
-        export_dir_base,
-        input_fn,
-        default_output_alternative_key=default_output_alternative_key,
-        assets_extra=assets_extra,
-        as_text=as_text,
         exports_to_keep=exports_to_keep)
 
   @property
@@ -582,16 +527,8 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
   def bias_(self):
     return self.get_variable_value("linear/bias_weight")
 
-  @property
-  def config(self):
-    return self._estimator.config
 
-  @property
-  def model_dir(self):
-    return self._estimator.model_dir
-
-
-class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
+class LinearRegressor(estimator.Estimator):
   """Linear regressor model.
 
   Train a linear regression model to predict label value given observation of
@@ -717,63 +654,32 @@ class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
           "joint_weights": _joint_weights,
       })
 
-    self._estimator = estimator.Estimator(
+    super(LinearRegressor, self).__init__(
         model_fn=model_fn,
         model_dir=model_dir,
         config=config,
         params=params,
         feature_engineering_fn=feature_engineering_fn)
 
-    self._additional_run_hook = (chief_hook if self._estimator.config.is_chief
-                                 else None)
-
-  def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
-          monitors=None, max_steps=None):
-    """See trainable.Trainable."""
-    # TODO(roumposg): Remove when deprecated monitors are removed.
-    hooks = monitor_lib.replace_monitors_with_hooks(monitors, self)
-    if self._additional_run_hook:
-      hooks.append(self._additional_run_hook)
-    self._estimator.fit(x=x,
-                        y=y,
-                        input_fn=input_fn,
-                        steps=steps,
-                        batch_size=batch_size,
-                        monitors=hooks,
-                        max_steps=max_steps)
-    return self
-
-  def evaluate(self,
-               x=None,
-               y=None,
-               input_fn=None,
-               feed_fn=None,
-               batch_size=None,
-               steps=None,
-               metrics=None,
-               name=None,
-               checkpoint_path=None,
-               hooks=None):
-    """See evaluable.Evaluable."""
-    return self._estimator.evaluate(
-        x=x,
-        y=y,
-        input_fn=input_fn,
-        feed_fn=feed_fn,
-        batch_size=batch_size,
-        steps=steps,
-        metrics=metrics,
-        name=name,
-        checkpoint_path=checkpoint_path,
-        hooks=hooks)
-
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
       as_iterable=False)
   def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=True):
-    """Runs inference to determine the predicted class."""
+    """Runs inference to determine the predicted scores."""
+    return self.predict_scores(
+        x=x,
+        input_fn=input_fn,
+        batch_size=batch_size,
+        as_iterable=as_iterable)
+
+  @deprecated_arg_values(
+      estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
+      as_iterable=False)
+  def predict_scores(self, x=None, input_fn=None, batch_size=None,
+                     as_iterable=True):
+    """Runs inference to determine the predicted scores."""
     key = prediction_key.PredictionKey.SCORES
-    preds = self._estimator.predict(
+    preds = super(LinearRegressor, self).predict(
         x=x,
         input_fn=input_fn,
         batch_size=batch_size,
@@ -782,12 +688,6 @@ class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
     if as_iterable:
       return _as_iterable(preds, output=key)
     return preds[key]
-
-  def get_variable_names(self):
-    return self._estimator.get_variable_names()
-
-  def get_variable_value(self, name):
-    return self._estimator.get_variable_value(name)
 
   def export(self,
              export_dir,
@@ -802,7 +702,7 @@ class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
       return layers.parse_feature_columns_from_examples(
           examples, self._feature_columns)
 
-    return self._estimator.export(
+    return super(LinearRegressor, self).export(
         export_dir=export_dir,
         input_fn=input_fn or default_input_fn,
         input_feature_key=input_feature_key,
@@ -810,22 +710,6 @@ class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
         signature_fn=(signature_fn or export.regression_signature_fn),
         prediction_key=prediction_key.PredictionKey.SCORES,
         default_batch_size=default_batch_size,
-        exports_to_keep=exports_to_keep)
-
-  @experimental
-  def export_savedmodel(self,
-                        export_dir_base,
-                        input_fn,
-                        default_output_alternative_key=None,
-                        assets_extra=None,
-                        as_text=False,
-                        exports_to_keep=None):
-    return self._estimator.export_savedmodel(
-        export_dir_base,
-        input_fn,
-        default_output_alternative_key=default_output_alternative_key,
-        assets_extra=assets_extra,
-        as_text=as_text,
         exports_to_keep=exports_to_keep)
 
   @property
@@ -858,11 +742,3 @@ class LinearRegressor(evaluable.Evaluable, trainable.Trainable):
               "get_variable_value().")
   def bias_(self):
     return self.get_variable_value("linear/bias_weight")
-
-  @property
-  def config(self):
-    return self._estimator.config
-
-  @property
-  def model_dir(self):
-    return self._estimator.model_dir

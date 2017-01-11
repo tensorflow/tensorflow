@@ -87,7 +87,7 @@ def _concat_vectors(*args):
   """Convenience function which concatenates input vectors."""
   args_ = [_static_value(x) for x in args]
   if any(x_ is None for x_ in args_):
-    return array_ops.concat_v2(args, 0)
+    return array_ops.concat(args, 0)
   return constant_op.constant([x_ for vec_ in args_ for x_ in vec_])
 
 
@@ -507,13 +507,15 @@ class TransformedDistribution(distributions.Distribution):
       entropy *= math_ops.cast(math_ops.reduce_prod(self._override_event_shape),
                                dtype=entropy.dtype.base_dtype)
     if self._is_maybe_batch_override:
-      new_shape = array_ops.concat_v2([
+      new_shape = array_ops.concat([
           _ones_like(self._override_batch_shape),
-          self.distribution.batch_shape()], 0)
+          self.distribution.batch_shape()
+      ], 0)
       entropy = array_ops.reshape(entropy, new_shape)
-      multiples = array_ops.concat_v2([
+      multiples = array_ops.concat([
           self._override_batch_shape,
-          _ones_like(self.distribution.batch_shape())], 0)
+          _ones_like(self.distribution.batch_shape())
+      ], 0)
       entropy = array_ops.tile(entropy, multiples)
     dummy = 0.
     return entropy - self.bijector.inverse_log_det_jacobian(dummy)

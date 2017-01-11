@@ -150,7 +150,7 @@ class Scaffold(object):
           default_init_op)
     if self._ready_op is None:
       def default_ready_op():
-        return array_ops.concat_v2([
+        return array_ops.concat([
             variables.report_uninitialized_variables(),
             resources.report_uninitialized_resources()
         ], 0)

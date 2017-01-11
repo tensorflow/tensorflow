@@ -81,14 +81,14 @@ class SecondOrStepTimerTest(test.TestCase):
 
   def test_raise_in_both_secs_and_steps(self):
     with self.assertRaises(ValueError):
-      basic_session_run_hooks._SecondOrStepTimer(every_secs=2.0, every_steps=10)
+      basic_session_run_hooks.SecondOrStepTimer(every_secs=2.0, every_steps=10)
 
   def test_raise_in_none_secs_and_steps(self):
     with self.assertRaises(ValueError):
-      basic_session_run_hooks._SecondOrStepTimer()
+      basic_session_run_hooks.SecondOrStepTimer()
 
   def test_every_secs(self):
-    timer = basic_session_run_hooks._SecondOrStepTimer(every_secs=1.0)
+    timer = basic_session_run_hooks.SecondOrStepTimer(every_secs=1.0)
     self.assertTrue(timer.should_trigger_for_step(1))
 
     timer.update_last_triggered_step(1)
@@ -100,7 +100,7 @@ class SecondOrStepTimerTest(test.TestCase):
     self.assertTrue(timer.should_trigger_for_step(2))
 
   def test_every_steps(self):
-    timer = basic_session_run_hooks._SecondOrStepTimer(every_steps=3)
+    timer = basic_session_run_hooks.SecondOrStepTimer(every_steps=3)
     self.assertTrue(timer.should_trigger_for_step(1))
 
     timer.update_last_triggered_step(1)
@@ -110,7 +110,7 @@ class SecondOrStepTimerTest(test.TestCase):
     self.assertTrue(timer.should_trigger_for_step(4))
 
   def test_update_last_triggered_step(self):
-    timer = basic_session_run_hooks._SecondOrStepTimer(every_steps=1)
+    timer = basic_session_run_hooks.SecondOrStepTimer(every_steps=1)
 
     elapsed_secs, elapsed_steps = timer.update_last_triggered_step(1)
     self.assertEqual(None, elapsed_secs)
