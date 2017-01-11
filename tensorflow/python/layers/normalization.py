@@ -178,16 +178,13 @@ class BatchNormalization(base._Layer):  # pylint: disable=protected-access
         broadcast_gamma = None
 
     if training_value is not False:
-      # Use a copy of moving_mean as a shift to compute more reliable moments.
-      shift = math_ops.add(self.moving_mean, 0)
       if needs_broadcasting:
-        shift = array_ops.reshape(shift, broadcast_shape)
         broadcast_mean, broadcast_variance = nn.moments(
-            inputs, reduction_axes, shift=shift, keep_dims=True)
+            inputs, reduction_axes, keep_dims=True)
         mean = array_ops.reshape(broadcast_mean, [-1])
         variance = array_ops.reshape(broadcast_variance, [-1])
       else:
-        mean, variance = nn.moments(inputs, reduction_axes, shift=shift)
+        mean, variance = nn.moments(inputs, reduction_axes)
 
       # Prepare updates if necessary.
       if not self.updates:
