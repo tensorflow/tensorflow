@@ -81,6 +81,13 @@ Construct a `LinearRegressor` estimator object.
 
 - - -
 
+#### `tf.contrib.learn.LinearRegressor.__repr__()` {#LinearRegressor.__repr__}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.LinearRegressor.bias_` {#LinearRegressor.bias_}
 
 DEPRECATED FUNCTION
@@ -99,9 +106,26 @@ This method will be removed after the deprecation date. To inspect variables, us
 
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None, hooks=None)` {#LinearRegressor.evaluate}
+#### `tf.contrib.learn.LinearRegressor.evaluate(*args, **kwargs)` {#LinearRegressor.evaluate}
 
-See evaluable.Evaluable.
+See `Evaluable`. (deprecated arguments)
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-12-01.
+Instructions for updating:
+Estimator is decoupled from Scikit Learn interface by moving into
+separate class SKCompat. Arguments x, y and batch_size are only
+available in the SKCompat class, Estimator will only accept input_fn.
+
+##### Example conversion:
+
+  est = Estimator(...) -> est = SKCompat(Estimator(...))
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If at least one of `x` or `y` is provided, and at least one of
+      `input_fn` or `feed_fn` is provided.
+      Or if `metrics` is not `None` or `dict`.
 
 
 - - -
@@ -115,30 +139,108 @@ See BaseEstimator.export.
 
 #### `tf.contrib.learn.LinearRegressor.export_savedmodel(*args, **kwargs)` {#LinearRegressor.export_savedmodel}
 
-EXPERIMENTAL FUNCTION
+Exports inference graph as a SavedModel into given dir. (experimental)
 
 THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and without warning.
 
 
+##### Args:
+
+
+*  <b>`export_dir_base`</b>: A string containing a directory to write the exported
+    graph and checkpoints.
+*  <b>`input_fn`</b>: A function that takes no argument and
+    returns an `InputFnOps`.
+*  <b>`default_output_alternative_key`</b>: the name of the head to serve when none is
+    specified.
+*  <b>`assets_extra`</b>: A dict specifying how to populate the assets.extra directory
+    within the exported SavedModel.  Each key should give the destination
+    path (including the filename) relative to the assets.extra directory.
+    The corresponding value gives the full path of the source file to be
+    copied.  For example, the simple case of copying a single file without
+    renaming it is specified as
+    `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
+*  <b>`as_text`</b>: whether to write the SavedModel proto in text format.
+*  <b>`exports_to_keep`</b>: Number of exports to keep.
+
+##### Returns:
+
+  The string path to the exported directory.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if an unrecognized export_type is requested.
+
+
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None, max_steps=None)` {#LinearRegressor.fit}
+#### `tf.contrib.learn.LinearRegressor.fit(*args, **kwargs)` {#LinearRegressor.fit}
 
-See trainable.Trainable.
+See `Trainable`. (deprecated arguments)
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-12-01.
+Instructions for updating:
+Estimator is decoupled from Scikit Learn interface by moving into
+separate class SKCompat. Arguments x, y and batch_size are only
+available in the SKCompat class, Estimator will only accept input_fn.
+
+##### Example conversion:
+
+  est = Estimator(...) -> est = SKCompat(Estimator(...))
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
+*  <b>`ValueError`</b>: If both `steps` and `max_steps` are not `None`.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearRegressor.get_params(deep=True)` {#LinearRegressor.get_params}
+
+Get parameters for this estimator.
+
+##### Args:
+
+
+*  <b>`deep`</b>: boolean, optional
+
+    If `True`, will return the parameters for this estimator and
+    contained subobjects that are estimators.
+
+##### Returns:
+
+  params : mapping of string to any
+  Parameter names mapped to their values.
 
 
 - - -
 
 #### `tf.contrib.learn.LinearRegressor.get_variable_names()` {#LinearRegressor.get_variable_names}
 
+Returns list of all variable names in this model.
 
+##### Returns:
+
+  List of names.
 
 
 - - -
 
 #### `tf.contrib.learn.LinearRegressor.get_variable_value(name)` {#LinearRegressor.get_variable_value}
 
+Returns value of the variable given by name.
 
+##### Args:
+
+
+*  <b>`name`</b>: string, name of the tensor.
+
+##### Returns:
+
+  Numpy array - value of the tensor.
 
 
 - - -
@@ -150,15 +252,107 @@ See trainable.Trainable.
 
 - - -
 
+#### `tf.contrib.learn.LinearRegressor.partial_fit(*args, **kwargs)` {#LinearRegressor.partial_fit}
+
+Incremental fit on a batch of samples. (deprecated arguments)
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-12-01.
+Instructions for updating:
+Estimator is decoupled from Scikit Learn interface by moving into
+separate class SKCompat. Arguments x, y and batch_size are only
+available in the SKCompat class, Estimator will only accept input_fn.
+
+##### Example conversion:
+
+  est = Estimator(...) -> est = SKCompat(Estimator(...))
+
+This method is expected to be called several times consecutively
+on different or the same chunks of the dataset. This either can
+implement iterative training or out-of-core/online training.
+
+This is especially useful when the whole dataset is too big to
+fit in memory at the same time. Or when model is taking long time
+to converge, and you want to split up training into subparts.
+
+##### Args:
+
+
+*  <b>`x`</b>: Matrix of shape [n_samples, n_features...]. Can be iterator that
+     returns arrays of features. The training input samples for fitting the
+     model. If set, `input_fn` must be `None`.
+*  <b>`y`</b>: Vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
+     iterator that returns array of labels. The training label values
+     (class labels in classification, real numbers in regression). If set,
+     `input_fn` must be `None`.
+*  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
+    `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first
+    dimension of `x`. Must be `None` if `input_fn` is provided.
+*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
+    inside the training loop.
+
+##### Returns:
+
+  `self`, for chaining.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If at least one of `x` and `y` is provided, and `input_fn` is
+      provided.
+
+
+- - -
+
 #### `tf.contrib.learn.LinearRegressor.predict(*args, **kwargs)` {#LinearRegressor.predict}
 
-Runs inference to determine the predicted class. (deprecated arguments)
+Runs inference to determine the predicted scores. (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
 Instructions for updating:
 The default behavior of predict() is changing. The default value for
 as_iterable will change to True, and then the flag will be removed
 altogether. The behavior of this flag is described below.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearRegressor.predict_scores(*args, **kwargs)` {#LinearRegressor.predict_scores}
+
+Runs inference to determine the predicted scores. (deprecated arguments)
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
+Instructions for updating:
+The default behavior of predict() is changing. The default value for
+as_iterable will change to True, and then the flag will be removed
+altogether. The behavior of this flag is described below.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearRegressor.set_params(**params)` {#LinearRegressor.set_params}
+
+Set the parameters of this estimator.
+
+The method works on simple estimators as well as on nested objects
+(such as pipelines). The former have parameters of the form
+``<component>__<parameter>`` so that it's possible to update each
+component of a nested object.
+
+##### Args:
+
+
+*  <b>`**params`</b>: Parameters.
+
+##### Returns:
+
+  self
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If params contain invalid names.
 
 
 - - -

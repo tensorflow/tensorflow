@@ -302,7 +302,7 @@ class PartitionedVariablesTestCase(test.TestCase):
       rnd_par = constant_op.constant([1, 2, 3, 4])
       vs = partitioned_variables.create_partitioned_variables([4], [4], rnd_par)
       variables.global_variables_initializer().run()
-      val = array_ops.concat_v2(vs, 0).eval()
+      val = array_ops.concat(vs, 0).eval()
       rnd = rnd_par.eval()
       self.assertAllClose(rnd, val)
       self.assertEqual([dtypes.int32] * 4, [v.dtype.base_dtype for v in vs])
@@ -314,7 +314,7 @@ class PartitionedVariablesTestCase(test.TestCase):
       vs = partitioned_variables.create_partitioned_variables([2, 4], [1, 2],
                                                               rnd_par)
       variables.global_variables_initializer().run()
-      val = array_ops.concat_v2(vs, 1).eval()
+      val = array_ops.concat(vs, 1).eval()
       rnd = rnd_par.eval()
       self.assertAllClose(rnd, val)
       self.assertEqual([dtypes.int32] * 2, [v.dtype.base_dtype for v in vs])
@@ -380,7 +380,7 @@ class PartitionedVariablesTestCase(test.TestCase):
       vs = partitioned_variables.create_partitioned_variables(
           rnd.get_shape(), [1, 10], rnd.initialized_value())
       variables.global_variables_initializer().run()
-      val = array_ops.concat_v2(vs, 1).eval()
+      val = array_ops.concat(vs, 1).eval()
       rnd = rnd.eval()
       self.assertAllClose(rnd, val)
       self.assertEqual([dtypes.float32] * 10, [v.dtype.base_dtype for v in vs])
@@ -423,7 +423,7 @@ class PartitionedVariablesTestCase(test.TestCase):
           ]
       ]
       for i, vs in enumerate(var_lists):
-        var_val = array_ops.concat_v2(vs, 1).eval()
+        var_val = array_ops.concat(vs, 1).eval()
         self.assertAllClose(rnd_val, var_val)
         self.assertEqual([dtypes.float64] * len(vs),
                          [v.dtype.base_dtype for v in vs])
@@ -436,7 +436,7 @@ class PartitionedVariablesTestCase(test.TestCase):
       vs = partitioned_variables.create_partitioned_variables(
           rnd.get_shape(), [1, 1], rnd.initialized_value())
       variables.global_variables_initializer().run()
-      val = array_ops.concat_v2(vs, 0).eval()
+      val = array_ops.concat(vs, 0).eval()
       rnd = rnd.eval()
       self.assertAllClose(rnd, val)
       self._TestSaveSpec(vs, ["10 43 0,10:0,43"])
@@ -447,7 +447,7 @@ class PartitionedVariablesTestCase(test.TestCase):
       vs = partitioned_variables.create_partitioned_variables(
           rnd.get_shape(), [10, 1], rnd.initialized_value())
       variables.global_variables_initializer().run()
-      val = array_ops.concat_v2(vs, 0).eval()
+      val = array_ops.concat(vs, 0).eval()
       rnd = rnd.eval()
       self.assertAllClose(rnd, val)
       self._TestSaveSpec(vs, [
@@ -467,7 +467,7 @@ class PartitionedVariablesTestCase(test.TestCase):
       slice0 = _IotaInitializer([5, 5])
       slice1 = _IotaInitializer([4, 5])
       slice2 = _IotaInitializer([4, 5])
-      val = array_ops.concat_v2(vs, 0).eval()
+      val = array_ops.concat(vs, 0).eval()
       self.assertAllClose(slice0 + slice1 + slice2, val)
       self._TestSaveSpec(vs, ["13 5 0,5:0,5", "13 5 5,4:0,5", "13 5 9,4:0,5"])
 

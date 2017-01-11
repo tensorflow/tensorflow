@@ -69,7 +69,7 @@ def build_graph(device, input_shape, variable, num_inputs, axis, grad):
             ]) for _ in range(num_inputs)
         ]
 
-    outputs = [array_ops.concat_v2(inputs, axis) for _ in range(100)]
+    outputs = [array_ops.concat(inputs, axis) for _ in range(100)]
     if grad:
       return control_flow_ops.group(*list(
           itertools.chain.from_iterable([

@@ -229,7 +229,7 @@ class Multinomial(distribution.Distribution):
     x = math_ops.reduce_sum(array_ops.one_hot(draws, depth=k),
                             reduction_indices=-2)  # shape: [B, n, k]
     x = array_ops.transpose(x, perm=[1, 0, 2])
-    final_shape = array_ops.concat_v2([[n], self.batch_shape(), [k]], 0)
+    final_shape = array_ops.concat([[n], self.batch_shape(), [k]], 0)
     return array_ops.reshape(x, final_shape)
 
   @distribution_util.AppendDocstring(_multinomial_prob_note)

@@ -82,7 +82,7 @@ class OperatorPDDiagBase(operator_pd.OperatorPDBase):
   def _shape(self):
     d_shape = array_ops.shape(self._diag)
     k = array_ops.gather(d_shape, array_ops.size(d_shape) - 1)
-    return array_ops.concat_v2((d_shape, [k]), 0)
+    return array_ops.concat((d_shape, [k]), 0)
 
   @abc.abstractmethod
   def _batch_log_det(self):

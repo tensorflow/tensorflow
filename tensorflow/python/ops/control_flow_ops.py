@@ -703,6 +703,7 @@ class GradLoopState(object):
     self._switch_map = {}
     self._unused_exits = []
     self._deferred_exits = []
+    self._forward_loop_exits = list(forward_ctxt.loop_exits)
     self._pending_exits_count = len(forward_ctxt.loop_exits)
 
     self._outer_grad_state = outer_grad_state
@@ -819,6 +820,11 @@ class GradLoopState(object):
   def deferred_exits(self):
     """The list of "deferred" exits."""
     return self._deferred_exits
+
+  @property
+  def forward_loop_exits(self):
+    """The list of exits of the forward loop."""
+    return self._forward_loop_exits
 
   @property
   def pending_exits_count(self):
@@ -1059,8 +1065,8 @@ class ControlFlowState(object):
       to backprop.
     """
     loop_exits = []
-    for forward_ctxt, grad_state in self._map.items():
-      for y in forward_ctxt.loop_exits:
+    for _, grad_state in self._map.items():
+      for y in grad_state.forward_loop_exits:
         # pylint: disable=protected-access
         if pending_count[y.op._id] == 0:
           grad_state.pending_exits_count -= 1
@@ -1105,7 +1111,7 @@ class ControlFlowState(object):
       self._map[forward_ctxt] = grad_state
 
       # We need to include all exits of a loop for backprop.
-      for loop_exit in forward_ctxt.loop_exits:
+      for loop_exit in grad_state.forward_loop_exits:
         if not between_ops[loop_exit.op._id]:
           between_ops[loop_exit.op._id] = True
           between_op_list.append(loop_exit.op)
@@ -2119,6 +2125,7 @@ class WhileContext(ControlFlowContext):
     merge_n.op._update_input(1, next_n)
 
     total_iterations = exit(switch_n[0], name="f_count")
+    self.loop_exits.append(total_iterations)
     self.ExitResult([total_iterations])
     self.Exit()
     return total_iterations, next_n
@@ -2163,6 +2170,7 @@ class WhileContext(ControlFlowContext):
     merge_count.op._update_input(1, next_count)
 
     final_zero = exit(switch_count[0], name="b_count")
+    self.loop_exits.append(final_zero)
     if outer_grad_state is not None:
       # Force the stack pops of i-th execution of an inner loop to be ordered
       # before the pops of (i+1)-th execution of the same inner loop.
@@ -2244,6 +2252,7 @@ class WhileContext(ControlFlowContext):
     merge_acc.op._update_input(1, next_acc)  # pylint: disable=protected-access
 
     acc_result = exit(switch_acc_false, name="b_acc")
+    self.loop_exits.append(acc_result)
     self.ExitResult([acc_result])
     return acc_result
 
@@ -2275,7 +2284,7 @@ class WhileContext(ControlFlowContext):
       if self.outer_context: self.outer_context.Exit()
     else:
       values_shape = array_ops.shape_internal(op.inputs[0], optimize=False)[1:]
-      values_shape = array_ops.concat_v2([[1], values_shape], 0)
+      values_shape = array_ops.concat([[1], values_shape], 0)
       values_acc = array_ops.zeros(values_shape, dtype=values.dtype)
     indices_acc = constant_op.constant([0], indices.dtype)
     shape_acc = None
@@ -2307,7 +2316,7 @@ class WhileContext(ControlFlowContext):
 
     # The actual accumulation.
     acc_indexed_slices = [
-        array_ops.concat_v2([xa[1], xv], 0)
+        array_ops.concat([xa[1], xv], 0)
         for xa, xv in zip(switch_acc[:2], [indices, values])
     ]
     if shape_acc is not None:
@@ -2320,6 +2329,7 @@ class WhileContext(ControlFlowContext):
       xm.op._update_input(1, xn)  # pylint: disable=protected-access
 
     acc_exits = [exit(x[0], name="b_acc") for x in switch_acc]
+    self.loop_exits.extend(acc_exits)
 
     self.ExitResult(acc_exits)
     return ops.IndexedSlices(
@@ -2591,7 +2601,7 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
     i0 = tf.constant(0)
     m0 = tf.ones([2, 2])
     c = lambda i, m: i < 10
-    b = lambda i, m: [i+1, tf.concat_v2([m, m], axis=0)]
+    b = lambda i, m: [i+1, tf.concat([m, m], axis=0)]
     tf.while_loop(
         c, b, loop_vars=[i0, m0],
         shape_invariants=[i0.get_shape(), tf.TensorShape([None, 2])])

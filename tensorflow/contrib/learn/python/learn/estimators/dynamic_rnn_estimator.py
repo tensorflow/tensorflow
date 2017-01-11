@@ -238,8 +238,8 @@ def _concatenate_context_input(sequence_input, context_input):
     padded_length = array_ops.shape(sequence_input)[1]
     tiled_context_input = array_ops.tile(
         array_ops.expand_dims(context_input, 1),
-        array_ops.concat_v2([[1], [padded_length], [1]], 0))
-  return array_ops.concat_v2([sequence_input, tiled_context_input], 2)
+        array_ops.concat([[1], [padded_length], [1]], 0))
+  return array_ops.concat([sequence_input, tiled_context_input], 2)
 
 
 def build_sequence_input(features,
@@ -402,7 +402,7 @@ def _multi_value_predictions(
           flattened_activations, proba=True)
       flat_predictions = math_ops.argmax(flat_probabilities, 1)
       if target_column.num_label_columns == 1:
-        probability_shape = array_ops.concat_v2([activations_shape[:2], [2]], 0)
+        probability_shape = array_ops.concat([activations_shape[:2], [2]], 0)
       else:
         probability_shape = activations_shape
       probabilities = array_ops.reshape(

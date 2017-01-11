@@ -69,7 +69,7 @@ IrArray::Index::Index(tensorflow::gtl::ArraySlice<llvm::Value*> multidim,
       dims_(shape.dimensions().begin(), shape.dimensions().end()) {
   CHECK_EQ(shape.dimensions_size(), multidim.size());
   CHECK(LayoutUtil::HasLayout(shape));
-  linear_ = Linearize(shape, ir_builder);
+  linear_ = Linearize(AsInt64Slice(shape.dimensions()), ir_builder);
 }
 
 IrArray::IrArray(llvm::Value* base_ptr, const Shape& shape)
@@ -109,35 +109,41 @@ IrArray::Index IrArray::Index::SourceIndexOfReshape(
     llvm::IRBuilder<>* builder) const {
   const auto& target_index = *this;
   CHECK_EQ(target_index.size(), ShapeUtil::Rank(output_shape));
-  llvm::Value* logical_linear_index = Linearize(output_shape, builder);
-  // Delinearizes logical_linear_index for the source array in row-major
-  // collapsed order. The first rank-1 indices are the remainder of the
-  // linear index by each dimension size.
-  std::vector<std::pair<int64, int64>> unmodified_dims =
-      ShapeUtil::DimensionsUnmodifiedByReshape(input_shape, output_shape);
-  std::vector<llvm::Value*> source_multidim_index(ShapeUtil::Rank(input_shape));
-  for (int64 i = ShapeUtil::Rank(input_shape) - 1; i >= 0; --i) {
-    auto divisor = builder->getInt64(input_shape.dimensions(i));
-    if (input_shape.dimensions(i) <= 1) {
-      source_multidim_index[i] = builder->getInt64(0);
-    } else {
-      // Search unmodified_dims for a pair whose first element is exactly "i".
-      //
-      // Because unmodified_dims are sorted by both "first" and "second", and
-      // "i" is monotonically decreasing, we avoid redundant searching by
-      // popping the back of unmodified_dims until the rear pair's first element
-      // <= i. If we stop precisely at "i", we find a match.
-      while (!unmodified_dims.empty() && unmodified_dims.back().first > i) {
-        unmodified_dims.pop_back();
-      }
-      if (!unmodified_dims.empty() && unmodified_dims.back().first == i) {
-        source_multidim_index[i] = target_index[unmodified_dims.back().second];
+  std::vector<std::pair<int64, int64>> common_factors =
+      CommonFactors(AsInt64Slice(input_shape.dimensions()),
+                    AsInt64Slice(output_shape.dimensions()));
+  std::vector<llvm::Value*> source_multidim_index(
+      ShapeUtil::Rank(input_shape),
+      llvm::UndefValue::get(builder->getInt64Ty()));
+  // We compute the source indices in each common factor from only the target
+  // indices in the same common factor.
+  for (ssize_t k = common_factors.size() - 2; k >= 0; --k) {
+    llvm::Value* logical_linear_index =
+        Index(tensorflow::gtl::ArraySlice<llvm::Value*>(
+                  multidim_, common_factors[k].second,
+                  common_factors[k + 1].second - common_factors[k].second))
+            .Linearize(
+                tensorflow::gtl::ArraySlice<int64>(
+                    AsInt64Slice(output_shape.dimensions()),
+                    common_factors[k].second,
+                    common_factors[k + 1].second - common_factors[k].second),
+                builder);
+    // Delinearizes logical_linear_index for the source array in row-major
+    // collapsed order. The first rank-1 indices are the remainder of the
+    // linear index by each dimension size.
+    for (int64 i = common_factors[k + 1].first - 1;
+         i >= common_factors[k].first; --i) {
+      llvm::Value* divisor = builder->getInt64(input_shape.dimensions(i));
+      if (input_shape.dimensions(i) == 1) {
+        source_multidim_index[i] = builder->getInt64(0);
+      } else if (i == common_factors[k].first) {
+        source_multidim_index[i] = logical_linear_index;
       } else {
         source_multidim_index[i] =
             builder->CreateURem(logical_linear_index, divisor);
       }
+      logical_linear_index = builder->CreateUDiv(logical_linear_index, divisor);
     }
-    logical_linear_index = builder->CreateUDiv(logical_linear_index, divisor);
   }
 
   if (linear() != nullptr &&
@@ -160,8 +166,9 @@ IrArray::Index IrArray::Index::SourceIndexOfTranspose(
   return Index(operand_multidim_index);
 }
 
-llvm::Value* IrArray::Index::Linearize(const Shape& shape,
-                                       llvm::IRBuilder<>* builder) const {
+llvm::Value* IrArray::Index::Linearize(
+    tensorflow::gtl::ArraySlice<int64> dimensions,
+    llvm::IRBuilder<>* builder) const {
   // Each dimension is multiplied by the product of the sizes of all
   // earlier dimensions and added to the accumulator logical_linear_index.
   llvm::Value* logical_linear_index = builder->getInt64(0);
@@ -172,7 +179,7 @@ llvm::Value* IrArray::Index::Linearize(const Shape& shape,
                            /*HasNUW=*/true, /*HasNSW=*/true);
     logical_linear_index = builder->CreateAdd(logical_linear_index, addend, "",
                                               /*HasNUW=*/true, /*HasNSW=*/true);
-    multiplier *= shape.dimensions(i);
+    multiplier *= dimensions[i];
   }
   return logical_linear_index;
 }
