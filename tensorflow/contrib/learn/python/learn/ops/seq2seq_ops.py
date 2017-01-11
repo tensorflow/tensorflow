@@ -79,7 +79,7 @@ def seq2seq_inputs(x, y, input_length, output_length, sentinel=None, name=None):
     if not sentinel:
       # Set to zeros of shape of y[0], using x for batch size.
       sentinel_shape = array_ops.stack(
-          [array_ops_.shape(x)[0], y[0].get_shape()[1]])
+          [array_ops.shape(x)[0], y[0].get_shape()[1]])
       sentinel = array_ops.zeros(sentinel_shape)
       sentinel.set_shape(y[0].get_shape())
     in_y = [sentinel] + y
