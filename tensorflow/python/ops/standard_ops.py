@@ -181,6 +181,7 @@ _allowed_symbols_array_ops = [
     "batch_matrix_band_part",
     "batch_matrix_diag_part",
     "batch_matrix_set_diag",
+    "concat_v2",  # Use tf.concat instead.
 ]
 
 _allowed_symbols_partitioned_variables = [

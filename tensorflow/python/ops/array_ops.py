@@ -54,7 +54,7 @@ or join multiple tensors together.
 @@split
 @@tile
 @@pad
-@@concat_v2
+@@concat
 @@stack
 @@parallel_stack
 @@unstack
@@ -1174,7 +1174,13 @@ def unstack(value, num=None, axis=0, name="unstack"):
   return gen_array_ops._unpack(value, num=num, axis=axis, name=name)
 
 
+# concat_v2 is an alias for concat. concat_v2 will be deprecated and removed
+# soon, please use concat.
 def concat_v2(values, axis, name="concat_v2"):
+  return concat(values, axis, name)
+
+
+def concat(values, axis, name="concat"):
   """Concatenates tensors along one dimension.
 
   Concatenates the list of tensors `values` along dimension `axis`.  If
@@ -1198,20 +1204,20 @@ def concat_v2(values, axis, name="concat_v2"):
   ```python
   t1 = [[1, 2, 3], [4, 5, 6]]
   t2 = [[7, 8, 9], [10, 11, 12]]
-  tf.concat_v2([t1, t2], 0) ==> [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]]
-  tf.concat_v2([t1, t2], 1) ==> [[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]]
+  tf.concat([t1, t2], 0) ==> [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]]
+  tf.concat([t1, t2], 1) ==> [[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]]
 
   # tensor t3 with shape [2, 3]
   # tensor t4 with shape [2, 3]
-  tf.shape(tf.concat_v2([t3, t4], 0)) ==> [4, 3]
-  tf.shape(tf.concat_v2([t3, t4], 1)) ==> [2, 6]
+  tf.shape(tf.concat([t3, t4], 0)) ==> [4, 3]
+  tf.shape(tf.concat([t3, t4], 1)) ==> [2, 6]
   ```
 
   Note: If you are concatenating along a new axis consider using stack.
   E.g.
 
   ```python
-  tf.concat_v2([tf.expand_dims(t, axis) for t in tensors], axis)
+  tf.concat([tf.expand_dims(t, axis) for t in tensors], axis)
   ```
 
   can be rewritten as
@@ -1306,7 +1312,7 @@ def boolean_mask(tensor, mask, name="boolean_mask"):
     leading_size = gen_math_ops._prod(shape(tensor)[:ndims_mask], [0])
     tensor = reshape(
         tensor,
-        concat_v2([[leading_size], shape(tensor)[ndims_mask:]], 0))
+        concat([[leading_size], shape(tensor)[ndims_mask:]], 0))
     first_dim = shape_tensor[:ndims_mask].num_elements()
     tensor.set_shape(
         tensor_shape.as_shape([first_dim])
@@ -1530,7 +1536,7 @@ def matrix_transpose(a, name="matrix_transpose"):
       perm = list(range(ndims - 2)) + [ndims - 1] + [ndims - 2]
     else:
       a_rank = rank(a)
-      perm = concat_v2(
+      perm = concat(
           (gen_math_ops._range(0, a_rank - 2, 1), [a_rank - 1, a_rank - 2]), 0)
 
     return transpose(a, perm=perm)
