@@ -1752,6 +1752,8 @@ cuda_py_test(
         "//tensorflow/python:nn_ops_gen",
         "//tensorflow/python:platform",
         "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -1916,6 +1918,8 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:nn_ops_gen",

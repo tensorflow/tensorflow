@@ -411,6 +411,16 @@ class StopGradientTest(test_util.TensorFlowTestCase):
     assert igrad is None
 
 
+class PreventGradientTest(test_util.TensorFlowTestCase):
+
+  def testPreventGradient(self):
+    with ops.Graph().as_default():
+      inp = constant(1.0, shape=[100, 32], name="in")
+      out = array_ops.prevent_gradient(inp)
+      with self.assertRaisesRegexp(LookupError, "No gradient defined"):
+        _ = gradients.gradients(out, inp)
+
+
 class HessianVectorProductTest(test_util.TensorFlowTestCase):
 
   def testHessianVectorProduct(self):
