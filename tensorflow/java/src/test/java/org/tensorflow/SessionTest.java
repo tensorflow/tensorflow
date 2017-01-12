@@ -24,6 +24,8 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
+import org.tensorflow.util.RefCounted;
+
 /** Unit tests for {@link org.tensorflow.Session}. */
 @RunWith(JUnit4.class)
 public class SessionTest {
@@ -33,9 +35,10 @@ public class SessionTest {
     try (Graph g = new Graph();
         Session s = new Session(g)) {
       TestUtil.transpose_A_times_X(g, new int[][] {{2}, {3}});
-      try (Tensor x = Tensor.create(new int[][] {{5}, {7}});
-          AutoCloseableList<Tensor> outputs =
-              new AutoCloseableList<Tensor>(s.runner().feed("X", x).fetch("Y").run())) {
+      Tensor x = Tensor.create(new int[][] {{5}, {7}});
+      try (RefList<Tensor> outputs =
+          new RefList<Tensor>(s.runner().feed("X", x).fetch("Y").run())) {
+        assertEquals(0, x.refCount());
         assertEquals(1, outputs.size());
         final int[][] expected = {{31}};
         assertEquals(expected, outputs.get(0).copyTo(new int[1][1]));
@@ -57,18 +60,18 @@ public class SessionTest {
     }
   }
 
-  private static final class AutoCloseableList<E extends AutoCloseable> extends ArrayList<E>
+  private static final class RefList<E extends RefCounted> extends ArrayList<E>
       implements AutoCloseable {
-    AutoCloseableList(Collection<? extends E> c) {
+    RefList(Collection<? extends E> c) {
       super(c);
     }
 
     @Override
     public void close() {
       Exception toThrow = null;
-      for (AutoCloseable c : this) {
+      for (RefCounted c : this) {
         try {
-          c.close();
+          c.unref();
         } catch (Exception e) {
           toThrow = e;
         }

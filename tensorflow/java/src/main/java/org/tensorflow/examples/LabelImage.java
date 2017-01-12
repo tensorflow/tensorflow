@@ -61,14 +61,13 @@ public class LabelImage {
         readAllLinesOrExit(Paths.get(modelDir, "imagenet_comp_graph_label_strings.txt"));
     byte[] imageBytes = readAllBytesOrExit(Paths.get(imageFile));
 
-    try (Tensor image = constructAndExecuteGraphToNormalizeImage(imageBytes)) {
-      float[] labelProbabilities = executeInceptionGraph(graphDef, image);
-      int bestLabelIdx = maxIndex(labelProbabilities);
-      System.out.println(
-          String.format(
-              "BEST MATCH: %s (%.2f%% likely)",
-              labels.get(bestLabelIdx), labelProbabilities[bestLabelIdx] * 100f));
-    }
+    Tensor image = constructAndExecuteGraphToNormalizeImage(imageBytes);
+    float[] labelProbabilities = executeInceptionGraph(graphDef, image);
+    int bestLabelIdx = maxIndex(labelProbabilities);
+    System.out.println(
+        String.format(
+            "BEST MATCH: %s (%.2f%% likely)",
+            labels.get(bestLabelIdx), labelProbabilities[bestLabelIdx] * 100f));
   }
 
   private static Tensor constructAndExecuteGraphToNormalizeImage(byte[] imageBytes) {
@@ -108,8 +107,8 @@ public class LabelImage {
   private static float[] executeInceptionGraph(byte[] graphDef, Tensor image) {
     try (Graph g = new Graph()) {
       g.importGraphDef(graphDef);
-      try (Session s = new Session(g);
-          Tensor result = s.runner().feed("input", image).fetch("output").run().get(0)) {
+      try (Session s = new Session(g)) {
+        Tensor result = s.runner().feed("input", image).fetch("output").run().get(0);
         final long[] rshape = result.shape();
         if (result.numDimensions() != 2 || rshape[0] != 1) {
           throw new RuntimeException(
@@ -190,13 +189,12 @@ public class LabelImage {
     }
 
     Output constant(String name, Object value) {
-      try (Tensor t = Tensor.create(value)) {
-        return g.opBuilder("Const", name)
-            .setAttr("dtype", t.dataType())
-            .setAttr("value", t)
-            .build()
-            .output(0);
-      }
+      Tensor t = Tensor.create(value);
+      return g.opBuilder("Const", name)
+          .setAttr("dtype", t.dataType())
+          .setAttr("value", t)
+          .build()
+          .output(0);
     }
 
     private Output binaryOp(String type, Output in1, Output in2) {

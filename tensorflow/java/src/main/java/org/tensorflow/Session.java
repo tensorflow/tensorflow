@@ -29,14 +29,15 @@ import java.util.List;
  * // for the computation y = 3 * x
  *
  * try (Session s = new Session(graph)) {
- *   try (Tensor x = Tensor.create(2.0f);
- *       Tensor y = s.runner().feed("x", x).fetch("y").run().get(0)) {
- *       System.out.println(y.floatValue());  // Will print 6.0f
- *   }
- *   try (Tensor x = Tensor.create(1.1f);
- *       Tensor y = s.runner().feed("x", x).fetch("y").run().get(0)) {
- *       System.out.println(y.floatValue());  // Will print 3.3f
- *   }
+ *   Tensor x = Tensor.create(2.0f);
+ *   Tensor y = s.runner().feed("x", x).fetch("y").run().get(0);
+ *   System.out.println(y.floatValue());  // Will print 6.0f
+ *   y.unref();
+ *
+ *   Tensor x = Tensor.create(1.1f);
+ *   Tensor y = s.runner().feed("x", x).fetch("y").run().get(0);
+ *   System.out.println(y.floatValue());  // Will print 3.3f
+ *   y.unref();
  * }
  * }</pre>
  *
@@ -107,6 +108,8 @@ public final class Session implements AutoCloseable {
      *
      * <p>Operations in a {@link Graph} can have multiple outputs, {@code index} identifies which
      * one {@code t} is being provided for.
+     *
+     * <p>The {@link Tensor} is released (its reference count is decremented) after the {@code #run()} method completes.
      */
     public Runner feed(String operation, int index, Tensor t) {
       Operation op = operationByName(operation);
@@ -194,25 +197,35 @@ public final class Session implements AutoCloseable {
         targetOpHandles[idx++] = op.getUnsafeNativeHandle();
       }
       try (Reference runref = new Reference()) {
-        Session.run(
-            nativeHandle,
-            null, /* runOptions */
-            inputTensorHandles,
-            inputOpHandles,
-            inputOpIndices,
-            outputOpHandles,
-            outputOpIndices,
-            targetOpHandles,
-            false, /* wantRunMetadata */
-            outputTensorHandles);
+        try {
+          Session.run(
+                  nativeHandle,
+                  null, /* runOptions */
+                  inputTensorHandles,
+                  inputOpHandles,
+                  inputOpIndices,
+                  outputOpHandles,
+                  outputOpIndices,
+                  targetOpHandles,
+                  false, /* wantRunMetadata */
+                  outputTensorHandles);
+        }
+        finally {
+          // release the tensors from feed(...)
+          for (Tensor t : inputTensors) {
+            t.unref();
+          }
+          inputTensors.clear();
+        }
       }
       List<Tensor> ret = new ArrayList<Tensor>();
       for (long h : outputTensorHandles) {
         try {
           ret.add(Tensor.fromHandle(h));
         } catch (Exception e) {
+          // release the output tensors
           for (Tensor t : ret) {
-            t.close();
+            t.unref();
           }
           ret.clear();
           throw e;
@@ -250,6 +263,18 @@ public final class Session implements AutoCloseable {
         throw new IllegalArgumentException("No Operation named [" + opName + "] in the Graph");
       }
       return op;
+    }
+
+    protected void finalize() throws Throwable {
+      try {
+        // if run() wasn't called, release the tensors from feed(...) to avoid a leak
+        for (Tensor t : inputTensors) {
+          t.unref();
+        }
+        inputTensors.clear();
+      } finally {
+        super.finalize();
+      }
     }
 
     private ArrayList<Output> inputs = new ArrayList<Output>();

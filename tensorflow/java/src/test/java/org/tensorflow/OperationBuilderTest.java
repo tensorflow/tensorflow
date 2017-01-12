@@ -15,7 +15,7 @@ limitations under the License.
 
 package org.tensorflow;
 
-import static org.junit.Assert.fail;
+import static org.junit.Assert.*;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -42,25 +42,37 @@ public class OperationBuilderTest {
   }
 
   @Test
-  public void failOnUseAfterBuild() {
-    try (Graph g = new Graph();
-        Tensor t = Tensor.create(1)) {
+  public void unrefOnSetAttr() {
+    try (Graph g = new Graph()) {
+      Tensor t = Tensor.create(1);
       OperationBuilder b =
-          g.opBuilder("Const", "Const").setAttr("dtype", t.dataType()).setAttr("value", t);
+              g.opBuilder("Const", "Const").setAttr("dtype", t.dataType()).setAttr("value", t);
+      b.build();
+      assertEquals(0, t.refCount());
+    }
+  }
+
+  @Test
+  public void failOnUseAfterBuild() {
+    try (Graph g = new Graph()) {
+      Tensor t = Tensor.create(1);
+      OperationBuilder b =
+          g.opBuilder("Const", "Const").setAttr("dtype", t.dataType()).setAttr("value", (Tensor) t.ref());
       b.build();
       try {
         b.setAttr("dtype", t.dataType());
       } catch (IllegalStateException e) {
         // expected exception.
       }
+      t.unref();
     }
   }
 
   @Test
   public void failOnUseAfterGraphClose() {
     OperationBuilder b = null;
-    try (Graph g = new Graph();
-        Tensor t = Tensor.create(1)) {
+    try (Graph g = new Graph()) {
+      Tensor t = Tensor.create(1);
       b = g.opBuilder("Const", "Const").setAttr("dtype", t.dataType()).setAttr("value", t);
     }
     try {
