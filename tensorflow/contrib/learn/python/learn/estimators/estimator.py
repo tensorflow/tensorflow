@@ -407,7 +407,8 @@ class BaseEstimator(
       raise ValueError('Can not provide both steps and max_steps.')
     _verify_input_args(x, y, input_fn, None, batch_size)
     if x is not None:
-      return SKCompat(self).fit(x, y, batch_size, steps, max_steps, monitors)
+      SKCompat(self).fit(x, y, batch_size, steps, max_steps, monitors)
+      return self
 
     if max_steps is not None:
       try:
