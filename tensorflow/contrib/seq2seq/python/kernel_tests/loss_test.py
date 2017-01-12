@@ -34,13 +34,13 @@ class LossTest(tf.test.TestCase):
         number_of_classes = 5
         logits = [tf.constant(i + 0.5, shape=[batch_size, number_of_classes])
                   for i in range(sequence_length)]
-        logits = tf.pack(logits, axis=1)
+        logits = tf.stack(logits, axis=1)
         targets = [tf.constant(i, tf.int32, shape=[batch_size]) for i in
                    range(sequence_length)]
-        targets = tf.pack(targets, axis=1)
+        targets = tf.stack(targets, axis=1)
         weights = [tf.constant(1.0, shape=[batch_size]) for i in
                    range(sequence_length)]
-        weights = tf.pack(weights, axis=1)
+        weights = tf.stack(weights, axis=1)
 
         average_loss_per_example = tf.contrib.seq2seq.sequence_loss(
             logits, targets, weights,
