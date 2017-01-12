@@ -20,7 +20,9 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#ifndef __ANDROID__
 #include "tensorflow/cc/saved_model/loader.h"
+#endif
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -1709,6 +1711,7 @@ TF_Session* TF_NewSession(TF_Graph* graph, const TF_SessionOptions* opt,
   }
 }
 
+#ifndef __ANDROID__
 TF_Session* TF_LoadSessionFromSavedModel(
     const TF_SessionOptions* session_options, const TF_Buffer* run_options,
     const char* export_dir, const char* const* tags, int tags_len,
@@ -1762,6 +1765,7 @@ TF_Session* TF_LoadSessionFromSavedModel(
   session->last_num_graph_nodes = graph->graph.num_node_ids();
   return session;
 }
+#endif  // __ANDROID__
 
 void TF_CloseSession(TF_Session* s, TF_Status* status) {
   status->status = s->session->Close();
