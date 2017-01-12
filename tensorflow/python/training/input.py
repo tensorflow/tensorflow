@@ -259,7 +259,7 @@ def range_input_producer(limit, num_epochs=None, shuffle=True, seed=None,
     range_tensor = math_ops.range(limit)
     return input_producer(
         range_tensor, [], num_epochs, shuffle, seed, capacity,
-        shared_name, name, "fraction_of_%d_full" % capacity)
+        shared_name, "fraction_of_%d_full" % capacity, name)
 
 
 def slice_input_producer(tensor_list, num_epochs=None, shuffle=True, seed=None,
