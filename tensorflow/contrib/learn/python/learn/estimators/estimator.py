@@ -414,7 +414,7 @@ class BaseEstimator(
         start_step = load_variable(self._model_dir, ops.GraphKeys.GLOBAL_STEP)
         if max_steps <= start_step:
           logging.info('Skipping training since max_steps has already saved.')
-          return None
+          return self
       except:  # pylint: disable=bare-except
         pass
 
