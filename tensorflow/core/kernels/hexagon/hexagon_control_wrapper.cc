@@ -169,7 +169,7 @@ bool HexagonControlWrapper::SetupGraph(
   return soc_interface_ConstructGraph();
 
   // Keep following comment to use dummy graph construction
-  // return soc_interface_SetupGraphDummy(3 /* inception version */);
+  // return soc_interface_setupDummyGraph(3 /* inception version */);
 }
 
 bool HexagonControlWrapper::ExecuteGraph() {

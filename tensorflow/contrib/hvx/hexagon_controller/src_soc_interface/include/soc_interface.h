@@ -16,12 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_PLATFORM_HEXAGON_SOC_INTERFACE_H_
 #define TENSORFLOW_PLATFORM_HEXAGON_SOC_INTERFACE_H_
 
+#include <inttypes.h>
+
 // Declaration of APIs provided by hexagon shared library. This header is shared
 // with both hexagon library built with qualcomm SDK and tensorflow.
 // All functions defined here must have prefix "soc_interface" to avoid
 // naming conflicts.
 #ifdef __cplusplus
 extern "C" {
+#else
+#include <stdbool.h>
 #endif  // __cplusplus
 // Returns the version of loaded hexagon wrapper shared library.
 // You should assert that the version matches the expected version before
