@@ -376,3 +376,14 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       name = "junit",
       actual = "@junit_jar//jar",
   )
+
+  native.new_http_archive(
+      name = "jemalloc",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/github.com/jemalloc/jemalloc/archive/4.4.0.tar.gz",
+          "https://github.com/jemalloc/jemalloc/archive/4.4.0.tar.gz",
+      ],
+      sha256 = "3c8f25c02e806c3ce0ab5fb7da1817f89fc9732709024e2a81b6b82f7cc792a8",
+      strip_prefix = "jemalloc-4.4.0",
+      build_file = str(Label("//third_party:jemalloc.BUILD")),
+  )

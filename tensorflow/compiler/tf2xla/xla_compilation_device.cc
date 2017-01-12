@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace tensorflow {
@@ -47,7 +48,7 @@ class XlaCompilationAllocator : public Allocator {
     // XlaExpression. Respect the aligment request because there is
     // alignment checking even for Tensors whose data is never
     // accessed.
-    void* p = port::aligned_malloc(sizeof(XlaExpression), alignment);
+    void* p = port::AlignedMalloc(sizeof(XlaExpression), alignment);
     XlaExpression* expression = reinterpret_cast<XlaExpression*>(p);
     new (expression) XlaExpression();
     return expression;
@@ -56,7 +57,7 @@ class XlaCompilationAllocator : public Allocator {
   void DeallocateRaw(void* ptr) override {
     XlaExpression* expression = reinterpret_cast<XlaExpression*>(ptr);
     expression->~XlaExpression();
-    port::aligned_free(ptr);
+    port::AlignedFree(ptr);
   }
 
   // Make sure that even tensors with 0 elements have allocated
