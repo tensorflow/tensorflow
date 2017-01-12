@@ -1749,7 +1749,7 @@ inf-norm) and up to 9218868437227405311 different vectors norms.
 *  <b>`ValueError`</b>: If `ord` or `axis` is invalid.
 
 @compatibility(numpy)
-Mostly equivalent to np.linalg.norm.
+Mostly equivalent to numpy.linalg.norm.
 Not supported: ord <= 0, 2-norm for matrices, nuclear norm.
 
 ##### Other differences:
@@ -2140,6 +2140,12 @@ s = svd(a, compute_uv=False)
 *  <b>`v`</b>: Left singular vectors. If `full_matrices` is `False` (default) then
     shape is `[..., N, P]`. If `full_matrices` is `True` then shape is
     `[..., N, N]`. Not returned if `compute_uv` is `False`.
+
+@compatibility(numpy)
+Mostly equivalent to numpy.linalg.svd, except that the order of output
+arguments here is `s`, `u`, `v` when `compute_uv` is `True`, as opposed to
+`u`, `s`, `v` for numpy.linalg.svd.
+@end_compatibility
 
 
 
