@@ -88,6 +88,12 @@ Allocator *SYCLDevice::GetAllocator(AllocatorAttributes attr) {
 Status SYCLDevice::MakeTensorFromProto(const TensorProto &tensor_proto,
                                        const AllocatorAttributes alloc_attrs,
                                        Tensor *tensor) {
+  // Ensure tensor_proto.dtype() is a defined enum and is not DT_INVALID.
+  if (!DataType_IsValid(tensor_proto.dtype()) ||
+      tensor_proto.dtype() == DT_INVALID) {
+    return errors::InvalidArgument("Invalid tensor proto dtype: ",
+                                   tensor_proto.DebugString());
+  }
   Tensor parsed(tensor_proto.dtype());
   if (!parsed.FromProto(cpu_allocator_, tensor_proto)) {
     return errors::InvalidArgument("Cannot parse tensor from proto: ",
