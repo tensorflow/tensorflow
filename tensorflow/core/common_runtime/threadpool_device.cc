@@ -59,19 +59,15 @@ Allocator* ThreadPoolDevice::GetAllocator(AllocatorAttributes attr) {
 Status ThreadPoolDevice::MakeTensorFromProto(
     const TensorProto& tensor_proto, const AllocatorAttributes alloc_attrs,
     Tensor* tensor) {
-  // Ensure tensor_proto.dtype() is a defined enum and is not DT_INVALID.
-  if (!DataType_IsValid(tensor_proto.dtype()) ||
-      tensor_proto.dtype() == DT_INVALID) {
-    return errors::InvalidArgument("Invalid tensor proto dtype: ",
-                                   tensor_proto.DebugString());
+  if (tensor_proto.dtype() > 0 && tensor_proto.dtype() <= DataType_MAX) {
+    Tensor parsed(tensor_proto.dtype());
+    if (parsed.FromProto(cpu_allocator(), tensor_proto)) {
+      *tensor = parsed;
+      return Status::OK();
+    }
   }
-  Tensor parsed(tensor_proto.dtype());
-  if (!parsed.FromProto(cpu_allocator(), tensor_proto)) {
-    return errors::InvalidArgument("Cannot parse tensor from proto: ",
-                                   ProtoDebugString(tensor_proto));
-  }
-  *tensor = parsed;
-  return Status::OK();
+  return errors::InvalidArgument("Cannot parse tensor from proto: ",
+                                 ProtoDebugString(tensor_proto));
 }
 
 }  // namespace tensorflow

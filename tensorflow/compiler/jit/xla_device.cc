@@ -175,12 +175,6 @@ Status XlaDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
                                       Tensor* tensor) {
   VLOG(1) << "XlaDevice::MakeTensorFromProto";
 
-  // Ensure tensor_proto.dtype() is a defined enum and is not DT_INVALID.
-  if (!DataType_IsValid(tensor_proto.dtype()) ||
-      tensor_proto.dtype() == DT_INVALID) {
-    return errors::InvalidArgument("Invalid tensor proto dtype: ",
-                                   tensor_proto.DebugString());
-  }
   Tensor parsed(tensor_proto.dtype());
   if (!parsed.FromProto(cpu_allocator(), tensor_proto)) {
     return errors::InvalidArgument("Cannot parse tensor from proto: ",

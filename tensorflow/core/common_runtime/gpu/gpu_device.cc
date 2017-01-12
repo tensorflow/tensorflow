@@ -435,12 +435,6 @@ Status BaseGPUDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
   attr.set_on_host(true);
   attr.set_gpu_compatible(true);
   Allocator* host_alloc = GetAllocator(attr);
-  // Ensure tensor_proto.dtype() is a defined enum and is not DT_INVALID.
-  if (!DataType_IsValid(tensor_proto.dtype()) ||
-      tensor_proto.dtype() == DT_INVALID) {
-    return errors::InvalidArgument("Invalid tensor proto dtype: ",
-                                   tensor_proto.DebugString());
-  }
   Tensor parsed(tensor_proto.dtype());
   if (!parsed.FromProto(host_alloc, tensor_proto)) {
     return errors::InvalidArgument("Cannot parse tensor from proto: ",
