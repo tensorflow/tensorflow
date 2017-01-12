@@ -306,6 +306,24 @@ python $(python -c "import tensorflow as tf; import os; print(os.path.dirname(tf
     --dump_dir=/cns/is-d/home/somebody/tfdbg_dumps_1
 ```
 
+The `Session` wrapper `DumpingDebugWrapperSession` offers an easier and more
+flexible way to generate dumps on filesystem that can be analyzed offline.
+To use it, simply do:
+
+```python
+# Let your BUILD target depend on "//tensorflow/python/debug:debug_py
+from tensorflow.python.debug import debug_utils
+
+sess = tf_debug.DumpingDebugWrapperSession(
+    sess, "/cns/is-d/home/somebody/tfdbg_dumps_1/", watch_fn=my_watch_fn)
+```
+
+`watch_fn=my_watch_fn` is a `Callable` that allows you to configure what
+`Tensor`s to watch on different `Session.run()` calls, as a function of the
+`fetches` and `feed_dict` to the `run()` call and other states. See
+[the API doc of DumpingDebugWrapperSession](../../api_docs/python/tf_debug.md#DumpingDebugWrapperSession.__init__)
+for more details.
+
 If you model code is written in C++ or other languages, you can also
 modify the `debug_options` field of `RunOptions` to generate debug dumps that
 can be inspected offline. See
