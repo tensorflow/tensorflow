@@ -1,4 +1,4 @@
-# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,25 +12,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Common tags used for graphs in SavedModel.
-
+"""Convenience functions to save a model.
 """
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+
+# pylint: disable=unused-import
+from tensorflow.python.saved_model import builder
+from tensorflow.python.saved_model import loader
+from tensorflow.python.saved_model import signature_constants
+from tensorflow.python.saved_model import signature_def_utils
+from tensorflow.python.saved_model import tag_constants
+# pylint: enable=unused-import
+
 from tensorflow.python.util.all_util import remove_undocumented
 
 
-# Tag for the `serving` graph.
-SERVING = "serve"
-
-# Tag for the `training` graph.
-TRAINING = "train"
-
-
 _allowed_symbols = [
-    "SERVING",
-    "TRAINING"
+    "builder",
+    "loader",
+    "signature_constants",
+    "signature_def_utils",
+    "tag_constants",
 ]
 remove_undocumented(__name__, _allowed_symbols)
