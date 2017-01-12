@@ -278,10 +278,12 @@ REGISTER_OP("Exp").UNARY_COMPLEX().Doc(R"doc(
 Computes exponential of x element-wise.  \\(y = e^x\\).
 )doc");
 
+#if 0
 REGISTER_OP("Expm1").UNARY_COMPLEX().Doc(R"doc(
 Computes exponential of x - 1 element-wise.
 I.e., \\(y = (\exp x) - 1\\).
 )doc");
+#endif
 
 REGISTER_OP("Log").UNARY_COMPLEX().Doc(R"doc(
 Computes natural logarithm of x element-wise.

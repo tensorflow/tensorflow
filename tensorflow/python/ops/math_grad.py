@@ -329,14 +329,14 @@ def _ExpGrad(op, grad):
     return grad * y
 
 
-@ops.RegisterGradient("Expm1")
-def _Expm1Grad(op, grad):
-  """Returns grad * exp(x)."""
-  x = op.inputs[0]
-  with ops.control_dependencies([grad.op]):
-    x = math_ops.conj(x)
-    y = math_ops.exp(x)
-    return grad * y
+#@ops.RegisterGradient("Expm1")
+#def _Expm1Grad(op, grad):
+#  """Returns grad * exp(x)."""
+#  x = op.inputs[0]
+#  with ops.control_dependencies([grad.op]):
+#    x = math_ops.conj(x)
+#    y = math_ops.exp(x)
+#    return grad * y
 
 
 @ops.RegisterGradient("Log")

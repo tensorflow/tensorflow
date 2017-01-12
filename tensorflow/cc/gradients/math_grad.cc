@@ -105,6 +105,7 @@ Status ExpGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Exp", ExpGrad);
 
+#if 0
 Status Expm1Grad(const Scope& scope, const Operation& op,
                  const std::vector<Output>& grad_inputs,
                  std::vector<Output>* grad_outputs) {
@@ -115,6 +116,7 @@ Status Expm1Grad(const Scope& scope, const Operation& op,
   return scope.status();
 }
 REGISTER_GRADIENT_OP("Expm1", Expm1Grad);
+#endif
 
 Status LogGrad(const Scope& scope, const Operation& op,
                const std::vector<Output>& grad_inputs,

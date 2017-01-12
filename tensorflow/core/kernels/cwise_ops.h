@@ -471,8 +471,8 @@ struct rsqrt : base<T, Eigen::internal::scalar_rsqrt_op<T> > {};
 template <typename T>
 struct exp : base<T, Eigen::internal::scalar_exp_op<T> > {};
 
-template <typename T>
-struct expm1 : base<T, Eigen::internal::scalar_expm1_op<T>> {};
+//template <typename T>
+//struct expm1 : base<T, Eigen::internal::scalar_expm1_op<T>> {};
 
 template <typename T>
 struct log : base<T, Eigen::internal::scalar_log_op<T>> {};

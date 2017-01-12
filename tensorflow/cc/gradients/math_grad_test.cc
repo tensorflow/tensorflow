@@ -42,7 +42,7 @@ class CWiseUnaryGradTest : public ::testing::Test {
     SQRT,
     RSQRT,
     EXP,
-    EXPM1,
+//    EXPM1,
     LOG,
     LOG1P,
     TANH,
@@ -100,9 +100,9 @@ class CWiseUnaryGradTest : public ::testing::Test {
       case EXP:
         y = Exp(scope_, x);
         break;
-      case EXPM1:
-        y = Expm1(scope_, x);
-        break;
+//      case EXPM1:
+//        y = Expm1(scope_, x);
+//        break;
       case LOG:
         y = Log(scope_, x);
         break;
@@ -208,6 +208,7 @@ TEST_F(CWiseUnaryGradTest, Exp) {
   TestCWiseGrad(EXP, x_fn, dy_fn, dx_fn);
 }
 
+#if 0
 TEST_F(CWiseUnaryGradTest, Expm1) {
   auto x_fn = [this](const int i) { return RV({0, -1, 1e-6, 1, -2, 3, 100}); };
   auto dy_fn = [this](const float x) { return x + RV({-2, 2, -3, 3, -4, 4}); };
@@ -216,6 +217,7 @@ TEST_F(CWiseUnaryGradTest, Expm1) {
   };
   TestCWiseGrad(EXPM1, x_fn, dy_fn, dx_fn);
 }
+#endif
 
 TEST_F(CWiseUnaryGradTest, Log) {
   auto x_fn = [this](const int i) { return RV({-1, 1, -2, 2, -3, 3, -4, 4}); };
