@@ -31,14 +31,25 @@ from tensorflow.python.platform import test
 
 class ConfusionMatrixTest(test.TestCase):
 
+  def testExample(self):
+    """This is a test of the example provided in pydoc."""
+    with self.test_session():
+      self.assertAllEqual([
+          [0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0],
+          [0, 1, 1, 0, 0],
+          [0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 1]
+      ], confusion_matrix.confusion_matrix(
+          labels=[1, 2, 4], predictions=[2, 2, 4]).eval())
+
   def _testConfMatrix(self, predictions, labels, truth, weights=None):
     with self.test_session():
       dtype = predictions.dtype
       ans = confusion_matrix.confusion_matrix(
-          labels, predictions, dtype=dtype, weights=weights)
-      tf_ans = ans.eval()
-      self.assertAllClose(tf_ans, truth, atol=1e-10)
-      self.assertEqual(tf_ans.dtype, dtype)
+          labels, predictions, dtype=dtype, weights=weights).eval()
+      self.assertAllClose(truth, ans, atol=1e-10)
+      self.assertEqual(ans.dtype, dtype)
 
   def _testBasic(self, dtype):
     predictions = np.arange(5, dtype=dtype)
