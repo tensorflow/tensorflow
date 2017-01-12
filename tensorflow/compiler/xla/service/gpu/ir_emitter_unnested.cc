@@ -1047,8 +1047,9 @@ Status IrEmitterUnnested::EmitRowReduction(
 // Figures out whether `reduce` is a row or column reduction, and which
 // dimensions to reduce, and calls either `EmitRowReduction` or
 // `EmitColumnReduction` as appropriate.
-// Prerequisite: the shape of `reduce` has rank 1 and, if `reduce` is fused, the
-//               fused subgraph is pure elementwise.
+// Prerequisite: all the dimensions to keep are contiguous in the input layout
+//               and, if `reduce` is fused, the fused subgraph is pure
+//               elementwise.
 Status IrEmitterUnnested::EmitReductionToVector(
     HloInstruction* reduce, const Shape& input_shape,
     const llvm_ir::ElementGenerator& input_gen,
@@ -1063,25 +1064,39 @@ Status IrEmitterUnnested::EmitReductionToVector(
                                   << reduce->ToString();
 
   // Specialize multi-dimensional-array-to-vector reduction.
-  //
-  // TODO(b/33239522): we could use the same algorithm for general reduction
-  // as long as the input dimensions to keep are adjacent in the layout and
-  // have the same relative layout as their corresponding output dimensions.
-  // For example, reducing shape [2,3,4,5] with minor_to_major={2,0,1,3} to
-  // shape [2,4] with minor_to_major={1,0} can be implemented as a column
-  // reduction from shape [15,8] to shape [8].
-  int64 input_dim_to_keep = -1;
+  std::vector<int64> input_dims_to_keep;
   for (int64 input_dim = 0; input_dim < ShapeUtil::Rank(input_shape);
        ++input_dim) {
     if (std::find(dimensions_to_reduce.begin(), dimensions_to_reduce.end(),
                   input_dim) == dimensions_to_reduce.end()) {
-      input_dim_to_keep = input_dim;
-      break;
+      input_dims_to_keep.push_back(input_dim);
     }
   }
-  CHECK_NE(-1, input_dim_to_keep);
 
-  if (LayoutUtil::Minor(input_shape.layout(), 0) == input_dim_to_keep) {
+  // Sort the dimensions to keep from minor to major, to facilitate checking
+  // whether another dimension is major or minor of them.
+  std::sort(input_dims_to_keep.begin(), input_dims_to_keep.end(),
+            [&input_shape](int64 dim_a, int64 dim_b) {
+              return PositionInContainer(input_shape.layout().minor_to_major(),
+                                         dim_a) <
+                     PositionInContainer(input_shape.layout().minor_to_major(),
+                                         dim_b);
+            });
+  // Now, if output rank is at least 1, `input_dims_to_keep.front()` is
+  // minormost and `input_dims_to_keep.back()` is majormost.
+
+  // If the dimensions to keep are minormost, emit a column reduction. As all
+  // the dimensions to keep are contiguous, by prerequisite of
+  // `EmitReductionToVector`, we only need to check whether the minormost
+  // dimension of the input is to keep.
+  //
+  // If the output is scalar, we could emit either a row or a column reduction.
+  // Some tests have shown scalar reduction is no more efficient as row
+  // reduction, and is simpler to emit as column reduction, so we emit a column
+  // reduction in this case.
+  if (input_dims_to_keep.empty() ||
+      input_dims_to_keep.front() ==
+          LayoutUtil::Minor(input_shape.layout(), 0)) {
     // Column reduction. Treat the result of "input" as a matrix whose width
     // is the most minor dimension and height the product of other dimensions,
     // and treat "reduce" as a column reduction of the input matrix.
@@ -1091,7 +1106,8 @@ Status IrEmitterUnnested::EmitReductionToVector(
     int64 height = 1;
     for (int64 input_dim = 0; input_dim < ShapeUtil::Rank(input_shape);
          ++input_dim) {
-      if (input_dim != input_dim_to_keep) {
+      if (!std::count(input_dims_to_keep.begin(), input_dims_to_keep.end(),
+                      input_dim)) {
         height *= input_shape.dimensions(input_dim);
       }
     }
@@ -1111,16 +1127,16 @@ Status IrEmitterUnnested::EmitReductionToVector(
       if (PositionInContainer(input_shape.layout().minor_to_major(),
                               input_dim) >
           PositionInContainer(input_shape.layout().minor_to_major(),
-                              input_dim_to_keep)) {
+                              input_dims_to_keep.back())) {
         depth *= input_shape.dimensions(input_dim);
       } else if (PositionInContainer(input_shape.layout().minor_to_major(),
                                      input_dim) <
                  PositionInContainer(input_shape.layout().minor_to_major(),
-                                     input_dim_to_keep)) {
+                                     input_dims_to_keep.front())) {
         width *= input_shape.dimensions(input_dim);
       }
     }
-    int64 height = input_shape.dimensions(input_dim_to_keep);
+    const int64 height = ShapeUtil::ElementsIn(reduce->shape());
     return EmitRowReduction(depth, height, width, reduce, input_shape,
                             input_gen, init_value_gen, reducer);
   }

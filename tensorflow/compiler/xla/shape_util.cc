@@ -984,4 +984,38 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
          check_input_unit_indices(output_shape, input_shape);
 }
 
+/* static */ Shape ShapeUtil::DeleteDimension(int64 dim_to_delete,
+                                              Shape shape) {
+  shape.mutable_dimensions()->erase(shape.dimensions().begin() + dim_to_delete);
+  if (LayoutUtil::HasLayout(shape)) {
+    Layout* layout = shape.mutable_layout();
+    for (size_t i = 0; i < layout->minor_to_major().size();) {
+      if (layout->minor_to_major(i) == dim_to_delete) {
+        layout->mutable_minor_to_major()->erase(
+            layout->minor_to_major().begin() + i);
+        continue;
+      }
+      if (layout->minor_to_major(i) > dim_to_delete) {
+        (*layout->mutable_minor_to_major())[i] -= 1;
+      }
+      ++i;
+    }
+  }
+  return shape;
+}
+
+/* static */ Shape ShapeUtil::FilterDimensions(
+    const std::function<bool(int64)>& p, Shape shape) {
+  std::vector<int64> dims_to_delete;
+  for (int64 i = shape.dimensions().size() - 1; i >= 0; --i) {
+    if (!p(i)) {
+      dims_to_delete.push_back(i);
+    }
+  }
+  for (int64 dim : dims_to_delete) {
+    shape = DeleteDimension(dim, shape);
+  }
+  return shape;
+}
+
 }  // namespace xla
