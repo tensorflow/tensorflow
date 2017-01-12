@@ -219,7 +219,7 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_allocate(JNIEnv* env,
                                                             jclass clazz,
                                                             jint dtype,
                                                             jlongArray shape,
-                                                            jlong size) {
+                                                            jlong sizeInBytes) {
   int num_dims = static_cast<int>(env->GetArrayLength(shape));
   jlong* dims = nullptr;
   if (num_dims > 0) {
@@ -241,55 +241,7 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_allocate(JNIEnv* env,
     dims_copy[i] = static_cast<int64_t>(dims[i]);
   }
   TF_Tensor* t = TF_AllocateTensor(static_cast<TF_DataType>(dtype), dims_copy,
-                                   num_dims, (size_t) size);
-  delete[] dims_copy;
-  if (dims != nullptr) {
-    env->ReleaseLongArrayElements(shape, dims, JNI_ABORT);
-  }
-  if (t == nullptr) {
-    throwException(env, kNullPointerException,
-                   "unable to allocate memory for the Tensor");
-    return 0;
-  }
-  return reinterpret_cast<jlong>(t);
-}
-
-JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_allocateNDArray(JNIEnv* env,
-                                                            jclass clazz,
-                                                            jint dtype,
-                                                            jlongArray shape) {
-  size_t elem_size = elemByteSize(static_cast<TF_DataType>(dtype));
-  if (elem_size == 0) {
-    throwException(env, kIllegalArgumentException,
-                   "cannot allocate Tensor with DataType %d", dtype);
-    return 0;
-  }
-  int num_dims = static_cast<int>(env->GetArrayLength(shape));
-  jlong* dims = nullptr;
-  if (num_dims > 0) {
-    jboolean is_copy;
-    dims = env->GetLongArrayElements(shape, &is_copy);
-  }
-  size_t num_elems = 1;
-  for (int i = 0; i < num_dims; ++i) {
-    num_elems *= dims[i];
-  }
-  static_assert(sizeof(jlong) == sizeof(int64_t),
-                "Java long is not compatible with the TensorFlow C API");
-  // On some platforms "jlong" is a "long" while "int64_t" is a "long long".
-  //
-  // Thus, static_cast<int64_t*>(dims) will trigger a compiler error:
-  // static_cast from 'jlong *' (aka 'long *') to 'int64_t *' (aka 'long long
-  // *') is not allowed
-  //
-  // Since this array is typically very small, use the guaranteed safe scheme of
-  // creating a copy.
-  int64_t* dims_copy = new int64_t[num_dims];
-  for (int i = 0; i < num_dims; ++i) {
-    dims_copy[i] = static_cast<int64_t>(dims[i]);
-  }
-  TF_Tensor* t = TF_AllocateTensor(static_cast<TF_DataType>(dtype), dims_copy,
-                                   num_dims, elem_size * num_elems);
+                                   num_dims, (size_t) sizeInBytes);
   delete[] dims_copy;
   if (dims != nullptr) {
     env->ReleaseLongArrayElements(shape, dims, JNI_ABORT);
@@ -481,6 +433,5 @@ JNIEXPORT jobject JNICALL Java_org_tensorflow_Tensor_buffer(JNIEnv* env,
   void* data = TF_TensorData(t);
   const size_t sz = TF_TensorByteSize(t);
 
-  jobject dataBuffer = env->NewDirectByteBuffer(data, (jlong) sz);
-  return dataBuffer;
+  return env->NewDirectByteBuffer(data, static_cast<jlong>(sz));
 }

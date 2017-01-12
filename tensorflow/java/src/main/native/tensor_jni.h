@@ -40,14 +40,6 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_allocate(JNIEnv *, jclass,
 
 /*
  * Class:     org_tensorflow_Tensor
- * Method:    allocateNDArray
- * Signature: (I[J)J
- */
-JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_allocateNDArray(JNIEnv *, jclass,
-                                                            jint, jlongArray);
-
-/*
- * Class:     org_tensorflow_Tensor
  * Method:    allocateScalarBytes
  * Signature: ([B)J
  */
