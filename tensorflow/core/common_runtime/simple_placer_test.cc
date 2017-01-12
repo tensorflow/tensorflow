@@ -1285,16 +1285,16 @@ TEST_F(SimplePlacerTest, TestGeneratorNodeDoesntFollowNonColocatedConsumers) {
     TF_EXPECT_OK(BuildGraph(b, &g));
 
     GetNodeByName(g, "var1_cpu")
-        ->set_assigned_device_name("/job:a/replica:0/task:0/cpu:1");
+        ->set_assigned_device_name("/job:a/replica:0/task:0/device:fakecpu:1");
 
     GetNodeByName(g, "var2_cpu")
-        ->set_assigned_device_name("/job:a/replica:0/task:0/cpu:2");
+        ->set_assigned_device_name("/job:a/replica:0/task:0/device:fakecpu:2");
   }
 
   TF_EXPECT_OK(Place(&g));
   EXPECT_COLOCATED(g, "assign1", "var1_cpu");
   EXPECT_COLOCATED(g, "assign2", "var2_cpu");
-  EXPECT_DEVICE_TYPE(g, "in", DEVICE_GPU);
+  EXPECT_DEVICE_TYPE(g, "in", "FakeGPU");
 }
 
 }  // namespace
