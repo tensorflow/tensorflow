@@ -68,7 +68,7 @@ class XlaExpression {
   TF_DISALLOW_COPY_AND_ASSIGN(XlaExpression);
 };
 
-// The XlaContext is the datastructure accessible from
+// The XlaContext is the data structure accessible from
 // OpKernelContexts when evaluating a subgraph of Ops for JIT
 // compilation by XLA. When an Op is executed during JIT
 // compilation the input Tensors to the Op store handles to
@@ -132,8 +132,8 @@ class XlaContext : public ResourceBase {
   }
 
   // Create a new XlaContext.
-  XlaContext(xla::Client* client, const string& computation_name,
-             bool allow_cpu_custom_calls);
+  XlaContext(XlaCompiler* compiler, xla::Client* client,
+             const string& computation_name, bool allow_cpu_custom_calls);
 
   // Builds XLA computations for each of the arguments.
   // Should only be called once to initialize the arguments. Not thread-safe.
@@ -160,12 +160,17 @@ class XlaContext : public ResourceBase {
   Status AddConstRetval(int retval_index, DataType dtype,
                         const xla::Literal& literal);
 
+  // Mark the computation as having side effects (i.e., Send operators).
+  void AddSideEffects();
+
   // Retrieves the ComputationDataHandle from an input Tensor to an Op. This
   // computation was constructed by an Op that executed previously and
   // created the output Tensor using CreateOutputTensorFromComputation
   // or CreateConstantOutputTensor.
   static const xla::ComputationDataHandle& GetComputationFromTensor(
       const Tensor& tensor);
+
+  XlaCompiler* compiler() const { return compiler_; }
 
   // Returns the ComputationBuilder that Ops use for compiling new
   // expressions.
@@ -215,6 +220,8 @@ class XlaContext : public ResourceBase {
   // or CreateConstantOutputTensor.
   static const XlaExpression* GetExpressionFromTensor(const Tensor& tensor);
 
+  XlaCompiler* const compiler_;
+
   mutable mutex mu_;
 
   // The ComputationBuilder used to construct the subgraph's compiled
@@ -249,6 +256,9 @@ class XlaContext : public ResourceBase {
 
   // The non-data-dependent return values of the computation.
   std::vector<ConstRetVal> compile_time_constant_ GUARDED_BY(mu_);
+
+  // Does the computation have side effects, i.e., Send() calls?
+  bool has_side_effects_ GUARDED_BY(mu_) = false;
 
   // Cache of prebuilt computations indexed by their type.
   using ComputationMap = std::map<DataType, xla::Computation>;
