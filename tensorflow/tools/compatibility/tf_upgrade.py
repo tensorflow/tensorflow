@@ -21,13 +21,10 @@ import argparse
 import ast
 import collections
 import os
+import shutil
 import sys
+import tempfile
 import traceback
-
-# TODO(aselle): Add SVD, Concat
-# TODO(aselle): summary merge all (can we detect this?)
-# TODO(aselle): batch_matmul
-# TODO(wicke): tf.nn.{softmax,sparse_softmax,sigmoid}_cross_entropy_with_logits?
 
 
 class APIChangeSpec(object):
@@ -143,7 +140,8 @@ class APIChangeSpec(object):
         "tf.batch_fft3d": "tf.fft3d",
         "tf.batch_ifft3d": "tf.ifft3d",
         "tf.select": "tf.where",
-        "tf.complex_abs": "tf.abs"
+        "tf.complex_abs": "tf.abs",
+        "tf.batch_matmul": "tf.matmul",
     }
 
     # Functions that were reordered should be changed to the new keyword args
@@ -151,7 +149,14 @@ class APIChangeSpec(object):
     # positional arguments yourself, this could do the wrong thing.
     self.function_reorders = {
         "tf.split": ["axis", "num_or_size_splits", "value", "name"],
-        "tf.concat": ["concat_dim", "values", "name"]
+        "tf.concat": ["concat_dim", "values", "name"],
+        "tf.svd": ["tensor", "compute_uv", "full_matrices", "name"],
+        "tf.nn.softmax_cross_entropy_with_logits": [
+            "logits", "labels", "dim", "name"],
+        "tf.nn.sparse_softmax_cross_entropy_with_logits": [
+            "logits", "labels", "name"],
+        "tf.nn.sigmoid_cross_entropy_with_logits": [
+            "logits", "labels", "name"]
     }
 
     # Specially handled functions.
@@ -223,7 +228,7 @@ class FileEditRecorder(object):
       char_array = list(text[line - 1])
 
       # Record a description of the change
-      change_report += "%s Line %d\n" % (self._filename, line)
+      change_report += "%r Line %d\n" % (self._filename, line)
       change_report += "-" * 80 + "\n\n"
       for e in edits:
         change_report += "%s\n" % e.comment
@@ -243,7 +248,7 @@ class FileEditRecorder(object):
         # Make sure the edit is changing what it should be changing
         old_actual = "".join(char_array[start_eff:end_eff])
         if old_actual != e.old:
-          raise ValueError("Expected text '%s' but got '%s'" %
+          raise ValueError("Expected text %r but got %r" %
                            ("".join(e.old), "".join(old_actual)))
         # Make the edit
         char_array[start_eff:end_eff] = list(e.new)
@@ -278,7 +283,7 @@ class FileEditRecorder(object):
 
     self._line_to_edit[line].append(
         FileEditTuple(comment, line, start, old, new))
-    if error is not None:
+    if error:
       self._errors.append("%s:%d: %s" % (self._filename, line, error))
 
 
@@ -302,11 +307,33 @@ class TensorFlowCallVisitor(ast.NodeVisitor):
 
   def _rename_functions(self, node, full_name):
     function_renames = self._api_change_spec.function_renames
-    if full_name in function_renames:
+    try:
       new_name = function_renames[full_name]
-      self._file_edit.add("Renamed function `%s` to `%s`" % (full_name,
-                                                             new_name),
+      self._file_edit.add("Renamed function %r to %r" % (full_name,
+                                                         new_name),
                           node.lineno, node.col_offset, full_name, new_name)
+    except KeyError:
+      pass
+
+  def _get_attribute_full_path(self, node):
+    """Traverse an attribute to generate a full name e.g. tf.foo.bar.
+
+    Args:
+      node: A Node of type Attribute.
+
+    Returns:
+      a '.'-delimited full-name or None if the tree was not a simple form.
+      i.e. `foo()+b).bar` returns None, while `a.b.c` would return "a.b.c".
+    """
+    curr = node
+    items = []
+    while not isinstance(curr, ast.Name):
+      if not isinstance(curr, ast.Attribute):
+        return None
+      items.append(curr.attr)
+      curr = curr.value
+    items.append(curr.id)
+    return ".".join(reversed(items))
 
   def visit_Call(self, node):  # pylint: disable=invalid-name
     """Handle visiting a call node in the AST.
@@ -315,59 +342,51 @@ class TensorFlowCallVisitor(ast.NodeVisitor):
       node: Current Node
     """
 
-    # Find call string (this is not perfectly accurate,
-    # but should cover tf.x*)
-    curr = node.func
-    items = []
-    valid = True
-    while not isinstance(curr, ast.Name):
-      if isinstance(curr, ast.Attribute):
-        items.append(curr.attr)
-      else:
-        # We cannot just return, because we need to keep walking.
-        # TODO(aselle): Would it be cleaner to use an exception here with else?
-        valid = False
-        break
-      curr = curr.value
-    if valid:
-      items.append(curr.id)
+    ast.NodeVisitor.generic_visit(self, node)
 
-    if valid:
-      # Conversion logic
-      full_name = ".".join(items[::-1])
-      if full_name.startswith("tf."):
-        # Call special handlers
-        function_handles = self._api_change_spec.function_handle
-        if full_name in function_handles:
-          function_handles[full_name](self._file_edit, node)
+    # Find a simple attribute name path e.g. "tf.foo.bar"
+    full_name = self._get_attribute_full_path(node.func)
 
-        # Check for renames
-        self._rename_functions(node, full_name)
+    if full_name and full_name.startswith("tf."):
+      # Call special handlers
+      function_handles = self._api_change_spec.function_handle
+      if full_name in function_handles:
+        function_handles[full_name](self._file_edit, node)
 
-        # Examine any non-keyword argument and make it into a keyword argument
-        # if reordering required.
-        function_reorders = self._api_change_spec.function_reorders
-        if full_name in function_reorders:
-          reordered = function_reorders[full_name]
-          for idx, arg in enumerate(node.args):
-            self._file_edit.add("Added keyword `%s` to reordered function `%s`"
-                                % (reordered[idx], full_name), arg.lineno,
-                                arg.col_offset, "", reordered[idx] + "=")
+      # Examine any non-keyword argument and make it into a keyword argument
+      # if reordering required.
+      function_reorders = self._api_change_spec.function_reorders
+      if full_name in function_reorders:
+        reordered = function_reorders[full_name]
+        for idx, arg in enumerate(node.args):
+          self._file_edit.add("Added keyword %r to reordered function %r"
+                              % (reordered[idx], full_name), arg.lineno,
+                              arg.col_offset, "", reordered[idx] + "=")
 
-        # Examine each keyword argument and convert it to the final renamed form
-        function_keyword_renames = (
-            self._api_change_spec.function_keyword_renames)
-        renamed_keywords = ({} if full_name not in function_keyword_renames else
-                            function_keyword_renames[full_name])
-        for keyword in node.keywords:
-          argkey = keyword.arg
-          argval = keyword.value
-          if argkey in renamed_keywords:
-            self._file_edit.add("Renamed keyword argument from `%s` to `%s`" %
-                                (argkey, renamed_keywords[argkey]),
-                                argval.lineno,
-                                argval.col_offset - len(argkey) - 1,
-                                argkey + "=", renamed_keywords[argkey] + "=")
+      # Examine each keyword argument and convert it to the final renamed form
+      function_keyword_renames = (
+          self._api_change_spec.function_keyword_renames)
+      renamed_keywords = ({} if full_name not in function_keyword_renames else
+                          function_keyword_renames[full_name])
+      for keyword in node.keywords:
+        argkey = keyword.arg
+        argval = keyword.value
+        if argkey in renamed_keywords:
+          self._file_edit.add("Renamed keyword argument from %r to %r" %
+                              (argkey, renamed_keywords[argkey]),
+                              argval.lineno,
+                              argval.col_offset - len(argkey) - 1,
+                              argkey + "=", renamed_keywords[argkey] + "=")
+
+  def visit_Attribute(self, node):  # pylint: disable=invalid-name
+    """Handle bare Attributes i.e. [tf.foo, tf.bar].
+
+    Args:
+      node: Node that is of type ast.Attribute
+    """
+    full_name = self._get_attribute_full_path(node)
+    if full_name and full_name.startswith("tf."):
+      self._rename_functions(node, full_name)
 
     ast.NodeVisitor.generic_visit(self, node)
 
@@ -387,11 +406,15 @@ class TensorFlowCodeUpgrader(object):
     Returns:
       A tuple representing number of files processed, log of actions, errors
     """
-    in_file = open(in_filename, "r")
-    out_file = open(out_filename, "w") if out_filename else None
 
-    return self.process_opened_file(
-        in_filename, in_file, out_filename, out_file)
+    # Write to a temporary file, just in case we are doing an implace modify.
+    with open(in_filename, "r") as in_file, \
+        tempfile.NamedTemporaryFile("w", delete=False) as temp_file:
+      ret = self.process_opened_file(
+          in_filename, in_file, out_filename, temp_file)
+
+    shutil.move(temp_file.name, out_filename)
+    return ret
 
   # Broad exceptions are required here because ast throws whatever it wants.
   # pylint: disable=broad-except
@@ -411,7 +434,7 @@ class TensorFlowCodeUpgrader(object):
     """
     process_errors = []
     text = "-" * 80 + "\n"
-    text += "Processing file %s\n outputting to %s\n" % (in_filename,
+    text += "Processing file %r\n outputting to %r\n" % (in_filename,
                                                          out_filename)
     text += "-" * 80 + "\n\n"
 
@@ -420,7 +443,7 @@ class TensorFlowCodeUpgrader(object):
     try:
       parsed_ast = ast.parse("".join(lines))
     except Exception:
-      text += "Failed to parse %s\n\n" % in_filename
+      text += "Failed to parse %r\n\n" % in_filename
       text += traceback.format_exc()
     if parsed_ast:
       visitor = TensorFlowCallVisitor(in_filename, lines)
@@ -448,7 +471,7 @@ class TensorFlowCodeUpgrader(object):
 
     # make sure output directory doesn't exist
     if output_root_directory and os.path.exists(output_root_directory):
-      print("Output directory '%s' must not already exist." % (
+      print("Output directory %r must not already exist." % (
           output_root_directory))
       sys.exit(1)
 
@@ -456,7 +479,7 @@ class TensorFlowCodeUpgrader(object):
     norm_root = os.path.split(os.path.normpath(root_directory))
     norm_output = os.path.split(os.path.normpath(output_root_directory))
     if norm_root == norm_output:
-      print("Output directory '%s' same as input directory '%s"'' % (
+      print("Output directory %r same as input directory %r" % (
           root_directory, output_root_directory))
       sys.exit(1)
 
@@ -475,7 +498,7 @@ class TensorFlowCodeUpgrader(object):
     tree_errors = []
     report = ""
     report += ("=" * 80) + "\n"
-    report += "Input tree: %s\n" % root_directory
+    report += "Input tree: %r\n" % root_directory
     report += ("=" * 80) + "\n"
 
     for input_path, output_path in files_to_process:
@@ -547,4 +570,4 @@ Simple usage:
     print("Detected %d errors that require attention" % len(errors))
     print("-" * 80)
     print("\n".join(errors))
-    print("\nMake sure to read the detailed log %s\n" % report_filename)
+    print("\nMake sure to read the detailed log %r\n" % report_filename)
