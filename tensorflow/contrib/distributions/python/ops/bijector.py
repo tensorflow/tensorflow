@@ -1378,8 +1378,7 @@ class _TriLPlusVDVTLightweightOperatorPD(object):
       id_shape = v_shape[:-2] + [v_shape[-1], v_shape[-1]]
     else:
       v_shape = array_ops.shape(v)
-      id_shape = array_ops.concat_v2(
-          [v_shape[:-2], [v_shape[-1], v_shape[-1]]], 0)
+      id_shape = array_ops.concat([v_shape[:-2], [v_shape[-1], v_shape[-1]]], 0)
     self._d = operator_pd_identity.OperatorPDIdentity(
         id_shape, v.dtype, verify_pd=self.validate_args)
     self._d_inv = self._d
@@ -1740,7 +1739,7 @@ class Affine(Bijector):
         return identity_multiplier
       # Infer the shape from the V and D.
       v_shape = array_ops.shape(perturb_factor)
-      identity_shape = array_ops.concat_v2((v_shape[:-1], (v_shape[-2],)), 0)
+      identity_shape = array_ops.concat((v_shape[:-1], (v_shape[-2],)), 0)
       scaled_identity = operator_pd_identity.OperatorPDIdentity(
           identity_shape,
           perturb_factor.dtype.base_dtype,
@@ -1796,9 +1795,10 @@ class Affine(Bijector):
         math_ops.equal(array_ops.rank(matrix), min_rank),
         math_ops.equal(event_ndims, 1))
     left = array_ops.where(self._rank_two_event_ndims_one, 1, 0)
-    pad = array_ops.concat_v2([
-        array_ops.ones([left], dtype=dtypes.int32),
-        array_ops.shape(matrix)], 0)
+    pad = array_ops.concat(
+        [array_ops.ones(
+            [left], dtype=dtypes.int32), array_ops.shape(matrix)],
+        0)
     return array_ops.reshape(matrix, pad)
 
   def _infer_batch_ndims(self):
@@ -2221,7 +2221,7 @@ class SoftmaxCentered(Bijector):
     ndims = (y.get_shape().ndims if y.get_shape().ndims is not None
              else array_ops.rank(y))
     y = array_ops.pad(y,
-                      paddings=array_ops.concat_v2(
+                      paddings=array_ops.concat(
                           (array_ops.zeros(
                               (ndims - 1, 2), dtype=dtypes.int32), [[0, 1]]),
                           0))
@@ -2265,14 +2265,12 @@ class SoftmaxCentered(Bijector):
                               depth=ndims,
                               on_value=shape[-1]-np.array(1, dtype=shape.dtype),
                               dtype=shape.dtype)
-    size = array_ops.concat_v2(
-        (shape[:-1], np.asarray(
-            [1], dtype=shape.dtype)), 0)
+    size = array_ops.concat((shape[:-1], np.asarray([1], dtype=shape.dtype)), 0)
     log_normalization = -array_ops.strided_slice(x, begin, begin + size)
 
     # Here we slice out all but the last coordinate; see above for idea.
     begin = array_ops.zeros_like(shape)
-    size = array_ops.concat_v2((shape[:-1], [shape[-1] - 1]), 0)
+    size = array_ops.concat((shape[:-1], [shape[-1] - 1]), 0)
     x = array_ops.strided_slice(x, begin, begin + size)
 
     x += log_normalization

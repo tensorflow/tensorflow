@@ -40,7 +40,7 @@ import java.util.List;
  * }
  * }</pre>
  *
- * <p><b>WARNING:</b>A {@code Session} ownes resources that <b>must</b> be explicitly freed by
+ * <p><b>WARNING:</b>A {@code Session} owns resources that <b>must</b> be explicitly freed by
  * invoking {@link #close()}.
  *
  * <p>Instances of a Session are thread-safe.

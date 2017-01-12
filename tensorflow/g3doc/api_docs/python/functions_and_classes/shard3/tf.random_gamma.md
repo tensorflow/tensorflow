@@ -60,6 +60,6 @@ Example:
 ##### Returns:
 
 
-*  <b>`samples`</b>: a `Tensor` of shape `tf.concat_v2(shape, tf.shape(alpha + beta))`
+*  <b>`samples`</b>: a `Tensor` of shape `tf.concat(shape, tf.shape(alpha + beta))`
     with values of type `dtype`.
 

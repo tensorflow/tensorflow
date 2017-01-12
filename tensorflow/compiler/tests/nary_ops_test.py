@@ -58,7 +58,7 @@ class NAryOpsTest(XLATestCase):
 
   def testConcat(self):
     self._testNAry(
-        lambda x: array_ops.concat_v2(x, 0), [
+        lambda x: array_ops.concat(x, 0), [
             np.array(
                 [[1, 2, 3], [4, 5, 6]], dtype=np.float32), np.array(
                     [[7, 8, 9], [10, 11, 12]], dtype=np.float32)
@@ -67,7 +67,7 @@ class NAryOpsTest(XLATestCase):
             [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]], dtype=np.float32))
 
     self._testNAry(
-        lambda x: array_ops.concat_v2(x, 1), [
+        lambda x: array_ops.concat(x, 1), [
             np.array(
                 [[1, 2, 3], [4, 5, 6]], dtype=np.float32), np.array(
                     [[7, 8, 9], [10, 11, 12]], dtype=np.float32)

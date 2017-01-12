@@ -176,7 +176,8 @@ def _fused_batch_norm(
       to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc. Lower
       `decay` value (recommend trying `decay`=0.9) if model experiences reasonably
       good training performance but poor validation and/or test performance.
-    center: If True, subtract `beta`. If False, `beta` is ignored.
+    center: If True, add offset of `beta` to normalized tensor. If False, `beta`
+      is ignored.
     scale: If True, multiply by `gamma`. If False, `gamma` is
       not used. When the next layer is linear (also e.g. `nn.relu`), this can be
       disabled since the scaling can be done by the next layer.
@@ -407,7 +408,8 @@ def batch_norm(
       Lower `decay` value (recommend trying `decay`=0.9) if model experiences
       reasonably good training performance but poor validation and/or test
       performance. Try zero_debias_moving_mean=True for improved stability.
-    center: If True, subtract `beta`. If False, `beta` is ignored.
+    center: If True, add offset of `beta` to normalized tensor. If False, `beta`
+      is ignored.
     scale: If True, multiply by `gamma`. If False, `gamma` is
       not used. When the next layer is linear (also e.g. `nn.relu`), this can be
       disabled since the scaling can be done by the next layer.
@@ -1216,8 +1218,8 @@ def _sparse_inner_flatten(inputs, new_rank):
   """Helper function for `inner_flatten`."""
   outer_dimensions = inputs.dense_shape[:new_rank - 1]
   inner_dimensions = inputs.dense_shape[new_rank - 1:]
-  new_shape = array_ops.concat_v2((outer_dimensions,
-                                   [math_ops.reduce_prod(inner_dimensions)]), 0)
+  new_shape = array_ops.concat((outer_dimensions,
+                                [math_ops.reduce_prod(inner_dimensions)]), 0)
   flattened = sparse_ops.sparse_reshape(inputs, new_shape)
   return flattened
 
@@ -1229,7 +1231,7 @@ def _dense_inner_flatten(inputs, new_rank):
   with ops.control_dependencies([rank_assertion]):
     outer_dimensions = array_ops.strided_slice(
         array_ops.shape(inputs), [0], [new_rank - 1])
-    new_shape = array_ops.concat_v2((outer_dimensions, [-1]), 0)
+    new_shape = array_ops.concat((outer_dimensions, [-1]), 0)
     reshaped = array_ops.reshape(inputs, new_shape)
 
   # if `new_rank` is an integer, try to calculate new shape.
@@ -1447,7 +1449,8 @@ def layer_norm(inputs,
   Args:
     inputs: a tensor with 2 or more dimensions. The normalization
             occurs over all but the first dimension.
-    center: If True, subtract `beta`. If False, `beta` is ignored.
+    center: If True, add offset of `beta` to normalized tensor. If False, `beta`
+      is ignored.
     scale: If True, multiply by `gamma`. If False, `gamma` is
       not used. When the next layer is linear (also e.g. `nn.relu`), this can be
       disabled since the scaling can be done by the next layer.
@@ -1996,7 +1999,7 @@ def unit_norm(inputs, dim, epsilon=1e-7, scope=None):
         array_ops.strided_slice(array_ops.shape(inputs), [dim], [dim + 1]))
     if dim < (input_rank - 1):
       multiples.append(array_ops.ones([input_rank - 1 - dim], dtypes.int32))
-    multiples = array_ops.concat_v2(multiples, 0)
+    multiples = array_ops.concat(multiples, 0)
     return math_ops.div(inputs, array_ops.tile(lengths, multiples))
 
 

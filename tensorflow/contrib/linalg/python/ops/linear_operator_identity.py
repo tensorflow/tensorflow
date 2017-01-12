@@ -227,7 +227,7 @@ class LinearOperatorIdentity(linear_operator.LinearOperator):
     if self._batch_shape_arg is None:
       return matrix_shape
 
-    return array_ops.concat_v2((self._batch_shape_arg, matrix_shape), 0)
+    return array_ops.concat((self._batch_shape_arg, matrix_shape), 0)
 
   def _assert_non_singular(self):
     return control_flow_ops.no_op("assert_non_singular")
@@ -267,8 +267,7 @@ class LinearOperatorIdentity(linear_operator.LinearOperator):
     # Dynamic broadcast:
     #   Always add to an array of zeros, rather than using a "cond", since a
     #   cond would require copying data from GPU --> CPU.
-    special_shape = array_ops.concat_v2(
-        (self.batch_shape_dynamic(), [1, 1]), 0)
+    special_shape = array_ops.concat((self.batch_shape_dynamic(), [1, 1]), 0)
     zeros = array_ops.zeros(shape=special_shape, dtype=self.dtype)
     return x + zeros
 

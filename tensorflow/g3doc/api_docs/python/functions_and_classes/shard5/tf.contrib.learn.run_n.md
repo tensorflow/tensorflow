@@ -1,6 +1,10 @@
-### `tf.contrib.learn.run_n(output_dict, feed_dict=None, restore_checkpoint_path=None, n=1)` {#run_n}
+### `tf.contrib.learn.run_n(*args, **kwargs)` {#run_n}
 
-Run `output_dict` tensors `n` times, with the same `feed_dict` each run.
+Run `output_dict` tensors `n` times, with the same `feed_dict` each run. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2017-02-15.
+Instructions for updating:
+graph_actions.py will be deleted. Use tf.train.* utilities instead. You can use learn/estimators/estimator.py as an example.
 
 ##### Args:
 

@@ -580,6 +580,9 @@ def moments(x, axes, shift=None, name=None, keep_dims=False):
   across `axes`.  If `x` is 1-D and `axes = [0]` this is just the mean
   and variance of a vector.
 
+  Note: for numerical stability, when shift=None, the true mean
+  would be computed and used as shift.
+
   When using these moments for batch normalization (see
   `tf.nn.batch_normalization`):
 
@@ -592,8 +595,9 @@ def moments(x, axes, shift=None, name=None, keep_dims=False):
     axes: Array of ints.  Axes along which to compute mean and
       variance.
     shift: A `Tensor` containing the value by which to shift the data for
-      numerical stability, or `None` if no shift is to be performed. A shift
-      close to the true mean provides the most numerically stable results.
+      numerical stability, or `None` in which case the true mean of the data is
+      used as shift. A shift close to the true mean provides the most
+      numerically stable results.
     name: Name used to scope the operations that compute the moments.
     keep_dims: produce moments with the same dimensionality as the input.
 
@@ -605,10 +609,17 @@ def moments(x, axes, shift=None, name=None, keep_dims=False):
     # sufficient statistics. As a workaround we simply perform the operations
     # on 32-bit floats before converting the mean and variance back to fp16
     y = math_ops.cast(x, dtypes.float32) if x.dtype == dtypes.float16 else x
-    shift = math_ops.cast(shift, dtypes.float32) if (
-        shift is not None and x.dtype == dtypes.float16) else shift
+    if shift is None:
+      # Compute true mean while keeping the dims for proper broadcasting.
+      shift = array_ops.stop_gradient(
+          math_ops.reduce_mean(y, axes, keep_dims=True))
+    else:
+      shift = math_ops.cast(shift, y.dtype)
     counts, m_ss, v_ss, shift = sufficient_statistics(
         y, axes, shift=shift, keep_dims=keep_dims, name=name)
+    # Reshape shift as needed.
+    shift = array_ops.reshape(shift, array_ops.shape(m_ss))
+    shift.set_shape(m_ss.get_shape())
     with ops.control_dependencies([counts, m_ss, v_ss]):
       mean, variance = normalize_moments(counts, m_ss, v_ss, shift, name=name)
       if x.dtype == dtypes.float16:
@@ -941,7 +952,7 @@ def _compute_sampled_logits(weights,
 
     # labels_flat is a [batch_size * num_true] tensor
     # sampled is a [num_sampled] int tensor
-    all_ids = array_ops.concat_v2([labels_flat, sampled], 0)
+    all_ids = array_ops.concat([labels_flat, sampled], 0)
 
     # weights shape is [num_classes, dim]
     all_w = embedding_ops.embedding_lookup(
@@ -957,14 +968,14 @@ def _compute_sampled_logits(weights,
     # true_w shape is [batch_size * num_true, dim]
     # row_wise_dots is [batch_size, num_true, dim]
     dim = array_ops.shape(true_w)[1:2]
-    new_true_w_shape = array_ops.concat_v2([[-1, num_true], dim], 0)
+    new_true_w_shape = array_ops.concat([[-1, num_true], dim], 0)
     row_wise_dots = math_ops.multiply(
         array_ops.expand_dims(inputs, 1),
         array_ops.reshape(true_w, new_true_w_shape))
     # We want the row-wise dot plus biases which yields a
     # [batch_size, num_true] tensor of true_logits.
     dots_as_matrix = array_ops.reshape(row_wise_dots,
-                                       array_ops.concat_v2([[-1], dim], 0))
+                                       array_ops.concat([[-1], dim], 0))
     true_logits = array_ops.reshape(_sum_rows(dots_as_matrix), [-1, num_true])
     true_b = array_ops.reshape(true_b, [-1, num_true])
     true_logits += true_b
@@ -992,10 +1003,10 @@ def _compute_sampled_logits(weights,
       acc_indices_2d = array_ops.reshape(acc_indices, [-1, 1])
       acc_ids_2d_int32 = array_ops.reshape(
           math_ops.cast(acc_ids, dtypes.int32), [-1, 1])
-      sparse_indices = array_ops.concat_v2([acc_indices_2d, acc_ids_2d_int32],
-                                           1, "sparse_indices")
+      sparse_indices = array_ops.concat([acc_indices_2d, acc_ids_2d_int32], 1,
+                                        "sparse_indices")
       # Create sampled_logits_shape = [batch_size, num_sampled]
-      sampled_logits_shape = array_ops.concat_v2(
+      sampled_logits_shape = array_ops.concat(
           [array_ops.shape(labels)[:1], array_ops.expand_dims(num_sampled, 0)],
           0)
       if sampled_logits.dtype != acc_weights.dtype:
@@ -1013,11 +1024,11 @@ def _compute_sampled_logits(weights,
       sampled_logits -= math_ops.log(sampled_expected_count)
 
     # Construct output logits and labels. The true labels/logits start at col 0.
-    out_logits = array_ops.concat_v2([true_logits, sampled_logits], 1)
+    out_logits = array_ops.concat([true_logits, sampled_logits], 1)
     # true_logits is a float tensor, ones_like(true_logits) is a float tensor
     # of ones. We then divide by num_true to ensure the per-example labels sum
     # to 1.0, i.e. form a proper probability distribution.
-    out_labels = array_ops.concat_v2([
+    out_labels = array_ops.concat([
         array_ops.ones_like(true_logits) / num_true,
         array_ops.zeros_like(sampled_logits)
     ], 1)

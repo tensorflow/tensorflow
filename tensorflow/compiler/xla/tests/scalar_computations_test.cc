@@ -608,6 +608,20 @@ TEST_F(ScalarComputationsTest, ComplicatedArithmeticExpressionS32) {
   ComputeAndCompareR0<int32>(&b, 10, {});
 }
 
+TEST_F(ScalarComputationsTest, SqrtF320) {
+  ComputationBuilder builder(client_, TestName());
+  Literal zero_literal = LiteralUtil::Zero(PrimitiveType::F32);
+
+  std::unique_ptr<GlobalData> zero_data =
+      client_->TransferToServer(zero_literal).ConsumeValueOrDie();
+
+  ComputationDataHandle zero =
+      builder.Parameter(0, zero_literal.shape(), "zero");
+  builder.SqrtF32(zero);
+
+  ComputeAndCompareR0<float>(&builder, 0.0f, {zero_data.get()}, error_spec_);
+}
+
 }  // namespace
 }  // namespace xla
 

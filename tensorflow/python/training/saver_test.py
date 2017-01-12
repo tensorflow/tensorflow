@@ -766,9 +766,9 @@ class SaveRestoreShardedTest(test.TestCase):
         if partitioner:
           return new_vs[0].as_tensor().eval()
         elif slices and slices[0] != 1:
-          return array_ops.concat_v2(new_vs, 0).eval()
+          return array_ops.concat(new_vs, 0).eval()
         elif slices and slices[1] != 1:
-          return array_ops.concat_v2(new_vs, 1).eval()
+          return array_ops.concat(new_vs, 1).eval()
         else:  # Non-sliced.
           return new_vs[0].eval()
 
@@ -1609,7 +1609,7 @@ class MetaGraphTest(test.TestCase):
       batch_size = array_ops.size(labels)
       labels = array_ops.expand_dims(labels, 1)
       indices = array_ops.expand_dims(math_ops.range(0, batch_size), 1)
-      concated = array_ops.concat_v2([indices, labels], 1)
+      concated = array_ops.concat([indices, labels], 1)
       onehot_labels = sparse_ops.sparse_to_dense(
           concated, array_ops.stack([batch_size, 10]), 1.0, 0.0)
       logits = ops_lib.get_collection("logits")[0]

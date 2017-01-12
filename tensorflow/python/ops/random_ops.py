@@ -420,7 +420,7 @@ def random_gamma(shape,
     name: Optional name for the operation.
 
   Returns:
-    samples: a `Tensor` of shape `tf.concat_v2(shape, tf.shape(alpha + beta))`
+    samples: a `Tensor` of shape `tf.concat(shape, tf.shape(alpha + beta))`
       with values of type `dtype`.
   """
   with ops.name_scope(name, "random_gamma", [shape, alpha, beta]):

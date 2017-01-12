@@ -71,10 +71,10 @@ class ConfusionMatrixTest(test.TestCase):
       pos = random_ops.random_normal(
           [20], mean=m_pos, stddev=s, dtype=dtypes.float32)
 
-      data = array_ops.concat_v2([neg, pos], 0)
+      data = array_ops.concat([neg, pos], 0)
       data = math_ops.cast(math_ops.round(data), tf_dtype)
       data = math_ops.minimum(math_ops.maximum(data, 0), 1)
-      lab = array_ops.concat_v2(
+      lab = array_ops.concat(
           [
               array_ops.zeros(
                   [20], dtype=tf_dtype), array_ops.ones(

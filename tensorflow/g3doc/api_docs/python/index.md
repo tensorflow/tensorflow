@@ -139,6 +139,7 @@
   * [`broadcast_dynamic_shape`](../../api_docs/python/array_ops.md#broadcast_dynamic_shape)
   * [`broadcast_static_shape`](../../api_docs/python/array_ops.md#broadcast_static_shape)
   * [`cast`](../../api_docs/python/array_ops.md#cast)
+  * [`concat`](../../api_docs/python/array_ops.md#concat)
   * [`concat_v2`](../../api_docs/python/array_ops.md#concat_v2)
   * [`depth_to_space`](../../api_docs/python/array_ops.md#depth_to_space)
   * [`dequantize`](../../api_docs/python/array_ops.md#dequantize)
@@ -156,7 +157,6 @@
   * [`gather_nd`](../../api_docs/python/array_ops.md#gather_nd)
   * [`meshgrid`](../../api_docs/python/array_ops.md#meshgrid)
   * [`one_hot`](../../api_docs/python/array_ops.md#one_hot)
-  * [`pack`](../../api_docs/python/array_ops.md#pack)
   * [`pad`](../../api_docs/python/array_ops.md#pad)
   * [`parallel_stack`](../../api_docs/python/array_ops.md#parallel_stack)
   * [`quantize_v2`](../../api_docs/python/array_ops.md#quantize_v2)
@@ -191,7 +191,6 @@
   * [`to_int64`](../../api_docs/python/array_ops.md#to_int64)
   * [`transpose`](../../api_docs/python/array_ops.md#transpose)
   * [`unique_with_counts`](../../api_docs/python/array_ops.md#unique_with_counts)
-  * [`unpack`](../../api_docs/python/array_ops.md#unpack)
   * [`unstack`](../../api_docs/python/array_ops.md#unstack)
 
 * **[Math](../../api_docs/python/math_ops.md)**:
@@ -364,13 +363,12 @@
   * [`scan`](../../api_docs/python/functional_ops.md#scan)
 
 * **[TensorArray Operations](../../api_docs/python/tensor_array_ops.md)**:
+  * [`concat`](../../api_docs/python/tensor_array_ops.md#concat)
   * [`gather`](../../api_docs/python/tensor_array_ops.md#gather)
   * [`identity`](../../api_docs/python/tensor_array_ops.md#identity)
-  * [`pack`](../../api_docs/python/tensor_array_ops.md#pack)
   * [`split`](../../api_docs/python/tensor_array_ops.md#split)
   * [`stack`](../../api_docs/python/tensor_array_ops.md#stack)
   * [`TensorArray`](../../api_docs/python/tensor_array_ops.md#TensorArray)
-  * [`unpack`](../../api_docs/python/tensor_array_ops.md#unpack)
   * [`unstack`](../../api_docs/python/tensor_array_ops.md#unstack)
 
 * **[Tensor Handle Operations](../../api_docs/python/session_ops.md)**:
