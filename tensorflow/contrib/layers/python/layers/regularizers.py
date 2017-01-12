@@ -104,7 +104,7 @@ def l2_regularizer(scale, scope=None):
       my_scale = ops.convert_to_tensor(scale,
                                        dtype=weights.dtype.base_dtype,
                                        name='scale')
-      return standard_ops.mul(my_scale, nn.l2_loss(weights), name=name)
+      return standard_ops.multiply(my_scale, nn.l2_loss(weights), name=name)
 
   return l2
 
