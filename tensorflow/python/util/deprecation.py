@@ -57,14 +57,20 @@ def _validate_deprecation_args(date, instructions):
     raise ValueError('Don\'t deprecate things without conversion instructions!')
 
 
-def _call_location(level=2):
+def _call_location():
   """Returns call location given level up from current call."""
-  stack = inspect.stack()
-  # Check that stack has enough elements.
-  if len(stack) > level:
-    location = stack[level]
-    return '%s:%d in %s.' % (location[1], location[2], location[3])
-  return '<unknown>'
+  frame = inspect.currentframe()
+  if frame:
+    # CPython internals are available, use them for performance.
+    # walk back two frames to get to deprecated function caller.
+    frame = frame.f_back
+    frame = frame.f_back
+    return '%s:%d' % (frame.f_code.co_filename, frame.f_lineno)
+  else:
+    # Slow fallback path
+    stack = inspect.stack(0)  # 0 avoids generating unused context
+    entry = stack[2]
+    return '%s:%d' % (entry[1], entry[2])
 
 
 def deprecated(date, instructions):
@@ -218,6 +224,33 @@ def deprecated_args(date, instructions, *deprecated_arg_names_or_tuples):
                        'in the function signature: %s. '
                        'Found next arguments: %s.' % (missing_args, known_args))
 
+    def _same_value(a, b):
+      """A comparison operation that works for multiple object types.
+
+      Returns True for two empty lists, two numeric values with the
+      same value, etc.
+
+      Returns False for (pd.DataFrame, None), and other pairs which
+      should not be considered equivalent.
+
+      Args:
+        a: value one of the comparison.
+        b: value two of the comparison.
+
+      Returns:
+        A boolean indicating whether the two inputs are the same value
+        for the purposes of deprecation.
+      """
+      if a is b:
+        return True
+      try:
+        equality = a == b
+        if isinstance(equality, bool):
+          return equality
+      except TypeError:
+        return False
+      return False
+
     @functools.wraps(func)
     def new_func(*args, **kwargs):
       """Deprecation wrapper."""
@@ -226,7 +259,7 @@ def deprecated_args(date, instructions, *deprecated_arg_names_or_tuples):
       for arg_name, spec in iter(deprecated_positions.items()):
         if (spec.position < len(args) and
             not (spec.has_ok_value and
-                 named_args[arg_name] == spec.ok_value)):
+                 _same_value(named_args[arg_name], spec.ok_value))):
           invalid_args.append(arg_name)
       if is_varargs_deprecated and len(args) > len(arg_spec.args):
         invalid_args.append(arg_spec.varargs)
@@ -235,8 +268,8 @@ def deprecated_args(date, instructions, *deprecated_arg_names_or_tuples):
       for arg_name in deprecated_arg_names:
         if (arg_name in kwargs and
             not (deprecated_positions[arg_name].has_ok_value and
-                 (named_args[arg_name] ==
-                  deprecated_positions[arg_name].ok_value))):
+                 _same_value(named_args[arg_name],
+                             deprecated_positions[arg_name].ok_value))):
           invalid_args.append(arg_name)
       for arg_name in invalid_args:
         logging.warning(

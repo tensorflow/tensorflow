@@ -34,6 +34,7 @@ toolchain {
   # Use "-std=c++11" for nvcc. For consistency, force both the host compiler
   # and the device compiler to use "-std=c++11".
   cxx_flag: "-std=c++11"
+  linker_flag: "-Wl,-no-as-needed"
   linker_flag: "-lstdc++"
   linker_flag: "-B/usr/bin/"
 
@@ -100,4 +101,3 @@ toolchain {
     compiler_flag: "-DNDEBUG"
   }
 }
-

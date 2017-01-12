@@ -31,7 +31,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import os
+import sys
+
 import tensorflow as tf
 
 from tensorflow.core.protobuf import meta_graph_pb2
@@ -42,13 +45,7 @@ from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.util import compat
 
-tf.app.flags.DEFINE_string("output_dir", "/tmp/saved_model_half_plus_two",
-                           "Directory where to ouput SavedModel.")
-tf.app.flags.DEFINE_string("output_dir_pbtxt",
-                           "/tmp/saved_model_half_plus_two_pbtxt",
-                           "Directory where to ouput the text format of "
-                           "SavedModel.")
-FLAGS = tf.flags.FLAGS
+FLAGS = None
 
 
 def _write_assets(assets_directory, assets_filename):
@@ -96,10 +93,10 @@ def _generate_saved_model_for_half_plus_two(export_dir, as_text=False):
     tf_example = tf.parse_example(serialized_tf_example, feature_configs)
     # Use tf.identity() to assign name
     x = tf.identity(tf_example["x"], name="x")
-    y = tf.add(tf.mul(a, x), b, name="y")
+    y = tf.add(tf.multiply(a, x), b, name="y")
 
     x2 = tf.placeholder(tf.float32, name="x2")
-    tf.add(tf.mul(a, x2), c, name="y2")
+    tf.add(tf.multiply(a, x2), c, name="y2")
 
     # Create an assets file that can be saved and restored as part of the
     # SavedModel.
@@ -172,4 +169,16 @@ def main(_):
 
 
 if __name__ == "__main__":
-  tf.app.run()
+  parser = argparse.ArgumentParser()
+  parser.add_argument(
+      "--output_dir",
+      type=str,
+      default="/tmp/saved_model_half_plus_two",
+      help="Directory where to ouput SavedModel.")
+  parser.add_argument(
+      "--output_dir_pbtxt",
+      type=str,
+      default="/tmp/saved_model_half_plus_two_pbtxt",
+      help="Directory where to ouput the text format of SavedModel.")
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

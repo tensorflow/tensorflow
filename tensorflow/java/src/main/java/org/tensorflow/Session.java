@@ -40,7 +40,7 @@ import java.util.List;
  * }
  * }</pre>
  *
- * <p><b>WARNING:</b>A {@code Session} ownes resources that <b>must</b> be explicitly freed by
+ * <p><b>WARNING:</b>A {@code Session} owns resources that <b>must</b> be explicitly freed by
  * invoking {@link #close()}.
  *
  * <p>Instances of a Session are thread-safe.
@@ -225,7 +225,7 @@ public final class Session implements AutoCloseable {
       public Reference() {
         synchronized (nativeHandleLock) {
           if (nativeHandle == 0) {
-            throw new IllegalStateException("run() called after the Session was close()d");
+            throw new IllegalStateException("run() cannot be called on the Session after close()");
           }
           ++numActiveRuns;
         }

@@ -83,7 +83,7 @@ def _get_tensor_repr(t,
     tensor_list.append(t)
   elif isinstance(t, tensor_array_ops.TensorArray):
     tensor_list.append(constant_op.constant("Value:"))
-    tensor_list.append(t.pack())
+    tensor_list.append(t.stack())
 
   return tensor_list
 
@@ -161,7 +161,8 @@ def print_op(input_,
 
     with ops.control_dependencies([p]):
       input_ = tensor_array_ops.TensorArray(dtype=input_.dtype,
-                                            handle=input_.handle)
+                                            handle=input_.handle,
+                                            flow=input_.flow)
   else:
     raise ValueError("input_ must be of type "
                      "Tensor, SparseTensor or TensorArray")

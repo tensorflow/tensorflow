@@ -32,6 +32,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn
 from tensorflow.python.training import momentum as momentum_opt
+from tensorflow.python.util import nest
 
 
 class ProblemType(object):
@@ -46,10 +47,9 @@ class PredictionType(object):
 
 class RNNKeys(object):
   SEQUENCE_LENGTH_KEY = 'sequence_length'
-  INITIAL_STATE_KEY = 'initial_state'
+  STATE_PREFIX = 'rnn_cell_state'
   PREDICTIONS_KEY = 'predictions'
   PROBABILITIES_KEY = 'probabilities'
-  FINAL_STATE_KEY = 'final_state'
 
 _CELL_TYPES = {'basic_rnn': contrib_rnn.BasicRNNCell,
                'lstm': contrib_rnn.LSTMCell,
@@ -121,6 +121,78 @@ def select_last_activations(activations, sequence_lengths):
     return last_activations
 
 
+def _get_state_name(i):
+  """Constructs the name string for state component `i`."""
+  return '{}_{}'.format(RNNKeys.STATE_PREFIX, i)
+
+
+def state_tuple_to_dict(state):
+  """Returns a dict containing flattened `state`.
+
+  Args:
+    state: A `Tensor` or a nested tuple of `Tensors`. All of the `Tensor`s must
+    have the same rank and agree on all dimensions except the last.
+
+  Returns:
+    A dict containing the `Tensor`s that make up `state`. The keys of the dict
+    are of the form "STATE_PREFIX_i" where `i` is the place of this `Tensor`
+    in a depth-first traversal of `state`.
+  """
+  with ops.name_scope('state_tuple_to_dict'):
+    flat_state = nest.flatten(state)
+    state_dict = {}
+    for i, state_component in enumerate(flat_state):
+      state_name = _get_state_name(i)
+      state_value = (None if state_component is None
+                     else array_ops.identity(state_component, name=state_name))
+      state_dict[state_name] = state_value
+  return state_dict
+
+
+def dict_to_state_tuple(input_dict, cell):
+  """Reconstructs nested `state` from a dict containing state `Tensor`s.
+
+  Args:
+    input_dict: A dict of `Tensor`s.
+    cell: An instance of `RNNCell`.
+  Returns:
+    If `input_dict` does not contain keys 'STATE_PREFIX_i' for `0 <= i < n`
+    where `n` is the number of nested entries in `cell.state_size`, this
+    function returns `None`. Otherwise, returns a `Tensor` if `cell.state_size`
+    is an `int` or a nested tuple of `Tensor`s if `cell.state_size` is a nested
+    tuple.
+  Raises:
+    ValueError: State is partially specified. The `input_dict` must contain
+      values for all state components or none at all.
+  """
+  flat_state_sizes = nest.flatten(cell.state_size)
+  state_tensors = []
+  with ops.name_scope('dict_to_state_tuple'):
+    for i, state_size in enumerate(flat_state_sizes):
+      state_name = _get_state_name(i)
+      state_tensor = input_dict.get(state_name)
+      if state_tensor is not None:
+        rank_check = check_ops.assert_rank(
+            state_tensor, 2, name='check_state_{}_rank'.format(i))
+        shape_check = check_ops.assert_equal(
+            array_ops.shape(state_tensor)[1],
+            state_size,
+            name='check_state_{}_shape'.format(i))
+        with ops.control_dependencies([rank_check, shape_check]):
+          state_tensor = array_ops.identity(state_tensor, name=state_name)
+        state_tensors.append(state_tensor)
+    if not state_tensors:
+      return None
+    elif len(state_tensors) == len(flat_state_sizes):
+      dummy_state = cell.zero_state(batch_size=1, dtype=dtypes.bool)
+      return nest.pack_sequence_as(dummy_state, state_tensors)
+    else:
+      raise ValueError(
+          'RNN state was partially specified.'
+          'Expected zero or {} state Tensors; got {}'.
+          format(len(flat_state_sizes), len(state_tensors)))
+
+
 def _concatenate_context_input(sequence_input, context_input):
   """Replicates `context_input` accross all timesteps of `sequence_input`.
 
@@ -166,8 +238,8 @@ def _concatenate_context_input(sequence_input, context_input):
     padded_length = array_ops.shape(sequence_input)[1]
     tiled_context_input = array_ops.tile(
         array_ops.expand_dims(context_input, 1),
-        array_ops.concat_v2([[1], [padded_length], [1]], 0))
-  return array_ops.concat_v2([sequence_input, tiled_context_input], 2)
+        array_ops.concat([[1], [padded_length], [1]], 0))
+  return array_ops.concat([sequence_input, tiled_context_input], 2)
 
 
 def build_sequence_input(features,
@@ -235,7 +307,8 @@ def construct_rnn(initial_state,
   Returns:
     activations: The output of the RNN, projected to `num_label_columns`
       dimensions.
-    final_state: The final state output by the RNN.
+    final_state: A `Tensor` or nested tuple of `Tensor`s representing the final
+      state output by the RNN.
   """
   with ops.name_scope('RNN'):
     rnn_outputs, final_state = rnn.dynamic_rnn(
@@ -251,9 +324,6 @@ def construct_rnn(initial_state,
         num_outputs=num_label_columns,
         activation_fn=None,
         trainable=True)
-    # Use `identitiy` to rename `final_state`.
-    final_state = array_ops.identity(
-        final_state, name=RNNKeys.FINAL_STATE_KEY)
     return activations, final_state
 
 
@@ -332,7 +402,7 @@ def _multi_value_predictions(
           flattened_activations, proba=True)
       flat_predictions = math_ops.argmax(flat_probabilities, 1)
       if target_column.num_label_columns == 1:
-        probability_shape = array_ops.concat_v2([activations_shape[:2], [2]], 0)
+        probability_shape = array_ops.concat([activations_shape[:2], [2]], 0)
       else:
         probability_shape = activations_shape
       probabilities = array_ops.reshape(
@@ -472,7 +542,6 @@ def _get_dynamic_rnn_model_fn(cell,
                               input_keep_probability=None,
                               output_keep_probability=None,
                               sequence_length_key=RNNKeys.SEQUENCE_LENGTH_KEY,
-                              initial_state_key=RNNKeys.INITIAL_STATE_KEY,
                               dtype=dtypes.float32,
                               parallel_iterations=None,
                               swap_memory=True,
@@ -505,8 +574,6 @@ def _get_dynamic_rnn_model_fn(cell,
     output_keep_probability: Probability to keep outputs of `cell`. If `None`,
       no dropout is applied.
     sequence_length_key: The key that will be used to look up sequence length in
-      the `features` dict.
-    initial_state_key: The key that will be used to look up initial_state in
       the `features` dict.
     dtype: The dtype of the state and output of the given `cell`.
     parallel_iterations: Number of iterations to run in parallel. Values >> 1
@@ -548,7 +615,7 @@ def _get_dynamic_rnn_model_fn(cell,
   def _dynamic_rnn_model_fn(features, labels, mode):
     """The model to be passed to an `Estimator`."""
     with ops.name_scope(name):
-      initial_state = features.get(initial_state_key)
+      initial_state = dict_to_state_tuple(features, cell)
       sequence_length = features.get(sequence_length_key)
       sequence_input = build_sequence_input(features,
                                             sequence_feature_columns,
@@ -581,7 +648,8 @@ def _get_dynamic_rnn_model_fn(cell,
         if mode != model_fn.ModeKeys.INFER:
           loss = _single_value_loss(
               rnn_activations, labels, sequence_length, target_column, features)
-      prediction_dict[RNNKeys.FINAL_STATE_KEY] = final_state
+      state_dict = state_tuple_to_dict(final_state)
+      prediction_dict.update(state_dict)
 
       eval_metric_ops = None
       if mode != model_fn.ModeKeys.INFER:
@@ -655,6 +723,30 @@ def multi_value_rnn_regressor(num_units,
                               config=None,
                               feature_engineering_fn=None):
   """Creates a RNN `Estimator` that predicts sequences of values.
+
+  The input function passed to this `Estimator` optionally contains keys
+  `RNNKeys.SEQUENCE_LENGTH_KEY`. The value corresponding to
+  `RNNKeys.SEQUENCE_LENGTH_KEY` must be vector of size `batch_size` where entry
+  `n` corresponds to the length of the `n`th sequence in the batch. The sequence
+  length feature is required for batches of varying sizes. It will be used to
+  calculate loss and evaluation metrics. If `RNNKeys.SEQUENCE_LENGTH_KEY` is not
+  included, all sequences are assumed to have length equal to the size of
+  dimension 1 of the input to the RNN.
+
+  In order to specify an initial state, the input function must include keys
+  `STATE_PREFIX_i` for all `0 <= i < n` where `n` is the number of nested
+  elements in `cell.state_size`. The input function must contain values for all
+  state components or none of them. If none are included, then the default
+  (zero) state is used as an initial state. See the documentation for
+  `dict_to_state_tuple` and `state_tuple_to_dict` for further details.
+
+  The `predict()` method of the `Estimator` returns a dictionary with keys
+  `RNNKeys.PREDICTIONS_KEY` and `STATE_PREFIX_i` for `0 <= i < n` where `n` is
+  the number of nested elements in `cell.state_size`. The value keyed by
+  `RNNKeys.PREDICTIONS_KEY` has shape `[batch_size, padded_length]`.  Here,
+  `padded_length` is the largest value in the `RNNKeys.SEQUENCE_LENGTH` `Tensor`
+  passed as input. Entry `[i, j]` is the prediction associated with sequence `i`
+  and time step `j`.
 
   Args:
     num_units: The size of the RNN cells. This argument has no effect
@@ -734,6 +826,36 @@ def multi_value_rnn_classifier(num_classes,
                                config=None,
                                feature_engineering_fn=None):
   """Creates a RNN `Estimator` that predicts sequences of labels.
+
+    The input function passed to this `Estimator` optionally contains keys
+  `RNNKeys.SEQUENCE_LENGTH_KEY`. The value corresponding to
+  `RNNKeys.SEQUENCE_LENGTH_KEY` must be vector of size `batch_size` where entry
+  `n` corresponds to the length of the `n`th sequence in the batch. The sequence
+  length feature is required for batches of varying sizes. It will be used to
+  calculate loss and evaluation metrics. If `RNNKeys.SEQUENCE_LENGTH_KEY` is not
+  included, all sequences are assumed to have length equal to the size of
+  dimension 1 of the input to the RNN.
+
+  In order to specify an initial state, the input function must include keys
+  `STATE_PREFIX_i` for all `0 <= i < n` where `n` is the number of nested
+  elements in `cell.state_size`. The input function must contain values for all
+  state components or none of them. If none are included, then the default
+  (zero) state is used as an initial state. See the documentation for
+  `dict_to_state_tuple` and `state_tuple_to_dict` for further details.
+
+  The `predict()` method of the `Estimator` returns a dictionary with keys
+  `RNNKeys.PREDICTIONS_KEY` and `STATE_PREFIX_i` for `0 <= i < n` where `n` is
+  the number of nested elements in `cell.state_size`. The value keyed by
+  `RNNKeys.PREDICTIONS_KEY` has shape `[batch_size, padded_length]`.  Here,
+  `padded_length` is the largest value in the `RNNKeys.SEQUENCE_LENGTH` `Tensor`
+  passed as input. Entry `[i, j]` is the prediction associated with sequence `i`
+  and time step `j`.
+
+  If `predict_probabilities` is set to true, the `dict` returned by `predict()`
+  contains an additional key `RNNKeys.PROBABILITIES_KEY`. The associated array
+  has shape `[batch_size, padded_length, num_classes]` where entry `[i, j, k]`
+  is the probability assigned to class `k` at time step `j` in sequence `i` of
+  the batch.
 
   Args:
     num_classes: The number of classes for categorization.
@@ -816,6 +938,30 @@ def single_value_rnn_regressor(num_units,
                                feature_engineering_fn=None):
   """Create a RNN `Estimator` that predicts single values.
 
+  The input function passed to this `Estimator` optionally contains keys
+  `RNNKeys.SEQUENCE_LENGTH_KEY`. The value corresponding to
+  `RNNKeys.SEQUENCE_LENGTH_KEY` must be vector of size `batch_size` where entry
+  `n` corresponds to the length of the `n`th sequence in the batch. The sequence
+  length feature is required for batches of varying sizes. It will be used to
+  calculate loss and evaluation metrics. If `RNNKeys.SEQUENCE_LENGTH_KEY` is not
+  included, all sequences are assumed to have length equal to the size of
+  dimension 1 of the input to the RNN.
+
+  In order to specify an initial state, the input function must include keys
+  `STATE_PREFIX_i` for all `0 <= i < n` where `n` is the number of nested
+  elements in `cell.state_size`. The input function must contain values for all
+  state components or none of them. If none are included, then the default
+  (zero) state is used as an initial state. See the documentation for
+  `dict_to_state_tuple` and `state_tuple_to_dict` for further details.
+
+  The `predict()` method of the `Estimator` returns a dictionary with keys
+  `RNNKeys.PREDICTIONS_KEY` and `STATE_PREFIX_i` for `0 <= i < n` where `n` is
+  the number of nested elements in `cell.state_size`. The value keyed by
+  `RNNKeys.PREDICTIONS_KEY` has shape `[batch_size, padded_length]`.  Here,
+  `padded_length` is the largest value in the `RNNKeys.SEQUENCE_LENGTH` `Tensor`
+  passed as input. Entry `[i, j]` is the prediction associated with sequence `i`
+  and time step `j`.
+
   Args:
     num_units: The size of the RNN cells. This argument has no effect
       if `cell_type` is an instance of `RNNCell`.
@@ -826,7 +972,7 @@ def single_value_rnn_regressor(num_units,
       describing context features, i.e., features that apply accross all time
       steps. All items in the set should be instances of classes derived from
       `FeatureColumn`.
-    cell_type: A subclass of `RNNCell`, an instance of an `RNNCell or one of
+    cell_type: A subclass of `RNNCell`, an instance of an `RNNCell` or one of
       'basic_rnn,' 'lstm' or 'gru'.
     num_rnn_layers: Number of RNN layers. Leave this at its default value 1
       if passing a `cell_type` that is already a MultiRNNCell.
@@ -894,6 +1040,33 @@ def single_value_rnn_classifier(num_classes,
                                 config=None,
                                 feature_engineering_fn=None):
   """Creates a RNN `Estimator` that predicts single labels.
+
+  The input function passed to this `Estimator` optionally contains keys
+  `RNNKeys.SEQUENCE_LENGTH_KEY`. The value corresponding to
+  `RNNKeys.SEQUENCE_LENGTH_KEY` must be vector of size `batch_size` where entry
+  `n` corresponds to the length of the `n`th sequence in the batch. The sequence
+  length feature is required for batches of varying sizes. It will be used to
+  calculate loss and evaluation metrics.
+
+  In order to specify an initial state, the input function must include keys
+  `STATE_PREFIX_i` for all `0 <= i < n` where `n` is the number of nested
+  elements in `cell.state_size`. The input function must contain values for all
+  state components or none of them. If none are included, then the default
+  (zero) state is used as an initial state. See the documentation for
+  `dict_to_state_tuple` and `state_tuple_to_dict` for further details.
+
+  The `predict()` method of the `Estimator` returns a dictionary with keys
+  `RNNKeys.PREDICTIONS_KEY` and `STATE_PREFIX_i` for `0 <= i < n` where `n` is
+  the number of nested elements in `cell.state_size`. The value keyed by
+  `RNNKeys.PREDICTIONS_KEY` has shape `[batch_size, padded_length]`.  Here,
+  `padded_length` is the largest value in the `RNNKeys.SEQUENCE_LENGTH` `Tensor`
+  passed as input. Entry `[i, j]` is the prediction associated with sequence `i`
+  and time step `j`.
+
+  If `predict_probabilities` is set to true, the `dict` returned by `predict()`
+  contains an additional key `RNNKeys.PROBABILITIES_KEY`. The associated array
+  has shape `[batch_size, num_classes]` where entry `[i, j]`
+  is the probability assigned to class `k` in sequence `i` of the batch.
 
   Args:
     num_classes: The number of classes for categorization.

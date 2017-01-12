@@ -361,12 +361,13 @@ we do not alter the current name scope for ops.
 
 ## Examples of Use
 
-Here are pointers to a few files that make use of variable scope.
-In particular, it is heavily used for recurrent neural networks
-and sequence-to-sequence models.
+Here are pointers to a few files that make use of variable scope. They can all
+be found in the [TensorFlow models repo](https://github.com/tensorflow/models).
+In particular, variable scope is heavily used for recurrent neural networks and
+sequence-to-sequence models.
 
 File | What's in it?
 --- | ---
-`models/image/cifar10.py` | Model for detecting objects in images.
-`models/rnn/rnn_cell.py` | Cell functions for recurrent neural networks.
-`models/rnn/seq2seq.py` | Functions for building sequence-to-sequence models.
+`models/tutorials/image/cifar10.py` | Model for detecting objects in images.
+`models/tutorials/rnn/rnn_cell.py` | Cell functions for recurrent neural networks.
+`models/tutorials/rnn/seq2seq.py` | Functions for building sequence-to-sequence models.

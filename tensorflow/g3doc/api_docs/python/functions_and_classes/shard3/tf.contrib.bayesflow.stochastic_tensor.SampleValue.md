@@ -10,7 +10,7 @@ mu = tf.zeros((2,3))
 sigma = tf.ones((2, 3))
 with sg.value_type(sg.SampleValue()):
   st = sg.StochasticTensor(
-    distributions.Normal, mu=mu, sigma=sigma)
+    tf.contrib.distributions.Normal, mu=mu, sigma=sigma)
 # draws 1 sample and does not reshape
 assertEqual(st.value().get_shape(), (2, 3))
 ```
@@ -20,7 +20,7 @@ mu = tf.zeros((2,3))
 sigma = tf.ones((2, 3))
 with sg.value_type(sg.SampleValue(4)):
   st = sg.StochasticTensor(
-    distributions.Normal, mu=mu, sigma=sigma)
+    tf.contrib.distributions.Normal, mu=mu, sigma=sigma)
 # draws 4 samples each with shape (2, 3) and concatenates
 assertEqual(st.value().get_shape(), (4, 2, 3))
 ```

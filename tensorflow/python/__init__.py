@@ -22,7 +22,6 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
-
 """
 
 import ctypes
@@ -30,6 +29,19 @@ import importlib
 import inspect
 import sys
 import traceback
+
+
+# TODO(drpng): write up instructions for editing this file in a doc and point to
+# the doc instead.
+# If you want to edit this file to expose modules in public tensorflow API, you
+# need to follow these steps:
+# 1. Consult with tensorflow team and get approval for adding a new API to the
+#    public interface.
+# 2. Document the module in the gen_docs_combined.py.
+# 3. Import the module in the main tensorflow namespace by adding an import
+#    statement in this file.
+# 4. Sanitize the entry point by making sure that your module does not expose
+#    transitively imported modules used for implementation, such as os, sys.
 
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import,g-bad-import-order,g-import-not-at-top
@@ -53,10 +65,10 @@ try:
     # use `dlopen()` for dynamic loading.
     from tensorflow.python import pywrap_tensorflow
 except ImportError:
-  msg = """%s\n\nError importing tensorflow.  Unless you are using bazel,
-you should not try to import tensorflow from its source directory;
-please exit the tensorflow source tree, and relaunch your python interpreter
-from there.""" % traceback.format_exc()
+  msg = """%s\n\nFailed to load the native TensorFlow runtime.\n
+See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/g3doc/get_started/os_setup.md#import_error\n
+for some common reasons and solutions.  Include the entire stack trace
+above this error message when asking for help.""" % traceback.format_exc()
   raise ImportError(msg)
 
 # Protocol buffers
@@ -87,7 +99,7 @@ from tensorflow.python.ops import metrics
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import sdca_ops as sdca
 from tensorflow.python.ops import image_ops as image
-from tensorflow.python.ops import losses
+from tensorflow.python.ops.losses import losses
 from tensorflow.python.ops import sets
 from tensorflow.python.user_ops import user_ops
 from tensorflow.python.util import compat
@@ -165,6 +177,7 @@ _allowed_symbols.extend([
     'neg',  # use tf.negative instead.
     'sub',  # use tf.subtract instead.
     'create_partitioned_variables',
+    'concat_v2',  # use tf.concat instead
     'deserialize_many_sparse',
     'lin_space',
     'list_diff',  # Use tf.listdiff instead.
@@ -177,7 +190,6 @@ _allowed_symbols.extend([
 
 # This is needed temporarily because we import it explicitly.
 _allowed_symbols.extend([
-    'platform',  ## This is included by the tf.learn main template.
     'pywrap_tensorflow',
 ])
 

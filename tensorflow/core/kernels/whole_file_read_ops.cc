@@ -96,6 +96,8 @@ class WholeFileReaderOp : public ReaderOpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("WholeFileReader").Device(DEVICE_CPU),
                         WholeFileReaderOp);
+REGISTER_KERNEL_BUILDER(Name("WholeFileReaderV2").Device(DEVICE_CPU),
+                        WholeFileReaderOp);
 
 class ReadFileOp : public OpKernel {
  public:

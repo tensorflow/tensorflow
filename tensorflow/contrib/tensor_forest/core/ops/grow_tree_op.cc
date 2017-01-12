@@ -42,56 +42,6 @@ using tensorforest::LEAF_NODE;
 
 using tensorforest::CheckTensorBounds;
 
-REGISTER_OP("GrowTree")
-    .Input("end_of_tree: int32")
-    .Input("node_to_accumulator: int32")
-    .Input("finished_nodes: int32")
-    .Input("best_splits: int32")
-    .Input("candidate_split_features: int32")
-    .Input("candidate_split_thresholds: float")
-    .Output("nodes_to_update: int32")
-    .Output("tree_updates: int32")
-    .Output("threshold_updates: float")
-    .Output("new_end_of_tree: int32")
-    .SetShapeFn([](InferenceContext* c) {
-      c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
-      c->set_output(1, c->Matrix(InferenceContext::kUnknownDim, 2));
-      c->set_output(2, c->Vector(InferenceContext::kUnknownDim));
-      c->set_output(3, c->Vector(1));
-      return Status::OK();
-    })
-    .Doc(R"doc(
-  Output the tree changes needed to resolve fertile nodes.
-
-  Previous Ops have already decided which fertile nodes want to stop being
-  fertile and what their best candidate split should be and have passed that
-  information to this Op in `finished_nodes` and `best_splits`.  This Op
-  merely checks that there is still space in tree to add new nodes, and if
-  so, writes out the sparse updates needed for the fertile nodes to be
-  resolved to the tree and threshold tensors.
-
-  end_of_tree: `end_of_tree[0]` is the number of allocated nodes, or
-    equivalently the index of the first free node in the tree tensor.
-  node_to_accumulator: `node_to_accumulator[i]` is the accumulator slot used by
-    fertile node i, or -1 if node i isn't fertile.
-  finished_nodes:= A 1-d int32 tensor containing the indices of finished nodes.
-  best_splits: `best_splits[i]` is the index of the best split for
-    `finished_nodes[i]`.
-  candidate_split_features: `candidate_split_features[a][s]` is the feature
-    being considered for split s of the fertile node associated with
-    accumulator slot a.
-  candidate_split_thresholds: `candidate_split_thresholds[a][s]` is the
-    threshold value being considered for split s of the fertile node associated
-    with accumulator slot a.
-  nodes_to_update:= A 1-d int32 tensor containing the node indices that need
-    updating.
-  tree_updates: The updates to apply to the 2-d tree tensor.  Intended to be
-    used with `tf.scatter_update(tree, nodes_to_update, tree_updates)`.
-  threshold_updates: The updates to apply to the 1-d thresholds tensor.
-    Intended to be used with
-    `tf.scatter_update(thresholds, nodes_to_update, threshold_updates)`.
-  new_end_of_tree: `new_end_of_tree[0]` is the new size of the tree.
-)doc");
 
 class GrowTree : public OpKernel {
  public:

@@ -26,6 +26,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/graph_mgr.h"
+#include "tensorflow/core/distributed_runtime/local_master.h"
+#include "tensorflow/core/distributed_runtime/master.h"
 #include "tensorflow/core/distributed_runtime/master_env.h"
 #include "tensorflow/core/distributed_runtime/master_session.h"
 #include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
@@ -47,8 +49,8 @@ GrpcServer::GrpcServer(const ServerDef& server_def, Env* env)
     : server_def_(server_def), env_(env), state_(NEW) {}
 
 GrpcServer::~GrpcServer() {
-  Stop();
-  Join();
+  TF_CHECK_OK(Stop());
+  TF_CHECK_OK(Join());
 
   delete master_service_;
   delete worker_service_;
@@ -140,8 +142,10 @@ Status GrpcServer::Init() {
   builder.AddListeningPort(strings::StrCat("0.0.0.0:", requested_port_),
                            GetServerCredentials(server_def_), &bound_port_);
   builder.SetMaxMessageSize(std::numeric_limits<int32>::max());
-  master_service_ = NewGrpcMasterService(&master_env_, &builder);
-  worker_service_ = NewGrpcWorkerService(&worker_env_, &builder);
+  master_impl_.reset(new Master(&master_env_, 0.0));
+  master_service_ = NewGrpcMasterService(master_impl_.get(), &builder);
+  worker_impl_.reset(NewGrpcWorker(&worker_env_));
+  worker_service_ = NewGrpcWorkerService(worker_impl_.get(), &builder);
   server_ = builder.BuildAndStart();
 
   if (!server_) {
@@ -177,7 +181,8 @@ Status GrpcServer::Init() {
     return errors::Internal("Could not parse port for local server from \"",
                             channel_cache->TranslateTask(name_prefix), "\".");
   }
-  worker_env_.worker_cache = NewGrpcWorkerCache(channel_cache.release());
+  worker_env_.worker_cache = NewGrpcWorkerCacheWithLocalWorker(
+      channel_cache.release(), worker_impl_.get(), name_prefix);
 
   // Finish setting up master environment.
   master_env_.ops = OpRegistry::Global();
@@ -193,6 +198,9 @@ Status GrpcServer::Init() {
   worker_env_.graph_mgr = new GraphMgr(&worker_env_);
   worker_env_.compute_pool = ComputePool(sess_opts);
   worker_env_.rendezvous_mgr = new RpcRendezvousMgr(&worker_env_);
+
+  // Provide direct access to the master from in-process clients.
+  LocalMaster::Register(target(), master_impl_.get());
 
   return Status::OK();
 }
@@ -228,11 +236,8 @@ Status GrpcServer::Stop() {
       state_ = STOPPED;
       return Status::OK();
     case STARTED:
-      server_->Shutdown();
-      master_service_->Shutdown();
-      worker_service_->Shutdown();
-      state_ = STOPPED;
-      return Status::OK();
+      return errors::Unimplemented(
+          "Clean shutdown is not currently implemented");
     case STOPPED:
       LOG(INFO) << "Server already stopped (target: " << target() << ")";
       return Status::OK();

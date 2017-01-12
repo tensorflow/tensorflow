@@ -20,12 +20,11 @@ from __future__ import print_function
 import six
 
 import numpy as np
-import tensorflow as tf
-
+from tensorflow.python.platform import test
 from tensorflow.contrib.learn.python.learn import datasets
 from tensorflow.contrib.learn.python.learn.datasets import synthetic
 
-class SyntheticTest(tf.test.TestCase):
+class SyntheticTest(test.TestCase):
   """Test synthetic dataset generation"""
 
   def test_make_dataset(self):
@@ -125,4 +124,4 @@ class SyntheticTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

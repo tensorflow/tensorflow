@@ -257,6 +257,40 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.Binomial.is_scalar_batch(name='is_scalar_batch')` {#Binomial.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.is_scalar_event(name='is_scalar_event')` {#Binomial.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Binomial.log_cdf(value, name='log_cdf', **condition_kwargs)` {#Binomial.log_cdf}
 
 Log cumulative distribution function.
@@ -599,32 +633,6 @@ sample.
 
 
 *  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Binomial.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Binomial.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
 
 
 - - -

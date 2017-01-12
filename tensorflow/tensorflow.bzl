@@ -1,40 +1,10 @@
 # -*- Python -*-
 
-# Parse the bazel version string from `native.bazel_version`.
-def _parse_bazel_version(bazel_version):
-  # Remove commit from version.
-  version = bazel_version.split(" ", 1)[0]
-
-  # Split into (release, date) parts and only return the release
-  # as a tuple of integers.
-  parts = version.split('-', 1)
-
-  # Turn "release" into a tuple of strings
-  version_tuple = ()
-  for number in parts[0].split('.'):
-    version_tuple += (str(number),)
-  return version_tuple
-
 # Given a source file, generate a test name.
 # i.e. "common_runtime/direct_session_test.cc" becomes
 #      "common_runtime_direct_session_test"
 def src_to_test_name(src):
   return src.replace("/", "_").split(".")[0]
-
-# Check that a specific bazel version is being used.
-def check_version(bazel_version):
-  if "bazel_version" not in dir(native):
-    fail("\nCurrent Bazel version is lower than 0.2.1, expected at least %s\n" % bazel_version)
-  elif not native.bazel_version:
-    print("\nCurrent Bazel is not a release version, cannot check for compatibility.")
-    print("Make sure that you are running at least Bazel %s.\n" % bazel_version)
-  else:
-    current_bazel_version = _parse_bazel_version(native.bazel_version)
-    minimum_bazel_version = _parse_bazel_version(bazel_version)
-    if minimum_bazel_version > current_bazel_version:
-      fail("\nCurrent Bazel version is {}, expected at least {}\n".format(
-          native.bazel_version, bazel_version))
-  pass
 
 # Return the options to use for a C++ library or binary build.
 # Uses the ":optmode" config_setting to pick the options.
@@ -46,7 +16,7 @@ load(
 load(
     "@local_config_cuda//cuda:build_defs.bzl",
     "if_cuda",
-    "cuda_path_flags"
+    "cuda_default_copts"
 )
 
 # List of proto files for android builds
@@ -124,7 +94,7 @@ def tf_copts():
   return (["-DEIGEN_AVOID_STL_ARRAY",
            "-Iexternal/gemmlowp",
            "-Wno-sign-compare",
-           "-fno-exceptions"] +
+           "-fno-exceptions",] +
           if_cuda(["-DGOOGLE_CUDA=1"]) +
           if_android_arm(["-mfpu=neon"]) +
           if_x86(["-msse4.1"]) +
@@ -329,7 +299,7 @@ def tf_cc_test_gpu(name, srcs, deps, linkstatic=0, tags=[], data=[],
   tf_cc_test(name, srcs, deps, linkstatic=linkstatic, tags=tags, data=data,
              size=size, suffix=suffix, args=args)
 
-def tf_cuda_cc_test(name, srcs, deps, tags=[], data=[], size="medium",
+def tf_cuda_cc_test(name, srcs=[], deps=[], tags=[], data=[], size="medium",
                     linkstatic=0, args=[], linkopts=[]):
   tf_cc_test(name=name,
              srcs=srcs,
@@ -352,7 +322,7 @@ def tf_cuda_cc_test(name, srcs, deps, tags=[], data=[], size="medium",
              args=args)
 
 # Create a cc_test for each of the tensorflow tests listed in "tests"
-def tf_cc_tests(srcs, deps, linkstatic=0, tags=[], size="medium",
+def tf_cc_tests(srcs, deps, name='', linkstatic=0, tags=[], size="medium",
                 args=None, linkopts=[]):
   for src in srcs:
     tf_cc_test(
@@ -365,12 +335,12 @@ def tf_cc_tests(srcs, deps, linkstatic=0, tags=[], size="medium",
         args=args,
         linkopts=linkopts)
 
-def tf_cc_tests_gpu(srcs, deps, linkstatic=0, tags=[], size="medium",
+def tf_cc_tests_gpu(srcs, deps, name='', linkstatic=0, tags=[], size="medium",
                     args=None):
   tf_cc_tests(srcs, deps, linkstatic, tags=tags, size=size, args=args)
 
 
-def tf_cuda_cc_tests(srcs, deps, tags=[], size="medium", linkstatic=0,
+def tf_cuda_cc_tests(srcs, deps, name='', tags=[], size="medium", linkstatic=0,
                      args=None, linkopts=[]):
   for src in srcs:
     tf_cuda_cc_test(
@@ -390,29 +360,20 @@ def _cuda_copts():
     compiler.  If we're not doing CUDA compilation, returns an empty list.
 
     """
-    common_cuda_opts = ["-x", "cuda", "-DGOOGLE_CUDA=1"]
-    return select({
+    return cuda_default_copts() + select({
         "//conditions:default": [],
         "@local_config_cuda//cuda:using_nvcc": (
-            common_cuda_opts +
             [
                 "-nvcc_options=relaxed-constexpr",
                 "-nvcc_options=ftz=true",
             ]
         ),
         "@local_config_cuda//cuda:using_clang": (
-            common_cuda_opts +
             [
                 "-fcuda-flush-denormals-to-zero",
-                "--cuda-gpu-arch=sm_35",
             ]
         ),
-    }) + select({
-        # Pass -O3 when building CUDA code with clang; some important
-        # optimizations are not enabled at O2.
-        "@local_config_cuda//cuda:using_clang_opt": ["-O3"],
-        "//conditions:default": [],
-    }) + cuda_path_flags()
+    })
 
 # Build defs for TensorFlow kernels
 

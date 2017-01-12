@@ -20,9 +20,13 @@ from __future__ import print_function
 
 import collections
 
-import tensorflow as tf
-
 from tensorflow.contrib.solvers.python.ops import util
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 
 
 def cgls(operator, rhs, tol=1e-6, max_iter=20, name="cgls"):
@@ -74,7 +78,7 @@ def cgls(operator, rhs, tol=1e-6, max_iter=20, name="cgls"):
                                       ["i", "x", "r", "p", "gamma"])
 
   def stopping_criterion(i, state):
-    return tf.logical_and(i < max_iter, state.gamma > tol)
+    return math_ops.logical_and(i < max_iter, state.gamma > tol)
 
   # TODO(rmlarsen): add preconditioning
   def cgls_step(i, state):
@@ -88,19 +92,22 @@ def cgls(operator, rhs, tol=1e-6, max_iter=20, name="cgls"):
     p = s + beta * state.p
     return i + 1, cgls_state(i + 1, x, r, p, gamma)
 
-  with tf.name_scope(name):
+  with ops.name_scope(name):
     n = operator.shape[1:]
-    rhs = tf.expand_dims(rhs, -1)
+    rhs = array_ops.expand_dims(rhs, -1)
     s0 = operator.apply_adjoint(rhs)
     gamma0 = util.l2norm_squared(s0)
     tol = tol * tol * gamma0
-    x = tf.expand_dims(tf.zeros(n, dtype=rhs.dtype.base_dtype), -1)
-    i = tf.constant(0, dtype=tf.int32)
+    x = array_ops.expand_dims(
+        array_ops.zeros(
+            n, dtype=rhs.dtype.base_dtype), -1)
+    i = constant_op.constant(0, dtype=dtypes.int32)
     state = cgls_state(i=i, x=x, r=rhs, p=s0, gamma=gamma0)
-    _, state = tf.while_loop(stopping_criterion, cgls_step, [i, state])
+    _, state = control_flow_ops.while_loop(stopping_criterion, cgls_step,
+                                           [i, state])
     return cgls_state(
         state.i,
-        x=tf.squeeze(state.x),
-        r=tf.squeeze(state.r),
-        p=tf.squeeze(state.p),
+        x=array_ops.squeeze(state.x),
+        r=array_ops.squeeze(state.r),
+        p=array_ops.squeeze(state.p),
         gamma=state.gamma)

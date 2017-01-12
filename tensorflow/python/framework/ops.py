@@ -241,6 +241,7 @@ class Tensor(_TensorLike):
   @@eval
 
   @@get_shape
+  @@shape
   @@set_shape
 
   """
@@ -334,13 +335,8 @@ class Tensor(_TensorLike):
     """The name of the device on which this tensor will be produced, or None."""
     return self._op.device
 
-  def _shape_as_list(self):
-    if self._shape.ndims is not None:
-      return [dim.value for dim in self._shape.dims]
-    else:
-      return None
-
-  def get_shape(self):
+  @property
+  def shape(self):
     """Returns the `TensorShape` that represents the shape of this tensor.
 
     The shape is computed using shape inference functions that are
@@ -356,12 +352,12 @@ class Tensor(_TensorLike):
     ```python
     c = tf.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
 
-    print(c.get_shape())
+    print(c.shape)
     ==> TensorShape([Dimension(2), Dimension(3)])
 
     d = tf.constant([[1.0, 0.0], [0.0, 1.0], [1.0, 0.0], [0.0, 1.0]])
 
-    print(d.get_shape())
+    print(d.shape)
     ==> TensorShape([Dimension(4), Dimension(2)])
 
     # Raises a ValueError, because `c` and `d` do not have compatible
@@ -370,7 +366,7 @@ class Tensor(_TensorLike):
 
     f = tf.matmul(c, d, transpose_a=True, transpose_b=True)
 
-    print(f.get_shape())
+    print(f.shape)
     ==> TensorShape([Dimension(3), Dimension(4)])
     ```
 
@@ -384,6 +380,16 @@ class Tensor(_TensorLike):
 
     """
     return self._shape
+
+  def _shape_as_list(self):
+    if self._shape.ndims is not None:
+      return [dim.value for dim in self._shape.dims]
+    else:
+      return None
+
+  def get_shape(self):
+    """Alias of Tensor.shape."""
+    return self.shape
 
   def set_shape(self, shape):
     """Updates the shape of this tensor.
@@ -400,12 +406,12 @@ class Tensor(_TensorLike):
 
     # The height and width dimensions of `image` are data dependent, and
     # cannot be computed without executing the op.
-    print(image.get_shape())
+    print(image.shape)
     ==> TensorShape([Dimension(None), Dimension(None), Dimension(3)])
 
     # We know that each image in this dataset is 28 x 28 pixels.
     image.set_shape([28, 28, 3])
-    print(image.get_shape())
+    print(image.shape)
     ==> TensorShape([Dimension(28), Dimension(28), Dimension(3)])
     ```
 
@@ -1438,6 +1444,9 @@ class Operation(object):
   def __str__(self):
     return str(self._node_def)
 
+  def __repr__(self):
+    return "<tf.Operation '%s' type=%s>" % (self.name, self.type)
+
   @property
   def outputs(self):
     """The list of `Tensor` objects representing the outputs of this op."""
@@ -1599,7 +1608,7 @@ class RegisterGradient(object):
   ```python
   @tf.RegisterGradient("Sub")
   def _sub_grad(unused_op, grad):
-    return grad, tf.neg(grad)
+    return grad, tf.negative(grad)
   ```
 
   The decorator argument `op_type` is the string type of an

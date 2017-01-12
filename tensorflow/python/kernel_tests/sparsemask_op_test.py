@@ -18,10 +18,13 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.platform import test
 
 
-class SparseMaskTest(tf.test.TestCase):
+class SparseMaskTest(test.TestCase):
 
   def testBasic(self):
     values = np.random.rand(4, 4).astype(np.single)
@@ -32,18 +35,19 @@ class SparseMaskTest(tf.test.TestCase):
     out_indices = np.array([2, 3, 4], dtype=np.int32)
 
     with self.test_session() as sess:
-      values_tensor = tf.convert_to_tensor(values)
-      indices_tensor = tf.convert_to_tensor(indices)
-      mask_indices_tensor = tf.convert_to_tensor(mask_indices)
+      values_tensor = ops.convert_to_tensor(values)
+      indices_tensor = ops.convert_to_tensor(indices)
+      mask_indices_tensor = ops.convert_to_tensor(mask_indices)
 
-      t = tf.IndexedSlices(values_tensor, indices_tensor)
-      masked_t = tf.sparse_mask(t, mask_indices_tensor)
+      t = ops.IndexedSlices(values_tensor, indices_tensor)
+      masked_t = array_ops.sparse_mask(t, mask_indices_tensor)
 
-      tf_out_values, tf_out_indices = sess.run([masked_t.values,
-                                                masked_t.indices])
+      tf_out_values, tf_out_indices = sess.run(
+          [masked_t.values, masked_t.indices])
 
       self.assertAllEqual(tf_out_values, out_values)
       self.assertAllEqual(tf_out_indices, out_indices)
 
+
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

@@ -1,5 +1,12 @@
 workspace(name = "org_tensorflow")
 
+load("//tensorflow:workspace.bzl", "check_version", "tf_workspace")
+
+# We must check the bazel version before trying to parse any other BUILD files,
+# in case the parsing of those build files depends on the bazel version we
+# require here.
+check_version("0.4.2")
+
 # Uncomment and update the paths in these entries to build the Android demo.
 #android_sdk_repository(
 #    name = "androidsdk",
@@ -15,12 +22,7 @@ workspace(name = "org_tensorflow")
 #    api_level=21)
 
 # Please add all new TensorFlow dependencies in workspace.bzl.
-load("//tensorflow:workspace.bzl", "tf_workspace")
 tf_workspace()
-
-# Specify the minimum required bazel version.
-load("//tensorflow:tensorflow.bzl", "check_version")
-check_version("0.3.2")
 
 new_http_archive(
   name = "inception5h",

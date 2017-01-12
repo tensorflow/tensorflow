@@ -28,6 +28,7 @@ import "tensorflow/core/framework/device_attributes.proto";
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/framework/tensor.proto";
 import "tensorflow/core/protobuf/config.proto";
+import "tensorflow/core/protobuf/named_tensor.proto";
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -135,15 +136,6 @@ message CleanupAllResponse {
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-// A pair of tensor name and tensor values.
-message NamedTensor {
-  // The name of the named tensor.
-  string key = 1;
-
-  // The value of the named tensor.
-  TensorProto val = 2;
-}
-
 // Options specific to the execution of a single step.
 message ExecutorOpts {
   bool record_costs = 1;
@@ -170,7 +162,7 @@ message RunGraphRequest {
   //
   // Sends the tensors in "send" into the graph before the run and
   // fetches the keys into `RunGraphResponse.recv` after the run.
-  repeated NamedTensor send = 3;
+  repeated NamedTensorProto send = 3;
   repeated string recv_key = 4;
 
   // True if the RunGraphRequest is a partial run request.
@@ -182,7 +174,7 @@ message RunGraphRequest {
 message RunGraphResponse {
   // A list of tensors corresponding to those requested by
   // `RunGraphRequest.recv_key`.
-  repeated NamedTensor recv = 1;
+  repeated NamedTensorProto recv = 1;
 
   // If the request asked for execution stats or cost graph, these are returned
   // here.

@@ -17,12 +17,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import sys
+
+# TODO: #6568 Remove this hack that makes dlopen() not crash.
+if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
+  import ctypes
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 from tensorflow.contrib.learn.python.learn import datasets
+from tensorflow.python.platform import test
 
 
-class LoadCsvTest(tf.test.TestCase):
+class LoadCsvTest(test.TestCase):
   """Test load csv functions."""
 
   def testIris(self):
@@ -35,5 +41,6 @@ class LoadCsvTest(tf.test.TestCase):
     self.assertTupleEqual(boston.data.shape, (506, 13))
     self.assertTupleEqual(boston.target.shape, (506,))
 
+
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

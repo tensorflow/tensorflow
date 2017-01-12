@@ -6,7 +6,10 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-package(default_visibility = ["//tensorflow:__subpackages__"])
+package(default_visibility = [
+    "//engedu/ml/tf_from_scratch:__pkg__",
+    "//tensorflow:__subpackages__",
+])
 
 py_library(
     name = "metrics_py",
@@ -21,9 +24,25 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:confusion_matrix",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:histogram_ops",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:metrics",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:nn_ops",
         "//tensorflow/python:sets",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -33,9 +52,12 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":metrics_py",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -46,9 +68,13 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":metrics_py",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -59,9 +85,18 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":metrics_py",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
     ],
 )
 

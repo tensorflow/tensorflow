@@ -46,6 +46,17 @@ struct ApplyGradientDescent<CPUDevice, T> {
   }
 };
 
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+struct ApplyGradientDescent<SYCLDevice, T> {
+  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstFlat grad) {
+    var.device(d) -= grad * lr();
+  }
+};
+#endif
+
 template <typename T>
 struct ApplyAdadelta<CPUDevice, T> {
   void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
@@ -245,7 +256,6 @@ struct ApplyAdam<CPUDevice, T> : ApplyAdamNonCuda<CPUDevice, T> {};
 template <typename T>
 struct ApplyAdam<SYCLDevice, T> : ApplyAdamNonCuda<SYCLDevice, T> {};
 
-
 template <typename T>
 struct ApplyRMSProp<CPUDevice, T> {
   void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
@@ -357,6 +367,12 @@ class ApplyGradientDescentOp : public OpKernel {
 TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNELS(T) REGISTER_KERNELS(SYCL, T);
+TF_CALL_float(REGISTER_SYCL_KERNELS);
+#undef REGISTER_SYCL_KERNELS
+#endif
 
 #if GOOGLE_CUDA
 // Forward declarations of the functor specializations for GPU.
@@ -957,20 +973,25 @@ class ApplyProximalAdagradOp : public OpKernel {
                                 var.shape().DebugString(), " ",
                                 accum.shape().DebugString()));
     const Tensor& lr = ctx->input(2);
-    OP_REQUIRES(ctx, IsLegacyScalar(lr.shape()),
-                errors::InvalidArgument("lr is not a scalar: ",
+    OP_REQUIRES(ctx,
+                TensorShapeUtils::IsScalar(lr.shape()) &&
+                    lr.scalar<T>()() > static_cast<T>(0),
+                errors::InvalidArgument("lr is not a positive scalar: ",
                                         lr.shape().DebugString()));
     const Tensor& l1 = ctx->input(3);
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsScalar(l1.shape()),
-        errors::InvalidArgument("l1 regularization strength is not a scalar: ",
-                                l1.shape().DebugString()));
+    OP_REQUIRES(ctx,
+                TensorShapeUtils::IsScalar(l1.shape()) &&
+                    l1.scalar<T>()() >= static_cast<T>(0),
+                errors::InvalidArgument("l1 regularization strength is not a "
+                                        "non-negative scalar: ",
+                                        l1.shape().DebugString()));
     const Tensor& l2 = ctx->input(4);
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsScalar(l2.shape()),
-        errors::InvalidArgument("l2 regularization strength is not a scalar: ",
-                                l2.shape().DebugString()));
-
+    OP_REQUIRES(ctx,
+                TensorShapeUtils::IsScalar(l2.shape()) &&
+                    l2.scalar<T>()() >= static_cast<T>(0),
+                errors::InvalidArgument("l2 regularization strength is not a "
+                                        "non-negative scalar: ",
+                                        l2.shape().DebugString()));
     const Tensor& grad = ctx->input(5);
     OP_REQUIRES(
         ctx, var.shape().IsSameSize(grad.shape()),
@@ -1175,19 +1196,25 @@ class SparseApplyProximalAdagradOp : public OpKernel {
                 errors::InvalidArgument("var must be at least 1 dimensional"));
 
     const Tensor& lr = ctx->input(2);
-    OP_REQUIRES(ctx, IsLegacyScalar(lr.shape()),
-                errors::InvalidArgument("lr is not a scalar: ",
+    OP_REQUIRES(ctx,
+                TensorShapeUtils::IsScalar(lr.shape()) &&
+                    lr.scalar<T>()() > static_cast<T>(0),
+                errors::InvalidArgument("lr is not a positive scalar: ",
                                         lr.shape().DebugString()));
     const Tensor& l1 = ctx->input(3);
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsScalar(l1.shape()),
-        errors::InvalidArgument("l1 regularization strength is not a scalar: ",
-                                l1.shape().DebugString()));
+    OP_REQUIRES(ctx,
+                TensorShapeUtils::IsScalar(l1.shape()) &&
+                    l1.scalar<T>()() >= static_cast<T>(0),
+                errors::InvalidArgument("l1 regularization strength is not a "
+                                        "non-negative scalar: ",
+                                        l1.shape().DebugString()));
     const Tensor& l2 = ctx->input(4);
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsScalar(l2.shape()),
-        errors::InvalidArgument("l2 regularization strength is not a scalar: ",
-                                l2.shape().DebugString()));
+    OP_REQUIRES(ctx,
+                TensorShapeUtils::IsScalar(l2.shape()) &&
+                    l2.scalar<T>()() >= static_cast<T>(0),
+                errors::InvalidArgument("l2 regularization strength is not a "
+                                        "non-negative scalar: ",
+                                        l2.shape().DebugString()));
 
     const Tensor& grad = ctx->input(5);
     const Tensor& indices = ctx->input(6);
@@ -1617,23 +1644,31 @@ class ApplyFtrlOp : public OpKernel {
                                 grad.shape().DebugString()));
 
     const Tensor& lr = ctx->input(4);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()) &&
-                         lr.scalar<T>()() > static_cast<T>(0),
-                errors::InvalidArgument("lr is not a scalar or <= 0.0: ",
+    OP_REQUIRES(ctx,
+                TensorShapeUtils::IsScalar(lr.shape()) &&
+                    lr.scalar<T>()() > static_cast<T>(0),
+                errors::InvalidArgument("lr is not a positive scalar: ",
                                         lr.shape().DebugString()));
     const Tensor& l1 = ctx->input(5);
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsScalar(l1.shape()),
-        errors::InvalidArgument("l1 regularization strength is not a scalar: ",
-                                l1.shape().DebugString()));
+    OP_REQUIRES(ctx,
+                TensorShapeUtils::IsScalar(l1.shape()) &&
+                    l1.scalar<T>()() >= static_cast<T>(0),
+                errors::InvalidArgument("l1 regularization strength is not a "
+                                        "non-negative scalar: ",
+                                        l1.shape().DebugString()));
     const Tensor& l2 = ctx->input(6);
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsScalar(l2.shape()),
-        errors::InvalidArgument("l2 regularization strength is not a scalar: ",
-                                l2.shape().DebugString()));
+    OP_REQUIRES(ctx,
+                TensorShapeUtils::IsScalar(l2.shape()) &&
+                    l2.scalar<T>()() >= static_cast<T>(0),
+                errors::InvalidArgument("l2 regularization strength is not a "
+                                        "non-negative scalar: ",
+                                        l2.shape().DebugString()));
     const Tensor& lr_power = ctx->input(7);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_power.shape()),
-                errors::InvalidArgument("lr power is not a scalar: ",
+    OP_REQUIRES(ctx,
+                TensorShapeUtils::IsScalar(lr_power.shape()) &&
+                    lr_power.scalar<T>()() <= static_cast<T>(0),
+                errors::InvalidArgument("lr_power is not a"
+                                        " non-positive scalar: ",
                                         lr_power.shape().DebugString()));
 
     const Device& device = ctx->template eigen_device<Device>();
@@ -1709,22 +1744,32 @@ class SparseApplyFtrlOp : public OpKernel {
                 errors::InvalidArgument("indices must be one-dimensional"));
 
     const Tensor& lr = ctx->input(5);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()) &&
-                         lr.scalar<T>()() > static_cast<T>(0),
-                errors::InvalidArgument("lr is not a scalar or <= 0.0: ",
+    OP_REQUIRES(ctx,
+                TensorShapeUtils::IsScalar(lr.shape()) &&
+                    lr.scalar<T>()() > static_cast<T>(0),
+                errors::InvalidArgument("lr is not a positive scalar: ",
                                         lr.shape().DebugString()));
 
     const Tensor& l1 = ctx->input(6);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(l1.shape()),
-                errors::InvalidArgument("l1 is not a scalar: ",
+    OP_REQUIRES(ctx,
+                TensorShapeUtils::IsScalar(l1.shape()) &&
+                    l1.scalar<T>()() >= static_cast<T>(0),
+                errors::InvalidArgument("l1 regularization strength is not a "
+                                        "non-negative scalar: ",
                                         l1.shape().DebugString()));
     const Tensor& l2 = ctx->input(7);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(l2.shape()),
-                errors::InvalidArgument("l2 is not a scalar: ",
+    OP_REQUIRES(ctx,
+                TensorShapeUtils::IsScalar(l2.shape()) &&
+                    l2.scalar<T>()() >= static_cast<T>(0),
+                errors::InvalidArgument("l2 regularization strength is not a "
+                                        "non-negative scalar: ",
                                         l2.shape().DebugString()));
     const Tensor& lr_power = ctx->input(8);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_power.shape()),
-                errors::InvalidArgument("lr_power is not a scalar: ",
+    OP_REQUIRES(ctx,
+                TensorShapeUtils::IsScalar(lr_power.shape()) &&
+                    lr_power.scalar<T>()() <= static_cast<T>(0),
+                errors::InvalidArgument("lr_power is not a "
+                                        "non-positive scalar: ",
                                         lr_power.shape().DebugString()));
 
     int64 inner_dim = 1;

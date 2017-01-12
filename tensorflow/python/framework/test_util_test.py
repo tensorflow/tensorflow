@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tensorflow.ops.test_util."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -23,7 +23,6 @@ import threading
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
-import tensorflow as tf
 
 from google.protobuf import text_format
 
@@ -32,6 +31,8 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import googletest
 
 
@@ -42,32 +43,30 @@ class TestUtilTest(test_util.TensorFlowTestCase):
       constant_op.constant(["hello", "taffy"], name="hello")
       test_util.assert_ops_in_graph({"hello": "Const"}, ops.get_default_graph())
 
-    self.assertRaises(
-        ValueError, test_util.assert_ops_in_graph, {"bye": "Const"},
-        ops.get_default_graph())
+    self.assertRaises(ValueError, test_util.assert_ops_in_graph,
+                      {"bye": "Const"}, ops.get_default_graph())
 
-    self.assertRaises(
-        ValueError, test_util.assert_ops_in_graph, {"hello": "Variable"},
-        ops.get_default_graph())
+    self.assertRaises(ValueError, test_util.assert_ops_in_graph,
+                      {"hello": "Variable"}, ops.get_default_graph())
 
   def test_assert_equal_graph_def(self):
-    with tf.Graph().as_default() as g:
+    with ops.Graph().as_default() as g:
       def_empty = g.as_graph_def()
-      tf.constant(5, name="five")
-      tf.constant(7, name="seven")
+      constant_op.constant(5, name="five")
+      constant_op.constant(7, name="seven")
       def_57 = g.as_graph_def()
-    with tf.Graph().as_default() as g:
-      tf.constant(7, name="seven")
-      tf.constant(5, name="five")
+    with ops.Graph().as_default() as g:
+      constant_op.constant(7, name="seven")
+      constant_op.constant(5, name="five")
       def_75 = g.as_graph_def()
     # Comparing strings is order dependent
     self.assertNotEqual(str(def_57), str(def_75))
     # assert_equal_graph_def doesn't care about order
-    tf.test.assert_equal_graph_def(def_57, def_75)
+    test_util.assert_equal_graph_def(def_57, def_75)
     # Compare two unequal graphs
     with self.assertRaisesRegexp(AssertionError,
                                  r"^Found unexpected node 'seven"):
-      tf.test.assert_equal_graph_def(def_57, def_empty)
+      test_util.assert_equal_graph_def(def_57, def_empty)
 
   def testIsGoogleCudaEnabled(self):
     # The test doesn't assert anything. It ensures the py wrapper
@@ -97,6 +96,7 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     self.assertFalse(self._NDArrayNear(a1, a3, 1e-5))
 
   def testCheckedThreadSucceeds(self):
+
     def noop(ev):
       ev.set()
 
@@ -109,6 +109,7 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     self.assertTrue(event_arg.is_set())
 
   def testCheckedThreadFails(self):
+
     def err_func():
       return 1 // 0
 
@@ -131,11 +132,14 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     self.assertTrue("False is not true" in str(fe.exception))
 
   def testMultipleThreadsWithOneFailure(self):
+
     def err_func(i):
       self.assertTrue(i != 7)
 
-    threads = [self.checkedThread(target=err_func, args=(i,))
-               for i in range(10)]
+    threads = [
+        self.checkedThread(
+            target=err_func, args=(i,)) for i in range(10)
+    ]
     for t in threads:
       t.start()
     for i, t in enumerate(threads):
@@ -185,24 +189,25 @@ class TestUtilTest(test_util.TensorFlowTestCase):
       with self.test_session(force_gpu=True):
         # this relies on us not having a GPU implementation for assert, which
         # seems sensible
-        x = tf.constant(True)
+        x = constant_op.constant(True)
         y = [15]
-        tf.Assert(x, y).run()
+        control_flow_ops.Assert(x, y).run()
 
   def testRandomSeed(self):
     a = random.randint(1, 1000)
     a_np_rand = np.random.rand(1)
     with self.test_session():
-      a_rand = tf.random_normal([1]).eval()
+      a_rand = random_ops.random_normal([1]).eval()
     # ensure that randomness in multiple testCases is deterministic.
     self.setUp()
     b = random.randint(1, 1000)
     b_np_rand = np.random.rand(1)
     with self.test_session():
-      b_rand = tf.random_normal([1]).eval()
+      b_rand = random_ops.random_normal([1]).eval()
     self.assertEqual(a, b)
     self.assertEqual(a_np_rand, b_np_rand)
     self.assertEqual(a_rand, b_rand)
+
 
 if __name__ == "__main__":
   googletest.main()

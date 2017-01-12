@@ -133,9 +133,13 @@ def create_global_step(graph=None):
   # Create in proper graph and base name_scope.
   with graph.as_default() as g, g.name_scope(None):
     collections = [ops.GraphKeys.GLOBAL_VARIABLES, ops.GraphKeys.GLOBAL_STEP]
-    return variable(ops.GraphKeys.GLOBAL_STEP, shape=[], dtype=dtypes.int64,
-                    initializer=init_ops.zeros_initializer, trainable=False,
-                    collections=collections)
+    return variable(
+        ops.GraphKeys.GLOBAL_STEP,
+        shape=[],
+        dtype=dtypes.int64,
+        initializer=init_ops.zeros_initializer(),
+        trainable=False,
+        collections=collections)
 
 
 def get_or_create_global_step(graph=None):

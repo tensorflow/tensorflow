@@ -12,19 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for learn.dataframe.transforms.boolean_mask."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
+
+# TODO: #6568 Remove this hack that makes dlopen() not crash.
+if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
+  import ctypes
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
+
 import numpy as np
-import tensorflow as tf
+
 from tensorflow.contrib.learn.python.learn.tests.dataframe import mocks
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.platform import test
 
 
-class BooleanMaskTestCase(tf.test.TestCase):
+class BooleanMaskTestCase(test.TestCase):
   """Test class for `BooleanMask`."""
 
   def testDense(self):
@@ -37,8 +46,9 @@ class BooleanMaskTestCase(tf.test.TestCase):
     mask = np.random.randn(dense_shape[0]) > 0.5
     expected_result = random_array[mask]
 
-    dense_series = mocks.MockSeries("dense_series", tf.constant(random_array))
-    mask_series = mocks.MockSeries("mask", tf.constant(mask))
+    dense_series = mocks.MockSeries("dense_series",
+                                    constant_op.constant(random_array))
+    mask_series = mocks.MockSeries("mask", constant_op.constant(mask))
     masked = dense_series.select_rows(mask_series)
 
     with self.test_session() as sess:
@@ -61,9 +71,9 @@ class BooleanMaskTestCase(tf.test.TestCase):
                          if mask[ind[0]]]
     expected_indices, expected_values = zip(*index_value_pairs)
 
-    sparse_series = mocks.MockSeries("sparse_series",
-                                     tf.SparseTensor(indices, values, shape))
-    mask_series = mocks.MockSeries("mask", tf.constant(mask))
+    sparse_series = mocks.MockSeries(
+        "sparse_series", sparse_tensor.SparseTensor(indices, values, shape))
+    mask_series = mocks.MockSeries("mask", constant_op.constant(mask))
     masked = sparse_series.select_rows(mask_series)
 
     with self.test_session() as sess:
@@ -73,5 +83,6 @@ class BooleanMaskTestCase(tf.test.TestCase):
     np.testing.assert_array_equal(expected_values, actual.values)
     np.testing.assert_array_equal(shape, actual.dense_shape)
 
+
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

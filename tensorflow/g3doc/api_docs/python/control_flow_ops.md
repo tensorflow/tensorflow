@@ -148,7 +148,7 @@ Note that the conditional execution applies only to the operations defined in
 fn1 and fn2. Consider the following simple program:
 
 ```python
-z = tf.mul(a, b)
+z = tf.multiply(a, b)
 result = tf.cond(x < y, lambda: tf.add(x, z), lambda: tf.square(y))
 ```
 
@@ -184,7 +184,7 @@ it has occasionally surprised some users who expected a lazier semantics.
 ```python
   x = tf.constant(2)
   y = tf.constant(5)
-  def f1(): return tf.mul(x, 17)
+  def f1(): return tf.multiply(x, 17)
   def f2(): return tf.add(y, 23)
   r = tf.cond(tf.less(x, y), f1, f2)
   # r is set to f1().
@@ -383,10 +383,10 @@ Example using shape_invariants:
   i0 = tf.constant(0)
   m0 = tf.ones([2, 2])
   c = lambda i, m: i < 10
-  b = lambda i, m: [i+1, tf.concat_v2(0, [m, m])]
+  b = lambda i, m: [i+1, tf.concat([m, m], axis=0)]
   tf.while_loop(
       c, b, loop_vars=[i0, m0],
-      shape_invariants=[i0.get_shape(), tensor_shape.TensorShape([None, 2])])
+      shape_invariants=[i0.get_shape(), tf.TensorShape([None, 2])])
   ```
 
 

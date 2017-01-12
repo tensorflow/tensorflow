@@ -12,24 +12,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for the DynamicPartition op."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
-import tensorflow as tf
+
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import gradients_impl
+import tensorflow.python.ops.data_flow_grad  # pylint: disable=unused-import
+from tensorflow.python.platform import test
 
 
-class DynamicPartitionTest(tf.test.TestCase):
+class DynamicPartitionTest(test.TestCase):
 
   def testSimpleOneDimensional(self):
     with self.test_session() as sess:
-      data = tf.constant([0, 13, 2, 39, 4, 17])
-      indices = tf.constant([0, 0, 2, 3, 2, 1])
-      partitions = tf.dynamic_partition(data, indices, num_partitions=4)
+      data = constant_op.constant([0, 13, 2, 39, 4, 17])
+      indices = constant_op.constant([0, 0, 2, 3, 2, 1])
+      partitions = data_flow_ops.dynamic_partition(
+          data, indices, num_partitions=4)
       partition_vals = sess.run(partitions)
 
     self.assertAllEqual([0, 13], partition_vals[0])
@@ -45,10 +53,11 @@ class DynamicPartitionTest(tf.test.TestCase):
 
   def testSimpleTwoDimensional(self):
     with self.test_session() as sess:
-      data = tf.constant([[0, 1, 2], [3, 4, 5], [6, 7, 8],
-                                   [9, 10, 11], [12, 13, 14], [15, 16, 17]])
-      indices = tf.constant([0, 0, 2, 3, 2, 1])
-      partitions = tf.dynamic_partition(data, indices, num_partitions=4)
+      data = constant_op.constant([[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11],
+                                   [12, 13, 14], [15, 16, 17]])
+      indices = constant_op.constant([0, 0, 2, 3, 2, 1])
+      partitions = data_flow_ops.dynamic_partition(
+          data, indices, num_partitions=4)
       partition_vals = sess.run(partitions)
 
     self.assertAllEqual([[0, 1, 2], [3, 4, 5]], partition_vals[0])
@@ -70,9 +79,9 @@ class DynamicPartitionTest(tf.test.TestCase):
           partitions = np.random.randint(n, size=np.prod(shape)).reshape(shape)
           for extra_shape in (), (6,), (6, 7):
             data = np.random.randn(*(shape + extra_shape))
-            partitions_t = tf.constant(partitions, dtype=tf.int32)
-            data_t = tf.constant(data)
-            outputs = tf.dynamic_partition(
+            partitions_t = constant_op.constant(partitions, dtype=dtypes.int32)
+            data_t = constant_op.constant(data)
+            outputs = data_flow_ops.dynamic_partition(
                 data_t, partitions_t, num_partitions=n)
             self.assertEqual(n, len(outputs))
             outputs_val = sess.run(outputs)
@@ -81,16 +90,18 @@ class DynamicPartitionTest(tf.test.TestCase):
 
             # Test gradients
             outputs_grad = [7 * output for output in outputs_val]
-            grads = tf.gradients(outputs, [data_t, partitions_t], outputs_grad)
+            grads = gradients_impl.gradients(outputs, [data_t, partitions_t],
+                                             outputs_grad)
             self.assertEqual(grads[1], None)  # Partitions has no gradients
             self.assertAllEqual(7 * data, sess.run(grads[0]))
 
   def testErrorIndexOutOfRange(self):
     with self.test_session() as sess:
-      data = tf.constant([[0, 1, 2], [3, 4, 5], [6, 7, 8],
-                                   [9, 10, 11], [12, 13, 14]])
-      indices = tf.constant([0, 2, 99, 2, 2])
-      partitions = tf.dynamic_partition(data, indices, num_partitions=4)
+      data = constant_op.constant([[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11],
+                                   [12, 13, 14]])
+      indices = constant_op.constant([0, 2, 99, 2, 2])
+      partitions = data_flow_ops.dynamic_partition(
+          data, indices, num_partitions=4)
       with self.assertRaisesOpError(r"partitions\[2\] = 99 is not in \[0, 4\)"):
         sess.run(partitions)
 
@@ -98,16 +109,17 @@ class DynamicPartitionTest(tf.test.TestCase):
     with self.test_session() as sess:
       bad = 17
       data = np.zeros(5)
-      partitions = tf.dynamic_partition(data, bad, num_partitions=7)
+      partitions = data_flow_ops.dynamic_partition(data, bad, num_partitions=7)
       with self.assertRaisesOpError(r"partitions = 17 is not in \[0, 7\)"):
         sess.run(partitions)
 
   def testHigherRankIndexOutOfRange(self):
     with self.test_session() as sess:
       shape = (2, 3)
-      indices = tf.placeholder(shape=shape, dtype=np.int32)
+      indices = array_ops.placeholder(shape=shape, dtype=np.int32)
       data = np.zeros(shape + (5,))
-      partitions = tf.dynamic_partition(data, indices, num_partitions=7)
+      partitions = data_flow_ops.dynamic_partition(
+          data, indices, num_partitions=7)
       for i in xrange(2):
         for j in xrange(3):
           bad = np.zeros(shape, dtype=np.int32)
@@ -117,11 +129,11 @@ class DynamicPartitionTest(tf.test.TestCase):
             sess.run(partitions, feed_dict={indices: bad})
 
   def testErrorWrongDimsIndices(self):
-    data = tf.constant([[0], [1], [2]])
-    indices = tf.constant([[0], [0]])
+    data = constant_op.constant([[0], [1], [2]])
+    indices = constant_op.constant([[0], [0]])
     with self.assertRaises(ValueError):
-      tf.dynamic_partition(data, indices, num_partitions=4)
+      data_flow_ops.dynamic_partition(data, indices, num_partitions=4)
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

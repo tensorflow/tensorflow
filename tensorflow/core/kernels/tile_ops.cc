@@ -40,6 +40,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif // TENSORFLOW_USE_SYCL
 
 // Forward declarations of functors that will be defined in
 // tile_ops_cpu_impl*.cc and tile_ops_gpu.cu.cc.
@@ -225,6 +228,11 @@ inline void TileOp<Device>::HandleCase(
 #define HANDLE_TYPE_NAME_GPU(T) \
   HANDLE_CASE_DIM(GPUDevice, T, DataTypeToEnum<T>::value);
 
+#ifdef TENSORFLOW_USE_SYCL
+#define HANDLE_TYPE_NAME_SYCL(T) \
+  HANDLE_CASE_DIM(SYCLDevice, T, DataTypeToEnum<T>::value);
+#endif // TENSORFLOW_USE_SYCL
+
 TF_CALL_bool(HANDLE_TYPE_NAME_CPU);
 TF_CALL_float(HANDLE_TYPE_NAME_CPU);
 TF_CALL_double(HANDLE_TYPE_NAME_CPU);
@@ -248,8 +256,15 @@ TF_CALL_complex64(HANDLE_TYPE_NAME_GPU);
 TF_CALL_complex128(HANDLE_TYPE_NAME_GPU);
 #endif  // GOOGLE_CUDA
 
+#ifdef TENSORFLOW_USE_SYCL
+TF_CALL_float(HANDLE_TYPE_NAME_SYCL);
+#endif // TENSORFLOW_USE_SYCL
+
 #undef HANDLE_TYPE_NAME_CPU
 #undef HANDLE_TYPE_NAME_GPU
+#ifdef TENSORFLOW_USE_SYCL
+#undef HANDLE_TYPE_NAME_SYCL
+#endif // TENSORFLOW_USE_SYCL
 #undef HANDLE_CASE_DIM
 #undef HANDLE_CASE
 
@@ -578,4 +593,14 @@ REGISTER_KERNEL_BUILDER(Name("TileGrad")
                         TileGradientOp<GPUDevice>);
 
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("Tile")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<float>("T")
+                            .TypeConstraint<int32>("Tmultiples")
+                            .HostMemory("multiples"),
+                        TileOp<SYCLDevice>);
+#endif // TENSORFLOW_USE_SYCL
+
 }  // namespace tensorflow

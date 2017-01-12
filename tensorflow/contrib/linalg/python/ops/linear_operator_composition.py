@@ -211,9 +211,10 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
     # Don't check the matrix dimensions.  That would add unnecessary Asserts to
     # the graph.  Things will fail at runtime naturally if shapes are
     # incompatible.
-    matrix_shape = array_ops.pack(
-        [self.operators[0].range_dimension_dynamic(),
-         self.operators[-1].domain_dimension_dynamic()])
+    matrix_shape = array_ops.stack([
+        self.operators[0].range_dimension_dynamic(),
+        self.operators[-1].domain_dimension_dynamic()
+    ])
 
     # Dummy Tensor of zeros.  Will never be materialized.
     zeros = array_ops.zeros(shape=self.operators[0].batch_shape_dynamic())
@@ -221,7 +222,7 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
       zeros += array_ops.zeros(shape=operator.batch_shape_dynamic())
     batch_shape = array_ops.shape(zeros)
 
-    return array_ops.concat(0, (batch_shape, matrix_shape))
+    return array_ops.concat((batch_shape, matrix_shape), 0)
 
   def _apply(self, x, adjoint=False):
     # If self.operators = [A, B], and not adjoint, then

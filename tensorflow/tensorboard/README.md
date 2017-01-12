@@ -4,9 +4,6 @@ TensorBoard is a suite of web applications for inspecting and understanding your
 TensorFlow runs and graphs. TensorBoard currently supports five visualizations:
 scalars, images, audio, histograms, and the graph.
 
-You can play with an interactive demo TensorBoard at
-[tensorflow.org/tensorboard/](https://www.tensorflow.org/tensorboard/).
-
 This README gives an overview of key concepts in TensorBoard, as well as how to
 interpret the visualizations TensorBoard provides. For an in-depth example of
 using TensorBoard, see the tutorial: [TensorBoard: Visualizing

@@ -17,69 +17,71 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-
+from tensorflow.contrib import linalg as linalg_lib
 from tensorflow.contrib.linalg.python.ops import linear_operator_util
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
+
+linalg = linalg_lib
+random_seed.set_random_seed(23)
 
 
-linalg = tf.contrib.linalg
-tf.set_random_seed(23)
-
-
-class AssertZeroImagPartTest(tf.test.TestCase):
+class AssertZeroImagPartTest(test.TestCase):
 
   def test_real_tensor_doesnt_raise(self):
-    x = tf.convert_to_tensor([0., 2, 3])
+    x = ops.convert_to_tensor([0., 2, 3])
     with self.test_session():
       # Should not raise.
       linear_operator_util.assert_zero_imag_part(x, message="ABC123").run()
 
   def test_complex_tensor_with_imag_zero_doesnt_raise(self):
-    x = tf.convert_to_tensor([1., 0, 3])
-    y = tf.convert_to_tensor([0., 0, 0])
-    z = tf.complex(x, y)
+    x = ops.convert_to_tensor([1., 0, 3])
+    y = ops.convert_to_tensor([0., 0, 0])
+    z = math_ops.complex(x, y)
     with self.test_session():
       # Should not raise.
       linear_operator_util.assert_zero_imag_part(z, message="ABC123").run()
 
   def test_complex_tensor_with_nonzero_imag_raises(self):
-    x = tf.convert_to_tensor([1., 2, 0])
-    y = tf.convert_to_tensor([1., 2, 0])
-    z = tf.complex(x, y)
+    x = ops.convert_to_tensor([1., 2, 0])
+    y = ops.convert_to_tensor([1., 2, 0])
+    z = math_ops.complex(x, y)
     with self.test_session():
       with self.assertRaisesOpError("ABC123"):
         linear_operator_util.assert_zero_imag_part(z, message="ABC123").run()
 
 
-class AssertNoEntriesWithModulusZeroTest(tf.test.TestCase):
+class AssertNoEntriesWithModulusZeroTest(test.TestCase):
 
   def test_nonzero_real_tensor_doesnt_raise(self):
-    x = tf.convert_to_tensor([1., 2, 3])
+    x = ops.convert_to_tensor([1., 2, 3])
     with self.test_session():
       # Should not raise.
       linear_operator_util.assert_no_entries_with_modulus_zero(
           x, message="ABC123").run()
 
   def test_nonzero_complex_tensor_doesnt_raise(self):
-    x = tf.convert_to_tensor([1., 0, 3])
-    y = tf.convert_to_tensor([1., 2, 0])
-    z = tf.complex(x, y)
+    x = ops.convert_to_tensor([1., 0, 3])
+    y = ops.convert_to_tensor([1., 2, 0])
+    z = math_ops.complex(x, y)
     with self.test_session():
       # Should not raise.
       linear_operator_util.assert_no_entries_with_modulus_zero(
           z, message="ABC123").run()
 
   def test_zero_real_tensor_raises(self):
-    x = tf.convert_to_tensor([1., 0, 3])
+    x = ops.convert_to_tensor([1., 0, 3])
     with self.test_session():
       with self.assertRaisesOpError("ABC123"):
         linear_operator_util.assert_no_entries_with_modulus_zero(
             x, message="ABC123").run()
 
   def test_zero_complex_tensor_raises(self):
-    x = tf.convert_to_tensor([1., 2, 0])
-    y = tf.convert_to_tensor([1., 2, 0])
-    z = tf.complex(x, y)
+    x = ops.convert_to_tensor([1., 2, 0])
+    y = ops.convert_to_tensor([1., 2, 0])
+    z = math_ops.complex(x, y)
     with self.test_session():
       with self.assertRaisesOpError("ABC123"):
         linear_operator_util.assert_no_entries_with_modulus_zero(
@@ -87,4 +89,4 @@ class AssertNoEntriesWithModulusZeroTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

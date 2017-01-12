@@ -433,6 +433,9 @@ Construct a new Momentum optimizer.
 *  <b>`use_locking`</b>: If `True` use locks for update operations.
 *  <b>`name`</b>: Optional name prefix for the operations created when applying
     gradients.  Defaults to "Momentum".
+*  <b>`use_nesterov`</b>: If `True` use Nesterov Momentum.
+    See [Sutskever et. al., 2013](
+*  <b>`http`</b>: //jmlr.org/proceedings/papers/v28/sutskever13.pdf)
 
 
 
@@ -2264,7 +2267,7 @@ following values for the --master flag:
   details.
 
 * Specifying `'grpc://hostname:port'` requests a session that uses
-  the RPC interface to a specific , and also allows the in-process
+  the RPC interface to a specific host, and also allows the in-process
   master to access remote tensorflow workers. Often, it is
   appropriate to pass `server.target` (for some `tf.train.Server`
   named `server).
@@ -2284,7 +2287,7 @@ every 60 seconds, so we launch it with `sv.loop()`.
   ...
   sv = Supervisor(logdir='/tmp/mydir')
   with sv.managed_session(FLAGS.master) as sess:
-    sv.loop(60, print_loss, (sess))
+    sv.loop(60, print_loss, (sess, ))
     while not sv.should_stop():
       sess.run(my_train_op)
   ```
@@ -2347,8 +2350,8 @@ Create a `Supervisor`.
     ready to run the local_init_op.
     The model is considered ready if it returns an empty array.  Defaults to
     the tensor returned from
-    `tf.report_uninitialized_variables(tf.global_variables())`. If `None`, the
-    model is not checked for readiness before running local_init_op.
+    `tf.report_uninitialized_variables(tf.global_variables())`. If `None`,
+    the model is not checked for readiness before running local_init_op.
 *  <b>`is_chief`</b>: If True, create a chief supervisor in charge of initializing
     and restoring the model.  If False, create a supervisor that relies
     on a chief supervisor for inits and restore.
@@ -3122,7 +3125,7 @@ be initialized or restored.  Defaults to 30 seconds.
 
 - - -
 
-#### `tf.train.SessionManager.prepare_session(master, init_op=None, saver=None, checkpoint_dir=None, wait_for_checkpoint=False, max_wait_secs=7200, config=None, init_feed_dict=None, init_fn=None)` {#SessionManager.prepare_session}
+#### `tf.train.SessionManager.prepare_session(master, init_op=None, saver=None, checkpoint_dir=None, checkpoint_filename_with_path=None, wait_for_checkpoint=False, max_wait_secs=7200, config=None, init_feed_dict=None, init_fn=None)` {#SessionManager.prepare_session}
 
 Creates a `Session`. Makes sure the model is ready to be used.
 
@@ -3148,7 +3151,9 @@ or `init_fn` or `local_init_op` are passed.
 *  <b>`master`</b>: `String` representation of the TensorFlow master to use.
 *  <b>`init_op`</b>: Optional `Operation` used to initialize the model.
 *  <b>`saver`</b>: A `Saver` object used to restore a model.
-*  <b>`checkpoint_dir`</b>: Path to the checkpoint files.
+*  <b>`checkpoint_dir`</b>: Path to the checkpoint files. The latest checkpoint in the
+    dir will be used to restore.
+*  <b>`checkpoint_filename_with_path`</b>: Full file name path to the checkpoint file.
 *  <b>`wait_for_checkpoint`</b>: Whether to wait for checkpoint to become available.
 *  <b>`max_wait_secs`</b>: Maximum time to wait for checkpoints to become available.
 *  <b>`config`</b>: Optional `ConfigProto` proto used to configure the session.
@@ -3168,10 +3173,16 @@ or `init_fn` or `local_init_op` are passed.
 
 *  <b>`RuntimeError`</b>: If the model cannot be initialized or recovered.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If both checkpoint_dir and checkpoint_filename_with_path are
+    set.
+
 
 - - -
 
-#### `tf.train.SessionManager.recover_session(master, saver=None, checkpoint_dir=None, wait_for_checkpoint=False, max_wait_secs=7200, config=None)` {#SessionManager.recover_session}
+#### `tf.train.SessionManager.recover_session(master, saver=None, checkpoint_dir=None, checkpoint_filename_with_path=None, wait_for_checkpoint=False, max_wait_secs=7200, config=None)` {#SessionManager.recover_session}
 
 Creates a `Session`, recovering if possible.
 
@@ -3183,7 +3194,9 @@ and can be recovered from a checkpoint, recover it.
 
 *  <b>`master`</b>: `String` representation of the TensorFlow master to use.
 *  <b>`saver`</b>: A `Saver` object used to restore a model.
-*  <b>`checkpoint_dir`</b>: Path to the checkpoint files.
+*  <b>`checkpoint_dir`</b>: Path to the checkpoint files. The latest checkpoint in the
+    dir will be used to restore.
+*  <b>`checkpoint_filename_with_path`</b>: Full file name path to the checkpoint file.
 *  <b>`wait_for_checkpoint`</b>: Whether to wait for checkpoint to become available.
 *  <b>`max_wait_secs`</b>: Maximum time to wait for checkpoints to become available.
 *  <b>`config`</b>: Optional `ConfigProto` proto used to configure the session.
@@ -3192,6 +3205,12 @@ and can be recovered from a checkpoint, recover it.
 
   A pair (sess, initialized) where 'initialized' is `True` if
   the session could be recovered and initialized, `False` otherwise.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If both checkpoint_dir and checkpoint_filename_with_path are
+    set.
 
 
 - - -
@@ -3558,6 +3577,7 @@ inialize/restore.
 Session-like object that handles initialization, recovery and hooks.
 
 Example usage:
+
 ```python
 saver_hook = CheckpointSaverHook(...)
 summary_hook = SummaryHook(...)
@@ -3591,20 +3611,25 @@ Exit: At the `close()`, the monitored session does following things in order:
 
 * calls `hook.end()`
 * closes the queue runners and the session
-* surpresses `OutOfRange` error which indicates that all inputs have been
-  processed if the monitored_session is used as a context.
+* suppresses `OutOfRange` error which indicates that all inputs have been
+  processed if the monitored_session is used as a context
 
 How to set `tf.Session` arguments:
+
 * In most cases you can set session arguments as follows:
-  ```python
-  MonitoredSession(
-    session_creator=ChiefSessionCreator(master=..., config=...))
-  ```
+
+```python
+MonitoredSession(
+  session_creator=ChiefSessionCreator(master=..., config=...))
+```
+
 * In distributed setting for a non-chief worker, you can use following:
-  ```python
-  MonitoredSession(
-    session_creator=WorkerSessionCreator(master=..., config=...))
-  ```
+
+```python
+MonitoredSession(
+  session_creator=WorkerSessionCreator(master=..., config=...))
+```
+
 See `MonitoredTrainingSession` for an example usage based on chief or worker.
 
 Args:
@@ -3981,7 +4006,7 @@ A factory for tf.Session.
 Creates a tf.Session  for a chief.
 - - -
 
-#### `tf.train.ChiefSessionCreator.__init__(scaffold=None, master='', config=None, checkpoint_dir=None)` {#ChiefSessionCreator.__init__}
+#### `tf.train.ChiefSessionCreator.__init__(scaffold=None, master='', config=None, checkpoint_dir=None, checkpoint_filename_with_path=None)` {#ChiefSessionCreator.__init__}
 
 Initializes a chief session creator.
 
@@ -3994,6 +4019,7 @@ Initializes a chief session creator.
 *  <b>`config`</b>: `ConfigProto` proto used to configure the session.
 *  <b>`checkpoint_dir`</b>: A string.  Optional path to a directory where to restore
     variables.
+*  <b>`checkpoint_filename_with_path`</b>: Full file name path to the checkpoint file.
 
 
 - - -
@@ -4219,6 +4245,26 @@ tf.train.write_graph(sess.graph, '/tmp/my-model', 'train.pbtxt')
 Hook to extend calls to MonitoredSession.run().
 - - -
 
+#### `tf.train.SessionRunHook.after_create_session(session)` {#SessionRunHook.after_create_session}
+
+Called when new TensorFlow session is created.
+
+This is called to signal the hooks that a new session has been created. This
+has two essential differences with the situation in which `begin` is called:
+
+* When this is called, the graph is finalized and ops can no longer be added
+    to the graph.
+* This method will also be called as a result of recovering a wrapped
+    session, not only at the beginning of the overall session.
+
+##### Args:
+
+
+*  <b>`session`</b>: A TensorFlow Session that has been created.
+
+
+- - -
+
 #### `tf.train.SessionRunHook.after_run(run_context, run_values)` {#SessionRunHook.after_run}
 
 Called after each call to run().
@@ -4325,6 +4371,26 @@ Initializes a LoggingHook monitor.
 
 - - -
 
+#### `tf.train.LoggingTensorHook.after_create_session(session)` {#LoggingTensorHook.after_create_session}
+
+Called when new TensorFlow session is created.
+
+This is called to signal the hooks that a new session has been created. This
+has two essential differences with the situation in which `begin` is called:
+
+* When this is called, the graph is finalized and ops can no longer be added
+    to the graph.
+* This method will also be called as a result of recovering a wrapped
+    session, not only at the beginning of the overall session.
+
+##### Args:
+
+
+*  <b>`session`</b>: A TensorFlow Session that has been created.
+
+
+- - -
+
 #### `tf.train.LoggingTensorHook.after_run(run_context, run_values)` {#LoggingTensorHook.after_run}
 
 
@@ -4390,6 +4456,26 @@ call.
 
 
 *  <b>`ValueError`</b>: If one of the arguments is invalid.
+
+
+- - -
+
+#### `tf.train.StopAtStepHook.after_create_session(session)` {#StopAtStepHook.after_create_session}
+
+Called when new TensorFlow session is created.
+
+This is called to signal the hooks that a new session has been created. This
+has two essential differences with the situation in which `begin` is called:
+
+* When this is called, the graph is finalized and ops can no longer be added
+    to the graph.
+* This method will also be called as a result of recovering a wrapped
+    session, not only at the beginning of the overall session.
+
+##### Args:
+
+
+*  <b>`session`</b>: A TensorFlow Session that has been created.
 
 
 - - -
@@ -4463,6 +4549,26 @@ Initialize CheckpointSaverHook monitor.
 
 - - -
 
+#### `tf.train.CheckpointSaverHook.after_create_session(session)` {#CheckpointSaverHook.after_create_session}
+
+Called when new TensorFlow session is created.
+
+This is called to signal the hooks that a new session has been created. This
+has two essential differences with the situation in which `begin` is called:
+
+* When this is called, the graph is finalized and ops can no longer be added
+    to the graph.
+* This method will also be called as a result of recovering a wrapped
+    session, not only at the beginning of the overall session.
+
+##### Args:
+
+
+*  <b>`session`</b>: A TensorFlow Session that has been created.
+
+
+- - -
+
 #### `tf.train.CheckpointSaverHook.after_run(run_context, run_values)` {#CheckpointSaverHook.after_run}
 
 
@@ -4507,6 +4613,26 @@ Steps per second monitor.
 #### `tf.train.StepCounterHook.__init__(every_n_steps=100, every_n_secs=None, output_dir=None, summary_writer=None)` {#StepCounterHook.__init__}
 
 
+
+
+- - -
+
+#### `tf.train.StepCounterHook.after_create_session(session)` {#StepCounterHook.after_create_session}
+
+Called when new TensorFlow session is created.
+
+This is called to signal the hooks that a new session has been created. This
+has two essential differences with the situation in which `begin` is called:
+
+* When this is called, the graph is finalized and ops can no longer be added
+    to the graph.
+* This method will also be called as a result of recovering a wrapped
+    session, not only at the beginning of the overall session.
+
+##### Args:
+
+
+*  <b>`session`</b>: A TensorFlow Session that has been created.
 
 
 - - -
@@ -4578,6 +4704,26 @@ Initializes NanLoss monitor.
 
 *  <b>`loss_tensor`</b>: `Tensor`, the loss tensor.
 *  <b>`fail_on_nan_loss`</b>: `bool`, whether to raise exception when loss is NaN.
+
+
+- - -
+
+#### `tf.train.NanTensorHook.after_create_session(session)` {#NanTensorHook.after_create_session}
+
+Called when new TensorFlow session is created.
+
+This is called to signal the hooks that a new session has been created. This
+has two essential differences with the situation in which `begin` is called:
+
+* When this is called, the graph is finalized and ops can no longer be added
+    to the graph.
+* This method will also be called as a result of recovering a wrapped
+    session, not only at the beginning of the overall session.
+
+##### Args:
+
+
+*  <b>`session`</b>: A TensorFlow Session that has been created.
 
 
 - - -
@@ -4659,6 +4805,26 @@ Initializes a `SummarySaver` monitor.
 
 - - -
 
+#### `tf.train.SummarySaverHook.after_create_session(session)` {#SummarySaverHook.after_create_session}
+
+Called when new TensorFlow session is created.
+
+This is called to signal the hooks that a new session has been created. This
+has two essential differences with the situation in which `begin` is called:
+
+* When this is called, the graph is finalized and ops can no longer be added
+    to the graph.
+* This method will also be called as a result of recovering a wrapped
+    session, not only at the beginning of the overall session.
+
+##### Args:
+
+
+*  <b>`session`</b>: A TensorFlow Session that has been created.
+
+
+- - -
+
 #### `tf.train.SummarySaverHook.after_run(run_context, run_values)` {#SummarySaverHook.after_run}
 
 
@@ -4706,6 +4872,26 @@ Create a _GlobalStepWaiterHook.
 
 
 *  <b>`wait_until_step`</b>: an `int` shows until which global step should we wait.
+
+
+- - -
+
+#### `tf.train.GlobalStepWaiterHook.after_create_session(session)` {#GlobalStepWaiterHook.after_create_session}
+
+Called when new TensorFlow session is created.
+
+This is called to signal the hooks that a new session has been created. This
+has two essential differences with the situation in which `begin` is called:
+
+* When this is called, the graph is finalized and ops can no longer be added
+    to the graph.
+* This method will also be called as a result of recovering a wrapped
+    session, not only at the beginning of the overall session.
+
+##### Args:
+
+
+*  <b>`session`</b>: A TensorFlow Session that has been created.
 
 
 - - -
@@ -5190,7 +5376,7 @@ Called when the thread stops.
 ## Other Functions and Classes
 - - -
 
-### `class tf.train.SyncReplicasOptimizerV2` {#SyncReplicasOptimizerV2}
+### `class tf.train.SyncReplicasOptimizer` {#SyncReplicasOptimizer}
 
 Class to synchronize, aggregate gradients and pass them to the optimizer.
 
@@ -5252,8 +5438,8 @@ opt = GradientDescentOptimizer(learning_rate=0.1)
 # Note that if you want to have 2 backup replicas, you can change
 # total_num_replicas=52 and make sure this number matches how many physical
 # replicas you started in your job.
-opt = tf.SyncReplicasOptimizerV2(opt, replicas_to_aggregate=50,
-                                 total_num_replicas=50)
+opt = tf.SyncReplicasOptimizer(opt, replicas_to_aggregate=50,
+                               total_num_replicas=50)
 
 # Some models have startup_delays to help stabilize the model but when using
 # sync_replicas training, set it to 0.
@@ -5301,7 +5487,7 @@ if is_chief and FLAGS.sync_replicas:
 
 - - -
 
-#### `tf.train.SyncReplicasOptimizerV2.__init__(opt, replicas_to_aggregate, total_num_replicas=None, variable_averages=None, variables_to_average=None, use_locking=False, name='sync_replicas')` {#SyncReplicasOptimizerV2.__init__}
+#### `tf.train.SyncReplicasOptimizer.__init__(opt, replicas_to_aggregate, total_num_replicas=None, variable_averages=None, variables_to_average=None, use_locking=False, name='sync_replicas')` {#SyncReplicasOptimizer.__init__}
 
 Construct a sync_replicas optimizer.
 
@@ -5329,7 +5515,7 @@ Construct a sync_replicas optimizer.
 
 - - -
 
-#### `tf.train.SyncReplicasOptimizerV2.compute_gradients(*args, **kwargs)` {#SyncReplicasOptimizerV2.compute_gradients}
+#### `tf.train.SyncReplicasOptimizer.compute_gradients(*args, **kwargs)` {#SyncReplicasOptimizer.compute_gradients}
 
 Compute gradients of "loss" for the variables in "var_list".
 
@@ -5352,7 +5538,7 @@ gradients can hurt the gradients from other replicas.
 
 - - -
 
-#### `tf.train.SyncReplicasOptimizerV2.apply_gradients(grads_and_vars, global_step=None, name=None)` {#SyncReplicasOptimizerV2.apply_gradients}
+#### `tf.train.SyncReplicasOptimizer.apply_gradients(grads_and_vars, global_step=None, name=None)` {#SyncReplicasOptimizer.apply_gradients}
 
 Apply gradients to variables.
 
@@ -5385,7 +5571,7 @@ apply_gradients() from the real optimizer.
 
 - - -
 
-#### `tf.train.SyncReplicasOptimizerV2.get_chief_queue_runner()` {#SyncReplicasOptimizerV2.get_chief_queue_runner}
+#### `tf.train.SyncReplicasOptimizer.get_chief_queue_runner()` {#SyncReplicasOptimizer.get_chief_queue_runner}
 
 Returns the QueueRunner for the chief to execute.
 
@@ -5407,7 +5593,7 @@ actually generates this queuerunner.
 
 - - -
 
-#### `tf.train.SyncReplicasOptimizerV2.get_init_tokens_op(num_tokens=-1)` {#SyncReplicasOptimizerV2.get_init_tokens_op}
+#### `tf.train.SyncReplicasOptimizer.get_init_tokens_op(num_tokens=-1)` {#SyncReplicasOptimizer.get_init_tokens_op}
 
 Returns the op to fill the sync_token_queue with the tokens.
 
@@ -5438,7 +5624,7 @@ variable update. Make sure:
 #### Other Methods
 - - -
 
-#### `tf.train.SyncReplicasOptimizerV2.get_slot(*args, **kwargs)` {#SyncReplicasOptimizerV2.get_slot}
+#### `tf.train.SyncReplicasOptimizer.get_slot(*args, **kwargs)` {#SyncReplicasOptimizer.get_slot}
 
 Return a slot named "name" created for "var" by the Optimizer.
 
@@ -5457,7 +5643,7 @@ This simply wraps the get_slot() from the actual optimizer.
 
 - - -
 
-#### `tf.train.SyncReplicasOptimizerV2.get_slot_names(*args, **kwargs)` {#SyncReplicasOptimizerV2.get_slot_names}
+#### `tf.train.SyncReplicasOptimizer.get_slot_names(*args, **kwargs)` {#SyncReplicasOptimizer.get_slot_names}
 
 Return a list of the names of slots created by the `Optimizer`.
 

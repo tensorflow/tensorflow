@@ -99,4 +99,36 @@ REGISTER_GPU_DEBUG_NAN_COUNT(double);
 REGISTER_GPU_DEBUG_NAN_COUNT(float);
 #endif // TENSORFLOW_USE_SYCL
 
+// Register debug numeric summary ops.
+#define REGISTER_DEBUG_NUMERIC_SUMMARY_COUNT(type)        \
+  REGISTER_KERNEL_BUILDER(Name("DebugNumericSummary")     \
+                              .Device(DEVICE_CPU)         \
+                              .TypeConstraint<type>("T"), \
+                          DebugNumericSummaryOp<type>);
+REGISTER_DEBUG_NUMERIC_SUMMARY_COUNT(float);
+REGISTER_DEBUG_NUMERIC_SUMMARY_COUNT(double);
+
+#if GOOGLE_CUDA
+#define REGISTER_GPU_DEBUG_NUMERIC_SUMMARY_COUNT(type)    \
+  REGISTER_KERNEL_BUILDER(Name("DebugNumericSummary")     \
+                              .Device(DEVICE_GPU)         \
+                              .HostMemory("input")        \
+                              .HostMemory("output")       \
+                              .TypeConstraint<type>("T"), \
+                          DebugNumericSummaryOp<type>);
+REGISTER_GPU_DEBUG_NUMERIC_SUMMARY_COUNT(float);
+REGISTER_GPU_DEBUG_NUMERIC_SUMMARY_COUNT(double);
+#endif  // GOOGLE_CUDA
+
+#if TENSORFLOW_USE_SYCL
+#define REGISTER_GPU_DEBUG_NUMERIC_SUMMARY_COUNT(type)    \
+  REGISTER_KERNEL_BUILDER(Name("DebugNumericSummary")     \
+                              .Device(DEVICE_SYCL)        \
+                              .HostMemory("input")        \
+                              .HostMemory("output")       \
+                              .TypeConstraint<type>("T"), \
+                          DebugNumericSummaryOp<type>);
+REGISTER_GPU_DEBUG_NUMERIC_SUMMARY_COUNT(float);
+#endif  // TENSORFLOW_USE_SYCL
+
 }  // namespace tensorflow

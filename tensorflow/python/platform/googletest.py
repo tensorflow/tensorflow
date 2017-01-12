@@ -29,6 +29,7 @@ import tempfile
 from unittest import *
 # pylint: enable=wildcard-import
 
+from tensorflow.python.platform import app
 from tensorflow.python.platform import benchmark  # pylint: disable=unused-import
 
 Benchmark = benchmark.TensorFlowBenchmark  # pylint: disable=invalid-name
@@ -38,7 +39,7 @@ unittest_main = main
 
 # pylint: disable=invalid-name
 # pylint: disable=undefined-variable
-def g_main(*args, **kwargs):
+def g_main(argv):
   """Delegate to unittest.main after redefining testLoader."""
   if 'TEST_SHARD_STATUS_FILE' in os.environ:
     try:
@@ -55,7 +56,7 @@ def g_main(*args, **kwargs):
 
   if ('TEST_TOTAL_SHARDS' not in os.environ or
       'TEST_SHARD_INDEX' not in os.environ):
-    return unittest_main(*args, **kwargs)
+    return unittest_main(argv=argv)
 
   total_shards = int(os.environ['TEST_TOTAL_SHARDS'])
   shard_index = int(os.environ['TEST_SHARD_INDEX'])
@@ -75,13 +76,14 @@ def g_main(*args, **kwargs):
   # Override getTestCaseNames
   base_loader.getTestCaseNames = getShardedTestCaseNames
 
-  kwargs['testLoader'] = base_loader
-  unittest_main(*args, **kwargs)
+  unittest_main(argv=argv, testLoader=base_loader)
 
 
 # Redefine main to allow running benchmarks
 def main():  # pylint: disable=function-redefined
-  benchmark.benchmarks_main(true_main=g_main)
+  def main_wrapper():
+    return app.run(main=g_main, argv=sys.argv)
+  benchmark.benchmarks_main(true_main=main_wrapper)
 
 
 def GetTempDir():

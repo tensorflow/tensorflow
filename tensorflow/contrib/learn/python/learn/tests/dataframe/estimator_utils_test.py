@@ -18,26 +18,34 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import sys
+
+# TODO: #6568 Remove this hack that makes dlopen() not crash.
+if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
+  import ctypes
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 from tensorflow.contrib.layers import feature_column
 from tensorflow.contrib.learn.python import learn
 from tensorflow.contrib.learn.python.learn.dataframe import estimator_utils
 from tensorflow.contrib.learn.python.learn.tests.dataframe import mocks
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import parsing_ops
+from tensorflow.python.platform import test
 
 
 def setup_test_df():
   """Create a dataframe populated with some test columns."""
   df = learn.DataFrame()
   df["a"] = learn.TransformedSeries(
-      [mocks.MockSeries("foobar", mocks.MockTensor("Tensor a", tf.int32))],
+      [mocks.MockSeries("foobar", mocks.MockTensor("Tensor a", dtypes.int32))],
       mocks.MockTwoOutputTransform("iue", "eui", "snt"), "out1")
   df["b"] = learn.TransformedSeries(
-      [mocks.MockSeries("foobar", mocks.MockTensor("Tensor b", tf.int32))],
+      [mocks.MockSeries("foobar", mocks.MockTensor("Tensor b", dtypes.int32))],
       mocks.MockTwoOutputTransform("iue", "eui", "snt"), "out2")
   df["c"] = learn.TransformedSeries(
-      [mocks.MockSeries("foobar", mocks.MockTensor("Tensor c", tf.int32))],
+      [mocks.MockSeries("foobar", mocks.MockTensor("Tensor c", dtypes.int32))],
       mocks.MockTwoOutputTransform("iue", "eui", "snt"), "out1")
   return df
 
@@ -46,12 +54,14 @@ def setup_test_df_3layer():
   """Create a dataframe populated with some test columns."""
   df = learn.DataFrame()
 
-  df["a"] = mocks.MockSeries("a_series", mocks.MockTensor("Tensor a", tf.int32))
-  df["b"] = mocks.MockSeries("b_series",
-                             mocks.MockSparseTensor("SparseTensor b", tf.int32))
-  df["c"] = mocks.MockSeries("c_series", mocks.MockTensor("Tensor c", tf.int32))
-  df["d"] = mocks.MockSeries("d_series",
-                             mocks.MockSparseTensor("SparseTensor d", tf.int32))
+  df["a"] = mocks.MockSeries("a_series",
+                             mocks.MockTensor("Tensor a", dtypes.int32))
+  df["b"] = mocks.MockSeries(
+      "b_series", mocks.MockSparseTensor("SparseTensor b", dtypes.int32))
+  df["c"] = mocks.MockSeries("c_series",
+                             mocks.MockTensor("Tensor c", dtypes.int32))
+  df["d"] = mocks.MockSeries(
+      "d_series", mocks.MockSparseTensor("SparseTensor d", dtypes.int32))
 
   df["e"] = learn.TransformedSeries([df["a"], df["b"]],
                                     mocks.Mock2x2Transform("iue", "eui", "snt"),
@@ -65,7 +75,7 @@ def setup_test_df_3layer():
   return df
 
 
-class EstimatorUtilsTest(tf.test.TestCase):
+class EstimatorUtilsTest(test.TestCase):
   """Test of estimator utils."""
 
   def test_to_feature_columns_and_input_fn(self):
@@ -81,32 +91,40 @@ class EstimatorUtilsTest(tf.test.TestCase):
             feature_keys=["a", "b", "f"]))
 
     expected_feature_column_a = feature_column.DataFrameColumn(
-        "a", learn.PredefinedSeries(
-            "a", tf.FixedLenFeature(tensor_shape.unknown_shape(), tf.int32, 1)))
+        "a",
+        learn.PredefinedSeries(
+            "a",
+            parsing_ops.FixedLenFeature(tensor_shape.unknown_shape(),
+                                        dtypes.int32, 1)))
     expected_feature_column_b = feature_column.DataFrameColumn(
-        "b", learn.PredefinedSeries("b", tf.VarLenFeature(tf.int32)))
+        "b",
+        learn.PredefinedSeries("b", parsing_ops.VarLenFeature(dtypes.int32)))
     expected_feature_column_f = feature_column.DataFrameColumn(
-        "f", learn.TransformedSeries([
-            learn.PredefinedSeries("c", tf.FixedLenFeature(
-                tensor_shape.unknown_shape(), tf.int32, 3)),
-            learn.PredefinedSeries("d", tf.VarLenFeature(tf.int32))
+        "f",
+        learn.TransformedSeries([
+            learn.PredefinedSeries("c",
+                                   parsing_ops.FixedLenFeature(
+                                       tensor_shape.unknown_shape(),
+                                       dtypes.int32, 3)),
+            learn.PredefinedSeries("d", parsing_ops.VarLenFeature(dtypes.int32))
         ], mocks.Mock2x2Transform("iue", "eui", "snt"), "out2"))
 
-    expected_feature_columns = [expected_feature_column_a,
-                                expected_feature_column_b,
-                                expected_feature_column_f]
+    expected_feature_columns = [
+        expected_feature_column_a, expected_feature_column_b,
+        expected_feature_column_f
+    ]
     self.assertEqual(sorted(expected_feature_columns), sorted(feature_columns))
 
     base_features, labels = input_fn()
     expected_base_features = {
-        "a": mocks.MockTensor("Tensor a", tf.int32),
-        "b": mocks.MockSparseTensor("SparseTensor b", tf.int32),
-        "c": mocks.MockTensor("Tensor c", tf.int32),
-        "d": mocks.MockSparseTensor("SparseTensor d", tf.int32)
+        "a": mocks.MockTensor("Tensor a", dtypes.int32),
+        "b": mocks.MockSparseTensor("SparseTensor b", dtypes.int32),
+        "c": mocks.MockTensor("Tensor c", dtypes.int32),
+        "d": mocks.MockSparseTensor("SparseTensor d", dtypes.int32)
     }
     self.assertEqual(expected_base_features, base_features)
 
-    expected_labels = mocks.MockTensor("Out iue", tf.int32)
+    expected_labels = mocks.MockTensor("Out iue", dtypes.int32)
     self.assertEqual(expected_labels, labels)
 
     self.assertEqual(3, len(feature_columns))
@@ -124,10 +142,10 @@ class EstimatorUtilsTest(tf.test.TestCase):
 
     base_features, labels = input_fn()
     expected_base_features = {
-        "a": mocks.MockTensor("Tensor a", tf.int32),
-        "b": mocks.MockSparseTensor("SparseTensor b", tf.int32),
-        "c": mocks.MockTensor("Tensor c", tf.int32),
-        "d": mocks.MockSparseTensor("SparseTensor d", tf.int32)
+        "a": mocks.MockTensor("Tensor a", dtypes.int32),
+        "b": mocks.MockSparseTensor("SparseTensor b", dtypes.int32),
+        "c": mocks.MockTensor("Tensor c", dtypes.int32),
+        "d": mocks.MockSparseTensor("SparseTensor d", dtypes.int32)
     }
     self.assertEqual(expected_base_features, base_features)
 
@@ -155,4 +173,4 @@ class EstimatorUtilsTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

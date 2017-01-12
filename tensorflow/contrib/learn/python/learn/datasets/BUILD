@@ -18,21 +18,27 @@ py_library(
         "base.py",
         "mnist.py",
         "produce_small_datasets.py",
+        "synthetic.py",
         "text_datasets.py",
     ],
     data = [":data_csv"],
     srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform",
+        "//third_party/py/numpy",
+    ],
 )
 
 py_binary(
     name = "produce_small_datasets",
-    srcs = [
-        "produce_small_datasets.py",
-    ],
+    srcs = ["produce_small_datasets.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":datasets",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python",  # TODO(b/34059704): remove when fixed
+        "//tensorflow/python:platform",
     ],
 )
 
@@ -54,8 +60,9 @@ py_test(
     srcs = ["base_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow:tensorflow_py",
+        ":datasets",
         "//tensorflow/contrib/learn",
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
 )
@@ -66,8 +73,9 @@ py_test(
     srcs = ["load_csv_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow:tensorflow_py",
+        ":datasets",
         "//tensorflow/contrib/learn",
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
 )
@@ -78,8 +86,12 @@ py_test(
     srcs = ["synthetic_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":datasets",
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/learn",
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )

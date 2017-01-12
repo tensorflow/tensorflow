@@ -28,7 +28,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import init_ops
@@ -36,8 +35,10 @@ from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.training import moving_averages
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.ops import variables
 
 from tensorflow.python.layers import base
+from tensorflow.python.layers import utils
 
 
 class BatchNormalization(base._Layer):  # pylint: disable=protected-access
@@ -54,7 +55,8 @@ class BatchNormalization(base._Layer):  # pylint: disable=protected-access
       `data_format="channels_first"`, set `axis=1` in `BatchNormalization`.
     momentum: Momentum for the moving average.
     epsilon: Small float added to variance to avoid dividing by zero.
-    center: If True, subtract `beta`. If False, `beta` is ignored.
+    center: If True, add offset of `beta` to normalized tensor. If False, `beta`
+      is ignored.
     scale: If True, multiply by `gamma`. If False, `gamma` is
       not used. When the next layer is linear (also e.g. `nn.relu`), this can be
       disabled since the scaling can be done by the next layer.
@@ -75,9 +77,9 @@ class BatchNormalization(base._Layer):  # pylint: disable=protected-access
                epsilon=1e-3,
                center=True,
                scale=True,
-               beta_initializer=init_ops.zeros_initializer,
+               beta_initializer=init_ops.zeros_initializer(),
                gamma_initializer=init_ops.ones_initializer(),
-               moving_mean_initializer=init_ops.zeros_initializer,
+               moving_mean_initializer=init_ops.zeros_initializer(),
                moving_variance_initializer=init_ops.ones_initializer(),
                beta_regularizer=None,
                gamma_regularizer=None,
@@ -162,18 +164,21 @@ class BatchNormalization(base._Layer):  # pylint: disable=protected-access
     # Determines whether broadcasting is needed.
     needs_broadcasting = (sorted(reduction_axes) != range(ndim)[:-1])
 
-    # Determine boolean training boolean value. May be False, True, None.
-    # If None, it is assumed that `training` is a variable to be used in `cond`.
-    if isinstance(training, bool):
-      training_bool = training
-    else:
-      try:
-        training_bool = tensor_util.constant_value(training)
-      except TypeError:
-        training_bool = None
+    # Determine a boolean value for `training`: could be True, False, or None.
+    training_value = utils.constant_value(training)
 
-    # Obtain current current batch mean, variance, if necessary.
-    if training_bool is not False:
+    if needs_broadcasting:
+      # In this case we must explictly broadcast all parameters.
+      if self.center:
+        broadcast_beta = array_ops.reshape(self.beta, broadcast_shape)
+      else:
+        broadcast_beta = None
+      if self.scale:
+        broadcast_gamma = array_ops.reshape(self.gamma, broadcast_shape)
+      else:
+        broadcast_gamma = None
+
+    if training_value is not False:
       # Use a copy of moving_mean as a shift to compute more reliable moments.
       shift = math_ops.add(self.moving_mean, 0)
       if needs_broadcasting:
@@ -185,72 +190,59 @@ class BatchNormalization(base._Layer):  # pylint: disable=protected-access
       else:
         mean, variance = nn.moments(inputs, reduction_axes, shift=shift)
 
-    # Prepare updates if necessary.
-    if training_bool is not False and not self.updates:
-      mean_update = moving_averages.assign_moving_average(
-          self.moving_mean, mean, self.momentum, zero_debias=False)
-      variance_update = moving_averages.assign_moving_average(
-          self.moving_variance, variance, self.momentum, zero_debias=False)
-      # In the future this should be refactored into a self.add_update
-      # methods in order to allow for instance-based BN layer sharing
-      # across unrelated input streams (e.g. like in Keras).
-      self.updates.append(mean_update)
-      self.updates.append(variance_update)
+      # Prepare updates if necessary.
+      if not self.updates:
+        mean_update = moving_averages.assign_moving_average(
+            self.moving_mean, mean, self.momentum, zero_debias=False)
+        variance_update = moving_averages.assign_moving_average(
+            self.moving_variance, variance, self.momentum, zero_debias=False)
+        # In the future this should be refactored into a self.add_update
+        # methods in order to allow for instance-based BN layer sharing
+        # across unrelated input streams (e.g. like in Keras).
+        self.updates.append(mean_update)
+        self.updates.append(variance_update)
 
-    # Normalize batch.
-    if needs_broadcasting:
-      # In this case we must explictly broadcast all parameters.
-      broadcast_moving_mean = array_ops.reshape(self.moving_mean,
-                                                broadcast_shape)
-      broadcast_moving_variance = array_ops.reshape(self.moving_variance,
-                                                    broadcast_shape)
-      if self.center:
-        broadcast_beta = array_ops.reshape(self.beta, broadcast_shape)
+    # Normalize batch. We do this inside separate functions for training
+    # and inference so as to avoid evaluating both branches.
+    def normalize_in_test():
+      if needs_broadcasting:
+        broadcast_moving_mean = array_ops.reshape(self.moving_mean,
+                                                  broadcast_shape)
+        broadcast_moving_variance = array_ops.reshape(self.moving_variance,
+                                                      broadcast_shape)
+        return nn.batch_normalization(inputs,
+                                      broadcast_moving_mean,
+                                      broadcast_moving_variance,
+                                      broadcast_beta,
+                                      broadcast_gamma,
+                                      self.epsilon)
       else:
-        broadcast_beta = None
-      if self.scale:
-        broadcast_gamma = array_ops.reshape(self.gamma, broadcast_shape)
+        return nn.batch_normalization(inputs,
+                                      self.moving_mean,
+                                      self.moving_variance,
+                                      self.beta if self.center else None,
+                                      self.gamma if self.scale else None,
+                                      self.epsilon)
+
+    def normalize_in_training():
+      if needs_broadcasting:
+        return nn.batch_normalization(inputs,
+                                      broadcast_mean,
+                                      broadcast_variance,
+                                      broadcast_beta,
+                                      broadcast_gamma,
+                                      self.epsilon)
       else:
-        broadcast_gamma = None
+        return nn.batch_normalization(inputs,
+                                      mean,
+                                      variance,
+                                      self.beta if self.center else None,
+                                      self.gamma if self.scale else None,
+                                      self.epsilon)
 
-      if training_bool is not False:
-        normed_inputs_training = nn.batch_normalization(inputs,
-                                                        broadcast_mean,
-                                                        broadcast_variance,
-                                                        broadcast_beta,
-                                                        broadcast_gamma,
-                                                        self.epsilon)
-      normed_inputs = nn.batch_normalization(inputs,
-                                             broadcast_moving_mean,
-                                             broadcast_moving_variance,
-                                             broadcast_beta,
-                                             broadcast_gamma,
-                                             self.epsilon)
-    else:
-      # No need for broadcasting.
-      if training_bool is not False:
-        normed_inputs_training = nn.batch_normalization(
-            inputs,
-            mean,
-            variance,
-            self.beta if self.center else None,
-            self.gamma if self.scale else None,
-            self.epsilon)
-      normed_inputs = nn.batch_normalization(inputs,
-                                             self.moving_mean,
-                                             self.moving_variance,
-                                             self.beta if self.center else None,
-                                             self.gamma if self.scale else None,
-                                             self.epsilon)
-
-    # Return the proper output depending on the boolean training phase.
-    if training_bool is True:
-      return normed_inputs_training
-    if training_bool is False:
-      return normed_inputs
-    return control_flow_ops.cond(training,
-                                 lambda: normed_inputs_training,
-                                 lambda: normed_inputs)
+    return utils.smart_cond(training,
+                            normalize_in_training,
+                            normalize_in_test)
 
 
 def batch_normalization(inputs,
@@ -259,9 +251,9 @@ def batch_normalization(inputs,
                         epsilon=1e-3,
                         center=True,
                         scale=True,
-                        beta_initializer=init_ops.zeros_initializer,
+                        beta_initializer=init_ops.zeros_initializer(),
                         gamma_initializer=init_ops.ones_initializer(),
-                        moving_mean_initializer=init_ops.zeros_initializer,
+                        moving_mean_initializer=init_ops.zeros_initializer(),
                         moving_variance_initializer=init_ops.ones_initializer(),
                         beta_regularizer=None,
                         gamma_regularizer=None,
@@ -285,7 +277,8 @@ def batch_normalization(inputs,
       `data_format="channels_first"`, set `axis=1` in `BatchNormalization`.
     momentum: Momentum for the moving average.
     epsilon: Small float added to variance to avoid dividing by zero.
-    center: If True, subtract `beta`. If False, `beta` is ignored.
+    center: If True, add offset of `beta` to normalized tensor. If False, `beta`
+      is ignored.
     scale: If True, multiply by `gamma`. If False, `gamma` is
       not used. When the next layer is linear (also e.g. `nn.relu`), this can be
       disabled since the scaling can be done by the next layer.

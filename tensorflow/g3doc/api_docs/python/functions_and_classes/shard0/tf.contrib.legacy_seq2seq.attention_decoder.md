@@ -15,7 +15,7 @@ details). It is recommended for complex sequence-to-sequence tasks.
 *  <b>`decoder_inputs`</b>: A list of 2D Tensors [batch_size x input_size].
 *  <b>`initial_state`</b>: 2D Tensor [batch_size x cell.state_size].
 *  <b>`attention_states`</b>: 3D Tensor [batch_size x attn_length x attn_size].
-*  <b>`cell`</b>: rnn_cell.RNNCell defining the cell function and size.
+*  <b>`cell`</b>: core_rnn_cell.RNNCell defining the cell function and size.
 *  <b>`output_size`</b>: Size of the output vectors; if None, we use cell.output_size.
 *  <b>`num_heads`</b>: Number of attention heads that read from attention_states.
 *  <b>`loop_function`</b>: If not None, this function will be applied to i-th output

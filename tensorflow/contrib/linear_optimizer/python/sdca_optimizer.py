@@ -89,11 +89,12 @@ class SDCAOptimizer(object):
       # very sparse features with weights and not weights.
       return SparseFeatureColumn(
           array_ops.reshape(
-              array_ops.split(1, 2, sparse_indices)[0], [-1]),
+              array_ops.split(
+                  value=sparse_indices, num_or_size_splits=2, axis=1)[0], [-1]),
           array_ops.reshape(
-              array_ops.split(1, 2, sparse_indices)[1], [-1]),
-          array_ops.reshape(
-              math_ops.to_float(sparse_values), [-1]))
+              array_ops.split(
+                  value=sparse_indices, num_or_size_splits=2, axis=1)[1], [-1]),
+          array_ops.reshape(math_ops.to_float(sparse_values), [-1]))
 
     def _training_examples_and_variables():
       """Returns dictionaries for training examples and variables."""
@@ -135,19 +136,27 @@ class SDCAOptimizer(object):
               columns_to_variables[column][0])
         elif isinstance(column, (layers.feature_column._CrossedColumn,
                                  layers.feature_column._SparseColumn)):
-          sparse_features.append(SparseFeatureColumn(
-              array_ops.reshape(
-                  array_ops.split(1, 2, transformed_tensor.indices)[0], [-1]),
-              array_ops.reshape(transformed_tensor.values, [-1]), None))
+          sparse_features.append(
+              SparseFeatureColumn(
+                  array_ops.reshape(
+                      array_ops.split(
+                          value=transformed_tensor.indices,
+                          num_or_size_splits=2,
+                          axis=1)[0], [-1]),
+                  array_ops.reshape(transformed_tensor.values, [-1]),
+                  None))
           sparse_feature_weights.append(columns_to_variables[column][0])
         elif isinstance(column, layers.feature_column._WeightedSparseColumn):
           id_tensor = column.id_tensor(transformed_tensor)
           weight_tensor = column.weight_tensor(transformed_tensor)
-          sparse_feature_with_values.append(SparseFeatureColumn(
-              array_ops.reshape(
-                  array_ops.split(1, 2, id_tensor.indices)[0], [-1]),
-              array_ops.reshape(id_tensor.values, [-1]), array_ops.reshape(
-                  weight_tensor.values, [-1])))
+          sparse_feature_with_values.append(
+              SparseFeatureColumn(
+                  array_ops.reshape(
+                      array_ops.split(
+                          value=id_tensor.indices, num_or_size_splits=2, axis=1)
+                      [0], [-1]),
+                  array_ops.reshape(id_tensor.values, [-1]),
+                  array_ops.reshape(weight_tensor.values, [-1])))
           sparse_feature_with_values_weights.append(
             columns_to_variables[column][0])
         else:

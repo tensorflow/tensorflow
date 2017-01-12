@@ -18,7 +18,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-REGISTER_KERNEL_BUILDER(Name("Reshape").Device(DEVICE_CPU).HostMemory("shape"),
+REGISTER_KERNEL_BUILDER(Name("Reshape")
+                            .Device(DEVICE_CPU)
+                            .HostMemory("shape")
+                            .TypeConstraint<int32>("Tshape"),
                         ReshapeOp);
 
 #define REGISTER_GPU_KERNEL(type)                               \
@@ -50,7 +53,7 @@ REGISTER_KERNEL_BUILDER(Name("Reshape")
                             .TypeConstraint<int32>("T")
                             .TypeConstraint<int32>("Tshape"),
                         ReshapeOp);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 #if GOOGLE_CUDA
 // A special GPU kernel for int32.

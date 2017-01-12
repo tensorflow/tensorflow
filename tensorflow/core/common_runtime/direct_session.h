@@ -149,8 +149,10 @@ class DirectSession : public Session {
     TensorStore tensor_store;
     ScopedStepContainer step_container;
 
-    RunState(const std::vector<string>& input_names,
-             const std::vector<string>& output_names, int64 step_id,
+    RunState(int64 step_id, const std::vector<Device*>* devices);
+
+    RunState(const std::vector<string>& pending_input_names,
+             const std::vector<string>& pending_output_names, int64 step_id,
              const std::vector<Device*>* devices);
 
     ~RunState();

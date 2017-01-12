@@ -25,7 +25,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import rnn_cell
 from tensorflow.python.util import nest
 
 __all__ = ["simple_decoder_fn_train",

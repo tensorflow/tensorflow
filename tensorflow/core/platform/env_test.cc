@@ -291,4 +291,9 @@ TEST_F(DefaultEnvTest, RecursivelyCreateDirWithUri) {
   TF_EXPECT_OK(env->FileExists(create_path));
 }
 
+TEST_F(DefaultEnvTest, GetExecutablePath) {
+  Env* env = Env::Default();
+  TF_EXPECT_OK(env->FileExists(env->GetExecutablePath()));
+}
+
 }  // namespace tensorflow

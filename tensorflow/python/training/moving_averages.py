@@ -114,14 +114,16 @@ def weighted_moving_average(value,
                                      [value, weight, decay]) as scope:
     value_x_weight_var = variable_scope.get_variable(
         "value_x_weight",
-        initializer=init_ops.zeros_initializer(value.get_shape(),
-                                               dtype=value.dtype),
+        shape=value.get_shape(),
+        dtype=value.dtype,
+        initializer=init_ops.zeros_initializer(),
         trainable=False,
         collections=collections)
     weight_var = variable_scope.get_variable(
         "weight",
-        initializer=init_ops.zeros_initializer(weight.get_shape(),
-                                               dtype=weight.dtype),
+        shape=weight.get_shape(),
+        dtype=weight.dtype,
+        initializer=init_ops.zeros_initializer(),
         trainable=False,
         collections=collections)
     numerator = assign_moving_average(
@@ -172,12 +174,10 @@ def _zero_debias(unbiased_var, value, decay):
     with ops.colocate_with(unbiased_var):
       with ops.control_dependencies(None):
         biased_initializer = init_ops.zeros_initializer(
-            unbiased_var.get_shape(), dtype=unbiased_var.dtype)
-        local_step_initializer = init_ops.ones_initializer()
+            dtype=unbiased_var.dtype)(unbiased_var.get_shape())
+        local_step_initializer = init_ops.zeros_initializer()
       biased_var = variable_scope.get_variable(
           "biased", initializer=biased_initializer, trainable=False)
-      # Initializing the local_step to `0` would cause problems with the
-      # debiasing equation, so we instead initialize to `1`.
       local_step = variable_scope.get_variable(
           "local_step",
           shape=[],

@@ -18,20 +18,34 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
+
+# TODO: #6568 Remove this hack that makes dlopen() not crash.
+if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
+  import ctypes
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
+
 import numpy as np
-import tensorflow as tf
 
 from tensorflow.contrib.learn.python.learn import ops
+from tensorflow.contrib.rnn.python.ops import core_rnn_cell_impl
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
+from tensorflow.python.platform import test
 
 
-class Seq2SeqOpsTest(tf.test.TestCase):
+class Seq2SeqOpsTest(test.TestCase):
   """Sequence-to-sequence tests."""
 
   def test_sequence_classifier(self):
     with self.test_session() as session:
-      decoding = [tf.placeholder(tf.float32, [2, 2]) for _ in range(3)]
-      labels = [tf.placeholder(tf.float32, [2, 2]) for _ in range(3)]
-      sampling_decoding = [tf.placeholder(tf.float32, [2, 2]) for _ in range(3)]
+      decoding = [
+          array_ops.placeholder(dtypes.float32, [2, 2]) for _ in range(3)
+      ]
+      labels = [array_ops.placeholder(dtypes.float32, [2, 2]) for _ in range(3)]
+      sampling_decoding = [
+          array_ops.placeholder(dtypes.float32, [2, 2]) for _ in range(3)
+      ]
       predictions, loss = ops.sequence_classifier(decoding, labels,
                                                   sampling_decoding)
       pred, cost = session.run(
@@ -54,8 +68,8 @@ class Seq2SeqOpsTest(tf.test.TestCase):
     inp = np.array([[[1, 0], [0, 1], [1, 0]], [[0, 1], [1, 0], [0, 1]]])
     out = np.array([[[0, 1, 0], [1, 0, 0]], [[1, 0, 0], [0, 1, 0]]])
     with self.test_session() as session:
-      x = tf.placeholder(tf.float32, [2, 3, 2])
-      y = tf.placeholder(tf.float32, [2, 2, 3])
+      x = array_ops.placeholder(dtypes.float32, [2, 3, 2])
+      y = array_ops.placeholder(dtypes.float32, [2, 2, 3])
       in_x, in_y, out_y = ops.seq2seq_inputs(x, y, 3, 2)
       enc_inp = session.run(in_x, feed_dict={x.name: inp})
       dec_inp = session.run(in_y, feed_dict={x.name: inp, y.name: out})
@@ -71,9 +85,11 @@ class Seq2SeqOpsTest(tf.test.TestCase):
 
   def test_rnn_decoder(self):
     with self.test_session():
-      decoder_inputs = [tf.placeholder(tf.float32, [2, 2]) for _ in range(3)]
-      encoding = tf.placeholder(tf.float32, [2, 2])
-      cell = tf.contrib.rnn.GRUCell(2)
+      decoder_inputs = [
+          array_ops.placeholder(dtypes.float32, [2, 2]) for _ in range(3)
+      ]
+      encoding = array_ops.placeholder(dtypes.float32, [2, 2])
+      cell = core_rnn_cell_impl.GRUCell(2)
       outputs, states, sampling_outputs, sampling_states = (
           ops.rnn_decoder(decoder_inputs, encoding, cell))
       self.assertEqual(len(outputs), 3)
@@ -86,5 +102,5 @@ class Seq2SeqOpsTest(tf.test.TestCase):
       self.assertEqual(sampling_states[0].get_shape(), [2, 2])
 
 
-if __name__ == '__main__':
-  tf.test.main()
+if __name__ == "__main__":
+  test.main()

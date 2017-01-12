@@ -17,13 +17,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-
+from tensorflow.contrib import linalg as linalg_lib
 from tensorflow.contrib.linalg.python.ops import linear_operator_test_util
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
+from tensorflow.python.ops import array_ops
+from tensorflow.python.platform import test
 
-
-linalg = tf.contrib.linalg
-tf.set_random_seed(23)
+linalg = linalg_lib
+random_seed.set_random_seed(23)
 
 
 class SquareLinearOperatorMatrixTest(
@@ -33,11 +36,11 @@ class SquareLinearOperatorMatrixTest(
   def _operator_and_mat_and_feed_dict(self, shape, dtype, use_placeholder):
     shape = list(shape)
 
-    matrix = linear_operator_test_util.random_positive_definite_matrix(
-        shape, dtype)
+    matrix = linear_operator_test_util.random_positive_definite_matrix(shape,
+                                                                       dtype)
 
     if use_placeholder:
-      matrix_ph = tf.placeholder(dtype=dtype)
+      matrix_ph = array_ops.placeholder(dtype=dtype)
       # Evaluate here because (i) you cannot feed a tensor, and (ii)
       # values are random and we want the same value used for both mat and
       # feed_dict.
@@ -50,7 +53,7 @@ class SquareLinearOperatorMatrixTest(
 
     # Convert back to Tensor.  Needed if use_placeholder, since then we have
     # already evaluated matrix to a numpy array.
-    mat = tf.convert_to_tensor(matrix)
+    mat = ops.convert_to_tensor(matrix)
 
     return operator, mat, feed_dict
 
@@ -80,14 +83,14 @@ class SquareLinearOperatorMatrixSymmetricPositiveDefiniteTest(
     # presumably, because we are taking a different code path in the operator
     # and the matrix.  The operator uses a Choleksy, the matrix uses standard
     # solve.
-    self._atol[tf.float32] = 1e-5
-    self._rtol[tf.float32] = 1e-5
-    self._atol[tf.float64] = 1e-10
-    self._rtol[tf.float64] = 1e-10
+    self._atol[dtypes.float32] = 1e-5
+    self._rtol[dtypes.float32] = 1e-5
+    self._atol[dtypes.float64] = 1e-10
+    self._rtol[dtypes.float64] = 1e-10
 
   @property
   def _dtypes_to_test(self):
-    return [tf.float32, tf.float64]
+    return [dtypes.float32, dtypes.float64]
 
   def _operator_and_mat_and_feed_dict(self, shape, dtype, use_placeholder):
     shape = list(shape)
@@ -96,7 +99,7 @@ class SquareLinearOperatorMatrixSymmetricPositiveDefiniteTest(
         shape, dtype, force_well_conditioned=True)
 
     if use_placeholder:
-      matrix_ph = tf.placeholder(dtype=dtype)
+      matrix_ph = array_ops.placeholder(dtype=dtype)
       # Evaluate here because (i) you cannot feed a tensor, and (ii)
       # values are random and we want the same value used for both mat and
       # feed_dict.
@@ -111,7 +114,7 @@ class SquareLinearOperatorMatrixSymmetricPositiveDefiniteTest(
 
     # Convert back to Tensor.  Needed if use_placeholder, since then we have
     # already evaluated matrix to a numpy array.
-    mat = tf.convert_to_tensor(matrix)
+    mat = ops.convert_to_tensor(matrix)
 
     return operator, mat, feed_dict
 
@@ -119,9 +122,7 @@ class SquareLinearOperatorMatrixSymmetricPositiveDefiniteTest(
     # Matrix with two positive eigenvalues.
     matrix = [[1., 0.], [0., 7.]]
     operator = linalg.LinearOperatorMatrix(
-        matrix,
-        is_positive_definite=True,
-        is_self_adjoint=True)
+        matrix, is_positive_definite=True, is_self_adjoint=True)
 
     self.assertTrue(operator.is_positive_definite)
     self.assertTrue(operator.is_self_adjoint)
@@ -138,7 +139,7 @@ class NonSquareLinearOperatorMatrixTest(
   def _operator_and_mat_and_feed_dict(self, shape, dtype, use_placeholder):
     matrix = linear_operator_test_util.random_normal(shape, dtype=dtype)
     if use_placeholder:
-      matrix_ph = tf.placeholder(dtype=dtype)
+      matrix_ph = array_ops.placeholder(dtype=dtype)
       # Evaluate here because (i) you cannot feed a tensor, and (ii)
       # values are random and we want the same value used for both mat and
       # feed_dict.
@@ -151,7 +152,7 @@ class NonSquareLinearOperatorMatrixTest(
 
     # Convert back to Tensor.  Needed if use_placeholder, since then we have
     # already evaluated matrix to a numpy array.
-    mat = tf.convert_to_tensor(matrix)
+    mat = ops.convert_to_tensor(matrix)
 
     return operator, mat, feed_dict
 
@@ -169,4 +170,4 @@ class NonSquareLinearOperatorMatrixTest(
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

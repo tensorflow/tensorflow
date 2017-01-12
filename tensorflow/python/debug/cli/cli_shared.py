@@ -32,6 +32,36 @@ from tensorflow.python.ops import variables
 DEFAULT_NDARRAY_DISPLAY_THRESHOLD = 2000
 
 
+def bytes_to_readable_str(num_bytes, include_b=False):
+  """Generate a human-readable string representing number of bytes.
+
+  The units B, kB, MB and GB are used.
+
+  Args:
+    num_bytes: (`int` or None) Number of bytes.
+    include_b: (`bool`) Include the letter B at the end of the unit.
+
+  Returns:
+    (`str`) A string representing the number of bytes in a human-readable way,
+      including a unit at the end.
+  """
+
+  if num_bytes is None:
+    return str(num_bytes)
+  if num_bytes < 1024:
+    result = "%d" % num_bytes
+  elif num_bytes < 1048576:
+    result = "%.2fk" % (num_bytes / 1024.0)
+  elif num_bytes < 1073741824:
+    result = "%.2fM" % (num_bytes / 1048576.0)
+  else:
+    result = "%.2fG" % (num_bytes / 1073741824.0)
+
+  if include_b:
+    result += "B"
+  return result
+
+
 def parse_ranges_highlight(ranges_string):
   """Process ranges highlight string.
 
@@ -168,13 +198,15 @@ def _get_fetch_names(fetches):
   return lines
 
 
-def _recommend_command(command, description, indent=2):
+def _recommend_command(command, description, indent=2, create_link=False):
   """Generate a RichTextLines object that describes a recommended command.
 
   Args:
     command: (str) The command to recommend.
     description: (str) A description of what the the command does.
     indent: (int) How many spaces to indent in the beginning.
+    create_link: (bool) Whether a command link is to be applied to the command
+      string.
 
   Returns:
     (RichTextLines) Formatted text (with font attributes) for recommending the
@@ -183,13 +215,22 @@ def _recommend_command(command, description, indent=2):
 
   indent_str = " " * indent
   lines = [indent_str + command + ":", indent_str + "  " + description]
-  font_attr_segs = {0: [(indent, indent + len(command), "bold")]}
+
+  if create_link:
+    font_attr_segs = {
+        0: [(indent, indent + len(command), [
+            debugger_cli_common.MenuItem("", command), "bold"])]}
+  else:
+    font_attr_segs = {0: [(indent, indent + len(command), "bold")]}
 
   return debugger_cli_common.RichTextLines(lines, font_attr_segs=font_attr_segs)
 
 
 def get_tfdbg_logo():
+  """Make an ASCII representation of the tfdbg logo."""
+
   lines = [
+      "",
       "TTTTTT FFFF DDD  BBBB   GGG ",
       "  TT   F    D  D B   B G    ",
       "  TT   FFF  D  D BBBB  G  GG",
@@ -247,11 +288,15 @@ def get_run_start_intro(run_call_count,
   out = debugger_cli_common.RichTextLines(intro_lines)
 
   out.extend(
-      _recommend_command("run",
-                         "Execute the run() call with debug tensor-watching"))
+      _recommend_command(
+          "run",
+          "Execute the run() call with debug tensor-watching",
+          create_link=True))
   out.extend(
       _recommend_command(
-          "run -n", "Execute the run() call without debug tensor-watching"))
+          "run -n",
+          "Execute the run() call without debug tensor-watching",
+          create_link=True))
   out.extend(
       _recommend_command(
           "run -t <T>",
@@ -262,35 +307,47 @@ def get_run_start_intro(run_call_count,
           "run -f <filter_name>",
           "Keep executing run() calls until a dumped tensor passes a given, "
           "registered filter (conditional breakpoint mode)"))
-  out.extend(
-      _recommend_command(
-          "invoke_stepper",
-          "Use the node-stepper interface, which allows you to interactively "
-          "step through nodes involved in the graph run() call and "
-          "inspect/modify their values"))
 
   more_font_attr_segs = {}
   more_lines = ["    Registered filter(s):"]
-
   if tensor_filters:
     filter_names = []
     for filter_name in tensor_filters:
       filter_names.append(filter_name)
       more_lines.append("        * " + filter_name)
-      more_font_attr_segs[len(more_lines) - 1] = [(10, len(more_lines[-1]),
-                                                   "green")]
+      command_menu_node = debugger_cli_common.MenuItem(
+          "", "run -f %s" % filter_name)
+      more_font_attr_segs[len(more_lines) - 1] = [
+          (10, len(more_lines[-1]), command_menu_node)]
   else:
     more_lines.append("        (None)")
-
-  more_lines.extend([
-      "",
-      "For more details, see help below:"
-      "",
-  ])
 
   out.extend(
       debugger_cli_common.RichTextLines(
           more_lines, font_attr_segs=more_font_attr_segs))
+
+  out.extend(
+      _recommend_command(
+          "invoke_stepper",
+          "Use the node-stepper interface, which allows you to interactively "
+          "step through nodes involved in the graph run() call and "
+          "inspect/modify their values", create_link=True))
+
+  out.append("")
+  suggest_help = "For more details, see help."
+  out.append(
+      suggest_help,
+      font_attr_segs=[(len(suggest_help) - 5, len(suggest_help) - 1,
+                       debugger_cli_common.MenuItem("", "help"))])
+  out.append("")
+
+  # Make main menu for the run-start intro.
+  menu = debugger_cli_common.Menu()
+  menu.append(debugger_cli_common.MenuItem("run", "run"))
+  menu.append(debugger_cli_common.MenuItem(
+      "invoke_stepper", "invoke_stepper"))
+  menu.append(debugger_cli_common.MenuItem("exit", "exit"))
+  out.annotations[debugger_cli_common.MAIN_MENU_KEY] = menu
 
   return out
 
@@ -327,7 +384,8 @@ def get_run_short_description(run_call_count, fetches, feed_dict):
   else:
     if len(feed_dict) == 1:
       for key in feed_dict:
-        description += "1 feed (%s)" % key.name
+        description += "1 feed (%s)" % (
+            key if isinstance(key, six.string_types) else key.name)
     else:
       description += "%d feeds" % len(feed_dict)
 
@@ -359,14 +417,19 @@ def get_error_intro(tf_error):
       intro_lines, font_attr_segs=intro_font_attr_segs)
 
   out.extend(
-      _recommend_command("ni %s" % op_name,
-                         "Inspect information about the failing op."))
+      _recommend_command("ni -a -d -t %s" % op_name,
+                         "Inspect information about the failing op.",
+                         create_link=True))
   out.extend(
       _recommend_command("li -r %s" % op_name,
-                         "List inputs to the failing op, recursively."))
+                         "List inputs to the failing op, recursively.",
+                         create_link=True))
+
   out.extend(
       _recommend_command(
-          "lt", "List all tensors dumped during the failing run() call."))
+          "lt",
+          "List all tensors dumped during the failing run() call.",
+          create_link=True))
 
   more_lines = [
       "",

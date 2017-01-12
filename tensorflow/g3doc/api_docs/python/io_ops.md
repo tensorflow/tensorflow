@@ -54,7 +54,7 @@ with tf.Session() as sess:
 
 ### `tf.placeholder_with_default(input, shape, name=None)` {#placeholder_with_default}
 
-A placeholder op that passes though `input` when its output is not fed.
+A placeholder op that passes through `input` when its output is not fed.
 
 ##### Args:
 
@@ -1472,9 +1472,11 @@ Fields:
     be `dtype` and its length must always match that of the `index_key`
     feature.
   dtype: Data type of the `value_key` feature.
-  size: Each value in the `index_key` feature must be in `[0, size)`.
-  already_sorted: A boolean to specify whether the values in `index_key` are
-    already sorted. If so skip sorting, False by default (optional).
+  size: A Python int to specify a dimension of the dense shape. Each value in
+    the `index_key` feature must be in `[0, size)`.
+  already_sorted: A Python boolean to specify whether the values in
+    `index_key` are already sorted. If so skip sorting.
+    False by default (optional).
 - - -
 
 #### `tf.SparseFeature.__getnewargs__()` {#SparseFeature.__getnewargs__}
@@ -1702,7 +1704,8 @@ And arguments
 ```
 example_names: ["input0", "input1"],
 features: {
-    "sparse": SparseFeature("ix", "val", tf.float32, 100),
+    "sparse": SparseFeature(
+        index_key="ix", value_key="val", dtype=tf.float32, size=100),
 }
 ```
 
@@ -1754,6 +1757,9 @@ For `SparseTensor`s, the first (batch) column of the indices matrix is removed
 (the indices matrix is a column vector), the values vector is unchanged, and
 the first (`batch_size`) entry of the shape vector is removed (it is now a
 single element vector).
+
+One might see performance advantages by batching `Example` protos with
+`parse_example` instead of using this function directly.
 
 ##### Args:
 
@@ -3173,7 +3179,8 @@ Note: if `num_epochs` is not `None`, this function creates local counter
 
 ##### Returns:
 
-  A list or dictionary of tensors with the same types as `tensors`.
+  A list or dictionary of tensors with the same types as `tensors` (except if
+  the input is a list of one element, then it returns a tensor, not a list).
 
 ##### Raises:
 

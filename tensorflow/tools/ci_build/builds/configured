@@ -33,6 +33,9 @@ export TF_NEED_GCP=1
 # Enable support for HDFS
 export TF_NEED_HDFS=1
 
+# Enable XLA support
+export TF_ENABLE_XLA=${TF_BUILD_ENABLE_XLA:-0}
+
 if [[ "$1" == "--disable-gcp" ]]; then
   export TF_NEED_GCP=0
   shift 1

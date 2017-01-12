@@ -12,28 +12,34 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tensorflow.ops.argmax_op."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
 
 
-class GradientCorrectnessTest(tf.test.TestCase):
+class GradientCorrectnessTest(test.TestCase):
 
   def testMultipleOutputChainedGradients(self):
     with self.test_session() as sess:
-      x = tf.constant(1.0, dtype=tf.float32)
-      yexp = tf.exp(x)
-      yexplog = tf.log(yexp)
-      grads = tf.gradients([yexp, yexplog], [x])
+      x = constant_op.constant(1.0, dtype=dtypes.float32)
+      yexp = math_ops.exp(x)
+      yexplog = math_ops.log(yexp)
+      grads = gradients_impl.gradients([yexp, yexplog], [x])
       grad_vals = sess.run(grads)
       exp1_plus_one = (1.0 + np.exp(1.0)).astype(np.float32)
       # [dexp(x)/dx + d(log(exp(x)))/dx] @ x=1 == exp(1) + 1
       self.assertAllClose(grad_vals[0], exp1_plus_one)
 
+
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

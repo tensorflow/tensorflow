@@ -637,9 +637,9 @@ def add_input_distortions(flip_left_right, random_crop, random_scale,
   resize_scale_value = tf.random_uniform(tensor_shape.scalar(),
                                          minval=1.0,
                                          maxval=resize_scale)
-  scale_value = tf.mul(margin_scale_value, resize_scale_value)
-  precrop_width = tf.mul(scale_value, MODEL_INPUT_WIDTH)
-  precrop_height = tf.mul(scale_value, MODEL_INPUT_HEIGHT)
+  scale_value = tf.multiply(margin_scale_value, resize_scale_value)
+  precrop_width = tf.multiply(scale_value, MODEL_INPUT_WIDTH)
+  precrop_height = tf.multiply(scale_value, MODEL_INPUT_HEIGHT)
   precrop_shape = tf.stack([precrop_height, precrop_width])
   precrop_shape_as_int = tf.cast(precrop_shape, dtype=tf.int32)
   precropped_image = tf.image.resize_bilinear(decoded_image_4d,
@@ -657,7 +657,7 @@ def add_input_distortions(flip_left_right, random_crop, random_scale,
   brightness_value = tf.random_uniform(tensor_shape.scalar(),
                                        minval=brightness_min,
                                        maxval=brightness_max)
-  brightened_image = tf.mul(flipped_image, brightness_value)
+  brightened_image = tf.multiply(flipped_image, brightness_value)
   distort_result = tf.expand_dims(brightened_image, 0, name='DistortResult')
   return jpeg_data, distort_result
 
@@ -723,7 +723,7 @@ def add_final_training_ops(class_count, final_tensor_name, bottleneck_tensor):
 
   with tf.name_scope('cross_entropy'):
     cross_entropy = tf.nn.softmax_cross_entropy_with_logits(
-      logits, ground_truth_input)
+        labels=ground_truth_input, logits=logits)
     with tf.name_scope('total'):
       cross_entropy_mean = tf.reduce_mean(cross_entropy)
   tf.summary.scalar('cross_entropy', cross_entropy_mean)
