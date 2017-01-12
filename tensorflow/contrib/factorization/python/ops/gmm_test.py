@@ -12,25 +12,38 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for ops.gmm."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
+
+# TODO: #6568 Remove this hack that makes dlopen() not crash.
+if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
+  import ctypes
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
+
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
-import tensorflow as tf
 
-FLAGS = tf.app.flags.FLAGS
+from tensorflow.contrib.factorization.python.ops import gmm as gmm_lib
+from tensorflow.contrib.learn.python.learn.estimators import kmeans
+from tensorflow.contrib.learn.python.learn.estimators import run_config
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import random_seed as random_seed_lib
+from tensorflow.python.platform import flags
+from tensorflow.python.platform import test
+
+FLAGS = flags.FLAGS
 
 
-class GMMTest(tf.test.TestCase):
+class GMMTest(test.TestCase):
 
   def setUp(self):
     np.random.seed(3)
-    tf.set_random_seed(2)
+    random_seed_lib.set_random_seed(2)
     self.num_centers = 2
     self.num_dims = 2
     self.num_points = 4000
@@ -38,84 +51,85 @@ class GMMTest(tf.test.TestCase):
     self.true_centers = self.make_random_centers(self.num_centers,
                                                  self.num_dims)
     self.points, self.assignments, self.scores = self.make_random_points(
-        self.true_centers,
-        self.num_points)
+        self.true_centers, self.num_points)
     self.true_score = np.add.reduce(self.scores)
 
     # Use initial means from kmeans (just like scikit-learn does).
-    clusterer = tf.contrib.learn.KMeansClustering(
-        num_clusters=self.num_centers)
-    clusterer.fit(input_fn=lambda: (tf.constant(self.points), None), steps=30)
+    clusterer = kmeans.KMeansClustering(num_clusters=self.num_centers)
+    clusterer.fit(input_fn=lambda: (constant_op.constant(self.points), None),
+                  steps=30)
     self.initial_means = clusterer.clusters()
 
   @staticmethod
   def make_random_centers(num_centers, num_dims):
-    return np.round(np.random.rand(num_centers,
-                                   num_dims).astype(np.float32) * 500)
+    return np.round(
+        np.random.rand(num_centers, num_dims).astype(np.float32) * 500)
 
   @staticmethod
   def make_random_points(centers, num_points):
     num_centers, num_dims = centers.shape
     assignments = np.random.choice(num_centers, num_points)
-    offsets = np.round(np.random.randn(num_points,
-                                       num_dims).astype(np.float32) * 20)
+    offsets = np.round(
+        np.random.randn(num_points, num_dims).astype(np.float32) * 20)
     points = centers[assignments] + offsets
-    means = [np.mean(points[assignments == center], axis=0)
-             for center in xrange(num_centers)]
-    covs = [np.cov(points[assignments == center].T)
-            for center in xrange(num_centers)]
+    means = [
+        np.mean(
+            points[assignments == center], axis=0)
+        for center in xrange(num_centers)
+    ]
+    covs = [
+        np.cov(points[assignments == center].T)
+        for center in xrange(num_centers)
+    ]
     scores = []
     for r in xrange(num_points):
-      scores.append(np.sqrt(np.dot(
-          np.dot(points[r, :] - means[assignments[r]],
-                 np.linalg.inv(covs[assignments[r]])),
-          points[r, :] - means[assignments[r]])))
+      scores.append(
+          np.sqrt(
+              np.dot(
+                  np.dot(points[r, :] - means[assignments[r]],
+                         np.linalg.inv(covs[assignments[r]])), points[r, :] -
+                  means[assignments[r]])))
     return (points, assignments, scores)
 
   def test_clusters(self):
     """Tests the shape of the clusters."""
-    gmm = tf.contrib.factorization.GMM(
-        self.num_centers,
-        initial_clusters=self.initial_means,
-        batch_size=self.batch_size,
-        steps=40,
-        continue_training=True,
-        random_seed=4,
-        config=tf.contrib.learn.RunConfig(tf_random_seed=2))
+    gmm = gmm_lib.GMM(self.num_centers,
+                      initial_clusters=self.initial_means,
+                      batch_size=self.batch_size,
+                      steps=40,
+                      continue_training=True,
+                      random_seed=4,
+                      config=run_config.RunConfig(tf_random_seed=2))
     gmm.fit(x=self.points, steps=0)
     clusters = gmm.clusters()
-    self.assertAllEqual(list(clusters.shape),
-                        [self.num_centers, self.num_dims])
+    self.assertAllEqual(list(clusters.shape), [self.num_centers, self.num_dims])
 
   def test_fit(self):
-    gmm = tf.contrib.factorization.GMM(
-        self.num_centers,
-        initial_clusters='random',
-        batch_size=self.batch_size,
-        random_seed=4,
-        config=tf.contrib.learn.RunConfig(tf_random_seed=2))
+    gmm = gmm_lib.GMM(self.num_centers,
+                      initial_clusters='random',
+                      batch_size=self.batch_size,
+                      random_seed=4,
+                      config=run_config.RunConfig(tf_random_seed=2))
     gmm.fit(x=self.points, steps=1)
     score1 = gmm.score(x=self.points)
-    gmm = tf.contrib.factorization.GMM(
-        self.num_centers,
-        initial_clusters='random',
-        batch_size=self.batch_size,
-        random_seed=4,
-        config=tf.contrib.learn.RunConfig(tf_random_seed=2))
+    gmm = gmm_lib.GMM(self.num_centers,
+                      initial_clusters='random',
+                      batch_size=self.batch_size,
+                      random_seed=4,
+                      config=run_config.RunConfig(tf_random_seed=2))
     gmm.fit(x=self.points, steps=10)
     score2 = gmm.score(x=self.points)
     self.assertGreater(score1, score2)
     self.assertNear(self.true_score, score2, self.true_score * 0.15)
 
   def test_infer(self):
-    gmm = tf.contrib.factorization.GMM(
-        self.num_centers,
-        initial_clusters=self.initial_means,
-        batch_size=self.batch_size,
-        steps=40,
-        continue_training=True,
-        random_seed=4,
-        config=tf.contrib.learn.RunConfig(tf_random_seed=2))
+    gmm = gmm_lib.GMM(self.num_centers,
+                      initial_clusters=self.initial_means,
+                      batch_size=self.batch_size,
+                      steps=40,
+                      continue_training=True,
+                      random_seed=4,
+                      config=run_config.RunConfig(tf_random_seed=2))
     gmm.fit(x=self.points, steps=60)
     clusters = gmm.clusters()
 
@@ -143,25 +157,23 @@ class GMMTest(tf.test.TestCase):
                                 [-31.27834935, 391.74249925]]])
 
     # skflow version.
-    gmm = tf.contrib.factorization.GMM(
-        self.num_centers,
-        initial_clusters=self.initial_means,
-        covariance_type=cov_type,
-        batch_size=self.num_points,
-        steps=iterations,
-        continue_training=True,
-        config=tf.contrib.learn.RunConfig(tf_random_seed=2))
+    gmm = gmm_lib.GMM(self.num_centers,
+                      initial_clusters=self.initial_means,
+                      covariance_type=cov_type,
+                      batch_size=self.num_points,
+                      steps=iterations,
+                      continue_training=True,
+                      config=run_config.RunConfig(tf_random_seed=2))
     gmm.fit(self.points)
     skflow_assignments = gmm.predict(self.points[:10, :]).astype(int)
-    self.assertAllClose(sklearn_assignments,
-                        np.ravel(skflow_assignments))
+    self.assertAllClose(sklearn_assignments, np.ravel(skflow_assignments))
     self.assertAllClose(sklearn_means, gmm.clusters())
     if cov_type == 'full':
       self.assertAllClose(sklearn_covs, gmm.covariances(), rtol=0.01)
     else:
       for d in [0, 1]:
-        self.assertAllClose(np.diag(sklearn_covs[d]),
-                            gmm.covariances()[d, :], rtol=0.01)
+        self.assertAllClose(
+            np.diag(sklearn_covs[d]), gmm.covariances()[d, :], rtol=0.01)
 
   def test_compare_full(self):
     self._compare_with_sklearn('full')
@@ -171,4 +183,4 @@ class GMMTest(tf.test.TestCase):
 
 
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

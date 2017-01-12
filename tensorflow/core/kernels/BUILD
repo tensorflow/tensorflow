@@ -18,14 +18,13 @@ licenses(["notice"])  # Apache 2.0
 package_group(
     name = "friends",
     packages = [
-        "//learning/deepmind/tensorflow/...",
+        "//learning/deepmind/...",
         "//tensorflow/...",
     ],
 )
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_not_windows",
     "tf_cc_test",
     "tf_cc_tests",
     "tf_copts",
@@ -477,6 +476,7 @@ cc_library(
         ":gather_nd_op",
         ":gather_op",
         ":identity_op",
+        ":inplace_ops",
         ":listdiff_op",
         ":matrix_band_part_op",
         ":matrix_diag_op",
@@ -652,6 +652,12 @@ tf_kernel_library(
     gpu_srcs = ["cuda_device_array.h"],
     prefix = "split_v_op",
     deps = ARRAY_DEPS + [":split_lib"],
+)
+
+tf_kernel_library(
+    name = "inplace_ops",
+    prefix = "inplace_ops",
+    deps = ARRAY_DEPS,
 )
 
 tf_kernel_library(
@@ -1444,6 +1450,7 @@ cc_library(
     deps = [
         ":adjust_contrast_op",
         ":adjust_hue_op",
+        ":adjust_saturation_op",
         ":attention_ops",
         ":colorspace_op",
         ":crop_and_resize_op",
@@ -1486,6 +1493,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "adjust_hue_op",
     prefix = "adjust_hue_op",
+    deps = IMAGE_DEPS,
+)
+
+tf_kernel_library(
+    name = "adjust_saturation_op",
+    prefix = "adjust_saturation_op",
     deps = IMAGE_DEPS,
 )
 
@@ -2390,6 +2403,8 @@ cc_library(
         ":batch_norm_op",
         ":bias_op",
         ":conv_ops",
+        ":depthwise_conv_grad_op",
+        ":depthwise_conv_op",
         ":dilation_ops",
         ":fused_batch_norm_op",
         ":in_topk_op",
@@ -2401,10 +2416,7 @@ cc_library(
         ":softsign_op",
         ":topk_op",
         ":xent_op",
-    ] + if_not_windows([
-        ":depthwise_conv_grad_op",
-        ":depthwise_conv_op",
-    ]),
+    ],
 )
 
 NN_DEPS = [
@@ -3512,6 +3524,8 @@ filegroup(
         "conv_ops.cc",
         "conv_ops_fused.cc",
         "conv_ops_using_gemm.cc",
+        "crop_and_resize_op.cc",
+        "crop_and_resize_op.h",
         "cwise_op_abs.cc",
         "cwise_op_add_1.cc",
         "cwise_op_add_2.cc",
@@ -3526,6 +3540,7 @@ filegroup(
         "cwise_op_less.cc",
         "cwise_op_log.cc",
         "cwise_op_logical_and.cc",
+        "cwise_op_logical_not.cc",
         "cwise_op_maximum.cc",
         "cwise_op_minimum.cc",
         "cwise_op_mul_1.cc",
@@ -3581,6 +3596,7 @@ filegroup(
         "queue_base.cc",
         "queue_ops.cc",
         "random_op.cc",
+        "reduction_ops_any.cc",
         "reduction_ops_common.cc",
         "reduction_ops_max.cc",
         "reduction_ops_mean.cc",

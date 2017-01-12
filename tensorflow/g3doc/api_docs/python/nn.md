@@ -1932,6 +1932,9 @@ The mean and variance are calculated by aggregating the contents of `x`
 across `axes`.  If `x` is 1-D and `axes = [0]` this is just the mean
 and variance of a vector.
 
+Note: for numerical stability, when shift=None, the true mean
+would be computed and used as shift.
+
 When using these moments for batch normalization (see
 `tf.nn.batch_normalization`):
 
@@ -1946,8 +1949,9 @@ When using these moments for batch normalization (see
 *  <b>`axes`</b>: Array of ints.  Axes along which to compute mean and
     variance.
 *  <b>`shift`</b>: A `Tensor` containing the value by which to shift the data for
-    numerical stability, or `None` if no shift is to be performed. A shift
-    close to the true mean provides the most numerically stable results.
+    numerical stability, or `None` in which case the true mean of the data is
+    used as shift. A shift close to the true mean provides the most
+    numerically stable results.
 *  <b>`name`</b>: Name used to scope the operations that compute the moments.
 *  <b>`keep_dims`</b>: produce moments with the same dimensionality as the input.
 
@@ -2180,7 +2184,7 @@ TensorFlow provides several operations that help you perform classification.
 
 - - -
 
-### `tf.nn.sigmoid_cross_entropy_with_logits(logits, targets, name=None)` {#sigmoid_cross_entropy_with_logits}
+### `tf.nn.sigmoid_cross_entropy_with_logits(_sentinel=None, labels=None, logits=None, name=None)` {#sigmoid_cross_entropy_with_logits}
 
 Computes sigmoid cross entropy given `logits`.
 
@@ -2189,7 +2193,7 @@ class is independent and not mutually exclusive.  For instance, one could
 perform multilabel classification where a picture can contain both an elephant
 and a dog at the same time.
 
-For brevity, let `x = logits`, `z = targets`.  The logistic loss is
+For brevity, let `x = logits`, `z = labels`.  The logistic loss is
 
       z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
     = z * -log(1 / (1 + exp(-x))) + (1 - z) * -log(exp(-x) / (1 + exp(-x)))
@@ -2209,13 +2213,14 @@ equivalent formulation
 
     max(x, 0) - x * z + log(1 + exp(-abs(x)))
 
-`logits` and `targets` must have the same type and shape.
+`logits` and `labels` must have the same type and shape.
 
 ##### Args:
 
+  _sentinel: Used to prevent positional parameters. Internal, do not use.
 
+*  <b>`labels`</b>: A `Tensor` of the same type and shape as `logits`.
 *  <b>`logits`</b>: A `Tensor` of type `float32` or `float64`.
-*  <b>`targets`</b>: A `Tensor` of the same type and shape as `logits`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -2226,7 +2231,7 @@ equivalent formulation
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If `logits` and `targets` do not have the same shape.
+*  <b>`ValueError`</b>: If `logits` and `labels` do not have the same shape.
 
 
 - - -
@@ -2291,7 +2296,7 @@ For each batch `i` and class `j` we have
 
 - - -
 
-### `tf.nn.softmax_cross_entropy_with_logits(logits, labels, dim=-1, name=None)` {#softmax_cross_entropy_with_logits}
+### `tf.nn.softmax_cross_entropy_with_logits(_sentinel=None, labels=None, logits=None, dim=-1, name=None)` {#softmax_cross_entropy_with_logits}
 
 Computes softmax cross entropy between `logits` and `labels`.
 
@@ -2315,11 +2320,15 @@ output of `softmax`, as it will produce incorrect results.
 `logits` and `labels` must have the same shape `[batch_size, num_classes]`
 and the same dtype (either `float16`, `float32`, or `float64`).
 
+**Note that to avoid confusion, it is required to pass only named arguments to
+this function.**
+
 ##### Args:
 
+  _sentinel: Used to prevent positional parameters. Internal, do not use.
 
-*  <b>`logits`</b>: Unscaled log probabilities.
 *  <b>`labels`</b>: Each row `labels[i]` must be a valid probability distribution.
+*  <b>`logits`</b>: Unscaled log probabilities.
 *  <b>`dim`</b>: The class dimension. Defaulted to -1 which is the last dimension.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -2331,7 +2340,7 @@ and the same dtype (either `float16`, `float32`, or `float64`).
 
 - - -
 
-### `tf.nn.sparse_softmax_cross_entropy_with_logits(logits, labels, name=None)` {#sparse_softmax_cross_entropy_with_logits}
+### `tf.nn.sparse_softmax_cross_entropy_with_logits(_sentinel=None, labels=None, logits=None, name=None)` {#sparse_softmax_cross_entropy_with_logits}
 
 Computes sparse softmax cross entropy between `logits` and `labels`.
 
@@ -2354,16 +2363,20 @@ output of `softmax`, as it will produce incorrect results.
 A common use case is to have logits of shape `[batch_size, num_classes]` and
 labels of shape `[batch_size]`. But higher dimensions are supported.
 
+**Note that to avoid confusion, it is required to pass only named arguments to
+this function.**
+
 ##### Args:
 
+  _sentinel: Used to prevent positional parameters. Internal, do not use.
 
-*  <b>`logits`</b>: Unscaled log probabilities of rank `r` and shape
-    `[d_0, d_1, ..., d_{r-2}, num_classes]` and dtype `float32` or `float64`.
 *  <b>`labels`</b>: `Tensor` of shape `[d_0, d_1, ..., d_{r-2}]` and dtype `int32` or
     `int64`. Each entry in `labels` must be an index in `[0, num_classes)`.
     Other values will raise an exception when this op is run on CPU, and
     return `NaN` for corresponding corresponding loss and gradient rows
     on GPU.
+*  <b>`logits`</b>: Unscaled log probabilities of rank `r` and shape
+    `[d_0, d_1, ..., d_{r-2}, num_classes]` and dtype `float32` or `float64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -2766,7 +2779,7 @@ given.
       It returns a tuple instead of a single concatenated `Tensor`, unlike
       in the `bidirectional_rnn`. If the concatenated one is preferred,
       the forward and backward outputs can be concatenated as
-      `tf.concat_v2(outputs, 2)`.
+      `tf.concat(outputs, 2)`.
 *  <b>`output_states`</b>: A tuple (output_state_fw, output_state_bw) containing
       the forward and the backward final states of bidirectional rnn.
 

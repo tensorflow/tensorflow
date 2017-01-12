@@ -4,7 +4,7 @@ set -e
 set -o pipefail
 
 # Find out the absolute path to where ./configure resides
-pushd `dirname $0` #> /dev/null
+pushd `dirname $0` > /dev/null
 SOURCE_BASE_DIR=`pwd -P`
 popd > /dev/null
 
@@ -112,6 +112,26 @@ else
   sed -i -e "s/WITH_HDFS_SUPPORT = True/WITH_HDFS_SUPPORT = False/" tensorflow/core/platform/default/build_config.bzl
 fi
 
+## Enable XLA.
+while [ "$TF_ENABLE_XLA" == "" ]; do
+  read -p "Do you wish to build TensorFlow with the XLA just-in-time compiler (experimental)? [y/N] " INPUT
+  case $INPUT in
+    [Yy]* ) echo "XLA JIT support will be enabled for TensorFlow"; TF_ENABLE_XLA=1;;
+    [Nn]* ) echo "No XLA JIT support will be enabled for TensorFlow"; TF_ENABLE_XLA=0;;
+    "" ) echo "No XLA support will be enabled for TensorFlow"; TF_ENABLE_XLA=0;;
+    * ) echo "Invalid selection: " $INPUT;;
+  esac
+done
+
+if [ "$TF_ENABLE_XLA" == "1" ]; then
+  # Update Bazel build configuration.
+  perl -pi -e "s,WITH_XLA_SUPPORT = (False|True),WITH_XLA_SUPPORT = True,s" tensorflow/core/platform/default/build_config.bzl
+else
+  # Update Bazel build configuration.
+  perl -pi -e "s,WITH_XLA_SUPPORT = (False|True),WITH_XLA_SUPPORT = False,s" tensorflow/core/platform/default/build_config.bzl
+fi
+
+
 # Invoke python_config and set up symlinks to python includes
 ./util/python/python_config.sh --setup "$PYTHON_BIN_PATH"
 
@@ -145,7 +165,7 @@ while [ "$TF_NEED_CUDA" == "" ]; do
 done
 
 export TF_NEED_CUDA
-export TF_NEED_SYCL
+export TF_NEED_OPENCL
 if [[ "$TF_NEED_CUDA" == "0" ]] && [[ "$TF_NEED_OPENCL" == "0" ]]; then
   echo "Configuration finished"
   bazel_clean_and_fetch
@@ -289,7 +309,11 @@ while true; do
       echo "libcudnn.dylib resolves to libcudnn${TF_CUDNN_EXT}"
     fi
   else
-    TF_CUDNN_EXT=".$TF_CUDNN_VERSION"
+    if [ "$OSNAME" == "Darwin" ]; then
+      TF_CUDNN_EXT=".${TF_CUDNN_VERSION}.dylib"
+    else
+      TF_CUDNN_EXT=".$TF_CUDNN_VERSION"
+    fi
   fi
 
   if is_windows; then
@@ -465,7 +489,6 @@ while true; do
   COMPUTECPP_TOOLKIT_PATH=""
 done
 
-export TF_NEED_OPENCL
 # end of if "$TF_NEED_OPENCL" == "1"
 fi
 

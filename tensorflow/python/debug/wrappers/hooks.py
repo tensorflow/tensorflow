@@ -33,9 +33,14 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook,
   Can be used as a monitor/hook for tf.train.MonitoredSession.
   """
 
-  def __init__(self):
-    """Create a local debugger command-line interface (CLI) hook."""
+  def __init__(self, ui_type="curses"):
+    """Create a local debugger command-line interface (CLI) hook.
 
+    Args:
+      ui_type: (str) user-interface type.
+    """
+
+    self._ui_type = ui_type
     self._wrapper_initialized = False
 
   def begin(self):
@@ -44,7 +49,7 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook,
   def before_run(self, run_context):
     if not self._wrapper_initialized:
       local_cli_wrapper.LocalCLIDebugWrapperSession.__init__(
-          self, run_context.session)
+          self, run_context.session, ui_type=self._ui_type)
       self._wrapper_initialized = True
 
     # Increment run call counter.

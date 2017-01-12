@@ -880,7 +880,8 @@ static void TestSessionInterOpThreadsImpl(bool use_function_lib) {
         signature: {
           name: "BlockingOpFn" input_arg: { name: "x" type: DT_FLOAT }
                                output_arg: { name: "y" type: DT_FLOAT }}
-        node: { ret: "y" op: "BlockingOp" arg: "x" })proto";
+        node_def: { name: "y" op: "BlockingOp" input: "x" }
+        ret: { key: "y" value: "y:y:0" } )proto";
     CHECK(protobuf::TextFormat::ParseFromString(
         lib, library_graph_def.add_function()));
   }

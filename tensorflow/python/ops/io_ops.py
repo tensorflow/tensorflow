@@ -150,6 +150,7 @@ from __future__ import print_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import python_io
+from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_io_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -267,7 +268,13 @@ class ReaderBase(object):
       queue_ref = queue
     else:
       queue_ref = queue.queue_ref
-    return gen_io_ops._reader_read(self._reader_ref, queue_ref, name=name)
+    if self._reader_ref.dtype == dtypes.resource:
+      return gen_io_ops._reader_read_v2(self._reader_ref, queue_ref, name=name)
+    else:
+      # For compatibility with pre-resource queues, create a ref(string) tensor
+      # which can be looked up as the same queue by a resource manager.
+      old_queue_op = gen_data_flow_ops._fake_queue(queue_ref)
+      return gen_io_ops._reader_read(self._reader_ref, old_queue_op, name=name)
 
   def read_up_to(self, queue, num_records,  # pylint: disable=invalid-name
                  name=None):
@@ -293,10 +300,19 @@ class ReaderBase(object):
       queue_ref = queue
     else:
       queue_ref = queue.queue_ref
-    return gen_io_ops._reader_read_up_to(self._reader_ref,
-                                         queue_ref,
-                                         num_records,
-                                         name=name)
+    if self._reader_ref.dtype == dtypes.resource:
+      return gen_io_ops._reader_read_up_to_v2(self._reader_ref,
+                                              queue_ref,
+                                              num_records,
+                                              name=name)
+    else:
+      # For compatibility with pre-resource queues, create a ref(string) tensor
+      # which can be looked up as the same queue by a resource manager.
+      old_queue_op = gen_data_flow_ops._fake_queue(queue_ref)
+      return gen_io_ops._reader_read_up_to_v2(self._reader_ref,
+                                              old_queue_op,
+                                              num_records,
+                                              name=name)
 
   def num_records_produced(self, name=None):
     """Returns the number of records this reader has produced.
@@ -311,7 +327,12 @@ class ReaderBase(object):
       An int64 Tensor.
 
     """
-    return gen_io_ops._reader_num_records_produced(self._reader_ref, name=name)
+    if self._reader_ref.dtype == dtypes.resource:
+      return gen_io_ops._reader_num_records_produced_v2(self._reader_ref,
+                                                        name=name)
+    else:
+      return gen_io_ops._reader_num_records_produced(self._reader_ref,
+                                                     name=name)
 
   def num_work_units_completed(self, name=None):
     """Returns the number of work units this reader has finished processing.
@@ -322,8 +343,12 @@ class ReaderBase(object):
     Returns:
       An int64 Tensor.
     """
-    return gen_io_ops._reader_num_work_units_completed(self._reader_ref,
-                                                       name=name)
+    if self._reader_ref.dtype == dtypes.resource:
+      return gen_io_ops._reader_num_work_units_completed_v2(self._reader_ref,
+                                                            name=name)
+    else:
+      return gen_io_ops._reader_num_work_units_completed(self._reader_ref,
+                                                         name=name)
 
   def serialize_state(self, name=None):
     """Produce a string tensor that encodes the state of a reader.
@@ -337,7 +362,10 @@ class ReaderBase(object):
     Returns:
       A string Tensor.
     """
-    return gen_io_ops._reader_serialize_state(self._reader_ref, name=name)
+    if self._reader_ref.dtype == dtypes.resource:
+      return gen_io_ops._reader_serialize_state_v2(self._reader_ref, name=name)
+    else:
+      return gen_io_ops._reader_serialize_state(self._reader_ref, name=name)
 
   def restore_state(self, state, name=None):
     """Restore a reader to a previously saved state.
@@ -353,7 +381,12 @@ class ReaderBase(object):
     Returns:
       The created Operation.
     """
-    return gen_io_ops._reader_restore_state(self._reader_ref, state, name=name)
+    if self._reader_ref.dtype == dtypes.resource:
+      return gen_io_ops._reader_restore_state_v2(
+          self._reader_ref, state, name=name)
+    else:
+      return gen_io_ops._reader_restore_state(
+          self._reader_ref, state, name=name)
 
   @property
   def supports_serialize(self):
@@ -369,7 +402,10 @@ class ReaderBase(object):
     Returns:
       The created Operation.
     """
-    return gen_io_ops._reader_reset(self._reader_ref, name=name)
+    if self._reader_ref.dtype == dtypes.resource:
+      return gen_io_ops._reader_reset_v2(self._reader_ref, name=name)
+    else:
+      return gen_io_ops._reader_reset(self._reader_ref, name=name)
 
 
 ops.NotDifferentiable("ReaderRead")
@@ -396,7 +432,7 @@ class WholeFileReader(ReaderBase):
     Args:
       name: A name for the operation (optional).
     """
-    rr = gen_io_ops._whole_file_reader(name=name)
+    rr = gen_io_ops._whole_file_reader_v2(name=name)
     super(WholeFileReader, self).__init__(rr, supports_serialize=True)
 
 
@@ -419,8 +455,8 @@ class TextLineReader(ReaderBase):
         to skip from the beginning of every file.
       name: A name for the operation (optional).
     """
-    rr = gen_io_ops._text_line_reader(skip_header_lines=skip_header_lines,
-                                      name=name)
+    rr = gen_io_ops._text_line_reader_v2(skip_header_lines=skip_header_lines,
+                                         name=name)
     super(TextLineReader, self).__init__(rr)
 
 
@@ -444,7 +480,7 @@ class FixedLengthRecordReader(ReaderBase):
       footer_bytes: An optional int. Defaults to 0.
       name: A name for the operation (optional).
     """
-    rr = gen_io_ops._fixed_length_record_reader(
+    rr = gen_io_ops._fixed_length_record_reader_v2(
         record_bytes=record_bytes, header_bytes=header_bytes,
         footer_bytes=footer_bytes, name=name)
     super(FixedLengthRecordReader, self).__init__(rr)
@@ -470,7 +506,7 @@ class TFRecordReader(ReaderBase):
     compression_type = python_io.TFRecordOptions.get_compression_type_string(
         options)
 
-    rr = gen_io_ops._tf_record_reader(
+    rr = gen_io_ops._tf_record_reader_v2(
         name=name, compression_type=compression_type)
     super(TFRecordReader, self).__init__(rr)
 
@@ -493,7 +529,7 @@ class IdentityReader(ReaderBase):
     Args:
       name: A name for the operation (optional).
     """
-    rr = gen_io_ops._identity_reader(name=name)
+    rr = gen_io_ops._identity_reader_v2(name=name)
     super(IdentityReader, self).__init__(rr, supports_serialize=True)
 
 

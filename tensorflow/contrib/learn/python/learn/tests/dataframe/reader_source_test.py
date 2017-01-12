@@ -11,19 +11,28 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 """Tests for learn.dataframe.transforms.reader_source."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import sys
+
+# TODO: #6568 Remove this hack that makes dlopen() not crash.
+if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
+  import ctypes
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 import tensorflow.contrib.learn.python.learn.dataframe.transforms.reader_source as rs
+from tensorflow.python.ops import io_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
+from tensorflow.python.training import coordinator
+from tensorflow.python.training import queue_runner_impl
 
 
-class ReaderSourceTestCase(tf.test.TestCase):
+class ReaderSourceTestCase(test.TestCase):
   """Test class for ReaderSource."""
 
   def setUp(self):
@@ -31,20 +40,21 @@ class ReaderSourceTestCase(tf.test.TestCase):
     self.work_units = [str(x) for x in range(1000)]
 
   def testNoShuffle(self):
-    id_source = rs.ReaderSource(reader_cls=tf.IdentityReader,
-                                work_units=self.work_units,
-                                batch_size=1,
-                                shuffle=False,
-                                num_threads=1)
+    id_source = rs.ReaderSource(
+        reader_cls=io_ops.IdentityReader,
+        work_units=self.work_units,
+        batch_size=1,
+        shuffle=False,
+        num_threads=1)
     index_column, value_column = id_source()
     index_tensor = index_column.build()
     value_tensor = value_column.build()
     self.assertEqual([1], index_tensor.get_shape().as_list())
     self.assertEqual([1], value_tensor.get_shape().as_list())
     with self.test_session() as sess:
-      tf.global_variables_initializer().run()
-      coord = tf.train.Coordinator()
-      threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+      variables.global_variables_initializer().run()
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(sess=sess, coord=coord)
       for i in range(50):
         index, value = sess.run([index_tensor, value_tensor])
         self.assertEqual(i, int(index[0]))
@@ -53,12 +63,13 @@ class ReaderSourceTestCase(tf.test.TestCase):
       coord.join(threads)
 
   def testYesShuffle(self):
-    id_source = rs.ReaderSource(reader_cls=tf.IdentityReader,
-                                work_units=self.work_units,
-                                batch_size=1,
-                                shuffle=True,
-                                num_threads=10,
-                                seed=1234)
+    id_source = rs.ReaderSource(
+        reader_cls=io_ops.IdentityReader,
+        work_units=self.work_units,
+        batch_size=1,
+        shuffle=True,
+        num_threads=10,
+        seed=1234)
     index_column, value_column = id_source()
     cache = {}
     index_tensor = index_column.build(cache)
@@ -67,9 +78,9 @@ class ReaderSourceTestCase(tf.test.TestCase):
     self.assertEqual([1], value_tensor.get_shape().as_list())
     seen = set([])
     with self.test_session() as sess:
-      tf.global_variables_initializer().run()
-      coord = tf.train.Coordinator()
-      threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+      variables.global_variables_initializer().run()
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(sess=sess, coord=coord)
       for _ in range(500):
         index, value = sess.run([index_tensor, value_tensor])
         self.assertEqual(index, value)
@@ -80,4 +91,4 @@ class ReaderSourceTestCase(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

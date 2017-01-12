@@ -4,6 +4,7 @@ package(default_visibility = [":friends"])
 
 package_group(
     name = "friends",
+    includes = ["//tensorflow/compiler/jit:friends"],
     packages = ["//tensorflow/..."],
 )
 

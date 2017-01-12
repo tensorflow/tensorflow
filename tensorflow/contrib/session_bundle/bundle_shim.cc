@@ -173,7 +173,9 @@ Status ConvertDefaultSignatureToSignatureDef(const Signatures& signatures,
     LOG(WARNING) << "Default signature up-conversion to SignatureDef is only "
                     "supported for `Classification` and `Regression`. Could "
                     "not up-convert signature: "
-                 << signature.DebugString();
+                 << signature.DebugString()
+                 << ". (If using SessionRun with the SessionBundle export "
+                    "format please ignore this warning.)";
   }
   return Status::OK();
 }
@@ -281,20 +283,21 @@ Status LoadSessionBundleOrSavedModelBundle(
     const std::unordered_set<string>& saved_model_tags,
     SavedModelBundle* saved_model_bundle) {
   if (MaybeSavedModelDirectory(export_dir)) {
+    LOG(INFO)
+        << "Attempting to load native SavedModelBundle in bundle-shim from: "
+        << export_dir;
     return LoadSavedModel(session_options, run_options, export_dir,
                           saved_model_tags, saved_model_bundle);
   } else if (IsPossibleExportDirectory(export_dir)) {
+    LOG(INFO) << "Attempting to up-convert SessionBundle to SavedModelBundle "
+                 "in bundle-shim from: "
+              << export_dir;
     return LoadSavedModelFromLegacySessionBundlePath(
         session_options, run_options, export_dir, saved_model_bundle);
   }
   return Status(error::Code::NOT_FOUND,
                 "Session bundle or SavedModel bundle not found at specified "
                 "export location");
-}
-
-bool MaybeSessionBundleOrSavedModelDirectory(const string& export_dir) {
-  return IsPossibleExportDirectory(export_dir) ||
-         MaybeSavedModelDirectory(export_dir);
 }
 
 }  // namespace serving

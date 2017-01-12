@@ -25,6 +25,7 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+        "@six_archive//:six",
     ],
 )
 
@@ -34,8 +35,14 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":opt_py",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -48,7 +55,12 @@ py_test(
     ],
     deps = [
         ":opt_py",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
@@ -61,7 +73,12 @@ py_test(
     ],
     deps = [
         ":opt_py",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
     ],
 )
 

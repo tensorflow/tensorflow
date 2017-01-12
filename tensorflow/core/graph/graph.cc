@@ -26,6 +26,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+const int Graph::kControlSlot = -1;
+
 // Node
 
 string Node::DebugString() const {

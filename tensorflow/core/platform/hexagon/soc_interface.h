@@ -81,6 +81,12 @@ bool soc_interface_InstantiateGraph();
 // Construct graph
 bool soc_interface_ConstructGraph();
 
+// Set log level
+void soc_interface_SetLogLevel(int log_level);
+
+// Set debug flag
+void soc_interface_SetDebugFlag(uint64_t flag);
+
 #ifdef __cplusplus
 }
 #endif  // __cplusplus

@@ -12,18 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for learn.dataframe.transforms.sparsify and densify."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
+
+# TODO: #6568 Remove this hack that makes dlopen() not crash.
+if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
+  import ctypes
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
+
 import numpy as np
-import tensorflow as tf
+
 from tensorflow.contrib.learn.python.learn.dataframe.transforms import densify
 from tensorflow.contrib.learn.python.learn.dataframe.transforms import in_memory_source
 from tensorflow.contrib.learn.python.learn.dataframe.transforms import sparsify
+from tensorflow.python.platform import test
+from tensorflow.python.training import coordinator
+from tensorflow.python.training import queue_runner_impl
 
 
 def _test_sparsify_densify(self, x, default_value):
@@ -39,8 +48,8 @@ def _test_sparsify_densify(self, x, default_value):
   dense_tensor = dense_series.build(cache)
 
   with self.test_session() as sess:
-    coord = tf.train.Coordinator()
-    threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+    coord = coordinator.Coordinator()
+    threads = queue_runner_impl.start_queue_runners(sess=sess, coord=coord)
 
     sparse_val, dense_val = sess.run([sparse_tensor, dense_tensor])
 
@@ -70,7 +79,7 @@ def _test_sparsify_densify(self, x, default_value):
   np.testing.assert_array_equal(expected_x, dense_val)
 
 
-class SparsifyDensifyTestCase(tf.test.TestCase):
+class SparsifyDensifyTestCase(test.TestCase):
   """Test class for Sparsify and Densify transforms."""
 
   def testSparsifyDensifyIntNan(self):
@@ -100,4 +109,4 @@ class SparsifyDensifyTestCase(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

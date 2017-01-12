@@ -73,6 +73,7 @@ py_test(
     deps = [
         ":zero_out_op_1",
         "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -96,6 +97,7 @@ py_test(
     deps = [
         ":zero_out_op_3",
         "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
     ],
 )
 

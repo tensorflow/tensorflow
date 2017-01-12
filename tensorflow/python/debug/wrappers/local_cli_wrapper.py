@@ -27,9 +27,9 @@ import tempfile
 from tensorflow.python.debug import debug_data
 from tensorflow.python.debug.cli import analyzer_cli
 from tensorflow.python.debug.cli import cli_shared
-from tensorflow.python.debug.cli import curses_ui
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.cli import stepper_cli
+from tensorflow.python.debug.cli import ui_factory
 from tensorflow.python.debug.wrappers import framework
 
 
@@ -37,18 +37,25 @@ _DUMP_ROOT_PREFIX = "tfdbg_"
 
 
 class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
-  """Concrete subclass of BaseDebugWrapperSession implementing a local CLI."""
+  """Concrete subclass of BaseDebugWrapperSession implementing a local CLI.
 
-  def __init__(self, sess, dump_root=None, log_usage=True):
+  This class has all the methods that a `session.Session` object has, in order
+  to support debugging with minimal code changes. Invoking its `run()` method
+  will launch the command-line interface (CLI) of tfdbg.
+  """
+
+  def __init__(self, sess, dump_root=None, log_usage=True, ui_type="curses"):
     """Constructor of LocalCLIDebugWrapperSession.
 
     Args:
-      sess: (BaseSession subtypes) The TensorFlow Session object being wrapped.
-      dump_root: (str) Optional path to the dump root directory. Must be either
-        a directory that does not exist or an empty directory. If the directory
+      sess: The TensorFlow `Session` object being wrapped.
+      dump_root: (`str`) optional path to the dump root directory. Must be a
+        directory that does not exist or an empty directory. If the directory
         does not exist, it will be created by the debugger core during debug
-        run() calls and removed afterwards.
-      log_usage: (bool) Whether the usage of this class is to be logged.
+        `run()` calls and removed afterwards.
+      log_usage: (`bool`) whether the usage of this class is to be logged.
+      ui_type: (`str`) requested UI type. Currently supported:
+        (curses | readline)
 
     Raises:
       ValueError: If dump_root is an existing and non-empty directory or if
@@ -97,6 +104,8 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     self._skip_debug = False
     self._run_start_response = None
 
+    self._ui_type = ui_type
+
   def _initialize_argparsers(self):
     self._argparsers = {}
     ap = argparse.ArgumentParser(
@@ -137,14 +146,10 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
   def add_tensor_filter(self, filter_name, tensor_filter):
     """Add a tensor filter.
 
-    The signature of this command is identical to that of
-    debug_data.DebugDumpDir.add_tensor_filter(). This method is a thin wrapper
-    around that method.
-
     Args:
-      filter_name: (str) Name of the filter.
-      tensor_filter: (callable) The filter callable. See the doc string of
-        debug_data.DebugDumpDir.add_tensor_filter() for more details.
+      filter_name: (`str`) name of the filter.
+      tensor_filter: (`callable`) the filter callable. See the doc string of
+        `DebugDumpDir.find()` for more details about its signature.
     """
 
     self._tensor_filters[filter_name] = tensor_filter
@@ -153,7 +158,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     """Overrides on-session-init callback.
 
     Args:
-      request: An instance of OnSessionInitRequest.
+      request: An instance of `OnSessionInitRequest`.
 
     Returns:
       An instance of OnSessionInitResponse.
@@ -166,13 +171,13 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     """Overrides on-run-start callback.
 
     Invoke the CLI to let user choose what action to take:
-      run / run --no_debug / step.
+      `run` / `invoke_stepper`.
 
     Args:
-      request: An instance of OnSessionInitRequest.
+      request: An instance of `OnSessionInitRequest`.
 
     Returns:
-      An instance of OnSessionInitResponse.
+      An instance of `OnSessionInitResponse`.
 
     Raises:
       RuntimeError: If user chooses to prematurely exit the debugger.
@@ -218,7 +223,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
   def _prep_cli_for_run_start(self):
     """Prepare (but not launch) the CLI for run-start."""
 
-    self._run_cli = curses_ui.CursesUI()
+    self._run_cli = ui_factory.get_ui(self._ui_type)
 
     help_intro = debugger_cli_common.RichTextLines([])
     if self._run_call_count == 1:
@@ -231,7 +236,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
 
     # Create initial screen output detailing the run.
     self._title = "run-start: " + self._run_description
-    self._init_command = "help"
+    self._init_command = "run_info"
     self._title_color = "blue_on_white"
 
   def on_run_end(self, request):
@@ -257,6 +262,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
 
       debug_dump = debug_data.DebugDumpDir(
           self._dump_root, partition_graphs=partition_graphs)
+      debug_dump.set_python_graph(self._sess.graph)
 
       passed_filter = None
       if self._active_tensor_filter:
@@ -316,8 +322,8 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
         self._init_command = "lt -f %s" % passed_filter
         self._title_color = "red_on_white"
 
-    self._run_cli = analyzer_cli.create_analyzer_curses_cli(
-        debug_dump, self._tensor_filters)
+    self._run_cli = analyzer_cli.create_analyzer_ui(
+        debug_dump, self._tensor_filters, ui_type=self._ui_type)
 
     # Get names of all dumped tensors.
     dumped_tensor_names = []
@@ -482,10 +488,11 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     """Overrides method in base class to implement interactive node stepper.
 
     Args:
-      node_stepper: (stepper.NodeStepper) The underlying NodeStepper API object.
-      restore_variable_values_on_exit: (bool) Whether any variables whose values
-        have been altered during this node-stepper invocation should be restored
-        to their old values when this invocation ends.
+      node_stepper: (`stepper.NodeStepper`) The underlying NodeStepper API
+        object.
+      restore_variable_values_on_exit: (`bool`) Whether any variables whose
+        values have been altered during this node-stepper invocation should be
+        restored to their old values when this invocation ends.
 
     Returns:
       The same return values as the `Session.run()` call on the same fetches as
@@ -500,9 +507,10 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     # TODO(cais): Perhaps some users will want the effect of the interactive
     # stepping and value injection to persist. When that happens, make the call
     # to finalize optional.
-    stepper_ui = curses_ui.CursesUI(
-        on_ui_exit=(node_stepper.restore_variable_values
-                    if restore_variable_values_on_exit else None))
+    stepper_ui = ui_factory.get_ui(
+        self._ui_type,
+        on_ui_exit=(node_stepper.restore_variable_values if
+                    restore_variable_values_on_exit else None))
 
     stepper_ui.register_command_handler(
         "list_sorted_nodes",

@@ -171,6 +171,16 @@ public class TensorFlowImageClassifier implements Classifier {
   }
 
   @Override
+  public void enableStatLogging(boolean debug) {
+    inferenceInterface.enableStatLogging(debug);
+  }
+
+  @Override
+  public String getStatString() {
+    return inferenceInterface.getStatString();
+  }
+
+  @Override
   public void close() {
     inferenceInterface.close();
   }

@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Operations for bucketing data into groups.
 
 The classes and functions in this module are used to queue up data into
@@ -26,7 +25,6 @@ import functools
 
 import numpy as np
 
-from tensorflow.python import summary
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -37,9 +35,9 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.summary import summary
 from tensorflow.python.training import input as input_py
 from tensorflow.python.training import queue_runner
-
 
 # pylint: disable=protected-access
 _as_original_type = input_py._as_original_type
@@ -49,6 +47,7 @@ _dtypes = input_py._dtypes
 _store_sparse_tensors = input_py._store_sparse_tensors
 _shapes = input_py._shapes
 _which_queue = input_py._which_queue
+
 # pylint: enable=protected-access
 
 
@@ -158,8 +157,8 @@ def bucket(tensors,
     batch_size = ops.convert_to_tensor(
         batch_size, dtype=dtypes.int32, name="batch_size")
     static_batch_size = tensor_util.constant_value(batch_size)
-    batch_size = (
-        static_batch_size if static_batch_size is not None else batch_size)
+    batch_size = (static_batch_size if static_batch_size is not None else
+                  batch_size)
 
     types = _dtypes([tensor_list])
     shapes = _shapes([tensor_list], shapes, enqueue_many=False)
@@ -170,19 +169,23 @@ def bucket(tensors,
     queue_creator = _which_queue(dynamic_pad)
     bucket_queues = []
     for i in range(num_buckets):
-      shared_name_i = (
-          "%s_%d" % (shared_name, i) if shared_name is not None else None)
+      shared_name_i = ("%s_%d" % (shared_name, i) if shared_name is not None
+                       else None)
       bucket_queues.append(
-          queue_creator(capacity=capacity,
-                        dtypes=types,
-                        shapes=shapes,
-                        shared_name=shared_name_i, name="bucket_queue_%d" % i))
+          queue_creator(
+              capacity=capacity,
+              dtypes=types,
+              shapes=shapes,
+              shared_name=shared_name_i,
+              name="bucket_queue_%d" % i))
 
-    maybe_static_batch_size = (
-        None if allow_smaller_final_batch else static_batch_size)
+    maybe_static_batch_size = (None if allow_smaller_final_batch else
+                               static_batch_size)
 
-    bucket_shapes = [tensor_shape.vector(maybe_static_batch_size).concatenate(s)
-                     for s in bucket_queues[0].shapes]
+    bucket_shapes = [
+        tensor_shape.vector(maybe_static_batch_size).concatenate(s)
+        for s in bucket_queues[0].shapes
+    ]
     # top_queue is a PaddingFIFOQueue even if the bucket queues are regular FIFO
     # queues because if we use allow_smaller_final_batch, shapes will
     # contain Nones in their first entry; as a result, a regular
@@ -191,27 +194,28 @@ def bucket(tensors,
         capacity=capacity,
         dtypes=[dtypes.int32] + types,
         shapes=[tensor_shape.scalar()] + bucket_shapes,
-        shared_name=shared_name, name="top_queue")
+        shared_name=shared_name,
+        name="top_queue")
 
     def enqueue_which():
+
       def enqueue_single(i):
         return bucket_queues[i].enqueue(tensor_list)
+
       enqueues = [
           control_flow_ops.cond(
               math_ops.equal(which_bucket, i),
-              functools.partial(enqueue_single, i),
-              control_flow_ops.no_op)
-          for i in range(num_buckets)]
+              functools.partial(enqueue_single, i), control_flow_ops.no_op)
+          for i in range(num_buckets)
+      ]
       return control_flow_ops.group(*enqueues, name="group_enqueues")
 
     if keep_input is not None:
       # TODO(ebrevdo): Expand keep_input param to core training
       # methods, and pipe through to _store_sparse_tensors; so
       # that expensive serialization is guarded by keep_input.
-      maybe_enqueue = control_flow_ops.cond(
-          keep_input,
-          enqueue_which,
-          control_flow_ops.no_op)
+      maybe_enqueue = control_flow_ops.cond(keep_input, enqueue_which,
+                                            control_flow_ops.no_op)
     else:
       maybe_enqueue = enqueue_which()
 
@@ -224,20 +228,24 @@ def bucket(tensors,
 
     enqueues_to_top = [
         top_queue.enqueue(
-            [constant_op.constant(i)] +
-            which_dequeue(q)(batch_size, name="read_bucket_%d" % i),
+            [constant_op.constant(i)] + which_dequeue(q)(
+                batch_size, name="read_bucket_%d" % i),
             name="enqueue_from_bucket_%d" % i)
-        for i, q in enumerate(bucket_queues)]
+        for i, q in enumerate(bucket_queues)
+    ]
 
     for i, q in enumerate(bucket_queues):
-      queue_runner.add_queue_runner(queue_runner.QueueRunner(
-          q, [enqueues_to_top[i]],
-          queue_closed_exception_types=(
-              errors.OutOfRangeError, errors.CancelledError)))
-    queue_runner.add_queue_runner(queue_runner.QueueRunner(
-        top_queue, bucket_enqueue_ops,
-        queue_closed_exception_types=(
-            errors.OutOfRangeError, errors.CancelledError)))
+      queue_runner.add_queue_runner(
+          queue_runner.QueueRunner(
+              q, [enqueues_to_top[i]],
+              queue_closed_exception_types=(errors.OutOfRangeError,
+                                            errors.CancelledError)))
+    queue_runner.add_queue_runner(
+        queue_runner.QueueRunner(
+            top_queue,
+            bucket_enqueue_ops,
+            queue_closed_exception_types=(errors.OutOfRangeError,
+                                          errors.CancelledError)))
 
     for q in bucket_queues:
       summary.scalar("bucket/%s/size" % q.name,
@@ -314,14 +322,14 @@ def bucket_by_sequence_length(input_length,
   tensor_list = _as_tensor_list(tensors)
   if not isinstance(bucket_boundaries, (list, tuple)):
     raise TypeError(
-        "bucket_boundaries must be a list or tuple, but received: %s"
-        % bucket_boundaries)
+        "bucket_boundaries must be a list or tuple, but received: %s" %
+        bucket_boundaries)
   if not bucket_boundaries:
     raise ValueError("bucket_boundaries must not be empty")
   for (s, e) in zip(bucket_boundaries[:-1], bucket_boundaries[1:]):
     if not isinstance(s, int) or not isinstance(e, int):
-      raise TypeError(
-          "bucket boundaries must be integers, but saw: %s and %s" % (s, e))
+      raise TypeError("bucket boundaries must be integers, but saw: %s and %s" %
+                      (s, e))
     if s >= e:
       raise ValueError(
           "Buckets must contain sequential increasing lengths, but saw: "
@@ -367,7 +375,4 @@ def bucket_by_sequence_length(input_length,
     return (dequeued[0], _as_original_type(tensors, dequeued[1:]))
 
 
-__all__ = [
-    "bucket",
-    "bucket_by_sequence_length"
-]
+__all__ = ["bucket", "bucket_by_sequence_length"]

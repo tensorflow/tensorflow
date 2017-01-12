@@ -122,7 +122,7 @@ def _maybe_expand_labels(labels, predictions):
               array_ops.size(labels.dense_shape) + 1),
           lambda: sparse_ops.sparse_reshape(  # pylint: disable=g-long-lambda
               labels,
-              shape=array_ops.concat(0, (labels.dense_shape, (1,))),
+              shape=array_ops.concat((labels.dense_shape, (1,)), 0),
               name=scope),
           lambda: labels)
 
@@ -171,20 +171,29 @@ def _create_local(name, shape, collections=None, validate_shape=True,
       validate_shape=validate_shape)
 
 
+def _assert_weights_rank(weights, values):
+  return check_ops.assert_rank_in(weights, (0, array_ops.rank(values)))
+
+
 def _broadcast_weights(weights, values):
   """Broadcast `weights` to the same shape as `values`.
 
   This returns a version of `weights` following the same broadcast rules as
-  `mul(weights, values)`. When computing a weighted average, use this function
-  to broadcast `weights` before summing them; e.g.,
+  `multiply(weights, values)`. When computing a weighted average, use this
+  function to broadcast `weights` before summing them; e.g.,
   `reduce_sum(w * v) / reduce_sum(_broadcast_weights(w, v))`.
 
   Args:
-    weights: `Tensor` whose shape is broadcastable to `values`.
+    weights: `Tensor` whose rank is either 0, or the same rank as `values`, and
+      must be broadcastable to `values` (i.e., all dimensions must be either
+      `1`, or the same as the corresponding `values` dimension).
     values: `Tensor` of any shape.
 
   Returns:
     `weights` broadcast to `values` shape.
+
+  Raises:
+    ValueError: if `weights` rank is invalid.
   """
   weights_shape = weights.get_shape()
   values_shape = values.get_shape()
@@ -192,8 +201,9 @@ def _broadcast_weights(weights, values):
       values_shape.is_fully_defined() and
       weights_shape.is_compatible_with(values_shape)):
     return weights
-  return math_ops.multiply(
-      weights, array_ops.ones_like(values), name='broadcast_weights')
+  with ops.control_dependencies((_assert_weights_rank(weights, values),)):
+    return math_ops.multiply(
+        weights, array_ops.ones_like(values), name='broadcast_weights')
 
 
 def _safe_div(numerator, denominator, name):
@@ -253,7 +263,9 @@ def mean(values, weights=None, metrics_collections=None,
 
   Args:
     values: A `Tensor` of arbitrary dimensions.
-    weights: An optional `Tensor` whose shape is broadcastable to `values`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `values`, and must be broadcastable to `values` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `values` dimension).
     metrics_collections: An optional list of collections that `mean`
       should be added to.
     updates_collections: An optional list of collections that `update_op`
@@ -277,12 +289,12 @@ def mean(values, weights=None, metrics_collections=None,
     total = _create_local('total', shape=[])
     count = _create_local('count', shape=[])
 
-    if weights is not None:
-      weights = math_ops.to_float(weights)
-      values = math_ops.multiply(values, weights)
-      num_values = math_ops.reduce_sum(_broadcast_weights(weights, values))
-    else:
+    if weights is None:
       num_values = math_ops.to_float(array_ops.size(values))
+    else:
+      weights = _broadcast_weights(math_ops.to_float(weights), values)
+      values = math_ops.multiply(values, weights)
+      num_values = math_ops.reduce_sum(weights)
 
     with ops.control_dependencies([values]):
       total_compute_op = state_ops.assign_add(total, math_ops.reduce_sum(values))
@@ -324,7 +336,9 @@ def accuracy(labels, predictions, weights=None, metrics_collections=None,
     labels: The ground truth values, a `Tensor` whose shape matches
       `predictions`.
     predictions: The predicted values, a `Tensor` of any shape.
-    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `labels` dimension).
     metrics_collections: An optional list of collections that `accuracy` should
       be added to.
     updates_collections: An optional list of collections that `update_op` should
@@ -380,7 +394,9 @@ def _confusion_matrix_at_thresholds(
     predictions: A floating point `Tensor` of arbitrary shape and whose values
       are in the range `[0, 1]`.
     thresholds: A python list or tuple of float thresholds in `[0, 1]`.
-    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `labels` dimension).
     includes: Tuple of keys to return, from 'tp', 'fn', 'tn', fp'. If `None`,
         default to all four.
 
@@ -437,9 +453,9 @@ def _confusion_matrix_at_thresholds(
     label_is_neg = math_ops.logical_not(label_is_pos)
 
   if weights is not None:
-    weights = math_ops.to_float(weights)
-    weights_tiled = array_ops.tile(array_ops.reshape(_broadcast_weights(
-        weights, predictions), [1, -1]), [num_thresholds, 1])
+    weights = _broadcast_weights(math_ops.to_float(weights), predictions)
+    weights_tiled = array_ops.tile(array_ops.reshape(
+        weights, [1, -1]), [num_thresholds, 1])
     thresh_tiled.get_shape().assert_is_compatible_with(
         weights_tiled.get_shape())
   else:
@@ -524,7 +540,9 @@ def auc(labels, predictions, weights=None, num_thresholds=200,
     labels: A `bool` `Tensor` whose shape matches `predictions`.
     predictions: A floating point `Tensor` of arbitrary shape and whose values
       are in the range `[0, 1]`.
-    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `labels` dimension).
     num_thresholds: The number of thresholds to use when discretizing the roc
       curve.
     metrics_collections: An optional list of collections that `auc` should be
@@ -618,7 +636,9 @@ def mean_absolute_error(labels, predictions, weights=None,
   Args:
     labels: A `Tensor` of the same shape as `predictions`.
     predictions: A `Tensor` of arbitrary shape.
-    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `labels` dimension).
     metrics_collections: An optional list of collections that
       `mean_absolute_error` should be added to.
     updates_collections: An optional list of collections that `update_op` should
@@ -667,8 +687,10 @@ def mean_cosine_distance(labels, predictions, dim, weights=None,
     labels: A `Tensor` of arbitrary shape.
     predictions: A `Tensor` of the same shape as `labels`.
     dim: The dimension along which the cosine distance is computed.
-    weights: An optional `Tensor` whose shape is broadcastable to `predictions`,
-      and whose dimension `dim` is 1.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `labels` dimension). Also,
+      dimension `dim` must be `1`.
     metrics_collections: An optional list of collections that the metric
       value variable should be added to.
     updates_collections: An optional list of collections that the metric update
@@ -734,14 +756,16 @@ def mean_iou(labels,
 
   Args:
     labels: A `Tensor` of ground truth labels with shape [batch size] and of
-      type `int32` or `int64`. The tensor will be flattened, if its rank > 1.
+      type `int32` or `int64`. The tensor will be flattened if its rank > 1.
     predictions: A `Tensor` of prediction results for semantic labels, whose
       shape is [batch size] and type `int32` or `int64`. The tensor will be
-      flattened, if its rank > 1.
+      flattened if its rank > 1.
     num_classes: The possible number of labels the prediction task can
       have. This value must be provided, since a confusion matrix of
       dimension = [num_classes, num_classes] will be allocated.
-    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `labels` dimension).
     metrics_collections: An optional list of collections that `mean_iou`
       should be added to.
     updates_collections: An optional list of collections `update_op` should be
@@ -774,18 +798,14 @@ def mean_iou(labels,
     num_classes = math_ops.to_int64(num_classes)
 
     # Flatten the input if its rank > 1.
-    predictions_rank = predictions.get_shape().ndims
-    if predictions_rank > 1:
+    if predictions.get_shape().ndims > 1:
       predictions = array_ops.reshape(predictions, [-1])
 
-    labels_rank = labels.get_shape().ndims
-    if labels_rank > 1:
+    if labels.get_shape().ndims > 1:
       labels = array_ops.reshape(labels, [-1])
 
-    if weights is not None:
-      weights_rank = weights.get_shape().ndims
-      if weights_rank > 1:
-        weights = array_ops.reshape(weights, [-1])
+    if (weights is not None) and (weights.get_shape().ndims > 1):
+      weights = array_ops.reshape(weights, [-1])
 
     # Accumulate the prediction to current confusion matrix.
     current_cm = confusion_matrix.confusion_matrix(
@@ -845,7 +865,9 @@ def mean_relative_error(labels, predictions, normalizer, weights=None,
     labels: A `Tensor` of the same shape as `predictions`.
     predictions: A `Tensor` of arbitrary shape.
     normalizer: A `Tensor` of the same shape as `predictions`.
-    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `labels` dimension).
     metrics_collections: An optional list of collections that
       `mean_relative_error` should be added to.
     updates_collections: An optional list of collections that `update_op` should
@@ -904,7 +926,9 @@ def mean_squared_error(labels, predictions, weights=None,
   Args:
     labels: A `Tensor` of the same shape as `predictions`.
     predictions: A `Tensor` of arbitrary shape.
-    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `labels` dimension).
     metrics_collections: An optional list of collections that
       `mean_squared_error` should be added to.
     updates_collections: An optional list of collections that `update_op` should
@@ -953,7 +977,9 @@ def mean_tensor(values, weights=None, metrics_collections=None,
 
   Args:
     values: A `Tensor` of arbitrary dimensions.
-    weights: An optional `Tensor` whose shape is broadcastable to `values`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `values`, and must be broadcastable to `values` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `values` dimension).
     metrics_collections: An optional list of collections that `mean`
       should be added to.
     updates_collections: An optional list of collections that `update_op`
@@ -972,12 +998,13 @@ def mean_tensor(values, weights=None, metrics_collections=None,
       or tuple.
   """
   with variable_scope.variable_scope(name, 'mean', (values, weights)):
+    values = math_ops.to_float(values)
     total = _create_local('total_tensor', shape=values.get_shape())
     count = _create_local('count_tensor', shape=values.get_shape())
 
     num_values = array_ops.ones_like(values)
     if weights is not None:
-      weights = math_ops.to_float(weights)
+      weights = _broadcast_weights(math_ops.to_float(weights), values)
       values = math_ops.multiply(values, weights)
       num_values = math_ops.multiply(num_values, weights)
 
@@ -1025,7 +1052,9 @@ def percentage_below(values, threshold, weights=None,
   Args:
     values: A numeric `Tensor` of arbitrary size.
     threshold: A scalar threshold.
-    weights: An optional `Tensor` whose shape is broadcastable to `values`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `values`, and must be broadcastable to `values` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `values` dimension).
     metrics_collections: An optional list of collections that the metric
       value variable should be added to.
     updates_collections: An optional list of collections that the metric update
@@ -1059,7 +1088,9 @@ def _count_condition(values, weights=None, metrics_collections=None,
 
   Args:
     values: A `bool` `Tensor` of arbitrary size.
-    weights: An optional `Tensor` whose shape is broadcastable to `values`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `values`, and must be broadcastable to `values` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `values` dimension).
     metrics_collections: An optional list of collections that the metric
       value variable should be added to.
     updates_collections: An optional list of collections that the metric update
@@ -1079,8 +1110,10 @@ def _count_condition(values, weights=None, metrics_collections=None,
 
   values = math_ops.to_float(values)
   if weights is not None:
-    weights = math_ops.to_float(weights)
-    values = math_ops.multiply(values, weights)
+    with ops.control_dependencies((
+        check_ops.assert_rank_in(weights, (0, array_ops.rank(values))),)):
+      weights = math_ops.to_float(weights)
+      values = math_ops.multiply(values, weights)
 
   value_tensor = array_ops.identity(count)
   update_op = state_ops.assign_add(count, math_ops.reduce_sum(values))
@@ -1107,7 +1140,9 @@ def true_positives(labels, predictions, weights=None,
       match `predictions`.
     predictions: The predicted values, a `bool` `Tensor` of arbitrary
       dimensions.
-    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `labels` dimension).
     metrics_collections: An optional list of collections that the metric
       value variable should be added to.
     updates_collections: An optional list of collections that the metric update
@@ -1149,7 +1184,9 @@ def false_positives(labels, predictions, weights=None,
       match `predictions`.
     predictions: The predicted values, a `bool` `Tensor` of arbitrary
       dimensions.
-    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `labels` dimension).
     metrics_collections: An optional list of collections that the metric
       value variable should be added to.
     updates_collections: An optional list of collections that the metric update
@@ -1200,7 +1237,9 @@ def precision(labels, predictions, weights=None,
     labels: The ground truth values, a `bool` `Tensor` whose dimensions must
       match `predictions`.
     predictions: The predicted values, a `bool` `Tensor` of arbitrary shape.
-    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `labels` dimension).
     metrics_collections: An optional list of collections that `precision` should
       be added to.
     updates_collections: An optional list of collections that `update_op` should
@@ -1280,7 +1319,9 @@ def precision_at_thresholds(labels, predictions, thresholds,
     predictions: A floating point `Tensor` of arbitrary shape and whose values
       are in the range `[0, 1]`.
     thresholds: A python list or tuple of float thresholds in `[0, 1]`.
-    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `labels` dimension).
     metrics_collections: An optional list of collections that `auc` should be
       added to.
     updates_collections: An optional list of collections that `update_op` should
@@ -1337,7 +1378,9 @@ def false_negatives(labels, predictions, weights=None,
       match `predictions`.
     predictions: The predicted values, a `bool` `Tensor` of arbitrary
       dimensions.
-    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `labels` dimension).
     metrics_collections: An optional list of collections that the metric
       value variable should be added to.
     updates_collections: An optional list of collections that the metric update
@@ -1385,7 +1428,9 @@ def recall(labels, predictions, weights=None,
     labels: The ground truth values, a `bool` `Tensor` whose dimensions must
       match `predictions`.
     predictions: The predicted values, a `bool` `Tensor` of arbitrary shape.
-    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `labels` dimension).
     metrics_collections: An optional list of collections that `recall` should
       be added to.
     updates_collections: An optional list of collections that `update_op` should
@@ -1527,21 +1572,25 @@ def _sparse_true_positive_at_k(labels,
       top `k` predicted classes. For rank `n`, the first `n-1` dimensions must
       match `labels`.
     class_id: Class for which we want binary metrics.
-    weights: `Tensor` whose shape is broadcastable to the first [D1, ... DN]
-      dimensions of `predictions_idx` and `labels`.
+    weights: `Tensor` whose rank is either 0, or n-1, where n is the rank of
+      `labels`. If the latter, it must be broadcastable to `labels` (i.e., all
+      dimensions must be either `1`, or the same as the corresponding `labels`
+      dimension).
     name: Name of operation.
 
   Returns:
     A [D1, ... DN] `Tensor` of true positive counts.
   """
-  with ops.name_scope(name, 'true_positives', (predictions_idx, labels)):
+  with ops.name_scope(
+      name, 'true_positives', (predictions_idx, labels, weights)):
     labels, predictions_idx = _maybe_select_class_id(
         labels, predictions_idx, class_id)
     tp = sets.set_size(sets.set_intersection(predictions_idx, labels))
     tp = math_ops.to_double(tp)
     if weights is not None:
-      weights = math_ops.to_double(weights)
-      tp = math_ops.multiply(tp, weights)
+      with ops.control_dependencies((_assert_weights_rank(weights, tp),)):
+        weights = math_ops.to_double(weights)
+        tp = math_ops.multiply(tp, weights)
     return tp
 
 
@@ -1571,8 +1620,10 @@ def _streaming_sparse_true_positive_at_k(labels,
       match `labels`.
     k: Integer, k for @k metric. This is only used for default op name.
     class_id: Class for which we want binary metrics.
-    weights: `Tensor` whose shape is broadcastable to the first [D1, ... DN]
-      dimensions of `predictions_idx` and `labels`.
+    weights: `Tensor` whose rank is either 0, or n-1, where n is the rank of
+      `labels`. If the latter, it must be broadcastable to `labels` (i.e., all
+      dimensions must be either `1`, or the same as the corresponding `labels`
+      dimension).
     name: Name of new variable, and namespace for other dependent ops.
 
   Returns:
@@ -1581,8 +1632,9 @@ def _streaming_sparse_true_positive_at_k(labels,
   Raises:
     ValueError: If `weights` is not `None` and has an incomptable shape.
   """
-  default_name = _at_k_name('true_positive', k, class_id=class_id)
-  with ops.name_scope(name, default_name, (predictions_idx, labels)) as scope:
+  with ops.name_scope(
+      name, _at_k_name('true_positive', k, class_id=class_id),
+      (predictions_idx, labels, weights)) as scope:
     tp = _sparse_true_positive_at_k(
         predictions_idx=predictions_idx, labels=labels, class_id=class_id,
         weights=weights)
@@ -1613,13 +1665,16 @@ def _sparse_false_negative_at_k(labels,
       top `k` predicted classes. For rank `n`, the first `n-1` dimensions must
       match `labels`.
     class_id: Class for which we want binary metrics.
-    weights: `Tensor` whose shape is broadcastable to the first [D1, ... DN]
-      dimensions of `predictions_idx` and `labels`.
+    weights: `Tensor` whose rank is either 0, or n-1, where n is the rank of
+      `labels`. If the latter, it must be broadcastable to `labels` (i.e., all
+      dimensions must be either `1`, or the same as the corresponding `labels`
+      dimension).
 
   Returns:
     A [D1, ... DN] `Tensor` of false negative counts.
   """
-  with ops.name_scope(None, 'false_negatives', (predictions_idx, labels)):
+  with ops.name_scope(
+      None, 'false_negatives', (predictions_idx, labels, weights)):
     labels, predictions_idx = _maybe_select_class_id(labels,
                                                      predictions_idx,
                                                      class_id)
@@ -1628,8 +1683,9 @@ def _sparse_false_negative_at_k(labels,
                                            aminusb=False))
     fn = math_ops.to_double(fn)
     if weights is not None:
-      weights = math_ops.to_double(weights)
-      fn = math_ops.multiply(fn, weights)
+      with ops.control_dependencies((_assert_weights_rank(weights, fn),)):
+        weights = math_ops.to_double(weights)
+        fn = math_ops.multiply(fn, weights)
     return fn
 
 
@@ -1659,8 +1715,10 @@ def _streaming_sparse_false_negative_at_k(labels,
       match `labels`.
     k: Integer, k for @k metric. This is only used for default op name.
     class_id: Class for which we want binary metrics.
-    weights: `Tensor` whose shape is broadcastable to the first [D1, ... DN]
-      dimensions of `predictions_idx` and `labels`.
+    weights: `Tensor` whose rank is either 0, or n-1, where n is the rank of
+      `labels`. If the latter, it must be broadcastable to `labels` (i.e., all
+      dimensions must be either `1`, or the same as the corresponding `labels`
+      dimension).
     name: Name of new variable, and namespace for other dependent ops.
 
   Returns:
@@ -1669,8 +1727,9 @@ def _streaming_sparse_false_negative_at_k(labels,
   Raises:
     ValueError: If `weights` is not `None` and has an incomptable shape.
   """
-  default_name = _at_k_name('false_negative', k, class_id=class_id)
-  with ops.name_scope(name, default_name, (predictions_idx, labels)) as scope:
+  with ops.name_scope(
+      name, _at_k_name('false_negative', k, class_id=class_id),
+      (predictions_idx, labels, weights)) as scope:
     fn = _sparse_false_negative_at_k(
         predictions_idx=predictions_idx, labels=labels, class_id=class_id,
         weights=weights)
@@ -1690,14 +1749,12 @@ def recall_at_k(labels,
                 name=None):
   """Computes recall@k of the predictions with respect to sparse labels.
 
-  If `class_id` is not specified, we'll calculate recall as the ratio of true
-      positives (i.e., correct predictions, items in the top `k` highest
-      `predictions` that are found in the corresponding row in `labels`) to
-      actual positives (the full `labels` row).
-  If `class_id` is specified, we calculate recall by considering only the rows
-      in the batch for which `class_id` is in `labels`, and computing the
-      fraction of them for which `class_id` is in the corresponding row in
-      `labels`.
+  If `class_id` is specified, we calculate recall by considering only the
+      entries in the batch for which `class_id` is in the label, and computing
+      the fraction of them for which `class_id` is in the top-k `predictions`.
+  If `class_id` is not specified, we'll calculate recall as how often on
+      average a class among the labels of a batch entry is in the top-k
+      `predictions`.
 
   `sparse_recall_at_k` creates two local variables,
   `true_positive_at_<k>` and `false_negative_at_<k>`, that are used to compute
@@ -1733,8 +1790,10 @@ def recall_at_k(labels,
     class_id: Integer class ID for which we want binary metrics. This should be
       in range [0, num_classes), where num_classes is the last dimension of
       `predictions`. If class_id is outside this range, the method returns NAN.
-    weights: An optional `Tensor` whose shape is broadcastable to the first
-      [D1, ... DN] dimensions of `predictions` and `labels`.
+    weights: `Tensor` whose rank is either 0, or n-1, where n is the rank of
+      `labels`. If the latter, it must be broadcastable to `labels` (i.e., all
+      dimensions must be either `1`, or the same as the corresponding `labels`
+      dimension).
     metrics_collections: An optional list of collections that values should
       be added to.
     updates_collections: An optional list of collections that updates should
@@ -1753,8 +1812,9 @@ def recall_at_k(labels,
     `predictions`, or if either `metrics_collections` or `updates_collections`
     are not a list or tuple.
   """
-  default_name = _at_k_name('recall', k, class_id=class_id)
-  with ops.name_scope(name, default_name, (predictions, labels)) as scope:
+  with ops.name_scope(
+      name, _at_k_name('recall', k, class_id=class_id),
+      (predictions, labels, weights)) as scope:
     labels = _maybe_expand_labels(labels, predictions)
 
     _, top_k_idx = nn.top_k(predictions, k)
@@ -1798,7 +1858,9 @@ def recall_at_thresholds(labels, predictions, thresholds,
     predictions: A floating point `Tensor` of arbitrary shape and whose values
       are in the range `[0, 1]`.
     thresholds: A python list or tuple of float thresholds in `[0, 1]`.
-    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `labels` dimension).
     metrics_collections: An optional list of collections that `recall` should be
       added to.
     updates_collections: An optional list of collections that `update_op` should
@@ -1867,7 +1929,9 @@ def root_mean_squared_error(labels, predictions, weights=None,
   Args:
     labels: A `Tensor` of the same shape as `predictions`.
     predictions: A `Tensor` of arbitrary shape.
-    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `labels` dimension).
     metrics_collections: An optional list of collections that
       `root_mean_squared_error` should be added to.
     updates_collections: An optional list of collections that `update_op` should
@@ -1933,7 +1997,9 @@ def sensitivity_at_specificity(
     predictions: A floating point `Tensor` of arbitrary shape and whose values
       are in the range `[0, 1]`.
     specificity: A scalar value in range `[0, 1]`.
-    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `labels` dimension).
     num_thresholds: The number of thresholds to use for matching the given
       specificity.
     metrics_collections: An optional list of collections that `sensitivity`
@@ -2026,7 +2092,7 @@ def _expand_and_tile(tensor, multiple, dim=0, name=None):
             array_ops.size(tensor.dense_shape) + dim, [1])
       else:
         expand_dims = [dim]
-      expanded_shape = array_ops.concat_v2(
+      expanded_shape = array_ops.concat(
           (array_ops.slice(tensor.dense_shape, [0], expand_dims), [1],
            array_ops.slice(tensor.dense_shape, expand_dims, [-1])),
           0,
@@ -2044,7 +2110,7 @@ def _expand_and_tile(tensor, multiple, dim=0, name=None):
     if multiple == 1:
       return expanded
     ones = array_ops.ones_like(array_ops.shape(tensor))
-    tile_multiples = array_ops.concat_v2(
+    tile_multiples = array_ops.concat(
         (ones[:dim], (multiple,), ones[dim:]), 0, name='multiples')
     return array_ops.tile(expanded, tile_multiples, name=scope)
 
@@ -2217,8 +2283,10 @@ def sparse_average_precision_at_k(labels,
       for each class. [D1, ... DN] must match `labels`.
     k: Integer, k for @k metric. This will calculate an average precision for
       range `[1,k]`, as documented above.
-    weights: An optional `Tensor` whose shape is broadcastable to the first
-      [D1, ... DN] dimensions of `predictions` and `labels`.
+    weights: `Tensor` whose rank is either 0, or n-1, where n is the rank of
+      `labels`. If the latter, it must be broadcastable to `labels` (i.e., all
+      dimensions must be either `1`, or the same as the corresponding `labels`
+      dimension).
     metrics_collections: An optional list of collections that values should
       be added to.
     updates_collections: An optional list of collections that updates should
@@ -2231,13 +2299,15 @@ def sparse_average_precision_at_k(labels,
     update: `Operation` that increments  variables appropriately, and whose
       value matches `metric`.
   """
-  default_name = _at_k_name('average_precision', k)
-  with ops.name_scope(name, default_name, (predictions, labels)) as scope:
+  with ops.name_scope(
+      name, _at_k_name('average_precision', k),
+      (predictions, labels, weights)) as scope:
     # Calculate per-example average precision, and apply weights.
     average_precision = _sparse_average_precision_at_k(
         predictions=predictions, labels=labels, k=k)
     if weights is not None:
-      weights = math_ops.to_double(weights)
+      weights = _broadcast_weights(
+          math_ops.to_double(weights), average_precision)
       average_precision = math_ops.multiply(average_precision, weights)
 
     # Create accumulation variables and update ops for max average precision and
@@ -2253,11 +2323,7 @@ def sparse_average_precision_at_k(labels,
         batch_max = math_ops.to_double(
             array_ops.size(average_precision, name='batch_max'))
       else:
-        # TODO(ptucker): More efficient way to broadcast?
-        broadcast_weights = math_ops.multiply(
-            weights, array_ops.ones_like(average_precision),
-            name='broadcast_weights')
-        batch_max = math_ops.reduce_sum(broadcast_weights, name='batch_max')
+        batch_max = math_ops.reduce_sum(weights, name='batch_max')
       max_update = state_ops.assign_add(max_var, batch_max, name='update')
     with ops.name_scope(None, 'total', (average_precision,)) as total_scope:
       total_var = _local_variable(
@@ -2298,13 +2364,16 @@ def _sparse_false_positive_at_k(labels,
       top `k` predicted classes. For rank `n`, the first `n-1` dimensions must
       match `labels`.
     class_id: Class for which we want binary metrics.
-    weights: `Tensor` whose shape is broadcastable to the first [D1, ... DN]
-      dimensions of `predictions_idx` and `labels`.
+    weights: `Tensor` whose rank is either 0, or n-1, where n is the rank of
+      `labels`. If the latter, it must be broadcastable to `labels` (i.e., all
+      dimensions must be either `1`, or the same as the corresponding `labels`
+      dimension).
 
   Returns:
     A [D1, ... DN] `Tensor` of false positive counts.
   """
-  with ops.name_scope(None, 'false_positives', (predictions_idx, labels)):
+  with ops.name_scope(
+      None, 'false_positives', (predictions_idx, labels, weights)):
     labels, predictions_idx = _maybe_select_class_id(labels,
                                                      predictions_idx,
                                                      class_id)
@@ -2312,8 +2381,9 @@ def _sparse_false_positive_at_k(labels,
         predictions_idx, labels, aminusb=True))
     fp = math_ops.to_double(fp)
     if weights is not None:
-      weights = math_ops.to_double(weights)
-      fp = math_ops.multiply(fp, weights)
+      with ops.control_dependencies((_assert_weights_rank(weights, fp),)):
+        weights = math_ops.to_double(weights)
+        fp = math_ops.multiply(fp, weights)
     return fp
 
 
@@ -2343,8 +2413,10 @@ def _streaming_sparse_false_positive_at_k(labels,
       match `labels`.
     k: Integer, k for @k metric. This is only used for default op name.
     class_id: Class for which we want binary metrics.
-    weights: `Tensor` whose shape is broadcastable to the first [D1, ... DN]
-      dimensions of `predictions_idx` and `labels`.
+    weights: `Tensor` whose rank is either 0, or n-1, where n is the rank of
+      `labels`. If the latter, it must be broadcastable to `labels` (i.e., all
+      dimensions must be either `1`, or the same as the corresponding `labels`
+      dimension).
     name: Name of new variable, and namespace for other dependent ops.
 
   Returns:
@@ -2353,8 +2425,9 @@ def _streaming_sparse_false_positive_at_k(labels,
   Raises:
     ValueError: If `weights` is not `None` and has an incomptable shape.
   """
-  default_name = _at_k_name('false_positive', k, class_id=class_id)
-  with ops.name_scope(name, default_name, (predictions_idx, labels)) as scope:
+  with ops.name_scope(
+      name, _at_k_name('false_positive', k, class_id=class_id),
+      (predictions_idx, labels, weights)) as scope:
     fp = _sparse_false_positive_at_k(
         predictions_idx=predictions_idx, labels=labels, class_id=class_id,
         weights=weights)
@@ -2374,16 +2447,13 @@ def sparse_precision_at_k(labels,
                           name=None):
   """Computes precision@k of the predictions with respect to sparse labels.
 
-  If `class_id` is not specified, we calculate precision as the ratio of true
-      positives (i.e., correct predictions, items in the top `k` highest
-      `predictions` that are found in the corresponding row in `labels`) to
-      positives (all top `k` `predictions`).
   If `class_id` is specified, we calculate precision by considering only the
-      rows in the batch for which `class_id` is in the top `k` highest
+      entries in the batch for which `class_id` is in the top-k highest
       `predictions`, and computing the fraction of them for which `class_id` is
-      in the corresponding row in `labels`.
-
-  We expect precision to decrease as `k` increases.
+      indeed a correct label.
+  If `class_id` is not specified, we'll calculate precision as how often on
+      average a class among the top-k classes with the highest predicted values
+      of a batch entry is correct and can be found in the label for that entry.
 
   `sparse_precision_at_k` creates two local variables,
   `true_positive_at_<k>` and `false_positive_at_<k>`, that are used to compute
@@ -2419,8 +2489,10 @@ def sparse_precision_at_k(labels,
       in range [0, num_classes], where num_classes is the last dimension of
       `predictions`. If `class_id` is outside this range, the method returns
       NAN.
-    weights: An optional `Tensor` whose shape is broadcastable to the first
-      [D1, ... DN] dimensions of `predictions` and `labels`.
+    weights: `Tensor` whose rank is either 0, or n-1, where n is the rank of
+      `labels`. If the latter, it must be broadcastable to `labels` (i.e., all
+      dimensions must be either `1`, or the same as the corresponding `labels`
+      dimension).
     metrics_collections: An optional list of collections that values should
       be added to.
     updates_collections: An optional list of collections that updates should
@@ -2489,7 +2561,9 @@ def specificity_at_sensitivity(
     predictions: A floating point `Tensor` of arbitrary shape and whose values
       are in the range `[0, 1]`.
     sensitivity: A scalar value in range `[0, 1]`.
-    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `labels` dimension).
     num_thresholds: The number of thresholds to use for matching the given
       sensitivity.
     metrics_collections: An optional list of collections that `specificity`

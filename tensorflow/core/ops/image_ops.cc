@@ -471,6 +471,29 @@ output: The hue-adjusted image or images.
 )Doc");
 
 // --------------------------------------------------------------------------
+REGISTER_OP("AdjustSaturation")
+    .Input("images: float")
+    .Input("scale: float")
+    .Output("output: float")
+    .SetShapeFn([](InferenceContext* c) {
+      return shape_inference::UnchangedShapeWithRankAtLeast(c, 3);
+    })
+    .Doc(R"Doc(
+Adjust the saturation of one or more images.
+
+`images` is a tensor of at least 3 dimensions.  The last dimension is
+interpretted as channels, and must be three.
+
+The input image is considered in the RGB colorspace. Conceptually, the RGB
+colors are first mapped into HSV. A scale is then applied all the saturation
+values, and then remapped back to RGB colorspace.
+
+images: Images to adjust.  At least 3-D.
+scale: A float scale to add to the saturation.
+output: The hue-adjusted image or images.
+)Doc");
+
+// --------------------------------------------------------------------------
 REGISTER_OP("DecodePng")
     .Input("contents: string")
     .Attr("channels: int = 0")
@@ -698,7 +721,9 @@ seed: If either `seed` or `seed2` are set to non-zero, the random number
   seed.
 seed2: A second seed to avoid seed collision.
 min_object_covered: The cropped area of the image must contain at least this
-  fraction of any bounding box supplied.
+  fraction of any bounding box supplied. The value of this parameter should be
+  non-negative. In the case of 0, the cropped area does not need to overlap
+  any of the bounding boxes supplied.
 aspect_ratio_range: The cropped area of the image must have an aspect ratio =
   width / height within this range.
 area_range: The cropped area of the image must contain a fraction of the

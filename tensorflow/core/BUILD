@@ -239,6 +239,7 @@ cc_library(
         "lib/strings/str_util.h",
         "lib/strings/strcat.h",
         "lib/strings/stringprintf.h",
+        "platform/cpu_feature_guard.h",
         "platform/cpu_info.h",
         "platform/dynamic_annotations.h",
         "platform/env.h",
@@ -259,6 +260,7 @@ cc_library(
         "platform/subprocess.h",
         "platform/thread_annotations.h",
         "platform/types.h",
+        "platform/windows/cpu_info.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -705,8 +707,7 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-# Core sources. Should eventually become identical to open source
-# sources.
+# Core sources for Android builds.
 filegroup(
     name = "android_srcs",
     srcs = [

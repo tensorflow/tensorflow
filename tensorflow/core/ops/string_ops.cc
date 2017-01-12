@@ -95,17 +95,14 @@ REGISTER_OP("ReduceJoin")
     .Attr("keep_dims: bool = false")
     .Attr("separator: string = ''")
     .Output("output: string")
-    .SetShapeFn(shape_inference::ReductionShapeForReduceJoin)
+    .SetShapeFn(shape_inference::ReductionShape)
     .Doc(R"doc(
 Joins a string Tensor across the given dimensions.
 
 Computes the string join across dimensions in the given string Tensor of shape
 `[d_0, d_1, ..., d_n-1]`.  Returns a new Tensor created by joining the input
 strings with the given separator (default: empty string).  Negative indices are
-counted backwards from the end, with `-1` being equivalent to `n - 1`.  Passing
-an empty `reduction_indices` joins all strings in linear index order and outputs
-a scalar string.
-
+counted backwards from the end, with `-1` being equivalent to `n - 1`.
 
 For example:
 
