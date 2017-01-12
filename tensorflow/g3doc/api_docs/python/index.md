@@ -1156,6 +1156,8 @@
   * [`add_debug_tensor_watch`](../../api_docs/python/tf_debug.md#add_debug_tensor_watch)
   * [`DebugDumpDir`](../../api_docs/python/tf_debug.md#DebugDumpDir)
   * [`DebugTensorDatum`](../../api_docs/python/tf_debug.md#DebugTensorDatum)
+  * [`DumpingDebugHook`](../../api_docs/python/tf_debug.md#DumpingDebugHook)
+  * [`DumpingDebugWrapperSession`](../../api_docs/python/tf_debug.md#DumpingDebugWrapperSession)
   * [`has_inf_or_nan`](../../api_docs/python/tf_debug.md#has_inf_or_nan)
   * [`load_tensor_from_event_file`](../../api_docs/python/tf_debug.md#load_tensor_from_event_file)
   * [`LocalCLIDebugHook`](../../api_docs/python/tf_debug.md#LocalCLIDebugHook)

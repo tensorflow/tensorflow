@@ -1,6 +1,7 @@
 Command-line-interface debugger hook.
 
-Can be used as a monitor/hook for tf.train.MonitoredSession.
+Can be used as a monitor/hook for `tf.train.MonitoredSession`s and
+`tf.contrib.learn`'s `Estimator`s and `Experiment`s.
 - - -
 
 #### `tf_debug.LocalCLIDebugHook.__enter__()` {#LocalCLIDebugHook.__enter__}
@@ -191,7 +192,7 @@ Overrides on-session-init callback.
 
 ##### Returns:
 
-  An instance of OnSessionInitResponse.
+  An instance of `OnSessionInitResponse`.
 
 
 - - -
