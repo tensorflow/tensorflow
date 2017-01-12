@@ -478,10 +478,13 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> CpuCompiler::Compile(
       "Compilation of multiple HLO modules is not yet supported on CPU.");
 }
 
-StatusOr<std::unique_ptr<AotCompilationResult>> CpuCompiler::CompileAheadOfTime(
-    std::unique_ptr<HloModule> hlo_module,
-    std::unique_ptr<HloModuleConfig> module_config, HloDumper dump_hlo,
-    const AotCompilationOptions& aot_options) {
+StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+CpuCompiler::CompileAheadOfTime(
+    std::vector<std::unique_ptr<HloModule>> hlo_modules,
+    std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
+    HloDumper dump_hlo, const AotCompilationOptions& aot_options) {
+  TF_RET_CHECK(hlo_modules.size() == module_configs.size());
+
   if (aot_options.PlatformId() != se::host::kHostPlatformId) {
     return InvalidArgument("Incompatible AOT compilation platform");
   }
@@ -549,72 +552,78 @@ StatusOr<std::unique_ptr<AotCompilationResult>> CpuCompiler::CompileAheadOfTime(
   const llvm::DataLayout& data_layout = llvm_module.getDataLayout();
   int64 pointer_size = data_layout.getPointerSize();
 
-  TF_RETURN_IF_ERROR(
-      RunHloPasses(hlo_module.get(), module_config.get(), dump_hlo));
+  std::vector<std::unique_ptr<AotCompilationResult>> results;
+  for (int i = 0; i < hlo_modules.size(); ++i) {
+    HloModule* hlo_module = hlo_modules[i].get();
+    HloModuleConfig* module_config = module_configs[i].get();
 
-  SequentialHloOrdering::HloModuleSequence module_sequence =
-      CreateModuleSequence(hlo_module.get());
-  // Run buffer analysis on the HLO graph. This analysis figures out which
-  // temporary buffers are required to run the computation.
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<BufferAssignment> assignment,
-      BufferAssigner::Run(
-          hlo_module.get(),
-          MakeUnique<SequentialHloOrdering>(hlo_module.get(), module_sequence),
-          pointer_size));
+    TF_RETURN_IF_ERROR(RunHloPasses(hlo_module, module_config, dump_hlo));
 
-  IrEmitter ir_emitter(*hlo_module, *module_config, *assignment, &llvm_module,
-                       /*hlo_to_profile_idx=*/nullptr);
-  HloComputation* computation = hlo_module->entry_computation();
-  for (auto embedded_computation :
-       computation->MakeEmbeddedComputationsList()) {
-    TF_RETURN_IF_ERROR(
-        ir_emitter
-            .EmitComputation(embedded_computation, embedded_computation->name(),
-                             /*is_entry_computation=*/false,
-                             &module_sequence.at(embedded_computation))
-            .status());
-  }
-  const string& entry_point_name = options.entry_point_name();
-  TF_ASSIGN_OR_RETURN(
-      llvm::Function * entry_function,
-      ir_emitter.EmitComputation(computation, entry_point_name,
-                                 /*is_entry_computation=*/true));
+    SequentialHloOrdering::HloModuleSequence module_sequence =
+        CreateModuleSequence(hlo_module);
+    // Run buffer analysis on the HLO graph. This analysis figures out which
+    // temporary buffers are required to run the computation.
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<BufferAssignment> assignment,
+        BufferAssigner::Run(hlo_module, MakeUnique<SequentialHloOrdering>(
+                                            hlo_module, module_sequence),
+                            pointer_size));
 
-  entry_function->setName(llvm_ir::AsStringRef(entry_point_name));
-
-  Disassembler disassembler(*target_machine);
-  CompilerFunctor compiler_functor(target_machine.get(), &disassembler,
-                                   opt_level, CompilerFunctor::AllIntrinsics());
-  llvm::object::OwningBinary<llvm::object::ObjectFile> object_file =
-      compiler_functor(llvm_module);
-  llvm::StringRef object_file_data_ref = object_file.getBinary()->getData();
-  ObjectFileData object_file_data(object_file_data_ref.begin(),
-                                  object_file_data_ref.end());
-
-  BufferSizes buffer_sizes;
-  for (const BufferAllocation& allocation : assignment->Allocations()) {
-    // Callers don't need to allocate temporary buffers for parameters.
-    if (allocation.is_entry_computation_parameter()) {
-      buffer_sizes.push_back(-1);
-      continue;
+    IrEmitter ir_emitter(*hlo_module, *module_config, *assignment, &llvm_module,
+                         /*hlo_to_profile_idx=*/nullptr);
+    HloComputation* computation = hlo_module->entry_computation();
+    for (auto embedded_computation :
+         computation->MakeEmbeddedComputationsList()) {
+      TF_RETURN_IF_ERROR(
+          ir_emitter
+              .EmitComputation(embedded_computation,
+                               embedded_computation->name(),
+                               /*is_entry_computation=*/false,
+                               &module_sequence.at(embedded_computation))
+              .status());
     }
-    // Callers don't need to allocate anything for thread-local temporary
-    // buffers.  They are lowered to allocas.
-    if (allocation.is_thread_local()) {
-      buffer_sizes.push_back(-1);
-      continue;
+    const string& entry_point_name = options.entry_point_name();
+    TF_ASSIGN_OR_RETURN(
+        llvm::Function * entry_function,
+        ir_emitter.EmitComputation(computation, entry_point_name,
+                                   /*is_entry_computation=*/true));
+
+    entry_function->setName(llvm_ir::AsStringRef(entry_point_name));
+
+    Disassembler disassembler(*target_machine);
+    CompilerFunctor compiler_functor(target_machine.get(), &disassembler,
+                                     opt_level,
+                                     CompilerFunctor::AllIntrinsics());
+    llvm::object::OwningBinary<llvm::object::ObjectFile> object_file =
+        compiler_functor(llvm_module);
+    llvm::StringRef object_file_data_ref = object_file.getBinary()->getData();
+    ObjectFileData object_file_data(object_file_data_ref.begin(),
+                                    object_file_data_ref.end());
+
+    BufferSizes buffer_sizes;
+    for (const BufferAllocation& allocation : assignment->Allocations()) {
+      // Callers don't need to allocate temporary buffers for parameters.
+      if (allocation.is_entry_computation_parameter()) {
+        buffer_sizes.push_back(-1);
+        continue;
+      }
+      // Callers don't need to allocate anything for thread-local temporary
+      // buffers.  They are lowered to allocas.
+      if (allocation.is_thread_local()) {
+        buffer_sizes.push_back(-1);
+        continue;
+      }
+      buffer_sizes.push_back(allocation.size());
     }
-    buffer_sizes.push_back(allocation.size());
+
+    TF_ASSIGN_OR_RETURN(const BufferAllocation* result_allocation,
+                        assignment->GetUniqueTopLevelOutputAllocation());
+
+    results.emplace_back(MakeUnique<CpuAotCompilationResult>(
+        std::move(object_file_data), std::move(buffer_sizes),
+        result_allocation->index()));
   }
-
-  TF_ASSIGN_OR_RETURN(const BufferAllocation* result_allocation,
-                      assignment->GetUniqueTopLevelOutputAllocation());
-
-  return std::unique_ptr<AotCompilationResult>(
-      MakeUnique<CpuAotCompilationResult>(std::move(object_file_data),
-                                          std::move(buffer_sizes),
-                                          result_allocation->index()));
+  return std::move(results);
 }
 
 se::Platform::Id CpuCompiler::PlatformId() const {
