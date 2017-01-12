@@ -795,13 +795,14 @@ Status SimplePlacer::Run() {
       const Node* output = (*node->out_edges().begin())->dst();
       const string& output_device_name = output->assigned_device_name();
 
-      bool same_device = std::all_of(
+      const bool consumers_on_same_device = std::all_of(
           node->out_edges().begin(), node->out_edges().end(),
           [output_device_name](const Edge* e) {
             return e->dst()->assigned_device_name() == output_device_name;
           });
 
-      if (same_device && CanAssignToDevice(output_device_name, devices)) {
+      if (consumers_on_same_device && 
+          CanAssignToDevice(output_device_name, devices)) {
         assigned_device = output_device_name;
       }
     }
