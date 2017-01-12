@@ -1108,18 +1108,15 @@ Status IrEmitterUnnested::EmitReductionToVector(
     int64 width = 1;
     for (int64 input_dim = 0; input_dim < ShapeUtil::Rank(input_shape);
          ++input_dim) {
-      if (PositionInContainer(
-              AsInt64Slice(input_shape.layout().minor_to_major()), input_dim) >
-          PositionInContainer(
-              AsInt64Slice(input_shape.layout().minor_to_major()),
-              input_dim_to_keep)) {
+      if (PositionInContainer(input_shape.layout().minor_to_major(),
+                              input_dim) >
+          PositionInContainer(input_shape.layout().minor_to_major(),
+                              input_dim_to_keep)) {
         depth *= input_shape.dimensions(input_dim);
-      } else if (PositionInContainer(
-                     AsInt64Slice(input_shape.layout().minor_to_major()),
-                     input_dim) <
-                 PositionInContainer(
-                     AsInt64Slice(input_shape.layout().minor_to_major()),
-                     input_dim_to_keep)) {
+      } else if (PositionInContainer(input_shape.layout().minor_to_major(),
+                                     input_dim) <
+                 PositionInContainer(input_shape.layout().minor_to_major(),
+                                     input_dim_to_keep)) {
         width *= input_shape.dimensions(input_dim);
       }
     }

@@ -782,9 +782,9 @@ Status AlgebraicSimplifierVisitor::HandleConvolution(
       input_shape.layout().minor_to_major(0) != dnums.feature_dimension() ||
       // The input feature dimension should come later in the minor-to-major
       // order.
-      (PositionInContainer(AsInt64Slice(filter_shape.layout().minor_to_major()),
+      (PositionInContainer(filter_shape.layout().minor_to_major(),
                            dnums.kernel_input_feature_dimension()) <
-       PositionInContainer(AsInt64Slice(filter_shape.layout().minor_to_major()),
+       PositionInContainer(filter_shape.layout().minor_to_major(),
                            dnums.kernel_output_feature_dimension()))) {
     return Status::OK();
   }
