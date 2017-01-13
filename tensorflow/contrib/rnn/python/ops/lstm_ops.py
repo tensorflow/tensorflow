@@ -655,4 +655,4 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
         forget_bias=self._forget_bias,
         cell_clip=self._cell_clip,
         use_peephole=self._use_peephole)
-    return core_rnn_cell.LSTMStateTuple(cs, h)
+    return cs, h
