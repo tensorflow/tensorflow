@@ -312,7 +312,7 @@ class DebugTensorDatum(object):
     self._debug_op = base.split("_")[-2]
     self._output_slot = int(base.split("_")[-3])
 
-    namespace = os.path.dirname(debug_dump_rel_path)
+    namespace = os.path.dirname(debug_dump_rel_path).replace("\\", "/")
     node_base_name = "_".join(base.split("_")[:-3])
     if not namespace or namespace == ".":
       self._node_name = node_base_name
