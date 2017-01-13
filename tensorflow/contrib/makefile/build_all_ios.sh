@@ -32,6 +32,13 @@ cd ${SCRIPT_DIR}/../../../
 make -f tensorflow/contrib/makefile/Makefile clean
 rm -rf tensorflow/contrib/makefile/downloads
 
+# Setting a deployment target is required for building with bitcode,
+# otherwise linking will fail with:
+#
+#    ld: -bind_at_load and -bitcode_bundle (Xcode setting ENABLE_BITCODE=YES) cannot be used together
+#
+export MACOSX_DEPLOYMENT_TARGET="10.10"
+
 # Pull down the required versions of the frameworks we need.
 tensorflow/contrib/makefile/download_dependencies.sh
 
