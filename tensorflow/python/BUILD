@@ -565,10 +565,13 @@ py_test(
         ":framework_for_generated_wrappers",
         ":math_ops",
         ":nn_ops",
+        ":check_ops",
+        ":init_ops",
         ":platform",
         ":random_ops",
         ":training",
         ":variables",
+        ":layers",
     ],
 )
 
