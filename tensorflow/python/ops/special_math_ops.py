@@ -340,6 +340,22 @@ def _einsum_reduction(t0, t0_axis_labels, t1, t1_axis_labels, axes_to_sum):
         t0_shape[:len(preserved_axes)+len(broadcast_axes[0])] +
         t1_shape[len(t1_shape)-len(broadcast_axes[1]):]
     )
+
+    # Check the number of None values and replace them with Tensors containing
+    # corresponding dimensions if there exist two or more None values
+    num_none_dims = sum(1 for d in uncompacted_shape if d is None)
+    if num_none_dims > 1:
+      uncompacted_shape = list(uncompacted_shape)
+      for i in xrange(len(uncompacted_shape)):
+        if uncompacted_shape[i] is None:
+          if i < len(preserved_axes) + len(broadcast_axes[0]):
+            uncompacted_shape[i] = array_ops.shape(inputs[0])[i]
+          else:
+            idx = (i - len(preserved_axes) - len(broadcast_axes[0])
+                   + len(t1_shape) - len(broadcast_axes[1]))
+            uncompacted_shape[i] = array_ops.shape(inputs[1])[idx]
+      uncompacted_shape = tuple(uncompacted_shape)
+
     product = _reshape_if_necessary(product, uncompacted_shape)
 
     product_axes = (
