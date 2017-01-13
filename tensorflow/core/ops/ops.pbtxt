@@ -22536,6 +22536,39 @@ op {
   summary: "Push an element onto the stack."
 }
 op {
+  name: "Stage"
+  input_arg {
+    name: "values"
+    description: "a list of tensors"
+    type_list_attr: "dtypes"
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this queue is placed in the given container. Otherwise,\na default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "It is necessary to match this name to the matching Unstage Op."
+  }
+  summary: "Stage values similar to a lightweight Enqueue.  The basic functionality of this"
+  description: "Op is similar to a queue with many fewer capabilities and options.  This Op is\noptimized for performance."
+  is_stateful: true
+}
+op {
   name: "StopGradient"
   input_arg {
     name: "input"
@@ -25110,6 +25143,36 @@ op {
   }
   summary: "Computes the sum along segments of a tensor."
   description: "Read [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments.\n\nComputes a tensor such that\n`(output[i] = sum_{j...} data[j...]` where the sum is over tuples `j...` such\nthat `segment_ids[j...] == i`.  Unlike `SegmentSum`, `segment_ids`\nneed not be sorted and need not cover all values in the full\nrange of valid values.\n\nIf the sum is empty for a given segment ID `i`, `output[i] = 0`.\n\n`num_segments` should equal the number of distinct segment IDs.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/UnsortedSegmentSum.png\" alt>\n</div>"
+}
+op {
+  name: "Unstage"
+  output_arg {
+    name: "values"
+    type_list_attr: "dtypes"
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  summary: "Op is similar to a lightweight Dequeue.  The basic funtionality is similar to"
+  description: "dequeue with many fewer capabilities and options.  This Op is optimized for\nperformance."
+  is_stateful: true
 }
 op {
   name: "Variable"
