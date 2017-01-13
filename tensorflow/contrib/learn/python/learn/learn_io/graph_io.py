@@ -156,12 +156,12 @@ def read_keyed_batch_examples(file_pattern,
       file_pattern,
       batch_size,
       reader,
-      randomize_input,
-      num_epochs,
-      queue_capacity,
-      num_threads,
-      read_batch_size,
-      parse_fn,
+      randomize_input=randomize_input,
+      num_epochs=num_epochs,
+      queue_capacity=queue_capacity,
+      num_threads=num_threads,
+      read_batch_size=read_batch_size,
+      parse_fn=parse_fn,
       setup_shared_queue=False,
       name=name)
 
@@ -225,12 +225,12 @@ def _read_keyed_batch_examples_shared_queue(file_pattern,
       file_pattern,
       batch_size,
       reader,
-      randomize_input,
-      num_epochs,
-      queue_capacity,
-      num_threads,
-      read_batch_size,
-      parse_fn,
+      randomize_input=randomize_input,
+      num_epochs=num_epochs,
+      queue_capacity=queue_capacity,
+      num_threads=num_threads,
+      read_batch_size=read_batch_size,
+      parse_fn=parse_fn,
       setup_shared_queue=True,
       name=name)
 
@@ -265,7 +265,7 @@ def _get_file_names(file_pattern, randomize_input):
 
 
 def _get_examples(file_name_queue, reader, num_threads, read_batch_size,
-                  parse_fn):
+                  filter_fn, parse_fn):
   with ops.name_scope('read'):
     example_list = []
     for _ in range(num_threads):
@@ -274,6 +274,10 @@ def _get_examples(file_name_queue, reader, num_threads, read_batch_size,
                                                    read_batch_size)
       else:
         keys, examples_proto = reader().read(file_name_queue)
+      if filter_fn:
+        mask = filter_fn(keys, examples_proto)
+        keys = array_ops.boolean_mask(keys, mask)
+        examples_proto = array_ops.boolean_mask(examples_proto, mask)
       if parse_fn:
         parsed_examples = parse_fn(examples_proto)
         # Map keys into example map because batch_join doesn't support
@@ -296,6 +300,7 @@ def _read_keyed_batch_examples_helper(file_pattern,
                                       queue_capacity=10000,
                                       num_threads=1,
                                       read_batch_size=1,
+                                      filter_fn=None,
                                       parse_fn=None,
                                       setup_shared_queue=False,
                                       name=None):
@@ -316,6 +321,9 @@ def _read_keyed_batch_examples_helper(file_pattern,
     num_threads: The number of threads enqueuing examples.
     read_batch_size: An int or scalar `Tensor` specifying the number of
       records to read at once
+    filter_fn: Filtering function, takes both keys as well `Example` Tensors
+      and returns a boolean mask of the same shape as the input Tensors to
+      be applied for filtering. If `None`, no filtering is done.
     parse_fn: Parsing function, takes `Example` Tensor returns parsed
       representation. If `None`, no parsing is done.
     setup_shared_queue: Whether to set up a shared queue for file names.
@@ -366,7 +374,7 @@ def _read_keyed_batch_examples_helper(file_pattern,
             name=file_name_queue_scope)
 
     example_list = _get_examples(file_name_queue, reader, num_threads,
-                                 read_batch_size, parse_fn)
+                                 read_batch_size, filter_fn, parse_fn)
 
     enqueue_many = read_batch_size > 1
 

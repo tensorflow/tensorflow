@@ -18,6 +18,7 @@ MirrorPadGrad
 OneHot
 Pack
 Pad
+ParallelConcat
 Placeholder
 RefIdentity
 Reverse
