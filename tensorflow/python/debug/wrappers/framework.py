@@ -325,9 +325,16 @@ class BaseDebugWrapperSession(session.SessionInterface):
 
     Raises:
       ValueError: On invalid `OnSessionInitAction` value.
+      NotImplementedError: If a non-DirectSession sess object is received.
     """
 
     _check_type(sess, session.BaseSession)
+
+    # TODO(cais): Remove this check once tfdbg is integrated with GrpcSession.
+    if sess.sess_str:
+      raise NotImplementedError(
+          "Non-DirectSession support is not available from TensorFlow "
+          "Debugger yet (sess_str=%s)" % sess.sess_str)
 
     # The session being wrapped.
     self._sess = sess

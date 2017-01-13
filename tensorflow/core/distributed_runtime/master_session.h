@@ -80,7 +80,7 @@ class MasterSession : public core::RefCounted {
 
   // Run one step.
   Status Run(CallOptions* opts, const RunStepRequestWrapper& req,
-             RunStepResponse* resp);
+             MutableRunStepResponseWrapper* resp);
 
   // Close this session and delete "*this". Returns OK if all known
   // states are cleanup successfully.
@@ -177,9 +177,9 @@ class MasterSession : public core::RefCounted {
                       RCGMap* rcg_map) EXCLUSIVE_LOCKS_REQUIRED(mu_);
   Status DoRunWithLocalExecution(CallOptions* opts,
                                  const RunStepRequestWrapper& req,
-                                 RunStepResponse* resp);
+                                 MutableRunStepResponseWrapper* resp);
   Status DoPartialRun(CallOptions* opts, const RunStepRequestWrapper& req,
-                      RunStepResponse* resp);
+                      MutableRunStepResponseWrapper* resp);
   void UpdateLastAccessTime();
 
   Status BuildAndRegisterPartitions(ReffedClientGraph* rcg);
