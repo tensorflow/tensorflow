@@ -222,8 +222,8 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
   int ifmblock = (libxsmm_handle->ifmblock);
   int ofmblock = (libxsmm_handle->ofmblock); 
 
-  int blocksifm = desc.K%ifmblock ==0 ? desc.K/ifmblock :desc.K/ifmblock + 1;           
-  int blocksofm = desc.C%ofmblock ==0 ? desc.C/ofmblock :desc.C/ofmblock + 1;
+  int blocksifm = desc.C%ifmblock ==0 ? desc.C/ifmblock :desc.C/ifmblock + 1;           
+  int blocksofm = desc.K%ofmblock ==0 ? desc.K/ofmblock :desc.K/ofmblock + 1;
   float *native_filter = (float*)libxsmm_aligned_malloc( blocksofm*blocksifm*desc.R*desc.S*ifmblock*ofmblock*sizeof(float), 2097152);
  
 
@@ -234,8 +234,8 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
   int num_threads = worker_threads->num_threads;
 
 
-  if(ofmblock > num_threads){
-    int work = ofmblock;
+  if(blocksofm > num_threads){
+    int work = blocksofm;
     BlockingCounter count(num_threads);
     for (int i = 0; i < num_threads; ++i) {
         worker_threads->workers->Schedule([=, &count]() {
@@ -249,7 +249,7 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
   }
   else{
 
-    int work = ofmblock;
+    int work = blocksofm;
     int num_threads = work;
     
     BlockingCounter count(num_threads);
